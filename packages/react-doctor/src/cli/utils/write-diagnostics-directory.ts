@@ -6,6 +6,27 @@ import { formatRuleSummary } from "./render-diagnostics.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+const ruleDumpFileName = (ruleKey: string): string => ruleKey.replace(/\//g, "--") + ".txt";
+
+// Derives the rule dump files a previous run wrote into this directory from
+// the diagnostics.json it left behind. An absent, unreadable, or foreign
+// file yields nothing — better to leave a stale dump than delete a file the
+// tool never wrote.
+const readPreviousRuleDumpFileNames = (directory: string): ReadonlySet<string> => {
+  try {
+    const previous: Diagnostic[] = JSON.parse(
+      fs.readFileSync(path.join(directory, "diagnostics.json"), "utf8"),
+    );
+    return new Set(
+      previous
+        .filter((d) => typeof d?.plugin === "string" && typeof d?.rule === "string")
+        .map((d) => ruleDumpFileName(`${d.plugin}/${d.rule}`)),
+    );
+  } catch {
+    return new Set();
+  }
+};
+
 export const writeDiagnosticsDirectory = (
   diagnostics: Diagnostic[],
   outputDirectory?: string | null,
@@ -14,22 +35,22 @@ export const writeDiagnosticsDirectory = (
     ? path.resolve(outputDirectory)
     : path.join(tmpdir(), `react-doctor-${randomUUID()}`);
 
-  // A user-supplied directory (`--output-dir`) may be reused across runs:
-  // clear prior dump artifacts — diagnostics.json and the `plugin--rule.txt`
-  // files — and nothing else, so stale rule dumps can't sit next to fresh
-  // results.
-  if (outputDirectory && fs.existsSync(directory)) {
-    for (const fileName of fs.readdirSync(directory)) {
-      if (fileName === "diagnostics.json" || /^.+--.+\.txt$/.test(fileName)) {
-        fs.rmSync(path.join(directory, fileName), { force: true });
-      }
+  // A user-supplied directory (`--output-dir`) may be reused across runs.
+  // The previous run's diagnostics.json records exactly which rule files
+  // were written, so cleanup removes those and only those — user files are
+  // never matched by name shape.
+  if (outputDirectory) {
+    for (const fileName of readPreviousRuleDumpFileNames(directory)) {
+      fs.rmSync(path.join(directory, fileName), { force: true });
     }
   }
   fs.mkdirSync(directory, { recursive: true });
 
   for (const [ruleKey, ruleDiagnostics] of buildSortedRuleGroups(diagnostics)) {
-    const fileName = ruleKey.replace(/\//g, "--") + ".txt";
-    fs.writeFileSync(path.join(directory, fileName), formatRuleSummary(ruleKey, ruleDiagnostics));
+    fs.writeFileSync(
+      path.join(directory, ruleDumpFileName(ruleKey)),
+      formatRuleSummary(ruleKey, ruleDiagnostics),
+    );
   }
 
   fs.writeFileSync(path.join(directory, "diagnostics.json"), JSON.stringify(diagnostics));

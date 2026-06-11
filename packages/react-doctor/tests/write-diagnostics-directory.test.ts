@@ -27,9 +27,11 @@ describe("writeDiagnosticsDirectory", () => {
     fs.rmSync(directory, { recursive: true, force: true });
   });
 
-  it("reuses a custom directory, replacing stale dump files but nothing else", () => {
+  it("reuses a custom directory, replacing only the rule files the previous run wrote", () => {
     const customDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-custom-"));
+    // User files must survive — even ones shaped like a rule dump.
     fs.writeFileSync(path.join(customDirectory, "readme.txt"), "keep me");
+    fs.writeFileSync(path.join(customDirectory, "notes--draft.txt"), "keep me too");
     writeDiagnosticsDirectory([makeDiagnostic({ rule: "old-rule" })], customDirectory);
     expect(fs.existsSync(path.join(customDirectory, "react-doctor--old-rule.txt"))).toBe(true);
 
@@ -42,6 +44,9 @@ describe("writeDiagnosticsDirectory", () => {
     expect(fs.existsSync(path.join(customDirectory, "react-doctor--new-rule.txt"))).toBe(true);
     expect(fs.existsSync(path.join(customDirectory, "react-doctor--old-rule.txt"))).toBe(false);
     expect(fs.readFileSync(path.join(customDirectory, "readme.txt"), "utf8")).toBe("keep me");
+    expect(fs.readFileSync(path.join(customDirectory, "notes--draft.txt"), "utf8")).toBe(
+      "keep me too",
+    );
     fs.rmSync(customDirectory, { recursive: true, force: true });
   });
 

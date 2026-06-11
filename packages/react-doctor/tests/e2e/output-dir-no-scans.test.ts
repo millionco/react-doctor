@@ -65,10 +65,15 @@ describe.skipIf(!hasBuiltCli)("--output-dir with no completed scans", () => {
     fs.appendFileSync(path.join(projectDirectory, "README.md"), "more docs\n");
 
     // A stale dump from an earlier run must be cleared even when no project
-    // gets scanned this time.
+    // gets scanned this time. Seed both artifacts a real previous run leaves:
+    // the rule file and the diagnostics.json that records it.
     const reportDirectory = path.join(projectDirectory, "doctor-report");
     fs.mkdirSync(reportDirectory, { recursive: true });
     fs.writeFileSync(path.join(reportDirectory, "react-doctor--old-rule.txt"), "stale");
+    fs.writeFileSync(
+      path.join(reportDirectory, "diagnostics.json"),
+      JSON.stringify([{ plugin: "react-doctor", rule: "old-rule" }]),
+    );
 
     const { stdout, exitCode } = await runCli(
       [".", "--scope", "changed", "--output-dir", "./doctor-report", "--no-score"],

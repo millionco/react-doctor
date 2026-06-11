@@ -594,12 +594,22 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       categoryFilters,
     );
 
-    if (isQuiet && isMultiProject && flags.outputDir) {
-      // Quiet workspace scans (`--json` / `--score`) skip the multi-project
-      // summary that would otherwise write the dump; the path line goes to
-      // stderr to keep machine-read stdout clean.
+    // Single-project scans dump from `inspect()` rendering, and non-quiet
+    // monorepo scans from the multi-project summary. Everything else —
+    // quiet workspace scans (`--json` / `--score`) and runs where every
+    // project was skipped in diff mode — dumps here; quiet runs send the
+    // path line to stderr to keep machine-read stdout clean.
+    const didScansWriteDump = isMultiProject
+      ? !isQuiet && completedScans.length > 0
+      : completedScans.length > 0;
+    if (flags.outputDir && !didScansWriteDump) {
       await Effect.runPromise(
-        printDiagnosticsDump(selectedSurfaceDiagnostics, flags.outputDir, false, "stderr"),
+        printDiagnosticsDump(
+          selectedSurfaceDiagnostics,
+          flags.outputDir,
+          false,
+          isQuiet ? "stderr" : "stdout",
+        ),
       );
     }
 

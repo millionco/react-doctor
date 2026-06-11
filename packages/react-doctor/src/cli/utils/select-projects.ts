@@ -18,6 +18,7 @@ export const selectProjects = async (
   rootDirectory: string,
   projectFlag: string | undefined,
   skipPrompts: boolean,
+  configProjects?: readonly string[],
 ): Promise<string[]> => {
   const hasRootPackageJson = isFile(path.join(rootDirectory, "package.json"));
   let packages = listWorkspacePackages(rootDirectory);
@@ -30,6 +31,23 @@ export const selectProjects = async (
   // workspace packages), so it must resolve even when discovery finds 0 or 1
   // packages — previously it was silently ignored in those cases.
   if (projectFlag) return resolveProjectFlag(projectFlag, packages, rootDirectory);
+
+  // The config's `projects` field is the flag's persistent form: same
+  // resolution, same errors, but declared once in doctor.config.* instead
+  // of on every invocation. The flag (handled above) overrides it.
+  const configRequestedNames = (configProjects ?? [])
+    .map((requestedName) => requestedName.trim())
+    .filter((requestedName) => requestedName.length > 0);
+  if (configRequestedNames.length > 0) {
+    const resolvedDirectories = resolveRequestedProjects(
+      configRequestedNames,
+      packages,
+      rootDirectory,
+      "config",
+    );
+    recordCount(METRIC.projectConfigSelected, resolvedDirectories.length);
+    return resolvedDirectories;
+  }
 
   if (packages.length === 0) return [rootDirectory];
   if (packages.length === 1) {
@@ -67,6 +85,15 @@ const resolveProjectFlag = (
     );
   }
 
+  return resolveRequestedProjects(requestedNames, workspacePackages, rootDirectory, "flag");
+};
+
+const resolveRequestedProjects = (
+  requestedNames: string[],
+  workspacePackages: WorkspacePackage[],
+  rootDirectory: string,
+  source: "flag" | "config",
+): string[] => {
   // `*` (the GitHub Action's default) selects every discovered project,
   // making "scan all workspace projects" explicit instead of relying on
   // the empty-flag prompt-skip fallback.
@@ -76,6 +103,7 @@ const resolveProjectFlag = (
       : [rootDirectory];
   }
 
+  const sourceLabel = source === "flag" ? "Project" : 'Config "projects" entry';
   const resolvedDirectories: string[] = [];
   let pathSelectionCount = 0;
 
@@ -103,8 +131,8 @@ const resolveProjectFlag = (
       .join(", ");
     throw new CliInputError(
       workspacePackages.length > 0
-        ? `Project "${requestedName}" is not a workspace project or a directory. Available projects: ${availableNames}`
-        : `Project "${requestedName}" is not a directory under ${rootDirectory}.`,
+        ? `${sourceLabel} "${requestedName}" is not a workspace project or a directory. Available projects: ${availableNames}`
+        : `${sourceLabel} "${requestedName}" is not a directory under ${rootDirectory}.`,
     );
   }
 

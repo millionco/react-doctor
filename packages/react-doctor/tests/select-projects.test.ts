@@ -191,6 +191,55 @@ describe("selectProjects", () => {
     );
   });
 
+  it("resolves config `projects` directory paths when no --project flag is passed", async () => {
+    const tempDirectory = createTempDirectory();
+    writeJson(path.join(tempDirectory, "package.json"), { name: "monolith" });
+    fs.mkdirSync(path.join(tempDirectory, "modules", "billing"), { recursive: true });
+    fs.mkdirSync(path.join(tempDirectory, "modules", "payroll"), { recursive: true });
+
+    const selectedDirectories = await selectProjects(tempDirectory, undefined, true, [
+      "modules/billing",
+      "modules/payroll",
+    ]);
+
+    expect(selectedDirectories).toEqual([
+      path.join(tempDirectory, "modules", "billing"),
+      path.join(tempDirectory, "modules", "payroll"),
+    ]);
+    expect(prompts).not.toHaveBeenCalled();
+  });
+
+  it("lets the --project flag override config `projects`", async () => {
+    const tempDirectory = createTempDirectory();
+    writeJson(path.join(tempDirectory, "package.json"), { name: "monolith" });
+    fs.mkdirSync(path.join(tempDirectory, "modules", "billing"), { recursive: true });
+    fs.mkdirSync(path.join(tempDirectory, "modules", "payroll"), { recursive: true });
+
+    const selectedDirectories = await selectProjects(tempDirectory, "modules/payroll", true, [
+      "modules/billing",
+    ]);
+
+    expect(selectedDirectories).toEqual([path.join(tempDirectory, "modules", "payroll")]);
+  });
+
+  it("rejects a config `projects` entry that is neither a workspace project nor a directory", async () => {
+    const tempDirectory = createTempDirectory();
+    writeJson(path.join(tempDirectory, "package.json"), { name: "monolith" });
+
+    await expect(
+      selectProjects(tempDirectory, undefined, true, ["modules/missing"]),
+    ).rejects.toThrow(/Config "projects" entry "modules\/missing" is not a directory under/);
+  });
+
+  it("ignores an empty or whitespace-only config `projects` list", async () => {
+    const tempDirectory = createTempDirectory();
+    const projectDirectory = setupReactProject(tempDirectory, "app");
+
+    const selectedDirectories = await selectProjects(projectDirectory, undefined, true, ["  "]);
+
+    expect(selectedDirectories).toEqual([projectDirectory]);
+  });
+
   it("discovers nested React projects when a wrapper directory has no package.json", async () => {
     const tempDirectory = createTempDirectory();
     const frontendDirectory = setupReactProject(tempDirectory, "frontend");

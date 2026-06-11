@@ -121,7 +121,7 @@ const program = new Command()
   )
   .option(
     "--project <name>",
-    "select projects: workspace names or directory paths (comma-separated for multiple)",
+    "select projects: workspace names or directory paths (comma-separated for multiple); overrides the `projects` config field",
   )
   .option(
     "--scope <value>",

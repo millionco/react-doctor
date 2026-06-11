@@ -277,6 +277,22 @@ export interface ReactDoctorConfig {
    * requested directory).
    */
   rootDir?: string;
+  /**
+   * Projects to scan and score separately — the config-file equivalent of
+   * the CLI `--project` flag, for repos that always want per-module scoring
+   * (e.g. a monorepo dashboard tracking each module's score daily) without
+   * passing the flag on every run.
+   *
+   * Entries resolve exactly like `--project` values: workspace package
+   * names (or directory basenames) first, then directory paths relative to
+   * the scanned root. `"*"` selects every discovered workspace project.
+   * Invalid entries fail the run with the same error as the flag.
+   *
+   * Precedence: an explicit `--project` flag overrides this list. Only the
+   * config at the invocation root is consulted — `projects` inside a
+   * module's own config is ignored (modules can't redirect the scan).
+   */
+  projects?: string[];
   textComponents?: string[];
   /**
    * Names of components that safely route string-only children through a

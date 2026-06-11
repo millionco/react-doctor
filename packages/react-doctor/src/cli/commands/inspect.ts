@@ -416,7 +416,12 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       return;
     }
 
-    const projectDirectories = await selectProjects(resolvedDirectory, flags.project, skipPrompts);
+    const projectDirectories = await selectProjects(
+      resolvedDirectory,
+      flags.project,
+      skipPrompts,
+      userConfig?.projects,
+    );
 
     const changedFilesDiffInfo = flags.changedFilesFrom
       ? buildChangedFilesDiffInfo(readChangedFilesFrom(path.resolve(flags.changedFilesFrom)))

@@ -295,9 +295,12 @@ export const inspect = async (
   // silent flag here until that file moves to a Progress service in
   // a follow-up PR. Console-side silent is handled by swapping the
   // global Console reference for `silentConsole` inside the program
-  // (see `runInspectWithRuntime`).
+  // (see `runInspectWithRuntime`). Concurrent batch members never touch
+  // the shared flag — overlapping save/restore pairs would race — so the
+  // pool owner (the CLI) silences spinners once around the whole batch.
+  const ownsSpinnerSilence = options.silent && !isConcurrentScan;
   const wasSpinnerSilent = isSpinnerSilent();
-  if (options.silent) setSpinnerSilent(true);
+  if (ownsSpinnerSilence) setSpinnerSilent(true);
 
   try {
     const result = await withSentryRunSpan(
@@ -338,7 +341,7 @@ export const inspect = async (
     if (!isConcurrentScan) resetSentryRunState();
     return result;
   } finally {
-    if (options.silent) setSpinnerSilent(wasSpinnerSilent);
+    if (ownsSpinnerSilence) setSpinnerSilent(wasSpinnerSilent);
   }
 };
 

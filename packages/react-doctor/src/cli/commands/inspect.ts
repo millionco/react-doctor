@@ -69,7 +69,7 @@ import { runExplain } from "../utils/run-explain.js";
 import { projectManifestChanged } from "../utils/project-manifest-changed.js";
 import { renderSupplyChainScores } from "../utils/render-supply-chain-scores.js";
 import { selectProjects } from "../utils/select-projects.js";
-import { spinner } from "../utils/spinner.js";
+import { isSpinnerSilent, setSpinnerSilent, spinner } from "../utils/spinner.js";
 import { shouldBlockCi } from "../utils/should-block-ci.js";
 import { shouldSkipPrompts } from "../utils/should-skip-prompts.js";
 import { warnDeprecatedFailOn } from "../utils/warn-deprecated-fail-on.js";
@@ -604,20 +604,31 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     const projectCount = projectDirectories.length;
     const batchSpinner =
       isMultiProject && !isQuiet ? spinner(`Scanning ${projectCount} projects…`).start() : null;
+    // Concurrent pool members skip the per-scan toggle of the module-level
+    // spinner-silent flag (overlapping save/restore pairs would race), so
+    // the pool owner silences spinners once around the whole batch.
+    const ownsBatchSpinnerSilence = isMultiProject && scanOptions.silent === true;
+    const wasSpinnerSilent = isSpinnerSilent();
+    if (ownsBatchSpinnerSilence) setSpinnerSilent(true);
     let finishedProjectCount = 0;
-    const scanOutcomes = await mapWithConcurrency(
-      projectDirectories,
-      isMultiProject ? DEFAULT_PROJECT_SCAN_CONCURRENCY : 1,
-      async (projectDirectory) => {
-        const scanOutcome = await scanProject(projectDirectory);
-        finishedProjectCount += 1;
-        batchSpinner?.update(
-          `Scanning ${projectCount} projects… (${finishedProjectCount}/${projectCount})`,
-        );
-        return scanOutcome;
-      },
-    );
-    batchSpinner?.stop();
+    let scanOutcomes: ReadonlyArray<CompletedScan | null>;
+    try {
+      scanOutcomes = await mapWithConcurrency(
+        projectDirectories,
+        isMultiProject ? DEFAULT_PROJECT_SCAN_CONCURRENCY : 1,
+        async (projectDirectory) => {
+          const scanOutcome = await scanProject(projectDirectory);
+          finishedProjectCount += 1;
+          batchSpinner?.update(
+            `Scanning ${projectCount} projects… (${finishedProjectCount}/${projectCount})`,
+          );
+          return scanOutcome;
+        },
+      );
+    } finally {
+      if (ownsBatchSpinnerSilence) setSpinnerSilent(wasSpinnerSilent);
+      batchSpinner?.stop();
+    }
     for (const scanOutcome of scanOutcomes) {
       if (scanOutcome === null) continue;
       allDiagnostics.push(...scanOutcome.result.diagnostics);

@@ -527,6 +527,13 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         projectDirectory === resolvedDirectory
           ? userConfig
           : mergeReactDoctorConfigs(userConfig, projectScanTarget.userConfig ?? undefined);
+      // `plugins` is override-wins in the merge, so relative entries must
+      // resolve against the config file that supplied them: the module's own
+      // config when it declares `plugins`, the root config otherwise.
+      const projectConfigSourceDirectory =
+        projectScanTarget.userConfig?.plugins === undefined
+          ? scanTarget.configSourceDirectory
+          : projectScanTarget.configSourceDirectory;
       // The Socket supply-chain check runs by default; opted out per project
       // config. Off ⇒ a manifest-only diff change shouldn't pull a project into
       // the scan (there'd be nothing to report).
@@ -569,7 +576,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         ...scanOptions,
         includePaths,
         configOverride: projectConfig,
-        configSourceDirectory: projectScanTarget.configSourceDirectory ?? undefined,
+        configSourceDirectory: projectConfigSourceDirectory ?? undefined,
         suppressRendering: isMultiProject,
         baseline: baselineRef ? { ref: baselineRef } : undefined,
         changedLineRanges:

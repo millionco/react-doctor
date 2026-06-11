@@ -174,7 +174,20 @@ const diagnoseProject = async (
       { ...baseOptions, ...perProjectOptions },
       effectiveConfig ?? undefined,
     );
-    const layer = buildDiagnoseLayer(effectiveConfig, didOverrideConfig ? scanTarget : undefined);
+    // `plugins` is override-wins in the merge: when a caller layer supplies
+    // it, relative entries resolve against the scan root (caller configs
+    // have no file location); otherwise the on-disk config's directory.
+    const didOverridePlugins =
+      batchConfig?.plugins !== undefined || projectConfig?.plugins !== undefined;
+    const layer = buildDiagnoseLayer(
+      effectiveConfig,
+      didOverrideConfig
+        ? {
+            resolvedDirectory: scanTarget.resolvedDirectory,
+            configSourceDirectory: didOverridePlugins ? null : scanTarget.configSourceDirectory,
+          }
+        : undefined,
+    );
 
     const output: InspectOutput = await Effect.runPromise(
       restoreLegacyThrow(program.pipe(Effect.provide(layer), Effect.provide(layerOtlp))),

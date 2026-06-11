@@ -21,10 +21,7 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
 
   let outputDirectory: string | null = null;
   try {
-    outputDirectory = writeDiagnosticsDirectory(
-      [...input.diagnostics],
-      input.outputDirectory,
-    );
+    outputDirectory = writeDiagnosticsDirectory([...input.diagnostics], input.outputDirectory);
   } catch {}
 
   const lines: string[] = [

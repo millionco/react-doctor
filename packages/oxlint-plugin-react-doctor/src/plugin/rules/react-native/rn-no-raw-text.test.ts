@@ -293,6 +293,34 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
+    it("still fires when one branch renders children outside a Text", () => {
+      expectFail(`
+        const Chip = ({ children, inline }) => {
+          if (inline) return <View>{children}</View>;
+          return (
+            <View>
+              <Text>{children}</Text>
+            </View>
+          );
+        };
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("still fires when children comes from an unrelated destructure", () => {
+      expectFail(`
+        const Chip = ({ item }) => {
+          const { children } = item;
+          return (
+            <View>
+              <Text>{children}</Text>
+            </View>
+          );
+        };
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
     it("does not treat a render-prop's Text as the wrapper's own markup", () => {
       expectFail(`
         const Box = ({ children, renderLabel }) => (

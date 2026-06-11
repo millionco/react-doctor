@@ -65,7 +65,7 @@ const resolveChildrenPropertyLocalName = (property: EsTreeNode): string | null =
 // object rest that still carries children).
 const resolveParamChildrenBindings = (functionNode: FunctionNode): ChildrenBindings => {
   const bindings: ChildrenBindings = {
-    childrenNames: new Set(["children"]),
+    childrenNames: new Set(),
     propsObjectNames: new Set(),
   };
   const firstParam = functionNode.params?.[0];
@@ -108,6 +108,23 @@ const isChildrenValueExpression = (
   );
 };
 
+// The props object itself: a param identifier (or qualifying rest), or
+// `this.props` inside a class render method.
+const isPropsObjectExpression = (
+  expression: EsTreeNode | null | undefined,
+  bindings: ChildrenBindings,
+): boolean => {
+  if (!expression) return false;
+  const value = stripParenExpression(expression);
+  if (isNodeOfType(value, "Identifier")) return bindings.propsObjectNames.has(value.name);
+  return (
+    isNodeOfType(value, "MemberExpression") &&
+    isNodeOfType(value.object, "ThisExpression") &&
+    isNodeOfType(value.property, "Identifier") &&
+    value.property.name === "props"
+  );
+};
+
 // Folds body-level aliases into the bindings: `const content = children`,
 // `const { children } = props` (or `this.props`), and re-aliases of aliases
 // (bounded passes).
@@ -125,7 +142,7 @@ const collectChildrenAliases = (functionNode: FunctionNode, bindings: ChildrenBi
         }
         return undefined;
       }
-      if (isNodeOfType(node.id, "ObjectPattern")) {
+      if (isNodeOfType(node.id, "ObjectPattern") && isPropsObjectExpression(node.init, bindings)) {
         for (const property of node.id.properties ?? []) {
           const localName = resolveChildrenPropertyLocalName(property);
           if (localName) bindings.childrenNames.add(localName);
@@ -192,14 +209,7 @@ const isChildrenForwardingAttribute = (
   bindings: ChildrenBindings,
 ): boolean => {
   if (isNodeOfType(attribute, "JSXSpreadAttribute")) {
-    const argument = stripParenExpression(attribute.argument);
-    if (isNodeOfType(argument, "Identifier")) return bindings.propsObjectNames.has(argument.name);
-    return (
-      isNodeOfType(argument, "MemberExpression") &&
-      isNodeOfType(argument.object, "ThisExpression") &&
-      isNodeOfType(argument.property, "Identifier") &&
-      argument.property.name === "props"
-    );
+    return isPropsObjectExpression(attribute.argument, bindings);
   }
   return (
     isNodeOfType(attribute, "JSXAttribute") &&
@@ -233,6 +243,33 @@ const jsxRootForwardsChildrenIntoText = (
       );
   });
   return didForwardIntoText;
+};
+
+// True when a non-text element directly receives the component's children
+// (`<View>{children}</View>`) — a return path like this would render the
+// wrapper's raw string children outside any `<Text>`, so the component must
+// not be treated as a safe wrapper even if another path forwards into text.
+const jsxRootRendersChildrenOutsideText = (
+  jsxRoot: EsTreeNode,
+  bindings: ChildrenBindings,
+  isTextHandlingElement: (elementName: string) => boolean,
+): boolean => {
+  let didRenderOutsideText = false;
+  walkAst(jsxRoot, (node) => {
+    if (didRenderOutsideText || isFunctionNode(node)) return false;
+    if (!isNodeOfType(node, "JSXElement") && !isNodeOfType(node, "JSXFragment")) {
+      return undefined;
+    }
+    if (isNodeOfType(node, "JSXElement")) {
+      const elementName = resolveJsxElementName(node.openingElement);
+      if (elementName && isTextHandlingElement(elementName)) return false;
+    }
+    didRenderOutsideText = (node.children ?? []).some((child) =>
+      isChildrenForwardingJsxChild(child, bindings),
+    );
+    return undefined;
+  });
+  return didRenderOutsideText;
 };
 
 // Resolves a styled-component factory back to its base element name —
@@ -310,7 +347,15 @@ const recordWrapperFromDeclaration = (
   if (!functionNode) return;
   const bindings = resolveParamChildrenBindings(functionNode);
   collectChildrenAliases(functionNode, bindings);
-  for (const jsxRoot of collectReturnedJsxRoots(functionNode)) {
+  const jsxRoots = collectReturnedJsxRoots(functionNode);
+  if (
+    jsxRoots.some((jsxRoot) =>
+      jsxRootRendersChildrenOutsideText(jsxRoot, bindings, isTextHandlingElement),
+    )
+  ) {
+    return;
+  }
+  for (const jsxRoot of jsxRoots) {
     if (isNodeOfType(jsxRoot, "JSXElement")) {
       const rootName = resolveJsxElementName(jsxRoot.openingElement);
       if (rootName && isTextHandlingElement(rootName)) {

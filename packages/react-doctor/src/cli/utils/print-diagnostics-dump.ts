@@ -8,18 +8,21 @@ import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 // asked for it (`--output-dir`) or is in verbose mode. Failing to write the
 // dump shouldn't block rendering — v4 forbids try/catch inside Effect.gen,
 // so the sync write is wrapped in `Effect.try` (always-tagged form) and
-// recovered via `Effect.orElseSucceed`.
+// recovered via `Effect.orElseSucceed`. Quiet callers (`--score`) pass
+// "stderr" so machine-read stdout stays clean.
 export const printDiagnosticsDump = (
   diagnostics: Diagnostic[],
   outputDirectory: string | null | undefined,
   verbose: boolean | undefined,
+  stream: "stdout" | "stderr" = "stdout",
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     const writtenDirectory = yield* Effect.try({
       try: () => writeDiagnosticsDirectory(diagnostics, outputDirectory),
       catch: (cause) => cause,
-    }).pipe(Effect.orElseSucceed(() => null as string | null));
+    }).pipe(Effect.orElseSucceed((): string | null => null));
     if (writtenDirectory !== null && (Boolean(verbose) || Boolean(outputDirectory))) {
-      yield* Console.log(highlighter.gray(`  Full diagnostics written to ${writtenDirectory}`));
+      const pathLine = highlighter.gray(`  Full diagnostics written to ${writtenDirectory}`);
+      yield* stream === "stderr" ? Console.error(pathLine) : Console.log(pathLine);
     }
   });

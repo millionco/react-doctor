@@ -47,7 +47,7 @@ import { playWelcomeScene, RETURNING_USER_SPEED_MULTIPLIER } from "../utils/rend
 import { reportErrorToSentry } from "../utils/report-error.js";
 import { readChangedFilesFrom } from "../utils/read-changed-files-from.js";
 import { printMultiProjectSummary } from "../utils/render-multi-project-summary.js";
-import { writeDiagnosticsDirectory } from "../utils/write-diagnostics-directory.js";
+import { printDiagnosticsDump } from "../utils/print-diagnostics-dump.js";
 import { isCiOrCodingAgentEnvironment } from "../utils/is-ci-environment.js";
 import {
   printAgentInstallHint,
@@ -582,8 +582,27 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
           projectName: path.basename(resolvedDirectory),
         }),
       );
-    } else if (isMultiProject && (flags.outputDir ?? null) !== null && allDiagnostics.length > 0) {
-      writeDiagnosticsDirectory(allDiagnostics, flags.outputDir);
+    }
+
+    const surfaceDiagnostics = filterDiagnosticsForSurface(
+      allDiagnostics,
+      scanOptions.outputSurface ?? "cli",
+      userConfig,
+    );
+    const selectedSurfaceDiagnostics = filterDiagnosticsByCategories(
+      surfaceDiagnostics,
+      categoryFilters,
+    );
+
+    if (isQuiet && isMultiProject && flags.outputDir) {
+      // Quiet workspace scans (`--json` / `--score`) skip the multi-project
+      // summary, so the dump is written here with the same surface and
+      // category filters. The path line goes to stderr to keep machine-read
+      // stdout clean, and a write failure must not block the JSON report or
+      // the CI exit handling that follow.
+      await Effect.runPromise(
+        printDiagnosticsDump(selectedSurfaceDiagnostics, flags.outputDir, false, "stderr"),
+      );
     }
 
     finalizeScans({
@@ -605,16 +624,6 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       resolvedDirectory,
       startTime,
     });
-
-    const surfaceDiagnostics = filterDiagnosticsForSurface(
-      allDiagnostics,
-      scanOptions.outputSurface ?? "cli",
-      userConfig,
-    );
-    const selectedSurfaceDiagnostics = filterDiagnosticsByCategories(
-      surfaceDiagnostics,
-      categoryFilters,
-    );
 
     // After the results print, offer to hand the issues to a coding agent
     // — an interactive select (no flag). Skipped for quiet, skip-prompts,

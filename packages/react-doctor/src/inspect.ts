@@ -848,7 +848,20 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       return buildResult();
     }
 
+    const surfaceDiagnostics = filterDiagnosticsForSurface(
+      [...diagnostics],
+      options.outputSurface,
+      userConfig,
+    );
+    const printedDiagnostics = filterDiagnosticsByCategories(
+      surfaceDiagnostics,
+      options.categoryFilters,
+    );
+
     if (options.scoreOnly) {
+      if (options.outputDirectory) {
+        yield* printDiagnosticsDump(printedDiagnostics, options.outputDirectory, false, "stderr");
+      }
       if (score) {
         yield* Console.log(`${score.score}`);
       } else {
@@ -864,16 +877,6 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     const animateRender =
       !options.silent && !options.verbose && canAnimateOnboarding(process.stdout);
     const pause = onboardingSectionPause(animateRender);
-
-    const surfaceDiagnostics = filterDiagnosticsForSurface(
-      [...diagnostics],
-      options.outputSurface,
-      userConfig,
-    );
-    const printedDiagnostics = filterDiagnosticsByCategories(
-      surfaceDiagnostics,
-      options.categoryFilters,
-    );
     const demotedDiagnosticCount = diagnostics.length - surfaceDiagnostics.length;
     const isDiffMode = options.includePaths.length > 0;
     const lintSourceFileCount = isDiffMode ? options.includePaths.length : project.sourceFileCount;
@@ -912,7 +915,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       } else {
         yield* printNoScoreHeader(noScoreMessage);
       }
-      yield* printDiagnosticsDump([...diagnostics], options.outputDirectory, options.verbose);
+      yield* printDiagnosticsDump(printedDiagnostics, options.outputDirectory, options.verbose);
       return buildResult();
     }
 

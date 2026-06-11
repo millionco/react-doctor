@@ -156,11 +156,11 @@ export interface SurfaceControls {
  *
  * Mirrors how Socket Firewall's free tier (`sfw`) works: each direct
  * dependency's PURL is looked up against Socket's keyless
- * `firewall-api.socket.dev/purl/<purl>` endpoint, which returns a
- * supply-chain score (0–100 once normalized). A dependency scoring below
- * `minScore` produces a diagnostic; at the default `severity: "error"` it
- * fails the scan (non-zero CI exit), the same way an error-severity lint
- * finding does.
+ * `firewall-api.socket.dev/purl/<purl>` endpoint, which returns per-axis
+ * scores (0–100 once normalized). A dependency whose worst security axis
+ * (supply chain or vulnerability) scores below `minScore` produces a
+ * diagnostic; at the default `severity: "error"` it fails the scan
+ * (non-zero CI exit), the same way an error-severity lint finding does.
  */
 export interface SupplyChainConfig {
   /**
@@ -172,8 +172,9 @@ export interface SupplyChainConfig {
   enabled?: boolean;
   /**
    * Minimum acceptable Socket score on a 0–100 scale. A direct dependency
-   * whose Socket `overall` score is below this is flagged. Default: `50`.
-   * Values outside `0..100` are clamped.
+   * whose worst Socket *security* axis — supply chain or vulnerability — is
+   * below this is flagged; the quality / maintenance / license axes never
+   * gate. Default: `50`. Values outside `0..100` are clamped.
    */
   minScore?: number;
   /**

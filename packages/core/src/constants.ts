@@ -434,10 +434,11 @@ export const SUPPLY_CHAIN_PLUGIN = "socket";
 export const SUPPLY_CHAIN_RULE = "low-supply-chain-score";
 export const SUPPLY_CHAIN_CATEGORY = "Security";
 
-// Default minimum acceptable Socket score (0..100). A dependency scoring
-// below this fails the check. Tuned to Socket's own "needs review" band —
-// most healthy, widely-used packages sit comfortably above it. Overridable
-// per project via `supplyChain.minScore`.
+// Default minimum acceptable Socket score (0..100), applied to the security
+// axes (supply chain, vulnerability) — a dependency whose worst security
+// axis scores below this fails the check. Tuned to Socket's own "needs
+// review" band — most healthy, widely-used packages sit comfortably above
+// it. Overridable per project via `supplyChain.minScore`.
 export const SUPPLY_CHAIN_DEFAULT_MIN_SCORE = 50;
 
 // Socket scores arrive normalized 0..1; multiply by this to present the

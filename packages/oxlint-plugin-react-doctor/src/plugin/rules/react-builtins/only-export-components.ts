@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isFrameworkRouteOrSpecialFilename } from "../../utils/is-framework-route-or-special-filename.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -385,6 +386,14 @@ const isFileNameAllowed = (filename: string | undefined, checkJS: boolean): bool
   // in HMR — they get full reloaded when changed. Local-component and
   // mixed-export warnings are unactionable here.
   if (isEntryPointFile(filename)) return false;
+  // Framework route / special files (Next.js App + Pages Router and
+  // metadata image routes, Expo Router layouts, TanStack Router root /
+  // lazy routes, Remix / React Router root + entry modules). Their
+  // bundler plugins own HMR for these modules, and by framework contract
+  // they co-export route segment config / `metadata` / `alt` / `size` /
+  // loaders / actions alongside the default component — the documented
+  // shape, not a Fast Refresh hazard.
+  if (isFrameworkRouteOrSpecialFilename(filename)) return false;
   // Icon / asset / utility collection files (`icons.tsx`, `*Icon.tsx`,
   // `*Logo.tsx`, `sprite.tsx`, `assets.tsx`, `utils.tsx`, `tokens.tsx`,
   // `theme.tsx`, `constants.tsx`, etc.) hold non-state-bearing exports

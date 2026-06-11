@@ -65,15 +65,41 @@ type SocketScore = Schema.Schema.Type<typeof SocketScoreSchema>;
 
 const decodeArtifact = Schema.decodeUnknownOption(SocketArtifactSchema);
 
+interface ScoreAxis {
+  readonly key: keyof SocketScore;
+  readonly label: string;
+  /** Whether a low value on this axis fails the check (see GATED_AXES). */
+  readonly gates: boolean;
+}
+
 // The non-`overall` axes, paired with the label shown in the diagnostic so a
 // developer immediately sees which dimension dragged the score down.
-const SCORE_AXES: ReadonlyArray<{ readonly key: keyof SocketScore; readonly label: string }> = [
-  { key: "supplyChain", label: "supply chain" },
-  { key: "vulnerability", label: "vulnerability" },
-  { key: "maintenance", label: "maintenance" },
-  { key: "quality", label: "quality" },
-  { key: "license", label: "license" },
+const SCORE_AXES: ReadonlyArray<ScoreAxis> = [
+  { key: "supplyChain", label: "supply chain", gates: true },
+  { key: "vulnerability", label: "vulnerability", gates: true },
+  { key: "maintenance", label: "maintenance", gates: false },
+  { key: "quality", label: "quality", gates: false },
+  { key: "license", label: "license", gates: false },
 ];
+
+// Only the security axes decide the gate. Socket's `overall` is its lowest
+// axis, so gating on it let a pure quality/maintenance dip fail this
+// Security-category check — e.g. `@types/bun@1.3.14` scores quality 48 with
+// every security axis at 100 (issue #770). `supplyChain` covers typosquats /
+// install scripts / compromised maintainers; `vulnerability` covers known
+// CVEs (what flags the compromised `event-stream@3.3.6`). The remaining axes
+// still appear in the diagnostic's axis breakdown as context.
+const GATED_AXES: ReadonlyArray<ScoreAxis> = SCORE_AXES.filter((axis) => axis.gates);
+
+// The axis that decides the gate for one score: the lowest of the gated
+// axes. A tie keeps `supplyChain`, matching the rule's name.
+const worstGatedAxis = (score: SocketScore): ScoreAxis => {
+  let worst = GATED_AXES[0];
+  for (const axis of GATED_AXES) {
+    if (score[axis.key] < score[worst.key]) worst = axis;
+  }
+  return worst;
+};
 
 const clampScore = (value: number): number => {
   if (!Number.isFinite(value)) return SUPPLY_CHAIN_DEFAULT_MIN_SCORE;
@@ -320,16 +346,20 @@ const formatAxisScores = (score: SocketScore): string =>
 const buildLowScoreDiagnostic = (
   dependency: DependencyToScore,
   score: SocketScore,
+  failingAxis: ScoreAxis,
   options: ResolvedSupplyChainOptions,
 ): Diagnostic => {
-  const overall = toHundred(score.overall);
   const packagePageUrl = `${SOCKET_PACKAGE_PAGE_BASE}/${dependency.name}/overview/${dependency.version}`;
   return {
     filePath: "package.json",
     plugin: SUPPLY_CHAIN_PLUGIN,
     rule: SUPPLY_CHAIN_RULE,
     severity: options.severity,
-    message: `\`${dependency.name}\` (declared in package.json as "${dependency.spec}", scored at ${dependency.version}) has a Socket supply-chain score of ${overall}/${SOCKET_SCORE_SCALE} (below the minimum of ${options.minScore}). Axis scores — ${formatAxisScores(score)}.`,
+    // Name the exact axis that failed so the number matches what the user
+    // sees on the socket.dev package page (issue #770: calling `overall` a
+    // "supply-chain score" read as a false positive when the supplyChain
+    // axis itself was 100).
+    message: `\`${dependency.name}\` (declared in package.json as "${dependency.spec}", scored at ${dependency.version}) has a Socket ${failingAxis.label} score of ${toHundred(score[failingAxis.key])}/${SOCKET_SCORE_SCALE} (below the minimum of ${options.minScore}). Axis scores — ${formatAxisScores(score)}.`,
     help: `Update or replace the \`"${dependency.name}": "${dependency.spec}"\` entry in package.json. Review ${dependency.name} on Socket: ${packagePageUrl}. Or raise \`supplyChain.minScore\` if you have vetted and accepted this package.`,
     url: packagePageUrl,
     // Anchor to the dependency's declaration so the CLI / editor points at the
@@ -388,7 +418,9 @@ export const collectSupplyChainScores = (
  * Scores every direct dependency in the project's `package.json` against
  * Socket.dev's free PURL endpoint (the same one Socket Firewall's free tier
  * uses — no API key) and returns a diagnostic for each dependency whose
- * Socket `overall` score is below the configured `minScore`.
+ * worst Socket *security* axis — supply chain or vulnerability — is below
+ * the configured `minScore`. The quality / maintenance / license axes are
+ * reported as context but never gate (see GATED_AXES).
  *
  * Lookups run with bounded concurrency via `Effect.forEach`. The check is
  * total/fail-open: each per-package lookup already recovers to `null`
@@ -416,8 +448,9 @@ export const checkSupplyChain = (input: SupplyChainCheckInput): Effect.Effect<Di
     for (let index = 0; index < dependencies.length; index += 1) {
       const score = scores[index];
       if (!score) continue;
-      if (toHundred(score.overall) >= options.minScore) continue;
-      diagnostics.push(buildLowScoreDiagnostic(dependencies[index], score, options));
+      const worstAxis = worstGatedAxis(score);
+      if (toHundred(score[worstAxis.key]) >= options.minScore) continue;
+      diagnostics.push(buildLowScoreDiagnostic(dependencies[index], score, worstAxis, options));
     }
     return diagnostics;
   });

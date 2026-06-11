@@ -143,6 +143,80 @@ describe("react-builtins/only-export-components — regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  // Framework route/special files are skipped via
+  // `isFrameworkRouteOrSpecialFilename`: their bundler plugins own HMR
+  // and they co-export documented config/metadata next to the default
+  // component. Each case co-exports a non-component value an ordinary
+  // component file WOULD be flagged for, proving the skip is wired in.
+  // The Next.js metadata-image cases are issue #776 (the `size` object
+  // export was the original false positive).
+  it.each([
+    [
+      "Next.js opengraph-image metadata (#776)",
+      "src/app/opengraph-image.tsx",
+      `import { ImageResponse } from "next/og";
+       export const alt = "Open Source Showcase";
+       export const size = { width: 1200, height: 630 };
+       export const contentType = "image/png";
+       export const revalidate = 86400;
+       export default function Image() {
+         return new ImageResponse(<div>OG</div>, { ...size });
+       }`,
+    ],
+    [
+      "Next.js twitter-image metadata (#776)",
+      "app/about/twitter-image.tsx",
+      `export const size = { width: 1200, height: 630 };
+       export default function Image() {
+         return <div>About</div>;
+       }`,
+    ],
+    [
+      "Next.js Pages Router _document.tsx",
+      "pages/_document.tsx",
+      `export const config = { amp: true };
+       export default function Document() {
+         return <html />;
+       }`,
+    ],
+    [
+      "Expo Router +not-found special file",
+      "app/+not-found.tsx",
+      `export const screenOptions = { headerShown: false };
+       export default function NotFoundScreen() {
+         return <View />;
+       }`,
+    ],
+    [
+      "TanStack Router __root.tsx (no factory call required)",
+      "src/routes/__root.tsx",
+      `export const queryClient = new QueryClient();
+       export default function RootComponent() {
+         return <Outlet />;
+       }`,
+    ],
+    [
+      "TanStack Router *.lazy.tsx route file",
+      "src/routes/about.lazy.tsx",
+      `export const routeConfig = { staleTime: 1000 };
+       export default function AboutPage() {
+         return <div>About</div>;
+       }`,
+    ],
+    [
+      "Remix / React Router root.tsx module",
+      "app/root.tsx",
+      `export const headerLinks = [{ rel: "stylesheet", href: "/app.css" }];
+       export default function App() {
+         return <Outlet />;
+       }`,
+    ],
+  ])("skips framework route/special files — %s", (_label, filename, code) => {
+    const result = runRule(onlyExportComponents, code, { filename });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("still flags non-component exports in ordinary component files", () => {
     const mixedFile = `
       export const formatProfile = (profile) => profile.name.trim();

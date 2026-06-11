@@ -191,6 +191,108 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
+    it("suppresses a wrapper that aliases children to a variable", () => {
+      expectPass(`
+        function Chip({ children }) {
+          const content = children;
+          return (
+            <View>
+              <Text>{content}</Text>
+            </View>
+          );
+        }
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a wrapper that destructures children from props in the body", () => {
+      expectPass(`
+        const Chip = (props) => {
+          const { children } = props;
+          return (
+            <View>
+              <Text>{children}</Text>
+            </View>
+          );
+        };
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a wrapper spreading props onto a nested Text", () => {
+      expectPass(`
+        const Chip = (props) => (
+          <View>
+            <Text {...props} />
+          </View>
+        );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a wrapper spreading an object rest that carries children", () => {
+      expectPass(`
+        const Chip = ({ style, ...rest }) => (
+          <View style={style}>
+            <Text {...rest} />
+          </View>
+        );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("still fires when the spread rest excludes children", () => {
+      expectFail(`
+        const Chip = ({ children, ...rest }) => (
+          <View>
+            <Text {...rest} />
+            {children}
+          </View>
+        );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a class component forwarding this.props.children into a Text", () => {
+      expectPass(`
+        class Chip extends React.Component {
+          render() {
+            return (
+              <View>
+                <Text>{this.props.children}</Text>
+              </View>
+            );
+          }
+        }
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a styled(Text) factory component", () => {
+      expectPass(`
+        const FancyChip = styled(Text)\`
+          color: red;
+        \`;
+        const App = () => <FancyChip>Test Chip</FancyChip>;
+      `);
+    });
+
+    it("suppresses a styled.Text factory component", () => {
+      expectPass(`
+        const FancyCopy = styled.Text({ color: "red" });
+        const App = () => <FancyCopy>Test Chip</FancyCopy>;
+      `);
+    });
+
+    it("still fires for a styled(View) factory component", () => {
+      expectFail(`
+        const Card = styled(View)\`
+          padding: 4px;
+        \`;
+        const App = () => <Card>Test Chip</Card>;
+      `);
+    });
+
     it("does not treat a render-prop's Text as the wrapper's own markup", () => {
       expectFail(`
         const Box = ({ children, renderLabel }) => (

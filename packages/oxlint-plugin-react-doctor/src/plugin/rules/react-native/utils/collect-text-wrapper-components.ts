@@ -39,22 +39,102 @@ const unwrapComponentDefinition = (node: EsTreeNode): EsTreeNode => {
   return current;
 };
 
-// The local identifier the component's children are bound to: `children` for
-// `({ children })` and props-object params, or the rename in
-// `({ children: content })`.
-const resolveChildrenLocalName = (functionNode: FunctionNode): string => {
+interface ChildrenBindings {
+  // Identifiers that hold the component's children (`children`, a destructure
+  // rename, or a later alias like `const content = children`).
+  childrenNames: Set<string>;
+  // Identifiers whose `.children` (and whose spread) carries the component's
+  // children — the props param or an object rest that still includes children.
+  propsObjectNames: Set<string>;
+}
+
+const resolveChildrenPropertyLocalName = (property: EsTreeNode): string | null => {
+  if (!isNodeOfType(property, "Property")) return null;
+  if (!isNodeOfType(property.key, "Identifier") || property.key.name !== "children") return null;
+  const value = property.value;
+  if (isNodeOfType(value, "Identifier")) return value.name;
+  if (isNodeOfType(value, "AssignmentPattern") && isNodeOfType(value.left, "Identifier")) {
+    return value.left.name;
+  }
+  return null;
+};
+
+// The identifiers the component's children are bound to: `children` for
+// `({ children })` and props-object params, the rename in
+// `({ children: content })`, plus the props object itself (`props` or an
+// object rest that still carries children).
+const resolveParamChildrenBindings = (functionNode: FunctionNode): ChildrenBindings => {
+  const bindings: ChildrenBindings = {
+    childrenNames: new Set(["children"]),
+    propsObjectNames: new Set(),
+  };
   const firstParam = functionNode.params?.[0];
-  if (!firstParam || !isNodeOfType(firstParam, "ObjectPattern")) return "children";
+  if (!firstParam) return bindings;
+  if (isNodeOfType(firstParam, "Identifier")) {
+    bindings.propsObjectNames.add(firstParam.name);
+    return bindings;
+  }
+  if (!isNodeOfType(firstParam, "ObjectPattern")) return bindings;
+  let didDestructureChildren = false;
+  let restName: string | null = null;
   for (const property of firstParam.properties ?? []) {
-    if (!isNodeOfType(property, "Property")) continue;
-    if (!isNodeOfType(property.key, "Identifier") || property.key.name !== "children") continue;
-    const value = property.value;
-    if (isNodeOfType(value, "Identifier")) return value.name;
-    if (isNodeOfType(value, "AssignmentPattern") && isNodeOfType(value.left, "Identifier")) {
-      return value.left.name;
+    if (isNodeOfType(property, "RestElement") && isNodeOfType(property.argument, "Identifier")) {
+      restName = property.argument.name;
+      continue;
+    }
+    const localName = resolveChildrenPropertyLocalName(property);
+    if (localName) {
+      didDestructureChildren = true;
+      bindings.childrenNames.add(localName);
     }
   }
-  return "children";
+  if (restName && !didDestructureChildren) bindings.propsObjectNames.add(restName);
+  return bindings;
+};
+
+const MAX_CHILDREN_ALIAS_PASSES = 3;
+
+const isChildrenValueExpression = (
+  expression: EsTreeNode | null | undefined,
+  bindings: ChildrenBindings,
+): boolean => {
+  if (!expression) return false;
+  const value = stripParenExpression(expression);
+  if (isNodeOfType(value, "Identifier")) return bindings.childrenNames.has(value.name);
+  return (
+    isNodeOfType(value, "MemberExpression") &&
+    isNodeOfType(value.property, "Identifier") &&
+    value.property.name === "children"
+  );
+};
+
+// Folds body-level aliases into the bindings: `const content = children`,
+// `const { children } = props` (or `this.props`), and re-aliases of aliases
+// (bounded passes).
+const collectChildrenAliases = (functionNode: FunctionNode, bindings: ChildrenBindings): void => {
+  const { body } = functionNode;
+  if (!body || !isNodeOfType(body, "BlockStatement")) return;
+  for (let pass = 0; pass < MAX_CHILDREN_ALIAS_PASSES; pass += 1) {
+    const sizeBeforePass = bindings.childrenNames.size;
+    walkAst(body, (node) => {
+      if (isFunctionNode(node)) return false;
+      if (!isNodeOfType(node, "VariableDeclarator") || !node.init) return undefined;
+      if (isNodeOfType(node.id, "Identifier")) {
+        if (isChildrenValueExpression(node.init, bindings)) {
+          bindings.childrenNames.add(node.id.name);
+        }
+        return undefined;
+      }
+      if (isNodeOfType(node.id, "ObjectPattern")) {
+        for (const property of node.id.properties ?? []) {
+          const localName = resolveChildrenPropertyLocalName(property);
+          if (localName) bindings.childrenNames.add(localName);
+        }
+      }
+      return undefined;
+    });
+    if (bindings.childrenNames.size === sizeBeforePass) break;
+  }
 };
 
 // Collects the JSX roots a value can evaluate to, looking through parentheses,
@@ -101,29 +181,34 @@ const collectReturnedJsxRoots = (functionNode: FunctionNode): EsTreeNode[] => {
   return roots;
 };
 
-const isChildrenForwardingExpression = (
-  expression: EsTreeNode | null | undefined,
-  childrenLocalName: string,
+const isChildrenForwardingJsxChild = (child: EsTreeNode, bindings: ChildrenBindings): boolean =>
+  isNodeOfType(child, "JSXExpressionContainer") &&
+  isChildrenValueExpression(child.expression, bindings);
+
+// `children={children}` or a props spread (`{...props}` / `{...this.props}`)
+// that carries the component's children onto the element.
+const isChildrenForwardingAttribute = (
+  attribute: EsTreeNode,
+  bindings: ChildrenBindings,
 ): boolean => {
-  if (!expression) return false;
-  if (isNodeOfType(expression, "Identifier")) return expression.name === childrenLocalName;
+  if (isNodeOfType(attribute, "JSXSpreadAttribute")) {
+    const argument = stripParenExpression(attribute.argument);
+    if (isNodeOfType(argument, "Identifier")) return bindings.propsObjectNames.has(argument.name);
+    return (
+      isNodeOfType(argument, "MemberExpression") &&
+      isNodeOfType(argument.object, "ThisExpression") &&
+      isNodeOfType(argument.property, "Identifier") &&
+      argument.property.name === "props"
+    );
+  }
   return (
-    isNodeOfType(expression, "MemberExpression") &&
-    isNodeOfType(expression.property, "Identifier") &&
-    expression.property.name === "children"
+    isNodeOfType(attribute, "JSXAttribute") &&
+    isNodeOfType(attribute.name, "JSXIdentifier") &&
+    attribute.name.name === "children" &&
+    isNodeOfType(attribute.value, "JSXExpressionContainer") &&
+    isChildrenValueExpression(attribute.value.expression, bindings)
   );
 };
-
-const isChildrenForwardingJsxChild = (child: EsTreeNode, childrenLocalName: string): boolean =>
-  isNodeOfType(child, "JSXExpressionContainer") &&
-  isChildrenForwardingExpression(child.expression, childrenLocalName);
-
-const isChildrenForwardingAttribute = (attribute: EsTreeNode, childrenLocalName: string): boolean =>
-  isNodeOfType(attribute, "JSXAttribute") &&
-  isNodeOfType(attribute.name, "JSXIdentifier") &&
-  attribute.name.name === "children" &&
-  isNodeOfType(attribute.value, "JSXExpressionContainer") &&
-  isChildrenForwardingExpression(attribute.value.expression, childrenLocalName);
 
 // True when somewhere in the returned JSX a text-handling element directly
 // receives the component's children — `<View><Text>{children}</Text></View>`,
@@ -132,7 +217,7 @@ const isChildrenForwardingAttribute = (attribute: EsTreeNode, childrenLocalName:
 // the root element isn't one.
 const jsxRootForwardsChildrenIntoText = (
   jsxRoot: EsTreeNode,
-  childrenLocalName: string,
+  bindings: ChildrenBindings,
   isTextHandlingElement: (elementName: string) => boolean,
 ): boolean => {
   let didForwardIntoText = false;
@@ -142,14 +227,63 @@ const jsxRootForwardsChildrenIntoText = (
     const elementName = resolveJsxElementName(node.openingElement);
     if (!elementName || !isTextHandlingElement(elementName)) return;
     didForwardIntoText =
-      (node.children ?? []).some((child) =>
-        isChildrenForwardingJsxChild(child, childrenLocalName),
-      ) ||
+      (node.children ?? []).some((child) => isChildrenForwardingJsxChild(child, bindings)) ||
       (node.openingElement.attributes ?? []).some((attribute) =>
-        isChildrenForwardingAttribute(attribute, childrenLocalName),
+        isChildrenForwardingAttribute(attribute, bindings),
       );
   });
   return didForwardIntoText;
+};
+
+// Resolves a styled-component factory back to its base element name —
+// `styled(Text)`…``, `styled.Text`…``, `styled(Text)({})`, and
+// `styled(Text).attrs(…)`…`` all resolve to "Text".
+const resolveStyledFactoryBaseName = (definitionNode: EsTreeNode): string | null => {
+  let current: EsTreeNode | null = stripParenExpression(definitionNode);
+  while (current) {
+    if (isNodeOfType(current, "TaggedTemplateExpression")) {
+      current = stripParenExpression(current.tag);
+      continue;
+    }
+    if (isNodeOfType(current, "CallExpression")) {
+      const callee = stripParenExpression(current.callee);
+      if (isNodeOfType(callee, "Identifier") && callee.name === "styled") {
+        const baseArgument = current.arguments?.[0];
+        if (!baseArgument) return null;
+        const base = stripParenExpression(baseArgument);
+        return isNodeOfType(base, "Identifier") ? base.name : null;
+      }
+      current = callee;
+      continue;
+    }
+    if (isNodeOfType(current, "MemberExpression")) {
+      if (
+        isNodeOfType(current.object, "Identifier") &&
+        current.object.name === "styled" &&
+        isNodeOfType(current.property, "Identifier")
+      ) {
+        return current.property.name;
+      }
+      current = stripParenExpression(current.object);
+      continue;
+    }
+    return null;
+  }
+  return null;
+};
+
+// The render function of a class component (`class Chip extends Component {
+// render() { … } }`), or `null` when the node isn't a class or has no render.
+const resolveClassRenderFunction = (classNode: EsTreeNode): FunctionNode | null => {
+  if (!isNodeOfType(classNode, "ClassDeclaration") && !isNodeOfType(classNode, "ClassExpression")) {
+    return null;
+  }
+  for (const member of classNode.body?.body ?? []) {
+    if (!isNodeOfType(member, "MethodDefinition")) continue;
+    if (!isNodeOfType(member.key, "Identifier") || member.key.name !== "render") continue;
+    return member.value && isFunctionNode(member.value) ? member.value : null;
+  }
+  return null;
 };
 
 // Records a component declaration when its name is PascalCase and it forwards
@@ -165,9 +299,17 @@ const recordWrapperFromDeclaration = (
   if (!componentName || !isReactComponentName(componentName)) return;
   if (wrappers.has(componentName)) return;
   if (!definitionNode) return;
-  const functionNode = unwrapComponentDefinition(definitionNode);
-  if (!isFunctionNode(functionNode)) return;
-  const childrenLocalName = resolveChildrenLocalName(functionNode);
+  const unwrapped = unwrapComponentDefinition(definitionNode);
+  const styledBaseName = resolveStyledFactoryBaseName(unwrapped);
+  if (styledBaseName && isTextHandlingElement(styledBaseName)) {
+    wrappers.add(componentName);
+    return;
+  }
+  const functionNode =
+    resolveClassRenderFunction(unwrapped) ?? (isFunctionNode(unwrapped) ? unwrapped : null);
+  if (!functionNode) return;
+  const bindings = resolveParamChildrenBindings(functionNode);
+  collectChildrenAliases(functionNode, bindings);
   for (const jsxRoot of collectReturnedJsxRoots(functionNode)) {
     if (isNodeOfType(jsxRoot, "JSXElement")) {
       const rootName = resolveJsxElementName(jsxRoot.openingElement);
@@ -176,7 +318,7 @@ const recordWrapperFromDeclaration = (
         return;
       }
     }
-    if (jsxRootForwardsChildrenIntoText(jsxRoot, childrenLocalName, isTextHandlingElement)) {
+    if (jsxRootForwardsChildrenIntoText(jsxRoot, bindings, isTextHandlingElement)) {
       wrappers.add(componentName);
       return;
     }
@@ -206,7 +348,10 @@ export const collectTextWrapperComponents = (
       if (isNodeOfType(node, "VariableDeclarator")) {
         const componentName = node.id && isNodeOfType(node.id, "Identifier") ? node.id.name : null;
         recordWrapperFromDeclaration(componentName, node.init, isTextHandlingElement, wrappers);
-      } else if (isNodeOfType(node, "FunctionDeclaration")) {
+      } else if (
+        isNodeOfType(node, "FunctionDeclaration") ||
+        isNodeOfType(node, "ClassDeclaration")
+      ) {
         const componentName = node.id && isNodeOfType(node.id, "Identifier") ? node.id.name : null;
         recordWrapperFromDeclaration(componentName, node, isTextHandlingElement, wrappers);
       }

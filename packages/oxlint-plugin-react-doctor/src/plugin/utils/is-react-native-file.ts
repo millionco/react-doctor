@@ -17,44 +17,49 @@ const WEB_FILE_EXTENSION_PATTERN = /\.web\.[cm]?[jt]sx?$/;
 // project framework) doesn't already cover them.
 const NATIVE_FILE_EXTENSION_PATTERN = /\.(?:ios|android|native)\.[cm]?[jt]sx?$/;
 
-// Returns true when react-native rules should be evaluated for `filename`
-// given the surrounding `context.settings["react-doctor"].framework` hint.
+// Classifies which platform `filename` targets given the surrounding
+// `context.settings["react-doctor"].framework` hint. `isReactNativeFileActive`
+// (whether RN rules should run) treats "unknown" as active; callers that only
+// branch on wording should treat "unknown" as web.
 //
 // Decision order (the first matching row wins):
 //
 //   1. Filename ends with a native-only extension (`.ios.tsx`, `.android.tsx`,
-//      `.native.tsx`) → ACTIVE. These files always target RN.
-//   2. Filename ends with a web extension (`.web.tsx`) → INACTIVE.
-//   3. Nearest package.json classifies as "web" → INACTIVE.
-//   4. Nearest package.json classifies as "expo" or "react-native" → ACTIVE.
+//      `.native.tsx`) → "react-native". These files always target RN.
+//   2. Filename ends with a web extension (`.web.tsx`) → "web".
+//   3. Nearest package.json classifies as "web" → "web".
+//   4. Nearest package.json classifies as "expo" or "react-native" → "react-native".
 //   5. Nearest package.json classifies as "unknown" → fall back to the
 //      project-level framework setting:
-//      • `react-native` or `expo` → ACTIVE
+//      • `react-native` or `expo` → "react-native"
 //      • any other known framework (`nextjs`, `vite`, `cra`, `remix`,
-//        `gatsby`, `tanstack-start`) → INACTIVE
-//      • `unknown` or missing → ACTIVE (conservatively keep the old
-//        behavior so test fixtures and CLI invocations without a
-//        discoverable framework still report RN issues; the project
-//        capability gate in `runOxlint` already prevents RN rules from
-//        loading at all unless the project is RN-aware).
+//        `gatsby`, `tanstack-start`) → "web"
+//      • `unknown` or missing → "unknown" (`isReactNativeFileActive`
+//        conservatively keeps RN rules active here so test fixtures and
+//        CLI invocations without a discoverable framework still report
+//        RN issues; the project capability gate in `runOxlint` already
+//        prevents RN rules from loading at all unless the project is
+//        RN-aware).
 //
 // `context.filename` may be unavailable in stripped-down test
-// harnesses; in that case we keep RN rules active so the rule body can
-// proceed.
-export const isReactNativeFileActive = (context: RuleContext): boolean => {
+// harnesses; in that case the target is "unknown" and RN rules stay
+// active so the rule body can proceed.
+export type ReactNativeFileTarget = "react-native" | "web" | "unknown";
+
+export const classifyReactNativeFileTarget = (context: RuleContext): ReactNativeFileTarget => {
   const rawFilename = context.filename;
-  if (!rawFilename) return true;
+  if (!rawFilename) return "unknown";
   const filename = normalizeFilename(rawFilename);
 
-  if (NATIVE_FILE_EXTENSION_PATTERN.test(filename)) return true;
-  if (WEB_FILE_EXTENSION_PATTERN.test(filename)) return false;
+  if (NATIVE_FILE_EXTENSION_PATTERN.test(filename)) return "react-native";
+  if (WEB_FILE_EXTENSION_PATTERN.test(filename)) return "web";
 
   const packagePlatform = classifyPackagePlatform(filename);
-  if (packagePlatform === "web") return false;
-  if (packagePlatform === "expo" || packagePlatform === "react-native") return true;
+  if (packagePlatform === "web") return "web";
+  if (packagePlatform === "expo" || packagePlatform === "react-native") return "react-native";
 
   const framework = getReactDoctorStringSetting(context.settings, "framework");
-  if (framework === "react-native" || framework === "expo") return true;
+  if (framework === "react-native" || framework === "expo") return "react-native";
   if (
     framework === "nextjs" ||
     framework === "vite" ||
@@ -63,7 +68,10 @@ export const isReactNativeFileActive = (context: RuleContext): boolean => {
     framework === "gatsby" ||
     framework === "tanstack-start"
   ) {
-    return false;
+    return "web";
   }
-  return true;
+  return "unknown";
 };
+
+export const isReactNativeFileActive = (context: RuleContext): boolean =>
+  classifyReactNativeFileTarget(context) !== "web";

@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isBarrelIndexModule } from "../../utils/is-barrel-index-module.js";
+import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { resolveBarrelExportFilePath } from "../../utils/resolve-barrel-export-file-path.js";
 import { resolveRelativeImportPath } from "../../utils/resolve-relative-import-path.js";
 import type { Rule } from "../../utils/rule.js";
@@ -37,7 +38,11 @@ const buildReportMessage = (
   filename: string,
   barrelFilePath: string,
   importRequests: RuntimeImportRequest[],
+  isReactNativeTarget: boolean,
 ): string => {
+  const costSentence = isReactNativeTarget
+    ? "This ships extra code in your app bundle & slows startup."
+    : "This ships extra code to your users & slows page load.";
   const directImportSources = new Set<string>();
   for (const request of importRequests) {
     if (!request.importedName) continue;
@@ -49,11 +54,11 @@ const buildReportMessage = (
 
   if (directImportSources.size === 1) {
     const [directImportSource] = directImportSources;
-    return `This ships extra code to your users & slows page load. Import directly from "${directImportSource}".`;
+    return `${costSentence} Import directly from "${directImportSource}".`;
   }
 
   if (directImportSources.size > 1) {
-    return `This ships extra code to your users & slows page load. Import directly from: ${[...directImportSources].map((source) => `"${source}"`).join(", ")}.`;
+    return `${costSentence} Import directly from: ${[...directImportSources].map((source) => `"${source}"`).join(", ")}.`;
   }
 
   return "Importing from an index file pulls in extra code. Import directly from the source file instead.";
@@ -90,7 +95,12 @@ export const noBarrelImport = defineRule<Rule>({
           didReportForFile = true;
           context.report({
             node,
-            message: buildReportMessage(filename, resolvedImportPath, importRequests),
+            message: buildReportMessage(
+              filename,
+              resolvedImportPath,
+              importRequests,
+              classifyReactNativeFileTarget(context) === "react-native",
+            ),
           });
         }
       },

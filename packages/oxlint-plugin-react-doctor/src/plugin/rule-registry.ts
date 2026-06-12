@@ -28,6 +28,7 @@ import { checkedRequiresOnchangeOrReadonly } from "./rules/react-builtins/checke
 import { clickEventsHaveKeyEvents } from "./rules/a11y/click-events-have-key-events.js";
 import { clientLocalstorageNoVersion } from "./rules/client/client-localstorage-no-version.js";
 import { clientPassiveEventListeners } from "./rules/client/client-passive-event-listeners.js";
+import { clientPreferKeybindLibrary } from "./rules/client/client-prefer-keybind-library.js";
 import { controlHasAssociatedLabel } from "./rules/a11y/control-has-associated-label.js";
 import { noEmDashInJsxText } from "./rules/react-ui/no-em-dash-in-jsx-text.js";
 import { noRedundantPaddingAxes } from "./rules/react-ui/no-redundant-padding-axes.js";
@@ -583,6 +584,20 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       requires: [...new Set(["react", ...(clientPassiveEventListeners.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/client-prefer-keybind-library",
+    id: "client-prefer-keybind-library",
+    source: "react-doctor",
+    originallyExternal: false,
+    framework: "global",
+    category: "Architecture",
+    severity: "warn",
+    rule: {
+      ...clientPreferKeybindLibrary,
+      framework: "global",
+      category: "Architecture",
     },
   },
   {

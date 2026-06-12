@@ -65,3 +65,5 @@ export const EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS = new Set([
 ]);
 
 export const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"]);
+
+export const KEYBOARD_EVENT_NAMES = new Set(["keydown", "keyup", "keypress"]);

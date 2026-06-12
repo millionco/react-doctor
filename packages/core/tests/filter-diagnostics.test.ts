@@ -372,7 +372,7 @@ describe("mergeAndFilterDiagnostics — ignore rules / files / overrides", () =>
 });
 
 describe("mergeAndFilterDiagnostics — file-context stamping", () => {
-  it("stamps `fileContext: \"test\"` on diagnostics in spec files", () => {
+  it('stamps `fileContext: "test"` on diagnostics in spec files', () => {
     const diagnostics = [createDiagnostic({ filePath: "src/utils/foo.spec.ts" })];
     const filtered = filterIgnoredDiagnostics(
       diagnostics,
@@ -384,7 +384,7 @@ describe("mergeAndFilterDiagnostics — file-context stamping", () => {
     expect(filtered[0].fileContext).toBe("test");
   });
 
-  it("stamps `fileContext: \"story\"` on diagnostics in story files", () => {
+  it('stamps `fileContext: "story"` on diagnostics in story files', () => {
     const diagnostics = [createDiagnostic({ filePath: "src/components/Button.stories.tsx" })];
     const filtered = filterIgnoredDiagnostics(
       diagnostics,

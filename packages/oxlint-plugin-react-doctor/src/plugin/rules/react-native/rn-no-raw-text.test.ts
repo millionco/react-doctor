@@ -321,6 +321,31 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
+    it("still fires when the nested Text receives an unrelated object's children", () => {
+      expectFail(`
+        const Chip = ({ item }) => (
+          <View>
+            <Text>{item.children}</Text>
+          </View>
+        );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("still fires when one branch spreads props onto a non-text element", () => {
+      expectFail(`
+        const Chip = (props) => {
+          if (props.inline) return <View {...props} />;
+          return (
+            <View>
+              <Text>{props.children}</Text>
+            </View>
+          );
+        };
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
     it("does not treat a render-prop's Text as the wrapper's own markup", () => {
       expectFail(`
         const Box = ({ children, renderLabel }) => (

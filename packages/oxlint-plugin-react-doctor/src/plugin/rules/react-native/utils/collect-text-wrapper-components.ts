@@ -94,20 +94,6 @@ const resolveParamChildrenBindings = (functionNode: FunctionNode): ChildrenBindi
 
 const MAX_CHILDREN_ALIAS_PASSES = 3;
 
-const isChildrenValueExpression = (
-  expression: EsTreeNode | null | undefined,
-  bindings: ChildrenBindings,
-): boolean => {
-  if (!expression) return false;
-  const value = stripParenExpression(expression);
-  if (isNodeOfType(value, "Identifier")) return bindings.childrenNames.has(value.name);
-  return (
-    isNodeOfType(value, "MemberExpression") &&
-    isNodeOfType(value.property, "Identifier") &&
-    value.property.name === "children"
-  );
-};
-
 // The props object itself: a param identifier (or qualifying rest), or
 // `this.props` inside a class render method.
 const isPropsObjectExpression = (
@@ -122,6 +108,21 @@ const isPropsObjectExpression = (
     isNodeOfType(value.object, "ThisExpression") &&
     isNodeOfType(value.property, "Identifier") &&
     value.property.name === "props"
+  );
+};
+
+const isChildrenValueExpression = (
+  expression: EsTreeNode | null | undefined,
+  bindings: ChildrenBindings,
+): boolean => {
+  if (!expression) return false;
+  const value = stripParenExpression(expression);
+  if (isNodeOfType(value, "Identifier")) return bindings.childrenNames.has(value.name);
+  return (
+    isNodeOfType(value, "MemberExpression") &&
+    isNodeOfType(value.property, "Identifier") &&
+    value.property.name === "children" &&
+    isPropsObjectExpression(value.object, bindings)
   );
 };
 
@@ -245,10 +246,15 @@ const jsxRootForwardsChildrenIntoText = (
   return didForwardIntoText;
 };
 
+const isMeaningfulJsxChild = (child: EsTreeNode): boolean =>
+  !isNodeOfType(child, "JSXText") || Boolean(child.value?.trim());
+
 // True when a non-text element directly receives the component's children
-// (`<View>{children}</View>`) — a return path like this would render the
-// wrapper's raw string children outside any `<Text>`, so the component must
-// not be treated as a safe wrapper even if another path forwards into text.
+// (`<View>{children}</View>`, or a children-carrying attribute like
+// `<View {...props} />` with no JSX children to override it) — a return path
+// like this would render the wrapper's raw string children outside any
+// `<Text>`, so the component must not be treated as a safe wrapper even if
+// another path forwards into text.
 const jsxRootRendersChildrenOutsideText = (
   jsxRoot: EsTreeNode,
   bindings: ChildrenBindings,
@@ -263,6 +269,16 @@ const jsxRootRendersChildrenOutsideText = (
     if (isNodeOfType(node, "JSXElement")) {
       const elementName = resolveJsxElementName(node.openingElement);
       if (elementName && isTextHandlingElement(elementName)) return false;
+      const hasJsxChildren = (node.children ?? []).some(isMeaningfulJsxChild);
+      if (
+        !hasJsxChildren &&
+        (node.openingElement.attributes ?? []).some((attribute) =>
+          isChildrenForwardingAttribute(attribute, bindings),
+        )
+      ) {
+        didRenderOutsideText = true;
+        return undefined;
+      }
     }
     didRenderOutsideText = (node.children ?? []).some((child) =>
       isChildrenForwardingJsxChild(child, bindings),

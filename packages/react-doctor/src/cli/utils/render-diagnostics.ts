@@ -44,6 +44,11 @@ interface VerboseSiteEntry {
   suppressionHint?: string;
 }
 
+interface VerboseFileEntry {
+  contextTag: string;
+  sites: VerboseSiteEntry[];
+}
+
 interface CategoryDiagnosticGroup {
   category: string;
   diagnostics: Diagnostic[];
@@ -56,16 +61,25 @@ interface SourceRootResolver {
   (diagnostic: Diagnostic): string;
 }
 
-const buildVerboseSiteMap = (diagnostics: Diagnostic[]): Map<string, VerboseSiteEntry[]> => {
-  const fileSites = new Map<string, VerboseSiteEntry[]>();
+// Dim "(test file)" / "(story file)" tag after a site's location, so a
+// finding in a spec or story reads as non-shipping code rather than a
+// production problem. Empty for production files (the default).
+const formatFileContextTag = (diagnostic: Diagnostic): string =>
+  diagnostic.fileContext ? ` (${diagnostic.fileContext} file)` : "";
+
+const buildVerboseFileEntries = (diagnostics: Diagnostic[]): Map<string, VerboseFileEntry> => {
+  const fileEntries = new Map<string, VerboseFileEntry>();
   for (const diagnostic of diagnostics) {
-    const sites = fileSites.get(diagnostic.filePath) ?? [];
-    if (diagnostic.line > 0) {
-      sites.push({ line: diagnostic.line, suppressionHint: diagnostic.suppressionHint });
+    let entry = fileEntries.get(diagnostic.filePath);
+    if (entry === undefined) {
+      entry = { contextTag: formatFileContextTag(diagnostic), sites: [] };
+      fileEntries.set(diagnostic.filePath, entry);
     }
-    fileSites.set(diagnostic.filePath, sites);
+    if (diagnostic.line > 0) {
+      entry.sites.push({ line: diagnostic.line, suppressionHint: diagnostic.suppressionHint });
+    }
   }
-  return fileSites;
+  return fileEntries;
 };
 
 const formatSiteCountBadge = (count: number): string => (count > 1 ? `×${count}` : "");
@@ -265,12 +279,6 @@ const clusterNearbyDiagnostics = (diagnostics: Diagnostic[]): DiagnosticCluster[
 
   return clusters;
 };
-
-// Dim "(test file)" / "(story file)" tag after a site's location, so a
-// finding in a spec or story reads as non-shipping code rather than a
-// production problem. Empty for production files (the default).
-const formatFileContextTag = (diagnostic: Diagnostic): string =>
-  diagnostic.fileContext ? ` (${diagnostic.fileContext} file)` : "";
 
 const formatClusterLocation = (cluster: DiagnosticCluster): string => {
   const lead = cluster.diagnostics[0]!;
@@ -686,12 +694,8 @@ export const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]
   }
 
   sections.push("", "Files:");
-  const fileSites = buildVerboseSiteMap(ruleDiagnostics);
-  const fileContextTags = new Map(
-    ruleDiagnostics.map((diagnostic) => [diagnostic.filePath, formatFileContextTag(diagnostic)]),
-  );
-  for (const [filePath, sites] of fileSites) {
-    const contextTag = fileContextTags.get(filePath) ?? "";
+  const fileEntries = buildVerboseFileEntries(ruleDiagnostics);
+  for (const [filePath, { contextTag, sites }] of fileEntries) {
     if (sites.length > 0) {
       for (const site of sites) {
         sections.push(`  ${filePath}:${site.line}${contextTag}`);

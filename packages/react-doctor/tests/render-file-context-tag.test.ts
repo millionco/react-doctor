@@ -3,20 +3,19 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { Diagnostic } from "@react-doctor/core";
 import { formatRuleSummary, printDiagnostics } from "../src/cli/utils/render-diagnostics.js";
 
-const makeDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic =>
-  ({
-    filePath: "src/App.tsx",
-    plugin: "react-doctor",
-    rule: "no-array-index-as-key",
-    severity: "error",
-    title: "Array index used as a key",
-    message: "Reordering the list re-renders the wrong rows.",
-    help: "Use a stable id as the key.",
-    line: 3,
-    column: 1,
-    category: "Correctness",
-    ...overrides,
-  }) as Diagnostic;
+const makeDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
+  filePath: "src/App.tsx",
+  plugin: "react-doctor",
+  rule: "no-array-index-as-key",
+  severity: "error",
+  title: "Array index used as a key",
+  message: "Reordering the list re-renders the wrong rows.",
+  help: "Use a stable id as the key.",
+  line: 3,
+  column: 1,
+  category: "Correctness",
+  ...overrides,
+});
 
 const ANSI = new RegExp(String.raw`\u001B\[[0-?]*[ -/]*[@-~]`, "g");
 const stripAnsi = (text: string): string => text.replace(ANSI, "");

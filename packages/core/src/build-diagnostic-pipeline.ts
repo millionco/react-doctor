@@ -65,6 +65,8 @@ const collectStringSet = (values: unknown): ReadonlySet<string> => {
  * 5. `rn-no-raw-text` suppression via configured `textComponents` and
  *    `rawTextWrapperComponents` (config-driven JSX enclosure checks)
  * 6. inline suppressions (`// react-doctor-disable-next-line ...`)
+ * 7. file-context stamping (`fileContext: "test" | "story"` on
+ *    survivors in non-production files, so renderers can label them)
  *
  * Returns `null` when the diagnostic is dropped, the (possibly
  * severity-restamped) diagnostic otherwise.
@@ -241,7 +243,7 @@ export const buildDiagnosticPipeline = (
       }
 
       const fileContext = getFileContext(current.filePath);
-      if (fileContext !== "production" && current.fileContext !== fileContext) {
+      if (fileContext !== "production") {
         current = { ...current, fileContext };
       }
 

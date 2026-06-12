@@ -24,8 +24,13 @@ const ScoreApiResponseSchema = Schema.Struct({
 const parseScoreResult = (value: unknown): ScoreResult | null =>
   Option.getOrNull(Schema.decodeUnknownOption(ScoreApiResponseSchema)(value));
 
-const stripFilePaths = (diagnostics: Diagnostic[]): Omit<Diagnostic, "filePath">[] =>
-  diagnostics.map(({ filePath: _filePath, ...rest }) => rest);
+// `filePath` never leaves the machine, and `fileContext` is derived
+// from it — neither rides the Score API payload, which keeps the
+// request shape identical to what the server has always received.
+const stripLocalFileFields = (
+  diagnostics: Diagnostic[],
+): Omit<Diagnostic, "filePath" | "fileContext">[] =>
+  diagnostics.map(({ filePath: _filePath, fileContext: _fileContext, ...rest }) => rest);
 
 const isAbortError = (error: unknown): boolean =>
   error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
@@ -66,7 +71,7 @@ export const calculateScore = async (
 
   try {
     const requestBody = JSON.stringify({
-      diagnostics: stripFilePaths(diagnostics),
+      diagnostics: stripLocalFileFields(diagnostics),
       ...(options.metadata?.repo ? { repo: options.metadata.repo } : {}),
       ...(options.metadata?.sha ? { sha: options.metadata.sha } : {}),
       ...(options.metadata?.framework ? { framework: options.metadata.framework } : {}),

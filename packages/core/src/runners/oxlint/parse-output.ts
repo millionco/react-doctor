@@ -23,6 +23,10 @@ const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
 // `react-hooks-js/todo` id. Give them a human headline & an impact-first
 // message; the specific bail-out reason stays in `help`.
 const REACT_COMPILER_TITLE = "React Compiler can't optimize this";
+// The compiler's `todo` rule fires on syntax it doesn't handle yet —
+// an unsupported-syntax bail-out, not an optimization miss in the
+// user's code, so it gets its own headline.
+const REACT_COMPILER_TODO_TITLE = "React Compiler doesn't support this syntax";
 const REACT_COMPILER_MESSAGE =
   "This component misses React Compiler's automatic memoization & re-renders more than it should. Rewrite the flagged code so the compiler can optimize it.";
 
@@ -88,8 +92,10 @@ const getRuleTitle = (ruleName: string): string | undefined =>
 
 // react-doctor rules carry their own `title`; adopted React Compiler
 // diagnostics get a fixed human headline instead of their bare id.
-const resolveDiagnosticTitle = (plugin: string, rule: string): string | undefined =>
-  plugin === "react-hooks-js" ? REACT_COMPILER_TITLE : getRuleTitle(rule);
+const resolveDiagnosticTitle = (plugin: string, rule: string): string | undefined => {
+  if (plugin !== "react-hooks-js") return getRuleTitle(rule);
+  return rule === "todo" ? REACT_COMPILER_TODO_TITLE : REACT_COMPILER_TITLE;
+};
 
 const cleanDiagnosticMessage = (
   message: unknown,

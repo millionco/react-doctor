@@ -3,7 +3,9 @@ import * as Effect from "effect/Effect";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseJSON5 } from "confbox";
+import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti";
+import type { Jiti } from "jiti";
 import type { ReactDoctorConfig } from "./types/index.js";
 import { isFile, isPlainObject } from "./project-info/index.js";
 import { isProjectBoundary } from "./utils/is-project-boundary.js";
@@ -56,9 +58,56 @@ const jiti = createJiti(import.meta.url);
 const formatError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+// Config files authored against the published package import `defineConfig`
+// from `react-doctor/api` at runtime. When the scanned repo has no
+// node_modules (e.g. the GitHub Action runs the CLI via `npm exec` without
+// installing the repo's dependencies), that import cannot resolve from the
+// config file's directory and the config would silently fall back to
+// defaults. The load is retried with those specifiers aliased to the running
+// package's own copy: a package self-reference from the published bundle,
+// or `@react-doctor/core` (which exports the same `defineConfig`) in the
+// workspace.
+const SELF_PACKAGE_IMPORT_SPECIFIERS = ["react-doctor/api", "react-doctor"] as const;
+const SELF_PACKAGE_RESOLVE_TARGETS = ["react-doctor/api", "@react-doctor/core"] as const;
+
+let selfAliasJitiCache: Jiti | null | undefined;
+
+const resolveSelfAliasJiti = (): Jiti | null => {
+  if (selfAliasJitiCache !== undefined) return selfAliasJitiCache;
+  selfAliasJitiCache = null;
+  for (const resolveTarget of SELF_PACKAGE_RESOLVE_TARGETS) {
+    let aliasTargetPath: string;
+    try {
+      const resolvedUrl = jiti.esmResolve(resolveTarget);
+      aliasTargetPath = resolvedUrl.startsWith("file:") ? fileURLToPath(resolvedUrl) : resolvedUrl;
+    } catch {
+      continue;
+    }
+    selfAliasJitiCache = createJiti(import.meta.url, {
+      alias: Object.fromEntries(
+        SELF_PACKAGE_IMPORT_SPECIFIERS.map((specifier) => [specifier, aliasTargetPath]),
+      ),
+    });
+    break;
+  }
+  return selfAliasJitiCache;
+};
+
+const isSelfPackageResolutionError = (error: unknown): boolean =>
+  error instanceof Error &&
+  SELF_PACKAGE_IMPORT_SPECIFIERS.some((specifier) => error.message.includes(specifier));
+
 const loadModuleConfig = async (filePath: string): Promise<unknown> => {
-  const imported = await jiti.import<{ default?: unknown }>(filePath);
-  return imported?.default ?? imported;
+  try {
+    const imported = await jiti.import<{ default?: unknown }>(filePath);
+    return imported?.default ?? imported;
+  } catch (error) {
+    if (!isSelfPackageResolutionError(error)) throw error;
+    const selfAliasJiti = resolveSelfAliasJiti();
+    if (!selfAliasJiti) throw error;
+    const imported = await selfAliasJiti.import<{ default?: unknown }>(filePath);
+    return imported?.default ?? imported;
+  }
 };
 
 // JSON5 is a strict superset of JSON: it allows comments and trailing

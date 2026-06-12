@@ -57,6 +57,34 @@ describe("loadConfig", () => {
       expect(config).toEqual({ lint: true, rules: { "react-doctor/no-danger": "off" } });
     });
 
+    it("loads a config with a runtime import from react-doctor/api without local node_modules", async () => {
+      const selfImportDirectory = path.join(tempRootDirectory, "with-self-import-config");
+      fs.mkdirSync(selfImportDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(selfImportDirectory, "doctor.config.ts"),
+        'import { defineConfig } from "react-doctor/api";\n\nexport default defineConfig({\n  textComponents: ["Text", "Trans"],\n  rawTextWrapperComponents: ["Button", "ButtonLink", "Tag"],\n});\n',
+      );
+      const config = await loadConfig(selfImportDirectory);
+      expect(config).toEqual({
+        textComponents: ["Text", "Trans"],
+        rawTextWrapperComponents: ["Button", "ButtonLink", "Tag"],
+      });
+    });
+
+    it("warns and returns null when a config imports an unresolvable package", async () => {
+      const missingImportDirectory = path.join(tempRootDirectory, "with-missing-import-config");
+      fs.mkdirSync(missingImportDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(missingImportDirectory, "doctor.config.ts"),
+        'import { somethingMissing } from "package-that-does-not-exist";\n\nexport default { lint: somethingMissing };\n',
+      );
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const config = await loadConfig(missingImportDirectory);
+      expect(config).toBeNull();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Failed to load"));
+      warnSpy.mockRestore();
+    });
+
     it("prefers doctor.config.ts over doctor.config.json", async () => {
       const mixedDirectory = path.join(tempRootDirectory, "ts-over-json");
       fs.mkdirSync(mixedDirectory, { recursive: true });

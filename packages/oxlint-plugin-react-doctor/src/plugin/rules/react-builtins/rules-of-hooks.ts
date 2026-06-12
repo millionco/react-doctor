@@ -7,6 +7,7 @@ import { isReactComponentOrHookName } from "../../utils/is-react-component-or-ho
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { REACT_HOC_NAMES } from "../../constants/react.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
 import type { Rule } from "../../utils/rule.js";
 
 // Port of `oxc_linter::rules::react::rules_of_hooks`. Enforces React's
@@ -422,18 +423,6 @@ const inferFunctionName = (functionNode: EsTreeNode): string | null => {
   return null;
 };
 
-// Mirrors upstream eslint-plugin-react-hooks: the render callback
-// passed directly to `memo(...)` / `forwardRef(...)` IS a component
-// by construction, regardless of what binding name it ends up under
-// (`const _Wrapped = forwardRef((props, ref) => …)`).
-const isReactHocCallbackArgument = (functionNode: EsTreeNode): boolean => {
-  const parent = functionNode.parent;
-  if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
-  if (!parent.arguments.some((argument) => argument === functionNode)) return false;
-  const calleeName = getCallExpressionCalleeName(parent);
-  return calleeName !== null && REACT_HOC_NAMES.has(calleeName);
-};
-
 const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
@@ -442,16 +431,15 @@ const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {
       isNodeOfType(current, "FunctionExpression") ||
       isNodeOfType(current, "ArrowFunctionExpression")
     ) {
-      const isHocCallback = isReactHocCallbackArgument(current);
       const resolvedName = inferFunctionName(current);
       const displayName = resolvedName ?? "anonymous";
       return {
         node: current,
         name: displayName,
-        hasResolvedName: resolvedName !== null || isHocCallback,
+        hasResolvedName: resolvedName !== null,
         isAsync: Boolean(current.async),
         isComponentOrHook:
-          isHocCallback ||
+          isReactHocCallbackArgument(current) ||
           (resolvedName === null ? false : isReactComponentOrHookName(displayName)),
       };
     }
@@ -706,32 +694,32 @@ export const rulesOfHooks = defineRule<Rule>({
           return;
         }
 
-        // For anonymous callbacks, look outward: if any enclosing
-        // function IS a component / custom hook, this nested anonymous
-        // callback can't legally call a hook (Rule of Hooks forbids
-        // hooks in nested callbacks even when the outer function is a
-        // component). When NO outer function is a component / hook, the
-        // callback's runtime context is unknown — skip to avoid false
-        // positives on generic callbacks (utility / event-handler
-        // factories).
-        if (!enclosing.hasResolvedName) {
-          let outerWalker: EsTreeNode | null = enclosing.node;
-          let outerIsComponentOrHook = false;
-          while (outerWalker) {
-            const outerInfo = findEnclosingFunctionInfo(outerWalker);
-            if (!outerInfo) break;
-            if (outerInfo.isComponentOrHook) {
-              outerIsComponentOrHook = true;
-              break;
-            }
-            outerWalker = outerInfo.node;
-          }
-          if (!outerIsComponentOrHook) return;
-          context.report({ node: node.callee, message: buildConditionalMessage(hookName) });
-          return;
-        }
-
         if (!enclosing.isComponentOrHook) {
+          // For anonymous callbacks, look outward: if any enclosing
+          // function IS a component / custom hook, this nested anonymous
+          // callback can't legally call a hook (Rule of Hooks forbids
+          // hooks in nested callbacks even when the outer function is a
+          // component). When NO outer function is a component / hook, the
+          // callback's runtime context is unknown — skip to avoid false
+          // positives on generic callbacks (utility / event-handler
+          // factories).
+          if (!enclosing.hasResolvedName) {
+            let outerWalker: EsTreeNode | null = enclosing.node;
+            let outerIsComponentOrHook = false;
+            while (outerWalker) {
+              const outerInfo = findEnclosingFunctionInfo(outerWalker);
+              if (!outerInfo) break;
+              if (outerInfo.isComponentOrHook) {
+                outerIsComponentOrHook = true;
+                break;
+              }
+              outerWalker = outerInfo.node;
+            }
+            if (!outerIsComponentOrHook) return;
+            context.report({ node: node.callee, message: buildConditionalMessage(hookName) });
+            return;
+          }
+
           context.report({
             node: node.callee,
             message: buildNonComponentMessage(hookName, enclosing.name),

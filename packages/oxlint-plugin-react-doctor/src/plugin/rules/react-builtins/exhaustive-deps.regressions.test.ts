@@ -35,4 +35,30 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
     expect(messages).toContain("value");
   });
+
+  // The render callback passed directly to forwardRef/memo is a
+  // component by construction, even under a non-PascalCase binding
+  // (`const _Wrapped = forwardRef(...)`). Without that promotion the
+  // component-scope boundary resolves to null and captures from an
+  // enclosing factory scope are wrongly reported as missing deps —
+  // they live outside the component, so they can't change between
+  // renders.
+  it("does not flag factory-scope captures inside a forwardRef callback under an underscore-prefixed binding", () => {
+    const code = `
+      import { forwardRef, useEffect } from "react";
+      const buildComponent = (logger) => {
+        const _Wrapped = forwardRef((props, ref) => {
+          useEffect(() => {
+            logger(props.value);
+          }, [props.value]);
+          return <div ref={ref} />;
+        });
+        return _Wrapped;
+      };
+    `;
+    const result = runRule(exhaustiveDeps, code, { filename: "fixture.tsx" });
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).not.toContain("logger");
+  });
 });

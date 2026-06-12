@@ -63,7 +63,10 @@ describe("react-builtins/rules-of-hooks — regressions: HoC callbacks under non
         return value;
       };
     `);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toBe(
+      "`useState` runs inside `_helper`, which is not a component or Hook, so React cannot attach Hook state to a render.",
+    );
   });
 
   it("still flags hooks in a named callback passed to an arbitrary non-React HoC", () => {
@@ -74,6 +77,27 @@ describe("react-builtins/rules-of-hooks — regressions: HoC callbacks under non
         return value;
       });
     `);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toBe(
+      "`useState` runs inside `_process`, which is not a component or Hook, so React cannot attach Hook state to a render.",
+    );
+  });
+
+  it("still flags hooks in a memo props comparator (second argument is not a render callback)", () => {
+    const result = runTsx(`
+      import { memo, useState } from "react";
+      const _Memoized = memo(
+        (props) => <span>{props.value}</span>,
+        (previousProps, nextProps) => {
+          const [shouldSkip] = useState(false);
+          return shouldSkip;
+        },
+      );
+      export const Memoized = _Memoized;
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toBe(
+      "`useState` runs inside `_Memoized`, which is not a component or Hook, so React cannot attach Hook state to a render.",
+    );
   });
 });

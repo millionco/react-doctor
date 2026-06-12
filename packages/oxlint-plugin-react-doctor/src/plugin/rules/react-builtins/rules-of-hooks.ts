@@ -422,6 +422,18 @@ const inferFunctionName = (functionNode: EsTreeNode): string | null => {
   return null;
 };
 
+// Mirrors upstream eslint-plugin-react-hooks: the render callback
+// passed directly to `memo(...)` / `forwardRef(...)` IS a component
+// by construction, regardless of what binding name it ends up under
+// (`const _Wrapped = forwardRef((props, ref) => …)`).
+const isReactHocCallbackArgument = (functionNode: EsTreeNode): boolean => {
+  const parent = functionNode.parent;
+  if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
+  if (!parent.arguments.some((argument) => argument === functionNode)) return false;
+  const calleeName = getCallExpressionCalleeName(parent);
+  return calleeName !== null && REACT_HOC_NAMES.has(calleeName);
+};
+
 const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
@@ -430,14 +442,17 @@ const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {
       isNodeOfType(current, "FunctionExpression") ||
       isNodeOfType(current, "ArrowFunctionExpression")
     ) {
+      const isHocCallback = isReactHocCallbackArgument(current);
       const resolvedName = inferFunctionName(current);
       const displayName = resolvedName ?? "anonymous";
       return {
         node: current,
         name: displayName,
-        hasResolvedName: resolvedName !== null,
+        hasResolvedName: resolvedName !== null || isHocCallback,
         isAsync: Boolean(current.async),
-        isComponentOrHook: resolvedName === null ? false : isReactComponentOrHookName(displayName),
+        isComponentOrHook:
+          isHocCallback ||
+          (resolvedName === null ? false : isReactComponentOrHookName(displayName)),
       };
     }
     current = current.parent ?? null;
@@ -553,6 +568,7 @@ const findEnclosingComponentOrHookFunction = (node: EsTreeNode): EsTreeNode | nu
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
     if (isFunctionLike(current)) {
+      if (isReactHocCallbackArgument(current)) return current;
       const resolvedName = inferFunctionName(current);
       if (resolvedName !== null && isReactComponentOrHookName(resolvedName)) return current;
     }

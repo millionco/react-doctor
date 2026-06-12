@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { ProjectInfo } from "@react-doctor/core";
 import { appendReanimatedSharedValueHint } from "../src/utils/append-reanimated-shared-value-hint.js";
 import { parseOxlintOutput } from "../src/runners/oxlint/parse-output.js";
-
-const ROOT_DIRECTORY = "/home/user/app";
+import {
+  buildOxlintStdout,
+  buildProject,
+  TEST_ROOT_DIRECTORY,
+} from "./helpers/oxlint-parse-harness.js";
 
 const REACT_COMPILER_IMMUTABILITY_HELP =
   "This value cannot be modified\n\nModifying a value returned from a hook is not allowed. Consider moving the modification into the hook where the value is constructed.";
@@ -11,57 +13,12 @@ const REACT_COMPILER_IMMUTABILITY_HELP =
 const REANIMATED_DOCS_ANCHOR =
   "https://docs.swmansion.com/react-native-reanimated/docs/core/useSharedValue/#react-compiler-support";
 
-const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
-  rootDirectory: ROOT_DIRECTORY,
-  projectName: "app",
-  reactVersion: "19.2.0",
-  reactMajorVersion: 19,
-  tailwindVersion: null,
-  zodVersion: null,
-  zodMajorVersion: null,
-  framework: "expo",
-  hasTypeScript: true,
-  hasReactCompiler: true,
-  hasTanStackQuery: false,
-  nextjsVersion: null,
-  nextjsMajorVersion: null,
-  hasReactNativeWorkspace: true,
-  expoVersion: "~51.0.0",
-  shopifyFlashListVersion: null,
-  shopifyFlashListMajorVersion: null,
-  hasReanimated: true,
-  isPreES2023Target: false,
-  preactVersion: null,
-  preactMajorVersion: null,
-  sourceFileCount: 10,
-  ...overrides,
-});
-
-const buildOxlintStdout = (code: string, message: string): string =>
-  JSON.stringify({
-    diagnostics: [
-      {
-        message,
-        code,
-        severity: "error",
-        causes: [],
-        url: "",
-        help: "",
-        filename: "src/components/SpinningIcon.tsx",
-        labels: [{ label: "", span: { offset: 0, length: 1, line: 23, column: 5 } }],
-        related: [],
-      },
-    ],
-    number_of_files: 1,
-    number_of_rules: 1,
-  });
-
 describe("appendReanimatedSharedValueHint", () => {
   it("appends the .get()/.set() hint for immutability findings when reanimated is installed", () => {
     const help = appendReanimatedSharedValueHint(
       REACT_COMPILER_IMMUTABILITY_HELP,
       "immutability",
-      buildProject(),
+      buildProject({ hasReanimated: true }),
     );
     expect(help).toContain(REACT_COMPILER_IMMUTABILITY_HELP);
     expect(help).toContain("`.get()` / `.set()`");
@@ -69,7 +26,11 @@ describe("appendReanimatedSharedValueHint", () => {
   });
 
   it("returns just the hint when the upstream help is empty", () => {
-    const help = appendReanimatedSharedValueHint("", "immutability", buildProject());
+    const help = appendReanimatedSharedValueHint(
+      "",
+      "immutability",
+      buildProject({ hasReanimated: true }),
+    );
     expect(help).toContain("`.get()` / `.set()`");
     expect(help.startsWith("\n")).toBe(false);
   });
@@ -87,7 +48,7 @@ describe("appendReanimatedSharedValueHint", () => {
     const help = appendReanimatedSharedValueHint(
       REACT_COMPILER_IMMUTABILITY_HELP,
       "refs",
-      buildProject(),
+      buildProject({ hasReanimated: true }),
     );
     expect(help).toBe(REACT_COMPILER_IMMUTABILITY_HELP);
   });
@@ -99,11 +60,17 @@ describe("parseOxlintOutput react-hooks-js immutability messaging", () => {
       "react-hooks-js(immutability)",
       REACT_COMPILER_IMMUTABILITY_HELP,
     );
-    const [diagnostic] = parseOxlintOutput(stdout, buildProject(), ROOT_DIRECTORY);
+    const [diagnostic] = parseOxlintOutput(
+      stdout,
+      buildProject({ hasReanimated: true }),
+      TEST_ROOT_DIRECTORY,
+    );
 
     expect(diagnostic.title).toBe("React Compiler can't optimize this");
     expect(diagnostic.message).toContain("misses React Compiler's automatic memoization");
+    expect(diagnostic.message).toContain("This value cannot be modified");
     expect(diagnostic.category).toBe("Performance");
+    expect(diagnostic.help).toContain("Modifying a value returned from a hook is not allowed");
     expect(diagnostic.help).toContain("`.get()` / `.set()`");
     expect(diagnostic.help).toContain(REANIMATED_DOCS_ANCHOR);
   });
@@ -116,7 +83,7 @@ describe("parseOxlintOutput react-hooks-js immutability messaging", () => {
     const [diagnostic] = parseOxlintOutput(
       stdout,
       buildProject({ hasReanimated: false }),
-      ROOT_DIRECTORY,
+      TEST_ROOT_DIRECTORY,
     );
 
     expect(diagnostic.help).not.toContain("`.get()` / `.set()`");
@@ -124,54 +91,12 @@ describe("parseOxlintOutput react-hooks-js immutability messaging", () => {
 
   it("does not surface the hint for other React Compiler rules", () => {
     const stdout = buildOxlintStdout("react-hooks-js(refs)", "Cannot access ref during render");
-    const [diagnostic] = parseOxlintOutput(stdout, buildProject(), ROOT_DIRECTORY);
+    const [diagnostic] = parseOxlintOutput(
+      stdout,
+      buildProject({ hasReanimated: true }),
+      TEST_ROOT_DIRECTORY,
+    );
 
     expect(diagnostic.help).not.toContain("`.get()` / `.set()`");
-  });
-});
-
-describe("parseOxlintOutput react-hooks-js bail-out reason in primary message", () => {
-  const ASYNC_USE_MEMO_REASON = "useMemo() callbacks may not be async or generator functions";
-
-  it("carries the specific bail-out reason for an async useMemo callback", () => {
-    const stdout = buildOxlintStdout(
-      "react-hooks-js(use-memo)",
-      `${ASYNC_USE_MEMO_REASON}\n\nuseMemo() callbacks are called once and must synchronously return a value`,
-    );
-    const [diagnostic] = parseOxlintOutput(stdout, buildProject(), ROOT_DIRECTORY);
-
-    expect(diagnostic.message).toContain("misses React Compiler's automatic memoization");
-    expect(diagnostic.message).toContain(ASYNC_USE_MEMO_REASON);
-    expect(diagnostic.help).toContain(ASYNC_USE_MEMO_REASON);
-  });
-
-  it("falls back to the generic message when the compiler emits no reason", () => {
-    const stdout = buildOxlintStdout("react-hooks-js(todo)", "");
-    const [diagnostic] = parseOxlintOutput(stdout, buildProject(), ROOT_DIRECTORY);
-
-    expect(diagnostic.message).toBe(
-      "This component misses React Compiler's automatic memoization & re-renders more than it should. Rewrite the flagged code so the compiler can optimize it.",
-    );
-  });
-
-  it("strips oxlint's leading severity label from the reason", () => {
-    const stdout = buildOxlintStdout(
-      "react-hooks-js(use-memo)",
-      "Error: useMemo() callbacks may not be async or generator functions",
-    );
-    const [diagnostic] = parseOxlintOutput(stdout, buildProject(), ROOT_DIRECTORY);
-
-    expect(diagnostic.message).toContain(
-      ": useMemo() callbacks may not be async or generator functions. Rewrite",
-    );
-    expect(diagnostic.message).not.toContain("Error:");
-    expect(diagnostic.help).not.toContain("Error:");
-  });
-
-  it("does not duplicate the trailing period of a reason summary", () => {
-    const stdout = buildOxlintStdout("react-hooks-js(purity)", "This value is impure.");
-    const [diagnostic] = parseOxlintOutput(stdout, buildProject(), ROOT_DIRECTORY);
-
-    expect(diagnostic.message).toContain(": This value is impure. Rewrite");
   });
 });

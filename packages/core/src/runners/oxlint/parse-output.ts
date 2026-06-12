@@ -18,12 +18,14 @@ import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-us
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
 const LEADING_SEVERITY_LABEL_PATTERN = /^(?:Error|Warning):\s*/;
+const TRAILING_PERIOD_PATTERN = /\.$/;
 
 // Adopted `react-hooks-js` (React Compiler) diagnostics have no
 // react-doctor `title`, so they'd otherwise render their bare
 // `react-hooks-js/todo` id. Give them a human headline & an impact-first
-// message that carries the compiler's specific bail-out reason (its first
-// line); the full reason text stays in `help`.
+// message that carries the first line of the compiler's bail-out reason;
+// the reason's remaining lines stay in `help`, so renderers that print
+// message + help never repeat the same sentence back-to-back.
 const REACT_COMPILER_TITLE = "React Compiler can't optimize this";
 // The compiler's `todo` rule fires on syntax it doesn't handle yet —
 // an unsupported-syntax bail-out, not an optimization miss in the
@@ -32,11 +34,12 @@ const REACT_COMPILER_TODO_TITLE = "React Compiler doesn't support this syntax";
 const REACT_COMPILER_IMPACT =
   "This component misses React Compiler's automatic memoization & re-renders more than it should";
 const REACT_COMPILER_ACTION = "Rewrite the flagged code so the compiler can optimize it.";
+const REACT_COMPILER_GENERIC_MESSAGE = `${REACT_COMPILER_IMPACT}. ${REACT_COMPILER_ACTION}`;
 
-const buildReactCompilerMessage = (bailoutReason: string): string => {
-  const reasonSummary = bailoutReason.split("\n", 1)[0].trim().replace(/\.$/, "");
-  if (!reasonSummary) return `${REACT_COMPILER_IMPACT}. ${REACT_COMPILER_ACTION}`;
-  return `${REACT_COMPILER_IMPACT}: ${reasonSummary}. ${REACT_COMPILER_ACTION}`;
+const buildReactCompilerMessage = (reasonSummary: string): string => {
+  const normalizedSummary = reasonSummary.replace(TRAILING_PERIOD_PATTERN, "");
+  if (!normalizedSummary) return REACT_COMPILER_GENERIC_MESSAGE;
+  return `${REACT_COMPILER_IMPACT}: ${normalizedSummary}. ${REACT_COMPILER_ACTION}`;
 };
 
 // Adopted third-party plugins (not in the react-doctor registry) → the
@@ -145,11 +148,27 @@ const resolveCleanedDiagnostic = (
   if (plugin === "react-hooks-js") {
     const bailoutReason = message
       .replace(FILEPATH_WITH_LOCATION_PATTERN, "")
+      .trim()
       .replace(LEADING_SEVERITY_LABEL_PATTERN, "")
       .trim();
+    // `todo` bail-out reasons are compiler-internal work notes (e.g.
+    // "(BuildHIR::lowerExpression) Handle TaggedTemplateExpression
+    // expressions") — not user-facing impact copy — so they stay in
+    // `help` and the message keeps its generic wording.
+    if (rule === "todo") {
+      return {
+        message: REACT_COMPILER_GENERIC_MESSAGE,
+        help: appendReanimatedSharedValueHint(bailoutReason || help, rule, project),
+      };
+    }
+    // The reason's first line is its summary; any remaining lines are the
+    // compiler's elaboration. The summary moves into the primary message
+    // and only the elaboration stays in `help`.
+    const [reasonSummary = "", ...reasonDetailLines] = bailoutReason.split("\n");
+    const reasonDetail = reasonDetailLines.join("\n").trim();
     return {
-      message: buildReactCompilerMessage(bailoutReason),
-      help: appendReanimatedSharedValueHint(bailoutReason || help, rule, project),
+      message: buildReactCompilerMessage(reasonSummary.trim()),
+      help: appendReanimatedSharedValueHint(reasonDetail || help, rule, project),
     };
   }
   const cleaned = message.replace(FILEPATH_WITH_LOCATION_PATTERN, "").trim();

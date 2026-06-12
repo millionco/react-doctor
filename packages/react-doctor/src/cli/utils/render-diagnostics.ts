@@ -657,6 +657,10 @@ export const formatElapsedTime = (elapsedMilliseconds: number): string => {
 // disk alongside the machine-readable `diagnostics.json`.
 export const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]): string => {
   const firstDiagnostic = ruleDiagnostics[0];
+  // Most rules emit one fixed message, but per-site messages (React
+  // Compiler bail-out reasons) vary — list every distinct one so the
+  // first site's reason isn't presented as if it described all N sites.
+  const distinctMessages = [...new Set(ruleDiagnostics.map((diagnostic) => diagnostic.message))];
 
   const sections = [
     `Rule: ${ruleKey}`,
@@ -664,7 +668,7 @@ export const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]
     `Category: ${firstDiagnostic.category}`,
     `Count: ${ruleDiagnostics.length}`,
     "",
-    firstDiagnostic.message,
+    distinctMessages.join("\n\n"),
   ];
 
   if (firstDiagnostic.help) {

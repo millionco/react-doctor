@@ -40,6 +40,7 @@ export * from "./check-react-native-project.js";
 export * from "./check-react-server-components-advisory.js";
 export * from "./check-reduced-motion.js";
 export * from "./check-supply-chain.js";
+export * from "./classify-file-context.js";
 export * from "./collect-ignore-patterns.js";
 export * from "./compute-diagnostic-delta.js";
 export * from "./constants.js";

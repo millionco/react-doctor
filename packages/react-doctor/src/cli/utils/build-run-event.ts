@@ -149,6 +149,12 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     errorCount: summary.errorCount,
     warningCount: summary.warningCount,
     affectedFiles: summary.affectedFileCount,
+    diagnosticsInTestFiles: result.diagnostics.filter(
+      (diagnostic) => diagnostic.fileContext === "test",
+    ).length,
+    diagnosticsInStoryFiles: result.diagnostics.filter(
+      (diagnostic) => diagnostic.fileContext === "story",
+    ).length,
     distinctRulesFired: countByRule.size,
     topRule,
     scannedFileCount: result.scannedFileCount ?? null,

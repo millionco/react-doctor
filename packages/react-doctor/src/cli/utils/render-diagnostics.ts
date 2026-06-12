@@ -266,12 +266,19 @@ const clusterNearbyDiagnostics = (diagnostics: Diagnostic[]): DiagnosticCluster[
   return clusters;
 };
 
+// Dim "(test file)" / "(story file)" tag after a site's location, so a
+// finding in a spec or story reads as non-shipping code rather than a
+// production problem. Empty for production files (the default).
+const formatFileContextTag = (diagnostic: Diagnostic): string =>
+  diagnostic.fileContext ? ` (${diagnostic.fileContext} file)` : "";
+
 const formatClusterLocation = (cluster: DiagnosticCluster): string => {
-  const { filePath } = cluster.diagnostics[0]!;
-  if (cluster.startLine <= 0) return filePath;
+  const lead = cluster.diagnostics[0]!;
+  const contextTag = formatFileContextTag(lead);
+  if (cluster.startLine <= 0) return `${lead.filePath}${contextTag}`;
   if (cluster.endLine > cluster.startLine)
-    return `${filePath}:${cluster.startLine}-${cluster.endLine}`;
-  return `${filePath}:${cluster.startLine}`;
+    return `${lead.filePath}:${cluster.startLine}-${cluster.endLine}${contextTag}`;
+  return `${lead.filePath}:${cluster.startLine}${contextTag}`;
 };
 
 // The location + inline code frame for a cluster of nearby same-file
@@ -680,16 +687,20 @@ export const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]
 
   sections.push("", "Files:");
   const fileSites = buildVerboseSiteMap(ruleDiagnostics);
+  const fileContextTags = new Map(
+    ruleDiagnostics.map((diagnostic) => [diagnostic.filePath, formatFileContextTag(diagnostic)]),
+  );
   for (const [filePath, sites] of fileSites) {
+    const contextTag = fileContextTags.get(filePath) ?? "";
     if (sites.length > 0) {
       for (const site of sites) {
-        sections.push(`  ${filePath}:${site.line}`);
+        sections.push(`  ${filePath}:${site.line}${contextTag}`);
         if (site.suppressionHint) {
           sections.push(`    ${site.suppressionHint}`);
         }
       }
     } else {
-      sections.push(`  ${filePath}`);
+      sections.push(`  ${filePath}${contextTag}`);
     }
   }
 

@@ -64,7 +64,7 @@ describe("parseOxlintOutput react-hooks-js diagnostic titles", () => {
         "help": "(BuildHIR::lowerExpression) Handle TaggedTemplateExpression expressions",
         "length": 1,
         "line": 12,
-        "message": "This component misses React Compiler's automatic memoization & re-renders more than it should. Rewrite the flagged code so the compiler can optimize it.",
+        "message": "This component misses React Compiler's automatic memoization & re-renders more than it should: (BuildHIR::lowerExpression) Handle TaggedTemplateExpression expressions. Rewrite the flagged code so the compiler can optimize it.",
         "offset": 0,
         "plugin": "react-hooks-js",
         "rule": "todo",

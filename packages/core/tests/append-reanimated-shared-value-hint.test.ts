@@ -129,3 +129,35 @@ describe("parseOxlintOutput react-hooks-js immutability messaging", () => {
     expect(diagnostic.help).not.toContain("`.get()` / `.set()`");
   });
 });
+
+describe("parseOxlintOutput react-hooks-js bail-out reason in primary message", () => {
+  const ASYNC_USE_MEMO_REASON = "useMemo() callbacks may not be async or generator functions";
+
+  it("carries the specific bail-out reason for an async useMemo callback", () => {
+    const stdout = buildOxlintStdout(
+      "react-hooks-js(use-memo)",
+      `${ASYNC_USE_MEMO_REASON}\n\nuseMemo() callbacks are called once and must synchronously return a value`,
+    );
+    const [diagnostic] = parseOxlintOutput(stdout, buildProject(), ROOT_DIRECTORY);
+
+    expect(diagnostic.message).toContain("misses React Compiler's automatic memoization");
+    expect(diagnostic.message).toContain(ASYNC_USE_MEMO_REASON);
+    expect(diagnostic.help).toContain(ASYNC_USE_MEMO_REASON);
+  });
+
+  it("falls back to the generic message when the compiler emits no reason", () => {
+    const stdout = buildOxlintStdout("react-hooks-js(todo)", "");
+    const [diagnostic] = parseOxlintOutput(stdout, buildProject(), ROOT_DIRECTORY);
+
+    expect(diagnostic.message).toBe(
+      "This component misses React Compiler's automatic memoization & re-renders more than it should. Rewrite the flagged code so the compiler can optimize it.",
+    );
+  });
+
+  it("does not duplicate the trailing period of a reason summary", () => {
+    const stdout = buildOxlintStdout("react-hooks-js(purity)", "This value is impure.");
+    const [diagnostic] = parseOxlintOutput(stdout, buildProject(), ROOT_DIRECTORY);
+
+    expect(diagnostic.message).toContain(": This value is impure. Rewrite");
+  });
+});

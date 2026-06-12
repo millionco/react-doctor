@@ -21,14 +21,22 @@ const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
 // Adopted `react-hooks-js` (React Compiler) diagnostics have no
 // react-doctor `title`, so they'd otherwise render their bare
 // `react-hooks-js/todo` id. Give them a human headline & an impact-first
-// message; the specific bail-out reason stays in `help`.
+// message that carries the compiler's specific bail-out reason (its first
+// line); the full reason text stays in `help`.
 const REACT_COMPILER_TITLE = "React Compiler can't optimize this";
 // The compiler's `todo` rule fires on syntax it doesn't handle yet —
 // an unsupported-syntax bail-out, not an optimization miss in the
 // user's code, so it gets its own headline.
 const REACT_COMPILER_TODO_TITLE = "React Compiler doesn't support this syntax";
-const REACT_COMPILER_MESSAGE =
-  "This component misses React Compiler's automatic memoization & re-renders more than it should. Rewrite the flagged code so the compiler can optimize it.";
+const REACT_COMPILER_IMPACT =
+  "This component misses React Compiler's automatic memoization & re-renders more than it should";
+const REACT_COMPILER_ACTION = "Rewrite the flagged code so the compiler can optimize it.";
+
+const buildReactCompilerMessage = (bailoutReason: string): string => {
+  const reasonSummary = bailoutReason.split("\n", 1)[0].trim().replace(/\.$/, "");
+  if (!reasonSummary) return `${REACT_COMPILER_IMPACT}. ${REACT_COMPILER_ACTION}`;
+  return `${REACT_COMPILER_IMPACT}: ${reasonSummary}. ${REACT_COMPILER_ACTION}`;
+};
 
 // Adopted third-party plugins (not in the react-doctor registry) → the
 // clear user-facing bucket their diagnostics roll up under. Mirrors the
@@ -134,10 +142,10 @@ const resolveCleanedDiagnostic = (
   project: ProjectInfo,
 ): CleanedDiagnostic => {
   if (plugin === "react-hooks-js") {
-    const rawMessage = message.replace(FILEPATH_WITH_LOCATION_PATTERN, "").trim();
+    const bailoutReason = message.replace(FILEPATH_WITH_LOCATION_PATTERN, "").trim();
     return {
-      message: REACT_COMPILER_MESSAGE,
-      help: appendReanimatedSharedValueHint(rawMessage || help, rule, project),
+      message: buildReactCompilerMessage(bailoutReason),
+      help: appendReanimatedSharedValueHint(bailoutReason || help, rule, project),
     };
   }
   const cleaned = message.replace(FILEPATH_WITH_LOCATION_PATTERN, "").trim();

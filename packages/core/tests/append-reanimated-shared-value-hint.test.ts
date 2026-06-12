@@ -154,6 +154,20 @@ describe("parseOxlintOutput react-hooks-js bail-out reason in primary message", 
     );
   });
 
+  it("strips oxlint's leading severity label from the reason", () => {
+    const stdout = buildOxlintStdout(
+      "react-hooks-js(use-memo)",
+      "Error: useMemo() callbacks may not be async or generator functions",
+    );
+    const [diagnostic] = parseOxlintOutput(stdout, buildProject(), ROOT_DIRECTORY);
+
+    expect(diagnostic.message).toContain(
+      ": useMemo() callbacks may not be async or generator functions. Rewrite",
+    );
+    expect(diagnostic.message).not.toContain("Error:");
+    expect(diagnostic.help).not.toContain("Error:");
+  });
+
   it("does not duplicate the trailing period of a reason summary", () => {
     const stdout = buildOxlintStdout("react-hooks-js(purity)", "This value is impure.");
     const [diagnostic] = parseOxlintOutput(stdout, buildProject(), ROOT_DIRECTORY);

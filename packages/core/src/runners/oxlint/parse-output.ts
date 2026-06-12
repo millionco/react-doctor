@@ -17,6 +17,7 @@ import { redactSensitiveText } from "../../utils/redact-sensitive-text.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
+const LEADING_SEVERITY_LABEL_PATTERN = /^(?:Error|Warning):\s*/;
 
 // Adopted `react-hooks-js` (React Compiler) diagnostics have no
 // react-doctor `title`, so they'd otherwise render their bare
@@ -142,7 +143,10 @@ const resolveCleanedDiagnostic = (
   project: ProjectInfo,
 ): CleanedDiagnostic => {
   if (plugin === "react-hooks-js") {
-    const bailoutReason = message.replace(FILEPATH_WITH_LOCATION_PATTERN, "").trim();
+    const bailoutReason = message
+      .replace(FILEPATH_WITH_LOCATION_PATTERN, "")
+      .replace(LEADING_SEVERITY_LABEL_PATTERN, "")
+      .trim();
     return {
       message: buildReactCompilerMessage(bailoutReason),
       help: appendReanimatedSharedValueHint(bailoutReason || help, rule, project),

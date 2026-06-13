@@ -60,7 +60,7 @@
     "agent-install": "0.0.5",
     "conf": "^15.1.0",
     "confbox": "^0.2.4",
-    "deslop-js": "^0.0.23",
+    "deslop-js": "^0.0.24",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jiti": "^2.7.0",
     "magicast": "^0.5.3",

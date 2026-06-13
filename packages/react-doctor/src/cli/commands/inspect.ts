@@ -5,17 +5,18 @@ import * as Effect from "effect/Effect";
 import * as fs from "node:fs";
 import {
   buildJsonReport,
-  filterDiagnosticsForSurface,
+  DEFAULT_PROJECT_SCAN_CONCURRENCY,
   findLegacyConfig,
   getChangedLineRanges,
   getDiffInfo,
   highlighter,
+  mapWithConcurrency,
+  mergeReactDoctorConfigs,
   resolveScanTarget,
   toRelativePath,
 } from "@react-doctor/core";
 import { inspect } from "../../inspect.js";
 import type {
-  Diagnostic,
   DiffInfo,
   InspectResult,
   JsonReportMode,
@@ -46,6 +47,7 @@ import { playWelcomeScene, RETURNING_USER_SPEED_MULTIPLIER } from "../utils/rend
 import { reportErrorToSentry } from "../utils/report-error.js";
 import { readChangedFilesFrom } from "../utils/read-changed-files-from.js";
 import { printMultiProjectSummary } from "../utils/render-multi-project-summary.js";
+import { printDiagnosticsDump } from "../utils/render-summary.js";
 import { isCiOrCodingAgentEnvironment } from "../utils/is-ci-environment.js";
 import {
   printAgentInstallHint,
@@ -63,7 +65,9 @@ import {
 } from "../utils/resolve-project-diff-include-paths.js";
 import { runExplain } from "../utils/run-explain.js";
 import { projectManifestChanged } from "../utils/project-manifest-changed.js";
+import { filterScansForSurface } from "../utils/filter-scans-for-surface.js";
 import { selectProjects } from "../utils/select-projects.js";
+import { isSpinnerSilent, setSpinnerSilent, spinner } from "../utils/spinner.js";
 import { shouldBlockCi } from "../utils/should-block-ci.js";
 import { shouldSkipPrompts } from "../utils/should-skip-prompts.js";
 import { warnDeprecatedFailOn } from "../utils/warn-deprecated-fail-on.js";
@@ -73,6 +77,9 @@ import { VERSION } from "../utils/version.js";
 interface CompletedScan {
   directory: string;
   result: InspectResult;
+  // The merged (root + module) config the scan ran under — surface
+  // filtering of its diagnostics must use this, not the root config.
+  config: ReactDoctorConfig | null;
 }
 
 const filterCompletedScansByCategories = (
@@ -91,7 +98,6 @@ const filterCompletedScansByCategories = (
 };
 
 interface FinalizeScansInput {
-  readonly diagnostics: Diagnostic[];
   readonly completedScans: CompletedScan[];
   readonly mode: JsonReportMode;
   readonly diff: DiffInfo | null;
@@ -177,11 +183,7 @@ const finalizeScans = (input: FinalizeScansInput): void => {
 
   if (input.isScoreOnly || baselineDegraded) return;
 
-  const ciFailureDiagnostics = filterDiagnosticsForSurface(
-    input.diagnostics,
-    "ciFailure",
-    input.userConfig,
-  );
+  const ciFailureDiagnostics = filterScansForSurface(input.completedScans, "ciFailure");
   if (shouldBlockCi(ciFailureDiagnostics, resolveBlockingLevel(input.flags, input.userConfig))) {
     process.exitCode = 1;
   }
@@ -378,8 +380,9 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         };
 
         finalizeScans({
-          diagnostics: remappedDiagnostics,
-          completedScans: [{ directory: resolvedDirectory, result: remappedInspectResult }],
+          completedScans: [
+            { directory: resolvedDirectory, result: remappedInspectResult, config: userConfig },
+          ],
           mode: "staged",
           diff: null,
           baselineIntended: false,
@@ -397,7 +400,12 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       return;
     }
 
-    const projectDirectories = await selectProjects(resolvedDirectory, flags.project, skipPrompts);
+    const projectDirectories = await selectProjects(
+      resolvedDirectory,
+      flags.project,
+      skipPrompts,
+      userConfig?.projects,
+    );
 
     const changedFilesDiffInfo = flags.changedFilesFrom
       ? buildChangedFilesDiffInfo(readChangedFilesFrom(path.resolve(flags.changedFilesFrom)))
@@ -485,35 +493,56 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       logger.break();
     }
 
-    const allDiagnostics: Diagnostic[] = [];
-    const completedScans: Array<{ directory: string; result: InspectResult }> = [];
+    const completedScans: CompletedScan[] = [];
     const isMultiProject = projectDirectories.length > 1;
-    // The Socket supply-chain check runs by default; opted out per project
-    // config. Off ⇒ a manifest-only diff change shouldn't pull a project into
-    // the scan (there'd be nothing to report).
-    const supplyChainEnabled = userConfig?.supplyChain?.enabled !== false;
 
-    for (const projectDirectory of projectDirectories) {
+    const scanProject = async (projectDirectory: string): Promise<CompletedScan | null> => {
+      // Each selected folder goes through the same scan-target resolution as
+      // `diagnose({ projects })` — its own `rootDir`, nested React discovery,
+      // and on-disk config (layered additively onto the root config via
+      // `mergeReactDoctorConfigs`) — so the CLI and the API agree on what
+      // scanning a module means.
+      const projectScanTarget =
+        projectDirectory === resolvedDirectory
+          ? scanTarget
+          : await resolveScanTarget(projectDirectory, { allowAmbiguous: true });
+      const scanDirectory = projectScanTarget.resolvedDirectory;
+      const projectConfig =
+        projectDirectory === resolvedDirectory
+          ? userConfig
+          : mergeReactDoctorConfigs(userConfig, projectScanTarget.userConfig ?? undefined);
+      // `plugins` is override-wins in the merge, so relative entries must
+      // resolve against the config file that supplied them: the module's own
+      // config when it declares `plugins`, the root config otherwise.
+      const projectConfigSourceDirectory =
+        projectScanTarget.userConfig?.plugins === undefined
+          ? scanTarget.configSourceDirectory
+          : projectScanTarget.configSourceDirectory;
+      // The Socket supply-chain check runs by default; opted out per project
+      // config. Off ⇒ a manifest-only diff change shouldn't pull a project into
+      // the scan (there'd be nothing to report).
+      const supplyChainEnabled = projectConfig?.supplyChain?.enabled !== false;
+
       let includePaths: string[] | undefined;
       let supplyChainManifestChanged = false;
       if (isDiffMode) {
         const changedSourceFiles =
           diffInfo === null
             ? []
-            : resolveProjectDiffIncludePaths(resolvedDirectory, projectDirectory, diffInfo);
+            : resolveProjectDiffIncludePaths(resolvedDirectory, scanDirectory, diffInfo);
         // A PR that edits this project's package.json should still have its
         // dependencies scored, even with no changed source files — dependency
         // health is a manifest property, not a per-file one.
         supplyChainManifestChanged =
           supplyChainEnabled &&
           diffInfo !== null &&
-          projectManifestChanged(resolvedDirectory, projectDirectory, diffInfo);
+          projectManifestChanged(resolvedDirectory, scanDirectory, diffInfo);
         if (changedSourceFiles.length === 0 && !supplyChainManifestChanged) {
           if (!isQuiet) {
-            logger.dim(`No changed source files in ${projectDirectory}, skipping.`);
+            logger.dim(`No changed source files in ${scanDirectory}, skipping.`);
             logger.break();
           }
-          continue;
+          return null;
         }
         // A changed package.json enters the scan as an include so the run
         // stays in diff mode (lint ignores it — it's not a source file) while
@@ -527,27 +556,64 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       if (!isQuiet && !isMultiProject) {
         logger.dim("  ");
       }
-      const scanResult = await inspect(projectDirectory, {
+      const scanResult = await inspect(scanDirectory, {
         ...scanOptions,
         includePaths,
-        configOverride: userConfig,
+        configOverride: projectConfig,
+        configSourceDirectory: projectConfigSourceDirectory ?? undefined,
         suppressRendering: isMultiProject,
+        // Pool members overlap; they must not own the process-global Sentry
+        // run state (see `InspectOptions.concurrentScan`).
+        concurrentScan: isMultiProject,
         baseline: baselineRef ? { ref: baselineRef } : undefined,
         changedLineRanges:
           scope === "lines" && changedLineRanges !== null
-            ? resolveProjectChangedLineRanges(
-                resolvedDirectory,
-                projectDirectory,
-                changedLineRanges,
-              )
+            ? resolveProjectChangedLineRanges(resolvedDirectory, scanDirectory, changedLineRanges)
             : undefined,
         supplyChainManifestChanged,
       });
-      allDiagnostics.push(...scanResult.diagnostics);
-      completedScans.push({ directory: projectDirectory, result: scanResult });
       if (!isQuiet && !isMultiProject) {
         logger.break();
       }
+      return { directory: scanDirectory, result: scanResult, config: projectConfig };
+    };
+
+    // Multi-project scans run through the same bounded pool as
+    // `diagnose({ projects })` — per-project rendering is suppressed in favor
+    // of the aggregate summary, so concurrent scans don't garble output.
+    // Single-project runs keep their inline rendering on the same path.
+    const scanLoopStartTime = performance.now();
+    const projectCount = projectDirectories.length;
+    const batchSpinner =
+      isMultiProject && !isQuiet ? spinner(`Scanning ${projectCount} projects…`).start() : null;
+    // Concurrent pool members skip the per-scan toggle of the module-level
+    // spinner-silent flag (overlapping save/restore pairs would race), so
+    // the pool owner silences spinners once around the whole batch.
+    const ownsBatchSpinnerSilence = isMultiProject && scanOptions.silent === true;
+    const wasSpinnerSilent = isSpinnerSilent();
+    if (ownsBatchSpinnerSilence) setSpinnerSilent(true);
+    let finishedProjectCount = 0;
+    let scanOutcomes: ReadonlyArray<CompletedScan | null>;
+    try {
+      scanOutcomes = await mapWithConcurrency(
+        projectDirectories,
+        isMultiProject ? DEFAULT_PROJECT_SCAN_CONCURRENCY : 1,
+        async (projectDirectory) => {
+          const scanOutcome = await scanProject(projectDirectory);
+          finishedProjectCount += 1;
+          batchSpinner?.update(
+            `Scanning ${projectCount} projects… (${finishedProjectCount}/${projectCount})`,
+          );
+          return scanOutcome;
+        },
+      );
+    } finally {
+      if (ownsBatchSpinnerSilence) setSpinnerSilent(wasSpinnerSilent);
+      batchSpinner?.stop();
+    }
+    for (const scanOutcome of scanOutcomes) {
+      if (scanOutcome === null) continue;
+      completedScans.push(scanOutcome);
     }
 
     if (!isQuiet && isMultiProject && completedScans.length > 0) {
@@ -557,16 +623,44 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         printMultiProjectSummary({
           completedScans,
           categoryFilters,
-          userConfig,
           verbose: Boolean(flags.verbose),
+          outputDirectory: flags.outputDir,
           isOffline: !shouldShowShareLink,
           projectName: path.basename(resolvedDirectory),
+          totalElapsedMilliseconds: performance.now() - scanLoopStartTime,
         }),
       );
     }
 
+    const surfaceDiagnostics = filterScansForSurface(
+      completedScans,
+      scanOptions.outputSurface ?? "cli",
+    );
+    const selectedSurfaceDiagnostics = filterDiagnosticsByCategories(
+      surfaceDiagnostics,
+      categoryFilters,
+    );
+
+    // Single-project scans dump from `inspect()` rendering, and non-quiet
+    // monorepo scans from the multi-project summary. Everything else —
+    // quiet workspace scans (`--json` / `--score`) and runs where every
+    // project was skipped in diff mode — dumps here; quiet runs send the
+    // path line to stderr to keep machine-read stdout clean.
+    const didScansWriteDump = isMultiProject
+      ? !isQuiet && completedScans.length > 0
+      : completedScans.length > 0;
+    if (flags.outputDir && !didScansWriteDump) {
+      await Effect.runPromise(
+        printDiagnosticsDump(
+          selectedSurfaceDiagnostics,
+          flags.outputDir,
+          false,
+          isQuiet ? "stderr" : "stdout",
+        ),
+      );
+    }
+
     finalizeScans({
-      diagnostics: allDiagnostics,
       completedScans,
       // A resolved base ref means a baseline run; finalizeScans downgrades this
       // to `diff` if no delta was produced (degraded run).
@@ -585,16 +679,6 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       startTime,
     });
 
-    const surfaceDiagnostics = filterDiagnosticsForSurface(
-      allDiagnostics,
-      scanOptions.outputSurface ?? "cli",
-      userConfig,
-    );
-    const selectedSurfaceDiagnostics = filterDiagnosticsByCategories(
-      surfaceDiagnostics,
-      categoryFilters,
-    );
-
     // After the results print, offer to hand the issues to a coding agent
     // — an interactive select (no flag). Skipped for quiet, skip-prompts,
     // non-TTY, and agent/CI runs (those get the install hint below).
@@ -606,6 +690,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         projectName: path.basename(resolvedDirectory),
         rootDirectory: resolvedDirectory,
         interactive: true,
+        outputDirectory: flags.outputDir,
       });
       return;
     }

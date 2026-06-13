@@ -17,14 +17,30 @@ import { redactSensitiveText } from "../../utils/redact-sensitive-text.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
+const LEADING_SEVERITY_LABEL_PATTERN = /^(?:Error|Warning):\s*/;
+const TRAILING_PERIOD_PATTERN = /\.$/;
 
 // Adopted `react-hooks-js` (React Compiler) diagnostics have no
 // react-doctor `title`, so they'd otherwise render their bare
 // `react-hooks-js/todo` id. Give them a human headline & an impact-first
-// message; the specific bail-out reason stays in `help`.
+// message that carries the first line of the compiler's bail-out reason;
+// the reason's remaining lines stay in `help`, so renderers that print
+// message + help never repeat the same sentence back-to-back.
 const REACT_COMPILER_TITLE = "React Compiler can't optimize this";
-const REACT_COMPILER_MESSAGE =
-  "This component misses React Compiler's automatic memoization & re-renders more than it should. Rewrite the flagged code so the compiler can optimize it.";
+// The compiler's `todo` rule fires on syntax it doesn't handle yet —
+// an unsupported-syntax bail-out, not an optimization miss in the
+// user's code, so it gets its own headline.
+const REACT_COMPILER_TODO_TITLE = "React Compiler doesn't support this syntax";
+const REACT_COMPILER_IMPACT =
+  "This component misses React Compiler's automatic memoization & re-renders more than it should";
+const REACT_COMPILER_ACTION = "Rewrite the flagged code so the compiler can optimize it.";
+const REACT_COMPILER_GENERIC_MESSAGE = `${REACT_COMPILER_IMPACT}. ${REACT_COMPILER_ACTION}`;
+
+const buildReactCompilerMessage = (reasonSummary: string): string => {
+  const normalizedSummary = reasonSummary.replace(TRAILING_PERIOD_PATTERN, "");
+  if (!normalizedSummary) return REACT_COMPILER_GENERIC_MESSAGE;
+  return `${REACT_COMPILER_IMPACT}: ${normalizedSummary}. ${REACT_COMPILER_ACTION}`;
+};
 
 // Adopted third-party plugins (not in the react-doctor registry) → the
 // clear user-facing bucket their diagnostics roll up under. Mirrors the
@@ -88,8 +104,10 @@ const getRuleTitle = (ruleName: string): string | undefined =>
 
 // react-doctor rules carry their own `title`; adopted React Compiler
 // diagnostics get a fixed human headline instead of their bare id.
-const resolveDiagnosticTitle = (plugin: string, rule: string): string | undefined =>
-  plugin === "react-hooks-js" ? REACT_COMPILER_TITLE : getRuleTitle(rule);
+const resolveDiagnosticTitle = (plugin: string, rule: string): string | undefined => {
+  if (plugin !== "react-hooks-js") return getRuleTitle(rule);
+  return rule === "todo" ? REACT_COMPILER_TODO_TITLE : REACT_COMPILER_TITLE;
+};
 
 const cleanDiagnosticMessage = (
   message: unknown,
@@ -128,10 +146,29 @@ const resolveCleanedDiagnostic = (
   project: ProjectInfo,
 ): CleanedDiagnostic => {
   if (plugin === "react-hooks-js") {
-    const rawMessage = message.replace(FILEPATH_WITH_LOCATION_PATTERN, "").trim();
+    const bailoutReason = message
+      .replace(FILEPATH_WITH_LOCATION_PATTERN, "")
+      .trim()
+      .replace(LEADING_SEVERITY_LABEL_PATTERN, "")
+      .trim();
+    // `todo` bail-out reasons are compiler-internal work notes (e.g.
+    // "(BuildHIR::lowerExpression) Handle TaggedTemplateExpression
+    // expressions") — not user-facing impact copy — so they stay in
+    // `help` and the message keeps its generic wording.
+    if (rule === "todo") {
+      return {
+        message: REACT_COMPILER_GENERIC_MESSAGE,
+        help: appendReanimatedSharedValueHint(bailoutReason || help, rule, project),
+      };
+    }
+    // The reason's first line is its summary; any remaining lines are the
+    // compiler's elaboration. The summary moves into the primary message
+    // and only the elaboration stays in `help`.
+    const [reasonSummary = "", ...reasonDetailLines] = bailoutReason.split("\n");
+    const reasonDetail = reasonDetailLines.join("\n").trim();
     return {
-      message: REACT_COMPILER_MESSAGE,
-      help: appendReanimatedSharedValueHint(rawMessage || help, rule, project),
+      message: buildReactCompilerMessage(reasonSummary.trim()),
+      help: appendReanimatedSharedValueHint(reasonDetail || help, rule, project),
     };
   }
   const cleaned = message.replace(FILEPATH_WITH_LOCATION_PATTERN, "").trim();

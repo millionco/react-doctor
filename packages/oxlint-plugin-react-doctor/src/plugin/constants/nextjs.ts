@@ -5,6 +5,21 @@ export const PAGE_OR_LAYOUT_FILE_PATTERN = new RegExp(
   `/(page|layout)\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`,
 );
 
+// Candidate `layout.*` filenames an App Router directory walk probes. Mirrors
+// the extensions in NEXTJS_SOURCE_FILE_EXTENSION_GROUP so `.mts`/`.mjs`
+// layouts are recognized too.
+export const LAYOUT_FILE_NAMES = [
+  "layout.tsx",
+  "layout.jsx",
+  "layout.ts",
+  "layout.js",
+  "layout.mts",
+  "layout.mjs",
+];
+
+// Export names that give an App Router page its search-preview metadata.
+export const METADATA_EXPORT_NAMES = ["metadata", "generateMetadata"];
+
 export const INTERNAL_PAGE_PATH_PATTERN =
   /\/(?:(?:\((?:dashboard|admin|settings|account|internal|manage|console|portal|auth|onboarding|app|ee|protected)\))|(?:dashboard|admin|settings|account|internal|manage|console|portal))\//i;
 

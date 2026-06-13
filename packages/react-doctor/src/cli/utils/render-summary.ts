@@ -11,6 +11,7 @@ import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 import { buildSectionDivider } from "./build-section-divider.js";
 import { colorizeByScore } from "./colorize-by-score.js";
 import { SCORE_PROJECTION_BAR_ROWS_ABOVE_CURSOR } from "./constants.js";
+import { isJsonModeActive } from "./json-mode.js";
 import { collectAffectedFiles } from "./render-diagnostics.js";
 import {
   animateScoreProjection,
@@ -81,6 +82,37 @@ export const printFooter = (input: PrintFooterInput): Effect.Effect<void> =>
     yield* printFooterDescription("Report issues and star the repository!");
   });
 
+// Writes the full diagnostics dump (diagnostics.json + one .txt per rule) and
+// prints where it landed when the user asked for it (`--output-dir`) or is in
+// verbose mode. Quiet callers (`--score` / `--json`) pass "stderr" so
+// machine-read stdout stays clean. The stderr line writes to `process.stderr`
+// directly because JSON mode no-ops `globalThis.console` (which Effect's
+// `Console` resolves to) — and when JSON mode is active with `--output-dir`,
+// the path is rerouted to stderr so the user can still discover it.
+// v4 forbids try/catch inside Effect.gen —
+// wrap the sync write in `Effect.try` (always-tagged form: `{ try, catch }`)
+// and recover via `Effect.orElseSucceed`: failing to write the dump shouldn't
+// block the summary, so we fall through to `null` and skip the line.
+export const printDiagnosticsDump = (
+  diagnostics: Diagnostic[],
+  outputDirectory?: string | null,
+  verbose?: boolean,
+  stream: "stdout" | "stderr" = "stdout",
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const writtenDirectory = yield* Effect.try({
+      try: () => writeDiagnosticsDirectory(diagnostics, outputDirectory),
+      catch: (cause) => cause,
+    }).pipe(Effect.orElseSucceed((): string | null => null));
+    if (writtenDirectory !== null && (verbose || outputDirectory)) {
+      const pathLine = highlighter.gray(`  Full diagnostics written to ${writtenDirectory}`);
+      const useStderr = stream === "stderr" || (Boolean(outputDirectory) && isJsonModeActive());
+      yield* useStderr
+        ? Effect.sync(() => process.stderr.write(`${pathLine}\n`))
+        : Console.log(pathLine);
+    }
+  });
+
 export interface PrintSummaryInput {
   readonly diagnostics: Diagnostic[];
   readonly elapsedMilliseconds: number;
@@ -91,6 +123,7 @@ export interface PrintSummaryInput {
   readonly totalSourceFileCount: number;
   readonly noScoreMessage: string;
   readonly verbose?: boolean;
+  readonly outputDirectory?: string | null;
   // First interactive run on a TTY: draw the score bar plain, then grow the
   // projected "ghost gain" in (eased) in sync with the "you could improve"
   // line. Defaults to the static projected bar drawn by `printScoreHeader`.
@@ -127,16 +160,5 @@ export const printSummary = (input: PrintSummaryInput): Effect.Effect<void> =>
       yield* printNoScoreHeader(input.noScoreMessage);
     }
 
-    // v4 forbids try/catch inside Effect.gen — wrap the sync write
-    // in `Effect.try` (always-tagged form: `{ try, catch }`) and
-    // recover via `Effect.orElseSucceed`. Failing to write the dump
-    // shouldn't block the summary, so we fall through to `null` and
-    // skip the line.
-    const diagnosticsDirectory = yield* Effect.try({
-      try: () => writeDiagnosticsDirectory(input.diagnostics),
-      catch: (cause) => cause,
-    }).pipe(Effect.orElseSucceed(() => null as string | null));
-    if (diagnosticsDirectory !== null && input.verbose) {
-      yield* Console.log(highlighter.gray(`  Full diagnostics written to ${diagnosticsDirectory}`));
-    }
+    yield* printDiagnosticsDump(input.diagnostics, input.outputDirectory, input.verbose);
   });

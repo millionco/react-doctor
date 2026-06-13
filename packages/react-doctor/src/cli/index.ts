@@ -60,6 +60,7 @@ ${formatExampleLines([
   ["react-doctor", "scan the current project"],
   ["react-doctor ./apps/web", "scan a specific directory"],
   ["react-doctor --diff main", "scan only files changed vs. main"],
+  ["react-doctor --project modules/a,modules/b", "score each module separately (names or paths)"],
   ["react-doctor --staged", "scan staged files (pre-commit hook)"],
   ["react-doctor --category Security", "show only one diagnostic category"],
   ["react-doctor --blocking warning", "fail CI on warnings too (default: error)"],
@@ -110,6 +111,7 @@ const program = new Command()
     "skip dead-code analysis (unused files / exports / dependencies, circular imports)",
   )
   .option("--verbose", "show every rule and per-file details (default shows top 3 rules)")
+  .option("--output-dir <dir>", "directory for the full diagnostics dump (default: a temp folder)")
   .option("--score", "output only the score")
   .option("--json", "output a single structured JSON report (suppresses other output)")
   .option("--json-compact", "with --json, emit compact JSON (no indentation)")
@@ -118,7 +120,10 @@ const program = new Command()
     "--no-parallel",
     "lint serially with one worker (default: parallel across CPU cores; set the worker count with REACT_DOCTOR_PARALLEL)",
   )
-  .option("--project <name>", "select workspace project (comma-separated for multiple)")
+  .option(
+    "--project <name>",
+    "select projects: workspace names or directory paths (comma-separated for multiple); overrides the `projects` config field",
+  )
   .option(
     "--scope <value>",
     "how much to scan/report: full (default), files, changed (only new issues vs base), or lines (only changed lines)",
@@ -179,7 +184,10 @@ program.action(inspectAction);
 program
   .command("why <location>")
   .description("Explain why a rule fired (or why a suppression didn't apply) at a file:line")
-  .option("--project <name>", "select workspace project (comma-separated for multiple)")
+  .option(
+    "--project <name>",
+    "select projects: workspace names or directory paths (comma-separated for multiple)",
+  )
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")

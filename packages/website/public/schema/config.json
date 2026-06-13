@@ -48,6 +48,10 @@
         "lint": {
           "type": "boolean"
         },
+        "supplyChain": {
+          "$ref": "#/definitions/SupplyChainConfig",
+          "description": "Socket.dev supply-chain score gate. Runs by default; set `supplyChain: { enabled: false }` to opt out. See  {@link  SupplyChainConfig } . Every direct dependency is scored against Socket's free PURL endpoint and a low score fails the scan (at the default `severity: \"error\"`)."
+        },
         "deadCode": {
           "type": "boolean",
           "description": "Whether to run dead-code analysis (via `deslop-js`) alongside lint. Reports unused files, unused exports, unused dependencies, and circular imports under the \"Maintainability\" category. Default: `true`. Always skipped in `--diff` / `--staged` modes because reachability is a whole-project property."
@@ -59,11 +63,20 @@
           "type": "boolean",
           "description": "Whether to surface `\"warning\"`-severity diagnostics. Default: `true` — every warning reaches every surface (CLI, PR comment, score, the CI gate). Warnings only flip the exit code when `blocking` is set to `\"warning\"`; at the default `\"error\"` threshold they stay advisory.\n\nSet to `false` to surface only `\"error\"`-severity findings. This is the master toggle and runs after per-rule / per-category severity overrides: a rule the user explicitly restamps to `\"warn\"` (via `rules` / `categories`) still shows even when `warnings` is `false`."
         },
+        "scope": {
+          "$ref": "#/definitions/ScopeValue",
+          "description": "Scan scope. Defaults to `\"full\"`. See `ScopeValue` for the four values. The CLI `--scope` flag and the GitHub Action `scope` input set the same thing; flags win over config."
+        },
+        "base": {
+          "type": "string",
+          "description": "Base git ref the `\"files\"` / `\"changed\"` / `\"lines\"` scopes compare against. Auto-detected from the default branch / merge-base when unset."
+        },
         "diff": {
           "type": [
             "boolean",
             "string"
-          ]
+          ],
+          "deprecated": "Use `scope` instead. Still honored as an alias when `scope`\nis unset: `diff: \"<base>\"` / `diff: true` → `scope: \"changed\"`,\n`diff: false` → `scope: \"full\"`. Using it emits a one-time deprecation\nwarning. Prefer `scope` (+ `base`)."
         },
         "blocking": {
           "$ref": "#/definitions/BlockingLevel",
@@ -85,6 +98,13 @@
         "rootDir": {
           "type": "string",
           "description": "Redirect react-doctor at a different project directory than the one it was invoked against. Resolved relative to the location of the config file that declared this field (NOT relative to the CWD), so the redirect is stable no matter where the CLI / `diagnose()` is run from. Absolute paths are used as-is.\n\nTypical use: a monorepo root holds the only `doctor.config.*` (so editor tooling and child commands all find it), but the React app lives in `apps/web`. Setting `\"rootDir\": \"apps/web\"` makes every invocation that loads this config scan that subproject without anyone needing to `cd` first or pass an explicit path.\n\nIgnored if the resolved path does not exist or is not a directory (a warning is emitted and react-doctor falls back to the originally requested directory)."
+        },
+        "projects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Projects to scan and score separately — the config-file equivalent of the CLI `--project` flag, for repos that always want per-module scoring (e.g. a monorepo dashboard tracking each module's score daily) without passing the flag on every run.\n\nEntries resolve exactly like `--project` values: workspace package names (or directory basenames) first, then directory paths relative to the scanned root. `\"*\"` selects every discovered workspace project. Invalid entries fail the run with the same error as the flag.\n\nPrecedence: an explicit `--project` flag overrides this list. Only the config at the invocation root is consulted — `projects` inside a module's own config is ignored (modules can't redirect the scan)."
         },
         "textComponents": {
           "type": "array",
@@ -183,6 +203,43 @@
         "files"
       ],
       "additionalProperties": false
+    },
+    "SupplyChainConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether to run the Socket supply-chain score check. Default: `true`. Set to `false` to opt out — the check performs one network request per direct dependency. It is always skipped in `--diff` / `--staged` mode and in editor scans regardless of this setting."
+        },
+        "minScore": {
+          "type": "number",
+          "description": "Minimum acceptable Socket score on a 0–100 scale. A direct dependency whose worst Socket *security* axis — supply chain or vulnerability — is below this is flagged; the quality / maintenance / license axes never gate. Default: `50`. Values outside `0..100` are clamped."
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning"
+          ],
+          "description": "Severity for a below-threshold dependency. `\"error\"` (default) fails the scan at the standard `blocking: \"error\"` gate; `\"warning\"` keeps the finding advisory."
+        },
+        "includeDevDependencies": {
+          "type": "boolean",
+          "description": "Whether to score `devDependencies` in addition to `dependencies`. Default: `true`."
+        }
+      },
+      "additionalProperties": false,
+      "description": "Configuration for the Socket.dev supply-chain score check (the `SupplyChain` service). Runs by default; set `enabled: false` to opt out (it performs one network request per direct dependency).\n\nMirrors how Socket Firewall's free tier (`sfw`) works: each direct dependency's PURL is looked up against Socket's keyless `firewall-api.socket.dev/purl/<purl>` endpoint, which returns per-axis scores (0–100 once normalized). A dependency whose worst security axis (supply chain or vulnerability) scores below `minScore` produces a diagnostic; at the default `severity: \"error\"` it fails the scan (non-zero CI exit), the same way an error-severity lint finding does."
+    },
+    "ScopeValue": {
+      "type": "string",
+      "enum": [
+        "full",
+        "files",
+        "changed",
+        "lines"
+      ],
+      "description": "How much of the project a scan looks at and reports on — the single knob the CLI `--scope` flag, the GitHub Action `scope` input, and this config field all share. Ordered widest to narrowest:\n\n- `\"full\"` — whole project, every issue (the default). Whole-project checks   (dead-code, environment, supply-chain) run only at this scope.\n- `\"files\"` — only the files changed vs the base, with ALL issues in them   (no compare-to-main). What `--staged` and an uncommitted `--diff` do today.\n- `\"changed\"` — only issues the change INTRODUCED vs the base (the baseline   delta). What `--diff <base>` and the action's `scope: changed` do today.\n- `\"lines\"` — only issues on the lines the change actually touched."
     },
     "BlockingLevel": {
       "type": "string",

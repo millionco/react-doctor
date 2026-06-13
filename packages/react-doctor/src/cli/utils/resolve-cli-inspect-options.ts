@@ -35,6 +35,7 @@ export const resolveCliInspectOptions = (
     lint: flags.lint,
     deadCode: flags.deadCode,
     verbose: flags.verbose,
+    outputDirectory: flags.outputDir,
     // `--no-respect-inline-disables` is negatable-only, so commander defaults
     // this to `true`; map that back to `undefined` so a config value can win,
     // and only honor an explicit `false` (the user passed the flag).

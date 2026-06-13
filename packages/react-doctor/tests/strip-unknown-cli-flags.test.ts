@@ -56,6 +56,17 @@ describe("stripUnknownCliFlags", () => {
     ]);
   });
 
+  it("keeps --output-dir and consumes its value (no value leaks as a positional)", () => {
+    expect(stripUserArguments([".", "--output-dir", "./doctor-report"])).toEqual([
+      ".",
+      "--output-dir",
+      "./doctor-report",
+    ]);
+    expect(stripUserArguments(["--output-dir=./doctor-report"])).toEqual([
+      "--output-dir=./doctor-report",
+    ]);
+  });
+
   it("drops unknown install flags while keeping install options", () => {
     expect(stripUserArguments(["install", "--offline", "--cwd", ".", "--agent-hooks"])).toEqual([
       "install",

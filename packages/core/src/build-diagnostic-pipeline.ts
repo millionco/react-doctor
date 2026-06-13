@@ -1,5 +1,10 @@
 import reactDoctorPlugin from "oxlint-plugin-react-doctor";
-import type { Diagnostic, ReactDoctorConfig, RuleSeverityOverride } from "./types/index.js";
+import type {
+  Diagnostic,
+  DiagnosticFileContext,
+  ReactDoctorConfig,
+  RuleSeverityOverride,
+} from "./types/index.js";
 import {
   compileIgnoreOverrides,
   isDiagnosticIgnoredByOverrides,
@@ -9,7 +14,7 @@ import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { evaluateSuppression } from "./evaluate-suppression.js";
 import { getDiagnosticRuleIdentity } from "./get-diagnostic-rule-identity.js";
 import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "./is-ignored-file.js";
-import { isTestFilePath } from "./is-test-file.js";
+import { classifyFileContext } from "./classify-file-context.js";
 import { resolveRuleSeverityOverride } from "./resolve-rule-severity-override.js";
 import { isSameRuleKey } from "./rule-key-aliases.js";
 import { APP_ONLY_RULE_KEYS } from "./constants.js";
@@ -60,6 +65,8 @@ const collectStringSet = (values: unknown): ReadonlySet<string> => {
  * 5. `rn-no-raw-text` suppression via configured `textComponents` and
  *    `rawTextWrapperComponents` (config-driven JSX enclosure checks)
  * 6. inline suppressions (`// react-doctor-disable-next-line ...`)
+ * 7. file-context stamping (`fileContext: "test" | "story"` on
+ *    survivors in non-production files, so renderers can label them)
  *
  * Returns `null` when the diagnostic is dropped, the (possibly
  * severity-restamped) diagnostic otherwise.
@@ -87,7 +94,7 @@ export const buildDiagnosticPipeline = (
   const hasTextComponents = textComponentNames.size > 0;
   const hasRawTextWrappers = rawTextWrapperComponentNames.size > 0;
   const fileLinesCache = new Map<string, string[] | null>();
-  const testFileCache = new Map<string, boolean>();
+  const fileContextCache = new Map<string, DiagnosticFileContext>();
   const libraryFileCache = new Map<string, boolean>();
 
   // App-only rules (`static-components`, `no-render-prop-children`) describe
@@ -113,11 +120,11 @@ export const buildDiagnosticPipeline = (
     return lines;
   };
 
-  const isTest = (filePath: string): boolean => {
-    let cached = testFileCache.get(filePath);
+  const getFileContext = (filePath: string): DiagnosticFileContext => {
+    let cached = fileContextCache.get(filePath);
     if (cached === undefined) {
-      cached = isTestFilePath(filePath);
-      testFileCache.set(filePath, cached);
+      cached = classifyFileContext(filePath);
+      fileContextCache.set(filePath, cached);
     }
     return cached;
   };
@@ -127,7 +134,7 @@ export const buildDiagnosticPipeline = (
     const rule = reactDoctorPlugin.rules[diagnostic.rule];
     if (!rule?.tags?.includes("test-noise")) return false;
     if (rule.tags.includes("migration-hint")) return false;
-    return isTest(diagnostic.filePath);
+    return getFileContext(diagnostic.filePath) !== "production";
   };
 
   const isRuleIgnored = (ruleIdentifier: string): boolean => {
@@ -233,6 +240,11 @@ export const buildDiagnosticPipeline = (
             current = { ...current, suppressionHint: evaluation.nearMissHint };
           }
         }
+      }
+
+      const fileContext = getFileContext(current.filePath);
+      if (fileContext !== "production") {
+        current = { ...current, fileContext };
       }
 
       return current;

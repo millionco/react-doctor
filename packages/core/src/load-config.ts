@@ -3,7 +3,9 @@ import * as Effect from "effect/Effect";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseJSON5 } from "confbox";
+import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti";
+import type { Jiti } from "jiti";
 import type { ReactDoctorConfig } from "./types/index.js";
 import { isFile, isPlainObject } from "./project-info/index.js";
 import { isProjectBoundary } from "./utils/is-project-boundary.js";
@@ -56,9 +58,81 @@ const jiti = createJiti(import.meta.url);
 const formatError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-const loadModuleConfig = async (filePath: string): Promise<unknown> => {
-  const imported = await jiti.import<{ default?: unknown }>(filePath);
+const importDefaultExport = async (jitiInstance: Jiti, filePath: string): Promise<unknown> => {
+  const imported = await jitiInstance.import<{ default?: unknown }>(filePath);
   return imported?.default ?? imported;
+};
+
+// Config files authored against the published package import `defineConfig`
+// from `react-doctor/api` at runtime. When the scanned repo has no
+// node_modules (e.g. the GitHub Action runs the CLI via `npm exec` without
+// installing the repo's dependencies), that import cannot resolve from the
+// config file's directory and the config would silently fall back to
+// defaults. The load is retried with that specifier aliased to the running
+// package's own copy: a package self-reference from the published bundle,
+// or `@react-doctor/core` (which exports the same `defineConfig`) in the
+// workspace.
+const SELF_PACKAGE_IMPORT_SPECIFIER = "react-doctor/api";
+const SELF_PACKAGE_RESOLVE_TARGETS = ["react-doctor/api", "@react-doctor/core"] as const;
+const MODULE_NOT_FOUND_ERROR_CODES: ReadonlySet<string> = new Set([
+  "MODULE_NOT_FOUND",
+  "ERR_MODULE_NOT_FOUND",
+]);
+
+// The alias target depends only on where the running package is installed, so
+// it is resolved lazily on first rescue and memoized: runs that never hit the
+// no-node_modules fallback (no config, a JSON config, or an import that
+// resolves normally) never pay the resolution + extra-jiti cost. `undefined`
+// means "not yet resolved"; `null` means "resolved, no self-package found".
+let selfAliasJiti: Jiti | null | undefined;
+
+const getSelfAliasJiti = (): Jiti | null => {
+  if (selfAliasJiti !== undefined) return selfAliasJiti;
+  for (const resolveTarget of SELF_PACKAGE_RESOLVE_TARGETS) {
+    try {
+      const aliasTargetPath = fileURLToPath(jiti.esmResolve(resolveTarget));
+      selfAliasJiti = createJiti(import.meta.url, {
+        alias: { [SELF_PACKAGE_IMPORT_SPECIFIER]: aliasTargetPath },
+      });
+      return selfAliasJiti;
+    } catch {
+      continue;
+    }
+  }
+  selfAliasJiti = null;
+  return selfAliasJiti;
+};
+
+// jiti reports an unresolved import as a module-not-found error that names the
+// failing specifier. The specifier is matched quote-insensitively because jiti
+// emits both quoted (`Cannot find module 'react-doctor/api'`) and unquoted
+// (`Cannot find module react-doctor/api imported from ...`) forms depending on
+// its resolver path. A missing third-party package like `@acme/react-doctor-rules`
+// does not contain `react-doctor/api`, so the rescue stays scoped to the
+// self-import.
+const isSelfPackageResolutionError = (error: unknown): boolean =>
+  error instanceof Error &&
+  "code" in error &&
+  typeof error.code === "string" &&
+  MODULE_NOT_FOUND_ERROR_CODES.has(error.code) &&
+  error.message.includes(SELF_PACKAGE_IMPORT_SPECIFIER);
+
+const loadModuleConfig = async (filePath: string): Promise<unknown> => {
+  try {
+    return await importDefaultExport(jiti, filePath);
+  } catch (error) {
+    if (!isSelfPackageResolutionError(error)) throw error;
+    const aliasJiti = getSelfAliasJiti();
+    if (!aliasJiti) throw error;
+    try {
+      return await importDefaultExport(aliasJiti, filePath);
+    } catch (retryError) {
+      throw new Error(
+        `${formatError(error)} (retry with ${SELF_PACKAGE_IMPORT_SPECIFIER} aliased to the running react-doctor package also failed: ${formatError(retryError)})`,
+        { cause: retryError },
+      );
+    }
+  }
 };
 
 // JSON5 is a strict superset of JSON: it allows comments and trailing

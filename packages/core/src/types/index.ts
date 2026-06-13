@@ -21,6 +21,7 @@ export type {
 export type {
   CleanedDiagnostic,
   Diagnostic,
+  DiagnosticFileContext,
   DiagnosticRelatedLocation,
   OxlintOutput,
 } from "./diagnostic.js";

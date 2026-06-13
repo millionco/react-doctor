@@ -1,4 +1,4 @@
-export { diagnose, diagnoseProjects } from "./diagnose.js";
+export { diagnose } from "./diagnose.js";
 export { defineConfig } from "@react-doctor/core";
 
 export type {

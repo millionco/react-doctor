@@ -78,6 +78,307 @@ describe("react-native/rn-no-raw-text", () => {
         const App = () => <Label><Icon /> text</Label>;
       `);
     });
+
+    it("suppresses a wrapper forwarding children into a nested Text", () => {
+      expectPass(`
+        function Chip({ children }) {
+          return (
+            <View testID="Chip">
+              <Text>{children}</Text>
+            </View>
+          );
+        }
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses an arrow wrapper forwarding props.children into a nested Text", () => {
+      expectPass(`
+        const Badge = (props) => (
+          <View style={props.style}>
+            <Text>{props.children}</Text>
+          </View>
+        );
+        const App = () => <Badge>New</Badge>;
+      `);
+    });
+
+    it("suppresses a forwardRef/memo wrapper forwarding children into a nested Text", () => {
+      expectPass(`
+        import { forwardRef, memo } from "react";
+        const Chip = memo(
+          forwardRef(({ children }, ref) => (
+            <View ref={ref}>
+              <Text>{children}</Text>
+            </View>
+          )),
+        );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a wrapper with a conditional return", () => {
+      expectPass(`
+        const Chip = ({ children, isLoading }) =>
+          isLoading ? <Spinner /> : (
+            <View>
+              <Text>{children}</Text>
+            </View>
+          );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a wrapper returning a fragment with a nested Text", () => {
+      expectPass(`
+        const Chip = ({ children }) => (
+          <>
+            <Icon />
+            <Text>{children}</Text>
+          </>
+        );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a wrapper with renamed destructured children", () => {
+      expectPass(`
+        const Chip = ({ children: content }) => (
+          <View>
+            <Text>{content}</Text>
+          </View>
+        );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a wrapper using the children prop form on Text", () => {
+      expectPass(`
+        const Chip = ({ children }) => (
+          <View>
+            <Text children={children} />
+          </View>
+        );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a wrapper with a return inside an if branch", () => {
+      expectPass(`
+        function Chip({ children, compact }) {
+          if (compact) {
+            return <Text>{children}</Text>;
+          }
+          return (
+            <View>
+              <Text>{children}</Text>
+            </View>
+          );
+        }
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a wrapper that forwards children through another in-file wrapper", () => {
+      expectPass(`
+        const Chip = ({ children }) => (
+          <View>
+            <Text>{children}</Text>
+          </View>
+        );
+        const Badge = ({ children }) => <Chip>{children}</Chip>;
+        const App = () => <Badge>New</Badge>;
+      `);
+    });
+
+    it("suppresses a wrapper that aliases children to a variable", () => {
+      expectPass(`
+        function Chip({ children }) {
+          const content = children;
+          return (
+            <View>
+              <Text>{content}</Text>
+            </View>
+          );
+        }
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a wrapper that destructures children from props in the body", () => {
+      expectPass(`
+        const Chip = (props) => {
+          const { children } = props;
+          return (
+            <View>
+              <Text>{children}</Text>
+            </View>
+          );
+        };
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a wrapper spreading props onto a nested Text", () => {
+      expectPass(`
+        const Chip = (props) => (
+          <View>
+            <Text {...props} />
+          </View>
+        );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a wrapper spreading an object rest that carries children", () => {
+      expectPass(`
+        const Chip = ({ style, ...rest }) => (
+          <View style={style}>
+            <Text {...rest} />
+          </View>
+        );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("still fires when the spread rest excludes children", () => {
+      expectFail(`
+        const Chip = ({ children, ...rest }) => (
+          <View>
+            <Text {...rest} />
+            {children}
+          </View>
+        );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a class component forwarding this.props.children into a Text", () => {
+      expectPass(`
+        class Chip extends React.Component {
+          render() {
+            return (
+              <View>
+                <Text>{this.props.children}</Text>
+              </View>
+            );
+          }
+        }
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a styled(Text) factory component", () => {
+      expectPass(`
+        const FancyChip = styled(Text)\`
+          color: red;
+        \`;
+        const App = () => <FancyChip>Test Chip</FancyChip>;
+      `);
+    });
+
+    it("suppresses a styled.Text factory component", () => {
+      expectPass(`
+        const FancyCopy = styled.Text({ color: "red" });
+        const App = () => <FancyCopy>Test Chip</FancyCopy>;
+      `);
+    });
+
+    it("still fires for a styled(View) factory component", () => {
+      expectFail(`
+        const Card = styled(View)\`
+          padding: 4px;
+        \`;
+        const App = () => <Card>Test Chip</Card>;
+      `);
+    });
+
+    it("still fires when one branch renders children outside a Text", () => {
+      expectFail(`
+        const Chip = ({ children, inline }) => {
+          if (inline) return <View>{children}</View>;
+          return (
+            <View>
+              <Text>{children}</Text>
+            </View>
+          );
+        };
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("still fires when children comes from an unrelated destructure", () => {
+      expectFail(`
+        const Chip = ({ item }) => {
+          const { children } = item;
+          return (
+            <View>
+              <Text>{children}</Text>
+            </View>
+          );
+        };
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("still fires when the nested Text receives an unrelated object's children", () => {
+      expectFail(`
+        const Chip = ({ item }) => (
+          <View>
+            <Text>{item.children}</Text>
+          </View>
+        );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("still fires when one branch spreads props onto a non-text element", () => {
+      expectFail(`
+        const Chip = (props) => {
+          if (props.inline) return <View {...props} />;
+          return (
+            <View>
+              <Text>{props.children}</Text>
+            </View>
+          );
+        };
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("does not treat a render-prop's Text as the wrapper's own markup", () => {
+      expectFail(`
+        const Box = ({ children, renderLabel }) => (
+          <View>
+            <Pressable>{() => <Text>{children}</Text>}</Pressable>
+            {children}
+          </View>
+        );
+        const App = () => <Box>Hello</Box>;
+      `);
+    });
+
+    it("still fires when the nested Text receives something other than children", () => {
+      expectFail(`
+        const Card = ({ title, children }) => (
+          <View>
+            <Text>{title}</Text>
+            {children}
+          </View>
+        );
+        const App = () => <Card title="hi">Body copy</Card>;
+      `);
+    });
+  });
+
+  describe("test-noise suppression", () => {
+    it("does not fire in testlike files", () => {
+      const result = runRule(rnNoRawText, `const App = () => <View>Hello</View>;`, {
+        filename: "Chip.test.tsx",
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
   });
 
   describe("expo universal ui ListItem", () => {

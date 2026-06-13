@@ -111,6 +111,136 @@ describe("checkReactNativeProject — legacy metro babel preset", () => {
     ).not.toContain("rn-no-metro-babel-preset");
   });
 
+  it("flags the modern preset without the enableBabelRuntime option", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: ['module:@react-native/babel-preset'] };`,
+    );
+    const diagnostics = checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory));
+    const hit = diagnostics.find((d) => d.rule === "rn-no-metro-babel-runtime-version");
+    expect(hit).toBeDefined();
+    // A bundle-size optimization, not a broken build — advisory, never blocking.
+    expect(hit?.severity).toBe("warning");
+  });
+
+  it("flags the modern preset when enableBabelRuntime is true (no version)", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: [['module:@react-native/babel-preset', { enableBabelRuntime: true }]] };`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).toContain("rn-no-metro-babel-runtime-version");
+  });
+
+  it("flags the modern preset when enableBabelRuntime is explicitly false", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: [['module:@react-native/babel-preset', { enableBabelRuntime: false }]] };`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).toContain("rn-no-metro-babel-runtime-version");
+  });
+
+  it("flags the modern preset even when enableBabelRuntime only appears in a comment", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `// TODO: set enableBabelRuntime\nmodule.exports = { presets: ['module:@react-native/babel-preset'] };`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).toContain("rn-no-metro-babel-runtime-version");
+  });
+
+  it("does NOT flag the modern preset when enableBabelRuntime is set", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: [['module:@react-native/babel-preset', { enableBabelRuntime: '^7.26.0' }]] };`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-no-metro-babel-runtime-version");
+  });
+
+  it("does NOT flag a JSON babel config that sets enableBabelRuntime", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.json",
+      `{ "presets": [["module:@react-native/babel-preset", { "enableBabelRuntime": "^7.26.0" }]] }`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-no-metro-babel-runtime-version");
+  });
+
+  it("does NOT flag an Expo babel config without the RN preset", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: ['babel-preset-expo'] };`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-no-metro-babel-runtime-version");
+  });
+
+  it("does NOT flag an Expo config that only mentions the RN preset in a comment", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `// migrated off module:@react-native/babel-preset\nmodule.exports = { presets: ['babel-preset-expo'] };`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-no-metro-babel-runtime-version");
+  });
+
   it("does NOT flag a bare mention in a comment (no module: prefix)", () => {
     const projectDirectory = makeProjectDirectory();
     writePackageJson(projectDirectory, {

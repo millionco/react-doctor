@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { readPackageJson } from "../../project-info/index.js";
 import type { Diagnostic, PackageJson } from "../../types/index.js";
+import { buildReactNativeDiagnostic } from "./utils/build-react-native-diagnostic.js";
 
 const BUILDER_BOB_PACKAGE = "react-native-builder-bob";
 
@@ -30,16 +31,11 @@ export const checkReactNativeLibraryDependencies = (rootDirectory: string): Diag
 
   const quoted = misplaced.map((name) => `"${name}"`).join(" and ");
   return [
-    {
+    buildReactNativeDiagnostic({
       filePath: "package.json",
-      plugin: "react-doctor",
       rule: "rn-library-react-in-dependencies",
-      severity: "warning",
       message: `This react-native-builder-bob library lists ${quoted} in \`dependencies\` — that ships a second copy into consumer apps, causing "Invalid hook call" (duplicate React) and duplicate-native-module crashes.`,
       help: `Move ${quoted} to \`peerDependencies\` (keep ${misplaced.length === 1 ? "it" : "them"} in \`devDependencies\` for local development).`,
-      line: 0,
-      column: 0,
-      category: "Correctness",
-    },
+    }),
   ];
 };

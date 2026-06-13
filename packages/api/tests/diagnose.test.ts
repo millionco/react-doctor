@@ -4,7 +4,6 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import {
   diagnose,
-  diagnoseProjects,
   NoReactDependencyError,
   NotADirectoryError,
   ProjectNotFoundError,
@@ -79,9 +78,9 @@ describe("diagnose", () => {
   });
 });
 
-describe("diagnoseProjects", () => {
+describe("diagnose({ projects })", () => {
   it("returns per-project results for multiple directories", async () => {
-    const result = await diagnoseProjects({
+    const result = await diagnose({
       projects: [
         { directory: path.join(FIXTURES_DIRECTORY, "basic-react") },
         { directory: path.join(FIXTURES_DIRECTORY, "nextjs-app") },
@@ -109,7 +108,7 @@ describe("diagnoseProjects", () => {
   });
 
   it("flattens diagnostics across all succeeded projects", async () => {
-    const result = await diagnoseProjects({
+    const result = await diagnose({
       projects: [
         { directory: path.join(FIXTURES_DIRECTORY, "basic-react") },
         { directory: path.join(FIXTURES_DIRECTORY, "nextjs-app") },
@@ -126,7 +125,7 @@ describe("diagnoseProjects", () => {
   });
 
   it("supports per-project scan option overrides", async () => {
-    const result = await diagnoseProjects({
+    const result = await diagnose({
       projects: [
         { directory: path.join(FIXTURES_DIRECTORY, "basic-react"), deadCode: false },
         { directory: path.join(FIXTURES_DIRECTORY, "nextjs-app"), deadCode: false },
@@ -143,7 +142,7 @@ describe("diagnoseProjects", () => {
   });
 
   it("respects concurrency: 1 for sequential execution", async () => {
-    const result = await diagnoseProjects({
+    const result = await diagnose({
       projects: [
         { directory: path.join(FIXTURES_DIRECTORY, "basic-react") },
         { directory: path.join(FIXTURES_DIRECTORY, "nextjs-app") },
@@ -158,7 +157,7 @@ describe("diagnoseProjects", () => {
   });
 
   it("handles a single project identically to diagnose()", async () => {
-    const multiResult = await diagnoseProjects({
+    const multiResult = await diagnose({
       projects: [{ directory: path.join(FIXTURES_DIRECTORY, "basic-react") }],
       deadCode: false,
       lint: false,
@@ -177,7 +176,7 @@ describe("diagnoseProjects", () => {
   });
 
   it("collects failing projects with ok: false without aborting the batch", async () => {
-    const result = await diagnoseProjects({
+    const result = await diagnose({
       projects: [
         { directory: path.join(FIXTURES_DIRECTORY, "basic-react") },
         { directory: noReactTempDirectory },
@@ -197,7 +196,7 @@ describe("diagnoseProjects", () => {
   });
 
   it("returns empty results for an empty projects array", async () => {
-    const result = await diagnoseProjects({ projects: [], deadCode: false, lint: false });
+    const result = await diagnose({ projects: [], deadCode: false, lint: false });
 
     expect(result.projects).toHaveLength(0);
     expect(result.diagnostics).toHaveLength(0);
@@ -206,7 +205,7 @@ describe("diagnoseProjects", () => {
   });
 
   it("clamps concurrency: 0 to 1 without hanging", async () => {
-    const result = await diagnoseProjects({
+    const result = await diagnose({
       projects: [{ directory: path.join(FIXTURES_DIRECTORY, "basic-react") }],
       deadCode: false,
       lint: false,
@@ -217,7 +216,7 @@ describe("diagnoseProjects", () => {
   });
 
   it("accepts per-project ReactDoctorConfig override", async () => {
-    const result = await diagnoseProjects({
+    const result = await diagnose({
       projects: [
         {
           directory: path.join(FIXTURES_DIRECTORY, "basic-react"),
@@ -230,5 +229,25 @@ describe("diagnoseProjects", () => {
 
     expect(result.projects).toHaveLength(1);
     expect(result.projects[0].ok).toBe(true);
+  });
+
+  it("layers per-project configs on top of a batch-level config", async () => {
+    const result = await diagnose({
+      projects: [
+        { directory: path.join(FIXTURES_DIRECTORY, "basic-react") },
+        {
+          directory: path.join(FIXTURES_DIRECTORY, "nextjs-app"),
+          config: { rules: { "react-doctor/no-prop-drilling": "off" } },
+        },
+      ],
+      config: { ignore: { tags: ["design"] } },
+      deadCode: false,
+      lint: false,
+    });
+
+    expect(result.projects).toHaveLength(2);
+    for (const projectResult of result.projects) {
+      expect(projectResult.ok).toBe(true);
+    }
   });
 });

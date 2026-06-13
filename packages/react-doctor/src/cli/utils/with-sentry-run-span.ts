@@ -12,12 +12,13 @@ export type SentryRootSpan = ReturnType<typeof Sentry.startInactiveSpan> | undef
 /**
  * Clears the module-level run-scoped Sentry state — the current scanned project
  * and the active run trace. `inspect()` calls this at the start of every run and
- * again after a clean one (it's invoked once per project in a workspace scan),
- * so a prior or just-finished scan can't attach its project tags / trace to a
- * later run or to a non-scan error (e.g. inspectAction's post-loop
- * finalize/handoff steps). A thrown scan error skips the post-run reset, leaving
- * the state for the command catch to attribute and link the crash. Safe to call
- * when Sentry is off (the refs are read only when an event is built).
+ * again after a clean one, so a prior or just-finished scan can't attach its
+ * project tags / trace to a later run or to a non-scan error (e.g.
+ * inspectAction's post-loop finalize/handoff steps). A thrown scan error skips
+ * the post-run reset, leaving the state for the command catch to attribute and
+ * link the crash. Concurrent batch members (`concurrentScan`) never touch this
+ * state — they neither write nor reset it. Safe to call when Sentry is off (the
+ * refs are read only when an event is built).
  */
 export const resetSentryRunState = (): void => {
   setSentryProjectInfo(null);
@@ -41,20 +42,30 @@ export const resetSentryRunState = (): void => {
  * state right after a clean run and at the start of the next one, so the trace
  * is never attached to a non-scan error; on a thrown error the state is left in
  * place for the command catch, then the process exits.
+ *
+ * A `concurrentScan` (one member of the CLI's multi-project pool) still gets
+ * its own root span, but skips recording the active run trace — the module-
+ * level handle has single-scan semantics, and overlapping writers would link a
+ * crash to an arbitrary sibling's trace.
  */
-export const withSentryRunSpan = <T>(run: (rootSpan: SentryRootSpan) => Promise<T>): Promise<T> => {
+export const withSentryRunSpan = <T>(
+  run: (rootSpan: SentryRootSpan) => Promise<T>,
+  options: { concurrentScan?: boolean } = {},
+): Promise<T> => {
   if (!isSentryTracingEnabled()) return run(undefined);
   const { tags } = buildSentryScope();
   const command = typeof tags.command === "string" ? tags.command : "inspect";
   return Sentry.startSpan(
     { name: `react-doctor ${command}`, op: "cli.inspect", attributes: toSpanAttributes(tags) },
     (rootSpan) => {
-      const spanContext = rootSpan.spanContext();
-      setActiveRunTrace({
-        traceId: spanContext.traceId,
-        spanId: spanContext.spanId,
-        sampled: (spanContext.traceFlags & TRACE_FLAG_SAMPLED) === TRACE_FLAG_SAMPLED,
-      });
+      if (options.concurrentScan !== true) {
+        const spanContext = rootSpan.spanContext();
+        setActiveRunTrace({
+          traceId: spanContext.traceId,
+          spanId: spanContext.spanId,
+          sampled: (spanContext.traceFlags & TRACE_FLAG_SAMPLED) === TRACE_FLAG_SAMPLED,
+        });
+      }
       return run(rootSpan);
     },
   );
@@ -67,12 +78,19 @@ export const withSentryRunSpan = <T>(run: (rootSpan: SentryRootSpan) => Promise<
  * run's root span so the transaction/trace carries the project shape too.
  * Always cheap — the span attribute set is skipped when `rootSpan` is absent
  * (tracing off), and storing the info is a plain assignment.
+ *
+ * A `concurrentScan` only sets the span attributes: the module-level project
+ * ref has single-scan semantics, and overlapping writers would stamp events
+ * and metrics with an arbitrary sibling's project. Wide events keep full
+ * attribution (they ride the span); per-emit metrics simply omit the project
+ * shape during a concurrent batch (absent, never wrong).
  */
 export const recordSentryProjectContext = (
   projectInfo: ProjectInfo,
   rootSpan: SentryRootSpan,
+  options: { concurrentScan?: boolean } = {},
 ): void => {
-  setSentryProjectInfo(projectInfo);
+  if (options.concurrentScan !== true) setSentryProjectInfo(projectInfo);
   rootSpan?.setAttributes(toSpanAttributes(buildSentryProjectContext(projectInfo).tags));
   // Metrics emitted after discovery (`project.detected`, `scan.completed`,
   // `rule.fired`, ...) pick the project shape up via `getSentryProjectInfo()`

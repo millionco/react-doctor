@@ -38,6 +38,8 @@ export interface RunEventInput {
   readonly noScore: boolean;
   readonly respectInlineDisables: boolean;
   readonly showWarnings: boolean;
+  /** A custom `--output-dir` was passed for the full diagnostics dump. */
+  readonly usedOutputDir: boolean;
   readonly ignoredTagCount: number;
   readonly hasCustomConfig: boolean;
   readonly userConfig: ReactDoctorConfig | null;
@@ -137,6 +139,13 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     }
   }
 
+  let diagnosticsInTestFiles = 0;
+  let diagnosticsInStoryFiles = 0;
+  for (const diagnostic of result.diagnostics) {
+    if (diagnostic.fileContext === "test") diagnosticsInTestFiles += 1;
+    if (diagnostic.fileContext === "story") diagnosticsInStoryFiles += 1;
+  }
+
   const attributes: RunEventAttributes = {
     outcome,
     exitCode: wouldBlock ? 1 : 0,
@@ -147,6 +156,8 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     errorCount: summary.errorCount,
     warningCount: summary.warningCount,
     affectedFiles: summary.affectedFileCount,
+    diagnosticsInTestFiles,
+    diagnosticsInStoryFiles,
     distinctRulesFired: countByRule.size,
     topRule,
     scannedFileCount: result.scannedFileCount ?? null,
@@ -210,6 +221,7 @@ const buildConfigAttributes = (input: RunEventInput): RunEventAttributes => {
     noScore: input.noScore,
     respectInlineDisables: input.respectInlineDisables,
     showWarnings: input.showWarnings,
+    usedOutputDir: input.usedOutputDir,
     ignoredTagCount: input.ignoredTagCount,
     hasCustomConfig: input.hasCustomConfig,
     rulesConfigured: ruleKeys.length,

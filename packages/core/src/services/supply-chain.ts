@@ -14,7 +14,8 @@ interface SupplyChainInput {
  * `SupplyChain` scores the project's direct dependencies against Socket.dev's
  * free, keyless PURL endpoint — the same lookup Socket Firewall's free tier
  * (`sfw`) performs — and streams a diagnostic for each dependency whose
- * Socket score falls below the configured `supplyChain.minScore`.
+ * worst Socket security axis (supply chain or vulnerability) falls below
+ * the configured `supplyChain.minScore`.
  *
  * Runs by default (one network request per dependency); the orchestrator
  * provides `layerOf([])` only when the user opts out via

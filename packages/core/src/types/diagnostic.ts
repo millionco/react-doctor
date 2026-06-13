@@ -48,6 +48,8 @@ export interface DiagnosticRelatedLocation {
   message: string;
 }
 
+export type DiagnosticFileContext = "test" | "story" | "production";
+
 export interface Diagnostic {
   filePath: string;
   plugin: string;
@@ -77,6 +79,12 @@ export interface Diagnostic {
   /** 1-indexed end column of the primary span, when derivable. */
   endColumn?: number;
   category: string;
+  /**
+   * Set when the file never ships to users (`"test"` / `"story"`), so
+   * renderers can label the site instead of implying production impact.
+   * Omitted for production files (the default).
+   */
+  fileContext?: Exclude<DiagnosticFileContext, "production">;
   suppressionHint?: string;
   /** Secondary source locations (oxlint's non-primary labels). */
   relatedLocations?: DiagnosticRelatedLocation[];

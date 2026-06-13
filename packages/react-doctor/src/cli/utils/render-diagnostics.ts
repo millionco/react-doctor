@@ -44,6 +44,11 @@ interface VerboseSiteEntry {
   suppressionHint?: string;
 }
 
+interface VerboseFileEntry {
+  contextTag: string;
+  sites: VerboseSiteEntry[];
+}
+
 interface CategoryDiagnosticGroup {
   category: string;
   diagnostics: Diagnostic[];
@@ -56,16 +61,25 @@ interface SourceRootResolver {
   (diagnostic: Diagnostic): string;
 }
 
-const buildVerboseSiteMap = (diagnostics: Diagnostic[]): Map<string, VerboseSiteEntry[]> => {
-  const fileSites = new Map<string, VerboseSiteEntry[]>();
+// Dim "(test file)" / "(story file)" tag after a site's location, so a
+// finding in a spec or story reads as non-shipping code rather than a
+// production problem. Empty for production files (the default).
+const formatFileContextTag = (diagnostic: Diagnostic): string =>
+  diagnostic.fileContext ? ` (${diagnostic.fileContext} file)` : "";
+
+const buildVerboseFileEntries = (diagnostics: Diagnostic[]): Map<string, VerboseFileEntry> => {
+  const fileEntries = new Map<string, VerboseFileEntry>();
   for (const diagnostic of diagnostics) {
-    const sites = fileSites.get(diagnostic.filePath) ?? [];
-    if (diagnostic.line > 0) {
-      sites.push({ line: diagnostic.line, suppressionHint: diagnostic.suppressionHint });
+    let entry = fileEntries.get(diagnostic.filePath);
+    if (entry === undefined) {
+      entry = { contextTag: formatFileContextTag(diagnostic), sites: [] };
+      fileEntries.set(diagnostic.filePath, entry);
     }
-    fileSites.set(diagnostic.filePath, sites);
+    if (diagnostic.line > 0) {
+      entry.sites.push({ line: diagnostic.line, suppressionHint: diagnostic.suppressionHint });
+    }
   }
-  return fileSites;
+  return fileEntries;
 };
 
 const formatSiteCountBadge = (count: number): string => (count > 1 ? `×${count}` : "");
@@ -267,11 +281,12 @@ const clusterNearbyDiagnostics = (diagnostics: Diagnostic[]): DiagnosticCluster[
 };
 
 const formatClusterLocation = (cluster: DiagnosticCluster): string => {
-  const { filePath } = cluster.diagnostics[0]!;
-  if (cluster.startLine <= 0) return filePath;
+  const lead = cluster.diagnostics[0]!;
+  const contextTag = formatFileContextTag(lead);
+  if (cluster.startLine <= 0) return `${lead.filePath}${contextTag}`;
   if (cluster.endLine > cluster.startLine)
-    return `${filePath}:${cluster.startLine}-${cluster.endLine}`;
-  return `${filePath}:${cluster.startLine}`;
+    return `${lead.filePath}:${cluster.startLine}-${cluster.endLine}${contextTag}`;
+  return `${lead.filePath}:${cluster.startLine}${contextTag}`;
 };
 
 // The location + inline code frame for a cluster of nearby same-file
@@ -657,6 +672,10 @@ export const formatElapsedTime = (elapsedMilliseconds: number): string => {
 // disk alongside the machine-readable `diagnostics.json`.
 export const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]): string => {
   const firstDiagnostic = ruleDiagnostics[0];
+  // Most rules emit one fixed message, but per-site messages (React
+  // Compiler bail-out reasons) vary — list every distinct one so the
+  // first site's reason isn't presented as if it described all N sites.
+  const distinctMessages = [...new Set(ruleDiagnostics.map((diagnostic) => diagnostic.message))];
 
   const sections = [
     `Rule: ${ruleKey}`,
@@ -664,7 +683,7 @@ export const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]
     `Category: ${firstDiagnostic.category}`,
     `Count: ${ruleDiagnostics.length}`,
     "",
-    firstDiagnostic.message,
+    distinctMessages.join("\n\n"),
   ];
 
   if (firstDiagnostic.help) {
@@ -679,17 +698,17 @@ export const formatRuleSummary = (ruleKey: string, ruleDiagnostics: Diagnostic[]
   }
 
   sections.push("", "Files:");
-  const fileSites = buildVerboseSiteMap(ruleDiagnostics);
-  for (const [filePath, sites] of fileSites) {
+  const fileEntries = buildVerboseFileEntries(ruleDiagnostics);
+  for (const [filePath, { contextTag, sites }] of fileEntries) {
     if (sites.length > 0) {
       for (const site of sites) {
-        sections.push(`  ${filePath}:${site.line}`);
+        sections.push(`  ${filePath}:${site.line}${contextTag}`);
         if (site.suppressionHint) {
           sections.push(`    ${site.suppressionHint}`);
         }
       }
     } else {
-      sections.push(`  ${filePath}`);
+      sections.push(`  ${filePath}${contextTag}`);
     }
   }
 

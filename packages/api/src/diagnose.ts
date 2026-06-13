@@ -3,6 +3,7 @@ import * as Layer from "effect/Layer";
 import {
   buildSkippedChecks,
   Config,
+  DEFAULT_PROJECT_SCAN_CONCURRENCY,
   DEFAULT_SHOW_WARNINGS,
   DeadCode,
   Files,
@@ -10,6 +11,8 @@ import {
   layerOtlp,
   Linter,
   LintPartialFailures,
+  mapWithConcurrency,
+  mergeReactDoctorConfigs,
   Progress,
   Project,
   Reporter,
@@ -41,15 +44,15 @@ import type {
 // stack is built once here rather than duplicated per variant.
 const buildDiagnoseLayer = (
   config: ReactDoctorConfig | null,
-  configOverride?: { readonly resolvedDirectory: string },
+  configOverrideTarget?: Pick<ResolvedScanTarget, "resolvedDirectory" | "configSourceDirectory">,
 ) => {
   const configLayer =
-    configOverride === undefined
+    configOverrideTarget === undefined
       ? Config.layerNode
       : Config.layerOf({
           config,
-          resolvedDirectory: configOverride.resolvedDirectory,
-          configSourceDirectory: null,
+          resolvedDirectory: configOverrideTarget.resolvedDirectory,
+          configSourceDirectory: configOverrideTarget.configSourceDirectory,
         });
   return Layer.mergeAll(
     Project.layerNode,
@@ -113,9 +116,9 @@ const outputToDiagnoseResult = (
   };
 };
 
-export const diagnose = async (
+const diagnoseDirectory = async (
   directory: string,
-  options: DiagnoseOptions = {},
+  options: DiagnoseOptions,
 ): Promise<DiagnoseResult> => {
   const startTime = globalThis.performance.now();
   const scanTarget = await resolveScanTarget(directory);
@@ -149,21 +152,40 @@ const findWorstScore = (projectResults: ProjectResult[]): ScoreResult | null => 
 const diagnoseProject = async (
   projectDefinition: ProjectDefinition,
   baseOptions: DiagnoseOptions,
+  batchConfig: ReactDoctorConfig | undefined,
 ): Promise<ProjectResult> => {
   const startTime = globalThis.performance.now();
 
   try {
     const scanTarget = await resolveScanTarget(projectDefinition.directory);
-    const { directory: _, config: configOverride, ...perProjectOptions } = projectDefinition;
-    const mergedOptions: DiagnoseOptions = { ...baseOptions, ...perProjectOptions };
+    const { directory: _, config: projectConfig, ...perProjectOptions } = projectDefinition;
 
-    const program = buildInspectProgram(scanTarget, mergedOptions, configOverride);
+    // Config layers, least to most specific: on-disk `doctor.config.*` ←
+    // batch `config` ← per-project `config`. With no overrides the merge is
+    // the identity and the orchestrator loads from disk (`Config.layerNode`).
+    const didOverrideConfig = batchConfig !== undefined || projectConfig !== undefined;
+    const effectiveConfig = mergeReactDoctorConfigs(
+      mergeReactDoctorConfigs(scanTarget.userConfig, batchConfig),
+      projectConfig,
+    );
 
-    const effectiveConfig = configOverride ?? scanTarget.userConfig;
+    const program = buildInspectProgram(
+      scanTarget,
+      { ...baseOptions, ...perProjectOptions },
+      effectiveConfig ?? undefined,
+    );
+    // `plugins` is override-wins in the merge: when a caller layer supplies
+    // it, relative entries resolve against the scan root (caller configs
+    // have no file location); otherwise the on-disk config's directory.
+    const didOverridePlugins =
+      batchConfig?.plugins !== undefined || projectConfig?.plugins !== undefined;
     const layer = buildDiagnoseLayer(
       effectiveConfig,
-      configOverride !== undefined
-        ? { resolvedDirectory: scanTarget.resolvedDirectory }
+      didOverrideConfig
+        ? {
+            resolvedDirectory: scanTarget.resolvedDirectory,
+            configSourceDirectory: didOverridePlugins ? null : scanTarget.configSourceDirectory,
+          }
         : undefined,
     );
 
@@ -185,76 +207,52 @@ const diagnoseProject = async (
   }
 };
 
-/**
- * Scan multiple projects in parallel and return per-project scores,
- * diagnostics, and an aggregate score (worst-of across all projects).
- *
- * Each project runs its own independent `runInspect` pipeline — the
- * same pipeline `diagnose()` uses — so per-project config overrides,
- * dead-code analysis, and scoring all work identically to a single
- * `diagnose()` call.
- *
- * Projects that fail (e.g. missing `package.json`, no React dependency)
- * are included in the result with `ok: false` rather than aborting the
- * entire batch, so callers always receive partial results.
- *
- * ```ts
- * const result = await diagnoseProjects({
- *   projects: [
- *     { directory: "packages/app" },
- *     { directory: "packages/shared", deadCode: false },
- *     { directory: "packages/admin", config: {
- *       rules: { "react-doctor/no-array-index-as-key": "off" },
- *     }},
- *   ],
- *   concurrency: 4,
- * });
- *
- * for (const project of result.projects) {
- *   if (project.ok) {
- *     console.log(project.directory, project.score);
- *   } else {
- *     console.error(project.directory, project.error);
- *   }
- * }
- * ```
- */
-export const diagnoseProjects = async (
+const diagnoseProjectBatch = async (
   input: DiagnoseProjectsInput,
 ): Promise<DiagnoseProjectsResult> => {
   const startTime = globalThis.performance.now();
-  const { projects, concurrency: rawConcurrency, ...baseOptions } = input;
-  const concurrency = Math.max(1, rawConcurrency ?? projects.length);
+  const { projects, concurrency, config: batchConfig, ...baseOptions } = input;
 
-  const projectResults: ProjectResult[] = [];
-  const pendingProjects = [...projects];
-
-  const runBatch = async (): Promise<void> => {
-    const batch: Promise<ProjectResult>[] = [];
-
-    while (pendingProjects.length > 0 && batch.length < concurrency) {
-      const projectDefinition = pendingProjects.shift()!;
-      batch.push(diagnoseProject(projectDefinition, baseOptions));
-    }
-
-    const batchResults = await Promise.all(batch);
-    projectResults.push(...batchResults);
-
-    if (pendingProjects.length > 0) {
-      await runBatch();
-    }
-  };
-
-  await runBatch();
-
-  const allDiagnostics = projectResults.flatMap((projectResult) =>
-    projectResult.ok ? projectResult.diagnostics : [],
+  // `diagnoseProject` never rejects (failures come back as `ok: false`),
+  // so the pool always drains every project.
+  const projectResults = await mapWithConcurrency(
+    projects,
+    concurrency ?? DEFAULT_PROJECT_SCAN_CONCURRENCY,
+    (projectDefinition) => diagnoseProject(projectDefinition, baseOptions, batchConfig),
   );
 
   return {
     projects: projectResults,
-    diagnostics: allDiagnostics,
+    diagnostics: projectResults.flatMap((projectResult) =>
+      projectResult.ok ? projectResult.diagnostics : [],
+    ),
     score: findWorstScore(projectResults),
     elapsedMilliseconds: globalThis.performance.now() - startTime,
   };
 };
+
+interface Diagnose {
+  /** Scan a single project directory and return diagnostics + score. */
+  (directory: string, options?: DiagnoseOptions): Promise<DiagnoseResult>;
+  /**
+   * Scan multiple projects in parallel — each through the same pipeline as
+   * the single-directory form — and return per-project results plus an
+   * aggregate worst-of score. A failing project (e.g. no `package.json`)
+   * comes back with `ok: false` instead of aborting the batch. Per-project
+   * `config` layers on the batch `config`, which layers on each project's
+   * on-disk config (see `mergeReactDoctorConfigs`).
+   */
+  (input: DiagnoseProjectsInput): Promise<DiagnoseProjectsResult>;
+}
+
+// HACK: the cast is required to assign the overload implementation (whose
+// return type is the union of both signatures) to the overloaded interface
+// — TypeScript can't verify that narrowing on the first argument selects
+// the matching return type.
+export const diagnose = (async (
+  directoryOrInput: string | DiagnoseProjectsInput,
+  options: DiagnoseOptions = {},
+): Promise<DiagnoseResult | DiagnoseProjectsResult> =>
+  typeof directoryOrInput === "string"
+    ? diagnoseDirectory(directoryOrInput, options)
+    : diagnoseProjectBatch(directoryOrInput)) as Diagnose;

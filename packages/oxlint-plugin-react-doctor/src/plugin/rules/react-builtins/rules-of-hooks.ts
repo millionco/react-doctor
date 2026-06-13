@@ -7,6 +7,7 @@ import { isReactComponentOrHookName } from "../../utils/is-react-component-or-ho
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { REACT_HOC_NAMES } from "../../constants/react.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
 import type { Rule } from "../../utils/rule.js";
 
 // Port of `oxc_linter::rules::react::rules_of_hooks`. Enforces React's
@@ -437,7 +438,9 @@ const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {
         name: displayName,
         hasResolvedName: resolvedName !== null,
         isAsync: Boolean(current.async),
-        isComponentOrHook: resolvedName === null ? false : isReactComponentOrHookName(displayName),
+        isComponentOrHook:
+          isReactHocCallbackArgument(current) ||
+          (resolvedName === null ? false : isReactComponentOrHookName(displayName)),
       };
     }
     current = current.parent ?? null;
@@ -553,6 +556,7 @@ const findEnclosingComponentOrHookFunction = (node: EsTreeNode): EsTreeNode | nu
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
     if (isFunctionLike(current)) {
+      if (isReactHocCallbackArgument(current)) return current;
       const resolvedName = inferFunctionName(current);
       if (resolvedName !== null && isReactComponentOrHookName(resolvedName)) return current;
     }
@@ -690,32 +694,32 @@ export const rulesOfHooks = defineRule({
           return;
         }
 
-        // For anonymous callbacks, look outward: if any enclosing
-        // function IS a component / custom hook, this nested anonymous
-        // callback can't legally call a hook (Rule of Hooks forbids
-        // hooks in nested callbacks even when the outer function is a
-        // component). When NO outer function is a component / hook, the
-        // callback's runtime context is unknown — skip to avoid false
-        // positives on generic callbacks (utility / event-handler
-        // factories).
-        if (!enclosing.hasResolvedName) {
-          let outerWalker: EsTreeNode | null = enclosing.node;
-          let outerIsComponentOrHook = false;
-          while (outerWalker) {
-            const outerInfo = findEnclosingFunctionInfo(outerWalker);
-            if (!outerInfo) break;
-            if (outerInfo.isComponentOrHook) {
-              outerIsComponentOrHook = true;
-              break;
-            }
-            outerWalker = outerInfo.node;
-          }
-          if (!outerIsComponentOrHook) return;
-          context.report({ node: node.callee, message: buildConditionalMessage(hookName) });
-          return;
-        }
-
         if (!enclosing.isComponentOrHook) {
+          // For anonymous callbacks, look outward: if any enclosing
+          // function IS a component / custom hook, this nested anonymous
+          // callback can't legally call a hook (Rule of Hooks forbids
+          // hooks in nested callbacks even when the outer function is a
+          // component). When NO outer function is a component / hook, the
+          // callback's runtime context is unknown — skip to avoid false
+          // positives on generic callbacks (utility / event-handler
+          // factories).
+          if (!enclosing.hasResolvedName) {
+            let outerWalker: EsTreeNode | null = enclosing.node;
+            let outerIsComponentOrHook = false;
+            while (outerWalker) {
+              const outerInfo = findEnclosingFunctionInfo(outerWalker);
+              if (!outerInfo) break;
+              if (outerInfo.isComponentOrHook) {
+                outerIsComponentOrHook = true;
+                break;
+              }
+              outerWalker = outerInfo.node;
+            }
+            if (!outerIsComponentOrHook) return;
+            context.report({ node: node.callee, message: buildConditionalMessage(hookName) });
+            return;
+          }
+
           context.report({
             node: node.callee,
             message: buildNonComponentMessage(hookName, enclosing.name),

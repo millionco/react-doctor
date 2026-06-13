@@ -52,6 +52,12 @@ export const NON_FAST_REFRESH_PATH_SEGMENTS: ReadonlyArray<string> = [
 // `ReactDOM.render(...)` once and never participate in Fast Refresh
 // (the dev server reloads the whole page when these change). Mixed
 // exports and local components in these files are fine.
+//
+// This set holds only the *generic* (framework-agnostic) entry-point
+// names. Framework-specific route / special files (Next.js, Expo Router,
+// TanStack Router, Remix / React Router) are detected by the dedicated
+// `is-<framework>-*-filename` helpers in `../../utils/`, which
+// `only-export-components` consults alongside this set.
 export const ENTRY_POINT_BASENAMES: ReadonlySet<string> = new Set([
   "main.tsx",
   "main.jsx",
@@ -66,38 +72,6 @@ export const ENTRY_POINT_BASENAMES: ReadonlySet<string> = new Set([
   "client.jsx",
   "server.tsx",
   "server.jsx",
-  // Next.js App Router page boundaries — re-rendered on full reload,
-  // commonly co-export `metadata`, `generateMetadata`, `revalidate`,
-  // etc. alongside the page component.
-  "page.tsx",
-  "page.jsx",
-  "layout.tsx",
-  "layout.jsx",
-  "loading.tsx",
-  "loading.jsx",
-  "error.tsx",
-  "error.jsx",
-  "not-found.tsx",
-  "not-found.jsx",
-  "template.tsx",
-  "template.jsx",
-  "default.tsx",
-  "default.jsx",
-  "global-error.tsx",
-  "global-error.jsx",
-  "route.tsx",
-  "route.jsx",
-  // Expo Router layout files — same role as Next.js `layout.tsx` but
-  // prefixed with `_` per Expo Router convention.
-  "_layout.tsx",
-  "_layout.jsx",
-  // Next.js Pages Router special files
-  "_app.tsx",
-  "_app.jsx",
-  "_document.tsx",
-  "_document.jsx",
-  "_error.tsx",
-  "_error.jsx",
   // Root App component — by convention the single-render root of a CRA
   // / Vite / Expo app, mounted directly from main/index. Co-exports of
   // helper components and constants are conventional here.

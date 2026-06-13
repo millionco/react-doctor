@@ -370,3 +370,65 @@ describe("mergeAndFilterDiagnostics — ignore rules / files / overrides", () =>
     expect(filtered[0].rule).toBe("no-cascading-set-state");
   });
 });
+
+describe("mergeAndFilterDiagnostics — file-context stamping", () => {
+  it('stamps `fileContext: "test"` on diagnostics in spec files', () => {
+    const diagnostics = [createDiagnostic({ filePath: "src/utils/foo.spec.ts" })];
+    const filtered = filterIgnoredDiagnostics(
+      diagnostics,
+      {},
+      TEST_ROOT_DIRECTORY,
+      testReadFileLines,
+    );
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].fileContext).toBe("test");
+  });
+
+  it('stamps `fileContext: "story"` on diagnostics in story files', () => {
+    const diagnostics = [createDiagnostic({ filePath: "src/components/Button.stories.tsx" })];
+    const filtered = filterIgnoredDiagnostics(
+      diagnostics,
+      {},
+      TEST_ROOT_DIRECTORY,
+      testReadFileLines,
+    );
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].fileContext).toBe("story");
+  });
+
+  it("leaves `fileContext` unset on diagnostics in production files", () => {
+    const diagnostics = [createDiagnostic({ filePath: "src/components/Button.tsx" })];
+    const filtered = filterIgnoredDiagnostics(
+      diagnostics,
+      {},
+      TEST_ROOT_DIRECTORY,
+      testReadFileLines,
+    );
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].fileContext).toBeUndefined();
+  });
+
+  it("still auto-suppresses test-noise rules (rn-no-raw-text in a spec never shows)", () => {
+    const diagnostics = [
+      createDiagnostic({
+        plugin: "react-doctor",
+        rule: "rn-no-raw-text",
+        filePath: "src/components/Button.spec.tsx",
+      }),
+      createDiagnostic({
+        plugin: "react-doctor",
+        rule: "rn-no-raw-text",
+        filePath: "src/components/Button.tsx",
+      }),
+    ];
+    const filtered = filterIgnoredDiagnostics(
+      diagnostics,
+      {},
+      TEST_ROOT_DIRECTORY,
+      testReadFileLines,
+    );
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].filePath).toBe("src/components/Button.tsx");
+    expect(filtered[0].fileContext).toBeUndefined();
+  });
+});

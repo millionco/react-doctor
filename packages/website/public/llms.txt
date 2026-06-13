@@ -95,10 +95,11 @@ Options:
   --lint             enable linting (default: on)
   --no-lint          skip linting
   --verbose          show file details per rule
+  --output-dir <dir>  directory for the full diagnostics dump (default: a temp folder)
   --score            output only the score
   --json             output a single structured JSON report (suppresses other output)
   -y, --yes          skip prompts, scan all workspace projects
-  --project <name>   select workspace project (comma-separated for multiple)
+  --project <name>   select projects: workspace names or directory paths (comma-separated for multiple); set `projects` in doctor.config.* to make the selection persistent (the flag wins)
   --diff [base]      scan only files changed vs base branch (pass `false` to force a full scan)
   --no-score         skip the score API and share URL
   --staged           scan only staged (git index) files for pre-commit hooks

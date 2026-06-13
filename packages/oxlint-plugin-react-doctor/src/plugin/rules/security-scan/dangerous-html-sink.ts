@@ -26,11 +26,11 @@ const MODULE_CONSTANT_VALUE_PATTERN = /^[A-Z][A-Z0-9_]*\s*(?:\/\/[^\n]*)?\s*(?:[
 const DOM_CONTENT_SOURCE_VALUE_PATTERN = /^[\w$]+(?:\.[\w$]+)*\.(?:inner|outer)HTML\b/;
 
 // `(?<!un)safe` catches sanitized-by-convention names (markdownToSafeHTML,
-// descriptionAsSafeHtml) without matching `unsafeHtml`. `escape*`/`encode*`
-// cover HTML entity encoders (`escapeHtml`, `encodeNonAsciiHTML`) whose output
-// is escaped text, not live markup.
+// descriptionAsSafeHtml) without matching `unsafeHtml`. The `escape`/`encode`
+// arm is scoped to HTML entity encoders (`escapeHtml`, `encodeNonAsciiHTML`) so
+// it does not exempt unrelated encoders (`encodeURIComponent`, `escapeRegExp`).
 const SANITIZER_PATTERN =
-  /\b(?:DOMPurify|sanitize\w*|purify|(?:escape|encode)[A-Z]\w*|insane|xss)\b|(?<!un)safe|(?<!un)saniti[sz]/i;
+  /\b(?:DOMPurify|sanitize\w*|purify|(?:escape|encode)[A-Za-z]*(?:Html|HTML|Entit\w*)|insane|xss)\b|(?<!un)safe|(?<!un)saniti[sz]/i;
 
 // A bare-identifier value sanitized at its definition site
 // (`const clean = DOMPurify.sanitize(md)` then `__html: clean`). The sink only
@@ -48,12 +48,17 @@ const I18N_VALUE_PATTERN = /\b(?:t|i18n|translate|formatMessage|intl)\s*[.(]/;
 // renderToStaticMarkup) is markup the library generated, not user HTML.
 // `render*HTML(...)` covers in-house code/diff serializers (pierre's
 // `renderPartialHTML`) alongside React's `renderToString` family — markup the
-// renderer generated, not user HTML.
+// renderer generated, not user HTML. Used when the serializer call IS the value.
 const ESCAPING_SERIALIZER_CALL_PATTERN =
   /^(?:[\w$.]+\.)?(?:toHtml|render[A-Za-z]*(?:Html|HTML)|renderToString|renderToStaticMarkup|codeToHtml|codeToHast)\s*\(/;
 
-const ESCAPING_SERIALIZER_LIBRARY_PATTERN =
-  /\bkatex\b|\bshiki\b|\bhljs\b|\bprism\b|codeToHtml\s*\(|renderToStaticMarkup\s*\(|\bhast-util-to-html\b|renderHtmlFromRichText\b/i;
+// When the value is an identifier/member access, exempt it only if that
+// identifier is assigned from an escaping serializer in the file (`const html =
+// katex.renderToString(...)`, `const r = hljs.highlightAuto(...)`). Keying off a
+// bare file-wide library keyword would exempt any sink in a file that merely
+// imports a highlighter — checking the assignment keeps the trust link.
+const SERIALIZER_ASSIGNMENT_PATTERN =
+  /=\s*[^\n;]*(?:\b(?:katex|shiki|hljs|prism)\b|hast-util-to-html|renderHtmlFromRichText|(?:toHtml|render[A-Za-z]*(?:Html|HTML)|renderToString|renderToStaticMarkup|codeToHtml|codeToHast)\s*\()/i;
 
 const BARE_IDENTIFIER_VALUE_PATTERN = /^[\w$]+\s*(?:[;,})\n]|$)/;
 
@@ -119,6 +124,14 @@ const isInertParseTarget = (target: string, fileContent: string): boolean => {
   const rootIdentifier = target.split(".")[0] ?? target;
   const escapedRoot = escapeRegExp(rootIdentifier);
 
+  // Whole-file matching means a same-named binding elsewhere can leak this
+  // exemption. If the root is ever bound to a live DOM node, the sink can hit
+  // the live document — never treat it as inert (conservative on collision).
+  const liveDomSourcePattern = new RegExp(
+    `\\b${escapedRoot}\\s*=\\s*[^\\n;]*(?:getElementById|querySelector|getElementsBy|\\.current\\b|document\\.(?:body|head|documentElement))`,
+  );
+  if (liveDomSourcePattern.test(fileContent)) return false;
+
   const templateElementPattern = new RegExp(
     `${escapedTarget}\\s*=\\s*document\\.createElement\\(\\s*["'\`]template["'\`]`,
   );
@@ -177,10 +190,12 @@ export const dangerousHtmlSink = defineRule({
       const line = lines[lineIndex] ?? "";
       if (!DANGEROUS_HTML_PATTERN.test(line)) continue;
 
-      // Skip sinks inside a comment — commented-out code never runs. A leading
-      // `//` (not part of a `://` URL) or a block-comment line (`*` / `/*`).
+      // Skip sinks inside a comment — commented-out code never runs. Strip string
+      // literals first so a protocol-relative URL (`"//cdn"`) before a real sink
+      // on the same line is not mistaken for a `//` comment.
       const textBeforeSinkOnLine = line.slice(0, line.search(DANGEROUS_HTML_PATTERN));
-      if (/(?:^|[^:])\/\//.test(textBeforeSinkOnLine) || /^\s*[/*]/.test(line)) continue;
+      const codeBeforeSinkOnLine = textBeforeSinkOnLine.replace(/"[^"]*"|'[^']*'|`[^`]*`/g, "");
+      if (/(?:^|[^:])\/\//.test(codeBeforeSinkOnLine) || /^\s*[/*]/.test(line)) continue;
 
       // Judge only the value expression handed to the sink — judging the
       // surrounding window flags any component that mentions text/content/data.
@@ -196,11 +211,15 @@ export const dangerousHtmlSink = defineRule({
 
       if (STRING_LITERAL_VALUE_PATTERN.test(valueExpression)) continue;
       if (MODULE_CONSTANT_VALUE_PATTERN.test(valueExpression)) continue;
+      // `a.innerHTML = b.innerHTML` (with optional static transform) re-serializes
+      // existing DOM content. But a `+` concat, or a tainted token in a transform
+      // argument (`.replace(x, props.userHtml)`), can splice in fresh input.
       if (
         DOM_CONTENT_SOURCE_VALUE_PATTERN.test(valueExpression) &&
         !valueExpression.includes("+")
       ) {
-        continue;
+        const afterDomRead = valueExpression.replace(DOM_CONTENT_SOURCE_VALUE_PATTERN, "");
+        if (!HTML_TAINT_PATTERN.test(afterDomRead)) continue;
       }
 
       const longValueTail = HTML_VALUE_START_PATTERN.exec(
@@ -215,23 +234,24 @@ export const dangerousHtmlSink = defineRule({
       if (I18N_VALUE_PATTERN.test(judgedExpression)) continue;
       if (!HTML_TAINT_PATTERN.test(judgedExpression)) continue;
       if (ESCAPING_SERIALIZER_CALL_PATTERN.test(valueExpression)) continue;
+      // Value is a bare identifier or member/index access: exempt only when that
+      // identifier is assigned from a serializer or a sanitizer in the file.
       if (
-        (BARE_IDENTIFIER_VALUE_PATTERN.test(valueExpression) ||
-          MEMBER_OR_INDEX_ACCESS_VALUE_PATTERN.test(valueExpression)) &&
-        ESCAPING_SERIALIZER_LIBRARY_PATTERN.test(file.content)
+        BARE_IDENTIFIER_VALUE_PATTERN.test(valueExpression) ||
+        MEMBER_OR_INDEX_ACCESS_VALUE_PATTERN.test(valueExpression)
       ) {
-        continue;
-      }
-      if (BARE_IDENTIFIER_VALUE_PATTERN.test(valueExpression)) {
-        const bareIdentifierName = valueExpression.match(/^[\w$]+/)?.[0];
-        if (
-          bareIdentifierName !== undefined &&
-          new RegExp(
-            `\\b${escapeRegExp(bareIdentifierName)}\\b\\s*${SANITIZED_ASSIGNMENT_PATTERN.source}`,
+        const valueIdentifier = valueExpression.match(/^[\w$]+/)?.[0];
+        if (valueIdentifier !== undefined) {
+          const escapedIdentifier = escapeRegExp(valueIdentifier);
+          const fromSerializer = new RegExp(
+            `\\b${escapedIdentifier}\\b\\s*${SERIALIZER_ASSIGNMENT_PATTERN.source}`,
             "i",
-          ).test(file.content)
-        ) {
-          continue;
+          );
+          const fromSanitizer = new RegExp(
+            `\\b${escapedIdentifier}\\b\\s*${SANITIZED_ASSIGNMENT_PATTERN.source}`,
+            "i",
+          );
+          if (fromSerializer.test(file.content) || fromSanitizer.test(file.content)) continue;
         }
       }
       const sinkTargetMatch = INNERHTML_TARGET_PATTERN.exec(line);

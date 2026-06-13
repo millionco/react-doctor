@@ -280,12 +280,20 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     expect(findings).toHaveLength(0);
   });
 
-  it("stays silent on highlighter html read via member access (supabase shiki CodeBlock shape)", () => {
+  it("stays silent on highlighter output assigned from a serializer (shiki codeToHtml shape)", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/sections/code-block-section.tsx",
-      content: `import { codeToHtml } from "shiki";\nexport const CodeBlock = ({ highlightedFiles }: Props) => (\n  <div dangerouslySetInnerHTML={{ __html: highlightedFiles[0].darkHtml }} />\n);\n`,
+      content: `const highlighted = { dark: await codeToHtml(code, { theme: "dark" }) };\nreturn <div dangerouslySetInnerHTML={{ __html: highlighted.dark }} />;\n`,
     });
     expect(findings).toHaveLength(0);
+  });
+
+  it("still flags an unrelated member-access sink when the file only imports a highlighter", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/profile.tsx",
+      content: `import { codeToHtml } from "shiki";\nexport const Profile = ({ user }: Props) => (\n  <div dangerouslySetInnerHTML={{ __html: user.profileHtml }} />\n);\n`,
+    });
+    expect(findings).toHaveLength(1);
   });
 
   it("still flags object-stored html when no serializer library is present", () => {
@@ -397,6 +405,49 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/widgets/banner.ts",
       content: `fetch("https://api.example.com"); el.innerHTML = props.untrustedHtml;\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("still flags a real sink after a protocol-relative URL string on the same line", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/widgets/cdn.ts",
+      content: `const src = base || "//cdn.example.com"; el.innerHTML = props.untrustedHtml;\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("still flags a live element sharing a name with a scratch parse node", () => {
+    const content = [
+      "function parseScratch(raw) {",
+      '  const el = document.createElement("div");',
+      "  el.innerHTML = raw;",
+      "  return el.textContent;",
+      "}",
+      "function mount(userHtml) {",
+      '  const el = document.getElementById("app");',
+      "  el.innerHTML = userHtml;",
+      "}",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/render/mount.ts",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("still flags DOM content transformed with a tainted argument", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/render/transform.ts",
+      content: `node.innerHTML = node.innerHTML.replace(placeholder, props.userHtml);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("still flags a non-HTML encoder that does not escape markup", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/widgets/display.ts",
+      content: `el.innerHTML = encodeForDisplay(data.body);\n`,
     });
     expect(findings).toHaveLength(1);
   });

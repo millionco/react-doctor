@@ -124,6 +124,14 @@ const isInertParseTarget = (target: string, fileContent: string): boolean => {
   );
   if (templateElementPattern.test(fileContent)) return true;
 
+  // A `<style>` element's innerHTML is CSS text, not executable markup — the
+  // critical-CSS idiom via the DOM API (`createElement('style')`), the
+  // counterpart of the `<style dangerouslySetInnerHTML>` JSX exemption.
+  const styleElementPattern = new RegExp(
+    `${escapedRoot}\\s*=\\s*[^\\n;]*\\bcreateElement\\(\\s*["'\`]style["'\`]`,
+  );
+  if (styleElementPattern.test(fileContent)) return true;
+
   const isolatedDocumentPattern = new RegExp(
     `${escapedRoot}\\s*=\\s*[^\\n;]*\\bcreateHTMLDocument\\s*\\(`,
   );
@@ -168,6 +176,11 @@ export const dangerousHtmlSink = defineRule({
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
       const line = lines[lineIndex] ?? "";
       if (!DANGEROUS_HTML_PATTERN.test(line)) continue;
+
+      // Skip sinks inside a comment — commented-out code never runs. A leading
+      // `//` (not part of a `://` URL) or a block-comment line (`*` / `/*`).
+      const textBeforeSinkOnLine = line.slice(0, line.search(DANGEROUS_HTML_PATTERN));
+      if (/(?:^|[^:])\/\//.test(textBeforeSinkOnLine) || /^\s*[/*]/.test(line)) continue;
 
       // Judge only the value expression handed to the sink — judging the
       // surrounding window flags any component that mentions text/content/data.

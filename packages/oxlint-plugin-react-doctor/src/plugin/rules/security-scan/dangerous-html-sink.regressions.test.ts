@@ -376,4 +376,28 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent on a commented-out sink (thorium highlight.ts shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/webview/highlight.ts",
+      content: `// floatingText.innerHTML = text;\nfloatingText.textContent = text;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on innerHTML of a created <style> element (builder.io shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/builder-component.tsx",
+      content: `const style = document.createElement('style');\nstyle.innerHTML = html;\ndocument.head.appendChild(style);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags a real sink even when a URL with // precedes it on the line", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/widgets/banner.ts",
+      content: `fetch("https://api.example.com"); el.innerHTML = props.untrustedHtml;\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

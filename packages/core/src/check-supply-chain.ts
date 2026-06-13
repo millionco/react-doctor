@@ -9,10 +9,12 @@ import {
   SOCKET_FREE_USER_AGENT,
   SOCKET_PACKAGE_PAGE_BASE,
   SOCKET_SCORE_SCALE,
+  SUPPLY_CHAIN_ALERT_NOTE_MAX_CHARS,
   SUPPLY_CHAIN_CATEGORY,
   SUPPLY_CHAIN_DEFAULT_MIN_SCORE,
   SUPPLY_CHAIN_FETCH_CONCURRENCY,
   SUPPLY_CHAIN_IGNORED_PACKAGES,
+  SUPPLY_CHAIN_MAX_ALERTS_SHOWN,
   SUPPLY_CHAIN_PLUGIN,
   SUPPLY_CHAIN_RULE,
 } from "./constants.js";
@@ -57,29 +59,90 @@ const SocketScoreSchema = Schema.Struct({
   vulnerability: Schema.Number,
 });
 
+// A single Socket alert: the concrete "why" behind a low score (e.g. a
+// `critical` `malware` alert in a named file with a human `note`). The free
+// endpoint only attaches these for the highest-signal supply-chain threats;
+// metric-driven dips (CVE-only scores, sparse maintenance) arrive with an
+// empty `alerts` array. Every field but `type`/`severity` is best-effort.
+const SocketAlertSchema = Schema.Struct({
+  type: Schema.String,
+  severity: Schema.String,
+  category: Schema.optional(Schema.String),
+  file: Schema.optional(Schema.String),
+  props: Schema.optional(Schema.Struct({ note: Schema.optional(Schema.String) })),
+});
+
 const SocketArtifactSchema = Schema.Struct({
   score: Schema.optional(SocketScoreSchema),
+  alerts: Schema.optional(Schema.Array(SocketAlertSchema)),
 });
 
 type SocketScore = Schema.Schema.Type<typeof SocketScoreSchema>;
+type SocketAlert = Schema.Schema.Type<typeof SocketAlertSchema>;
+
+// A resolved artifact: a `score` is guaranteed (callers skip unscored
+// packages) and `alerts` is normalized to a (possibly empty) array.
+interface SocketArtifact {
+  readonly score: SocketScore;
+  readonly alerts: ReadonlyArray<SocketAlert>;
+}
 
 const decodeArtifact = Schema.decodeUnknownOption(SocketArtifactSchema);
+
+interface AxisGuidance {
+  /**
+   * Plain-English meaning of a low score on this axis, woven into the message
+   * when Socket returns no explicit alerts to name (the common, metric-driven
+   * case on the free endpoint).
+   */
+  readonly meaning: string;
+  /** Axis-specific remediation phrase, woven into the diagnostic's help. */
+  readonly remediation: string;
+}
 
 interface ScoreAxis {
   readonly key: keyof SocketScore;
   readonly label: string;
-  /** Whether a low value on this axis fails the check (see GATED_AXES). */
-  readonly gates: boolean;
+  /**
+   * Non-null only for the security axes that gate the check — the presence of
+   * guidance *is* the gate (see GATED_AXES).
+   */
+  readonly guidance: AxisGuidance | null;
+}
+
+// A gated security axis: the same shape with guidance guaranteed, so the
+// failing-axis message/help can read it without a non-null assertion.
+interface GatedAxis extends ScoreAxis {
+  readonly guidance: AxisGuidance;
 }
 
 // The non-`overall` axes, paired with the label shown in the diagnostic so a
-// developer immediately sees which dimension dragged the score down.
+// developer immediately sees which dimension dragged the score down. The two
+// security axes also carry the guidance that powers the message's "why" and
+// the help's remediation.
 const SCORE_AXES: ReadonlyArray<ScoreAxis> = [
-  { key: "supplyChain", label: "supply chain", gates: true },
-  { key: "vulnerability", label: "vulnerability", gates: true },
-  { key: "maintenance", label: "maintenance", gates: false },
-  { key: "quality", label: "quality", gates: false },
-  { key: "license", label: "license", gates: false },
+  {
+    key: "supplyChain",
+    label: "supply chain",
+    guidance: {
+      meaning:
+        "risky install-time behavior — install scripts, obfuscated or native code, network/filesystem/shell access, or typosquatting",
+      remediation:
+        "Confirm this is the package you meant to install, and prefer a more established, audited alternative",
+    },
+  },
+  {
+    key: "vulnerability",
+    label: "vulnerability",
+    guidance: {
+      meaning: "known security vulnerabilities (CVEs) affecting this version",
+      remediation:
+        "Upgrade to a version with no known advisories (run `npm audit` to find one), or replace it",
+    },
+  },
+  { key: "maintenance", label: "maintenance", guidance: null },
+  { key: "quality", label: "quality", guidance: null },
+  { key: "license", label: "license", guidance: null },
 ];
 
 // Only the security axes decide the gate. Socket's `overall` is its lowest
@@ -89,11 +152,13 @@ const SCORE_AXES: ReadonlyArray<ScoreAxis> = [
 // install scripts / compromised maintainers; `vulnerability` covers known
 // CVEs (what flags the compromised `event-stream@3.3.6`). The remaining axes
 // still appear in the diagnostic's axis breakdown as context.
-const GATED_AXES: ReadonlyArray<ScoreAxis> = SCORE_AXES.filter((axis) => axis.gates);
+const GATED_AXES: ReadonlyArray<GatedAxis> = SCORE_AXES.filter(
+  (axis): axis is GatedAxis => axis.guidance !== null,
+);
 
 // The axis that decides the gate for one score: the lowest of the gated
 // axes. A tie keeps `supplyChain`, matching the rule's name.
-const worstGatedAxis = (score: SocketScore): ScoreAxis => {
+const worstGatedAxis = (score: SocketScore): GatedAxis => {
   let worst = GATED_AXES[0];
   for (const axis of GATED_AXES) {
     if (score[axis.key] < score[worst.key]) worst = axis;
@@ -279,8 +344,9 @@ const toPurl = (dependency: DependencyToScore): string =>
   `pkg:npm/${dependency.name}@${dependency.version}`;
 
 // The endpoint streams newline-delimited JSON (one artifact per line); take
-// the first line that decodes to an artifact carrying a score.
-const parseScoreFromBody = (body: string): SocketScore | null => {
+// the first line that decodes to an artifact carrying a score, normalizing
+// its alerts to an array so callers never branch on `undefined`.
+const parseArtifactFromBody = (body: string): SocketArtifact | null => {
   for (const line of body.split("\n")) {
     if (line.trim().length === 0) continue;
     let parsed: unknown;
@@ -290,24 +356,25 @@ const parseScoreFromBody = (body: string): SocketScore | null => {
       continue;
     }
     const artifact = Option.getOrNull(decodeArtifact(parsed));
-    if (artifact?.score) return artifact.score;
+    if (artifact?.score) return { score: artifact.score, alerts: artifact.alerts ?? [] };
   }
   return null;
 };
 
-// Fetches the free, keyless Socket score for one dependency — the same
-// `firewall-api.socket.dev/purl/<encoded-purl>` endpoint Socket Firewall's
-// free tier hits. `Effect.tryPromise` hands `fetch` an `AbortSignal` that
-// `Effect.timeout` trips on the deadline (cancelling the request), and
-// `Effect.orElseSucceed` makes the lookup fail-open: an unscored / unknown
-// package, a timeout, or any network/parse failure yields `null` (skip)
-// rather than sinking the scan. Each lookup is its own `SupplyChain.fetchScore`
-// span: the package identity rides the initial attributes, and the resolved
-// axis scores (overall + each SCORE_AXES dimension, 0..100) are annotated once
-// the lookup settles. Dotted `socket.*` namespacing per the observability
-// conventions, so a trace backend can group by package or query score
-// distributions across a scan. No-op without a tracer.
-const fetchSocketScore = (dependency: DependencyToScore): Effect.Effect<SocketScore | null> =>
+// Fetches the free, keyless Socket artifact (score + alerts) for one
+// dependency — the same `firewall-api.socket.dev/purl/<encoded-purl>` endpoint
+// Socket Firewall's free tier hits. `Effect.tryPromise` hands `fetch` an
+// `AbortSignal` that `Effect.timeout` trips on the deadline (cancelling the
+// request), and `Effect.orElseSucceed` makes the lookup fail-open: an unscored
+// / unknown package, a timeout, or any network/parse failure yields `null`
+// (skip) rather than sinking the scan. Each lookup is its own
+// `SupplyChain.fetchScore` span: the package identity rides the initial
+// attributes, and the resolved axis scores (overall + each SCORE_AXES
+// dimension, 0..100) plus the alert count are annotated once the lookup
+// settles. Dotted `socket.*` namespacing per the observability conventions, so
+// a trace backend can group by package or query score / alert distributions
+// across a scan. No-op without a tracer.
+const fetchSocketArtifact = (dependency: DependencyToScore): Effect.Effect<SocketArtifact | null> =>
   Effect.tryPromise(async (signal) => {
     const requestUrl = `${SOCKET_FREE_PURL_API_BASE}/${encodeURIComponent(toPurl(dependency))}`;
     const response = await fetch(requestUrl, {
@@ -315,19 +382,23 @@ const fetchSocketScore = (dependency: DependencyToScore): Effect.Effect<SocketSc
       signal,
     });
     if (!response.ok) return null;
-    return parseScoreFromBody(await response.text());
+    return parseArtifactFromBody(await response.text());
   }).pipe(
     Effect.timeout(FETCH_TIMEOUT_MS),
     Effect.orElseSucceed(() => null),
-    Effect.tap((score) => {
+    Effect.tap((artifact) => {
       const scoreAttributes: Record<string, string | number | boolean> = {};
-      if (score !== null) {
-        scoreAttributes["socket.score.overall"] = toHundred(score.overall);
+      if (artifact !== null) {
+        scoreAttributes["socket.score.overall"] = toHundred(artifact.score.overall);
         for (const axis of SCORE_AXES) {
-          scoreAttributes[`socket.score.${axis.key}`] = toHundred(score[axis.key]);
+          scoreAttributes[`socket.score.${axis.key}`] = toHundred(artifact.score[axis.key]);
         }
+        scoreAttributes["socket.alert.count"] = artifact.alerts.length;
       }
-      return Effect.annotateCurrentSpan({ "socket.scored": score !== null, ...scoreAttributes });
+      return Effect.annotateCurrentSpan({
+        "socket.scored": artifact !== null,
+        ...scoreAttributes,
+      });
     }),
     Effect.withSpan("SupplyChain.fetchScore", {
       attributes: {
@@ -338,29 +409,156 @@ const fetchSocketScore = (dependency: DependencyToScore): Effect.Effect<SocketSc
     }),
   );
 
-// Per-axis scores on the 0..100 scale, e.g.
-// "supply chain 80, vulnerability 25, maintenance 82, quality 86, license 100".
-const formatAxisScores = (score: SocketScore): string =>
-  SCORE_AXES.map((axis) => `${axis.label} ${toHundred(score[axis.key])}`).join(", ");
+// The non-failing axes (the failing one already leads the message), e.g.
+// "supply chain 100, maintenance 86, quality 100, license 100".
+const formatOtherAxisScores = (score: SocketScore, failingKey: keyof SocketScore): string =>
+  SCORE_AXES.filter((axis) => axis.key !== failingKey)
+    .map((axis) => `${axis.label} ${toHundred(score[axis.key])}`)
+    .join(", ");
+
+// Socket alert severities, most to least severe. "middle" is Socket's wire
+// spelling for the docs' "medium" band; both map to the same rank.
+const ALERT_SEVERITY_RANK: Record<string, number> = {
+  critical: 4,
+  high: 3,
+  middle: 2,
+  medium: 2,
+  low: 1,
+};
+
+const severityRank = (severity: string): number => ALERT_SEVERITY_RANK[severity.toLowerCase()] ?? 0;
+
+// Display spelling for a severity: normalize Socket's "middle" to "medium",
+// otherwise lowercase the wire value.
+const displaySeverity = (severity: string): string =>
+  severity.toLowerCase() === "middle" ? "medium" : severity.toLowerCase();
+
+// Labels for the alert types whose friendly name differs from the humanized
+// identifier. Everything else (`installScript` -> "install script",
+// `networkAccess` -> "network access", …) is left to the camelCase fallback,
+// which also keeps a brand-new alert type readable.
+const ALERT_TYPE_LABELS: Record<string, string> = {
+  malware: "known malware",
+  gptMalware: "AI-detected malware",
+  gptSecurity: "AI-detected security risk",
+  gptAnomaly: "AI-detected code anomaly",
+  envVars: "environment-variable access",
+  usesEval: "use of eval",
+  troll: "protestware",
+  didYouMean: "possible typosquat",
+  typosquat: "possible typosquat",
+};
+
+const humanizeAlertType = (type: string): string =>
+  type
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .toLowerCase()
+    .trim();
+
+const friendlyAlertType = (type: string): string =>
+  ALERT_TYPE_LABELS[type] ?? humanizeAlertType(type);
+
+// First sentence of a Socket alert note, whitespace-collapsed and capped so a
+// paragraph-long malware description doesn't blow out the diagnostic line.
+const summarizeAlertNote = (note: string): string => {
+  const collapsed = note.replace(/\s+/g, " ").trim();
+  const firstSentence = collapsed.split(/(?<=\.)\s/)[0] || collapsed;
+  if (firstSentence.length <= SUPPLY_CHAIN_ALERT_NOTE_MAX_CHARS) {
+    return firstSentence.replace(/\.$/, "");
+  }
+  return `${firstSentence.slice(0, SUPPLY_CHAIN_ALERT_NOTE_MAX_CHARS).trimEnd()}…`;
+};
+
+// The most severe alerts first (stable within a severity), capped so a noisy
+// package doesn't flood the message.
+const selectTopAlerts = (alerts: ReadonlyArray<SocketAlert>): ReadonlyArray<SocketAlert> =>
+  [...alerts]
+    .sort((left, right) => severityRank(right.severity) - severityRank(left.severity))
+    .slice(0, SUPPLY_CHAIN_MAX_ALERTS_SHOWN);
+
+// The message's "why" clause when Socket returned concrete alerts: one alert
+// gets its file + note spelled out; several collapse to a labelled list with
+// the worst severity and a "+N more" tail.
+const formatAlertReason = (topAlerts: ReadonlyArray<SocketAlert>, totalCount: number): string => {
+  if (topAlerts.length === 1) {
+    const [alert] = topAlerts;
+    const location = alert.file ? ` in \`${alert.file}\`` : "";
+    const note = alert.props?.note ? summarizeAlertNote(alert.props.note) : null;
+    const detail = note ? `: "${note}"` : "";
+    return `Socket flagged a ${displaySeverity(alert.severity)} ${friendlyAlertType(alert.type)} alert${location}${detail}.`;
+  }
+  const labels = topAlerts.map((alert) => friendlyAlertType(alert.type)).join(", ");
+  const more = totalCount > topAlerts.length ? ` (+${totalCount - topAlerts.length} more)` : "";
+  return `Socket flagged ${totalCount} alerts (${labels}${more}); most severe: ${displaySeverity(topAlerts[0].severity)}.`;
+};
+
+// "react@18.2.0" for an exact pin; for a range, names the scored version and
+// makes clear it's the floor the range allows — we score the lowest permitted
+// version, which may differ from what's installed.
+const formatDependencyIdentity = (dependency: DependencyToScore): string =>
+  dependency.spec === dependency.version
+    ? `${dependency.name}@${dependency.version}`
+    : `${dependency.name}@${dependency.version} (lowest version "${dependency.spec}" allows)`;
+
+// Axis-aware remediation. A critical alert (active malware) overrides the
+// axis's generic advice with "treat as compromised"; otherwise the failing
+// axis's own remediation drives the action, and the escape hatch is the
+// gentler "raise the threshold / downgrade to a warning".
+const buildSupplyChainHelp = (
+  dependency: DependencyToScore,
+  failingAxis: GatedAxis,
+  topAlerts: ReadonlyArray<SocketAlert>,
+  packagePageUrl: string,
+  options: ResolvedSupplyChainOptions,
+): string => {
+  const hasCriticalAlert = topAlerts.some((alert) => alert.severity.toLowerCase() === "critical");
+  const entry = `\`"${dependency.name}": "${dependency.spec}"\``;
+
+  const action = hasCriticalAlert
+    ? `Treat ${dependency.name} as compromised — do not ship it. Remove ${entry} from package.json and your lockfile, then audit anything it ran.`
+    : `${failingAxis.guidance.remediation}; update ${entry} in package.json.`;
+
+  const escapeHatch = hasCriticalAlert
+    ? `Only if you've confirmed this is a false positive, set \`supplyChain.enabled: false\`.`
+    : `If you've reviewed and accepted this package, raise \`supplyChain.minScore\` (currently ${options.minScore}) or set \`supplyChain.severity: "warning"\`.`;
+
+  return `${action} Full report: ${packagePageUrl}. ${escapeHatch}`;
+};
 
 const buildLowScoreDiagnostic = (
   dependency: DependencyToScore,
-  score: SocketScore,
-  failingAxis: ScoreAxis,
+  artifact: SocketArtifact,
+  failingAxis: GatedAxis,
   options: ResolvedSupplyChainOptions,
 ): Diagnostic => {
   const packagePageUrl = `${SOCKET_PACKAGE_PAGE_BASE}/${dependency.name}/overview/${dependency.version}`;
+  const failingScore = toHundred(artifact.score[failingAxis.key]);
+  const topAlerts = selectTopAlerts(artifact.alerts);
+
+  // The "why": name Socket's concrete alerts when it returned any, otherwise
+  // fall back to the plain-English meaning of the failing axis — the free
+  // endpoint omits alerts for metric-driven dips (e.g. CVE-only vulnerability
+  // scores), so the number alone would leave the user guessing.
+  const reason =
+    topAlerts.length > 0
+      ? formatAlertReason(topAlerts, artifact.alerts.length)
+      : `This points to ${failingAxis.guidance.meaning}.`;
+
+  // Lead with the exact axis that failed so the number matches what the user
+  // sees on the socket.dev package page (issue #770: calling `overall` a
+  // "supply-chain score" read as a false positive when the supplyChain axis
+  // itself was 100); the remaining axes follow as context.
+  const headline = `\`${formatDependencyIdentity(dependency)}\` scored ${failingScore}/${SOCKET_SCORE_SCALE} on Socket's ${failingAxis.label} axis (minimum ${options.minScore}).`;
+  const otherAxes = `Other axes — ${formatOtherAxisScores(artifact.score, failingAxis.key)}.`;
+
   return {
     filePath: "package.json",
     plugin: SUPPLY_CHAIN_PLUGIN,
     rule: SUPPLY_CHAIN_RULE,
     severity: options.severity,
-    // Name the exact axis that failed so the number matches what the user
-    // sees on the socket.dev package page (issue #770: calling `overall` a
-    // "supply-chain score" read as a false positive when the supplyChain
-    // axis itself was 100).
-    message: `\`${dependency.name}\` (declared in package.json as "${dependency.spec}", scored at ${dependency.version}) has a Socket ${failingAxis.label} score of ${toHundred(score[failingAxis.key])}/${SOCKET_SCORE_SCALE} (below the minimum of ${options.minScore}). Axis scores — ${formatAxisScores(score)}.`,
-    help: `Update or replace the \`"${dependency.name}": "${dependency.spec}"\` entry in package.json. Review ${dependency.name} on Socket: ${packagePageUrl}. Or raise \`supplyChain.minScore\` if you have vetted and accepted this package.`,
+    message: `${headline} ${reason} ${otherAxes}`,
+    help: buildSupplyChainHelp(dependency, failingAxis, topAlerts, packagePageUrl, options),
     url: packagePageUrl,
     // Anchor to the dependency's declaration so the CLI / editor points at the
     // exact entry to change rather than the top of the file.
@@ -400,16 +598,16 @@ export const collectSupplyChainScores = (
     );
     if (dependencies.length === 0) return [];
 
-    const scores = yield* Effect.forEach(dependencies, fetchSocketScore, {
+    const artifacts = yield* Effect.forEach(dependencies, fetchSocketArtifact, {
       concurrency: SUPPLY_CHAIN_FETCH_CONCURRENCY,
     });
 
     return dependencies.map((dependency, index) => {
-      const score = scores[index];
+      const artifact = artifacts[index];
       return {
         name: dependency.name,
         version: dependency.version,
-        overall: score ? toHundred(score.overall) : null,
+        overall: artifact ? toHundred(artifact.score.overall) : null,
       };
     });
   });
@@ -440,17 +638,17 @@ export const checkSupplyChain = (input: SupplyChainCheckInput): Effect.Effect<Di
     );
     if (dependencies.length === 0) return [];
 
-    const scores = yield* Effect.forEach(dependencies, fetchSocketScore, {
+    const artifacts = yield* Effect.forEach(dependencies, fetchSocketArtifact, {
       concurrency: SUPPLY_CHAIN_FETCH_CONCURRENCY,
     });
 
     const diagnostics: Diagnostic[] = [];
     for (let index = 0; index < dependencies.length; index += 1) {
-      const score = scores[index];
-      if (!score) continue;
-      const worstAxis = worstGatedAxis(score);
-      if (toHundred(score[worstAxis.key]) >= options.minScore) continue;
-      diagnostics.push(buildLowScoreDiagnostic(dependencies[index], score, worstAxis, options));
+      const artifact = artifacts[index];
+      if (!artifact) continue;
+      const worstAxis = worstGatedAxis(artifact.score);
+      if (toHundred(artifact.score[worstAxis.key]) >= options.minScore) continue;
+      diagnostics.push(buildLowScoreDiagnostic(dependencies[index], artifact, worstAxis, options));
     }
     return diagnostics;
   });

@@ -457,6 +457,15 @@ export const SOCKET_SCORE_SCALE = 100;
 // per-route rate limit.
 export const SUPPLY_CHAIN_FETCH_CONCURRENCY = 8;
 
+// Most severe Socket alerts to name in one supply-chain diagnostic before
+// collapsing the remainder into a "+N more" count, so a noisy package
+// doesn't flood the message.
+export const SUPPLY_CHAIN_MAX_ALERTS_SHOWN = 3;
+
+// Cap for the first-sentence Socket alert note woven into a diagnostic, so a
+// paragraph-long malware description doesn't blow out the message line.
+export const SUPPLY_CHAIN_ALERT_NOTE_MAX_CHARS = 160;
+
 // Packages excluded from the Socket supply-chain check (the gate and the
 // `--sfw` listing). react-doctor already covers these frameworks' specific
 // risks through dedicated rules — e.g. Next.js via the server-components /

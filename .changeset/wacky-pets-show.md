@@ -26,4 +26,12 @@ A full-corpus replay (8k+ rootDir scans) surfaced three more false-positive clas
 
 Added four more regression tests (including a still-fires guard for a bare identifier that is never sanitized in the file).
 
+A wider corpus pass added three further false-positive classes:
+
+- **DOM-to-DOM content copies** — `target.innerHTML = other.innerHTML` / `= other.outerHTML` (optionally with a `.replace`/`.trim` transform) re-serializes content already in the document, so it is no injection boundary (a `+` concatenation is still judged, to catch spliced-in input).
+- **camelCase sanitized identifiers** — `__html: htmlSanitized` is now recognized (the `sanitize` convention previously required a word boundary the camelCase name lacked).
+- **hljs / Prism highlighters** — joined the serializer-library allow-list so highlighter output read via member access (`hljsResult.value`) is exempt.
+
+Added five more regression tests (including a still-fires guard for DOM content concatenated with fresh input).
+
 This hardens the 6 new security-scan rules (`dangerous-html-sink`, `clickjacking-redirect-risk`, `insecure-crypto-risk`, `mcp-tool-capability-risk`, `raw-sql-injection-risk`, `url-prefilled-privileged-action`) that landed in the posture scanner.

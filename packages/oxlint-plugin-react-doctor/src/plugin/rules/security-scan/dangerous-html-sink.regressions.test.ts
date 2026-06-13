@@ -336,4 +336,44 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  it("stays silent on a DOM-to-DOM innerHTML copy (openreplay ElementView shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/element-view.tsx",
+      content: `const rElem = context.document.createElement(newTag);\nrElem.innerHTML = element.innerHTML;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on a self-transform of a node's own innerHTML", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/extensions/clipboard/parser.ts",
+      content: `for (const div of dom.querySelectorAll(".w3-code")) {\n  div.innerHTML = div.innerHTML?.replaceAll(/<br.*?>/g, "\\n");\n}\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags DOM content concatenated with fresh input", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/render/append.ts",
+      content: `target.innerHTML = base.innerHTML + props.untrustedHtml;\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent on a camelCase sanitized identifier (thorium htmlSanitized shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/library-header.tsx",
+      content: `return htmlSanitized ? <div dangerouslySetInnerHTML={{ __html: htmlSanitized }} /> : null;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on hljs-highlighted output via member access (planka ContentViewer shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/content-viewer.jsx",
+      content: `const hljsResult = hljs.highlightAuto(code);\nreturn <code dangerouslySetInnerHTML={{ __html: hljsResult.value }} className="hljs" />;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

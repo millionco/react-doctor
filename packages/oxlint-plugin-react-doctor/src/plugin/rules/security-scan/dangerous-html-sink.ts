@@ -19,16 +19,18 @@ const STRING_LITERAL_VALUE_PATTERN =
 
 const MODULE_CONSTANT_VALUE_PATTERN = /^[A-Z][A-Z0-9_]*\s*(?:\/\/[^\n]*)?\s*(?:[;,})\n]|$)/;
 
-// `node.innerHTML = element.outerHTML` serializes a live DOM node back into
-// HTML — the value never left the DOM, so it is not an injection boundary.
-const DOM_SERIALIZATION_VALUE_PATTERN = /^[\w$.]+\.outerHTML\s*(?:[;,})\n]|$)/;
+// `node.innerHTML = other.outerHTML` / `= other.innerHTML` (optionally with a
+// `.replace`/`.trim` transform) re-serializes content already in the DOM — the
+// value never left the document, so it is not an injection boundary. A `+`
+// concatenation could splice in fresh input, so those are still judged.
+const DOM_CONTENT_SOURCE_VALUE_PATTERN = /^[\w$]+(?:\.[\w$]+)*\.(?:inner|outer)HTML\b/;
 
 // `(?<!un)safe` catches sanitized-by-convention names (markdownToSafeHTML,
 // descriptionAsSafeHtml) without matching `unsafeHtml`. `escape*`/`encode*`
 // cover HTML entity encoders (`escapeHtml`, `encodeNonAsciiHTML`) whose output
 // is escaped text, not live markup.
 const SANITIZER_PATTERN =
-  /\b(?:DOMPurify|sanitize\w*|purify|(?:escape|encode)[A-Z]\w*|insane|xss)\b|(?<!un)safe/i;
+  /\b(?:DOMPurify|sanitize\w*|purify|(?:escape|encode)[A-Z]\w*|insane|xss)\b|(?<!un)safe|(?<!un)saniti[sz]/i;
 
 // A bare-identifier value sanitized at its definition site
 // (`const clean = DOMPurify.sanitize(md)` then `__html: clean`). The sink only
@@ -51,7 +53,7 @@ const ESCAPING_SERIALIZER_CALL_PATTERN =
   /^(?:[\w$.]+\.)?(?:toHtml|render[A-Za-z]*(?:Html|HTML)|renderToString|renderToStaticMarkup|codeToHtml|codeToHast)\s*\(/;
 
 const ESCAPING_SERIALIZER_LIBRARY_PATTERN =
-  /\bkatex\b|\bshiki\b|codeToHtml\s*\(|renderToStaticMarkup\s*\(|\bhast-util-to-html\b|renderHtmlFromRichText\b/i;
+  /\bkatex\b|\bshiki\b|\bhljs\b|\bprism\b|codeToHtml\s*\(|renderToStaticMarkup\s*\(|\bhast-util-to-html\b|renderHtmlFromRichText\b/i;
 
 const BARE_IDENTIFIER_VALUE_PATTERN = /^[\w$]+\s*(?:[;,})\n]|$)/;
 
@@ -181,7 +183,12 @@ export const dangerousHtmlSink = defineRule({
 
       if (STRING_LITERAL_VALUE_PATTERN.test(valueExpression)) continue;
       if (MODULE_CONSTANT_VALUE_PATTERN.test(valueExpression)) continue;
-      if (DOM_SERIALIZATION_VALUE_PATTERN.test(valueExpression)) continue;
+      if (
+        DOM_CONTENT_SOURCE_VALUE_PATTERN.test(valueExpression) &&
+        !valueExpression.includes("+")
+      ) {
+        continue;
+      }
 
       const longValueTail = HTML_VALUE_START_PATTERN.exec(
         lines.slice(lineIndex, lineIndex + 1 + STATIC_TEMPLATE_LOOKAHEAD_LINES).join("\n"),

@@ -52,6 +52,12 @@ const SANITIZER_PATTERN =
 const SANITIZED_ASSIGNMENT_PATTERN =
   /=\s*[^\n;]*\b(?:DOMPurify\b|sanitize\w*\s*\(|purify\w*\s*\()/i;
 
+// A bare-identifier value captured from a DOM node's own serialized content
+// (`const original = button.innerHTML; … button.innerHTML = original`). The
+// restored markup never left the document, so it is not new input. Only a pure
+// read (no concatenation) qualifies.
+const DOM_CONTENT_ASSIGNMENT_PATTERN = /=\s*[\w$.?[\]]*\.(?:inner|outer)HTML\s*(?:[;,)\n]|$)/;
+
 // Values interpolating only deploy-time config (analytics snippets built
 // from NEXT_PUBLIC_* ids) are developer-controlled, not user input.
 const ENV_CONFIG_VALUE_PATTERN = /process\.env/;
@@ -286,7 +292,16 @@ export const dangerousHtmlSink = defineRule({
             `\\b${escapedIdentifier}\\b\\s*${SANITIZED_ASSIGNMENT_PATTERN.source}`,
             "i",
           );
-          if (fromSerializer.test(file.content) || fromSanitizer.test(file.content)) continue;
+          const fromDomContent = new RegExp(
+            `\\b${escapedIdentifier}\\b\\s*${DOM_CONTENT_ASSIGNMENT_PATTERN.source}`,
+          );
+          if (
+            fromSerializer.test(file.content) ||
+            fromSanitizer.test(file.content) ||
+            fromDomContent.test(file.content)
+          ) {
+            continue;
+          }
         }
       }
       const sinkTargetMatch = INNERHTML_TARGET_PATTERN.exec(line);

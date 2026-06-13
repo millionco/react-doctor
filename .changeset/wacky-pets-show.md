@@ -68,4 +68,9 @@ Beyond precision, `dangerous-html-sink` was missing real DOM-XSS — a security 
 
 Verified against the cached corpus: the new sinks surface previously-missed real injections (e.g. `el.insertAdjacentHTML(pos, content)`, `node.outerHTML = html`, `document.write(editor.getContent())`) while the exemption pipeline and the `isGeneratedBundle` skip keep minified-vendor noise out. Added 7 detection tests (5 must-fire DOM-XSS cases + 2 still-silent guards for static `insertAdjacentHTML` and `outerHTML`-to-`outerHTML` serialization).
 
+A RDE parity pass against `main` surfaced three more false positives, now fixed:
+
+- **`mcp-tool-capability-risk`** keyed its surface on every MCP entry point, so it flagged `new McpServer({...})` construction and static `registerPrompt(...)` calls whenever the file mentioned any capability. It now only matches actual TOOL handlers (`server.tool(`, `registerTool(`, `setRequestHandler(CallToolRequestSchema)`) — model-controlled action surfaces — not construction, tool listing, prompts (message templates), or resources (read-only). Added a regressions test (FP guards for construction/prompt + true-positive tool handlers).
+- **`dangerous-html-sink`** now exempts capture-and-restore of a node's own serialized content (`const original = el.innerHTML; … el.innerHTML = original`) — restored markup never left the document — while still flagging a captured value concatenated with fresh input.
+
 This hardens the 6 new security-scan rules (`dangerous-html-sink`, `clickjacking-redirect-risk`, `insecure-crypto-risk`, `mcp-tool-capability-risk`, `raw-sql-injection-risk`, `url-prefilled-privileged-action`) that landed in the posture scanner.

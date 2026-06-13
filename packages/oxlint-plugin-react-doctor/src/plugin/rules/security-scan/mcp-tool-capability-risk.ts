@@ -6,8 +6,14 @@ import { scanByPattern } from "./utils/scan-by-pattern.js";
 const MCP_IMPORT_PATTERN =
   /\bfrom\s+["']@modelcontextprotocol\/sdk[^"']*["']|\bMcpServer\b|\bMcpAgent\b/;
 
+// Only TOOL handlers are the capability surface: a tool runs model-controlled
+// actions with the client's authority. `new McpServer()`/`McpAgent()` is just
+// construction (and is already the file-level import signal), tool LISTING
+// returns metadata, and prompts (message templates) / resources (read-only
+// data) are not action surfaces — flagging them produced false positives on
+// `new McpServer({...})` and static `registerPrompt(...)` calls.
 const MCP_TOOL_SURFACE_PATTERN =
-  /\b(?:server\.\s*(?:tool|resource|prompt)\s*\(|register(?:Tool|Resource|Prompt)\s*\(|setRequestHandler\s*\(\s*(?:CallToolRequestSchema|ListToolsRequestSchema)|new\s+(?:McpServer|McpAgent)\s*\()/;
+  /\bserver\.\s*tool\s*\(|\bregisterTool\s*\(|\bsetRequestHandler\s*\(\s*CallToolRequestSchema/;
 
 export const mcpToolCapabilityRisk = defineRule({
   id: "mcp-tool-capability-risk",

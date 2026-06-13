@@ -574,6 +574,22 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     expect(findings).toHaveLength(0);
   });
 
+  it("stays silent on capture-and-restore of a node's own innerHTML (twenty-companion shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/renderer.js",
+      content: `const originalHTML = generateButton.innerHTML;\nawait generate();\ngenerateButton.innerHTML = originalHTML;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags a captured value concatenated with fresh input", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/renderer.js",
+      content: `const mergedHtml = base.innerHTML + props.userHtml;\ntarget.innerHTML = mergedHtml;\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("stays silent on the textarea entity-decode idiom (woocommerce decodeHtmlEntities shape)", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/utils/decode.ts",

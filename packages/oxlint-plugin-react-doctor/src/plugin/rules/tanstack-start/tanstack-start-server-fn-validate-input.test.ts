@@ -47,4 +47,27 @@ describe("tanstack-start/server-fn-validate-input", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags a handler that reads data via member access without validation", () => {
+    const result = runRule(
+      tanstackStartServerFnValidateInput,
+      `createServerFn({ method: "POST" }).handler(async (context) => context.data);`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("validator()");
+  });
+
+  it("does not flag member-access data guarded by .validator()", () => {
+    const result = runRule(
+      tanstackStartServerFnValidateInput,
+      `createServerFn({ method: "POST" })
+        .validator((input) => input)
+        .handler(async (context) => context.data);`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

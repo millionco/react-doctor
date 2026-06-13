@@ -60,10 +60,7 @@ export const checkReactNativeMetroBabelPreset = (rootDirectory: string): Diagnos
     // every file instead of importing them from @babel/runtime, bloating the
     // JS bundle (https://github.com/facebook/react-native/issues/57123).
     // Expo's babel-preset-expo is unaffected, so only the RN preset is checked.
-    if (
-      contents.includes(MODERN_PRESET_SPEC) &&
-      !contents.includes(ENABLE_BABEL_RUNTIME_OPTION)
-    ) {
+    if (contents.includes(MODERN_PRESET_SPEC) && !contents.includes(ENABLE_BABEL_RUNTIME_OPTION)) {
       return [
         {
           filePath: fileName,

@@ -5,15 +5,17 @@ import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 
 // HTML-injection sinks: React's `dangerouslySetInnerHTML`, the DOM
 // `innerHTML`/`outerHTML` assignments, `insertAdjacentHTML(position, html)`,
-// and `document.write(ln)(html)`.
+// `document.write(ln)(html)`, `Range.createContextualFragment(html)`, and the
+// explicitly-unsafe `Element.setHTMLUnsafe(html)` (the sanitizing `setHTML` is
+// deliberately not a sink).
 const DANGEROUS_HTML_PATTERN =
-  /dangerouslySetInnerHTML|\.(?:inner|outer)HTML\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\(|\bdocument\.write(?:ln)?\s*\(/;
+  /dangerouslySetInnerHTML|\.(?:inner|outer)HTML\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\(|\bdocument\.write(?:ln)?\s*\(|\.(?:createContextualFragment|setHTMLUnsafe)\s*\(/;
 
 // Captures the value handed to the sink. For `insertAdjacentHTML` the value is
 // the second argument (after the position), so the position arg is skipped. The
 // leading `.` keeps it a method call, not a `function insertAdjacentHTML(` decl.
 const HTML_VALUE_START_PATTERN =
-  /(?:__html\s*:|\.(?:inner|outer)HTML\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\(\s*[^,]*,|\bdocument\.write(?:ln)?\s*\()\s*([\s\S]*)/;
+  /(?:__html\s*:|\.(?:inner|outer)HTML\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\(\s*[^,]*,|\bdocument\.write(?:ln)?\s*\(|\.(?:createContextualFragment|setHTMLUnsafe)\s*\()\s*([\s\S]*)/;
 
 // Dynamic-looking sources. Beyond request/props/state data, this covers the
 // classic OWASP DOM-XSS sources (`location.hash`/`.search`/`.href`,

@@ -542,6 +542,22 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it("flags Range.createContextualFragment with a dynamic value", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/dom/fragment.ts",
+      content: `const frag = range.createContextualFragment(props.userHtml);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags the explicitly-unsafe setHTMLUnsafe sink", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/dom/unsafe.ts",
+      content: `container.setHTMLUnsafe(response.data.body);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("stays silent on insertAdjacentHTML with a static string literal", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/widgets/spacer.ts",

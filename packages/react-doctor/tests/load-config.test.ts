@@ -85,6 +85,34 @@ describe("loadConfig", () => {
       warnSpy.mockRestore();
     });
 
+    it("does not rescue a missing package whose name merely contains react-doctor", async () => {
+      const lookalikeImportDirectory = path.join(tempRootDirectory, "with-lookalike-import-config");
+      fs.mkdirSync(lookalikeImportDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(lookalikeImportDirectory, "doctor.config.ts"),
+        'import { rules } from "@acme/react-doctor-rules";\n\nexport default { rules };\n',
+      );
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const config = await loadConfig(lookalikeImportDirectory);
+      expect(config).toBeNull();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("@acme/react-doctor-rules"));
+      warnSpy.mockRestore();
+    });
+
+    it("does not rescue an import from the bare react-doctor specifier", async () => {
+      const bareImportDirectory = path.join(tempRootDirectory, "with-bare-self-import-config");
+      fs.mkdirSync(bareImportDirectory, { recursive: true });
+      fs.writeFileSync(
+        path.join(bareImportDirectory, "doctor.config.ts"),
+        'import { defineConfig } from "react-doctor";\n\nexport default defineConfig({ lint: true });\n',
+      );
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const config = await loadConfig(bareImportDirectory);
+      expect(config).toBeNull();
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Failed to load"));
+      warnSpy.mockRestore();
+    });
+
     it("prefers doctor.config.ts over doctor.config.json", async () => {
       const mixedDirectory = path.join(tempRootDirectory, "ts-over-json");
       fs.mkdirSync(mixedDirectory, { recursive: true });

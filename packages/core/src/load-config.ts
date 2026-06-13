@@ -63,50 +63,59 @@ const formatError = (error: unknown): string =>
 // node_modules (e.g. the GitHub Action runs the CLI via `npm exec` without
 // installing the repo's dependencies), that import cannot resolve from the
 // config file's directory and the config would silently fall back to
-// defaults. The load is retried with those specifiers aliased to the running
+// defaults. The load is retried with that specifier aliased to the running
 // package's own copy: a package self-reference from the published bundle,
 // or `@react-doctor/core` (which exports the same `defineConfig`) in the
-// workspace.
-const SELF_PACKAGE_IMPORT_SPECIFIERS = ["react-doctor/api", "react-doctor"] as const;
+// workspace. The alias target depends only on where the running package is
+// installed, so it is resolved once at module scope.
+const SELF_PACKAGE_IMPORT_SPECIFIER = "react-doctor/api";
 const SELF_PACKAGE_RESOLVE_TARGETS = ["react-doctor/api", "@react-doctor/core"] as const;
+const MODULE_NOT_FOUND_ERROR_CODES: ReadonlySet<string> = new Set([
+  "MODULE_NOT_FOUND",
+  "ERR_MODULE_NOT_FOUND",
+]);
 
-let selfAliasJitiCache: Jiti | null | undefined;
-
-const resolveSelfAliasJiti = (): Jiti | null => {
-  if (selfAliasJitiCache !== undefined) return selfAliasJitiCache;
-  selfAliasJitiCache = null;
+const selfAliasJiti = ((): Jiti | null => {
   for (const resolveTarget of SELF_PACKAGE_RESOLVE_TARGETS) {
-    let aliasTargetPath: string;
     try {
-      const resolvedUrl = jiti.esmResolve(resolveTarget);
-      aliasTargetPath = resolvedUrl.startsWith("file:") ? fileURLToPath(resolvedUrl) : resolvedUrl;
+      const aliasTargetPath = fileURLToPath(jiti.esmResolve(resolveTarget));
+      return createJiti(import.meta.url, {
+        alias: { [SELF_PACKAGE_IMPORT_SPECIFIER]: aliasTargetPath },
+      });
     } catch {
       continue;
     }
-    selfAliasJitiCache = createJiti(import.meta.url, {
-      alias: Object.fromEntries(
-        SELF_PACKAGE_IMPORT_SPECIFIERS.map((specifier) => [specifier, aliasTargetPath]),
-      ),
-    });
-    break;
   }
-  return selfAliasJitiCache;
-};
+  return null;
+})();
 
+// jiti's resolution errors quote the failing specifier in single quotes
+// (`Cannot find module 'react-doctor/api'`). Matching the error code plus the
+// quoted specifier avoids false positives from the unquoted error text — the
+// `Require stack:` lines embed the config file's absolute path, and a missing
+// third-party package like `@acme/react-doctor-rules` contains the bare
+// package name as a substring.
 const isSelfPackageResolutionError = (error: unknown): boolean =>
   error instanceof Error &&
-  SELF_PACKAGE_IMPORT_SPECIFIERS.some((specifier) => error.message.includes(specifier));
+  "code" in error &&
+  typeof error.code === "string" &&
+  MODULE_NOT_FOUND_ERROR_CODES.has(error.code) &&
+  error.message.includes(`'${SELF_PACKAGE_IMPORT_SPECIFIER}'`);
 
 const loadModuleConfig = async (filePath: string): Promise<unknown> => {
   try {
     const imported = await jiti.import<{ default?: unknown }>(filePath);
     return imported?.default ?? imported;
   } catch (error) {
-    if (!isSelfPackageResolutionError(error)) throw error;
-    const selfAliasJiti = resolveSelfAliasJiti();
-    if (!selfAliasJiti) throw error;
-    const imported = await selfAliasJiti.import<{ default?: unknown }>(filePath);
-    return imported?.default ?? imported;
+    if (!selfAliasJiti || !isSelfPackageResolutionError(error)) throw error;
+    try {
+      const imported = await selfAliasJiti.import<{ default?: unknown }>(filePath);
+      return imported?.default ?? imported;
+    } catch (retryError) {
+      throw new Error(
+        `${formatError(error)} (retry with ${SELF_PACKAGE_IMPORT_SPECIFIER} aliased to the running react-doctor package also failed: ${formatError(retryError)})`,
+      );
+    }
   }
 };
 

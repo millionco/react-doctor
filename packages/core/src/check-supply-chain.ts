@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as semver from "semver";
 import {
   FETCH_TIMEOUT_MS,
   SOCKET_FREE_PURL_API_BASE,
@@ -22,6 +23,7 @@ import { findMonorepoRoot, isMonorepoRoot, readPackageJson } from "./project-inf
 import { getWorkspacePatterns } from "./project-info/get-workspace-patterns.js";
 import { resolveWorkspaceDirectories } from "./project-info/resolve-workspace-directories.js";
 import type { Diagnostic, PackageJson, ReactDoctorConfig } from "./types/index.js";
+import { sanitizeTerminalText } from "./utils/sanitize-terminal-text.js";
 
 export interface SupplyChainCheckInput {
   readonly rootDirectory: string;
@@ -63,18 +65,30 @@ const SocketScoreSchema = Schema.Struct({
 // `critical` `malware` alert in a named file with a human `note`). The free
 // endpoint only attaches these for the highest-signal supply-chain threats;
 // metric-driven dips (CVE-only scores, sparse maintenance) arrive with an
-// empty `alerts` array. Every field but `type`/`severity` is best-effort.
+// empty `alerts` array. Optional fields are `NullOr` because the JSON endpoint
+// sends an explicit `null` (not an absent key) for values it lacks, and
+// `Schema.optional` alone rejects `null` — which would fail the whole decode.
 const SocketAlertSchema = Schema.Struct({
   type: Schema.String,
   severity: Schema.String,
-  category: Schema.optional(Schema.String),
-  file: Schema.optional(Schema.String),
-  props: Schema.optional(Schema.Struct({ note: Schema.optional(Schema.String) })),
+  file: Schema.optional(Schema.NullOr(Schema.String)),
+  props: Schema.optional(
+    Schema.NullOr(Schema.Struct({ note: Schema.optional(Schema.NullOr(Schema.String)) })),
+  ),
 });
 
+// The score-bearing artifact line. Alerts are decoded SEPARATELY (see
+// `extractAlerts`) rather than as a field here so that a single malformed or
+// unknown-variant alert can never fail the artifact decode — which would treat
+// the package as unscored and silently drop a real low-score finding.
 const SocketArtifactSchema = Schema.Struct({
   score: Schema.optional(SocketScoreSchema),
-  alerts: Schema.optional(Schema.Array(SocketAlertSchema)),
+});
+
+// The raw alert list, kept as `Unknown` elements so one unparseable alert
+// can't sink the array decode; each element is decoded resiliently below.
+const RawAlertsSchema = Schema.Struct({
+  alerts: Schema.optional(Schema.NullOr(Schema.Array(Schema.Unknown))),
 });
 
 type SocketScore = Schema.Schema.Type<typeof SocketScoreSchema>;
@@ -88,6 +102,22 @@ interface SocketArtifact {
 }
 
 const decodeArtifact = Schema.decodeUnknownOption(SocketArtifactSchema);
+const decodeRawAlerts = Schema.decodeUnknownOption(RawAlertsSchema);
+const decodeAlert = Schema.decodeUnknownOption(SocketAlertSchema);
+
+// Decodes each alert independently, dropping any that don't parse (an unknown
+// variant or a malformed entry) rather than discarding the whole artifact —
+// and with it the score that gates the check.
+const extractAlerts = (parsed: unknown): ReadonlyArray<SocketAlert> => {
+  const rawAlerts = Option.getOrNull(decodeRawAlerts(parsed))?.alerts;
+  if (!rawAlerts) return [];
+  const alerts: SocketAlert[] = [];
+  for (const candidate of rawAlerts) {
+    const alert = Option.getOrNull(decodeAlert(candidate));
+    if (alert !== null) alerts.push(alert);
+  }
+  return alerts;
+};
 
 interface AxisGuidance {
   /**
@@ -100,27 +130,28 @@ interface AxisGuidance {
   readonly remediation: string;
 }
 
-interface ScoreAxis {
+// A security axis that gates the check. Its guidance powers the failing-axis
+// message's "why" and the help's remediation.
+interface GatedAxis {
   readonly key: keyof SocketScore;
   readonly label: string;
-  /**
-   * Non-null only for the security axes that gate the check — the presence of
-   * guidance *is* the gate (see GATED_AXES).
-   */
-  readonly guidance: AxisGuidance | null;
-}
-
-// A gated security axis: the same shape with guidance guaranteed, so the
-// failing-axis message/help can read it without a non-null assertion.
-interface GatedAxis extends ScoreAxis {
   readonly guidance: AxisGuidance;
 }
 
-// The non-`overall` axes, paired with the label shown in the diagnostic so a
-// developer immediately sees which dimension dragged the score down. The two
-// security axes also carry the guidance that powers the message's "why" and
-// the help's remediation.
-const SCORE_AXES: ReadonlyArray<ScoreAxis> = [
+// A non-security axis: reported in the diagnostic's breakdown as context, but
+// never gates the check.
+interface ScoreAxis {
+  readonly key: keyof SocketScore;
+  readonly label: string;
+}
+
+// Only the security axes decide the gate. Socket's `overall` is its lowest
+// axis, so gating on it let a pure quality/maintenance dip fail this
+// Security-category check — e.g. `@types/bun@1.3.14` scores quality 48 with
+// every security axis at 100 (issue #770). `supplyChain` covers typosquats /
+// install scripts / compromised maintainers; `vulnerability` covers known
+// CVEs (what flags the compromised `event-stream@3.3.6`).
+const GATED_AXES: ReadonlyArray<GatedAxis> = [
   {
     key: "supplyChain",
     label: "supply chain",
@@ -140,21 +171,19 @@ const SCORE_AXES: ReadonlyArray<ScoreAxis> = [
         "Upgrade to a version with no known advisories (run `npm audit` to find one), or replace it",
     },
   },
-  { key: "maintenance", label: "maintenance", guidance: null },
-  { key: "quality", label: "quality", guidance: null },
-  { key: "license", label: "license", guidance: null },
 ];
 
-// Only the security axes decide the gate. Socket's `overall` is its lowest
-// axis, so gating on it let a pure quality/maintenance dip fail this
-// Security-category check — e.g. `@types/bun@1.3.14` scores quality 48 with
-// every security axis at 100 (issue #770). `supplyChain` covers typosquats /
-// install scripts / compromised maintainers; `vulnerability` covers known
-// CVEs (what flags the compromised `event-stream@3.3.6`). The remaining axes
-// still appear in the diagnostic's axis breakdown as context.
-const GATED_AXES: ReadonlyArray<GatedAxis> = SCORE_AXES.filter(
-  (axis): axis is GatedAxis => axis.guidance !== null,
-);
+// The non-gating axes, reported in the breakdown as context so a developer
+// sees which dimension dragged the score down.
+const CONTEXT_AXES: ReadonlyArray<ScoreAxis> = [
+  { key: "maintenance", label: "maintenance" },
+  { key: "quality", label: "quality" },
+  { key: "license", label: "license" },
+];
+
+// Every axis in display order (gated first), for the per-axis score breakdown
+// and the fetch span attributes.
+const SCORE_AXES: ReadonlyArray<ScoreAxis> = [...GATED_AXES, ...CONTEXT_AXES];
 
 // The axis that decides the gate for one score: the lowest of the gated
 // axes. A tie keeps `supplyChain`, matching the rule's name.
@@ -191,17 +220,17 @@ const resolveOptions = (config: ReactDoctorConfig | null): ResolvedSupplyChainOp
 };
 
 // package.json declares ranges (`^4.17.21`, `~1.2.0`, `>=2 <3`), but the
-// Socket lookup needs a concrete version. Take the first semver-looking
-// token in the spec — the floor of a caret/tilde range, which is a real
-// published version. Specs with no concrete version (`*`, `latest`,
-// `1.x`) or a non-registry protocol (`workspace:`, `file:`, `link:`,
-// `npm:`, `git+…`, a URL) are skipped: there's nothing to score.
+// Socket lookup needs one concrete version. Score the floor of the range — the
+// lowest version it permits, a real published version — via `semver.minVersion`,
+// which resolves caret/tilde/OR/upper-bound ranges correctly (the old
+// "first semver token" scan mis-scored `<2.0.0 >=1.5.0` and `2.0.0 || 1.0.0`).
+// Specs with no parseable floor (`latest`, a URL) or a non-registry protocol
+// (`workspace:`, `file:`, `link:`, `npm:`, `git+…`) are skipped: nothing to score.
 const resolveConcreteVersion = (spec: string): string | null => {
   const trimmed = spec.trim();
   if (trimmed.length === 0) return null;
   if (trimmed.includes(":")) return null;
-  const match = trimmed.match(/\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/);
-  return match ? match[0] : null;
+  return semver.minVersion(trimmed)?.version ?? null;
 };
 
 type DependencySection = "dependencies" | "devDependencies";
@@ -344,8 +373,9 @@ const toPurl = (dependency: DependencyToScore): string =>
   `pkg:npm/${dependency.name}@${dependency.version}`;
 
 // The endpoint streams newline-delimited JSON (one artifact per line); take
-// the first line that decodes to an artifact carrying a score, normalizing
-// its alerts to an array so callers never branch on `undefined`.
+// the first line that decodes to an artifact carrying a score. Alerts are
+// decoded separately and resiliently (`extractAlerts`) so a malformed alert
+// can never discard the score that gates the check.
 const parseArtifactFromBody = (body: string): SocketArtifact | null => {
   for (const line of body.split("\n")) {
     if (line.trim().length === 0) continue;
@@ -356,7 +386,7 @@ const parseArtifactFromBody = (body: string): SocketArtifact | null => {
       continue;
     }
     const artifact = Option.getOrNull(decodeArtifact(parsed));
-    if (artifact?.score) return { score: artifact.score, alerts: artifact.alerts ?? [] };
+    if (artifact?.score) return { score: artifact.score, alerts: extractAlerts(parsed) };
   }
   return null;
 };
@@ -429,9 +459,11 @@ const ALERT_SEVERITY_RANK: Record<string, number> = {
 const severityRank = (severity: string): number => ALERT_SEVERITY_RANK[severity.toLowerCase()] ?? 0;
 
 // Display spelling for a severity: normalize Socket's "middle" to "medium",
-// otherwise lowercase the wire value.
-const displaySeverity = (severity: string): string =>
-  severity.toLowerCase() === "middle" ? "medium" : severity.toLowerCase();
+// otherwise lowercase the (remote, sanitized) wire value.
+const displaySeverity = (severity: string): string => {
+  const normalized = sanitizeTerminalText(severity.toLowerCase());
+  return normalized === "middle" ? "medium" : normalized;
+};
 
 // Labels for the alert types whose friendly name differs from the humanized
 // identifier. Everything else (`installScript` -> "install script",
@@ -457,12 +489,14 @@ const humanizeAlertType = (type: string): string =>
     .trim();
 
 const friendlyAlertType = (type: string): string =>
-  ALERT_TYPE_LABELS[type] ?? humanizeAlertType(type);
+  ALERT_TYPE_LABELS[type] ?? sanitizeTerminalText(humanizeAlertType(type));
 
 // First sentence of a Socket alert note, whitespace-collapsed and capped so a
 // paragraph-long malware description doesn't blow out the diagnostic line.
 const summarizeAlertNote = (note: string): string => {
-  const collapsed = note.replace(/\s+/g, " ").trim();
+  // Collapse whitespace first (so legitimate newlines/tabs become spaces),
+  // then strip remaining control chars/backticks from the remote note.
+  const collapsed = sanitizeTerminalText(note.replace(/\s+/g, " ").trim());
   const firstSentence = collapsed.split(/(?<=\.)\s/)[0] || collapsed;
   if (firstSentence.length <= SUPPLY_CHAIN_ALERT_NOTE_MAX_CHARS) {
     return firstSentence.replace(/\.$/, "");
@@ -483,7 +517,7 @@ const selectTopAlerts = (alerts: ReadonlyArray<SocketAlert>): ReadonlyArray<Sock
 const formatAlertReason = (topAlerts: ReadonlyArray<SocketAlert>, totalCount: number): string => {
   if (topAlerts.length === 1) {
     const [alert] = topAlerts;
-    const location = alert.file ? ` in \`${alert.file}\`` : "";
+    const location = alert.file ? ` in \`${sanitizeTerminalText(alert.file)}\`` : "";
     const note = alert.props?.note ? summarizeAlertNote(alert.props.note) : null;
     const detail = note ? `: "${note}"` : "";
     return `Socket flagged a ${displaySeverity(alert.severity)} ${friendlyAlertType(alert.type)} alert${location}${detail}.`;
@@ -495,9 +529,11 @@ const formatAlertReason = (topAlerts: ReadonlyArray<SocketAlert>, totalCount: nu
 
 // "react@18.2.0" for an exact pin; for a range, names the scored version and
 // makes clear it's the floor the range allows — we score the lowest permitted
-// version, which may differ from what's installed.
+// version, which may differ from what's installed. `semver.valid` is the
+// exact-pin test: it returns non-null only for a single concrete version, so a
+// `v`-prefixed pin like `v1.2.3` reads as a pin instead of a mislabeled range.
 const formatDependencyIdentity = (dependency: DependencyToScore): string =>
-  dependency.spec === dependency.version
+  semver.valid(dependency.spec) !== null
     ? `${dependency.name}@${dependency.version}`
     : `${dependency.name}@${dependency.version} (lowest version "${dependency.spec}" allows)`;
 

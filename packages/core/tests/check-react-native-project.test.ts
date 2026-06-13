@@ -111,6 +111,55 @@ describe("checkReactNativeProject — legacy metro babel preset", () => {
     ).not.toContain("rn-no-metro-babel-preset");
   });
 
+  it("flags the modern preset without the enableBabelRuntime option", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: ['module:@react-native/babel-preset'] };`,
+    );
+    const diagnostics = checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory));
+    const hit = diagnostics.find((d) => d.rule === "rn-no-metro-babel-runtime-version");
+    expect(hit).toBeDefined();
+    expect(hit?.severity).toBe("error");
+  });
+
+  it("does NOT flag the modern preset when enableBabelRuntime is set", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: [['module:@react-native/babel-preset', { enableBabelRuntime: '^7.26.0' }]] };`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-no-metro-babel-runtime-version");
+  });
+
+  it("does NOT flag an Expo babel config without the RN preset", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.js",
+      `module.exports = { presets: ['babel-preset-expo'] };`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-no-metro-babel-runtime-version");
+  });
+
   it("does NOT flag a bare mention in a comment (no module: prefix)", () => {
     const projectDirectory = makeProjectDirectory();
     writePackageJson(projectDirectory, {

@@ -38,26 +38,6 @@ export const checkReactNativeMetroBabelPreset = (rootDirectory: string): Diagnos
     } catch {
       continue;
     }
-    if (
-      // Expo doesn't have such problem, so we need to check only RN babel preset
-      // issue: https://github.com/react/react-native/issues/57123
-      !contents.includes(MODERN_PRESET_SPEC) &&
-      !contents.includes(ENABLE_BABEL_RUNTIME_OPTION)
-    ) {
-      return [
-        {
-          filePath: fileName,
-          plugin: "react-doctor",
-          rule: "rn-no-metro-babel-runtime-version",
-          severity: "error",
-          message: `Babel helpers are being inlined multiple times across different files instead of being imported once. This causes unnecessary code duplication and increases the JS bundle size. Without an '${ENABLE_BABEL_RUNTIME_OPTION}' option with your @babel/runtime version as value in your babel config`,
-          help: `Add the '${ENABLE_BABEL_RUNTIME_OPTION}' option to the React Native Babel preset. Use the @babel/runtime version from package.json. For example: Before: \`'module:@react-native/babel-preset'\` -> After \`['module:@react-native/babel-preset', { enableBabelRuntime: '^7.26.0' }]\``,
-          line: 0,
-          column: 0,
-          category: "Correctness",
-        },
-      ];
-    }
     if (contents.includes(LEGACY_PRESET_SPEC)) {
       return [
         {
@@ -70,6 +50,28 @@ export const checkReactNativeMetroBabelPreset = (rootDirectory: string): Diagnos
           message:
             "`module:metro-react-native-babel-preset` was renamed to `@react-native/babel-preset` and is no longer installed by React Native 0.73+ — this preset reference fails to resolve and breaks the Metro/Babel transform.",
           help: "Replace the preset with `module:@react-native/babel-preset` (or `babel-preset-expo` on Expo) and remove the old `metro-react-native-babel-preset` dependency.",
+          line: 0,
+          column: 0,
+          category: "Correctness",
+        },
+      ];
+    }
+    // Without `enableBabelRuntime` the RN preset inlines Babel helpers into
+    // every file instead of importing them from @babel/runtime, bloating the
+    // JS bundle (https://github.com/facebook/react-native/issues/57123).
+    // Expo's babel-preset-expo is unaffected, so only the RN preset is checked.
+    if (
+      contents.includes(MODERN_PRESET_SPEC) &&
+      !contents.includes(ENABLE_BABEL_RUNTIME_OPTION)
+    ) {
+      return [
+        {
+          filePath: fileName,
+          plugin: "react-doctor",
+          rule: "rn-no-metro-babel-runtime-version",
+          severity: "error",
+          message: `Babel helpers are inlined into every file instead of being imported once from @babel/runtime, duplicating code and increasing the JS bundle size — the babel config is missing the '${ENABLE_BABEL_RUNTIME_OPTION}' option on \`${MODERN_PRESET_SPEC}\`.`,
+          help: `Add the '${ENABLE_BABEL_RUNTIME_OPTION}' option to the React Native Babel preset, using the @babel/runtime version from package.json. For example: \`'${MODERN_PRESET_SPEC}'\` -> \`['${MODERN_PRESET_SPEC}', { ${ENABLE_BABEL_RUNTIME_OPTION}: '^7.26.0' }]\`.`,
           line: 0,
           column: 0,
           category: "Correctness",

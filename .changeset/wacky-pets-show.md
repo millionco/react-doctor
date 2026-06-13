@@ -51,4 +51,11 @@ A `/thermos` review pass hardened the exemptions against false negatives (a secu
 
 Added FN-guard regression tests for each (49 tests total).
 
+A second full-corpus pass found the largest remaining false-positive class — **syntax-highlighter output** — and two smaller ones:
+
+- Highlighter output (`highlightedHtml`, `file.highlightedContent`, `highlight*()` calls) is escaped, token-wrapped markup. It is usually routed through React state (`const [highlightedHtml, setHighlightedHtml] = useState(); setHighlightedHtml(await codeToHtml(code))`) or passed as a prop, so the data-flow assignment check never sees it. Now exempt: `highlight*()` calls (escaping serializers), `highlighted*` values (escaped-output naming convention), and present-tense `highlight*` values when the file uses a highlighter library (Shiki/Prism/highlight.js/…).
+- Optional chaining in the DOM-serialization exemption (`Svg?.outerHTML`).
+
+Added five FN-guard regression tests (incl. a non-highlighter `renderedHtml` and a present-tense `highlight*` with no library still firing). 55 tests total.
+
 This hardens the 6 new security-scan rules (`dangerous-html-sink`, `clickjacking-redirect-risk`, `insecure-crypto-risk`, `mcp-tool-capability-risk`, `raw-sql-injection-risk`, `url-prefilled-privileged-action`) that landed in the posture scanner.

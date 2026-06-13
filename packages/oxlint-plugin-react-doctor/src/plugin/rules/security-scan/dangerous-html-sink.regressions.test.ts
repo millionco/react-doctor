@@ -451,4 +451,62 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  it("stays silent on highlighter output routed through React state (shiki useState shape)", () => {
+    const content = [
+      'import { codeToHtml } from "shiki";',
+      "export const CodeBlock = ({ code, language }: Props) => {",
+      "  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);",
+      "  useEffect(() => {",
+      "    codeToHtml(code, { lang: language }).then(setHighlightedHtml);",
+      "  }, [code, language]);",
+      "  return highlightedHtml ? <div dangerouslySetInnerHTML={{ __html: highlightedHtml }} /> : null;",
+      "};",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/code-block.tsx",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on a highlight*() call value", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/report.tsx",
+      content: `return <span dangerouslySetInnerHTML={{ __html: highlightJson(content) }} />;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on a highlighted-named value passed as a prop (pre-highlighted leaf component)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/highlighted-text.tsx",
+      content: `export const HighlightedText = ({ highlightedHtml }: Props) => (\n  <span dangerouslySetInnerHTML={{ __html: highlightedHtml }} />\n);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags a non-highlighter rendered value (renderedHtml without a highlighter)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.tsx",
+      content: `const renderedHtml = props.body;\nreturn <div dangerouslySetInnerHTML={{ __html: renderedHtml }} />;\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("still flags a present-tense highlight value when no highlighter library is present", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/banner.tsx",
+      content: `const highlightBody = props.body;\nreturn <div dangerouslySetInnerHTML={{ __html: highlightBody }} />;\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent on optional-chained DOM serialization (Svg?.outerHTML shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/excalidraw-node.tsx",
+      content: `return <div dangerouslySetInnerHTML={{ __html: Svg?.outerHTML ?? '' }} />;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

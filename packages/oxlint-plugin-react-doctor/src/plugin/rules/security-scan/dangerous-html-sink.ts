@@ -23,7 +23,7 @@ const MODULE_CONSTANT_VALUE_PATTERN = /^[A-Z][A-Z0-9_]*\s*(?:\/\/[^\n]*)?\s*(?:[
 // `.replace`/`.trim` transform) re-serializes content already in the DOM — the
 // value never left the document, so it is not an injection boundary. A `+`
 // concatenation could splice in fresh input, so those are still judged.
-const DOM_CONTENT_SOURCE_VALUE_PATTERN = /^[\w$]+(?:\.[\w$]+)*\.(?:inner|outer)HTML\b/;
+const DOM_CONTENT_SOURCE_VALUE_PATTERN = /^[\w$]+(?:\??\.[\w$]+)*\??\.(?:inner|outer)HTML\b/;
 
 // `(?<!un)safe` catches sanitized-by-convention names (markdownToSafeHTML,
 // descriptionAsSafeHtml) without matching `unsafeHtml`. The `escape`/`encode`
@@ -50,7 +50,16 @@ const I18N_VALUE_PATTERN = /\b(?:t|i18n|translate|formatMessage|intl)\s*[.(]/;
 // `renderPartialHTML`) alongside React's `renderToString` family — markup the
 // renderer generated, not user HTML. Used when the serializer call IS the value.
 const ESCAPING_SERIALIZER_CALL_PATTERN =
-  /^(?:[\w$.]+\.)?(?:toHtml|render[A-Za-z]*(?:Html|HTML)|renderToString|renderToStaticMarkup|codeToHtml|codeToHast)\s*\(/;
+  /^(?:[\w$.]+\.)?(?:toHtml|render[A-Za-z]*(?:Html|HTML)|renderToString|renderToStaticMarkup|codeToHtml|codeToHast|highlight[A-Za-z]*)\s*\(/;
+
+// Syntax/code highlighters (Shiki, Prism, highlight.js, …) HTML-escape their
+// input and wrap tokens in spans — the output is generated markup. A value that
+// is highlighter output is commonly fed through React state
+// (`const [highlightedHtml, setHighlightedHtml] = useState(); … setHighlightedHtml(await codeToHtml(code))`),
+// so the data-flow assignment check misses it. Exempt a `highlight`-named value
+// when the file actually uses a highlighter library (keeps the trust link).
+const HIGHLIGHTER_LIBRARY_PATTERN =
+  /\b(?:shiki|prism|hljs|highlightjs|getHighlighter|codeToHtml|codeToHast|refractor|lowlight|starry-night)\b|highlight\.js/i;
 
 // When the value is an identifier/member access, exempt it only if that
 // identifier is assigned from an escaping serializer in the file (`const html =
@@ -234,6 +243,15 @@ export const dangerousHtmlSink = defineRule({
       if (I18N_VALUE_PATTERN.test(judgedExpression)) continue;
       if (!HTML_TAINT_PATTERN.test(judgedExpression)) continue;
       if (ESCAPING_SERIALIZER_CALL_PATTERN.test(valueExpression)) continue;
+      // Highlighter output: a `highlighted*` value is escaped, token-wrapped
+      // markup by naming convention (often passed as a prop or routed through
+      // React state, so no direct serializer assignment is visible); a present-
+      // tense `highlight*` value is trusted only when the file uses a highlighter
+      // library. (`highlight*()` calls are handled by the serializer-call check.)
+      if (/highlighted/i.test(valueExpression)) continue;
+      if (/highlight/i.test(valueExpression) && HIGHLIGHTER_LIBRARY_PATTERN.test(file.content)) {
+        continue;
+      }
       // Value is a bare identifier or member/index access: exempt only when that
       // identifier is assigned from a serializer or a sanitizer in the file.
       if (

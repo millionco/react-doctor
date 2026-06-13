@@ -1,6 +1,0 @@
----
-"oxlint-plugin-react-doctor": patch
-"react-doctor": patch
----
-
-Fix false positives in `rn-no-raw-text` (#788) for custom components that forward their children into a `<Text>`: the in-file wrapper detection now recognizes components that render `{children}` (or `{props.children}`) inside a nested `<Text>` (the `<View><Text>{children}</Text></View>` shape), not just components whose returned root is a `<Text>`. Detection also handles parenthesized `return (...)` bodies, `memo`/`forwardRef`-wrapped components, fragment roots, conditional and logical returns, early returns inside `if` branches, renamed destructured children (`{ children: content }`), the `<Text children={children} />` prop form, wrappers that forward through another in-file wrapper, children aliased to a variable or destructured from props in the body, props spreads that carry children (`<Text {...props} />`, `<Text {...rest} />`, `<Text {...this.props} />`), class components, and `styled(Text)` / `styled.Text` factories. The rule is also tagged `test-noise`, so it no longer fires in test/story files — raw text rendered through React Native Testing Library never ships to users, and cross-file wrappers (an imported `<Chip>Test Chip</Chip>` in a `.test.tsx`) were the main source of unfixable noise there.

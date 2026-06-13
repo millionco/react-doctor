@@ -1,6 +1,6 @@
 {
   "name": "oxlint-plugin-react-doctor",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "oxlint plugin for React Doctor: diagnose React codebases for security, performance, correctness, accessibility, bundle-size, and architecture issues",
   "keywords": [
     "accessibility",

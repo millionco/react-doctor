@@ -1,5 +1,23 @@
 # @react-doctor/core
 
+## 0.5.2
+
+### Patch Changes
+
+- [#769](https://github.com/millionco/react-doctor/pull/769) [`2f26228`](https://github.com/millionco/react-doctor/commit/2f26228e36cfe64a430a41596d7b1053d6d7d307) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Consolidate the scan-scope controls into one `--scope` flag (and `scope` config option) with four values, shared verbatim by the CLI and the GitHub Action:
+
+  - `full` (default) — the whole project, every issue. Whole-project checks (dead-code, environment, supply-chain) run only here.
+  - `files` — only the files changed vs the base, with all issues in them (no compare-to-main). What `--staged` and an uncommitted `--diff` did.
+  - `changed` — only issues the change introduced vs the base (the baseline delta). What `--diff <base>` and the action's `scope: changed` did.
+  - `lines` — only issues on the lines the change actually touched. New: previously this scoping existed only inside the GitHub Action's inline-review-comment step; it now lives in the engine, so the CI gate, score display, summary, and inline comments all honor one scope.
+
+  `--base <ref>` sets the comparison base for `files` / `changed` / `lines` (auto-detected when omitted). Behavior is unchanged by default: the CLI `--scope` defaults to `full` and the action `scope` input still defaults to `changed`. `--diff` / `config.diff` keep working as a deprecated alias (`--diff <base>` → `--scope changed --base <base>`, `--diff false` → `--scope full`) and emit a one-time deprecation warning; `--staged` is retained as the source selector and composes with `--scope files` / `--scope lines`.
+
+- [#783](https://github.com/millionco/react-doctor/pull/783) [`a48fb06`](https://github.com/millionco/react-doctor/commit/a48fb06ffbe7221655e18529fcc954ecae17a22f) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - Add a `--output-dir <dir>` flag that writes the full diagnostics dump (diagnostics.json + one .txt per rule) to a directory of your choice instead of a random temp folder, prints the written path whenever the flag is set (previously `--verbose`-only), and makes the agent handoff reuse that directory instead of writing a second temp copy. Without the flag, behavior is unchanged.
+
+- Updated dependencies [[`94f9f4f`](https://github.com/millionco/react-doctor/commit/94f9f4fe98207181958f82275b41d94963bc73a2), [`038aaf7`](https://github.com/millionco/react-doctor/commit/038aaf78c12f7f9a2699f46d3a6aa304dc69fc12), [`fee3fc4`](https://github.com/millionco/react-doctor/commit/fee3fc436e502ad4a6609ab8bda9c9a782d8ecd7), [`c4f0e60`](https://github.com/millionco/react-doctor/commit/c4f0e607b6092485d226c0d67c783270f4eec8b2), [`f52bd07`](https://github.com/millionco/react-doctor/commit/f52bd0737527df9ab81f3746e64bdb5ac1defbc7), [`7c88165`](https://github.com/millionco/react-doctor/commit/7c8816575aff26f11b5099c7ef009c4793fe260f)]:
+  - oxlint-plugin-react-doctor@0.5.2
+
 ## 0.5.1
 
 ### Patch Changes

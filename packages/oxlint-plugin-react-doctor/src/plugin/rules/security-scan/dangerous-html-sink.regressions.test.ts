@@ -502,6 +502,62 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it("flags innerHTML assigned from location.hash (DOM-XSS source)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/router/render.ts",
+      content: `target.innerHTML = location.hash.slice(1);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags innerHTML assigned from document.cookie", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/widgets/debug.ts",
+      content: `panel.innerHTML = document.cookie;\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags an outerHTML assignment sink from props", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/swap.tsx",
+      content: `host.outerHTML = props.userHtml;\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags insertAdjacentHTML with a dynamic value", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/widgets/feed.ts",
+      content: `list.insertAdjacentHTML("beforeend", item.contentHtml);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags document.write with an untrusted URL value", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/legacy/boot.ts",
+      content: `document.write(location.search);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent on insertAdjacentHTML with a static string literal", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/widgets/spacer.ts",
+      content: `node.insertAdjacentHTML("beforeend", "<div class='spacer'></div>");\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on an outerHTML-to-outerHTML DOM serialization", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/hooks/clone.ts",
+      content: `placeholder.outerHTML = svg.outerHTML;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
   it("stays silent on the textarea entity-decode idiom (woocommerce decodeHtmlEntities shape)", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/utils/decode.ts",

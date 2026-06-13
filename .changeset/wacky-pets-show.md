@@ -59,4 +59,13 @@ A second full-corpus pass found the largest remaining false-positive class — *
 
 Added six FN-guard regression tests (incl. a non-highlighter `renderedHtml` and a present-tense `highlight*` with no library still firing). 56 tests total.
 
+### Detection coverage (recall)
+
+Beyond precision, `dangerous-html-sink` was missing real DOM-XSS — a security rule must catch the dangerous cases, not just stay quiet. Added:
+
+- **More sinks** — alongside `dangerouslySetInnerHTML` and `innerHTML =`, the rule now flags `outerHTML =` assignments, `el.insertAdjacentHTML(position, html)` (the value is the second argument), and `document.write(ln)(html)`.
+- **More taint sources** — the value-taint gate now recognizes the classic OWASP DOM-XSS sources it previously ignored: `location.hash`/`.search`/`.href`, `document.cookie`, `document.referrer`, `window.name`, `localStorage`/`sessionStorage`, and `URLSearchParams` (matched at word boundaries / on the source expression so identifier names like `themeLocalStorageKey` do not false-match).
+
+Verified against the cached corpus: the new sinks surface previously-missed real injections (e.g. `el.insertAdjacentHTML(pos, content)`, `node.outerHTML = html`, `document.write(editor.getContent())`) while the exemption pipeline and the `isGeneratedBundle` skip keep minified-vendor noise out. Added 7 detection tests (5 must-fire DOM-XSS cases + 2 still-silent guards for static `insertAdjacentHTML` and `outerHTML`-to-`outerHTML` serialization).
+
 This hardens the 6 new security-scan rules (`dangerous-html-sink`, `clickjacking-redirect-risk`, `insecure-crypto-risk`, `mcp-tool-capability-risk`, `raw-sql-injection-risk`, `url-prefilled-privileged-action`) that landed in the posture scanner.

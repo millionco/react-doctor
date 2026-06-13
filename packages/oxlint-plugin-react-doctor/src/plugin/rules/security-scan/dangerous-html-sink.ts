@@ -3,12 +3,24 @@ import type { ScanFinding } from "../../utils/file-scan.js";
 import { escapeRegExp } from "./utils/escape-reg-exp.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 
-const DANGEROUS_HTML_PATTERN = /dangerouslySetInnerHTML|\.innerHTML\s*[+]?=(?!=)/;
+// HTML-injection sinks: React's `dangerouslySetInnerHTML`, the DOM
+// `innerHTML`/`outerHTML` assignments, `insertAdjacentHTML(position, html)`,
+// and `document.write(ln)(html)`.
+const DANGEROUS_HTML_PATTERN =
+  /dangerouslySetInnerHTML|\.(?:inner|outer)HTML\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\(|\bdocument\.write(?:ln)?\s*\(/;
 
-const HTML_VALUE_START_PATTERN = /(?:__html\s*:|\.innerHTML\s*[+]?=(?!=))\s*([\s\S]*)/;
+// Captures the value handed to the sink. For `insertAdjacentHTML` the value is
+// the second argument (after the position), so the position arg is skipped. The
+// leading `.` keeps it a method call, not a `function insertAdjacentHTML(` decl.
+const HTML_VALUE_START_PATTERN =
+  /(?:__html\s*:|\.(?:inner|outer)HTML\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\(\s*[^,]*,|\bdocument\.write(?:ln)?\s*\()\s*([\s\S]*)/;
 
+// Dynamic-looking sources. Beyond request/props/state data, this covers the
+// classic OWASP DOM-XSS sources (`location.hash`/`.search`/`.href`,
+// `document.cookie`/`.referrer`, `window.name`, web/session storage,
+// `URLSearchParams`) — attacker-controllable channels that must be flagged.
 const HTML_TAINT_PATTERN =
-  /searchParams|query|params|request|req\.|response\.|result\.|data\.|await|fetch|props\.|children|content|html|body|text|message/i;
+  /searchParams|query|params|request|req\.|response\.|result\.|data\.|await|fetch|props\.|children|content|html|body|text|message|\blocation\b|document\.cookie|\breferrer\b|\blocalStorage\b|\bsessionStorage\b|URLSearchParams|window\.name/i;
 
 // A trailing line comment (`innerHTML = "" // clear`) must not defeat the
 // literal/constant exemptions: without tolerating it the value never matches,
@@ -90,7 +102,8 @@ const STYLE_TAG_LOOKBEHIND_LINES = 5;
 const EMAIL_TEMPLATE_PATH_PATTERN =
   /(?:^|\/)emails?(?:\/|$)|email[-_.]templates?(?:\/|$)|RawHtml|[A-Za-z]*[Ee]mail[A-Za-z]*\.(?:t|j)sx?/i;
 
-const INNERHTML_TARGET_PATTERN = /(?:^|[^\w$.])([\w$]+(?:\.[\w$]+)*)\.innerHTML\s*[+]?=(?!=)/;
+const INNERHTML_TARGET_PATTERN =
+  /(?:^|[^\w$.])([\w$]+(?:\.[\w$]+)*)\.(?:(?:inner|outer)HTML\s*[+]?=(?!=)|insertAdjacentHTML\s*\()/;
 
 // DOM methods that splice a node into a live tree. If a scratch node reaches
 // one of these — or is returned as a node — its parsed HTML can hit the live

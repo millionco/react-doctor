@@ -31,18 +31,4 @@ export const validateModeFlags = (flags: InspectFlags): void => {
       "Cannot combine --score with --no-telemetry; --score prints the score that --no-telemetry disables.",
     );
   }
-  if (flags.sfw) {
-    const conflictingFlag = [
-      flags.json ? "--json" : null,
-      flags.score ? "--score" : null,
-      flags.staged ? "--staged" : null,
-      usedScope(flags) ? "--scope" : null,
-      usedDiffAlias(flags) ? "--diff" : null,
-    ].find((name): name is string => name !== null);
-    if (conflictingFlag) {
-      throw new CliInputError(
-        `Cannot combine --sfw with ${conflictingFlag}; --sfw is a standalone demo listing.`,
-      );
-    }
-  }
 };

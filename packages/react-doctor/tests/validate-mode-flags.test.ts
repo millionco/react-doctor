@@ -20,17 +20,6 @@ describe("validateModeFlags", () => {
     expect(() => validateModeFlags({ yes: true, full: true })).not.toThrow();
   });
 
-  it("rejects --sfw combined with --json / --score / --staged / --diff", () => {
-    expect(() => validateModeFlags({ sfw: true, json: true })).toThrow("Cannot combine --sfw");
-    expect(() => validateModeFlags({ sfw: true, score: true })).toThrow("Cannot combine --sfw");
-    expect(() => validateModeFlags({ sfw: true, staged: true })).toThrow("Cannot combine --sfw");
-    expect(() => validateModeFlags({ sfw: true, diff: "main" })).toThrow("Cannot combine --sfw");
-  });
-
-  it("allows --sfw on its own", () => {
-    expect(() => validateModeFlags({ sfw: true })).not.toThrow();
-  });
-
   it("rejects --scope combined with the deprecated --diff alias", () => {
     expect(() => validateModeFlags({ scope: "changed", diff: "main" })).toThrow(
       "Cannot combine --scope and --diff",
@@ -50,9 +39,5 @@ describe("validateModeFlags", () => {
     expect(() => validateModeFlags({ staged: true, scope: "files" })).not.toThrow();
     expect(() => validateModeFlags({ staged: true, scope: "lines" })).not.toThrow();
     expect(() => validateModeFlags({ staged: true })).not.toThrow();
-  });
-
-  it("rejects --sfw combined with --scope", () => {
-    expect(() => validateModeFlags({ sfw: true, scope: "lines" })).toThrow("Cannot combine --sfw");
   });
 });

@@ -5,7 +5,6 @@ import * as Effect from "effect/Effect";
 import * as fs from "node:fs";
 import {
   buildJsonReport,
-  collectSupplyChainScores,
   filterDiagnosticsForSurface,
   findLegacyConfig,
   getChangedLineRanges,
@@ -64,9 +63,7 @@ import {
 } from "../utils/resolve-project-diff-include-paths.js";
 import { runExplain } from "../utils/run-explain.js";
 import { projectManifestChanged } from "../utils/project-manifest-changed.js";
-import { renderSupplyChainScores } from "../utils/render-supply-chain-scores.js";
 import { selectProjects } from "../utils/select-projects.js";
-import { spinner } from "../utils/spinner.js";
 import { shouldBlockCi } from "../utils/should-block-ci.js";
 import { shouldSkipPrompts } from "../utils/should-skip-prompts.js";
 import { warnDeprecatedFailOn } from "../utils/warn-deprecated-fail-on.js";
@@ -259,8 +256,8 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     const resolvedDirectory = scanTarget.resolvedDirectory;
     setJsonReportDirectory(resolvedDirectory);
     warnDeprecatedFailOn(flags, userConfig);
-    // Emitted on every path (including the early-returning `--staged` / `--sfw`
-    // branches), so the deprecation nudge fires whenever `--diff` / `diff` is set.
+    // Emitted on every path (including the early-returning `--staged` branch),
+    // so the deprecation nudge fires whenever `--diff` / `diff` is set.
     warnDeprecatedDiff(flags, userConfig);
     if (scanTarget.didRedirectViaRootDir && !isQuiet) {
       logger.dim(
@@ -277,20 +274,6 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         scanOptions: resolveCliInspectOptions(flags, userConfig),
         projectFlag: flags.project,
       });
-      return;
-    }
-
-    // `--sfw` is a standalone demo: print the Socket.dev supply-chain score of
-    // every direct dependency, then exit without running the usual scan.
-    if (flags.sfw) {
-      const sfwSpinner = spinner("Scoring dependencies against Socket.dev…").start();
-      const scores = await Effect.runPromise(
-        collectSupplyChainScores({ rootDirectory: resolvedDirectory, userConfig }),
-      );
-      sfwSpinner.stop();
-      logger.break();
-      logger.log(renderSupplyChainScores(scores));
-      logger.break();
       return;
     }
 

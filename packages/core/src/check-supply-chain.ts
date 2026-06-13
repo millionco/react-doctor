@@ -16,9 +16,7 @@ import {
   SUPPLY_CHAIN_PLUGIN,
   SUPPLY_CHAIN_RULE,
 } from "./constants.js";
-import { findMonorepoRoot, isMonorepoRoot, readPackageJson } from "./project-info/index.js";
-import { getWorkspacePatterns } from "./project-info/get-workspace-patterns.js";
-import { resolveWorkspaceDirectories } from "./project-info/resolve-workspace-directories.js";
+import { readPackageJson } from "./project-info/index.js";
 import type { Diagnostic, PackageJson, ReactDoctorConfig } from "./types/index.js";
 
 export interface SupplyChainCheckInput {
@@ -81,7 +79,7 @@ const clampScore = (value: number): number => {
 };
 
 // Socket scores arrive normalized 0..1; present them on the familiar 0..100
-// scale used everywhere else (diagnostics, the `--sfw` table, span attributes).
+// scale used everywhere else (diagnostics, span attributes).
 const toHundred = (normalizedScore: number): number =>
   Math.round(clampScore(normalizedScore * SOCKET_SCORE_SCALE));
 
@@ -201,54 +199,6 @@ const readPackageJsonText = (packageJsonPath: string): string => {
   }
 };
 
-// Every package.json directory across a monorepo: the workspace root plus
-// each workspace package matched by its globs (pnpm / npm / yarn / nx, via
-// the shared project-info resolvers). Anchors at the true monorepo root even
-// when invoked from a sub-package, so `--sfw` from anywhere lists the whole
-// tree. A non-monorepo project resolves to just its own directory.
-const collectWorkspaceDirectories = (startDirectory: string): string[] => {
-  const monorepoRoot = isMonorepoRoot(startDirectory)
-    ? startDirectory
-    : (findMonorepoRoot(startDirectory) ?? startDirectory);
-  const rootPackageJson = readPackageJson(path.join(monorepoRoot, "package.json"));
-
-  const directories = [monorepoRoot];
-  const visited = new Set<string>([monorepoRoot]);
-  for (const pattern of getWorkspacePatterns(monorepoRoot, rootPackageJson)) {
-    for (const workspaceDirectory of resolveWorkspaceDirectories(monorepoRoot, pattern)) {
-      if (visited.has(workspaceDirectory)) continue;
-      visited.add(workspaceDirectory);
-      directories.push(workspaceDirectory);
-    }
-  }
-  return directories;
-};
-
-// Union of the direct dependencies declared across every package.json in the
-// monorepo, de-duplicated by `name@version` (the same dependency pinned to
-// the same version in several packages is scored once; differing versions are
-// kept and scored separately). Backs the `--sfw` listing.
-const collectMonorepoDependencies = (
-  startDirectory: string,
-  includeDevDependencies: boolean,
-): DependencyToScore[] => {
-  const dependenciesByKey = new Map<string, DependencyToScore>();
-  for (const directory of collectWorkspaceDirectories(startDirectory)) {
-    const packageJsonPath = path.join(directory, "package.json");
-    const packageJson = readPackageJson(packageJsonPath);
-    const packageJsonText = readPackageJsonText(packageJsonPath);
-    for (const dependency of collectDependenciesToScore(
-      packageJson,
-      packageJsonText,
-      includeDevDependencies,
-    )) {
-      const key = `${dependency.name}@${dependency.version}`;
-      if (!dependenciesByKey.has(key)) dependenciesByKey.set(key, dependency);
-    }
-  }
-  return [...dependenciesByKey.values()];
-};
-
 const toPurl = (dependency: DependencyToScore): string =>
   `pkg:npm/${dependency.name}@${dependency.version}`;
 
@@ -339,50 +289,6 @@ const buildLowScoreDiagnostic = (
     category: SUPPLY_CHAIN_CATEGORY,
   };
 };
-
-export interface DependencyScore {
-  readonly name: string;
-  readonly version: string;
-  /**
-   * Socket `overall` score on a 0–100 scale, or `null` when the
-   * package/version is unknown to Socket or the lookup failed.
-   */
-  readonly overall: number | null;
-}
-
-/**
- * Fetches the Socket score of every direct dependency declared across the
- * whole monorepo (the workspace root plus every workspace package.json),
- * de-duplicated by `name@version` — not just the ones below a threshold —
- * via the same free, keyless endpoint as {@link checkSupplyChain}. Backs the
- * CLI's `--sfw` demo listing. Unknown packages and per-package failures come
- * back with `overall: null` rather than being dropped, so the caller can show
- * them explicitly.
- */
-export const collectSupplyChainScores = (
-  input: SupplyChainCheckInput,
-): Effect.Effect<DependencyScore[]> =>
-  Effect.gen(function* () {
-    const options = resolveOptions(input.userConfig);
-    const dependencies = collectMonorepoDependencies(
-      input.rootDirectory,
-      options.includeDevDependencies,
-    );
-    if (dependencies.length === 0) return [];
-
-    const scores = yield* Effect.forEach(dependencies, fetchSocketScore, {
-      concurrency: SUPPLY_CHAIN_FETCH_CONCURRENCY,
-    });
-
-    return dependencies.map((dependency, index) => {
-      const score = scores[index];
-      return {
-        name: dependency.name,
-        version: dependency.version,
-        overall: score ? toHundred(score.overall) : null,
-      };
-    });
-  });
 
 /**
  * Scores every direct dependency in the project's `package.json` against

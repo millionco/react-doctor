@@ -122,7 +122,7 @@ describe("runOxlint", () => {
       expect(getMutationIssues).toHaveLength(0);
     });
 
-    it("does not flag server function with inputValidator as missing validation", () => {
+    it("does not flag server function with inputValidator or validator as missing validation", () => {
       const validationIssues = tanstackStartDiagnostics.filter(
         (diagnostic) =>
           diagnostic.rule === "tanstack-start-server-fn-validate-input" &&

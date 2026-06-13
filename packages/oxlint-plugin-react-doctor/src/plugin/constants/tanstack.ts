@@ -28,9 +28,13 @@ export const TANSTACK_ROUTE_CREATION_FUNCTIONS = new Set([
 
 export const TANSTACK_SERVER_FN_NAMES = new Set(["createServerFn"]);
 
+// `validator` is the current server-fn input-validation method; `inputValidator`
+// is the deprecated alias kept for older `@tanstack/react-start` versions.
+export const TANSTACK_INPUT_VALIDATOR_METHOD_NAMES = new Set(["validator", "inputValidator"]);
+
 export const TANSTACK_MIDDLEWARE_METHOD_ORDER = [
   "middleware",
-  "inputValidator",
+  "validator",
   "client",
   "server",
   "handler",

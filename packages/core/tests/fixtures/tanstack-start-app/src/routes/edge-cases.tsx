@@ -2,6 +2,7 @@ const createFileRoute = (_path: string) => (options: any) => options;
 const createRootRoute = (options: any) => options;
 const createServerFn = (options?: any) => ({
   inputValidator: (schema: any) => ({ handler: (fn: any) => fn }),
+  validator: (schema: any) => ({ handler: (fn: any) => fn }),
   handler: (fn: any) => fn,
 });
 
@@ -34,6 +35,12 @@ export const ValidatedServerFn = createServerFn({ method: "POST" })
   .inputValidator((data: any) => data)
   .handler(async ({ data }: any) => {
     return { id: "1", ...data };
+  });
+
+export const ValidatorServerFn = createServerFn({ method: "POST" })
+  .validator((data: any) => data)
+  .handler(async ({ data }: any) => {
+    return { id: "2", ...data };
   });
 
 export const CorrectLoaderWithServerFn = createFileRoute("/correct-loader")({

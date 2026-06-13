@@ -1,4 +1,7 @@
-import { TANSTACK_SERVER_FN_NAMES } from "../../../constants/tanstack.js";
+import {
+  TANSTACK_INPUT_VALIDATOR_METHOD_NAMES,
+  TANSTACK_SERVER_FN_NAMES,
+} from "../../../constants/tanstack.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { getCalleeName } from "../../../utils/get-callee-name.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
@@ -6,14 +9,14 @@ import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 export interface ServerFnChainInfo {
   isServerFnChain: boolean;
   specifiedMethod: string | null;
-  hasInputValidator: boolean;
+  hasInputValidation: boolean;
 }
 
 export const walkServerFnChain = (outerNode: EsTreeNode): ServerFnChainInfo => {
   const result: ServerFnChainInfo = {
     isServerFnChain: false,
     specifiedMethod: null,
-    hasInputValidator: false,
+    hasInputValidation: false,
   };
 
   if (!isNodeOfType(outerNode, "CallExpression")) return result;
@@ -42,8 +45,8 @@ export const walkServerFnChain = (outerNode: EsTreeNode): ServerFnChainInfo => {
       }
     }
 
-    if (calleeName === "inputValidator") {
-      result.hasInputValidator = true;
+    if (calleeName && TANSTACK_INPUT_VALIDATOR_METHOD_NAMES.has(calleeName)) {
+      result.hasInputValidation = true;
     }
 
     if (isNodeOfType(currentNode.callee, "MemberExpression")) {

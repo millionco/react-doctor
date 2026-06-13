@@ -303,4 +303,37 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  it("stays silent on generated/minified bundles (iconfont.js shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "assets/fonts/iconfont.js",
+      content: `!function(i){var z='<svg></svg>';document.body.innerHTML=i.data.html}(window);\n`,
+      isGeneratedBundle: true,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on a value sanitized at its definition site (bruno DOMPurify shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/MarkDown/index.jsx",
+      content: `const cleanHTML = DOMPurify.sanitize(md.render(content || ""));\nreturn <div className="markdown-body" dangerouslySetInnerHTML={{ __html: cleanHTML }} />;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on HTML encoder output (notesnook encodeNonAsciiHTML shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/extensions/clipboard/clipboard-dom-parser.ts",
+      content: `const code = document.createElement("code");\ncode.innerHTML = encodeNonAsciiHTML(codeAsText || "");\npre.replaceChildren(code);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags a bare identifier not sanitized anywhere in the file", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.tsx",
+      content: `const previewHtml = props.body;\nreturn <div dangerouslySetInnerHTML={{ __html: previewHtml }} />;\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

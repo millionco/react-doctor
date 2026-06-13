@@ -24,9 +24,17 @@ const MODULE_CONSTANT_VALUE_PATTERN = /^[A-Z][A-Z0-9_]*\s*(?:\/\/[^\n]*)?\s*(?:[
 const DOM_SERIALIZATION_VALUE_PATTERN = /^[\w$.]+\.outerHTML\s*(?:[;,})\n]|$)/;
 
 // `(?<!un)safe` catches sanitized-by-convention names (markdownToSafeHTML,
-// descriptionAsSafeHtml) without matching `unsafeHtml`.
+// descriptionAsSafeHtml) without matching `unsafeHtml`. `escape*`/`encode*`
+// cover HTML entity encoders (`escapeHtml`, `encodeNonAsciiHTML`) whose output
+// is escaped text, not live markup.
 const SANITIZER_PATTERN =
-  /\b(?:DOMPurify|sanitize\w*|purify|escape[A-Z]\w*|insane|xss)\b|(?<!un)safe/i;
+  /\b(?:DOMPurify|sanitize\w*|purify|(?:escape|encode)[A-Z]\w*|insane|xss)\b|(?<!un)safe/i;
+
+// A bare-identifier value sanitized at its definition site
+// (`const clean = DOMPurify.sanitize(md)` then `__html: clean`). The sink only
+// sees the identifier, so the source assignment is checked across the file.
+const SANITIZED_ASSIGNMENT_PATTERN =
+  /=\s*[^\n;]*\b(?:DOMPurify\b|sanitize\w*\s*\(|purify\w*\s*\()/i;
 
 // Values interpolating only deploy-time config (analytics snippets built
 // from NEXT_PUBLIC_* ids) are developer-controlled, not user input.
@@ -145,6 +153,10 @@ export const dangerousHtmlSink = defineRule({
   recommendation:
     "Prefer rendering structured React nodes. If HTML is required, sanitize with a well-reviewed sanitizer and keep the trust boundary close to the sink.",
   scan: (file) => {
+    // Generated/minified bundles are build output, not human-authored source:
+    // you do not fix an XSS sink there, and minified one-liners (inline SVG
+    // icon fonts) make the line heuristics misfire.
+    if (file.isGeneratedBundle) return [];
     if (!isProductionSourcePath(file.relativePath)) return [];
     if (EMAIL_TEMPLATE_PATH_PATTERN.test(file.relativePath)) return [];
     if (!DANGEROUS_HTML_PATTERN.test(file.content)) return [];
@@ -189,6 +201,18 @@ export const dangerousHtmlSink = defineRule({
         ESCAPING_SERIALIZER_LIBRARY_PATTERN.test(file.content)
       ) {
         continue;
+      }
+      if (BARE_IDENTIFIER_VALUE_PATTERN.test(valueExpression)) {
+        const bareIdentifierName = valueExpression.match(/^[\w$]+/)?.[0];
+        if (
+          bareIdentifierName !== undefined &&
+          new RegExp(
+            `\\b${escapeRegExp(bareIdentifierName)}\\b\\s*${SANITIZED_ASSIGNMENT_PATTERN.source}`,
+            "i",
+          ).test(file.content)
+        ) {
+          continue;
+        }
       }
       const sinkTargetMatch = INNERHTML_TARGET_PATTERN.exec(line);
       if (

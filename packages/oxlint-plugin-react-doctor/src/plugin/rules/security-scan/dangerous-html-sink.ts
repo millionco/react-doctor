@@ -87,7 +87,7 @@ const HIGHLIGHTER_LIBRARY_PATTERN =
 // bare file-wide library keyword would exempt any sink in a file that merely
 // imports a highlighter — checking the assignment keeps the trust link.
 const SERIALIZER_ASSIGNMENT_PATTERN =
-  /=\s*[^\n;]*(?:\b(?:katex|shiki|hljs|prism)\b|hast-util-to-html|renderHtmlFromRichText|(?:toHtml|render[A-Za-z]*(?:Html|HTML)|renderToString|renderToStaticMarkup|codeToHtml|codeToHast)\s*\()/i;
+  /=\s*[^\n;]*(?:\b(?:katex|shiki|hljs|prism|mermaid)\b|hast-util-to-html|renderHtmlFromRichText|(?:toHtml|render[A-Za-z]*(?:Html|HTML)|renderToString|renderToStaticMarkup|codeToHtml|codeToHast)\s*\()/i;
 
 const BARE_IDENTIFIER_VALUE_PATTERN = /^[\w$]+\s*(?:[;,})\n]|$)/;
 

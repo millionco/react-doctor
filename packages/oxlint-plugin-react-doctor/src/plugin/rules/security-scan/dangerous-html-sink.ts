@@ -10,9 +10,14 @@ const HTML_VALUE_START_PATTERN = /(?:__html\s*:|\.innerHTML\s*[+]?=(?!=))\s*([\s
 const HTML_TAINT_PATTERN =
   /searchParams|query|params|request|req\.|response\.|result\.|data\.|await|fetch|props\.|children|content|html|body|text|message/i;
 
-const STRING_LITERAL_VALUE_PATTERN = /^(?:["'][^"']*["']|`[^`$]*`)\s*(?:[;,})\n]|$)/;
+// A trailing line comment (`innerHTML = "" // clear`) must not defeat the
+// literal/constant exemptions: without tolerating it the value never matches,
+// the scan window bleeds into the next statement, and the taint check fires on
+// unrelated tokens there (e.g. a following `content` variable).
+const STRING_LITERAL_VALUE_PATTERN =
+  /^(?:["'][^"']*["']|`[^`$]*`)\s*(?:\/\/[^\n]*)?\s*(?:[;,})\n]|$)/;
 
-const MODULE_CONSTANT_VALUE_PATTERN = /^[A-Z][A-Z0-9_]*\s*(?:[;,})\n]|$)/;
+const MODULE_CONSTANT_VALUE_PATTERN = /^[A-Z][A-Z0-9_]*\s*(?:\/\/[^\n]*)?\s*(?:[;,})\n]|$)/;
 
 // `node.innerHTML = element.outerHTML` serializes a live DOM node back into
 // HTML — the value never left the DOM, so it is not an injection boundary.
@@ -31,13 +36,21 @@ const I18N_VALUE_PATTERN = /\b(?:t|i18n|translate|formatMessage|intl)\s*[.(]/;
 
 // Output of escaping serializers (hast `toHtml`, KaTeX, Shiki, React's
 // renderToStaticMarkup) is markup the library generated, not user HTML.
+// `render*HTML(...)` covers in-house code/diff serializers (pierre's
+// `renderPartialHTML`) alongside React's `renderToString` family — markup the
+// renderer generated, not user HTML.
 const ESCAPING_SERIALIZER_CALL_PATTERN =
-  /^(?:[\w$.]+\.)?(?:toHtml|renderToString|renderToStaticMarkup|codeToHtml|codeToHast)\s*\(/;
+  /^(?:[\w$.]+\.)?(?:toHtml|render[A-Za-z]*(?:Html|HTML)|renderToString|renderToStaticMarkup|codeToHtml|codeToHast)\s*\(/;
 
 const ESCAPING_SERIALIZER_LIBRARY_PATTERN =
-  /\bkatex\b|\bshiki\b|codeToHtml\s*\(|renderToStaticMarkup\s*\(|\bhast-util-to-html\b/i;
+  /\bkatex\b|\bshiki\b|codeToHtml\s*\(|renderToStaticMarkup\s*\(|\bhast-util-to-html\b|renderHtmlFromRichText\b/i;
 
 const BARE_IDENTIFIER_VALUE_PATTERN = /^[\w$]+\s*(?:[;,})\n]|$)/;
+
+// Highlighter/serializer output is routinely stored on an object before the
+// sink (`highlightedFiles[0].darkHtml`), so the serializer-library exemption
+// must accept member/index access, not only a bare identifier.
+const MEMBER_OR_INDEX_ACCESS_VALUE_PATTERN = /^[\w$]+(?:\.[\w$]+|\[[^\]]*\])+\s*(?:[;,})\n]|$)/;
 
 // `<style dangerouslySetInnerHTML={{ __html: ... }}>` injects CSS text, not
 // executable markup — the critical-CSS idiom, and at worst CSS injection.
@@ -47,12 +60,19 @@ const STYLE_TAG_LOOKBEHIND_LINES = 5;
 
 // HTML email bodies are rendered by mail clients, which strip script and
 // event handlers — the browser-XSS model this rule encodes does not apply.
-const EMAIL_TEMPLATE_PATH_PATTERN = /(?:^|\/)emails?\/|email[-_.]templates?\//i;
+// Also exempt email components by filename (e.g. RawHtml.tsx or *Email.tsx)
+// even when scan rootDir is a monorepo subpackage like packages/emails (so
+// the relativePath never contains an "emails/" segment).
+const EMAIL_TEMPLATE_PATH_PATTERN =
+  /(?:^|\/)emails?(?:\/|$)|email[-_.]templates?(?:\/|$)|RawHtml|[A-Za-z]*[Ee]mail[A-Za-z]*\.(?:t|j)sx?/i;
 
 const INNERHTML_TARGET_PATTERN = /(?:^|[^\w$.])([\w$]+(?:\.[\w$]+)*)\.innerHTML\s*[+]?=(?!=)/;
 
-const PARSE_IDIOM_LOOKBEHIND_LINES = 8;
-const PARSE_IDIOM_LOOKAHEAD_LINES = 8;
+// DOM methods that splice a node into a live tree. If a scratch node reaches
+// one of these — or is returned as a node — its parsed HTML can hit the live
+// document, so it is no longer an inert parse target.
+const LIVE_DOM_ATTACH_PATTERN =
+  /\b(?:appendChild|append|prepend|before|after|replaceWith|replaceChild|replaceChildren|insertBefore|insertAdjacentElement)\s*\(/;
 
 const VALUE_LOOKAHEAD_LINES = 4;
 const VALUE_EXPRESSION_MAX_CHARS = 300;
@@ -74,30 +94,48 @@ const getTemplateInterpolations = (valueTail: string): string | null => {
   return interpolations === null ? "" : interpolations.join(" ");
 };
 
-// `<template>` element content is inert by spec (never rendered, scripts do
-// not run), and a detached createElement wrapper whose textContent is read
-// straight back is the parse-to-text idiom — neither reaches a live document.
-const isInertParseTarget = (
-  target: string,
-  lines: readonly string[],
-  sinkLineIndex: number,
-  fileContent: string,
-): boolean => {
+// A sink target is inert when its parsed HTML can never reach the live
+// document. Three idioms qualify:
+//   1. `<template>` content — inert by spec (never rendered, scripts do not run).
+//   2. a `createHTMLDocument()` document — no browsing context, so assigning
+//      innerHTML never executes scripts and the document is never the live page.
+//   3. a detached `createElement` node used only to parse — read back as text or
+//      queried — and never attached to a live tree nor returned as a node.
+// The variable name is specific enough to scan the whole file, which also
+// catches scratch nodes parsed across a loop (the second write in a reuse loop
+// sits far from its `createElement`).
+const isInertParseTarget = (target: string, fileContent: string): boolean => {
   const escapedTarget = escapeRegExp(target);
+  const rootIdentifier = target.split(".")[0] ?? target;
+  const escapedRoot = escapeRegExp(rootIdentifier);
+
   const templateElementPattern = new RegExp(
     `${escapedTarget}\\s*=\\s*document\\.createElement\\(\\s*["'\`]template["'\`]`,
   );
   if (templateElementPattern.test(fileContent)) return true;
-  const createElementPattern = new RegExp(`${escapedTarget}\\s*=\\s*document\\.createElement\\(`);
-  const lookbehindWindow = lines
-    .slice(Math.max(0, sinkLineIndex - PARSE_IDIOM_LOOKBEHIND_LINES), sinkLineIndex + 1)
-    .join("\n");
-  if (!createElementPattern.test(lookbehindWindow)) return false;
-  const textReadPattern = new RegExp(`${escapedTarget}\\.(?:textContent|innerText)\\b`);
-  const lookaheadWindow = lines
-    .slice(sinkLineIndex, sinkLineIndex + 1 + PARSE_IDIOM_LOOKAHEAD_LINES)
-    .join("\n");
-  return textReadPattern.test(lookaheadWindow);
+
+  const isolatedDocumentPattern = new RegExp(
+    `${escapedRoot}\\s*=\\s*[^\\n;]*\\bcreateHTMLDocument\\s*\\(`,
+  );
+  if (isolatedDocumentPattern.test(fileContent)) return true;
+
+  const createElementPattern = new RegExp(`${escapedRoot}\\s*=\\s*[^\\n;]*\\bcreateElement\\s*\\(`);
+  if (!createElementPattern.test(fileContent)) return false;
+
+  const attachedToLiveTreePattern = new RegExp(
+    `${LIVE_DOM_ATTACH_PATTERN.source}[^)]*\\b${escapedRoot}\\b`,
+  );
+  const returnedAsNodePattern = new RegExp(
+    `\\breturn\\b[^\\n]*\\b${escapedRoot}\\b(?!\\s*\\.\\s*(?:textContent|innerText|innerHTML|outerHTML))`,
+  );
+  if (attachedToLiveTreePattern.test(fileContent) || returnedAsNodePattern.test(fileContent)) {
+    return false;
+  }
+
+  const scratchReadPattern = new RegExp(
+    `\\b${escapedRoot}\\.(?:textContent|innerText|querySelector|querySelectorAll|children|childNodes)\\b`,
+  );
+  return scratchReadPattern.test(fileContent);
 };
 
 export const dangerousHtmlSink = defineRule({
@@ -146,7 +184,8 @@ export const dangerousHtmlSink = defineRule({
       if (!HTML_TAINT_PATTERN.test(judgedExpression)) continue;
       if (ESCAPING_SERIALIZER_CALL_PATTERN.test(valueExpression)) continue;
       if (
-        BARE_IDENTIFIER_VALUE_PATTERN.test(valueExpression) &&
+        (BARE_IDENTIFIER_VALUE_PATTERN.test(valueExpression) ||
+          MEMBER_OR_INDEX_ACCESS_VALUE_PATTERN.test(valueExpression)) &&
         ESCAPING_SERIALIZER_LIBRARY_PATTERN.test(file.content)
       ) {
         continue;
@@ -154,7 +193,7 @@ export const dangerousHtmlSink = defineRule({
       const sinkTargetMatch = INNERHTML_TARGET_PATTERN.exec(line);
       if (
         sinkTargetMatch?.[1] !== undefined &&
-        isInertParseTarget(sinkTargetMatch[1], lines, lineIndex, file.content)
+        isInertParseTarget(sinkTargetMatch[1], file.content)
       ) {
         continue;
       }

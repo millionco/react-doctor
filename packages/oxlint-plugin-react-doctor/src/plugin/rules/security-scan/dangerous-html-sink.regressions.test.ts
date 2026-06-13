@@ -208,4 +208,99 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent on RawHtml email component even under monorepo packages/emails rootDir scan (cal.com shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/RawHtml.tsx",
+      content: `const RawHtml = ({ html = "" }) => (\n  <div dangerouslySetInnerHTML={{ __html: html }} />\n);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on result of internal rich-text renderer (tldraw renderHtmlFromRichText shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "packages/tldraw/src/lib/shapes/shared/RichTextLabel.tsx",
+      content: `const html = renderHtmlFromRichText(editor, richText);\nreturn <div dangerouslySetInnerHTML={{ __html: html }} />;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on an empty-string clear with a trailing comment (posthog NotebookNodeLatex shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/scenes/notebooks/Nodes/NotebookNodeLatex.tsx",
+      content: `mathJaxDisplayDiv.innerHTML = '' // Clear before rendering\nconst math = mjxDocument.convert(content, { display: true })\nmathJaxDisplayDiv.appendChild(math)\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on createHTMLDocument parse-to-text (tldraw stripHtml shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/lib/ui/hooks/use-clipboard-events.ts",
+      content: `function stripHtml(html: string) {\n  const doc = document.implementation.createHTMLDocument('')\n  doc.documentElement.innerHTML = html.trim()\n  return doc.body.textContent || ''\n}\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on a detached scratch node queried and returned as a string (plane paste-asset shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/core/helpers/paste-asset.ts",
+      content: `export const processAssets = (htmlContent: string) => {\n  const tempDiv = document.createElement("div");\n  tempDiv.innerHTML = htmlContent;\n  let processedHtml = htmlContent;\n  const nodes = tempDiv.querySelectorAll("img");\n  return { processedHtml };\n};\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on a scratch node reused across a loop (second write far from createElement)", () => {
+    const content = [
+      "export const processAll = (rawHtml: string) => {",
+      '  const tempDiv = document.createElement("div");',
+      "  tempDiv.innerHTML = rawHtml;",
+      "  let result = rawHtml;",
+      "  for (const name of handlers) {",
+      "    const matched = tempDiv.querySelectorAll(name);",
+      "    if (matched.length) {",
+      "      result = transform(result);",
+      "      tempDiv.innerHTML = result;",
+      "    }",
+      "  }",
+      "  return { result };",
+      "};",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/core/helpers/process-all.ts",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on in-house render*HTML serializers (pierre renderPartialHTML shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/file-diff.ts",
+      content: `this.code.innerHTML = this.fileRenderer.renderPartialHTML(\n  this.fileRenderer.renderCodeAST(result)\n);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on highlighter html read via member access (supabase shiki CodeBlock shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/sections/code-block-section.tsx",
+      content: `import { codeToHtml } from "shiki";\nexport const CodeBlock = ({ highlightedFiles }: Props) => (\n  <div dangerouslySetInnerHTML={{ __html: highlightedFiles[0].darkHtml }} />\n);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags object-stored html when no serializer library is present", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/widgets/chat.ts",
+      content: `bubble.innerHTML = payload.data.messageHtml;\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("still flags a scratch node whose parsed HTML is appended to the live tree", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/render/mount.ts",
+      content: `const scratch = document.createElement("div");\nscratch.innerHTML = props.content;\nconst found = scratch.querySelectorAll("a");\ndocument.body.appendChild(scratch);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

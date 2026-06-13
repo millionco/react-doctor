@@ -33,8 +33,10 @@ const MODERN_PRESET_REFERENCE = new RegExp(`['"]${MODERN_PRESET_SPEC}['"]`);
 // `enableBabelRuntime` only fixes the bundle bloat when it carries a version
 // string — `enableBabelRuntime: true` / `false` (and a bare mention in a
 // comment) all leave the runtime version pinned to its 7.0.0 default, so we
-// require the option to be assigned a quoted version.
-const ENABLE_BABEL_RUNTIME_VERSION = /enableBabelRuntime\s*:\s*['"]/;
+// require the option to be assigned a quoted version. The optional quote after
+// the key matches JSON configs (`"enableBabelRuntime": "^7.26.0"`) as well as
+// JS object keys (`enableBabelRuntime: '^7.26.0'`).
+const ENABLE_BABEL_RUNTIME_VERSION = /enableBabelRuntime["']?\s*:\s*['"]/;
 
 // Two babel-preset footguns surface here:
 //   1. `rn-no-metro-babel-preset` (error) — `module:metro-react-native-babel-preset`

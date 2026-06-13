@@ -193,6 +193,22 @@ describe("checkReactNativeProject — legacy metro babel preset", () => {
     ).not.toContain("rn-no-metro-babel-runtime-version");
   });
 
+  it("does NOT flag a JSON babel config that sets enableBabelRuntime", () => {
+    const projectDirectory = makeProjectDirectory();
+    writePackageJson(projectDirectory, {
+      name: "rn-app",
+      dependencies: { "react-native": "0.76.0" },
+    });
+    writeFile(
+      projectDirectory,
+      "babel.config.json",
+      `{ "presets": [["module:@react-native/babel-preset", { "enableBabelRuntime": "^7.26.0" }]] }`,
+    );
+    expect(
+      rulesOf(checkReactNativeProject(projectDirectory, buildRnProject(projectDirectory))),
+    ).not.toContain("rn-no-metro-babel-runtime-version");
+  });
+
   it("does NOT flag an Expo babel config without the RN preset", () => {
     const projectDirectory = makeProjectDirectory();
     writePackageJson(projectDirectory, {

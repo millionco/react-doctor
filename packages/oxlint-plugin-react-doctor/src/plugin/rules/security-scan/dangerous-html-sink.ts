@@ -146,13 +146,15 @@ const isInertParseTarget = (target: string, fileContent: string): boolean => {
   );
   if (templateElementPattern.test(fileContent)) return true;
 
-  // A `<style>` element's innerHTML is CSS text, not executable markup — the
-  // critical-CSS idiom via the DOM API (`createElement('style')`), the
-  // counterpart of the `<style dangerouslySetInnerHTML>` JSX exemption.
-  const styleElementPattern = new RegExp(
-    `${escapedRoot}\\s*=\\s*[^\\n;]*\\bcreateElement\\(\\s*["'\`]style["'\`]`,
+  // A `<style>` element's innerHTML is CSS text (the critical-CSS idiom via the
+  // DOM API, counterpart of the `<style dangerouslySetInnerHTML>` JSX exemption);
+  // a `<textarea>`'s is RCDATA — scripts never execute — which is the HTML-entity
+  // decode idiom (`textarea.innerHTML = x; return textarea.value`). Neither is
+  // executable markup.
+  const inertElementPattern = new RegExp(
+    `${escapedRoot}\\s*=\\s*[^\\n;]*\\bcreateElement\\(\\s*["'\`](?:style|textarea)["'\`]`,
   );
-  if (styleElementPattern.test(fileContent)) return true;
+  if (inertElementPattern.test(fileContent)) return true;
 
   const isolatedDocumentPattern = new RegExp(
     `${escapedRoot}\\s*=\\s*[^\\n;]*\\bcreateHTMLDocument\\s*\\(`,

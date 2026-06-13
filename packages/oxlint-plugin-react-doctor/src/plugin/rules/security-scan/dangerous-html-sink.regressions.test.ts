@@ -502,6 +502,14 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it("stays silent on the textarea entity-decode idiom (woocommerce decodeHtmlEntities shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/utils/decode.ts",
+      content: `export function decodeHtmlEntities(text: string) {\n  const textArea = document.createElement("textarea");\n  textArea.innerHTML = text;\n  return textArea.value;\n}\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
   it("stays silent on optional-chained DOM serialization (Svg?.outerHTML shape)", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/components/excalidraw-node.tsx",

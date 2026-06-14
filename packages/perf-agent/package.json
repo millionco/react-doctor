@@ -1,0 +1,36 @@
+{
+  "name": "@react-doctor/perf-agent",
+  "version": "0.5.4",
+  "private": true,
+  "description": "Internal: in-app React performance harness that drives the DevTools Profiler programmatically and emits the canonical DevTools profiling export for agents to analyze.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./harness": {
+      "types": "./dist/harness.d.ts",
+      "default": "./dist/harness.js"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react-devtools-inline": "^6.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  },
+  "peerDependencies": {
+    "react": ">=16.8",
+    "react-dom": ">=16.8"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.13.0"
+  }
+}

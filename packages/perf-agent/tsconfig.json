@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "paths": {
+      "react-devtools-inline/backend": ["./src/types/devtools-inline-backend.d.ts"],
+      "react-devtools-inline/frontend": ["./src/types/devtools-inline-frontend.d.ts"]
+    }
+  },
+  "include": ["src"]
+}

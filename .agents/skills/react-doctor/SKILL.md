@@ -36,6 +36,10 @@ Pair it with the matching per-rule prompts at `https://www.react.doctor/prompts/
 
 When the user wants to understand a rule, disagrees with one, or wants to disable / tune which rules run (not fix code), read [references/explain.md](references/explain.md) and follow it. Start with `npx react-doctor@latest rules explain <rule>`, then apply the narrowest control via `npx react-doctor@latest rules disable|set|category|ignore-tag …`, which edits your `doctor.config.*` (or `package.json#reactDoctor`).
 
+## Performance engineering
+
+When the user reports jank, slow interactions, dropped frames, excessive re-renders, or asks to profile / optimize React render performance, read [references/performance.md](references/performance.md) and follow it. It sets up the in-app profiling harness — shipped as `react-doctor/runtime` — and runs an evidence-driven profile → analyze → fix → re-profile loop against the real React DevTools profiler export, never guessing from code alone.
+
 ## Command
 
 ```bash

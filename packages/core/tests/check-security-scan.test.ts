@@ -338,6 +338,15 @@ describe("checkSecurityScan", () => {
 
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
+
+    it("still flags an unpinned verify when an unrelated `algorithms` token exists", () => {
+      writeFile(
+        "src/jwt-unrelated.ts",
+        `import jwt from "jsonwebtoken";\nconst algorithms = ["alpha", "beta"];\nexport const list = () => algorithms;\nexport const v = (t, k) => jwt.verify(t, k);`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("jwt-insecure-verification");
+    });
   });
 
   describe("secret-in-fallback", () => {

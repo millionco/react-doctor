@@ -498,6 +498,15 @@ describe("checkSecurityScan", () => {
       expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("insecure-session-cookie");
     });
 
+    it("does not flag a hardened cookies().set call", () => {
+      writeFile(
+        "src/headers-cookie.ts",
+        `export const setSession = (token) =>\n  cookies().set("session", token, { httpOnly: true, secure: true, sameSite: "lax" });`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("does not flag a non-auth cookie that disables httpOnly", () => {
       writeFile(
         "src/theme-cookie.ts",

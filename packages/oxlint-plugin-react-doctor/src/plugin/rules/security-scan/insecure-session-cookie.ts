@@ -96,7 +96,10 @@ export const insecureSessionCookie = defineRule({
       match !== null;
       match = AUTH_COOKIE_SET_CALL_PATTERN.exec(content)
     ) {
-      const openParenIndex = content.indexOf("(", match.index);
+      // The args paren is the one right before the cookie-name literal — the
+      // last `(` in the match. (`indexOf` would wrongly pick the empty `()` of
+      // `cookies().set`.)
+      const openParenIndex = match.index + match[0].lastIndexOf("(");
       const closeParenIndex = findMatchingParenIndex(content, openParenIndex);
       const argumentsSource =
         closeParenIndex >= 0 ? content.slice(openParenIndex + 1, closeParenIndex) : "";

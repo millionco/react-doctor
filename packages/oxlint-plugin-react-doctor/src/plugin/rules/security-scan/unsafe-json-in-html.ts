@@ -24,6 +24,13 @@ const INLINE_ESCAPE_PATTERN =
   /\.replace\s*\([^)]*(?:\\u003[cC]|&lt;|<)|\b(?:escapeHtml|escapeJSON|escapeJson|htmlEscape|jsesc)\s*\(/;
 const ESCAPE_LOOKAHEAD_CHARS = 160;
 
+// An escape/serializer helper wrapping the call (`escapeHtml(JSON.stringify(…))`)
+// sits before the matched token, so it is checked against the text leading up
+// to `JSON.stringify(` within the same sink match.
+const ESCAPE_WRAPPER_PATTERN =
+  /\b(?:escapeHtml|escapeJSON|escapeJson|htmlEscape|jsesc|serialize|serializeJavascript)\s*\(\s*$/i;
+const JSON_STRINGIFY_TOKEN_PATTERN = /\bJSON\.stringify\s*\($/i;
+
 export const unsafeJsonInHtml = defineRule({
   id: "unsafe-json-in-html",
   title: "Unescaped JSON in HTML or script sink",
@@ -43,6 +50,8 @@ export const unsafeJsonInHtml = defineRule({
         const valueStart = match.index + match[0].length;
         const valueTail = content.slice(valueStart, valueStart + ESCAPE_LOOKAHEAD_CHARS);
         if (INLINE_ESCAPE_PATTERN.test(valueTail)) continue;
+        const beforeStringify = match[0].replace(JSON_STRINGIFY_TOKEN_PATTERN, "");
+        if (ESCAPE_WRAPPER_PATTERN.test(beforeStringify)) continue;
         if (seenIndices.has(match.index)) continue;
         seenIndices.add(match.index);
         const location = getLocationAtIndex(content, match.index);

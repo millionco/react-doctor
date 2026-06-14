@@ -267,6 +267,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("does not flag a create table that appears only inside a string literal", () => {
+      writeFile(
+        "supabase/migrations/006_seed.sql",
+        `create table notes (id uuid primary key, body text);\nalter table notes enable row level security;\ninsert into notes (body) values ('create table fake (id int);');\n`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("flags only the table missing RLS in a multi-table migration", () => {
       writeFile(
         "supabase/migrations/004_two_tables.sql",
@@ -312,6 +321,15 @@ describe("checkSecurityScan", () => {
       );
 
       expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("unsafe-json-in-html");
+    });
+
+    it("stays quiet when JSON.stringify is wrapped in an escape helper", () => {
+      writeFile(
+        "src/wrapped.tsx",
+        "export const H = ({ data }) => <div dangerouslySetInnerHTML={{ __html: escapeHtml(JSON.stringify(data)) }} />;",
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
   });
 

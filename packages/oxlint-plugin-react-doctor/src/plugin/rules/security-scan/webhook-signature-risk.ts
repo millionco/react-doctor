@@ -13,8 +13,10 @@ const WEBHOOK_ENTRYPOINT_PATTERN =
 // alternative matches a call to a helper whose name pairs a verify-ish verb
 // with a security noun (`isValidSecret(...)`, `verifySignature(...)`,
 // `checkWebhookHmac(...)`), so an extracted timing-safe comparison still counts.
+// The letter runs around the verb/noun are length-bounded (not `[A-Za-z]*`) so
+// a long identifier-like run cannot cause catastrophic regex backtracking.
 const WEBHOOK_SIGNATURE_VERIFICATION_PATTERN =
-  /verifySignature|verify.*signature|verify\w*(?:Webhook|Auth)|constructEvent|createHmac|timingSafeEqual|svix|webhookSecret|stripe\.webhooks|["'][\w-]*signature["']|\b[A-Za-z]*(?:verif|valid|check|assert|authenticat|compare|guard)[A-Za-z]*(?:secret|signature|hmac|webhook|digest|token)[A-Za-z]*\s*\(/i;
+  /verifySignature|verify.*signature|verify\w*(?:Webhook|Auth)|constructEvent|createHmac|timingSafeEqual|svix|webhookSecret|stripe\.webhooks|["'][\w-]*signature["']|\b[A-Za-z]{0,40}(?:verif|valid|check|assert|authenticat|compare|guard)[A-Za-z]{0,40}(?:secret|signature|hmac|webhook|digest|token)[A-Za-z]{0,40}\s*\(/i;
 
 // `webhookUrl` mentions mark code SENDING to a webhook (outbound), where
 // signature verification is the receiver's job, not this file's. A webhook

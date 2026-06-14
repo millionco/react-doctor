@@ -26,4 +26,23 @@ describe("security-scan/webhook-signature-risk — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent when verification is delegated to an extracted helper (#814)", () => {
+    const findings = runScanRule(webhookSignatureRisk, {
+      relativePath: "src/app/api/webhooks/provider/route.ts",
+      content: `import { isValidSecret } from "./verify";\nexport async function POST(request: Request) {\n  const token = request.headers.get("x-webhook-token");\n  if (!isValidSecret(token, process.env.PROVIDER_SECRET)) return new Response("no", { status: 401 });\n  const event = await request.json();\n  return Response.json({ ok: event.type });\n}\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  // Guard against catastrophic backtracking: the verification regex must run in
+  // linear time on a long identifier-like run. If it regresses to nested
+  // unbounded `[A-Za-z]*`, this scan hangs and the test times out.
+  it("does not catastrophically backtrack on a long verb-like run (ReDoS guard)", () => {
+    const findings = runScanRule(webhookSignatureRisk, {
+      relativePath: "src/app/api/webhooks/x/route.ts",
+      content: `export async function POST(request: Request) {\n  const ${"valid".repeat(5000)} = 1;\n  const event = await request.json();\n  return Response.json({ ok: true });\n}\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

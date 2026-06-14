@@ -9,6 +9,22 @@
 // 1:1 so reported match locations stay correct.
 const DOLLAR_QUOTE_TAG_PATTERN = /^\$[A-Za-z_]?\w*\$/;
 
+// Keywords that introduce an executable dollar-quoted body: `DO $$`, `AS $$`,
+// and the `DO LANGUAGE <lang> $$` form (where the body follows the language
+// name). A bare language name can only precede `$$` in that body position, so
+// matching it does not risk a string-value false negative.
+const CODE_BODY_KEYWORDS = new Set([
+  "do",
+  "as",
+  "plpgsql",
+  "sql",
+  "plpython3u",
+  "plpythonu",
+  "plperl",
+  "plperlu",
+  "plv8",
+]);
+
 // Lowercased identifier immediately preceding `beforeIndex` (skipping
 // whitespace) — used to classify a `$$`/`'` opener by its keyword (`do`/`as`
 // code body, `execute`/`perform` dynamic SQL).
@@ -159,7 +175,7 @@ export const sanitizeSqlForScan = (content: string): string => {
         const closeIndex = content.indexOf(tag, index + tag.length);
         const endIndex = closeIndex < 0 ? content.length : closeIndex + tag.length;
         const keyword = precedingKeyword(content, index);
-        if (keyword === "do" || keyword === "as") {
+        if (CODE_BODY_KEYWORDS.has(keyword)) {
           blankCodeBodyInterior(content, characters, index + tag.length, endIndex);
         } else {
           for (let blankIndex = index; blankIndex < endIndex; blankIndex += 1) {

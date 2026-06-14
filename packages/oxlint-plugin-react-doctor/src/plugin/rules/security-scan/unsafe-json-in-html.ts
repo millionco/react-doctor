@@ -22,8 +22,11 @@ const SINK_JSON_STRINGIFY_PATTERNS = [
 // Escaping the INPUT (a helper inside the stringify arguments) does not, so the
 // return-value check looks strictly after the call's matching `)`.
 const RETURN_ESCAPE_PATTERN = /^[\s)]*\.replace\s*\([^)]*(?:\\u003[cC]|&lt;|<)/;
+// HTML-escape helpers are trusted even as methods (`utils.escapeHtml(...)`),
+// but the generic serializer names must be bare calls — a `.serialize(...)`
+// method is unrelated to serialize-javascript and may not HTML-escape.
 const ESCAPE_WRAPPER_PATTERN =
-  /\b(?:escapeHtml|escapeJSON|escapeJson|htmlEscape|jsesc|serialize|serializeJavascript|devalue|uneval|superjson)\s*\(\s*$/i;
+  /(?:\b(?:escapeHtml|escapeJSON|escapeJson|htmlEscape|jsesc)|(?<![.\w])(?:serialize|serializeJavascript|devalue|uneval|superjson))\s*\(\s*$/i;
 const JSON_STRINGIFY_TOKEN_PATTERN = /\bJSON\.stringify\s*\($/i;
 const RETURN_LOOKAHEAD_CHARS = 160;
 

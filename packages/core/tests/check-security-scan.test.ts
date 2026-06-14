@@ -312,6 +312,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("stays quiet when RLS is enabled inside a DO LANGUAGE block", () => {
+      writeFile(
+        "supabase/migrations/014_do_language.sql",
+        `create table audits (id uuid primary key);\ndo language plpgsql $$ begin\n  alter table audits enable row level security;\nend $$;\n`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("stays quiet when RLS is enabled via a dynamic EXECUTE in a DO block", () => {
       writeFile(
         "supabase/migrations/011_dynamic.sql",
@@ -402,6 +411,15 @@ describe("checkSecurityScan", () => {
       );
 
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("still flags when an unrelated .serialize() method wraps the call", () => {
+      writeFile(
+        "src/serialize-method.tsx",
+        "export const H = ({ obj, data }) => <div dangerouslySetInnerHTML={{ __html: obj.serialize(JSON.stringify(data)) }} />;",
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("unsafe-json-in-html");
     });
 
     it("still flags when an escape helper is applied to the input, not the output", () => {

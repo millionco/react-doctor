@@ -61,6 +61,28 @@ const stubSocketApi = (
   );
 };
 
+// Like `stubSocketApi`, but records every PURL the check requests so a test can
+// assert which dependencies were (and were not) scored — an unscoreable spec
+// must never reach the network. Unmatched packages stream an empty body (skip).
+const stubSocketApiRecordingRequests = (
+  scoresByPackageName: Record<string, AxisScores> = {},
+): string[] => {
+  const requestedPurls: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const requestUrl = decodeURIComponent(String(input));
+      requestedPurls.push(requestUrl);
+      const matched = Object.entries(scoresByPackageName).find(([name]) =>
+        requestUrl.includes(`pkg:npm/${name}@`),
+      );
+      const body = matched ? socketArtifactLine(matched[1], []) : "";
+      return new Response(body, { status: 200 });
+    }),
+  );
+  return requestedPurls;
+};
+
 let projectDirectory: string;
 
 const writePackageJson = (dependencies: Record<string, string>): void => {
@@ -366,5 +388,44 @@ describe("checkSupplyChain — security-axis gating", () => {
     const diagnostics = await runCheck();
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0].message).toContain("medium protestware alert");
+  });
+
+  it("does not crash on an npm dist-tag and skips it while still scoring valid deps (issue #807, trigger.dev: latest)", async () => {
+    writePackageJson({ react: "^19.0.0", "trigger.dev": "latest" });
+    const requestedPurls = stubSocketApiRecordingRequests({
+      react: { supplyChain: 0.2, vulnerability: 1, maintenance: 1, quality: 1, license: 1 },
+    });
+
+    // `semver.minVersion("latest")` throws `Invalid comparator: latest`; before
+    // the validate-first fix that synchronous throw sank the whole scan. The
+    // valid range is still scored, the dist-tag is silently skipped.
+    const diagnostics = await runCheck();
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].message).toContain('`react@19.0.0 (lowest version "^19.0.0" allows)`');
+    expect(requestedPurls.some((purl) => purl.includes("pkg:npm/react@19.0.0"))).toBe(true);
+    expect(requestedPurls.some((purl) => purl.includes("trigger.dev"))).toBe(false);
+  });
+
+  it("skips dist-tags, wildcards, protocols, and URLs without scoring or crashing", async () => {
+    writePackageJson({
+      "tag-latest": "latest",
+      "tag-next": "next",
+      "wildcard-star": "*",
+      "wildcard-x": "x",
+      "protocol-workspace": "workspace:^1.0.0",
+      "protocol-file": "file:../local-pkg",
+      "protocol-link": "link:../local-pkg",
+      "protocol-npm-alias": "npm:react@^18.0.0",
+      "url-git": "git+https://github.com/user/repo.git",
+      "url-tarball": "https://example.com/pkg.tgz",
+      "shorthand-github": "user/repo",
+    });
+    const requestedPurls = stubSocketApiRecordingRequests();
+
+    // None of these specs has a concrete floor to score, so the scan stays empty
+    // and never reaches the network — instead of throwing on the dist-tags /
+    // protocols or mis-scoring the wildcards' synthetic `0.0.0` floor.
+    expect(await runCheck()).toEqual([]);
+    expect(requestedPurls).toEqual([]);
   });
 });

@@ -222,13 +222,18 @@ const resolveOptions = (config: ReactDoctorConfig | null): ResolvedSupplyChainOp
 // lowest version it permits, a real published version — via `semver.minVersion`,
 // which resolves caret/tilde/OR/upper-bound ranges correctly (the old
 // "first semver token" scan mis-scored `<2.0.0 >=1.5.0` and `2.0.0 || 1.0.0`).
-// Specs with no parseable floor (`latest`, a URL) or a non-registry protocol
-// (`workspace:`, `file:`, `link:`, `npm:`, `git+…`) are skipped: nothing to score.
+// Gate on `semver.validRange` first (mirrors `parseLowerBoundVersion`): it never
+// throws and rejects everything with no concrete floor to score — `semver@7`'s
+// `minVersion` instead *throws* on those (issue #807: a `latest` dist-tag, a
+// `git+…` protocol, or a URL crashed the whole scan). Specs without a floor
+// (dist-tags like `latest`/`next`, protocols/URLs like `workspace:`/`file:`/
+// `npm:`/`git+…`/`https://…`) come back `null`; the wildcards (`*`, `x`, empty)
+// normalize to `"*"`, whose synthetic `0.0.0` floor isn't a real published
+// version — both are skipped.
 const resolveConcreteVersion = (spec: string): string | null => {
-  const trimmed = spec.trim();
-  if (trimmed.length === 0) return null;
-  if (trimmed.includes(":")) return null;
-  return semver.minVersion(trimmed)?.version ?? null;
+  const validatedRange = semver.validRange(spec.trim());
+  if (validatedRange === null || validatedRange === "*") return null;
+  return semver.minVersion(validatedRange)?.version ?? null;
 };
 
 type DependencySection = "dependencies" | "devDependencies";

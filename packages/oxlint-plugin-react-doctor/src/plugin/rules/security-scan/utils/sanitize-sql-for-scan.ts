@@ -34,7 +34,9 @@ const precedingKeyword = (content: string, beforeIndex: number): string => {
   let lookBack = beforeIndex - 1;
   while (lookBack >= 0 && /\s/.test(content[lookBack] ?? "")) lookBack -= 1;
   let wordStart = lookBack;
-  while (wordStart >= 0 && /[A-Za-z]/.test(content[wordStart] ?? "")) wordStart -= 1;
+  // Identifier characters include digits/underscore so multi-part language
+  // names like `plpython3u` are read whole, not truncated to `u`.
+  while (wordStart >= 0 && /[A-Za-z0-9_]/.test(content[wordStart] ?? "")) wordStart -= 1;
   return content.slice(wordStart + 1, lookBack + 1).toLowerCase();
 };
 

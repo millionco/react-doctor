@@ -321,6 +321,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("recognizes a DO LANGUAGE plpython3u block (digit in language name) as a code body", () => {
+      writeFile(
+        "supabase/migrations/017_plpython.sql",
+        `create table metrics (id uuid primary key);\ndo language plpython3u $$\nalter table metrics enable row level security;\n$$;\n`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("stays quiet when RLS is enabled via a dynamic EXECUTE in a DO block", () => {
       writeFile(
         "supabase/migrations/011_dynamic.sql",

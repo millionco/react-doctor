@@ -36,6 +36,12 @@ export const queryDestructureResult = defineRule({
       // Only flag when the hook actually comes from TanStack Query. A hook of
       // the same name imported from another library (e.g. `convex/react`) does
       // not return a tracked result object, so destructuring it would be wrong.
+      // `null` (no import in this file — a global, an auto-import, or a call
+      // before its declaration) still fires, preserving prior behavior. A
+      // `useQuery` re-exported through a LOCAL module reports that module as its
+      // source and is intentionally skipped: a per-file rule can't follow the
+      // re-export chain, and firing on an unverified local source would
+      // re-introduce the Convex false positive this gate exists to prevent.
       const importSource = getImportSourceForName(node, calleeName);
       if (importSource !== null && !isTanstackQuerySource(importSource)) return;
 

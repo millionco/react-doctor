@@ -62,9 +62,9 @@ export const checkSecurityScan = (
         // A committed-file rule's finding doesn't apply to a path git ignores
         // (it isn't actually checked in). The check is deferred to here, gated
         // on an actual finding, on purpose: `scan` is cheap regex but
-        // `isCommittedFileGitIgnored` spawns a `git check-ignore` subprocess —
-        // hoisting it above `scan` would spawn git for every scanned file, not
-        // just the rare file that trips a committed-file rule.
+        // `isFileGitIgnored` spawns a `git check-ignore` subprocess — hoisting
+        // it above `scan` would spawn git for every scanned file, not just the
+        // rare file that trips a committed-file rule.
         if (committedFilesOnly && isFileGitIgnored(file)) continue;
         const diagnostic = buildSecurityScanDiagnostic(finding, entry, file.relativePath);
         const key = `${diagnostic.rule}:${diagnostic.filePath}:${diagnostic.line}:${diagnostic.column}:${diagnostic.message}`;

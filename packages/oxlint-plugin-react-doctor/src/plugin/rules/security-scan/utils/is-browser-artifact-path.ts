@@ -25,8 +25,10 @@ const isNonShippedBuildArtifactPath = (relativePath: string): boolean => {
   for (let index = 0; index < segments.length; index += 1) {
     if (!SERVER_BUILD_ROOT_SEGMENTS.has(segments[index])) continue;
     // `.next/dev/**`: transient dev output (incl. the `.next/dev/server` build).
+    // The whole subtree is excluded, so no trailing-segment guard is needed.
     if (segments[index] === ".next" && segments[index + 1] === "dev") return true;
-    // `<root>/server/<file>`: server build output, directly under the root.
+    // `<root>/server/<file>`: server build output directly under the root. The
+    // trailing-segment guard avoids matching a file literally named `server`.
     if (segments[index + 1] === "server" && index + 2 < segments.length) return true;
   }
   return false;

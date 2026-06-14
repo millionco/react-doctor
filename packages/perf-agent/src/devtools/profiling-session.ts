@@ -21,16 +21,22 @@ export const createProfilingSession = (store: ReactDevtoolsStore): ProfilingSess
       profilerStore.startProfiling();
     },
     stop: async () => {
+      // Register the listener BEFORE calling stopProfiling: a store may emit
+      // `isProcessingData` synchronously inside stopProfiling (e.g. the native
+      // store when no renderer attached), which would be missed if we awaited
+      // after the call.
+      const settled = waitForStoreEvent(
+        profilerStore,
+        "isProcessingData",
+        () => profilerStore.isProcessingData === false,
+      );
+
       profilerStore.stopProfiling();
 
       // The backend serializes asynchronously over the bridge; `isProcessingData`
       // flips true while it works and back to false once the frontend has merged
       // every renderer's data.
-      await waitForStoreEvent(
-        profilerStore,
-        "isProcessingData",
-        () => profilerStore.isProcessingData === false,
-      );
+      await settled;
 
       const { profilingData } = profilerStore;
       return profilingData === null ? null : serializeProfilingExport(profilingData);

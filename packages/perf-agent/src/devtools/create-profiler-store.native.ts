@@ -87,7 +87,12 @@ export const createProfilerStore = (target: DevtoolsGlobal = globalThis): ReactD
   });
 
   frontendBridge.addListener("profilingData", (payload) => {
-    if (!isProfilerDataBackend(payload)) return;
+    if (!isProfilerDataBackend(payload)) {
+      // A malformed payload must still settle processing, else `stop()` hangs.
+      isProcessingData = false;
+      emit("isProcessingData");
+      return;
+    }
     profilingData = assembleFrontendData({
       dataBackend: payload,
       operationsByRootID,
@@ -119,13 +124,15 @@ export const createProfilerStore = (target: DevtoolsGlobal = globalThis): ReactD
     stopProfiling: () => {
       isProfiling = false;
       emit("isProfiling");
+      // Always tell the backend to stop, even with no renderer observed, so it
+      // never stays in recording mode after a startProfiling.
+      frontendBridge.send("stopProfiling");
       if (rendererID === null) {
         isProcessingData = false;
         emit("isProcessingData");
         return;
       }
       isProcessingData = true;
-      frontendBridge.send("stopProfiling");
       frontendBridge.send("getProfilingData", { rendererID });
     },
     get isProcessingData() {

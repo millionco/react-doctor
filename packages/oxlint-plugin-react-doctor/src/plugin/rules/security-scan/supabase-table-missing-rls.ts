@@ -3,6 +3,7 @@ import type { ScanFinding } from "../../utils/file-scan.js";
 import { escapeRegExp } from "./utils/escape-reg-exp.js";
 import { getLocationAtIndex } from "./utils/get-location-at-index.js";
 import { isSupabaseMigrationPath } from "./utils/is-supabase-migration-path.js";
+import { stripSqlCommentsPreservingPositions } from "./utils/strip-sql-comments-preserving-positions.js";
 
 // A `create table` for a public-schema table — the only schema PostgREST
 // exposes to the anon key. Unqualified names default to `public`, so they
@@ -32,7 +33,10 @@ export const supabaseTableMissingRls = defineRule({
     "Enable RLS in the same migration (`alter table <name> enable row level security;`) and add `auth.uid()`-scoped policies for select/insert/update/delete. A public table without RLS is fully readable and writable with the public anon key.",
   scan: (file) => {
     if (!isSupabaseMigrationPath(file.relativePath)) return [];
-    const content = file.content;
+    // Strip SQL comments first so a commented-out `create table … (` is not
+    // scanned as live DDL (and a commented `enable row level security` cannot
+    // falsely vouch for a real table). Offsets are preserved for locations.
+    const content = stripSqlCommentsPreservingPositions(file.content);
     if (!/create\s+(?:unlogged\s+)?table/i.test(content)) return [];
 
     const findings: ScanFinding[] = [];

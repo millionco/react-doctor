@@ -258,6 +258,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("does not flag a commented-out create table statement", () => {
+      writeFile(
+        "supabase/migrations/005_commented.sql",
+        `-- create table legacy_users (id uuid primary key);\n/* create table old_logs (id uuid primary key); */\ncreate table active_users (id uuid primary key);\nalter table active_users enable row level security;\n`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("flags only the table missing RLS in a multi-table migration", () => {
       writeFile(
         "supabase/migrations/004_two_tables.sql",

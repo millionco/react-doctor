@@ -1,21 +1,23 @@
 // Blanks the parts of a SQL migration that must not be matched as live DDL —
 // `--` line comments, `/* */` block comments, single-quoted string literals
 // (seed/doc text, and dynamic SQL outside `EXECUTE`), and `$tag$…$tag$`
-// dollar-quoted STRING VALUES — by overwriting them with spaces. Double-quoted
-// identifiers are preserved (a quoted table name like `"myTable"` is real DDL),
-// and a `DO $$ … $$` / `AS $$ … $$` code body is kept visible (its comments and
-// non-`EXECUTE` strings still blanked) so a real `alter table … enable row
-// level security` inside it counts. Offsets, lines, and columns are preserved
-// 1:1 so reported match locations stay correct.
+// dollar-quoted STRING VALUES and FUNCTION BODIES — by overwriting them with
+// spaces. Double-quoted identifiers are preserved (a quoted table name like
+// `"myTable"` is real DDL), and an immediately-executed `DO $$ … $$` block is
+// kept visible (its comments and non-`EXECUTE` strings still blanked) so a real
+// `alter table … enable row level security` inside it counts. A `CREATE
+// FUNCTION … AS $$ … $$` body is NOT kept visible: its DDL runs only when the
+// function is called, not at migration time, so it must not vouch for RLS.
+// Offsets, lines, and columns are preserved 1:1 so locations stay correct.
 const DOLLAR_QUOTE_TAG_PATTERN = /^\$[A-Za-z_]?\w*\$/;
 
-// Keywords that introduce an executable dollar-quoted body: `DO $$`, `AS $$`,
+// Keywords that introduce an immediately-executed dollar-quoted body: `DO $$`
 // and the `DO LANGUAGE <lang> $$` form (where the body follows the language
-// name). A bare language name can only precede `$$` in that body position, so
-// matching it does not risk a string-value false negative.
+// name). `AS` is excluded on purpose — it precedes a function body, which runs
+// on invocation, not at migration time. A bare language name can only precede
+// `$$` in the `DO LANGUAGE` position, so matching it is safe.
 const CODE_BODY_KEYWORDS = new Set([
   "do",
-  "as",
   "plpgsql",
   "sql",
   "plpython3u",

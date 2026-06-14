@@ -32,6 +32,31 @@ const HTTP_ONLY_DISABLED_PATTERN = /httpOnly\s*:\s*false\b/i;
 // property value (a note/description) is not read as a real cookie option.
 const STRING_LITERAL_PATTERN = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
 
+// Position-preserving blank of every string-literal body, so a regex run over
+// the result keeps the same indices (locations stay correct) while a substring
+// like `httpOnly: false` inside a string can no longer match as a real option.
+const blankStringContents = (text: string): string => {
+  const characters = text.split("");
+  let index = 0;
+  let stringDelimiter: string | null = null;
+  while (index < text.length) {
+    const character = text[index];
+    if (stringDelimiter !== null) {
+      if (character === "\\") {
+        index += 2;
+        continue;
+      }
+      if (character === stringDelimiter) stringDelimiter = null;
+      else if (character !== "\n") characters[index] = " ";
+      index += 1;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") stringDelimiter = character;
+    index += 1;
+  }
+  return characters.join("");
+};
+
 // Session-middleware cookie config disabling HttpOnly
 // (`session({ cookie: { httpOnly: false } })`). `httpOnly` is cookie-specific,
 // so a `cookie:` block setting it false is always a real cookie misconfig.
@@ -121,8 +146,11 @@ export const insecureSessionCookie = defineRule({
       findings.push({ message, line: location.line, column: location.column });
     }
 
+    // Run the `cookie: { httpOnly: false }` check over string-blanked content
+    // (positions preserved) so a `httpOnly: false` substring inside a string
+    // property value cannot trigger it.
     addMatchFindings(
-      content,
+      blankStringContents(content),
       COOKIE_CONFIG_HTTP_ONLY_DISABLED_PATTERN,
       message,
       () => true,

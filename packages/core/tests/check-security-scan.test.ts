@@ -339,6 +339,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("flags a table whose RLS enable is only inside a function body", () => {
+      writeFile(
+        "supabase/migrations/016_func.sql",
+        `create table widgets2 (id uuid primary key);\ncreate function enable_rls() returns void language plpgsql as $$ begin\n  alter table widgets2 enable row level security;\nend $$;\n`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("supabase-table-missing-rls");
+    });
+
     it("flags a table when enable RLS appears before the create", () => {
       writeFile(
         "supabase/migrations/008_order.sql",
@@ -628,6 +637,24 @@ describe("checkSecurityScan", () => {
       writeFile(
         "src/ui-cookies.ts",
         `export const a = (res) => res.cookie("sidebar", "open");\nexport const b = (res) => res.cookie("author", "jane");`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("flags a session middleware cookie config that disables httpOnly", () => {
+      writeFile(
+        "src/session-insecure.ts",
+        `export const config = session({ cookie: { httpOnly: false } });`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("insecure-session-cookie");
+    });
+
+    it("does not flag a cookie config when 'httpOnly: false' is only in a string", () => {
+      writeFile(
+        "src/session-config.ts",
+        `export const config = session({ cookie: { httpOnly: true, comment: "never use httpOnly: false" } });`,
       );
 
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);

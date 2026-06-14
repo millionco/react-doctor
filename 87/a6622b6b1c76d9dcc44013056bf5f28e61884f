@@ -1,0 +1,29 @@
+packages/core/tests/check-supply-chain.test.ts
+  s_fa4218722e1030::t_520b3fadbcbcca 221
+  s_fa4218722e1030::t_59b3ec72cbc05e 19-29,34-41,45-50,58-60,119-126,143,160,177-220
+packages/core/src/constants.ts
+  s_fa4218722e1030::t_59b3ec72cbc05e 460-468
+.changeset/socket-supply-chain-messaging.md
+  s_fa4218722e1030::t_f19a5da29cdb1f 1-5
+packages/core/src/check-supply-chain.ts
+  s_fa4218722e1030::t_b1f6c704c25bd2 102,111-112
+  s_fa4218722e1030::t_072ff2337a95de 472
+  s_fa4218722e1030::t_59b3ec72cbc05e 12,17,62-74,77,81-88,92-101,106-110,113-116,120-122,124-145,155-157,161,347-349,359,364-377,385,389,391-392,394,396,398-401,412-435,440-471,473-527,531-532,536-554,560-561,601,606,610,641,647-651
+  s_fa4218722e1030::t_3b8efdb1bd66ab 436-439
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "87a6622b6b1c76d9dcc44013056bf5f28e61884f",
+  "prompts": {},
+  "sessions": {
+    "s_fa4218722e1030": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0f746426-b4a3-478e-a89c-3595d4411c7a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

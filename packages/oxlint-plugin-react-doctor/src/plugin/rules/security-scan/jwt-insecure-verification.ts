@@ -11,7 +11,7 @@ import { getScannableContent } from "./utils/scan-by-pattern.js";
 // scope-aware resolution of the options argument/binding (variable vs inline
 // vs callback, import scope, TS annotations), which a regex scan cannot do
 // without false positives/negatives — that is deferred to a future AST rule.
-const NONE_ALGORITHM_PATTERN = /\balgorithms?\s*:\s*\[?\s*["'`]none["'`]/gi;
+const NONE_ALGORITHM_PATTERN = /\b(?:alg|algorithms?)\s*:\s*\[?\s*["'`]none["'`]/gi;
 
 // True when `index` falls inside a string/template literal — used to skip an
 // `algorithm: "none"` mentioned in error text or docs (`"never use algorithm:
@@ -44,7 +44,7 @@ export const jwtInsecureVerification = defineRule({
   scan: (file) => {
     if (!isProductionSourcePath(file.relativePath)) return [];
     const content = getScannableContent(file);
-    if (!/\bjwt\b|jsonwebtoken/i.test(content)) return [];
+    if (!/\bjwt\b|jsonwebtoken|\bjose\b/i.test(content)) return [];
 
     const findings: ScanFinding[] = [];
     NONE_ALGORITHM_PATTERN.lastIndex = 0;

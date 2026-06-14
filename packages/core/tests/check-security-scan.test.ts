@@ -366,6 +366,15 @@ describe("checkSecurityScan", () => {
       expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("jwt-insecure-verification");
     });
 
+    it("flags a JOSE-style alg: none header", () => {
+      writeFile(
+        "src/jose-none.ts",
+        `import * as jose from "jose";\nexport const protectedHeader = { alg: "none" };\nexport const lib = jose;`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("jwt-insecure-verification");
+    });
+
     it("does not flag the 'none' algorithm mentioned inside a string literal", () => {
       writeFile(
         "src/jwt-doc.ts",

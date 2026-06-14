@@ -231,6 +231,52 @@ describe("checkSupplyChain — security-axis gating", () => {
     expect(diagnostics[0].message).not.toContain("lowest version");
   });
 
+  // `semver.minVersion` throws (rather than returning null) on a dist-tag like
+  // `latest`/`next`, and resolves a wildcard to a synthetic `0.0.0`. Each of
+  // these specs has no concrete floor to score, so it must be skipped — never
+  // crash the scan (issue #807) and never fetch a fabricated version.
+  it.each([
+    ["a dist-tag", "latest"],
+    ["the `next` dist-tag", "next"],
+    ["a bare wildcard", "*"],
+    ["an `x` wildcard", "x"],
+    ["a `workspace:` protocol", "workspace:*"],
+    ["a `file:` protocol", "file:../local"],
+    ["an `npm:` alias", "npm:other-pkg@1.2.3"],
+    ["a git URL", "git+https://example.com/owner/repo.git"],
+    ["a tarball URL", "https://example.com/pkg/foo-1.2.3.tgz"],
+  ])("skips %s spec without crashing or scoring it", async (_label, spec) => {
+    writePackageJson({ "unresolvable-pkg": spec });
+    // Stub a failing score: if the spec were (mis)resolved to a concrete
+    // version it would flag here. An empty result proves it was skipped.
+    stubSocketApi({
+      "unresolvable-pkg": {
+        supplyChain: 0,
+        vulnerability: 1,
+        maintenance: 1,
+        quality: 1,
+        license: 1,
+      },
+    });
+
+    expect(await runCheck()).toEqual([]);
+  });
+
+  it("does not crash on a dist-tag and still scores resolvable siblings (issue #807, trigger.dev@latest)", async () => {
+    // The exact regression shape: a real dep beside an npm dist-tag. PR #804
+    // made this throw `TypeError: Invalid comparator: latest` on every scan.
+    writePackageJson({ react: "^19.0.0", "trigger.dev": "latest" });
+    stubSocketApi({
+      react: { supplyChain: 0.2, vulnerability: 1, maintenance: 1, quality: 1, license: 1 },
+      "trigger.dev": { supplyChain: 0, vulnerability: 1, maintenance: 1, quality: 1, license: 1 },
+    });
+
+    const diagnostics = await runCheck();
+    // The dist-tag is skipped (not crashed on); the resolvable sibling still scores.
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].message).toContain("`react@19.0.0");
+  });
+
   it("keeps the score-driven diagnostic when alerts are malformed or null (no fail-open)", async () => {
     writePackageJson({ "null-alert-pkg": "1.0.0" });
     // A real Socket line where optional alert fields are explicitly `null`

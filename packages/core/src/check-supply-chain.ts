@@ -222,12 +222,18 @@ const resolveOptions = (config: ReactDoctorConfig | null): ResolvedSupplyChainOp
 // lowest version it permits, a real published version — via `semver.minVersion`,
 // which resolves caret/tilde/OR/upper-bound ranges correctly (the old
 // "first semver token" scan mis-scored `<2.0.0 >=1.5.0` and `2.0.0 || 1.0.0`).
-// Specs with no parseable floor (`latest`, a URL) or a non-registry protocol
-// (`workspace:`, `file:`, `link:`, `npm:`, `git+…`) are skipped: nothing to score.
+// Specs with no parseable floor (`latest`, `*`, a URL) or a non-registry
+// protocol (`workspace:`, `file:`, `link:`, `npm:`, `git+…`) are skipped:
+// nothing to score.
 const resolveConcreteVersion = (spec: string): string | null => {
   const trimmed = spec.trim();
   if (trimmed.length === 0) return null;
   if (trimmed.includes(":")) return null;
+  // `semver.minVersion` *throws* on a bare dist-tag (`latest`, `next`) rather
+  // than returning null, so validate first. `validRange` collapses a pure
+  // wildcard to `"*"`, whose only floor is a synthetic `0.0.0` — skip it too.
+  const range = semver.validRange(trimmed);
+  if (range === null || range === "*") return null;
   return semver.minVersion(trimmed)?.version ?? null;
 };
 

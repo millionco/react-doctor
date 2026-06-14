@@ -210,6 +210,9 @@ importers:
       prompts:
         specifier: ^2.4.2
         version: 2.4.2
+      react-devtools-inline:
+        specifier: ^6.1.5
+        version: 6.1.5
       typescript:
         specifier: '>=5.0.4 <7'
         version: 5.9.3
@@ -232,6 +235,9 @@ importers:
       '@react-doctor/language-server':
         specifier: workspace:*
         version: link:../language-server
+      '@react-doctor/perf-agent':
+        specifier: workspace:*
+        version: link:../perf-agent
       '@types/babel__code-frame':
         specifier: ^7.27.0
         version: 7.27.0

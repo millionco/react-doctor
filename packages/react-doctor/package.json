@@ -46,6 +46,10 @@
     "./api": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "default": "./dist/runtime.js"
     }
   },
   "scripts": {
@@ -76,11 +80,20 @@
     "@react-doctor/api": "workspace:*",
     "@react-doctor/core": "workspace:*",
     "@react-doctor/language-server": "workspace:*",
+    "@react-doctor/perf-agent": "workspace:*",
     "@types/babel__code-frame": "^7.27.0",
     "@types/prompts": "^2.4.9",
     "@xterm/headless": "^6.0.0",
     "commander": "^14.0.3",
     "ora": "^9.4.0"
+  },
+  "peerDependencies": {
+    "react-devtools-inline": "^6.1.5"
+  },
+  "peerDependenciesMeta": {
+    "react-devtools-inline": {
+      "optional": true
+    }
   },
   "engines": {
     "node": "^20.19.0 || >=22.13.0"

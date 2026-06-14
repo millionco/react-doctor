@@ -167,6 +167,20 @@ export default defineConfig({
       fixedExtension: false,
     },
     {
+      // Browser entry published as `react-doctor/runtime`: the in-app
+      // performance harness. Bundles @react-doctor/perf-agent; keeps React and
+      // the DevTools backend external so the harness shares the host app's
+      // single React instance and DevTools hook.
+      entry: { runtime: "./src/runtime.ts" },
+      deps: {
+        neverBundle: ["react", "react-dom", "react-devtools-inline"],
+      },
+      dts: true,
+      target: "es2022",
+      platform: "browser",
+      fixedExtension: false,
+    },
+    {
       // Dedicated language-server entry the bin shim fast-paths to for
       // `react-doctor experimental-lsp`. Inlines @react-doctor/language-server + core;
       // keeps the engine + LSP transport external (the vscode-* libs use

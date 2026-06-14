@@ -7,10 +7,11 @@ import { scanByPattern } from "./utils/scan-by-pattern.js";
 const AUTH_COOKIE_NAME =
   "session|sess|sid|connect\\.sid|auth|token|jwt|access[_-]?token|refresh[_-]?token|id[_-]?token";
 
-// `res.cookie("session", …)` / `cookies().set("session", …)` naming an auth
-// cookie. Anchoring on the name keeps non-auth cookies (a theme/consent cookie
-// that legitimately needs JS access) from tripping the rule.
-const AUTH_COOKIE_SET_CALL = `(?:\\.cookie|cookies\\(\\s*\\)\\.set)\\s*\\(\\s*[\`"'](?:${AUTH_COOKIE_NAME})[^\`"']*[\`"']`;
+// An auth-named cookie set: Express `res.cookie("session", …)`, next/headers
+// `cookies().set("session", …)`, and the NextResponse `response.cookies.set(
+// "session", …)` shape. Anchoring on the name keeps non-auth cookies (a
+// theme/consent cookie that legitimately needs JS access) from tripping it.
+const AUTH_COOKIE_SET_CALL = `(?:\\.cookies\\.set|cookies\\(\\s*\\)\\.set|\\.cookie)\\s*\\(\\s*[\`"'](?:${AUTH_COOKIE_NAME})[^\`"']*[\`"']`;
 
 // An auth cookie set with `httpOnly: false` inside the same call.
 const AUTH_COOKIE_HTTP_ONLY_DISABLED_PATTERN = new RegExp(

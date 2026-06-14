@@ -471,6 +471,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("flags a Next.js response.cookies.set auth cookie without options", () => {
+      writeFile(
+        "src/next-cookie.ts",
+        `export const GET = (response, token) => response.cookies.set("session", token);`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("insecure-session-cookie");
+    });
+
     it("does not flag a non-auth cookie that disables httpOnly", () => {
       writeFile(
         "src/theme-cookie.ts",

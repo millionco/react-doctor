@@ -111,6 +111,10 @@ export const createProfilerStore = (target: DevtoolsGlobal = globalThis): ReactD
 
   const profilerStore: ReactDevtoolsProfilerStore = {
     startProfiling: () => {
+      // Sessions are serial: ignore a start while one is recording or its stop
+      // is still finalizing, so an in-flight getProfilingData response can't be
+      // merged into a new session's buffers.
+      if (isProfiling || isProcessingData) return;
       operationsByRootID.clear();
       snapshotsByRootID.clear();
       profilingData = null;
@@ -125,6 +129,9 @@ export const createProfilerStore = (target: DevtoolsGlobal = globalThis): ReactD
       emit("isProfiling");
     },
     stopProfiling: () => {
+      // A stop is already finalizing: let that in-flight request settle every
+      // waiter instead of racing it and clearing its state.
+      if (isProcessingData) return;
       const wasProfiling = isProfiling;
       isProfiling = false;
       emit("isProfiling");
@@ -132,7 +139,6 @@ export const createProfilerStore = (target: DevtoolsGlobal = globalThis): ReactD
         // No active session: don't fetch, and don't surface stale data from a
         // previous session.
         profilingData = null;
-        isProcessingData = false;
         emit("isProcessingData");
         return;
       }
@@ -140,7 +146,6 @@ export const createProfilerStore = (target: DevtoolsGlobal = globalThis): ReactD
       // observed, so it never stays in recording mode.
       frontendBridge.send("stopProfiling");
       if (rendererID === null) {
-        isProcessingData = false;
         emit("isProcessingData");
         return;
       }

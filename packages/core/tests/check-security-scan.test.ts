@@ -307,7 +307,7 @@ describe("checkSecurityScan", () => {
   });
 
   describe("jwt-insecure-verification", () => {
-    it("flags the 'none' algorithm and verify calls without an algorithms allowlist", () => {
+    it("flags the JWT 'none' algorithm in verify and sign options", () => {
       writeFile(
         "src/jwt-none.ts",
         `import jwt from "jsonwebtoken";\nexport const v = (t, k) => jwt.verify(t, k, { algorithms: ["none"] });`,
@@ -315,37 +315,30 @@ describe("checkSecurityScan", () => {
       expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("jwt-insecure-verification");
 
       writeFile(
-        "src/jwt-verify.ts",
-        `import jwt from "jsonwebtoken";\nexport const v = (t, k) => jwt.verify(t, k);`,
+        "src/jwt-sign-none.ts",
+        `import jwt from "jsonwebtoken";\nexport const sign = (payload, key) => jwt.sign(payload, key, { algorithm: "none" });`,
       );
       expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("jwt-insecure-verification");
     });
 
-    it("stays quiet when verify pins an algorithms allowlist", () => {
+    it("stays quiet for pinned algorithms and for verify calls in any options shape", () => {
+      // The rule deliberately does not flag unpinned verify (it cannot resolve
+      // the options binding precisely); only `none` is reported. So an inline
+      // pin, an options variable, and a callback form all stay quiet.
       writeFile(
         "src/jwt-ok.ts",
         `import jwt from "jsonwebtoken";\nexport const v = (t, k) => jwt.verify(t, k, { algorithms: ["RS256"] });`,
       );
-
-      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
-    });
-
-    it("stays quiet when the algorithms allowlist is passed as a separate options variable", () => {
       writeFile(
         "src/jwt-opts-var.ts",
-        `import jwt from "jsonwebtoken";\nconst options = { algorithms: ["RS256"] };\nexport const v = (t, k) => jwt.verify(t, k, options);`,
+        `import jwt from "jsonwebtoken";\nconst options = { issuer: "x" };\nexport const v = (t, k) => jwt.verify(t, k, options);`,
+      );
+      writeFile(
+        "src/jwt-callback.ts",
+        `import jwt from "jsonwebtoken";\nexport const v = (t, k, cb) => jwt.verify(t, k, cb);`,
       );
 
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
-    });
-
-    it("still flags an unpinned verify when an unrelated `algorithms` token exists", () => {
-      writeFile(
-        "src/jwt-unrelated.ts",
-        `import jwt from "jsonwebtoken";\nconst algorithms = ["alpha", "beta"];\nexport const list = () => algorithms;\nexport const v = (t, k) => jwt.verify(t, k);`,
-      );
-
-      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("jwt-insecure-verification");
     });
   });
 

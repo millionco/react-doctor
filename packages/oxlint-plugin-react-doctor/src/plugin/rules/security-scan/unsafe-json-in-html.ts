@@ -4,8 +4,8 @@ import { getLocationAtIndex } from "./utils/get-location-at-index.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 import { getScannableContent } from "./utils/scan-by-pattern.js";
 
-// Each pattern ends on the `JSON.stringify(` token so the value that follows
-// can be checked individually — a per-sink decision, not a file-wide one.
+// Each pattern ends on the `JSON.stringify(` token so the value can be checked
+// individually — a per-sink decision, not a file-wide one.
 //   1. `dangerouslySetInnerHTML={{ __html: … JSON.stringify( … }}`
 //   2. `JSON.stringify(` inside one inline `<script>…</script>` element.
 // `JSON.stringify` does NOT HTML-escape, so a value containing `</script>`,
@@ -16,20 +16,42 @@ const SINK_JSON_STRINGIFY_PATTERNS = [
   /<script\b[^>]*>(?:(?!<\/script>)[\s\S]){0,300}?\bJSON\.stringify\s*\(/gi,
 ];
 
-// An inline escape of `<` applied to this `JSON.stringify(...)` result
-// (`.replace(/</g, "\u003c")`, `&lt;`, an html-escape helper) makes the embed
-// safe. Checked only against the value immediately after the matched call, so
-// an escape elsewhere in the file cannot mask a different, unescaped sink.
-const INLINE_ESCAPE_PATTERN =
-  /\.replace\s*\([^)]*(?:\\u003[cC]|&lt;|<)|\b(?:escapeHtml|escapeJSON|escapeJson|htmlEscape|jsesc)\s*\(/;
-const ESCAPE_LOOKAHEAD_CHARS = 160;
-
-// An escape/serializer helper wrapping the call (`escapeHtml(JSON.stringify(…))`)
-// sits before the matched token, so it is checked against the text leading up
-// to `JSON.stringify(` within the same sink match.
+// Only escaping the OUTPUT of JSON.stringify is safe: a `.replace` of `<` on
+// its return value, or an escape/serializer helper wrapping the whole call.
+// Escaping the INPUT (a helper inside the stringify arguments) does not, so the
+// return-value check looks strictly after the call's matching `)`.
+const RETURN_ESCAPE_PATTERN = /^\s*\.replace\s*\([^)]*(?:\\u003[cC]|&lt;|<)/;
 const ESCAPE_WRAPPER_PATTERN =
   /\b(?:escapeHtml|escapeJSON|escapeJson|htmlEscape|jsesc|serialize|serializeJavascript)\s*\(\s*$/i;
 const JSON_STRINGIFY_TOKEN_PATTERN = /\bJSON\.stringify\s*\($/i;
+const RETURN_LOOKAHEAD_CHARS = 160;
+
+// Index of the `)` that closes the call whose `(` is at `openParenIndex`,
+// ignoring parentheses inside string literals. -1 if it never balances.
+const findMatchingParenIndex = (content: string, openParenIndex: number): number => {
+  let depth = 0;
+  let stringDelimiter: string | null = null;
+  for (let index = openParenIndex; index < content.length; index += 1) {
+    const character = content[index];
+    if (stringDelimiter !== null) {
+      if (character === "\\") {
+        index += 1;
+      } else if (character === stringDelimiter) {
+        stringDelimiter = null;
+      }
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      stringDelimiter = character;
+    } else if (character === "(") {
+      depth += 1;
+    } else if (character === ")") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+};
 
 export const unsafeJsonInHtml = defineRule({
   id: "unsafe-json-in-html",
@@ -47,11 +69,21 @@ export const unsafeJsonInHtml = defineRule({
     for (const pattern of SINK_JSON_STRINGIFY_PATTERNS) {
       pattern.lastIndex = 0;
       for (let match = pattern.exec(content); match !== null; match = pattern.exec(content)) {
-        const valueStart = match.index + match[0].length;
-        const valueTail = content.slice(valueStart, valueStart + ESCAPE_LOOKAHEAD_CHARS);
-        if (INLINE_ESCAPE_PATTERN.test(valueTail)) continue;
+        // An escape/serializer helper wrapping the call escapes the output.
         const beforeStringify = match[0].replace(JSON_STRINGIFY_TOKEN_PATTERN, "");
         if (ESCAPE_WRAPPER_PATTERN.test(beforeStringify)) continue;
+
+        // A `.replace` of `<` applied to the call's return value escapes it.
+        const openParenIndex = match.index + match[0].length - 1;
+        const closeParenIndex = findMatchingParenIndex(content, openParenIndex);
+        if (closeParenIndex >= 0) {
+          const afterReturn = content.slice(
+            closeParenIndex + 1,
+            closeParenIndex + 1 + RETURN_LOOKAHEAD_CHARS,
+          );
+          if (RETURN_ESCAPE_PATTERN.test(afterReturn)) continue;
+        }
+
         if (seenIndices.has(match.index)) continue;
         seenIndices.add(match.index);
         const location = getLocationAtIndex(content, match.index);

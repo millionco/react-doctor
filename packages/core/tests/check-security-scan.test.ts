@@ -331,6 +331,15 @@ describe("checkSecurityScan", () => {
 
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
+
+    it("still flags when an escape helper is applied to the input, not the output", () => {
+      writeFile(
+        "src/preprocess.tsx",
+        "export const H = ({ data }) => <div dangerouslySetInnerHTML={{ __html: JSON.stringify(escapeHtml(data)) }} />;",
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("unsafe-json-in-html");
+    });
   });
 
   describe("jwt-insecure-verification", () => {

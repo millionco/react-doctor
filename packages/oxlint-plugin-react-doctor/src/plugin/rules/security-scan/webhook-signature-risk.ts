@@ -8,18 +8,28 @@ const WEBHOOK_HANDLER_PATTERN =
 const WEBHOOK_ENTRYPOINT_PATTERN =
   /\b(?:export\s+(?:async\s+)?function\s+POST|export\s+const\s+(?:POST|handler|webhook)|webhookHandler|webhookRoute)\b/i;
 
-// Reading a `*-signature` header or delegating to a verification helper is
-// evidence even when the HMAC math lives in another module. The last
-// alternative matches a call to a helper whose name pairs a verify-ish verb
-// with a webhook-security noun (`isValidSecret(...)`, `verifySignature(...)`,
-// `checkWebhookHmac(...)`), so an extracted timing-safe comparison still counts.
-// `token` is deliberately excluded from the nouns — a generic `validateToken(…)`
-// auth check is not signature verification (the `webhook` noun still covers
-// `verifyWebhookToken`). The letter runs around the verb/noun are
-// length-bounded (not `[A-Za-z]*`) so a long identifier-like run cannot cause
-// catastrophic regex backtracking.
-const WEBHOOK_SIGNATURE_VERIFICATION_PATTERN =
-  /verifySignature|verify.*signature|verify\w*(?:Webhook|Auth)|constructEvent|createHmac|timingSafeEqual|svix|webhookSecret|stripe\.webhooks|["'][\w-]*signature["']|\b[A-Za-z]{0,40}(?:verif|valid|check|assert|authenticat|compare|guard)[A-Za-z]{0,40}(?:secret|signature|hmac|webhook|digest)[A-Za-z]{0,40}\s*\(/i;
+// In-file verification evidence: a known SDK call, a timing-safe comparison, a
+// provider helper, or a read of a `*-signature` header/config name.
+const WEBHOOK_VERIFICATION_SIGNAL_PATTERN =
+  /verifySignature|verify.*signature|verify\w*(?:Webhook|Auth)|constructEvent|createHmac|timingSafeEqual|svix|webhookSecret|stripe\.webhooks|["'][\w-]*signature["']/;
+
+// A call to a verification helper whose name pairs a verify-ish verb with a
+// webhook-security noun (`isValidSecret(...)`, `verifySignature(...)`,
+// `checkWebhookHmac(...)`), so an extracted timing-safe comparison in another
+// module still counts. `token` is deliberately excluded from the nouns — a
+// generic `validateToken(…)` auth check is not signature verification (the
+// `webhook` noun still covers `verifyWebhookToken`). The letter runs around the
+// verb/noun are length-bounded (not `[A-Za-z]*`) so a long identifier-like run
+// cannot cause catastrophic regex backtracking.
+const WEBHOOK_VERIFICATION_HELPER_CALL_PATTERN =
+  /\b[A-Za-z]{0,40}(?:verif|valid|check|assert|authenticat|compare|guard)[A-Za-z]{0,40}(?:secret|signature|hmac|webhook|digest)[A-Za-z]{0,40}\s*\(/;
+
+// Either kind of evidence suppresses the finding (composed case-insensitively
+// from the two readable sub-patterns above).
+const WEBHOOK_SIGNATURE_VERIFICATION_PATTERN = new RegExp(
+  `${WEBHOOK_VERIFICATION_SIGNAL_PATTERN.source}|${WEBHOOK_VERIFICATION_HELPER_CALL_PATTERN.source}`,
+  "i",
+);
 
 // `webhookUrl` mentions mark code SENDING to a webhook (outbound), where
 // signature verification is the receiver's job, not this file's. A webhook

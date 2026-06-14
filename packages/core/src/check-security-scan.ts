@@ -15,8 +15,7 @@ export interface CheckSecurityScanOptions {
 interface EnabledScanRule {
   readonly entry: SecurityScanRuleEntry;
   readonly scan: FileScan;
-  // The rule's finding only applies to committed files (`rule.committedFilesOnly`),
-  // so it is dropped for paths git ignores. Precomputed per rule.
+  // `rule.committedFilesOnly`, precomputed per rule (see `Rule` for semantics).
   readonly committedFilesOnly: boolean;
 }
 
@@ -48,7 +47,7 @@ export const checkSecurityScan = (
   const diagnostics: Diagnostic[] = [];
   const seen = new Set<string>();
   const gitIgnoredCache = new Map<string, boolean | null>();
-  const isCommittedFileGitIgnored = (file: ScannedFile): boolean => {
+  const isFileGitIgnored = (file: ScannedFile): boolean => {
     let status = gitIgnoredCache.get(file.absolutePath);
     if (status === undefined) {
       status = isPathGitIgnored(rootDirectory, file.absolutePath);
@@ -66,7 +65,7 @@ export const checkSecurityScan = (
         // `isCommittedFileGitIgnored` spawns a `git check-ignore` subprocess —
         // hoisting it above `scan` would spawn git for every scanned file, not
         // just the rare file that trips a committed-file rule.
-        if (committedFilesOnly && isCommittedFileGitIgnored(file)) continue;
+        if (committedFilesOnly && isFileGitIgnored(file)) continue;
         const diagnostic = buildSecurityScanDiagnostic(finding, entry, file.relativePath);
         const key = `${diagnostic.rule}:${diagnostic.filePath}:${diagnostic.line}:${diagnostic.column}:${diagnostic.message}`;
         if (seen.has(key)) continue;

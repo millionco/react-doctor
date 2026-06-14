@@ -1,5 +1,9 @@
 import type { ReactProfilerDataFrontend } from "./profiling-frontend.js";
 
+// The global object the DevTools hook is installed on: `window` on the web,
+// `global` on React Native. `globalThis` covers both.
+export type DevtoolsGlobal = typeof globalThis;
+
 export interface ReactDevtoolsWallMessage {
   event: string;
   payload: unknown;
@@ -16,6 +20,9 @@ export interface ReactDevtoolsWall {
 }
 
 export interface ReactDevtoolsBridge {
+  send: (event: string, payload?: unknown) => void;
+  addListener: (event: string, listener: (payload: unknown) => void) => void;
+  removeListener: (event: string, listener: (payload: unknown) => void) => void;
   shutdown: () => void;
 }
 

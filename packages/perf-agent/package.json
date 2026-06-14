@@ -9,16 +9,25 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "react-native": "./dist/index.native.js",
+      "browser": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./native": {
+      "types": "./dist/index.native.d.ts",
+      "default": "./dist/index.native.js"
     },
     "./harness": {
       "types": "./dist/harness.d.ts",
+      "react-native": "./dist/harness.native.js",
+      "browser": "./dist/harness.js",
       "default": "./dist/harness.js"
     }
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run"
   },
   "dependencies": {
     "react-devtools-inline": "^6.1.5"

@@ -2,6 +2,7 @@ import {
   activate as activateBackend,
   createBridge as createBackendBridge,
 } from "react-devtools-inline/backend";
+import { PROFILING_STOP_TIMEOUT_MS } from "../constants.js";
 import type { DevtoolsElementTree } from "../types/element-tree.js";
 import type { ReactProfilerDataBackend } from "../types/profiling-backend.js";
 import type { ReactProfilerDataFrontend } from "../types/profiling-frontend.js";
@@ -51,6 +52,19 @@ export const createProfilerStore = (target: DevtoolsGlobal = globalThis): ReactD
   let isProfiling = false;
   let isProcessingData = false;
   let profilingData: ReactProfilerDataFrontend | null = null;
+  let processingTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Clears the in-flight stop state and notifies waiters. Used by both the
+  // profilingData response and the timeout guard so a non-responding backend
+  // can't leave isProcessingData stuck true (which would wedge later sessions).
+  const settleProcessing = (): void => {
+    if (processingTimer !== undefined) {
+      clearTimeout(processingTimer);
+      processingTimer = undefined;
+    }
+    isProcessingData = false;
+    emit("isProcessingData");
+  };
 
   const wallListeners: Array<(message: ReactDevtoolsWallMessage) => void> = [];
   const wall: ReactDevtoolsWall = {
@@ -87,6 +101,9 @@ export const createProfilerStore = (target: DevtoolsGlobal = globalThis): ReactD
   });
 
   frontendBridge.addListener("profilingData", (payload) => {
+    // Ignore responses we're not awaiting (already timed out, or no active
+    // stop) so a late/stale response can't mutate state after stop() resolved.
+    if (!isProcessingData) return;
     // Any malformed/partial payload (top-level or per-commit) must still settle
     // processing and leave profilingData null, so `stop()` resolves with null
     // rather than hanging or rejecting with a TypeError.
@@ -101,8 +118,7 @@ export const createProfilerStore = (target: DevtoolsGlobal = globalThis): ReactD
         profilingData = null;
       }
     }
-    isProcessingData = false;
-    emit("isProcessingData");
+    settleProcessing();
     if (profilingData !== null) emit("profilingData");
   });
 
@@ -151,6 +167,9 @@ export const createProfilerStore = (target: DevtoolsGlobal = globalThis): ReactD
       }
       isProcessingData = true;
       frontendBridge.send("getProfilingData", { rendererID });
+      // Self-heal if the backend never responds, so isProcessingData can't stay
+      // stuck true and wedge later start/stop calls.
+      processingTimer = setTimeout(settleProcessing, PROFILING_STOP_TIMEOUT_MS);
     },
     get isProcessingData() {
       return isProcessingData;

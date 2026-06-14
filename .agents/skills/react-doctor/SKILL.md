@@ -1,12 +1,12 @@
 ---
 name: react-doctor
 description: Use when finishing a feature, fixing a bug, before committing React code, or when the user types `/doctor`, asks to scan, triage, or clean up React diagnostics. Covers lint, accessibility, bundle size, architecture. Includes a regression check and a full local-triage workflow that fetches the canonical playbook.
-version: "1.2.0"
+version: "1.3.0"
 ---
 
 # React Doctor
 
-Scans React codebases for security, performance, correctness, and architecture issues. Outputs a 0–100 health score.
+Scans React codebases for security, performance, correctness, and architecture issues. Outputs a 0 to 100 health score.
 
 ## After making React code changes:
 
@@ -16,11 +16,11 @@ If the score dropped, fix the regressions before committing.
 
 ## For general cleanup or code improvement:
 
-Run `npx react-doctor@latest --verbose` (the default `--scope full`) to scan the full codebase. Fix issues by severity — errors first, then warnings.
+Run `npx react-doctor@latest --verbose` (the default `--scope full`) to scan the full codebase. Fix issues by severity: errors first, then warnings.
 
-## /doctor — full local triage workflow
+## /doctor: full local triage workflow
 
-When the user types `/doctor`, says "run react doctor", or asks for a full triage / cleanup pass (not just a regression check), fetch the canonical local-triage playbook and follow every step in it:
+When the user types `/doctor`, says “run react doctor”, or asks for a full triage / cleanup pass (not just a regression check), fetch the canonical local-triage playbook and follow every step in it:
 
 ```bash
 curl --fail --silent --show-error \
@@ -28,7 +28,7 @@ curl --fail --silent --show-error \
   https://www.react.doctor/prompts/react-doctor-agent.md
 ```
 
-The playbook is the single source of truth — a scan → filter → triage → fix → validate loop that edits the working tree directly (never commits, never opens PRs). Updating the prompt at its source updates every agent on its next fetch — no skill reinstall needed.
+The playbook is the single source of truth: a scan → filter → triage → fix → validate loop that edits the working tree directly (never commits, never opens PRs). Updating the prompt at its source updates every agent on its next fetch, no skill reinstall needed.
 
 Pair it with the matching per-rule prompts at `https://www.react.doctor/prompts/rules/<plugin>/<rule>.md` (fetched on demand inside the playbook) so each fix uses the canonical, reviewer-tested recipe.
 
@@ -38,7 +38,7 @@ When the user wants to understand a rule, disagrees with one, or wants to disabl
 
 ## Performance engineering
 
-When the user reports jank, slow interactions, dropped frames, excessive re-renders, or asks to profile / optimize React render performance, read [references/performance.md](references/performance.md) and follow it. It sets up the in-app profiling harness — shipped as `react-doctor/runtime` — and runs an evidence-driven profile → analyze → fix → re-profile loop against the real React DevTools profiler export, never guessing from code alone.
+When the user reports jank, slow interactions, dropped frames, excessive re-renders, or asks to profile / optimize React render performance, read [references/performance.md](references/performance.md) and follow it. It sets up the in-app profiling harness (shipped as `react-doctor/runtime`) and runs an evidence-driven profile → analyze → fix → re-profile loop against the real React DevTools profiler export, never guessing from code alone.
 
 ## Command
 

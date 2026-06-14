@@ -294,6 +294,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("does not flag create table text inside a DO block string", () => {
+      writeFile(
+        "supabase/migrations/013_do_string.sql",
+        `create table invoices (id uuid primary key);\nalter table invoices enable row level security;\ndo $$ begin\n  raise notice 'create table example (id int)';\nend $$;\n`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("does not flag a create table comment inside a DO block", () => {
       writeFile(
         "supabase/migrations/012_do_comment.sql",

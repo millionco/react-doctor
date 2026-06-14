@@ -1,13 +1,105 @@
 // Blanks the parts of a SQL migration that must not be matched as live DDL —
 // `--` line comments, `/* */` block comments, single-quoted string literals
-// (which also covers dynamic SQL passed as `EXECUTE '…'`), and `$tag$…$tag$`
-// dollar-quoted STRING VALUES (seed/doc text) — by overwriting them with
-// spaces. Double-quoted identifiers are preserved (a quoted table name like
-// `"myTable"` is real DDL), and a `DO $$ … $$` / `AS $$ … $$` code body is
-// kept intact so a real `alter table … enable row level security` inside it
-// still counts. Offsets, lines, and columns are preserved 1:1 so reported
-// match locations stay correct.
+// (seed/doc text, and dynamic SQL outside `EXECUTE`), and `$tag$…$tag$`
+// dollar-quoted STRING VALUES — by overwriting them with spaces. Double-quoted
+// identifiers are preserved (a quoted table name like `"myTable"` is real DDL),
+// and a `DO $$ … $$` / `AS $$ … $$` code body is kept visible (its comments and
+// non-`EXECUTE` strings still blanked) so a real `alter table … enable row
+// level security` inside it counts. Offsets, lines, and columns are preserved
+// 1:1 so reported match locations stay correct.
 const DOLLAR_QUOTE_TAG_PATTERN = /^\$[A-Za-z_]?\w*\$/;
+
+// Lowercased identifier immediately preceding `beforeIndex` (skipping
+// whitespace) — used to classify a `$$`/`'` opener by its keyword (`do`/`as`
+// code body, `execute`/`perform` dynamic SQL).
+const precedingKeyword = (content: string, beforeIndex: number): string => {
+  let lookBack = beforeIndex - 1;
+  while (lookBack >= 0 && /\s/.test(content[lookBack] ?? "")) lookBack -= 1;
+  let wordStart = lookBack;
+  while (wordStart >= 0 && /[A-Za-z]/.test(content[wordStart] ?? "")) wordStart -= 1;
+  return content.slice(wordStart + 1, lookBack + 1).toLowerCase();
+};
+
+// Sanitizes the interior of a kept-visible `DO`/`AS` code body in place: blanks
+// comments and single-quoted strings (so `RAISE NOTICE '… create table …'` and
+// seed text can't false-match) while keeping `EXECUTE`/`PERFORM` dynamic SQL,
+// double-quoted identifiers, and direct DDL visible.
+const blankCodeBodyInterior = (
+  content: string,
+  characters: string[],
+  start: number,
+  end: number,
+): void => {
+  let index = start;
+  while (index < end) {
+    const character = content[index];
+
+    if (character === "'") {
+      const keyword = precedingKeyword(content, index);
+      const keepVisible = keyword === "execute" || keyword === "perform";
+      if (!keepVisible) characters[index] = " ";
+      index += 1;
+      while (index < end) {
+        if (content[index] === "'") {
+          if (content[index + 1] === "'") {
+            if (!keepVisible) {
+              characters[index] = " ";
+              characters[index + 1] = " ";
+            }
+            index += 2;
+            continue;
+          }
+          if (!keepVisible) characters[index] = " ";
+          index += 1;
+          break;
+        }
+        if (!keepVisible && content[index] !== "\n") characters[index] = " ";
+        index += 1;
+      }
+      continue;
+    }
+
+    if (character === '"') {
+      index += 1;
+      while (index < end) {
+        if (content[index] === '"') {
+          if (content[index + 1] === '"') {
+            index += 2;
+            continue;
+          }
+          index += 1;
+          break;
+        }
+        index += 1;
+      }
+      continue;
+    }
+
+    if (character === "-" && content[index + 1] === "-") {
+      while (index < end && content[index] !== "\n") {
+        characters[index] = " ";
+        index += 1;
+      }
+      continue;
+    }
+
+    if (character === "/" && content[index + 1] === "*") {
+      while (index < end) {
+        if (content[index] === "*" && content[index + 1] === "/") {
+          characters[index] = " ";
+          characters[index + 1] = " ";
+          index += 2;
+          break;
+        }
+        if (content[index] !== "\n") characters[index] = " ";
+        index += 1;
+      }
+      continue;
+    }
+
+    index += 1;
+  }
+};
 
 export const sanitizeSqlForScan = (content: string): string => {
   const characters = content.split("");
@@ -66,59 +158,9 @@ export const sanitizeSqlForScan = (content: string): string => {
         const tag = tagMatch[0];
         const closeIndex = content.indexOf(tag, index + tag.length);
         const endIndex = closeIndex < 0 ? content.length : closeIndex + tag.length;
-        // `DO $$ … $$` / `AS $$ … $$` is executable SQL (keep visible); any
-        // other dollar-quote is a string value (blank it).
-        let lookBack = index - 1;
-        while (lookBack >= 0 && /\s/.test(content[lookBack] ?? "")) lookBack -= 1;
-        let wordStart = lookBack;
-        while (wordStart >= 0 && /[A-Za-z]/.test(content[wordStart] ?? "")) wordStart -= 1;
-        const precedingWord = content.slice(wordStart + 1, lookBack + 1).toLowerCase();
-        const isCodeBody = precedingWord === "do" || precedingWord === "as";
-        if (isCodeBody) {
-          // Keep DDL and EXECUTE strings visible, but still blank comments
-          // inside the body so a `-- create table … (` cannot false-match.
-          let bodyIndex = index + tag.length;
-          let bodyStringDelimiter: string | null = null;
-          while (bodyIndex < endIndex) {
-            const bodyChar = content[bodyIndex];
-            if (bodyStringDelimiter !== null) {
-              if (bodyChar === bodyStringDelimiter) {
-                if (content[bodyIndex + 1] === bodyStringDelimiter) {
-                  bodyIndex += 2;
-                  continue;
-                }
-                bodyStringDelimiter = null;
-              }
-              bodyIndex += 1;
-              continue;
-            }
-            if (bodyChar === "'" || bodyChar === '"') {
-              bodyStringDelimiter = bodyChar;
-              bodyIndex += 1;
-              continue;
-            }
-            if (bodyChar === "-" && content[bodyIndex + 1] === "-") {
-              while (bodyIndex < endIndex && content[bodyIndex] !== "\n") {
-                characters[bodyIndex] = " ";
-                bodyIndex += 1;
-              }
-              continue;
-            }
-            if (bodyChar === "/" && content[bodyIndex + 1] === "*") {
-              while (bodyIndex < endIndex) {
-                if (content[bodyIndex] === "*" && content[bodyIndex + 1] === "/") {
-                  characters[bodyIndex] = " ";
-                  characters[bodyIndex + 1] = " ";
-                  bodyIndex += 2;
-                  break;
-                }
-                if (content[bodyIndex] !== "\n") characters[bodyIndex] = " ";
-                bodyIndex += 1;
-              }
-              continue;
-            }
-            bodyIndex += 1;
-          }
+        const keyword = precedingKeyword(content, index);
+        if (keyword === "do" || keyword === "as") {
+          blankCodeBodyInterior(content, characters, index + tag.length, endIndex);
         } else {
           for (let blankIndex = index; blankIndex < endIndex; blankIndex += 1) {
             if (content[blankIndex] !== "\n") characters[blankIndex] = " ";

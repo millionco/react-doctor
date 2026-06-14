@@ -660,6 +660,15 @@ describe("checkSecurityScan", () => {
       expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("insecure-session-cookie");
     });
 
+    it("flags a cookie config with httpOnly:false after a nested object", () => {
+      writeFile(
+        "src/session-nested.ts",
+        `export const config = session({ cookie: { store: { ttl: 60 }, httpOnly: false } });`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("insecure-session-cookie");
+    });
+
     it("does not flag a cookie config when 'httpOnly: false' is only in a string", () => {
       writeFile(
         "src/session-config.ts",

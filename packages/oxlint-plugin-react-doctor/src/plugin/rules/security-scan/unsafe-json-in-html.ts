@@ -1,6 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
-import { findMatchingParenIndex } from "./utils/find-matching-paren-index.js";
+import { findMatchingBracket } from "./utils/find-matching-bracket.js";
 import { getLocationAtIndex } from "./utils/get-location-at-index.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 import { getScannableContent } from "./utils/scan-by-pattern.js";
@@ -52,7 +52,7 @@ export const unsafeJsonInHtml = defineRule({
 
         // A `.replace` of `<` applied to the call's return value escapes it.
         const openParenIndex = match.index + match[0].length - 1;
-        const closeParenIndex = findMatchingParenIndex(content, openParenIndex);
+        const closeParenIndex = findMatchingBracket(content, openParenIndex);
         if (closeParenIndex >= 0) {
           const afterReturn = content.slice(
             closeParenIndex + 1,

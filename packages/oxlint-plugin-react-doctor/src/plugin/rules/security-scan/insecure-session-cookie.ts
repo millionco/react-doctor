@@ -1,6 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
-import { findMatchingParenIndex } from "./utils/find-matching-paren-index.js";
+import { findMatchingBracket } from "./utils/find-matching-bracket.js";
 import { getLocationAtIndex } from "./utils/get-location-at-index.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 import { getScannableContent } from "./utils/scan-by-pattern.js";
@@ -57,10 +57,12 @@ const blankStringContents = (text: string): string => {
   return characters.join("");
 };
 
-// Session-middleware cookie config disabling HttpOnly
-// (`session({ cookie: { httpOnly: false } })`). `httpOnly` is cookie-specific,
-// so a `cookie:` block setting it false is always a real cookie misconfig.
-const COOKIE_CONFIG_HTTP_ONLY_DISABLED_PATTERN = /cookie\s*:\s*\{[^}]*httpOnly\s*:\s*false/gi;
+// Opener of a session-middleware cookie config block (`session({ cookie: {
+// httpOnly: false } })`). The block is brace-balanced from here so a nested
+// property object before `httpOnly: false` does not end the search early.
+// `httpOnly` is cookie-specific, so a `cookie:` block disabling it is a real
+// cookie misconfig.
+const COOKIE_CONFIG_OPENER_PATTERN = /cookie\s*:\s*\{/gi;
 
 // `document.cookie = "session=..."` — a cookie set from client JS can never be
 // HttpOnly, so an auth/session cookie written this way is XSS-readable.
@@ -136,7 +138,7 @@ export const insecureSessionCookie = defineRule({
       // last `(` in the match. (`indexOf` would wrongly pick the empty `()` of
       // `cookies().set`.)
       const openParenIndex = match.index + match[0].lastIndexOf("(");
-      const closeParenIndex = findMatchingParenIndex(content, openParenIndex);
+      const closeParenIndex = findMatchingBracket(content, openParenIndex);
       const argumentsSource =
         closeParenIndex >= 0 ? content.slice(openParenIndex + 1, closeParenIndex) : "";
       const hasNoOptions = countTopLevelArguments(argumentsSource) < 3;
@@ -146,16 +148,27 @@ export const insecureSessionCookie = defineRule({
       findings.push({ message, line: location.line, column: location.column });
     }
 
-    // Run the `cookie: { httpOnly: false }` check over string-blanked content
-    // (positions preserved) so a `httpOnly: false` substring inside a string
-    // property value cannot trigger it.
-    addMatchFindings(
-      blankStringContents(content),
-      COOKIE_CONFIG_HTTP_ONLY_DISABLED_PATTERN,
-      message,
-      () => true,
-      findings,
-    );
+    // Check each `cookie: { … }` config block (brace-balanced, over
+    // string-blanked content so a `httpOnly: false` substring inside a string
+    // value cannot trigger it, and a nested object before it cannot hide it).
+    const blankedContent = blankStringContents(content);
+    COOKIE_CONFIG_OPENER_PATTERN.lastIndex = 0;
+    for (
+      let match = COOKIE_CONFIG_OPENER_PATTERN.exec(blankedContent);
+      match !== null;
+      match = COOKIE_CONFIG_OPENER_PATTERN.exec(blankedContent)
+    ) {
+      const braceIndex = match.index + match[0].length - 1;
+      const closeBraceIndex = findMatchingBracket(blankedContent, braceIndex);
+      const block =
+        closeBraceIndex >= 0
+          ? blankedContent.slice(braceIndex, closeBraceIndex)
+          : blankedContent.slice(braceIndex, braceIndex + 400);
+      if (!HTTP_ONLY_DISABLED_PATTERN.test(block)) continue;
+      const location = getLocationAtIndex(blankedContent, match.index);
+      findings.push({ message, line: location.line, column: location.column });
+    }
+
     addMatchFindings(content, CLIENT_AUTH_COOKIE_WRITE_PATTERN, message, () => true, findings);
 
     return findings;

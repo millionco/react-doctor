@@ -8,13 +8,11 @@ import { scanByPattern } from "./utils/scan-by-pattern.js";
 const REQUEST_INPUT_SOURCE =
   "(?:req|request|ctx\\.req|ctx\\.request)\\.(?:body|query|params)|await\\s+(?:req|request)\\.json\\(\\s*\\)";
 
-// Object spread of request input (`{ ...req.body }`) — mass assignment: the
-// client controls every column, so it can set `ownerId`, `role`, `isAdmin`,
-// `price`, … on whatever object/DB row this flows into.
-const SPREAD_REQUEST_INPUT_PATTERN = new RegExp(
-  `\\{\\s*\\.\\.\\.\\s*(?:${REQUEST_INPUT_SOURCE})`,
-  "i",
-);
+// Spread of request input (`{ ...req.body }`, `{ id, ...req.body }`) — mass
+// assignment: the client controls every column, so it can set `ownerId`,
+// `role`, `isAdmin`, `price`, … on whatever object/DB row this flows into. The
+// spread is matched wherever it sits, not only as the first property.
+const SPREAD_REQUEST_INPUT_PATTERN = new RegExp(`\\.\\.\\.\\s*(?:${REQUEST_INPUT_SOURCE})`, "i");
 
 // `Object.assign(target, req.body)` / lodash `merge` / `defaultsDeep` of
 // request input — mass assignment plus prototype pollution (a `__proto__` /

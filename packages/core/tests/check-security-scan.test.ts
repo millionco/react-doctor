@@ -276,6 +276,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("flags a table when enable RLS appears before the create", () => {
+      writeFile(
+        "supabase/migrations/008_order.sql",
+        `alter table if exists widgets enable row level security;\ncreate table widgets (id uuid primary key);\n`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("supabase-table-missing-rls");
+    });
+
     it("flags only the table missing RLS in a multi-table migration", () => {
       writeFile(
         "supabase/migrations/004_two_tables.sql",
@@ -410,6 +419,15 @@ describe("checkSecurityScan", () => {
         "src/merge-config.ts",
         `export const apply = (req, target) => Object.assign(target, req.body);`,
       );
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("request-body-mass-assignment");
+    });
+
+    it("flags a request spread that is not the first property", () => {
+      writeFile(
+        "src/create-user-trailing.ts",
+        `export const create = (req) => db.insert(users).values({ title: req.body.title, ...req.body });`,
+      );
+
       expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("request-body-mass-assignment");
     });
 

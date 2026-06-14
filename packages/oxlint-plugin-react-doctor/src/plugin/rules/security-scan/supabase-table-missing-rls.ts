@@ -49,7 +49,10 @@ export const supabaseTableMissingRls = defineRule({
     ) {
       const tableName = match[1];
       if (tableName === undefined) continue;
-      if (enableRlsForTablePattern(tableName).test(content)) continue;
+      // The enable must come AFTER this `create table` — an `alter table if
+      // exists <name> enable …` before it is a no-op on a not-yet-created
+      // table, so only scan from the create position onward.
+      if (enableRlsForTablePattern(tableName).test(content.slice(match.index))) continue;
       const location = getLocationAtIndex(content, match.index);
       findings.push({
         message:

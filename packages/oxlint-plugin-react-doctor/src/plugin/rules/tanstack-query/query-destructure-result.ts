@@ -1,9 +1,9 @@
 import { TANSTACK_QUERY_HOOKS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
-import type { RuleContext } from "../../utils/rule-context.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import type { RuleContext } from "../../utils/rule-context.js";
 
 // TanStack Query packages (`@tanstack/react-query`, `@tanstack/vue-query`,
 // `@tanstack/query-core`, the Angular `*-query-experimental`, …) plus the

@@ -15,15 +15,10 @@ export interface CheckSecurityScanOptions {
 interface EnabledScanRule {
   readonly entry: SecurityScanRuleEntry;
   readonly scan: FileScan;
+  // The rule's finding only applies to committed files (`rule.committedFilesOnly`),
+  // so it is dropped for paths git ignores. Precomputed per rule.
+  readonly committedFilesOnly: boolean;
 }
-
-// Rules whose finding asserts a file is "checked into the repository". A file
-// git actually ignores (a local-only `.env`, a gitignored key) is not
-// committed, so its findings are dropped. Other scan rules (artifact leaks,
-// public-debug, …) deliberately inspect gitignored build output, so they are
-// unaffected. Suppress only on a definitive `true` — when git can't decide
-// (no repo, git missing) the finding stands.
-const COMMITTED_FILE_RULE_IDS = new Set(["repository-secret-file", "key-lifecycle-risk"]);
 
 // Project-level security scan check: registry rules carrying a
 // `scan` are excluded from the generated oxlint config and instead run here
@@ -46,7 +41,7 @@ export const checkSecurityScan = (
     if (!shouldEnableRule(rule.requires, rule.tags, capabilities, ignoredTags, rule.disabledBy)) {
       return [];
     }
-    return [{ entry, scan }];
+    return [{ entry, scan, committedFilesOnly: rule.committedFilesOnly === true }];
   });
   if (enabledScanRules.length === 0) return [];
 
@@ -63,10 +58,15 @@ export const checkSecurityScan = (
   };
 
   for (const file of collectSecurityScanFiles(rootDirectory)) {
-    for (const { entry, scan } of enabledScanRules) {
-      const dropWhenGitIgnored = COMMITTED_FILE_RULE_IDS.has(entry.id);
+    for (const { entry, scan, committedFilesOnly } of enabledScanRules) {
       for (const finding of scan(file)) {
-        if (dropWhenGitIgnored && isCommittedFileGitIgnored(file)) continue;
+        // A committed-file rule's finding doesn't apply to a path git ignores
+        // (it isn't actually checked in). The check is deferred to here, gated
+        // on an actual finding, on purpose: `scan` is cheap regex but
+        // `isCommittedFileGitIgnored` spawns a `git check-ignore` subprocess —
+        // hoisting it above `scan` would spawn git for every scanned file, not
+        // just the rare file that trips a committed-file rule.
+        if (committedFilesOnly && isCommittedFileGitIgnored(file)) continue;
         const diagnostic = buildSecurityScanDiagnostic(finding, entry, file.relativePath);
         const key = `${diagnostic.rule}:${diagnostic.filePath}:${diagnostic.line}:${diagnostic.column}:${diagnostic.message}`;
         if (seen.has(key)) continue;

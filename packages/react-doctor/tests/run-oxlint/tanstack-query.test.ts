@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic } from "@react-doctor/core";
 import { runOxlint } from "@react-doctor/core";
@@ -18,6 +19,38 @@ describe("runOxlint", () => {
   });
 
   describe("tanstack-query false-positive freedom", () => {
+    // #818: `query-destructure-result` keys on the `useQuery` name, but only
+    // TanStack's hook returns a `{ data, ... }` result worth destructuring.
+    // Convex's same-named hook returns a scalar, so the rule must defer to the
+    // import source. Scoped to the two fixtures so it is independent of the
+    // shared whole-project run above.
+    it("flags a TanStack useQuery whole-result but not a Convex useQuery (#818)", async () => {
+      const scopedDiagnostics = await runOxlint({
+        rootDirectory: BASIC_REACT_DIRECTORY,
+        project: buildTestProject({
+          rootDirectory: BASIC_REACT_DIRECTORY,
+          hasTanStackQuery: true,
+        }),
+        includePaths: [
+          path.join(BASIC_REACT_DIRECTORY, "src/tanstack-query-destructure.tsx"),
+          path.join(BASIC_REACT_DIRECTORY, "src/convex-query-usage.tsx"),
+        ],
+      });
+      const destructureFindings = scopedDiagnostics.filter(
+        (diagnostic) => diagnostic.rule === "query-destructure-result",
+      );
+      expect(
+        destructureFindings.some((diagnostic) =>
+          diagnostic.filePath.includes("tanstack-query-destructure"),
+        ),
+      ).toBe(true);
+      expect(
+        destructureFindings.some((diagnostic) =>
+          diagnostic.filePath.includes("convex-query-usage"),
+        ),
+      ).toBe(false);
+    });
+
     it("does not flag useMutation that calls setQueryData (or any other cache-update method)", () => {
       const mutationLines = basicReactDiagnostics
         .filter(

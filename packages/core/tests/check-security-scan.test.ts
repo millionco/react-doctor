@@ -23,12 +23,31 @@ const rulesOf = (diagnostics: ReadonlyArray<Diagnostic>): ReadonlySet<string> =>
 const fixtureRules = (fixtureName: string): ReadonlySet<string> =>
   rulesOf(checkSecurityScan(path.join(FIXTURES_DIRECTORY, fixtureName)));
 
+const setOrDeleteEnv = (name: string, value: string | undefined): void => {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+};
+
+let originalGitConfigGlobal: string | undefined;
+let originalGitConfigSystem: string | undefined;
+
 beforeEach(() => {
   temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-security-scan-"));
+  // Hermetic git: a runner's ambient global/system config (e.g. a
+  // `core.excludesFile` that ignores `.env`) must not change `check-ignore`'s
+  // verdict — both the test's `git init` and the scan's internal
+  // `git check-ignore` inherit this env, so the committed-file gitignore tests
+  // stay deterministic regardless of the host's git setup.
+  originalGitConfigGlobal = process.env.GIT_CONFIG_GLOBAL;
+  originalGitConfigSystem = process.env.GIT_CONFIG_SYSTEM;
+  process.env.GIT_CONFIG_GLOBAL = "/dev/null";
+  process.env.GIT_CONFIG_SYSTEM = "/dev/null";
 });
 
 afterEach(() => {
   fs.rmSync(temporaryRoot, { recursive: true, force: true });
+  setOrDeleteEnv("GIT_CONFIG_GLOBAL", originalGitConfigGlobal);
+  setOrDeleteEnv("GIT_CONFIG_SYSTEM", originalGitConfigSystem);
 });
 
 describe("checkSecurityScan", () => {
@@ -530,6 +549,25 @@ describe("checkSecurityScan", () => {
     );
 
     expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("webhook-signature-risk");
+  });
+
+  // The verification-suppression regex pairs a verb run, a noun run, and a
+  // trailing run. With unbounded `[A-Za-z]*` runs an identifier-shaped string
+  // with no closing `(` triggers cubic backtracking (ReDoS) that hangs the
+  // whole scan for minutes; the bounded `[A-Za-z]{0,40}` runs keep it linear
+  // (sub-millisecond on this input). The generous bound only has to separate
+  // "linear scan overhead" from "catastrophic hang", so it cannot flake.
+  it("scans a webhook handler with a pathological identifier run without ReDoS backtracking", () => {
+    const pathologicalRun = `valid${"a".repeat(20_000)}`;
+    writeFile(
+      "app/api/webhook-redos/route.ts",
+      `export const POST = async (request) => {\n  const ${pathologicalRun} = request.headers.get("x-sig");\n  const event = await request.json();\n  return Response.json({ ok: event.type });\n};`,
+    );
+
+    const startedAt = Date.now();
+    const rules = rulesOf(checkSecurityScan(temporaryRoot));
+    expect(Date.now() - startedAt).toBeLessThan(8_000);
+    expect(rules).toContain("webhook-signature-risk");
   });
 
   it("does not flag a gitignored env file (not checked into the repository)", () => {

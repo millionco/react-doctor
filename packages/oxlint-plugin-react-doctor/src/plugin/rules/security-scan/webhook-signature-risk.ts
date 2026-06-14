@@ -11,12 +11,15 @@ const WEBHOOK_ENTRYPOINT_PATTERN =
 // Reading a `*-signature` header or delegating to a verification helper is
 // evidence even when the HMAC math lives in another module. The last
 // alternative matches a call to a helper whose name pairs a verify-ish verb
-// with a security noun (`isValidSecret(...)`, `verifySignature(...)`,
+// with a webhook-security noun (`isValidSecret(...)`, `verifySignature(...)`,
 // `checkWebhookHmac(...)`), so an extracted timing-safe comparison still counts.
-// The letter runs around the verb/noun are length-bounded (not `[A-Za-z]*`) so
-// a long identifier-like run cannot cause catastrophic regex backtracking.
+// `token` is deliberately excluded from the nouns — a generic `validateToken(…)`
+// auth check is not signature verification (the `webhook` noun still covers
+// `verifyWebhookToken`). The letter runs around the verb/noun are
+// length-bounded (not `[A-Za-z]*`) so a long identifier-like run cannot cause
+// catastrophic regex backtracking.
 const WEBHOOK_SIGNATURE_VERIFICATION_PATTERN =
-  /verifySignature|verify.*signature|verify\w*(?:Webhook|Auth)|constructEvent|createHmac|timingSafeEqual|svix|webhookSecret|stripe\.webhooks|["'][\w-]*signature["']|\b[A-Za-z]{0,40}(?:verif|valid|check|assert|authenticat|compare|guard)[A-Za-z]{0,40}(?:secret|signature|hmac|webhook|digest|token)[A-Za-z]{0,40}\s*\(/i;
+  /verifySignature|verify.*signature|verify\w*(?:Webhook|Auth)|constructEvent|createHmac|timingSafeEqual|svix|webhookSecret|stripe\.webhooks|["'][\w-]*signature["']|\b[A-Za-z]{0,40}(?:verif|valid|check|assert|authenticat|compare|guard)[A-Za-z]{0,40}(?:secret|signature|hmac|webhook|digest)[A-Za-z]{0,40}\s*\(/i;
 
 // `webhookUrl` mentions mark code SENDING to a webhook (outbound), where
 // signature verification is the receiver's job, not this file's. A webhook

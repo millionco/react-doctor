@@ -6,7 +6,7 @@
 Fix a supply-chain scan crash on npm dist-tag / non-range specs (#807).
 
 `resolveConcreteVersion` called `semver.minVersion(spec)` directly, but
-`semver@7` *throws* (`TypeError: Invalid comparator: latest`) on specs with no
+`semver@7` _throws_ (`TypeError: Invalid comparator: latest`) on specs with no
 parseable range — a dist-tag (`"trigger.dev": "latest"`), a protocol/URL
 (`workspace:`, `file:`, `npm:`, `git+…`, `https://…`), or a bare wildcard. That
 synchronous throw happened before the Socket fetch's fail-open handling, so any

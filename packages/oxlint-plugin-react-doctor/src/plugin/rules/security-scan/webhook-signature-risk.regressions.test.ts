@@ -26,4 +26,12 @@ describe("security-scan/webhook-signature-risk — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent when verification is delegated to an imported helper", () => {
+    const findings = runScanRule(webhookSignatureRisk, {
+      relativePath: "src/app/api/webhooks/github/route.ts",
+      content: `import { isValidSecret } from "@/lib/crypto";\nexport async function POST(request: Request) {\n  const provided = request.headers.get("x-webhook-secret");\n  if (!isValidSecret(provided, process.env.WEBHOOK_SECRET ?? null)) {\n    return new Response("unauthorized", { status: 401 });\n  }\n  const event = await request.json();\n  await applyEvent(event);\n  return Response.json({ ok: true });\n}\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

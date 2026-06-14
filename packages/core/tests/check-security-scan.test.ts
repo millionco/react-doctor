@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
@@ -14,6 +15,10 @@ const writeFile = (relativePath: string, content: string): void => {
   const absolutePath = path.join(temporaryRoot, relativePath);
   fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
   fs.writeFileSync(absolutePath, content);
+};
+
+const runGit = (args: ReadonlyArray<string>): void => {
+  execFileSync("git", args, { cwd: temporaryRoot, stdio: "ignore" });
 };
 
 const rulesOf = (diagnostics: ReadonlyArray<Diagnostic>): ReadonlySet<string> =>
@@ -423,6 +428,29 @@ describe("checkSecurityScan", () => {
         }),
       ]),
     );
+  });
+
+  it("does not flag a git-ignored .env as a checked-in secret file", () => {
+    runGit(["init"]);
+    writeFile(".gitignore", ".env\n");
+    writeFile(".env", "NEXT_PUBLIC_SECRET_TOKEN=placeholder\n");
+
+    expect(rulesOf(checkSecurityScan(temporaryRoot))).not.toContain("repository-secret-file");
+  });
+
+  it("still flags a tracked .env even when an ignore rule would match it", () => {
+    runGit(["init"]);
+    writeFile(".gitignore", ".env\n");
+    writeFile(".env", "NEXT_PUBLIC_SECRET_TOKEN=placeholder\n");
+    runGit(["add", "-f", ".env"]);
+
+    expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("repository-secret-file");
+  });
+
+  it("flags a checked-in secret file when there is no git repository to consult", () => {
+    writeFile(".env", "NEXT_PUBLIC_SECRET_TOKEN=placeholder\n");
+
+    expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("repository-secret-file");
   });
 
   it("uses concrete locations for package metadata secret values", () => {

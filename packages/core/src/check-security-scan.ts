@@ -4,6 +4,7 @@ import { buildSecurityScanDiagnostic } from "./checks/security-scan/build-securi
 import type { SecurityScanRuleEntry } from "./checks/security-scan/build-security-scan-diagnostic.js";
 import { collectSecurityScanFiles } from "./checks/security-scan/collect-security-scan-files.js";
 import { buildCapabilities, shouldEnableRule } from "./runners/oxlint/capabilities.js";
+import { isPathGitIgnored } from "./utils/is-path-git-ignored.js";
 import type { Diagnostic, ProjectInfo } from "./types/index.js";
 
 export interface CheckSecurityScanOptions {
@@ -15,6 +16,14 @@ interface EnabledScanRule {
   readonly entry: SecurityScanRuleEntry;
   readonly scan: FileScan;
 }
+
+// `repository-secret-file` flags committed credential files; a `.env` the
+// user already git-ignored is not checked in, so the finding is a false
+// positive. Only this rule consults git: artifact rules legitimately scan
+// git-ignored build output (`.next/static`, `dist/`), so the walker can't
+// filter ignored paths globally. A `false` (committed) or `null`
+// (no git / undeterminable) status keeps the finding.
+const REPOSITORY_SECRET_FILE_RULE_ID = "repository-secret-file";
 
 // Project-level security scan check: registry rules carrying a
 // `scan` are excluded from the generated oxlint config and instead run here
@@ -45,8 +54,15 @@ export const checkSecurityScan = (
   const seen = new Set<string>();
 
   for (const file of collectSecurityScanFiles(rootDirectory)) {
+    let isGitIgnored: boolean | null | undefined;
     for (const { entry, scan } of enabledScanRules) {
       for (const finding of scan(file)) {
+        if (entry.id === REPOSITORY_SECRET_FILE_RULE_ID) {
+          if (isGitIgnored === undefined) {
+            isGitIgnored = isPathGitIgnored(rootDirectory, file.absolutePath);
+          }
+          if (isGitIgnored === true) continue;
+        }
         const diagnostic = buildSecurityScanDiagnostic(finding, entry, file.relativePath);
         const key = `${diagnostic.rule}:${diagnostic.filePath}:${diagnostic.line}:${diagnostic.column}:${diagnostic.message}`;
         if (seen.has(key)) continue;

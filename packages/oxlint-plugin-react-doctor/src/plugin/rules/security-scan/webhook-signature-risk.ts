@@ -10,8 +10,12 @@ const WEBHOOK_ENTRYPOINT_PATTERN =
 
 // Reading a `*-signature` header or delegating to a `verifyWebhook*` helper
 // is verification evidence even when the HMAC math lives in another module.
+// The final clause matches a call to a verification helper whose name carries
+// a signature/secret/HMAC noun (`isValidSecret(...)`, `validateSignature(...)`,
+// `compareSecret(...)`), so extracting the timing-safe comparison to another
+// file and importing it still counts as verification (issue #814).
 const WEBHOOK_SIGNATURE_VERIFICATION_PATTERN =
-  /verifySignature|verify.*signature|verify\w*(?:Webhook|Auth)|constructEvent|createHmac|timingSafeEqual|svix|webhookSecret|stripe\.webhooks|["'][\w-]*signature["']/i;
+  /verifySignature|verify.*signature|verify\w*(?:Webhook|Auth)|constructEvent|createHmac|timingSafeEqual|svix|webhookSecret|stripe\.webhooks|["'][\w-]*signature["']|\b(?:is|are|check|ensure|assert|validate|verify|valid|compare)\w*(?:signature|secret|hmac|digest)\w*\s*\(/i;
 
 // `webhookUrl` mentions mark code SENDING to a webhook (outbound), where
 // signature verification is the receiver's job, not this file's. A webhook

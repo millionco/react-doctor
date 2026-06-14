@@ -53,6 +53,16 @@ export const TANSTACK_QUERY_HOOKS = new Set([
   "useSuspenseInfiniteQuery",
 ]);
 
+// Only these packages' `useQuery` family returns the `QueryObserverResult`
+// envelope that `query-destructure-result` is about. A same-named
+// `useQuery` from `convex/react`, `@apollo/client`, `urql`, or `wagmi`
+// returns a different shape, so the rule resolves the import source rather
+// than trusting the local callee name alone.
+export const TANSTACK_QUERY_HOOK_IMPORT_SOURCES = new Set([
+  "@tanstack/react-query",
+  "react-query",
+]);
+
 export const TANSTACK_MUTATION_HOOKS = new Set(["useMutation"]);
 
 export const TANSTACK_QUERY_CLIENT_CLASS = "QueryClient";

@@ -4,7 +4,7 @@ import type { Diagnostic } from "../../types/index.js";
 import type { ExpoCheckContext } from "./expo-check-context.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
 import { findLocalModuleNativeFiles } from "./utils/find-local-module-native-files.js";
-import { isPathGitIgnored } from "./utils/is-path-git-ignored.js";
+import { isPathGitIgnored } from "../../utils/is-path-git-ignored.js";
 
 // Ported from expo-doctor's `ProjectSetupCheck`:
 //   1. `.expo/` holds machine-specific dev-server state and MUST be

@@ -20,4 +20,20 @@ describe("security-scan/artifact-env-leak — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent on Next.js dev server source maps under .next/dev/server", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: ".next/dev/server/chunks/[root-of-the-server]__auth.js.map",
+      content: `{"sources":["webpack://better-auth/env.ts"],"sourcesContent":["const url = process.env.DATABASE_URL;"]}`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags the same env dump shape in a browser static chunk", () => {
+    const findings = runScanRule(artifactEnvLeak, {
+      relativePath: ".next/static/chunks/main-app.js.map",
+      content: `{"sourcesContent":["const url = process.env.DATABASE_URL;"]}`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

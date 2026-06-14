@@ -210,6 +210,181 @@ describe("checkSecurityScan", () => {
     });
   });
 
+  describe("supabase-table-missing-rls", () => {
+    it("flags a vibe-coded Supabase migration that creates a public table without RLS", () => {
+      expect(fixtureRules("supabase-public-table-missing-rls")).toEqual(
+        new Set(["supabase-table-missing-rls"]),
+      );
+    });
+
+    it("flags an unqualified public create table, then goes quiet once RLS is enabled", () => {
+      writeFile(
+        "supabase/migrations/001_create_todos.sql",
+        `create table todos (\n  id uuid primary key,\n  user_id uuid not null,\n  title text\n);\n`,
+      );
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("supabase-table-missing-rls");
+
+      writeFile(
+        "supabase/migrations/001_create_todos.sql",
+        `create table todos (\n  id uuid primary key,\n  user_id uuid not null\n);\nalter table todos enable row level security;\ncreate policy own_todos on todos using (auth.uid() = user_id);\n`,
+      );
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("does not flag create table in non-public, Supabase-managed schemas", () => {
+      writeFile(
+        "supabase/migrations/002_internal.sql",
+        `create table auth.audit_log (id uuid primary key, event text);\ncreate table private.secrets (id uuid primary key, value text);\n`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("does not flag plain SQL migrations outside the supabase directory", () => {
+      writeFile(
+        "drizzle/0000_init.sql",
+        `create table users (\n  id serial primary key,\n  email text not null\n);\n`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("does not flag a create table that appears only inside a SQL comment", () => {
+      writeFile(
+        "supabase/migrations/003_notes.sql",
+        `-- create table audit_log later when we add logging\nselect now();\n`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+  });
+
+  describe("unsafe-json-in-html", () => {
+    it("flags JSON.stringify embedded in dangerouslySetInnerHTML and in <script> markup", () => {
+      writeFile(
+        "src/hydrate.tsx",
+        `export const Hydrate = ({ data }) => <div dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;`,
+      );
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("unsafe-json-in-html");
+
+      writeFile(
+        "src/ssr.ts",
+        "export const shell = (state) => `<script>window.__DATA__ = ${JSON.stringify(state)}</script>`;",
+      );
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("unsafe-json-in-html");
+    });
+
+    it("stays quiet when an HTML-safe serializer is used", () => {
+      writeFile(
+        "src/hydrate-safe.tsx",
+        'import { uneval } from "devalue";\nexport const H = ({ data }) => <script dangerouslySetInnerHTML={{ __html: `window.__D=${JSON.stringify(data)}` }} />;',
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+  });
+
+  describe("jwt-insecure-verification", () => {
+    it("flags the 'none' algorithm and verify calls without an algorithms allowlist", () => {
+      writeFile(
+        "src/jwt-none.ts",
+        `import jwt from "jsonwebtoken";\nexport const v = (t, k) => jwt.verify(t, k, { algorithms: ["none"] });`,
+      );
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("jwt-insecure-verification");
+
+      writeFile(
+        "src/jwt-verify.ts",
+        `import jwt from "jsonwebtoken";\nexport const v = (t, k) => jwt.verify(t, k);`,
+      );
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("jwt-insecure-verification");
+    });
+
+    it("stays quiet when verify pins an algorithms allowlist", () => {
+      writeFile(
+        "src/jwt-ok.ts",
+        `import jwt from "jsonwebtoken";\nexport const v = (t, k) => jwt.verify(t, k, { algorithms: ["RS256"] });`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+  });
+
+  describe("secret-in-fallback", () => {
+    it("flags a secret env var with a hardcoded string fallback", () => {
+      writeFile(
+        "src/config.ts",
+        `export const key = process.env.STRIPE_SECRET_KEY ?? "hardcoded-fallback-secret-value";`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("secret-in-fallback");
+    });
+
+    it("stays quiet for placeholder fallbacks and public keys", () => {
+      writeFile(
+        "src/config-ok.ts",
+        `export const apiKey = process.env.API_KEY ?? "your_api_key_here";\nexport const anon = process.env.NEXT_PUBLIC_ANON_KEY ?? "sb_publishable_abcdefghij";`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+  });
+
+  describe("request-body-mass-assignment", () => {
+    it("flags spreading and merging request input without an allowlist", () => {
+      writeFile(
+        "src/create-user.ts",
+        `export const create = (req, res) => db.insert(users).values({ ...req.body });`,
+      );
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("request-body-mass-assignment");
+
+      writeFile(
+        "src/merge-config.ts",
+        `export const apply = (req, target) => Object.assign(target, req.body);`,
+      );
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("request-body-mass-assignment");
+    });
+
+    it("stays quiet when explicit fields are assigned", () => {
+      writeFile(
+        "src/create-user-ok.ts",
+        `export const create = (req, res) => db.insert(users).values({ title: req.body.title, ownerId: res.locals.userId });`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+  });
+
+  describe("insecure-session-cookie", () => {
+    it("flags httpOnly:false, document.cookie auth writes, and bare cookie sets", () => {
+      writeFile(
+        "src/auth.ts",
+        `export const set = (res, token) => res.cookie("session", token, { httpOnly: false });`,
+      );
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("insecure-session-cookie");
+
+      writeFile(
+        "src/client-auth.ts",
+        "export const save = (token) => { document.cookie = `access_token=${token}; path=/`; };",
+      );
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("insecure-session-cookie");
+
+      writeFile(
+        "src/login.ts",
+        `export const login = (res, token) => res.cookie("auth_token", token);`,
+      );
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("insecure-session-cookie");
+    });
+
+    it("stays quiet for hardened cookies", () => {
+      writeFile(
+        "src/auth-ok.ts",
+        `export const set = (res, token) =>\n  res.cookie("session", token, { httpOnly: true, secure: true, sameSite: "lax" });`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+  });
+
   it("covers the P0-P2 P0-P2 security analyzer families", () => {
     writeFile(
       ".next/static/chunks/app.js",

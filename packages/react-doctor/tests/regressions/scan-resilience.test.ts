@@ -712,13 +712,13 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
   // oxlint config builder skips them with its own filter (tested in
   // core's oxlint-config-settings suite), but the ESLint preset maps
   // are an independent code path — if `rules.ts` ever drops its
-  // scan-rule filter, every preset would silently enable 36 no-op rules.
+  // scan-rule filter, every preset would silently enable 42 no-op rules.
   it("ESLint presets exclude security-scan (scan) rules", async () => {
     const pluginModule = await import("oxlint-plugin-react-doctor");
     const scanRuleKeys = pluginModule.REACT_DOCTOR_RULES.filter(
       (entry) => entry.rule.scan !== undefined,
     ).map((entry) => entry.key);
-    expect(scanRuleKeys).toHaveLength(36);
+    expect(scanRuleKeys).toHaveLength(42);
     for (const key of scanRuleKeys) {
       expect(pluginModule.RECOMMENDED_RULES).not.toHaveProperty(key);
       expect(pluginModule.ALL_REACT_DOCTOR_RULES).not.toHaveProperty(key);

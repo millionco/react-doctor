@@ -24,6 +24,8 @@ const SECURITY_POSTURE_RULE_IDS = [
   "git-provider-url-injection-risk",
   "import-metadata-execution-risk",
   "insecure-crypto-risk",
+  "insecure-session-cookie",
+  "jwt-insecure-verification",
   "key-lifecycle-risk",
   "local-rpc-native-bridge-risk",
   "mcp-tool-capability-risk",
@@ -37,10 +39,14 @@ const SECURITY_POSTURE_RULE_IDS = [
   "public-env-secret-name",
   "raw-sql-injection-risk",
   "repository-secret-file",
+  "request-body-mass-assignment",
+  "secret-in-fallback",
   "supabase-client-owned-authz-field",
   "supabase-rls-policy-risk",
+  "supabase-table-missing-rls",
   "svg-filter-clickjacking-risk",
   "tenant-static-proxy-risk",
+  "unsafe-json-in-html",
   "untrusted-redirect-following",
   "url-prefilled-privileged-action",
   "webhook-signature-risk",
@@ -52,12 +58,12 @@ describe("rule registry", () => {
     expect(ruleRegistry[REANIMATED_LAYOUT_RULE_ID]?.defaultEnabled).toBe(false);
   });
 
-  it("registers exactly the 36 known security-scan rules", () => {
+  it("registers exactly the 42 known security-scan rules", () => {
     const taggedIds = Object.entries(ruleRegistry)
       .filter(([, rule]) => (rule.tags ?? []).includes("security-scan"))
       .map(([ruleId]) => ruleId)
       .sort();
-    expect(taggedIds).toHaveLength(36);
+    expect(taggedIds).toHaveLength(42);
     expect(taggedIds).toEqual([...SECURITY_POSTURE_RULE_IDS]);
   });
 

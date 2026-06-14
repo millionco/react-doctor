@@ -1,0 +1,8 @@
+{
+  "name": "supabase-public-table-missing-rls",
+  "private": true,
+  "dependencies": {
+    "@supabase/supabase-js": "^2.0.0",
+    "react": "^19.0.0"
+  }
+}

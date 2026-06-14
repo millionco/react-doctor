@@ -69,6 +69,7 @@ import { iframeMissingSandbox } from "./rules/react-builtins/iframe-missing-sand
 import { imgRedundantAlt } from "./rules/a11y/img-redundant-alt.js";
 import { importMetadataExecutionRisk } from "./rules/security-scan/import-metadata-execution-risk.js";
 import { insecureCryptoRisk } from "./rules/security-scan/insecure-crypto-risk.js";
+import { insecureSessionCookie } from "./rules/security-scan/insecure-session-cookie.js";
 import { interactiveSupportsFocus } from "./rules/a11y/interactive-supports-focus.js";
 import { jotaiDerivedAtomReturnsFreshObject } from "./rules/jotai/jotai-derived-atom-returns-fresh-object.js";
 import { jotaiSelectAtomInRenderBody } from "./rules/jotai/jotai-select-atom-in-render-body.js";
@@ -107,6 +108,7 @@ import { jsxNoUselessFragment } from "./rules/react-builtins/jsx-no-useless-frag
 import { jsxPascalCase } from "./rules/react-builtins/jsx-pascal-case.js";
 import { jsxPropsNoSpreadMulti } from "./rules/react-builtins/jsx-props-no-spread-multi.js";
 import { jsxPropsNoSpreading } from "./rules/react-builtins/jsx-props-no-spreading.js";
+import { jwtInsecureVerification } from "./rules/security-scan/jwt-insecure-verification.js";
 import { keyLifecycleRisk } from "./rules/security-scan/key-lifecycle-risk.js";
 import { labelHasAssociatedControl } from "./rules/a11y/label-has-associated-control.js";
 import { lang } from "./rules/a11y/lang.js";
@@ -293,6 +295,7 @@ import { renderingScriptDeferAsync } from "./rules/performance/rendering-script-
 import { renderingSvgPrecision } from "./rules/correctness/rendering-svg-precision.js";
 import { renderingUsetransitionLoading } from "./rules/performance/rendering-usetransition-loading.js";
 import { repositorySecretFile } from "./rules/security-scan/repository-secret-file.js";
+import { requestBodyMassAssignment } from "./rules/security-scan/request-body-mass-assignment.js";
 import { requireRenderReturn } from "./rules/react-builtins/require-render-return.js";
 import { rerenderDeferReadsHook } from "./rules/state-and-effects/rerender-defer-reads-hook.js";
 import { rerenderDependencies } from "./rules/state-and-effects/rerender-dependencies.js";
@@ -342,6 +345,7 @@ import { roleHasRequiredAriaProps } from "./rules/a11y/role-has-required-aria-pr
 import { roleSupportsAriaProps } from "./rules/a11y/role-supports-aria-props.js";
 import { rulesOfHooks } from "./rules/react-builtins/rules-of-hooks.js";
 import { scope } from "./rules/a11y/scope.js";
+import { secretInFallback } from "./rules/security-scan/secret-in-fallback.js";
 import { selfClosingComp } from "./rules/react-builtins/self-closing-comp.js";
 import { serverAfterNonblocking } from "./rules/server/server-after-nonblocking.js";
 import { serverAuthActions } from "./rules/server/server-auth-actions.js";
@@ -355,6 +359,7 @@ import { stateInConstructor } from "./rules/react-builtins/state-in-constructor.
 import { stylePropObject } from "./rules/react-builtins/style-prop-object.js";
 import { supabaseClientOwnedAuthzField } from "./rules/security-scan/supabase-client-owned-authz-field.js";
 import { supabaseRlsPolicyRisk } from "./rules/security-scan/supabase-rls-policy-risk.js";
+import { supabaseTableMissingRls } from "./rules/security-scan/supabase-table-missing-rls.js";
 import { svgFilterClickjackingRisk } from "./rules/security-scan/svg-filter-clickjacking-risk.js";
 import { tabindexNoPositive } from "./rules/a11y/tabindex-no-positive.js";
 import { tanstackStartGetMutation } from "./rules/tanstack-start/tanstack-start-get-mutation.js";
@@ -372,6 +377,7 @@ import { tanstackStartRoutePropertyOrder } from "./rules/tanstack-start/tanstack
 import { tanstackStartServerFnMethodOrder } from "./rules/tanstack-start/tanstack-start-server-fn-method-order.js";
 import { tanstackStartServerFnValidateInput } from "./rules/tanstack-start/tanstack-start-server-fn-validate-input.js";
 import { tenantStaticProxyRisk } from "./rules/security-scan/tenant-static-proxy-risk.js";
+import { unsafeJsonInHtml } from "./rules/security-scan/unsafe-json-in-html.js";
 import { untrustedRedirectFollowing } from "./rules/security-scan/untrusted-redirect-following.js";
 import { urlPrefilledPrivilegedAction } from "./rules/security-scan/url-prefilled-privileged-action.js";
 import { useLazyMotion } from "./rules/bundle-size/use-lazy-motion.js";
@@ -1111,6 +1117,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/insecure-session-cookie",
+    id: "insecure-session-cookie",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...insecureSessionCookie,
+      framework: "global",
+      category: "Security",
+      tags: [...new Set(["security-scan", ...(insecureSessionCookie.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/interactive-supports-focus",
     id: "interactive-supports-focus",
     source: "react-doctor",
@@ -1550,6 +1568,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       requires: [...new Set(["react", ...(jsxPropsNoSpreading.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/jwt-insecure-verification",
+    id: "jwt-insecure-verification",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...jwtInsecureVerification,
+      framework: "global",
+      category: "Security",
+      tags: [...new Set(["security-scan", ...(jwtInsecureVerification.tags ?? [])])],
     },
   },
   {
@@ -3707,6 +3737,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/request-body-mass-assignment",
+    id: "request-body-mass-assignment",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...requestBodyMassAssignment,
+      framework: "global",
+      category: "Security",
+      tags: [...new Set(["security-scan", ...(requestBodyMassAssignment.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/require-render-return",
     id: "require-render-return",
     source: "react-doctor",
@@ -4295,6 +4337,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/secret-in-fallback",
+    id: "secret-in-fallback",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...secretInFallback,
+      framework: "global",
+      category: "Security",
+      tags: [...new Set(["security-scan", ...(secretInFallback.tags ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/self-closing-comp",
     id: "self-closing-comp",
     source: "react-doctor",
@@ -4448,6 +4502,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       tags: [...new Set(["security-scan", ...(supabaseRlsPolicyRisk.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/supabase-table-missing-rls",
+    id: "supabase-table-missing-rls",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...supabaseTableMissingRls,
+      framework: "global",
+      category: "Security",
+      tags: [...new Set(["security-scan", ...(supabaseTableMissingRls.tags ?? [])])],
     },
   },
   {
@@ -4638,6 +4704,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       tags: [...new Set(["security-scan", ...(tenantStaticProxyRisk.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/unsafe-json-in-html",
+    id: "unsafe-json-in-html",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...unsafeJsonInHtml,
+      framework: "global",
+      category: "Security",
+      tags: [...new Set(["security-scan", ...(unsafeJsonInHtml.tags ?? [])])],
     },
   },
   {

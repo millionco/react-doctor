@@ -368,6 +368,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("stays quiet when the escaped stringify call is wrapped in parentheses", () => {
+      writeFile(
+        "src/paren-hydrate.tsx",
+        'export const H = ({ data }) => <div dangerouslySetInnerHTML={{ __html: (JSON.stringify(data)).replace(/</g, "&lt;") }} />;',
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("still flags an unescaped sink when a safe serializer is only imported elsewhere", () => {
       writeFile(
         "src/mixed-hydrate.tsx",
@@ -568,6 +577,15 @@ describe("checkSecurityScan", () => {
       );
 
       expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("insecure-session-cookie");
+    });
+
+    it("does not flag a hardened cookie when 'httpOnly: false' appears in a string value", () => {
+      writeFile(
+        "src/note-cookie.ts",
+        `export const set = (res, token) =>\n  res.cookie("session", token, { httpOnly: true, note: "never set httpOnly: false here" });`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
     it("does not flag a hardened cookies().set call", () => {

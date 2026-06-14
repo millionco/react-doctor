@@ -28,6 +28,10 @@ const AUTH_COOKIE_SET_CALL_PATTERN = new RegExp(
 
 const HTTP_ONLY_DISABLED_PATTERN = /httpOnly\s*:\s*false\b/i;
 
+// Blanks string-literal contents so `httpOnly: false` written inside a string
+// property value (a note/description) is not read as a real cookie option.
+const STRING_LITERAL_PATTERN = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
+
 // Session-middleware cookie config disabling HttpOnly
 // (`session({ cookie: { httpOnly: false } })`). `httpOnly` is cookie-specific,
 // so a `cookie:` block setting it false is always a real cookie misconfig.
@@ -111,7 +115,8 @@ export const insecureSessionCookie = defineRule({
       const argumentsSource =
         closeParenIndex >= 0 ? content.slice(openParenIndex + 1, closeParenIndex) : "";
       const hasNoOptions = countTopLevelArguments(argumentsSource) < 3;
-      if (!hasNoOptions && !HTTP_ONLY_DISABLED_PATTERN.test(argumentsSource)) continue;
+      const argumentsWithoutStrings = argumentsSource.replace(STRING_LITERAL_PATTERN, "");
+      if (!hasNoOptions && !HTTP_ONLY_DISABLED_PATTERN.test(argumentsWithoutStrings)) continue;
       const location = getLocationAtIndex(content, match.index);
       findings.push({ message, line: location.line, column: location.column });
     }

@@ -1,11 +1,14 @@
 // Blanks the parts of a SQL migration that must not be matched as live DDL —
-// `--` line comments, `/* */` block comments, and single-quoted string
-// literals (which also covers dynamic SQL passed as `EXECUTE '…'`) — by
-// overwriting them with spaces. Double-quoted identifiers are preserved (a
-// quoted table name like `"myTable"` is real DDL), and `$tag$…$tag$`
-// dollar-quoted blocks are left intact so a real `alter table … enable row
-// level security` inside a `DO $$ … $$` block still counts. Offsets, lines,
-// and columns are preserved 1:1 so reported match locations stay correct.
+// `--` line comments, `/* */` block comments, single-quoted string literals
+// (which also covers dynamic SQL passed as `EXECUTE '…'`), and `$tag$…$tag$`
+// dollar-quoted STRING VALUES (seed/doc text) — by overwriting them with
+// spaces. Double-quoted identifiers are preserved (a quoted table name like
+// `"myTable"` is real DDL), and a `DO $$ … $$` / `AS $$ … $$` code body is
+// kept intact so a real `alter table … enable row level security` inside it
+// still counts. Offsets, lines, and columns are preserved 1:1 so reported
+// match locations stay correct.
+const DOLLAR_QUOTE_TAG_PATTERN = /^\$[A-Za-z_]?\w*\$/;
+
 export const sanitizeSqlForScan = (content: string): string => {
   const characters = content.split("");
   let index = 0;
@@ -55,6 +58,30 @@ export const sanitizeSqlForScan = (content: string): string => {
         index += 1;
       }
       continue;
+    }
+
+    if (character === "$") {
+      const tagMatch = DOLLAR_QUOTE_TAG_PATTERN.exec(content.slice(index));
+      if (tagMatch !== null) {
+        const tag = tagMatch[0];
+        const closeIndex = content.indexOf(tag, index + tag.length);
+        const endIndex = closeIndex < 0 ? content.length : closeIndex + tag.length;
+        // `DO $$ … $$` / `AS $$ … $$` is executable SQL (keep visible); any
+        // other dollar-quote is a string value (blank it).
+        let lookBack = index - 1;
+        while (lookBack >= 0 && /\s/.test(content[lookBack] ?? "")) lookBack -= 1;
+        let wordStart = lookBack;
+        while (wordStart >= 0 && /[A-Za-z]/.test(content[wordStart] ?? "")) wordStart -= 1;
+        const precedingWord = content.slice(wordStart + 1, lookBack + 1).toLowerCase();
+        const isCodeBody = precedingWord === "do" || precedingWord === "as";
+        if (!isCodeBody) {
+          for (let blankIndex = index; blankIndex < endIndex; blankIndex += 1) {
+            if (content[blankIndex] !== "\n") characters[blankIndex] = " ";
+          }
+        }
+        index = endIndex;
+        continue;
+      }
     }
 
     if (character === '"') {

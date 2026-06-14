@@ -276,6 +276,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("does not flag create table inside a dollar-quoted string value", () => {
+      writeFile(
+        "supabase/migrations/010_doc.sql",
+        `create table guides (id uuid primary key);\nalter table guides enable row level security;\ninsert into guides (body) values ($doc$ example: create table demo (id int); $doc$);\n`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("stays quiet when RLS is enabled inside a DO block", () => {
       writeFile(
         "supabase/migrations/009_do_block.sql",

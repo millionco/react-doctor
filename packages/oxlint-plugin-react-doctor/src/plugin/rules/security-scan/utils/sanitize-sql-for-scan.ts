@@ -38,8 +38,10 @@ const precedingKeyword = (content: string, beforeIndex: number): string => {
 
 // Sanitizes the interior of a kept-visible `DO`/`AS` code body in place: blanks
 // comments and single-quoted strings (so `RAISE NOTICE '… create table …'` and
-// seed text can't false-match) while keeping `EXECUTE`/`PERFORM` dynamic SQL,
-// double-quoted identifiers, and direct DDL visible.
+// seed text can't false-match) while keeping double-quoted identifiers, direct
+// DDL, and `EXECUTE`/`PERFORM` dynamic SQL visible. EXECUTE is tracked at the
+// statement level (until the next `;`), so `EXECUTE format('alter table …', …)`
+// and concatenated dynamic SQL keep their strings visible too.
 const blankCodeBodyInterior = (
   content: string,
   characters: string[],
@@ -47,12 +49,27 @@ const blankCodeBodyInterior = (
   end: number,
 ): void => {
   let index = start;
+  let inExecuteStatement = false;
   while (index < end) {
     const character = content[index];
 
+    if (character === ";") {
+      inExecuteStatement = false;
+      index += 1;
+      continue;
+    }
+
+    if (/[A-Za-z_]/.test(character)) {
+      let wordEnd = index;
+      while (wordEnd < end && /[A-Za-z0-9_]/.test(content[wordEnd] ?? "")) wordEnd += 1;
+      const word = content.slice(index, wordEnd).toLowerCase();
+      if (word === "execute" || word === "perform") inExecuteStatement = true;
+      index = wordEnd;
+      continue;
+    }
+
     if (character === "'") {
-      const keyword = precedingKeyword(content, index);
-      const keepVisible = keyword === "execute" || keyword === "perform";
+      const keepVisible = inExecuteStatement;
       if (!keepVisible) characters[index] = " ";
       index += 1;
       while (index < end) {

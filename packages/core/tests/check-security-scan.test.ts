@@ -330,6 +330,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("stays quiet when RLS is enabled via EXECUTE format in a DO block", () => {
+      writeFile(
+        "supabase/migrations/015_execute_format.sql",
+        `create table tickets (id uuid primary key);\ndo $$ begin\n  execute format('alter table tickets enable row level security');\nend $$;\n`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("flags a table when enable RLS appears before the create", () => {
       writeFile(
         "supabase/migrations/008_order.sql",

@@ -33,6 +33,9 @@ export const supabaseTableMissingRls = defineRule({
     "Enable RLS in the same migration (`alter table <name> enable row level security;`) and add `auth.uid()`-scoped policies for select/insert/update/delete. A public table without RLS is fully readable and writable with the public anon key.",
   scan: (file) => {
     if (!isSupabaseMigrationPath(file.relativePath)) return [];
+    // The scan runs per migration file (one `ScannedFile` at a time), so RLS
+    // enabled in a *different* migration than the `create table` is not seen;
+    // the supported (and Supabase-tooling-default) pattern is same-file enable.
     // Blank SQL comments and string literals first so a commented-out or
     // string-embedded `create table … (` is not scanned as live DDL (and a
     // commented/quoted `enable row level security` cannot falsely vouch for a

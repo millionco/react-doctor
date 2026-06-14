@@ -49,6 +49,8 @@
     },
     "./runtime": {
       "types": "./dist/runtime.d.ts",
+      "react-native": "./dist/runtime.native.js",
+      "browser": "./dist/runtime.js",
       "default": "./dist/runtime.js"
     }
   },

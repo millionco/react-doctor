@@ -171,7 +171,7 @@ export default defineConfig({
       // performance harness. Bundles @react-doctor/perf-agent; keeps React and
       // the DevTools backend external so the harness shares the host app's
       // single React instance and DevTools hook.
-      entry: { runtime: "./src/runtime.ts" },
+      entry: { runtime: "./src/runtime.ts", "runtime.native": "./src/runtime.native.ts" },
       deps: {
         neverBundle: ["react", "react-dom", "react-devtools-inline"],
       },

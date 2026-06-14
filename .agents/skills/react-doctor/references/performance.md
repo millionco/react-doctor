@@ -15,11 +15,8 @@ The harness ships with React Doctor under the `react-doctor/runtime` subpath. It
 drives the real DevTools profiler in-app — no Chrome extension, no manual
 record/stop.
 
-1. Install the DevTools backend (an optional peer of `react-doctor`):
-
-```bash
-npm i -D react-devtools-inline
-```
+1. Nothing extra to install — the DevTools backend (`react-devtools-inline`)
+   ships as a dependency of `react-doctor`.
 
 2. For trustworthy timings, run against React's profiling build (alias
    `react-dom` → `react-dom/profiling` in your bundler) in a dev/non-prod build.

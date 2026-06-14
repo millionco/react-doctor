@@ -1,5 +1,10 @@
 export const PROFILING_EXPORT_VERSION = 5;
 
+// Upper bound on how long `stop()` waits for the backend to return profiling
+// data before settling (with whatever was collected), so a non-responding
+// backend can't hang the caller.
+export const PROFILING_STOP_TIMEOUT_MS = 30_000;
+
 // React DevTools operation opcodes (react-devtools-shared/src/constants.js).
 export const TREE_OPERATION_ADD = 1;
 export const TREE_OPERATION_REMOVE = 2;

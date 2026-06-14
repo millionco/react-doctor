@@ -1,3 +1,4 @@
+import { PROFILING_STOP_TIMEOUT_MS } from "../constants.js";
 import type { ReactProfilerDataExport } from "../types/profiling-export.js";
 import type { ReactDevtoolsStore } from "../types/react-devtools.js";
 import { serializeProfilingExport } from "../utils/serialize-profiling-export.js";
@@ -29,6 +30,7 @@ export const createProfilingSession = (store: ReactDevtoolsStore): ProfilingSess
         profilerStore,
         "isProcessingData",
         () => profilerStore.isProcessingData === false,
+        PROFILING_STOP_TIMEOUT_MS,
       );
 
       profilerStore.stopProfiling();

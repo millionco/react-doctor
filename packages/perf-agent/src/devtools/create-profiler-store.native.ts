@@ -87,20 +87,23 @@ export const createProfilerStore = (target: DevtoolsGlobal = globalThis): ReactD
   });
 
   frontendBridge.addListener("profilingData", (payload) => {
-    if (!isProfilerDataBackend(payload)) {
-      // A malformed payload must still settle processing, else `stop()` hangs.
-      isProcessingData = false;
-      emit("isProcessingData");
-      return;
+    // Any malformed/partial payload (top-level or per-commit) must still settle
+    // processing and leave profilingData null, so `stop()` resolves with null
+    // rather than hanging or rejecting with a TypeError.
+    if (isProfilerDataBackend(payload)) {
+      try {
+        profilingData = assembleFrontendData({
+          dataBackend: payload,
+          operationsByRootID,
+          snapshotsByRootID,
+        });
+      } catch {
+        profilingData = null;
+      }
     }
-    profilingData = assembleFrontendData({
-      dataBackend: payload,
-      operationsByRootID,
-      snapshotsByRootID,
-    });
     isProcessingData = false;
     emit("isProcessingData");
-    emit("profilingData");
+    if (profilingData !== null) emit("profilingData");
   });
 
   activateBackend(target, { bridge: createBackendBridge(target, wall) });

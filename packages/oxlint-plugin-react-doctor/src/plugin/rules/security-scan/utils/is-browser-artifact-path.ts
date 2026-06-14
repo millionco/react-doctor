@@ -2,12 +2,16 @@ import { BROWSER_ARTIFACT_PATH_PATTERNS } from "../../../constants/security-scan
 
 // Next.js (`.next`) and Nitro/Nuxt (`.output`) emit build trees that never
 // reach end users in production, so they are not "browser artifacts":
-//   - a `server/` directory at ANY depth below the build root (`.next/server`,
-//     `.next/dev/server`, `.next/standalone/.next/server`, `.output/server`) —
-//     its `.js.map` source maps bundle library source (PEM markers, env
-//     helpers) that would otherwise read as a leaked secret (#816, #817);
+//   - a `server/` directory DIRECTLY under a build root — `.next/server`,
+//     `.output/server`, and the standalone `.next/standalone/.next/server`.
+//     Its `.js.map` source maps bundle library source (PEM markers, env
+//     helpers) that would otherwise read as a leaked secret (#816, #817).
+//     `server` must sit directly under the root: a `server` folder nested
+//     elsewhere (e.g. a `.next/static/.../server` App Router route bundle) is
+//     still production browser output and MUST keep being scanned.
 //   - the dev server's entire transient output (`.next/dev/**`, written by
-//     `next dev`), which is never deployed.
+//     `next dev`), which is never deployed — this also covers the dev server
+//     build at `.next/dev/server`.
 // Production browser bundles live in `.next/static`, `.output/public`,
 // `dist/assets`, `public/`, etc. and are still scanned.
 //
@@ -18,13 +22,14 @@ const SERVER_BUILD_ROOT_SEGMENTS = new Set([".next", ".output"]);
 
 const isNonShippedBuildArtifactPath = (relativePath: string): boolean => {
   const segments = relativePath.split("/");
-  const buildRootIndex = segments.findIndex((segment) => SERVER_BUILD_ROOT_SEGMENTS.has(segment));
-  if (buildRootIndex === -1) return false;
-  if (segments[buildRootIndex] === ".next" && segments[buildRootIndex + 1] === "dev") return true;
-  // A `server` directory (not a file literally named `server`) anywhere below
-  // the build root: it must have at least one path segment after it.
-  const serverSegmentIndex = segments.indexOf("server", buildRootIndex + 1);
-  return serverSegmentIndex !== -1 && serverSegmentIndex < segments.length - 1;
+  for (let index = 0; index < segments.length; index += 1) {
+    if (!SERVER_BUILD_ROOT_SEGMENTS.has(segments[index])) continue;
+    // `.next/dev/**`: transient dev output (incl. the `.next/dev/server` build).
+    if (segments[index] === ".next" && segments[index + 1] === "dev") return true;
+    // `<root>/server/<file>`: server build output, directly under the root.
+    if (segments[index + 1] === "server" && index + 2 < segments.length) return true;
+  }
+  return false;
 };
 
 export const isBrowserArtifactPath = (

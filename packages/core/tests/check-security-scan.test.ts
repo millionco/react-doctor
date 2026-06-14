@@ -533,6 +533,21 @@ describe("checkSecurityScan", () => {
     expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("artifact-secret-leak");
   });
 
+  // A `server` segment only marks server build output DIRECTLY under the build
+  // root. A production client bundle for an App Router route literally named
+  // `server` lives under `.next/static/.../server/` and must still be scanned.
+  it("still reports secrets in a .next/static client bundle under a route named 'server'", () => {
+    writeFile(".next/static/chunks/app/server/page.js", `const key = "AKIAABCDEFGHIJKLMNOP";`);
+
+    expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("artifact-secret-leak");
+  });
+
+  it("does not flag production .next/server build output", () => {
+    writeFile(".next/server/chunks/route.js", `const key = "AKIAABCDEFGHIJKLMNOP";`);
+
+    expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+  });
+
   it("does not flag a webhook handler that delegates to an extracted verification helper", () => {
     writeFile(
       "app/api/webhook/route.ts",

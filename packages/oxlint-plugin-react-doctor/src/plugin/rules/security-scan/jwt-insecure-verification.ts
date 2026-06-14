@@ -12,7 +12,11 @@ const NONE_ALGORITHM_PATTERN = /\balgorithms?\s*:\s*\[?\s*["'`]none["'`]/gi;
 // is asymmetric (RS256), an attacker re-signs with HS256 using the public key
 // as the HMAC secret — algorithm-confusion forgery. The allowlist is the fix.
 const JWT_VERIFY_PATTERN = /\b(?:jwt|jsonwebtoken)\s*\.\s*verify\s*\(/gi;
-const VERIFY_ARGUMENT_WINDOW_CHARS = 250;
+
+// The allowlist is often passed as a separate options object/variable, so the
+// gate is file-level: a file that names `algorithms` anywhere is treated as
+// pinning it (favours precision over catching a mixed pinned/unpinned file).
+const ALGORITHM_ALLOWLIST_PATTERN = /\balgorithms\b/i;
 
 export const jwtInsecureVerification = defineRule({
   id: "jwt-insecure-verification",
@@ -43,24 +47,21 @@ export const jwtInsecureVerification = defineRule({
       });
     }
 
-    JWT_VERIFY_PATTERN.lastIndex = 0;
-    for (
-      let verifyMatch = JWT_VERIFY_PATTERN.exec(content);
-      verifyMatch !== null;
-      verifyMatch = JWT_VERIFY_PATTERN.exec(content)
-    ) {
-      const argumentWindow = content.slice(
-        verifyMatch.index,
-        verifyMatch.index + VERIFY_ARGUMENT_WINDOW_CHARS,
-      );
-      if (/\balgorithms\b/i.test(argumentWindow)) continue;
-      const location = getLocationAtIndex(content, verifyMatch.index);
-      findings.push({
-        message:
-          "jwt.verify() has no `algorithms` allowlist, enabling RS256→HS256 algorithm-confusion forgery with the public key.",
-        line: location.line,
-        column: location.column,
-      });
+    if (!ALGORITHM_ALLOWLIST_PATTERN.test(content)) {
+      JWT_VERIFY_PATTERN.lastIndex = 0;
+      for (
+        let verifyMatch = JWT_VERIFY_PATTERN.exec(content);
+        verifyMatch !== null;
+        verifyMatch = JWT_VERIFY_PATTERN.exec(content)
+      ) {
+        const location = getLocationAtIndex(content, verifyMatch.index);
+        findings.push({
+          message:
+            "jwt.verify() has no `algorithms` allowlist, enabling RS256→HS256 algorithm-confusion forgery with the public key.",
+          line: location.line,
+          column: location.column,
+        });
+      }
     }
 
     return findings;

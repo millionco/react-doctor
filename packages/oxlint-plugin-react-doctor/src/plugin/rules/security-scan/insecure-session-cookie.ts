@@ -7,22 +7,29 @@ import { scanByPattern } from "./utils/scan-by-pattern.js";
 const AUTH_COOKIE_NAME =
   "session|sess|sid|connect\\.sid|auth|token|jwt|access[_-]?token|refresh[_-]?token|id[_-]?token";
 
-// `httpOnly: false` on a cookie config — explicitly exposes the cookie to JS.
-const HTTP_ONLY_DISABLED_PATTERN = /\bhttpOnly\s*:\s*false\b/i;
+// `res.cookie("session", …)` / `cookies().set("session", …)` naming an auth
+// cookie. Anchoring on the name keeps non-auth cookies (a theme/consent cookie
+// that legitimately needs JS access) from tripping the rule.
+const AUTH_COOKIE_SET_CALL = `(?:\\.cookie|cookies\\(\\s*\\)\\.set)\\s*\\(\\s*[\`"'](?:${AUTH_COOKIE_NAME})[^\`"']*[\`"']`;
+
+// An auth cookie set with `httpOnly: false` inside the same call.
+const AUTH_COOKIE_HTTP_ONLY_DISABLED_PATTERN = new RegExp(
+  `${AUTH_COOKIE_SET_CALL}[\\s\\S]{0,200}?httpOnly\\s*:\\s*false`,
+  "i",
+);
+
+// An auth cookie set with no options object at all (the trailing `)` right
+// after the value, no comma) — Express and Next default HttpOnly off.
+const AUTH_COOKIE_NO_OPTIONS_PATTERN = new RegExp(`${AUTH_COOKIE_SET_CALL}\\s*,\\s*[^,]+\\)`, "i");
+
+// Session-middleware cookie config block disabling HttpOnly
+// (`session({ cookie: { httpOnly: false } })`).
+const COOKIE_CONFIG_HTTP_ONLY_DISABLED_PATTERN = /cookie\s*:\s*\{[^}]*httpOnly\s*:\s*false/i;
 
 // `document.cookie = "session=..."` — a cookie set from client JS can never be
 // HttpOnly, so an auth/session cookie written this way is XSS-readable.
 const CLIENT_AUTH_COOKIE_WRITE_PATTERN = new RegExp(
-  `document\\.cookie\\s*=\\s*[\`"'][^\`"']*\\b(?:${AUTH_COOKIE_NAME})\\b[^\`"']*=`,
-  "i",
-);
-
-// `res.cookie("session", value)` / `cookies().set("session", value)` with no
-// options object — Express and Next default HttpOnly off, so a bare auth-cookie
-// set ships without the flag. The trailing `)` right after the value (no comma)
-// confirms there is no options argument.
-const SERVER_AUTH_COOKIE_NO_OPTIONS_PATTERN = new RegExp(
-  `(?:\\b(?:res|reply|response)\\.cookie|cookies\\(\\s*\\)\\.set)\\s*\\(\\s*[\`"'](?:${AUTH_COOKIE_NAME})[^\`"']*[\`"']\\s*,\\s*[^,]+\\)`,
+  `document\\.cookie\\s*=\\s*[\`"'][^\`"'=;]*(?:${AUTH_COOKIE_NAME})[^\`"'=;]*=`,
   "i",
 );
 
@@ -35,9 +42,10 @@ export const insecureSessionCookie = defineRule({
   scan: scanByPattern({
     shouldScan: (file) => isProductionSourcePath(file.relativePath),
     pattern: [
-      HTTP_ONLY_DISABLED_PATTERN,
+      AUTH_COOKIE_HTTP_ONLY_DISABLED_PATTERN,
+      AUTH_COOKIE_NO_OPTIONS_PATTERN,
+      COOKIE_CONFIG_HTTP_ONLY_DISABLED_PATTERN,
       CLIENT_AUTH_COOKIE_WRITE_PATTERN,
-      SERVER_AUTH_COOKIE_NO_OPTIONS_PATTERN,
     ],
     message:
       "An auth/session cookie is exposed to JavaScript (set via document.cookie, with httpOnly: false, or without cookie options), letting an XSS payload steal it.",

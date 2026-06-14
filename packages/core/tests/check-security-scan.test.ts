@@ -257,6 +257,19 @@ describe("checkSecurityScan", () => {
 
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
+
+    it("flags only the table missing RLS in a multi-table migration", () => {
+      writeFile(
+        "supabase/migrations/004_two_tables.sql",
+        `create table profiles (id uuid primary key);\nalter table profiles enable row level security;\ncreate table audit_log (id uuid primary key, event text);\n`,
+      );
+
+      const tableMissingRlsFindings = checkSecurityScan(temporaryRoot).filter(
+        (diagnostic) => diagnostic.rule === "supabase-table-missing-rls",
+      );
+      expect(tableMissingRlsFindings).toHaveLength(1);
+      expect(tableMissingRlsFindings[0]?.line).toBe(3);
+    });
   });
 
   describe("unsafe-json-in-html", () => {
@@ -274,13 +287,22 @@ describe("checkSecurityScan", () => {
       expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("unsafe-json-in-html");
     });
 
-    it("stays quiet when an HTML-safe serializer is used", () => {
+    it("stays quiet when the JSON.stringify result is escaped inline", () => {
       writeFile(
         "src/hydrate-safe.tsx",
-        'import { uneval } from "devalue";\nexport const H = ({ data }) => <script dangerouslySetInnerHTML={{ __html: `window.__D=${JSON.stringify(data)}` }} />;',
+        'export const H = ({ data }) => <div dangerouslySetInnerHTML={{ __html: JSON.stringify(data).replace(/</g, "&lt;") }} />;',
       );
 
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("still flags an unescaped sink when a safe serializer is only imported elsewhere", () => {
+      writeFile(
+        "src/mixed-hydrate.tsx",
+        'import serialize from "serialize-javascript";\nexport const safe = (s) => serialize(s);\nexport const Bad = ({ data }) => <div dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }} />;',
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("unsafe-json-in-html");
     });
   });
 
@@ -303,6 +325,15 @@ describe("checkSecurityScan", () => {
       writeFile(
         "src/jwt-ok.ts",
         `import jwt from "jsonwebtoken";\nexport const v = (t, k) => jwt.verify(t, k, { algorithms: ["RS256"] });`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("stays quiet when the algorithms allowlist is passed as a separate options variable", () => {
+      writeFile(
+        "src/jwt-opts-var.ts",
+        `import jwt from "jsonwebtoken";\nconst options = { algorithms: ["RS256"] };\nexport const v = (t, k) => jwt.verify(t, k, options);`,
       );
 
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
@@ -379,6 +410,15 @@ describe("checkSecurityScan", () => {
       writeFile(
         "src/auth-ok.ts",
         `export const set = (res, token) =>\n  res.cookie("session", token, { httpOnly: true, secure: true, sameSite: "lax" });`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("does not flag a non-auth cookie that disables httpOnly", () => {
+      writeFile(
+        "src/theme-cookie.ts",
+        `export const set = (res) => res.cookie("theme", "dark", { httpOnly: false });`,
       );
 
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);

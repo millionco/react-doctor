@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
+import { findMatchingParenIndex } from "./utils/find-matching-paren-index.js";
 import { getLocationAtIndex } from "./utils/get-location-at-index.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 import { getScannableContent } from "./utils/scan-by-pattern.js";
@@ -25,33 +26,6 @@ const ESCAPE_WRAPPER_PATTERN =
   /\b(?:escapeHtml|escapeJSON|escapeJson|htmlEscape|jsesc|serialize|serializeJavascript)\s*\(\s*$/i;
 const JSON_STRINGIFY_TOKEN_PATTERN = /\bJSON\.stringify\s*\($/i;
 const RETURN_LOOKAHEAD_CHARS = 160;
-
-// Index of the `)` that closes the call whose `(` is at `openParenIndex`,
-// ignoring parentheses inside string literals. -1 if it never balances.
-const findMatchingParenIndex = (content: string, openParenIndex: number): number => {
-  let depth = 0;
-  let stringDelimiter: string | null = null;
-  for (let index = openParenIndex; index < content.length; index += 1) {
-    const character = content[index];
-    if (stringDelimiter !== null) {
-      if (character === "\\") {
-        index += 1;
-      } else if (character === stringDelimiter) {
-        stringDelimiter = null;
-      }
-      continue;
-    }
-    if (character === '"' || character === "'" || character === "`") {
-      stringDelimiter = character;
-    } else if (character === "(") {
-      depth += 1;
-    } else if (character === ")") {
-      depth -= 1;
-      if (depth === 0) return index;
-    }
-  }
-  return -1;
-};
 
 export const unsafeJsonInHtml = defineRule({
   id: "unsafe-json-in-html",

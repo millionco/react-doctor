@@ -13,6 +13,28 @@ import { getScannableContent } from "./utils/scan-by-pattern.js";
 // without false positives/negatives — that is deferred to a future AST rule.
 const NONE_ALGORITHM_PATTERN = /\balgorithms?\s*:\s*\[?\s*["'`]none["'`]/gi;
 
+// True when `index` falls inside a string/template literal — used to skip an
+// `algorithm: "none"` mentioned in error text or docs (`"never use algorithm:
+// 'none'"`) rather than a real options object.
+const isIndexInsideStringLiteral = (content: string, index: number): boolean => {
+  let stringDelimiter: string | null = null;
+  for (let cursor = 0; cursor < index; cursor += 1) {
+    const character = content[cursor];
+    if (stringDelimiter !== null) {
+      if (character === "\\") {
+        cursor += 1;
+      } else if (character === stringDelimiter) {
+        stringDelimiter = null;
+      }
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      stringDelimiter = character;
+    }
+  }
+  return stringDelimiter !== null;
+};
+
 export const jwtInsecureVerification = defineRule({
   id: "jwt-insecure-verification",
   title: "JWT verified with the 'none' algorithm",
@@ -31,6 +53,7 @@ export const jwtInsecureVerification = defineRule({
       noneMatch !== null;
       noneMatch = NONE_ALGORITHM_PATTERN.exec(content)
     ) {
+      if (isIndexInsideStringLiteral(content, noneMatch.index)) continue;
       const location = getLocationAtIndex(content, noneMatch.index);
       findings.push({
         message:

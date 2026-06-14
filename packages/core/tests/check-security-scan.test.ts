@@ -366,6 +366,15 @@ describe("checkSecurityScan", () => {
       expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("jwt-insecure-verification");
     });
 
+    it("does not flag the 'none' algorithm mentioned inside a string literal", () => {
+      writeFile(
+        "src/jwt-doc.ts",
+        `import jwt from "jsonwebtoken";\nexport const warning = "never set algorithm: 'none' in production";\nexport const v = (t, k) => jwt.verify(t, k, { algorithms: ["RS256"] });`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("stays quiet for pinned algorithms and for verify calls in any options shape", () => {
       // The rule deliberately does not flag unpinned verify (it cannot resolve
       // the options binding precisely); only `none` is reported. So an inline
@@ -475,6 +484,15 @@ describe("checkSecurityScan", () => {
       writeFile(
         "src/next-cookie.ts",
         `export const GET = (response, token) => response.cookies.set("session", token);`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("insecure-session-cookie");
+    });
+
+    it("flags httpOnly:false even when it sits late in a long options object", () => {
+      writeFile(
+        "src/long-cookie.ts",
+        `export const set = (res, token) =>\n  res.cookie("session", token, { path: "/", domain: "app.example.com", maxAge: 3_600_000, sameSite: "lax", secure: true, signed: true, encode: String, httpOnly: false });`,
       );
 
       expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("insecure-session-cookie");

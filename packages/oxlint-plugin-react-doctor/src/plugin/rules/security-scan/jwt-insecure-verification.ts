@@ -15,11 +15,26 @@ const NONE_ALGORITHM_PATTERN = /\b(?:alg|algorithms?)\s*:\s*\[?\s*["'`]none["'`]
 
 // True when `index` falls inside a string/template literal — used to skip an
 // `algorithm: "none"` mentioned in error text or docs (`"never use algorithm:
-// 'none'"`) rather than a real options object.
+// 'none'"`) rather than a real options object. Template `${…}` interpolations
+// are treated as code, so a real `alg: "none"` inside one is NOT skipped.
 const isIndexInsideStringLiteral = (content: string, index: number): boolean => {
   let stringDelimiter: string | null = null;
+  // Brace depth of each open `${…}` expression nested inside template strings.
+  const templateExpressionDepths: number[] = [];
   for (let cursor = 0; cursor < index; cursor += 1) {
     const character = content[cursor];
+    if (stringDelimiter === "`") {
+      if (character === "\\") {
+        cursor += 1;
+      } else if (character === "`") {
+        stringDelimiter = null;
+      } else if (character === "$" && content[cursor + 1] === "{") {
+        templateExpressionDepths.push(0);
+        stringDelimiter = null;
+        cursor += 1;
+      }
+      continue;
+    }
     if (stringDelimiter !== null) {
       if (character === "\\") {
         cursor += 1;
@@ -30,6 +45,18 @@ const isIndexInsideStringLiteral = (content: string, index: number): boolean => 
     }
     if (character === '"' || character === "'" || character === "`") {
       stringDelimiter = character;
+    } else if (templateExpressionDepths.length > 0) {
+      const top = templateExpressionDepths.length - 1;
+      if (character === "{") {
+        templateExpressionDepths[top] += 1;
+      } else if (character === "}") {
+        if (templateExpressionDepths[top] === 0) {
+          templateExpressionDepths.pop();
+          stringDelimiter = "`";
+        } else {
+          templateExpressionDepths[top] -= 1;
+        }
+      }
     }
   }
   return stringDelimiter !== null;

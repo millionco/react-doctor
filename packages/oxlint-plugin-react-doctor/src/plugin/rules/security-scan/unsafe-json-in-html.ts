@@ -23,7 +23,7 @@ const SINK_JSON_STRINGIFY_PATTERNS = [
 // return-value check looks strictly after the call's matching `)`.
 const RETURN_ESCAPE_PATTERN = /^\s*\.replace\s*\([^)]*(?:\\u003[cC]|&lt;|<)/;
 const ESCAPE_WRAPPER_PATTERN =
-  /\b(?:escapeHtml|escapeJSON|escapeJson|htmlEscape|jsesc|serialize|serializeJavascript)\s*\(\s*$/i;
+  /\b(?:escapeHtml|escapeJSON|escapeJson|htmlEscape|jsesc|serialize|serializeJavascript|devalue|uneval|superjson)\s*\(\s*$/i;
 const JSON_STRINGIFY_TOKEN_PATTERN = /\bJSON\.stringify\s*\($/i;
 const RETURN_LOOKAHEAD_CHARS = 160;
 

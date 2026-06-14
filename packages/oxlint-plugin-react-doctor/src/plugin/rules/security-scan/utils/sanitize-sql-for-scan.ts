@@ -74,7 +74,52 @@ export const sanitizeSqlForScan = (content: string): string => {
         while (wordStart >= 0 && /[A-Za-z]/.test(content[wordStart] ?? "")) wordStart -= 1;
         const precedingWord = content.slice(wordStart + 1, lookBack + 1).toLowerCase();
         const isCodeBody = precedingWord === "do" || precedingWord === "as";
-        if (!isCodeBody) {
+        if (isCodeBody) {
+          // Keep DDL and EXECUTE strings visible, but still blank comments
+          // inside the body so a `-- create table … (` cannot false-match.
+          let bodyIndex = index + tag.length;
+          let bodyStringDelimiter: string | null = null;
+          while (bodyIndex < endIndex) {
+            const bodyChar = content[bodyIndex];
+            if (bodyStringDelimiter !== null) {
+              if (bodyChar === bodyStringDelimiter) {
+                if (content[bodyIndex + 1] === bodyStringDelimiter) {
+                  bodyIndex += 2;
+                  continue;
+                }
+                bodyStringDelimiter = null;
+              }
+              bodyIndex += 1;
+              continue;
+            }
+            if (bodyChar === "'" || bodyChar === '"') {
+              bodyStringDelimiter = bodyChar;
+              bodyIndex += 1;
+              continue;
+            }
+            if (bodyChar === "-" && content[bodyIndex + 1] === "-") {
+              while (bodyIndex < endIndex && content[bodyIndex] !== "\n") {
+                characters[bodyIndex] = " ";
+                bodyIndex += 1;
+              }
+              continue;
+            }
+            if (bodyChar === "/" && content[bodyIndex + 1] === "*") {
+              while (bodyIndex < endIndex) {
+                if (content[bodyIndex] === "*" && content[bodyIndex + 1] === "/") {
+                  characters[bodyIndex] = " ";
+                  characters[bodyIndex + 1] = " ";
+                  bodyIndex += 2;
+                  break;
+                }
+                if (content[bodyIndex] !== "\n") characters[bodyIndex] = " ";
+                bodyIndex += 1;
+              }
+              continue;
+            }
+            bodyIndex += 1;
+          }
+        } else {
           for (let blankIndex = index; blankIndex < endIndex; blankIndex += 1) {
             if (content[blankIndex] !== "\n") characters[blankIndex] = " ";
           }

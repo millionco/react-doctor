@@ -294,6 +294,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("does not flag a create table comment inside a DO block", () => {
+      writeFile(
+        "supabase/migrations/012_do_comment.sql",
+        `create table sales (id uuid primary key);\nalter table sales enable row level security;\ndo $$ begin\n  -- create table legacy (id int);\n  perform 1;\nend $$;\n`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("stays quiet when RLS is enabled via a dynamic EXECUTE in a DO block", () => {
       writeFile(
         "supabase/migrations/011_dynamic.sql",
@@ -368,6 +377,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("stays quiet when JSON.stringify is wrapped in devalue", () => {
+      writeFile(
+        "src/devalue-hydrate.tsx",
+        'import { uneval } from "devalue";\nexport const H = ({ data }) => <script dangerouslySetInnerHTML={{ __html: uneval(JSON.stringify(data)) }} />;',
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("still flags when an escape helper is applied to the input, not the output", () => {
       writeFile(
         "src/preprocess.tsx",
@@ -390,6 +408,15 @@ describe("checkSecurityScan", () => {
         "src/jwt-sign-none.ts",
         `import jwt from "jsonwebtoken";\nexport const sign = (payload, key) => jwt.sign(payload, key, { algorithm: "none" });`,
       );
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("jwt-insecure-verification");
+    });
+
+    it("flags a JWT none algorithm inside a template expression", () => {
+      writeFile(
+        "src/jwt-template.ts",
+        'import jwt from "jsonwebtoken";\nexport const build = () => `verify: ${JSON.stringify({ alg: "none" })}`;',
+      );
+
       expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("jwt-insecure-verification");
     });
 

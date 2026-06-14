@@ -276,6 +276,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("stays quiet when RLS is enabled inside a DO block", () => {
+      writeFile(
+        "supabase/migrations/009_do_block.sql",
+        `create table reports (id uuid primary key);\ndo $$ begin\n  alter table reports enable row level security;\nend $$;\n`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("flags a table when enable RLS appears before the create", () => {
       writeFile(
         "supabase/migrations/008_order.sql",

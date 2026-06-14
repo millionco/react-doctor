@@ -125,10 +125,19 @@ export const createProfilerStore = (target: DevtoolsGlobal = globalThis): ReactD
       emit("isProfiling");
     },
     stopProfiling: () => {
+      const wasProfiling = isProfiling;
       isProfiling = false;
       emit("isProfiling");
-      // Always tell the backend to stop, even with no renderer observed, so it
-      // never stays in recording mode after a startProfiling.
+      if (!wasProfiling) {
+        // No active session: don't fetch, and don't surface stale data from a
+        // previous session.
+        profilingData = null;
+        isProcessingData = false;
+        emit("isProcessingData");
+        return;
+      }
+      // A session was active: tell the backend to stop even with no renderer
+      // observed, so it never stays in recording mode.
       frontendBridge.send("stopProfiling");
       if (rendererID === null) {
         isProcessingData = false;

@@ -46,6 +46,32 @@ createReactPerfHarness(); // exposes window.__REACT_PERF__
 `installReactDevtoolsBackend()` must execute before any React import — put it at
 the very top of the entry, or in a separate module imported first.
 
+### React Native
+
+The same `react-doctor/runtime` import works on React Native — Metro resolves the
+`react-native` export condition to the RN-safe build (it connects only the
+DevTools backend, never `react-dom`). The harness installs on `global` instead of
+`window`, so the defaults need no changes:
+
+```ts
+// at the very top of index.js, before "react-native" / your App import
+import { installReactDevtoolsBackend } from "react-doctor/runtime";
+installReactDevtoolsBackend();
+```
+
+```ts
+// after the app registers (e.g. after AppRegistry.registerComponent)
+import { createReactPerfHarness } from "react-doctor/runtime";
+createReactPerfHarness(); // exposes global.__REACT_PERF__
+```
+
+Drive it the same way (`global.__REACT_PERF__.start()` / `await stop()`), e.g.
+from a dev menu action or an e2e driver. On RN the export's per-commit timings
+(`commitData`, `changeDescriptions`) are exact; the component-tree `snapshots`
+are reconstructed best-effort from the operation stream (this is experimental
+and pending on-device verification), so prefer analyzing render counts /
+durations / change reasons over the flamegraph hierarchy.
+
 ## The loop
 
 1. **Hypothesize** (3–5): why is it slow? Unstable callback/object props,

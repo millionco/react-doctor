@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
@@ -490,6 +491,60 @@ describe("checkSecurityScan", () => {
     );
 
     expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+  });
+
+  it("does not treat .next/dev/server dev source maps as browser artifacts", () => {
+    writeFile(
+      ".next/dev/server/chunks/ssr.js.map",
+      `window.__ENV__ = { AWS_SECRET_ACCESS_KEY: "x", AWS_ACCESS_KEY_ID: "AKIAABCDEFGHIJKLMNOP" };`,
+    );
+
+    expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+  });
+
+  it("does not treat dev-mode .next/dev output as a browser artifact", () => {
+    writeFile(".next/dev/static/chunks/app.js", `const key = "AKIAABCDEFGHIJKLMNOP";`);
+
+    expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+  });
+
+  it("still reports secrets in production .next/static output", () => {
+    writeFile(".next/static/chunks/app.js", `const key = "AKIAABCDEFGHIJKLMNOP";`);
+
+    expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("artifact-secret-leak");
+  });
+
+  it("does not flag a webhook handler that delegates to an extracted verification helper", () => {
+    writeFile(
+      "app/api/webhook/route.ts",
+      `import { isValidSecret } from "./verify";\nexport const POST = async (request) => {\n  const token = request.headers.get("x-webhook-token");\n  if (!isValidSecret(token, process.env.PROVIDER_SECRET)) return new Response("no", { status: 401 });\n  const event = await request.json();\n  return Response.json({ ok: event.type });\n};`,
+    );
+
+    expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+  });
+
+  it("still flags a webhook handler with no verification at all", () => {
+    writeFile(
+      "app/api/webhook-bare/route.ts",
+      `export const POST = async (request) => {\n  const event = await request.json();\n  return Response.json({ ok: event.type });\n};`,
+    );
+
+    expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("webhook-signature-risk");
+  });
+
+  it("does not flag a gitignored env file (not checked into the repository)", () => {
+    spawnSync("git", ["init"], { cwd: temporaryRoot, stdio: "ignore" });
+    writeFile(".gitignore", ".env\n");
+    writeFile(".env", "NEXT_PUBLIC_API_SECRET=local-only-value\n");
+
+    expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+  });
+
+  it("flags a non-gitignored env file checked into the repository", () => {
+    spawnSync("git", ["init"], { cwd: temporaryRoot, stdio: "ignore" });
+    writeFile(".env", "NEXT_PUBLIC_API_SECRET=committed-value\n");
+
+    expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("repository-secret-file");
   });
 
   it("does not treat ordinary package dist output as browser-shipped artifact output", () => {

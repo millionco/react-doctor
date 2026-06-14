@@ -134,3 +134,16 @@ export const getImportedNameFromModule = (
   if (info.source !== moduleSource) return null;
   return info.imported;
 };
+
+// Module a local binding was imported from, or null when it has no import in
+// the enclosing module (a global, a re-export, or a same-name local). Lets a
+// rule disambiguate same-named hooks from different libraries (e.g. TanStack
+// Query's `useQuery` vs Convex's `useQuery` from `convex/react`).
+export const getImportSourceForName = (
+  contextNode: EsTreeNode,
+  localIdentifierName: string,
+): string | null => {
+  const lookup = getImportLookup(contextNode);
+  if (!lookup) return null;
+  return lookup.get(localIdentifierName)?.source ?? null;
+};

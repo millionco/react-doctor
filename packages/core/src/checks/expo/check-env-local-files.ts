@@ -3,7 +3,7 @@ import { isFile } from "../../project-info/index.js";
 import type { Diagnostic } from "../../types/index.js";
 import type { ExpoCheckContext } from "./expo-check-context.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";
-import { isPathGitIgnored } from "./utils/is-path-git-ignored.js";
+import { isPathGitIgnored } from "../../utils/is-path-git-ignored.js";
 
 // `.env*.local` files are per-developer overrides that should never be
 // committed (they leak secrets and impose local settings on others).

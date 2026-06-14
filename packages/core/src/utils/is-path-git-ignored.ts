@@ -3,8 +3,7 @@ import { spawnSync } from "node:child_process";
 // Whether `git` considers `absolutePath` ignored, relative to
 // `rootDirectory`. Returns `null` when the ignore status can't be
 // determined — `git` is missing, the directory isn't a checkout, or the
-// command errors — so callers can skip the finding instead of
-// false-positiving, matching expo-doctor's `isFileIgnoredAsync` contract.
+// command errors — so callers can decide how to handle the unknown case.
 //
 // `git check-ignore -q <path>` exits 0 when the path is ignored, 1 when
 // it is not, and 128 on any other error (no repo, bad cwd, …). The index

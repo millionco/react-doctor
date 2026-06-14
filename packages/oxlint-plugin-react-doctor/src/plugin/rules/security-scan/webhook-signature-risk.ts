@@ -8,10 +8,13 @@ const WEBHOOK_HANDLER_PATTERN =
 const WEBHOOK_ENTRYPOINT_PATTERN =
   /\b(?:export\s+(?:async\s+)?function\s+POST|export\s+const\s+(?:POST|handler|webhook)|webhookHandler|webhookRoute)\b/i;
 
-// Reading a `*-signature` header or delegating to a `verifyWebhook*` helper
-// is verification evidence even when the HMAC math lives in another module.
+// Reading a `*-signature` header or delegating to a verification helper is
+// evidence even when the HMAC math lives in another module. The last
+// alternative matches a call to a helper whose name pairs a verify-ish verb
+// with a security noun (`isValidSecret(...)`, `verifySignature(...)`,
+// `checkWebhookHmac(...)`), so an extracted timing-safe comparison still counts.
 const WEBHOOK_SIGNATURE_VERIFICATION_PATTERN =
-  /verifySignature|verify.*signature|verify\w*(?:Webhook|Auth)|constructEvent|createHmac|timingSafeEqual|svix|webhookSecret|stripe\.webhooks|["'][\w-]*signature["']/i;
+  /verifySignature|verify.*signature|verify\w*(?:Webhook|Auth)|constructEvent|createHmac|timingSafeEqual|svix|webhookSecret|stripe\.webhooks|["'][\w-]*signature["']|\b[A-Za-z]*(?:verif|valid|check|assert|authenticat|compare|guard)[A-Za-z]*(?:secret|signature|hmac|webhook|digest|token)[A-Za-z]*\s*\(/i;
 
 // `webhookUrl` mentions mark code SENDING to a webhook (outbound), where
 // signature verification is the receiver's job, not this file's. A webhook

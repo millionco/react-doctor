@@ -1,8 +1,18 @@
 import { TANSTACK_QUERY_HOOKS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+// TanStack Query packages (`@tanstack/react-query`, `@tanstack/vue-query`,
+// `@tanstack/query-core`, the Angular `*-query-experimental`, …) plus the
+// legacy `react-query`. A `useQuery` imported from anything else — notably
+// Convex's `convex/react`, whose `useQuery` returns the data directly — must
+// not be treated as a TanStack result object.
+const TANSTACK_QUERY_PACKAGE_PATTERN = /^@tanstack\/[\w-]*query[\w-]*$/;
+const isTanstackQuerySource = (source: string): boolean =>
+  TANSTACK_QUERY_PACKAGE_PATTERN.test(source) || source === "react-query";
 
 export const queryDestructureResult = defineRule({
   id: "query-destructure-result",
@@ -22,6 +32,12 @@ export const queryDestructureResult = defineRule({
         : null;
 
       if (!calleeName || !TANSTACK_QUERY_HOOKS.has(calleeName)) return;
+
+      // Only flag when the hook actually comes from TanStack Query. A hook of
+      // the same name imported from another library (e.g. `convex/react`) does
+      // not return a tracked result object, so destructuring it would be wrong.
+      const importSource = getImportSourceForName(node, calleeName);
+      if (importSource !== null && !isTanstackQuerySource(importSource)) return;
 
       context.report({
         node: node.id,

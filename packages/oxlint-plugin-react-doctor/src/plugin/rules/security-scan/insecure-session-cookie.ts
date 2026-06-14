@@ -10,12 +10,19 @@ import { getScannableContent } from "./utils/scan-by-pattern.js";
 const AUTH_COOKIE_NAME =
   "session|sess|sid|connect\\.sid|auth|token|jwt|access[_-]?token|refresh[_-]?token|id[_-]?token";
 
+// The keyword must sit on an alphanumeric boundary so it matches a real name
+// segment (`session`, `auth_token`, `next-auth.session-token`) but not a word
+// that merely starts with it (`sidebar`, `author`, `tokenizer`). `_`/`-`/`.`
+// are name separators, so they count as boundaries.
+const AUTH_COOKIE_NAME_TOKEN = `(?<![A-Za-z0-9])(?:${AUTH_COOKIE_NAME})(?![A-Za-z0-9])`;
+const AUTH_COOKIE_NAME_LITERAL = `[\`"'][^\`"']*?${AUTH_COOKIE_NAME_TOKEN}[^\`"']*[\`"']`;
+
 // An auth-named cookie set: Express `res.cookie("session", …)`, next/headers
 // `cookies().set("session", …)`, and the NextResponse `response.cookies.set(
 // "session", …)` shape. Anchoring on the name keeps non-auth cookies (a
 // theme/consent cookie that legitimately needs JS access) from tripping it.
 const AUTH_COOKIE_SET_CALL_PATTERN = new RegExp(
-  `(?:\\.cookies\\.set|cookies\\(\\s*\\)\\.set|\\.cookie)\\s*\\(\\s*[\`"'](?:${AUTH_COOKIE_NAME})[^\`"']*[\`"']`,
+  `(?:\\.cookies\\.set|cookies\\(\\s*\\)\\.set|\\.cookie)\\s*\\(\\s*${AUTH_COOKIE_NAME_LITERAL}`,
   "gi",
 );
 
@@ -29,7 +36,7 @@ const COOKIE_CONFIG_HTTP_ONLY_DISABLED_PATTERN = /cookie\s*:\s*\{[^}]*httpOnly\s
 // `document.cookie = "session=..."` — a cookie set from client JS can never be
 // HttpOnly, so an auth/session cookie written this way is XSS-readable.
 const CLIENT_AUTH_COOKIE_WRITE_PATTERN = new RegExp(
-  `document\\.cookie\\s*=\\s*[\`"'][^\`"'=;]*(?:${AUTH_COOKIE_NAME})[^\`"'=;]*=`,
+  `document\\.cookie\\s*=\\s*[\`"'][^\`"'=;]*?${AUTH_COOKIE_NAME_TOKEN}[^\`"'=;]*=`,
   "gi",
 );
 

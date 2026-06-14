@@ -525,6 +525,15 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("does not flag non-auth cookie names that merely start with an auth keyword", () => {
+      writeFile(
+        "src/ui-cookies.ts",
+        `export const a = (res) => res.cookie("sidebar", "open");\nexport const b = (res) => res.cookie("author", "jane");`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("does not flag a non-auth cookie that disables httpOnly", () => {
       writeFile(
         "src/theme-cookie.ts",

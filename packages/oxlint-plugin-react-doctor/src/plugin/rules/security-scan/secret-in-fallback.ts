@@ -6,10 +6,14 @@ import { scanByPattern } from "./utils/scan-by-pattern.js";
 // (`process.env.STRIPE_SECRET_KEY ?? "<hardcoded>"`). Two bugs at once: the
 // literal is a committed secret, and the app silently uses it (fails open)
 // when the env var is unset. The env-name lookahead skips intentionally-public
-// vars (PUBLIC/PUBLISHABLE/ANON), and the value lookahead skips placeholder
-// defaults so only substantive literals flag.
+// vars (PUBLIC/PUBLISHABLE/ANON). The trailing negative lookbehind skips names
+// that only REFERENCE a secret rather than hold one — `_HEADER`/`_NAME`/`_ID`/
+// `_ENDPOINT`/`_URL`/… suffixes (e.g. `AUTH_TOKEN_HEADER`, `AWS_ACCESS_KEY_ID`,
+// `TOKEN_ENDPOINT`), whose values are header names, key ids, or URLs, not
+// secrets. The value lookahead skips placeholder defaults and URL values so
+// only substantive secret literals flag.
 const HARDCODED_SECRET_FALLBACK_PATTERN =
-  /\bprocess\.env\.(?![A-Z0-9_]*(?:PUBLIC|PUBLISHABLE|ANON)\b)[A-Z][A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE_KEY|API_?KEY|APIKEY|ACCESS_KEY|CLIENT_SECRET|CREDENTIAL|SIGNING_KEY|ENCRYPTION_KEY|WEBHOOK_SECRET|SERVICE_ROLE)[A-Z0-9_]*\s*(?:\?\?|\|\|)\s*(["'`])(?!(?:changeme|change[_-]?me|placeholder|your[_-]|example|sample|dummy|development|local|todo|replace[_-]?me|x{3,}|\*{3,}))[^"'`\n]{8,}\1/i;
+  /\bprocess\.env\.(?![A-Z0-9_]*(?:PUBLIC|PUBLISHABLE|ANON)\b)[A-Z][A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE_KEY|API_?KEY|APIKEY|ACCESS_KEY|CLIENT_SECRET|CREDENTIAL|SIGNING_KEY|ENCRYPTION_KEY|WEBHOOK_SECRET|SERVICE_ROLE)[A-Z0-9_]*(?<!_(?:NAME|HEADER|ENDPOINT|URL|URI|ID|PREFIX|SUFFIX|PARAM|PARAMS|FIELD|ISSUER|AUDIENCE|ALGORITHM|ALG|REGION|BUCKET|HOST|HOSTNAME|PORT|PATH|VERSION|SCOPE|TYPE|FORMAT|EXPIRY|TTL))\s*(?:\?\?|\|\|)\s*(["'`])(?!(?:changeme|change[_-]?me|placeholder|your[_-]|example|sample|dummy|development|local|todo|replace[_-]?me|https?:\/\/|x{3,}|\*{3,}))[^"'`\n]{8,}\1/i;
 
 export const secretInFallback = defineRule({
   id: "secret-in-fallback",

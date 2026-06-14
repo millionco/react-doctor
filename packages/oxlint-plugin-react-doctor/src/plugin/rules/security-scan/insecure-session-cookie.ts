@@ -7,8 +7,12 @@ import { getScannableContent } from "./utils/scan-by-pattern.js";
 
 // Cookie names that carry authentication/session identity. A leak of any of
 // these to JavaScript (no HttpOnly) lets an XSS payload steal the session.
+// Bare `token` is deliberately NOT included: CSRF/XSRF double-submit cookies
+// (`XSRF-TOKEN`, `csrf-token`, …) are intentionally readable by JS, so flagging
+// them is a false positive. The specific auth tokens that must be HttpOnly are
+// matched explicitly (`access_token`, `refresh_token`, `id_token`, `jwt`).
 const AUTH_COOKIE_NAME =
-  "session|sess|sid|connect\\.sid|auth|token|jwt|access[_-]?token|refresh[_-]?token|id[_-]?token";
+  "session|sess|sid|connect\\.sid|auth|jwt|access[_-]?token|refresh[_-]?token|id[_-]?token";
 
 // The keyword must sit on an alphanumeric boundary so it matches a real name
 // segment (`session`, `auth_token`, `next-auth.session-token`) but not a word
@@ -139,8 +143,10 @@ export const insecureSessionCookie = defineRule({
       // `cookies().set`.)
       const openParenIndex = match.index + match[0].lastIndexOf("(");
       const closeParenIndex = findMatchingBracket(content, openParenIndex);
-      const argumentsSource =
-        closeParenIndex >= 0 ? content.slice(openParenIndex + 1, closeParenIndex) : "";
+      // Unbalanced/unparseable args (e.g. a regex literal with stray brackets):
+      // skip rather than assume "no options" and false-positive.
+      if (closeParenIndex < 0) continue;
+      const argumentsSource = content.slice(openParenIndex + 1, closeParenIndex);
       const hasNoOptions = countTopLevelArguments(argumentsSource) < 3;
       const argumentsWithoutStrings = argumentsSource.replace(STRING_LITERAL_PATTERN, "");
       if (!hasNoOptions && !HTTP_ONLY_DISABLED_PATTERN.test(argumentsWithoutStrings)) continue;

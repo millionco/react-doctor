@@ -540,6 +540,19 @@ describe("checkSecurityScan", () => {
 
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
+
+    it("stays quiet for secret-referencing names that hold config, not the secret", () => {
+      writeFile(
+        "src/config-refs.ts",
+        [
+          `export const header = process.env.AUTH_TOKEN_HEADER ?? "authorization";`,
+          `export const endpoint = process.env.TOKEN_ENDPOINT ?? "https://auth.example.com/token";`,
+          `export const keyId = process.env.AWS_ACCESS_KEY_ID ?? "AKIAIOSFODNN7ABCDEFG";`,
+        ].join("\n"),
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
   });
 
   describe("request-body-mass-assignment", () => {
@@ -682,6 +695,19 @@ describe("checkSecurityScan", () => {
       writeFile(
         "src/theme-cookie.ts",
         `export const set = (res) => res.cookie("theme", "dark", { httpOnly: false });`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("does not flag CSRF/XSRF double-submit cookies, which must be JS-readable", () => {
+      writeFile(
+        "src/csrf-cookie.ts",
+        [
+          `export const a = (res, t) => res.cookie("XSRF-TOKEN", t);`,
+          `export const b = (t) => cookies().set("csrf-token", t);`,
+          `export const c = (t) => { document.cookie = \`csrf-token=\${t}; path=/\`; };`,
+        ].join("\n"),
       );
 
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);

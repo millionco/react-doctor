@@ -551,23 +551,27 @@ describe("checkSecurityScan", () => {
     expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("webhook-signature-risk");
   });
 
-  // The verification-suppression regex pairs a verb run, a noun run, and a
-  // trailing run. With unbounded `[A-Za-z]*` runs an identifier-shaped string
-  // with no closing `(` triggers cubic backtracking (ReDoS) that hangs the
-  // whole scan for minutes; the bounded `[A-Za-z]{0,40}` runs keep it linear
-  // (sub-millisecond on this input). The generous bound only has to separate
-  // "linear scan overhead" from "catastrophic hang", so it cannot flake.
-  it("scans a webhook handler with a pathological identifier run without ReDoS backtracking", () => {
-    const pathologicalRun = `valid${"a".repeat(20_000)}`;
-    writeFile(
-      "app/api/webhook-redos/route.ts",
-      `export const POST = async (request) => {\n  const ${pathologicalRun} = request.headers.get("x-sig");\n  const event = await request.json();\n  return Response.json({ ok: event.type });\n};`,
-    );
+  // ReDoS guard for the webhook verification regex (verb run + noun run +
+  // trailing run). A regression to unbounded `[A-Za-z]*` makes it backtrack
+  // cubically on a long identifier-like run with no closing `(` — minutes on
+  // this input. The rule's scan is invoked in isolation (not the whole-tree
+  // walk) so the assertion is about the regex, not machine-dependent scan
+  // overhead: the bounded `{0,40}` runs finish in well under a millisecond.
+  it("webhook-signature-risk scan stays linear on a pathological identifier run", () => {
+    const webhookEntry = REACT_DOCTOR_RULES.find((entry) => entry.id === "webhook-signature-risk");
+    const scan = webhookEntry?.rule.scan;
+    if (!scan) throw new Error("webhook-signature-risk must define a scan");
 
+    const content = `export async function POST(request) {\n  const ${"valid".repeat(5_000)} = 1;\n  const event = await request.json();\n  return Response.json({ ok: event.type });\n}\n`;
     const startedAt = Date.now();
-    const rules = rulesOf(checkSecurityScan(temporaryRoot));
-    expect(Date.now() - startedAt).toBeLessThan(8_000);
-    expect(rules).toContain("webhook-signature-risk");
+    const findings = scan({
+      absolutePath: path.join(temporaryRoot, "app/api/webhook/route.ts"),
+      relativePath: "app/api/webhook/route.ts",
+      content,
+      isGeneratedBundle: false,
+    });
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect(findings).toHaveLength(1);
   });
 
   it("does not flag a gitignored env file (not checked into the repository)", () => {
@@ -581,6 +585,18 @@ describe("checkSecurityScan", () => {
   it("flags a non-gitignored env file checked into the repository", () => {
     spawnSync("git", ["init"], { cwd: temporaryRoot, stdio: "ignore" });
     writeFile(".env", "NEXT_PUBLIC_API_SECRET=committed-value\n");
+
+    expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("repository-secret-file");
+  });
+
+  // A force-added file is tracked, so `git check-ignore` reports it as NOT
+  // ignored (the index takes precedence over a matching ignore rule) — the
+  // committed secret must still be flagged.
+  it("flags a force-added env file even when a .gitignore rule matches it", () => {
+    spawnSync("git", ["init"], { cwd: temporaryRoot, stdio: "ignore" });
+    writeFile(".gitignore", ".env\n");
+    writeFile(".env", "NEXT_PUBLIC_API_SECRET=committed-value\n");
+    spawnSync("git", ["add", "-f", ".env"], { cwd: temporaryRoot, stdio: "ignore" });
 
     expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("repository-secret-file");
   });

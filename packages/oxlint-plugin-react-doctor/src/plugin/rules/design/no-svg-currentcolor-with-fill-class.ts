@@ -40,31 +40,19 @@ export const noSvgCurrentcolorWithFillClass = defineRule({
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
 
-      const fillAttribute = findJsxAttribute(node.attributes, "fill");
-      if (
-        fillAttribute &&
-        isCurrentColor(fillAttribute) &&
-        hasColorUtility(classNameValue, "fill-")
-      ) {
-        context.report({
-          node: fillAttribute,
-          message:
-            '`fill="currentColor"` and a `fill-*` color class on the same element conflict — the class wins. Remove one, or use `fill-current` to inherit the text color.',
-        });
-        return;
-      }
-
-      const strokeAttribute = findJsxAttribute(node.attributes, "stroke");
-      if (
-        strokeAttribute &&
-        isCurrentColor(strokeAttribute) &&
-        hasColorUtility(classNameValue, "stroke-")
-      ) {
-        context.report({
-          node: strokeAttribute,
-          message:
-            '`stroke="currentColor"` and a `stroke-*` color class on the same element conflict — the class wins. Remove one, or use `stroke-current` to inherit the text color.',
-        });
+      for (const paint of ["fill", "stroke"] as const) {
+        const attribute = findJsxAttribute(node.attributes, paint);
+        if (
+          attribute &&
+          isCurrentColor(attribute) &&
+          hasColorUtility(classNameValue, `${paint}-`)
+        ) {
+          context.report({
+            node: attribute,
+            message: `\`${paint}="currentColor"\` and a \`${paint}-*\` color class on the same element conflict — the class wins. Remove one, or use \`${paint}-current\` to inherit the text color.`,
+          });
+          return;
+        }
       }
     },
   }),

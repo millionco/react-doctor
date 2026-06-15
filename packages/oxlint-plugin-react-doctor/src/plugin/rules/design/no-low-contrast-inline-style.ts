@@ -82,9 +82,10 @@ export const noLowContrastInlineStyle = defineRule({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
+      const properties = expression.properties ?? [];
       // A `{...spread}` in the style object can override color/backgroundColor
       // at runtime, so we can't judge the static literals — bail.
-      if ((expression.properties ?? []).some((property) => property.type === "SpreadElement")) {
+      if (properties.some((property) => property.type === "SpreadElement")) {
         return;
       }
 
@@ -95,7 +96,7 @@ export const noLowContrastInlineStyle = defineRule({
       let fontSizePx: number | null = null;
       let isBold = false;
 
-      for (const property of expression.properties ?? []) {
+      for (const property of properties) {
         const key = getStylePropertyKey(property);
         if (!key) continue;
         if (key === "backgroundImage") {

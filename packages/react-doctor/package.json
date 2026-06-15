@@ -46,6 +46,12 @@
     "./api": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "react-native": "./dist/runtime.native.js",
+      "browser": "./dist/runtime.js",
+      "default": "./dist/runtime.js"
     }
   },
   "scripts": {
@@ -67,6 +73,7 @@
     "oxlint": ">=1.66.0 <1.67.0",
     "oxlint-plugin-react-doctor": "workspace:*",
     "prompts": "^2.4.2",
+    "react-devtools-inline": "^6.1.5",
     "typescript": ">=5.0.4 <7",
     "vscode-languageserver": "^9.0.1",
     "vscode-languageserver-textdocument": "^1.0.12",
@@ -76,6 +83,7 @@
     "@react-doctor/api": "workspace:*",
     "@react-doctor/core": "workspace:*",
     "@react-doctor/language-server": "workspace:*",
+    "@react-doctor/perf-agent": "workspace:*",
     "@types/babel__code-frame": "^7.27.0",
     "@types/prompts": "^2.4.9",
     "@xterm/headless": "^6.0.0",

@@ -1,0 +1,194 @@
+import {
+  activate as activateBackend,
+  createBridge as createBackendBridge,
+} from "react-devtools-inline/backend";
+import { PROFILING_STOP_TIMEOUT_MS } from "../constants.js";
+import type { DevtoolsElementTree } from "../types/element-tree.js";
+import type { ReactProfilerDataBackend } from "../types/profiling-backend.js";
+import type { ReactProfilerDataFrontend } from "../types/profiling-frontend.js";
+import type { ReactProfilerSnapshotNode } from "../types/profiling-export.js";
+import type {
+  DevtoolsGlobal,
+  ReactDevtoolsBridge,
+  ReactDevtoolsProfilerEvent,
+  ReactDevtoolsProfilerStore,
+  ReactDevtoolsStore,
+  ReactDevtoolsWall,
+  ReactDevtoolsWallMessage,
+} from "../types/react-devtools.js";
+import { applyOperationsToTree } from "./operations/apply-operations-to-tree.js";
+import { assembleFrontendData } from "./operations/assemble-frontend-data.js";
+import { takeTreeSnapshot } from "./operations/take-tree-snapshot.js";
+
+const isProfilerDataBackend = (value: unknown): value is ReactProfilerDataBackend =>
+  typeof value === "object" &&
+  value !== null &&
+  "dataForRoots" in value &&
+  Array.isArray(value.dataForRoots) &&
+  "rendererID" in value &&
+  typeof value.rendererID === "number";
+
+/**
+ * React Native implementation. The DevTools frontend Store can't run here (it
+ * pulls in `react-dom`/`fs`), so we connect only the RN-safe DevTools backend
+ * over a custom wall and assemble the export ourselves: backend `getProfilingData`
+ * supplies the per-commit timings; we observe `operations` on the wall to keep
+ * an element tree for the snapshots.
+ *
+ * Experimental: the bridge handshake mirrors the documented inline pattern but
+ * has not been verified on a device. Snapshot reconstruction handles the
+ * fixed-width operation opcodes and bails on the variable-width Suspense ops.
+ */
+export const createProfilerStore = (target: DevtoolsGlobal = globalThis): ReactDevtoolsStore => {
+  const eventListeners = new Map<ReactDevtoolsProfilerEvent, Set<() => void>>();
+  const emit = (event: ReactDevtoolsProfilerEvent): void => {
+    for (const listener of eventListeners.get(event) ?? []) listener();
+  };
+
+  const tree: DevtoolsElementTree = new Map();
+  const operationsByRootID = new Map<number, Array<Array<number>>>();
+  const snapshotsByRootID = new Map<number, Map<number, ReactProfilerSnapshotNode>>();
+  let rendererID: number | null = null;
+  let isProfiling = false;
+  let isProcessingData = false;
+  let profilingData: ReactProfilerDataFrontend | null = null;
+  let processingTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Clears the in-flight stop state and notifies waiters. Used by both the
+  // profilingData response and the timeout guard so a non-responding backend
+  // can't leave isProcessingData stuck true (which would wedge later sessions).
+  const settleProcessing = (): void => {
+    if (processingTimer !== undefined) {
+      clearTimeout(processingTimer);
+      processingTimer = undefined;
+    }
+    isProcessingData = false;
+    emit("isProcessingData");
+  };
+
+  const wallListeners: Array<(message: ReactDevtoolsWallMessage) => void> = [];
+  const wall: ReactDevtoolsWall = {
+    listen: (listener) => {
+      wallListeners.push(listener);
+    },
+    send: (event, payload) => {
+      for (const listener of wallListeners) listener({ event, payload });
+    },
+  };
+
+  const frontendBridge: ReactDevtoolsBridge = createBackendBridge(target, wall);
+
+  frontendBridge.addListener("getSavedPreferences", () => {
+    frontendBridge.send("savedPreferences", {
+      appendComponentStack: true,
+      breakOnConsoleErrors: false,
+      componentFilters: [],
+      showInlineWarningsAndErrors: true,
+      hideConsoleLogsInStrictMode: false,
+    });
+  });
+
+  frontendBridge.addListener("operations", (payload) => {
+    if (!Array.isArray(payload)) return;
+    const rootID = payload[1] ?? 0;
+    if (isProfiling) {
+      const bucket = operationsByRootID.get(rootID) ?? [];
+      bucket.push(payload);
+      operationsByRootID.set(rootID, bucket);
+    }
+    const result = applyOperationsToTree(tree, payload);
+    rendererID = result.rendererID;
+  });
+
+  frontendBridge.addListener("profilingData", (payload) => {
+    // Ignore responses we're not awaiting (already timed out, or no active
+    // stop) so a late/stale response can't mutate state after stop() resolved.
+    if (!isProcessingData) return;
+    // Any malformed/partial payload (top-level or per-commit) must still settle
+    // processing and leave profilingData null, so `stop()` resolves with null
+    // rather than hanging or rejecting with a TypeError.
+    if (isProfilerDataBackend(payload)) {
+      try {
+        profilingData = assembleFrontendData({
+          dataBackend: payload,
+          operationsByRootID,
+          snapshotsByRootID,
+        });
+      } catch {
+        profilingData = null;
+      }
+    }
+    settleProcessing();
+    if (profilingData !== null) emit("profilingData");
+  });
+
+  activateBackend(target, { bridge: createBackendBridge(target, wall) });
+  frontendBridge.send("getProfilingStatus");
+
+  const profilerStore: ReactDevtoolsProfilerStore = {
+    startProfiling: () => {
+      // Sessions are serial: ignore a start while one is recording or its stop
+      // is still finalizing, so an in-flight getProfilingData response can't be
+      // merged into a new session's buffers.
+      if (isProfiling || isProcessingData) return;
+      operationsByRootID.clear();
+      snapshotsByRootID.clear();
+      profilingData = null;
+      for (const node of tree.values()) {
+        if (node.parentID === 0) snapshotsByRootID.set(node.id, takeTreeSnapshot(tree, node.id));
+      }
+      isProfiling = true;
+      frontendBridge.send("startProfiling", {
+        recordChangeDescriptions: true,
+        recordTimeline: false,
+      });
+      emit("isProfiling");
+    },
+    stopProfiling: () => {
+      // A stop is already finalizing: let that in-flight request settle every
+      // waiter instead of racing it and clearing its state.
+      if (isProcessingData) return;
+      const wasProfiling = isProfiling;
+      isProfiling = false;
+      emit("isProfiling");
+      if (!wasProfiling) {
+        // No active session: don't fetch, and don't surface stale data from a
+        // previous session.
+        profilingData = null;
+        emit("isProcessingData");
+        return;
+      }
+      // A session was active: tell the backend to stop even with no renderer
+      // observed, so it never stays in recording mode.
+      frontendBridge.send("stopProfiling");
+      if (rendererID === null) {
+        emit("isProcessingData");
+        return;
+      }
+      isProcessingData = true;
+      frontendBridge.send("getProfilingData", { rendererID });
+      // Self-heal if the backend never responds, so isProcessingData can't stay
+      // stuck true and wedge later start/stop calls.
+      processingTimer = setTimeout(settleProcessing, PROFILING_STOP_TIMEOUT_MS);
+    },
+    get isProcessingData() {
+      return isProcessingData;
+    },
+    get didRecordCommits() {
+      return profilingData !== null && profilingData.dataForRoots.size > 0;
+    },
+    get profilingData() {
+      return profilingData;
+    },
+    addListener: (event, listener) => {
+      const set = eventListeners.get(event) ?? new Set();
+      set.add(listener);
+      eventListeners.set(event, set);
+    },
+    removeListener: (event, listener) => {
+      eventListeners.get(event)?.delete(listener);
+    },
+  };
+
+  return { profilerStore };
+};

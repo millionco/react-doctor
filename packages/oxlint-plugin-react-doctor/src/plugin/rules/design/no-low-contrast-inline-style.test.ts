@@ -59,8 +59,26 @@ describe("no-low-contrast-inline-style", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does NOT flag when a `background` shorthand (possible gradient/image) is present", () => {
+  it("does NOT flag when a `background` shorthand gradient/image is present", () => {
     const code = `const A = () => <span style={{ color: "#999999", background: "linear-gradient(#000,#fff)" }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("DOES flag a solid `background` shorthand color (Bugbot: background shorthand skips contrast)", () => {
+    const code = `const A = () => <span style={{ color: "#9ca3af", background: "#ffffff", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT flag when both backgroundColor and background shorthand are present (ambiguous)", () => {
+    const code = `const A = () => <span style={{ color: "#9ca3af", backgroundColor: "#fff", background: "#000", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag large + string `fontWeight: '700'` (Bugbot: string weight ignored)", () => {
+    const code = `const A = () => <span style={{ color: "#808080", backgroundColor: "#fff", fontSize: 20, fontWeight: "700" }}>x</span>;`;
     const result = runRule(noLowContrastInlineStyle, code);
     expect(result.diagnostics).toHaveLength(0);
   });

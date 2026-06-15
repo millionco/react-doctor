@@ -58,7 +58,11 @@ const isBoldWeight = (property: EsTreeNodeOfType<"Property">): boolean => {
   const numberValue = getStylePropertyNumberValue(property);
   if (numberValue !== null) return numberValue >= BOLD_FONT_WEIGHT_MIN;
   const stringValue = getStylePropertyStringValue(property);
-  return stringValue === "bold" || stringValue === "bolder";
+  if (stringValue === null) return false;
+  if (stringValue === "bold" || stringValue === "bolder") return true;
+  // Numeric weight written as a string, e.g. `fontWeight: "700"`.
+  const numericWeight = Number(stringValue);
+  return Number.isFinite(numericWeight) && numericWeight >= BOLD_FONT_WEIGHT_MIN;
 };
 
 export const noLowContrastInlineStyle = defineRule({
@@ -74,32 +78,51 @@ export const noLowContrastInlineStyle = defineRule({
       if (!expression) return;
 
       let foreground: ParsedRgb | null = null;
-      let background: ParsedRgb | null = null;
+      let backgroundColorRaw: string | null = null;
+      let backgroundShorthandRaw: string | null = null;
+      let backgroundIsUnknown = false;
       let fontSizePx: number | null = null;
       let isBold = false;
-      let hasBackgroundImage = false;
 
       for (const property of expression.properties ?? []) {
         const key = getStylePropertyKey(property);
         if (!key) continue;
-        if (key === "backgroundImage" || key === "background") {
-          hasBackgroundImage = true;
+        if (key === "backgroundImage") {
+          backgroundIsUnknown = true;
+          continue;
+        }
+        if (key === "fontSize" && property.type === "Property") {
+          fontSizePx = toPx(property);
+          continue;
+        }
+        if (key === "fontWeight" && property.type === "Property") {
+          isBold = isBoldWeight(property);
           continue;
         }
         const stringValue = getStylePropertyStringValue(property);
-        if (key === "color" && stringValue !== null) {
-          foreground = resolveOpaqueColor(stringValue);
-        } else if (key === "backgroundColor" && stringValue !== null) {
-          background = resolveOpaqueColor(stringValue);
-        } else if (key === "fontSize" && property.type === "Property") {
-          fontSizePx = toPx(property);
-        } else if (key === "fontWeight" && property.type === "Property") {
-          isBold = isBoldWeight(property);
+        if (key === "color") {
+          if (stringValue !== null) foreground = resolveOpaqueColor(stringValue);
+        } else if (key === "backgroundColor") {
+          backgroundColorRaw = stringValue;
+        } else if (key === "background") {
+          // A non-string `background` (a CSS var, a gradient bound to an
+          // expression, etc.) can't be judged — treat the surface as unknown.
+          if (stringValue === null) backgroundIsUnknown = true;
+          else backgroundShorthandRaw = stringValue;
         }
       }
 
-      // A `background`/`backgroundImage` could paint over backgroundColor; bail.
-      if (hasBackgroundImage || !foreground || !background) return;
+      if (backgroundIsUnknown) return;
+      // Both `backgroundColor` and the `background` shorthand on one element is
+      // ambiguous about which actually paints behind the text — bail.
+      if (backgroundColorRaw !== null && backgroundShorthandRaw !== null) return;
+
+      // A `background` shorthand that doesn't resolve to a single opaque color
+      // (gradient, image, multi-layer) paints the real background — `resolveOpaqueColor`
+      // returns null for those, so `background` stays null and we skip below.
+      const backgroundRaw = backgroundColorRaw ?? backgroundShorthandRaw;
+      const background = backgroundRaw === null ? null : resolveOpaqueColor(backgroundRaw);
+      if (!foreground || !background) return;
 
       // When the font size isn't in the inline style it may be set via a
       // class (`text-5xl`) — i.e. the text could be "large". To avoid false

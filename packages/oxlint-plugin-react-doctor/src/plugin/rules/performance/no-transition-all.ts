@@ -4,11 +4,13 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStringFromClassNameAttr } from "../design/utils/get-string-from-class-name-attr.js";
 
-// `transition-all` as its own token: matches `transition-all`,
-// `hover:transition-all`, `md:transition-all`, etc. Tailwind's bare
+// `transition-all` as a whole Tailwind token (the segment after any
+// variant prefixes), so `hover:transition-all` / `md:transition-all` match
+// but compound classes like `transition-all-custom` do not. Tailwind's bare
 // `transition` maps to a curated property list (color/bg/border/opacity/
 // shadow/transform/filter) — NOT `all` — so it is intentionally not flagged.
-const TAILWIND_TRANSITION_ALL = /\btransition-all\b/;
+const hasTransitionAllClass = (classNameValue: string): boolean =>
+  classNameValue.split(/\s+/).some((token) => token.split(":").pop() === "transition-all");
 
 const TAILWIND_MESSAGE =
   "Your users see janky animation because `transition-all` animates every property that changes, including expensive layout ones and instant ones like focus rings. Name the properties: `transition-colors`, `transition-opacity`, or `transition-transform`.";
@@ -49,7 +51,7 @@ export const noTransitionAll = defineRule({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const classNameValue = getStringFromClassNameAttr(node);
       if (!classNameValue) return;
-      if (TAILWIND_TRANSITION_ALL.test(classNameValue)) {
+      if (hasTransitionAllClass(classNameValue)) {
         context.report({ node, message: TAILWIND_MESSAGE });
       }
     },

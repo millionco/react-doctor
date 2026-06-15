@@ -9,7 +9,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // these are still the correct names, are never flagged.
 const renameDeprecatedToken = (token: string): string | null => {
   if (token === "overflow-ellipsis") return "text-ellipsis";
-  if (token === "overflow-clip") return "text-clip";
   if (token.startsWith("flex-shrink")) return token.replace("flex-shrink", "shrink");
   if (token.startsWith("flex-grow")) return token.replace("flex-grow", "grow");
   // Only the directional gradients were renamed to `bg-linear-to-*`; v4's

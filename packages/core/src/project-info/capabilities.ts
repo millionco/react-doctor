@@ -118,6 +118,12 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   ) {
     capabilities.add("tailwind:3.4");
   }
+  if (
+    project.tailwindVersion !== null &&
+    isMajorMinorAtLeast(parseTailwindMajorMinor(project.tailwindVersion), { major: 4, minor: 0 })
+  ) {
+    capabilities.add("tailwind:4");
+  }
   if (project.zodVersion !== null) capabilities.add("zod");
   if (project.zodMajorVersion !== null && project.zodMajorVersion >= 4) capabilities.add("zod:4");
   if (project.isPreES2023Target) capabilities.add("pre-es2023");

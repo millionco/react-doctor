@@ -8,32 +8,18 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 const MESSAGE =
   "Autoplaying media with sound is hostile to your users (and browsers block it). Add `muted` (with `playsInline`) to the autoplaying `<video>` / `<audio>`, or drop `autoPlay`.";
 
-// Statically true: bare attr (`autoPlay`), `={true}`, or `="true"`.
-const isStaticallyTrue = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
+// Resolve a boolean JSX attribute to its static value, or null when it's
+// dynamic: a bare attr (`autoPlay`) is true; `={true}`/`="true"` is true;
+// `={false}`/`="false"` is false; anything else (`={shouldPlay}`) is null.
+const resolveStaticBoolean = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean | null => {
   const value = attribute.value as EsTreeNode | null;
   if (!value) return true;
-  if (isNodeOfType(value, "Literal")) return value.value === "true";
-  if (isNodeOfType(value, "JSXExpressionContainer")) {
-    const expression = value.expression;
-    if (isNodeOfType(expression, "Literal")) {
-      return expression.value === true || expression.value === "true";
-    }
+  const literal = isNodeOfType(value, "JSXExpressionContainer") ? value.expression : value;
+  if (isNodeOfType(literal, "Literal")) {
+    if (literal.value === true || literal.value === "true") return true;
+    if (literal.value === false || literal.value === "false") return false;
   }
-  return false;
-};
-
-// Statically false: `={false}` or `="false"`.
-const isStaticallyFalse = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
-  const value = attribute.value as EsTreeNode | null;
-  if (!value) return false;
-  if (isNodeOfType(value, "Literal")) return value.value === "false";
-  if (isNodeOfType(value, "JSXExpressionContainer")) {
-    const expression = value.expression;
-    if (isNodeOfType(expression, "Literal")) {
-      return expression.value === false || expression.value === "false";
-    }
-  }
-  return false;
+  return null;
 };
 
 export const noAutoplayWithoutMuted = defineRule({
@@ -53,12 +39,12 @@ export const noAutoplayWithoutMuted = defineRule({
 
       const autoPlay = hasJsxPropIgnoreCase(node.attributes, "autoplay");
       // Only flag autoplay we can prove is on; dynamic `autoPlay={cond}` is skipped.
-      if (!autoPlay || !isStaticallyTrue(autoPlay)) return;
+      if (!autoPlay || resolveStaticBoolean(autoPlay) !== true) return;
 
       const muted = hasJsxPropIgnoreCase(node.attributes, "muted");
       // muted absent → flag. muted present: only flag when it is provably
       // false; a truthy or dynamic `muted` gets the benefit of the doubt.
-      if (muted && !isStaticallyFalse(muted)) return;
+      if (muted && resolveStaticBoolean(muted) !== false) return;
 
       context.report({ node: node.name, message: MESSAGE });
     },

@@ -22,6 +22,24 @@ describe("no-tailwind-layout-transition", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does NOT flag SVG `transition-[stroke-width]` (not HTML layout)", () => {
+    const code = `const A = () => <circle className="transition-[stroke-width]" />;`;
+    const result = runRule(noTailwindLayoutTransition, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag `transition-[border-width]` (substring of a non-layout prop)", () => {
+    const code = `const A = () => <div className="transition-[border-width]" />;`;
+    const result = runRule(noTailwindLayoutTransition, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags `transition-[max-height]` (a real layout property)", () => {
+    const code = `const A = () => <div className="transition-[max-height]" />;`;
+    const result = runRule(noTailwindLayoutTransition, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does NOT flag `transition-[transform]`", () => {
     const code = `const A = () => <div className="transition-[transform] duration-300" />;`;
     const result = runRule(noTailwindLayoutTransition, code);

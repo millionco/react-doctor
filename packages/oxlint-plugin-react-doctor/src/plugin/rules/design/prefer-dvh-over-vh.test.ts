@@ -27,6 +27,18 @@ describe("prefer-dvh-over-vh", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does NOT flag `max-h-screen` (a valid height cap, e.g. scrollable modal)", () => {
+    const code = `const A = () => <div className="max-h-screen overflow-auto" />;`;
+    const result = runRule(preferDvhOverVh, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag inline `maxHeight: '100vh'`", () => {
+    const code = `const A = () => <div style={{ maxHeight: "100vh" }} />;`;
+    const result = runRule(preferDvhOverVh, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does NOT flag `min-h-dvh`", () => {
     const code = `const A = () => <main className="min-h-dvh" />;`;
     const result = runRule(preferDvhOverVh, code);

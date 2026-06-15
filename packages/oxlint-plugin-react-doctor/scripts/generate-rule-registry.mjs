@@ -89,7 +89,12 @@ const EFFECT_RULES_PORTED_FROM_EXTERNAL = new Set([
 // jsx-a11y / react/* rule sets and should NOT be filtered out by
 // `customRulesOnly`. Without this list every new in-house rule we drop
 // into `a11y/` would silently disappear for users who narrow scope.
-const RULES_NOT_PORTED_FROM_EXTERNAL = new Set(["prefer-html-dialog"]);
+const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
+  "prefer-html-dialog",
+  "dialog-has-accessible-name",
+  "no-create-ref-in-function-component",
+  "no-call-component-as-function",
+]);
 
 // Rule ids whose source files are kept on disk but intentionally NOT
 // registered. Use sparingly — the canonical way to retire a rule is to

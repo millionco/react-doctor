@@ -27,6 +27,7 @@ import { artifactSecretLeak } from "./rules/security-scan/artifact-secret-leak.j
 import { asyncAwaitInLoop } from "./rules/js-performance/async-await-in-loop.js";
 import { asyncDeferAwait } from "./rules/performance/async-defer-await.js";
 import { asyncParallel } from "./rules/js-performance/async-parallel.js";
+import { authTokenInWebStorage } from "./rules/security/auth-token-in-web-storage.js";
 import { autocompleteValid } from "./rules/a11y/autocomplete-valid.js";
 import { buildPipelineSecretBoundary } from "./rules/security-scan/build-pipeline-secret-boundary.js";
 import { buttonHasType } from "./rules/react-builtins/button-has-type.js";
@@ -45,6 +46,7 @@ import { noRedundantSizeAxes } from "./rules/react-ui/no-redundant-size-axes.js"
 import { noSpaceOnFlexChildren } from "./rules/react-ui/no-space-on-flex-children.js";
 import { noThreePeriodEllipsis } from "./rules/react-ui/no-three-period-ellipsis.js";
 import { noVagueButtonLabel } from "./rules/react-ui/no-vague-button-label.js";
+import { dialogHasAccessibleName } from "./rules/a11y/dialog-has-accessible-name.js";
 import { displayName } from "./rules/react-builtins/display-name.js";
 import { effectNeedsCleanup } from "./rules/state-and-effects/effect-needs-cleanup.js";
 import { exhaustiveDeps } from "./rules/react-builtins/exhaustive-deps.js";
@@ -66,6 +68,7 @@ import { htmlNoInvalidTableNesting } from "./rules/correctness/html-no-invalid-t
 import { htmlNoNestedInteractive } from "./rules/correctness/html-no-nested-interactive.js";
 import { iframeHasTitle } from "./rules/a11y/iframe-has-title.js";
 import { iframeMissingSandbox } from "./rules/react-builtins/iframe-missing-sandbox.js";
+import { imgMissingDimensions } from "./rules/performance/img-missing-dimensions.js";
 import { imgRedundantAlt } from "./rules/a11y/img-redundant-alt.js";
 import { importMetadataExecutionRisk } from "./rules/security-scan/import-metadata-execution-risk.js";
 import { insecureCryptoRisk } from "./rules/security-scan/insecure-crypto-risk.js";
@@ -145,13 +148,16 @@ import { noAdjustStateOnPropChange } from "./rules/state-and-effects/no-adjust-s
 import { noAriaHiddenOnFocusable } from "./rules/a11y/no-aria-hidden-on-focusable.js";
 import { noArrayIndexAsKey } from "./rules/correctness/no-array-index-as-key.js";
 import { noArrayIndexKey } from "./rules/react-builtins/no-array-index-key.js";
+import { noAsyncEffectCallback } from "./rules/state-and-effects/no-async-effect-callback.js";
 import { noAutofocus } from "./rules/a11y/no-autofocus.js";
 import { noBarrelImport } from "./rules/bundle-size/no-barrel-import.js";
+import { noCallComponentAsFunction } from "./rules/react-builtins/no-call-component-as-function.js";
 import { noCascadingSetState } from "./rules/state-and-effects/no-cascading-set-state.js";
 import { noChainStateUpdates } from "./rules/state-and-effects/no-chain-state-updates.js";
 import { noChildrenProp } from "./rules/react-builtins/no-children-prop.js";
 import { noCloneElement } from "./rules/react-builtins/no-clone-element.js";
 import { noCreateContextInRender } from "./rules/state-and-effects/no-create-context-in-render.js";
+import { noCreateRefInFunctionComponent } from "./rules/react-builtins/no-create-ref-in-function-component.js";
 import { noCreateStoreInRender } from "./rules/state-and-effects/no-create-store-in-render.js";
 import { noDanger } from "./rules/react-builtins/no-danger.js";
 import { noDangerWithChildren } from "./rules/react-builtins/no-danger-with-children.js";
@@ -184,12 +190,14 @@ import { noGiantComponent } from "./rules/architecture/no-giant-component.js";
 import { noGlobalCssVariableAnimation } from "./rules/performance/no-global-css-variable-animation.js";
 import { noGradientText } from "./rules/design/no-gradient-text.js";
 import { noGrayOnColoredBackground } from "./rules/design/no-gray-on-colored-background.js";
+import { noImgLazyWithHighFetchpriority } from "./rules/performance/no-img-lazy-with-high-fetchpriority.js";
 import { noInitializeState } from "./rules/state-and-effects/no-initialize-state.js";
 import { noInlineBounceEasing } from "./rules/design/no-inline-bounce-easing.js";
 import { noInlineExhaustiveStyle } from "./rules/design/no-inline-exhaustive-style.js";
 import { noInlinePropOnMemoComponent } from "./rules/performance/no-inline-prop-on-memo-component.js";
 import { noInteractiveElementToNoninteractiveRole } from "./rules/a11y/no-interactive-element-to-noninteractive-role.js";
 import { noIsMounted } from "./rules/react-builtins/no-is-mounted.js";
+import { noJsonParseStringifyClone } from "./rules/js-performance/no-json-parse-stringify-clone.js";
 import { noJsxElementType } from "./rules/correctness/no-jsx-element-type.js";
 import { noJustifiedText } from "./rules/design/no-justified-text.js";
 import { noLargeAnimatedBlur } from "./rules/performance/no-large-animated-blur.js";
@@ -616,6 +624,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/auth-token-in-web-storage",
+    id: "auth-token-in-web-storage",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...authTokenInWebStorage,
+      framework: "global",
+      category: "Security",
+    },
+  },
+  {
     key: "react-doctor/autocomplete-valid",
     id: "autocomplete-valid",
     source: "react-doctor",
@@ -829,6 +848,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set(["react", ...(noVagueButtonLabel.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/dialog-has-accessible-name",
+    id: "dialog-has-accessible-name",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...dialogHasAccessibleName,
+      framework: "global",
+      category: "Accessibility",
+      requires: [...new Set(["react", ...(dialogHasAccessibleName.requires ?? [])])],
     },
   },
   {
@@ -1078,6 +1109,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       requires: [...new Set(["react", ...(iframeMissingSandbox.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/img-missing-dimensions",
+    id: "img-missing-dimensions",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...imgMissingDimensions,
+      framework: "global",
+      category: "Performance",
+      requires: [...new Set(["react", ...(imgMissingDimensions.requires ?? [])])],
     },
   },
   {
@@ -1991,6 +2034,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-async-effect-callback",
+    id: "no-async-effect-callback",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noAsyncEffectCallback,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(noAsyncEffectCallback.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-autofocus",
     id: "no-autofocus",
     source: "react-doctor",
@@ -2011,6 +2066,18 @@ export const reactDoctorRules = [
       ...noBarrelImport,
       framework: "global",
       category: "Performance",
+    },
+  },
+  {
+    key: "react-doctor/no-call-component-as-function",
+    id: "no-call-component-as-function",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noCallComponentAsFunction,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(noCallComponentAsFunction.requires ?? [])])],
     },
   },
   {
@@ -2071,6 +2138,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set(["react", ...(noCreateContextInRender.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-create-ref-in-function-component",
+    id: "no-create-ref-in-function-component",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noCreateRefInFunctionComponent,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(noCreateRefInFunctionComponent.requires ?? [])])],
     },
   },
   {
@@ -2448,6 +2527,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-img-lazy-with-high-fetchpriority",
+    id: "no-img-lazy-with-high-fetchpriority",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noImgLazyWithHighFetchpriority,
+      framework: "global",
+      category: "Performance",
+      requires: [...new Set(["react", ...(noImgLazyWithHighFetchpriority.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-initialize-state",
     id: "no-initialize-state",
     source: "react-doctor",
@@ -2517,6 +2608,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set(["react", ...(noIsMounted.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-json-parse-stringify-clone",
+    id: "no-json-parse-stringify-clone",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noJsonParseStringifyClone,
+      framework: "global",
+      category: "Performance",
     },
   },
   {

@@ -22,7 +22,17 @@ const URL_FONT_SIZE_PX = 52;
 const CONFETTI_COUNT = 500;
 const CONFETTI_WAVES = 4;
 const CONFETTI_WAVE_DELAY_FRAMES = 5;
-const CONFETTI_COLORS = [GREEN_COLOR, YELLOW_COLOR, "#60a5fa", "#c084fc", "#fb923c", "#f472b6", "#34d399", "#fbbf24", "#818cf8"];
+const CONFETTI_COLORS = [
+  GREEN_COLOR,
+  YELLOW_COLOR,
+  "#60a5fa",
+  "#c084fc",
+  "#fb923c",
+  "#f472b6",
+  "#34d399",
+  "#fbbf24",
+  "#818cf8",
+];
 
 const confettiParticles = Array.from({ length: CONFETTI_COUNT }).map((_, particleIndex) => {
   const angle = random(`angle-${particleIndex}`) * Math.PI * 0.8 + Math.PI * 0.1;
@@ -107,11 +117,7 @@ export const ScoreReveal = () => {
           alignItems: "flex-start",
         }}
       >
-        <DoctorFace
-          size={SCORE_FACE_FONT_SIZE_PX * 3.5}
-          color={scoreColor}
-          mood={mood}
-        />
+        <DoctorFace size={SCORE_FACE_FONT_SIZE_PX * 3.5} color={scoreColor} mood={mood} />
 
         <div>
           <div>

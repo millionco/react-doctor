@@ -1,0 +1,32 @@
+import type { VideoContent } from "../types";
+
+export const securityContent: VideoContent = {
+  scanTitle: "Scan for security issues",
+  fixPrompt: "fix my security issues",
+  scannedIssues: [
+    { message: "Auth token stored in localStorage", severity: "error", pointsLost: 5, file: "auth.ts:41" },
+    { message: "Missing CSRF protection on POST", severity: "error", pointsLost: 5, file: "contact/route.ts:41" },
+    { message: "SQL query built via string concat", severity: "error", pointsLost: 5, file: "db/users.ts:23" },
+    { message: "User input in dangerouslySetInnerHTML", severity: "error", pointsLost: 5, file: "Comment.tsx:14" },
+    { message: "Outdated Next.js · CVE-2025-29927", severity: "error", pointsLost: 5, file: "package.json:1" },
+    { message: "Secret exposed via NEXT_PUBLIC_", severity: "error", pointsLost: 5, file: "env.ts:3" },
+    { message: "JWT signature not verified", severity: "error", pointsLost: 5, file: "verify-token.ts:104" },
+    { message: "Server action missing auth check", severity: "error", pointsLost: 5, file: "deleteUser.ts:19" },
+    { message: "No rate limit on login route", severity: "warning", pointsLost: 2, file: "login/route.ts:32" },
+    { message: "Open redirect from unvalidated param", severity: "error", pointsLost: 5, file: "redirect.ts:67" },
+    { message: "SSRF: fetch of user-supplied URL", severity: "error", pointsLost: 5, file: "proxy/route.ts:29" },
+    { message: "Cookie set without Secure flag", severity: "warning", pointsLost: 2, file: "session.ts:55" },
+    { message: "Path traversal in file read", severity: "error", pointsLost: 5, file: "files/route.ts:9" },
+    { message: "Missing Content-Security-Policy", severity: "warning", pointsLost: 2, file: "next.config.ts:1" },
+    { message: "Plaintext password stored in DB", severity: "error", pointsLost: 5, file: "db/auth.ts:44" },
+    { message: "CORS allows all origins (*)", severity: "warning", pointsLost: 2, file: "middleware.ts:18" },
+    { message: "eval() called on user input", severity: "error", pointsLost: 5, file: "parser.ts:11" },
+    { message: "Sensitive data logged to console", severity: "warning", pointsLost: 2, file: "checkout.ts:8" },
+    { message: "Weak MD5 hash for passwords", severity: "warning", pointsLost: 2, file: "crypto.ts:5" },
+    { message: "Missing auth on admin route", severity: "error", pointsLost: 5, file: "admin/route.ts:20" },
+    { message: "No input validation on API body", severity: "warning", pointsLost: 2, file: "upload.ts:21" },
+    { message: "Insecure Math.random() for token", severity: "warning", pointsLost: 2, file: "token.ts:13" },
+    { message: "Mass assignment on user update", severity: "warning", pointsLost: 2, file: "profile.ts:31" },
+    { message: "Dependency with known CVE", severity: "warning", pointsLost: 2, file: "package.json:1" },
+  ],
+};

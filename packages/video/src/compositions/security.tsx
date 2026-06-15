@@ -4,30 +4,29 @@ import { springTiming, TransitionSeries } from "@remotion/transitions";
 import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
 import {
-  SCENE_DIAGNOSE_AND_FIX_DURATION_FRAMES,
-  SCENE_FILE_SCAN_DURATION_FRAMES,
   SCENE_SCORE_REVEAL_DURATION_FRAMES,
-  SCENE_TYPING_DURATION_FRAMES,
+  SECURITY_FIX_DURATION_FRAMES,
+  SECURITY_INTRO_DURATION_FRAMES,
+  SECURITY_SCAN_DURATION_FRAMES,
   TRANSITION_DURATION_FRAMES,
 } from "../constants";
-import { reactContent } from "../content/react";
+import { securityContent } from "../content/security";
 import { DiagnoseAndFix } from "../scenes/diagnose-and-fix";
-import { FileScan } from "../scenes/file-scan";
 import { ScoreReveal } from "../scenes/score-reveal";
-import { TerminalTyping } from "../scenes/terminal-typing";
+import { SecurityIntro } from "../scenes/security-intro";
+import { SecurityScan } from "../scenes/security-scan";
 import { waitUntilDone } from "../utils/font";
 
-export const Main = () => {
+export const Security = () => {
   const [handle] = useState(() => delayRender("Loading font"));
-  const content = reactContent;
 
   useEffect(() => {
     waitUntilDone().then(() => continueRender(handle));
   }, [handle]);
   return (
     <TransitionSeries>
-      <TransitionSeries.Sequence durationInFrames={SCENE_TYPING_DURATION_FRAMES}>
-        <TerminalTyping content={content} />
+      <TransitionSeries.Sequence durationInFrames={SECURITY_INTRO_DURATION_FRAMES}>
+        <SecurityIntro />
       </TransitionSeries.Sequence>
 
       <TransitionSeries.Transition
@@ -38,8 +37,8 @@ export const Main = () => {
         })}
       />
 
-      <TransitionSeries.Sequence durationInFrames={SCENE_FILE_SCAN_DURATION_FRAMES}>
-        <FileScan content={content} />
+      <TransitionSeries.Sequence durationInFrames={SECURITY_SCAN_DURATION_FRAMES}>
+        <SecurityScan content={securityContent} />
       </TransitionSeries.Sequence>
 
       <TransitionSeries.Transition
@@ -50,8 +49,8 @@ export const Main = () => {
         })}
       />
 
-      <TransitionSeries.Sequence durationInFrames={SCENE_DIAGNOSE_AND_FIX_DURATION_FRAMES}>
-        <DiagnoseAndFix content={content} />
+      <TransitionSeries.Sequence durationInFrames={SECURITY_FIX_DURATION_FRAMES}>
+        <DiagnoseAndFix content={securityContent} showScore={false} />
       </TransitionSeries.Sequence>
 
       <TransitionSeries.Sequence durationInFrames={SCENE_SCORE_REVEAL_DURATION_FRAMES}>

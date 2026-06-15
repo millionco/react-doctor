@@ -1,7 +1,7 @@
+import { useMemo } from "react";
 import { AbsoluteFill, Easing, interpolate, useCurrentFrame } from "remotion";
 import {
   BACKGROUND_COLOR,
-  DIAGNOSTICS,
   ERROR_BADGE_BACKGROUND_COLOR,
   ERROR_BADGE_TEXT_COLOR,
   ERROR_ROW_BACKGROUND_COLOR,
@@ -15,7 +15,6 @@ import {
   MUTED_COLOR,
   PERFECT_SCORE,
   RED_COLOR,
-  SCANNED_ISSUES,
   SCENE_FILE_SCAN_DURATION_FRAMES,
   SCORE_ANIMATION_FRAMES,
   SCORE_BAR_WIDTH,
@@ -25,6 +24,7 @@ import {
   TEXT_COLOR,
   WARNING_BADGE_BACKGROUND_COLOR,
 } from "../constants";
+import type { VideoContent } from "../types";
 import { DoctorFace } from "../components/doctor-face";
 import { fontFamily } from "../utils/font";
 import { getDoctorMood, getScoreColor, getScoreLabel } from "../utils/score-display";
@@ -65,6 +65,7 @@ const FIX_START_FRAME = 106;
 const FIX_INTERVAL_FRAMES = 1;
 const FIX_FADE_FRAMES = 3;
 const ALL_FIXED_FADE_FRAMES = 8;
+const SCORE_INTRO_OFFSET_FRAMES = 50;
 
 const SCENE_HORIZONTAL_PADDING_PX = 80;
 const SCENE_TOP_PADDING_PX = 60;
@@ -90,25 +91,46 @@ const SPINNER_COLOR = "#d77757";
 const BACKGROUND_LINE_HEIGHT = 1.6;
 const BACKGROUND_ROW_HEIGHT_PX =
   FILE_SCAN_FONT_SIZE_PX * BACKGROUND_LINE_HEIGHT + FILE_ROW_VERTICAL_PADDING_PX * 2;
-const BACKGROUND_TOTAL_HEIGHT_PX = SCANNED_ISSUES.length * BACKGROUND_ROW_HEIGHT_PX;
 const BACKGROUND_OPACITY = 0.07;
-const SCROLL_PX_PER_FRAME = (BACKGROUND_TOTAL_HEIGHT_PX * 0.15) / 40;
 
 const VIEWPORT_HEIGHT_PX = 1080;
 const CONTENT_PADDING_PX = 40;
 const USABLE_HEIGHT_PX = VIEWPORT_HEIGHT_PX - CONTENT_PADDING_PX * 2;
 const VISIBLE_ROW_COUNT = Math.floor(USABLE_HEIGHT_PX / BACKGROUND_ROW_HEIGHT_PX);
-const FILE_SCAN_MAX_SCROLL_PX = Math.max(0, BACKGROUND_TOTAL_HEIGHT_PX - USABLE_HEIGHT_PX);
 const FILE_SCAN_SCROLL_START = FILE_SCAN_INITIAL_DELAY_FRAMES + VISIBLE_ROW_COUNT * FRAMES_PER_FILE;
-const FILE_SCAN_SCROLL_END = FILE_SCAN_INITIAL_DELAY_FRAMES + SCANNED_ISSUES.length * FRAMES_PER_FILE;
-const FILE_SCAN_END_PROGRESS = Math.min(1, (SCENE_FILE_SCAN_DURATION_FRAMES - FILE_SCAN_SCROLL_START) / (FILE_SCAN_SCROLL_END - FILE_SCAN_SCROLL_START));
-const BACKGROUND_SCROLL_OFFSET_PX = FILE_SCAN_MAX_SCROLL_PX * Easing.inOut(Easing.quad)(Math.max(0, FILE_SCAN_END_PROGRESS));
 
 const lerpSize = (heroSize: number, smallSize: number, progress: number) =>
   heroSize + (smallSize - heroSize) * progress;
 
-export const DiagnoseAndFix = () => {
-  const frame = useCurrentFrame();
+interface DiagnoseAndFixProps {
+  content: VideoContent;
+  showScore?: boolean;
+}
+
+export const DiagnoseAndFix = ({ content, showScore = true }: DiagnoseAndFixProps) => {
+  const rawFrame = useCurrentFrame();
+  const frame = rawFrame + (showScore ? 0 : SCORE_INTRO_OFFSET_FRAMES);
+
+  const diagnostics = useMemo(
+    () =>
+      content.scannedIssues.filter(
+        (issue) => issue.severity === "error" || issue.severity === "warning",
+      ),
+    [content.scannedIssues],
+  );
+
+  const backgroundTotalHeightPx = content.scannedIssues.length * BACKGROUND_ROW_HEIGHT_PX;
+  const backgroundScrollPxPerFrame = (backgroundTotalHeightPx * 0.15) / 40;
+  const fileScanMaxScrollPx = Math.max(0, backgroundTotalHeightPx - USABLE_HEIGHT_PX);
+  const fileScanScrollEnd =
+    FILE_SCAN_INITIAL_DELAY_FRAMES + content.scannedIssues.length * FRAMES_PER_FILE;
+  const fileScanEndProgress = Math.min(
+    1,
+    (SCENE_FILE_SCAN_DURATION_FRAMES - FILE_SCAN_SCROLL_START) /
+      (fileScanScrollEnd - FILE_SCAN_SCROLL_START),
+  );
+  const backgroundScrollOffsetPx =
+    fileScanMaxScrollPx * Easing.inOut(Easing.quad)(Math.max(0, fileScanEndProgress));
 
   const scoreBlockOpacity = interpolate(frame, [0, SCORE_FADE_IN_FRAMES], [0, 1], {
     extrapolateLeft: "clamp",
@@ -184,11 +206,11 @@ export const DiagnoseAndFix = () => {
 
   const fixedDiagnosticCount = Math.max(
     0,
-    Math.min(DIAGNOSTICS.length, Math.floor((frame - FIX_START_FRAME) / FIX_INTERVAL_FRAMES) + 1),
+    Math.min(diagnostics.length, Math.floor((frame - FIX_START_FRAME) / FIX_INTERVAL_FRAMES) + 1),
   );
   const isFixing = frame >= FIX_START_FRAME;
-  const allFixed = fixedDiagnosticCount >= DIAGNOSTICS.length;
-  const allFixedFrame = FIX_START_FRAME + DIAGNOSTICS.length * FIX_INTERVAL_FRAMES;
+  const allFixed = fixedDiagnosticCount >= diagnostics.length;
+  const allFixedFrame = FIX_START_FRAME + diagnostics.length * FIX_INTERVAL_FRAMES;
   const isSpinnerVisible = frame >= SPINNER_APPEAR_FRAME && !allFixed;
 
   const allFixedOpacity = interpolate(
@@ -214,7 +236,7 @@ export const DiagnoseAndFix = () => {
   } else {
     displayScore =
       TARGET_SCORE +
-      Math.round((PERFECT_SCORE - TARGET_SCORE) * (fixedDiagnosticCount / DIAGNOSTICS.length));
+      Math.round((PERFECT_SCORE - TARGET_SCORE) * (fixedDiagnosticCount / diagnostics.length));
   }
   const scoreColor = getScoreColor(displayScore);
   const doctorMood = getDoctorMood(displayScore);
@@ -237,10 +259,10 @@ export const DiagnoseAndFix = () => {
       >
         <div
           style={{
-            transform: `translateY(-${BACKGROUND_SCROLL_OFFSET_PX + frame * SCROLL_PX_PER_FRAME}px)`,
+            transform: `translateY(-${backgroundScrollOffsetPx + frame * backgroundScrollPxPerFrame}px)`,
           }}
         >
-          {[...SCANNED_ISSUES, ...SCANNED_ISSUES, ...SCANNED_ISSUES].map((issue, repeatIndex) => {
+          {[...content.scannedIssues, ...content.scannedIssues, ...content.scannedIssues].map((issue, repeatIndex) => {
             const isError = issue.severity === "error";
             const isWarning = issue.severity === "warning";
             const isOk = issue.severity === "ok";
@@ -345,7 +367,7 @@ export const DiagnoseAndFix = () => {
         }}
       >
         <span style={{ color: MUTED_COLOR }}>❯ </span>
-        <span style={{ color: "white" }}>fix my React code</span>
+        <span style={{ color: "white" }}>{content.fixPrompt}</span>
       </div>
 
       <div
@@ -406,11 +428,11 @@ export const DiagnoseAndFix = () => {
         />
         <div
           style={{
-            transform: `translateY(-${interpolate(frame, [ITEMS_START_FRAME, FIX_START_FRAME + DIAGNOSTICS.length * FIX_INTERVAL_FRAMES], [0, Math.max(0, DIAGNOSTICS.length * DIAGNOSTIC_ROW_HEIGHT_PX - 350)], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })}px)`,
+            transform: `translateY(-${interpolate(frame, [ITEMS_START_FRAME, FIX_START_FRAME + diagnostics.length * FIX_INTERVAL_FRAMES], [0, Math.max(0, diagnostics.length * DIAGNOSTIC_ROW_HEIGHT_PX - 350)], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })}px)`,
             padding: "12px 0",
           }}
         >
-          {DIAGNOSTICS.map((diagnostic, diagnosticIndex) => {
+          {diagnostics.map((diagnostic, diagnosticIndex) => {
             const itemFixFrame = FIX_START_FRAME + diagnosticIndex * FIX_INTERVAL_FRAMES;
             const itemFixProgress = interpolate(
               frame - itemFixFrame,
@@ -476,6 +498,7 @@ export const DiagnoseAndFix = () => {
         </div>
       </div>
 
+      {showScore && (
       <div
         style={{
           position: "absolute",
@@ -559,6 +582,7 @@ export const DiagnoseAndFix = () => {
           </div>
         </div>
       </div>
+      )}
     </AbsoluteFill>
   );
 };

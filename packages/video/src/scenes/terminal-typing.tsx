@@ -13,7 +13,6 @@ import {
   FILE_SCAN_FONT_SIZE_PX,
   GREEN_COLOR,
   MUTED_COLOR,
-  SCANNED_ISSUES,
   SEVERITY_BADGE_RADIUS_PX,
   SEVERITY_BADGE_SIZE_PX,
   TEXT_COLOR,
@@ -21,18 +20,19 @@ import {
   TYPING_INITIAL_DELAY_FRAMES,
   WARNING_BADGE_BACKGROUND_COLOR,
 } from "../constants";
+import type { SceneProps } from "../types";
 import { fontFamily } from "../utils/font";
 
 const BACKGROUND_LINE_HEIGHT = 1.6;
 const BACKGROUND_ROW_HEIGHT_PX =
   FILE_SCAN_FONT_SIZE_PX * BACKGROUND_LINE_HEIGHT + FILE_ROW_VERTICAL_PADDING_PX * 2;
-const BACKGROUND_TOTAL_HEIGHT_PX = SCANNED_ISSUES.length * BACKGROUND_ROW_HEIGHT_PX;
 const BACKGROUND_FADE_IN_START_FRAME = 60;
 const BACKGROUND_FADE_IN_FRAMES = 15;
 const BACKGROUND_OPACITY = 0.07;
 
-export const TerminalTyping = () => {
+export const TerminalTyping = ({ content }: SceneProps) => {
   const frame = useCurrentFrame();
+  const backgroundTotalHeightPx = content.scannedIssues.length * BACKGROUND_ROW_HEIGHT_PX;
 
   const typedCharCount = Math.min(
     COMMAND.length,
@@ -58,7 +58,7 @@ export const TerminalTyping = () => {
     { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) },
   );
 
-  const scrollPxPerFrame = (BACKGROUND_TOTAL_HEIGHT_PX * 0.15) / 20;
+  const scrollPxPerFrame = (backgroundTotalHeightPx * 0.15) / 20;
   const backgroundScrollY = Math.max(0, (frame - BACKGROUND_FADE_IN_START_FRAME) * scrollPxPerFrame);
 
   return (
@@ -80,7 +80,7 @@ export const TerminalTyping = () => {
         }}
       >
         <div style={{ transform: `translateY(-${backgroundScrollY}px)` }}>
-          {SCANNED_ISSUES.map((issue) => {
+          {content.scannedIssues.map((issue) => {
             const isError = issue.severity === "error";
             const isWarning = issue.severity === "warning";
             const isOk = issue.severity === "ok";

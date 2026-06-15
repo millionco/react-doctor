@@ -13,13 +13,12 @@ import {
   OVERLAY_GRADIENT_BOTTOM_PADDING_PX,
   OVERLAY_GRADIENT_HEIGHT_PX,
   OVERLAY_GRADIENT_HORIZONTAL_PADDING_PX,
-  SCANNED_ISSUES,
-  SCENE_FILE_SCAN_DURATION_FRAMES,
   SEVERITY_BADGE_RADIUS_PX,
   SEVERITY_BADGE_SIZE_PX,
   TEXT_COLOR,
   WARNING_BADGE_BACKGROUND_COLOR,
 } from "../constants";
+import type { SceneProps } from "../types";
 import { getBottomOverlayGradient } from "../utils/get-bottom-overlay-gradient";
 import { fontFamily } from "../utils/font";
 
@@ -27,9 +26,6 @@ const LINE_HEIGHT_MULTIPLIER = 1.6;
 const ROW_HEIGHT_PX =
   FILE_SCAN_FONT_SIZE_PX * LINE_HEIGHT_MULTIPLIER + FILE_ROW_VERTICAL_PADDING_PX * 2;
 const CONTENT_PADDING_PX = 40;
-const TOTAL_LIST_HEIGHT_PX = SCANNED_ISSUES.length * ROW_HEIGHT_PX;
-const TYPING_SCENE_END_SCROLL_PX = TOTAL_LIST_HEIGHT_PX * 0.15;
-const SCROLL_PX_PER_FRAME = TYPING_SCENE_END_SCROLL_PX / 40;
 
 const FRAMES_PER_ISSUE = 2;
 const FADE_IN_FRAMES = 6;
@@ -38,11 +34,13 @@ const TITLE_FONT_SIZE_PX = 88;
 const TITLE_FADE_IN_START_FRAME = 5;
 const TITLE_FADE_IN_FRAMES = 12;
 
-export const FileScan = () => {
+export const FileScan = ({ content }: SceneProps) => {
   const frame = useCurrentFrame();
 
+  const totalListHeightPx = content.scannedIssues.length * ROW_HEIGHT_PX;
+  const scrollPxPerFrame = (totalListHeightPx * 0.15) / 40;
   const scrollStartFrame = 20;
-  const scrollY = frame > scrollStartFrame ? (frame - scrollStartFrame) * SCROLL_PX_PER_FRAME : 0;
+  const scrollY = frame > scrollStartFrame ? (frame - scrollStartFrame) * scrollPxPerFrame : 0;
 
   const titleOpacity = interpolate(
     frame,
@@ -70,7 +68,7 @@ export const FileScan = () => {
         }}
       >
         <div style={{ transform: `translateY(-${scrollY}px)` }}>
-          {SCANNED_ISSUES.map((issue, issueIndex) => {
+          {content.scannedIssues.map((issue, issueIndex) => {
             const issueOpacity = interpolate(
               frame,
               [issueIndex * FRAMES_PER_ISSUE, issueIndex * FRAMES_PER_ISSUE + FADE_IN_FRAMES],
@@ -169,7 +167,7 @@ export const FileScan = () => {
               textShadow: "0 0 40px rgba(10,10,10,0.95), 0 0 80px rgba(10,10,10,0.9), 0 0 120px rgba(10,10,10,0.8)",
             }}
           >
-            Scan for React issues
+            {content.scanTitle}
           </div>
         </div>
       </AbsoluteFill>

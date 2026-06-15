@@ -55,7 +55,7 @@
     "@typescript-eslint/types": "^8.59.3",
     "eslint-scope": "^9.1.2",
     "eslint-visitor-keys": "^5.0.1",
-    "oxc-parser": "^0.132.0"
+    "oxc-parser": "^0.135.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0"

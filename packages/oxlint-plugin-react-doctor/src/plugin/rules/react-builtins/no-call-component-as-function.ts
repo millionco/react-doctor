@@ -37,6 +37,11 @@ export const noCallComponentAsFunction = defineRule({
   id: "no-call-component-as-function",
   title: "Component called as a function",
   severity: "warn",
+  // Test/story files routinely call hookless wrapper components as functions
+  // and pass the result to `render(...)` — harmless there, and the dominant
+  // real-world firing surface (verified via an OSS eval sweep). `test-noise`
+  // skips those files so the rule only nags shipped code.
+  tags: ["test-noise"],
   recommendation:
     "Render components as JSX (`<Component />`), never call them like functions (`Component(props)`). A direct call runs the component outside React and breaks hooks, state, and memoization.",
   create: (context: RuleContext) => {

@@ -35,6 +35,12 @@ describe("no-deprecated-tailwind-class", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does NOT flag `overflow-clip` (a current `overflow: clip` utility, not `text-clip`)", () => {
+    const code = `const A = () => <div className="overflow-clip" />;`;
+    const result = runRule(noDeprecatedTailwindClass, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does NOT mis-suggest for `bg-gradient-radial` (v4 is `bg-radial`, not `bg-linear-radial`)", () => {
     const code = `const A = () => <div className="bg-gradient-radial" />;`;
     const result = runRule(noDeprecatedTailwindClass, code);

@@ -28,8 +28,9 @@ const CODE_BODY_KEYWORDS = new Set([
 ]);
 
 // Lowercased identifier immediately preceding `beforeIndex` (skipping
-// whitespace) — used to classify a `$$`/`'` opener by its keyword (`do`/`as`
-// code body, `execute`/`perform` dynamic SQL).
+// whitespace) — used to classify a `$$` opener by its keyword (`do` or a bare
+// language name = an immediately-executed code body; `as`/anything else = a
+// blanked function body or string value).
 const precedingKeyword = (content: string, beforeIndex: number): string => {
   let lookBack = beforeIndex - 1;
   while (lookBack >= 0 && /\s/.test(content[lookBack] ?? "")) lookBack -= 1;
@@ -43,9 +44,11 @@ const precedingKeyword = (content: string, beforeIndex: number): string => {
 // Sanitizes the interior of a kept-visible `DO`/`AS` code body in place: blanks
 // comments and single-quoted strings (so `RAISE NOTICE '… create table …'` and
 // seed text can't false-match) while keeping double-quoted identifiers, direct
-// DDL, and `EXECUTE`/`PERFORM` dynamic SQL visible. EXECUTE is tracked at the
-// statement level (until the next `;`), so `EXECUTE format('alter table …', …)`
-// and concatenated dynamic SQL keep their strings visible too.
+// DDL, and `EXECUTE` dynamic SQL visible. EXECUTE is tracked at the statement
+// level (until the next `;`), so `EXECUTE format('alter table …', …)` and
+// concatenated dynamic SQL keep their strings visible too. `PERFORM` is NOT
+// dynamic SQL — it runs a query/expression written directly, never a string —
+// so a literal in a `PERFORM` argument is never executed and stays blanked.
 const blankCodeBodyInterior = (
   content: string,
   characters: string[],
@@ -67,7 +70,7 @@ const blankCodeBodyInterior = (
       let wordEnd = index;
       while (wordEnd < end && /[A-Za-z0-9_]/.test(content[wordEnd] ?? "")) wordEnd += 1;
       const word = content.slice(index, wordEnd).toLowerCase();
-      if (word === "execute" || word === "perform") inExecuteStatement = true;
+      if (word === "execute") inExecuteStatement = true;
       index = wordEnd;
       continue;
     }

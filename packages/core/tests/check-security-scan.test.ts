@@ -348,6 +348,24 @@ describe("checkSecurityScan", () => {
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
+    it("flags a table whose RLS enable only appears inside a PERFORM string (not executed)", () => {
+      writeFile(
+        "supabase/migrations/018_perform_rls.sql",
+        `create table balances (id uuid primary key);\ndo $$ begin\n  perform 'alter table balances enable row level security';\nend $$;\n`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("supabase-table-missing-rls");
+    });
+
+    it("does not flag a create table that appears only inside a PERFORM string", () => {
+      writeFile(
+        "supabase/migrations/019_perform_create.sql",
+        `create table accounts (id uuid primary key);\nalter table accounts enable row level security;\ndo $$ begin\n  perform 'create table shadow (id int)';\nend $$;\n`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
     it("flags a table whose RLS enable is only inside a function body", () => {
       writeFile(
         "supabase/migrations/016_func.sql",

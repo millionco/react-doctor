@@ -494,6 +494,19 @@ describe("buildCapabilities", () => {
     );
   });
 
+  it("emits `tailwind`, `tailwind:3.4`, and `tailwind:4` for a Tailwind 4 project", () => {
+    const capabilities = buildCapabilities({ ...baseProject, tailwindVersion: "^4.0.0" });
+    expect(capabilities.has("tailwind")).toBe(true);
+    expect(capabilities.has("tailwind:3.4")).toBe(true);
+    expect(capabilities.has("tailwind:4")).toBe(true);
+  });
+
+  it("emits `tailwind:3.4` but not `tailwind:4` for a Tailwind 3.4 project", () => {
+    const capabilities = buildCapabilities({ ...baseProject, tailwindVersion: "^3.4.1" });
+    expect(capabilities.has("tailwind:3.4")).toBe(true);
+    expect(capabilities.has("tailwind:4")).toBe(false);
+  });
+
   it("emits `nextjs:15` capability for Next.js 15+ projects", () => {
     const capabilities = buildCapabilities({
       ...baseProject,

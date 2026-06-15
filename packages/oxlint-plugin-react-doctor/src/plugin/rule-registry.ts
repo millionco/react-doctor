@@ -159,6 +159,7 @@ import { nextjsNoUseSearchParamsWithoutSuspense } from "./rules/nextjs/nextjs-no
 import { nextjsNoVercelOgImport } from "./rules/nextjs/nextjs-no-vercel-og-import.js";
 import { noAccessKey } from "./rules/a11y/no-access-key.js";
 import { noAdjustStateOnPropChange } from "./rules/state-and-effects/no-adjust-state-on-prop-change.js";
+import { noArbitraryPxFontSize } from "./rules/design/no-arbitrary-px-font-size.js";
 import { noAriaHiddenOnFocusable } from "./rules/a11y/no-aria-hidden-on-focusable.js";
 import { noArithmeticOnOptionalChainedOperand } from "./rules/correctness/no-arithmetic-on-optional-chained-operand.js";
 import { noArrayFindResultMemberAccessWithoutGuard } from "./rules/correctness/no-array-find-result-member-access-without-guard.js";
@@ -187,6 +188,7 @@ import { noDangerWithChildren } from "./rules/react-builtins/no-danger-with-chil
 import { noDarkModeGlow } from "./rules/design/no-dark-mode-glow.js";
 import { noDefaultProps } from "./rules/architecture/no-default-props.js";
 import { noDeprecatedKeyboardEventKeycodeWhich } from "./rules/correctness/no-deprecated-keyboard-event-keycode-which.js";
+import { noDeprecatedTailwindClass } from "./rules/design/no-deprecated-tailwind-class.js";
 import { noDerivedState } from "./rules/state-and-effects/no-derived-state.js";
 import { noDerivedStateEffect } from "./rules/state-and-effects/no-derived-state-effect.js";
 import { noDerivedUseState } from "./rules/state-and-effects/no-derived-use-state.js";
@@ -343,6 +345,7 @@ import { preactNoReactHooksImport } from "./rules/preact/preact-no-react-hooks-i
 import { preactNoRenderArguments } from "./rules/preact/preact-no-render-arguments.js";
 import { preactPreferOndblclick } from "./rules/preact/preact-prefer-ondblclick.js";
 import { preactPreferOninput } from "./rules/preact/preact-prefer-oninput.js";
+import { preferDvhOverVh } from "./rules/design/prefer-dvh-over-vh.js";
 import { preferDynamicImport } from "./rules/bundle-size/prefer-dynamic-import.js";
 import { preferEs6Class } from "./rules/react-builtins/prefer-es6-class.js";
 import { preferExplicitVariants } from "./rules/architecture/prefer-explicit-variants.js";
@@ -2287,6 +2290,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-arbitrary-px-font-size",
+    id: "no-arbitrary-px-font-size",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noArbitraryPxFontSize,
+      framework: "global",
+      category: "Accessibility",
+    },
+  },
+  {
     key: "react-doctor/no-aria-hidden-on-focusable",
     id: "no-aria-hidden-on-focusable",
     source: "react-doctor",
@@ -2621,6 +2635,17 @@ export const reactDoctorRules = [
       ...noDeprecatedKeyboardEventKeycodeWhich,
       framework: "global",
       category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/no-deprecated-tailwind-class",
+    id: "no-deprecated-tailwind-class",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noDeprecatedTailwindClass,
+      framework: "global",
+      category: "Maintainability",
     },
   },
   {
@@ -4484,6 +4509,17 @@ export const reactDoctorRules = [
       ...preactPreferOninput,
       framework: "preact",
       category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/prefer-dvh-over-vh",
+    id: "prefer-dvh-over-vh",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preferDvhOverVh,
+      framework: "global",
+      category: "Maintainability",
     },
   },
   {

@@ -40,6 +40,7 @@ export type Capability =
   | "nextjs:16"
   | "tailwind"
   | "tailwind:3.4"
+  | "tailwind:4"
   | "zod"
   | "zod:4"
   | "mobx"

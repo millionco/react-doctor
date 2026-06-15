@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
+import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -10,10 +11,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // `*-current` (inherits the text color, the intended pairing) and stroke-WIDTH
 // utilities (`stroke-2`, `stroke-[1.5]`), which set thickness, not color.
 const hasColorUtility = (classNameValue: string, prefix: "fill-" | "stroke-"): boolean =>
-  classNameValue.split(/\s+/).some((token) => {
-    const base = token.split(":").pop() ?? "";
-    if (!base.startsWith(prefix)) return false;
-    const value = base.slice(prefix.length);
+  getClassNameTokens(classNameValue).some((token) => {
+    if (!token.startsWith(prefix)) return false;
+    const value = token.slice(prefix.length);
     if (value === "" || value === "current") return false;
     if (/^\d/.test(value) || /^\[\d/.test(value)) return false;
     return true;

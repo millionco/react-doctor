@@ -33,6 +33,18 @@ describe("no-svg-currentcolor-with-fill-class", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does NOT flag a variant-prefixed `hover:fill-blue-600` (no static base conflict)", () => {
+    const code = `const A = () => <svg fill="currentColor" className="hover:fill-blue-600" />;`;
+    const result = runRule(noSvgCurrentcolorWithFillClass, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag `dark:fill-white` with currentColor (state-gated)", () => {
+    const code = `const A = () => <svg fill="currentColor" className="dark:fill-white" />;`;
+    const result = runRule(noSvgCurrentcolorWithFillClass, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does NOT flag `fill-current` (intended to inherit)", () => {
     const code = `const A = () => <svg fill="currentColor" className="fill-current" />;`;
     const result = runRule(noSvgCurrentcolorWithFillClass, code);

@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const MESSAGE =
@@ -33,10 +34,7 @@ export const noTargetBlankWithoutRel = defineRule({
       if (tagName !== "a" && tagName !== "area") return;
 
       // A spread (`{...props}`) could supply `rel`; don't risk a false positive.
-      const hasSpread = node.attributes.some((attribute) =>
-        isNodeOfType(attribute as EsTreeNode, "JSXSpreadAttribute"),
-      );
-      if (hasSpread) return;
+      if (hasJsxSpreadAttribute(node.attributes)) return;
 
       const targetAttribute = findJsxAttribute(node.attributes, "target");
       if (!targetAttribute || !targetIsBlank(targetAttribute)) return;

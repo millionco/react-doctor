@@ -2,16 +2,20 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
-import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// A `fill-*` / `stroke-*` utility that sets an explicit COLOR (so it fights an
-// inline `fill="currentColor"` / `stroke="currentColor"`). Excludes
-// `*-current` (inherits the text color, the intended pairing) and stroke-WIDTH
-// utilities (`stroke-2`, `stroke-[1.5]`), which set thickness, not color.
+// An UNPREFIXED `fill-*` / `stroke-*` utility that sets an explicit COLOR (so
+// it fights an inline `fill="currentColor"` / `stroke="currentColor"`).
+// Excludes:
+//   - variant-prefixed tokens (`hover:fill-blue-600`, `dark:fill-white`) — the
+//     attribute paints the base color; the class only applies in that state, so
+//     there's no static conflict;
+//   - `*-current` (inherits the text color — the intended pairing);
+//   - stroke-WIDTH utilities (`stroke-2`, `stroke-[1.5]`), which set thickness.
 const hasColorUtility = (classNameValue: string, prefix: "fill-" | "stroke-"): boolean =>
-  getClassNameTokens(classNameValue).some((token) => {
+  classNameValue.split(/\s+/).some((token) => {
+    if (token.includes(":")) return false;
     if (!token.startsWith(prefix)) return false;
     const value = token.slice(prefix.length);
     if (value === "" || value === "current") return false;

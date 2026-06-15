@@ -94,4 +94,22 @@ describe("no-low-contrast-inline-style", () => {
     const result = runRule(noLowContrastInlineStyle, code);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does NOT flag 4-arg `rgb(0,0,0,0.5)` (carries alpha)", () => {
+    const code = `const A = () => <span style={{ color: "rgb(0,0,0,0.5)", backgroundColor: "#ffffff" }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("DOES flag opaque comma `rgb()` colors", () => {
+    const code = `const A = () => <span style={{ color: "rgb(156,163,175)", backgroundColor: "rgb(255,255,255)", fontSize: 16 }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT flag when the style object has a spread (could override colors)", () => {
+    const code = `const A = (rest) => <span style={{ color: "#9ca3af", backgroundColor: "#fff", ...rest }}>x</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

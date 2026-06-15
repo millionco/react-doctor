@@ -37,8 +37,13 @@ const resolveOpaqueColor = (raw: string): ParsedRgb | null => {
   if (value.startsWith("var(")) return null;
   // Colors carrying alpha can't be judged without compositing — skip.
   if (/^#(?:[0-9a-f]{4}|[0-9a-f]{8})$/.test(value)) return null;
-  if (value.startsWith("rgba(") || value.startsWith("hsl") || value.startsWith("oklch"))
-    return null;
+  if (value.startsWith("hsl") || value.startsWith("oklch")) return null;
+  // `rgb()`/`rgba()` with an alpha channel — the slash form (`rgb(0 0 0 / 50%)`)
+  // or a 4th comma component (`rgb(0,0,0,0.5)` / `rgba(0,0,0,0.5)`).
+  if (value.startsWith("rgb")) {
+    const inner = value.slice(value.indexOf("(") + 1, value.lastIndexOf(")"));
+    if (inner.includes("/") || inner.split(",").length >= 4) return null;
+  }
   return parseColorToRgb(value);
 };
 
@@ -68,6 +73,7 @@ const isBoldWeight = (property: EsTreeNodeOfType<"Property">): boolean => {
 export const noLowContrastInlineStyle = defineRule({
   id: "no-low-contrast-inline-style",
   title: "Low-contrast text in inline style",
+  tags: ["test-noise"],
   severity: "warn",
   category: "Accessibility",
   recommendation:
@@ -76,6 +82,11 @@ export const noLowContrastInlineStyle = defineRule({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
+      // A `{...spread}` in the style object can override color/backgroundColor
+      // at runtime, so we can't judge the static literals — bail.
+      if ((expression.properties ?? []).some((property) => property.type === "SpreadElement")) {
+        return;
+      }
 
       let foreground: ParsedRgb | null = null;
       let backgroundColorRaw: string | null = null;

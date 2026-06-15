@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const MESSAGE =
@@ -48,10 +49,7 @@ export const noAutoplayWithoutMuted = defineRule({
       if (tagName !== "video" && tagName !== "audio") return;
 
       // A spread (`{...props}`) could supply `muted`; don't risk a false positive.
-      const hasSpread = node.attributes.some((attribute) =>
-        isNodeOfType(attribute as EsTreeNode, "JSXSpreadAttribute"),
-      );
-      if (hasSpread) return;
+      if (hasJsxSpreadAttribute(node.attributes)) return;
 
       const autoPlay = hasJsxPropIgnoreCase(node.attributes, "autoplay");
       // Only flag autoplay we can prove is on; dynamic `autoPlay={cond}` is skipped.

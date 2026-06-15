@@ -6,61 +6,62 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
+import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 
 const message = (name: string): string =>
   `\`${name}\` is a component, so calling it as a plain function (\`${name}(...)\`) runs it outside React: its hooks break, it gets no fiber/state, and memoization is lost. Render it as \`<${name} />\` instead.`;
 
-// A PascalCase identifier is treated as a component only on strong, local
-// evidence: it is rendered as a JSX element somewhere in this file, OR it is
-// defined in this file as a PascalCase function whose body returns JSX. That
-// keeps the rule high-precision — PascalCase factories/built-ins (`Boolean(x)`,
-// `MyEnum()`) are never JSX-rendered and never return JSX, so they're never
-// flagged, and lowercase render helpers (`renderRow()`) are out of scope by
-// the naming convention. Calling an imported component that is never rendered
-// in this file is a v1 non-goal.
+// True when the binding the call resolves to is a same-file component
+// definition whose body returns JSX. Resolving through the SYMBOL (not the
+// name) makes this shadow-safe: a parameter or local named like a component
+// resolves to its own binding, not the component, so it is never flagged.
+const symbolIsLocalComponent = (symbol: SymbolDescriptor, context: RuleContext): boolean => {
+  const declaration = symbol.declarationNode;
+  if (isComponentDeclaration(declaration)) {
+    return functionContainsReactRenderOutput(declaration, context.scopes);
+  }
+  if (isComponentAssignment(declaration) && symbol.initializer) {
+    return functionContainsReactRenderOutput(symbol.initializer, context.scopes);
+  }
+  return false;
+};
+
+// A component is only flagged on strong, shadow-safe evidence: the called
+// identifier resolves to a same-file component definition that returns JSX, OR
+// to an imported binding that is also rendered as a JSX element in this file.
+// PascalCase factories/built-ins (`Boolean(x)`, `MyEnum()`) resolve to a
+// global or a non-component binding and are never flagged.
 export const noCallComponentAsFunction = defineRule({
   id: "no-call-component-as-function",
   title: "Component called as a function",
   severity: "warn",
   recommendation:
     "Render components as JSX (`<Component />`), never call them like functions (`Component(props)`). A direct call runs the component outside React and breaks hooks, state, and memoization.",
-  create: (context) => {
-    const knownComponentNames = new Set<string>();
-    const candidateCalls: Array<{ node: EsTreeNode; name: string }> = [];
+  create: (context: RuleContext) => {
+    const renderedJsxNames = new Set<string>();
+    const candidateCalls: Array<{ node: EsTreeNode; callee: EsTreeNode; name: string }> = [];
 
     const visitors: RuleVisitors = {
-      FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
-        if (
-          isComponentDeclaration(node) &&
-          functionContainsReactRenderOutput(node, context.scopes)
-        ) {
-          if (node.id) knownComponentNames.add(node.id.name);
-        }
-      },
-      VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
-        if (
-          isComponentAssignment(node) &&
-          node.init &&
-          functionContainsReactRenderOutput(node.init, context.scopes) &&
-          isNodeOfType(node.id, "Identifier")
-        ) {
-          knownComponentNames.add(node.id.name);
-        }
-      },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (isNodeOfType(node.name, "JSXIdentifier") && isUppercaseName(node.name.name)) {
-          knownComponentNames.add(node.name.name);
+          renderedJsxNames.add(node.name.name);
         }
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (isNodeOfType(node.callee, "Identifier") && isUppercaseName(node.callee.name)) {
-          candidateCalls.push({ node, name: node.callee.name });
+          candidateCalls.push({ node, callee: node.callee, name: node.callee.name });
         }
       },
       "Program:exit"() {
         for (const candidate of candidateCalls) {
-          if (knownComponentNames.has(candidate.name)) {
+          const symbol = context.scopes.symbolFor(candidate.callee);
+          if (!symbol) continue;
+          const isComponent =
+            symbolIsLocalComponent(symbol, context) ||
+            (symbol.kind === "import" && renderedJsxNames.has(candidate.name));
+          if (isComponent) {
             context.report({ node: candidate.node, message: message(candidate.name) });
           }
         }

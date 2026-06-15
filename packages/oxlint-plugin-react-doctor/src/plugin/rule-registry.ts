@@ -68,7 +68,6 @@ import { htmlNoInvalidTableNesting } from "./rules/correctness/html-no-invalid-t
 import { htmlNoNestedInteractive } from "./rules/correctness/html-no-nested-interactive.js";
 import { iframeHasTitle } from "./rules/a11y/iframe-has-title.js";
 import { iframeMissingSandbox } from "./rules/react-builtins/iframe-missing-sandbox.js";
-import { imgMissingDimensions } from "./rules/performance/img-missing-dimensions.js";
 import { imgRedundantAlt } from "./rules/a11y/img-redundant-alt.js";
 import { importMetadataExecutionRisk } from "./rules/security-scan/import-metadata-execution-risk.js";
 import { insecureCryptoRisk } from "./rules/security-scan/insecure-crypto-risk.js";
@@ -1109,18 +1108,6 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       requires: [...new Set(["react", ...(iframeMissingSandbox.requires ?? [])])],
-    },
-  },
-  {
-    key: "react-doctor/img-missing-dimensions",
-    id: "img-missing-dimensions",
-    source: "react-doctor",
-    originallyExternal: false,
-    rule: {
-      ...imgMissingDimensions,
-      framework: "global",
-      category: "Performance",
-      requires: [...new Set(["react", ...(imgMissingDimensions.requires ?? [])])],
     },
   },
   {

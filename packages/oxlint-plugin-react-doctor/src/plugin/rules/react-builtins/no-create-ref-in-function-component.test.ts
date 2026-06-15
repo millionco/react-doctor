@@ -74,6 +74,14 @@ describe("no-create-ref-in-function-component", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a local `createRef` that shadows React's (scope-safe)", () => {
+    const result = runRule(
+      noCreateRefInFunctionComponent,
+      `function App() { const createRef = () => ({ current: null }); const ref = createRef(); return <div ref={ref} />; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag `useRef()`", () => {
     const result = runRule(
       noCreateRefInFunctionComponent,

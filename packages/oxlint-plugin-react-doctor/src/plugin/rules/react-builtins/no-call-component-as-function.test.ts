@@ -82,6 +82,17 @@ describe("no-call-component-as-function", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a parameter that shadows a component name (scope-safe)", () => {
+    const result = runRule(
+      noCallComponentAsFunction,
+      `
+      const Row = () => <li />;
+      function renderWith(Row) { return Row({ x: 1 }); }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a member-expression call (`obj.Method()`)", () => {
     const result = runRule(
       noCallComponentAsFunction,

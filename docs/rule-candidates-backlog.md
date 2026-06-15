@@ -18,7 +18,7 @@ excluded; overlaps with existing rules are flagged.
    - `Sidebar(props)` → `<Sidebar {...props} />`
 2. **`no-async-effect-callback`** — `useEffect(async () => …)` (effect cleanup gets a Promise, races on unmount). scope · **low**. _(corro 2: kent, solid as framework-agnostic)_
    - `useEffect(async () => { await load() }, [])` → define an inner async fn and call it.
-3. **`img-missing-dimensions`** — plain `<img>` with neither `width`+`height` nor aspect classes → CLS. syntax · **low-med** (skip `fill`/sized className). _(corro 3: react-perf, web-perf, modern-web)_
+3. ~~**`img-missing-dimensions`**~~ — **dropped, not statically sound.** width/height attrs are only one way to reserve space; CSS `aspect-ratio`/container sizing work too and live in stylesheets a linter can't see. This is a runtime check (Lighthouse `unsized-images`), not a static one. _(corro 3, but defeated by CSS invisibility)_
 4. **`no-json-parse-stringify-clone`** — `JSON.parse(JSON.stringify(x))` deep clone (slow, drops Dates/Map/undefined). syntax · **low**. _(corro 2: react-perf, web-perf)_ → `structuredClone(x)`.
 5. **`no-create-ref-in-function-component`** — `createRef()` in a function component (new ref every render) → `useRef`. scope · **low**. _(corro 2: react-dev, kent)_
 6. **`no-set-state-in-usememo`** — calling a setter inside `useMemo`/`useCallback` factory (side effect in render). path · **low**. _(corro 2: react-dev, kent)_
@@ -127,13 +127,19 @@ framework-agnostic **`no-async-effect-callback`** (already in Tier S).
 
 ---
 
-### Recommended next implementation batch (highest signal × lowest noise) — SHIPPED
+### Recommended next implementation batch (highest signal × lowest noise) — SHIPPED (7)
 
-`no-call-component-as-function`, `no-async-effect-callback`, `img-missing-dimensions`,
-`no-json-parse-stringify-clone`, `no-create-ref-in-function-component`, `dialog-has-accessible-name`,
-`auth-token-in-web-storage`, `no-img-lazy-with-high-fetchpriority` — all syntax/scope-only, low-FP,
-each grounded in ≥1 (mostly ≥2) sources and orthogonal to the existing rules. Implemented with
-adversarial tests + FP-regression coverage on branch `add-mined-correctness-perf-a11y-rules`.
+`no-call-component-as-function`, `no-async-effect-callback`, `no-json-parse-stringify-clone`,
+`no-create-ref-in-function-component`, `dialog-has-accessible-name`, `auth-token-in-web-storage`,
+`no-img-lazy-with-high-fetchpriority` — all syntax/scope-only, low-FP, each grounded in ≥1 (mostly
+≥2) sources and orthogonal to the existing rules. Implemented with adversarial tests + FP-regression
+coverage (incl. scope-resolution shadow-safety) on branch `add-mined-correctness-perf-a11y-rules`.
+
+**Dropped from the batch: `img-missing-dimensions`** — a static linter cannot see CSS, and width/
+height attributes are only _one_ of several valid ways to reserve space (CSS `aspect-ratio`,
+container sizing, CSS width/height all work). Lighthouse's `unsized-images` audit makes this call at
+runtime against computed styles; a syntax rule would false-positive on every image sized by an
+external/global stylesheet. Moved to the not-statically-sound list below.
 
 > Raw per-cluster candidate detail (bad/good for all ~200) was produced in `/tmp/rd-mine/*.md`
 > (ephemeral). Ask to persist any cluster's full detail into the repo if needed.

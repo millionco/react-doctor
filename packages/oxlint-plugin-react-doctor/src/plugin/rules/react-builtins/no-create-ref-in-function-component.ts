@@ -4,6 +4,7 @@ import {
 } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -28,6 +29,14 @@ export const noCreateRefInFunctionComponent = defineRule({
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isReactFunctionCall(node, "createRef")) return;
+
+      // Guard the bare `createRef()` form against a shadowing local binding
+      // (`const createRef = () => ({})`). If the identifier resolves to a
+      // non-import declaration it isn't React's `createRef`, so skip.
+      if (isNodeOfType(node.callee, "Identifier")) {
+        const symbol = context.scopes.symbolFor(node.callee);
+        if (symbol && symbol.kind !== "import") return;
+      }
 
       const enclosingFunction = nearestEnclosingFunction(node);
       if (!enclosingFunction) return;

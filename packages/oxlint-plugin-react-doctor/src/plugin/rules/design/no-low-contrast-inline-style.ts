@@ -101,10 +101,16 @@ export const noLowContrastInlineStyle = defineRule({
       // A `background`/`backgroundImage` could paint over backgroundColor; bail.
       if (hasBackgroundImage || !foreground || !background) return;
 
-      const isLargeText =
-        fontSizePx !== null &&
-        (fontSizePx >= LARGE_TEXT_MIN_PX || (isBold && fontSizePx >= LARGE_BOLD_TEXT_MIN_PX));
-      const threshold = isLargeText ? WCAG_CONTRAST_LARGE_MIN : WCAG_CONTRAST_NORMAL_MIN;
+      // When the font size isn't in the inline style it may be set via a
+      // class (`text-5xl`) — i.e. the text could be "large". To avoid false
+      // positives on large text (which only needs 3:1), fall back to the
+      // lenient large-text threshold whenever the size is unknown; only
+      // apply the stricter 4.5:1 when we can see the size is normal.
+      const couldBeLargeText =
+        fontSizePx === null ||
+        fontSizePx >= LARGE_TEXT_MIN_PX ||
+        (isBold && fontSizePx >= LARGE_BOLD_TEXT_MIN_PX);
+      const threshold = couldBeLargeText ? WCAG_CONTRAST_LARGE_MIN : WCAG_CONTRAST_NORMAL_MIN;
       const ratio = getWcagContrastRatio(foreground, background);
       if (ratio < threshold) {
         context.report({

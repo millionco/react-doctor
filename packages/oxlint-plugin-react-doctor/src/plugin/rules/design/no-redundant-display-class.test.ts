@@ -38,4 +38,10 @@ describe("no-redundant-display-class", () => {
     const result = runRule(noRedundantDisplayClass, code);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does NOT flag `block` on an `<li>` (li defaults to list-item, so block is meaningful)", () => {
+    const code = `const A = () => <li className="block">x</li>;`;
+    const result = runRule(noRedundantDisplayClass, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

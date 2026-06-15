@@ -443,8 +443,14 @@ describe("runInspect — scan progress phases", () => {
       "unused-file",
     ]);
     expect(phaseEvents).toEqual(["lint", "afterLint", "dead-code"]);
-    expect(result.progressEvents.map((event) => event.text)).toContain("Scanning...");
-    expect(result.progressEvents.map((event) => event.text)).toContain("Analyzing dead code...");
+    const progressTexts = result.progressEvents.map((event) => event.text);
+    expect(progressTexts).toContain("Scanning...");
+    // The dead-code phase carries the scanned file total so the counter never
+    // appears to stall short of N before the handoff (issue #815).
+    expect(
+      progressTexts.some((text) => /^Scanned \d+ files?, analyzing dead code\.\.\.$/.test(text)),
+      `dead-code phase should report the scanned file total, got: ${progressTexts.join(" | ")}`,
+    ).toBe(true);
   });
 });
 

@@ -35,6 +35,12 @@ describe("no-deprecated-tailwind-class", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does NOT mis-suggest for `bg-gradient-radial` (v4 is `bg-radial`, not `bg-linear-radial`)", () => {
+    const code = `const A = () => <div className="bg-gradient-radial" />;`;
+    const result = runRule(noDeprecatedTailwindClass, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does NOT flag `flex`, `flex-1`, or `flex-col` (not the deprecated names)", () => {
     const code = `const A = () => <div className="flex flex-1 flex-col" />;`;
     const result = runRule(noDeprecatedTailwindClass, code);

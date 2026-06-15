@@ -12,7 +12,9 @@ const renameDeprecatedToken = (token: string): string | null => {
   if (token === "overflow-clip") return "text-clip";
   if (token.startsWith("flex-shrink")) return token.replace("flex-shrink", "shrink");
   if (token.startsWith("flex-grow")) return token.replace("flex-grow", "grow");
-  if (token.startsWith("bg-gradient-")) return token.replace("bg-gradient-", "bg-linear-");
+  // Only the directional gradients were renamed to `bg-linear-to-*`; v4's
+  // radial/conic are `bg-radial`/`bg-conic`, so don't touch `bg-gradient-radial`.
+  if (token.startsWith("bg-gradient-to-")) return token.replace("bg-gradient-to-", "bg-linear-to-");
   return null;
 };
 

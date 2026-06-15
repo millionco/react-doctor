@@ -6,11 +6,11 @@ import { getStylePropertyStringValue } from "./utils/get-style-property-string-v
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// `h-screen`, `min-h-screen`, `max-h-screen`, or arbitrary `h-[100vh]` —
-// height only (`w-screen` is handled by `no-full-viewport-width`).
-const FULL_VIEWPORT_HEIGHT_CLASS =
-  /(?:^|\s)(?:\w+:)*(?:min-|max-)?h-(?:screen|\[100vh\])(?=$|[\s])/;
-const HEIGHT_KEYS = new Set(["height", "minHeight", "maxHeight"]);
+// `h-screen`, `min-h-screen`, or arbitrary `h-[100vh]` — height only
+// (`w-screen` is handled by `no-full-viewport-width`). `max-h-*` is excluded:
+// `max-height: 100vh` is a common, valid cap (e.g. a scrollable modal).
+const FULL_VIEWPORT_HEIGHT_CLASS = /(?:^|\s)(?:\w+:)*(?:min-)?h-(?:screen|\[100vh\])(?=$|[\s])/;
+const HEIGHT_KEYS = new Set(["height", "minHeight"]);
 
 const MESSAGE =
   "`100vh` is taller than the visible viewport on mobile (it ignores the browser's dynamic toolbars), so full-height layouts get clipped. Use the dynamic-viewport unit: `h-dvh` / `min-h-dvh` (or `100dvh`).";

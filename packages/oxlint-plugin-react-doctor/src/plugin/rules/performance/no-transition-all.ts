@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getClassNameTokens } from "../../utils/get-class-name-tokens.js";
 import { getStringFromClassNameAttr } from "../design/utils/get-string-from-class-name-attr.js";
 
 // `transition-all` as a whole Tailwind token (the segment after any
@@ -10,7 +11,7 @@ import { getStringFromClassNameAttr } from "../design/utils/get-string-from-clas
 // `transition` maps to a curated property list (color/bg/border/opacity/
 // shadow/transform/filter) — NOT `all` — so it is intentionally not flagged.
 const hasTransitionAllClass = (classNameValue: string): boolean =>
-  classNameValue.split(/\s+/).some((token) => token.split(":").pop() === "transition-all");
+  getClassNameTokens(classNameValue).some((token) => token === "transition-all");
 
 const TAILWIND_MESSAGE =
   "Your users see janky animation because `transition-all` animates every property that changes, including expensive layout ones and instant ones like focus rings. Name the properties: `transition-colors`, `transition-opacity`, or `transition-transform`.";

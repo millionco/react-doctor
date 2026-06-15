@@ -88,6 +88,9 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
     if (isTailwindAtLeast(tailwind, { major: 3, minor: 4 })) {
       capabilities.add("tailwind:3.4");
     }
+    if (isTailwindAtLeast(tailwind, { major: 4, minor: 0 })) {
+      capabilities.add("tailwind:4");
+    }
   }
 
   if (project.zodVersion !== null) {

@@ -429,14 +429,13 @@ const runDeadCodeWorkerWithTimeout = (
   });
 
 export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diagnostic[]> => {
-  const { userConfig } = options;
   // Canonicalize up front so the deslop graph and its resolver share one
   // path space (see `toCanonicalPath` for why a symlinked root breaks it).
   const rootDirectory = toCanonicalPath(options.rootDirectory);
   if (!fs.existsSync(path.join(rootDirectory, "package.json"))) return [];
 
   const entryPatterns = collectDeadCodeEntryPatterns(rootDirectory);
-  const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory, userConfig);
+  const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory);
   const workerHandle = (options.createWorker ?? createDeadCodeWorker)({
     rootDirectory,
     entryPatterns,

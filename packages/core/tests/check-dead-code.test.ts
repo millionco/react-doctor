@@ -104,22 +104,34 @@ describe("checkDeadCode", () => {
     expect(orphan?.filePath.includes("\\")).toBe(false);
   });
 
-  it("honors ignore patterns from .gitignore and userConfig.ignore.files", async () => {
+  it("excludes .gitignored files from the dead-code graph", async () => {
     const directory = setupProject("ignore-patterns", {
       "src/index.ts": "export const used = 1;\n",
       "src/gitignored.ts": "export const a = 1;\n",
-      "src/configignored.ts": "export const b = 1;\n",
       ".gitignore": "src/gitignored.ts\n",
+    });
+    const flagged = await flaggedUnusedFiles(directory);
+    expect(flagged.some((entry) => entry.endsWith("gitignored.ts"))).toBe(false);
+  });
+
+  // react-doctor#830: ignored files stay in deslop's graph, so a file imported
+  // only by an ignored file is still reachable and must not be flagged unused.
+  it("keeps a file imported only by an ignore.files file reachable", async () => {
+    const directory = setupProject("ignored-importer-keeps-target-alive", {
+      "src/index.ts":
+        'import { Hero } from "./sanity/components/Hero";\nexport const main = () => Hero();\n',
+      "src/sanity/components/Hero.ts":
+        'import { serverAction } from "../../actions/server-action";\nexport const Hero = () => serverAction();\n',
+      "src/actions/server-action.ts": 'export const serverAction = () => "hello";\n',
     });
     const diagnostics = await checkDeadCode({
       rootDirectory: directory,
-      userConfig: { ignore: { files: ["src/configignored.ts"] } },
+      userConfig: { ignore: { files: ["src/sanity/components/**"] } },
     });
     const flagged = diagnostics
       .filter((diagnostic) => diagnostic.rule === "unused-file")
       .map((diagnostic) => diagnostic.filePath);
-    expect(flagged.some((entry) => entry.endsWith("gitignored.ts"))).toBe(false);
-    expect(flagged.some((entry) => entry.endsWith("configignored.ts"))).toBe(false);
+    expect(flagged.some((entry) => entry.endsWith("server-action.ts"))).toBe(false);
   });
 
   it("honors unused-file ignore patterns from knip.json", async () => {

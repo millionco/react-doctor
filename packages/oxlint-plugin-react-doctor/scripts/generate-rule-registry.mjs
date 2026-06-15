@@ -94,6 +94,7 @@ const RULES_NOT_PORTED_FROM_EXTERNAL = new Set([
   "dialog-has-accessible-name",
   "no-create-ref-in-function-component",
   "no-call-component-as-function",
+  "no-string-false-on-boolean-attribute",
 ]);
 
 // Rule ids whose source files are kept on disk but intentionally NOT

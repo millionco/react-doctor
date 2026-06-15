@@ -141,5 +141,26 @@ container sizing, CSS width/height all work). Lighthouse's `unsized-images` audi
 runtime against computed styles; a syntax rule would false-positive on every image sized by an
 external/global stylesheet. Moved to the not-statically-sound list below.
 
+### Mining batch 2 — SHIPPED (3) + evidence-based drops
+
+Each shipped rule passed an OSS noise sweep (react-use, radix-ui/primitives, excalidraw, mantine;
+~2,800 diagnostics): **0 false positives**.
+
+- **`no-document-write`** (Performance) — `document.write()`/`writeln()`.
+- **`no-sync-xhr`** (Performance) — `.open(method, url, false)` synchronous XHR.
+- **`no-string-false-on-boolean-attribute`** (Bugs) — `disabled="false"` etc. (truthy string applies
+  the boolean). Curated boolean-attr set on intrinsic elements only; excludes `aria-*`/enumerated.
+
+**Dropped after the sweep (real but too noisy / FP-prone):**
+
+- `no-accumulator-spread-in-reduce` — 29 hits across the 4 repos, all idiomatic small-data style
+  merges (`[...styles].reduce((acc,i)=>({...acc,...}))`). The pattern is genuinely O(n^2) but a
+  static rule can't tell a 3-item merge from a 10k-row one, so default-on is too noisy. Revisit as
+  opt-in / default-off with a large-source heuristic.
+- `no-redundant-live-region` — both real-world hits were false positives: an intentional
+  `role="status"` + dynamic `aria-live` override (radix toast) and a defensive explicit
+  `aria-live="polite"` (mantine carousel). axe does not flag this pattern; the "redundant" framing is
+  contentious. Dropped.
+
 > Raw per-cluster candidate detail (bad/good for all ~200) was produced in `/tmp/rd-mine/*.md`
 > (ephemeral). Ask to persist any cluster's full detail into the repo if needed.

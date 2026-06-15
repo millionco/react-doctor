@@ -172,6 +172,7 @@ import { noDirectStateMutation } from "./rules/state-and-effects/no-direct-state
 import { noDisabledZoom } from "./rules/design/no-disabled-zoom.js";
 import { noDistractingElements } from "./rules/a11y/no-distracting-elements.js";
 import { noDocumentStartViewTransition } from "./rules/view-transitions/no-document-start-view-transition.js";
+import { noDocumentWrite } from "./rules/js-performance/no-document-write.js";
 import { noDynamicImportPath } from "./rules/bundle-size/no-dynamic-import-path.js";
 import { noEffectChain } from "./rules/state-and-effects/no-effect-chain.js";
 import { noEffectEventHandler } from "./rules/state-and-effects/no-effect-event-handler.js";
@@ -242,7 +243,9 @@ import { noSetState } from "./rules/react-builtins/no-set-state.js";
 import { noSetStateInRender } from "./rules/state-and-effects/no-set-state-in-render.js";
 import { noSideTabBorder } from "./rules/design/no-side-tab-border.js";
 import { noStaticElementInteractions } from "./rules/a11y/no-static-element-interactions.js";
+import { noStringFalseOnBooleanAttribute } from "./rules/react-builtins/no-string-false-on-boolean-attribute.js";
 import { noStringRefs } from "./rules/react-builtins/no-string-refs.js";
+import { noSyncXhr } from "./rules/js-performance/no-sync-xhr.js";
 import { noThisInSfc } from "./rules/react-builtins/no-this-in-sfc.js";
 import { noTinyText } from "./rules/design/no-tiny-text.js";
 import { noTransitionAll } from "./rules/performance/no-transition-all.js";
@@ -2317,6 +2320,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-document-write",
+    id: "no-document-write",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noDocumentWrite,
+      framework: "global",
+      category: "Performance",
+    },
+  },
+  {
     key: "react-doctor/no-dynamic-import-path",
     id: "no-dynamic-import-path",
     source: "react-doctor",
@@ -3130,6 +3144,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-string-false-on-boolean-attribute",
+    id: "no-string-false-on-boolean-attribute",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noStringFalseOnBooleanAttribute,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(noStringFalseOnBooleanAttribute.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-string-refs",
     id: "no-string-refs",
     source: "react-doctor",
@@ -3139,6 +3165,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set(["react", ...(noStringRefs.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-sync-xhr",
+    id: "no-sync-xhr",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noSyncXhr,
+      framework: "global",
+      category: "Performance",
     },
   },
   {

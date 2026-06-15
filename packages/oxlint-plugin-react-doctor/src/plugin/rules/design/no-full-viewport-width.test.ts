@@ -21,10 +21,22 @@ describe("no-full-viewport-width", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags inline `maxWidth: '100vw'`", () => {
+  it("does NOT flag `max-w-[100vw]` (a defensive cap, not the footgun)", () => {
+    const code = `const A = () => <div className="max-w-[100vw]" />;`;
+    const result = runRule(noFullViewportWidth, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag inline `maxWidth: '100vw'`", () => {
     const code = `const A = () => <div style={{ maxWidth: "100vw" }} />;`;
     const result = runRule(noFullViewportWidth, code);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag `max-w-screen-lg` (a breakpoint max-width)", () => {
+    const code = `const A = () => <div className="max-w-screen-lg" />;`;
+    const result = runRule(noFullViewportWidth, code);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does NOT flag `w-full`", () => {

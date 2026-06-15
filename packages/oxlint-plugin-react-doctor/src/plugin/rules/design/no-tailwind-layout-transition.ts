@@ -7,11 +7,40 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // `transition-[width,opacity]`, `transition-[margin-top]`, etc.
 const ARBITRARY_TRANSITION_PROPERTY = /transition-\[([^\]]+)\]/g;
 
-// Layout-triggering properties: animating any of these forces the browser
-// to recompute geometry every frame. (transform/opacity are not here — they
-// are the cheap, compositor-only properties you should animate instead.)
-const LAYOUT_PROPERTY =
-  /\b(?:max-|min-)?(?:width|height)\b|\b(?:top|left|right|bottom|inset)\b|\bmargin(?:-(?:top|right|bottom|left|inline|block|inline-start|inline-end))?\b|\bpadding(?:-(?:top|right|bottom|left|inline|block|inline-start|inline-end))?\b/;
+// Layout-triggering properties: animating any of these forces the browser to
+// recompute geometry every frame. Matched as EXACT property names (not
+// substrings) so SVG `stroke-width` / `border-width` — which contain "width"
+// but are not HTML layout — are not falsely flagged. transform/opacity are
+// absent on purpose: they are the cheap, compositor-only properties to use.
+const LAYOUT_PROPERTIES = new Set([
+  "width",
+  "height",
+  "min-width",
+  "max-width",
+  "min-height",
+  "max-height",
+  "top",
+  "left",
+  "right",
+  "bottom",
+  "inset",
+  "inset-block",
+  "inset-inline",
+  "margin",
+  "margin-top",
+  "margin-right",
+  "margin-bottom",
+  "margin-left",
+  "margin-block",
+  "margin-inline",
+  "padding",
+  "padding-top",
+  "padding-right",
+  "padding-bottom",
+  "padding-left",
+  "padding-block",
+  "padding-inline",
+]);
 
 export const noTailwindLayoutTransition = defineRule({
   id: "no-tailwind-layout-transition",
@@ -28,11 +57,14 @@ export const noTailwindLayoutTransition = defineRule({
 
       for (const transitionMatch of classNameValue.matchAll(ARBITRARY_TRANSITION_PROPERTY)) {
         const animatedProperties = transitionMatch[1];
-        const layoutMatch = animatedProperties.match(LAYOUT_PROPERTY);
-        if (layoutMatch) {
+        const layoutProperty = animatedProperties
+          .split(",")
+          .map((property) => property.trim())
+          .find((property) => LAYOUT_PROPERTIES.has(property));
+        if (layoutProperty) {
           context.report({
             node,
-            message: `Your users see janky animation because \`transition-[${animatedProperties}]\` animates "${layoutMatch[0]}", a layout property the browser recomputes every frame, so animate transform & opacity instead.`,
+            message: `Your users see janky animation because \`transition-[${animatedProperties}]\` animates "${layoutProperty}", a layout property the browser recomputes every frame, so animate transform & opacity instead.`,
           });
         }
       }

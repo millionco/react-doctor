@@ -6,9 +6,10 @@ import { getStylePropertyStringValue } from "./utils/get-style-property-string-v
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// `w-screen`, `min-w-screen`, `max-w-screen`, or arbitrary `w-[100vw]`.
-const FULL_VIEWPORT_WIDTH_CLASS = /(?:^|\s)(?:min-|max-)?w-(?:screen|\[100vw\])(?:$|\s)/;
-const WIDTH_KEYS = new Set(["width", "minWidth", "maxWidth"]);
+// `w-screen`, `min-w-screen`, or arbitrary `w-[100vw]`. `max-w-*` is excluded —
+// `max-width: 100vw` is a defensive cap, not the overflow footgun.
+const FULL_VIEWPORT_WIDTH_CLASS = /(?:^|\s)(?:min-)?w-(?:screen|\[100vw\])(?:$|\s)/;
+const WIDTH_KEYS = new Set(["width", "minWidth"]);
 
 const MESSAGE =
   "`100vw` is wider than the viewport whenever a scrollbar is visible, so it triggers horizontal scroll on most desktops. Use `w-full` / `width: 100%` (with the parent's padding) for a full-bleed element.";

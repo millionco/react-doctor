@@ -1,4 +1,4 @@
-export const getIdentifierTrailingWord = (identifierName: string): string => {
-  const words = identifierName.match(/[A-Z]+(?=[A-Z][a-z]|\b)|[A-Z]?[a-z]+|\d+/g);
-  return words?.at(-1)?.toLowerCase() ?? identifierName.toLowerCase();
-};
+import { tokenizeIdentifierWords } from "./tokenize-identifier-words.js";
+
+export const getIdentifierTrailingWord = (identifierName: string): string =>
+  tokenizeIdentifierWords(identifierName).at(-1) ?? identifierName.toLowerCase();

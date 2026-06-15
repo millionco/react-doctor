@@ -17,6 +17,102 @@ export const AUTH_FUNCTION_NAMES = new Set([
   "validateSession",
 ]);
 
+// Token-level vocabulary for recognizing auth-guard call names by
+// CONVENTION instead of an exact allowlist (`requireAdmin`,
+// `getAdminSession`, `ensureSignedIn`, `hasRole` …). A callee name is split
+// into lowercased words (see `tokenizeIdentifierWords`) and classified by
+// `isAuthGuardName`. The split keeps the matcher precise: substring checks
+// would wrongly flag `getAuthor` (contains "auth") or `getUsername`
+// (contains "user"); word tokens never do.
+//
+// Matches `auth`, `authn`, `authz`, `authed`, `authenticate(d)`,
+// `authentication`, `authorize(d)`, `authorization` — but NOT `author` or
+// `authority` (those leave an unmatched suffix).
+export const AUTH_STRONG_TOKEN_PATTERN =
+  /^auth(?:n|z|ed|enticate[ds]?|enticating|entication|orize[ds]?|orizing|orization|orizer)?$/;
+
+// Unambiguous multi-word auth phrases, pre-merged from adjacent tokens
+// (`signedIn` -> "signedin"). Each is an auth signal on its own.
+export const AUTH_STANDALONE_NOUN_TOKENS = new Set(["signedin", "loggedin", "signin"]);
+
+// Verbs that assert/check a condition. Paired with ANY auth noun they read
+// as a guard (`requireAdmin`, `checkPermission`, `verifyToken`, `isAdmin`,
+// `hasRole`, `mustBeAdmin`).
+export const AUTH_ASSERTIVE_VERB_TOKENS = new Set([
+  "require",
+  "ensure",
+  "assert",
+  "verify",
+  "validate",
+  "check",
+  "protect",
+  "enforce",
+  "guard",
+  "gate",
+  "restrict",
+  "is",
+  "has",
+  "can",
+  "must",
+]);
+
+// Verbs that merely read a value. Paired with a STRONG auth noun they read
+// as an auth lookup (`getSession`, `fetchSession`, `useSession`); paired
+// with only a WEAK noun (`getUser`, `getToken`) they stay ambiguous and are
+// NOT treated as a guard.
+export const AUTH_GETTER_VERB_TOKENS = new Set([
+  "get",
+  "fetch",
+  "load",
+  "read",
+  "resolve",
+  "retrieve",
+  "use",
+]);
+
+// "Whose" qualifiers that bind a weak noun to the current principal
+// (`currentUser`, `getCurrentUser`, `myAccount`).
+export const AUTH_QUALIFIER_TOKENS = new Set(["current", "my", "own"]);
+
+// Nouns that point squarely at authn/authz state.
+export const AUTH_STRONG_NOUN_TOKENS = new Set([
+  "session",
+  "sessions",
+  "login",
+  "admin",
+  "admins",
+  "superadmin",
+  "superuser",
+  "role",
+  "roles",
+  "permission",
+  "permissions",
+  "jwt",
+  "identity",
+  "principal",
+  "credential",
+  "credentials",
+]);
+
+// Nouns that are auth-adjacent but also appear on non-auth objects
+// (`analytics.getUser()`, `csrf.getToken()`); only count as auth when an
+// assertive verb or a "whose" qualifier accompanies them.
+export const AUTH_WEAK_NOUN_TOKENS = new Set([
+  "user",
+  "users",
+  "account",
+  "accounts",
+  "token",
+  "tokens",
+  "access",
+  "me",
+  "viewer",
+  "caller",
+  "subject",
+  "scope",
+  "scopes",
+]);
+
 // Auth function names that are too generic to recognize on their own
 // when called as a method (e.g. `analytics.getUser()` is not an auth
 // check). For these names a member call is only accepted when the

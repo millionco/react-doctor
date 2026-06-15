@@ -8,6 +8,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { getReactDoctorStringArraySetting } from "../../utils/get-react-doctor-setting.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { hasUseServerDirective } from "../../utils/has-use-server-directive.js";
+import { isAuthGuardName } from "../../utils/is-auth-guard-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -90,13 +91,19 @@ const getAuthCallName = (
   const calleeNode = unwrapTypeWrappedCallee(callExpression.callee);
   if (!calleeNode) return null;
   if (isNodeOfType(calleeNode, "Identifier")) {
-    return allowedFunctionNames.has(calleeNode.name) ? calleeNode.name : null;
+    const calleeName = calleeNode.name;
+    return allowedFunctionNames.has(calleeName) || isAuthGuardName(calleeName) ? calleeName : null;
   }
   if (
     isNodeOfType(calleeNode, "MemberExpression") &&
     isNodeOfType(calleeNode.property, "Identifier")
   ) {
     const methodName = calleeNode.property.name;
+    // A conventionally auth-shaped method name (`ctx.requireAdmin()`,
+    // `auth0.getSession()`) is distinctive enough to accept on any receiver;
+    // only the exact-allowlist names fall back to the auth-receiver check
+    // that keeps generic ones like `analytics.getUser()` out.
+    if (isAuthGuardName(methodName)) return methodName;
     if (!allowedFunctionNames.has(methodName)) return null;
     if (!isMemberCallAuthRelated(calleeNode.object, methodName, genericMethodNames)) return null;
     return methodName;

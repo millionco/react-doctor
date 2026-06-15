@@ -411,4 +411,99 @@ export async function archiveProject(projectId: string) {
     });
     await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
+
+  // Issue #829: a project guarded its actions with a custom `requireAdmin()`
+  // helper, but the rule only knew the canonical `requireAuth` and fired a
+  // false positive on every action. The fix recognizes auth guards by naming
+  // CONVENTION (`require`/`ensure`/`assert`/… + an auth noun) so common
+  // bespoke guards count without needing `serverAuthFunctionNames` config.
+  it("accepts a custom `requireAdmin()` guard at the top of an action (issue #829)", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "issue-829-require-admin", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { requireAdmin } from "@/data/auth";
+
+export async function removeMovieRequest(id: string) {
+  await requireAdmin();
+  return { id, deleted: true };
+}
+
+export async function updateMovieRequest(id: string, isAdded: boolean) {
+  await requireAdmin();
+  return { id, isAdded };
+}`),
+      },
+    });
+
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("accepts the issue #829 auth helper file (getAdminSession + requireAdmin)", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "issue-829-auth-helper", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/data/auth.ts": buildServerActionFile(`import { headers } from "next/headers";
+import { auth } from "./auth";
+import { serverEnv } from "./env.server";
+
+export async function getAdminSession() {
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) return null;
+  if (session.user.email !== serverEnv.ADMIN_EMAIL) return null;
+  return { ...session, isAdmin: true };
+}
+
+export async function requireAdmin() {
+  const session = await getAdminSession();
+  if (!session) {
+    throw new Error("Unauthorized");
+  }
+  return session;
+}`),
+      },
+    });
+
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("accepts other common guard conventions (ensureSignedIn, getCurrentUser)", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "issue-829-guard-conventions", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts":
+          buildServerActionFile(`import { ensureSignedIn, getCurrentUser } from "@/lib/auth";
+
+export async function publishPost(postId: string) {
+  await ensureSignedIn();
+  return { postId, published: true };
+}
+
+export async function updateBio(bio: string) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("unauthorized");
+  return { userId: user.id, bio };
+}`),
+      },
+    });
+
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("still flags actions whose only top-level call is a non-auth helper", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "issue-829-non-auth-helper", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { loadConfig } from "@/lib/config";
+
+export async function regenerateCache(scope: string) {
+  await loadConfig();
+  return { scope, regenerated: true };
+}`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("regenerateCache");
+  });
 });

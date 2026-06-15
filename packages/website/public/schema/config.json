@@ -124,7 +124,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Project-level allowlist of function names that the `server-auth-actions` rule treats as an auth check at the top of a server action. Names are accepted whether called as a bare identifier (`myAuthGuard()`) or as the final property of a member call (`ctx.myAuthGuard()`); unlike the built-in default list, user-provided names are treated as distinctive and never subject to receiver-object disambiguation.\n\nUse this to teach react-doctor about custom auth guards in codebases that wrap their auth library — e.g. a project-local `requireWorkspaceMember` or `ensureSignedIn`."
+          "description": "Project-level allowlist of function names that the `server-auth-actions` rule treats as an auth check at the top of a server action. Names are accepted whether called as a bare identifier (`myAuthGuard()`) or as the final property of a member call (`ctx.myAuthGuard()`); unlike the built-in default list, user-provided names are treated as distinctive and never subject to receiver-object disambiguation.\n\nCommon guard conventions are already recognized automatically (`requireAdmin`, `ensureSignedIn`, `getCurrentUser`, `hasRole`, …), so this is only needed for domain-specific guards whose names carry no auth noun — e.g. a project-local `requireWorkspaceMember`."
         },
         "respectInlineDisables": {
           "type": "boolean",

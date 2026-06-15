@@ -321,9 +321,10 @@ export interface ReactDoctorConfig {
    * list, user-provided names are treated as distinctive and never
    * subject to receiver-object disambiguation.
    *
-   * Use this to teach react-doctor about custom auth guards in
-   * codebases that wrap their auth library — e.g. a project-local
-   * `requireWorkspaceMember` or `ensureSignedIn`.
+   * Common guard conventions are already recognized automatically
+   * (`requireAdmin`, `ensureSignedIn`, `getCurrentUser`, `hasRole`, …),
+   * so this is only needed for domain-specific guards whose names carry
+   * no auth noun — e.g. a project-local `requireWorkspaceMember`.
    */
   serverAuthFunctionNames?: string[];
   /**

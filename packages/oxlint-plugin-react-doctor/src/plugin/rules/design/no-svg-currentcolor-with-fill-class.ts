@@ -5,11 +5,19 @@ import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js"
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// A `fill-*` / `stroke-*` utility that is NOT `fill-current` / `stroke-current`
-// — i.e. a class that sets an explicit color, which fights the inline
-// `fill="currentColor"` / `stroke="currentColor"` attribute.
-const CONFLICTING_FILL_CLASS = /(?:^|\s)fill-(?!current\b)/;
-const CONFLICTING_STROKE_CLASS = /(?:^|\s)stroke-(?!current\b)/;
+// A `fill-*` / `stroke-*` utility that sets an explicit COLOR (so it fights an
+// inline `fill="currentColor"` / `stroke="currentColor"`). Excludes
+// `*-current` (inherits the text color, the intended pairing) and stroke-WIDTH
+// utilities (`stroke-2`, `stroke-[1.5]`), which set thickness, not color.
+const hasColorUtility = (classNameValue: string, prefix: "fill-" | "stroke-"): boolean =>
+  classNameValue.split(/\s+/).some((token) => {
+    const base = token.split(":").pop() ?? "";
+    if (!base.startsWith(prefix)) return false;
+    const value = base.slice(prefix.length);
+    if (value === "" || value === "current") return false;
+    if (/^\d/.test(value) || /^\[\d/.test(value)) return false;
+    return true;
+  });
 
 const isCurrentColor = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   const value = getJsxPropStringValue(attribute);
@@ -32,7 +40,7 @@ export const noSvgCurrentcolorWithFillClass = defineRule({
       if (
         fillAttribute &&
         isCurrentColor(fillAttribute) &&
-        CONFLICTING_FILL_CLASS.test(classNameValue)
+        hasColorUtility(classNameValue, "fill-")
       ) {
         context.report({
           node: fillAttribute,
@@ -46,7 +54,7 @@ export const noSvgCurrentcolorWithFillClass = defineRule({
       if (
         strokeAttribute &&
         isCurrentColor(strokeAttribute) &&
-        CONFLICTING_STROKE_CLASS.test(classNameValue)
+        hasColorUtility(classNameValue, "stroke-")
       ) {
         context.report({
           node: strokeAttribute,

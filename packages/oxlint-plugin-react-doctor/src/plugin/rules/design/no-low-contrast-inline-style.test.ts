@@ -3,11 +3,18 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noLowContrastInlineStyle } from "./no-low-contrast-inline-style.js";
 
 describe("no-low-contrast-inline-style", () => {
-  it("flags gray-400 text on white (≈2.5:1)", () => {
-    const code = `const A = () => <span style={{ color: "#9ca3af", backgroundColor: "#ffffff" }}>Balance</span>;`;
+  it("flags gray-400 text on white at normal size (≈2.5:1 < 4.5)", () => {
+    const code = `const A = () => <span style={{ color: "#9ca3af", backgroundColor: "#ffffff", fontSize: 16 }}>Balance</span>;`;
     const result = runRule(noLowContrastInlineStyle, code);
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("4.5:1");
+  });
+
+  it("flags gray-400 on white even when size is unknown (fails the 3:1 floor too)", () => {
+    const code = `const A = () => <span style={{ color: "#9ca3af", backgroundColor: "#ffffff" }}>Balance</span>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("3:1");
   });
 
   it("flags near-invisible white-on-light text", () => {
@@ -16,14 +23,20 @@ describe("no-low-contrast-inline-style", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags #808080 on white at normal size (≈3.95:1 < 4.5)", () => {
-    const code = `const A = () => <p style={{ color: "#808080", backgroundColor: "#fff" }}>body</p>;`;
+  it("flags #808080 on white at an explicit normal size (≈3.95:1 < 4.5)", () => {
+    const code = `const A = () => <p style={{ color: "#808080", backgroundColor: "#fff", fontSize: 14 }}>body</p>;`;
     const result = runRule(noLowContrastInlineStyle, code);
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does NOT flag #808080 on white at large size (≈3.95:1 ≥ 3 large threshold)", () => {
     const code = `const A = () => <h1 style={{ color: "#808080", backgroundColor: "#fff", fontSize: 32 }}>Title</h1>;`;
+    const result = runRule(noLowContrastInlineStyle, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does NOT flag a 3–4.5 band pair when size is unknown (could be large text via a class)", () => {
+    const code = `const A = () => <h1 className="text-5xl" style={{ color: "#808080", backgroundColor: "#fff" }}>Title</h1>;`;
     const result = runRule(noLowContrastInlineStyle, code);
     expect(result.diagnostics).toHaveLength(0);
   });

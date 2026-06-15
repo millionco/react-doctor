@@ -24,7 +24,6 @@ const BLOCK_DEFAULT_TAGS = new Set([
   "pre",
   "ul",
   "ol",
-  "li",
   "dl",
   "dt",
   "dd",

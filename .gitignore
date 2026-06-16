@@ -33,6 +33,8 @@ review-*.md
 !/.agents/skills/writing-guidelines/**
 !/.agents/skills/product-thinking/
 !/.agents/skills/product-thinking/**
+!/.agents/skills/rde-eval/
+!/.agents/skills/rde-eval/**
 
 # Local-only: rule-catalog generators and per-rule prompts. The generated
 # `rules.json` and the prompts themselves live in the (private) evals repo;

@@ -1,3 +1,4 @@
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -15,28 +16,15 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // where the second's initializer reads no identifier introduced by the
 // first declaration. We require both declarations to be at the top
 // level of the same block to keep precision high.
+
+// Every name a declaration binds, recursing into nested object/array
+// patterns so a dependency like `const [{ slug }] = await …` isn't
+// mistaken for an independent await (issue #839).
 const collectDeclaredNames = (declaration: EsTreeNode): Set<string> => {
   const names = new Set<string>();
   if (!isNodeOfType(declaration, "VariableDeclaration")) return names;
   for (const declarator of declaration.declarations ?? []) {
-    if (isNodeOfType(declarator.id, "Identifier")) {
-      names.add(declarator.id.name);
-    } else if (isNodeOfType(declarator.id, "ObjectPattern")) {
-      for (const property of declarator.id.properties ?? []) {
-        if (isNodeOfType(property, "Property") && isNodeOfType(property.value, "Identifier")) {
-          names.add(property.value.name);
-        } else if (
-          isNodeOfType(property, "RestElement") &&
-          isNodeOfType(property.argument, "Identifier")
-        ) {
-          names.add(property.argument.name);
-        }
-      }
-    } else if (isNodeOfType(declarator.id, "ArrayPattern")) {
-      for (const element of declarator.id.elements ?? []) {
-        if (isNodeOfType(element, "Identifier")) names.add(element.name);
-      }
-    }
+    collectPatternNames(declarator.id, names);
   }
   return names;
 };

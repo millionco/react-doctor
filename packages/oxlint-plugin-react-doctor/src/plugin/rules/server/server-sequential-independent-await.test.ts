@@ -1,0 +1,58 @@
+import { describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../../test-utils/run-rule.js";
+import { serverSequentialIndependentAwait } from "./server-sequential-independent-await.js";
+
+describe("server-sequential-independent-await", () => {
+  it("flags two genuinely independent consecutive awaits", () => {
+    const code = `export default async function Page() {
+  const user = await fetchUser();
+  const posts = await fetchPosts();
+  return null;
+}`;
+
+    const result = runRule(serverSequentialIndependentAwait, code);
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // Regression for issue #839: the follow-up await depends on `slug`/`isEnabled`.
+  it("treats names bound by nested array/object destructuring as a dependency", () => {
+    const code = `export default async function Page({ params }) {
+  const [{ slug }, { isEnabled }] = await Promise.all([params, draftMode()]);
+  const data = await client.fetch(
+    BlogPostQuery,
+    { slug },
+    isEnabled ? { perspective: "drafts" } : { next: { revalidate: 3600 } },
+  );
+  return data;
+}`;
+
+    const result = runRule(serverSequentialIndependentAwait, code);
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("treats names bound by deeply nested object destructuring as a dependency", () => {
+    const code = `async function load() {
+  const { data: { id } } = await fetchUser();
+  const profile = await fetchProfile(id);
+  return profile;
+}`;
+
+    const result = runRule(serverSequentialIndependentAwait, code);
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("treats a defaulted destructured binding as a dependency", () => {
+    const code = `async function load() {
+  const { token = "anon" } = await fetchSession();
+  const profile = await fetchProfile(token);
+  return profile;
+}`;
+
+    const result = runRule(serverSequentialIndependentAwait, code);
+
+    expect(result.diagnostics).toEqual([]);
+  });
+});

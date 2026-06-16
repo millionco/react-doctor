@@ -209,9 +209,9 @@ describe("checkSecurityScan", () => {
       ).toEqual([]);
     });
 
-    it("keeps next-sanity studio bundles quiet despite createClient, projectId, and role strings", () => {
+    it("keeps a Sanity studio browser chunk quiet (its createClient/projectId is not BaaS config)", () => {
       expect(
-        checkSecurityScan(path.join(FIXTURES_DIRECTORY, "real-next-sanity-studio-bundle")),
+        checkSecurityScan(path.join(FIXTURES_DIRECTORY, "real-sanity-studio-browser-bundle")),
       ).toEqual([]);
     });
 

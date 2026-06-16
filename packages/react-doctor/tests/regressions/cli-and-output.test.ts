@@ -280,7 +280,7 @@ export const Cart = () => {
     );
     expect(normalizedStdout).toContain("race conditions, security-sensitive flows");
     expect(normalizedStdout).toContain("theoretical issues without real impact");
-    expect(normalizedStdout).toContain("npx react-doctor@latest --verbose --diff");
+    expect(normalizedStdout).toContain("npx react-doctor@latest --verbose --scope changed");
     expect(normalizedStdout).toContain(
       "  - Split unrelated, broad, or behavior-changing work into separate PRs/branches",
     );

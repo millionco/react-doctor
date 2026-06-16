@@ -18,10 +18,10 @@ Use `--verbose` to see affected files and line numbers:
 npx react-doctor@latest --verbose
 ```
 
-Use `--diff [base]` to scan only files changed vs a base branch (default: auto-detected `main`/`master`). On the default branch, scans uncommitted working-tree changes; on a feature branch, scans changes vs the base.
+Use `--scope changed` to report only the issues a change introduced vs a base branch (set the base with `--base <ref>`; auto-detected `main`/`master` when omitted). On the default branch, scans uncommitted working-tree changes; on a feature branch, scans changes vs the base.
 
 ```bash
-npx react-doctor@latest --verbose --diff
+npx react-doctor@latest --verbose --scope changed
 ```
 
 Use `--score` to output only the numeric score:
@@ -100,7 +100,8 @@ Options:
   --json             output a single structured JSON report (suppresses other output)
   -y, --yes          skip prompts, scan all workspace projects
   --project <name>   select projects: workspace names or directory paths (comma-separated for multiple); set `projects` in doctor.config.* to make the selection persistent (the flag wins)
-  --diff [base]      scan only files changed vs base branch (pass `false` to force a full scan)
+  --scope <value>    how much to scan/report: full (default), files, changed (only new issues vs base), or lines
+  --base <ref>       base git ref for files/changed/lines scope (auto-detected when omitted)
   --no-score         skip the score API and share URL
   --staged           scan only staged (git index) files for pre-commit hooks
   --blocking <level>  severity that fails CI: error (default), warning, none

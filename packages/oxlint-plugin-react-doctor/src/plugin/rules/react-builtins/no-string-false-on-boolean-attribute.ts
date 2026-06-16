@@ -38,11 +38,12 @@ export const noStringFalseOnBooleanAttribute = defineRule({
     'Use the boolean form on boolean attributes: `disabled` / `disabled={true}` / `disabled={false}` — not `disabled="false"`. A non-empty string is truthy, so `="false"` actually turns the attribute ON.',
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      // Custom components own their prop semantics (`<Foo disabled="false">`
-      // may take a real string), so only intrinsic lowercase elements.
+      // Only intrinsic elements — a JSXIdentifier starting with a lowercase
+      // ASCII letter (a-z). Custom components start uppercase and own their
+      // prop semantics (`<Foo disabled="false">` may take a real string).
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-      const firstChar = node.name.name[0];
-      if (!firstChar || firstChar !== firstChar.toLowerCase()) return;
+      const firstCharacter = node.name.name.charCodeAt(0);
+      if (firstCharacter < 97 || firstCharacter > 122) return;
 
       for (const attribute of node.attributes) {
         if (!isNodeOfType(attribute, "JSXAttribute")) continue;

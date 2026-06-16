@@ -24,7 +24,10 @@ export const mcpToolCapabilityRisk = defineRule({
   scan: scanByPattern({
     shouldScan: (file) => isProductionSourcePath(file.relativePath),
     pattern: MCP_TOOL_SURFACE_PATTERN,
-    requireAll: [MCP_IMPORT_PATTERN, AGENT_TOOL_DANGEROUS_CAPABILITY_PATTERN],
+    requireAll: [MCP_IMPORT_PATTERN],
+    // In code only: a capability word inside a tool `description` string is
+    // documentation, not an exposed primitive, so it must not satisfy the gate.
+    requireAllInCode: [AGENT_TOOL_DANGEROUS_CAPABILITY_PATTERN],
     message:
       "An MCP tool/resource/prompt handler appears to expose file, shell, network, or code-execution capability.",
   }),

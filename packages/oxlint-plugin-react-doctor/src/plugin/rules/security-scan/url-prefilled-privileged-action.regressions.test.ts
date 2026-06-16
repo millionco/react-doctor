@@ -34,4 +34,28 @@ describe("security-scan/url-prefilled-privileged-action — regressions", () => 
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent when a member-access read is wrapped in an infix-named validator (resolveSafe…)", () => {
+    const findings = runScanRule(urlPrefilledPrivilegedAction, {
+      relativePath: "src/app/login/page.tsx",
+      content: `url.searchParams.set("callbackURL",\n  resolveSafeAuthCallbackURL(url.searchParams.get("callbackURL")));\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent when an aliased sanitiz*-named validator wraps a member-access read", () => {
+    const findings = runScanRule(urlPrefilledPrivilegedAction, {
+      relativePath: "src/app/login/page.tsx",
+      content: `import { resolveSafeAuthCallbackURL as sanitizeAuthCallbackURL } from "~/lib/auth-callback";\nconst safe = sanitizeAuthCallbackURL(url.searchParams.get("callbackURL"));\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags an unvalidated callbackUrl read passed through a non-validating call", () => {
+    const findings = runScanRule(urlPrefilledPrivilegedAction, {
+      relativePath: "src/app/login/page.tsx",
+      content: `const callback = decodeURIComponent(url.searchParams.get("callbackUrl"));\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

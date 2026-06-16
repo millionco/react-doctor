@@ -1,0 +1,27 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-sequential-independent-await.test.ts
+  s_429c8302f7f1ab::t_f701dd5f6a7831 18
+  s_429c8302f7f1ab::t_b43ac2f77cbb9d 1-17,19-58
+.changeset/fix-sequential-await-nested-destructuring.md
+  s_429c8302f7f1ab::t_a1e1072c4f0ea5 1-7
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-sequential-independent-await.ts
+  s_429c8302f7f1ab::t_6e9db65ba4ea4c 1
+  s_429c8302f7f1ab::t_a5312613a21213 20,27
+  s_429c8302f7f1ab::t_eb4554f2eedd82 19
+  s_429c8302f7f1ab::t_b63173bffdfa37 21-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "87a72fb71f74e07405ea0eaf6e8dd63270eeed35",
+  "prompts": {},
+  "sessions": {
+    "s_429c8302f7f1ab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "42d4eeb2-4e0f-4e04-8faf-97302564a71e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

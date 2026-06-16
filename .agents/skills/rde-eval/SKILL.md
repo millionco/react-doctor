@@ -31,11 +31,11 @@ Cloud mode also needs `$EVALS/.env.local` with `VERCEL_TOKEN`,
 
 ## Version specs
 
-| spec                                                   | reaches cloud? | notes                                                              |
-| ------------------------------------------------------ | -------------- | ------------------------------------------------------------------ |
-| `path:$RD`                                             | NO — local only| your working tree incl. uncommitted edits; `--runner local` only   |
-| `git:https://github.com/millionco/react-doctor@<ref>`  | yes            | sandbox clones + `turbo run build`s the monorepo; ref must be pushed |
-| `npm:<x.y.z>`                                          | yes            | published baseline                                                 |
+| spec                                                  | reaches cloud?  | notes                                                                |
+| ----------------------------------------------------- | --------------- | -------------------------------------------------------------------- |
+| `path:$RD`                                            | NO — local only | your working tree incl. uncommitted edits; `--runner local` only     |
+| `git:https://github.com/millionco/react-doctor@<ref>` | yes             | sandbox clones + `turbo run build`s the monorepo; ref must be pushed |
+| `npm:<x.y.z>`                                         | yes             | published baseline                                                   |
 
 > `path:` does **not** work with `--pool vercel`: the Vercel worker only
 > uploads the evals tree, never the react-doctor checkout. (EVAL.md Flow 1 is

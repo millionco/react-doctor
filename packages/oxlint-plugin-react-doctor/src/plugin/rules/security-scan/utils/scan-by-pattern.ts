@@ -2,7 +2,7 @@ import { SOURCE_FILE_PATTERN } from "../../../constants/security-scan.js";
 import type { FileScan, ScannedFile } from "../../../utils/file-scan.js";
 import { getMatchLocation } from "./get-match-location.js";
 import { stripCommentsPreservingPositions } from "./strip-comments-preserving-positions.js";
-import { stripStringLiteralsPreservingPositions } from "./strip-string-literals-preserving-positions.js";
+import { stripStringLiteralsKeepingModuleSpecifiers } from "./strip-string-literals-keeping-module-specifiers.js";
 
 export interface ScanByPatternInput {
   readonly shouldScan: (file: ScannedFile) => boolean;
@@ -12,9 +12,10 @@ export interface ScanByPatternInput {
   // Conjunction gates: every pattern must also match somewhere in the file
   // (e.g. an MCP import that proves the matched tool surface is MCP).
   readonly requireAll?: ReadonlyArray<RegExp>;
-  // Conjunction gates that must match in CODE only — string-literal contents
-  // (and comments) are blanked before testing, so a capability keyword that
-  // appears solely inside a `description` string or prose doesn't count.
+  // Conjunction gates that must match in CODE only — comments and prose
+  // string-literal contents are blanked before testing (module-specifier
+  // strings are kept, since an import path is code), so a capability keyword
+  // that appears solely inside a `description` string doesn't count.
   readonly requireAllInCode?: ReadonlyArray<RegExp>;
   // Veto: a match anywhere in the file suppresses the finding (e.g. a
   // signature-verification call that answers the rule's concern).
@@ -37,13 +38,14 @@ export const getScannableContent = (file: ScannedFile): string => {
   return strippedContent;
 };
 
-// Comments AND string-literal contents blanked — the "is this keyword in real
-// code?" view used by `requireAllInCode` gates so prose inside `description`
-// strings can't satisfy a capability gate.
+// Comments AND prose string-literal contents blanked (import paths kept) — the
+// "is this keyword in real code?" view used by `requireAllInCode` gates so prose
+// inside a `description` string can't satisfy a capability gate, while a
+// dangerous import like `from "node:child_process"` still counts.
 const getCodeOnlyContent = (file: ScannedFile): string => {
   const cachedContent = codeOnlyContentCache.get(file);
   if (cachedContent !== undefined) return cachedContent;
-  const codeOnlyContent = stripStringLiteralsPreservingPositions(getScannableContent(file));
+  const codeOnlyContent = stripStringLiteralsKeepingModuleSpecifiers(getScannableContent(file));
   codeOnlyContentCache.set(file, codeOnlyContent);
   return codeOnlyContent;
 };

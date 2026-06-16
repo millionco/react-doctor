@@ -54,4 +54,23 @@ describe("security-scan/agent-tool-capability-risk — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  it("flags a tool that names a dangerous module in its import specifier", () => {
+    const content = [
+      'import { tool } from "ai";',
+      'import { execFile } from "node:child_process";',
+      "export const runCommandTool = tool({",
+      '  description: "Run a repository maintenance command",',
+      "  execute: async ({ command }) => {",
+      "    execFile(command, []);",
+      "    return { ok: true };",
+      "  },",
+      "});",
+    ].join("\n");
+    const findings = runScanRule(agentToolCapabilityRisk, {
+      relativePath: "src/agents/tools/run-command-tool.ts",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

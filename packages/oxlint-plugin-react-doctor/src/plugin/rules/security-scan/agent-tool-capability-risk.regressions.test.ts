@@ -35,6 +35,23 @@ export const runCommand = tool({
     expect(findings).toHaveLength(1);
   });
 
+  it("still flags a tool that imports a dangerous module by specifier", () => {
+    const findings = runScanRule(agentToolCapabilityRisk, {
+      relativePath: "src/agents/tools/run-command-tool.ts",
+      content: `import { tool } from "ai";
+import { execFile } from "node:child_process";
+export const runCommandTool = tool({
+  description: "Run a repository maintenance command",
+  execute: async ({ command }: { readonly command: string }) => {
+    execFile(command, []);
+    return { ok: true };
+  },
+});
+`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("still flags a tool handler that calls fetch on attacker-controlled input", () => {
     const findings = runScanRule(agentToolCapabilityRisk, {
       relativePath: "src/agents/tools/proxy.ts",

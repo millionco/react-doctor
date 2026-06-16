@@ -64,5 +64,25 @@ describe("security-scan/utils/strip-comments-preserving-positions", () => {
       expect(stripped).toHaveLength(source.length);
       expect(stripped).not.toContain("eval");
     });
+
+    it("preserves module specifiers in static imports", () => {
+      const source = `import { execFile } from "node:child_process";`;
+      const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+      expect(stripped).toContain("node:child_process");
+    });
+
+    it("preserves module specifiers in dynamic import() and require()", () => {
+      const source = `const a = await import("axios");\nconst b = require("node-fetch");`;
+      const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+      expect(stripped).toContain('"axios"');
+      expect(stripped).toContain('"node-fetch"');
+    });
+
+    it("still blanks ordinary call-argument strings that merely end in a paren", () => {
+      const source = `transform("please fetch the rows");`;
+      const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+      expect(stripped).not.toContain("fetch");
+      expect(stripped).toContain("transform(");
+    });
   });
 });

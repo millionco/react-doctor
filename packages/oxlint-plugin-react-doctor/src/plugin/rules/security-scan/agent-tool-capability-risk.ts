@@ -20,7 +20,9 @@ export const agentToolCapabilityRisk = defineRule({
       isProductionSourcePath(file.relativePath) &&
       AGENT_TOOL_CONTEXT_PATH_PATTERN.test(file.relativePath),
     pattern: AGENT_TOOL_DEFINITION_PATTERN,
-    requireAll: [AGENT_TOOL_DANGEROUS_CAPABILITY_PATTERN],
+    // In code only: the AI-SDK `execute:` handler key and capability words in
+    // `description` prose ("...fetch the numbers...") must not satisfy the gate.
+    requireAllInCode: [AGENT_TOOL_DANGEROUS_CAPABILITY_PATTERN],
     message:
       "An agent-callable tool appears to expose network, filesystem, shell, or code-execution capability.",
   }),

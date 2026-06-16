@@ -34,4 +34,44 @@ describe("security-scan/url-prefilled-privileged-action — regressions", () => 
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent when a validating helper wraps a read behind a receiver chain (issue #837)", () => {
+    const findings = runScanRule(urlPrefilledPrivilegedAction, {
+      relativePath: "src/app/auth/route.ts",
+      content: `import { resolveSafeAuthCallbackURL } from "~/lib/auth-callback";\nurl.searchParams.set("callbackURL",\n  resolveSafeAuthCallbackURL(url.searchParams.get("callbackURL")));\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent when an aliased sanitize helper wraps a read off url.searchParams (issue #837)", () => {
+    const findings = runScanRule(urlPrefilledPrivilegedAction, {
+      relativePath: "src/app/auth/route.ts",
+      content: `const safe = sanitizeAuthCallbackURL(url.searchParams.get("callbackURL"));\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent when a validator wraps a deep receiver chain (request.nextUrl.searchParams)", () => {
+    const findings = runScanRule(urlPrefilledPrivilegedAction, {
+      relativePath: "src/middleware.ts",
+      content: `const next = validateNext(request.nextUrl.searchParams.get("next"));\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags a non-validating wrapper around a receiver-chain read", () => {
+    const findings = runScanRule(urlPrefilledPrivilegedAction, {
+      relativePath: "src/app/auth/route.ts",
+      content: `const cb = resolveURL(url.searchParams.get("callbackUrl"));\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("still flags a raw receiver-chain read with no wrapping helper", () => {
+    const findings = runScanRule(urlPrefilledPrivilegedAction, {
+      relativePath: "src/app/auth/route.ts",
+      content: `const cb = url.searchParams.get("callbackUrl");\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

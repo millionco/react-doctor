@@ -1,0 +1,21 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-string-false-on-boolean-attribute.test.ts
+  s_d37b310351c6e8::t_b8b5876b41536c 16,22-23
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-string-false-on-boolean-attribute.ts
+  s_d37b310351c6e8::t_86a2ae60be27fc 56-60,63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "47feb3ce295215f1f03bf36b5badaf1f9fe62581",
+  "prompts": {},
+  "sessions": {
+    "s_d37b310351c6e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f985917-83b1-4ff2-83b2-f02b13617b71",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

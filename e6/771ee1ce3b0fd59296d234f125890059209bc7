@@ -1,0 +1,19 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-sequential-independent-await.test.ts
+  s_429c8302f7f1ab::t_ebad4ec36122ae 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "e6771ee1ce3b0fd59296d234f125890059209bc7",
+  "prompts": {},
+  "sessions": {
+    "s_429c8302f7f1ab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "42d4eeb2-4e0f-4e04-8faf-97302564a71e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

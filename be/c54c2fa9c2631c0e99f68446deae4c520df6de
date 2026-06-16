@@ -1,0 +1,33 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-full-viewport-width.test.ts
+  s_3a115153e46df0::t_b3787846217d55 32-39
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-deprecated-tailwind-class.ts
+  s_3a115153e46df0::t_b3787846217d55 15-17
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-full-viewport-width.ts
+  s_3a115153e46df0::t_b3787846217d55 9-12
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-deprecated-tailwind-class.test.ts
+  s_3a115153e46df0::t_b3787846217d55 38-43
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/prefer-dvh-over-vh.ts
+  s_3a115153e46df0::t_b3787846217d55 9-13
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/prefer-dvh-over-vh.test.ts
+  s_3a115153e46df0::t_b3787846217d55 30-41
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-tailwind-layout-transition.test.ts
+  s_3a115153e46df0::t_b3787846217d55 25-42
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-tailwind-layout-transition.ts
+  s_3a115153e46df0::t_b3787846217d55 10-43,60-64,67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "bec54c2fa9c2631c0e99f68446deae4c520df6de",
+  "prompts": {},
+  "sessions": {
+    "s_3a115153e46df0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2922f7ff-119a-484d-b46b-d1aff0a2b802",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

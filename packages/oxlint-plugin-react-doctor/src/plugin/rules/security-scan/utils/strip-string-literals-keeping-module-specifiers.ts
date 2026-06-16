@@ -1,13 +1,30 @@
 // Builds the "is this keyword in real code?" view used by capability/keyword
 // gates: string-literal *contents* are blanked with spaces so a keyword that
 // appears only in prose — a tool's human-readable `description`, "ALWAYS fetch
-// the numbers first" — can't satisfy a gate. Module-specifier strings
-// (`from "node:child_process"`, `require("node:fs")`) are kept, because an
-// import path is code, not prose, and naming a dangerous module is a real
-// capability signal. Delimiters, newlines, and every offset are preserved so a
-// blanked region still maps 1:1 onto the original file. Expects comment-stripped
-// input so a quote inside a comment is never treated as a string delimiter.
+// the numbers first" — can't satisfy a gate. Three things stay, because they are
+// code rather than prose: module-specifier strings (`from "node:child_process"`,
+// `require("node:fs")`), template-literal `${…}` interpolations (e.g. a real
+// `${exec(cmd)}` call), and every delimiter/newline/offset (so a blanked region
+// still maps 1:1 onto the original file). Expects comment-stripped input so a
+// quote inside a comment is never treated as a string delimiter.
 const MODULE_SPECIFIER_KEYWORDS = new Set(["from", "import", "require"]);
+
+interface StringFrame {
+  readonly kind: "string";
+  readonly delimiter: string;
+  readonly shouldBlank: boolean;
+}
+
+interface TemplateFrame {
+  readonly kind: "template";
+}
+
+interface InterpolationFrame {
+  readonly kind: "interpolation";
+  braceDepth: number;
+}
+
+type ScanFrame = StringFrame | TemplateFrame | InterpolationFrame;
 
 const isModuleSpecifierQuote = (content: string, quoteIndex: number): boolean => {
   let cursor = quoteIndex - 1;
@@ -26,37 +43,87 @@ const isModuleSpecifierQuote = (content: string, quoteIndex: number): boolean =>
 
 export const stripStringLiteralsKeepingModuleSpecifiers = (content: string): string => {
   const characters = content.split("");
-  let stringDelimiter: string | null = null;
-  let isModuleSpecifier = false;
+  const frames: ScanFrame[] = [];
   let index = 0;
+
+  const blankCharacter = (characterIndex: number): void => {
+    if (content[characterIndex] !== "\n") characters[characterIndex] = " ";
+  };
 
   while (index < content.length) {
     const character = content[index];
+    const currentFrame = frames.at(-1);
 
-    if (stringDelimiter !== null) {
+    if (currentFrame?.kind === "string") {
       if (character === "\\") {
-        if (!isModuleSpecifier) {
-          characters[index] = " ";
-          if (content[index + 1] !== undefined && content[index + 1] !== "\n") {
-            characters[index + 1] = " ";
-          }
+        if (currentFrame.shouldBlank) {
+          blankCharacter(index);
+          if (content[index + 1] !== undefined) blankCharacter(index + 1);
         }
         index += 2;
         continue;
       }
-      if (character === stringDelimiter) {
-        stringDelimiter = null;
+      if (character === currentFrame.delimiter) {
+        frames.pop();
         index += 1;
         continue;
       }
-      if (!isModuleSpecifier && character !== "\n") characters[index] = " ";
+      if (currentFrame.shouldBlank) blankCharacter(index);
       index += 1;
       continue;
     }
 
-    if (character === '"' || character === "'" || character === "`") {
-      stringDelimiter = character;
-      isModuleSpecifier = isModuleSpecifierQuote(content, index);
+    if (currentFrame?.kind === "template") {
+      if (character === "\\") {
+        blankCharacter(index);
+        if (content[index + 1] !== undefined) blankCharacter(index + 1);
+        index += 2;
+        continue;
+      }
+      if (character === "`") {
+        frames.pop();
+        index += 1;
+        continue;
+      }
+      // `${…}` is executable code, not prose, so descend into it instead of
+      // blanking — a capability call written only there must still count.
+      if (character === "$" && content[index + 1] === "{") {
+        frames.push({ kind: "interpolation", braceDepth: 1 });
+        index += 2;
+        continue;
+      }
+      blankCharacter(index);
+      index += 1;
+      continue;
+    }
+
+    // Top-level code or an interpolation expression: keep everything, but
+    // balance interpolation braces so the matching `}` returns to the template.
+    if (currentFrame?.kind === "interpolation") {
+      if (character === "{") {
+        currentFrame.braceDepth += 1;
+        index += 1;
+        continue;
+      }
+      if (character === "}") {
+        currentFrame.braceDepth -= 1;
+        if (currentFrame.braceDepth === 0) frames.pop();
+        index += 1;
+        continue;
+      }
+    }
+
+    if (character === '"' || character === "'") {
+      frames.push({
+        kind: "string",
+        delimiter: character,
+        shouldBlank: !isModuleSpecifierQuote(content, index),
+      });
+      index += 1;
+      continue;
+    }
+    if (character === "`") {
+      frames.push({ kind: "template" });
       index += 1;
       continue;
     }

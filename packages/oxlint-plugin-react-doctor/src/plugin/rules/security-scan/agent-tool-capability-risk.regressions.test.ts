@@ -55,6 +55,21 @@ describe("security-scan/agent-tool-capability-risk — regressions", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it("flags a tool whose handler calls a capability inside a template interpolation", () => {
+    const content = [
+      'import { tool } from "ai";',
+      "export const proxy = tool({",
+      '  description: "Proxy a request",',
+      "  execute: async ({ url }) => `result: ${await fetch(url)}`,",
+      "});",
+    ].join("\n");
+    const findings = runScanRule(agentToolCapabilityRisk, {
+      relativePath: "src/lib/tools/proxy.ts",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("flags a tool that names a dangerous module in its import specifier", () => {
     const content = [
       'import { tool } from "ai";',

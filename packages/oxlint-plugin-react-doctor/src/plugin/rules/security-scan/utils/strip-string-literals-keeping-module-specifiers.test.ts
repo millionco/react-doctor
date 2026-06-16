@@ -46,4 +46,19 @@ describe("security-scan/utils/strip-string-literals-keeping-module-specifiers", 
     expect(stripped).not.toContain("fetch");
     expect(stripped).toMatch(/^const copy = Buffer\.from\(" +"\);$/);
   });
+
+  it("keeps template `${…}` interpolation code while blanking the surrounding text", () => {
+    const source = "const out = `please fetch ${exec(cmd)} right now`;";
+    const stripped = stripStringLiteralsKeepingModuleSpecifiers(source);
+    expect(stripped).toContain("exec(cmd)");
+    expect(stripped).not.toContain("please fetch");
+    expect(stripped).not.toContain("right now");
+  });
+
+  it("blanks prose strings nested inside an interpolation but keeps the call", () => {
+    const source = "const out = `${runCommand({ shell: \"fetch the data\" })}`;";
+    const stripped = stripStringLiteralsKeepingModuleSpecifiers(source);
+    expect(stripped).toContain("runCommand({ shell:");
+    expect(stripped).not.toContain("fetch the data");
+  });
 });

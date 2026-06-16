@@ -2,8 +2,13 @@ import { defineRule } from "../../utils/define-rule.js";
 import { isBrowserArtifactPath } from "./utils/is-browser-artifact-path.js";
 import { scanByPattern } from "./utils/scan-by-pattern.js";
 
+// Firebase web config (an SDK/init reference within range of a Firebase config
+// key, in either order) OR a Supabase client. `createClient` is too generic to
+// stand for "BaaS config" on its own — `@sanity/client` also calls
+// `createClient({ projectId, dataset })` (#840) — so it only counts when paired
+// with a Supabase-specific token rather than a shared key like `projectId`.
 const BAAS_CLIENT_CONFIG_PATTERN =
-  /\b(?:initializeApp|firebase|firestore|getFirestore|createClient)\b[\s\S]{0,700}\b(?:apiKey|authDomain|projectId|databaseURL|storageBucket|supabase|SUPABASE_URL)\b|\b(?:apiKey|authDomain|projectId|databaseURL|storageBucket)\b[\s\S]{0,700}\b(?:firebase|firestore|getFirestore|initializeApp)\b/i;
+  /\b(?:initializeApp|firebase|firestore|getFirestore)\b[\s\S]{0,700}\b(?:apiKey|authDomain|projectId|databaseURL|storageBucket)\b|\b(?:apiKey|authDomain|projectId|databaseURL|storageBucket)\b[\s\S]{0,700}\b(?:firebase|firestore|getFirestore|initializeApp)\b|\bcreateClient\b[\s\S]{0,700}\b(?:supabase|SUPABASE_URL)\b|\b(?:supabase|SUPABASE_URL)\b[\s\S]{0,700}\bcreateClient\b/i;
 
 // TODO(follow-up): de-overfit — the `boosts` / `candidateJobs` / `ghostOrg`
 // collection literals mirror specific regression fixtures.

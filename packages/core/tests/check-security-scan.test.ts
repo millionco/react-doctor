@@ -209,6 +209,12 @@ describe("checkSecurityScan", () => {
       ).toEqual([]);
     });
 
+    it("keeps a Sanity studio browser chunk quiet (its createClient/projectId is not BaaS config)", () => {
+      expect(
+        checkSecurityScan(path.join(FIXTURES_DIRECTORY, "real-sanity-studio-browser-bundle")),
+      ).toEqual([]);
+    });
+
     it("keeps known browser-facing analytics, license, map, and search keys quiet", () => {
       expect(checkSecurityScan(path.join(FIXTURES_DIRECTORY, "real-public-env-keys"))).toEqual([]);
     });

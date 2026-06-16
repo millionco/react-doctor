@@ -1,0 +1,14 @@
+{
+  "name": "@example/sanity-studio-app",
+  "private": true,
+  "scripts": {
+    "build": "next build"
+  },
+  "dependencies": {
+    "@sanity/client": "^6.0.0",
+    "next": "^15.0.0",
+    "next-sanity": "^9.0.0",
+    "react": "^19.0.0",
+    "sanity": "^3.0.0"
+  }
+}

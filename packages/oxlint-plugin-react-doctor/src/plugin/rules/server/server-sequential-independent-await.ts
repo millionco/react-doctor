@@ -33,13 +33,22 @@ const declarationStartsWithAwait = (declaration: EsTreeNode): boolean => {
   return false;
 };
 
+// HACK: walk only each initializer, not the whole declaration. A name in
+// the next statement's binding pattern (e.g. `const { data: x } = await
+// b()` after `const { data } = await a()`) is a re-bind evaluated after
+// the await resolves, not a read of the first result — counting it would
+// miss the waterfall.
 const declarationReadsAnyName = (declaration: EsTreeNode, names: Set<string>): boolean => {
   if (names.size === 0) return false;
+  if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
   let didRead = false;
-  walkAst(declaration, (child: EsTreeNode) => {
-    if (didRead) return;
-    if (isNodeOfType(child, "Identifier") && names.has(child.name)) didRead = true;
-  });
+  for (const declarator of declaration.declarations ?? []) {
+    if (!declarator.init) continue;
+    walkAst(declarator.init, (child: EsTreeNode) => {
+      if (didRead) return;
+      if (isNodeOfType(child, "Identifier") && names.has(child.name)) didRead = true;
+    });
+  }
   return didRead;
 };
 

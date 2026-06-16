@@ -43,6 +43,18 @@ describe("server-sequential-independent-await", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("flags independent awaits even when the second re-binds a name the first bound", () => {
+    const code = `async function load() {
+  const { data } = await fetchPrimary();
+  const { data: secondary } = await fetchSecondary();
+  return secondary;
+}`;
+
+    const result = runRule(serverSequentialIndependentAwait, code);
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("treats a defaulted destructured binding as a dependency", () => {
     const code = `async function load() {
   const { token = "anon" } = await fetchSession();

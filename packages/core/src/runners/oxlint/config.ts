@@ -27,6 +27,14 @@ export interface OxlintConfigOptions {
    * set to `"warn"` or `"error"`.
    */
   userPlugins?: ReadonlyArray<ResolvedUserPlugin>;
+  /**
+   * Skip the optional `react-hooks-js` (eslint-plugin-react-hooks) JS
+   * plugin and its React Compiler rules. The `runOxlint` fallback sets
+   * this and retries after the plugin fails to import in the user's
+   * environment, so the curated react-doctor rules still run instead of
+   * the whole lint pass failing (issue #833). See `run-oxlint.ts`.
+   */
+  disableReactHooksJsPlugin?: boolean;
 }
 
 const resolveSettingsRootDirectory = (rootDirectory: string): string => {
@@ -93,8 +101,11 @@ export const createOxlintConfig = ({
   serverAuthFunctionNames,
   severityControls,
   userPlugins = [],
+  disableReactHooksJsPlugin = false,
 }: OxlintConfigOptions) => {
-  const reactHooksJsPlugin = resolveReactHooksJsPlugin(project.hasReactCompiler, customRulesOnly);
+  const reactHooksJsPlugin = disableReactHooksJsPlugin
+    ? null
+    : resolveReactHooksJsPlugin(project.hasReactCompiler, customRulesOnly);
   const reactCompilerRules = reactHooksJsPlugin
     ? applyRuleSeverityControls(
         filterRulesToAvailable(

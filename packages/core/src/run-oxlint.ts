@@ -7,6 +7,7 @@ import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
 import { detectUserLintConfigPaths } from "./detect-user-lint-config.js";
+import { ReactDoctorError } from "./errors.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
 import { createOxlintConfig } from "./runners/oxlint/config.js";
 import { resolveUserPlugins } from "./runners/oxlint/plugin-resolution.js";
@@ -95,6 +96,42 @@ const writeOxlintConfig = (
   }
 };
 
+const REACT_HOOKS_JS_DROP_PREFIX =
+  "React Compiler rules (react-hooks-js/*) skipped — eslint-plugin-react-hooks failed to load in this environment";
+
+/**
+ * Detects an oxlint config-load crash caused by the optional
+ * `react-hooks-js` (eslint-plugin-react-hooks) React Compiler plugin and
+ * builds the partial-failure note for it; returns `null` when the failure
+ * was anything else.
+ *
+ * oxlint prints a framed error to stdout (not stderr) and exits non-zero
+ * when a `jsPlugins` entry can't be imported; that non-JSON stdout
+ * surfaces as `OxlintOutputUnparseable`. Because oxlint fails the WHOLE
+ * config load on it, leaving the plugin in would drop every curated
+ * react-doctor diagnostic too — so the caller retries with the plugin
+ * stripped (issue #833). Both markers sit at the start of oxlint's
+ * message, so they survive the `preview` slice even for deep pnpm paths.
+ */
+export const reactHooksJsPluginDropNote = (error: unknown): string | null => {
+  if (!(error instanceof ReactDoctorError) || error.reason._tag !== "OxlintOutputUnparseable") {
+    return null;
+  }
+  const { preview } = error.reason;
+  if (
+    !preview.includes("Failed to load JS plugin") ||
+    !preview.includes("eslint-plugin-react-hooks")
+  ) {
+    return null;
+  }
+  // Surface oxlint's underlying reason ("Error: Cannot find module …")
+  // instead of echoing its whole framed dump; omit it if the line didn't
+  // survive the preview slice.
+  const underlyingReason = preview.match(/Error:[^\n]*/)?.[0]?.trim();
+  const reasonSuffix = underlyingReason ? `: ${underlyingReason}` : "";
+  return `${REACT_HOOKS_JS_DROP_PREFIX}${reasonSuffix}. Other rules ran normally.`;
+};
+
 /**
  * The oxlint runner. Composed of three pieces in `runners/oxlint/`:
  *
@@ -164,16 +201,20 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   const extendsPaths = detectedConfigPaths.filter(canOxlintExtendConfig);
   const userPlugins = resolveUserPlugins(userConfig?.plugins, configSourceDirectory);
 
-  const buildConfig = (extendsForThisAttempt: string[]) =>
+  const buildConfig = (overrides: {
+    extendsPaths: string[];
+    disableReactHooksJsPlugin?: boolean;
+  }) =>
     createOxlintConfig({
       pluginPath,
       project,
       customRulesOnly,
-      extendsPaths: extendsForThisAttempt,
+      extendsPaths: overrides.extendsPaths,
       ignoredTags,
       serverAuthFunctionNames,
       severityControls,
       userPlugins,
+      disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
     });
 
   // HACK: only neutralize disable comments in audit mode. Default
@@ -242,10 +283,28 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         concurrency: options.concurrency,
       });
 
-    writeOxlintConfig(configPath, buildConfig(extendsPaths));
+    writeOxlintConfig(configPath, buildConfig({ extendsPaths }));
     try {
       return await runBatches();
     } catch (error) {
+      // The optional `react-hooks-js` React Compiler plugin failed to
+      // `import()` in this environment. oxlint fails the ENTIRE config
+      // load on it, which would otherwise drop every curated
+      // react-doctor diagnostic too. Retry once with the plugin stripped
+      // so the rest of the scan still runs; the React Compiler rules are
+      // the only casualty, and the user is told why via a partial
+      // failure (issue #833). Reported only after the retry succeeds, so
+      // a still-failing scan surfaces the original error untouched.
+      const reactHooksJsDropNote = reactHooksJsPluginDropNote(error);
+      if (reactHooksJsDropNote !== null) {
+        writeOxlintConfig(
+          configPath,
+          buildConfig({ extendsPaths, disableReactHooksJsPlugin: true }),
+        );
+        const diagnostics = await runBatches();
+        onPartialFailure?.(reactHooksJsDropNote);
+        return diagnostics;
+      }
       // HACK: if the user's adopted lint config is the reason oxlint
       // crashed (broken JSON, missing plugin, unknown rule), failing
       // the entire lint pass would leave the user with a 100/100
@@ -256,10 +315,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       // it as react-doctor itself crashing; the curated-rules scan
       // is the graceful path.
       if (extendsPaths.length === 0) throw error;
-      // `buildConfig([])` carries every other option through — most
-      // importantly `userPlugins`, so custom rules from
+      // `buildConfig({ extendsPaths: [] })` carries every other option
+      // through — most importantly `userPlugins`, so custom rules from
       // `config.plugins` still run on the retry.
-      writeOxlintConfig(configPath, buildConfig([]));
+      writeOxlintConfig(configPath, buildConfig({ extendsPaths: [] }));
       return await runBatches();
     }
   } finally {

@@ -45,7 +45,15 @@ export const LATEST_KNOWN_PREACT_MAJOR = 20;
 // for. Preact X (10) is the modern baseline.
 export const EARLIEST_GATED_PREACT_MAJOR = 10;
 
-export const ERROR_PREVIEW_LENGTH_CHARS = 200;
+// Max chars of an unparseable oxlint stdout we keep for the error
+// message. oxlint prints a multi-line, framed error to stdout when it
+// can't load the config (e.g. a JS plugin failed to import) — the first
+// useful line is the plugin path, the second the underlying
+// `Error: …` reason. 200 chars truncated mid-path (landing on a bare
+// `…/node_modules/`), which read as react-doctor passing an invalid
+// directory and hid the real cause (issue #833). 600 keeps the path
+// AND the reason line for realistic (deep pnpm) paths.
+export const ERROR_PREVIEW_LENGTH_CHARS = 600;
 
 // Minimum length for the generic high-entropy token sweep in
 // `redactSensitiveText`. Real API keys / tokens run 32+ chars; the

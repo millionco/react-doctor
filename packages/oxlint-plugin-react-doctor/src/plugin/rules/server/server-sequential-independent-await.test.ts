@@ -15,8 +15,7 @@ describe("server-sequential-independent-await", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  // Regression for issue #839: the follow-up await depends on `slug`/`isEnabled`.
-  it("treats names bound by nested array/object destructuring as a dependency", () => {
+  it("treats names bound by nested array/object destructuring as a dependency (#839)", () => {
     const code = `export default async function Page({ params }) {
   const [{ slug }, { isEnabled }] = await Promise.all([params, draftMode()]);
   const data = await client.fetch(

@@ -16,10 +16,6 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // where the second's initializer reads no identifier introduced by the
 // first declaration. We require both declarations to be at the top
 // level of the same block to keep precision high.
-
-// Every name a declaration binds, recursing into nested object/array
-// patterns so a dependency like `const [{ slug }] = await …` isn't
-// mistaken for an independent await (issue #839).
 const collectDeclaredNames = (declaration: EsTreeNode): Set<string> => {
   const names = new Set<string>();
   if (!isNodeOfType(declaration, "VariableDeclaration")) return names;

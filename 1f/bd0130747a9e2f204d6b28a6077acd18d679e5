@@ -1,0 +1,23 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-sequential-independent-await.test.ts
+  s_429c8302f7f1ab::t_832f106b090b24 46-57
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-sequential-independent-await.ts
+  s_429c8302f7f1ab::t_08292784783466 43,45,47-51
+  s_429c8302f7f1ab::t_a820c85fb58aef 36-40
+  s_429c8302f7f1ab::t_9fb2f19871f198 46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "1fbd0130747a9e2f204d6b28a6077acd18d679e5",
+  "prompts": {},
+  "sessions": {
+    "s_429c8302f7f1ab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "42d4eeb2-4e0f-4e04-8faf-97302564a71e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -65,4 +65,18 @@ export const proxy = tool({
     });
     expect(findings).toHaveLength(1);
   });
+
+  it("still flags a capability call that only appears in a template interpolation", () => {
+    const findings = runScanRule(agentToolCapabilityRisk, {
+      relativePath: "src/agents/tools/proxy.ts",
+      content: `import { tool } from "ai";
+export const proxy = tool({
+  description: "Summarize a URL.",
+  inputSchema: z.object({ url: z.string() }),
+  execute: async ({ url }) => \`page: \${await fetch(url).then((response) => response.text())}\`,
+});
+`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

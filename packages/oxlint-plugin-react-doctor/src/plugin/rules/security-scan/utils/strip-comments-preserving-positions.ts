@@ -39,10 +39,12 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
   const characters = content.split("");
   let stringDelimiter: string | null = null;
   let isBlankingString = false;
+  // Brace depth of each open template `${…}` expression, innermost last.
+  const templateExpressionDepths: number[] = [];
   let index = 0;
 
   const blankUnlessNewline = (offset: number): void => {
-    if (content[offset] !== "\n") characters[offset] = " ";
+    if (offset < content.length && content[offset] !== "\n") characters[offset] = " ";
   };
 
   while (index < content.length) {
@@ -61,6 +63,21 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
       if (character === stringDelimiter) {
         stringDelimiter = null;
         index += 1;
+        continue;
+      }
+      // A template `${…}` interpolation is code, not string text: leave it for
+      // code mode so a real `fetch(url)`/`exec(cmd)` inside one is not erased.
+      // Gated on blanking so the comment-only path keeps treating templates as
+      // opaque strings (its consumers never look inside them).
+      if (
+        blankStringContents &&
+        stringDelimiter === "`" &&
+        character === "$" &&
+        nextCharacter === "{"
+      ) {
+        templateExpressionDepths.push(0);
+        stringDelimiter = null;
+        index += 2;
         continue;
       }
       if (isBlankingString) blankUnlessNewline(index);
@@ -95,6 +112,23 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
         index += 1;
       }
       continue;
+    }
+
+    // Track brace depth inside a template expression so the matching `}` returns
+    // to the enclosing template string and resumes blanking its static text.
+    if (templateExpressionDepths.length > 0) {
+      const innermost = templateExpressionDepths.length - 1;
+      if (character === "{") {
+        templateExpressionDepths[innermost] += 1;
+      } else if (character === "}") {
+        if (templateExpressionDepths[innermost] === 0) {
+          templateExpressionDepths.pop();
+          stringDelimiter = "`";
+          isBlankingString = blankStringContents;
+        } else {
+          templateExpressionDepths[innermost] -= 1;
+        }
+      }
     }
 
     index += 1;

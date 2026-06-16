@@ -25,6 +25,10 @@ export const mcpToolCapabilityRisk = defineRule({
     shouldScan: (file) => isProductionSourcePath(file.relativePath),
     pattern: MCP_TOOL_SURFACE_PATTERN,
     requireAll: [MCP_IMPORT_PATTERN, AGENT_TOOL_DANGEROUS_CAPABILITY_PATTERN],
+    // Same prose trap as the agent sibling: a capability word in a tool's
+    // `description` is not a real call site. The MCP SDK import specifier the
+    // rule keys on stays matchable (specifiers are exempt from blanking).
+    ignoreStringLiterals: true,
     message:
       "An MCP tool/resource/prompt handler appears to expose file, shell, network, or code-execution capability.",
   }),

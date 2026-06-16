@@ -17,6 +17,21 @@ describe("security-scan/mcp-tool-capability-risk — regressions", () => {
     expect(findings).toHaveLength(0);
   });
 
+  it("stays silent when a capability keyword only appears in a tool description (#838 sibling)", () => {
+    const content = [
+      'import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";',
+      'const server = new McpServer({ name: "x", version: "1" });',
+      'server.tool("list", { description: "Always fetch the latest data first" }, async () => ({',
+      '  content: [{ type: "text", text: "ok" }],',
+      "}));",
+    ].join("\n");
+    const findings = runScanRule(mcpToolCapabilityRisk, {
+      relativePath: "src/mcp/list-tool.ts",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
   it("flags a tool handler that exposes shell execution", () => {
     const content = [
       'import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";',

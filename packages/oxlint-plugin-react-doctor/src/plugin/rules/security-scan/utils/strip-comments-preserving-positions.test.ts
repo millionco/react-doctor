@@ -84,5 +84,27 @@ describe("security-scan/utils/strip-comments-preserving-positions", () => {
       expect(stripped).not.toContain("fetch");
       expect(stripped).toContain("transform(");
     });
+
+    it("preserves code inside template interpolations while blanking static text", () => {
+      const source = "const out = `before ${fetch(url)} after`;";
+      const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+      expect(stripped).toHaveLength(source.length);
+      expect(stripped).toContain("fetch(url)");
+      expect(stripped).not.toContain("before");
+      expect(stripped).not.toContain("after");
+    });
+
+    it("resumes blanking template static text after a nested interpolation", () => {
+      const source = "const out = `${id} please exec the rows`;";
+      const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+      expect(stripped).toContain("${id}");
+      expect(stripped).not.toContain("exec");
+    });
+
+    it("does not grow output when a string ends with a trailing backslash", () => {
+      const source = `const a = "ab\\`;
+      const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+      expect(stripped).toHaveLength(source.length);
+    });
   });
 });

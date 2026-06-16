@@ -128,18 +128,18 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<Capability>
   ) {
     capabilities.add("react:19.2");
   }
-  if (project.tailwindVersion !== null) capabilities.add("tailwind");
-  if (
-    project.tailwindVersion !== null &&
-    isMajorMinorAtLeast(parseTailwindMajorMinor(project.tailwindVersion), { major: 3, minor: 4 })
-  ) {
-    capabilities.add("tailwind:3.4");
-  }
-  if (
-    project.tailwindVersion !== null &&
-    isMajorMinorAtLeast(parseTailwindMajorMinor(project.tailwindVersion), { major: 4, minor: 0 })
-  ) {
-    capabilities.add("tailwind:4");
+  if (project.tailwindVersion !== null) {
+    capabilities.add("tailwind");
+    const tailwindVersion = parseTailwindMajorMinor(project.tailwindVersion);
+    if (isMajorMinorAtLeast(tailwindVersion, { major: 3, minor: 4 })) {
+      capabilities.add("tailwind:3.4");
+    }
+    if (
+      tailwindVersion !== null &&
+      isMajorMinorAtLeast(tailwindVersion, { major: 4, minor: 0 })
+    ) {
+      capabilities.add("tailwind:4");
+    }
   }
   if (project.zodVersion !== null) capabilities.add("zod");
   if (project.zodMajorVersion !== null && project.zodMajorVersion >= 4) capabilities.add("zod:4");

@@ -21,6 +21,10 @@ export const agentToolCapabilityRisk = defineRule({
       AGENT_TOOL_CONTEXT_PATH_PATTERN.test(file.relativePath),
     pattern: AGENT_TOOL_DEFINITION_PATTERN,
     requireAll: [AGENT_TOOL_DANGEROUS_CAPABILITY_PATTERN],
+    // Capability keywords (`fetch`, `exec`, `eval`) routinely appear as whole
+    // words in a tool's human-readable `description` prose; only a real call
+    // site wired to the handler is a risk, so ignore string-literal hits.
+    ignoreStringLiterals: true,
     message:
       "An agent-callable tool appears to expose network, filesystem, shell, or code-execution capability.",
   }),

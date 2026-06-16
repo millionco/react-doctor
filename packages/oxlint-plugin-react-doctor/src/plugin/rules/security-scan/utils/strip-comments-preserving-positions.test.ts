@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { stripCommentsPreservingPositions } from "./strip-comments-preserving-positions.js";
+import {
+  stripCommentsAndStringLiteralsPreservingPositions,
+  stripCommentsPreservingPositions,
+} from "./strip-comments-preserving-positions.js";
 
 describe("security-scan/utils/strip-comments-preserving-positions", () => {
   it("blanks line comments while preserving offsets and newlines", () => {
@@ -29,5 +32,37 @@ describe("security-scan/utils/strip-comments-preserving-positions", () => {
   it("does not treat // inside template literals as a comment", () => {
     const source = "const url = `https://example.com/${path}`;";
     expect(stripCommentsPreservingPositions(source)).toBe(source);
+  });
+
+  describe("stripCommentsAndStringLiteralsPreservingPositions", () => {
+    it("blanks keywords that appear only inside string literals", () => {
+      const source = `const description = "ALWAYS fetch the numbers first";`;
+      const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+      expect(stripped).toHaveLength(source.length);
+      expect(stripped).not.toContain("fetch");
+      expect(stripped).toContain(`const description = "`);
+    });
+
+    it("keeps real call sites outside the quotes intact", () => {
+      const source = `const data = await fetch("https://example.com/api");`;
+      const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+      expect(stripped).toContain("fetch(");
+      expect(stripped).not.toContain("https://example.com");
+    });
+
+    it("preserves newlines inside multi-line template literals", () => {
+      const source = "const sql = `select\n  exec\nfrom t`;\nconst safe = true;";
+      const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+      expect(stripped).toHaveLength(source.length);
+      expect(stripped).not.toContain("exec");
+      expect(stripped.split("\n")[3]).toBe("const safe = true;");
+    });
+
+    it("blanks escaped characters without dropping offsets", () => {
+      const source = `const quote = "say \\"eval\\" now";`;
+      const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+      expect(stripped).toHaveLength(source.length);
+      expect(stripped).not.toContain("eval");
+    });
   });
 });

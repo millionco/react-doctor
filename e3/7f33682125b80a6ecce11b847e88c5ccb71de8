@@ -1,0 +1,21 @@
+.agents/skills/rule-validate/SKILL.md
+  s_73e70d03ab56c7::t_ed0a2d3c38ed38 65-66
+.agents/skills/rde-eval/SKILL.md
+  s_73e70d03ab56c7::t_cb8b8e81f5cf35 1-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "e37f33682125b80a6ecce11b847e88c5ccb71de8",
+  "prompts": {},
+  "sessions": {
+    "s_73e70d03ab56c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73cbba86-0cac-423b-8352-7a7a75dfa60b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

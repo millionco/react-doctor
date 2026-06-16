@@ -35,7 +35,7 @@ export const noStringFalseOnBooleanAttribute = defineRule({
   title: "String true/false on a boolean attribute",
   severity: "warn",
   recommendation:
-    'Use the boolean form on boolean attributes: `disabled` / `disabled={true}` / `disabled={false}` — not `disabled="false"`. A non-empty string is truthy, so `="false"` actually turns the attribute ON.',
+    'Use the boolean form on boolean attributes: `disabled` / `disabled={true}` / `disabled={false}`, not `disabled="false"`. A non-empty string is truthy, so `="false"` actually turns the attribute ON.',
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       // Only intrinsic elements — a JSXIdentifier starting with a lowercase

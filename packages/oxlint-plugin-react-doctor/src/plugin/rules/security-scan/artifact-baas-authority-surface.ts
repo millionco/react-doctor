@@ -2,8 +2,12 @@ import { defineRule } from "../../utils/define-rule.js";
 import { isBrowserArtifactPath } from "./utils/is-browser-artifact-path.js";
 import { scanByPattern } from "./utils/scan-by-pattern.js";
 
+// Firebase is detected by its own verbs; Supabase by `createClient` next to a
+// Supabase marker. `createClient` MUST NOT pair with `projectId` — that is the
+// Sanity client signature (`createClient({ projectId, dataset, apiVersion })`),
+// not a BaaS one, and pairing them flagged every next-sanity studio bundle (#840).
 const BAAS_CLIENT_CONFIG_PATTERN =
-  /\b(?:initializeApp|firebase|firestore|getFirestore|createClient)\b[\s\S]{0,700}\b(?:apiKey|authDomain|projectId|databaseURL|storageBucket|supabase|SUPABASE_URL)\b|\b(?:apiKey|authDomain|projectId|databaseURL|storageBucket)\b[\s\S]{0,700}\b(?:firebase|firestore|getFirestore|initializeApp)\b/i;
+  /\b(?:initializeApp|firebase|firestore|getFirestore)\b[\s\S]{0,700}\b(?:apiKey|authDomain|projectId|databaseURL|storageBucket)\b|\b(?:apiKey|authDomain|projectId|databaseURL|storageBucket)\b[\s\S]{0,700}\b(?:firebase|firestore|getFirestore|initializeApp)\b|\bcreateClient\b[\s\S]{0,700}\b(?:supabase|SUPABASE_URL)\b|\b(?:supabase|SUPABASE_URL)\b[\s\S]{0,700}\bcreateClient\b/i;
 
 // TODO(follow-up): de-overfit — the `boosts` / `candidateJobs` / `ghostOrg`
 // collection literals mirror specific regression fixtures.

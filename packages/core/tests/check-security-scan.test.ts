@@ -209,6 +209,12 @@ describe("checkSecurityScan", () => {
       ).toEqual([]);
     });
 
+    it("keeps next-sanity studio bundles quiet despite createClient, projectId, and role strings", () => {
+      expect(
+        checkSecurityScan(path.join(FIXTURES_DIRECTORY, "real-next-sanity-studio-bundle")),
+      ).toEqual([]);
+    });
+
     it("keeps known browser-facing analytics, license, map, and search keys quiet", () => {
       expect(checkSecurityScan(path.join(FIXTURES_DIRECTORY, "real-public-env-keys"))).toEqual([]);
     });

@@ -1,0 +1,37 @@
+.changeset/fix-react-hooks-js-plugin-load-fallback.md
+  s_c6733d6e047c05::t_66694b41b0cce5 1-11
+packages/core/src/constants.ts
+  s_c6733d6e047c05::t_c77f2e83505a0d 48-56
+packages/core/src/runners/oxlint/config.ts
+  s_c6733d6e047c05::t_d8eedde35f9ccc 30-37
+  s_c6733d6e047c05::t_6b2e597ffc2be9 104,106-108
+packages/core/tests/oxlint-config-settings.test.ts
+  s_c6733d6e047c05::t_067757aaf2b2f0 81,91-93,104-106
+  s_c6733d6e047c05::t_616ed52cb5efdb 78-80,82-90,94-103,107-110
+packages/core/src/run-oxlint.ts
+  s_c6733d6e047c05::t_7a142fe0890406 99-115,117-130,133-134
+  s_c6733d6e047c05::t_f2add9e534bf32 116
+  s_c6733d6e047c05::t_e2b02dd48722b2 10
+  s_c6733d6e047c05::t_f0c9cc6d3b11b6 131-132
+  s_c6733d6e047c05::t_0bbd8c266f43e1 204-207,212,217
+  s_c6733d6e047c05::t_5a48c7f8727357 286,290-307,318-319,321
+packages/core/tests/react-hooks-js-plugin-drop-note.test.ts
+  s_c6733d6e047c05::t_0e14d2350ee6e9 1-20,25-29,33-59,63-76
+  s_c6733d6e047c05::t_067757aaf2b2f0 21-24,30-32,60-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "7266dcdbe8391f63e7bc2d28e941cc501ec15020",
+  "prompts": {},
+  "sessions": {
+    "s_c6733d6e047c05": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "60b9afdb-ad69-49ca-9511-664100dc0137",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

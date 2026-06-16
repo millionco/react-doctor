@@ -56,7 +56,7 @@ describe("security-scan/utils/strip-string-literals-keeping-module-specifiers", 
   });
 
   it("blanks prose strings nested inside an interpolation but keeps the call", () => {
-    const source = "const out = `${runCommand({ shell: \"fetch the data\" })}`;";
+    const source = 'const out = `${runCommand({ shell: "fetch the data" })}`;';
     const stripped = stripStringLiteralsKeepingModuleSpecifiers(source);
     expect(stripped).toContain("runCommand({ shell:");
     expect(stripped).not.toContain("fetch the data");

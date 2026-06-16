@@ -1,0 +1,21 @@
+packages/core/src/runners/oxlint/capabilities.ts
+  s_3a115153e46df0::t_b37875bfe586aa 86-88,92-98
+packages/core/tests/build-capabilities.test.ts
+  s_3a115153e46df0::t_d596bb58e2488a 214-222
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "8d4c6ade7836d87b60a8f07d415625218d7ad45b",
+  "prompts": {},
+  "sessions": {
+    "s_3a115153e46df0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2922f7ff-119a-484d-b46b-d1aff0a2b802",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

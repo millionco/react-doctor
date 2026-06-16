@@ -53,9 +53,14 @@ export const noStringFalseOnBooleanAttribute = defineRule({
         const value = getJsxPropStringValue(attribute);
         if (value !== "false" && value !== "true") continue;
 
+        const attributeName = attribute.name.name;
+        const explanation =
+          value === "false"
+            ? `which React treats as truthy, so the attribute is applied even though you wrote "false"`
+            : `but a boolean attribute takes a boolean, not the string "true"`;
         context.report({
           node: attribute,
-          message: `\`${attribute.name.name}="${value}"\` passes the string "${value}", which React treats as truthy — the attribute is applied even when you wrote "false". Use \`${attribute.name.name}\` or \`${attribute.name.name}={${value}}\`.`,
+          message: `\`${attributeName}="${value}"\` passes the string "${value}", ${explanation}. Use \`${attributeName}\` or \`${attributeName}={${value}}\`.`,
         });
       }
     },

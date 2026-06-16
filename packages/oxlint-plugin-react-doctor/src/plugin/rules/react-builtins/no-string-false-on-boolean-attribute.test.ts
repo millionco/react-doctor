@@ -13,12 +13,14 @@ describe("no-string-false-on-boolean-attribute", () => {
     expect(result.diagnostics[0].message).toContain("truthy");
   });
 
-  it('flags `checked="true"` (should be boolean)', () => {
+  it('flags `checked="true"` with a value-appropriate message (not the "false" wording)', () => {
     const result = runRule(
       noStringFalseOnBooleanAttribute,
       `const A = () => <input type="checkbox" checked="true" />;`,
     );
     expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain('not the string "true"');
+    expect(result.diagnostics[0].message).not.toContain('wrote "false"');
   });
 
   it('flags `readOnly="false"` (React camelCase)', () => {

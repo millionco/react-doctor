@@ -54,13 +54,13 @@ export const noStringFalseOnBooleanAttribute = defineRule({
         if (value !== "false" && value !== "true") continue;
 
         const attributeName = attribute.name.name;
-        const explanation =
+        const guidance =
           value === "false"
-            ? `which React treats as truthy, so the attribute is applied even though you wrote "false"`
-            : `but a boolean attribute takes a boolean, not the string "true"`;
+            ? `which React treats as truthy, so the attribute is applied even though you wrote "false". Use \`${attributeName}={false}\` (or omit the attribute) to keep it off`
+            : `but a boolean attribute takes a boolean, not the string "true". Use \`${attributeName}\` or \`${attributeName}={true}\``;
         context.report({
           node: attribute,
-          message: `\`${attributeName}="${value}"\` passes the string "${value}", ${explanation}. Use \`${attributeName}\` or \`${attributeName}={${value}}\`.`,
+          message: `\`${attributeName}="${value}"\` passes the string "${value}", ${guidance}.`,
         });
       }
     },

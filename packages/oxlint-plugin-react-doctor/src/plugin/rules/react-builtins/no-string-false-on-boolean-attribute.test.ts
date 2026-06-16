@@ -11,6 +11,10 @@ describe("no-string-false-on-boolean-attribute", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("truthy");
+    // Suggest the boolean-false form to keep it off, never the bare
+    // shorthand (which would turn the attribute ON).
+    expect(result.diagnostics[0].message).toContain("disabled={false}");
+    expect(result.diagnostics[0].message).toContain("keep it off");
   });
 
   it('flags `checked="true"` with a value-appropriate message (not the "false" wording)', () => {

@@ -1,6 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
-import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
@@ -54,6 +53,9 @@ const collectUndefinedInitialStateNames = (componentBody: EsTreeNode): Set<strin
   }
   return stateNames;
 };
+
+const hasJsxSpreadAttribute = (attributes: EsTreeNode[]): boolean =>
+  attributes.some((attribute) => isNodeOfType(attribute, "JSXSpreadAttribute"));
 
 // HACK: catches three uncontrolled-input mistakes that React's static
 // rule set misses:

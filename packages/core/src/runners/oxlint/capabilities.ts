@@ -83,20 +83,10 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
   if (project.tailwindVersion !== null) {
     capabilities.add("tailwind");
     const tailwind = parseTailwindMajorMinor(project.tailwindVersion);
-    // HACK: when the version is unparseable (dist-tag, workspace protocol),
-    // `isTailwindAtLeast` optimistically assumes latest so the suggestion rule
-    // behind `tailwind:3.4` (prefer-dvh-over-vh) still fires.
+    // HACK: when version is unparseable (dist-tag, workspace protocol),
+    // assume latest so version-gated rules still fire.
     if (isTailwindAtLeast(tailwind, { major: 3, minor: 4 })) {
       capabilities.add("tailwind:3.4");
-    }
-    // `tailwind:4` gates `no-deprecated-tailwind-class`, which tells users a
-    // class was renamed/removed in v4. On an unparseable spec we can't prove
-    // the project is on v4, and a confidently-wrong "deprecated" warning on a
-    // v3 codebase (where `flex-shrink-0` etc. are still correct) is worse than
-    // staying silent — so require a CONFIRMED major >= 4 here, deliberately
-    // stricter than the optimistic gate above.
-    if (tailwind !== null && isTailwindAtLeast(tailwind, { major: 4, minor: 0 })) {
-      capabilities.add("tailwind:4");
     }
   }
 

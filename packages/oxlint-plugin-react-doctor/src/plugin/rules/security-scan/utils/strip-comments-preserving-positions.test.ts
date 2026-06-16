@@ -43,11 +43,11 @@ describe("security-scan/utils/strip-comments-preserving-positions", () => {
       expect(stripped).toContain(`const description = "`);
     });
 
-    it("keeps real call sites outside the quotes intact", () => {
-      const source = `const data = await fetch("https://example.com/api");`;
+    it("keeps real call sites outside the quotes intact while blanking prose arguments", () => {
+      const source = `const data = await fetch("all of the remote rows");`;
       const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
       expect(stripped).toContain("fetch(");
-      expect(stripped).not.toContain("https://example.com");
+      expect(stripped).not.toContain("remote rows");
     });
 
     it("preserves newlines inside multi-line template literals", () => {
@@ -65,20 +65,27 @@ describe("security-scan/utils/strip-comments-preserving-positions", () => {
       expect(stripped).not.toContain("eval");
     });
 
-    it("preserves module specifiers in static imports", () => {
+    it("preserves single-token module specifiers in static imports", () => {
       const source = `import { execFile } from "node:child_process";`;
       const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
       expect(stripped).toContain("node:child_process");
     });
 
-    it("preserves module specifiers in dynamic import() and require()", () => {
+    it("preserves specifiers in dynamic import() and require()", () => {
       const source = `const a = await import("axios");\nconst b = require("node-fetch");`;
       const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
       expect(stripped).toContain('"axios"');
       expect(stripped).toContain('"node-fetch"');
     });
 
-    it("still blanks ordinary call-argument strings that merely end in a paren", () => {
+    it("preserves specifiers behind indirect require forms", () => {
+      const source = `const a = (0, require)("axios");\nconst b = require?.("node-fetch");\nconst c = loadRequire("axios");`;
+      const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+      expect(stripped.match(/axios/g)).toHaveLength(2);
+      expect(stripped).toContain("node-fetch");
+    });
+
+    it("blanks multi-word prose passed as a call argument", () => {
       const source = `transform("please fetch the rows");`;
       const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
       expect(stripped).not.toContain("fetch");

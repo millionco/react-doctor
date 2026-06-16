@@ -1,29 +1,27 @@
-// A module specifier carries a real capability signal in the string itself
-// (`import { execFile } from "node:child_process"`, `require("axios")`), so
-// those strings are preserved even when string contents are otherwise blanked.
-const MODULE_SPECIFIER_KEYWORDS = new Set(["from", "import", "require"]);
-const ASCII_LETTER_PATTERN = /[A-Za-z]/;
-const IDENTIFIER_TAIL_PATTERN = /[\w$]/;
 const WHITESPACE_PATTERN = /\s/;
 
-// True when the string opening at `quoteIndex` is an `import`/`from`/`require`
-// module specifier rather than ordinary data, walking back over whitespace and
-// the optional call paren of `import(...)` / `require(...)`.
-const isModuleSpecifierQuote = (content: string, quoteIndex: number): boolean => {
-  let cursor = quoteIndex - 1;
-  while (cursor >= 0 && WHITESPACE_PATTERN.test(content[cursor])) cursor -= 1;
-  if (content[cursor] === "(") {
-    cursor -= 1;
-    while (cursor >= 0 && WHITESPACE_PATTERN.test(content[cursor])) cursor -= 1;
+// A capability keyword is a real signal as a single-token literal — a module
+// specifier (`"node:child_process"`, `"axios"`) or identifier-shaped value —
+// and noise as prose (a tool `description: "...ALWAYS fetch the numbers..."`).
+// Specifiers and identifiers never contain whitespace; prose is multiple words.
+// Keying on the literal's own content (rather than the call syntax around it)
+// preserves every import/require form — `from "x"`, `require("x")`,
+// `(0, require)("x")`, `require?.("x")` — without trying to parse the callee.
+const quotedLiteralHasWhitespace = (
+  content: string,
+  openQuoteIndex: number,
+  delimiter: string,
+): boolean => {
+  for (let cursor = openQuoteIndex + 1; cursor < content.length; cursor += 1) {
+    const character = content[cursor];
+    if (character === "\\") {
+      cursor += 1;
+      continue;
+    }
+    if (character === delimiter) return false;
+    if (WHITESPACE_PATTERN.test(character)) return true;
   }
-  const keywordEnd = cursor;
-  while (cursor >= 0 && ASCII_LETTER_PATTERN.test(content[cursor])) cursor -= 1;
-  const charBeforeKeyword = content[cursor];
-  // Reject letters glued to a longer identifier (`_from`, `$require`).
-  if (charBeforeKeyword !== undefined && IDENTIFIER_TAIL_PATTERN.test(charBeforeKeyword)) {
-    return false;
-  }
-  return MODULE_SPECIFIER_KEYWORDS.has(content.slice(cursor + 1, keywordEnd + 1));
+  return false;
 };
 
 // Pattern scans repeatedly match keyword pairs inside comments ("Ajv compiles
@@ -33,8 +31,8 @@ const isModuleSpecifierQuote = (content: string, quoteIndex: number): boolean =>
 // `blankStringContents` is set it also blanks string-literal interiors (the
 // delimiting quotes are kept), so a capability keyword that appears only in
 // prose — a tool `description: "...ALWAYS fetch the numbers..."` — no longer
-// counts as a real call site; module specifiers are exempt. Newlines are
-// always preserved for line mapping.
+// counts as a real call site; single-token literals (module specifiers,
+// identifiers) are exempt. Newlines are always preserved for line mapping.
 const blankNonCodePreservingPositions = (content: string, blankStringContents: boolean): string => {
   const characters = content.split("");
   let stringDelimiter: string | null = null;
@@ -85,9 +83,17 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
       continue;
     }
 
-    if (character === '"' || character === "'" || character === "`") {
+    if (character === '"' || character === "'") {
       stringDelimiter = character;
-      isBlankingString = blankStringContents && !isModuleSpecifierQuote(content, index);
+      isBlankingString =
+        blankStringContents && quotedLiteralHasWhitespace(content, index, character);
+      index += 1;
+      continue;
+    }
+
+    if (character === "`") {
+      stringDelimiter = "`";
+      isBlankingString = blankStringContents;
       index += 1;
       continue;
     }

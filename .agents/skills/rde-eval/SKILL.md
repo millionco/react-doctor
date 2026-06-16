@@ -13,13 +13,15 @@ Test a react-doctor rule change against thousands of OSS repos with the
 - **cloud** — Vercel Sandbox microVMs (4 vCPU / 8 GB). Fan out to 50+ repos in
   parallel. Requires a **pushed** branch.
 
-`$RD` = the react-doctor checkout. `$EVALS` = the react-doctor-evals checkout
-(e.g. `~/projects/million/react-doctor-evals`). Run every `node dist/cli.js`
-command from `$EVALS`.
+`$RD` is your react-doctor checkout — the one with the rule changes, at the
+**monorepo root** (the CLI appends `packages/react-doctor/...`). `$EVALS` is the
+react-doctor-evals checkout. Run every `node dist/cli.js` command from `$EVALS`.
 
 ## Setup (every run)
 
 ```sh
+export RD=~/projects/million/react-doctor          # checkout with your rule changes (monorepo root)
+export EVALS=~/projects/million/react-doctor-evals # the harness
 cd $EVALS && git pull && pnpm install && pnpm build   # stale builds break cloud workers
 (cd $RD && pnpm build)                                # local mode needs the built bin
 ```

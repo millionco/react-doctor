@@ -437,7 +437,7 @@ git push --force origin v2   # the force applies to the moving major tag only
   `format:check` / `smoke:json-report`) are documented in the Testing section
   above. To exercise the CLI end-to-end after `pnpm build`, run the bin against
   any React project: `node packages/react-doctor/bin/react-doctor.js <dir>
-  --yes --no-score` (use `--no-score`/`--no-telemetry` to skip the network score
+--yes --no-score` (use `--no-score`/`--no-telemetry` to skip the network score
   API + Sentry; add `--verbose` for the full per-rule list, `--json` for the
   schema report).
 - **Optional website** (`packages/website`, Next.js): start with

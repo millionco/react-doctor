@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import Conf from "conf";
+import { REACT_DOCTOR_CONFIG_PROJECT_NAME } from "./constants.js";
 import { hashProjectRoot } from "./hash-project-root.js";
 import { findNearestPackageDirectory, hasDoctorScript } from "./install-doctor-script.js";
 import { isCodingAgentEnvironment } from "./is-ci-environment.js";
@@ -26,13 +27,11 @@ export interface ResolveInstallSetupProjectRootOptions {
   readonly scanDirectories: ReadonlyArray<string>;
 }
 
-const GLOBAL_CONFIG_PROJECT_NAME = "react-doctor";
-
 const getSetupPromptStore = (
   options: SetupPromptStoreOptions = {},
 ): Conf<SetupPromptGlobalConfig> =>
   new Conf<SetupPromptGlobalConfig>({
-    projectName: GLOBAL_CONFIG_PROJECT_NAME,
+    projectName: REACT_DOCTOR_CONFIG_PROJECT_NAME,
     cwd: options.cwd,
   });
 

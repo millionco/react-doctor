@@ -1,8 +1,5 @@
 import Conf from "conf";
-
-// Shared global config file with the setup-prompt state; Conf preserves unknown
-// keys, so both concerns coexist in one file.
-const GLOBAL_CONFIG_PROJECT_NAME = "react-doctor";
+import { REACT_DOCTOR_CONFIG_PROJECT_NAME } from "./constants.js";
 
 const ONBOARDED_AT_KEY = "onboardedAt";
 
@@ -18,7 +15,7 @@ interface OnboardingGlobalConfig {
 
 const getOnboardingStore = (options: OnboardingStoreOptions = {}): Conf<OnboardingGlobalConfig> =>
   new Conf<OnboardingGlobalConfig>({
-    projectName: GLOBAL_CONFIG_PROJECT_NAME,
+    projectName: REACT_DOCTOR_CONFIG_PROJECT_NAME,
     cwd: options.cwd,
   });
 

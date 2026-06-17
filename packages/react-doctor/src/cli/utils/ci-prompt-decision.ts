@@ -1,11 +1,4 @@
 import { createProjectDecisionStore } from "./project-decision-store.js";
-import type {
-  ProjectDecisionOutcome,
-  ProjectDecisionStoreOptions,
-} from "./project-decision-store.js";
-
-export type CiPromptDecisionOutcome = ProjectDecisionOutcome;
-export type CiPromptDecisionStoreOptions = ProjectDecisionStoreOptions;
 
 // The "Add React Doctor to CI?" pitch is a one-time, per-repo decision, shared
 // by `install` onboarding and the post-scan handoff. Either answer suppresses

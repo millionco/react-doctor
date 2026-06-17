@@ -258,7 +258,7 @@ const isIdentifierShadowedByLocalBinding = (
 ): boolean => {
   let currentNode: ts.Node | undefined = identifier.parent;
   while (currentNode) {
-    if (isScopeNode(currentNode)) {
+    if (isScopeBoundary(currentNode)) {
       if (scopeContainsNonImportBinding(currentNode, currentNode, identifier.text)) return true;
     }
     if (currentNode === sourceFile) return false;
@@ -543,8 +543,6 @@ const findResolutionInScope = (
   return resolution;
 };
 
-const isScopeNode = isScopeBoundary;
-
 const resolveIdentifierBinding = (
   identifier: ts.Identifier,
   reactImportBindings: ReactImportBindings,
@@ -553,7 +551,7 @@ const resolveIdentifierBinding = (
 ): BindingResolution | null => {
   let currentNode: ts.Node | undefined = identifier.parent;
   while (currentNode) {
-    if (isScopeNode(currentNode)) {
+    if (isScopeBoundary(currentNode)) {
       const resolution = findResolutionInScope(
         currentNode,
         identifier.text,

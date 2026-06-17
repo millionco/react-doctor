@@ -25,7 +25,7 @@ type GeneratedImageRendererCall =
   | EsTreeNodeOfType<"CallExpression">
   | EsTreeNodeOfType<"NewExpression">;
 
-export const isGeneratedImageRenderFilename = (rawFilename: string | undefined): boolean => {
+const isGeneratedImageRenderFilename = (rawFilename: string | undefined): boolean => {
   if (!rawFilename) return false;
   const filename = normalizeFilename(rawFilename);
   return isNextjsMetadataImageRouteFilename(filename);

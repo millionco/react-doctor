@@ -103,13 +103,6 @@ const isAllowedStringLikeInContainer = (
   containsUtf8Escape(text) ||
   hasAdjacentExpressionContainerSibling(container);
 
-// Helper: extracts the no-substitution template's cooked value if the
-// expression is a single-quasi template literal; else null.
-const singleQuasiTemplateValue = (expression: EsTreeNode): string | null => {
-  if (!isNodeOfType(expression, "TemplateLiteral")) return null;
-  return getStaticTemplateLiteralValue(expression);
-};
-
 const checkExpressionContainer = (
   container: EsTreeNodeOfType<"JSXExpressionContainer">,
   parentIsAttribute: boolean,
@@ -164,8 +157,6 @@ const checkExpressionContainer = (
     if (isAllowedStringLikeInContainer(rawSource, container, parentIsAttribute)) return;
     context.report({ node: container, message: UNNECESSARY_BRACES_MESSAGE });
   }
-  // Suppress unused-name warning for helper used in older code path.
-  void singleQuasiTemplateValue;
 };
 
 const isScriptElement = (openingElement: EsTreeNodeOfType<"JSXOpeningElement">): boolean =>

@@ -379,7 +379,7 @@ export const displayName = defineRule({
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);
-    const ignoreNamed = settings.ignoreTranspilerName ? false : true;
+    const ignoreNamed = !settings.ignoreTranspilerName;
 
     const reportAt = (node: EsTreeNode): void => {
       context.report({ node, message: MESSAGE });
@@ -540,8 +540,6 @@ export const displayName = defineRule({
             return;
           }
         }
-        // Suppress unused warning.
-        void isCreateElementCall;
         reportAt(node as EsTreeNode);
       },
     };

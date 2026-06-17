@@ -644,10 +644,6 @@ export const onlyExportComponents = defineRule({
             }
           }
         }
-        // Suppress unused warning.
-        void exportContainsName;
-
-        // Report.
         if (hasAnyExports && hasReactExport) {
           for (const entry of exports) {
             if (entry.kind === "non-component") {
@@ -670,36 +666,3 @@ export const onlyExportComponents = defineRule({
     };
   },
 });
-
-// Quick helper: does the program export the given name (declarator
-// inside an export, function declaration with export, or specifier)?
-const exportContainsName = (allNodes: ReadonlyArray<EsTreeNode>, name: string): boolean => {
-  for (const child of allNodes) {
-    if (isNodeOfType(child, "ExportNamedDeclaration")) {
-      const declaration = child.declaration;
-      if (isNodeOfType(declaration, "FunctionDeclaration") && declaration.id?.name === name) {
-        return true;
-      }
-      if (isNodeOfType(declaration, "ClassDeclaration") && declaration.id?.name === name) {
-        return true;
-      }
-      if (isNodeOfType(declaration, "VariableDeclaration")) {
-        for (const declarator of declaration.declarations) {
-          if (isNodeOfType(declarator.id, "Identifier") && declarator.id.name === name) {
-            return true;
-          }
-        }
-      }
-      for (const specifier of child.specifiers ?? []) {
-        if (!isNodeOfType(specifier, "ExportSpecifier")) continue;
-        const local = (specifier as { local?: EsTreeNode }).local;
-        if (local && isNodeOfType(local, "Identifier") && local.name === name) return true;
-      }
-    }
-    if (isNodeOfType(child, "ExportDefaultDeclaration")) {
-      const decl = child.declaration as EsTreeNode;
-      if (isNodeOfType(decl, "Identifier") && decl.name === name) return true;
-    }
-  }
-  return false;
-};

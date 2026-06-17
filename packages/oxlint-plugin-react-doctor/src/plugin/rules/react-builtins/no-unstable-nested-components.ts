@@ -336,11 +336,7 @@ export const noUnstableNestedComponents = defineRule({
     const settings = resolveSettings(context.settings);
     const renderPropRegex = compileGlob(settings.propNamePattern);
 
-    const reportCandidate = (
-      candidateNode: EsTreeNode,
-      reportNode: EsTreeNode,
-      candidateName: string | null,
-    ): void => {
+    const reportCandidate = (candidateNode: EsTreeNode, reportNode: EsTreeNode): void => {
       if (isFirstArgumentOfHocCall(candidateNode)) return;
       if (isReturnOfMapCallback(candidateNode)) return;
       const propInfo = isComponentDeclaredInProp(candidateNode);
@@ -351,13 +347,10 @@ export const noUnstableNestedComponents = defineRule({
       }
       const enclosing = findEnclosingComponent(candidateNode);
       if (!enclosing) return;
-      // Skip if outer doesn't actually look like a component (require
-      // its body to contain JSX).
       context.report({
         node: reportNode,
         message: buildMessage(enclosing.name),
       });
-      void candidateName;
     };
 
     const checkFunctionLike = (
@@ -375,7 +368,7 @@ export const noUnstableNestedComponents = defineRule({
         propInfo !== null ||
         isObjectCallbackCandidate(node as EsTreeNode);
       if (!isCandidate) return;
-      reportCandidate(node as EsTreeNode, node as EsTreeNode, inferredName);
+      reportCandidate(node as EsTreeNode, node as EsTreeNode);
     };
 
     return {
@@ -391,18 +384,18 @@ export const noUnstableNestedComponents = defineRule({
         // tldraw, `class Tool extends BaseTool`, etc.) as a nested React
         // component candidate.
         if (!isReactClassComponent(node as EsTreeNode)) return;
-        reportCandidate(node as EsTreeNode, node as EsTreeNode, node.id.name);
+        reportCandidate(node as EsTreeNode, node as EsTreeNode);
       },
       ClassExpression(node: EsTreeNodeOfType<"ClassExpression">) {
         const inferredName = node.id?.name ?? inferFunctionLikeName(node as EsTreeNode);
         if (!inferredName || !isReactComponentName(inferredName)) return;
         if (!isReactClassComponent(node as EsTreeNode)) return;
-        reportCandidate(node as EsTreeNode, node as EsTreeNode, inferredName);
+        reportCandidate(node as EsTreeNode, node as EsTreeNode);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isHocCallee(node)) return;
         if (!hocCallContainsComponent(node)) return;
-        reportCandidate(node as EsTreeNode, node as EsTreeNode, null);
+        reportCandidate(node as EsTreeNode, node as EsTreeNode);
       },
     };
   },

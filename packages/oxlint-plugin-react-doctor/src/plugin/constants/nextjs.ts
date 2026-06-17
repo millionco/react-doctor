@@ -23,8 +23,6 @@ export const METADATA_EXPORT_NAMES = ["metadata", "generateMetadata"];
 export const INTERNAL_PAGE_PATH_PATTERN =
   /\/(?:(?:\((?:dashboard|admin|settings|account|internal|manage|console|portal|auth|onboarding|app|ee|protected)\))|(?:dashboard|admin|settings|account|internal|manage|console|portal))\//i;
 
-export const OG_ROUTE_PATTERN = /\/og\b/i;
-
 export const PAGES_DIRECTORY_PATTERN = /\/pages\//;
 
 export const NEXTJS_NAVIGATION_FUNCTIONS = new Set([

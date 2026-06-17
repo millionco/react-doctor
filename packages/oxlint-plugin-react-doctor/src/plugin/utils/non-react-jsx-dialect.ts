@@ -11,7 +11,7 @@ import { isNodeOfType } from "./is-node-of-type.js";
 //   1. an import from the dialect's runtime package, OR
 //   2. distinctively-Solid syntax in the file (`classList={...}`,
 //      which only Solid's JSX recognises)
-export const NON_REACT_JSX_DIALECT_PACKAGES: ReadonlySet<string> = new Set([
+const NON_REACT_JSX_DIALECT_PACKAGES: ReadonlySet<string> = new Set([
   "solid-js",
   "solid-js/web",
   "solid-js/store",

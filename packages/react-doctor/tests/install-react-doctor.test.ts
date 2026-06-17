@@ -946,6 +946,27 @@ describe("runInstallReactDoctor", () => {
     expect(hasHandledCiPrompt(fixture.projectRoot)).toBe(true);
   });
 
+  it("persists an accepted CI offer so the scan handoff won't re-ask", async () => {
+    writeValidSkill(fixture.sourceDir);
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    const hookPath = path.join(fixture.projectRoot, ".git/hooks/pre-commit");
+    const workflowPath = path.join(fixture.projectRoot, ".github/workflows/react-doctor.yml");
+    expect(hasHandledCiPrompt(fixture.projectRoot)).toBe(false);
+
+    await runInteractiveInstallReactDoctorForTest({
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      gitHookPath: hookPath,
+      // "workflow" → the CI offer is accepted (ci-yes).
+      setupOptions: ["workflow"],
+    });
+
+    expect(fs.existsSync(workflowPath)).toBe(true);
+    // The accept is persisted at answer time, so an accept that never wrote the
+    // workflow (early exit / failure) still won't re-pitch on the next scan.
+    expect(hasHandledCiPrompt(fixture.projectRoot)).toBe(true);
+  });
+
   it("interactively skips the CI offer once the decision is already persisted", async () => {
     writeValidSkill(fixture.sourceDir);
     writePackageJson(fixture.projectRoot, { scripts: {} });

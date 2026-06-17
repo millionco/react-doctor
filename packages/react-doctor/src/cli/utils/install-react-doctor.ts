@@ -571,12 +571,14 @@ export const runInstallReactDoctor = async (
     recordActionUpgradeDecision(projectRoot, "declined");
   }
 
-  // The CI prompt's "No" is once-per-repo too: persist the decline so the next
-  // interactive scan handoff doesn't re-ask it. An accept needs no record here —
-  // the workflow file the install writes is what suppresses the handoff. Dry runs
-  // preview without writing.
-  if (ciPromptOutcome === "no" && !options.dryRun) {
-    recordCiPromptDecision(projectRoot, "declined");
+  // The CI pitch is once-per-repo: persist the answer (yes or no) the moment
+  // it's given — mirroring the post-scan handoff — so neither surface re-pitches
+  // it. Recording the accept here (not just relying on the workflow file) keeps
+  // it answered even if the install is cancelled below or the workflow write
+  // fails; the user can always re-run `install` to set CI up. A cancel records
+  // nothing. Dry runs preview without writing.
+  if ((ciPromptOutcome === "yes" || ciPromptOutcome === "no") && !options.dryRun) {
+    recordCiPromptDecision(projectRoot, ciPromptOutcome === "yes" ? "accepted" : "declined");
   }
 
   // Step 2 — the agent skill + package setup (the core of `install`).

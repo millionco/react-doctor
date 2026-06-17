@@ -4,12 +4,8 @@ import { isFunctionLike } from "../utils/is-function-like.js";
 import { isNodeOfType } from "../utils/is-node-of-type.js";
 
 // Per-function CFG. Mirrors the subset of `oxc_cfg` we need to answer:
-//
-//   1. "Is this AST node guaranteed to execute on every call to its
-//      enclosing function?" (isUnconditionalFromEntry — used by
-//      rules-of-hooks)
-//   2. "Does this AST node always run before the function returns?"
-//      (dominatesExit — used by some semantic rules)
+// "Is this AST node guaranteed to execute on every call to its
+// enclosing function?" (isUnconditionalFromEntry — used by rules-of-hooks)
 //
 // Edges have just two kinds: uncond (sequential fall-through) and cond
 // (any conditional branch — true / false / loop / case / etc.). The
@@ -44,7 +40,6 @@ export interface ControlFlowAnalysis {
   readonly cfgFor: (functionLike: EsTreeNode) => FunctionCfg | null;
   readonly enclosingFunction: (node: EsTreeNode) => EsTreeNode | null;
   readonly isUnconditionalFromEntry: (node: EsTreeNode) => boolean;
-  readonly dominatesExit: (node: EsTreeNode) => boolean;
 }
 
 interface CfgBuilder {
@@ -499,52 +494,9 @@ const computeUnconditionalSet = (cfg: FunctionCfg): Set<BasicBlock> => {
   return unconditional;
 };
 
-// Reverse BFS from exit following all edges; record each block whose
-// every successor either reaches exit or is exit itself. Approximation
-// of "dominates exit": a block dominates exit iff every forward path
-// from it reaches exit. We compute the contrapositive: blocks from
-// which a path to a non-exit terminal sink exists are NOT dominators.
-const computeDominatesExit = (cfg: FunctionCfg): Set<BasicBlock> => {
-  // Simple approximation: start from exit, walk backwards. Every block
-  // we reach has at least one path TO exit. For "dominates exit" (every
-  // path reaches it), we'd need a more careful analysis. For our use
-  // cases (rules-of-hooks doesn't need this; exhaustive-deps optionally
-  // uses it for "always runs before return"), we ship a conservative
-  // answer: a block dominates exit iff exit is its only reachable sink.
-  const reachableToExit = new Set<BasicBlock>();
-  const queue: BasicBlock[] = [cfg.exit];
-  while (queue.length > 0) {
-    const block = queue.shift()!;
-    if (reachableToExit.has(block)) continue;
-    reachableToExit.add(block);
-    for (const edge of block.predecessors) queue.push(edge.from);
-  }
-  // Now mark blocks where EVERY successor leads to exit (recursive).
-  const dominatesExit = new Set<BasicBlock>();
-  const visit = (block: BasicBlock): boolean => {
-    if (block === cfg.exit) return true;
-    if (dominatesExit.has(block)) return true;
-    if (block.successors.length === 0) return false;
-    // To avoid infinite recursion in cycles, use a temp marker.
-    dominatesExit.add(block);
-    let allReach = true;
-    for (const edge of block.successors) {
-      if (!visit(edge.to)) {
-        allReach = false;
-        break;
-      }
-    }
-    if (!allReach) dominatesExit.delete(block);
-    return allReach;
-  };
-  for (const block of cfg.blocks) visit(block);
-  return dominatesExit;
-};
-
 interface FunctionCfgEntry {
   cfg: FunctionCfg;
   unconditionalSet: Set<BasicBlock>;
-  dominatesExitSet: Set<BasicBlock>;
 }
 
 // Walks the AST building a CFG for every function-like node + the
@@ -559,7 +511,6 @@ export const analyzeControlFlow = (program: EsTreeNode): ControlFlowAnalysis => 
     functionCfgs.set(functionNode, {
       cfg,
       unconditionalSet: computeUnconditionalSet(cfg),
-      dominatesExitSet: computeDominatesExit(cfg),
     });
   };
 
@@ -616,20 +567,9 @@ export const analyzeControlFlow = (program: EsTreeNode): ControlFlowAnalysis => 
     return entry.unconditionalSet.has(block);
   };
 
-  const dominatesExit = (node: EsTreeNode): boolean => {
-    const owner = enclosingFunction(node);
-    if (!owner) return true;
-    const entry = functionCfgs.get(owner);
-    if (!entry) return true;
-    const block = entry.cfg.blockOf(node);
-    if (!block) return true;
-    return entry.dominatesExitSet.has(block);
-  };
-
   return {
     cfgFor,
     enclosingFunction,
     isUnconditionalFromEntry,
-    dominatesExit,
   };
 };

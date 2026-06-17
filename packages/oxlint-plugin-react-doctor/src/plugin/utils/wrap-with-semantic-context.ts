@@ -26,10 +26,10 @@ import type { ControlFlowAnalysis } from "../semantic/control-flow-graph.js";
 // wrapper walks every visited node's parent chain on first invocation
 // (see `captureRootIfNeeded` below) and the analyses are only read from
 // inside visitor bodies that fire AFTER that capture. The stubs satisfy
-// the type system. `isUnconditionalFromEntry` / `dominatesExit` default
-// to `false` (the conservative answer) so that if the capture ever
-// fails, `rules-of-hooks` errs toward flagging a possible violation
-// rather than silently allowing one.
+// the type system. `isUnconditionalFromEntry` defaults to `false` (the
+// conservative answer) so that if the capture ever fails,
+// `rules-of-hooks` errs toward flagging a possible violation rather
+// than silently allowing one.
 const buildFallbackScopes = (): ScopeAnalysis => ({
   rootScope: {
     id: 0,
@@ -52,7 +52,6 @@ const FALLBACK_CFG: ControlFlowAnalysis = {
   cfgFor: () => null,
   enclosingFunction: () => null,
   isUnconditionalFromEntry: () => false,
-  dominatesExit: () => false,
 };
 
 export const wrapWithSemanticContext = (rule: Rule): HostRule => ({

@@ -12,6 +12,7 @@ import {
   MILLISECONDS_PER_SECOND,
   TSCONFIG_FILENAMES,
 } from "./constants.js";
+import { isRecord } from "./utils/is-record.js";
 import { toCanonicalPath } from "./utils/to-canonical-path.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
 
@@ -91,9 +92,6 @@ interface DeadCodeWorkerFailureMessage {
   readonly ok: false;
   readonly error: DeadCodeWorkerError;
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 // Runs in a child PROCESS (node -e), not a worker_thread — see
 // `createDeadCodeWorker`. Reads the worker input as JSON on stdin and

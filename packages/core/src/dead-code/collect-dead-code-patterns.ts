@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { collectIgnorePatterns } from "../collect-ignore-patterns.js";
 import { readIgnoreFile } from "../read-ignore-file.js";
+import { isRecord } from "../utils/is-record.js";
 
 interface KnipWorkspaceConfig {
   readonly entry?: unknown;
@@ -15,9 +16,6 @@ interface KnipConfig {
 }
 
 const KNIP_JSON_FILENAME = "knip.json";
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const readJsonFileSafe = (filePath: string): unknown | null => {
   let rawContents: string;

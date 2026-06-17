@@ -33,6 +33,18 @@ describe("no-target-blank-without-rel", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a rel expression-container literal missing noopener (`rel={'nofollow'}`)", () => {
+    const code = `const A = () => <a href="/x" target="_blank" rel={'nofollow'}>Docs</a>;`;
+    const result = runRule(noTargetBlankWithoutRel, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT flag a rel expression-container literal with noopener (`rel={'noopener'}`)", () => {
+    const code = `const A = () => <a href="/x" target="_blank" rel={'noopener'}>Docs</a>;`;
+    const result = runRule(noTargetBlankWithoutRel, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does NOT flag same-tab links", () => {
     const code = `const A = () => <a href="/x">Docs</a>;`;
     const result = runRule(noTargetBlankWithoutRel, code);

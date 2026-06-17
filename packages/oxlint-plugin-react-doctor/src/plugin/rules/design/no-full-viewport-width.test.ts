@@ -15,6 +15,24 @@ describe("no-full-viewport-width", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags variant-prefixed `md:w-screen` (overflow happens at every breakpoint)", () => {
+    const code = `const A = () => <div className="md:w-screen" />;`;
+    const result = runRule(noFullViewportWidth, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags variant-prefixed `lg:min-w-screen`", () => {
+    const code = `const A = () => <div className="lg:min-w-screen" />;`;
+    const result = runRule(noFullViewportWidth, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT flag variant-prefixed `md:max-w-screen` (still a defensive cap)", () => {
+    const code = `const A = () => <div className="md:max-w-screen" />;`;
+    const result = runRule(noFullViewportWidth, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags inline `width: '100vw'`", () => {
     const code = `const A = () => <div style={{ width: "100vw" }} />;`;
     const result = runRule(noFullViewportWidth, code);

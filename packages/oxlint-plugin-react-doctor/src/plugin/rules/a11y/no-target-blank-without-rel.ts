@@ -9,16 +9,23 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 const MESSAGE =
   '`<a target="_blank">` without `rel="noopener"` lets the opened page script your tab via `window.opener` (reverse tabnabbing). Add `rel="noopener noreferrer"`.';
 
-const targetIsBlank = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
+// Resolve an attribute to its string value from a plain literal (`rel="x"`) or
+// a string literal inside an expression container (`rel={'x'}`). Returns null
+// for a dynamic value (`rel={rel}`) or boolean shorthand. Used for both
+// `target` and `rel` so `rel={'noopener'}` is judged, not silently skipped.
+const getStringLiteralAttributeValue = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+): string | null => {
   const stringValue = getJsxPropStringValue(attribute);
-  if (stringValue !== null) return stringValue === "_blank";
-  // `target={'_blank'}` — literal inside an expression container.
+  if (stringValue !== null) return stringValue;
   const value = attribute.value as EsTreeNode | null;
   if (value && isNodeOfType(value, "JSXExpressionContainer")) {
     const expression = value.expression;
-    if (isNodeOfType(expression, "Literal") && expression.value === "_blank") return true;
+    if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
+      return expression.value;
+    }
   }
-  return false;
+  return null;
 };
 
 export const noTargetBlankWithoutRel = defineRule({
@@ -37,11 +44,11 @@ export const noTargetBlankWithoutRel = defineRule({
       if (hasJsxSpreadAttribute(node.attributes)) return;
 
       const targetAttribute = findJsxAttribute(node.attributes, "target");
-      if (!targetAttribute || !targetIsBlank(targetAttribute)) return;
+      if (!targetAttribute || getStringLiteralAttributeValue(targetAttribute) !== "_blank") return;
 
       const relAttribute = findJsxAttribute(node.attributes, "rel");
       if (relAttribute) {
-        const relValue = getJsxPropStringValue(relAttribute);
+        const relValue = getStringLiteralAttributeValue(relAttribute);
         // Dynamic rel (`rel={rel}`) — assume it's handled; don't flag.
         if (relValue === null) return;
         const tokens = relValue.toLowerCase().split(/\s+/);

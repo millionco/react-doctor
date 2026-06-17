@@ -1,3 +1,4 @@
+import { ROOT_FONT_SIZE_PX } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
@@ -22,7 +23,7 @@ export const noArbitraryPxFontSize = defineRule({
       if (!classNameValue) return;
       for (const match of classNameValue.matchAll(ARBITRARY_PX_FONT_SIZE)) {
         const pixels = parseFloat(match[1]);
-        const rem = pixels / 16;
+        const rem = pixels / ROOT_FONT_SIZE_PX;
         context.report({
           node,
           message: `\`text-[${match[1]}px]\` doesn't scale with the user's font-size preference — use rem, e.g. \`text-[${rem}rem]\`.`,

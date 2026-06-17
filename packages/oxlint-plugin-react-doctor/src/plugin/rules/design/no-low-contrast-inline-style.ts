@@ -2,6 +2,7 @@ import {
   BOLD_FONT_WEIGHT_MIN,
   LARGE_BOLD_TEXT_MIN_PX,
   LARGE_TEXT_MIN_PX,
+  ROOT_FONT_SIZE_PX,
   WCAG_CONTRAST_LARGE_MIN,
   WCAG_CONTRAST_NORMAL_MIN,
 } from "../../constants/design.js";
@@ -55,7 +56,7 @@ const toPx = (property: EsTreeNodeOfType<"Property">): number | null => {
   const pxMatch = stringValue.match(/^([\d.]+)px$/);
   if (pxMatch) return parseFloat(pxMatch[1]);
   const remMatch = stringValue.match(/^([\d.]+)rem$/);
-  if (remMatch) return parseFloat(remMatch[1]) * 16;
+  if (remMatch) return parseFloat(remMatch[1]) * ROOT_FONT_SIZE_PX;
   return null;
 };
 

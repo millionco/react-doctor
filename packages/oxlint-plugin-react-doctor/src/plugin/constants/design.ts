@@ -29,6 +29,10 @@ export const LARGE_TEXT_MIN_PX = 24;
 export const LARGE_BOLD_TEXT_MIN_PX = 18.66;
 export const BOLD_FONT_WEIGHT_MIN = 700;
 
+// Browser default root font size — the px-per-rem divisor for converting
+// arbitrary `px` font sizes and `rem` lengths to and from pixels.
+export const ROOT_FONT_SIZE_PX = 16;
+
 export const WIDE_TRACKING_THRESHOLD_EM = 0.05;
 
 export const LONG_TRANSITION_DURATION_THRESHOLD_MS = 1000;

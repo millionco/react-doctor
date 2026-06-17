@@ -1,7 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
-import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
+import { getStringLiteralAttributeValue } from "../../utils/get-string-literal-attribute-value.js";
 
 // Values that name the *element type* instead of the action/destination.
 // A screen-reader user hearing "icon" or "button" learns nothing about
@@ -34,7 +34,7 @@ export const noUninformativeAriaLabel = defineRule({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const ariaLabel = findJsxAttribute(node.attributes, "aria-label");
       if (!ariaLabel) return;
-      const labelValue = getJsxPropStringValue(ariaLabel);
+      const labelValue = getStringLiteralAttributeValue(ariaLabel);
       if (labelValue === null) return;
       if (UNINFORMATIVE_LABELS.has(labelValue.trim().toLowerCase())) {
         context.report({ node: ariaLabel, message: MESSAGE });

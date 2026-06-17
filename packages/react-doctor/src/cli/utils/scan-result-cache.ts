@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -17,6 +16,7 @@ import {
   SCAN_RESULT_CACHE_MAX_ENTRY_COUNT,
   SCAN_RESULT_CACHE_SCHEMA_VERSION,
 } from "./constants.js";
+import { runGit } from "./git-hook-shared.js";
 import type { ResolvedInspectOptions } from "../../inspect.js";
 
 interface StringUnknownRecord {
@@ -116,18 +116,6 @@ const stringifyStableJson = (value: unknown): string | null => {
 };
 
 const hashString = (value: string): string => crypto.createHash("sha1").update(value).digest("hex");
-
-const runGit = (directory: string, args: ReadonlyArray<string>): string | null => {
-  try {
-    return execFileSync("git", [...args], {
-      cwd: directory,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  } catch {
-    return null;
-  }
-};
 
 const readHeadSha = (projectDirectory: string): string | null =>
   runGit(projectDirectory, ["rev-parse", "HEAD"]);

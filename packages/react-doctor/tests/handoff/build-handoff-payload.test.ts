@@ -36,8 +36,8 @@ describe("buildHandoffPayload", () => {
 
     expect(payload).toContain(`Fix the top ${TOP_ERRORS_DISPLAY_COUNT}`);
     expect(payload).toContain("demo");
-    // The CI pitch is off by default — it's a once-per-repo upsell the caller
-    // opts into, so a bare payload carries no marketing.
+    // The agent copy-prompt carries no CI marketing — the interactive handoff
+    // prompt is the single once-per-repo pitch, so the agent never re-asks it.
     expect(payload).not.toContain("add React Doctor to CI");
     expect(payload).not.toContain("https://react.doctor/ci");
     // Exactly TOP_ERRORS_DISPLAY_COUNT numbered entries.
@@ -50,28 +50,5 @@ describe("buildHandoffPayload", () => {
     expect(fs.existsSync(directory)).toBe(true);
     expect(fs.existsSync(`${directory}/diagnostics.json`)).toBe(true);
     fs.rmSync(directory, { recursive: true, force: true });
-  });
-
-  it("prepends the CI pitch only when includeCiPitch is set", () => {
-    const diagnostics = [makeDiagnostic({})];
-
-    const withPitch = buildHandoffPayload({
-      diagnostics,
-      projectName: "demo",
-      includeCiPitch: true,
-    });
-    expect(withPitch).toContain("add React Doctor to CI");
-    expect(withPitch).toContain("https://react.doctor/ci");
-    // The pitch leads the prompt, ahead of the fix instructions.
-    expect(withPitch.indexOf("add React Doctor to CI")).toBeLessThan(
-      withPitch.indexOf("Fix the top"),
-    );
-
-    const withoutPitch = buildHandoffPayload({
-      diagnostics,
-      projectName: "demo",
-      includeCiPitch: false,
-    });
-    expect(withoutPitch).not.toContain("add React Doctor to CI");
   });
 });

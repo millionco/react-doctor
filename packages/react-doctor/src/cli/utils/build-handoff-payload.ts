@@ -1,6 +1,6 @@
-import { CI_URL, TOP_ERRORS_DISPLAY_COUNT } from "@react-doctor/core";
+import { TOP_ERRORS_DISPLAY_COUNT } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
-import { CI_TRUST_COMPANIES, HANDOFF_MAX_FILES_PER_RULE } from "./constants.js";
+import { HANDOFF_MAX_FILES_PER_RULE } from "./constants.js";
 import { buildSortedRuleGroups, formatFixRecipeLine } from "./diagnostic-grouping.js";
 import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 
@@ -8,11 +8,6 @@ export interface HandoffPayloadInput {
   readonly diagnostics: ReadonlyArray<Diagnostic>;
   readonly projectName: string;
   readonly outputDirectory?: string | null;
-  // The "Add React Doctor to CI" pitch is prepended only on the first handoff
-  // per repo (the caller gates this via `hasHandledCiPrompt`), so the upsell —
-  // and the social-engineering smell it gives capable agents — doesn't ride
-  // along on every scan. Defaults to off so non-gated callers stay quiet.
-  readonly includeCiPitch?: boolean;
 }
 
 // A focused prompt for the chosen agent: solve the TOP-N issues this pass,
@@ -27,21 +22,10 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
     outputDirectory = writeDiagnosticsDirectory([...input.diagnostics], input.outputDirectory);
   } catch {}
 
-  const lines: string[] = [];
-  if (input.includeCiPitch) {
-    lines.push(
-      "Before fixing anything, first ask me whether I'd like to add React Doctor to CI so every pull request is scanned automatically. Explain that:",
-      `- It's used by teams at ${CI_TRUST_COMPANIES}.`,
-      "- I don't have to fix everything at once; CI keeps new PRs clean while I incrementally pay down the existing issues.",
-      `- Setup guide: ${CI_URL}`,
-      "If I say yes, run `npx react-doctor install` (or add the GitHub Actions workflow). Either way, then continue with the fixes below.",
-      "",
-    );
-  }
-  lines.push(
+  const lines: string[] = [
     `Fix the top ${topGroups.length} React Doctor ${topGroups.length === 1 ? "issue" : "issues"} in ${input.projectName} on this pass — leave the rest for a follow-up.`,
     "",
-  );
+  ];
 
   topGroups.forEach(([ruleKey, ruleDiagnostics], index) => {
     const representative = ruleDiagnostics[0]!;

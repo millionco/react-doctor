@@ -174,9 +174,10 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
 
   const projectRootForCi = findNearestPackageDirectory(input.rootDirectory) ?? input.rootDirectory;
   const isGitHubActionsConfigured = isReactDoctorWorkflowInstalled(projectRootForCi);
-  // Captured before the prompt records its answer: the CI pitch is once-per-repo,
-  // so it (and the embedded copy-prompt upsell below) only fire when the repo
-  // has neither a workflow nor a prior answer. Subsequent scans stay quiet.
+  // The CI pitch is once-per-repo: ask only when the repo has neither a workflow
+  // nor a prior answer. Subsequent scans stay quiet. (The agent copy-prompt
+  // deliberately carries no CI upsell — this interactive prompt is the single
+  // pitch, so the agent never re-asks what the user was just asked here.)
   const isCiPitchPending = !isGitHubActionsConfigured && !hasHandledCiPrompt(projectRootForCi);
 
   // CI question first, only when it has anything to do. A "yes" sets up the
@@ -253,7 +254,6 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
     diagnostics: input.diagnostics,
     projectName: input.projectName,
     outputDirectory: input.outputDirectory,
-    includeCiPitch: isCiPitchPending,
   });
 
   if (handoffTarget === CLIPBOARD_CHOICE) {

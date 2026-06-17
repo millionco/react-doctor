@@ -50,6 +50,7 @@ import { printMultiProjectSummary } from "../utils/render-multi-project-summary.
 import { printDiagnosticsDump } from "../utils/render-summary.js";
 import { isCiOrCodingAgentEnvironment } from "../utils/is-ci-environment.js";
 import {
+  disableSetupPrompt,
   printAgentInstallHint,
   resolveInstallSetupProjectRoot,
   shouldShowAgentInstallHint,
@@ -712,6 +713,9 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       ) {
         printAgentInstallHint();
         recordCount(METRIC.agentInstallHintShown, 1);
+        // Show the install nudge once per repo, then stay quiet — the opt-out
+        // store already exists; this wires it so the hint isn't every-scan noise.
+        disableSetupPrompt(setupProjectRoot);
       }
     }
   } catch (error) {

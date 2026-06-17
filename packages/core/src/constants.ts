@@ -189,6 +189,12 @@ export const ES_TARGET_YEAR_BY_NAME: Readonly<Record<string, number>> = {
 };
 
 /**
+ * tsconfig filenames probed when resolving a project's TypeScript
+ * compiler options — the root config first, then a monorepo base config.
+ */
+export const TSCONFIG_FILENAMES = ["tsconfig.json", "tsconfig.base.json"] as const;
+
+/**
  * Project-config files that `StagedFiles.materialize` copies into
  * the temp directory alongside staged sources so oxlint resolves
  * `tsconfig` / `package.json` / lint configs the same way it would

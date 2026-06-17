@@ -10,6 +10,7 @@ import {
   DEAD_CODE_WORKER_MAX_OLD_SPACE_MB,
   DEAD_CODE_WORKER_TIMEOUT_MS,
   MILLISECONDS_PER_SECOND,
+  TSCONFIG_FILENAMES,
 } from "./constants.js";
 import { toCanonicalPath } from "./utils/to-canonical-path.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
@@ -90,8 +91,6 @@ interface DeadCodeWorkerFailureMessage {
   readonly ok: false;
   readonly error: DeadCodeWorkerError;
 }
-
-const TSCONFIG_FILENAMES = ["tsconfig.json", "tsconfig.base.json"];
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

@@ -2,8 +2,10 @@ import { highlighter, toRelativePath } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import { inspect } from "../../inspect.js";
 import type { Diagnostic, InspectOptions, ReactDoctorConfig } from "@react-doctor/core";
+import { buildCodeFrame } from "./build-code-frame.js";
 import { buildDiagnosticIssueUrl } from "./build-diagnostic-issue-url.js";
 import { findOwningProjectDirectory } from "./find-owning-project.js";
+import { indentMultilineText } from "./indent-multiline-text.js";
 import { parseFileLineArgument } from "./parse-file-line-argument.js";
 import { selectProjects } from "./select-projects.js";
 
@@ -72,6 +74,14 @@ export const runExplain = async (
     logger.log(
       `${severitySymbol} ${colorizedRule} ${highlighter.dim(`(${severityLabel})`)} — ${diagnostic.message}`,
     );
+    const codeFrame = buildCodeFrame({
+      filePath: diagnostic.filePath,
+      line: diagnostic.line,
+      column: diagnostic.column,
+      endLine: diagnostic.endLine,
+      rootDirectory: targetDirectory,
+    });
+    if (codeFrame) logger.log(indentMultilineText(codeFrame, "  "));
     if (diagnostic.category) logger.dim(`  Category: ${diagnostic.category}`);
     if (diagnostic.help) logger.dim(`  ${diagnostic.help}`);
     logger.dim(

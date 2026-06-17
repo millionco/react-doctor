@@ -1,15 +1,13 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
-import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isInteractiveElement } from "../../utils/is-interactive-element.js";
+import { isPresentationRole } from "../../utils/is-presentation-role.js";
 import { isPureEventBlockerHandler } from "../../utils/is-pure-event-blocker-handler.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
-
-const PRESENTATION_ROLES: ReadonlySet<string> = new Set(["presentation", "none"]);
 
 const MESSAGE =
   "Keyboard users can't trigger this click handler because there's no keyboard one, so add `onKeyUp`, `onKeyDown`, or `onKeyPress`.";
@@ -41,14 +39,8 @@ export const clickEventsHaveKeyEvents = defineRule({
         if (isPureEventBlockerHandler(onClick)) return;
 
         if (isHiddenFromScreenReader(node, context.settings)) return;
-
-        // Presentational role (presentation / none) → not perceivable
-        // by AT, so skip.
-        const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
-        if (roleAttribute) {
-          const roleValue = getJsxPropStringValue(roleAttribute);
-          if (roleValue && PRESENTATION_ROLES.has(roleValue)) return;
-        }
+        // Presentational role (presentation / none) → not perceivable by AT.
+        if (isPresentationRole(node)) return;
         const hasKeyHandler = KEY_HANDLERS.some((handler) =>
           hasJsxPropIgnoreCase(node.attributes, handler),
         );

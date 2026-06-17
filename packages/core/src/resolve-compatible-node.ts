@@ -10,10 +10,10 @@ interface NodeVersion {
   patch: number;
 }
 
-interface NodeResolution {
-  binaryPath: string;
-  isCurrentNode: boolean;
-  version: string;
+export interface NodeResolution {
+  readonly binaryPath: string;
+  readonly isCurrentNode: boolean;
+  readonly version: string;
 }
 
 const parseNodeVersion = (versionString: string): NodeVersion => {

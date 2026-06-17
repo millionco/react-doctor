@@ -5,13 +5,10 @@ import {
   installNodeViaNvm as installNodeViaNvmSync,
   isNvmInstalled as isNvmInstalledSync,
   resolveNodeForOxlint as resolveNodeForOxlintSync,
+  type NodeResolution,
 } from "../resolve-compatible-node.js";
 
-export interface NodeResolution {
-  readonly binaryPath: string;
-  readonly isCurrentNode: boolean;
-  readonly version: string;
-}
+export type { NodeResolution };
 
 /**
  * `NodeResolver` wraps the imperative node-detection / nvm helpers

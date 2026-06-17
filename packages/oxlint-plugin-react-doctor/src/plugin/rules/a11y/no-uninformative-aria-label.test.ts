@@ -39,6 +39,18 @@ describe("no-uninformative-aria-label", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a braced string literal `aria-label={'icon'}`", () => {
+    const code = `const A = () => <button aria-label={'icon'}><Svg /></button>;`;
+    const result = runRule(noUninformativeAriaLabel, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT flag a braced descriptive label `aria-label={'Search'}`", () => {
+    const code = `const A = () => <button aria-label={'Search'}><Svg /></button>;`;
+    const result = runRule(noUninformativeAriaLabel, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does NOT flag a dynamic aria-label", () => {
     const code = `const A = ({ label }) => <button aria-label={label} />;`;
     const result = runRule(noUninformativeAriaLabel, code);

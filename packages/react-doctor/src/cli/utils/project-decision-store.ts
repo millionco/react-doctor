@@ -32,9 +32,7 @@ interface ProjectDecisionStore {
 }
 
 // Persists a once-per-repo prompt answer in the shared react-doctor config file.
-export const createProjectDecisionStore = (
-  storeKey: keyof ProjectDecisionGlobalConfig,
-): ProjectDecisionStore => {
+export const createProjectDecisionStore = (storeKey: keyof ProjectDecisionGlobalConfig): ProjectDecisionStore => {
   const getStore = (
     options: ProjectDecisionStoreOptions = {},
   ): Conf<ProjectDecisionGlobalConfig> =>

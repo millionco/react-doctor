@@ -237,9 +237,7 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
     return;
   }
 
-  const agentId = launchableAgents.find(
-    (launchableAgentId) => launchableAgentId === handoffTarget,
-  );
+  const agentId = launchableAgents.find((launchableAgentId) => launchableAgentId === handoffTarget);
   if (!agentId) {
     printPayload(payload);
     return;

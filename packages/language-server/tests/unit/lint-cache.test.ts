@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic as CoreDiagnostic } from "@react-doctor/core";
-import { computeConfigFingerprint } from "../../src/utils/compute-config-fingerprint.js";
+import { computeConfigFingerprint } from "@react-doctor/core";
 import { createLintCache } from "../../src/core/lint-cache.js";
 
 let projectDir: string;

@@ -6,6 +6,7 @@ import {
   STAGED_FILES_PROJECT_CONFIG_FILENAMES,
 } from "@react-doctor/core";
 import type { TextProvider } from "../types.js";
+import { toProjectRelative } from "../utils/to-project-relative.js";
 
 const OVERLAY_TEMP_PREFIX = "react-doctor-lsp-";
 
@@ -34,12 +35,6 @@ export interface MaterializeOverlayInput {
   /** Reads the live text of a file (open buffer first, then disk). */
   readonly readText: TextProvider;
 }
-
-const toProjectRelative = (projectDirectory: string, filePath: string): string | null => {
-  const relative = path.relative(projectDirectory, filePath).replace(/\\/g, "/");
-  if (relative.length === 0 || relative.startsWith("../") || path.isAbsolute(relative)) return null;
-  return relative;
-};
 
 /**
  * Writes the live (possibly unsaved) content of the target files into a

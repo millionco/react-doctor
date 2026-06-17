@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { runEditorScan, type Diagnostic as CoreDiagnostic } from "@react-doctor/core";
+import {
+  computeConfigFingerprint,
+  runEditorScan,
+  type Diagnostic as CoreDiagnostic,
+} from "@react-doctor/core";
 import {
   SILENT_LOGGER,
   type CancellationToken,
@@ -11,7 +15,7 @@ import {
   type TextProvider,
 } from "../types.js";
 import { normalizeFsPath } from "../text/uri.js";
-import { computeConfigFingerprint } from "../utils/compute-config-fingerprint.js";
+import { toProjectRelative } from "../utils/to-project-relative.js";
 import { createLintCache, type FileStat, type LintCache } from "./lint-cache.js";
 import { materializeOverlay, type OverlaySnapshot } from "./overlay.js";
 
@@ -40,12 +44,6 @@ export interface ScanRunner {
   /** Flush all caches to disk (on shutdown). */
   readonly dispose: () => void;
 }
-
-const toProjectRelative = (projectDirectory: string, filePath: string): string | null => {
-  const relative = path.relative(projectDirectory, filePath).replace(/\\/g, "/");
-  if (relative.length === 0 || relative.startsWith("../") || path.isAbsolute(relative)) return null;
-  return relative;
-};
 
 /**
  * Resolves a diagnostic's (possibly relative, possibly overlay-temp)

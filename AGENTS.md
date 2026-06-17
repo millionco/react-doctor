@@ -393,3 +393,21 @@ git push --force origin v1   # the force applies to the moving major tag only
   gitignored)
 - `~/Developer/react-doctor-evals/src/` — sister application this codebase's runtime
   patterns are modeled on (Schemas.ts, Runner.ts, Worker.ts, errors.ts shapes)
+
+## Cursor Cloud specific instructions
+
+Dependencies are installed automatically on VM startup (`pnpm install --frozen-lockfile`).
+Standard commands live in the root `package.json` and the `## Testing` section above.
+
+- **Node version (non-obvious).** The lint/test tooling (`vp` / vite-plus) loads
+  `vite.config.ts`, which requires Node `^20.19.0 || >=22.18.0`. The VM's default
+  `/exec-daemon/node` is `v22.14.0` (too old → `pnpm lint` fails with
+  `ERR_UNKNOWN_FILE_EXTENSION ".ts"`). `~/.bashrc` prepends the nvm `v22.22.2` bin
+  ahead of it, so shells already use the right Node — just run the documented commands.
+- **Build before test.** Turbo enforces `build → test`; `pnpm test` triggers the
+  build automatically, but a standalone package test needs `pnpm build` first.
+- **Scoring needs the network.** The 0–100 score comes from the hosted score API.
+  `--no-score` (and its alias `--no-telemetry`) disables scoring, so JSON/terminal
+  runs with those flags show no score. The scan + diagnostics work fully offline; only
+  the score field requires network access.
+- Run the built CLI directly with `node packages/react-doctor/bin/react-doctor.js <dir>`.

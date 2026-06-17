@@ -20,6 +20,7 @@ import { NON_INTERACTIVE_ENVIRONMENT_VARIABLES } from "../src/cli/utils/is-non-i
 import { runInstallReactDoctor } from "../src/cli/utils/install-react-doctor.js";
 import type { InstallReactDoctorDependencyRunnerInput } from "../src/cli/utils/install-react-doctor.js";
 import { recordActionUpgradeDecision } from "../src/cli/utils/action-upgrade-prompt.js";
+import { hasHandledCiPrompt, recordCiPromptDecision } from "../src/cli/utils/ci-prompt-decision.js";
 import { setSpinnerSilent } from "../src/cli/utils/spinner.js";
 import { silenceConsoleForTest } from "./helpers/silence-console.js";
 
@@ -923,6 +924,48 @@ describe("runInstallReactDoctor", () => {
 
     expect(fs.readFileSync(workflowPath, "utf8")).toContain("millionco/react-doctor@v1");
     expect(fs.readFileSync(workflowPath, "utf8")).not.toContain("millionco/react-doctor@v2");
+  });
+
+  it("interactively persists a declined CI offer so the scan handoff won't re-ask", async () => {
+    writeValidSkill(fixture.sourceDir);
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    const hookPath = path.join(fixture.projectRoot, ".git/hooks/pre-commit");
+    const workflowPath = path.join(fixture.projectRoot, ".github/workflows/react-doctor.yml");
+    expect(hasHandledCiPrompt(fixture.projectRoot)).toBe(false);
+
+    await runInteractiveInstallReactDoctorForTest({
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      gitHookPath: hookPath,
+      // No "workflow" → the CI offer is declined (ci-no).
+      setupOptions: [],
+    });
+
+    expect(fs.existsSync(workflowPath)).toBe(false);
+    // The decline is persisted, so the once-per-repo pitch stays answered.
+    expect(hasHandledCiPrompt(fixture.projectRoot)).toBe(true);
+  });
+
+  it("interactively skips the CI offer once the decision is already persisted", async () => {
+    writeValidSkill(fixture.sourceDir);
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    const hookPath = path.join(fixture.projectRoot, ".git/hooks/pre-commit");
+    const workflowPath = path.join(fixture.projectRoot, ".github/workflows/react-doctor.yml");
+    recordCiPromptDecision(fixture.projectRoot, "declined");
+    const promptQuestions: unknown[] = [];
+
+    await runInteractiveInstallReactDoctorForTest({
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      gitHookPath: hookPath,
+      // Would normally add the workflow — but the persisted decline (e.g. from a
+      // prior scan handoff) suppresses the CI question entirely.
+      setupOptions: ["workflow"],
+      promptQuestions,
+    });
+
+    expect(promptQuestions).not.toContainEqual(expect.objectContaining({ name: "ciChoice" }));
+    expect(fs.existsSync(workflowPath)).toBe(false);
   });
 
   it("CI skips prompts without --yes but does not install the optional Git hook", async () => {

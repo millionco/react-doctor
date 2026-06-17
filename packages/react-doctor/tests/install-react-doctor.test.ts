@@ -897,8 +897,6 @@ describe("runInstallReactDoctor", () => {
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
       gitHookPath: hookPath,
-      // Would normally accept the bump — but the persisted decline suppresses
-      // the offer entirely, so the prompt is never shown.
       setupOptions: ["workflow-upgrade"],
       promptQuestions,
     });
@@ -937,12 +935,10 @@ describe("runInstallReactDoctor", () => {
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
       gitHookPath: hookPath,
-      // No "workflow" → the CI offer is declined (ci-no).
       setupOptions: [],
     });
 
     expect(fs.existsSync(workflowPath)).toBe(false);
-    // The decline is persisted, so the once-per-repo pitch stays answered.
     expect(hasHandledCiPrompt(fixture.projectRoot)).toBe(true);
   });
 
@@ -957,13 +953,10 @@ describe("runInstallReactDoctor", () => {
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
       gitHookPath: hookPath,
-      // "workflow" → the CI offer is accepted (ci-yes).
       setupOptions: ["workflow"],
     });
 
     expect(fs.existsSync(workflowPath)).toBe(true);
-    // The accept is persisted at answer time, so an accept that never wrote the
-    // workflow (early exit / failure) still won't re-pitch on the next scan.
     expect(hasHandledCiPrompt(fixture.projectRoot)).toBe(true);
   });
 
@@ -979,8 +972,6 @@ describe("runInstallReactDoctor", () => {
       sourceDir: fixture.sourceDir,
       projectRoot: fixture.projectRoot,
       gitHookPath: hookPath,
-      // Would normally add the workflow — but the persisted decline (e.g. from a
-      // prior scan handoff) suppresses the CI question entirely.
       setupOptions: ["workflow"],
       promptQuestions,
     });

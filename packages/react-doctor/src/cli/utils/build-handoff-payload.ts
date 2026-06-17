@@ -20,7 +20,9 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
   let outputDirectory: string | null = null;
   try {
     outputDirectory = writeDiagnosticsDirectory([...input.diagnostics], input.outputDirectory);
-  } catch {}
+  } catch {
+    // Full-results output is best-effort; keep the inline handoff prompt usable.
+  }
 
   const lines: string[] = [
     `Fix the top ${topGroups.length} React Doctor ${topGroups.length === 1 ? "issue" : "issues"} in ${input.projectName} on this pass — leave the rest for a follow-up.`,
@@ -28,7 +30,8 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
   ];
 
   topGroups.forEach(([ruleKey, ruleDiagnostics], index) => {
-    const representative = ruleDiagnostics[0]!;
+    const [representative] = ruleDiagnostics;
+    if (representative === undefined) return;
     const severityLabel = representative.severity === "error" ? "ERROR" : "WARN";
     lines.push(
       `${index + 1}. ${severityLabel} ${representative.category}: ${representative.title ?? ruleKey} (×${ruleDiagnostics.length})`,

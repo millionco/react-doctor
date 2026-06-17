@@ -38,8 +38,8 @@ export const GH_DEFAULT_BRANCH_PROBE_TIMEOUT_MS = 5000;
 // compact, passable CLI argument.
 export const HANDOFF_MAX_FILES_PER_RULE = 3;
 
-// Social proof for the "Add to CI" pitch (shown in the post-scan handoff
-// prompt and embedded in the agent-handoff prompt).
+// Social proof for the shared GitHub Actions pitch shown during install
+// onboarding and the post-scan handoff.
 export const CI_TRUST_COMPANIES = "PayPal, Rippling, and Alibaba";
 
 export const SCORE_HEADER_ANIMATION_FRAME_COUNT = 40;

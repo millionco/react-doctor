@@ -8,9 +8,7 @@ type SpinnerHandle = ReturnType<ReturnType<typeof spinner>["start"]>;
 
 // Renders a workflow-install outcome on an existing spinner and counts the
 // `install.workflow` activation, so the `install` command and the post-scan
-// "Add to CI" handoff report identically (the metric fires only on a freshly
-// written workflow, never on one that already existed). Returns whether a
-// workflow was freshly written so callers can report accurate telemetry.
+// GitHub Actions handoff report fresh workflow writes identically.
 export const reportWorkflowResult = (
   workflowSpinner: SpinnerHandle,
   result: InstallGitHubWorkflowResult,
@@ -27,6 +25,6 @@ export const reportWorkflowResult = (
   workflowSpinner.succeed(
     `GitHub Actions workflow added at ${path.relative(projectRoot, result.workflowPath)}.`,
   );
-  recordCount(METRIC.installWorkflow, 1);
+  recordCount(METRIC.installWorkflow, 1, { kind: "create" });
   return true;
 };

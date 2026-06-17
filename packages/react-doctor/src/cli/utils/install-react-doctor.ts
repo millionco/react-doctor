@@ -86,7 +86,7 @@ const PACKAGE_MANAGER_LOCKFILES = [
   { packageManager: "npm", fileName: "package-lock.json" },
 ] as const;
 
-type PackageManager = (typeof PACKAGE_MANAGER_LOCKFILES)[number]["packageManager"] | "npm";
+type PackageManager = (typeof PACKAGE_MANAGER_LOCKFILES)[number]["packageManager"];
 
 const findNearestFileDirectory = (
   startDirectory: string,
@@ -135,7 +135,6 @@ const detectPackageManager = (projectRoot: string): PackageManager => {
 };
 
 const packageManagerNeedsWorkspaceFlag = (projectRoot: string): boolean =>
-  fs.existsSync(path.join(projectRoot, "pnpm-workspace.yaml")) ||
   findNearestFileDirectory(projectRoot, ["pnpm-workspace.yaml"]) !== null;
 
 const buildInstallCommand = (projectRoot: string): InstallReactDoctorDependencyRunnerInput => {
@@ -191,12 +190,7 @@ const defaultInstallDependencyRunner = async (
 // earlier one. It reads as a compromise but is routinely tripped by
 // pre-release deps; detect it so we can reassure instead of alarm.
 const isSupplyChainTrustError = (error: unknown): boolean => {
-  const candidate = error as {
-    stderr?: unknown;
-    stdout?: unknown;
-    message?: unknown;
-  } | null;
-  const haystack = [candidate?.stderr, candidate?.stdout, candidate?.message]
+  const haystack = (isRecord(error) ? [error.stderr, error.stdout, error.message] : [error])
     .map((part) => String(part ?? ""))
     .join("\n");
   return /ERR_PNPM_TRUST_DOWNGRADE|trust downgrade/i.test(haystack);
@@ -521,35 +515,14 @@ export const runInstallReactDoctor = async (
   // offer on existence so we never pitch installing over a file that's already
   // there (and can't be upgraded either, since we couldn't read its contents).
   const canInstallWorkflow = !fs.existsSync(workflowTargetPath);
-  // Mirror the post-scan handoff's `maybeOfferActionUpgrade`: the `@v1` → `@v2`
-  // bump is a one-time, per-repo offer. Once it's been answered (accepted OR
-  // declined), `hasHandledActionUpgrade` suppresses it here too — so `install`
-  // never re-prompts, and `--yes` never silently re-applies an already-declined
-  // bump.
+  // Suppress the workflow-upgrade offer once this repo has answered it.
   const canUpgradeWorkflow =
     existingWorkflow !== null &&
     workflowUsesV1Action(existingWorkflow.content) &&
     !hasHandledActionUpgrade(projectRoot);
 
-  // Each install step runs right after the user commits to the install (past the
-  // agent-selection guard below), so the writes land in one visible group and
-  // cancelling agent selection never strands files on disk. `--yes`/non-interactive
-  // runs have no prompts; `--dryRun` runs the prompts but defers every write to
-  // the plan print below.
-
-  // Step 1 — CI pitch leads the onboarding: scanning every pull request is the
-  // highest-leverage setup step, so it's asked first using the same shared pitch
-  // as the post-scan handoff. The decision is captured here, but the workflow
-  // file isn't written until the install is confirmed (after the agent guard),
-  // so a cancel can't leave an orphan workflow without the rest of the setup.
-  // A fresh workflow is offered when none exists; an existing one still pinned
-  // to the action's previous floating major (`@v1`) is offered the in-place
-  // `@v2` bump instead. The two are mutually exclusive — only one can apply.
-  // `--yes` opts in and a bare non-interactive run opts out.
-  // The CI pitch is once-per-repo across `install` and the post-scan handoff, so
-  // a prior answer from either surface suppresses the interactive question here —
-  // mirroring how `canUpgradeWorkflow` respects `hasHandledActionUpgrade`. `--yes`
-  // still opts in (an explicit "set everything up" overrides a past decline).
+  // Prompt decisions are captured before the core install, but workflow writes
+  // wait until after agent selection so cancellation never strands files on disk.
   const ciPromptOutcome =
     canInstallWorkflow && !options.yes && !skipPrompts && !hasHandledCiPrompt(projectRoot)
       ? await askAddToGitHubActions(prompt)
@@ -563,20 +536,12 @@ export const runInstallReactDoctor = async (
   const shouldUpgradeWorkflow =
     canUpgradeWorkflow && (Boolean(options.yes) || upgradePromptOutcome === "yes");
 
-  // The upgrade prompt's "No, thanks" promises "won't ask again for this repo",
-  // so persist a decline immediately — mirroring the post-scan handoff, and so
-  // the offer stays suppressed even if the rest of the install is cancelled
-  // below. Dry runs preview without writing anything.
+  // "No, thanks" means "don't ask again for this repo."
   if (upgradePromptOutcome === "no" && !options.dryRun) {
     recordActionUpgradeDecision(projectRoot, "declined");
   }
 
-  // The CI pitch is once-per-repo: persist the answer (yes or no) the moment
-  // it's given — mirroring the post-scan handoff — so neither surface re-pitches
-  // it. Recording the accept here (not just relying on the workflow file) keeps
-  // it answered even if the install is cancelled below or the workflow write
-  // fails; the user can always re-run `install` to set CI up. A cancel records
-  // nothing. Dry runs preview without writing.
+  // Persist answered CI pitches even if later install work is cancelled or fails.
   if ((ciPromptOutcome === "yes" || ciPromptOutcome === "no") && !options.dryRun) {
     recordCiPromptDecision(projectRoot, ciPromptOutcome === "yes" ? "accepted" : "declined");
   }
@@ -613,18 +578,13 @@ export const runInstallReactDoctor = async (
     );
   }
 
-  // The CI decision from Step 1 lands here, after the core skill + package setup
-  // has run — so a thrown skill/package install never strands an orphan workflow
-  // on disk (the workflow write is the last write in the core install group).
-  let didInstallWorkflow = false;
+  let didChangeWorkflow = false;
   if (!options.dryRun && (shouldInstallWorkflow || shouldUpgradeWorkflow)) {
-    // Blank line between the skill group and the workflow install/upgrade.
     logger.break();
     if (shouldInstallWorkflow) {
-      didInstallWorkflow = await installReactDoctorWorkflowStep(projectRoot);
+      didChangeWorkflow = await installReactDoctorWorkflowStep(projectRoot);
     } else if (upgradeReactDoctorWorkflowStep(projectRoot)) {
-      // Applied upgrade is terminal too — record it so the post-scan handoff
-      // never re-offers the bump on the next scan.
+      didChangeWorkflow = true;
       recordActionUpgradeDecision(projectRoot, "accepted");
     }
   }
@@ -665,7 +625,6 @@ export const runInstallReactDoctor = async (
           ...setupActionChoices,
         ];
 
-  // Blank line between the skill group and the optional-setup group.
   if (setupChoices.length > 0 && !options.dryRun) logger.break();
 
   const selectedSetupOptions: string[] =
@@ -742,7 +701,7 @@ export const runInstallReactDoctor = async (
     agentsCount: selectedAgents.length,
     gitHook: shouldInstallGitHook,
     agentHooks: shouldInstallAgentHooks,
-    workflow: didInstallWorkflow,
+    workflow: didChangeWorkflow,
     dependencyStatus: dependencyResult?.dependencyStatus ?? "skipped",
     packageManager: detectPackageManager(projectRoot),
   });

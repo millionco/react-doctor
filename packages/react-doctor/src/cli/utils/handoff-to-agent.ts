@@ -121,12 +121,8 @@ const upgradeGitHubActionsWorkflow = async (
   return true;
 };
 
-// Offered once per repo: when a React Doctor workflow is already on disk but
-// still pins the action's previous floating major (`@v1`), invite the user to
-// bump it to `@v2` via a PR. A decline is persisted per-repo, and an accept
-// only once the bump is actually applied, so the offer never repeats; a cancel
-// (or a failed write) leaves it un-answered so the prompt can return next scan.
-// The caller has already gated on an interactive run with findings.
+// Offered once per repo when an existing workflow still uses `@v1`. Declines are
+// recorded immediately; accepts are recorded only after the edit lands.
 const maybeOfferActionUpgrade = async (projectRoot: string): Promise<void> => {
   const workflow = readReactDoctorWorkflow(projectRoot);
   if (!workflow || !workflowUsesV1Action(workflow.content)) return;
@@ -136,6 +132,7 @@ const maybeOfferActionUpgrade = async (projectRoot: string): Promise<void> => {
   if (outcome === "cancel") return;
 
   recordCount(METRIC.agentHandoff, 1, {
+    phase: "action-upgrade",
     outcome: outcome === "yes" ? "upgrade-accepted" : "upgrade-declined",
   });
 
@@ -145,7 +142,10 @@ const maybeOfferActionUpgrade = async (projectRoot: string): Promise<void> => {
   }
 
   const didApplyUpgrade = await upgradeGitHubActionsWorkflow(workflow);
-  if (didApplyUpgrade) recordActionUpgradeDecision(projectRoot, "accepted");
+  if (didApplyUpgrade) {
+    recordCount(METRIC.installWorkflow, 1, { kind: "upgrade" });
+    recordActionUpgradeDecision(projectRoot, "accepted");
+  }
 };
 
 // CLI agents we can launch: detected as installed by `agent-install`
@@ -159,14 +159,8 @@ const detectLaunchableAgents = async (): Promise<CliAgentId[]> => {
   );
 };
 
-// Two-phase post-scan handoff: first asks whether to wire up GitHub Actions
-// (skipped when the workflow file is already on disk — that option would be a
-// no-op), then asks where to send the diagnostics for triage. The split keeps
-// each question single-axis: "should this codebase run React Doctor on every
-// PR?" is a different decision than "where do you want to triage today's
-// findings?", and combining them was confusing — the agent picker is the same
-// choice the user makes every scan, the CI prompt is a one-time install. Both
-// questions are skipped when non-interactive or there's nothing to hand off.
+// Post-scan handoff asks the one-time GitHub Actions question before the
+// per-scan agent handoff choice.
 export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> => {
   if (!input.interactive || input.diagnostics.length === 0) return;
 
@@ -174,40 +168,23 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
 
   const projectRootForCi = findNearestPackageDirectory(input.rootDirectory) ?? input.rootDirectory;
   const isGitHubActionsConfigured = isReactDoctorWorkflowInstalled(projectRootForCi);
-  // The CI pitch is once-per-repo: ask only when the repo has neither a workflow
-  // nor a prior answer. Subsequent scans stay quiet. (The agent copy-prompt
-  // deliberately carries no CI upsell — this interactive prompt is the single
-  // pitch, so the agent never re-asks what the user was just asked here.)
   const isCiPitchPending = !isGitHubActionsConfigured && !hasHandledCiPrompt(projectRootForCi);
 
-  // CI question first, only when it has anything to do. A "yes" sets up the
-  // workflow inline and then falls through to the agent question, so a user
-  // can install CI AND launch an agent in one scan — previously the combined
-  // prompt forced an either/or choice.
   if (isCiPitchPending) {
     const ciOutcome = await askAddToGitHubActions();
     recordCount(METRIC.agentHandoff, 1, {
+      phase: "ci-prompt",
       outcome: `ci-${ciOutcome}`,
       diagnosticsCount: input.diagnostics.length,
     });
     if (ciOutcome === "cancel") return;
-    // Remember the answer either way so the pitch never repeats on this repo.
     recordCiPromptDecision(projectRootForCi, ciOutcome === "yes" ? "accepted" : "declined");
     if (ciOutcome === "yes") {
       await setUpGitHubActions({ rootDirectory: input.rootDirectory });
       logger.break();
     }
   } else if (isGitHubActionsConfigured) {
-    // Workflow already present: offer the one-time `@v1` → `@v2` upgrade
-    // instead. Mutually exclusive with the "add" prompt above.
     await maybeOfferActionUpgrade(projectRootForCi);
-  } else {
-    // Not configured, but the user already answered the CI pitch for this repo.
-    // Stay quiet so the pitch is once-per-repo rather than every scan.
-    recordCount(METRIC.agentHandoff, 1, {
-      outcome: "ci-suppressed",
-      diagnosticsCount: input.diagnostics.length,
-    });
   }
 
   const launchableAgents = await detectLaunchableAgents();
@@ -234,15 +211,12 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
     { onCancel: () => true },
   );
 
-  // Count the agent-handoff outcome (the second activation moment). The CI
-  // outcome was counted separately above, since it's now its own question.
-  // The `"launch"` / `"clipboard"` / `"skip"` / `"cancel"` values are preserved
-  // for metric-history continuity with prior releases.
   let handoffOutcome = "launch";
   if (handoffTarget === undefined) handoffOutcome = "cancel";
   else if (handoffTarget === SKIP_CHOICE) handoffOutcome = "skip";
   else if (handoffTarget === CLIPBOARD_CHOICE) handoffOutcome = "clipboard";
   recordCount(METRIC.agentHandoff, 1, {
+    phase: "agent-handoff",
     outcome: handoffOutcome,
     agent: handoffOutcome === "launch" ? handoffTarget : undefined,
     diagnosticsCount: input.diagnostics.length,
@@ -263,7 +237,13 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
     return;
   }
 
-  const agentId = handoffTarget as CliAgentId;
+  const agentId = launchableAgents.find(
+    (launchableAgentId) => launchableAgentId === handoffTarget,
+  );
+  if (!agentId) {
+    printPayload(payload);
+    return;
+  }
   const displayName = getSkillAgentConfig(agentId).displayName;
 
   // Install the /react-doctor skill for the agent we're handing off to, so

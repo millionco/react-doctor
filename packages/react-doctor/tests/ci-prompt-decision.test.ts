@@ -48,6 +48,6 @@ describe("ci prompt decision state", () => {
     const stored = JSON.parse(fs.readFileSync(configPath, "utf8"));
     const records = Object.values(stored.ciPrompts);
     expect(records).toHaveLength(1);
-    expect((records[0] as { outcome: string }).outcome).toBe("declined");
+    expect(records[0]).toMatchObject({ outcome: "declined" });
   });
 });

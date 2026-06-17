@@ -16,7 +16,12 @@ interface ProjectDecisionRecord {
   readonly at: string;
 }
 
-export interface ProjectDecisionStore {
+interface ProjectDecisionGlobalConfig {
+  readonly actionUpgrades?: Record<string, ProjectDecisionRecord>;
+  readonly ciPrompts?: Record<string, ProjectDecisionRecord>;
+}
+
+interface ProjectDecisionStore {
   readonly getConfigPath: (options?: ProjectDecisionStoreOptions) => string;
   readonly hasHandled: (projectRoot: string, options?: ProjectDecisionStoreOptions) => boolean;
   readonly record: (
@@ -26,18 +31,14 @@ export interface ProjectDecisionStore {
   ) => boolean;
 }
 
-// A once-per-repo "answered" decision (accepted OR declined), keyed by hashed
-// project root and persisted under its own `storeKey` in the shared react-doctor
-// config file. Backs the one-time prompts whose answer must outlast a single
-// scan — the CI pitch and the `@v1` → `@v2` action-upgrade offer — so a recorded
-// answer suppresses the prompt on later scans. `Conf` preserves unknown keys, so
-// each store's `storeKey` coexists with the others (and with the onboarding /
-// setup-prompt state) in one file.
-export const createProjectDecisionStore = (storeKey: string): ProjectDecisionStore => {
+// Persists a once-per-repo prompt answer in the shared react-doctor config file.
+export const createProjectDecisionStore = (
+  storeKey: keyof ProjectDecisionGlobalConfig,
+): ProjectDecisionStore => {
   const getStore = (
     options: ProjectDecisionStoreOptions = {},
-  ): Conf<Record<string, Record<string, ProjectDecisionRecord>>> =>
-    new Conf<Record<string, Record<string, ProjectDecisionRecord>>>({
+  ): Conf<ProjectDecisionGlobalConfig> =>
+    new Conf<ProjectDecisionGlobalConfig>({
       projectName: REACT_DOCTOR_CONFIG_PROJECT_NAME,
       cwd: options.cwd,
     });

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import { detectTerminalKind } from "../src/cli/utils/detect-terminal-kind.js";
 
-// Build a clean env so a stray host var (running these tests inside iTerm,
-// VS Code, tmux, …) can't leak into the assertions.
+// detectTerminalKind is a pure function of the env it's given (including its CI
+// fallback), so each case passes an isolated env — no host var (iTerm, VS Code,
+// or the CI runner this suite runs in) can leak into the assertions.
 const env = (overrides: Record<string, string>): NodeJS.ProcessEnv => ({ ...overrides });
 
 describe("detectTerminalKind", () => {

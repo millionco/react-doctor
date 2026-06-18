@@ -81,10 +81,9 @@ const FALSY_CI_FLAG_VALUES = new Set(["", "0", "false"]);
 const isCiFlagSet = (value: string | undefined): boolean =>
   value !== undefined && !FALSY_CI_FLAG_VALUES.has(value.toLowerCase());
 
-export const isCiEnvironment = (): boolean =>
-  CI_ENVIRONMENT_VARIABLES.some((environmentVariable) =>
-    Boolean(process.env[environmentVariable]),
-  ) || isCiFlagSet(process.env.CI);
+export const isCiEnvironment = (env: NodeJS.ProcessEnv = process.env): boolean =>
+  CI_ENVIRONMENT_VARIABLES.some((environmentVariable) => Boolean(env[environmentVariable])) ||
+  isCiFlagSet(env.CI);
 
 // Resolves the CI provider brand for telemetry, falling back to "unknown" for a
 // bare `CI` flag. Returns null when there's no CI signal at all.

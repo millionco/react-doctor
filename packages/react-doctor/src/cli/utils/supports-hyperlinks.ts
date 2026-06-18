@@ -38,7 +38,7 @@ export const supportsHyperlinks = (
 
   if (stream.isTTY !== true) return false;
   if (env.TERM === "dumb") return false;
-  if (isCiEnvironment()) return false;
+  if (isCiEnvironment(env)) return false;
 
   if (env.WT_SESSION) return true;
   if (env.KITTY_WINDOW_ID || env.TERM === "xterm-kitty") return true;

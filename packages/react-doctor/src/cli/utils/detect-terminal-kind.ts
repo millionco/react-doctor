@@ -38,6 +38,6 @@ export const detectTerminalKind = (env: NodeJS.ProcessEnv = process.env): string
   if (env.ALACRITTY_WINDOW_ID || env.TERM === "alacritty") return "alacritty";
   if (env.VTE_VERSION) return "vte";
   if (env.TMUX) return "tmux";
-  if (isCiEnvironment()) return "ci";
+  if (isCiEnvironment(env)) return "ci";
   return "unknown";
 };

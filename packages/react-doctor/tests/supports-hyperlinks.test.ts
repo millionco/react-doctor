@@ -1,31 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { supportsHyperlinks } from "../src/cli/utils/supports-hyperlinks.js";
 
-// supportsHyperlinks reads CI markers off the real process.env (via
-// isCiEnvironment), so neutralize them — otherwise the "capable terminal"
-// cases would always resolve false when the suite itself runs in CI.
-const CI_MARKERS = ["CI", "GITHUB_ACTIONS", "GITLAB_CI", "CIRCLECI"] as const;
-
+// supportsHyperlinks is a pure function of (stream, env) — including its CI
+// check — so each case passes an isolated env and a stub stream; the CI runner
+// this suite runs in can't leak into the assertions.
 const ttyStream = { isTTY: true } as unknown as NodeJS.WriteStream;
 const pipeStream = { isTTY: false } as unknown as NodeJS.WriteStream;
 
 describe("supportsHyperlinks", () => {
-  const saved: Record<string, string | undefined> = {};
-
-  beforeEach(() => {
-    for (const marker of CI_MARKERS) {
-      saved[marker] = process.env[marker];
-      delete process.env[marker];
-    }
-  });
-
-  afterEach(() => {
-    for (const marker of CI_MARKERS) {
-      if (saved[marker] === undefined) delete process.env[marker];
-      else process.env[marker] = saved[marker];
-    }
-  });
-
   it("is true for a capable terminal attached to a TTY", () => {
     expect(supportsHyperlinks(ttyStream, { TERM_PROGRAM: "iTerm.app" })).toBe(true);
     expect(supportsHyperlinks(ttyStream, { WT_SESSION: "abc" })).toBe(true);
@@ -54,7 +36,9 @@ describe("supportsHyperlinks", () => {
   });
 
   it("is false in CI even on a capable terminal", () => {
-    process.env.CI = "true";
-    expect(supportsHyperlinks(ttyStream, { TERM_PROGRAM: "iTerm.app" })).toBe(false);
+    expect(supportsHyperlinks(ttyStream, { CI: "true", TERM_PROGRAM: "iTerm.app" })).toBe(false);
+    expect(
+      supportsHyperlinks(ttyStream, { GITHUB_ACTIONS: "true", TERM_PROGRAM: "iTerm.app" }),
+    ).toBe(false);
   });
 });

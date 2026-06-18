@@ -1,0 +1,22 @@
+packages/core/src/detect-foreign-disable-near-miss.ts
+  s_2e5d4e529aade4::t_83af4794129c50 13-19,21,23,26,28
+  s_2e5d4e529aade4::t_2ec6669e8418b1 27
+packages/core/tests/evaluate-suppression.test.ts
+  s_2e5d4e529aade4::t_ec265708824d6d 206-227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "36b11deca45f689f5493a1120350b246eb6fdfaf",
+  "prompts": {},
+  "sessions": {
+    "s_2e5d4e529aade4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "445e40c7-537e-4139-b096-8582f3ad6bef",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

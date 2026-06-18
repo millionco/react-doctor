@@ -122,12 +122,12 @@ const buildHardeningDiagnostic = (input: BuildHardeningDiagnosticInput): Diagnos
   category: "Security",
 });
 
-export const checkPnpmHardening = (rootDirectory: string): Diagnostic[] => {
-  if (!isPnpmManagedProject(rootDirectory)) return [];
+export const checkPnpmHardening = (scanDirectory: string): Diagnostic[] => {
+  if (!isPnpmManagedProject(scanDirectory)) return [];
 
-  const workspacePath = path.join(rootDirectory, PNPM_WORKSPACE_FILE);
+  const workspacePath = path.join(scanDirectory, PNPM_WORKSPACE_FILE);
   const hasWorkspaceFile = isFile(workspacePath);
-  const monorepoRoot = findMonorepoRoot(rootDirectory);
+  const monorepoRoot = findMonorepoRoot(scanDirectory);
 
   if (!hasWorkspaceFile && monorepoRoot !== null) {
     const parentWorkspacePath = path.join(monorepoRoot, PNPM_WORKSPACE_FILE);

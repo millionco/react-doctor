@@ -1,0 +1,26 @@
+.changeset/fix-server-fetch-without-revalidate-mutating-methods.md
+  s_2e5d4e529aade4::t_7865cd635ae854 1-5
+packages/oxlint-plugin-react-doctor/src/plugin/utils/find-side-effect.ts
+  s_2e5d4e529aade4::t_caa29a6815f051 54
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-fetch-without-revalidate.test.ts
+  s_2e5d4e529aade4::t_0ddb0f586dcf1a 29-66
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-fetch-without-revalidate.ts
+  s_2e5d4e529aade4::t_1c747d76f77033 92-94
+  s_2e5d4e529aade4::t_e2dedee360e2de 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "b68da6f7b3b0398a144be8b36a5ebaf1b532bc7b",
+  "prompts": {},
+  "sessions": {
+    "s_2e5d4e529aade4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "445e40c7-537e-4139-b096-8582f3ad6bef",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+packages/react-doctor/tests/regressions/action-subdirectory-baseline-paths.test.ts
+  s_832be742d260e1::t_2515f84fcbd318 119
+  s_832be742d260e1::t_3004cc3025c081 1-41,48-50,52-53,55-83,85-90,92-93,96,105,107,114-116,120-125
+  s_832be742d260e1::t_484e6c2c8014c8 42-47,51,54
+  s_832be742d260e1::t_ab55230c63e447 84,91,94-95,97-104,106,108-113,117-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "ad93e3cc279055035485cd992382e0d11ff0842c",
+  "prompts": {},
+  "sessions": {
+    "s_832be742d260e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "381e2e6c-59b3-44b5-93c0-6497fbb7baee",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

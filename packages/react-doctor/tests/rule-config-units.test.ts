@@ -103,9 +103,11 @@ describe("resolveEffectiveRuleSeverity", () => {
   const entry = findRequiredRule("react-doctor/no-danger");
 
   it("falls back to the registry default when nothing overrides it", () => {
-    const result = resolveEffectiveRuleSeverity(null, entry);
+    const defaultOnEntry = catalog.find((candidate) => candidate.defaultEnabled);
+    if (!defaultOnEntry) throw new Error("Expected at least one default-enabled rule");
+    const result = resolveEffectiveRuleSeverity(null, defaultOnEntry);
     expect(result.source).toBe("default");
-    expect(result.value).toBe(entry.defaultSeverity);
+    expect(result.value).toBe(defaultOnEntry.defaultSeverity);
   });
 
   it("prefers a rule-level override (including legacy keys)", () => {

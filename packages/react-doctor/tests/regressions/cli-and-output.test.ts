@@ -55,9 +55,9 @@ const MemoChild = memo((props: { payload: { label: string } }) => {
   return <span>{props.payload.label}</span>;
 });
 
-export const App = () => (
+export const App = ({ html }: { html: string }) => (
   <>
-    <div dangerouslySetInnerHTML={{ __html: "<strong>Unsafe</strong>" }} />
+    <div dangerouslySetInnerHTML={{ __html: html }} />
     <MemoChild payload={{ label: "slow" }} />
   </>
 );

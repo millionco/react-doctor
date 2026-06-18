@@ -15,6 +15,15 @@ export const noDanger = defineRule({
   title: "Raw HTML injection can run unsafe markup",
   severity: "warn",
   category: "Security",
+  // Default off: this is the absolutist oxc port — it flags EVERY
+  // `dangerouslySetInnerHTML` with zero content awareness, so it fires on the
+  // canonical-safe idioms (escaped JSON-LD, theme-init `<script>`, CSS-var
+  // `<style>`, sanitized/`safe`-named values). The default-on Security
+  // detectors are the content-aware `dangerous-html-sink` (dynamic/tainted
+  // markup) and `unsafe-json-in-html` (the JSON-breakout case), which exempt
+  // those idioms. Opt in to enforce the stricter "never use
+  // `dangerouslySetInnerHTML` at all" policy (oxc / eslint-plugin-react parity).
+  defaultEnabled: false,
   recommendation:
     "Render trusted content as React children so attacker-controlled HTML cannot run in users' browsers.",
   create: (context) => ({

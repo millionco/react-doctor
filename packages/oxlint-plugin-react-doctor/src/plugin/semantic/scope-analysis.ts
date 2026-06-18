@@ -389,8 +389,7 @@ const isFunctionBodyBlock = (block: EsTreeNode): boolean => {
 // True for AST node types where the .body is a catch-clause body
 // block. Same reasoning — the catch clause already pushed its own
 // scope.
-const isCatchClauseBlock = (block: EsTreeNode): boolean =>
-  block.parent?.type === "CatchClause";
+const isCatchClauseBlock = (block: EsTreeNode): boolean => block.parent?.type === "CatchClause";
 
 const handleVariableDeclaration = (declaration: EsTreeNode, state: BuilderState): void => {
   if (!isNodeOfType(declaration, "VariableDeclaration")) return;

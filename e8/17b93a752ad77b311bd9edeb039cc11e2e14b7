@@ -1,0 +1,29 @@
+packages/react-doctor/tests/regressions/cli-and-output.test.ts
+  s_ccbf2548b465fa::t_3bee8fa9465b33 58,60
+.changeset/fix-no-danger-default-off.md
+  s_ccbf2548b465fa::t_1250756212fbc7 1-11
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-danger.ts
+  s_ccbf2548b465fa::t_bbb3e7acaf22b8 18-26
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-danger.regressions.test.ts
+  s_ccbf2548b465fa::t_60c753374b287d 46,54,62,73
+  s_ccbf2548b465fa::t_674d5d938e04bf 1-14,24-45,47-53,55-61,63-72,74-100
+  s_ccbf2548b465fa::t_591ed8e1dfae7c 15-23
+packages/react-doctor/tests/rule-config-units.test.ts
+  s_ccbf2548b465fa::t_bbb3e7acaf22b8 106-108,110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "e817b93a752ad77b311bd9edeb039cc11e2e14b7",
+  "prompts": {},
+  "sessions": {
+    "s_ccbf2548b465fa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a627fcdb-ebde-4ca6-b5bc-c320067fa2fa",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

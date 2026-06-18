@@ -126,6 +126,13 @@ describe("evaluateSuppression — foreign (eslint/oxlint) disable near-miss hint
     expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).toBeNull();
   });
 
+  it("returns null when the directive already lists the canonical key alongside a bare alias", () => {
+    const lines = linesOf(
+      `// eslint-disable-next-line react-doctor/no-eval, no-eval\neval(code);\n`,
+    );
+    expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).toBeNull();
+  });
+
   it("returns null for a non-adjacent directive (placement, not naming)", () => {
     const lines = linesOf(
       `// eslint-disable-next-line no-eval\nconst intervening = 1;\neval(code);\n`,
@@ -182,6 +189,11 @@ describe("evaluateSuppression — foreign block (range) disable near-miss hints"
 
   it("returns null when the block disable uses the canonical name", () => {
     const lines = linesOf(`/* eslint-disable react-doctor/no-eval */\neval(code);\n`);
+    expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).toBeNull();
+  });
+
+  it("returns null when a block disable lists the bare alias before the canonical key", () => {
+    const lines = linesOf(`/* eslint-disable no-eval, react-doctor/no-eval */\neval(code);\n`);
     expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).toBeNull();
   });
 });

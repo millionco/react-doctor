@@ -52,7 +52,11 @@ const detectInlineNearMiss = (
     if (!match) continue;
     const [, tool, scope, ruleList] = match;
     if (scope !== requiredScope) continue;
-    for (const token of tokenizeRuleList(ruleList)) {
+    const tokens = tokenizeRuleList(ruleList);
+    // The canonical key alongside a misnamed alias means oxlint already
+    // suppressed the rule — don't tell the user to add what's there.
+    if (tokens.includes(ruleId)) continue;
+    for (const token of tokens) {
       if (tokenMisnamesRule(token, ruleId)) return buildHint(tool, token, ruleId);
     }
   }
@@ -74,10 +78,15 @@ const detectBlockNearMiss = (
     const disableMatch = line.match(FOREIGN_BLOCK_DISABLE_PATTERN);
     if (disableMatch) {
       const [, tool, ruleList] = disableMatch;
-      for (const token of tokenizeRuleList(ruleList)) {
-        if (token === ruleId)
-          openMisname = null; // canonical → properly disabled
-        else if (tokenMisnamesRule(token, ruleId)) openMisname = { tool, token };
+      const tokens = tokenizeRuleList(ruleList);
+      // The canonical key (if listed) means oxlint already suppressed the
+      // rule for this range; otherwise a misnamed token opens a near-miss.
+      // A disable for unrelated rules leaves any open range untouched.
+      if (tokens.includes(ruleId)) {
+        openMisname = null;
+      } else {
+        const misnamed = tokens.find((token) => tokenMisnamesRule(token, ruleId));
+        if (misnamed) openMisname = { tool, token: misnamed };
       }
       continue;
     }

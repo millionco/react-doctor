@@ -97,4 +97,23 @@ describe("react-builtins/jsx-key — regressions", () => {
   it("still flags a DOM element array in children position", () => {
     expectFail(`<ul>{[<li />, <li />]}</ul>;`);
   });
+
+  // Wrappers that pass the value straight through to the prop (`&&`, `||`,
+  // ternary branches, parens, TS assertions) don't change that React never
+  // key-validates a non-children prop, so they're exempt too.
+  it("does not flag a logical-wrapped mapped collection in a prop", () => {
+    expectPass(`<Menu items={data.length && data.map((d) => <MenuItem v={d} />)} />;`);
+  });
+
+  it("does not flag a ternary-branch mapped collection in a prop", () => {
+    expectPass(`<Menu items={ready ? data.map((d) => <MenuItem v={d} />) : []} />;`);
+  });
+
+  it("does not flag a TS-asserted array literal in a prop", () => {
+    expectPass(`<Menu items={[<Tab />, <Tab />] as ReactNode[]} />;`);
+  });
+
+  it("still flags a logical-wrapped mapped collection in children position", () => {
+    expectFail(`<Menu>{data.length && data.map((d) => <MenuItem v={d} />)}</Menu>;`);
+  });
 });

@@ -50,6 +50,7 @@ const buildProjectEntry = (
   diagnostics,
   score: { score: 81, label: "Good" },
   skippedChecks: [],
+  scannedFileCount: 2,
   elapsedMilliseconds: 123,
   ...overrides,
 });
@@ -246,7 +247,7 @@ describe("render-github-action-comment", () => {
     expect(comment).not.toContain("| Score |");
   });
 
-  it("renders a no-scan report as a plain success line, not a zero-filled table", () => {
+  it("marks a diff scan that changed no React-eligible source files as skipped", () => {
     const { comment, outputs } = runRenderer(
       buildReport({
         projects: [],
@@ -262,14 +263,84 @@ describe("render-github-action-comment", () => {
       }),
     );
 
-    // A scan that matched no files is just a pass — a clean one-liner, no table,
-    // no "Unavailable" score, no "no scan" explanation.
+    // A PR that touched nothing React Doctor lints isn't a finding and isn't a
+    // "clean pass" worth a comment — it's a no-op. The body reads "skipped" (for
+    // the job summary), and `skipped=true` tells the Action to suppress the
+    // sticky PR comment + mark the commit status "Skipped".
+    expect(comment).toContain("React Doctor skipped this pull request");
+    expect(comment).not.toContain("No React Doctor issues found");
+    expect(comment).not.toContain("found no issues");
+    expect(outputs).toContain("skipped=true");
+  });
+
+  it("marks a diff scan whose changed files examined zero eligible files as skipped", () => {
+    const { comment, outputs } = runRenderer(
+      buildReport({
+        diagnostics: [],
+        // The PR changed a `.ts` file with no JSX — scanned, but the JSX include
+        // filter left nothing for the linter (`scannedFileCount: 0`).
+        projects: [buildProjectEntry([], { diagnostics: [], scannedFileCount: 0, score: null })],
+        summary: {
+          errorCount: 0,
+          warningCount: 0,
+          affectedFileCount: 0,
+          totalDiagnosticCount: 0,
+          score: null,
+          scoreLabel: null,
+        },
+      }),
+    );
+
+    expect(comment).toContain("React Doctor skipped this pull request");
+    expect(outputs).toContain("skipped=true");
+  });
+
+  it("does NOT skip a clean scan of real React changes (eligible files examined)", () => {
+    const { comment, outputs } = runRenderer(
+      buildReport({
+        diagnostics: [],
+        // `scannedFileCount: 2` (the fixture default) → React Doctor examined
+        // real React files and they were clean. Still earns a "no issues" comment.
+        projects: [buildProjectEntry([], { diagnostics: [] })],
+        summary: {
+          errorCount: 0,
+          warningCount: 0,
+          affectedFileCount: 0,
+          totalDiagnosticCount: 0,
+          score: 100,
+          scoreLabel: "Great",
+        },
+      }),
+    );
+
+    expect(comment).toContain("**React Doctor** found no issues. 🎉");
+    expect(comment).not.toContain("skipped this pull request");
+    expect(outputs).toContain("skipped=false");
+  });
+
+  it("does NOT skip a full-scope scan with no projects (clean success, not a no-op)", () => {
+    const { comment, outputs } = runRenderer(
+      buildReport({
+        mode: "full",
+        diff: null,
+        projects: [],
+        diagnostics: [],
+        summary: {
+          errorCount: 0,
+          warningCount: 0,
+          affectedFileCount: 0,
+          totalDiagnosticCount: 0,
+          score: null,
+          scoreLabel: null,
+        },
+      }),
+    );
+
+    // `scope: full` is an explicit "scan everything" request, so an empty result
+    // is a clean pass worth reporting — not the diff-mode "nothing changed" skip.
     expect(comment).toContain("No React Doctor issues found. 🎉");
-    expect(comment).not.toContain("but none matched the files covered by its enabled checks");
-    expect(comment).not.toContain("| Score |");
-    expect(comment).not.toContain("Unavailable");
-    expect(comment).toContain("<sub>Reviewed by [React Doctor](https://react.doctor) for commit");
-    expect(outputs).toContain("score=");
+    expect(comment).not.toContain("skipped this pull request");
+    expect(outputs).toContain("skipped=false");
   });
 
   it("renders incomplete checks as an explicit caveat", () => {

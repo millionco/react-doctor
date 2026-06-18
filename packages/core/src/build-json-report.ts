@@ -57,6 +57,9 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReport => {
     score: result.score,
     skippedChecks: result.skippedChecks,
     ...(result.skippedCheckReasons ? { skippedCheckReasons: result.skippedCheckReasons } : {}),
+    ...(typeof result.scannedFileCount === "number"
+      ? { scannedFileCount: result.scannedFileCount }
+      : {}),
     elapsedMilliseconds: result.elapsedMilliseconds,
   }));
 

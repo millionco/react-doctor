@@ -53,6 +53,12 @@ const COPY = {
   // which is a pass, not a finding.
   cleanSuccess: "No React Doctor issues found. 🎉",
 
+  // Skipped — a pull request that changed no React-eligible files, so React
+  // Doctor examined nothing it lints. Rendered into the job summary; the sticky
+  // PR comment is suppressed and the commit status reads "Skipped" (both keyed
+  // off the `skipped` output, set by `isSkippedScan`).
+  skipped: "React Doctor skipped this pull request — it changed no React files.",
+
   // Error body.
   errorIntro: "React Doctor could not complete this scan.",
   errorFallbackMessage: "React Doctor failed before completing the scan.",
@@ -311,8 +317,25 @@ const buildErrorBody = (report) => {
   ]);
 };
 
-const buildCleanSuccessBody = () =>
-  renderLines([MARKER, "", COPY.cleanSuccess, "", buildReviewFooter(false)]);
+// A one-liner body (marker + message + footer) for the no-finding outcomes:
+// a clean pass and a skipped no-op.
+const buildSingleLineBody = (line) => renderLines([MARKER, "", line, "", buildReviewFooter(false)]);
+
+// A pull-request scan that examined no React-eligible files and surfaced
+// nothing. The changed files held no `.tsx`/`.jsx` (or framework entry) source
+// React Doctor lints — `scannedFileCount` is 0 for every project (or there are
+// no projects at all) — so there's nothing to report. Distinct from a clean
+// scan of real React changes (`scannedFileCount >= 1`), which still earns a
+// "no issues 🎉" comment. Guarded to never fire on a failed/incomplete scan,
+// and only on a diff/baseline run (`report.diff` is null for `scope: full`,
+// which always reports).
+const isSkippedScan = (report) => {
+  if (!report.ok) return false;
+  if (!report.diff) return false;
+  if ((report.summary?.totalDiagnosticCount ?? 0) > 0) return false;
+  if (hasIncompleteChecks(report)) return false;
+  return (report.projects ?? []).every((project) => project.scannedFileCount === 0);
+};
 
 // Unified body for every successful scan (baseline, diff, full). The lead line
 // adapts to the mode; the error/warning lists are shared.
@@ -336,7 +359,7 @@ const buildCommentBody = (report) => {
   // A scan that matched no files (no changed/staged source, or nothing covered
   // by the enabled checks) is a pass, not a special case — render a plain
   // success line rather than a metrics table full of zeros.
-  if ((report.projects ?? []).length === 0) return buildCleanSuccessBody();
+  if ((report.projects ?? []).length === 0) return buildSingleLineBody(COPY.cleanSuccess);
   return buildIssuesBody(report);
 };
 
@@ -345,13 +368,18 @@ if (!report) {
   console.warn(COPY.noReportWarning);
   process.exit(0);
 }
-const body = buildCommentBody(report);
+const skipped = isSkippedScan(report);
+const body = skipped ? buildSingleLineBody(COPY.skipped) : buildCommentBody(report);
 
 if (commentPath) {
   fs.writeFileSync(commentPath, body.endsWith("\n") ? body : `${body}\n`);
 } else {
   process.stdout.write(body.endsWith("\n") ? body : `${body}\n`);
 }
+
+// The Action reads this to suppress the sticky PR comment (it still mirrors the
+// body into the job summary + commit status, which read "skipped").
+appendOutput("skipped", skipped ? "true" : "false");
 
 appendOutput(
   "score",

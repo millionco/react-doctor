@@ -249,6 +249,16 @@ export interface JsonReportProjectEntry {
   skippedChecks: string[];
   /** Human-readable explanation per skipped check. See `InspectResult.skippedCheckReasons`. */
   skippedCheckReasons?: Record<string, string>;
+  /**
+   * Number of source files this scan's linter examined. In diff / changed
+   * mode it's the count of changed React-eligible files (`.tsx`/`.jsx` plus
+   * framework entry files); in a full scan it's the whole source tree. `0`
+   * in a diff scan means the changed files held nothing React Doctor lints —
+   * the GitHub Action reads that as "nothing to report" (skips the PR comment;
+   * the commit status says "skipped"). Optional: absent on reports from
+   * constructors that don't track it (e.g. `toJsonReport`).
+   */
+  scannedFileCount?: number;
   elapsedMilliseconds: number;
 }
 

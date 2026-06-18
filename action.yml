@@ -18,13 +18,13 @@ inputs:
     description: "Severity that fails the workflow: none (default; advisory — report findings but always exit 0), warning, or error."
     default: "none"
   comment:
-    description: "Create or update a sticky pull request summary comment."
+    description: "Create or update a sticky pull request summary comment. Automatically skipped when the pull request changes no React-eligible files (`.tsx`/`.jsx` or framework entry files)."
     default: "true"
   review-comments:
     description: "Post inline review comments on the changed lines that triggered diagnostics (pull requests only)."
     default: "true"
   commit-status:
-    description: "Publish a commit status with the score and error / warning counts, linking to the run. Surfaces the result on pushes to the default branch (where the PR comment is skipped). Requires `statuses: write` (skipped with a warning otherwise)."
+    description: 'Publish a commit status with the score and error / warning counts, linking to the run. Surfaces the result on pushes to the default branch (where the PR comment is skipped). Reads "Skipped" when the pull request changes no React-eligible files. Requires `statuses: write` (skipped with a warning otherwise).'
     default: "true"
   node-version:
     description: "Node.js version to use"
@@ -207,6 +207,7 @@ runs:
       uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
       env:
         REACT_DOCTOR_COMMENT_FILE: ${{ steps.render.outputs.comment-file }}
+        REACT_DOCTOR_SKIPPED: ${{ steps.render.outputs.skipped }}
       with:
         script: |
           const fs = require("fs");
@@ -216,6 +217,12 @@ runs:
           const body = fs.readFileSync(commentPath, "utf8").trim();
           if (!body) return;
 
+          // A skipped scan (no React-eligible files changed) gets no fresh
+          // comment — but an existing one is refreshed to the "skipped" note so a
+          // prior run's findings don't linger as stale feedback after the React
+          // changes were reverted out of the PR.
+          const skipped = process.env.REACT_DOCTOR_SKIPPED === "true";
+
           const marker = "<!-- react-doctor:summary -->";
           try {
             const { data: comments } = await github.rest.issues.listComments({
@@ -224,6 +231,7 @@ runs:
               per_page: 100,
             });
             const previous = comments.find((comment) => comment.body?.startsWith(marker));
+            if (skipped && !previous) return;
             if (previous) {
               await github.rest.issues.updateComment({
                 ...context.repo,
@@ -409,6 +417,7 @@ runs:
         REACT_DOCTOR_SCORE: ${{ steps.render.outputs.score }}
         REACT_DOCTOR_ERROR_COUNT: ${{ steps.render.outputs.error-count }}
         REACT_DOCTOR_WARNING_COUNT: ${{ steps.render.outputs.warning-count }}
+        REACT_DOCTOR_SKIPPED: ${{ steps.render.outputs.skipped }}
         REACT_DOCTOR_SCAN_EXIT: ${{ steps.scan.outputs.exit-code }}
         # On a PR the merge ref's parent is the reviewed commit; `github.sha`
         # covers push runs.
@@ -423,6 +432,7 @@ runs:
           const errorCount = Number(process.env.REACT_DOCTOR_ERROR_COUNT || "0");
           const warningCount = Number(process.env.REACT_DOCTOR_WARNING_COUNT || "0");
           const scanExit = process.env.REACT_DOCTOR_SCAN_EXIT;
+          const skipped = process.env.REACT_DOCTOR_SKIPPED === "true";
           const isPullRequest = context.eventName === "pull_request";
 
           const pluralize = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
@@ -431,8 +441,12 @@ runs:
           // it as a failure so this status can't show green while the PR gate (which
           // uses `${SCAN_STATUS:-1}`) fails the run.
           const scanFailed = scanExit !== "0";
-          // `score` is empty when the scan couldn't produce one (crash / aborted).
-          const description = score ? `Score: ${score}/100 · ${counts}` : scanFailed ? "Scan could not complete" : counts;
+          // A skipped scan (no React-eligible files changed) reads "Skipped" rather
+          // than a zero-filled score line. `score` is empty when the scan couldn't
+          // produce one (crash / aborted).
+          const description = skipped
+            ? "Skipped — no React files changed"
+            : score ? `Score: ${score}/100 · ${counts}` : scanFailed ? "Scan could not complete" : counts;
 
           // Advisory on pushes (a default-branch health-trend signal that must
           // never turn the branch red); on a PR the status mirrors the gate so it

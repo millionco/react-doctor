@@ -381,6 +381,15 @@ export class Git extends Context.Service<
               }),
             });
           }),
+          // One span per actual subprocess invocation. The subcommand
+          // (`args[0]`) is safe to attribute; full args/paths are omitted so
+          // no scanned path leaks into an exported trace.
+          Effect.withSpan("git.exec", {
+            attributes: {
+              "git.command": input.command,
+              "git.subcommand": input.args[0] ?? "",
+            },
+          }),
         );
 
       const runGit = (
@@ -421,7 +430,7 @@ export class Git extends Context.Service<
           ]);
           if (candidates.status !== 0) return null;
           return trimOrNull(candidates.stdout.split("\n")[0] ?? "");
-        });
+        }).pipe(Effect.withSpan("Git.defaultBranch"));
 
       const branchExists = (
         directory: string,
@@ -492,7 +501,10 @@ export class Git extends Context.Service<
           const result = resultOption.value;
           if (result.status !== 0) return null;
           return parseGithubViewerPermission(result.stdout);
-        }).pipe(Effect.catch(() => Effect.succeed(null)));
+        }).pipe(
+          Effect.catch(() => Effect.succeed(null)),
+          Effect.withSpan("Git.githubViewerPermission"),
+        );
 
       /**
        * Resolves a `--diff A..B` / `A...B` commit range into a changed-file
@@ -677,7 +689,7 @@ export class Git extends Context.Service<
               changedFiles: splitNullSeparated(diff.stdout),
               isCurrentChanges: false,
             } satisfies GitDiffSelection;
-          }),
+          }).pipe(Effect.withSpan("Git.diffSelection")),
         stagedFilePaths: (directory) =>
           runGit(directory, [
             "diff",
@@ -737,7 +749,7 @@ export class Git extends Context.Service<
             // Status 128 = "not a git repo" → caller should fall back.
             if (result.status === 128) return null;
             return { status: result.status, stdout: result.stdout } satisfies GitGrepResult;
-          }),
+          }).pipe(Effect.withSpan("Git.grep")),
         changedLineRanges: ({ directory, baseRef, cached, files }) =>
           Effect.gen(function* () {
             if (files.length === 0) return [];
@@ -757,7 +769,7 @@ export class Git extends Context.Service<
             ]);
             if (result.status !== 0) return null;
             return parseChangedLineRanges(result.stdout);
-          }),
+          }).pipe(Effect.withSpan("Git.changedLineRanges")),
       });
     }),
   ).pipe(

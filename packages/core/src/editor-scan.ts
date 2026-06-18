@@ -166,7 +166,16 @@ export const runEditorScan = async (input: EditorScanInput): Promise<EditorScanR
     // REACT_DOCTOR_OTLP_AUTH_HEADER are set; when they are, every
     // `runInspect` / `Service.method` span from this scan is exported,
     // giving editor scans the same observability as the CLI.
-  }).pipe(Effect.provide(layers), Effect.provide(layerOtlp));
+  }).pipe(
+    // Parent span for the whole editor scan (grandparent of `runInspect`'s
+    // own span). Placed before the provides so the OTLP tracer layer is in
+    // scope; only booleans are attributed so no scanned path leaks.
+    Effect.withSpan("runEditorScan", {
+      attributes: { "editor.lint": lint, "editor.runDeadCode": runDeadCode },
+    }),
+    Effect.provide(layers),
+    Effect.provide(layerOtlp),
+  );
 
   const exit = await Effect.runPromiseExit(program);
 

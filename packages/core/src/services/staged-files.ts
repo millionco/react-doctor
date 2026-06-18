@@ -55,9 +55,10 @@ export class StagedFiles extends Context.Service<
       const git = yield* Git;
       return StagedFiles.of({
         discoverSourceFiles: (directory) =>
-          git
-            .stagedFilePaths(directory)
-            .pipe(Effect.map((entries) => entries.filter(isLintableSourceFile))),
+          git.stagedFilePaths(directory).pipe(
+            Effect.map((entries) => entries.filter(isLintableSourceFile)),
+            Effect.withSpan("StagedFiles.discoverSourceFiles"),
+          ),
         materialize: ({ directory, stagedFiles, tempDirectory }) =>
           // Per-file git failures (missing binary, buffer overflow, spawn
           // errors) must NOT sink the whole snapshot — `materializeSourceTree`
@@ -80,6 +81,7 @@ export class StagedFiles extends Context.Service<
                   cleanup: tree.cleanup,
                 }) satisfies StagedSnapshot,
             ),
+            Effect.withSpan("StagedFiles.materialize"),
           ),
       });
     }),

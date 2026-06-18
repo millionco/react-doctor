@@ -126,8 +126,8 @@ describe("issue #93 + #100: textComponents allowlists custom RN text wrappers", 
 
 describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper children", () => {
   it("suppresses raw string children inside configured raw text wrappers", () => {
-    const config: ReactDoctorConfig = { rawTextWrapperComponents: ["Button"] };
-    const file = `<Button>Cancel</Button>\n`;
+    const config: ReactDoctorConfig = { rawTextWrapperComponents: ["TouchBox"] };
+    const file = `<TouchBox>Cancel</TouchBox>\n`;
     const filtered = filterIgnoredDiagnostics(
       [buildRnTextDiagnostic({ line: 1 })],
       config,
@@ -138,8 +138,8 @@ describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper ch
   });
 
   it("suppresses raw template-literal children inside configured raw text wrappers", () => {
-    const config: ReactDoctorConfig = { rawTextWrapperComponents: ["Button"] };
-    const file = "<Button>{`Save changes`}</Button>\n";
+    const config: ReactDoctorConfig = { rawTextWrapperComponents: ["TouchBox"] };
+    const file = "<TouchBox>{`Save changes`}</TouchBox>\n";
     const filtered = filterIgnoredDiagnostics(
       [buildRnTextDiagnostic({ line: 1 })],
       config,
@@ -150,8 +150,8 @@ describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper ch
   });
 
   it("recognizes wrappers by their LEAF name when the JSX uses a member expression", () => {
-    const config: ReactDoctorConfig = { rawTextWrapperComponents: ["Button"] };
-    const file = `<HeroUi.Button>Cancel</HeroUi.Button>\n`;
+    const config: ReactDoctorConfig = { rawTextWrapperComponents: ["TouchBox"] };
+    const file = `<HeroUi.TouchBox>Cancel</HeroUi.TouchBox>\n`;
     const filtered = filterIgnoredDiagnostics(
       [buildRnTextDiagnostic({ line: 1 })],
       config,
@@ -162,8 +162,8 @@ describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper ch
   });
 
   it("still reports raw text inside a wrapper that ALSO contains a JSX child element", () => {
-    const config: ReactDoctorConfig = { rawTextWrapperComponents: ["Button"] };
-    const file = `<Button>\n  Save\n  <Icon />\n</Button>\n`;
+    const config: ReactDoctorConfig = { rawTextWrapperComponents: ["TouchBox"] };
+    const file = `<TouchBox>\n  Save\n  <Icon />\n</TouchBox>\n`;
     const filtered = filterIgnoredDiagnostics(
       [buildRnTextDiagnostic({ line: 2 })],
       config,
@@ -174,7 +174,7 @@ describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper ch
   });
 
   it("does not affect wrappers that aren't listed", () => {
-    const config: ReactDoctorConfig = { rawTextWrapperComponents: ["Button"] };
+    const config: ReactDoctorConfig = { rawTextWrapperComponents: ["TouchBox"] };
     const file = `<Card>Cancel</Card>\n`;
     const filtered = filterIgnoredDiagnostics(
       [buildRnTextDiagnostic({ line: 1 })],
@@ -186,8 +186,8 @@ describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper ch
   });
 
   it("does NOT suppress raw text whose enclosing parent is a non-wrapper, even when a SIBLING is a configured wrapper (closed-sibling regression)", () => {
-    const config: ReactDoctorConfig = { rawTextWrapperComponents: ["Button"] };
-    const file = `<View>\n  <Button>Inner</Button>\n  Save\n</View>\n`;
+    const config: ReactDoctorConfig = { rawTextWrapperComponents: ["TouchBox"] };
+    const file = `<View>\n  <TouchBox>Inner</TouchBox>\n  Save\n</View>\n`;
     const filtered = filterIgnoredDiagnostics(
       [buildRnTextDiagnostic({ line: 3 })],
       config,
@@ -201,7 +201,7 @@ describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper ch
     const projectDir = setupReactProject(tempRoot, "issue-183-e2e", {
       packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
       files: {
-        "src/App.tsx": `export const App = () => <Button>Cancel</Button>;\n`,
+        "src/App.tsx": `export const App = () => <TouchBox>Cancel</TouchBox>;\n`,
       },
     });
 
@@ -220,7 +220,7 @@ describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper ch
     const filtered = mergeAndFilterDiagnostics(
       rawDiagnostics,
       projectDir,
-      { rawTextWrapperComponents: ["Button"] },
+      { rawTextWrapperComponents: ["TouchBox"] },
       createNodeReadFileLinesSync(projectDir),
     );
     const remainingRnRawText = filtered.filter(
@@ -232,9 +232,9 @@ describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper ch
   it("composes with textComponents (each suppresses its own diagnostics)", () => {
     const config: ReactDoctorConfig = {
       textComponents: ["Typography"],
-      rawTextWrapperComponents: ["Button"],
+      rawTextWrapperComponents: ["TouchBox"],
     };
-    const file = `<Typography>Hello</Typography>\n<Button>Cancel</Button>\n<View>Bad</View>\n`;
+    const file = `<Typography>Hello</Typography>\n<TouchBox>Cancel</TouchBox>\n<View>Bad</View>\n`;
     const filtered = filterIgnoredDiagnostics(
       [
         buildRnTextDiagnostic({ line: 1 }),

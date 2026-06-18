@@ -1,0 +1,43 @@
+packages/core/src/is-rule-listed-in-comment.ts
+  s_2e5d4e529aade4::t_7ba7ed917dc165 2,5-8
+packages/core/src/tokenize-rule-list.ts
+  s_2e5d4e529aade4::t_56c1a9daa7862b 1-24
+packages/core/tests/foreign-disable-pipeline.test.ts
+  s_2e5d4e529aade4::t_3367062e49d052 1-45,72
+  s_2e5d4e529aade4::t_d94ee26a27dfc9 46-71
+packages/core/tests/evaluate-suppression.test.ts
+  s_2e5d4e529aade4::t_1749514f3381da 141-168,170-205
+  s_2e5d4e529aade4::t_b021313cfc7aa0 169
+  s_2e5d4e529aade4::t_60eb41812bdb68 130-132
+  s_2e5d4e529aade4::t_0455a3a45b8cef 83-129,133-140
+packages/core/src/detect-foreign-disable-near-miss.ts
+  s_2e5d4e529aade4::t_c4b989c1c969da 1
+  s_2e5d4e529aade4::t_002b67aee51471 2-9,12,17-18,27-29,38-47,49-52,54-56,104
+  s_2e5d4e529aade4::t_d10ad96a0d6340 99
+  s_2e5d4e529aade4::t_b021313cfc7aa0 25,75-76
+  s_2e5d4e529aade4::t_3aac8d86bacf13 10-11,13-16,19-24,26,30-37,48,53,57-74,77-98,100-103
+packages/core/src/evaluate-suppression.ts
+  s_2e5d4e529aade4::t_5d739edd48031b 1
+  s_2e5d4e529aade4::t_463a9ef7539163 100-102
+packages/core/src/rule-key-aliases.ts
+  s_2e5d4e529aade4::t_16227cc1e7a355 149
+  s_2e5d4e529aade4::t_825e44355e18a0 150,154-171
+.changeset/improve-bare-rule-name-disable-handling.md
+  s_2e5d4e529aade4::t_71e88827da57f7 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "54149124c42055fcf51dc6a78c00a69345f4e7f7",
+  "prompts": {},
+  "sessions": {
+    "s_2e5d4e529aade4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "445e40c7-537e-4139-b096-8582f3ad6bef",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,3 +1,5 @@
+import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import type { Diagnostic } from "@react-doctor/core";
@@ -43,7 +45,10 @@ describe("printDiagnostics hyperlinks", () => {
     const output = await captureOutput(() =>
       Effect.runPromise(printDiagnostics([diagnostic], false, "/repo", undefined, false, {}, true)),
     );
-    expect(output).toContain(`${ESCAPE}]8;;file:///repo/src/App.tsx`);
+    // Derive the expected URI the way the renderer does, so the absolute-path
+    // form matches on every platform (Windows resolves to `file:///C:/repo/…`).
+    const expectedUri = pathToFileURL(path.resolve("/repo", diagnostic.filePath)).href;
+    expect(output).toContain(`${ESCAPE}]8;;${expectedUri}`);
     // The visible location text is still present and unchanged.
     expect(output).toContain("src/App.tsx:12");
   });

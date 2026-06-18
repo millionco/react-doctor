@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { readDirectoryEntries } from "./project-info/index.js";
 import { IGNORED_DIRECTORIES } from "./constants.js";
 import { isLintableSourceFile } from "./utils/is-lintable-source-file.js";
+import { messageFromUnknown } from "./utils/message-from-unknown.js";
 import { Git } from "./services/git.js";
 
 const DISABLE_DIRECTIVE_PATTERN = /(eslint|oxlint)-disable/;
@@ -115,7 +116,7 @@ export const neutralizeDisableDirectives = async (
         // Silently swallowing left source files with `eslint_disable` /
         // `oxlint_disable` (neutralized form) and no signal anything broke.
         process.stderr.write(
-          `[react-doctor] Failed to restore inline disable directives in ${absolutePath}: ${error instanceof Error ? error.message : String(error)}\n` +
+          `[react-doctor] Failed to restore inline disable directives in ${absolutePath}: ${messageFromUnknown(error)}\n` +
             `[react-doctor] Run: git checkout -- ${absolutePath}\n`,
         );
       }

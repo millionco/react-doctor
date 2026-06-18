@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor";
+import { messageFromUnknown } from "../../utils/message-from-unknown.js";
 import { warnConfigIssue } from "../../utils/warn-config-issue.js";
 
 export interface JsPluginEntry {
@@ -144,7 +145,7 @@ export const resolveUserPlugin = (
       : candidateRequire.resolve(spec);
   } catch (error) {
     warnConfigIssue(
-      `config.plugins entry "${spec}" could not be resolved from ${configSourceDirectory}: ${error instanceof Error ? error.message : String(error)}`,
+      `config.plugins entry "${spec}" could not be resolved from ${configSourceDirectory}: ${messageFromUnknown(error)}`,
     );
     return null;
   }

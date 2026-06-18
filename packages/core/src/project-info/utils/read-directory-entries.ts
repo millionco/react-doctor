@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import { isErrnoException } from "../../utils/is-errno-exception.js";
 
 // Discovery crawls an unknown tree best-effort: a directory we can't enumerate
 // is skipped, never a crash. These are the "can't read this path" codes —
@@ -14,11 +15,10 @@ const IGNORABLE_READDIR_ERROR_CODES = new Set([
   "ENAMETOOLONG",
 ]);
 
-const isIgnorableReaddirError = (error: unknown): boolean => {
-  if (typeof error !== "object" || error === null) return false;
-  const errorCode = (error as NodeJS.ErrnoException).code;
-  return typeof errorCode === "string" && IGNORABLE_READDIR_ERROR_CODES.has(errorCode);
-};
+const isIgnorableReaddirError = (error: unknown): boolean =>
+  isErrnoException(error) &&
+  typeof error.code === "string" &&
+  IGNORABLE_READDIR_ERROR_CODES.has(error.code);
 
 export const readDirectoryEntries = (directoryPath: string): fs.Dirent[] => {
   try {

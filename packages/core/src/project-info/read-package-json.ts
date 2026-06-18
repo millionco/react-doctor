@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { PackageJson } from "../types/index.js";
+import { isErrnoException } from "../utils/is-errno-exception.js";
 
 const cachedPackageJsons = new Map<string, PackageJson>();
 
@@ -17,8 +18,8 @@ const readPackageJsonUncached = (packageJsonPath: string): PackageJson => {
     if (error instanceof SyntaxError) {
       return {};
     }
-    if (error instanceof Error && "code" in error) {
-      const { code } = error as { code: string };
+    if (isErrnoException(error)) {
+      const { code } = error;
       // EISDIR — packageJsonPath unexpectedly pointed at a directory.
       // EACCES / EPERM — POSIX denial and macOS TCC denial respectively
       // (e.g., a package.json inside ~/Library/Accounts when the scan

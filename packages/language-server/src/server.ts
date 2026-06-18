@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { listSourceFiles, resolveNodeForOxlint } from "@react-doctor/core";
+import { listSourceFiles, messageFromUnknown, resolveNodeForOxlint } from "@react-doctor/core";
 import {
   CodeActionKind,
   CodeActionTriggerKind,
@@ -411,7 +411,7 @@ export const createServer = (
       },
       onError: (error, request) =>
         logger.error(
-          `Scan of ${request.projectDirectory} threw: ${error instanceof Error ? error.message : String(error)}`,
+          `Scan of ${request.projectDirectory} threw: ${messageFromUnknown(error)}`,
         ),
       onIdleChange: (idle) => {
         void setBusy(!idle);

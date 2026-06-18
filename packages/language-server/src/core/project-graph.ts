@@ -6,6 +6,7 @@ import {
   clearPackageJsonCache,
   clearProjectCache,
   discoverReactSubprojects,
+  messageFromUnknown,
 } from "@react-doctor/core";
 import { SILENT_LOGGER, type Logger, type ProjectGraph, type WorkspaceProject } from "../types.js";
 
@@ -48,7 +49,7 @@ export const createProjectGraph = (options: ProjectGraphOptions): ProjectGraph =
         }
       } catch (error) {
         logger.warn(
-          `Project discovery failed for ${root}: ${error instanceof Error ? error.message : String(error)}`,
+          `Project discovery failed for ${root}: ${messageFromUnknown(error)}`,
         );
       }
     }

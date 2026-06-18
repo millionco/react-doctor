@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Diagnostic as CoreDiagnostic } from "@react-doctor/core";
+import { messageFromUnknown, type Diagnostic as CoreDiagnostic } from "@react-doctor/core";
 import {
   CACHE_FILENAME_HASH_LENGTH_CHARS,
   LINT_CACHE_PERSIST_DEBOUNCE_MS,
@@ -102,7 +102,7 @@ export const createLintCache = (input: {
       fs.renameSync(tempPath, cacheFilePath);
     } catch (error) {
       logger.warn(
-        `Failed to persist lint cache: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to persist lint cache: ${messageFromUnknown(error)}`,
       );
     }
   };

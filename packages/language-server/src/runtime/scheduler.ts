@@ -1,3 +1,5 @@
+import { messageFromUnknown } from "@react-doctor/core";
+import { DOCUMENT_CHANGE_DEBOUNCE_MS, MIN_SCAN_CONCURRENCY } from "../constants.js";
 import {
   SILENT_LOGGER,
   type CancellationToken,
@@ -28,8 +30,8 @@ const keyOf = (request: Pick<ScanRequestInput, "projectDirectory" | "files">): s
  * keeps large monorepos responsive.
  */
 export const createScheduler = (options: SchedulerOptions): Scheduler => {
-  const debounceMs = options.debounceMs ?? 300;
-  const concurrency = Math.max(1, options.concurrency ?? 2);
+  const debounceMs = options.debounceMs ?? DOCUMENT_CHANGE_DEBOUNCE_MS;
+  const concurrency = Math.max(1, options.concurrency ?? MIN_SCAN_CONCURRENCY);
   const reservedInteractiveSlots = Math.max(0, options.reservedInteractiveSlots ?? 0);
   // Background scans never occupy the reserved slots, so an interactive /
   // save scan can always start while a big workspace scan churns.
@@ -90,7 +92,7 @@ export const createScheduler = (options: SchedulerOptions): Scheduler => {
         .catch((error: unknown) => {
           if (options.onError) options.onError(error, request);
           else
-            logger.error(`Scan failed: ${error instanceof Error ? error.message : String(error)}`);
+            logger.error(`Scan failed: ${messageFromUnknown(error)}`);
         })
         .finally(() => {
           running -= 1;

@@ -10,6 +10,7 @@ import { layerOtlp } from "./observability.js";
 import { isProjectDiscoveryError } from "./project-info/index.js";
 import { OxlintConcurrency } from "./refs.js";
 import { runInspect } from "./run-inspect.js";
+import { messageFromUnknown } from "./utils/message-from-unknown.js";
 import { Config } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
 import { Files } from "./services/files.js";
@@ -206,6 +207,6 @@ export const runEditorScan = async (input: EditorScanInput): Promise<EditorScanR
     didDeadCodeFail: false,
     deadCodeFailureReason: null,
     lintPartialFailures: [],
-    error: error instanceof Error ? error.message : String(error),
+    error: messageFromUnknown(error),
   };
 };

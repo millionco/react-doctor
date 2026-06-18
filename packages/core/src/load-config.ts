@@ -9,6 +9,7 @@ import type { Jiti } from "jiti";
 import type { ReactDoctorConfig } from "./types/index.js";
 import { isFile, isPlainObject } from "./project-info/index.js";
 import { isProjectBoundary } from "./utils/is-project-boundary.js";
+import { messageFromUnknown } from "./utils/message-from-unknown.js";
 import { validateConfigTypes } from "./validate-config-types.js";
 
 const warn = (message: string): void => {
@@ -54,9 +55,6 @@ interface DirectoryConfigResult {
 
 // One jiti instance, reused across loads so its transform cache is warm.
 const jiti = createJiti(import.meta.url);
-
-const formatError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error);
 
 const importDefaultExport = async (jitiInstance: Jiti, filePath: string): Promise<unknown> => {
   const imported = await jitiInstance.import<{ default?: unknown }>(filePath);
@@ -128,7 +126,7 @@ const loadModuleConfig = async (filePath: string): Promise<unknown> => {
       return await importDefaultExport(aliasJiti, filePath);
     } catch (retryError) {
       throw new Error(
-        `${formatError(error)} (retry with ${SELF_PACKAGE_IMPORT_SPECIFIER} aliased to the running react-doctor package also failed: ${formatError(retryError)})`,
+        `${messageFromUnknown(error)} (retry with ${SELF_PACKAGE_IMPORT_SPECIFIER} aliased to the running react-doctor package also failed: ${messageFromUnknown(retryError)})`,
         { cause: retryError },
       );
     }
@@ -199,7 +197,7 @@ const loadLegacyConfig = (directory: string): DirectoryConfigResult => {
     }
     warn(`${LEGACY_CONFIG_FILENAME} must contain an object, ignoring.`);
   } catch (error) {
-    warn(`Failed to load ${LEGACY_CONFIG_FILENAME}: ${formatError(error)}`);
+    warn(`Failed to load ${LEGACY_CONFIG_FILENAME}: ${messageFromUnknown(error)}`);
   }
   return { status: "invalid", loaded: null };
 };
@@ -226,7 +224,7 @@ const loadConfigFromDirectory = async (directory: string): Promise<DirectoryConf
       warn(`${CONFIG_BASENAME}.${extension} must export an object, ignoring.`);
       sawBrokenConfigFile = true;
     } catch (error) {
-      warn(`Failed to load ${CONFIG_BASENAME}.${extension}: ${formatError(error)}`);
+      warn(`Failed to load ${CONFIG_BASENAME}.${extension}: ${messageFromUnknown(error)}`);
       sawBrokenConfigFile = true;
     }
   }

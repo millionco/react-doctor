@@ -26,4 +26,42 @@ describe("server-fetch-without-revalidate", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+    it(`does not flag a ${method} fetch (Next.js never caches non-GET requests)`, () => {
+      const result = runRule(
+        serverFetchWithoutRevalidate,
+        `export const POST = () => {
+  return fetch("https://example.com/api/data", { method: "${method}", body: "{}" });
+};`,
+        { filename: "/repo/app/api/users/route.ts" },
+      );
+
+      expect(result.diagnostics).toEqual([]);
+    });
+  }
+
+  it("flags a GET fetch with an explicit method but no caching config", () => {
+    const result = runRule(
+      serverFetchWithoutRevalidate,
+      `export const GET = () => {
+  return fetch("https://example.com/api/data", { method: "GET" });
+};`,
+      { filename: "/repo/app/api/users/route.ts" },
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a fetch whose method is a non-literal (can't prove it's non-GET)", () => {
+    const result = runRule(
+      serverFetchWithoutRevalidate,
+      `export const GET = (method: string) => {
+  return fetch("https://example.com/api/data", { method });
+};`,
+      { filename: "/repo/app/api/users/route.ts" },
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

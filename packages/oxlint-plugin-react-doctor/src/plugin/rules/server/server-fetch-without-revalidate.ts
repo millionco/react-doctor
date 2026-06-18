@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isMutatingFetchCall } from "../../utils/find-side-effect.js";
 import { NEXTJS_SOURCE_FILE_EXTENSION_GROUP } from "../../constants/nextjs.js";
 
 const isFetchCall = (node: EsTreeNode): boolean => {
@@ -88,6 +89,9 @@ export const serverFetchWithoutRevalidate = defineRule({
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isServerSideFile) return;
         if (!isFetchCall(node)) return;
+        // Next.js only caches GET requests, so a mutating fetch
+        // (POST/PUT/PATCH/DELETE) can never serve stale cached data.
+        if (isMutatingFetchCall(node)) return;
 
         const optionsArg = node.arguments?.[1];
         if (optionsArg && objectExpressionHasNextRevalidate(optionsArg)) return;

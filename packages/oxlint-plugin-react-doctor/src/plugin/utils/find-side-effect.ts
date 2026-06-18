@@ -51,7 +51,7 @@ const getCookieMutationMethodName = (
   return node.callee.property.name;
 };
 
-const isMutatingFetchCall = (node: EsTreeNode): boolean => {
+export const isMutatingFetchCall = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
   if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "fetch") return false;
   const optionsArgument = node.arguments?.[1];

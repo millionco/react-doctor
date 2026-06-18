@@ -19,7 +19,7 @@ import { checkReactNativeProject } from "./check-react-native-project.js";
 import { checkReactServerComponentsAdvisory } from "./check-react-server-components-advisory.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
 import { checkSecurityScan } from "./check-security-scan.js";
-import { DEFAULT_SHOW_WARNINGS } from "./constants.js";
+import { DEFAULT_SHOW_WARNINGS, MILLISECONDS_PER_SECOND } from "./constants.js";
 import { highlighter } from "./highlighter.js";
 import { computeExplicitLintIncludePaths } from "./explicit-lint-include-paths.js";
 import { deadCodeMaySurfaceWhenWarningsHidden } from "./utils/dead-code-may-surface.js";
@@ -495,7 +495,7 @@ export const runInspect = <HooksR = never>(
     const deadCodeFailureState = yield* Ref.get(deadCodeFailure);
 
     const scanElapsedMilliseconds = Date.now() - scanStartTime;
-    const scanElapsedSeconds = (scanElapsedMilliseconds / 1000).toFixed(1);
+    const scanElapsedSeconds = (scanElapsedMilliseconds / MILLISECONDS_PER_SECOND).toFixed(1);
 
     if (!lintFailureState.didFail) {
       if (deadCodeFailureState.didFail) {

@@ -1,19 +1,6 @@
 import type { PackageJson } from "../types/index.js";
 import { findInWorkspacePackageJsons } from "./find-in-workspace-package-jsons.js";
-
-// Read the declared `expo` spec from any dependency section. All four are
-// consulted (not just runtime + dev) so detection matches the framework /
-// RN-workspace gates, which also treat `peer`/`optional` `expo` as Expo. The
-// `typeof` guard keeps a malformed non-string entry (e.g. `"expo": 54`) from
-// reaching `getLowestDependencyMajor`'s `.trim()` and aborting the scan.
-const getExpoDependencySpec = (packageJson: PackageJson): string | null => {
-  const spec =
-    packageJson.dependencies?.expo ??
-    packageJson.devDependencies?.expo ??
-    packageJson.peerDependencies?.expo ??
-    packageJson.optionalDependencies?.expo;
-  return typeof spec === "string" ? spec : null;
-};
+import { getDependencySpec } from "./utils/get-dependency-spec.js";
 
 // The declared `expo` package version spec, looked up in the root manifest
 // and then each workspace package — react-doctor's "is this an Expo
@@ -30,4 +17,6 @@ export const findExpoVersion = (
   rootDirectory: string,
   rootPackageJson: PackageJson,
 ): string | null =>
-  findInWorkspacePackageJsons(rootDirectory, rootPackageJson, getExpoDependencySpec);
+  findInWorkspacePackageJsons(rootDirectory, rootPackageJson, (packageJson) =>
+    getDependencySpec(packageJson, "expo"),
+  );

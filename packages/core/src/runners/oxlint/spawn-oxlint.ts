@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import {
+  MILLISECONDS_PER_SECOND,
   OXLINT_OUTPUT_MAX_BYTES,
   OXLINT_SPAWN_TIMEOUT_MS as DEFAULT_OXLINT_SPAWN_TIMEOUT_MS,
 } from "../../constants.js";
@@ -67,7 +68,7 @@ export const spawnOxlint = (
         new ReactDoctorError({
           reason: new OxlintBatchExceeded({
             kind: "timeout",
-            detail: `${spawnTimeoutMs / 1000}s budget exceeded`,
+            detail: `${spawnTimeoutMs / MILLISECONDS_PER_SECOND}s budget exceeded`,
           }),
         }),
       );

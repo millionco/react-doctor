@@ -1,0 +1,7 @@
+{
+  "name": "playwright-pw-extension",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "1.0.0"
+  }
+}

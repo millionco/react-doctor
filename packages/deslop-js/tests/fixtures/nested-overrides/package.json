@@ -1,0 +1,16 @@
+{
+  "name": "nested-overrides",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "devDependencies": {
+    "@typescript/native-preview": "^7.0.0-dev",
+    "unused-dep": "^1.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "eslint-config-custom@1.0.0": {
+        "typescript": "npm:@typescript/native-preview"
+      }
+    }
+  }
+}

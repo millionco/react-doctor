@@ -1,0 +1,15 @@
+{
+  "name": "misclassified-deps-typeonly",
+  "main": "src/index.ts",
+  "dependencies": {
+    "mixed-use-lib": "^1.0.0",
+    "reexported-type-lib": "^1.0.0",
+    "reexported-value-lib": "^1.0.0",
+    "side-effect-lib": "^1.0.0",
+    "type-only-lib": "^1.0.0",
+    "value-used-lib": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

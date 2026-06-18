@@ -1,0 +1,4 @@
+{
+  "name": "unreachable-shared-child",
+  "main": "src/index.ts"
+}

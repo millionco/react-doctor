@@ -1,0 +1,4 @@
+{
+  "name": "duplicate-inline-types",
+  "main": "src/index.ts"
+}

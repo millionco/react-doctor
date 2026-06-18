@@ -1,0 +1,18 @@
+{
+  "name": "script-cli-deps",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "turbo run build",
+    "lint": "vp lint",
+    "dev": "tsx src/index.ts",
+    "version": "changeset version"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.0",
+    "tsx": "^4.21.0",
+    "turbo": "^2.9.7",
+    "unused-dep": "^1.0.0",
+    "vite-plus": "^0.1.20"
+  }
+}

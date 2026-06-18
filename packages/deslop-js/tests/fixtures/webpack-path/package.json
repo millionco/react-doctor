@@ -1,0 +1,6 @@
+{
+  "name": "webpack-path-join",
+  "dependencies": {
+    "webpack": "^5.0.0"
+  }
+}

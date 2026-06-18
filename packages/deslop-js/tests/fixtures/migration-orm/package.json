@@ -1,0 +1,7 @@
+{
+  "name": "orm-migrations",
+  "version": "1.0.0",
+  "dependencies": {
+    "knex": "^3.0.0"
+  }
+}

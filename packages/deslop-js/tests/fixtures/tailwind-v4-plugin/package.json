@@ -1,0 +1,9 @@
+{
+  "name": "tailwind-v4-plugin",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "dependencies": {
+    "tailwindcss-animate": "^1.0.7",
+    "unused-dep": "^1.0.0"
+  }
+}

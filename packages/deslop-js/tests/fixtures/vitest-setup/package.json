@@ -1,0 +1,7 @@
+{
+  "name": "vitest-setup-files-fixture",
+  "private": true,
+  "devDependencies": {
+    "vitest": "^2.0.0"
+  }
+}

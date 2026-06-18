@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "projects": {
+    "demo": {
+      "root": "projects/demo",
+      "sourceRoot": "projects/demo/src",
+      "architect": {
+        "build": {
+          "builder": "@angular-devkit/build-angular:browser",
+          "options": {
+            "main": "projects/demo/src/main.ts",
+            "polyfills": "projects/demo/src/polyfills.ts",
+            "styles": ["projects/demo/src/styles.css"]
+          }
+        },
+        "test": {
+          "builder": "@angular-devkit/build-angular:karma",
+          "options": {
+            "main": "projects/demo/src/test.ts"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "node-test-runner",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "node --test **/*.test.ts"
+  },
+  "dependencies": {
+    "express": "^4.0.0"
+  }
+}

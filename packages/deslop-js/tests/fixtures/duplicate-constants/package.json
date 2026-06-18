@@ -1,0 +1,4 @@
+{
+  "name": "duplicate-constants",
+  "main": "src/index.ts"
+}

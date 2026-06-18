@@ -1,0 +1,10 @@
+{
+  "name": "vitest-override-target",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "devDependencies": {
+    "@voidzero-dev/vite-plus-test": "^0.1.20",
+    "unused-dep": "^1.0.0",
+    "vitest": "^4.0.0"
+  }
+}

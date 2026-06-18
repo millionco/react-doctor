@@ -1,0 +1,6 @@
+{
+  "name": "test-with-redwood-non-router-package",
+  "dependencies": {
+    "@redwoodjs/forms": "*"
+  }
+}

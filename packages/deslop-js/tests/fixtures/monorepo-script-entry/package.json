@@ -1,0 +1,8 @@
+{
+  "name": "monorepo-script-entry",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "internal-tools": "bun ./packages/sub/internal-tools/tui.ts"
+  }
+}

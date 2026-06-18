@@ -1,0 +1,10 @@
+{
+  "name": "babel-module-resolver",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "devDependencies": {
+    "@babel/core": "^7.0.0",
+    "babel-plugin-module-resolver": "^5.0.0"
+  }
+}

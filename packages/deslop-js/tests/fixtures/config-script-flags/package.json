@@ -1,0 +1,12 @@
+{
+  "name": "config-flag-scripts",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "migrate": "drizzle-kit generate --config ./db/drizzle.config.ts",
+    "seed": "tsx scripts/seed.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.30.0"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "expo-config-plugins",
+  "workspaces": [
+    "apps/*"
+  ],
+  "type": "module",
+  "dependencies": {
+    "expo": "^56.0.0",
+    "react": "^19.0.0"
+  }
+}

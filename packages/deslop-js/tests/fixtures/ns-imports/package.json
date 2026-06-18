@@ -1,0 +1,4 @@
+{
+  "name": "namespace-imports",
+  "main": "src/index.ts"
+}

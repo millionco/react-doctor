@@ -1,0 +1,7 @@
+{
+  "name": "bun-test-runner",
+  "scripts": {
+    "test": "bun test --exit",
+    "dev": "bun run src/index.ts"
+  }
+}

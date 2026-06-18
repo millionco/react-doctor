@@ -1,0 +1,12 @@
+{
+  "name": "workspace-local-bin",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "email:preview": "email dev --dir ./src/server/emails"
+  },
+  "devDependencies": {
+    "react-email": "^3.0.0",
+    "unused-dev-tool": "^1.0.0"
+  }
+}

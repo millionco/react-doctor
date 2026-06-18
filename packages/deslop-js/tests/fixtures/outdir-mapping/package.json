@@ -1,0 +1,8 @@
+{
+  "name": "outdir-source-map-test",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "dependencies": {
+    "electron": "^28.0.0"
+  }
+}

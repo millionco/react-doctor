@@ -1,0 +1,6 @@
+{
+  "name": "test-hoisted-react-router-app",
+  "scripts": {
+    "dev": "react-router dev"
+  }
+}

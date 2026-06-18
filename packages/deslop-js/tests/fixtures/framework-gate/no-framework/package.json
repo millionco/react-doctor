@@ -1,0 +1,6 @@
+{
+  "name": "test-no-framework",
+  "dependencies": {
+    "react": "^18.0.0"
+  }
+}

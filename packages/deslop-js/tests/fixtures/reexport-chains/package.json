@@ -1,0 +1,4 @@
+{
+  "name": "re-export-chains",
+  "main": "src/index.ts"
+}

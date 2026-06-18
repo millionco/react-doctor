@@ -1,0 +1,9 @@
+{
+  "name": "i18n-extract-test",
+  "scripts": {
+    "i18n:extract": "formatjs extract 'src/**/*.{ts,tsx}' --out-file locales/en.json"
+  },
+  "dependencies": {
+    "react": "*"
+  }
+}

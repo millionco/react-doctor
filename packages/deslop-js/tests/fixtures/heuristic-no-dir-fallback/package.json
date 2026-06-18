@@ -1,0 +1,12 @@
+{
+  "name": "heuristic-no-dir-fallback",
+  "version": "1.0.0",
+  "bin": {
+    "mycli": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "default": "./dist/index.js"
+    }
+  }
+}

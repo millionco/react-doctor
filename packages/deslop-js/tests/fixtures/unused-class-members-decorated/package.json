@@ -1,0 +1,4 @@
+{
+  "name": "unused-class-members-decorated",
+  "main": "src/index.ts"
+}

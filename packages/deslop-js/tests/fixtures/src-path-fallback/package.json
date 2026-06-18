@@ -1,0 +1,12 @@
+{
+  "name": "source-path-fallback",
+  "version": "1.0.0",
+  "exports": {
+    ".": {
+      "default": "./dist/index.js"
+    },
+    "./cli": {
+      "default": "./dist/cli.js"
+    }
+  }
+}

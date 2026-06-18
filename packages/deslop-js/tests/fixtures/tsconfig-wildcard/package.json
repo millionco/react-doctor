@@ -1,0 +1,8 @@
+{
+  "name": "tsconfig-path-alias-wildcard",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "dependencies": {
+    "react": "^18.0.0"
+  }
+}

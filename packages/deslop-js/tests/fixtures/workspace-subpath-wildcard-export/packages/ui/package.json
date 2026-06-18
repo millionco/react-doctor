@@ -1,0 +1,10 @@
+{
+  "name": "@wildcard-fixture/ui",
+  "exports": {
+    "./*": {
+      "import": {
+        "default": "./dist/components/*.js"
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "script-glob-entries",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "build:themes": "postcss styles/themes/*.css --dir dist/themes",
+    "build": "tsc && node src/index.ts"
+  }
+}

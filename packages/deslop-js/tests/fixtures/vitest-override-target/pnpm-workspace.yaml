@@ -1,0 +1,6 @@
+packages:
+  - "."
+
+pnpm:
+  overrides:
+    vitest: npm:@voidzero-dev/vite-plus-test@^0.1.20

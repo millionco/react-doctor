@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "rootDir": "src",
+    "outDir": "lib",
+    "paths": {
+      "#src/*": ["src/*"]
+    }
+  },
+  "include": ["src"]
+}

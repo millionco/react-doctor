@@ -1,0 +1,7 @@
+name: CI
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: node .github/actions/deploy/run.js

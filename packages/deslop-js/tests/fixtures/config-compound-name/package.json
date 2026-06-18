@@ -1,0 +1,8 @@
+{
+  "name": "config-multi-segment-fixture",
+  "private": true,
+  "devDependencies": {
+    "cypress": "^13.0.0",
+    "vitest": "^1.0.0"
+  }
+}

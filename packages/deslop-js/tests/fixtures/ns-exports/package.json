@@ -1,0 +1,4 @@
+{
+  "name": "namespace-exports",
+  "main": "src/index.ts"
+}

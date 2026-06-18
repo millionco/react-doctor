@@ -1,0 +1,4 @@
+{
+  "name": "redundant-aliases-self",
+  "main": "src/index.ts"
+}

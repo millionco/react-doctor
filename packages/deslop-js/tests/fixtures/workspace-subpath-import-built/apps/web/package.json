@@ -1,0 +1,6 @@
+{
+  "name": "@built-fixture/web",
+  "dependencies": {
+    "@built-fixture/ui": "workspace:*"
+  }
+}

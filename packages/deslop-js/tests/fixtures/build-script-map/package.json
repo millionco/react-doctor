@@ -1,0 +1,12 @@
+{
+  "name": "build-script-source-map",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "migrate": "node build/scripts/migrate.js",
+    "health": "node build/scripts/health-check.js"
+  },
+  "dependencies": {
+    "express": "^4.0.0"
+  }
+}

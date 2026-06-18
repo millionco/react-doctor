@@ -1,0 +1,7 @@
+{
+  "name": "gatsby-test",
+  "dependencies": {
+    "gatsby": "5.0.0",
+    "react": "18.0.0"
+  }
+}

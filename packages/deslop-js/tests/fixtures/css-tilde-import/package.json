@@ -1,0 +1,9 @@
+{
+  "name": "css-tilde-import",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "dependencies": {
+    "bootstrap": "^5.0.0",
+    "unused-dep": "^1.0.0"
+  }
+}

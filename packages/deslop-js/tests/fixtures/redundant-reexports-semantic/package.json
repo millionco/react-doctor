@@ -1,0 +1,4 @@
+{
+  "name": "redundant-reexports-semantic",
+  "main": "src/index.ts"
+}

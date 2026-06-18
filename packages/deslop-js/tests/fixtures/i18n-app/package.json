@@ -1,0 +1,10 @@
+{
+  "name": "i18n-project",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "dependencies": {
+    "i18next": "^23.0.0",
+    "react": "^18.0.0",
+    "react-i18next": "^13.0.0"
+  }
+}

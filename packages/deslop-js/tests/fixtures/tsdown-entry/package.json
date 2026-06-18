@@ -1,0 +1,8 @@
+{
+  "name": "tsdown-config-entry-test",
+  "private": true,
+  "main": "dist/index.js",
+  "devDependencies": {
+    "tsdown": "^1.0.0"
+  }
+}

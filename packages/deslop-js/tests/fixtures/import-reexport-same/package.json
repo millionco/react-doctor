@@ -1,0 +1,5 @@
+{
+  "name": "import-and-reexport-same-target",
+  "version": "1.0.0",
+  "main": "src/index.ts"
+}

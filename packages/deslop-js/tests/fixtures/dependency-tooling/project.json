@@ -1,0 +1,11 @@
+{
+  "name": "dependency-tooling",
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc"
+    },
+    "alias": {
+      "command": "tsc-alias"
+    }
+  }
+}

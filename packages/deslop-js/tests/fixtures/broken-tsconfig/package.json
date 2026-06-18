@@ -1,0 +1,4 @@
+{
+  "name": "broken-tsconfig",
+  "main": "src/index.ts"
+}

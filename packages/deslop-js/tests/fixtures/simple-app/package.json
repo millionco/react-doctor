@@ -1,0 +1,11 @@
+{
+  "name": "basic-project",
+  "main": "src/index.ts",
+  "dependencies": {
+    "react": "^18.0.0",
+    "unused-dep": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

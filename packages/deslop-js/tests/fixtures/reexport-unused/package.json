@@ -1,0 +1,4 @@
+{
+  "name": "barrel-unused-reexports",
+  "main": "src/index.ts"
+}

@@ -1,0 +1,6 @@
+{
+  "name": "expo-config-plugins-mobile",
+  "dependencies": {
+    "expo": "^56.0.0"
+  }
+}

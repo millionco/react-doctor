@@ -1,0 +1,8 @@
+{
+  "name": "docusaurus-content-fixture",
+  "private": true,
+  "dependencies": {
+    "@docusaurus/core": "^3.0.0",
+    "@docusaurus/preset-classic": "^3.0.0"
+  }
+}

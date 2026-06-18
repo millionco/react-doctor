@@ -1,0 +1,14 @@
+{
+  "name": "formatter-glob-scripts",
+  "scripts": {
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "lint": "eslint \"src/**/*.ts\"",
+    "build": "tsx scripts/build.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "tsx": "^4.0.0"
+  }
+}

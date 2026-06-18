@@ -1,0 +1,8 @@
+{
+  "name": "import-meta-glob",
+  "version": "1.0.0",
+  "main": "./src/index.ts",
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}

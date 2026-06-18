@@ -1,0 +1,5 @@
+{
+  "name": "typescript-smells",
+  "type": "module",
+  "main": "src/index.ts"
+}

@@ -1,0 +1,8 @@
+{
+  "name": "cross-file-duplicate-exports-unrelated",
+  "exports": {
+    "./root": "./src/index.ts",
+    "./routes/alpha": "./src/routes/alpha/handler.ts",
+    "./routes/beta": "./src/routes/beta/handler.ts"
+  }
+}

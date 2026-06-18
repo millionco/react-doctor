@@ -1,0 +1,4 @@
+{
+  "name": "multi-hop-barrel",
+  "main": "src/index.ts"
+}

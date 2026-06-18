@@ -1,0 +1,7 @@
+{
+  "name": "workspace-default-fallback",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ]
+}

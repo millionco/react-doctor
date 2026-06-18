@@ -1,0 +1,11 @@
+{
+  "name": "cra-monorepo-scope",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "react-scripts": "^5.0.0"
+  }
+}

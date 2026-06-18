@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "esModuleInterop": true,
+    "strictNullChecks": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "lib": ["esnext"],
+    "skipLibCheck": true,
+    "outDir": "dist"
+  },
+  "include": ["src", "vite.config.ts"],
+  "exclude": ["**/node_modules/**", "dist", "tests"]
+}

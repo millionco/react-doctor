@@ -1,0 +1,9 @@
+{
+  "name": "react-router-v7-app",
+  "private": true,
+  "dependencies": {
+    "@react-router/dev": "^7.0.0",
+    "@react-router/node": "^7.0.0",
+    "react": "^18.0.0"
+  }
+}

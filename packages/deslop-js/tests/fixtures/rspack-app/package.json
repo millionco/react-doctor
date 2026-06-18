@@ -1,0 +1,7 @@
+{
+  "name": "rspack-project",
+  "dependencies": {
+    "@rspack/cli": "^1.0.0",
+    "@rspack/core": "^1.0.0"
+  }
+}

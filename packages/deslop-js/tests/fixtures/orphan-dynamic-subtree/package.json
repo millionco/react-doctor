@@ -1,0 +1,4 @@
+{
+  "name": "unreachable-dynamic-subtree",
+  "main": "src/index.ts"
+}

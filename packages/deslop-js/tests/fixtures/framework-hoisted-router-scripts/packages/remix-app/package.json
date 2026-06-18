@@ -1,0 +1,6 @@
+{
+  "name": "test-hoisted-remix-app",
+  "scripts": {
+    "dev": "remix dev"
+  }
+}

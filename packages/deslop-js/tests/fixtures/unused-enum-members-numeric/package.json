@@ -1,0 +1,4 @@
+{
+  "name": "unused-enum-members-numeric",
+  "main": "src/index.ts"
+}

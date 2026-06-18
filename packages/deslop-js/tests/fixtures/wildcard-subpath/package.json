@@ -1,0 +1,9 @@
+{
+  "name": "wildcard-subpath-exports",
+  "version": "1.0.0",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./templates/*": "./src/templates/*.tsx"
+  }
+}

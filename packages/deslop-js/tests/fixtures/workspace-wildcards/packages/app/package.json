@@ -1,0 +1,8 @@
+{
+  "name": "@test/app",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@test/ui": "1.0.0"
+  }
+}

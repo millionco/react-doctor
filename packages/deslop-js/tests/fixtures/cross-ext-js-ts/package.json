@@ -1,0 +1,9 @@
+{
+  "name": "exports-js-to-ts",
+  "version": "1.0.0",
+  "exports": {
+    "./generators": "./generators.js",
+    "./plugin": "./plugin.js",
+    "./utils": "./src/utils/index.js"
+  }
+}

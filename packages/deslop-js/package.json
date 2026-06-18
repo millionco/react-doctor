@@ -1,0 +1,74 @@
+{
+  "name": "deslop-js",
+  "version": "0.0.24",
+  "description": "Deslop JavaScript code",
+  "keywords": [
+    "dead-code",
+    "dependencies",
+    "exports",
+    "files",
+    "javascript",
+    "oxc",
+    "typescript",
+    "unused"
+  ],
+  "homepage": "https://github.com/millionco/react-doctor#readme",
+  "bugs": {
+    "url": "https://github.com/millionco/react-doctor/issues"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Aiden Bai",
+    "email": "aiden@million.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/millionco/react-doctor.git",
+    "directory": "packages/deslop-js"
+  },
+  "files": [
+    "dist",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@oxc-project/types": "^0.132.0",
+    "fast-glob": "^3.3.3",
+    "minimatch": "^10.2.5",
+    "oxc-parser": "^0.132.0",
+    "oxc-resolver": "^11.19.1",
+    "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "@types/minimatch": "^5.1.2",
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0"
+  }
+}

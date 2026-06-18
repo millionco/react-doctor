@@ -1,0 +1,9 @@
+{
+  "name": "script-flag-args",
+  "private": true,
+  "scripts": {
+    "build": "tsx --tsconfig ./tsconfig.build.json ./scripts/build.ts --watch",
+    "generate": "bun run ./scripts/generate.mts",
+    "test": "node --import tsx --test tests/run.ts"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "name": "dependency-tooling",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "babel src --out-dir lib && tsc-alias",
+    "e2e": "tauri build",
+    "extract": "formatjs extract src/index.ts",
+    "prompt": "prompt",
+    "replace": "replace-in-file old new src/index.ts",
+    "test": "jest --config jest.config.js",
+    "watch": "chokidar 'src/**' -c 'echo changed'",
+    "cms": "tinacms dev -c 'next dev'"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^3.0.0",
+    "chart.js": "^4.0.0",
+    "react-chartjs-2": "^5.0.0",
+    "react-redux": "^9.0.0",
+    "redux": "^5.0.0",
+    "redux-thunk": "^3.0.0",
+    "unused-dep": "^1.0.0",
+    "zod": "^3.0.0"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.0.0",
+    "@formatjs/cli": "^6.0.0",
+    "@nx/js": "^20.0.0",
+    "@tauri-apps/cli": "^2.0.0",
+    "@tinacms/cli": "^1.0.0",
+    "@typescript/native-preview": "^7.0.0-dev",
+    "babel-eslint": "^10.0.0",
+    "chokidar-cli": "^3.0.0",
+    "jest-cli": "^29.0.0",
+    "jest-config": "^29.0.0",
+    "prompt": "^1.0.0",
+    "replace-in-file": "^8.0.0",
+    "tsc-alias": "^1.0.0",
+    "unused-tool": "^1.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "typescript": "npm:@typescript/native-preview"
+    }
+  }
+}

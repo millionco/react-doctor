@@ -1,0 +1,7 @@
+{
+  "name": "jest-module-mapper-fixture",
+  "private": true,
+  "devDependencies": {
+    "jest": "^29.0.0"
+  }
+}

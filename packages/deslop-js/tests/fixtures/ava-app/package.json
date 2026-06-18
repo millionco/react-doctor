@@ -1,0 +1,7 @@
+{
+  "name": "ava-fixture",
+  "private": true,
+  "devDependencies": {
+    "ava": "^6.0.0"
+  }
+}

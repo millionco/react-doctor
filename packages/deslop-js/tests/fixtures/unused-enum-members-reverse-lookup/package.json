@@ -1,0 +1,4 @@
+{
+  "name": "unused-enum-members-reverse-lookup",
+  "main": "src/index.ts"
+}

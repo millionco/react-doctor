@@ -1,0 +1,11 @@
+{
+  "name": "test-framework-hoisted-router-scripts",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@react-router/dev": "*",
+    "@remix-run/dev": "*"
+  }
+}

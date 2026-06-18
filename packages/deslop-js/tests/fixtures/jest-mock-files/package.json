@@ -1,0 +1,7 @@
+{
+  "name": "jest-mocks-fixture",
+  "main": "src/index.ts",
+  "dependencies": {
+    "jest": "*"
+  }
+}

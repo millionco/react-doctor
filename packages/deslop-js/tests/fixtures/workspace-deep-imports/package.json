@@ -1,0 +1,8 @@
+{
+  "name": "deep-workspace-root",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ]
+}

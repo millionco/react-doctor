@@ -1,0 +1,6 @@
+{
+  "name": "@wildcard-fixture/web",
+  "dependencies": {
+    "@wildcard-fixture/ui": "workspace:*"
+  }
+}

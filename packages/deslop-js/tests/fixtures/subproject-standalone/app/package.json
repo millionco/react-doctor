@@ -1,0 +1,8 @@
+{
+  "name": "my-app",
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "main": "src/index.ts"
+}

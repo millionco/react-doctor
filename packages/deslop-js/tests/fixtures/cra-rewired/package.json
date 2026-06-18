@@ -1,0 +1,15 @@
+{
+  "name": "cra-rewired-app",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "react-app-rewired start",
+    "build": "react-app-rewired build"
+  },
+  "dependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "devDependencies": {
+    "react-app-rewired": "^2.2.1"
+  }
+}

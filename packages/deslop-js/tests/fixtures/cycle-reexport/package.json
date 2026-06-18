@@ -1,0 +1,4 @@
+{
+  "name": "circular-re-export",
+  "main": "src/index.ts"
+}

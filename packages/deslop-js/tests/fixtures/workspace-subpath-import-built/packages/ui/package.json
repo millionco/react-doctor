@@ -1,0 +1,6 @@
+{
+  "name": "@built-fixture/ui",
+  "exports": {
+    "./*": "./dist/*.js"
+  }
+}

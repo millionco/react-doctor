@@ -1,0 +1,4 @@
+{
+  "name": "feature-flags-basic",
+  "main": "src/index.ts"
+}

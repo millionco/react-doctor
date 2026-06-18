@@ -1,0 +1,4 @@
+{
+  "name": "namespace-partial-access",
+  "main": "src/index.ts"
+}

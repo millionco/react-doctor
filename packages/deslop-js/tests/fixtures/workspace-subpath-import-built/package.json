@@ -1,0 +1,8 @@
+{
+  "name": "workspace-subpath-import-built",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

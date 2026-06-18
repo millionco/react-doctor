@@ -1,0 +1,9 @@
+{
+  "name": "unused-types-jsdoc",
+  "main": "src/index.js",
+  "deslop": {
+    "entryPatterns": [
+      "src/index.js"
+    ]
+  }
+}

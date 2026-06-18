@@ -1,0 +1,8 @@
+{
+  "name": "default-import-named-export",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "devDependencies": {
+    "vitest": "^2.0.0"
+  }
+}

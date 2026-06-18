@@ -1,0 +1,7 @@
+{
+  "name": "nextjs-empty-tsconfig",
+  "private": true,
+  "dependencies": {
+    "next": "^14.0.0"
+  }
+}

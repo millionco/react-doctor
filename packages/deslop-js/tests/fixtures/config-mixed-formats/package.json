@@ -1,0 +1,9 @@
+{
+  "name": "config-files-cjs-mjs",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "devDependencies": {
+    "prettier": "^3.0.0",
+    "vitest": "^1.0.0"
+  }
+}

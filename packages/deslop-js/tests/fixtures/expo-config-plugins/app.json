@@ -1,0 +1,6 @@
+{
+  "expo": {
+    "plugins": [["./plugins/expo-json-extensionless-plugin", { "enabled": true }], "expo-router"]
+  },
+  "plugins": [["./plugins/root-json-plugin.ts", { "enabled": true }]]
+}

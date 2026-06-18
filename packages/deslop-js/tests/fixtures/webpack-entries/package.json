@@ -1,0 +1,7 @@
+{
+  "name": "webpack-entry-test",
+  "version": "1.0.0",
+  "devDependencies": {
+    "webpack": "^5.0.0"
+  }
+}

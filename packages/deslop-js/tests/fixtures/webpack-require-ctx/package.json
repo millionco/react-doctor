@@ -1,0 +1,7 @@
+{
+  "name": "require-context-fixture",
+  "main": "src/index.ts",
+  "dependencies": {
+    "webpack": "*"
+  }
+}

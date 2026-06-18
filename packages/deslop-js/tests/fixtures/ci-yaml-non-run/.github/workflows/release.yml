@@ -1,0 +1,15 @@
+name: Release
+on:
+  push:
+    branches: [main]
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        run: node scripts/deploy.mjs
+      - name: Changelog
+        uses: some-action/changelog@v1
+        with:
+          config_file: .github/changelog/changelog.js

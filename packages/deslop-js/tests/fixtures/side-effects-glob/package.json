@@ -1,0 +1,8 @@
+{
+  "name": "side-effects-glob",
+  "version": "1.0.0",
+  "sideEffects": [
+    "**/widget/style.js"
+  ],
+  "main": "src/index.ts"
+}

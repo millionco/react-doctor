@@ -1,0 +1,8 @@
+{
+  "name": "electron-app-test",
+  "version": "1.0.0",
+  "main": "dist/main.js",
+  "devDependencies": {
+    "electron": "^28.0.0"
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "name": "unused-types-reexport-chain",
+  "main": "src/index.ts"
+}

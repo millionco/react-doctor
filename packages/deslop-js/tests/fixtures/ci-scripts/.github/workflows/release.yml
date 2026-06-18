@@ -1,0 +1,15 @@
+name: Release
+on:
+  push:
+    branches: [main]
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy
+        run: node scripts/deploy.mjs
+      - name: Build
+        run: |
+          echo "Building..."
+          node scripts/build-release.ts

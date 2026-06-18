@@ -1,0 +1,8 @@
+{
+  "name": "workspace-path-alias-root",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "nested-dist-non-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["apps/*"],
+  "main": "src/index.ts"
+}

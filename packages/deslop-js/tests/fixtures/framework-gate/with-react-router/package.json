@@ -1,0 +1,9 @@
+{
+  "name": "test-with-react-router",
+  "dependencies": {
+    "react-router": "^7.0.0"
+  },
+  "devDependencies": {
+    "@react-router/dev": "^7.0.0"
+  }
+}

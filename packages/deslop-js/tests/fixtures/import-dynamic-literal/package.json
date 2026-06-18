@@ -1,0 +1,7 @@
+{
+  "name": "dynamic-import-literals",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@some/package": "1.0.0"
+  }
+}

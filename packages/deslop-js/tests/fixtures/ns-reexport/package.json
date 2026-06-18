@@ -1,0 +1,4 @@
+{
+  "name": "namespace-barrel-reexport",
+  "main": "src/index.ts"
+}

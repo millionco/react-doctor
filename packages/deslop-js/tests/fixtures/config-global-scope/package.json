@@ -1,0 +1,12 @@
+{
+  "name": "global-config-test",
+  "version": "1.0.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "main": "src/index.ts",
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "postcss": "^8.0.0"
+  }
+}

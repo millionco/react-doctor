@@ -1,0 +1,6 @@
+{
+  "name": "astro-content-config",
+  "dependencies": {
+    "astro": "^4.0.0"
+  }
+}

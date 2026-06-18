@@ -1,0 +1,8 @@
+{
+  "name": "type-only-deps",
+  "main": "src/index.ts",
+  "dependencies": {
+    "express": "^4.0.0",
+    "zod": "^3.0.0"
+  }
+}

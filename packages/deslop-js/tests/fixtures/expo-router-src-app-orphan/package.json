@@ -1,0 +1,8 @@
+{
+  "name": "expo-router-src-app-orphan",
+  "dependencies": {
+    "expo": "*",
+    "expo-router": "*",
+    "react": "*"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "config-always-used",
+  "main": "src/index.ts",
+  "devDependencies": {
+    "vitest": "^1.0.0"
+  }
+}

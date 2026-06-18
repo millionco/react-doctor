@@ -1,0 +1,4 @@
+{
+  "name": "vercel-config-app",
+  "main": "src/index.ts"
+}

@@ -1,0 +1,4 @@
+{
+  "name": "unreachable-barrel-subtree",
+  "main": "src/index.ts"
+}

@@ -1,0 +1,26 @@
+---
+import { Greeting } from "../components/Greeting.tsx";
+
+const { slug } = Astro.params;
+
+if (!slug) {
+  return new Response(null, { status: 404 });
+}
+
+if (slug === "redirect") {
+  return Astro.redirect("/");
+}
+---
+
+<html>
+  <body>
+    <Greeting client:load name={slug} />
+    <script src="../scripts/analytics.ts" />
+    <script>
+      import { recordEvent } from "../scripts/inline-helper.ts";
+      window.addEventListener("load", () => {
+        recordEvent("loaded");
+      });
+    </script>
+  </body>
+</html>

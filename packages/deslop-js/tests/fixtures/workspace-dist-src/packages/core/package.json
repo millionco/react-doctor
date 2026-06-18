@@ -1,0 +1,18 @@
+{
+  "name": "@test/core",
+  "version": "1.0.0",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/prod/index.js"
+    },
+    "./visualdebug": {
+      "types": "./dist/types/visualdebug.d.ts",
+      "default": "./dist/prod/visualdebug.js"
+    },
+    "./*": {
+      "types": "./dist/types/*.d.ts",
+      "default": "./dist/prod/*.js"
+    }
+  }
+}

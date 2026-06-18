@@ -1,0 +1,7 @@
+packages:
+  - "."
+
+pnpm:
+  overrides:
+    eslint-config-custom@1.0.0:
+      typescript: npm:@typescript/native-preview@7.0.0-dev

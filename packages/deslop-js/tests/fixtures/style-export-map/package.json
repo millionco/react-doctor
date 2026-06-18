@@ -1,0 +1,13 @@
+{
+  "name": "css-export-map",
+  "version": "1.0.0",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./style.css": {
+      "import": "./dist/style.css"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "vitest-auto-mock",
+  "version": "1.0.0",
+  "devDependencies": {
+    "vitest": "^1.0.0"
+  }
+}

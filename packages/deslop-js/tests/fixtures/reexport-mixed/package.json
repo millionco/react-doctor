@@ -1,0 +1,4 @@
+{
+  "name": "mixed-named-star-reexports",
+  "main": "src/index.ts"
+}

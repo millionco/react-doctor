@@ -1,0 +1,4 @@
+{
+  "name": "namespace-chain-reexport",
+  "main": "index.ts"
+}

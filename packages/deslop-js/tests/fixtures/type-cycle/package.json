@@ -1,0 +1,4 @@
+{
+  "name": "type-only-cycle",
+  "main": "src/index.ts"
+}

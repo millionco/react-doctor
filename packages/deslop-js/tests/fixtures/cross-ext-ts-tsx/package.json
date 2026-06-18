@@ -1,0 +1,10 @@
+{
+  "name": "exports-ts-to-tsx",
+  "version": "1.0.0",
+  "exports": {
+    "./Button": {
+      "import": "./src/components/Button.ts",
+      "default": "./src/components/Button.ts"
+    }
+  }
+}

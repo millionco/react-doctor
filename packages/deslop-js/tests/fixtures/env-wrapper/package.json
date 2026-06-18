@@ -1,0 +1,11 @@
+{
+  "name": "cross-env-wrapper-test",
+  "scripts": {
+    "start": "cross-env NODE_ENV=production node ./src/main.js",
+    "dev": "cross-env HOT=1 NODE_ENV=development node ./src/dev-entry.js"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "cross-env": "^7.0.0"
+  }
+}

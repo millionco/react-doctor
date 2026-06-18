@@ -1,0 +1,10 @@
+{
+  "name": "pnpm-workspace-override",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "devDependencies": {
+    "@voidzero-dev/vite-plus-core": "^0.1.20",
+    "unused-dep": "^1.0.0",
+    "vite-plus": "^0.1.20"
+  }
+}

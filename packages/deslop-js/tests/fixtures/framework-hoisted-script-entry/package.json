@@ -1,0 +1,10 @@
+{
+  "name": "test-framework-hoisted-script-entry",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "devDependencies": {
+    "next": "*"
+  }
+}

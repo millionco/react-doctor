@@ -1,0 +1,4 @@
+{
+  "name": "duplicate-exports-barrel",
+  "main": "src/index.ts"
+}

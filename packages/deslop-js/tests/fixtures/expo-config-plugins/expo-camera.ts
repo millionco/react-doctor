@@ -1,0 +1,1 @@
+export const packageNameLookalike = true;

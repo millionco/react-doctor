@@ -1,0 +1,9 @@
+{
+  "name": "pnpm-nested-overrides",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "devDependencies": {
+    "@typescript/native-preview": "^7.0.0-dev",
+    "unused-dep": "^1.0.0"
+  }
+}

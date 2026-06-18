@@ -1,0 +1,9 @@
+{
+  "name": "build-output-root-fallback",
+  "bin": {
+    "server": "./build/bin/server.js"
+  },
+  "scripts": {
+    "start": "node build/app.js"
+  }
+}

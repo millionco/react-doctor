@@ -1,0 +1,11 @@
+{
+  "name": "optional-dependencies-tooling",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "dependencies": {
+    "react": "18.0.0"
+  },
+  "optionalDependencies": {
+    "sanity": "5.0.0"
+  }
+}

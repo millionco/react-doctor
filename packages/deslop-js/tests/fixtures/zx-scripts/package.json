@@ -1,0 +1,7 @@
+{
+  "name": "zx-script-runner",
+  "version": "1.0.0",
+  "scripts": {
+    "build-image": "zx scripts/build-image.mjs"
+  }
+}

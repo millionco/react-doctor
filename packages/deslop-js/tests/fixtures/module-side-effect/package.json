@@ -1,0 +1,4 @@
+{
+  "name": "side-effect-only-module",
+  "main": "index.ts"
+}

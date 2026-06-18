@@ -1,0 +1,8 @@
+{
+  "name": "@fixture/cra-app",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "dependencies": {
+    "react-scripts": "^5.0.0"
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "name": "default-export",
+  "main": "src/index.ts"
+}

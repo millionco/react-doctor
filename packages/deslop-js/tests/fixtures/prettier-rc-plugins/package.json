@@ -1,0 +1,10 @@
+{
+  "name": "prettier-rc-plugins",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "devDependencies": {
+    "@trivago/prettier-plugin-sort-imports": "^4.3.0",
+    "prettier": "^3.0.0",
+    "unused-dev-dep": "^1.0.0"
+  }
+}

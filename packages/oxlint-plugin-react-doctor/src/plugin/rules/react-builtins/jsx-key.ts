@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxKeyAttribute } from "../../utils/has-jsx-key-attribute.js";
+import { isNonChildrenJsxAttributeValue } from "../../utils/is-non-children-jsx-attribute-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
 
@@ -79,6 +80,9 @@ const findEnclosingIteratorContext = (jsxNode: EsTreeNode): IteratorContext | nu
       // `[[key, <Foo/>], [key, <Bar/>]]`) — the inner array is data,
       // outer array is what gets iterated.
       if (arrayParent && isNodeOfType(arrayParent, "ArrayExpression")) return null;
+      // Element array handed to a non-`children` prop (`<Tabs items={[...]} />`).
+      // React never key-validates props, so the receiving component owns keying.
+      if (isNonChildrenJsxAttributeValue(parent)) return null;
       return { kind: "array" };
     } else if (isNodeOfType(parent, "CallExpression")) {
       const callee = parent.callee;
@@ -93,7 +97,12 @@ const findEnclosingIteratorContext = (jsxNode: EsTreeNode): IteratorContext | nu
       // its descendant.
       let walker: EsTreeNode | null = current;
       while (walker && walker !== parent) {
-        if (walker === targetArg) return { kind: "iterator", callExpression: parent };
+        if (walker === targetArg) {
+          // `<Menu items={xs.map(...)} />` — the mapped collection is a
+          // non-`children` prop, so React never key-validates it.
+          if (isNonChildrenJsxAttributeValue(parent)) return null;
+          return { kind: "iterator", callExpression: parent };
+        }
         walker = walker.parent ?? null;
       }
       return null;

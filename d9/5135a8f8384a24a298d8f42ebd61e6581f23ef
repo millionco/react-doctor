@@ -1,0 +1,24 @@
+.changeset/fix-jsx-key-consumer-prop-false-positive.md
+  s_08743895ac0342::t_34ad2a1dcc73cb 9
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-non-children-jsx-attribute-value.ts
+  s_08743895ac0342::t_13f7086e671f95 7-11
+  s_08743895ac0342::t_757584be036c8b 5-6,12-28,35,37
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-key.regressions.test.ts
+  s_08743895ac0342::t_e766d9a29ebedd 100-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "d95135a8f8384a24a298d8f42ebd61e6581f23ef",
+  "prompts": {},
+  "sessions": {
+    "s_08743895ac0342": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "906c6351-25a1-4c53-b50d-5cbdecf2bb68",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

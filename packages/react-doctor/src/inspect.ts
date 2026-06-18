@@ -51,6 +51,7 @@ import { computeProjectedScore } from "./cli/utils/compute-score-projection.js";
 import { buildRulePriorityMap } from "./cli/utils/diagnostic-grouping.js";
 import { filterDiagnosticsByCategories } from "./cli/utils/filter-diagnostics-by-categories.js";
 import { printDiagnostics } from "./cli/utils/render-diagnostics.js";
+import { shouldRenderHyperlinks } from "./cli/utils/should-render-hyperlinks.js";
 import { isNonInteractiveEnvironment } from "./cli/utils/is-non-interactive-environment.js";
 import {
   canAnimateOnboarding,
@@ -900,6 +901,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
     const animateRender =
       !options.silent && !options.verbose && canAnimateOnboarding(process.stdout);
     const pause = onboardingSectionPause(animateRender);
+    const useHyperlinks = shouldRenderHyperlinks(process.stdout);
     const demotedDiagnosticCount = diagnostics.length - surfaceDiagnostics.length;
     const isDiffMode = options.includePaths.length > 0;
     const lintSourceFileCount = isDiffMode ? options.includePaths.length : project.sourceFileCount;
@@ -955,6 +957,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       buildRulePriorityMap([score]),
       isCodingAgentEnvironment(),
       { sectionPause: pause, animateCountUp: animateRender },
+      useHyperlinks,
     );
     if (options.isNonInteractiveEnvironment && options.outputSurface !== "prComment") {
       yield* printAgentGuidance();

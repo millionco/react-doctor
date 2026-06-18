@@ -46,6 +46,10 @@ describe("buildRunContext", () => {
     expect(buildRunContext().invokedVia).toBe("unknown");
   });
 
+  it("records a terminalKind label for where the run is hosted", () => {
+    expect(typeof buildRunContext().terminalKind).toBe("string");
+  });
+
   it("reports the running Node major version", () => {
     const expectedMajor = Number.parseInt(process.versions.node.split(".", 1)[0] ?? "", 10);
     expect(buildRunContext().nodeMajor).toBe(expectedMajor);

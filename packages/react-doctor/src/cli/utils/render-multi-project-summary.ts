@@ -12,6 +12,7 @@ import { isCodingAgentEnvironment } from "./is-ci-environment.js";
 import { canAnimateOnboarding } from "./onboarding-pacing.js";
 import { formatElapsedTime, printDiagnostics } from "./render-diagnostics.js";
 import { printFooter, printSummary } from "./render-summary.js";
+import { shouldRenderHyperlinks } from "./should-render-hyperlinks.js";
 
 interface ProjectScanEntry {
   readonly projectName: string;
@@ -148,6 +149,7 @@ export const printMultiProjectSummary = (input: MultiProjectSummaryInput): Effec
         buildRulePriorityMap(completedScans.map((scan) => scan.result.score)),
         isCodingAgentEnvironment(),
         { animateCountUp: animateRender },
+        shouldRenderHyperlinks(process.stdout),
       );
     }
 

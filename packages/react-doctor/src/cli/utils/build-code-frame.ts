@@ -1,11 +1,11 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { codeFrameColumns } from "@babel/code-frame";
 import {
   CODE_FRAME_LINES_ABOVE,
   CODE_FRAME_LINES_BELOW,
   CODE_FRAME_MAX_LINE_LENGTH_CHARS,
 } from "@react-doctor/core";
+import { resolveAbsolutePath } from "./resolve-absolute-path.js";
 
 interface CodeFrameInput {
   readonly filePath: string;
@@ -31,9 +31,7 @@ interface CodeFrameInput {
 export const buildCodeFrame = (input: CodeFrameInput): string | null => {
   if (input.line <= 0) return null;
 
-  const absolutePath = path.isAbsolute(input.filePath)
-    ? input.filePath
-    : path.resolve(input.rootDirectory || ".", input.filePath);
+  const absolutePath = resolveAbsolutePath(input.filePath, input.rootDirectory);
 
   let source: string;
   try {

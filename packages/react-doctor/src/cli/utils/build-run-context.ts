@@ -1,3 +1,4 @@
+import { detectTerminalKind } from "./detect-terminal-kind.js";
 import {
   detectCiEventName,
   detectCiProvider,
@@ -34,6 +35,9 @@ export interface RunContext {
   viaAction: boolean;
   codingAgent: string | null;
   interactive: boolean;
+  // Terminal emulator / editor hosting the run (nvim, vscode, iterm, …), or
+  // "ci"/"unknown". Reveals where the CLI is actually used.
+  terminalKind: string;
   jsonMode: boolean;
   // Package-manager / runner the CLI was launched through (npm, pnpm, yarn,
   // bun, or "unknown"), derived from `npm_config_user_agent`. Distinguishes
@@ -103,6 +107,7 @@ export const buildRunContext = (): RunContext => {
     viaAction: isOfficialGithubAction(),
     codingAgent: detectCodingAgent(),
     interactive: !isNonInteractiveEnvironment(),
+    terminalKind: detectTerminalKind(),
     jsonMode: isJsonModeActive(),
     invokedVia: detectInvokedVia(),
   };

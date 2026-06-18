@@ -12,9 +12,12 @@ import {
   TOP_ERRORS_DISPLAY_COUNT,
 } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
+import { pathToFileURL } from "node:url";
 import { boxText } from "./box-text.js";
 import { buildCodeFrame } from "./build-code-frame.js";
 import { buildSectionDivider } from "./build-section-divider.js";
+import { formatHyperlink } from "./format-hyperlink.js";
+import { resolveAbsolutePath } from "./resolve-absolute-path.js";
 import {
   BOX_BORDER_WIDTH_CHARS,
   CATEGORY_COUNTUP_FRAME_DELAY_MS,
@@ -280,13 +283,32 @@ const clusterNearbyDiagnostics = (diagnostics: Diagnostic[]): DiagnosticCluster[
   return clusters;
 };
 
-const formatClusterLocation = (cluster: DiagnosticCluster): string => {
+// The bare `file:line` (or `file:line-endLine`, or just `file` when line-less)
+// text for a cluster's lead site.
+const formatClusterLocationText = (cluster: DiagnosticCluster): string => {
+  const { filePath } = cluster.diagnostics[0]!;
+  if (cluster.startLine <= 0) return filePath;
+  if (cluster.endLine > cluster.startLine)
+    return `${filePath}:${cluster.startLine}-${cluster.endLine}`;
+  return `${filePath}:${cluster.startLine}`;
+};
+
+// The displayed file location for a cluster: the relative `file:line` text,
+// optionally wrapped in an OSC 8 hyperlink to the file's absolute path so
+// supporting terminals/editors make it clickable. The visible characters are
+// identical either way (the link rides in escape sequences), and the dim
+// "(test file)" tag stays outside the link.
+const formatClusterLocation = (
+  cluster: DiagnosticCluster,
+  resolveSourceRoot: SourceRootResolver,
+  hyperlinks: boolean,
+): string => {
   const lead = cluster.diagnostics[0]!;
   const contextTag = formatFileContextTag(lead);
-  if (cluster.startLine <= 0) return `${lead.filePath}${contextTag}`;
-  if (cluster.endLine > cluster.startLine)
-    return `${lead.filePath}:${cluster.startLine}-${cluster.endLine}${contextTag}`;
-  return `${lead.filePath}:${cluster.startLine}${contextTag}`;
+  const location = formatClusterLocationText(cluster);
+  if (!hyperlinks) return `${location}${contextTag}`;
+  const absolutePath = resolveAbsolutePath(lead.filePath, resolveSourceRoot(lead));
+  return `${formatHyperlink(location, pathToFileURL(absolutePath).href)}${contextTag}`;
 };
 
 // The location + inline code frame for a cluster of nearby same-file
@@ -301,12 +323,15 @@ const buildDiagnosticClusterLines = (
   cluster: DiagnosticCluster,
   resolveSourceRoot: SourceRootResolver,
   renderCodeFrame: boolean,
+  hyperlinks: boolean,
 ): ReadonlyArray<string> => {
   const lead = cluster.diagnostics[0]!;
   const isMultiSite = cluster.diagnostics.length > 1;
   const lines: string[] = [
     "",
-    highlighter.gray(`${TOP_ERROR_DETAIL_INDENT}${formatClusterLocation(cluster)}`),
+    highlighter.gray(
+      `${TOP_ERROR_DETAIL_INDENT}${formatClusterLocation(cluster, resolveSourceRoot, hyperlinks)}`,
+    ),
   ];
   const codeFrame = renderCodeFrame
     ? buildCodeFrame({
@@ -345,6 +370,7 @@ const buildRuleDetailBlock = (
   resolveSourceRoot: SourceRootResolver,
   renderEverySite: boolean,
   isAgentEnvironment: boolean,
+  hyperlinks: boolean,
 ): ReadonlyArray<string> => {
   const representative = pickRepresentativeDiagnostic(ruleDiagnostics);
   const { severity } = representative;
@@ -419,7 +445,9 @@ const buildRuleDetailBlock = (
     isCollapsedWarningGroup && representative.help.includes(representative.filePath);
   if (!skipSharedLocation) {
     for (const cluster of clusterNearbyDiagnostics(sites)) {
-      lines.push(...buildDiagnosticClusterLines(cluster, resolveSourceRoot, renderCodeFrame));
+      lines.push(
+        ...buildDiagnosticClusterLines(cluster, resolveSourceRoot, renderCodeFrame, hyperlinks),
+      );
     }
   }
 
@@ -487,6 +515,7 @@ interface TopErrorsSection {
 const buildTopErrorsSection = (
   diagnostics: Diagnostic[],
   resolveSourceRoot: SourceRootResolver,
+  hyperlinks: boolean,
   rulePriority?: ReadonlyMap<string, number>,
 ): TopErrorsSection => {
   const errorRuleGroups = selectErrorRuleGroups(diagnostics, rulePriority);
@@ -504,7 +533,16 @@ const buildTopErrorsSection = (
   const blockOffsets: number[] = [];
   for (const [ruleKey, ruleDiagnostics] of topRuleGroups) {
     blockOffsets.push(lines.length);
-    lines.push(...buildRuleDetailBlock(ruleKey, ruleDiagnostics, resolveSourceRoot, false, false));
+    lines.push(
+      ...buildRuleDetailBlock(
+        ruleKey,
+        ruleDiagnostics,
+        resolveSourceRoot,
+        false,
+        false,
+        hyperlinks,
+      ),
+    );
     lines.push("");
   }
   return { lines, blockOffsets };
@@ -579,6 +617,11 @@ export const printDiagnostics = (
   // First-run onboarding reveal. Defaults to an instant, static render so
   // normal runs print the whole report at once.
   onboarding: DiagnosticsOnboarding = {},
+  // Wrap each `file:line` location in an OSC 8 hyperlink to the file's absolute
+  // path, making it clickable in supporting terminals. Defaults to off so the
+  // output stays plain text (and tests render deterministically); the CLI turns
+  // it on only for capable, human-driven terminals (see supports-hyperlinks).
+  hyperlinks = false,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     // The beat played before each top-error block reveals; a no-op off onboarding.
@@ -598,7 +641,12 @@ export const printDiagnostics = (
     // the reveal between errors. Empty in verbose (lists every rule, not top-N).
     let topErrorBlockOffsets: ReadonlyArray<number> = [];
     if (!isVerbose) {
-      const topErrors = buildTopErrorsSection(diagnostics, resolveSourceRoot, rulePriority);
+      const topErrors = buildTopErrorsSection(
+        diagnostics,
+        resolveSourceRoot,
+        hyperlinks,
+        rulePriority,
+      );
       detailLines = topErrors.lines;
       topErrorBlockOffsets = topErrors.blockOffsets;
     } else {
@@ -610,6 +658,7 @@ export const printDiagnostics = (
           resolveSourceRoot,
           true,
           isAgentEnvironment,
+          hyperlinks,
         );
         return [...block, ""];
       });

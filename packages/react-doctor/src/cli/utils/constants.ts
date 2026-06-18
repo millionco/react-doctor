@@ -87,6 +87,10 @@ export const RIGHT_EDGE_SAFETY_COLUMNS = 1;
 // (`│ ` … ` │` in box-text.ts). Reserved when fitting a box to the terminal.
 export const BOX_BORDER_WIDTH_CHARS = 4;
 
+// Minimum `VTE_VERSION` (GNOME Terminal, Tilix, and other VTE-based emulators)
+// that renders OSC 8 hyperlinks — VTE added support in 0.50 (reported as 5000).
+export const MINIMUM_VTE_VERSION_FOR_HYPERLINKS = 5000;
+
 // Last-resort fallback when buildJsonReportError itself throws — keeps
 // stdout valid JSON so downstream parsers don't see a half-written report.
 export const INTERNAL_ERROR_JSON_FALLBACK =

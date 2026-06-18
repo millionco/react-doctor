@@ -1,0 +1,29 @@
+packages/react-doctor/src/cli/utils/detect-terminal-kind.ts
+  s_9c95402b28796f::t_f07c2e672a8a87 41
+packages/react-doctor/tests/detect-terminal-kind.test.ts
+  s_9c95402b28796f::t_ff3383ce98e247 4-6
+packages/react-doctor/src/cli/utils/is-ci-environment.ts
+  s_9c95402b28796f::t_da56f5a2cf2383 84-86
+packages/react-doctor/src/cli/utils/supports-hyperlinks.ts
+  s_9c95402b28796f::t_5da941f6a3f539 41
+packages/react-doctor/tests/supports-hyperlinks.test.ts
+  s_9c95402b28796f::t_39df10dbd64742 1,4-6
+  s_9c95402b28796f::t_d39488c645e62b 39
+  s_9c95402b28796f::t_617b1e1a37372a 40-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "ecbf4e2a17c5d7a5f8eff8e2bdb1c241af2c7481",
+  "prompts": {},
+  "sessions": {
+    "s_9c95402b28796f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "682dcad7-c559-4e46-aa26-7ef343796818",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

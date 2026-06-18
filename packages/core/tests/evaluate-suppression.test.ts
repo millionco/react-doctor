@@ -80,3 +80,126 @@ describe("evaluateSuppression near-miss hints", () => {
     expect(result).toEqual({ isSuppressed: true, nearMissHint: null });
   });
 });
+
+describe("evaluateSuppression — foreign (eslint/oxlint) disable near-miss hints", () => {
+  it("hints when a bare short id is used in an adjacent eslint-disable-next-line", () => {
+    const lines = linesOf(`// eslint-disable-next-line no-eval\neval(code);\n`);
+    const hint = nearMissHintFor(lines, 1, "react-doctor/no-eval");
+    expect(hint).not.toBeNull();
+    expect(hint).toContain("react-doctor/no-eval");
+    expect(hint).toContain("eslint-disable");
+  });
+
+  it("hints for oxlint-disable and names the right tool", () => {
+    const lines = linesOf(`// oxlint-disable-next-line no-eval\neval(code);\n`);
+    const hint = nearMissHintFor(lines, 1, "react-doctor/no-eval");
+    expect(hint).toContain("oxlint-disable");
+  });
+
+  it("hints for a same-line eslint-disable-line directive", () => {
+    const lines = linesOf(`eval(code); // eslint-disable-line no-eval\n`);
+    const hint = nearMissHintFor(lines, 0, "react-doctor/no-eval");
+    expect(hint).not.toBeNull();
+    expect(hint).toContain("react-doctor/no-eval");
+  });
+
+  it("hints when a legacy plugin-prefixed alias is used", () => {
+    const lines = linesOf(`// eslint-disable-next-line react/jsx-key\n<li />;\n`);
+    const hint = nearMissHintFor(lines, 1, "react-doctor/jsx-key");
+    expect(hint).not.toBeNull();
+    expect(hint).toContain("react/jsx-key");
+    expect(hint).toContain("react-doctor/jsx-key");
+  });
+
+  it("ignores the description tail when matching the rule list", () => {
+    const lines = linesOf(`// eslint-disable-next-line no-eval -- legacy code path\neval(code);\n`);
+    expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).not.toBeNull();
+  });
+
+  it("returns null when the canonical react-doctor/<id> name is used", () => {
+    const lines = linesOf(`// eslint-disable-next-line react-doctor/no-eval\neval(code);\n`);
+    expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).toBeNull();
+  });
+
+  it("returns null when the directive lists an unrelated rule", () => {
+    const lines = linesOf(`// eslint-disable-next-line no-console\neval(code);\n`);
+    expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).toBeNull();
+  });
+
+  it("returns null for a non-adjacent directive (placement, not naming)", () => {
+    const lines = linesOf(
+      `// eslint-disable-next-line no-eval\nconst intervening = 1;\neval(code);\n`,
+    );
+    expect(nearMissHintFor(lines, 2, "react-doctor/no-eval")).toBeNull();
+  });
+
+  it("returns null for non-react-doctor rules (the fix names a react-doctor key)", () => {
+    const lines = linesOf(`// eslint-disable-next-line foo\nbar();\n`);
+    expect(nearMissHintFor(lines, 1, "my-plugin/foo")).toBeNull();
+  });
+});
+
+describe("evaluateSuppression — foreign block (range) disable near-miss hints", () => {
+  it("hints for a file-level block disable that names the rule by its short id", () => {
+    const lines = linesOf(`/* eslint-disable no-eval */\nconst a = 1;\neval(code);\n`);
+    const hint = nearMissHintFor(lines, 2, "react-doctor/no-eval");
+    expect(hint).not.toBeNull();
+    expect(hint).toContain("react-doctor/no-eval");
+  });
+
+  it("names the right tool for an oxlint block disable", () => {
+    const lines = linesOf(`/* oxlint-disable no-eval */\neval(code);\n`);
+    expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).toContain("oxlint-disable");
+  });
+
+  it("hints for a legacy plugin-prefixed name in a block disable", () => {
+    const lines = linesOf(`/* eslint-disable react/jsx-key */\n<li />;\n`);
+    const hint = nearMissHintFor(lines, 1, "react-doctor/jsx-key");
+    expect(hint).toContain("react-doctor/jsx-key");
+  });
+
+  it("returns null once a matching eslint-enable closes the range", () => {
+    const lines = linesOf(
+      `/* eslint-disable no-eval */\nconst a = 1;\n/* eslint-enable no-eval */\neval(code);\n`,
+    );
+    expect(nearMissHintFor(lines, 3, "react-doctor/no-eval")).toBeNull();
+  });
+
+  it("returns null when a bare eslint-enable re-enables everything", () => {
+    const lines = linesOf(`/* eslint-disable no-eval */\n/* eslint-enable */\neval(code);\n`);
+    expect(nearMissHintFor(lines, 2, "react-doctor/no-eval")).toBeNull();
+  });
+
+  it("returns null when the block disable sits below the diagnostic", () => {
+    const lines = linesOf(`eval(code);\n/* eslint-disable no-eval */\n`);
+    expect(nearMissHintFor(lines, 0, "react-doctor/no-eval")).toBeNull();
+  });
+
+  it("returns null for a rule-less disable-all block (no rule name to qualify)", () => {
+    const lines = linesOf(`/* eslint-disable */\neval(code);\n`);
+    expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).toBeNull();
+  });
+
+  it("returns null when the block disable uses the canonical name", () => {
+    const lines = linesOf(`/* eslint-disable react-doctor/no-eval */\neval(code);\n`);
+    expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).toBeNull();
+  });
+});
+
+describe("evaluateSuppression — react-doctor-disable with a bare short id now suppresses", () => {
+  it("suppresses via a bare short id on react-doctor-disable-next-line", () => {
+    const lines = linesOf(`// react-doctor-disable-next-line no-eval\neval(code);\n`);
+    expect(evaluateSuppression(lines, 1, "react-doctor/no-eval")).toEqual({
+      isSuppressed: true,
+      nearMissHint: null,
+    });
+  });
+
+  it("suppresses via a bare short id on a same-line react-doctor-disable-line", () => {
+    const lines = linesOf(`eval(code); // react-doctor-disable-line no-eval\n`);
+    expect(evaluateSuppression(lines, 0, "react-doctor/no-eval")).toEqual({
+      isSuppressed: true,
+      nearMissHint: null,
+    });
+  });
+});

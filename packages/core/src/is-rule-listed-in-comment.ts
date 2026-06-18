@@ -1,20 +1,9 @@
 import { isSameRuleKey } from "./rule-key-aliases.js";
-
-// HACK: ESLint convention — text after ` -- ` on a disable comment is a
-// human-readable description, not part of the rule list. Strip it
-// before tokenizing so trailing prose like `-- read in render via
-// useDebounce; user can type before commit` doesn't pollute the
-// rule-equality check or get matched against `ruleId`.
-const stripDescriptionTail = (ruleList: string): string => {
-  const descriptionMatch = ruleList.match(/(?:^|\s)--\s/);
-  if (!descriptionMatch || descriptionMatch.index === undefined) return ruleList;
-  return ruleList.slice(0, descriptionMatch.index);
-};
+import { tokenizeRuleList } from "./tokenize-rule-list.js";
 
 export const isRuleListedInComment = (ruleList: string | undefined, ruleId: string): boolean => {
-  const trimmed = ruleList?.trim();
-  if (!trimmed) return true;
-  const ruleSection = stripDescriptionTail(trimmed).trim();
-  if (!ruleSection) return true;
-  return ruleSection.split(/[,\s]+/).some((token) => isSameRuleKey(token.trim(), ruleId));
+  const tokens = tokenizeRuleList(ruleList);
+  // An absent / description-only rule list disables every rule.
+  if (tokens.length === 0) return true;
+  return tokens.some((token) => isSameRuleKey(token, ruleId));
 };

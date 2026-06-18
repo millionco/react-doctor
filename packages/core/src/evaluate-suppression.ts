@@ -1,3 +1,4 @@
+import { detectForeignDisableNearMiss } from "./detect-foreign-disable-near-miss.js";
 import { findEnclosingMultilineJsxOpenerStart } from "./find-enclosing-jsx-opener.js";
 import {
   findStackedDisableCommentsAbove,
@@ -96,10 +97,8 @@ export const evaluateSuppression = (
     return { isSuppressed: true, nearMissHint: null };
   }
 
-  const nearMissHint = classifyFromComments(
-    [directComments, openerComments],
-    diagnosticLineIndex,
-    ruleId,
-  );
+  const nearMissHint =
+    classifyFromComments([directComments, openerComments], diagnosticLineIndex, ruleId) ??
+    detectForeignDisableNearMiss(lines, diagnosticLineIndex, ruleId);
   return { isSuppressed: false, nearMissHint };
 };

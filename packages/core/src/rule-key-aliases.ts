@@ -146,11 +146,29 @@ for (const [legacyRuleKey, nativeRuleKey] of Object.entries(LEGACY_RULE_KEY_TO_N
 const getLegacyRuleKeysForNative = (ruleKey: string): ReadonlyArray<string> =>
   NATIVE_RULE_KEY_TO_LEGACY_RULE_KEYS.get(ruleKey) ?? [];
 
+export const REACT_DOCTOR_RULE_KEY_PREFIX = "react-doctor/";
+
 const canonicalizeRuleKey = (ruleKey: string): string =>
   LEGACY_RULE_KEY_TO_NATIVE_RULE_KEY[ruleKey] ?? ruleKey;
 
-export const isSameRuleKey = (candidateRuleKey: string, targetRuleKey: string): boolean =>
-  canonicalizeRuleKey(candidateRuleKey) === canonicalizeRuleKey(targetRuleKey);
+// A bare short id (`no-eval`) refers to the react-doctor rule of that id:
+// react-doctor reports it as `react-doctor/no-eval`, the only rule by that
+// name it owns. This lets users disable / ignore / look up a rule by its
+// short id — the unqualified form people reach for first — without an
+// explicit alias entry per rule.
+const isReactDoctorShortIdOf = (bareRuleKey: string, qualifiedRuleKey: string): boolean =>
+  !bareRuleKey.includes("/") &&
+  qualifiedRuleKey === `${REACT_DOCTOR_RULE_KEY_PREFIX}${bareRuleKey}`;
+
+export const isSameRuleKey = (candidateRuleKey: string, targetRuleKey: string): boolean => {
+  const canonicalCandidate = canonicalizeRuleKey(candidateRuleKey);
+  const canonicalTarget = canonicalizeRuleKey(targetRuleKey);
+  if (canonicalCandidate === canonicalTarget) return true;
+  return (
+    isReactDoctorShortIdOf(canonicalCandidate, canonicalTarget) ||
+    isReactDoctorShortIdOf(canonicalTarget, canonicalCandidate)
+  );
+};
 
 export const getEquivalentRuleKeys = (ruleKey: string): ReadonlyArray<string> => {
   const nativeRuleKey = canonicalizeRuleKey(ruleKey);

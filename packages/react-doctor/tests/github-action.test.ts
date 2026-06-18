@@ -80,11 +80,29 @@ describe("GitHub Action contract", () => {
     expect(actionYaml).not.toContain("actions/github-script@v7");
     expect(prFilesStep).toContain("github.rest.pulls.listFiles");
     expect(prFilesStep).toContain('new Set(["added", "modified", "renamed"])');
-    expect(prFilesStep).toContain(".map((file) => file.filename);");
+    expect(prFilesStep).toContain(".map((file) => file.filename)");
     expect(prFilesStep).toContain('core.setOutput("path", outputPath)');
     expect(prFilesStep).not.toContain("filename)h");
     expect(actionYaml).not.toContain("git fetch origin");
     expect(actionYaml).not.toContain('git checkout "$HEAD_REF"');
+  });
+
+  it("rewrites repo-relative PR paths to the scanned directory for --changed-files-from", () => {
+    const prFilesStep = normalizeWhitespace(extractStep(readActionYaml(), "- id: pr-files"));
+
+    // The GitHub API returns repo-root-relative paths, but the CLI resolves
+    // --changed-files-from entries relative to the scanned `directory`. The step
+    // must strip the `directory` prefix (and drop files outside it) so a
+    // subdirectory scan (`directory: UI`) doesn't double up to `UI/UI/src/...`
+    // and miss every base read — the bug in issue #858.
+    expect(prFilesStep).toContain("INPUT_DIRECTORY: ${{ inputs.directory }}");
+    expect(prFilesStep).toContain("const directoryPrefix = (process.env.INPUT_DIRECTORY");
+    expect(prFilesStep).toContain('.replace(/^\\.\\/?/, "")');
+    expect(prFilesStep).toContain('.replace(/\\/$/, "")');
+    expect(prFilesStep).toContain("const scopedPrefix = `${directoryPrefix}/`;");
+    expect(prFilesStep).toContain(
+      "filename.startsWith(scopedPrefix) ? [filename.slice(scopedPrefix.length)] : []",
+    );
   });
 
   it("falls back to a full-project scan when listing PR files is not permitted", () => {

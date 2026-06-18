@@ -66,6 +66,7 @@ runs:
       uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
       env:
         REACT_DOCTOR_CHANGED_FILES: ${{ runner.temp }}/react-doctor-changed-files.txt
+        INPUT_DIRECTORY: ${{ inputs.directory }}
       with:
         script: |
           const fs = require("fs");
@@ -87,10 +88,25 @@ runs:
             );
             return;
           }
+          // `pulls.listFiles` returns repo-root-relative paths (e.g. `UI/src/foo.tsx`),
+          // but the CLI resolves `--changed-files-from` entries relative to the scanned
+          // `directory` (its diff detection runs `git diff --relative`, so its native
+          // path contract is scan-relative). Strip the `directory` prefix — and drop
+          // files outside it — so a subdirectory scan (`directory: UI`) doesn't double
+          // up to `UI/UI/src/...`, which misses every base read and reports pre-existing
+          // issues as newly introduced. Matches the review-comments step's mapping.
+          const directoryPrefix = (process.env.INPUT_DIRECTORY || ".")
+            .replace(/^\.\/?/, "")
+            .replace(/\/$/, "");
           const includedStatuses = new Set(["added", "modified", "renamed"]);
           const changedFiles = files
             .filter((file) => includedStatuses.has(file.status))
-            .map((file) => file.filename);
+            .map((file) => file.filename)
+            .flatMap((filename) => {
+              if (!directoryPrefix) return [filename];
+              const scopedPrefix = `${directoryPrefix}/`;
+              return filename.startsWith(scopedPrefix) ? [filename.slice(scopedPrefix.length)] : [];
+            });
           fs.writeFileSync(outputPath, changedFiles.join("\n") + (changedFiles.length ? "\n" : ""));
           core.setOutput("path", outputPath);
 

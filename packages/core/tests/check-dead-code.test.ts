@@ -319,5 +319,21 @@ describe("checkDeadCode", () => {
       fs.symlinkSync(realDirectory, linkedDirectory);
       expect(await flaggedUnusedFiles(linkedDirectory)).toEqual([]);
     });
+
+    it("does not flag exports accessed via namespace imports (import * as NS)", async () => {
+      const directory = setupProject("namespace-imports", {
+        "src/styled.ts": 'export const Custom = () => null;\n',
+        "src/Component.tsx":
+          'import * as S from "./styled";\n' +
+          "function Example() { return <S.Custom />; }\n" +
+          "export default Example;\n",
+        "src/index.ts": 'export { default as Example } from "./Component";\n',
+      });
+      const diagnostics = await checkDeadCode({ rootDirectory: directory });
+      const unusedExportDiagnostics = diagnostics.filter(
+        (diagnostic) => diagnostic.rule === "unused-export",
+      );
+      expect(unusedExportDiagnostics).toEqual([]);
+    });
   });
 });

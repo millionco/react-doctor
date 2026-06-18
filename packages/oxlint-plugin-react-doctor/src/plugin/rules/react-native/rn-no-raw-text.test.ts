@@ -79,6 +79,41 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
+    it("suppresses an imported Chip via the name heuristic", () => {
+      expectPass(`
+        import { Chip } from "./ui";
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses an imported Badge via the name heuristic", () => {
+      expectPass(`
+        import { Badge } from "./ui";
+        const App = () => <Badge>New</Badge>;
+      `);
+    });
+
+    it("suppresses an imported Button via the name heuristic", () => {
+      expectPass(`
+        import { PrimaryButton } from "./ui";
+        const App = () => <PrimaryButton>Click me</PrimaryButton>;
+      `);
+    });
+
+    it("suppresses an imported Pill via the name heuristic", () => {
+      expectPass(`
+        import { Pill } from "./ui";
+        const App = () => <Pill>Active</Pill>;
+      `);
+    });
+
+    it("suppresses an imported Tab via the name heuristic", () => {
+      expectPass(`
+        import { Tab } from "./ui";
+        const App = () => <Tab>Home</Tab>;
+      `);
+    });
+
     it("suppresses a wrapper forwarding children into a nested Text", () => {
       expectPass(`
         function Chip({ children }) {

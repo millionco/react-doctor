@@ -398,27 +398,36 @@ const MAX_TRANSITIVE_WRAPPER_PASSES = 3;
 export const collectTextWrapperComponents = (
   programNode: EsTreeNode,
   isTextHandlingRoot: (elementName: string) => boolean,
-): ReadonlySet<string> => {
+): { wrappers: ReadonlySet<string>; locallyDefined: ReadonlySet<string> } => {
   const wrappers = new Set<string>();
+  const locallyDefined = new Set<string>();
   const isTextHandlingElement = (elementName: string): boolean =>
     isTextHandlingRoot(elementName) || wrappers.has(elementName);
+
+  const recordLocallyDefinedComponent = (componentName: string | null): void => {
+    if (componentName && isReactComponentName(componentName)) {
+      locallyDefined.add(componentName);
+    }
+  };
 
   for (let pass = 0; pass < MAX_TRANSITIVE_WRAPPER_PASSES; pass += 1) {
     const sizeBeforePass = wrappers.size;
     walkAst(programNode, (node) => {
       if (isNodeOfType(node, "VariableDeclarator")) {
         const componentName = node.id && isNodeOfType(node.id, "Identifier") ? node.id.name : null;
+        recordLocallyDefinedComponent(componentName);
         recordWrapperFromDeclaration(componentName, node.init, isTextHandlingElement, wrappers);
       } else if (
         isNodeOfType(node, "FunctionDeclaration") ||
         isNodeOfType(node, "ClassDeclaration")
       ) {
         const componentName = node.id && isNodeOfType(node.id, "Identifier") ? node.id.name : null;
+        recordLocallyDefinedComponent(componentName);
         recordWrapperFromDeclaration(componentName, node, isTextHandlingElement, wrappers);
       }
     });
     if (wrappers.size === sizeBeforePass) break;
   }
 
-  return wrappers;
+  return { wrappers, locallyDefined };
 };

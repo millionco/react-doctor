@@ -25,6 +25,12 @@ export const REACT_NATIVE_TEXT_COMPONENT_KEYWORDS = new Set([
   "Paragraph",
   "Description",
   "Body",
+  "Button",
+  "Chip",
+  "Badge",
+  "Pill",
+  "Tab",
+  "Link",
 ]);
 
 // Compile-time translation wrappers — fbtee's <fbt> / <fbs> and their

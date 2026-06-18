@@ -117,35 +117,31 @@ export const rnNoRawText = defineRule({
     // (config-driven), so a project can name cross-file wrappers this
     // single-file pass can't see.
     let autoDetectedWrappers: ReadonlySet<string> = new Set();
+    let locallyDefinedComponents: ReadonlySet<string> = new Set();
 
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
         isDomComponentFile = hasDirective(programNode, "use dom");
-        autoDetectedWrappers = collectTextWrapperComponents(programNode, isTextHandlingComponent);
+        const result = collectTextWrapperComponents(programNode, isTextHandlingComponent);
+        autoDetectedWrappers = result.wrappers;
+        locallyDefinedComponents = result.locallyDefined;
       },
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         if (isDomComponentFile) return;
 
         const elementName = resolveTextBoundaryName(node.openingElement);
 
-        // A real text component (name heuristic) or an in-file forwarder we
-        // verified renders into a `<Text>` root renders its children inside
-        // text — so raw text passed to it is safe, INCLUDING mixed children
-        // (`<Banner><Icon/> hi</Banner>`), because the `<Text>` root wraps
-        // whatever children it receives. The string-only contract only applies
-        // to config-named `rawTextWrapperComponents` (handled in core), where
-        // we can't see the implementation.
-        if (
-          elementName &&
-          (isTextHandlingComponent(elementName) || autoDetectedWrappers.has(elementName))
-        ) {
-          return;
+        if (elementName) {
+          if (locallyDefinedComponents.has(elementName)) {
+            if (autoDetectedWrappers.has(elementName)) return;
+          } else if (
+            isTextHandlingComponent(elementName) ||
+            autoDetectedWrappers.has(elementName)
+          ) {
+            return;
+          }
         }
 
-        // Universal UI (`@expo/ui`) `<ListItem>` and its compound slot
-        // markers render raw string children inside native text areas, so
-        // string children are safe. Resolved via the import (not the name
-        // heuristic) since `ListItem` is a common name in other libraries.
         if (isExpoUiComponentElement(node.openingElement, node, "ListItem")) return;
 
         // `Platform.OS === "web"` branches deliberately render web markup

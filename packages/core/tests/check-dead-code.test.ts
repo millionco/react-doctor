@@ -322,7 +322,7 @@ describe("checkDeadCode", () => {
 
     it("does not flag exports accessed via namespace imports (import * as NS)", async () => {
       const directory = setupProject("namespace-imports", {
-        "src/styled.ts": 'export const Custom = () => null;\n',
+        "src/styled.ts": "export const Custom = () => null;\n",
         "src/Component.tsx":
           'import * as S from "./styled";\n' +
           "function Example() { return <S.Custom />; }\n" +

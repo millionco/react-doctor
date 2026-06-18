@@ -15,23 +15,44 @@ const expectPass = (code: string): void => {
 };
 
 // Hand-written coverage for the memoised-consumer gate (mirrors
-// `jsx-no-new-function-as-prop`). OXC's render-local-binding fixtures
-// (`const x = {}; <Bar x={x}/>`) use plain consumers and are skipped in
-// `oxc-divergences.ts`; these tests cover both the inline-object and the
-// render-local-binding paths against a memoised consumer. A plain `foo`
-// prop is used (not `config`/`options`/`style`/etc.) so the config-shape
-// / always-fresh prop-name skips don't suppress the rule.
-const memoisedConsumer = `import { memo } from "react";\nconst Item = memo(() => null);\n`;
+// `jsx-no-new-function-as-prop`). Every OXC fail fixture passes a plain
+// consumer and is skipped in `oxc-divergences.ts`, so these tests are the
+// only fail-coverage for the rule. They mirror the object-producing
+// SHAPES the OXC fixtures exercised (inline literal, `Object.assign` /
+// `Object.create` / `new Object` / `Object()`, logical / conditional
+// fallbacks, render-local binding) against a same-file `memo()` consumer.
+// A plain `foo` prop is used (not `config`/`options`/`style`/etc.) so the
+// config-shape / always-fresh prop-name skips don't suppress the rule.
+const memoised = (jsx: string): string =>
+  `import { memo } from "react";\nconst Item = memo(() => null);\n${jsx}`;
 
 describe("react-builtins/jsx-no-new-object-as-prop — regressions", () => {
-  it("flags an inline object passed to a same-file memo()-wrapped consumer", () => {
-    expectFail(`${memoisedConsumer}const Foo = () => <Item foo={{ a: 1 }} />;`);
+  it("flags an inline object literal", () => {
+    expectFail(memoised(`const Foo = () => <Item foo={{ a: 1 }} />;`));
   });
 
-  it("flags a render-local object binding passed to a memoised consumer", () => {
-    expectFail(
-      `${memoisedConsumer}const Foo = () => { const value = {}; return <Item foo={value} />; };`,
-    );
+  it("flags `Object.assign(...)`", () => {
+    expectFail(memoised(`const Foo = ({ base }) => <Item foo={Object.assign({}, base)} />;`));
+  });
+
+  it("flags `Object.create(...)`", () => {
+    expectFail(memoised(`const Foo = () => <Item foo={Object.create(null)} />;`));
+  });
+
+  it("flags `new Object()`", () => {
+    expectFail(memoised(`const Foo = () => <Item foo={new Object()} />;`));
+  });
+
+  it("flags a logical-fallback object (`value || { a: 1 }`)", () => {
+    expectFail(memoised(`const Foo = ({ value }) => <Item foo={value || { a: 1 }} />;`));
+  });
+
+  it("flags a conditional object (`cond ? value : {}`)", () => {
+    expectFail(memoised(`const Foo = ({ cond, value }) => <Item foo={cond ? value : {}} />;`));
+  });
+
+  it("flags a render-local object binding", () => {
+    expectFail(memoised(`const Foo = () => { const value = {}; return <Item foo={value} />; };`));
   });
 
   it("does not flag the same object on a non-memoised consumer", () => {

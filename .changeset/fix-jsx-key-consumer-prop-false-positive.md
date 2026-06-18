@@ -8,4 +8,4 @@ The rule decided whether an element needed a `key` purely from its structural po
 
 The fix exempts collections that are the value of a non-`children` JSX attribute, for both array literals and iterator callbacks (including the optional-chained `items={xs?.map(...)}` form).
 
-Genuine missing keys still fire: array literals and `.map` results in **children** position (`<Menu>{data.map(...)}</Menu>`, `<ul>{[<li/>, <li/>]}</ul>`), and the explicit `children={[...]}` attribute — which *is* `props.children` and which React does validate.
+Genuine missing keys still fire: array literals and `.map` results in **children** position (`<Menu>{data.map(...)}</Menu>`, `<ul>{[<li/>, <li/>]}</ul>`), and the explicit `children={[...]}` attribute — which _is_ `props.children` and which React does validate.

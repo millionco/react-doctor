@@ -56,6 +56,11 @@ jobs:
 
       - run: pnpm test
 
+      # deslop-js/-cli assert on POSIX-separator paths, so their suites are
+      # build-only on Windows (mirrors the deslop upstream matrix).
+      - run: pnpm test:deslop
+        if: ${{ matrix.os != 'windows-latest' }}
+
       # lint + typecheck run as dedicated jobs in code-quality.yml; don't pay for
       # them again here.
       - name: Check formatting

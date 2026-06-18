@@ -83,16 +83,16 @@ const FIXTURE_EXPECTATIONS: ReadonlyArray<FixtureExpectation> = [
   {
     name: "package-manager-only",
     description:
-      "pnpm detected via `packageManager` field with no workspace yaml → warns on minimumReleaseAge + trustPolicy",
-    expectedRuleKeys: [HARDENING_RULE_KEY, HARDENING_RULE_KEY],
-    expectedSubstrings: ["minimumReleaseAge", "trustPolicy"],
+      "pnpm detected via `packageManager` field with no workspace yaml (inside workspace) → skipped (sub-package)",
+    expectedRuleKeys: [],
+    expectedSubstrings: [],
   },
   {
     name: "pnpm-lock-only",
     description:
-      "pnpm-lock.yaml alone is enough to detect a pnpm project; warns on minimumReleaseAge + trustPolicy",
-    expectedRuleKeys: [HARDENING_RULE_KEY, HARDENING_RULE_KEY],
-    expectedSubstrings: ["minimumReleaseAge", "trustPolicy"],
+      "pnpm-lock.yaml alone (inside workspace) → skipped (sub-package)",
+    expectedRuleKeys: [],
+    expectedSubstrings: [],
   },
   {
     name: "not-pnpm",
@@ -376,5 +376,157 @@ describe("checkPnpmHardening (parser edge cases)", () => {
     const diagnostics = checkPnpmHardening(projectDirectory);
 
     expect(diagnostics).toHaveLength(0);
+  });
+});
+
+describe("checkPnpmHardening (monorepo sub-packages)", () => {
+  let temporaryRoot: string;
+
+  beforeEach(() => {
+    temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-pnpm-monorepo-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(temporaryRoot, { recursive: true, force: true });
+  });
+
+  it("returns no diagnostics for a monorepo sub-package (parent has pnpm-workspace.yaml)", () => {
+    const monorepoRoot = temporaryRoot;
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({
+        name: "monorepo-root",
+        workspaces: ["packages/*"],
+      }),
+    );
+    fs.writeFileSync(path.join(monorepoRoot, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\n");
+
+    const subPackageDirectory = path.join(monorepoRoot, "packages", "sub-package");
+    fs.mkdirSync(subPackageDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(subPackageDirectory, "package.json"),
+      JSON.stringify({
+        name: "sub-package",
+        packageManager: "pnpm@9.0.0",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(path.join(subPackageDirectory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+
+    const diagnostics = checkPnpmHardening(subPackageDirectory);
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("returns no diagnostics for a deeply nested monorepo sub-package", () => {
+    const monorepoRoot = temporaryRoot;
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({
+        name: "monorepo-root",
+        packageManager: "pnpm@9.0.0",
+      }),
+    );
+    fs.writeFileSync(path.join(monorepoRoot, "pnpm-workspace.yaml"), "packages:\n  - 'examples/**'\n");
+
+    const deepSubPackage = path.join(monorepoRoot, "examples", "advanced", "custom-server");
+    fs.mkdirSync(deepSubPackage, { recursive: true });
+    fs.writeFileSync(
+      path.join(deepSubPackage, "package.json"),
+      JSON.stringify({
+        name: "custom-server",
+        packageManager: "pnpm@9.0.0",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+
+    const diagnostics = checkPnpmHardening(deepSubPackage);
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("returns diagnostics for a standalone pnpm project (no parent workspace)", () => {
+    const standaloneProject = path.join(temporaryRoot, "standalone");
+    fs.mkdirSync(standaloneProject, { recursive: true });
+    fs.writeFileSync(
+      path.join(standaloneProject, "package.json"),
+      JSON.stringify({
+        name: "standalone",
+        packageManager: "pnpm@9.0.0",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(path.join(standaloneProject, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+
+    const diagnostics = checkPnpmHardening(standaloneProject);
+
+    expect(diagnostics).toHaveLength(2);
+    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain(
+      "minimumReleaseAge",
+    );
+    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain("trustPolicy");
+  });
+
+  it("returns diagnostics for the monorepo root itself", () => {
+    const monorepoRoot = temporaryRoot;
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({
+        name: "monorepo-root",
+        packageManager: "pnpm@9.0.0",
+        workspaces: ["packages/*"],
+      }),
+    );
+    fs.writeFileSync(path.join(monorepoRoot, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\n");
+
+    const diagnostics = checkPnpmHardening(monorepoRoot);
+
+    expect(diagnostics).toHaveLength(2);
+    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain(
+      "minimumReleaseAge",
+    );
+    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain("trustPolicy");
+  });
+
+  it("returns diagnostics for a standalone pnpm project with packageManager field (no workspace)", () => {
+    const standaloneWithPackageManager = path.join(temporaryRoot, "standalone-pkg-mgr");
+    fs.mkdirSync(standaloneWithPackageManager, { recursive: true });
+    fs.writeFileSync(
+      path.join(standaloneWithPackageManager, "package.json"),
+      JSON.stringify({
+        name: "standalone-with-packagemanager",
+        packageManager: "pnpm@9.0.0",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+
+    const diagnostics = checkPnpmHardening(standaloneWithPackageManager);
+
+    expect(diagnostics).toHaveLength(2);
+    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain(
+      "minimumReleaseAge",
+    );
+    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain("trustPolicy");
+  });
+
+  it("returns diagnostics for a standalone pnpm project with pnpm-lock.yaml only (no workspace)", () => {
+    const standaloneWithLock = path.join(temporaryRoot, "standalone-lock");
+    fs.mkdirSync(standaloneWithLock, { recursive: true });
+    fs.writeFileSync(
+      path.join(standaloneWithLock, "package.json"),
+      JSON.stringify({
+        name: "standalone-with-lock",
+        dependencies: { react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(path.join(standaloneWithLock, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+
+    const diagnostics = checkPnpmHardening(standaloneWithLock);
+
+    expect(diagnostics).toHaveLength(2);
+    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain(
+      "minimumReleaseAge",
+    );
+    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain("trustPolicy");
   });
 });

@@ -71,15 +71,20 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     reason: "Intentional: default allowAsProps=true to allow render-prop components.",
   },
   "jsx-no-new-function-as-prop": {
-    // OXC flags inline-handler-as-prop on any JSX element. We skip
-    // intrinsic HTML elements (`<button>`, `<a>`, ...) because
-    // neither React nor the browser memoizes DOM event listeners,
-    // so a "new function per render" on intrinsic elements has zero
-    // measurable cost. fail[9-12] all exercise the
-    // `<button onClick={...}/>` / `<a onClick={...}/>` shape on
-    // intrinsic elements.
-    failSkips: [9, 10, 11, 12],
-    reason: "Intentional: skip intrinsic HTML elements (no memo concern).",
+    // Two intentional skips:
+    // (1) intrinsic HTML elements (fail[9-12]) — `<button onClick={...}/>`
+    //     / `<a onClick={...}/>`: neither React nor the browser memoizes
+    //     DOM event listeners, so a "new function per render" on intrinsic
+    //     elements has zero measurable cost.
+    // (2) non-memoised consumers (fail[0-8]) — OXC flags an inline handler
+    //     on ANY consumer. We only fire when same-file analysis PROVES the
+    //     consumer is `memo`-wrapped, because a fresh function reference
+    //     only breaks a memoized child (see `memoStatusForJsxOpeningName`).
+    //     OXC's fixtures pass plain/unknown consumers, so our gate
+    //     suppresses them. The gated (memoised-consumer) path is covered by
+    //     `jsx-no-new-function-as-prop.regressions.test.ts`.
+    failSkips: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    reason: "Intentional: skip intrinsic HTML elements + non-memoised consumers (memo-gated rule).",
   },
   "jsx-no-jsx-as-prop": {
     // OXC flags any JSX passed as a prop. We skip well-known "slot"
@@ -93,7 +98,7 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     reason: "Intentional: skip known slot-prop names (icon, tooltip, fallback, render*, etc.).",
   },
   "jsx-no-new-object-as-prop": {
-    // Two unrelated skips merged:
+    // Three skips merged:
     // (1) `style` / `dangerouslySetInnerHTML` (fail[5]) — these are
     //     React-mandated object-shape APIs and the perf footgun is
     //     unactionable on non-memoized components, where almost every
@@ -103,9 +108,16 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     //     receive inline literals by design (chart / animation libs,
     //     design systems). The perf footgun the rule targets is
     //     hot-path identity changes; these are one-time setup.
-    failSkips: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    // (3) non-memoised consumers (fail[9-14]) — like
+    //     `jsx-no-new-function-as-prop`, we only fire when same-file
+    //     analysis proves the consumer is `memo`-wrapped. OXC's
+    //     render-local-binding fixtures (`const x = {}; <Bar x={x}/>`)
+    //     pass plain consumers, so the memo gate suppresses them. The
+    //     gated path is covered by
+    //     `jsx-no-new-object-as-prop.regressions.test.ts`.
+    failSkips: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
     reason:
-      "Intentional: skip `style` / `dangerouslySetInnerHTML` + configuration-shape prop names.",
+      "Intentional: skip `style` / `dangerouslySetInnerHTML` + config-shape props + non-memoised consumers.",
   },
   "jsx-no-new-array-as-prop": {
     // OXC's fixtures use `<Item list={[...]}/>` to test inline-array
@@ -115,6 +127,33 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     // convention. fail[0-10] all exercise the `list` prop pattern.
     failSkips: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     reason: "Intentional: skip data-collection prop names (list, items, options, data, etc.).",
+  },
+  "no-multi-comp": {
+    // OXC flags a file with 2+ components. React Doctor intentionally
+    // only flags 3+: a "1 main + 1 sub-component" file (e.g.
+    // `ErrorBoundary` + `OptionalErrorBoundary`) is idiomatic
+    // co-location, not a smell — see the `flagged.length <= 2` guard in
+    // the rule, plus the barrel / feature-module exemptions. Every OXC
+    // fail fixture here declares exactly 2 components, so all 20 fall
+    // below our threshold. The 3+ behaviour and the exemptions are
+    // covered by `no-multi-comp.regressions.test.ts`.
+    failSkips: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+    reason:
+      "Intentional: flag only 3+ components (OXC flags 2+); idiomatic 2-component co-location is allowed.",
+  },
+  "no-array-index-key": {
+    // OXC flags any key expression that incorporates the array index,
+    // including arithmetic. React Doctor's composite-key heuristic
+    // deliberately skips `<expr> + index` shapes because an offset is
+    // often a stable global scheme (`key={page * pageSize + index}`,
+    // which produces a unique-across-pages key). fail[2] (`key={1 +
+    // index}`) is the degenerate constant-offset case that the same
+    // heuristic also skips — a minor accepted false-negative on a
+    // default-OFF rule. The direct `key={index}` cases (fail[0-1,
+    // 3-20]) still fire.
+    failSkips: [2],
+    reason:
+      "Intentional: composite-key heuristic skips `<expr> + index`, incl. the constant `1 + index`.",
   },
   "style-prop-object": {
     // OXC flags `style="..."` on any JSX element. We only flag it on

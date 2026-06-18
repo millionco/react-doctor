@@ -19,8 +19,6 @@ export interface DiagnosticsManagerOptions {
   readonly logger?: Logger;
 }
 
-const toUri = (absoluteFilePath: string): string => fsPathToUri(absoluteFilePath);
-
 /**
  * Owns the published-diagnostic state. Maps scan outcomes to LSP
  * diagnostics, publishes complete per-URI replacement sets (so the
@@ -61,7 +59,7 @@ export class DiagnosticsManager {
 
     for (const [fsPath, coreDiagnostics] of outcome.byFile) {
       if (isProtectedPath(fsPath)) continue;
-      const uri = toUri(fsPath);
+      const uri = fsPathToUri(fsPath);
       const text = this.textProvider(fsPath);
       const lspDiagnostics = coreDiagnostics.map((diagnostic) =>
         toLspDiagnostic({ diagnostic, fsPath, text }),
@@ -91,7 +89,7 @@ export class DiagnosticsManager {
     for (const fsPath of outcome.requestedPaths) {
       if (isProtectedPath(fsPath)) continue;
       if (outcome.byFile.has(fsPath)) continue;
-      const uri = toUri(fsPath);
+      const uri = fsPathToUri(fsPath);
       if (this.byUri.has(uri)) this.byUri.delete(uri);
       this.publish(uri, []);
     }
@@ -126,7 +124,7 @@ export class DiagnosticsManager {
     const set = this.projectUris.get(project) ?? new Set<string>();
     for (const uri of liveUris) set.add(uri);
     for (const fsPath of outcome.requestedPaths) {
-      const uri = toUri(fsPath);
+      const uri = fsPathToUri(fsPath);
       if (!liveUris.has(uri)) set.delete(uri);
     }
     this.projectUris.set(project, set);
@@ -160,7 +158,7 @@ export class DiagnosticsManager {
     const tracked = this.projectUris.get(project);
     if (!tracked) return;
     const liveUris = new Set<string>();
-    for (const fsPath of liveFsPaths) liveUris.add(toUri(fsPath));
+    for (const fsPath of liveFsPaths) liveUris.add(fsPathToUri(fsPath));
     for (const uri of [...tracked]) {
       if (liveUris.has(uri)) continue;
       this.byUri.delete(uri);

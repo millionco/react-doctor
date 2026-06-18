@@ -152,7 +152,7 @@ export const resolveCatalogVersion = (
   const hasExplicitCatalogReference = explicitCatalogReference !== undefined;
   const catalogName = hasExplicitCatalogReference
     ? explicitCatalogReference
-    : rawVersion
+    : typeof rawVersion === "string"
       ? extractCatalogName(rawVersion)
       : null;
   const shouldSearchUnreferencedNamedCatalogs =

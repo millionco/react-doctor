@@ -1,6 +1,5 @@
 import type { PackageJson } from "../types/index.js";
-import { findInWorkspacePackageJsons } from "./find-in-workspace-package-jsons.js";
-import { getDependencySpec } from "./utils/get-dependency-spec.js";
+import { findWorkspaceDependencySpec } from "./find-workspace-dependency-spec.js";
 
 // The declared `next` package version spec, looked up in the root manifest and
 // then each workspace package — the signal the `nextjs:15` capability gate
@@ -12,7 +11,4 @@ import { getDependencySpec } from "./utils/get-dependency-spec.js";
 export const findNextjsVersion = (
   rootDirectory: string,
   rootPackageJson: PackageJson,
-): string | null =>
-  findInWorkspacePackageJsons(rootDirectory, rootPackageJson, (packageJson) =>
-    getDependencySpec(packageJson, "next"),
-  );
+): string | null => findWorkspaceDependencySpec(rootDirectory, rootPackageJson, "next");

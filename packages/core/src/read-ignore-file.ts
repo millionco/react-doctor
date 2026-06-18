@@ -26,9 +26,8 @@ export const readIgnoreFile = (filePath: string): string[] => {
   try {
     content = fs.readFileSync(filePath, "utf-8");
   } catch (error) {
-    const errnoCode = isErrnoException(error) ? error.code : undefined;
-    if (errnoCode && errnoCode !== "ENOENT") {
-      Effect.runSync(Console.warn(`Could not read ignore file ${filePath}: ${errnoCode}`));
+    if (isErrnoException(error) && error.code !== "ENOENT") {
+      Effect.runSync(Console.warn(`Could not read ignore file ${filePath}: ${error.code}`));
     }
     return [];
   }

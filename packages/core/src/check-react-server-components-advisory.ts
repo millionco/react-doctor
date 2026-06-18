@@ -8,16 +8,10 @@ import {
 import { findMonorepoRoot, isFile, readPackageJson } from "./project-info/index.js";
 import { getWorkspacePatterns } from "./project-info/get-workspace-patterns.js";
 import { resolveWorkspaceDirectories } from "./project-info/resolve-workspace-directories.js";
+import { getDependencySpec } from "./project-info/utils/get-dependency-spec.js";
 import type { Diagnostic, PackageJson, ProjectInfo } from "./types/index.js";
 
 const RULE_KEY = "no-vulnerable-react-server-components";
-
-const DEPENDENCY_SECTIONS = [
-  "dependencies",
-  "devDependencies",
-  "peerDependencies",
-  "optionalDependencies",
-] as const;
 
 // Per-minor advisory thresholds for React's Server Components runtime
 // (`react-server-dom-*`, versioned in lockstep with `react`/`react-dom`).
@@ -91,14 +85,6 @@ const enumerateWorkspaceDirectories = (workspaceRoot: string): string[] => {
   return [...directories];
 };
 
-const readDeclaredSpec = (packageJson: PackageJson, packageName: string): string | null => {
-  for (const section of DEPENDENCY_SECTIONS) {
-    const spec = packageJson[section]?.[packageName];
-    if (typeof spec === "string") return spec;
-  }
-  return null;
-};
-
 // Resolves the concrete version a package runs *in a single directory*,
 // preferring the installed manifest under that directory's `node_modules`
 // (authoritative, always concrete) and falling back to an exact pin declared in
@@ -122,7 +108,7 @@ const resolveVersionInDirectory = (
   // catalog-resolved `project.nextjsVersion`) — so an unparseable manifest spec
   // like `catalog:` doesn't shadow an already-resolved concrete pin.
   const candidateSpecs = [
-    readDeclaredSpec(readPackageJson(path.join(directory, "package.json")), packageName),
+    getDependencySpec(readPackageJson(path.join(directory, "package.json")), packageName),
     declaredSpecOverride,
   ];
   for (const spec of candidateSpecs) {

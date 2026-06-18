@@ -20,7 +20,7 @@ export const getDependencyDeclaration = ({
 }: GetDependencyDeclarationOptions): DependencyDeclaration => {
   for (const section of sections) {
     const version = packageJson[section]?.[packageName];
-    if (version === undefined) continue;
+    if (typeof version !== "string") continue;
 
     return {
       catalogReference: extractCatalogName(version) ?? null,

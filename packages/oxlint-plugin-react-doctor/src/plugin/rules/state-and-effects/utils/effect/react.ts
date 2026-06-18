@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
 import { isAstNode } from "../../../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
+import { isUppercaseName } from "../../../../utils/is-uppercase-name.js";
 import {
   getDownstreamRefs,
   getRef,
@@ -45,17 +46,14 @@ const getOuterScopeContaining = (analysis: ProgramAnalysis, node: EsTreeNode): S
 
 const KNOWN_PURE_HOC_NAMES = new Set(["memo", "forwardRef"]);
 
-const startsWithUppercase = (name: string | undefined): boolean =>
-  Boolean(name && name.length > 0 && name[0] >= "A" && name[0] <= "Z");
-
 const isReactFunctionalComponent = (node: EsTreeNode | null | undefined): boolean => {
   if (!node) return false;
   if (isNodeOfType(node, "FunctionDeclaration")) {
-    return Boolean(node.id && startsWithUppercase(node.id.name));
+    return Boolean(node.id && isUppercaseName(node.id.name));
   }
   if (isNodeOfType(node, "VariableDeclarator")) {
     if (!isNodeOfType(node.id, "Identifier")) return false;
-    if (!startsWithUppercase(node.id.name)) return false;
+    if (!isUppercaseName(node.id.name)) return false;
     const init = node.init;
     if (!init) return false;
     return isNodeOfType(init, "ArrowFunctionExpression") || isNodeOfType(init, "CallExpression");

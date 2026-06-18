@@ -17,7 +17,7 @@ const pickConcreteVersion = (
 ): string | null => {
   for (const section of sections) {
     const version = packageJson[section]?.[packageName];
-    if (version === undefined) continue;
+    if (typeof version !== "string") continue;
     if (isCatalogReference(version)) return null;
     if (isConcreteDependencyVersion(version)) return version;
   }

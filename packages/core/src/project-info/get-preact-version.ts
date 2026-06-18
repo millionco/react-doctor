@@ -6,5 +6,5 @@ export const getPreactVersion = (packageJson: PackageJson): string | null => {
     ...packageJson.dependencies,
     ...packageJson.devDependencies,
   };
-  return allDependencies.preact ?? null;
+  return typeof allDependencies.preact === "string" ? allDependencies.preact : null;
 };

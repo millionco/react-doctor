@@ -16,9 +16,7 @@ const IGNORABLE_READDIR_ERROR_CODES = new Set([
 ]);
 
 const isIgnorableReaddirError = (error: unknown): boolean =>
-  isErrnoException(error) &&
-  typeof error.code === "string" &&
-  IGNORABLE_READDIR_ERROR_CODES.has(error.code);
+  isErrnoException(error) && IGNORABLE_READDIR_ERROR_CODES.has(error.code);
 
 export const readDirectoryEntries = (directoryPath: string): fs.Dirent[] => {
   try {

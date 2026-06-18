@@ -1,7 +1,6 @@
 import { ruleRegistry } from "./rule-registry.js";
 import type { Rule } from "./utils/rule.js";
-import type { HostRule } from "./utils/rule-plugin.js";
-import type { RulePlugin } from "./utils/rule-plugin.js";
+import type { HostRule, RulePlugin } from "./utils/rule-plugin.js";
 import { wrapReactNativeRule } from "./utils/wrap-react-native-rule.js";
 import { wrapWithSemanticContext } from "./utils/wrap-with-semantic-context.js";
 

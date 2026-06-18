@@ -349,7 +349,7 @@ const visitDestructuringDeclarations = (
 // BINDING position (declares a name) vs a REFERENCE position (uses a
 // name). The walker tracks binding sites explicitly; everything else is
 // treated as a reference.
-const tagAsBinding = (state: BuilderState, identifier: EsTreeNode): void => {
+const tagAsBinding = (identifier: EsTreeNode): void => {
   // Currently a marker only — we already recorded the symbol, so we
   // tag the identifier so the generic walk doesn't add it again as a
   // reference. We use a dedicated WeakSet for this (built lazily).
@@ -390,7 +390,7 @@ const isFunctionBodyBlock = (block: EsTreeNode): boolean => {
 // block. Same reasoning — the catch clause already pushed its own
 // scope.
 const isCatchClauseBlock = (block: EsTreeNode): boolean =>
-  block.parent !== null && block.parent !== undefined && block.parent.type === "CatchClause";
+  block.parent?.type === "CatchClause";
 
 const handleVariableDeclaration = (declaration: EsTreeNode, state: BuilderState): void => {
   if (!isNodeOfType(declaration, "VariableDeclaration")) return;
@@ -421,7 +421,7 @@ const handleVariableDeclaration = (declaration: EsTreeNode, state: BuilderState)
     for (const identifier of collectBindingNamesFromPattern(
       (declarator as { id: EsTreeNode }).id,
     )) {
-      tagAsBinding(state, identifier);
+      tagAsBinding(identifier);
     }
   }
 };
@@ -437,7 +437,7 @@ const handleFunctionDeclaration = (fn: EsTreeNode, state: BuilderState): void =>
       declarationNode: fn,
       initializer: fn,
     });
-    tagAsBinding(state, fn.id as EsTreeNode);
+    tagAsBinding(fn.id as EsTreeNode);
   }
 };
 
@@ -451,7 +451,7 @@ const handleClassDeclaration = (cls: EsTreeNode, state: BuilderState): void => {
       declarationNode: cls,
       initializer: cls,
     });
-    tagAsBinding(state, cls.id as EsTreeNode);
+    tagAsBinding(cls.id as EsTreeNode);
   }
 };
 
@@ -468,7 +468,7 @@ const handleImportDeclaration = (importDeclaration: EsTreeNode, state: BuilderSt
       declarationNode: specifier as EsTreeNode,
       initializer: specifier as EsTreeNode,
     });
-    tagAsBinding(state, local);
+    tagAsBinding(local);
   }
 };
 
@@ -502,7 +502,7 @@ const handleTsDeclarations = (node: EsTreeNode, state: BuilderState): void => {
     declarationNode: node,
     initializer: null,
   });
-  tagAsBinding(state, idNode);
+  tagAsBinding(idNode);
 };
 
 const handleFunctionParameters = (
@@ -513,7 +513,7 @@ const handleFunctionParameters = (
   for (const param of params) {
     visitDestructuringDeclarations(param, null, scope, state, "parameter", param);
     for (const identifier of collectBindingNamesFromPattern(param)) {
-      tagAsBinding(state, identifier);
+      tagAsBinding(identifier);
     }
   }
 };
@@ -709,7 +709,7 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
         declarationNode: node,
         initializer: node,
       });
-      tagAsBinding(state, node.id as EsTreeNode);
+      tagAsBinding(node.id as EsTreeNode);
     }
     const functionParams = (node as { params: ReadonlyArray<EsTreeNode> }).params ?? [];
     handleFunctionParameters(functionParams, fnScope, state);
@@ -744,7 +744,7 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
         declarationNode: node,
         initializer: node,
       });
-      tagAsBinding(state, node.id as EsTreeNode);
+      tagAsBinding(node.id as EsTreeNode);
     }
     if (node.superClass) walk(node.superClass as EsTreeNode, state);
     if (node.body) walk(node.body as EsTreeNode, state);
@@ -765,7 +765,7 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
         node as EsTreeNode,
       );
       for (const identifier of collectBindingNamesFromPattern(node.param as EsTreeNode)) {
-        tagAsBinding(state, identifier);
+        tagAsBinding(identifier);
       }
     }
     if (node.body) walk(node.body as EsTreeNode, state);
@@ -821,7 +821,7 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
         declarationNode: node,
         initializer: null,
       });
-      tagAsBinding(state, identifier);
+      tagAsBinding(identifier);
     }
     if (node.body) walk(node.body as EsTreeNode, state);
     popScope(state);

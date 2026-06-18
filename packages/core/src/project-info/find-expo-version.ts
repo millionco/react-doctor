@@ -1,6 +1,5 @@
 import type { PackageJson } from "../types/index.js";
-import { findInWorkspacePackageJsons } from "./find-in-workspace-package-jsons.js";
-import { getDependencySpec } from "./utils/get-dependency-spec.js";
+import { findWorkspaceDependencySpec } from "./find-workspace-dependency-spec.js";
 
 // The declared `expo` package version spec, looked up in the root manifest
 // and then each workspace package — react-doctor's "is this an Expo
@@ -16,7 +15,4 @@ import { getDependencySpec } from "./utils/get-dependency-spec.js";
 export const findExpoVersion = (
   rootDirectory: string,
   rootPackageJson: PackageJson,
-): string | null =>
-  findInWorkspacePackageJsons(rootDirectory, rootPackageJson, (packageJson) =>
-    getDependencySpec(packageJson, "expo"),
-  );
+): string | null => findWorkspaceDependencySpec(rootDirectory, rootPackageJson, "expo");

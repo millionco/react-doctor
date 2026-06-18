@@ -203,3 +203,25 @@ describe("evaluateSuppression — react-doctor-disable with a bare short id now 
     });
   });
 });
+
+describe("evaluateSuppression — foreign disable matching is whitespace-robust", () => {
+  it("hints despite heavy whitespace around an inline directive", () => {
+    const lines = linesOf(`//      eslint-disable-next-line     no-eval\neval(code);\n`);
+    expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).toContain("react-doctor/no-eval");
+  });
+
+  it("hints despite heavy whitespace inside a block directive", () => {
+    const lines = linesOf(`/*    eslint-disable    no-eval    */\neval(code);\n`);
+    expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).toContain("react-doctor/no-eval");
+  });
+
+  it("does not treat `disable-next-lineX` as a next-line directive", () => {
+    const lines = linesOf(`// eslint-disable-next-lineX no-eval\neval(code);\n`);
+    expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).toBeNull();
+  });
+
+  it("does not treat `eslint-disabled` as a block disable", () => {
+    const lines = linesOf(`/* eslint-disabled no-eval */\neval(code);\n`);
+    expect(nearMissHintFor(lines, 1, "react-doctor/no-eval")).toBeNull();
+  });
+});

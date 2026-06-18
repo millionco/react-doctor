@@ -10,19 +10,22 @@ import { tokenizeRuleList } from "./tokenize-rule-list.js";
 // can't change that matching, but when such a directive covers a *firing*
 // react-doctor diagnostic we can tell the user to qualify it.
 
+// Each pattern ends in a single greedy capture of the rest of the line
+// (no trailing `$`-anchored whitespace groups) so there is no ambiguous
+// backtracking on space-heavy input — `tokenizeRuleList` trims the leading
+// whitespace, the ` -- description` tail, and any closing `*/` token. The
+// `(?![\w-])` boundary keeps `eslint-disable-foo` and the `-line` /
+// `-next-line` inline forms from matching the block directives.
+
 // Inline directive, adjacent to the offending line. Captures: 1) the tool
-// (`eslint` | `oxlint`), 2) the scope (`next-line` | `line`), 3) the
-// trailing rule list (may carry a ` -- description` tail).
+// (`eslint` | `oxlint`), 2) the scope (`next-line` | `line`), 3) the rule list.
 const FOREIGN_INLINE_DISABLE_PATTERN =
-  /(?:\/\/|\/\*)\s*(eslint|oxlint)-disable-(next-line|line)\b(?:\s+([^\r\n]*?))?\s*(?:\*\/)?\s*\}?\s*$/;
+  /(?:\/\/|\/\*)[ \t]*(eslint|oxlint)-disable-(next-line|line)(?![\w-])([^\r\n]*)/;
 
 // Block (range) directives: `/* eslint-disable rule */` opens a range that
-// holds until a matching `/* eslint-enable rule */` (or end of file). The
-// negative lookahead keeps the `-line` / `-next-line` inline forms out of
-// the block matcher.
-const FOREIGN_BLOCK_DISABLE_PATTERN =
-  /\/\*\s*(eslint|oxlint)-disable(?!-(?:next-)?line)\b(?:\s+([^\r\n]*?))?\s*\*\//;
-const FOREIGN_BLOCK_ENABLE_PATTERN = /\/\*\s*(?:eslint|oxlint)-enable\b(?:\s+([^\r\n]*?))?\s*\*\//;
+// holds until a matching `/* eslint-enable rule */` (or end of file).
+const FOREIGN_BLOCK_DISABLE_PATTERN = /\/\*[ \t]*(eslint|oxlint)-disable(?![\w-])([^*\r\n]*)/;
+const FOREIGN_BLOCK_ENABLE_PATTERN = /\/\*[ \t]*(?:eslint|oxlint)-enable(?![\w-])([^*\r\n]*)/;
 
 const buildHint = (tool: string, token: string, ruleId: string): string =>
   `oxlint matches plugin rules only by their full name, so \`${token}\` in your ${tool}-disable comment does not silence \`${ruleId}\` — change it to \`${ruleId}\`.`;

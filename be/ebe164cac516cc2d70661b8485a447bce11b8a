@@ -1,0 +1,25 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-new-object-as-prop.regressions.test.ts
+  s_f817d387cdd304::t_a843929c604c17 18-27,30-31,34-45,48-54
+  s_f817d387cdd304::t_2db672cae94927 55
+  s_f817d387cdd304::t_d350d23b7ca09c 46-47
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-new-function-as-prop.regressions.test.ts
+  s_f817d387cdd304::t_0a4901ab72a2fd 55
+  s_f817d387cdd304::t_0d53219a6b80ae 57-59
+  s_f817d387cdd304::t_d79f9275485a15 20-28,31-54,56,60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "beebe164cac516cc2d70661b8485a447bce11b8a",
+  "prompts": {},
+  "sessions": {
+    "s_f817d387cdd304": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "481bd8dd-32b7-49f9-b1ef-af6d989d2d26",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

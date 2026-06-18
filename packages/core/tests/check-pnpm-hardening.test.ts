@@ -3,6 +3,7 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { checkPnpmHardening } from "@react-doctor/core";
+import type { Diagnostic } from "@react-doctor/core";
 
 const FIXTURES_DIRECTORY = path.resolve(import.meta.dirname, "fixtures", "check-pnpm-hardening");
 
@@ -389,6 +390,13 @@ describe("checkPnpmHardening (monorepo sub-packages)", () => {
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
   });
 
+  const expectMissingHardeningWarnings = (diagnostics: Diagnostic[]) => {
+    expect(diagnostics).toHaveLength(2);
+    const messages = diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("minimumReleaseAge");
+    expect(messages).toContain("trustPolicy");
+  };
+
   it("returns no diagnostics for a monorepo sub-package (parent has pnpm-workspace.yaml)", () => {
     const monorepoRoot = temporaryRoot;
     fs.writeFileSync(
@@ -465,11 +473,7 @@ describe("checkPnpmHardening (monorepo sub-packages)", () => {
 
     const diagnostics = checkPnpmHardening(standaloneProject);
 
-    expect(diagnostics).toHaveLength(2);
-    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain(
-      "minimumReleaseAge",
-    );
-    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain("trustPolicy");
+    expectMissingHardeningWarnings(diagnostics);
   });
 
   it("returns diagnostics for the monorepo root itself", () => {
@@ -489,11 +493,7 @@ describe("checkPnpmHardening (monorepo sub-packages)", () => {
 
     const diagnostics = checkPnpmHardening(monorepoRoot);
 
-    expect(diagnostics).toHaveLength(2);
-    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain(
-      "minimumReleaseAge",
-    );
-    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain("trustPolicy");
+    expectMissingHardeningWarnings(diagnostics);
   });
 
   it("returns diagnostics for a standalone pnpm project with packageManager field (no workspace)", () => {
@@ -510,11 +510,7 @@ describe("checkPnpmHardening (monorepo sub-packages)", () => {
 
     const diagnostics = checkPnpmHardening(standaloneWithPackageManager);
 
-    expect(diagnostics).toHaveLength(2);
-    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain(
-      "minimumReleaseAge",
-    );
-    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain("trustPolicy");
+    expectMissingHardeningWarnings(diagnostics);
   });
 
   it("returns diagnostics for a standalone pnpm project with pnpm-lock.yaml only (no workspace)", () => {
@@ -531,10 +527,6 @@ describe("checkPnpmHardening (monorepo sub-packages)", () => {
 
     const diagnostics = checkPnpmHardening(standaloneWithLock);
 
-    expect(diagnostics).toHaveLength(2);
-    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain(
-      "minimumReleaseAge",
-    );
-    expect(diagnostics.map((diagnostic) => diagnostic.message).join("\n")).toContain("trustPolicy");
+    expectMissingHardeningWarnings(diagnostics);
   });
 });

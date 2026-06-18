@@ -127,11 +127,10 @@ export const checkPnpmHardening = (scanDirectory: string): Diagnostic[] => {
 
   const workspacePath = path.join(scanDirectory, PNPM_WORKSPACE_FILE);
   const hasWorkspaceFile = isFile(workspacePath);
-  const monorepoRoot = findMonorepoRoot(scanDirectory);
 
-  if (!hasWorkspaceFile && monorepoRoot !== null) {
-    const parentWorkspacePath = path.join(monorepoRoot, PNPM_WORKSPACE_FILE);
-    if (isFile(parentWorkspacePath)) {
+  if (!hasWorkspaceFile) {
+    const monorepoRoot = findMonorepoRoot(scanDirectory);
+    if (monorepoRoot !== null && isFile(path.join(monorepoRoot, PNPM_WORKSPACE_FILE))) {
       return [];
     }
   }

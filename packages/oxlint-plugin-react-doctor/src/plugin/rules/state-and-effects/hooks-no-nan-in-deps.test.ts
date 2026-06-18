@@ -22,7 +22,7 @@ describe("hooks-no-nan-in-deps", () => {
     // — `Object.is(NaN, NaN) === true`, so the hook does NOT re-run on
     // every render. Regression guard against the previous wording that
     // wrongly claimed it "always reruns".
-    expect(result.diagnostics[0].message).toContain("silently breaks your hook");
+    expect(result.diagnostics[0].message).toContain("Object.is");
     expect(result.diagnostics[0].message).not.toContain("always rerun");
   });
 

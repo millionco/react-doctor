@@ -48,9 +48,7 @@ export const createProjectGraph = (options: ProjectGraphOptions): ProjectGraph =
           }
         }
       } catch (error) {
-        logger.warn(
-          `Project discovery failed for ${root}: ${messageFromUnknown(error)}`,
-        );
+        logger.warn(`Project discovery failed for ${root}: ${messageFromUnknown(error)}`);
       }
     }
     // Deepest-first so owning-project resolution can take the first match.

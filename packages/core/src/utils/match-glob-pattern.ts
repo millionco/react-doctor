@@ -57,10 +57,7 @@ export const compileGlobPattern = (rawPattern: string): RegExp => {
   try {
     return picomatch.makeRe(normalizeGlobPattern(rawPattern), PICOMATCH_OPTIONS);
   } catch (caughtError) {
-    throw new InvalidGlobPatternError(
-      rawPattern,
-      messageFromUnknown(caughtError),
-    );
+    throw new InvalidGlobPatternError(rawPattern, messageFromUnknown(caughtError));
   }
 };
 

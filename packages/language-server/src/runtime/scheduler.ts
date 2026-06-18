@@ -91,8 +91,7 @@ export const createScheduler = (options: SchedulerOptions): Scheduler => {
         })
         .catch((error: unknown) => {
           if (options.onError) options.onError(error, request);
-          else
-            logger.error(`Scan failed: ${messageFromUnknown(error)}`);
+          else logger.error(`Scan failed: ${messageFromUnknown(error)}`);
         })
         .finally(() => {
           running -= 1;

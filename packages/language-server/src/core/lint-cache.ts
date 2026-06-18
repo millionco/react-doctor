@@ -101,9 +101,7 @@ export const createLintCache = (input: {
       fs.writeFileSync(tempPath, JSON.stringify(payload));
       fs.renameSync(tempPath, cacheFilePath);
     } catch (error) {
-      logger.warn(
-        `Failed to persist lint cache: ${messageFromUnknown(error)}`,
-      );
+      logger.warn(`Failed to persist lint cache: ${messageFromUnknown(error)}`);
     }
   };
 

@@ -410,9 +410,7 @@ export const createServer = (
         if (outcome.request.priority === "background") scanTelemetry.accumulate(outcome);
       },
       onError: (error, request) =>
-        logger.error(
-          `Scan of ${request.projectDirectory} threw: ${messageFromUnknown(error)}`,
-        ),
+        logger.error(`Scan of ${request.projectDirectory} threw: ${messageFromUnknown(error)}`),
       onIdleChange: (idle) => {
         void setBusy(!idle);
         // The scheduler draining is the reliable "burst settled" signal

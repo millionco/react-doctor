@@ -89,8 +89,7 @@ const FIXTURE_EXPECTATIONS: ReadonlyArray<FixtureExpectation> = [
   },
   {
     name: "pnpm-lock-only",
-    description:
-      "pnpm-lock.yaml alone (inside workspace) → skipped (sub-package)",
+    description: "pnpm-lock.yaml alone (inside workspace) → skipped (sub-package)",
     expectedRuleKeys: [],
     expectedSubstrings: [],
   },
@@ -399,7 +398,10 @@ describe("checkPnpmHardening (monorepo sub-packages)", () => {
         workspaces: ["packages/*"],
       }),
     );
-    fs.writeFileSync(path.join(monorepoRoot, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\n");
+    fs.writeFileSync(
+      path.join(monorepoRoot, "pnpm-workspace.yaml"),
+      "packages:\n  - 'packages/*'\n",
+    );
 
     const subPackageDirectory = path.join(monorepoRoot, "packages", "sub-package");
     fs.mkdirSync(subPackageDirectory, { recursive: true });
@@ -427,7 +429,10 @@ describe("checkPnpmHardening (monorepo sub-packages)", () => {
         packageManager: "pnpm@9.0.0",
       }),
     );
-    fs.writeFileSync(path.join(monorepoRoot, "pnpm-workspace.yaml"), "packages:\n  - 'examples/**'\n");
+    fs.writeFileSync(
+      path.join(monorepoRoot, "pnpm-workspace.yaml"),
+      "packages:\n  - 'examples/**'\n",
+    );
 
     const deepSubPackage = path.join(monorepoRoot, "examples", "advanced", "custom-server");
     fs.mkdirSync(deepSubPackage, { recursive: true });
@@ -477,7 +482,10 @@ describe("checkPnpmHardening (monorepo sub-packages)", () => {
         workspaces: ["packages/*"],
       }),
     );
-    fs.writeFileSync(path.join(monorepoRoot, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\n");
+    fs.writeFileSync(
+      path.join(monorepoRoot, "pnpm-workspace.yaml"),
+      "packages:\n  - 'packages/*'\n",
+    );
 
     const diagnostics = checkPnpmHardening(monorepoRoot);
 

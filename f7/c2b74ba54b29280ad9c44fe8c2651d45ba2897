@@ -1,0 +1,72 @@
+packages/react-doctor/src/cli/utils/with-sentry-run-span.ts
+  s_461d0be08a2944::t_35130a4258082d 4
+  s_461d0be08a2944::t_92a9a355659c11 61-64
+packages/react-doctor/tests/print-debug-trace.test.ts
+  s_461d0be08a2944::t_148fc68ec35a26 1-5,7-10,14-15
+  s_461d0be08a2944::t_2ea3bbe03f6094 6,11-12
+  s_461d0be08a2944::t_aaca3b0475ffec 13
+packages/react-doctor/src/cli/utils/build-run-context.ts
+  s_461d0be08a2944::t_425e0ce666437d 116
+  s_461d0be08a2944::t_4be310c2fff04b 10
+  s_461d0be08a2944::t_23cb6317f83359 43-45
+.changeset/feat-debug-trace-id.md
+  s_461d0be08a2944::t_ada763367b134a 1-6
+  s_461d0be08a2944::t_c488282a39a851 7
+packages/react-doctor/src/cli/utils/strip-unknown-cli-flags.ts
+  s_461d0be08a2944::t_d2a7e4c45e705b 15
+packages/react-doctor/src/instrument.ts
+  s_461d0be08a2944::t_07b2d2814e48d5 8
+  s_461d0be08a2944::t_cffad438c93be5 3-7,86-88
+  s_461d0be08a2944::t_4bea551516701c 84-85
+packages/react-doctor/tests/validate-mode-flags.test.ts
+  s_461d0be08a2944::t_4e379a4f143052 19-31
+packages/react-doctor/src/cli/utils/constants.ts
+  s_461d0be08a2944::t_d06b4f1b7da63d 112-115,120
+packages/website/public/llms.txt
+  s_461d0be08a2944::t_260f510eaf08f6 108
+packages/react-doctor/src/cli/utils/active-run-trace.ts
+  s_461d0be08a2944::t_d8ef6c38d8c3e2 21-34
+packages/react-doctor/src/cli/utils/build-sentry-scope.ts
+  s_461d0be08a2944::t_c778f0f9ecaf71 40
+packages/react-doctor/src/cli/utils/inspect-flags.ts
+  s_461d0be08a2944::t_e669a53e979bd1 9-11
+packages/react-doctor/tests/build-sentry-scope.test.ts
+  s_461d0be08a2944::t_36224e68b78b13 73
+  s_461d0be08a2944::t_223af1d62f264c 26
+packages/react-doctor/src/cli/index.ts
+  s_461d0be08a2944::t_91eaa3f540121b 124-127
+  s_461d0be08a2944::t_1225be2e9748eb 37-44
+  s_461d0be08a2944::t_9ec43f254d7eb9 26
+  s_461d0be08a2944::t_985ac445873858 345-346
+  s_461d0be08a2944::t_7c54fc5faf7d9c 22
+packages/react-doctor/src/cli/utils/print-debug-trace.ts
+  s_461d0be08a2944::t_94d8a20394cf70 8-9,11-14
+  s_461d0be08a2944::t_b20bcb5bc7643c 29-32,34
+  s_461d0be08a2944::t_0526d69235f8f0 1-7,10,15-17,27-28,36
+packages/react-doctor/tests/is-debug-flag.test.ts
+  s_461d0be08a2944::t_785283e815c1bd 1-18
+packages/react-doctor/tests/strip-unknown-cli-flags.test.ts
+  s_461d0be08a2944::t_a4a6bed55f7d0b 17
+  s_461d0be08a2944::t_c1a4a34558c7d7 31
+packages/react-doctor/src/cli/utils/validate-mode-flags.ts
+  s_461d0be08a2944::t_bdb5aa89ff99cb 34-42
+packages/react-doctor/src/cli/utils/report-error.ts
+  s_461d0be08a2944::t_7b293118dbd15f 57-61
+  s_461d0be08a2944::t_6bf530b5e5d5c5 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "f7c2b74ba54b29280ad9c44fe8c2651d45ba2897",
+  "prompts": {},
+  "sessions": {
+    "s_461d0be08a2944": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67c9d006-2def-450a-85d1-300d668076bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

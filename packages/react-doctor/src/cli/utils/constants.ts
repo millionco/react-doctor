@@ -34,6 +34,11 @@ export const AGENT_HOOK_TIMEOUT_SECONDS = 120;
 // git fallbacks behind it are correct for almost every repo — so fail fast.
 export const GH_DEFAULT_BRANCH_PROBE_TIMEOUT_MS = 5000;
 
+// Cap on open PRs scanned when checking for an already-open React Doctor
+// setup PR (the idempotency guard). Far above any realistic count of open
+// PRs whose head sits under the setup-branch prefix.
+export const GH_PR_LIST_MAX = 100;
+
 // Cap on files listed per rule in the agent-handoff prompt so it stays a
 // compact, passable CLI argument.
 export const HANDOFF_MAX_FILES_PER_RULE = 3;

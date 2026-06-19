@@ -64,11 +64,23 @@ const invoke = (responses: Record<string, RunCommandResult>) => {
 
 describe("openWorkflowPullRequest", () => {
   it("opens a PR and returns its URL on the happy path", async () => {
-    const { result } = invoke(cleanRepoResponses());
+    const { result, invocations } = invoke(cleanRepoResponses());
     expect(await result).toEqual({
       status: "pr-opened",
       url: "https://github.com/o/r/pull/42",
     });
+    // Issue #904, half 2: staging is path-scoped to the workflow file — never a
+    // broad `git add -A`/`.`/`--all` that would sweep unrelated changes into the
+    // commit. This is the line that stopped the deleted lockfile riding along.
+    expect(invocations).toContain(`git add -- ${WORKFLOW_RELATIVE}`);
+    expect(
+      invocations.some(
+        (invocation) =>
+          invocation === "git add -A" ||
+          invocation === "git add ." ||
+          invocation.startsWith("git add --all"),
+      ),
+    ).toBe(false);
   });
 
   // Issue #904, half 1: a re-run must not open a duplicate. When a setup PR is
@@ -119,7 +131,11 @@ describe("openWorkflowPullRequest", () => {
       [GIT_STATUS]: succeed(" M src/app.tsx\nD  pnpm-lock.yaml"),
     });
     expect(await result).toEqual({ status: "not-attempted", reason: "working-tree-dirty" });
-    expect(invocations.some((invocation) => invocation.startsWith("git checkout"))).toBe(false);
+    // The whole #904-half-2 guarantee is that a dirty tree touches no git write
+    // state — assert the harmful operations were all skipped, not just checkout.
+    for (const writeCommand of ["git checkout", "git add", "git commit", "git push"]) {
+      expect(invocations.some((invocation) => invocation.startsWith(writeCommand))).toBe(false);
+    }
   });
 
   it("allows untracked files (they're never committed) and opens the PR", async () => {
@@ -158,11 +174,15 @@ describe("openWorkflowPullRequest", () => {
   });
 
   it("reports branch-pushed when the push lands but gh pr create fails", async () => {
-    const { result } = invoke({ ...cleanRepoResponses(), [GH_PR_CREATE]: fail() });
+    const { result, invocations } = invoke({ ...cleanRepoResponses(), [GH_PR_CREATE]: fail() });
     expect(await result).toEqual({
       status: "branch-pushed",
       branch: "react-doctor/add-github-actions",
     });
+    // branch-pushed promises the branch survives on the remote for a manual PR —
+    // the pushed branch must NOT be deleted, and the original branch is restored.
+    expect(invocations.some((invocation) => invocation.startsWith("git branch -D"))).toBe(false);
+    expect(invocations).toContain("git checkout feature");
   });
 
   it("reports gh-not-installed before probing for an existing PR", async () => {

@@ -1,6 +1,8 @@
 import * as path from "node:path";
+import { GH_PR_LIST_MAX } from "./constants.js";
 import { detectDefaultBranch } from "./detect-default-branch.js";
 import { isCommandAvailable } from "./is-command-available.js";
+import { toForwardSlashes } from "./path-format.js";
 import { runCommand, type CommandRunner } from "./run-command.js";
 
 const NEW_BRANCH_PREFIX = "react-doctor/add-github-actions";
@@ -71,7 +73,16 @@ const findExistingSetupPullRequest = async (
 ): Promise<string | null> => {
   const prList = await run(
     "gh",
-    ["pr", "list", "--state", "open", "--json", "headRefName,url", "--limit", "100"],
+    [
+      "pr",
+      "list",
+      "--state",
+      "open",
+      "--json",
+      "headRefName,url",
+      "--limit",
+      String(GH_PR_LIST_MAX),
+    ],
     cwd,
   );
   if (!prList.success) return null;
@@ -161,7 +172,10 @@ export const openWorkflowPullRequest = async (params: {
   );
   if (!repoRootProbe.success) return { status: "not-attempted", reason: "not-a-git-repo" };
   const cwd = repoRootProbe.stdout;
-  const workflowRelative = path.relative(cwd, workflowPath);
+  // Forward slashes so the `:!` exclude pathspec and `git add` match git's
+  // forward-slash-normalized repo paths on Windows (where `path.relative`
+  // yields backslashes, which git's magic pathspec won't treat as separators).
+  const workflowRelative = toForwardSlashes(path.relative(cwd, workflowPath));
 
   if (!checkCommandAvailable("gh")) return { status: "not-attempted", reason: "gh-not-installed" };
   if (!(await run("gh", ["auth", "status"], cwd)).success) {
@@ -275,6 +289,6 @@ export const stageWorkflowFile = async (params: {
     path.dirname(workflowPath),
   );
   if (!repoRootProbe.success) return false;
-  const workflowRelative = path.relative(repoRootProbe.stdout, workflowPath);
+  const workflowRelative = toForwardSlashes(path.relative(repoRootProbe.stdout, workflowPath));
   return (await run("git", ["add", "--", workflowRelative], repoRootProbe.stdout)).success;
 };

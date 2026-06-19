@@ -90,6 +90,14 @@ const upgradeGitHubActionsWorkflow = async (
       `Opened pull request for review: ${highlighter.info(pullRequestResult.url)}`,
     );
   } else if (pullRequestResult.status === "pr-exists") {
+    // `pr-exists` returns without touching git state, so the @v2 edit we wrote
+    // above still sits uncommitted in the working tree. Restore the original
+    // @v1 content — the bump lives on the already-open PR's branch — matching
+    // the pr-opened path's "the bump lives only on the PR branch" contract so
+    // the user can't accidentally commit a stray edit to their working branch.
+    try {
+      fs.writeFileSync(workflow.workflowPath, workflow.content);
+    } catch {}
     upgradeSpinner.succeed(
       `A React Doctor pull request is already open: ${highlighter.info(pullRequestResult.url)}`,
     );

@@ -16,6 +16,7 @@ import {
   ReactDoctorError,
 } from "../src/errors.js";
 import { runInspect, type InspectInput } from "../src/run-inspect.js";
+import { DeadCodePhaseTimeoutMs, LintPhaseTimeoutMs, ScanDeadlineMs } from "../src/refs.js";
 import { Config } from "../src/services/config.js";
 import { DeadCode } from "../src/services/dead-code.js";
 import { Files } from "../src/services/files.js";
@@ -131,6 +132,92 @@ const layersOf = (config: {
     Progress.layerNoop,
     Reporter.layerCapture,
   );
+
+describe("runInspect — phase timeouts & overall deadline", () => {
+  // A never-completing analyzer stream stands in for a wedged phase (a
+  // pathological file / hung socket); the Effect-level caps must fire.
+  const baseTimeoutLayers = (overrides: {
+    linter: Layer.Layer<Linter>;
+    deadCode: Layer.Layer<DeadCode>;
+    refOverrides: Layer.Layer<never>;
+  }) =>
+    Layer.mergeAll(
+      Project.layerOf(sampleProject),
+      Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
+      Files.layerInMemory(new Map()),
+      overrides.linter,
+      LintPartialFailures.layerLive,
+      overrides.deadCode,
+      Git.layerOf({}),
+      Score.layerOf({ score: 85, label: "Good" }),
+      SupplyChain.layerOf([]),
+      Progress.layerNoop,
+      Reporter.layerNoop,
+      overrides.refOverrides,
+    );
+
+  it("caps the dead-code phase into didDeadCodeFail without sinking the rest of the scan", async () => {
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          baseTimeoutLayers({
+            linter: Linter.layerOf([lintDiagnostic]),
+            deadCode: Layer.mock(DeadCode, { run: () => Stream.never }),
+            refOverrides: Layer.succeed(DeadCodePhaseTimeoutMs, 30),
+          }),
+        ),
+      ),
+    );
+
+    expect(output.didDeadCodeFail).toBe(true);
+    expect(output.deadCodeFailureReason).toContain("Dead-code analysis exceeded");
+    expect(output.deadCodeFailureReason).toContain("skipped");
+    // The scan still completed: lint diagnostics came through, score computed.
+    expect(output.didLintFail).toBe(false);
+    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toContain("no-derived-state");
+  });
+
+  it("caps the lint phase, nulls the score, and tags the failure as OxlintBatchExceeded", async () => {
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          baseTimeoutLayers({
+            linter: Layer.mock(Linter, { run: () => Stream.never }),
+            deadCode: DeadCode.layerOf([deadCodeDiagnostic]),
+            refOverrides: Layer.succeed(LintPhaseTimeoutMs, 30),
+          }),
+        ),
+      ),
+    );
+
+    expect(output.didLintFail).toBe(true);
+    expect(output.lintFailureReasonTag).toBe("OxlintBatchExceeded");
+    expect(output.lintFailureReason).toContain("Lint analysis exceeded");
+    expect(output.score).toBeNull();
+    expect(output.diagnostics).toHaveLength(0);
+  });
+
+  it("raises ScanDeadlineExceeded when the overall scan deadline elapses", async () => {
+    const error = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          baseTimeoutLayers({
+            linter: Layer.mock(Linter, { run: () => Stream.never }),
+            deadCode: DeadCode.layerOf([]),
+            // Keep the lint phase cap high so the overall deadline wins the race.
+            refOverrides: Layer.mergeAll(
+              Layer.succeed(LintPhaseTimeoutMs, 600_000),
+              Layer.succeed(ScanDeadlineMs, 30),
+            ),
+          }),
+        ),
+        Effect.flip,
+      ),
+    );
+
+    expect(error.reason._tag).toBe("ScanDeadlineExceeded");
+  });
+});
 
 describe("runInspect — happy path", () => {
   it("collects diagnostics from Linter, DeadCode, and emits them through Reporter", async () => {

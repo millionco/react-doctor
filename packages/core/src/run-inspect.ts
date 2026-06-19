@@ -29,10 +29,16 @@ import {
   type OxlintUnavailable,
   ReactDoctorError,
   type ReactDoctorErrorReason,
+  ScanDeadlineExceeded,
 } from "./errors.js";
 import { filterDiagnosticsForSurface } from "./filter-for-surface.js";
 import { isAnalyzableProject } from "./project-info/index.js";
-import { OxlintConcurrency } from "./refs.js";
+import {
+  DeadCodePhaseTimeoutMs,
+  LintPhaseTimeoutMs,
+  OxlintConcurrency,
+  ScanDeadlineMs,
+} from "./refs.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
@@ -393,6 +399,8 @@ export const runInspect = <HooksR = never>(
     // Reference to actually fan out the lint pass); defaults to parallel
     // (auto-detected cores).
     const scanConcurrency = yield* OxlintConcurrency;
+    const lintPhaseTimeoutMs = yield* LintPhaseTimeoutMs;
+    const deadCodePhaseTimeoutMs = yield* DeadCodePhaseTimeoutMs;
     const workerCountSuffix =
       scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
 
@@ -437,7 +445,26 @@ export const runInspect = <HooksR = never>(
         ),
       );
 
-    const lintCollected = yield* Stream.runCollect(applyPerElementPipeline(rawLintStream));
+    // Lint phase cap (Effect-side, runtime-independent of the per-batch
+    // spawn timeout and the bounded split cascade): on timeout, fold into
+    // the existing lint-failure contract (score becomes null) with an
+    // `OxlintBatchExceeded`-tagged reason so renderers dispatch on it, and
+    // yield an empty chunk so the rest of the scan still completes.
+    const lintCollected = yield* Stream.runCollect(applyPerElementPipeline(rawLintStream)).pipe(
+      Effect.timeoutOption(lintPhaseTimeoutMs),
+      Effect.flatMap(
+        Option.match({
+          onNone: () =>
+            Ref.set(lintFailure, {
+              didFail: true,
+              reason: `Lint analysis exceeded ${lintPhaseTimeoutMs / MILLISECONDS_PER_SECOND}s and was skipped.`,
+              reasonTag: "OxlintBatchExceeded",
+              reasonKind: null,
+            }).pipe(Effect.as<Diagnostic[]>([])),
+          onSome: Effect.succeed,
+        }),
+      ),
+    );
     const lintFailureState = yield* Ref.get(lintFailure);
     yield* afterLint(lintFailureState.didFail);
 
@@ -491,6 +518,21 @@ export const runInspect = <HooksR = never>(
                     ),
                 ),
               ),
+            ),
+            // Dead-code phase cap (Effect-side): sits ABOVE the in-worker
+            // SIGKILL timer as a runtime-independent backstop for a starved
+            // event loop. On timeout, fold into the existing dead-code skip
+            // contract and yield an empty chunk so the scan still completes.
+            Effect.timeoutOption(deadCodePhaseTimeoutMs),
+            Effect.flatMap(
+              Option.match({
+                onNone: () =>
+                  Ref.set(deadCodeFailure, {
+                    didFail: true,
+                    reason: `Dead-code analysis exceeded ${deadCodePhaseTimeoutMs / MILLISECONDS_PER_SECOND}s and was skipped.`,
+                  }).pipe(Effect.as<Diagnostic[]>([])),
+                onSome: Effect.succeed,
+              }),
             ),
           );
     const deadCodeFailureState = yield* Ref.get(deadCodeFailure);
@@ -580,4 +622,23 @@ export const runInspect = <HooksR = never>(
         "inspect.scoreSurface": input.scoreSurface ?? "score",
       },
     }),
+    // Overall scan deadline backstop: bounds any phase not individually
+    // capped (e.g. a wedged git/IO call). Raises `ScanDeadlineExceeded`,
+    // keeping the declared error channel as `ReactDoctorError`; the CLI's
+    // `restoreLegacyThrow` re-dies it cleanly into `handleError`.
+    (scanProgram) =>
+      Effect.flatMap(ScanDeadlineMs, (scanDeadlineMs) =>
+        scanProgram.pipe(
+          Effect.timeout(scanDeadlineMs),
+          Effect.catchTag(
+            "TimeoutError",
+            () =>
+              new ReactDoctorError({
+                reason: new ScanDeadlineExceeded({
+                  detail: `${scanDeadlineMs / MILLISECONDS_PER_SECOND}s elapsed`,
+                }),
+              }),
+          ),
+        ),
+      ),
   );

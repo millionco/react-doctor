@@ -37,10 +37,11 @@ export class DeadCode extends Context.Service<
           // of the per-call `Effect.tryPromise`).
           Effect.fn("DeadCode.run")(function* () {
             return yield* Effect.tryPromise({
-              try: () =>
+              try: (signal) =>
                 checkDeadCode({
                   rootDirectory: input.rootDirectory,
                   userConfig: input.userConfig,
+                  signal,
                 }),
               catch: (cause) =>
                 new ReactDoctorError({ reason: new DeadCodeAnalysisFailed({ cause }) }),

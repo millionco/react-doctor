@@ -299,6 +299,42 @@ describe("checkDeadCode", () => {
     expect(didTerminate).toBe(true);
   });
 
+  it("terminates the worker when the surrounding Effect fiber aborts (no orphan child)", async () => {
+    const directory = setupProject("aborted-worker", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    let didTerminate = false;
+    const abortController = new AbortController();
+    // `checkDeadCode` does async setup before spawning the worker, so wait
+    // until the worker is created (the abort listener is attached
+    // synchronously right after) before signalling.
+    let signalWorkerCreated: () => void = () => {};
+    const workerCreated = new Promise<void>((resolve) => {
+      signalWorkerCreated = resolve;
+    });
+
+    // The worker never settles on its own; only the abort signal can free it,
+    // so don't await `checkDeadCode`'s (never-settling) promise.
+    void checkDeadCode({
+      rootDirectory: directory,
+      createWorker: () => {
+        signalWorkerCreated();
+        return {
+          result: new Promise(() => {}),
+          terminate: () => {
+            didTerminate = true;
+          },
+        };
+      },
+      signal: abortController.signal,
+    });
+
+    await workerCreated;
+    abortController.abort();
+
+    expect(didTerminate).toBe(true);
+  });
+
   // deslop's import-graph resolution (oxc-resolver targets matched against
   // fast-glob's collected paths) only lines up on POSIX; on Windows it
   // mis-flags imported files regardless of the canonical-root fix — a

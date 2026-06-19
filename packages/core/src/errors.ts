@@ -46,6 +46,17 @@ export class OxlintBatchExceeded extends Schema.TaggedErrorClass<OxlintBatchExce
   }
 }
 
+export class ScanDeadlineExceeded extends Schema.TaggedErrorClass<ScanDeadlineExceeded>()(
+  "ScanDeadlineExceeded",
+  {
+    detail: Schema.String,
+  },
+) {
+  get message() {
+    return `Scan exceeded its overall time budget: ${this.detail}`;
+  }
+}
+
 export class OxlintSpawnFailed extends Schema.TaggedErrorClass<OxlintSpawnFailed>()(
   "OxlintSpawnFailed",
   {
@@ -160,6 +171,7 @@ export class GitBaseBranchInvalid extends Schema.TaggedErrorClass<GitBaseBranchI
 export const ReactDoctorErrorReason = Schema.Union([
   OxlintUnavailable,
   OxlintBatchExceeded,
+  ScanDeadlineExceeded,
   OxlintSpawnFailed,
   OxlintOutputUnparseable,
   ConfigParseFailed,

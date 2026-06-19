@@ -18,6 +18,7 @@ import {
   SUPPLY_CHAIN_MAX_ALERTS_SHOWN,
   SUPPLY_CHAIN_PLUGIN,
   SUPPLY_CHAIN_RULE,
+  SUPPLY_CHAIN_TOTAL_TIMEOUT_MS,
 } from "./constants.js";
 import { readPackageJson } from "./project-info/index.js";
 import type { Diagnostic, PackageJson, ReactDoctorConfig } from "./types/index.js";
@@ -26,6 +27,8 @@ import { sanitizeTerminalText } from "./utils/sanitize-terminal-text.js";
 export interface SupplyChainCheckInput {
   readonly rootDirectory: string;
   readonly userConfig: ReactDoctorConfig | null;
+  /** Whole-check wall-clock cap; a many-socket pileup that ignores the per-fetch abort trips this and the check fails open ([]). Defaults to SUPPLY_CHAIN_TOTAL_TIMEOUT_MS. */
+  readonly totalTimeoutMs?: number;
 }
 
 interface ResolvedSupplyChainOptions {
@@ -588,7 +591,13 @@ export const checkSupplyChain = (input: SupplyChainCheckInput): Effect.Effect<Di
 
     const artifacts = yield* Effect.forEach(dependencies, fetchSocketArtifact, {
       concurrency: SUPPLY_CHAIN_FETCH_CONCURRENCY,
-    });
+    }).pipe(
+      // A many-socket pileup (sockets that ignore the per-fetch abort) trips the
+      // whole-check cap; recover to "no artifacts scored" — identical fail-open
+      // contract to the per-fetch `orElseSucceed(() => null)`.
+      Effect.timeoutOption(input.totalTimeoutMs ?? SUPPLY_CHAIN_TOTAL_TIMEOUT_MS),
+      Effect.map((maybeArtifacts) => Option.getOrElse(maybeArtifacts, () => [])),
+    );
 
     const diagnostics: Diagnostic[] = [];
     for (let index = 0; index < dependencies.length; index += 1) {

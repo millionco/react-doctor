@@ -84,6 +84,23 @@ describe("checkSupplyChain — security-axis gating", () => {
     fs.rmSync(projectDirectory, { recursive: true, force: true });
   });
 
+  it("fails open ([]) when sockets ignore the per-fetch abort and the whole-check budget elapses", async () => {
+    writePackageJson({ "left-pad": "^1.3.0", "is-odd": "^3.0.0" });
+    // Sockets that never tear down on abort: every fetch hangs forever, so
+    // the per-fetch 10s timeout would otherwise keep the whole `forEach`
+    // pending. The whole-check cap must short-circuit to "no artifacts".
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+
+    const diagnostics = await Effect.runPromise(
+      checkSupplyChain({ rootDirectory: projectDirectory, userConfig: null, totalTimeoutMs: 20 }),
+    );
+
+    expect(diagnostics).toEqual([]);
+  });
+
   it("does not flag a package whose security axes are healthy but quality drags `overall` below the minimum (issue #770, @types/bun)", async () => {
     writePackageJson({ "@types/bun": "^1.3.14" });
     stubSocketApi({

@@ -14,7 +14,7 @@ import { isRecord } from "../../utils/is-record.js";
 
 /**
  * Per-file lint cache for the oxlint backend. Maps a per-file content key
- * (`<relativePath>\0<contentHash>`) to the RAW oxlint diagnostics that the
+ * (`<relativePath> <contentHash>`) to the RAW oxlint diagnostics that the
  * CACHEABLE rules produced for that file — the diagnostics before the
  * presentation pipeline (suppressions, surface filtering, fix grouping), so
  * those toggles never invalidate it. Cross-file rules are NEVER cached here;

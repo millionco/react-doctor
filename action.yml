@@ -27,7 +27,7 @@ inputs:
     description: 'Publish a commit status with the score and error / warning counts, linking to the run. Surfaces the result on pushes to the default branch (where the PR comment is skipped). Reads "Skipped" when the pull request changes no React-eligible files. Requires `statuses: write` (skipped with a warning otherwise).'
     default: "true"
   node-version:
-    description: "Node.js version to use"
+    description: "Node.js version used to run react-doctor (defaults to 24)."
     default: "24"
   version:
     description: "react-doctor npm version or package spec to run"

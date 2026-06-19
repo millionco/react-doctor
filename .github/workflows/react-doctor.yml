@@ -1,9 +1,9 @@
 name: React Doctor
 
 on:
-  push:
-    branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
     branches: [main]
 
 permissions:
@@ -13,36 +13,14 @@ permissions:
   statuses: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-env:
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-  TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+  group: react-doctor-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   react-doctor:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:
-          persist-credentials: false
           fetch-depth: 0
-
-      - uses: pnpm/action-setup@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22.18.0
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile --prefer-offline
-
-      - run: pnpm --filter react-doctor... build
-
-      - uses: ./
-        with:
-          blocking: none
-          node-version: 22.18.0
-          version: ./packages/react-doctor
+      - uses: millionco/react-doctor@v2

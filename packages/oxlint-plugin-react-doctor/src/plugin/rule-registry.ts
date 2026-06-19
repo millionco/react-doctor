@@ -48,6 +48,7 @@ import { noThreePeriodEllipsis } from "./rules/react-ui/no-three-period-ellipsis
 import { noVagueButtonLabel } from "./rules/react-ui/no-vague-button-label.js";
 import { dialogHasAccessibleName } from "./rules/a11y/dialog-has-accessible-name.js";
 import { displayName } from "./rules/react-builtins/display-name.js";
+import { effectCleanupNotOnEveryPath } from "./rules/state-and-effects/effect-cleanup-not-on-every-path.js";
 import { effectNeedsCleanup } from "./rules/state-and-effects/effect-needs-cleanup.js";
 import { exhaustiveDeps } from "./rules/react-builtins/exhaustive-deps.js";
 import { expoNoNonInlinedEnv } from "./rules/react-native/expo-no-non-inlined-env.js";
@@ -874,6 +875,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       requires: [...new Set(["react", ...(displayName.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/effect-cleanup-not-on-every-path",
+    id: "effect-cleanup-not-on-every-path",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...effectCleanupNotOnEveryPath,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(effectCleanupNotOnEveryPath.requires ?? [])])],
     },
   },
   {

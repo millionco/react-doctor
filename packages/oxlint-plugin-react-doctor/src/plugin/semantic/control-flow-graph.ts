@@ -27,6 +27,30 @@ import { isNodeOfType } from "../utils/is-node-of-type.js";
 //              `try { return } finally { … }` unreachable.
 // oxc's `NewFunction` edge is absent by construction: every function gets
 // its own CFG here, so reachability never crosses a function boundary.
+//
+// Coverage vs. the React Compiler's HIR terminal taxonomy (the canonical
+// JS-side CFG, `BuildHIR.ts`). The compiler's terminals are: goto, if,
+// branch, switch, logical, ternary, optional, return, throw, do-while,
+// while, for, for-of, for-in, label, sequence, maybe-throw, try. We model
+// every one as basic blocks + the edges above:
+//   - Statement terminals (if / switch / loops / label / return / throw /
+//     try) → `buildStatement`.
+//   - Expression terminals — `ternary`, `logical` (`&&`/`||`/`??` and the
+//     `&&=`/`||=`/`??=` assignments), and `optional` (optional chaining) —
+//     → `buildExpression` / `buildOptionalChainLink`. Lowering these is what
+//     lets a hook / setState / effect nested in a short-circuit read as
+//     conditional, exactly like the compiler's value blocks. `sequence`
+//     (comma / value-block sequencing) needs no dedicated terminal here:
+//     the generic left-to-right child threading already orders it.
+//   - `maybe-throw` (an implicit edge to the nearest handler after EVERY
+//     throwable instruction) is modeled coarsely: a single `cond` edge from
+//     the try ENTRY to the catch. That already makes every later try-body
+//     block skippable via the catch bypass, so the primitives our rules
+//     consume (`isUnconditionalFromEntry`, post-dominance) get the same
+//     answer a per-instruction model would give. The only thing the coarse
+//     model loses is `isReachable(midTryStatement, catchStatement)`, which
+//     no rule needs — so per-instruction maybe-throw is a deliberate
+//     non-goal, not a gap.
 export type CfgEdgeKind = "uncond" | "cond" | "throw" | "backedge" | "finalize" | "join";
 
 export interface CfgEdge {
@@ -207,6 +231,202 @@ const isAlwaysTruthyLoopTest = (test: EsTreeNode | null | undefined): boolean =>
   return false;
 };
 
+const LOGICAL_ASSIGNMENT_OPERATORS = new Set(["&&=", "||=", "??="]);
+
+const isLogicalAssignment = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "AssignmentExpression") &&
+  LOGICAL_ASSIGNMENT_OPERATORS.has((node as { operator: string }).operator);
+
+// True when an expression subtree contains short-circuiting control flow
+// we model as branches: a ternary, a `&&` / `||` / `??`, or a logical
+// assignment (`&&=` / `||=` / `??=`). Stops at nested function boundaries —
+// those get their own CFG. Lets `buildStatement` keep the cheap
+// `mapDescendantsToBlock` path for straight-line code and only pay the
+// block-splitting cost when an expression actually branches.
+const containsExpressionControlFlow = (node: EsTreeNode): boolean => {
+  let found = false;
+  const visit = (current: EsTreeNode): void => {
+    if (found) return;
+    if (
+      isNodeOfType(current, "ConditionalExpression") ||
+      isNodeOfType(current, "LogicalExpression") ||
+      isNodeOfType(current, "ChainExpression") ||
+      isLogicalAssignment(current)
+    ) {
+      found = true;
+      return;
+    }
+    if (isFunctionLike(current)) return;
+    const record = current as unknown as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (key === "parent") continue;
+      const child = record[key];
+      if (Array.isArray(child)) {
+        for (const item of child) if (isAstNode(item)) visit(item);
+      } else if (isAstNode(child)) {
+        visit(child);
+      }
+    }
+  };
+  visit(node);
+  return found;
+};
+
+// Lower an expression's embedded control flow into the CFG — mirroring how
+// the React Compiler's HIR (and oxc_cfg) give a ternary's arms, a logical
+// operator's right operand, and a logical assignment's right operand their
+// own basic blocks. A hook / setState / effect nested in any of those is
+// then correctly seen as CONDITIONAL (short-circuited on some path), which
+// statement-level lowering alone cannot see. Returns — and maps the node to
+// — the block where its value becomes available (its join): a node's effect
+// happens AFTER its operands, so a `wrap(cond ? a : b)` call lands in the
+// post-arms block, not the pre-test one. Never descends into nested
+// functions (they get their own CFG).
+const buildExpression = (
+  builder: CfgBuilder,
+  node: EsTreeNode | null | undefined,
+  current: BasicBlock,
+): BasicBlock => {
+  if (!node) return current;
+  if (isFunctionLike(node)) {
+    builder.nodeBlock.set(node, current);
+    return current;
+  }
+
+  if (isNodeOfType(node, "ConditionalExpression")) {
+    const afterTest = buildExpression(builder, node.test as EsTreeNode, current);
+    const consequentBlock = createBlock(builder);
+    const alternateBlock = createBlock(builder);
+    const merge = createBlock(builder);
+    addEdge(afterTest, consequentBlock, "cond");
+    addEdge(afterTest, alternateBlock, "cond");
+    const consequentEnd = buildExpression(builder, node.consequent as EsTreeNode, consequentBlock);
+    const alternateEnd = buildExpression(builder, node.alternate as EsTreeNode, alternateBlock);
+    addEdge(consequentEnd, merge, "uncond");
+    addEdge(alternateEnd, merge, "uncond");
+    builder.nodeBlock.set(node, merge);
+    return merge;
+  }
+
+  if (isNodeOfType(node, "LogicalExpression") || isLogicalAssignment(node)) {
+    // The left/target operand is always evaluated; the right operand is
+    // conditional (short-circuited). From the post-left block one successor
+    // evaluates the RHS and one skips straight to the join.
+    const afterLeft = buildExpression(builder, (node as { left: EsTreeNode }).left, current);
+    const rightBlock = createBlock(builder);
+    const merge = createBlock(builder);
+    addEdge(afterLeft, rightBlock, "cond");
+    addEdge(afterLeft, merge, "cond");
+    const rightEnd = buildExpression(builder, (node as { right: EsTreeNode }).right, rightBlock);
+    addEdge(rightEnd, merge, "uncond");
+    builder.nodeBlock.set(node, merge);
+    return merge;
+  }
+
+  if (isNodeOfType(node, "ChainExpression")) {
+    // Optional chain (`a?.b.c?.()`). The React Compiler models this with a
+    // SINGLE shared short-circuit target: any nullish optional link jumps to
+    // the same continuation (value = undefined). Everything to the right of
+    // a `?.` is conditional; the chain value is available at `merge`, where
+    // the short-circuit and the fully-evaluated paths rejoin.
+    const merge = createBlock(builder);
+    const chainEnd = buildOptionalChainLink(
+      builder,
+      (node as { expression: EsTreeNode }).expression,
+      current,
+      merge,
+    );
+    addEdge(chainEnd, merge, "uncond");
+    builder.nodeBlock.set(node, merge);
+    return merge;
+  }
+
+  // Generic expression: evaluate children left-to-right, threading the
+  // block so a control-flow child splits the siblings that follow it. The
+  // node itself completes in the final cursor block.
+  let cursor = current;
+  const record = node as unknown as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (key === "parent") continue;
+    const child = record[key];
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        if (isAstNode(item)) cursor = buildExpression(builder, item, cursor);
+      }
+    } else if (isAstNode(child)) {
+      cursor = buildExpression(builder, child, cursor);
+    }
+  }
+  builder.nodeBlock.set(node, cursor);
+  return cursor;
+};
+
+// Lower one link of an optional chain in evaluation order (innermost
+// object/callee first), branching to the shared `merge` (short-circuit) at
+// each optional `?.`. Mirrors the compiler's `lowerOptional*Expression`:
+// the base is evaluated unconditionally, then anything to the right of the
+// `?.` — a computed property, a deeper access, or a call's arguments —
+// evaluates in the conditional continuation. Returns the block where this
+// link's value is available on the non-short-circuit path.
+const buildOptionalChainLink = (
+  builder: CfgBuilder,
+  node: EsTreeNode,
+  current: BasicBlock,
+  merge: BasicBlock,
+): BasicBlock => {
+  if (isNodeOfType(node, "MemberExpression")) {
+    const afterObject = buildOptionalChainLink(builder, node.object as EsTreeNode, current, merge);
+    let cursor = afterObject;
+    if ((node as { optional?: boolean }).optional) {
+      const continuation = createBlock(builder);
+      addEdge(afterObject, continuation, "cond"); // base non-nullish → continue
+      addEdge(afterObject, merge, "cond"); // base nullish → short-circuit
+      cursor = continuation;
+    }
+    // A computed key (`a?.[expr]`) is only evaluated once the base is known
+    // non-nullish, so it belongs in the post-branch continuation.
+    if ((node as { computed?: boolean }).computed) {
+      cursor = buildExpression(builder, node.property as EsTreeNode, cursor);
+    }
+    builder.nodeBlock.set(node, cursor);
+    return cursor;
+  }
+
+  if (isNodeOfType(node, "CallExpression")) {
+    const afterCallee = buildOptionalChainLink(builder, node.callee as EsTreeNode, current, merge);
+    let cursor = afterCallee;
+    if ((node as { optional?: boolean }).optional) {
+      const continuation = createBlock(builder);
+      addEdge(afterCallee, continuation, "cond");
+      addEdge(afterCallee, merge, "cond");
+      cursor = continuation;
+    }
+    for (const argument of (node as { arguments: ReadonlyArray<EsTreeNode> }).arguments) {
+      if (isAstNode(argument)) cursor = buildExpression(builder, argument, cursor);
+    }
+    builder.nodeBlock.set(node, cursor);
+    return cursor;
+  }
+
+  // Chain base (an identifier, a parenthesized expression, a non-optional
+  // sub-expression): evaluate it normally.
+  return buildExpression(builder, node, current);
+};
+
+// Evaluate a sub-expression in `current`, returning the block where its
+// value is available. Falls back to the cheap whole-subtree mapping when
+// the expression has no embedded control flow.
+const buildSubExpression = (
+  builder: CfgBuilder,
+  node: EsTreeNode | null | undefined,
+  current: BasicBlock,
+): BasicBlock => {
+  if (!node) return current;
+  if (containsExpressionControlFlow(node)) return buildExpression(builder, node, current);
+  mapDescendantsToBlock(builder, node, current);
+  return current;
+};
+
 // Process a list of statements inside a block. Returns the block where
 // fall-through control flow ends up. Caller is responsible for
 // connecting that to the next block (e.g. exit, merge).
@@ -236,8 +456,14 @@ const buildStatement = (
   builder.nodeBlock.set(statement, current);
 
   if (!hasInternalControlFlow(statement)) {
-    // Plain statement: every descendant maps to the current block.
     appendNode(builder, current, statement);
+    // A plain statement can still carry expression-level control flow
+    // (`const x = cond ? useA() : useB()`, `cond && setState()`): lower it
+    // so the branched sub-expressions land in their own blocks. Otherwise
+    // every descendant maps to the current block (cheap path).
+    if (containsExpressionControlFlow(statement)) {
+      return buildExpression(builder, statement, current);
+    }
     mapDescendantsToBlock(builder, statement, current);
     return current;
   }
@@ -264,18 +490,22 @@ const buildStatement = (
   }
 
   if (isNodeOfType(statement, "ReturnStatement")) {
-    if (statement.argument) {
-      mapDescendantsToBlock(builder, statement.argument as EsTreeNode, current);
-    }
-    addEdge(current, builder.exit, "uncond");
+    const afterArgument = buildSubExpression(
+      builder,
+      statement.argument as EsTreeNode | null,
+      current,
+    );
+    addEdge(afterArgument, builder.exit, "uncond");
     // Any subsequent statement is unreachable; create an orphan.
     return createBlock(builder);
   }
 
   if (isNodeOfType(statement, "ThrowStatement")) {
-    if (statement.argument) {
-      mapDescendantsToBlock(builder, statement.argument as EsTreeNode, current);
-    }
+    const afterArgument = buildSubExpression(
+      builder,
+      statement.argument as EsTreeNode | null,
+      current,
+    );
     // If we're in a try-catch, route to the catch (uncond — it's a
     // normal control-flow successor for our analysis). Otherwise the
     // throw escapes the function: route to exit but tag the edge as
@@ -284,11 +514,11 @@ const buildStatement = (
     // unconditional because the throw branch never normally returns).
     const top = builder.tryStack[builder.tryStack.length - 1];
     if (top?.catch) {
-      addEdge(current, top.catch, "uncond");
+      addEdge(afterArgument, top.catch, "uncond");
     } else if (top?.finally) {
-      addEdge(current, top.finally, "uncond");
+      addEdge(afterArgument, top.finally, "uncond");
     } else {
-      addEdge(current, builder.exit, "throw");
+      addEdge(afterArgument, builder.exit, "throw");
     }
     return createBlock(builder);
   }
@@ -309,20 +539,21 @@ const buildStatement = (
   }
 
   if (isNodeOfType(statement, "IfStatement")) {
-    // Map the test expression to the current block.
-    mapDescendantsToBlock(builder, statement.test as EsTreeNode, current);
+    // Evaluate the test (its own short-circuits, e.g. `if (a && useX())`,
+    // become real branches); the if then forks from the post-test block.
+    const afterTest = buildSubExpression(builder, statement.test as EsTreeNode, current);
     const thenBlock = createBlock(builder);
     const merge = createBlock(builder);
-    addEdge(current, thenBlock, "cond");
+    addEdge(afterTest, thenBlock, "cond");
     const thenEnd = buildStatement(builder, statement.consequent as EsTreeNode, thenBlock);
     addEdge(thenEnd, merge, "uncond");
     if (statement.alternate) {
       const elseBlock = createBlock(builder);
-      addEdge(current, elseBlock, "cond");
+      addEdge(afterTest, elseBlock, "cond");
       const elseEnd = buildStatement(builder, statement.alternate as EsTreeNode, elseBlock);
       addEdge(elseEnd, merge, "uncond");
     } else {
-      addEdge(current, merge, "cond");
+      addEdge(afterTest, merge, "cond");
     }
     return merge;
   }
@@ -394,14 +625,18 @@ const buildStatement = (
   }
 
   if (isNodeOfType(statement, "SwitchStatement")) {
-    mapDescendantsToBlock(builder, statement.discriminant as EsTreeNode, current);
+    const afterDiscriminant = buildSubExpression(
+      builder,
+      statement.discriminant as EsTreeNode,
+      current,
+    );
     const merge = createBlock(builder);
     builder.switchStack.push({ merge, label: null });
     let previousCaseEnd: BasicBlock | null = null;
     let hasDefault = false;
     for (const switchCase of statement.cases) {
       const caseBlock = createBlock(builder);
-      addEdge(current, caseBlock, "cond");
+      addEdge(afterDiscriminant, caseBlock, "cond");
       // Fall-through from previous case (no break) connects to this case.
       if (previousCaseEnd) addEdge(previousCaseEnd, caseBlock, "uncond");
       const caseEnd = buildStatements(
@@ -414,7 +649,7 @@ const buildStatement = (
     }
     builder.switchStack.pop();
     if (previousCaseEnd) addEdge(previousCaseEnd, merge, "uncond");
-    if (!hasDefault) addEdge(current, merge, "cond"); // no case matched
+    if (!hasDefault) addEdge(afterDiscriminant, merge, "cond"); // no case matched
     return merge;
   }
 
@@ -511,9 +746,9 @@ const buildFunctionCfg = (functionNode: EsTreeNode, body: EsTreeNode): FunctionC
   if (isNodeOfType(body, "BlockStatement")) {
     bodyEnd = buildStatements(builder, body.body as EsTreeNode[], entry);
   } else {
-    // Arrow expression body: a single Expression
-    mapDescendantsToBlock(builder, body, entry);
-    bodyEnd = entry;
+    // Arrow expression body: a single Expression. Lower its control flow so
+    // `() => cond ? useA() : useB()` sees the hooks as conditional.
+    bodyEnd = buildSubExpression(builder, body, entry);
   }
   // Implicit return / fall-off the end of the function body.
   addEdge(bodyEnd, exit, "uncond");

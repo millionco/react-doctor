@@ -6,32 +6,39 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blocks.js";
 
-// HACK: an UNCONDITIONAL setter call at a component's render path
-// triggers an infinite re-render loop ("Maximum update depth exceeded").
-// We only flag the obvious shape — `setX(...)` as a top-level
-// ExpressionStatement directly inside the component body — to avoid
-// false positives on the canonical React pattern that conditionally
-// updates state during render to derive from props (see
+// An UNCONDITIONAL setter call on a component's render path triggers an
+// infinite re-render loop ("Maximum update depth exceeded"). We flag a
+// setter call only when the CFG proves it runs on EVERY path from the
+// component's entry to its exit (`isUnconditionalFromEntry`) — exactly the
+// React Compiler's `validateNoSetStateInRender` (its `computeUnconditional
+// Blocks` post-dominator chain). That precision is what lets us stay quiet
+// on the canonical store-previous-render pattern, which is CONDITIONAL and
+// reaches a fixed point (see
 // https://react.dev/reference/react/useState#storing-information-from-previous-renders):
 //
 //   if (prevCount !== count) {
-//     setPrevCount(count);  // ← legitimate, reaches a fixed point
+//     setPrevCount(count);  // ← guarded → not unconditional → not flagged
 //   }
 //
-// Conditional / loop / try-catch nesting is opaque enough that we'd
-// rather miss the bug than scream at idiomatic code.
-const isUnconditionalSetterCallStatement = (
-  statement: EsTreeNode,
+// `walkInsideStatementBlocks` keeps us in the component's own body (it stops
+// at nested functions), so setters inside effects / event handlers / other
+// callbacks — a separate CFG — are never considered render-path writes.
+const findUnconditionalSetterCalls = (
+  context: RuleContext,
+  componentBody: EsTreeNode,
   setterNames: ReadonlySet<string>,
-): EsTreeNode | null => {
-  if (!isNodeOfType(statement, "ExpressionStatement")) return null;
-  const expression = statement.expression;
-  if (!isNodeOfType(expression, "CallExpression")) return null;
-  const callee = expression.callee;
-  if (!isNodeOfType(callee, "Identifier")) return null;
-  if (!setterNames.has(callee.name)) return null;
-  return expression;
+): EsTreeNodeOfType<"CallExpression">[] => {
+  const calls: EsTreeNodeOfType<"CallExpression">[] = [];
+  walkInsideStatementBlocks(componentBody, (child) => {
+    if (!isNodeOfType(child, "CallExpression")) return;
+    if (!isNodeOfType(child.callee, "Identifier")) return;
+    if (!setterNames.has(child.callee.name)) return;
+    if (!context.cfg.isUnconditionalFromEntry(child)) return;
+    calls.push(child);
+  });
+  return calls;
 };
 
 export const noSetStateInRender = defineRule({
@@ -48,12 +55,8 @@ export const noSetStateInRender = defineRule({
       );
       if (setterNames.size === 0) return;
 
-      for (const statement of componentBody.body ?? []) {
-        const setterCall = isUnconditionalSetterCallStatement(statement, setterNames);
-        if (!setterCall) continue;
-        if (!isNodeOfType(setterCall, "CallExpression")) continue;
-        if (!isNodeOfType(setterCall.callee, "Identifier")) continue;
-        const setterIdentifierName = setterCall.callee.name;
+      for (const setterCall of findUnconditionalSetterCalls(context, componentBody, setterNames)) {
+        const setterIdentifierName = (setterCall.callee as EsTreeNodeOfType<"Identifier">).name;
         context.report({
           node: setterCall,
           message: `${setterIdentifierName}() triggers another render while rendering. Move it to an effect or event handler, or compute the value during render.`,

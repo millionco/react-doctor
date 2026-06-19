@@ -1,0 +1,24 @@
+scripts/recommend-action-version-bump.mjs
+  s_458afe03bb9c83::t_9a1453c84044e9 136-143
+  s_458afe03bb9c83::t_947447499dd022 1-14,21-75,77-135,144-150
+  s_458afe03bb9c83::t_bd96a16e03f616 15-20
+  s_458afe03bb9c83::t_4d0a4356078f81 76
+.github/workflows/action-version-bump.yml
+  s_458afe03bb9c83::t_4caaf03e8af8fa 1-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "8030c9b652bf1600168d9858e75e93b6fbac677e",
+  "prompts": {},
+  "sessions": {
+    "s_458afe03bb9c83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6599546f-81ca-4824-90e1-5145226c7639",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

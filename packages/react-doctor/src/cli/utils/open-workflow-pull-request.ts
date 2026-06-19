@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import { detectDefaultBranch } from "./detect-default-branch.js";
 import { isCommandAvailable } from "./is-command-available.js";
-import { runCommand as run } from "./run-command.js";
+import { runCommand as run, type CommandRunner } from "./run-command.js";
 
 const NEW_BRANCH_PREFIX = "react-doctor/add-github-actions";
 
@@ -31,6 +31,7 @@ export type NotAttemptedReason =
   | "not-a-git-repo"
   | "no-default-branch"
   | "detached-head"
+  | "working-tree-dirty"
   | "checkout-failed"
   | "git-add-failed"
   | "git-commit-failed"
@@ -39,8 +40,8 @@ export type NotAttemptedReason =
 // Tries `react-doctor/add-github-actions` first and appends a compact
 // timestamp suffix if a local branch already exists with that name (avoids
 // clobbering a previous attempt's branch).
-const findUniqueBranchName = async (cwd: string): Promise<string> => {
-  if (!(await run("git", ["rev-parse", "--verify", NEW_BRANCH_PREFIX], cwd)).success) {
+const findUniqueBranchName = async (cwd: string, runner: CommandRunner): Promise<string> => {
+  if (!(await runner("git", ["rev-parse", "--verify", NEW_BRANCH_PREFIX], cwd)).success) {
     return NEW_BRANCH_PREFIX;
   }
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
@@ -60,21 +61,24 @@ const findUniqueBranchName = async (cwd: string): Promise<string> => {
 // Async so the chain no longer blocks the event loop and the caller's `ora`
 // spinner keeps animating through the slow network steps. Each step still
 // runs sequentially via `await` because it depends on the previous one.
-export const openWorkflowPullRequest = async (params: {
-  workflowPath: string;
-  // Override the commit message / PR title + body. Defaults describe a fresh
-  // install; the v1→v2 upgrade flow passes its own copy. The git/`gh` steps,
-  // failure modes, and branch cleanup are identical either way — both just
-  // commit the workflow file (newly written or modified in place) onto a
-  // dedicated branch and open a PR.
-  commitMessage?: string;
-  prTitle?: string;
-  prBody?: string;
-  // Base branch for the PR. Callers that already resolved the repo's default
-  // branch (to keep the installed workflow consistent with the PR base) pass
-  // it here; when omitted it's detected from the repo.
-  baseBranch?: string;
-}): Promise<OpenWorkflowPullRequestResult> => {
+export const openWorkflowPullRequest = async (
+  params: {
+    workflowPath: string;
+    // Override the commit message / PR title + body. Defaults describe a fresh
+    // install; the v1→v2 upgrade flow passes its own copy. The git/`gh` steps,
+    // failure modes, and branch cleanup are identical either way — both just
+    // commit the workflow file (newly written or modified in place) onto a
+    // dedicated branch and open a PR.
+    commitMessage?: string;
+    prTitle?: string;
+    prBody?: string;
+    // Base branch for the PR. Callers that already resolved the repo's default
+    // branch (to keep the installed workflow consistent with the PR base) pass
+    // it here; when omitted it's detected from the repo.
+    baseBranch?: string;
+  },
+  runner: CommandRunner = run,
+): Promise<OpenWorkflowPullRequestResult> => {
   const workflowPath = path.resolve(params.workflowPath);
   const commitMessage = params.commitMessage ?? DEFAULT_COMMIT_MESSAGE;
   const prTitle = params.prTitle ?? DEFAULT_PR_TITLE;
@@ -82,7 +86,7 @@ export const openWorkflowPullRequest = async (params: {
 
   // Probe from the workflow file's directory so we resolve the repo root
   // even when the CLI was invoked from a sub-package in a monorepo.
-  const repoRootProbe = await run(
+  const repoRootProbe = await runner(
     "git",
     ["rev-parse", "--show-toplevel"],
     path.dirname(workflowPath),
@@ -91,31 +95,38 @@ export const openWorkflowPullRequest = async (params: {
   const cwd = repoRootProbe.stdout;
 
   if (!isCommandAvailable("gh")) return { status: "not-attempted", reason: "gh-not-installed" };
-  if (!(await run("gh", ["auth", "status"], cwd)).success) {
+  if (!(await runner("gh", ["auth", "status"], cwd)).success) {
     return { status: "not-attempted", reason: "gh-not-authenticated" };
   }
 
-  const defaultBranch = params.baseBranch ?? (await detectDefaultBranch(cwd));
+  const defaultBranch = params.baseBranch ?? (await detectDefaultBranch(cwd, runner));
   if (!defaultBranch) return { status: "not-attempted", reason: "no-default-branch" };
 
-  const previousBranchProbe = await run("git", ["rev-parse", "--abbrev-ref", "HEAD"], cwd);
+  const previousBranchProbe = await runner("git", ["rev-parse", "--abbrev-ref", "HEAD"], cwd);
   if (!previousBranchProbe.success || previousBranchProbe.stdout === "HEAD") {
     return { status: "not-attempted", reason: "detached-head" };
   }
   const previousBranch = previousBranchProbe.stdout;
 
+  const statusProbe = await runner("git", ["status", "--porcelain"], cwd);
+  if (statusProbe.success) {
+    const hasTrackedChanges = statusProbe.stdout
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .some((line) => !line.startsWith("??"));
+    if (hasTrackedChanges) {
+      return { status: "not-attempted", reason: "working-tree-dirty" };
+    }
+  }
+
   // Best-effort fetch so `origin/<default>` is current; ignore failures
   // (offline, no auth for fetch) and let the next step fail loudly if the
   // ref genuinely isn't available.
-  await run("git", ["fetch", "origin", defaultBranch], cwd);
+  await runner("git", ["fetch", "origin", defaultBranch], cwd);
 
-  const newBranch = await findUniqueBranchName(cwd);
+  const newBranch = await findUniqueBranchName(cwd, runner);
 
-  // `git checkout -b <new> origin/<default>` carries untracked files (the
-  // just-written workflow) and refuses with a non-zero status if tracked
-  // working-tree modifications would conflict with the destination — in
-  // which case we bail out without touching anything else.
-  if (!(await run("git", ["checkout", "-b", newBranch, `origin/${defaultBranch}`], cwd)).success) {
+  if (!(await runner("git", ["checkout", "-b", newBranch, `origin/${defaultBranch}`], cwd)).success) {
     return { status: "not-attempted", reason: "checkout-failed" };
   }
 
@@ -124,28 +135,28 @@ export const openWorkflowPullRequest = async (params: {
   // push lands we keep the branch so the user can still create the PR by
   // hand from the remote.
   const restoreToPreviousBranch = async (deleteNewBranch: boolean): Promise<void> => {
-    await run("git", ["checkout", previousBranch], cwd);
-    if (deleteNewBranch) await run("git", ["branch", "-D", newBranch], cwd);
+    await runner("git", ["checkout", previousBranch], cwd);
+    if (deleteNewBranch) await runner("git", ["branch", "-D", newBranch], cwd);
   };
 
   const workflowRelative = path.relative(cwd, workflowPath);
 
-  if (!(await run("git", ["add", "--", workflowRelative], cwd)).success) {
+  if (!(await runner("git", ["add", "--", workflowRelative], cwd)).success) {
     await restoreToPreviousBranch(true);
     return { status: "not-attempted", reason: "git-add-failed" };
   }
 
-  if (!(await run("git", ["commit", "-m", commitMessage], cwd)).success) {
+  if (!(await runner("git", ["commit", "-m", commitMessage], cwd)).success) {
     await restoreToPreviousBranch(true);
     return { status: "not-attempted", reason: "git-commit-failed" };
   }
 
-  if (!(await run("git", ["push", "-u", "origin", newBranch], cwd)).success) {
+  if (!(await runner("git", ["push", "-u", "origin", newBranch], cwd)).success) {
     await restoreToPreviousBranch(true);
     return { status: "not-attempted", reason: "git-push-failed" };
   }
 
-  const prCreate = await run(
+  const prCreate = await runner(
     "gh",
     [
       "pr",
@@ -176,14 +187,17 @@ export const openWorkflowPullRequest = async (params: {
 // `"not-attempted"` and the file should still land in their next commit
 // instead of sitting as an orphan untracked path. Returns whether the stage
 // actually happened.
-export const stageWorkflowFile = async (params: { workflowPath: string }): Promise<boolean> => {
+export const stageWorkflowFile = async (
+  params: { workflowPath: string },
+  runner: CommandRunner = run,
+): Promise<boolean> => {
   const workflowPath = path.resolve(params.workflowPath);
-  const repoRootProbe = await run(
+  const repoRootProbe = await runner(
     "git",
     ["rev-parse", "--show-toplevel"],
     path.dirname(workflowPath),
   );
   if (!repoRootProbe.success) return false;
   const workflowRelative = path.relative(repoRootProbe.stdout, workflowPath);
-  return (await run("git", ["add", "--", workflowRelative], repoRootProbe.stdout)).success;
+  return (await runner("git", ["add", "--", workflowRelative], repoRootProbe.stdout)).success;
 };

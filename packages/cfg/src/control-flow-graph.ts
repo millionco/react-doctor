@@ -1,7 +1,7 @@
-import type { EsTreeNode } from "../utils/es-tree-node.js";
-import { isAstNode } from "../utils/is-ast-node.js";
-import { isFunctionLike } from "../utils/is-function-like.js";
-import { isNodeOfType } from "../utils/is-node-of-type.js";
+import type { EsTreeNode } from "./ast/es-tree-node.js";
+import { isAstNode } from "./ast/is-ast-node.js";
+import { isFunctionLike } from "./ast/is-function-like.js";
+import { isNodeOfType } from "./ast/is-node-of-type.js";
 
 // Per-function CFG. Mirrors the subset of `oxc_cfg` we need to answer:
 // "Is this AST node guaranteed to execute on every call to its

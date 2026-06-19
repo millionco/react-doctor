@@ -8,7 +8,7 @@ import type { Rule } from "../plugin/utils/rule.js";
 import type { RuleContext } from "../plugin/utils/rule-context.js";
 import type { RuleVisitors } from "../plugin/utils/rule-visitors.js";
 import { analyzeScopes } from "../plugin/semantic/scope-analysis.js";
-import { analyzeControlFlow } from "../plugin/semantic/control-flow-graph.js";
+import { analyzeControlFlow } from "@react-doctor/cfg";
 
 export interface RunRuleOptions {
   filename?: string;

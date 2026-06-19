@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { analyzeControlFlow } from "../plugin/semantic/control-flow-graph.js";
-import type { ControlFlowAnalysis } from "../plugin/semantic/control-flow-graph.js";
+import { analyzeControlFlow } from "../src/control-flow-graph.js";
+import type { ControlFlowAnalysis } from "../src/control-flow-graph.js";
 import { attachParentReferences } from "./attach-parent-references.js";
 import { parseFixture } from "./parse-fixture.js";
-import { isAstNode } from "../plugin/utils/is-ast-node.js";
-import type { EsTreeNode } from "../plugin/utils/es-tree-node.js";
+import { isAstNode } from "../src/ast/is-ast-node.js";
+import type { EsTreeNode } from "../src/ast/es-tree-node.js";
 
 // A control-flow node addressed by the name of a marker call in the
 // fixture, e.g. `acquire()` is `"acquire"`. When a fixture calls the same

@@ -1,5 +1,5 @@
 import type { ReportDescriptor } from "./report-descriptor.js";
-import type { ControlFlowAnalysis } from "../semantic/control-flow-graph.js";
+import type { ControlFlowAnalysis } from "@react-doctor/cfg";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 
 // The "base" context the host (oxlint at runtime, ESLint via the

@@ -6,8 +6,8 @@ import type { HostRule } from "./rule-plugin.js";
 import type { RuleVisitors } from "./rule-visitors.js";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
-import { analyzeControlFlow } from "../semantic/control-flow-graph.js";
-import type { ControlFlowAnalysis } from "../semantic/control-flow-graph.js";
+import { analyzeControlFlow } from "@react-doctor/cfg";
+import type { ControlFlowAnalysis } from "@react-doctor/cfg";
 
 // Wraps a rule so `context.scopes` and `context.cfg` exist at runtime
 // even when oxlint's host context doesn't pre-build them. We build the

@@ -1,4 +1,4 @@
-import { runCfgCases } from "../../test-utils/run-cfg.js";
+import { runCfgCases } from "./run-cfg.js";
 
 // Expression-level control flow — the CFG lowers a ternary's arms, a
 // `&&`/`||`/`??` right operand, and a logical assignment's RHS into their own

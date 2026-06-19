@@ -59,6 +59,25 @@ importers:
         specifier: ^25.6.0
         version: 25.6.0
 
+  packages/browser:
+    dependencies:
+      axe-core:
+        specifier: ^4.10.2
+        version: 4.12.1
+      playwright-core:
+        specifier: ^1.49.1
+        version: 1.60.0
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      react-devtools-inline:
+        specifier: ^6.1.5
+        version: 6.1.5
+
   packages/core:
     dependencies:
       '@effect/platform-node-shared':
@@ -107,6 +126,12 @@ importers:
       '@types/semver':
         specifier: ^7.7.1
         version: 7.7.1
+
+  packages/debug:
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
 
   packages/deslop-cli:
     dependencies:
@@ -254,9 +279,15 @@ importers:
       '@react-doctor/api':
         specifier: workspace:*
         version: link:../api
+      '@react-doctor/browser':
+        specifier: workspace:*
+        version: link:../browser
       '@react-doctor/core':
         specifier: workspace:*
         version: link:../core
+      '@react-doctor/debug':
+        specifier: workspace:*
+        version: link:../debug
       '@react-doctor/language-server':
         specifier: workspace:*
         version: link:../language-server
@@ -275,6 +306,10 @@ importers:
       ora:
         specifier: ^9.4.0
         version: 9.4.0
+    optionalDependencies:
+      playwright-core:
+        specifier: ^1.49.1
+        version: 1.60.0
 
   packages/vscode-react-doctor:
     dependencies:
@@ -2720,6 +2755,10 @@ packages:
   atomically@2.1.1:
     resolution: {integrity: sha512-P4w9o2dqARji6P7MHprklbfiArZAWvo07yW7qs3pdljb3BWr12FIB7W+p0zJiuiVsUpRO0iZn1kFFcpPegg0tQ==}
 
+  axe-core@4.12.1:
+    resolution: {integrity: sha512-s7iGf5GaVMxEG0ENN9x+xTr7GFZCb1ZP/1uATUpCEK2X78nDB3RwbtFCo9pGAf9ru+VwoQ464DkaLEeRM08wJA==}
+    engines: {node: '>=4'}
+
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
 
@@ -3551,6 +3590,11 @@ packages:
     resolution: {integrity: sha512-xhcb4yHu9sM/G7foGzoLtXYcC0zHEaOXXjRKhGup0fw78Nf2Tkiapv4EQyMzrbcmQPsllAI7DbFY2UT7PlI9Pg==}
     hasBin: true
 
+  playwright-core@1.60.0:
+    resolution: {integrity: sha512-9bW6zvX/m0lEbgTKJ6YppOKx8H3VOPBMOCFh2irXFOT4BbHgrx5hPjwJYLT40Lu+4qtD36qKc/Hn56StUW57IA==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   pngjs@7.0.0:
     resolution: {integrity: sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==}
     engines: {node: '>=14.19.0'}
@@ -3595,6 +3639,9 @@ packages:
 
   queue-microtask@1.2.3:
     resolution: {integrity: sha512-NuaNSa6flKT5JaSYQzJok04JzTL1CA6aGhv5rfLW3PgqA+M2ChpZQnAC8h8i4ZFkBS8X5RqkDBHA7r4hej3K9A==}
+
+  react-devtools-inline@6.1.5:
+    resolution: {integrity: sha512-8FbBqZrOk4k4uWgkDNj7CVb975oKOMuPYZMQi4UHVW1RhbnEFOVZ7cdKvv6tbzbhy2D1aFwfj1T58atSoedEKQ==}
 
   react-dom@19.2.5:
     resolution: {integrity: sha512-J5bAZz+DXMMwW/wV3xzKke59Af6CHY7G4uYLN1OvBcKEsWOs4pQExj86BBKamxl/Ik5bx9whOrvBlSDfWzgSag==}
@@ -3694,6 +3741,10 @@ packages:
     resolution: {integrity: sha512-g9Q1haeby36OSStwb4ntCGGGaKsaVSjQ68fBxoQcutl5fS1vuY18H3wSt3jFyFtrkx+Kz0V1G85A4MyAdDMi2Q==}
     engines: {node: '>=8'}
 
+  source-map-js@0.6.2:
+    resolution: {integrity: sha512-/3GptzWzu0+0MBQFrDKzw/DvvMTUORvgY6k6jd/VS6iCR4RDTKWH6v6WPwQoUO8667uQEf9Oe38DxAYWY5F/Ug==}
+    engines: {node: '>=0.10.0'}
+
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
@@ -3704,6 +3755,10 @@ packages:
   source-map@0.6.1:
     resolution: {integrity: sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==}
     engines: {node: '>=0.10.0'}
+
+  sourcemap-codec@1.4.8:
+    resolution: {integrity: sha512-9NykojV5Uih4lgo5So5dtw+f0JgJX30KCNI8gwhz2J9A15wD0Ml6tjHKwf6fTSa6fAdVBdZeNOs9eJ71qCk8vA==}
+    deprecated: Please use @jridgewell/sourcemap-codec instead
 
   spawndamnit@3.0.1:
     resolution: {integrity: sha512-MmnduQUuHCoFckZoWnXsTg7JaiLBJrKFj9UI2MbRPGaJeVpsLcVBu6P/IGZovziM/YBsellCmsprgNA+w0CzVg==}
@@ -5753,6 +5808,8 @@ snapshots:
       stubborn-fs: 2.0.0
       when-exit: 2.1.5
 
+  axe-core@4.12.1: {}
+
   balanced-match@1.0.2: {}
 
   balanced-match@4.0.4: {}
@@ -6697,6 +6754,8 @@ snapshots:
     dependencies:
       pngjs: 7.0.0
 
+  playwright-core@1.60.0: {}
+
   pngjs@7.0.0: {}
 
   postcss@8.4.31:
@@ -6731,6 +6790,11 @@ snapshots:
   quansync@0.2.11: {}
 
   queue-microtask@1.2.3: {}
+
+  react-devtools-inline@6.1.5:
+    dependencies:
+      source-map-js: 0.6.2
+      sourcemap-codec: 1.4.8
 
   react-dom@19.2.5(react@19.2.5):
     dependencies:
@@ -6867,6 +6931,8 @@ snapshots:
 
   slash@3.0.0: {}
 
+  source-map-js@0.6.2: {}
+
   source-map-js@1.2.1: {}
 
   source-map-support@0.5.21:
@@ -6877,6 +6943,8 @@ snapshots:
 
   source-map@0.6.1:
     optional: true
+
+  sourcemap-codec@1.4.8: {}
 
   spawndamnit@3.0.1:
     dependencies:

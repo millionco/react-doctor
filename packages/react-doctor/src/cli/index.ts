@@ -1,6 +1,19 @@
 import { Command, Option } from "commander";
 import { CANONICAL_GITHUB_URL, highlighter } from "@react-doctor/core";
 import { flushSentry, initializeSentry } from "../instrument.js";
+import {
+  browserAuditAction,
+  browserConsoleAction,
+  browserEvalAction,
+  browserNetworkAction,
+  browserOpenAction,
+  browserPerfAction,
+  browserReportAction,
+  browserScreenshotAction,
+  browserSnapshotAction,
+} from "./commands/browser.js";
+import { DEFAULT_HOST } from "@react-doctor/debug";
+import { debugServeAction } from "./commands/debug.js";
 import { inspectAction } from "./commands/inspect.js";
 import { installAction } from "./commands/install.js";
 import {
@@ -23,6 +36,7 @@ import { isDebugFlagEnabled } from "./utils/is-debug-flag.js";
 import { isExpectedUserError } from "./utils/is-expected-user-error.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
 import { normalizeHelpInvocation } from "./utils/normalize-help-command.js";
+import { parseViewport } from "./utils/parse-viewport.js";
 import { printDebugTrace } from "./utils/print-debug-trace.js";
 import { assertNoRemovedFlags } from "./utils/removed-cli-flags.js";
 import { reportErrorToSentry } from "./utils/report-error.js";
@@ -219,6 +233,115 @@ program
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .addHelpText("after", renderInstallHelpEpilog)
   .action(installAction);
+
+const browser = program
+  .command("browser")
+  .description(
+    "Drive a real browser for the debug and design jobs (attaches to your running Chrome over CDP, launches one only as a fallback)",
+  );
+
+// Every browser subcommand attaches the same way, so they share the connection flags.
+const withConnectionOptions = (command: Command): Command =>
+  command
+    .option("--cdp <endpoint>", "CDP endpoint to attach to (default http://127.0.0.1:9222)")
+    .option("--no-launch", "fail instead of launching Chrome when no attach target exists");
+
+// Commands that render or measure the page also accept a one-shot emulated
+// viewport (e.g. a phone). It's applied via a CDP override that clears when the
+// command ends, so it never resizes the user's real window — which is why `open`
+// (whose job is to leave a persistent page behind) does not take it.
+const withRenderOptions = (command: Command): Command =>
+  withConnectionOptions(command).addOption(
+    new Option(
+      "--viewport <size>",
+      "emulate a viewport for this command, WIDTHxHEIGHT (e.g. 390x844)",
+    ).argParser(parseViewport),
+  );
+
+withConnectionOptions(
+  browser
+    .command("open <url>")
+    .description(
+      "Open a URL and keep the page, with the React DevTools profiler injected for `browser eval` (window.__REACT_PERF__)",
+    ),
+).action(browserOpenAction);
+
+withRenderOptions(
+  browser
+    .command("eval <expression>")
+    .description(
+      "Run an expression with the Playwright `page` in scope, e.g. 'page.locator(\"text=Login\").click()'",
+    ),
+).action(browserEvalAction);
+
+withRenderOptions(
+  browser
+    .command("snapshot")
+    .description("Print the page's accessibility tree (a stable view of what is rendered)"),
+).action(browserSnapshotAction);
+
+withRenderOptions(
+  browser
+    .command("screenshot")
+    .description("Save a screenshot of the page")
+    .option("--out <path>", "output file path (default react-doctor-screenshot.png)"),
+).action(browserScreenshotAction);
+
+withRenderOptions(
+  browser
+    .command("audit [url]")
+    .description("Run an accessibility audit (axe-core) on the page or a URL"),
+).action(browserAuditAction);
+
+withRenderOptions(
+  browser
+    .command("console [url]")
+    .description("Capture console output and page errors during a load (reloads if no URL)"),
+).action(browserConsoleAction);
+
+withRenderOptions(
+  browser
+    .command("network [url]")
+    .description("Capture network requests during a load, flagging failures (reloads if no URL)"),
+).action(browserNetworkAction);
+
+withRenderOptions(
+  browser
+    .command("perf [url]")
+    .description(
+      "Capture long animation frames (jank) with per-script attribution, plus LCP/CLS (reloads if no URL)",
+    ),
+).action(browserPerfAction);
+
+withRenderOptions(
+  browser
+    .command("report [url]")
+    .description(
+      "Capture console, network, performance, and accessibility in a single load (reloads if no URL)",
+    ),
+).action(browserReportAction);
+
+const debug = program
+  .command("debug")
+  .description("Runtime debugging tools for the debug job (NDJSON logging server)");
+
+// `serve` is the default so `react-doctor debug` starts the server. Agents use
+// `--daemon` to get the endpoint and a detached server in one shot.
+debug
+  .command("serve", { isDefault: true })
+  .description("Start the NDJSON logging server the debug job posts runtime logs to")
+  .option("-p, --port <number>", "port to listen on (default: random)", (value) =>
+    parseInt(value, 10),
+  )
+  .option("-H, --host <address>", "host to bind to", DEFAULT_HOST)
+  .option("-s, --session-id <id>", "session id (default: random hex)")
+  .option(
+    "-l, --log-path <path>",
+    "log file path (default: <tmpdir>/react-doctor-debug/debug-<sessionId>.log)",
+  )
+  .option("-d, --daemon", "start in the background, print the server info, then exit")
+  .option("--json", "print the server info as one JSON line (for agents)")
+  .action(debugServeAction);
 
 program
   .command("version")

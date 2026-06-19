@@ -99,12 +99,39 @@ const WHY_FLAG_SPEC: CliFlagSpec = {
   shortOptionsWithRequiredValues: new Set(["-c"]),
 };
 
+// Union of every flag across the `browser` subcommands (open / eval / snapshot /
+// screenshot / audit / console / network / perf / report). The sub-subcommand
+// name and any URL / expression positional pass through untouched; only these
+// options need to survive the pre-parse strip so Commander can route them —
+// without this, `--cdp <endpoint>` is dropped and its value leaks in as a stray
+// positional.
+const BROWSER_FLAG_SPEC: CliFlagSpec = {
+  longOptionsWithoutValues: new Set(["--help", "--no-launch"]),
+  longOptionsWithRequiredValues: new Set(["--cdp", "--out", "--viewport"]),
+  longOptionsWithOptionalValues: new Set(),
+  shortOptionsWithoutValues: new Set(["-h"]),
+  shortOptionsWithRequiredValues: new Set(),
+};
+
+// `debug serve` flags. The `serve` subcommand name passes through as a non-flag
+// token; only these options need to survive the pre-parse strip so Commander
+// can route them (without it the ROOT spec drops `--port`, `--daemon`, …).
+const DEBUG_FLAG_SPEC: CliFlagSpec = {
+  longOptionsWithoutValues: new Set(["--color", "--daemon", "--help", "--json", "--no-color"]),
+  longOptionsWithRequiredValues: new Set(["--host", "--log-path", "--port", "--session-id"]),
+  longOptionsWithOptionalValues: new Set(),
+  shortOptionsWithoutValues: new Set(["-d", "-h"]),
+  shortOptionsWithRequiredValues: new Set(["-H", "-l", "-p", "-s"]),
+};
+
 const COMMAND_FLAG_SPECS = new Map<string, CliFlagSpec>([
   ["install", INSTALL_FLAG_SPEC],
   ["setup", INSTALL_FLAG_SPEC],
   ["version", VERSION_FLAG_SPEC],
   ["rules", RULES_FLAG_SPEC],
   ["why", WHY_FLAG_SPEC],
+  ["browser", BROWSER_FLAG_SPEC],
+  ["debug", DEBUG_FLAG_SPEC],
 ]);
 
 const isFlagLike = (argument: string): boolean => argument.startsWith("-") && argument !== "-";

@@ -1,0 +1,26 @@
+{
+  "name": "@react-doctor/debug",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Internal: React Doctor's logging server for the debug job. A local HTTP server that collects runtime logs as NDJSON, so the agent can post them from instrumented code, read them back, and clear them between reproductions.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.13.0"
+  }
+}

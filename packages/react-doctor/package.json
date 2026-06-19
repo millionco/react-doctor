@@ -74,13 +74,18 @@
   },
   "devDependencies": {
     "@react-doctor/api": "workspace:*",
+    "@react-doctor/browser": "workspace:*",
     "@react-doctor/core": "workspace:*",
+    "@react-doctor/debug": "workspace:*",
     "@react-doctor/language-server": "workspace:*",
     "@types/babel__code-frame": "^7.27.0",
     "@types/prompts": "^2.4.9",
     "@xterm/headless": "^6.0.0",
     "commander": "^14.0.3",
     "ora": "^9.4.0"
+  },
+  "optionalDependencies": {
+    "playwright-core": "^1.49.1"
   },
   "engines": {
     "node": "^20.19.0 || >=22.13.0"

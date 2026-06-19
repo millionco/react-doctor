@@ -58,6 +58,23 @@ const copySkillsToDist = () => {
   }
 };
 
+// The React-profiler init script is a prebuilt browser-only asset, not JS the
+// CLI bundle imports. @react-doctor/browser is inlined into dist/cli.js, so its
+// session resolves the asset relative to its own output — which after bundling
+// is dist/cli.js. Copy it next to the CLI bundle so that path resolves in the
+// published tarball. (`dist/**/*.js` in package.json "files" then ships it.)
+const copyBrowserInjectToDist = () => {
+  const injectSource = path.resolve(packageRoot, "../browser/dist/inject");
+  const injectTarget = path.resolve(packageRoot, "dist/inject");
+  if (!fs.existsSync(injectSource)) {
+    throw new Error(
+      `Browser inject asset missing at ${injectSource}; build @react-doctor/browser first.`,
+    );
+  }
+  fs.rmSync(injectTarget, { recursive: true, force: true });
+  fs.cpSync(injectSource, injectTarget, { recursive: true });
+};
+
 export default defineConfig({
   pack: [
     {
@@ -77,6 +94,14 @@ export default defineConfig({
           // and resolves native/optional deps via require() at runtime;
           // keep it external so those lookups run untouched.
           "@sentry/node",
+          // playwright-core (a browser engine) backs only the debug and design
+          // jobs and is reached lazily through @react-doctor/browser's dynamic
+          // import, so keep it external — never inlined into the CLI's hot path.
+          // @react-doctor/browser itself is a thin wrapper, so it's bundled; that
+          // lets the published CLI load it without it being a runtime dependency (it
+          // is private), while playwright-core ships as an optional dependency
+          // installed only when present.
+          "playwright-core",
           "agent-install",
           // Config loading/editing: jiti (TS/JS config eval) + confbox
           // (JSONC parse) power the loader in @react-doctor/core (bundled
@@ -139,6 +164,7 @@ export default defineConfig({
       hooks: {
         "build:done": () => {
           copySkillsToDist();
+          copyBrowserInjectToDist();
         },
       },
     },

@@ -63,7 +63,7 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
     const migrationBucket = migrationScaleBuckets.get(ruleKey);
     if (migrationBucket) {
       lines.push(
-        `   Migration-scale (${migrationBucket.fileCount} files): fix a representative sample, confirm the recipe holds, and get the code owner's sign-off before sweeping the rest in one pass.`,
+        `   Migration-scale (${migrationBucket.fileCount} files): fix a representative sample, confirm the recipe holds, and get the code owner's sign-off before changing the rest in one pass.`,
       );
     }
   });
@@ -98,7 +98,7 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
       .map((bucket) => `${bucket.title} (${bucket.fileCount} files)`)
       .join(", ");
     lines.push(
-      `Some of the rest are migration-scale (span many files): ${ruleSummaries}. For each, fix a representative sample, confirm the recipe holds, and get the code owner's sign-off before sweeping the rest in one pass.`,
+      `Some of the rest are migration-scale (span dozens of files): ${ruleSummaries}. For each, fix a representative sample, confirm the recipe holds, and get the code owner's sign-off before changing the rest in one pass.`,
       "",
     );
   }

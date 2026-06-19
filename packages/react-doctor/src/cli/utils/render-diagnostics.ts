@@ -528,7 +528,7 @@ export const buildMigrationScaleAdvisoryLines = (
 
   const shownBuckets = buckets.slice(0, TOP_ERRORS_DISPLAY_COUNT);
   const lines: string[] = [
-    `  ${highlighter.warn("⚠")} ${highlighter.bold("Migration-scale change")} ${highlighter.dim("— sample before you sweep")}`,
+    `  ${highlighter.warn("⚠")} ${highlighter.bold("Migration-scale change")}${highlighter.dim(": sample before you sweep")}`,
     ...shownBuckets.map(formatMigrationBucketLine),
   ];
 
@@ -542,7 +542,7 @@ export const buildMigrationScaleAdvisoryLines = (
   }
 
   const guidance =
-    "These are broad, mechanical sweeps. Fix a representative few first, confirm the recipe holds, then get the code owner's sign-off before changing the rest in one pass — a fix this wide is hard to review and easy to get subtly wrong everywhere at once.";
+    "Fixing all of them at once is hard to review and prone to subtle mistakes across the whole repo. Fix a representative few first and confirm the recipe holds. Then get the code owner's sign-off before changing the rest.";
   for (const guidanceLine of wrapTextToWidth(
     guidance,
     resolveMeasureWidth(TOP_ERROR_DETAIL_INDENT.length),

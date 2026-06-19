@@ -1,0 +1,93 @@
+packages/core/src/runners/oxlint/resolve-toolchain-versions.ts
+  s_b48f74b59251fc::t_bee2a007fadd2f 1-36
+packages/core/src/constants.ts
+  s_b48f74b59251fc::t_fc59588bf66686 490-509
+packages/core/tests/file-lint-cache.test.ts
+  s_b48f74b59251fc::t_7fba38f94ff4f0 1-155
+packages/react-doctor/tests/run-oxlint/file-lint-cache.test.ts
+  s_b48f74b59251fc::t_207e24bfe5cb44 1-160,164-182
+  s_b48f74b59251fc::t_e79439de927b18 161-163
+packages/core/src/run-oxlint.ts
+  s_b48f74b59251fc::t_ce7a3a857d9d55 228,240
+  s_b48f74b59251fc::t_08263b01b3a28e 24,26
+  s_b48f74b59251fc::t_4f3e17d569e7d2 68-81
+  s_b48f74b59251fc::t_b3db6bb371d9ed 259-262,267,282,285-293,302-445
+  s_b48f74b59251fc::t_47eb9aceabbc13 185-186
+  s_b48f74b59251fc::t_7f1d7592a79250 12,14,16
+.changeset/per-file-lint-cache.md
+  s_b48f74b59251fc::t_92d31007fd4319 1-6,8-11
+  s_b48f74b59251fc::t_e79439de927b18 7
+packages/core/src/run-inspect.ts
+  s_b48f74b59251fc::t_b324221d56be52 410-413
+  s_b48f74b59251fc::t_08cdb347b463a6 164-171
+  s_b48f74b59251fc::t_c8275fa34b59c0 588-589
+  s_b48f74b59251fc::t_54975ad254b6df 435-438
+packages/core/src/types/inspect.ts
+  s_b48f74b59251fc::t_83e169b276d340 44-50
+packages/core/src/utils/fail-open-read-json.ts
+  s_b48f74b59251fc::t_3ed71b22a3d3a8 1-13
+packages/core/src/utils/resolve-react-doctor-cache-dir.ts
+  s_b48f74b59251fc::t_7bf80b37a1de05 1-24
+packages/core/src/utils/atomic-write-json.ts
+  s_b48f74b59251fc::t_9a8031d0ff68d5 1-17
+packages/core/src/services/linter.ts
+  s_b48f74b59251fc::t_a0d6585cb03dd4 115
+  s_b48f74b59251fc::t_95bc18c74f2f77 134-135
+  s_b48f74b59251fc::t_6c47c55e90ea69 8-13
+  s_b48f74b59251fc::t_3f9ff5bfeff6ae 47
+packages/core/tests/compute-ruleset-hash.test.ts
+  s_b48f74b59251fc::t_6851d37c077980 84-86
+  s_b48f74b59251fc::t_59c9da134588f5 1-32,37-83,87-124
+  s_b48f74b59251fc::t_e79439de927b18 33-36
+packages/react-doctor/src/inspect.ts
+  s_b48f74b59251fc::t_5724ee59ecf1e2 731-732
+  s_b48f74b59251fc::t_e79439de927b18 881-883
+  s_b48f74b59251fc::t_277ecd86ce84a1 708-709
+  s_b48f74b59251fc::t_83405b42f18d30 803-804
+  s_b48f74b59251fc::t_f399a4f16b50f1 855-856
+  s_b48f74b59251fc::t_1a9e07c9d00c13 752-759
+packages/core/tests/cross-file-rule-ids.test.ts
+  s_b48f74b59251fc::t_ba697591bc8f2d 1-49,51-139
+  s_b48f74b59251fc::t_e79439de927b18 50
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_b48f74b59251fc::t_e9348a9d15e98b 189-197
+packages/core/src/utils/hash-file-contents.ts
+  s_b48f74b59251fc::t_bfbfdb0db51372 1-15
+packages/core/src/refs.ts
+  s_b48f74b59251fc::t_295740e9a658ab 74-102
+packages/oxlint-plugin-react-doctor/src/plugin/constants/cross-file-rule-ids.ts
+  s_b48f74b59251fc::t_bca828ed5faf69 1-25
+packages/core/src/runners/oxlint/file-lint-cache.ts
+  s_b48f74b59251fc::t_e79439de927b18 87
+  s_b48f74b59251fc::t_d358c8f1d1e833 47,49-53,57-58
+  s_b48f74b59251fc::t_c547f6e2b160ad 1-12,14-46,48,54-56,59-86,88-107,110-113,115-117,124-131
+  s_b48f74b59251fc::t_fe5c63be801193 109
+  s_b48f74b59251fc::t_5ba23e21d04b90 13
+  s_b48f74b59251fc::t_2321e15a606af8 114
+  s_b48f74b59251fc::t_e0c5bee571c5be 118-123
+  s_b48f74b59251fc::t_75d067272a56a1 108
+packages/core/src/runners/oxlint/config.ts
+  s_b48f74b59251fc::t_6792dfa8fbbce7 39-51
+  s_b48f74b59251fc::t_913cef27b25922 3
+  s_b48f74b59251fc::t_73b8efda142d06 185-187,189-193
+  s_b48f74b59251fc::t_b569afbdfd8af7 147-151
+  s_b48f74b59251fc::t_058edc9bcd1e3d 119,121-126
+packages/oxlint-plugin-react-doctor/src/index.ts
+  s_b48f74b59251fc::t_30a9da0eac2977 23-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "0086de2e1d93befd73027bf9af606efea919a46c",
+  "prompts": {},
+  "sessions": {
+    "s_b48f74b59251fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "589c5f5d-2c87-412b-8fae-4bab844ce2bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

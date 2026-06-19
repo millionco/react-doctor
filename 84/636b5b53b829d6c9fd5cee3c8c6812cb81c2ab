@@ -1,0 +1,21 @@
+packages/core/package.json
+  s_40efd79f8a95a2::t_d8748a2dbb3bf9 35
+.changeset/core-typescript-5-range.md
+  s_40efd79f8a95a2::t_b45762bb745d12 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "84636b5b53b829d6c9fd5cee3c8c6812cb81c2ab",
+  "prompts": {},
+  "sessions": {
+    "s_40efd79f8a95a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17988b3b-d710-4c05-98ef-c62c9657f130",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

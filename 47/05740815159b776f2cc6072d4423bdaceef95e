@@ -1,0 +1,42 @@
+turbo.json
+  s_458afe03bb9c83::t_a04439b38816f1 22-23
+.github/workflows/react-doctor.yml
+  s_458afe03bb9c83::t_73f8f5cf63e324 15-18
+  s_458afe03bb9c83::t_b4439b61cc0a52 19,22
+  s_458afe03bb9c83::t_d07dc180b117ef 21
+  s_458afe03bb9c83::t_711b096ee2c4db 20
+  s_458afe03bb9c83::t_f63229b938b65b 40
+.github/workflows/ci.yml
+  s_458afe03bb9c83::t_f1b45dfa198d4f 21,24
+  s_458afe03bb9c83::t_5cd36ac5ba31f0 19-20,23
+  s_458afe03bb9c83::t_c16ad2d43cf233 18,22,29-32
+  s_458afe03bb9c83::t_cb8e4545ba96df 12-17,28
+  s_458afe03bb9c83::t_de94a5dfd7ab4f 55,59-60
+.github/workflows/code-quality.yml
+  s_458afe03bb9c83::t_02b38f6be1ef5f 17
+  s_458afe03bb9c83::t_dd28de1230ffa4 16,19
+  s_458afe03bb9c83::t_525352b1966b5b 18
+  s_458afe03bb9c83::t_f129a2cfeae7a8 12-15
+  s_458afe03bb9c83::t_996f4ce4009744 41,66
+.github/workflows/publish-any-commit.yml
+  s_458afe03bb9c83::t_8962034a796133 13
+  s_458afe03bb9c83::t_05e6e59e2b1ab7 11,14
+  s_458afe03bb9c83::t_fb22db4e1dc99f 12
+  s_458afe03bb9c83::t_659641ee7567f3 7-10,31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "4705740815159b776f2cc6072d4423bdaceef95e",
+  "prompts": {},
+  "sessions": {
+    "s_458afe03bb9c83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6599546f-81ca-4824-90e1-5145226c7639",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

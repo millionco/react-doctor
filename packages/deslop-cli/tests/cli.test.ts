@@ -15,11 +15,12 @@ import {
 import { hasCircularIssues, hasUnusedIssues } from "../src/format-result.js";
 import { resolveAnalyzeExitCode, runAnalyze } from "../src/run-analyze.js";
 import { validateRootDirectory } from "../src/utils/validate-root-directory.js";
+import { FIXTURES_DIR } from "./helpers/fixtures-dir.js";
 
 const testDirectory = resolve(fileURLToPath(import.meta.url), "..");
 const packageDirectory = resolve(testDirectory, "..");
-const simpleAppFixture = resolve(packageDirectory, "../deslop-js/tests/fixtures/simple-app");
-const cycleSimpleFixture = resolve(packageDirectory, "../deslop-js/tests/fixtures/cycle-simple");
+const simpleAppFixture = resolve(FIXTURES_DIR, "simple-app");
+const cycleSimpleFixture = resolve(FIXTURES_DIR, "cycle-simple");
 const cliEntryPath = resolve(packageDirectory, "src/cli.ts");
 
 const emptyScanResult: ScanResult = {

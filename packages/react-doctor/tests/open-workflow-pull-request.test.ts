@@ -86,6 +86,9 @@ describe("openWorkflowPullRequest", () => {
       runner,
     );
 
+    if (result.status === "not-attempted") {
+      throw new Error(`Expected pr-opened but got not-attempted: ${result.reason}`);
+    }
     expect(result.status).toBe("pr-opened");
     if (result.status === "pr-opened") {
       expect(result.url).toBe("https://github.com/owner/repo/pull/1");

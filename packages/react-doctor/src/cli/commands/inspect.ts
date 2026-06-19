@@ -16,6 +16,7 @@ import {
   toRelativePath,
 } from "@react-doctor/core";
 import { inspect } from "../../inspect.js";
+import { flushSentry } from "../../instrument.js";
 import type {
   DiffInfo,
   InspectResult,
@@ -30,6 +31,7 @@ import { getStagedSourceFiles, materializeStagedFiles } from "../utils/get-stage
 import type { InspectFlags } from "../utils/inspect-flags.js";
 import { filterDiagnosticsByCategories } from "../utils/filter-diagnostics-by-categories.js";
 import { handleError, handleUserError } from "../utils/handle-error.js";
+import { isDebugFlagEnabled } from "../utils/is-debug-flag.js";
 import { isExpectedUserError } from "../utils/is-expected-user-error.js";
 import { handoffToAgent } from "../utils/handoff-to-agent.js";
 import { migrateLegacyConfig } from "../utils/migrate-legacy-config.js";
@@ -725,6 +727,11 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     // issue" block so they don't become triage noise.
     const isUserError = isExpectedUserError(error);
     const sentryEventId = isUserError ? undefined : await reportErrorToSentry(error);
+    // `--debug` prints the run's trace id from the exit handler. A user error
+    // skips `reportErrorToSentry` (and its flush), so a trace recorded when the
+    // scan span started would never be delivered — flush here so the printed id
+    // resolves in Sentry. Cheap no-op for the already-flushed non-user path.
+    if (isDebugFlagEnabled()) await flushSentry();
     if (isJsonMode) {
       writeJsonErrorReport(error, sentryEventId);
       process.exitCode = 1;

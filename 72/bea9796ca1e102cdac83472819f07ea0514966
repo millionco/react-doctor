@@ -1,0 +1,21 @@
+packages/core/src/runners/oxlint/file-lint-cache.ts
+  s_b48f74b59251fc::t_b4e173cd28b49c 101,108-116,120,122-129
+packages/core/tests/file-lint-cache.test.ts
+  s_b48f74b59251fc::t_e0b961be544c4f 79-94
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "72bea9796ca1e102cdac83472819f07ea0514966",
+  "prompts": {},
+  "sessions": {
+    "s_b48f74b59251fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "589c5f5d-2c87-412b-8fae-4bab844ce2bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

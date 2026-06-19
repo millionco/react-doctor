@@ -108,7 +108,10 @@ export class Linter extends Context.Service<
             const concurrency = yield* OxlintConcurrency;
             const collectedFailures: string[] = [];
             const diagnostics = yield* Effect.tryPromise({
-              try: () =>
+              // `Effect.tryPromise` aborts this signal when the fiber is
+              // interrupted (e.g. the orchestrator's lint-phase timeout fires);
+              // thread it down so in-flight oxlint subprocesses are torn down.
+              try: (signal) =>
                 runOxlint({
                   rootDirectory: input.rootDirectory,
                   project: input.project,
@@ -127,6 +130,7 @@ export class Linter extends Context.Service<
                   spawnTimeoutMs,
                   outputMaxBytes,
                   concurrency,
+                  signal,
                 }),
               catch: ensureReactDoctorError,
             });

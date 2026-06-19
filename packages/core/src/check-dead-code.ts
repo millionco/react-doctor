@@ -30,6 +30,7 @@ interface CheckDeadCodeOptions {
   readonly deslopJsModuleSpecifier?: string;
   readonly createWorker?: DeadCodeWorkerFactory;
   readonly workerTimeoutMs?: number;
+  readonly signal?: AbortSignal;
 }
 
 interface DeadCodeWorkerInput {
@@ -440,6 +441,18 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
     ignorePatterns,
     deslopJsModuleSpecifier: options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js"),
   });
+  // When the surrounding Effect fiber is interrupted (e.g. the
+  // orchestrator's dead-code phase timeout fires), `Effect.tryPromise`
+  // aborts this signal. Terminate the worker immediately so the child
+  // process is SIGKILL'd at interruption time rather than lingering until
+  // its own in-worker timer expires.
+  options.signal?.addEventListener(
+    "abort",
+    () => {
+      void workerHandle.terminate?.();
+    },
+    { once: true },
+  );
   const rawResult = await runDeadCodeWorkerWithTimeout(
     workerHandle,
     options.workerTimeoutMs ?? DEAD_CODE_WORKER_TIMEOUT_MS,

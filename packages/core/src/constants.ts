@@ -295,6 +295,50 @@ export const NODE_COMPILE_CACHE_DIR_NAME = "node-compile-cache";
 
 export const DEAD_CODE_WORKER_TIMEOUT_MS = 120_000;
 
+// Cumulative wall-clock budget across ALL binary-split retries of one
+// batch pass. A pathological file recurses through ~log2(100)≈7
+// split levels, and each level re-waits a full OXLINT_SPAWN_TIMEOUT_MS;
+// without a cumulative cap that cascade can stall the scan for minutes.
+// 180 s bounds the whole cascade while leaving room for a few healthy
+// re-spawns at the upper levels.
+export const OXLINT_SPLIT_TOTAL_BUDGET_MS = 180_000;
+
+// Recursion-depth cap on the binary-split recovery — a belt to the
+// OXLINT_SPLIT_TOTAL_BUDGET_MS suspenders. A 100-file batch needs at
+// most ceil(log2(100))=7 levels to isolate a single offender; 8 leaves
+// one level of slack and still terminates the recursion deterministically
+// even if the budget clock is somehow not advancing.
+export const OXLINT_SPLIT_MAX_DEPTH = 8;
+
+// Whole-supply-chain-check cap. At ~45 deps / 8 concurrency × the 10 s
+// per-dependency Socket.dev timeout the nominal worst case is ≈57 s; the
+// 90 s budget absorbs a handful of slow sockets while still killing the
+// many-socket pileup that otherwise turns this phase into a multi-minute
+// hang (the dominant cause of slow scans in the field).
+export const SUPPLY_CHAIN_TOTAL_TIMEOUT_MS = 90_000;
+
+// Effect-side cap on the dead-code phase. Sits ABOVE the in-worker
+// DEAD_CODE_WORKER_TIMEOUT_MS (= 120 s) as a runtime-independent
+// backstop: if the worker's own timer is wedged (or the worker never
+// reports back), the Effect timeout still reclaims the phase.
+export const DEAD_CODE_PHASE_TIMEOUT_MS = 150_000;
+
+// Effect-side cap on the lint phase. Sits ABOVE the worst bounded split
+// cascade (OXLINT_SPLIT_TOTAL_BUDGET_MS plus scheduling overhead across
+// parallel workers) so a healthy-but-slow large repo finishes while a
+// truly wedged lint phase is still reclaimed.
+export const LINT_PHASE_TIMEOUT_MS = 300_000;
+
+// Overall scan deadline backstop. Catches everything the per-phase
+// timeouts don't bound — a wedged git invocation, a stuck filesystem
+// read, scoring — so no single scan can run unbounded. Sits comfortably
+// ABOVE the sum of the per-phase caps (supply-chain 90s + lint 5min +
+// dead-code 2.5min = 9min, run sequentially) plus discovery / git /
+// scoring overhead, so a scan that legitimately uses those budgets
+// degrades gracefully via the per-phase skips instead of hard-failing on
+// this deadline; only a genuinely wedged unbounded phase reaches it.
+export const SCAN_TOTAL_DEADLINE_MS = 900_000;
+
 // deslop's semantic pass builds a full TypeScript program and walks
 // every identifier through the type checker. On type-heavy projects
 // (large tRPC routers, Effect/Zod schemas, deep generics) the checker

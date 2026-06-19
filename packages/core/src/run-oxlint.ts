@@ -73,6 +73,12 @@ interface RunOxlintOptions {
    * exhaustion (see `spawnLintBatches`).
    */
   concurrency?: number;
+  /**
+   * Aborted when the orchestrator's lint-phase timeout fires; forwarded to
+   * `spawnLintBatches` so in-flight oxlint subprocesses are torn down instead
+   * of running on after the phase is abandoned.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -281,6 +287,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         spawnTimeoutMs,
         outputMaxBytes,
         concurrency: options.concurrency,
+        signal: options.signal,
       });
 
     writeOxlintConfig(configPath, buildConfig({ extendsPaths }));

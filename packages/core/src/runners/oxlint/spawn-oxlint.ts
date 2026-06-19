@@ -35,8 +35,19 @@ export const spawnOxlint = (
   // so the eval harness can override them via `Layer.succeed`.
   spawnTimeoutMs: number = DEFAULT_OXLINT_SPAWN_TIMEOUT_MS,
   outputMaxBytes: number = OXLINT_OUTPUT_MAX_BYTES,
+  // Aborted when the orchestrator's lint-phase timeout fires. Reclaims the
+  // in-flight oxlint child (and short-circuits one not yet spawned) so the
+  // bounded lint phase actually stops work instead of leaving subprocesses
+  // running until their own per-batch spawn timeout.
+  abortSignal?: AbortSignal,
 ): Promise<string> =>
   new Promise<string>((resolve, reject) => {
+    if (abortSignal?.aborted) {
+      reject(
+        new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: "lint phase aborted" }) }),
+      );
+      return;
+    }
     const child = spawn(nodeBinaryPath, args, {
       cwd: rootDirectory,
       env: SANITIZED_ENV,
@@ -50,7 +61,19 @@ export const spawnOxlint = (
       stdio: ["ignore", "pipe", "pipe"],
     });
 
+    const onAbort = () => {
+      child.kill("SIGKILL");
+      reject(
+        new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: "lint phase aborted" }) }),
+      );
+    };
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
+    // The signal is shared across every batch's spawn in one lint run, so
+    // each settle path must drop its listener or they accumulate.
+    const clearAbortListener = () => abortSignal?.removeEventListener("abort", onAbort);
+
     const timeoutHandle = setTimeout(() => {
+      clearAbortListener();
       child.kill("SIGKILL");
       reject(
         new ReactDoctorError({
@@ -96,10 +119,12 @@ export const spawnOxlint = (
 
     child.on("error", (error) => {
       clearTimeout(timeoutHandle);
+      clearAbortListener();
       reject(new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: error }) }));
     });
     child.on("close", (_code, signal) => {
       clearTimeout(timeoutHandle);
+      clearAbortListener();
       if (didKillForSize) {
         reject(
           new ReactDoctorError({

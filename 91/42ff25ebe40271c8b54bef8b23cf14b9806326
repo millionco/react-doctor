@@ -1,0 +1,22 @@
+packages/core/tests/compute-ruleset-hash.test.ts
+  s_b48f74b59251fc::t_de3c48dc4a341a 46,52-58,62-63,68-69,75-78,85,98-106,108,110,112,114-116
+  s_b48f74b59251fc::t_fbc69a93568e11 47-51,86,90
+packages/core/src/run-oxlint.ts
+  s_b48f74b59251fc::t_fbc69a93568e11 265-268,273-280,399
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "9142ff25ebe40271c8b54bef8b23cf14b9806326",
+  "prompts": {},
+  "sessions": {
+    "s_b48f74b59251fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "589c5f5d-2c87-412b-8fae-4bab844ce2bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

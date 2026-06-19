@@ -96,7 +96,9 @@ describe("openWorkflowPullRequest", () => {
       "gh auth status": succeed(""),
       "gh repo view --json defaultBranchRef --jq .defaultBranchRef.name": succeed("main"),
       "git rev-parse --abbrev-ref HEAD": succeed("main"),
-      "git status --porcelain": succeed("A  src/new-feature.ts\n?? .github/workflows/react-doctor.yml"),
+      "git status --porcelain": succeed(
+        "A  src/new-feature.ts\n?? .github/workflows/react-doctor.yml",
+      ),
     });
 
     const result = await openWorkflowPullRequest(

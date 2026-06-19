@@ -126,7 +126,9 @@ export const openWorkflowPullRequest = async (
 
   const newBranch = await findUniqueBranchName(cwd, runner);
 
-  if (!(await runner("git", ["checkout", "-b", newBranch, `origin/${defaultBranch}`], cwd)).success) {
+  if (
+    !(await runner("git", ["checkout", "-b", newBranch, `origin/${defaultBranch}`], cwd)).success
+  ) {
     return { status: "not-attempted", reason: "checkout-failed" };
   }
 

@@ -1,0 +1,19 @@
+.changeset/group-derived-state-fix-groups.md
+  s_d99d0bf15d8260::t_c83831a8d72f10 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "66133f883c4a138227b4a1440d8c399977abd0f3",
+  "prompts": {},
+  "sessions": {
+    "s_d99d0bf15d8260": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7a1ef3ed-8166-40d4-bcab-d7023bd764bc",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

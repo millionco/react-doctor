@@ -1,4 +1,3 @@
-import * as os from "node:os";
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -44,6 +43,7 @@ import {
   SupplyChainOverlapTimeoutMs,
 } from "./refs.js";
 import { hasDeadCodeOverlapHeadroom } from "./utils/has-dead-code-overlap-headroom.js";
+import { resolveAvailableMemoryBytes } from "./utils/resolve-available-memory-bytes.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
@@ -129,8 +129,8 @@ export interface InspectInput {
   /**
    * Set when this scan runs concurrently with sibling scans in one process
    * (the CLI's multi-project pool). Such a scan can't safely reason about the
-   * shared memory budget from its own `os.freemem()` reading — N concurrent
-   * scans each reading "plenty free" would each fork an 8 GB dead-code worker
+   * shared memory budget from its own available-memory reading — N concurrent
+   * scans each reading "plenty available" would each fork a dead-code worker
    * and sum past the single-scan budget — so the dead-code overlap memory gate
    * (`"auto"`) stays sequential for concurrent members. An explicit
    * `REACT_DOCTOR_DEAD_CODE_OVERLAP=on` override still wins. Defaults to `false`.
@@ -516,12 +516,15 @@ export const runInspect = <HooksR = never>(
     // ── Dead-code overlap plan (decided before lint so we can fork it) ──
     // Reachability is a whole-project property independent of lint output, so
     // dead-code can run DURING lint instead of strictly after. But overlapping
-    // the 8 GB dead-code child with up to MAX_SCAN_CONCURRENCY oxlint children
-    // SUMS their peak RSS — exactly the pressure the dead-code worker already
-    // OOMs under on type-heavy repos — so overlap is gated on a one-shot
-    // free-memory check (or forced via the DeadCodeOverlap knob). When the gate
-    // stays closed we fall back to the strictly-sequential collect below, with
-    // zero behavior change. `os.freemem()` is read once, here, at fork time.
+    // the dead-code child with up to MAX_SCAN_CONCURRENCY oxlint children SUMS
+    // their peak RSS — exactly the pressure the dead-code worker already OOMs
+    // under on type-heavy repos — so overlap is gated on a one-shot available-
+    // memory check (or forced via the DeadCodeOverlap knob). When the gate stays
+    // closed we fall back to the strictly-sequential collect below, with zero
+    // behavior change. `resolveAvailableMemoryBytes()` (Linux MemAvailable /
+    // macOS vm_stat reclaimable / cgroup-capped — NOT `os.freemem()`, which
+    // understates a Mac's headroom and kept this gate permanently closed) is
+    // read once, here, at fork time.
     //
     // Dead-code emits only `"warning"`-severity diagnostics (the `deslop`
     // plugin, all `Maintainability`); warnings show by default, so this
@@ -533,18 +536,21 @@ export const runInspect = <HooksR = never>(
       input.runDeadCode &&
       !isDiffMode &&
       (showWarnings || deadCodeMaySurfaceWhenWarningsHidden(resolvedConfig.config));
-    // The memory gate reads this scan's own `os.freemem()`, which can't see
-    // sibling scans in a concurrent batch — so a concurrent member never takes
-    // the gated ("auto") overlap (each would fork an 8 GB worker and sum past
-    // the budget). An explicit `"on"` override still wins for operators who own
-    // the box.
+    // The memory gate reads this scan's own available-memory snapshot, which
+    // can't see sibling scans in a concurrent batch — so a concurrent member
+    // never takes the gated ("auto") overlap (each would fork a dead-code worker
+    // and sum past the budget). An explicit `"on"` override still wins for
+    // operators who own the box.
     const deadCodeOverlapMode = yield* DeadCodeOverlap;
     const shouldOverlapDeadCode =
       shouldRunDeadCode &&
       deadCodeOverlapMode !== "off" &&
       (deadCodeOverlapMode === "on" ||
         (input.concurrentScan !== true &&
-          hasDeadCodeOverlapHeadroom({ workerCount: scanConcurrency, freeBytes: os.freemem() })));
+          hasDeadCodeOverlapHeadroom({
+            workerCount: scanConcurrency,
+            availableBytes: resolveAvailableMemoryBytes(),
+          })));
 
     // The dead-code collection, named once so it runs either forked (overlap)
     // or inline (sequential) — identical pipeline, identical failure Ref.

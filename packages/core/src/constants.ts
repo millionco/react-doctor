@@ -341,6 +341,17 @@ export const SCAN_TOTAL_DEADLINE_MS = 900_000;
 // the child's heap so those projects complete instead of crashing.
 export const DEAD_CODE_WORKER_MAX_OLD_SPACE_MB = 8192;
 
+// EXPECTED dead-code worker resident set, used by the overlap gate
+// (`hasDeadCodeOverlapHeadroom`) — distinct from the 8 GB
+// `--max-old-space-size` CEILING above, which the worker almost never reaches
+// (deslop's program build + import graph typically resides in ~1–2 GB; the
+// ceiling is a crash backstop for pathological type-heavy repos, not a sizing
+// estimate). Budgeting the gate against the 8 GB ceiling demanded ~14 GB free
+// and so NEVER opened on a 16 GB machine; budgeting against the expected RSS
+// lets the overlap fire whenever the box actually has the headroom, and the
+// in-worker timeout + fail-open dead-code path absorb the rare overshoot.
+export const DEAD_CODE_WORKER_RSS_ESTIMATE_MB = 2048;
+
 // Conservative per-oxlint-worker resident-set estimate, used ONLY by the
 // dead-code overlap memory gate (`hasDeadCodeOverlapHeadroom`). Each worker
 // holds its batch's ASTs (OXLINT_MAX_FILES_PER_BATCH files); 512 MiB is a

@@ -1,33 +1,38 @@
 import {
   BYTES_PER_MEGABYTE,
-  DEAD_CODE_WORKER_MAX_OLD_SPACE_MB,
+  DEAD_CODE_WORKER_RSS_ESTIMATE_MB,
   MEMORY_OVERLAP_SAFETY_MARGIN_MB,
   OXLINT_WORKER_RSS_ESTIMATE_MB,
 } from "../constants.js";
 
 interface DeadCodeOverlapHeadroomInput {
   readonly workerCount: number;
-  readonly freeBytes: number;
+  /**
+   * Allocatable memory in bytes — `resolveAvailableMemoryBytes()`, NOT
+   * `os.freemem()`. freemem counts only wired+free pages and understates a
+   * Mac's real headroom by gigabytes, which is why the gate never opened there.
+   */
+  readonly availableBytes: number;
 }
 
 /**
- * True when there is enough free memory to run the 8 GB-heap dead-code child
- * (`DEAD_CODE_WORKER_MAX_OLD_SPACE_MB`) alongside `workerCount` oxlint children
- * without risking the heap OOM the dead-code worker is already prone to on
- * type-heavy repos. Pure so the orchestrator decides once, at fork time, from a
- * single `os.freemem()` reading.
+ * True when there is enough ALLOCATABLE memory to run the dead-code child
+ * (expected RSS ≈ `DEAD_CODE_WORKER_RSS_ESTIMATE_MB`) alongside `workerCount`
+ * oxlint children, so the orchestrator can overlap the two phases — saturating
+ * CPU (lint workers) and memory (dead-code worker) at once — instead of running
+ * them sequentially. Pure; the orchestrator decides once, at fork time.
  *
- * The dead-code child's `--max-old-space-size` is a static ceiling unrelated to
- * available RAM, so a separate freemem-based gate is what makes overlapping it
- * with the lint pass safe: today the two phases run sequentially and their peak
- * RSS never co-resides. The estimate is intentionally generous (and the gate
- * fail-safe) — when free memory reads low, we stay sequential, which is exactly
- * today's behavior, so a closed gate carries no risk beyond the missed speedup.
+ * Budgets against the dead-code worker's EXPECTED resident set, not its 8 GB
+ * `--max-old-space-size` ceiling (which it almost never reaches): gating on the
+ * ceiling demanded ~14 GB free and never opened on a 16 GB box. The gate is
+ * fail-safe — when memory is genuinely tight it stays sequential (today's
+ * behavior, zero risk) — and the in-worker timeout + fail-open dead-code path
+ * absorb the rare case where the worker overshoots the estimate under overlap.
  */
 export const hasDeadCodeOverlapHeadroom = (input: DeadCodeOverlapHeadroomInput): boolean => {
   const estimatedPeakMegabytes =
     input.workerCount * OXLINT_WORKER_RSS_ESTIMATE_MB +
-    DEAD_CODE_WORKER_MAX_OLD_SPACE_MB +
+    DEAD_CODE_WORKER_RSS_ESTIMATE_MB +
     MEMORY_OVERLAP_SAFETY_MARGIN_MB;
-  return input.freeBytes >= estimatedPeakMegabytes * BYTES_PER_MEGABYTE;
+  return input.availableBytes >= estimatedPeakMegabytes * BYTES_PER_MEGABYTE;
 };

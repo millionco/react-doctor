@@ -26,10 +26,12 @@ import {
 } from "./constants.js";
 import {
   buildSortedRuleGroups,
+  findMigrationScaleBuckets,
   formatFixRecipeLine,
   formatLearnMoreLine,
   getSharedFixSiteCount,
 } from "./diagnostic-grouping.js";
+import type { RuleBlastRadius } from "./diagnostic-grouping.js";
 import { indentMultilineText } from "./indent-multiline-text.js";
 import { resolveMeasureWidth } from "./resolve-measure-width.js";
 import { wrapTextToWidth } from "./wrap-indented-text.js";
@@ -507,6 +509,55 @@ const buildOverflowSummaryLine = (
   return `  ${highlighter.dim("Run")} ${command} ${highlighter.dim("to list every error and warning")}`;
 };
 
+// One bucket's headline: the rule's title plus its blast radius. The site
+// count matches the `×N` badge the reader already saw on the rule, and the
+// file span is the part that makes it a migration rather than a quick fix.
+const formatMigrationBucketLine = (bucket: RuleBlastRadius): string =>
+  `${TOP_ERROR_DETAIL_INDENT}${bucket.title} ${highlighter.gray(`×${bucket.siteCount} across ${bucket.fileCount} files`)}`;
+
+// A parting heads-up for migration-scale buckets (a single rule spanning enough
+// files to be a project, not a quick fix). Empty for an ordinary scan, so it
+// only appears when fixing a rule everywhere is genuinely a sweep that needs
+// sampling + owner sign-off. Names the offending rule(s) so the advice is
+// concrete, then gives the why (review risk) and the next step (scope down).
+export const buildMigrationScaleAdvisoryLines = (
+  diagnostics: Diagnostic[],
+): ReadonlyArray<string> => {
+  const buckets = findMigrationScaleBuckets(diagnostics);
+  if (buckets.length === 0) return [];
+
+  const shownBuckets = buckets.slice(0, TOP_ERRORS_DISPLAY_COUNT);
+  const lines: string[] = [
+    `  ${highlighter.warn("⚠")} ${highlighter.bold("Migration-scale change")} ${highlighter.dim("— sample before you sweep")}`,
+    ...shownBuckets.map(formatMigrationBucketLine),
+  ];
+
+  const remainingBuckets = buckets.length - shownBuckets.length;
+  if (remainingBuckets > 0) {
+    lines.push(
+      highlighter.gray(
+        `${TOP_ERROR_DETAIL_INDENT}+${remainingBuckets} more ${remainingBuckets === 1 ? "rule" : "rules"} at this scale`,
+      ),
+    );
+  }
+
+  const guidance =
+    "These are broad, mechanical sweeps. Fix a representative few first, confirm the recipe holds, then get the code owner's sign-off before changing the rest in one pass — a fix this wide is hard to review and easy to get subtly wrong everywhere at once.";
+  for (const guidanceLine of wrapTextToWidth(
+    guidance,
+    resolveMeasureWidth(TOP_ERROR_DETAIL_INDENT.length),
+    { breakLongWords: false },
+  )) {
+    lines.push(highlighter.dim(`${TOP_ERROR_DETAIL_INDENT}${guidanceLine}`));
+  }
+
+  const command = highlighter.info("npx react-doctor@latest <path>");
+  lines.push(
+    `${TOP_ERROR_DETAIL_INDENT}${highlighter.dim("Scope it down one area at a time:")} ${command}`,
+  );
+  return lines;
+};
+
 // The exact rule keys surfaced in the top-errors block — the set the
 // score projection assumes you fix, so "fix the top N" matches what's
 // shown. Pass the same `rulePriority` the renderer uses so the projected
@@ -697,6 +748,7 @@ export const printDiagnostics = (
       buildOverviewHeaderLines(diagnostics),
       categoryLines,
       overflowLine ? [overflowLine] : [],
+      buildMigrationScaleAdvisoryLines(diagnostics),
     );
     // joinSections preserves the argument order, so the 1st start is the
     // detail block and the 4th is the category block (the header sits

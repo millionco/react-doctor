@@ -13,6 +13,7 @@ const AGENT_GUIDANCE_LINES = [
   "Run `npx react-doctor@latest --verbose --scope changed` before and after changes, plus relevant tests after each focused batch.",
   "When available, spawn subagents or isolated worktrees for independent rule families, then review and merge only the best safe fixes.",
   "Split unrelated, broad, or behavior-changing work into separate PRs/branches instead of one large cleanup.",
+  "When one rule spans many files (a migration-scale sweep), fix a representative sample first, confirm the recipe holds, and get the code owner's sign-off before sweeping the rest — don't mass-fix a broad pattern in one unreviewed pass.",
   "For confirmed issues that cannot be fixed now, create GitHub issues with the rule, file/line, confidence, impact, and proposed fix.",
   "If a fix needs an API, UX, or architecture decision, stop and ask before editing.",
 ] as const;

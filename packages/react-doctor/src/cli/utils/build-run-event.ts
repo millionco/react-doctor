@@ -5,6 +5,7 @@ import {
   summarizeDiagnostics,
 } from "@react-doctor/core";
 import type { BlockingLevel, InspectResult, ReactDoctorConfig } from "@react-doctor/core";
+import { buildRuleBlastRadii } from "./diagnostic-grouping.js";
 import { ACTION_INPUT_ENVIRONMENT_VARIABLES, detectRunnerOs } from "./is-ci-environment.js";
 import { summarizeRuleFirings } from "./record-scan-metrics.js";
 import { isValidBlockingLevel } from "./resolve-blocking-level.js";
@@ -139,6 +140,12 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     }
   }
 
+  // Widest-blast-radius rule: how many files the single most-spread rule
+  // touches (and its site count). Lets a query see how common migration-scale
+  // buckets are and calibrate MIGRATION_SCALE_RULE_FILE_COUNT — the threshold
+  // that fires the "sample before you sweep" advisory — against real scans.
+  const largestRuleBucket = buildRuleBlastRadii(result.diagnostics)[0] ?? null;
+
   let diagnosticsInTestFiles = 0;
   let diagnosticsInStoryFiles = 0;
   // Root-cause grouping rollup: how many distinct fix groups, and how many
@@ -175,6 +182,9 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     "diag.fixGroups": findingsPerFixGroup.size,
     "diag.fixGroupedFindings": fixGroupedFindings,
     topRule,
+    "migration.largestRuleBucketFiles": largestRuleBucket ? largestRuleBucket.fileCount : null,
+    "migration.largestRuleBucketSites": largestRuleBucket ? largestRuleBucket.siteCount : null,
+    "migration.largestRuleBucketRule": largestRuleBucket ? largestRuleBucket.ruleKey : null,
     scannedFileCount: result.scannedFileCount ?? null,
     elapsedMs: result.elapsedMilliseconds,
     scanPhaseMs: result.scanElapsedMilliseconds ?? null,

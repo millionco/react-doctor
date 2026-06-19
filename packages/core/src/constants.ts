@@ -393,6 +393,17 @@ export const FIX_GROUP_ID_LENGTH_CHARS = 16;
 // "Top N errors you should fix" header above the category breakdown.
 export const TOP_ERRORS_DISPLAY_COUNT = 3;
 
+// A single rule firing across this many distinct files is a migration, not a
+// quick fix: a mechanical sweep this wide is hard to review and easy to get
+// subtly wrong everywhere at once, so it warrants a sampled, owner-approved
+// rollout rather than a blind fix-all. Set above a normal review-sized PR
+// (the agent playbook caps a fix bucket near ~30 files) so the advisory means
+// "more than one PR's worth" and stays rare on ordinary repos. Files — not raw
+// site count — gauge the review burden, so the gate keys on a rule's blast
+// radius. Calibrate against the `migration.largestRuleBucketFiles` wide-event
+// attribute.
+export const MIGRATION_SCALE_RULE_FILE_COUNT = 40;
+
 // Source-context window rendered around each top-error site in the
 // inline code frame (lines above / below the offending line).
 export const CODE_FRAME_LINES_ABOVE = 1;

@@ -78,4 +78,26 @@ describe("buildHandoffPayload", () => {
     const directoryMatch = payload.match(/Full results for all 4 issues[^:]*: (\S+)/);
     if (directoryMatch) fs.rmSync(directoryMatch[1]!, { recursive: true, force: true });
   });
+
+  it("flags a migration-scale bucket with sample + sign-off guidance", () => {
+    const diagnostics: Diagnostic[] = [];
+    for (let fileIndex = 0; fileIndex < 45; fileIndex += 1) {
+      diagnostics.push(
+        makeDiagnostic({
+          rule: "react-compiler-no-manual-memoization",
+          title: "Manual memoization",
+          filePath: `src/components/widget-${fileIndex}.tsx`,
+          line: fileIndex + 1,
+        }),
+      );
+    }
+
+    const payload = buildHandoffPayload({ diagnostics, projectName: "demo" });
+
+    expect(payload).toContain("Migration-scale (45 files)");
+    expect(payload).toContain("get the code owner's sign-off");
+
+    const directory = payload.match(/Full results for all \d+ issues[^:]*: (\S+)/)![1]!;
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
 });

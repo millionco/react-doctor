@@ -116,6 +116,35 @@ describe("buildRunEventAttributes", () => {
     expect(attributes.actorAssociation).toBeUndefined();
     expect(attributes.runnerOs).toBeUndefined();
     expect(attributes.versionPin).toBeUndefined();
+    // Nothing fired -> no migration bucket to report (dropped, not "null").
+    expect(attributes["migration.largestRuleBucketFiles"]).toBeUndefined();
+    expect(attributes["migration.largestRuleBucketRule"]).toBeUndefined();
+  });
+
+  it("records the widest-blast-radius rule for migration-scale calibration", () => {
+    const diagnostics: Diagnostic[] = [];
+    for (let fileIndex = 0; fileIndex < 45; fileIndex += 1) {
+      diagnostics.push(
+        buildDiagnostic({
+          rule: "react-compiler-no-manual-memoization",
+          category: "Performance",
+          filePath: `src/components/widget-${fileIndex}.tsx`,
+        }),
+      );
+    }
+    // A noisier-by-sites but narrow rule must NOT win: blast radius is files.
+    diagnostics.push(
+      buildDiagnostic({ rule: "no-array-index-as-key", filePath: "src/list.tsx", line: 1 }),
+      buildDiagnostic({ rule: "no-array-index-as-key", filePath: "src/list.tsx", line: 2 }),
+    );
+
+    const attributes = buildRunEventAttributes(baseInput({ result: buildResult({ diagnostics }) }));
+
+    expect(attributes["migration.largestRuleBucketFiles"]).toBe(45);
+    expect(attributes["migration.largestRuleBucketSites"]).toBe(45);
+    expect(attributes["migration.largestRuleBucketRule"]).toBe(
+      "react-doctor/react-compiler-no-manual-memoization",
+    );
   });
 
   it("rolls up diagnostics by severity, rule, and category", () => {

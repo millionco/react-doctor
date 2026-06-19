@@ -3,6 +3,7 @@ import type { Diagnostic } from "@react-doctor/core";
 import { HANDOFF_MAX_FILES_PER_RULE } from "./constants.js";
 import {
   buildSortedRuleGroups,
+  findMigrationScaleBuckets,
   formatFixRecipeLine,
   getSharedFixSiteCount,
 } from "./diagnostic-grouping.js";
@@ -20,6 +21,9 @@ export interface HandoffPayloadInput {
 // than dumping every issue inline.
 export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
   const topGroups = buildSortedRuleGroups(input.diagnostics).slice(0, TOP_ERRORS_DISPLAY_COUNT);
+  const migrationScaleBuckets = new Map(
+    findMigrationScaleBuckets(input.diagnostics).map((bucket) => [bucket.ruleKey, bucket]),
+  );
 
   let outputDirectory: string | null = null;
   try {
@@ -56,6 +60,12 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
     }
     const remainingFiles = uniqueFiles.length - HANDOFF_MAX_FILES_PER_RULE;
     if (remainingFiles > 0) lines.push(`   - +${remainingFiles} more files`);
+    const migrationBucket = migrationScaleBuckets.get(ruleKey);
+    if (migrationBucket) {
+      lines.push(
+        `   Migration-scale (${migrationBucket.fileCount} files): fix a representative sample, confirm the recipe holds, and get the code owner's sign-off before sweeping the rest in one pass.`,
+      );
+    }
   });
 
   lines.push("");

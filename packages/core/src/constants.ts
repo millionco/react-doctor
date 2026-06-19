@@ -579,6 +579,16 @@ export const SOCKET_SCORE_SCALE = 100;
 // per-route rate limit.
 export const SUPPLY_CHAIN_FETCH_CONCURRENCY = 8;
 
+// Belt-and-suspenders wall-clock cap on the supply-chain check while it runs on
+// a background fiber overlapping the lint pass. `Effect.timeout` measures from
+// when the forked effect STARTS (at fork, before lint) — NOT from the join — so
+// this is sized generously above the worst-case healthy run (FETCH_TIMEOUT_MS ×
+// ceil(~45 deps / SUPPLY_CHAIN_FETCH_CONCURRENCY) ≈ 60s) to avoid cutting a
+// slow-but-working scan, while still bounding a hung undici socket instead of
+// letting it drag out the join. On expiry the check fails open to no
+// diagnostics — the same outcome class as the per-package Socket fail-open.
+export const SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS = 90_000;
+
 // Most severe Socket alerts to name in one supply-chain diagnostic before
 // collapsing the remainder into a "+N more" count, so a noisy package
 // doesn't flood the message.

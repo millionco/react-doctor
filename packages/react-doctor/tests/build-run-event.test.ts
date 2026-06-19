@@ -236,6 +236,25 @@ describe("buildRunEventAttributes", () => {
     expect(attributes.totalDiagnostics).toBeUndefined();
   });
 
+  it("records the supply-chain overlap timeout outcome and drops it when absent", () => {
+    // The healthy path reports `false`; the rare hung-socket guard reports
+    // `true`. When the field is omitted (failure path / cache hit), it's dropped
+    // rather than coerced to a misleading value.
+    expect(
+      buildRunEventAttributes(
+        baseInput({ result: buildResult(), supplyChainOverlapTimedOut: true }),
+      ).supplyChainOverlapTimedOut,
+    ).toBe(true);
+    expect(
+      buildRunEventAttributes(
+        baseInput({ result: buildResult(), supplyChainOverlapTimedOut: false }),
+      ).supplyChainOverlapTimedOut,
+    ).toBe(false);
+    expect(
+      buildRunEventAttributes(baseInput({ result: buildResult() })).supplyChainOverlapTimedOut,
+    ).toBeUndefined();
+  });
+
   it("emits the baseline delta on a computed baseline run", () => {
     const result = buildResult({
       diagnostics: [buildDiagnostic(), buildDiagnostic({ filePath: "src/B.tsx" })],

@@ -45,6 +45,7 @@ export interface CachedScanPayload {
    * existed still load — a stale hit falls back to the caller's `concurrency`.
    */
   readonly scanConcurrency?: number;
+  readonly supplyChainOverlapTimedOut: boolean;
 }
 
 interface PersistedScanResultCacheEntry {
@@ -290,4 +291,13 @@ export const createScanResultCache = (projectDirectory: string): ScanResultCache
 };
 
 export const shouldStoreScanPayload = (payload: CachedScanPayload): boolean =>
-  !payload.didLintFail && !payload.didDeadCodeFail && payload.lintPartialFailures.length === 0;
+  !payload.didLintFail &&
+  !payload.didDeadCodeFail &&
+  payload.lintPartialFailures.length === 0 &&
+  // A supply-chain overlap timeout means the cached diagnostics are missing
+  // their supply-chain findings; don't persist a degraded result — re-attempt
+  // the check on the next run instead. This also keeps the timeout kill metric
+  // clean: a stored payload therefore always carries
+  // `supplyChainOverlapTimedOut: false`, so a cache hit never replays a stale
+  // `true`.
+  !payload.supplyChainOverlapTimedOut;

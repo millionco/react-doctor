@@ -38,6 +38,7 @@ import {
   LintPhaseTimeoutMs,
   OxlintConcurrency,
   ScanDeadlineMs,
+  SupplyChainOverlapTimeoutMs,
 } from "./refs.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
@@ -175,6 +176,23 @@ export interface InspectOutput {
    * path, where the caller's `concurrency` option is `undefined`.
    */
   readonly scanConcurrency: number;
+  /**
+   * `true` when the background supply-chain fiber hit its overlap budget
+   * (`SupplyChainOverlapTimeoutMs`) and failed open to no diagnostics — a
+   * rare hung-socket guard, surfaced for telemetry. `false` on the healthy
+   * path and whenever supply-chain was skipped (diff/staged scans).
+   */
+  readonly supplyChainOverlapTimedOut: boolean;
+}
+
+/**
+ * The settled result of the background supply-chain fiber: its collected
+ * diagnostics, plus whether the fork-relative overlap timeout fired (in which
+ * case `diagnostics` is empty — the fail-open outcome).
+ */
+interface SupplyChainForkResult {
+  readonly diagnostics: ReadonlyArray<Diagnostic>;
+  readonly timedOut: boolean;
 }
 
 /**
@@ -235,18 +253,35 @@ const formatLintFailText = (
  *
  * Phases:
  *
- *   1. Config.resolve(directory) → Project.discover → Git metadata
+ *   1. Config.resolve(directory) → Project.discover → Git metadata.
+ *      The GitHub viewer-permission lookup is forked onto a background
+ *      fiber here and joined late (it feeds score metadata, not
+ *      diagnostics).
  *   2. beforeLint hook (e.g. CLI renders the project-detection block)
  *   3. environment checks (reduced-motion + pnpm hardening +
- *      expo/react-native + security scan)
- *   4. Linter.run + DeadCode.run — forked as concurrent fibers so
- *      their wall-clock times overlap. Progress spinners stay
- *      sequential (lint first, then dead-code) for clean terminal
- *      output. GitHub viewer permission also runs as a background
- *      fiber during this phase.
- *   5. afterLint hook
- *   6. Reporter.finalize
- *   7. Score.compute against the surface-filtered diagnostic set
+ *      expo/react-native + security scan), collected synchronously
+ *   4. The supply-chain check (Socket.dev) is forked onto a background
+ *      fiber so its ~100% network-bound time overlaps the ~100%
+ *      CPU/subprocess-bound lint pass below, collapsing two serial
+ *      phases into roughly `max(supplyChain, lint)`. It is capped by
+ *      `SupplyChainOverlapTimeoutMs` (measured from fork) so a hung
+ *      socket can't drag out its join; on timeout it fails open to no
+ *      diagnostics — the same outcome class as a Socket outage.
+ *   5. Linter.run, then DeadCode.run — collected sequentially (dead-code
+ *      gated on lint not failing), with the afterLint hook firing
+ *      between them. Progress spinners stay lint-driven for clean
+ *      terminal output; supply-chain rides alongside without a spinner.
+ *   6. Join the supply-chain fiber, then assemble the diagnostics in a
+ *      FIXED order (env, supply-chain, lint, dead-code) so the output is
+ *      byte-identical regardless of which fiber settled first. The
+ *      viewer-permission fiber is joined later, during score-metadata
+ *      assembly (it feeds score metadata, not diagnostics). The per-element
+ *      `Reporter.emit` side-channel now interleaves supply-chain with lint
+ *      emits, so capture-order assertions must target the deterministic
+ *      concat below, not emit order (production `Reporter.layerNoop` makes
+ *      emit a no-op).
+ *   7. Reporter.finalize
+ *   8. Score.compute against the surface-filtered diagnostic set
  *
  * The orchestrator owns spinner lifecycle via `Progress`; callers
  * choose `Progress.layerOra(...)` for CLI feedback or
@@ -380,17 +415,43 @@ export const runInspect = <HooksR = never>(
     // provided layer (`SupplyChain.layerOf([])` when disabled). The stream
     // is fail-open — per-package timeouts / network failures are recovered
     // to "skip" inside the check — so a Socket API outage never sinks the scan.
+    //
+    // The check is ~100% network-bound and the lint pass below is ~100%
+    // CPU/subprocess-bound, so we fork it onto a child fiber here and join it
+    // just before the diagnostic concat — its wall-clock overlaps lint instead
+    // of running serially before it. `forkChild` is structured: any
+    // error/interrupt in the orchestrator tears this fiber down with it, so it
+    // never leaks. The collect can't fail (the stream has no error channel), so
+    // the only failure is the `Effect.timeout` deadline, which we fold into a
+    // fail-open `[]` + a `timedOut` marker — the same outcome class as a Socket
+    // outage. The deadline is measured FROM FORK (before lint), so it bounds a
+    // hung undici socket without depending on how long lint takes. (On the rare
+    // timeout, a stateful `Reporter` — only `layerNdjson`, which has no in-tree
+    // consumer — may hold supply-chain emits from before the deadline that the
+    // returned `[]` omits; production `Reporter.layerNoop` makes emit a no-op,
+    // and the returned `diagnostics`/score only ever read the joined value.)
+    // When skipped, the fork takes the empty branch so the join below stays
+    // unconditional (mirroring the viewer-permission fiber above).
     const shouldRunSupplyChain = !isDiffMode || (input.supplyChainManifestChanged ?? false);
-    const supplyChainCollected = shouldRunSupplyChain
-      ? yield* Stream.runCollect(
-          applyPerElementPipeline(
-            supplyChainService.run({
-              rootDirectory: scanDirectory,
-              userConfig: resolvedConfig.config,
-            }),
-          ),
-        )
-      : [];
+    const supplyChainOverlapTimeout = yield* SupplyChainOverlapTimeoutMs;
+    const supplyChainFiber = yield* Effect.forkChild(
+      shouldRunSupplyChain
+        ? Stream.runCollect(
+            applyPerElementPipeline(
+              supplyChainService.run({
+                rootDirectory: scanDirectory,
+                userConfig: resolvedConfig.config,
+              }),
+            ),
+          ).pipe(
+            Effect.map((diagnostics): SupplyChainForkResult => ({ diagnostics, timedOut: false })),
+            Effect.timeout(supplyChainOverlapTimeout),
+            Effect.orElseSucceed(
+              (): SupplyChainForkResult => ({ diagnostics: [], timedOut: true }),
+            ),
+          )
+        : Effect.succeed<SupplyChainForkResult>({ diagnostics: [], timedOut: false }),
+    );
 
     const lintFailure = yield* Ref.make<{
       didFail: boolean;
@@ -562,6 +623,16 @@ export const runInspect = <HooksR = never>(
       }
     }
 
+    // Join the background supply-chain fiber now that lint + dead-code have
+    // run, so its network time overlapped the lint pass. This lands BEFORE
+    // `reporterService.finalize` so every supply-chain `Reporter.emit` from the
+    // forked stream has flushed before a stateful reporter (e.g. NDJSON) closes
+    // its sink. Fail-open + the fork-relative timeout are already folded into
+    // the fiber result, so the join never fails; `timedOut` records whether the
+    // overlap budget fired (the rare hung-socket guard) for telemetry.
+    const supplyChainResult = yield* Fiber.join(supplyChainFiber);
+    const supplyChainCollected = supplyChainResult.diagnostics;
+
     yield* reporterService.finalize;
 
     // Stamp shared `fixGroupId`s once on the finalized list (post-collection,
@@ -622,6 +693,7 @@ export const runInspect = <HooksR = never>(
       scannedFilePaths,
       scanElapsedMilliseconds,
       scanConcurrency,
+      supplyChainOverlapTimedOut: supplyChainResult.timedOut,
     };
   }).pipe(
     Effect.withSpan("runInspect", {

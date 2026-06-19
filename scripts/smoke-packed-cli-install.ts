@@ -112,12 +112,14 @@ const main = (): void => {
       `${JSON.stringify({ name: "react-doctor-packed-cli-smoke", private: true }, null, 2)}\n`,
     );
 
-    // Pack the CLI together with its workspace dependency: changesets
-    // version-bumps and publishes them as a pinned pair, so installing
-    // both tarballs mirrors what a release ships. Installing only the
-    // CLI tarball would resolve `oxlint-plugin-react-doctor` from the
-    // registry and reject any PR that adds cross-package API before
-    // it's published.
+    // Pack the CLI together with its unbundled workspace dependencies:
+    // changesets version-bumps and publishes them as a pinned set, so
+    // installing the tarballs mirrors what a release ships. The CLI keeps
+    // `oxlint-plugin-react-doctor` and `deslop-js` external (neverBundle —
+    // both wrap native binaries), so installing only the CLI tarball would
+    // resolve them from the registry and reject any PR before their matching
+    // versions are published (e.g. a workspace-locked `deslop-js@0.5.x` that
+    // npm has never seen).
     runCommand({
       command: "pnpm",
       args: [
@@ -125,6 +127,8 @@ const main = (): void => {
         "react-doctor",
         "--filter",
         "oxlint-plugin-react-doctor",
+        "--filter",
+        "deslop-js",
         "pack",
         "--pack-destination",
         packDirectory,
@@ -134,9 +138,9 @@ const main = (): void => {
     });
 
     const tarballs = fs.readdirSync(packDirectory).filter((fileName) => fileName.endsWith(".tgz"));
-    if (tarballs.length !== 2) {
+    if (tarballs.length !== 3) {
       console.error(
-        `Expected exactly two packed tarballs in ${packDirectory}, found ${tarballs.length}.`,
+        `Expected exactly three packed tarballs in ${packDirectory}, found ${tarballs.length}.`,
       );
       process.exit(1);
     }

@@ -63,14 +63,17 @@ const findUniqueBranchName = async (cwd: string, run: CommandRunner): Promise<st
   return `${NEW_BRANCH_PREFIX}-${stamp}`;
 };
 
-// Returns the URL of an already-open React Doctor setup PR, or null when
-// none is open. Matches any head branch under the setup prefix so it catches
-// both the canonical branch and earlier timestamped variants. Best-effort:
-// a failed or unparsable `gh` call returns null so setup still proceeds.
+// Returns the already-open React Doctor setup PR, or null when none is open.
+// Matches any head branch under the setup prefix so it catches both the
+// canonical branch and earlier timestamped variants. Returns the matched PR
+// itself (not just its URL) so the caller short-circuits on the PR's
+// *existence* — never opening a duplicate even if `gh` omits the URL field.
+// Best-effort: a failed or unparsable `gh` call returns null so setup still
+// proceeds.
 const findExistingSetupPullRequest = async (
   cwd: string,
   run: CommandRunner,
-): Promise<string | null> => {
+): Promise<OpenPullRequestSummary | null> => {
   const prList = await run(
     "gh",
     [
@@ -88,10 +91,11 @@ const findExistingSetupPullRequest = async (
   if (!prList.success) return null;
   try {
     const openPullRequests: OpenPullRequestSummary[] = JSON.parse(prList.stdout);
-    const setupPullRequest = openPullRequests.find((pullRequest) =>
-      (pullRequest.headRefName ?? "").startsWith(NEW_BRANCH_PREFIX),
+    return (
+      openPullRequests.find((pullRequest) =>
+        (pullRequest.headRefName ?? "").startsWith(NEW_BRANCH_PREFIX),
+      ) ?? null
     );
-    return setupPullRequest?.url ?? null;
   } catch {
     return null;
   }
@@ -188,8 +192,10 @@ export const openWorkflowPullRequest = async (params: {
   // so without this guard `findUniqueBranchName` would mint a timestamped
   // branch and `gh pr create` would open a second PR for the same change
   // (issue #904).
-  const existingPullRequestUrl = await findExistingSetupPullRequest(cwd, run);
-  if (existingPullRequestUrl) return { status: "pr-exists", url: existingPullRequestUrl };
+  const existingSetupPullRequest = await findExistingSetupPullRequest(cwd, run);
+  if (existingSetupPullRequest) {
+    return { status: "pr-exists", url: existingSetupPullRequest.url ?? "" };
+  }
 
   // Bail before touching any git state if the working tree carries unrelated
   // tracked changes: the checkout + whole-index commit below would otherwise

@@ -99,6 +99,18 @@ describe("openWorkflowPullRequest", () => {
     expect(invocations.some((invocation) => invocation.startsWith("git commit"))).toBe(false);
   });
 
+  // The duplicate guard must short-circuit on the matching PR's existence, not
+  // on gh having reported a URL — otherwise a missing url would let a duplicate
+  // through (the exact bug the guard exists to prevent).
+  it("short-circuits on a matching setup PR even when gh omits the url", async () => {
+    const { result, invocations } = invoke({
+      ...cleanRepoResponses(),
+      [GH_PR_LIST]: succeed(JSON.stringify([{ headRefName: "react-doctor/add-github-actions" }])),
+    });
+    expect(await result).toEqual({ status: "pr-exists", url: "" });
+    expect(invocations.some((invocation) => invocation.startsWith("git checkout"))).toBe(false);
+  });
+
   it("matches timestamped setup branches from earlier attempts", async () => {
     const { result } = invoke({
       ...cleanRepoResponses(),

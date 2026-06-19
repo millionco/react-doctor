@@ -40,6 +40,30 @@ const CASES: ReadonlyArray<{ name: string; code: string; expectedDiagnosticCount
     expectedDiagnosticCount: 1,
   },
   {
+    // A throw inside a `finally` propagates out of its try, so a redirect in a
+    // nested finally that sits in an OUTER try body is still swallowed by the
+    // outer catch — a true positive, not the false positive it looks like in
+    // isolation.
+    name: "flags redirect() in a nested finally inside an outer try body with a catch",
+    code: `import { redirect } from "next/navigation";
+      export const action = () => { try { try { f(); } finally { redirect("/x"); } } catch {} };`,
+    expectedDiagnosticCount: 1,
+  },
+  {
+    name: "flags redirect() in a finally-only inner try nested inside an outer try body with a catch",
+    code: `import { redirect } from "next/navigation";
+      export const action = () => { try { try { redirect("/x"); } finally {} } catch {} };`,
+    expectedDiagnosticCount: 1,
+  },
+  {
+    // Precision guard: the same nested finally with NO catch anywhere escapes
+    // untouched, so we must stay quiet.
+    name: "ignores redirect() in a nested finally when no enclosing try has a catch",
+    code: `import { redirect } from "next/navigation";
+      export const action = () => { try { try {} finally { redirect("/x"); } } finally {} };`,
+    expectedDiagnosticCount: 0,
+  },
+  {
     name: "ignores redirect() outside any try",
     code: `import { redirect } from "next/navigation";
       export const action = () => { redirect("/x"); };`,

@@ -98,7 +98,10 @@ jobs:
         run: |
           base="${BEFORE_SHA}"
           if [ -z "${base}" ] || [ "${base}" = "0000000000000000000000000000000000000000" ]; then
-            base="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
+            # New branch / first push: diff against HEAD's parent, or the empty
+            # tree for a root commit with no parent (so its files still count as
+            # changed instead of diffing HEAD against itself).
+            base="$(git rev-parse HEAD^ 2>/dev/null || git hash-object -t tree /dev/null)"
           fi
           # Classify from the merged PR's title — the same authoritative signal the
           # recommend job uses — so a non-conventional merge subject (e.g.

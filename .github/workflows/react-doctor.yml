@@ -14,13 +14,38 @@ permissions:
 
 concurrency:
   group: react-doctor-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
 
 jobs:
   react-doctor:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:
+          persist-credentials: false
           fetch-depth: 0
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.18.0
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile --prefer-offline
+
+      # Build the workspace CLI and point the local action at it (version:
+      # ./packages/react-doctor) so this job dogfoods the PR's own action AND
+      # CLI, not the published npm release.
+      - run: pnpm --filter react-doctor... build
+
       - uses: ./
+        with:
+          blocking: none
+          node-version: 22.18.0
+          version: ./packages/react-doctor

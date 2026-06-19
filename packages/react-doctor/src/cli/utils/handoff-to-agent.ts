@@ -89,6 +89,10 @@ const upgradeGitHubActionsWorkflow = async (
     upgradeSpinner.succeed(
       `Opened pull request for review: ${highlighter.info(pullRequestResult.url)}`,
     );
+  } else if (pullRequestResult.status === "pr-exists") {
+    upgradeSpinner.succeed(
+      `A React Doctor pull request is already open: ${highlighter.info(pullRequestResult.url)}`,
+    );
   } else if (pullRequestResult.status === "branch-pushed") {
     upgradeSpinner.warn(
       `Pushed branch ${highlighter.bold(

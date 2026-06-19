@@ -70,6 +70,10 @@ export const setUpGitHubActions = async (options: SetUpGitHubActionsOptions): Pr
       pullRequestSpinner.succeed(
         `Opened pull request for review: ${highlighter.info(pullRequestResult.url)}`,
       );
+    } else if (pullRequestResult.status === "pr-exists") {
+      pullRequestSpinner.succeed(
+        `A React Doctor setup pull request is already open: ${highlighter.info(pullRequestResult.url)}`,
+      );
     } else if (pullRequestResult.status === "branch-pushed") {
       pullRequestSpinner.warn(
         `Pushed branch ${highlighter.bold(pullRequestResult.branch)} but couldn't open a PR. Open one with: gh pr create --head ${pullRequestResult.branch}`,

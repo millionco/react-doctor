@@ -299,6 +299,51 @@ describe("checkDeadCode", () => {
     expect(didTerminate).toBe(true);
   });
 
+  it("SIGKILLs an in-flight worker when the abort signal fires", async () => {
+    const directory = setupProject("aborted-worker", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    const abortController = new AbortController();
+    let didTerminate = false;
+
+    const pending = checkDeadCode({
+      rootDirectory: directory,
+      createWorker: () => ({
+        // Never settles on its own — only the abort path can end it.
+        result: new Promise(() => {}),
+        terminate: () => {
+          didTerminate = true;
+        },
+      }),
+      abortSignal: abortController.signal,
+    });
+    abortController.abort();
+
+    await expect(pending).rejects.toThrow("Dead-code worker aborted");
+    expect(didTerminate).toBe(true);
+  });
+
+  it("rejects immediately when handed an already-aborted signal", async () => {
+    const directory = setupProject("pre-aborted-worker", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    let didTerminate = false;
+
+    await expect(
+      checkDeadCode({
+        rootDirectory: directory,
+        createWorker: () => ({
+          result: new Promise(() => {}),
+          terminate: () => {
+            didTerminate = true;
+          },
+        }),
+        abortSignal: AbortSignal.abort(),
+      }),
+    ).rejects.toThrow("Dead-code worker aborted");
+    expect(didTerminate).toBe(true);
+  });
+
   // deslop's import-graph resolution (oxc-resolver targets matched against
   // fast-glob's collected paths) only lines up on POSIX; on Windows it
   // mis-flags imported files regardless of the canonical-root fix — a

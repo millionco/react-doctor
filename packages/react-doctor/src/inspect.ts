@@ -684,6 +684,7 @@ const runInspectWithRuntime = async (
     lintPartialFailures: output.lintPartialFailures,
     didDeadCodeFail: output.didDeadCodeFail,
     deadCodeFailureReason: output.deadCodeFailureReason,
+    deadCodeOverlapped: output.deadCodeOverlapped,
     directory: output.resolvedDirectory,
     scannedFileCount: output.scannedFileCount,
     scannedFilePaths: output.scannedFilePaths,
@@ -816,6 +817,7 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     lintFailureReasonKind: input.payload.lintFailureReasonKind,
     lintPartialFailureCount: input.payload.lintPartialFailures.length,
     didDeadCodeFail: input.payload.didDeadCodeFail,
+    deadCodeOverlapped: input.payload.deadCodeOverlapped,
   });
   return result;
 };

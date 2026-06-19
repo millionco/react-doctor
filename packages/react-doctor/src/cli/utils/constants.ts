@@ -21,7 +21,11 @@ export const REACT_DOCTOR_CONFIG_PROJECT_NAME = "react-doctor";
 
 export const STAGED_FILES_TEMP_DIR_PREFIX = "react-doctor-staged-";
 export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
-export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 1;
+// Bump on any breaking change to `CachedScanPayload`'s shape so a stale
+// on-disk cache (missing a newly-required field) is discarded wholesale by
+// `readPersistedCache` instead of deserializing into an invalid payload. v2
+// added `deadCodeOverlapped`.
+export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 2;
 export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
 export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
 

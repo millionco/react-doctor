@@ -1,3 +1,4 @@
+import * as os from "node:os";
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -32,7 +33,8 @@ import {
 } from "./errors.js";
 import { filterDiagnosticsForSurface } from "./filter-for-surface.js";
 import { isAnalyzableProject } from "./project-info/index.js";
-import { OxlintConcurrency } from "./refs.js";
+import { DeadCodeOverlap, OxlintConcurrency } from "./refs.js";
+import { hasDeadCodeOverlapHeadroom } from "./utils/has-dead-code-overlap-headroom.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
@@ -145,6 +147,15 @@ export interface InspectOutput {
   readonly didDeadCodeFail: boolean;
   readonly deadCodeFailureReason: string | null;
   /**
+   * Whether the dead-code pass actually ran concurrently with lint this scan
+   * (the memory gate opened, or overlap was forced via
+   * `REACT_DOCTOR_DEAD_CODE_OVERLAP`). `false` for the strictly-sequential
+   * path: diff/staged/`--no-warnings` runs that skip dead-code, a closed
+   * memory gate, or `overlap=off`. Internal telemetry only (rides the per-scan
+   * wide event); NOT part of the public `inspect()` `InspectResult`.
+   */
+  readonly deadCodeOverlapped: boolean;
+  /**
    * Number of files the scan reported (lint progress total, falling
    * back to the project source-file count). Surfaced so a caller that
    * sets `suppressScanSummary` can render its own aggregate
@@ -225,11 +236,17 @@ const formatLintFailText = (
  *   2. beforeLint hook (e.g. CLI renders the project-detection block)
  *   3. environment checks (reduced-motion + pnpm hardening +
  *      expo/react-native + security scan)
- *   4. Linter.run + DeadCode.run — forked as concurrent fibers so
- *      their wall-clock times overlap. Progress spinners stay
- *      sequential (lint first, then dead-code) for clean terminal
- *      output. GitHub viewer permission also runs as a background
- *      fiber during this phase.
+ *   4. Linter.run runs; DeadCode.run runs concurrently (forked child
+ *      fiber) ONLY when the memory gate has headroom to run the 8 GB
+ *      dead-code child alongside the oxlint workers — or when overlap is
+ *      forced via REACT_DOCTOR_DEAD_CODE_OVERLAP. Otherwise dead-code
+ *      runs sequentially after lint, exactly as it did pre-overlap. The
+ *      fiber is joined (or interrupted, SIGKILLing its worker, on lint
+ *      failure) before diagnostics are concatenated. Progress spinner
+ *      labels AND the final diagnostic / score order stay independent of
+ *      execution order, so terminal output is identical either way.
+ *      GitHub viewer permission also runs as a background fiber during
+ *      this phase.
  *   5. afterLint hook
  *   6. Reporter.finalize
  *   7. Score.compute against the surface-filtered diagnostic set
@@ -396,6 +413,58 @@ export const runInspect = <HooksR = never>(
     const workerCountSuffix =
       scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
 
+    // ── Dead-code overlap plan (decided before lint so we can fork it) ──
+    // Reachability is a whole-project property independent of lint output, so
+    // dead-code can run DURING lint instead of strictly after. But overlapping
+    // the 8 GB dead-code child with up to MAX_SCAN_CONCURRENCY oxlint children
+    // SUMS their peak RSS — exactly the pressure the dead-code worker already
+    // OOMs under on type-heavy repos — so overlap is gated on a one-shot
+    // free-memory check (or forced via the DeadCodeOverlap knob). When the gate
+    // stays closed we fall back to the strictly-sequential collect below, with
+    // zero behavior change. `os.freemem()` is read once, here, at fork time.
+    //
+    // Dead-code emits only `"warning"`-severity diagnostics (the `deslop`
+    // plugin, all `Maintainability`); warnings show by default, so this
+    // normally runs. Only `--no-warnings` / `warnings: false` filters its
+    // output out entirely before any surface or the score, making the
+    // expensive pass pure wasted work — so skip it then, unless a severity
+    // override restamps dead-code findings so they survive the global hide.
+    const shouldRunDeadCode =
+      input.runDeadCode &&
+      !isDiffMode &&
+      (showWarnings || deadCodeMaySurfaceWhenWarningsHidden(resolvedConfig.config));
+    const deadCodeOverlapMode = yield* DeadCodeOverlap;
+    const shouldOverlapDeadCode =
+      shouldRunDeadCode &&
+      deadCodeOverlapMode !== "off" &&
+      (deadCodeOverlapMode === "on" ||
+        hasDeadCodeOverlapHeadroom({ workerCount: scanConcurrency, freeBytes: os.freemem() }));
+
+    // The dead-code collection, named once so it runs either forked (overlap)
+    // or inline (sequential) — identical pipeline, identical failure Ref.
+    // Building it is side-effect-free; the worker spawns only when it runs.
+    const collectDeadCode = Stream.runCollect(
+      applyPerElementPipeline(
+        deadCodeService
+          .run({ rootDirectory: scanDirectory, userConfig: resolvedConfig.config })
+          .pipe(
+            Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
+              Stream.unwrap(
+                Effect.gen(function* () {
+                  yield* Ref.set(deadCodeFailure, { didFail: true, reason: error.message });
+                  return Stream.empty as Stream.Stream<Diagnostic, never>;
+                }),
+              ),
+            ),
+          ),
+      ),
+    );
+    // Default `forkChild` (not `startImmediately`): the lint `Stream.runCollect`
+    // below blocks the parent on async oxlint spawns, yielding the runtime to
+    // this child so it runs DURING lint. Auto-supervised — interrupted if the
+    // parent dies. Mirrors `githubViewerPermissionFiber` above.
+    const deadCodeFiber = shouldOverlapDeadCode ? yield* Effect.forkChild(collectDeadCode) : null;
+
     const scanProgress = yield* progressService.start("Scanning...");
     const scanStartTime = Date.now();
     let lastReportedTotalFileCount = 0;
@@ -455,45 +524,29 @@ export const runInspect = <HooksR = never>(
       lastReportedTotalFileCount || (lintIncludePaths?.length ?? project.sourceFileCount);
     const scannedFilesLabel = `${totalFileCount} ${totalFileCount === 1 ? "file" : "files"}`;
 
-    // Dead-code analysis only ever emits `"warning"`-severity diagnostics
-    // (the `deslop` plugin, all `Maintainability`). Warnings show by
-    // default, so this normally runs; only when the user opts out via
-    // `--no-warnings` / `warnings: false` is that output filtered out
-    // before it reaches any surface or the score, making the expensive
-    // pass (separate worker, large heap, long timeout) pure wasted work —
-    // so skip it then, unless a severity override restamps dead-code
-    // findings to `"warn"`/`"error"` so they survive the global hide.
-    const shouldRunDeadCode =
-      input.runDeadCode &&
-      !isDiffMode &&
-      (showWarnings || deadCodeMaySurfaceWhenWarningsHidden(resolvedConfig.config));
-    const deadCodeCollected =
-      lintFailureState.didFail || !shouldRunDeadCode
-        ? []
-        : yield* scanProgress.update(`Scanned ${scannedFilesLabel}, analyzing dead code...`).pipe(
-            Effect.andThen(
-              Stream.runCollect(
-                applyPerElementPipeline(
-                  deadCodeService
-                    .run({ rootDirectory: scanDirectory, userConfig: resolvedConfig.config })
-                    .pipe(
-                      Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
-                        Stream.unwrap(
-                          Effect.gen(function* () {
-                            yield* Ref.set(deadCodeFailure, {
-                              didFail: true,
-                              reason: error.message,
-                            });
-                            return Stream.empty as Stream.Stream<Diagnostic, never>;
-                          }),
-                        ),
-                      ),
-                    ),
-                ),
-              ),
-            ),
-          );
-    const deadCodeFailureState = yield* Ref.get(deadCodeFailure);
+    // Resolve dead-code now that lint has settled. Three paths:
+    //   • lint failed → no score, so dead-code is wasted: interrupt the forked
+    //     fiber (its AbortSignal SIGKILLs the worker) / skip the inline run, and
+    //     discard any result — preserving the pre-overlap short-circuit.
+    //   • overlapped → the fiber has been running during lint; just join it.
+    //   • sequential → run it inline after the "analyzing dead code" label.
+    // The spinner label stays sequential (lint counter, then "analyzing dead
+    // code") for clean output even though an overlapped fiber is often already
+    // done by the time we get here — purely cosmetic.
+    let deadCodeCollected: ReadonlyArray<Diagnostic> = [];
+    if (lintFailureState.didFail) {
+      if (deadCodeFiber !== null) yield* Fiber.interrupt(deadCodeFiber);
+    } else if (shouldRunDeadCode) {
+      yield* scanProgress.update(`Scanned ${scannedFilesLabel}, analyzing dead code...`);
+      deadCodeCollected =
+        deadCodeFiber !== null ? yield* Fiber.join(deadCodeFiber) : yield* collectDeadCode;
+    }
+    // On lint failure dead-code is discarded entirely, so a failure the forked
+    // fiber may have recorded before we interrupted it must not leak into the
+    // output — preserve the "lint failed ⇒ didDeadCodeFail: false" contract.
+    const deadCodeFailureState = lintFailureState.didFail
+      ? { didFail: false, reason: null }
+      : yield* Ref.get(deadCodeFailure);
 
     const scanElapsedMilliseconds = Date.now() - scanStartTime;
     const scanElapsedSeconds = (scanElapsedMilliseconds / MILLISECONDS_PER_SECOND).toFixed(1);
@@ -566,6 +619,7 @@ export const runInspect = <HooksR = never>(
       lintPartialFailures,
       didDeadCodeFail: deadCodeFailureState.didFail,
       deadCodeFailureReason: deadCodeFailureState.reason,
+      deadCodeOverlapped: shouldOverlapDeadCode,
       scannedFileCount: totalFileCount,
       scannedFilePaths,
       scanElapsedMilliseconds,

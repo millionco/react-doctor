@@ -30,6 +30,15 @@ interface CheckDeadCodeOptions {
   readonly deslopJsModuleSpecifier?: string;
   readonly createWorker?: DeadCodeWorkerFactory;
   readonly workerTimeoutMs?: number;
+  /**
+   * Aborts the in-flight worker. The orchestrator threads
+   * `Effect.tryPromise`'s signal here so interrupting the dead-code fiber
+   * (e.g. when lint fails and dead-code becomes wasted work, or when the
+   * scan is cancelled) SIGKILLs the 8 GB child PROCESS immediately via its
+   * `terminate` handle instead of orphaning it until
+   * `DEAD_CODE_WORKER_TIMEOUT_MS`.
+   */
+  readonly abortSignal?: AbortSignal;
 }
 
 interface DeadCodeWorkerInput {
@@ -394,34 +403,43 @@ const createDeadCodeWorker: DeadCodeWorkerFactory = (input) => {
 const runDeadCodeWorkerWithTimeout = (
   handle: DeadCodeWorkerHandle,
   timeoutMs: number,
+  abortSignal?: AbortSignal,
 ): Promise<unknown> =>
   new Promise<unknown>((resolve, reject) => {
     let didSettle = false;
-    const timeoutHandle = setTimeout(() => {
+
+    // Centralizes the teardown every exit path shares: stop the timer, detach
+    // the abort listener, and SIGKILL the child via its `terminate` handle.
+    const settle = (finish: () => void): void => {
       if (didSettle) return;
       didSettle = true;
+      clearTimeout(timeoutHandle);
+      abortSignal?.removeEventListener("abort", onAbort);
       void handle.terminate?.();
-      reject(
-        new Error(`Dead-code worker timed out after ${timeoutMs / MILLISECONDS_PER_SECOND}s.`),
-      );
-    }, timeoutMs);
+      finish();
+    };
+
+    const onAbort = (): void => settle(() => reject(new Error("Dead-code worker aborted.")));
+    const timeoutHandle = setTimeout(
+      () =>
+        settle(() =>
+          reject(
+            new Error(`Dead-code worker timed out after ${timeoutMs / MILLISECONDS_PER_SECOND}s.`),
+          ),
+        ),
+      timeoutMs,
+    );
     timeoutHandle.unref?.();
 
+    if (abortSignal?.aborted) {
+      onAbort();
+      return;
+    }
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
+
     handle.result.then(
-      (value) => {
-        if (didSettle) return;
-        didSettle = true;
-        clearTimeout(timeoutHandle);
-        void handle.terminate?.();
-        resolve(value);
-      },
-      (error: unknown) => {
-        if (didSettle) return;
-        didSettle = true;
-        clearTimeout(timeoutHandle);
-        void handle.terminate?.();
-        reject(error);
-      },
+      (value) => settle(() => resolve(value)),
+      (error: unknown) => settle(() => reject(error)),
     );
   });
 
@@ -443,6 +461,7 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
   const rawResult = await runDeadCodeWorkerWithTimeout(
     workerHandle,
     options.workerTimeoutMs ?? DEAD_CODE_WORKER_TIMEOUT_MS,
+    options.abortSignal,
   );
   const result = parseDeadCodeWorkerResult(rawResult);
   const toRelative = (filePath: string): string => toRelativeFilePath(rootDirectory, filePath);

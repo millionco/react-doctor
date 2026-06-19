@@ -1,0 +1,121 @@
+name: Action Version Bump
+
+# Guards the GitHub Action's independent release cadence (AGENTS.md → "GitHub
+# Action versioning"). When a change touches the action's release surface
+# (action.yml + the scripts it shells out to), this either recommends a version
+# bump on the PR or — opt-in — performs it on merge to main.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  recommend:
+    name: Recommend bump on PR
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Detect action changes and compute recommended bump
+        id: detect
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          ACTION_COMMIT_SUBJECT: ${{ github.event.pull_request.title }}
+        run: |
+          git fetch --tags --quiet || true
+          export ACTION_CHANGED_FILES="$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}")"
+          export ACTION_ALL_TAGS="$(git tag --list 'v*')"
+          node scripts/recommend-action-version-bump.mjs "${RUNNER_TEMP}/action-version-comment.md"
+
+      - name: Upsert recommendation comment
+        uses: actions/github-script@v7
+        env:
+          ACTION_CHANGED: ${{ steps.detect.outputs.changed }}
+          COMMENT_FILE: ${{ runner.temp }}/action-version-comment.md
+        with:
+          script: |
+            const fs = require("node:fs");
+            const marker = "<!-- react-doctor:action-version -->";
+            const { owner, repo } = context.repo;
+            const issueNumber = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: issueNumber,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            if (process.env.ACTION_CHANGED !== "true") {
+              // The PR no longer touches the action surface — clear a stale recommendation.
+              if (existing) {
+                await github.rest.issues.deleteComment({ owner, repo, comment_id: existing.id });
+              }
+              return;
+            }
+            const body = fs.readFileSync(process.env.COMMENT_FILE, "utf8");
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+            }
+
+  bump:
+    name: Perform bump on merge
+    # Opt-in: set the repo variable AUTO_BUMP_ACTION_TAG=true to auto-tag.
+    # Otherwise this is a no-op and the maintainer cuts the GPG-signed tag by
+    # hand using the commands from the PR recommendation.
+    if: ${{ github.event_name == 'push' && vars.AUTO_BUMP_ACTION_TAG == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Detect action changes and compute recommended bump
+        id: detect
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          ACTION_COMMIT_SUBJECT: ${{ github.event.head_commit.message }}
+        run: |
+          git fetch --tags --quiet || true
+          base="${BEFORE_SHA}"
+          if [ -z "${base}" ] || [ "${base}" = "0000000000000000000000000000000000000000" ]; then
+            base="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
+          fi
+          export ACTION_CHANGED_FILES="$(git diff --name-only "${base}" "${GITHUB_SHA}")"
+          export ACTION_ALL_TAGS="$(git tag --list 'v*')"
+          node scripts/recommend-action-version-bump.mjs
+
+      - name: Create and push action release tags
+        if: ${{ steps.detect.outputs.changed == 'true' && steps.detect.outputs.tag-exists != 'true' }}
+        env:
+          NEXT_TAG: ${{ steps.detect.outputs.next }}
+          MAJOR_TAG: ${{ steps.detect.outputs.major }}
+          BUMP_LEVEL: ${{ steps.detect.outputs.level }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # CI has no signing key, so override the repo's tag.gpgsign default and
+          # create an unsigned annotated tag instead of failing on a missing key.
+          git -c tag.gpgsign=false tag -a "${NEXT_TAG}" -m "react-doctor action ${NEXT_TAG} (${BUMP_LEVEL})"
+          git -c tag.gpgsign=false tag -fa "${MAJOR_TAG}" -m "react-doctor action ${MAJOR_TAG} (floating major -> ${NEXT_TAG})"
+          git push origin "${NEXT_TAG}"
+          git push --force origin "${MAJOR_TAG}"
+          echo "Tagged ${NEXT_TAG} and moved ${MAJOR_TAG} to ${GITHUB_SHA}." >> "${GITHUB_STEP_SUMMARY}"

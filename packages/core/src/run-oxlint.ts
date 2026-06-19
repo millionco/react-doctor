@@ -102,10 +102,10 @@ interface RunOxlintOptions {
   signal?: AbortSignal;
   /**
    * Full-scan batch ordering, resolved from the `LintBatchOrdering`
-   * Reference. `"cost"` (the default) sorts discovered files largest-first
-   * so the heaviest batch starts in wave 1 (LPT); `"arrival"` keeps
-   * discovery order. Only affects the full-scan branch (`includePaths`
-   * undefined) — diff / staged scans pass explicit paths and are untouched.
+   * Reference. `"arrival"` (the default) keeps discovery order; `"cost"`
+   * opts into LPT (largest files first). Only affects the full-scan branch
+   * (`includePaths` undefined) — diff / staged scans pass explicit paths and
+   * are untouched.
    */
   lintBatchOrdering?: "cost" | "arrival";
 }
@@ -340,8 +340,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         ? sortSourceFilesByCost(listSourceFilesWithSize(rootDirectory))
         : listSourceFiles(rootDirectory);
 
-    const candidateFiles =
-      includePaths !== undefined ? includePaths : discoverScanFiles();
+    const candidateFiles = includePaths !== undefined ? includePaths : discoverScanFiles();
 
     // Runs one oxlintrc over a file list, retrying once with the optional
     // react-hooks-js plugin stripped if it fails to import (issue #833).

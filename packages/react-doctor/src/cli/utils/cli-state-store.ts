@@ -1,5 +1,6 @@
 import Conf from "conf";
 import { REACT_DOCTOR_CONFIG_PROJECT_NAME } from "./constants.js";
+import { nowIso } from "./now-iso.js";
 
 // The single per-user state file behind every onboarding / growth / migration
 // concern. This module is the ONLY place that opens the `Conf` store, owns the
@@ -83,8 +84,6 @@ export interface CliStateOptions {
   // `CONFIG_DIR_ENV_VAR`, then to `Conf`'s default per-user config location.
   readonly cwd?: string;
 }
-
-const nowIso = (): string => new Date().toISOString();
 
 // Folds one legacy per-project decision map (`ciPrompts` / `actionUpgrades`)
 // into the unified per-project event records, preserving the recorded outcome

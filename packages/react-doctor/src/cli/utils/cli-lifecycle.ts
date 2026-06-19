@@ -11,6 +11,7 @@ import {
   updateCliState,
 } from "./cli-state-store.js";
 import { hashProjectRoot } from "./hash-project-root.js";
+import { nowIso } from "./now-iso.js";
 
 // The CLI growth/lifecycle framework. Three primitives, all backed by the one
 // per-user state file and all idempotent + fail-safe:
@@ -77,7 +78,6 @@ export interface MigrationResult {
 
 const versionOf = (item: { readonly version?: number }): number =>
   item.version ?? INITIAL_LIFECYCLE_VERSION;
-const nowIso = (): string => new Date().toISOString();
 
 const selectScope = (
   state: CliState,

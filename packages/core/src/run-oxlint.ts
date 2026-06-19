@@ -180,7 +180,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     onPartialFailure,
     spawnTimeoutMs,
     outputMaxBytes,
-    lintBatchOrdering = "cost",
+    lintBatchOrdering = "arrival",
   } = options;
 
   const serverAuthFunctionNames = Array.isArray(userConfig?.serverAuthFunctionNames)

@@ -159,12 +159,14 @@ export class DeadCodeOverlap extends Context.Reference<"auto" | "on" | "off">(
 ) {}
 
 /**
- * How the full-scan lint pass orders its file batches. `"cost"` (the default)
- * feeds the largest files into the parallel pool first so the heaviest batch
- * starts in wave 1 instead of stranding in the tail (LPT). Set
- * `REACT_DOCTOR_LINT_BATCH_ORDERING=arrival` to fall back to discovery order —
- * the one-env-var revert if the kill metric (`Linter.run` p95 / dropped-file
- * rate by cohort) fires, no code deploy needed. Tests override via
+ * How the full-scan lint pass orders its file batches. `"arrival"` (the
+ * default) keeps `git ls-files` discovery order. `"cost"` opts into LPT (feed
+ * the largest files first); set `REACT_DOCTOR_LINT_BATCH_ORDERING=cost`. NOTE:
+ * `cost` is OFF by default because the current sort-desc-then-chunk-100 packs
+ * the heaviest files into one wave-1 batch — on size-skewed repos that mega-
+ * batch is a straggler (and can trip the per-batch timeout + split), measurably
+ * regressing the common full-scan case. LPT needs the heavy files SPREAD across
+ * batches before `cost` earns the default. Tests override via
  * `Layer.succeed(LintBatchOrdering, ...)`. Diff / staged scans never reach this
  * — they pass user-scoped `includePaths` that skip discovery and stay in
  * arrival order; only the full-scan branch reads it.

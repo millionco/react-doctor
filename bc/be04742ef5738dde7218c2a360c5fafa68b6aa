@@ -1,0 +1,58 @@
+packages/core/src/refs.ts
+  s_d80c54c46adbe5::t_bf27b07c3df421 6
+  s_d80c54c46adbe5::t_6195ae80d30780 30-48
+packages/react-doctor/tests/build-run-event.test.ts
+  s_d80c54c46adbe5::t_3c9a28c377330f 239-243,247-257
+  s_d80c54c46adbe5::t_61522f14e7f41d 244-246
+.changeset/supply-chain-lint-overlap.md
+  s_d80c54c46adbe5::t_619f32f8e06a00 1-12
+packages/core/tests/run-inspect.test.ts
+  s_d80c54c46adbe5::t_17b06cc2b09435 19
+  s_d80c54c46adbe5::t_99b7de50531704 136-161
+  s_d80c54c46adbe5::t_897b2fe1006457 764-767,792-816
+  s_d80c54c46adbe5::t_da8cd365b79a04 633-763,768-791,817-819
+packages/react-doctor/src/cli/utils/constants.ts
+  s_d80c54c46adbe5::t_8e6806b5ec8fea 24-26
+packages/react-doctor/src/cli/utils/scan-result-cache.ts
+  s_d80c54c46adbe5::t_6dfb05da7b3059 42
+  s_d80c54c46adbe5::t_a3ff374b998da5 288-297
+packages/core/src/constants.ts
+  s_d80c54c46adbe5::t_b7916a0d5aa756 513-522
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_d80c54c46adbe5::t_cabc339e781132 208
+  s_d80c54c46adbe5::t_9c68996caf1d55 53-54,61
+  s_d80c54c46adbe5::t_29ea579900b8ba 55-60
+packages/react-doctor/tests/scan-result-cache.test.ts
+  s_d80c54c46adbe5::t_b7cbc3ff40c7a6 132
+packages/react-doctor/src/inspect.ts
+  s_d80c54c46adbe5::t_07680561398edf 820
+  s_d80c54c46adbe5::t_cc6305a0477178 695
+packages/core/src/services/supply-chain.ts
+  s_d80c54c46adbe5::t_01d7ab34aca6ec 27-30
+packages/core/src/run-inspect.ts
+  s_d80c54c46adbe5::t_cb79e3a0f78b36 259-267
+  s_d80c54c46adbe5::t_595f50ec25d549 413-419
+  s_d80c54c46adbe5::t_20232a9d15907a 35
+  s_d80c54c46adbe5::t_c8d098880ba4e7 164-180
+  s_d80c54c46adbe5::t_61522f14e7f41d 434-436
+  s_d80c54c46adbe5::t_477c1b43131d02 241-244,247-258,268-269
+  s_d80c54c46adbe5::t_0bc56db07e61f0 573-582
+  s_d80c54c46adbe5::t_e1e03f8d90112e 642
+  s_d80c54c46adbe5::t_cbd2b78d0fcbcc 403-412,421-433,437-439
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "bcbe04742ef5738dde7218c2a360c5fafa68b6aa",
+  "prompts": {},
+  "sessions": {
+    "s_d80c54c46adbe5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb8149f6-81b6-419a-a709-484038fcd2e2",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

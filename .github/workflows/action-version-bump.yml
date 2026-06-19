@@ -29,6 +29,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Detect action changes and compute recommended bump
         id: detect
@@ -37,7 +38,6 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           ACTION_COMMIT_SUBJECT: ${{ github.event.pull_request.title }}
         run: |
-          git fetch --tags --quiet || true
           export ACTION_CHANGED_FILES="$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}")"
           export ACTION_ALL_TAGS="$(git tag --list 'v*')"
           node scripts/recommend-action-version-bump.mjs "${RUNNER_TEMP}/action-version-comment.md"
@@ -87,24 +87,35 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Detect action changes and compute recommended bump
         id: detect
         env:
+          GH_TOKEN: ${{ github.token }}
           BEFORE_SHA: ${{ github.event.before }}
-          ACTION_COMMIT_SUBJECT: ${{ github.event.head_commit.message }}
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          git fetch --tags --quiet || true
           base="${BEFORE_SHA}"
           if [ -z "${base}" ] || [ "${base}" = "0000000000000000000000000000000000000000" ]; then
             base="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
+          fi
+          # Classify from the merged PR's title — the same authoritative signal the
+          # recommend job uses — so a non-conventional merge subject (e.g.
+          # "Merge pull request #N") can't silently downgrade the bump to a patch.
+          # Fall back to the commit subject for a direct push to main.
+          pr_title="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" --jq '.[0].title // ""' 2>/dev/null || true)"
+          if [ -n "${pr_title}" ]; then
+            export ACTION_COMMIT_SUBJECT="${pr_title}"
+          else
+            export ACTION_COMMIT_SUBJECT="$(printf '%s' "${HEAD_COMMIT_MESSAGE}" | head -n1)"
           fi
           export ACTION_CHANGED_FILES="$(git diff --name-only "${base}" "${GITHUB_SHA}")"
           export ACTION_ALL_TAGS="$(git tag --list 'v*')"
           node scripts/recommend-action-version-bump.mjs
 
       - name: Create and push action release tags
-        if: ${{ steps.detect.outputs.changed == 'true' && steps.detect.outputs.tag-exists != 'true' }}
+        if: ${{ steps.detect.outputs.changed == 'true' && steps.detect.outputs['tag-exists'] != 'true' }}
         env:
           NEXT_TAG: ${{ steps.detect.outputs.next }}
           MAJOR_TAG: ${{ steps.detect.outputs.major }}

@@ -1,0 +1,51 @@
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_bbeaa972d15fa9::t_ef1e6fc9d3a175 8
+  s_bbeaa972d15fa9::t_3c0ace534aa0cb 185-187
+packages/react-doctor/tests/build-run-event.test.ts
+  s_bbeaa972d15fa9::t_ff9c120a7cc953 119-140,142-147
+  s_bbeaa972d15fa9::t_ae9a2380d6b25a 141
+packages/react-doctor/src/cli/utils/render-agent-guidance.ts
+  s_bbeaa972d15fa9::t_89a6b0be8175c2 16
+packages/react-doctor/src/cli/utils/build-handoff-payload.ts
+  s_bbeaa972d15fa9::t_76a5a2f444d3b9 4-7,9
+  s_bbeaa972d15fa9::t_ad808926ab6742 24,26
+  s_bbeaa972d15fa9::t_532471291e97f1 25
+  s_bbeaa972d15fa9::t_c39142fdd60f6c 63-68
+  s_bbeaa972d15fa9::t_56a226f0380e70 88
+packages/react-doctor/src/cli/utils/diagnostic-grouping.ts
+  s_bbeaa972d15fa9::t_9286cabbac082b 1-5,7
+  s_bbeaa972d15fa9::t_201546985aa458 112-125,127,134-144
+  s_bbeaa972d15fa9::t_ae9a2380d6b25a 126
+  s_bbeaa972d15fa9::t_6f1e215bc60044 128-133
+packages/react-doctor/tests/handoff/build-handoff-payload.test.ts
+  s_bbeaa972d15fa9::t_6f593730531e10 54,68-70,77,80
+  s_bbeaa972d15fa9::t_e544d5d5c1da58 81,84-88,90-96,99-102
+packages/core/src/constants.ts
+  s_bbeaa972d15fa9::t_291097ec298f9c 396-406
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_bbeaa972d15fa9::t_1aac32e1da13c3 29,34
+  s_bbeaa972d15fa9::t_fa0f69158867e0 512-560
+  s_bbeaa972d15fa9::t_45b0b8ed66e6e4 751
+.changeset/migration-scale-advisory.md
+  s_bbeaa972d15fa9::t_e3f398584084bd 1-9
+packages/react-doctor/tests/render-migration-advisory.test.ts
+  s_bbeaa972d15fa9::t_9a8f920a46b4b9 1-56,64-81,87-92
+  s_bbeaa972d15fa9::t_9d18ae674b7edf 57-58,62-63
+  s_bbeaa972d15fa9::t_ae9a2380d6b25a 59-61,82-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "0387a3f39b42374e719819e2ad5e14ef4b3b4926",
+  "prompts": {},
+  "sessions": {
+    "s_bbeaa972d15fa9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2dac245-55f2-499a-95fd-fb03d35fc757",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

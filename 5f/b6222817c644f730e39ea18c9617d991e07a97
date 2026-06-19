@@ -1,0 +1,39 @@
+packages/core/src/constants.ts
+  s_a79cca406d6c28::t_54001e6007917f 307-315
+packages/core/src/services/linter.ts
+  s_a79cca406d6c28::t_4ffee66bb15e78 111-114,133
+.changeset/bound-phases-hard-timeouts.md
+  s_a79cca406d6c28::t_9f100c1f6df007 10-11
+packages/core/src/runners/oxlint/spawn-batches.ts
+  s_a79cca406d6c28::t_f4e3be5188927a 115
+  s_a79cca406d6c28::t_7abbc43a7b5845 63-68
+  s_a79cca406d6c28::t_e936e21c398445 161
+packages/core/src/run-oxlint.ts
+  s_a79cca406d6c28::t_78113a4ab00350 290
+  s_a79cca406d6c28::t_617d2bd1fac2e9 76-81
+packages/core/tests/spawn-batches-cascade-bound.test.ts
+  s_a79cca406d6c28::t_c3deef98371cb0 25-31
+  s_a79cca406d6c28::t_b88be84aa680b4 88-89
+  s_a79cca406d6c28::t_7dbfe3f118ea1f 19-22,35-36,43-45,49
+  s_a79cca406d6c28::t_78f2d769b37a31 140-173
+packages/core/src/runners/oxlint/spawn-oxlint.ts
+  s_a79cca406d6c28::t_ddfe1f1ffd5d6d 50-54,57,61-62,76-77,81-86,88
+  s_a79cca406d6c28::t_c3deef98371cb0 58-60,78-80
+  s_a79cca406d6c28::t_b6f93c97f1d347 134,139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "5fb6222817c644f730e39ea18c9617d991e07a97",
+  "prompts": {},
+  "sessions": {
+    "s_a79cca406d6c28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b965809e-9576-40e0-8e24-d39a5c382892",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

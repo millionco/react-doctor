@@ -1,0 +1,23 @@
+packages/react-doctor/src/cli/utils/now-iso.ts
+  s_02949bc312ec72::t_6f589eff3dbe5b 1-3
+packages/react-doctor/src/cli/utils/cli-lifecycle.ts
+  s_02949bc312ec72::t_8cc9b278ab3344 14
+packages/react-doctor/src/cli/utils/cli-state-store.ts
+  s_02949bc312ec72::t_ee69b975b878fd 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "3b7edcde0bb5b0bf30cacb05d91061e3ff42d222",
+  "prompts": {},
+  "sessions": {
+    "s_02949bc312ec72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8e645ba-e36a-4945-ba52-d0bb8065ddac",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

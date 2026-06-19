@@ -21,6 +21,7 @@ import {
 } from "./runners/oxlint/resolve-paths.js";
 import { spawnLintBatches } from "./runners/oxlint/spawn-batches.js";
 import { validateRuleRegistration } from "./runners/oxlint/validate-rule-registration.js";
+import { dedupeDiagnostics } from "./utils/dedupe-diagnostics.js";
 import { hashFileContents } from "./utils/hash-file-contents.js";
 import { listSourceFiles } from "./utils/list-source-files.js";
 import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
@@ -472,7 +473,15 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         cache.persist();
       }
 
-      return [...replayedDiagnostics, ...cacheableResult.diagnostics, ...sidecarResult.diagnostics];
+      // Dedupe the merged result to match the non-cached path (which dedupes
+      // at the end of `spawnLintBatches`): a duplicate path in `includePaths`
+      // replays the same cached set twice, which dedupe collapses — so warm
+      // output stays equal to a cache-off scan of the same inputs.
+      return dedupeDiagnostics([
+        ...replayedDiagnostics,
+        ...cacheableResult.diagnostics,
+        ...sidecarResult.diagnostics,
+      ]);
     }
 
     const baseArgs = makeBaseArgs(configPath);

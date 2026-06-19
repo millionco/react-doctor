@@ -35,6 +35,7 @@ interface ScanOptions {
   perFileLintCacheEnabled?: boolean;
   respectInlineDisables?: boolean;
   hasReactCompiler?: boolean;
+  includePaths?: string[];
   onCacheStats?: (cacheHitFileCount: number, totalConsideredFileCount: number) => void;
 }
 
@@ -62,6 +63,7 @@ const scan = (projectDir: string, options: ScanOptions = {}): Promise<Diagnostic
       hasReactCompiler: options.hasReactCompiler ?? false,
     }),
     userConfig: USER_CONFIG,
+    includePaths: options.includePaths,
     respectInlineDisables: options.respectInlineDisables,
     perFileLintCacheEnabled: options.perFileLintCacheEnabled,
     onCacheStats: options.onCacheStats,
@@ -183,6 +185,23 @@ export const App = () => <div><Button /></div>;
     // (onCacheStats never fires) while diagnostics are still produced.
     expect(cacheStatsCalled).toBe(false);
     expect(diagnostics.some((diagnostic) => diagnostic.rule === "no-barrel-import")).toBe(true);
+  });
+
+  it("dedupes the merged result when includePaths repeats a file (matches cache-off)", async () => {
+    const projectDir = setupFixture("dedupe-dup-paths", BARREL_INDEX);
+    const duplicatedPaths = ["src/App.tsx", "src/App.tsx"];
+    await scan(projectDir, { perFileLintCacheEnabled: true, includePaths: duplicatedPaths });
+    const warm = await scan(projectDir, {
+      perFileLintCacheEnabled: true,
+      includePaths: duplicatedPaths,
+    });
+    const withCacheOff = await scan(projectDir, {
+      perFileLintCacheEnabled: false,
+      includePaths: duplicatedPaths,
+    });
+    // A duplicate path replays the cached set twice; the final dedupe collapses
+    // it, so warm output equals a (deduped) cache-off scan rather than exceeding it.
+    expect(serialize(warm)).toBe(serialize(withCacheOff));
   });
 
   it("bypasses the cache for React Compiler projects (react-hooks-js load-failure safety)", async () => {

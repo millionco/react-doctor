@@ -1,0 +1,102 @@
+packages/core/src/utils/is-large-minified-file.ts
+  s_147168d2efa902::t_d005a57be08f6a 23-28
+  s_147168d2efa902::t_feff50bcf79ad8 29-30
+  s_147168d2efa902::t_d36dab26238da7 5-16,31
+packages/core/src/refs.ts
+  s_147168d2efa902::t_345743e4ff8551 76-92
+  s_147168d2efa902::t_e0212f42ecf828 7
+  s_147168d2efa902::t_f2890ebd7d5d11 75
+packages/core/tests/run-inspect.test.ts
+  s_147168d2efa902::t_feff50bcf79ad8 279,292,297
+  s_147168d2efa902::t_a0eafb3402b905 251-278,280-291,293-296,298-305
+  s_147168d2efa902::t_e4c518c5c332a3 568-569,573,575-576
+packages/core/src/utils/list-source-files.ts
+  s_147168d2efa902::t_4d3f03644c4146 82-87,89,93-98
+  s_147168d2efa902::t_feff50bcf79ad8 88
+  s_147168d2efa902::t_ce4097e05b4444 3,7,9-11,13-28
+packages/core/src/utils/sort-diagnostics-stable.ts
+  s_147168d2efa902::t_53e7964470379f 1-14,16-25
+  s_147168d2efa902::t_feff50bcf79ad8 15
+packages/core/src/utils/sort-source-files-by-cost.ts
+  s_147168d2efa902::t_a67fae4e294bc4 1-12
+  s_147168d2efa902::t_feff50bcf79ad8 13
+packages/core/tests/resolve-lint-batch-ordering.test.ts
+  s_147168d2efa902::t_9c9021fc21e77e 1-55
+.changeset/deterministic-diagnostics-lpt-ordering.md
+  s_147168d2efa902::t_3b4b6cae646fbb 1-6
+packages/react-doctor/tests/build-run-context.test.ts
+  s_147168d2efa902::t_f3b07cf9b8e698 9,15-16,31-34
+  s_147168d2efa902::t_4477e76a5d91cf 98-104
+packages/core/src/utils/resolve-lint-batch-ordering.ts
+  s_147168d2efa902::t_ec55c34aa8707c 1-10
+packages/core/tests/spawn-batches.test.ts
+  s_147168d2efa902::t_a75fd74f941343 156-206
+packages/react-doctor/tests/build-sentry-scope.test.ts
+  s_147168d2efa902::t_6a493a1bb1d702 28
+  s_147168d2efa902::t_4b1e90a5d506f7 77
+packages/react-doctor/tests/count-dropped-lint-files.test.ts
+  s_147168d2efa902::t_f8f5b23089e85c 1-38
+packages/core/src/run-inspect.ts
+  s_147168d2efa902::t_55ba2138a59490 517-531
+  s_147168d2efa902::t_5bfdf2c813cf72 16
+packages/core/src/index.ts
+  s_147168d2efa902::t_4806f9b3b3a3a9 97
+  s_147168d2efa902::t_ce692cab42a897 99
+packages/react-doctor/src/inspect.ts
+  s_147168d2efa902::t_c49d1591d4f8cd 30
+  s_147168d2efa902::t_d7d92456479bff 819
+packages/core/tests/sort-source-files-by-cost.test.ts
+  s_147168d2efa902::t_bddb8ae5affcca 1-37
+packages/core/src/types/index.ts
+  s_147168d2efa902::t_dd4dad2ffcbf95 27
+packages/core/src/run-oxlint.ts
+  s_147168d2efa902::t_60df8236feca00 277
+  s_147168d2efa902::t_f780aeb7d59726 278-288,291
+  s_147168d2efa902::t_2ce26b966ce265 21-22
+  s_147168d2efa902::t_b6e9d3db1a6f04 77-84
+  s_147168d2efa902::t_26066a4929490b 177
+packages/react-doctor/tests/build-run-event.test.ts
+  s_147168d2efa902::t_ec171f138eff92 278-288
+packages/core/tests/list-source-files-with-size.test.ts
+  s_147168d2efa902::t_7f7bbf0cb03abc 1-59
+packages/react-doctor/src/cli/utils/build-run-context.ts
+  s_147168d2efa902::t_953335b2a7e62e 51-55
+  s_147168d2efa902::t_793bdb5f851adf 124
+  s_147168d2efa902::t_a5c313cbb4d675 1
+packages/react-doctor/tests/diagnostic-grouping.test.ts
+  s_147168d2efa902::t_015328c7cce030 3
+  s_147168d2efa902::t_a4bcb81b6d9d90 45-69
+  s_147168d2efa902::t_feff50bcf79ad8 4-7
+packages/core/src/types/diagnostic.ts
+  s_147168d2efa902::t_a1a6bfbbf511da 106-118
+packages/core/src/services/linter.ts
+  s_147168d2efa902::t_df6e623502d7e2 114
+  s_147168d2efa902::t_c6931a616b5efc 136
+  s_147168d2efa902::t_1e707e5bd2bcbc 8-13
+packages/react-doctor/src/cli/utils/build-sentry-scope.ts
+  s_147168d2efa902::t_7e547254b72f95 43-45
+packages/react-doctor/src/cli/utils/count-dropped-lint-files.ts
+  s_147168d2efa902::t_4e6e41731ed180 1-13,15-18
+  s_147168d2efa902::t_feff50bcf79ad8 14
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_147168d2efa902::t_0845e8f0cead9b 52-56
+  s_147168d2efa902::t_2354a6ac5e4ff8 203
+packages/core/tests/sort-diagnostics-stable.test.ts
+  s_147168d2efa902::t_88fa0576423828 1-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "1c6e92ceec4481f3c0837dc46487bc9ea26a00e9",
+  "prompts": {},
+  "sessions": {
+    "s_147168d2efa902": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "042023b7-fc49-4f4b-8a67-0ea9d208b479",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

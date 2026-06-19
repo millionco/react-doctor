@@ -1,0 +1,22 @@
+packages/react-doctor/tests/scan-result-cache.test.ts
+  s_147168d2efa902::t_b4371a7efdb26e 177-201
+packages/react-doctor/src/cli/utils/scan-result-cache.ts
+  s_147168d2efa902::t_1f4f3b7130b5ba 248-252
+  s_147168d2efa902::t_8b5abcb81dbbed 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "c75e8eab6ce0462dbb175772f26dd95da05c4837",
+  "prompts": {},
+  "sessions": {
+    "s_147168d2efa902": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "042023b7-fc49-4f4b-8a67-0ea9d208b479",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

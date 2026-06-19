@@ -1,0 +1,31 @@
+packages/core/src/constants.ts
+  s_65758f571b06d8::t_0a8a68d63a67c1 271-275
+packages/core/src/utils/build-oxlint-child-env.ts
+  s_65758f571b06d8::t_16dadc8a0dc301 1-34
+packages/core/tests/spawn-oxlint-compile-cache.test.ts
+  s_65758f571b06d8::t_95a8caf3e492a4 7-15,17-28
+  s_65758f571b06d8::t_e42973dd09bab7 1-6,16,29
+packages/core/src/runners/oxlint/spawn-oxlint.ts
+  s_65758f571b06d8::t_d8b19421c08212 8,10
+.changeset/propagate-compile-cache-oxlint-children.md
+  s_65758f571b06d8::t_fced9c9bd4fbe7 1-5
+packages/core/tests/build-oxlint-child-env.test.ts
+  s_65758f571b06d8::t_2cda80d0a669cc 1-24,39-51
+  s_65758f571b06d8::t_eb69aae165b6b6 25-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "ba0cca71b53a24ce8e559fd3358e2bfee8bf6ad0",
+  "prompts": {},
+  "sessions": {
+    "s_65758f571b06d8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "405d35df-238a-445e-ad61-4e01045a210b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

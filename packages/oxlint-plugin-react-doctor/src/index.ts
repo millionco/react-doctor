@@ -20,6 +20,8 @@ export {
 
 export { MOTION_LIBRARY_PACKAGES } from "./plugin/constants/style.js";
 
+export { CROSS_FILE_RULE_IDS } from "./plugin/constants/cross-file-rule-ids.js";
+
 export {
   classifySecurityScanFile,
   shouldReadSecurityScanContent,

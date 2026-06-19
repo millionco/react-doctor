@@ -10,6 +10,7 @@ import {
   OxlintConcurrency,
   OxlintOutputMaxBytes,
   OxlintSpawnTimeoutMs,
+  PerFileLintCacheEnabled,
 } from "../refs.js";
 import { runOxlint } from "../run-oxlint.js";
 
@@ -44,6 +45,7 @@ export interface LintInput {
   readonly configSourceDirectory?: string;
   readonly nodeBinaryPath?: string;
   readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
+  readonly onCacheStats?: (cacheHitFileCount: number, totalConsideredFileCount: number) => void;
 }
 
 /**
@@ -112,6 +114,7 @@ export class Linter extends Context.Service<
             const outputMaxBytes = yield* OxlintOutputMaxBytes;
             const concurrency = yield* OxlintConcurrency;
             const lintBatchOrdering = yield* LintBatchOrdering;
+            const perFileLintCacheEnabled = yield* PerFileLintCacheEnabled;
             const collectedFailures: string[] = [];
             const diagnostics = yield* Effect.tryPromise({
               // `Effect.tryPromise` aborts this signal when the fiber is
@@ -133,6 +136,8 @@ export class Linter extends Context.Service<
                     collectedFailures.push(reason);
                   },
                   onFileProgress: input.onFileProgress,
+                  perFileLintCacheEnabled,
+                  onCacheStats: input.onCacheStats,
                   spawnTimeoutMs,
                   outputMaxBytes,
                   concurrency,

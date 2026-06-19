@@ -207,6 +207,15 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     "migration.largestRuleBucketSites": largestRuleBucket ? largestRuleBucket.siteCount : null,
     "migration.largestRuleBucketRule": largestRuleBucket ? largestRuleBucket.ruleKey : null,
     scannedFileCount: result.scannedFileCount ?? null,
+    // Per-file lint cache outcome. Numeric so Sentry can `p75(lintCacheHitRatio)`;
+    // all `null` when the cache was off/bypassed so "no cache" reads distinctly
+    // from a 0% hit rate (`toSpanAttributes` drops the nulls).
+    lintCacheHitFiles: result.lintCacheHitFileCount ?? null,
+    lintCacheTotalFiles: result.lintCacheTotalFileCount ?? null,
+    lintCacheHitRatio:
+      result.lintCacheTotalFileCount != null && result.lintCacheTotalFileCount > 0
+        ? (result.lintCacheHitFileCount ?? 0) / result.lintCacheTotalFileCount
+        : null,
     elapsedMs: result.elapsedMilliseconds,
     scanPhaseMs: result.scanElapsedMilliseconds ?? null,
     score: result.score ? result.score.score : null,

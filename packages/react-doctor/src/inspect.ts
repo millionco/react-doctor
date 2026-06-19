@@ -722,6 +722,8 @@ const runInspectWithRuntime = async (
     rootSentrySpan,
     scanMode: baselineDelta ? "baseline" : isDiffMode ? "diff" : "full",
     baselineDegraded,
+    lintCacheHitFileCount: output.lintCacheHitFileCount,
+    lintCacheTotalFileCount: output.lintCacheTotalFileCount,
   });
   recordOnboardingCompletion(options);
   return result;
@@ -743,6 +745,8 @@ interface FinalizeInput {
   scannedFileCount: number;
   scannedFilePaths: ReadonlyArray<string>;
   scanElapsedMilliseconds: number;
+  lintCacheHitFileCount: number | null;
+  lintCacheTotalFileCount: number | null;
   baselineDelta: InspectResult["baselineDelta"];
 }
 
@@ -762,6 +766,14 @@ interface RenderAndRecordScanInput {
   readonly rootSentrySpan: SentryRootSpan;
   readonly scanMode: "full" | "diff" | "baseline";
   readonly baselineDegraded: boolean;
+  /**
+   * Per-file lint cache outcome for THIS scan's lint pass. Threaded outside
+   * `CachedScanPayload` on purpose — it's telemetry about the lint that ran in
+   * this process, not part of the cacheable result, so a whole-repo cache
+   * replay (where no lint ran) correctly leaves it absent.
+   */
+  readonly lintCacheHitFileCount?: number | null;
+  readonly lintCacheTotalFileCount?: number | null;
 }
 
 const runMaybeSilent = <A, E, R>(
@@ -805,6 +817,8 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     scannedFileCount: input.payload.scannedFileCount,
     scannedFilePaths: input.payload.scannedFilePaths,
     scanElapsedMilliseconds: input.payload.scanElapsedMilliseconds,
+    lintCacheHitFileCount: input.lintCacheHitFileCount ?? null,
+    lintCacheTotalFileCount: input.lintCacheTotalFileCount ?? null,
     baselineDelta: input.payload.baselineDelta,
   };
   const result = await Effect.runPromise(
@@ -870,6 +884,8 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       scannedFileCount,
       scannedFilePaths,
       scanElapsedMilliseconds,
+      lintCacheHitFileCount,
+      lintCacheTotalFileCount,
       baselineDelta,
     } = input;
 
@@ -894,6 +910,9 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       scannedFileCount,
       scannedFilePaths,
       scanElapsedMilliseconds,
+      ...(lintCacheTotalFileCount !== null
+        ? { lintCacheHitFileCount, lintCacheTotalFileCount }
+        : {}),
       ...(baselineDelta ? { baselineDelta } : {}),
     });
 

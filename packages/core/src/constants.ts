@@ -566,6 +566,26 @@ export const SOCKET_PACKAGE_PAGE_BASE = "https://socket.dev/npm/package";
 // identifies itself to the same endpoint.
 export const SOCKET_FREE_USER_AGENT = "react-doctor-supply-chain";
 
+// Per-file lint cache (`runners/oxlint/file-lint-cache.ts`). Caches the raw
+// oxlint diagnostics of unchanged files keyed by content hash + ruleset hash,
+// so repeat scans re-lint only the files that actually changed.
+export const FILE_LINT_CACHE_SCHEMA_VERSION = 1;
+
+export const FILE_LINT_CACHE_FILENAME = "file-lint-cache.json";
+
+// Number of distinct ruleset buckets kept in one cache file. Each toolchain /
+// config change mints a new ruleset hash; older buckets are pruned LRU so the
+// file can't grow without bound across upgrades.
+export const FILE_LINT_CACHE_MAX_RULESET_COUNT = 8;
+
+// Per-ruleset ceiling on cached files. Bounds memory + disk on very large
+// repos; the most-recently-stored entries are kept when over the cap.
+export const FILE_LINT_CACHE_MAX_FILE_COUNT = 50_000;
+
+// Length (chars) of the project-directory hash used to name the tmp-dir cache
+// fallback when a project has no `node_modules` to host `.cache/react-doctor`.
+export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
+
 // Plugin / rule / category identity for the diagnostics the supply-chain
 // check emits. `plugin: "socket"` keeps Socket findings visually distinct
 // from the `react-doctor` lint surface in the printed list and JSON report.

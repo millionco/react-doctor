@@ -41,6 +41,14 @@ export interface InspectResult {
    */
   scanElapsedMilliseconds?: number;
   /**
+   * Per-file lint cache outcome: files served from cache, and total files
+   * considered. Both absent when the cache was off or bypassed (audit mode,
+   * adopted `extends`, user plugins). The CLI projects these onto the Sentry
+   * wide event as `lintCacheHitRatio`.
+   */
+  lintCacheHitFileCount?: number | null;
+  lintCacheTotalFileCount?: number | null;
+  /**
    * Present only for a baseline run (`InspectOptions.baseline` set). The
    * `diagnostics` above are then the *introduced* findings only; this
    * carries the comparison totals for Codecov-style delta reporting.

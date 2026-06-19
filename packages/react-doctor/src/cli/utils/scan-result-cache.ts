@@ -39,6 +39,12 @@ export interface CachedScanPayload {
   readonly scanElapsedMilliseconds: number;
   readonly baselineDelta: InspectResult["baselineDelta"];
   readonly lintFailureReasonKind: InspectOutput["lintFailureReasonKind"];
+  /**
+   * Resolved lint worker count (`InspectOutput["scanConcurrency"]`), surfaced
+   * for telemetry. Optional so cache entries persisted before this field
+   * existed still load — a stale hit falls back to the caller's `concurrency`.
+   */
+  readonly scanConcurrency?: number;
 }
 
 interface PersistedScanResultCacheEntry {

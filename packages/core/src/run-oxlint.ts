@@ -313,8 +313,22 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       configFileName: string,
       files: string[],
       fileProgress: ((scannedFileCount: number, totalFileCount: number) => void) | undefined,
-    ): Promise<{ diagnostics: Diagnostic[]; didDropReactHooksJsPlugin: boolean }> => {
-      if (files.length === 0) return { diagnostics: [], didDropReactHooksJsPlugin: false };
+    ): Promise<{
+      diagnostics: Diagnostic[];
+      didDropReactHooksJsPlugin: boolean;
+      hadPartialFailure: boolean;
+    }> => {
+      if (files.length === 0) {
+        return { diagnostics: [], didDropReactHooksJsPlugin: false, hadPartialFailure: false };
+      }
+      // A file dropped by the binary-split retry (timeout / OOM) produces no
+      // diagnostics — indistinguishable from a clean file by output alone. Track
+      // it so the caller never caches a dropped file as a zero-finding hit.
+      let hadPartialFailure = false;
+      const reportPartialFailure = (reason: string): void => {
+        hadPartialFailure = true;
+        onPartialFailure?.(reason);
+      };
       const passConfigPath = path.join(configDirectory, configFileName);
       const passBaseArgs = makeBaseArgs(passConfigPath);
       const passFileBatches = batchIncludePaths(passBaseArgs, files);
@@ -325,7 +339,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           rootDirectory,
           nodeBinaryPath,
           project,
-          onPartialFailure,
+          onPartialFailure: reportPartialFailure,
           onFileProgress: fileProgress,
           spawnTimeoutMs,
           outputMaxBytes,
@@ -333,14 +347,15 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         });
       writeOxlintConfig(passConfigPath, buildConfigForPass({}));
       try {
-        return { diagnostics: await spawnPass(), didDropReactHooksJsPlugin: false };
+        const diagnostics = await spawnPass();
+        return { diagnostics, didDropReactHooksJsPlugin: false, hadPartialFailure };
       } catch (error) {
         const reactHooksJsDropNote = reactHooksJsPluginDropNote(error);
         if (reactHooksJsDropNote === null) throw error;
         writeOxlintConfig(passConfigPath, buildConfigForPass({ disableReactHooksJsPlugin: true }));
         const diagnostics = await spawnPass();
-        onPartialFailure?.(reactHooksJsDropNote);
-        return { diagnostics, didDropReactHooksJsPlugin: true };
+        reportPartialFailure(reactHooksJsDropNote);
+        return { diagnostics, didDropReactHooksJsPlugin: true, hadPartialFailure };
       }
     };
 
@@ -349,11 +364,17 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     //   - audit mode (`!respectInlineDisables`) mutates files in place, so the
     //     hash wouldn't match what oxlint saw;
     //   - adopted `extends` and user plugins carry opaque rules that may read
-    //     other files, which a content-of-self key can't invalidate.
+    //     other files, which a content-of-self key can't invalidate;
+    //   - React Compiler (`react-hooks-js`) can fail to LOAD at lint time
+    //     (issue #833) and get stripped mid-run. A warm scan with zero misses
+    //     never spawns the cacheable pass, so that load failure would never
+    //     trigger while stale React Compiler diagnostics keep replaying —
+    //     breaking the byte-identical guarantee. Bypass entirely instead.
     // Any of those falls back to the original single-config path.
     const useFileLintCache =
       perFileLintCacheEnabled &&
       respectInlineDisables &&
+      !project.hasReactCompiler &&
       extendsPaths.length === 0 &&
       userPlugins.length === 0;
 
@@ -426,9 +447,18 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         freshDiagnosticsByFile.set(missFile, fileDiagnostics);
       }
 
-      // A react-hooks-js fallback rewrote the cacheable config, so the
-      // produced diagnostics no longer match `rulesetHash` — don't store them.
-      if (!cacheableResult.didDropReactHooksJsPlugin && isAttributionSound) {
+      // Skip the store when this run can't be trusted to represent a clean,
+      // complete lint of the miss files:
+      //   - a react-hooks-js fallback rewrote the cacheable config, so its
+      //     output no longer matches `rulesetHash`;
+      //   - a partial failure dropped a file (timeout / OOM) — caching its
+      //     empty output would mask the failure as a clean hit next scan;
+      //   - the diagnostics couldn't be attributed back to their miss file.
+      if (
+        !cacheableResult.didDropReactHooksJsPlugin &&
+        !cacheableResult.hadPartialFailure &&
+        isAttributionSound
+      ) {
         for (const missFile of missFiles) {
           const cacheKey = cacheKeyByFile.get(missFile);
           if (cacheKey !== undefined) {

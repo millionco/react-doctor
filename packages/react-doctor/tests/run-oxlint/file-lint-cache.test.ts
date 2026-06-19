@@ -34,6 +34,7 @@ export const App = () => {
 interface ScanOptions {
   perFileLintCacheEnabled?: boolean;
   respectInlineDisables?: boolean;
+  hasReactCompiler?: boolean;
   onCacheStats?: (cacheHitFileCount: number, totalConsideredFileCount: number) => void;
 }
 
@@ -55,7 +56,11 @@ const setupFixture = (caseId: string, indexSource: string): string => {
 const scan = (projectDir: string, options: ScanOptions = {}): Promise<Diagnostic[]> =>
   runOxlint({
     rootDirectory: projectDir,
-    project: buildTestProject({ rootDirectory: projectDir, framework: "nextjs" }),
+    project: buildTestProject({
+      rootDirectory: projectDir,
+      framework: "nextjs",
+      hasReactCompiler: options.hasReactCompiler ?? false,
+    }),
     userConfig: USER_CONFIG,
     respectInlineDisables: options.respectInlineDisables,
     perFileLintCacheEnabled: options.perFileLintCacheEnabled,
@@ -176,6 +181,22 @@ export const App = () => <div><Button /></div>;
     });
     // Audit mode mutates files in place, so the cache must be bypassed entirely
     // (onCacheStats never fires) while diagnostics are still produced.
+    expect(cacheStatsCalled).toBe(false);
+    expect(diagnostics.some((diagnostic) => diagnostic.rule === "no-barrel-import")).toBe(true);
+  });
+
+  it("bypasses the cache for React Compiler projects (react-hooks-js load-failure safety)", async () => {
+    const projectDir = setupFixture("react-compiler-bypass", BARREL_INDEX);
+    let cacheStatsCalled = false;
+    const diagnostics = await scan(projectDir, {
+      perFileLintCacheEnabled: true,
+      hasReactCompiler: true,
+      onCacheStats: () => {
+        cacheStatsCalled = true;
+      },
+    });
+    // react-hooks-js can fail to load mid-run; a zero-miss warm scan would never
+    // re-trigger that, so React Compiler projects bypass the cache entirely.
     expect(cacheStatsCalled).toBe(false);
     expect(diagnostics.some((diagnostic) => diagnostic.rule === "no-barrel-import")).toBe(true);
   });

@@ -15,8 +15,10 @@ export const resolveReactDoctorCacheDir = (projectDirectory: string): string => 
   if (fs.existsSync(nodeModulesDirectory)) {
     return path.join(nodeModulesDirectory, ".cache", "react-doctor");
   }
+  // SHA-256 (not SHA-1) purely to name a per-project cache subdirectory — it's
+  // a filesystem-safe digest of the path, never a security/identity hash.
   const projectHash = crypto
-    .createHash("sha1")
+    .createHash("sha256")
     .update(projectDirectory)
     .digest("hex")
     .slice(0, CACHE_FILENAME_HASH_LENGTH_CHARS);

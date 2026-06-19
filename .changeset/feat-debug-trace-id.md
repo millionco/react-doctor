@@ -1,5 +1,5 @@
 ---
-"react-doctor": minor
+"react-doctor": patch
 ---
 
 Add a `--debug` flag that prints the run's Sentry trace id at the end of a scan.

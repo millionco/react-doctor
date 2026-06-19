@@ -1,4 +1,6 @@
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { BrowserSession } from "@react-doctor/browser";
 import { z } from "zod";
 import { DEFAULT_CDP_ENDPOINT_HINT } from "../constants.js";
 import { parseViewport } from "../utils/parse-viewport.js";
@@ -41,6 +43,34 @@ const toConnection = (args: ConnectionArgs): BrowserToolConnection => ({
   noLaunch: args.noLaunch,
   viewport: args.viewport ? parseViewport(args.viewport) : undefined,
 });
+
+interface PageToolDefinition {
+  name: string;
+  title: string;
+  description: string;
+  // Build the result inside the session scope (the session is disposed once
+  // this resolves), against the optional `url` to load.
+  run: (session: BrowserSession, url: string | undefined) => Promise<CallToolResult>;
+}
+
+// The read-only "load a page (or read the current one) and report" tools all
+// share the same url + connection + viewport inputs and session lifecycle, so
+// they register through this table rather than repeating the scaffolding.
+const registerPageTool = (server: McpServer, definition: PageToolDefinition): void => {
+  server.registerTool(
+    definition.name,
+    {
+      title: definition.title,
+      description: definition.description,
+      inputSchema: { ...urlShape, ...connectionShape, ...viewportShape },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    (args) =>
+      runTool(() =>
+        withSession(toConnection(args), (session) => definition.run(session, args.url)),
+      ),
+  );
+};
 
 export const registerBrowserTools = (server: McpServer): void => {
   server.registerTool(
@@ -117,91 +147,52 @@ export const registerBrowserTools = (server: McpServer): void => {
       }),
   );
 
-  server.registerTool(
-    "browser_audit",
-    {
-      title: "Run an accessibility audit",
-      description:
-        "Run an axe-core accessibility audit on the attached page (or a URL) and return the violations with impact, help text, and affected element targets.",
-      inputSchema: { ...urlShape, ...connectionShape, ...viewportShape },
-      annotations: { readOnlyHint: true, openWorldHint: true },
+  registerPageTool(server, {
+    name: "browser_audit",
+    title: "Run an accessibility audit",
+    description:
+      "Run an axe-core accessibility audit on the attached page (or a URL) and return the violations with impact, help text, and affected element targets.",
+    run: async (session, url) => {
+      const violations = await session.audit(url);
+      return jsonResult({ violationCount: violations.length, violations });
     },
-    (args) =>
-      runTool(async () => {
-        const violations = await withSession(toConnection(args), (session) =>
-          session.audit(args.url),
-        );
-        return jsonResult({ violationCount: violations.length, violations });
-      }),
-  );
+  });
 
-  server.registerTool(
-    "browser_console",
-    {
-      title: "Capture console output",
-      description:
-        "Capture console messages and page errors during a load of the attached page (or a URL; reloads when no URL is given).",
-      inputSchema: { ...urlShape, ...connectionShape, ...viewportShape },
-      annotations: { readOnlyHint: true, openWorldHint: true },
+  registerPageTool(server, {
+    name: "browser_console",
+    title: "Capture console output",
+    description:
+      "Capture console messages and page errors during a load of the attached page (or a URL; reloads when no URL is given).",
+    run: async (session, url) => {
+      const messages = await session.captureConsole(url);
+      return jsonResult({ messageCount: messages.length, messages });
     },
-    (args) =>
-      runTool(async () => {
-        const messages = await withSession(toConnection(args), (session) =>
-          session.captureConsole(args.url),
-        );
-        return jsonResult({ messageCount: messages.length, messages });
-      }),
-  );
+  });
 
-  server.registerTool(
-    "browser_network",
-    {
-      title: "Capture network requests",
-      description:
-        "Capture network requests during a load of the attached page (or a URL; reloads when no URL is given), flagging failures and non-2xx/3xx responses.",
-      inputSchema: { ...urlShape, ...connectionShape, ...viewportShape },
-      annotations: { readOnlyHint: true, openWorldHint: true },
+  registerPageTool(server, {
+    name: "browser_network",
+    title: "Capture network requests",
+    description:
+      "Capture network requests during a load of the attached page (or a URL; reloads when no URL is given), flagging failures and non-2xx/3xx responses.",
+    run: async (session, url) => {
+      const requests = await session.captureNetwork(url);
+      return jsonResult({ requestCount: requests.length, requests });
     },
-    (args) =>
-      runTool(async () => {
-        const requests = await withSession(toConnection(args), (session) =>
-          session.captureNetwork(args.url),
-        );
-        return jsonResult({ requestCount: requests.length, requests });
-      }),
-  );
+  });
 
-  server.registerTool(
-    "browser_perf",
-    {
-      title: "Measure runtime performance (jank)",
-      description:
-        "Capture long animation frames (>50ms main-thread jank) with per-script attribution, plus LCP and CLS. Loads a URL when given; omit the URL to measure the current page without reloading (so a browser_eval interaction's jank is included).",
-      inputSchema: { ...urlShape, ...connectionShape, ...viewportShape },
-      annotations: { readOnlyHint: true, openWorldHint: true },
-    },
-    (args) =>
-      runTool(async () =>
-        jsonResult(
-          await withSession(toConnection(args), (session) => session.measurePerformance(args.url)),
-        ),
-      ),
-  );
+  registerPageTool(server, {
+    name: "browser_perf",
+    title: "Measure runtime performance (jank)",
+    description:
+      "Capture long animation frames (>50ms main-thread jank) with per-script attribution, plus LCP and CLS. Loads a URL when given; omit the URL to measure the current page without reloading (so a browser_eval interaction's jank is included).",
+    run: async (session, url) => jsonResult(await session.measurePerformance(url)),
+  });
 
-  server.registerTool(
-    "browser_report",
-    {
-      title: "Capture a full page report",
-      description:
-        "Capture console, network, performance, and accessibility for the attached page (or a URL) in a single load — the efficient path when you want the whole runtime picture at once.",
-      inputSchema: { ...urlShape, ...connectionShape, ...viewportShape },
-      annotations: { readOnlyHint: true, openWorldHint: true },
-    },
-    (args) =>
-      runTool(async () =>
-        jsonResult(
-          await withSession(toConnection(args), (session) => session.inspectPage(args.url)),
-        ),
-      ),
-  );
+  registerPageTool(server, {
+    name: "browser_report",
+    title: "Capture a full page report",
+    description:
+      "Capture console, network, performance, and accessibility for the attached page (or a URL) in a single load — the efficient path when you want the whole runtime picture at once.",
+    run: async (session, url) => jsonResult(await session.inspectPage(url)),
+  });
 };

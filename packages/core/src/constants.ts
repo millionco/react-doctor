@@ -131,16 +131,36 @@ export const SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000;
 // vs the hard-cap perf cliffs they prevent.
 export const OXLINT_MAX_FILES_PER_BATCH = 100;
 
-// Bounds for the lint worker count (the `OxlintConcurrency` Reference, seeded
-// by the `REACT_DOCTOR_PARALLEL` env var; the CLI's `--no-parallel` flag forces
-// the MIN end). React Doctor's rules are oxlint JS plugins — single-threaded
-// per process — so
-// running the file batches across N concurrent oxlint subprocesses scales the
-// scan nearly linearly with N. MAX bounds peak memory (each worker holds its
-// batch's ASTs); the resolved count is clamped to [MIN, MAX].
+// Bounds for the lint worker count (the `OxlintConcurrency` Reference, seeded by
+// the `REACT_DOCTOR_PARALLEL` env var; the CLI's `--no-parallel` flag forces the
+// MIN end). React Doctor's rules are oxlint JS plugins — single-threaded per
+// process — so running the file batches across N concurrent oxlint subprocesses
+// scales the scan nearly linearly with N up to the straggler / per-spawn-overhead
+// knee (~10 workers). `resolveAutoScanConcurrency` chooses N for the auto path;
+// every requested count is clamped to [MIN, HARD_MAX].
 export const MIN_SCAN_CONCURRENCY = 1;
 
-export const MAX_SCAN_CONCURRENCY = 16;
+// Absolute upper bound on lint workers, and the clamp applied to every requested
+// count (auto-detected, `REACT_DOCTOR_PARALLEL=N`, or `inspect({ concurrency })`).
+// Past ~10 workers parallel efficiency already collapses (stragglers + per-spawn
+// overhead), so 32 is headroom that stops a 32/64-core CI runner from idling
+// cores behind the old fixed 16 — not a promise of proportionally more speed.
+export const HARD_MAX_SCAN_CONCURRENCY = 32;
+
+// Memory one oxlint subprocess is budgeted at the OXLINT_MAX_FILES_PER_BATCH=100
+// batch size (the native binding's parser arena + the batch's ASTs + the
+// JS-plugin heap). The auto path takes `floor(availableMemory / this)` as a
+// second ceiling alongside the core count, so a high-core / memory-starved box
+// (or a memory-limited container) doesn't spawn enough workers to trip the
+// native-binding SIGABRT that OXLINT_MAX_FILES_PER_BATCH and the EAGAIN/ENOMEM
+// serial replay already guard. 1 GiB matches the per-worker footprint the old
+// fixed-16 ceiling implicitly tolerated (16 workers on a typical 16 GiB CI box),
+// so any machine with >= ~1 GiB/core stays core-bound and the memory term only
+// binds on genuinely memory-constrained hosts — exactly where over-subscription
+// would OOM. `availableMemory` is `os.totalmem()` floored by the cgroup memory
+// limit, NOT `os.freemem()`, which excludes reclaimable page cache and reads
+// near-zero on macOS / cache-heavy Linux, collapsing the auto path to one worker.
+export const PER_WORKER_MEM_BUDGET_BYTES = 1024 * 1024 * 1024;
 
 // Default worker count for a `diagnose({ projects })` batch. Each project
 // scan already fans out its own oxlint workers (bounded by the constants

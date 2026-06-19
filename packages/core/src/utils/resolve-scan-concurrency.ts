@@ -1,14 +1,13 @@
-import os from "node:os";
-import { MAX_SCAN_CONCURRENCY, MIN_SCAN_CONCURRENCY } from "../constants.js";
+import { HARD_MAX_SCAN_CONCURRENCY, MIN_SCAN_CONCURRENCY } from "../constants.js";
 
 /**
- * Resolves a requested lint worker count to a clamped integer within
- * `[MIN_SCAN_CONCURRENCY, MAX_SCAN_CONCURRENCY]`. `"auto"` uses the
- * machine's CPU cores; out-of-range or non-finite requests degrade to
+ * Clamps a requested lint worker count to `[MIN_SCAN_CONCURRENCY,
+ * HARD_MAX_SCAN_CONCURRENCY]` as a finite integer. This is the explicit-pin and
+ * spawn-boundary clamp — the memory-and-core-budgeted auto count comes from
+ * `resolveAutoScanConcurrency`. Out-of-range or non-finite requests degrade to
  * `MIN_SCAN_CONCURRENCY` rather than oversubscribing or running zero workers.
  */
-export const resolveScanConcurrency = (requested: number | "auto"): number => {
-  const desired = requested === "auto" ? os.availableParallelism() : requested;
-  if (!Number.isFinite(desired) || desired < MIN_SCAN_CONCURRENCY) return MIN_SCAN_CONCURRENCY;
-  return Math.max(MIN_SCAN_CONCURRENCY, Math.min(Math.floor(desired), MAX_SCAN_CONCURRENCY));
+export const resolveScanConcurrency = (requested: number): number => {
+  if (!Number.isFinite(requested) || requested < MIN_SCAN_CONCURRENCY) return MIN_SCAN_CONCURRENCY;
+  return Math.min(Math.floor(requested), HARD_MAX_SCAN_CONCURRENCY);
 };

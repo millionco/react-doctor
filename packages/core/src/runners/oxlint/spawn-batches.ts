@@ -93,7 +93,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
   } = input;
   // Clamp at the spawn boundary so any caller — including programmatic
   // `inspect({ concurrency })` that skips the CLI's resolver — is bounded by
-  // the [MIN, MAX] worker ceiling and can't oversubscribe oxlint processes.
+  // the [MIN, HARD_MAX] worker ceiling and can't oversubscribe oxlint processes.
   const requestedConcurrency = resolveScanConcurrency(input.concurrency ?? MIN_SCAN_CONCURRENCY);
   const totalFileCount = fileBatches.reduce((sum, batch) => sum + batch.length, 0);
 

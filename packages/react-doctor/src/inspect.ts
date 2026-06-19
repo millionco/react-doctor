@@ -27,6 +27,7 @@ import { BASELINE_FILES_TEMP_DIR_PREFIX, METRIC } from "./cli/utils/constants.js
 import { recordCount } from "./cli/utils/record-metric.js";
 import { recordScanMetrics } from "./cli/utils/record-scan-metrics.js";
 import { recordRunEvent } from "./cli/utils/build-run-event.js";
+import { resolveWorkerTelemetry } from "./cli/utils/resolve-worker-telemetry.js";
 import type {
   ChangedFileLineRanges,
   Diagnostic,
@@ -234,21 +235,32 @@ const buildRunEventConfig = (
   options: ResolvedInspectOptions,
   userConfig: ReactDoctorConfig | null,
   hasCustomConfig: boolean,
-) => ({
-  scope: deriveScope(options),
-  parallel: options.concurrency !== undefined,
-  workerCount: options.concurrency,
-  lint: options.lint,
-  deadCode: options.deadCode,
-  scoreOnly: options.scoreOnly,
-  noScore: options.noScore,
-  respectInlineDisables: options.respectInlineDisables,
-  showWarnings: options.warnings,
-  usedOutputDir: options.outputDirectory !== null,
-  ignoredTagCount: options.ignoredTags.size,
-  hasCustomConfig,
-  userConfig,
-});
+  // The worker count the scan actually resolved to (`output.scanConcurrency`),
+  // which is the real value on the auto path where `options.concurrency` is
+  // `undefined`. Omitted on the pre-scan failure path (no scan ran), where it
+  // falls back to the caller's pin.
+  resolvedWorkerCount?: number,
+) => {
+  const { workerCount, parallel } = resolveWorkerTelemetry(
+    resolvedWorkerCount,
+    options.concurrency,
+  );
+  return {
+    scope: deriveScope(options),
+    parallel,
+    workerCount,
+    lint: options.lint,
+    deadCode: options.deadCode,
+    scoreOnly: options.scoreOnly,
+    noScore: options.noScore,
+    respectInlineDisables: options.respectInlineDisables,
+    showWarnings: options.warnings,
+    usedOutputDir: options.outputDirectory !== null,
+    ignoredTagCount: options.ignoredTags.size,
+    hasCustomConfig,
+    userConfig,
+  };
+};
 
 export const inspect = async (
   directory: string,
@@ -688,6 +700,7 @@ const runInspectWithRuntime = async (
     scannedFileCount: output.scannedFileCount,
     scannedFilePaths: output.scannedFilePaths,
     scanElapsedMilliseconds: output.scanElapsedMilliseconds,
+    scanConcurrency: output.scanConcurrency,
     baselineDelta,
     lintFailureReasonKind: lintBindingMissing
       ? "native-binding-missing"
@@ -793,12 +806,19 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
   const result = await Effect.runPromise(
     runMaybeSilent(finalizeAndRender(finalizeInput), input.options.silent),
   );
+  // The real worker count the scan fanned out to (resolved auto count on the
+  // common parallel path, where the caller pinned no `concurrency`). A stale
+  // cache hit predating the field falls back to the caller's pin.
+  const { workerCount: resolvedWorkerCount, parallel } = resolveWorkerTelemetry(
+    input.payload.scanConcurrency,
+    input.options.concurrency,
+  );
   recordScanMetrics({
     result,
     mode: input.scanMode,
     baselineDegraded: input.baselineDegraded,
-    parallel: input.options.concurrency !== undefined,
-    workerCount: input.options.concurrency,
+    parallel,
+    workerCount: resolvedWorkerCount,
     lint: input.options.lint,
     deadCode: input.options.deadCode,
     scoreOnly: input.options.scoreOnly,
@@ -808,7 +828,12 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     didDeadCodeFail: input.payload.didDeadCodeFail,
   });
   recordRunEvent(input.rootSentrySpan, {
-    ...buildRunEventConfig(input.options, input.userConfig, input.hasCustomConfig),
+    ...buildRunEventConfig(
+      input.options,
+      input.userConfig,
+      input.hasCustomConfig,
+      resolvedWorkerCount,
+    ),
     result,
     mode: input.scanMode,
     gateExempt: input.baselineDegraded,

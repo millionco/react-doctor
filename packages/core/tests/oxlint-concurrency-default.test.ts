@@ -1,7 +1,7 @@
 /**
  * Guards the "parallel by default" contract: with no `REACT_DOCTOR_PARALLEL`
- * override, the `OxlintConcurrency` Reference resolves to auto-detected CPU
- * cores (parallel), not `1` (serial).
+ * override, the `OxlintConcurrency` Reference resolves to the memory-and-core-
+ * budgeted auto count (parallel), not `1` (serial).
  *
  * The Reference caches its `defaultValue` on first access, so this asserts a
  * single read with the env var cleared beforehand — enough to catch a
@@ -10,11 +10,11 @@
 
 import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vite-plus/test";
-import { OxlintConcurrency, resolveScanConcurrency } from "@react-doctor/core";
+import { OxlintConcurrency, resolveAutoScanConcurrency } from "@react-doctor/core";
 
 describe("OxlintConcurrency default", () => {
-  it("defaults to auto-detected cores (parallel) when REACT_DOCTOR_PARALLEL is unset", () => {
+  it("defaults to the auto-budgeted worker count (parallel) when REACT_DOCTOR_PARALLEL is unset", () => {
     delete process.env.REACT_DOCTOR_PARALLEL;
-    expect(Effect.runSync(OxlintConcurrency)).toBe(resolveScanConcurrency("auto"));
+    expect(Effect.runSync(OxlintConcurrency)).toBe(resolveAutoScanConcurrency());
   });
 });

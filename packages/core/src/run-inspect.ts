@@ -46,6 +46,7 @@ import { Score } from "./services/score.js";
 import { SupplyChain } from "./services/supply-chain.js";
 import type { ScoreRequestMetadata } from "./calculate-score.js";
 import { resolveGithubActionsScoreMetadata } from "./utils/resolve-github-actions-score-metadata.js";
+import { resolveScanConcurrency } from "./utils/resolve-scan-concurrency.js";
 
 export interface InspectInput {
   readonly directory: string;
@@ -161,6 +162,13 @@ export interface InspectOutput {
   readonly scannedFilePaths: ReadonlyArray<string>;
   /** Wall-clock duration of the scan phase, in milliseconds. */
   readonly scanElapsedMilliseconds: number;
+  /**
+   * Resolved lint worker count the linter actually fanned out to (the
+   * `OxlintConcurrency` Reference read through the spawn-boundary clamp).
+   * Surfaced so CLI telemetry reports the real worker count on the auto
+   * path, where the caller's `concurrency` option is `undefined`.
+   */
+  readonly scanConcurrency: number;
 }
 
 /**
@@ -389,10 +397,12 @@ export const runInspect = <HooksR = never>(
       reason: null,
     });
 
-    // Read only for the spinner suffix below (the Linter reads the same
-    // Reference to actually fan out the lint pass); defaults to parallel
-    // (auto-detected cores).
-    const scanConcurrency = yield* OxlintConcurrency;
+    // The actual worker count: clamp the Reference through the same
+    // spawn-boundary clamp the Linter applies, so the spinner suffix and the
+    // `scanConcurrency` we surface for telemetry both reflect the real fan-out
+    // (a programmatic `inspect({ concurrency })` override reaches the Reference
+    // unclamped). Defaults to the memory-and-core-budgeted auto count.
+    const scanConcurrency = resolveScanConcurrency(yield* OxlintConcurrency);
     const workerCountSuffix =
       scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
 
@@ -569,6 +579,7 @@ export const runInspect = <HooksR = never>(
       scannedFileCount: totalFileCount,
       scannedFilePaths,
       scanElapsedMilliseconds,
+      scanConcurrency,
     };
   }).pipe(
     Effect.withSpan("runInspect", {

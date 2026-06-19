@@ -76,6 +76,22 @@ describe("createFileLintCache", () => {
     expect(reReadFirst.lookup("src/a.tsx hashA")).toHaveLength(1);
   });
 
+  it("merges same-ruleset entries on persist (concurrent runs don't erase each other)", () => {
+    const cacheDir = makeCacheDir();
+    // Both runs load the (empty) cache before either persists — the concurrent
+    // race. Each stores a DIFFERENT file under the SAME ruleset hash.
+    const runA = createFileLintCache(cacheDir, "ruleset-shared");
+    const runB = createFileLintCache(cacheDir, "ruleset-shared");
+    runA.store("src/a.tsx hashA", [diagnostic({ filePath: "src/a.tsx" })]);
+    runA.persist();
+    runB.store("src/b.tsx hashB", [diagnostic({ filePath: "src/b.tsx" })]);
+    runB.persist(); // re-reads runA's entry and merges, rather than replacing
+
+    const reader = createFileLintCache(cacheDir, "ruleset-shared");
+    expect(reader.lookup("src/a.tsx hashA")).toHaveLength(1);
+    expect(reader.lookup("src/b.tsx hashB")).toHaveLength(1);
+  });
+
   it("fails open on a corrupt cache file (no throw, treated as empty)", () => {
     const cacheDir = makeCacheDir();
     fs.mkdirSync(cacheDir, { recursive: true });

@@ -98,22 +98,35 @@ export const createFileLintCache = (cacheDirectory: string, rulesetHash: string)
     },
     persist: () => {
       // Re-read so a sibling run writing a DIFFERENT ruleset bucket isn't
-      // clobbered — we only ever replace our own bucket.
+      // clobbered.
       const onDisk = failOpenReadJson<PersistedFileLintCache>(cacheFilePath, emptyCache());
       const rulesets: Record<string, PersistedRuleset> =
         onDisk.version === FILE_LINT_CACHE_SCHEMA_VERSION && isRecord(onDisk.rulesets)
           ? { ...onDisk.rulesets }
           : {};
 
-      const cappedEntries = [...entries.entries()].slice(-FILE_LINT_CACHE_MAX_FILE_COUNT);
-      const files: Record<string, ReadonlyArray<unknown>> = {};
-      for (const [fileKey, diagnostics] of cappedEntries) {
+      // Merge — not replace — our ruleset bucket: a sibling run sharing this
+      // ruleset hash may have stored entries (for files we never touched) since
+      // we loaded. Preserving them avoids erasing another run's work (extra
+      // misses); our freshly-linted entries win for any shared key.
+      const existingBucket = rulesets[rulesetHash];
+      const existingFiles =
+        isRecord(existingBucket) && isRecord(existingBucket.files) ? existingBucket.files : {};
+      const ourFiles: Record<string, ReadonlyArray<unknown>> = {};
+      for (const [fileKey, diagnostics] of entries) {
         // Fresh diagnostics are plain JSON-serializable records straight from
         // `parseOxlintOutput`; decoded hits are valid `Diagnostic`s. Both
         // serialize directly — `JSON.stringify` drops the `undefined` optionals.
-        files[fileKey] = diagnostics;
+        ourFiles[fileKey] = diagnostics;
       }
-      rulesets[rulesetHash] = { updatedAtMs: Date.now(), files };
+      const mergedEntries = Object.entries({ ...existingFiles, ...ourFiles });
+      // Bound disk/memory; ours are appended last, so the slice keeps the most
+      // recently linted entries when over the cap.
+      const cappedEntries = mergedEntries.slice(-FILE_LINT_CACHE_MAX_FILE_COUNT);
+      rulesets[rulesetHash] = {
+        updatedAtMs: Date.now(),
+        files: Object.fromEntries(cappedEntries),
+      };
 
       const keptHashes = Object.entries(rulesets)
         .sort(([, first], [, second]) => second.updatedAtMs - first.updatedAtMs)

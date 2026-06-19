@@ -87,6 +87,7 @@ export * from "./utils/dedupe-diagnostics.js";
 export * from "./utils/define-config.js";
 export * from "./utils/group-by.js";
 export * from "./utils/has-published-fix-recipe.js";
+export * from "./utils/is-large-minified-file.js";
 export * from "./utils/list-source-files.js";
 export * from "./utils/map-with-concurrency.js";
 export * from "./utils/match-glob-pattern.js";

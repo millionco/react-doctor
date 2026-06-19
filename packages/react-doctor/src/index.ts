@@ -4,6 +4,7 @@ import {
   clearAutoSuppressionCaches,
   clearConfigCache,
   clearIgnorePatternsCache,
+  clearMinifiedFileCache,
   clearPackageJsonCache,
   clearPackageRoleCache,
   clearProjectCache,
@@ -89,6 +90,7 @@ export const clearCaches = (): void => {
   clearIgnorePatternsCache();
   clearPackageRoleCache();
   clearAutoSuppressionCaches();
+  clearMinifiedFileCache();
 };
 
 interface ToJsonReportOptions {

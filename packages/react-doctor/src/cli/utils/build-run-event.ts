@@ -50,6 +50,15 @@ export interface RunEventInput {
   readonly lintFailureReasonKind?: string | null;
   readonly lintPartialFailureCount?: number;
   readonly didDeadCodeFail?: boolean;
+  // `true` when the background supply-chain check hit its overlap budget and
+  // failed open to no diagnostics. The kill metric for the lint/supply-chain
+  // overlap watches the rate of this per supply-chain-eligible scan (filter to
+  // `mode == "full"`, since a skipped check also reports `false`). Known on the
+  // success path and replayed from the cached payload on a cache hit — but a
+  // timed-out run is never cached (`shouldStoreScanPayload`), so a cache hit
+  // always reports `false`. Omitted only on the failure path (the scan threw
+  // before finalizing).
+  readonly supplyChainOverlapTimedOut?: boolean;
   // A degraded baseline run (no delta computed) skips the CI gate, so the
   // `wouldBlock` prediction must match — never block on its plain-diff findings.
   readonly gateExempt?: boolean;
@@ -196,6 +205,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     lintFailureReasonKind: input.lintFailureReasonKind ?? null,
     lintPartialFailureCount: input.lintPartialFailureCount ?? null,
     didDeadCodeFail: input.didDeadCodeFail ?? null,
+    supplyChainOverlapTimedOut: input.supplyChainOverlapTimedOut ?? null,
   };
   for (const [category, count] of countByCategory) {
     attributes[`diag.category.${toCategoryKey(category)}`] = count;

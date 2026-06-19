@@ -21,7 +21,9 @@ export const REACT_DOCTOR_CONFIG_PROJECT_NAME = "react-doctor";
 
 export const STAGED_FILES_TEMP_DIR_PREFIX = "react-doctor-staged-";
 export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
-export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 1;
+// Bumped to 2: `CachedScanPayload` gained `supplyChainOverlapTimedOut`, so
+// entries written by an older schema lack the field and must be discarded.
+export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 2;
 export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
 export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
 

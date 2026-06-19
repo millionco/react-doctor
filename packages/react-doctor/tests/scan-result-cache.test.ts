@@ -129,6 +129,7 @@ describe("scan result cache", () => {
       scanElapsedMilliseconds: 1,
       baselineDelta: undefined,
       lintFailureReasonKind: null,
+      supplyChainOverlapTimedOut: false,
     };
     const cache = createScanResultCache(projectDirectory);
     cache.store(key, payload);

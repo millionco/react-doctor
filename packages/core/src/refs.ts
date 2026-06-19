@@ -3,6 +3,7 @@ import {
   MIN_SCAN_CONCURRENCY,
   OXLINT_OUTPUT_MAX_BYTES,
   OXLINT_SPAWN_TIMEOUT_MS,
+  SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS,
 } from "./constants.js";
 import { resolveScanConcurrency } from "./utils/resolve-scan-concurrency.js";
 
@@ -20,6 +21,26 @@ export class OxlintSpawnTimeoutMs extends Context.Reference<number>(
       if (raw === undefined) return OXLINT_SPAWN_TIMEOUT_MS;
       const parsed = Number(raw);
       if (!Number.isFinite(parsed) || parsed <= 0) return OXLINT_SPAWN_TIMEOUT_MS;
+      return parsed;
+    },
+  },
+) {}
+
+/**
+ * Wall-clock budget for the supply-chain check when it runs on a background
+ * fiber overlapping the lint pass. Reads from the env var on startup so the
+ * eval harness can raise the budget under sandbox microVMs (slower network)
+ * without recompiling react-doctor. Tests override via
+ * `Layer.succeed(SupplyChainOverlapTimeoutMs, ...)`.
+ */
+export class SupplyChainOverlapTimeoutMs extends Context.Reference<number>(
+  "react-doctor/SupplyChainOverlapTimeoutMs",
+  {
+    defaultValue: () => {
+      const raw = process.env["REACT_DOCTOR_SUPPLY_CHAIN_TIMEOUT_MS"];
+      if (raw === undefined) return SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS;
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed) || parsed <= 0) return SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS;
       return parsed;
     },
   },

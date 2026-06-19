@@ -16,6 +16,7 @@ import {
   ReactDoctorError,
 } from "../src/errors.js";
 import { runInspect, type InspectInput } from "../src/run-inspect.js";
+import { SupplyChainOverlapTimeoutMs } from "../src/refs.js";
 import { Config } from "../src/services/config.js";
 import { DeadCode } from "../src/services/dead-code.js";
 import { Files } from "../src/services/files.js";
@@ -130,6 +131,32 @@ const layersOf = (config: {
     SupplyChain.layerOf(config.supplyChain ?? []),
     Progress.layerNoop,
     Reporter.layerCapture,
+  );
+
+// Builds the orchestration stack with a CUSTOM supply-chain layer (a mock that
+// hangs, delays, or counts calls) plus an overridable overlap budget — the
+// fork/timeout/join path needs both, which the array-only `SupplyChain.layerOf`
+// shape behind `layersOf` can't express.
+const overlapLayersOf = (config: {
+  supplyChain: Layer.Layer<SupplyChain>;
+  overlapTimeoutMs: number;
+  linter?: Layer.Layer<Linter>;
+  diagnostics?: ReadonlyArray<Diagnostic>;
+  deadCode?: ReadonlyArray<Diagnostic>;
+}) =>
+  Layer.mergeAll(
+    Project.layerOf(sampleProject),
+    Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
+    Files.layerInMemory(new Map()),
+    config.linter ?? Linter.layerOf(config.diagnostics ?? []),
+    LintPartialFailures.layerLive,
+    DeadCode.layerOf(config.deadCode ?? []),
+    Git.layerOf({}),
+    Score.layerOf({ score: 85, label: "Good" }),
+    config.supplyChain,
+    Progress.layerNoop,
+    Reporter.layerNoop,
+    Layer.succeed(SupplyChainOverlapTimeoutMs, config.overlapTimeoutMs),
   );
 
 describe("runInspect — happy path", () => {
@@ -600,6 +627,193 @@ describe("runInspect — supply-chain in diff mode", () => {
       }).pipe(Effect.provide(layersOf({ supplyChain: [supplyChainDiagnostic] }))),
     );
     expect(output.diagnostics.map((d) => d.rule)).toContain("low-supply-chain-score");
+  });
+});
+
+describe("runInspect — supply-chain lint overlap", () => {
+  it("preserves the fixed diagnostic order when the forked check is joined", async () => {
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          layersOf({
+            supplyChain: [supplyChainDiagnostic],
+            diagnostics: [lintDiagnostic],
+            deadCode: [deadCodeDiagnostic],
+          }),
+        ),
+      ),
+    );
+    // env (none), supply-chain, lint, dead-code — independent of which fiber
+    // settled first, the concat slot is fixed.
+    expect(output.diagnostics.map((d) => d.rule)).toEqual([
+      "low-supply-chain-score",
+      "no-derived-state",
+      "unused-file",
+    ]);
+    expect(output.supplyChainOverlapTimedOut).toBe(false);
+  });
+
+  it("keeps the score unchanged on the healthy overlap path", async () => {
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          layersOf({
+            supplyChain: [supplyChainDiagnostic],
+            diagnostics: [lintDiagnostic],
+            deadCode: [deadCodeDiagnostic],
+          }),
+        ),
+      ),
+    );
+    expect(output.score).toEqual({ score: 85, label: "Good" });
+    expect(output.didLintFail).toBe(false);
+  });
+
+  it("times out a hung supply-chain fiber instead of hanging the scan", async () => {
+    const hungSupplyChain = Layer.mock(SupplyChain, {
+      run: () => Stream.fromEffect(Effect.never),
+    });
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          overlapLayersOf({
+            supplyChain: hungSupplyChain,
+            overlapTimeoutMs: 50,
+            diagnostics: [lintDiagnostic],
+          }),
+        ),
+      ),
+    );
+    // Without the fork-relative `Effect.timeout`, this scan never resolves.
+    expect(output.supplyChainOverlapTimedOut).toBe(true);
+    expect(output.diagnostics.map((d) => d.rule)).toEqual(["no-derived-state"]);
+    expect(output.didLintFail).toBe(false);
+  });
+
+  it("does not cut a slow-but-healthy supply-chain run that finishes within budget", async () => {
+    const slowSupplyChain = Layer.mock(SupplyChain, {
+      run: () =>
+        Stream.fromEffect(Effect.succeed(supplyChainDiagnostic).pipe(Effect.delay("20 millis"))),
+    });
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          overlapLayersOf({
+            supplyChain: slowSupplyChain,
+            overlapTimeoutMs: 5_000,
+            diagnostics: [lintDiagnostic],
+          }),
+        ),
+      ),
+    );
+    expect(output.supplyChainOverlapTimedOut).toBe(false);
+    expect(output.diagnostics.map((d) => d.rule)).toContain("low-supply-chain-score");
+  });
+
+  it("never invokes supply-chain run in a plain diff scan (fork takes the empty branch)", async () => {
+    let supplyChainRunCount = 0;
+    const countingSupplyChain = Layer.mock(SupplyChain, {
+      run: () => {
+        supplyChainRunCount += 1;
+        return Stream.fromIterable([supplyChainDiagnostic]);
+      },
+    });
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, includePaths: ["src/App.tsx"] }).pipe(
+        Effect.provide(
+          overlapLayersOf({
+            supplyChain: countingSupplyChain,
+            overlapTimeoutMs: 90_000,
+            diagnostics: [lintDiagnostic],
+          }),
+        ),
+      ),
+    );
+    expect(supplyChainRunCount).toBe(0);
+    expect(output.diagnostics.map((d) => d.rule)).not.toContain("low-supply-chain-score");
+    expect(output.supplyChainOverlapTimedOut).toBe(false);
+  });
+
+  it("invokes supply-chain run once in a diff scan when the manifest changed", async () => {
+    let supplyChainRunCount = 0;
+    const countingSupplyChain = Layer.mock(SupplyChain, {
+      run: () => {
+        supplyChainRunCount += 1;
+        return Stream.fromIterable([supplyChainDiagnostic]);
+      },
+    });
+    const output = await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        includePaths: ["src/App.tsx"],
+        supplyChainManifestChanged: true,
+      }).pipe(
+        Effect.provide(
+          overlapLayersOf({
+            supplyChain: countingSupplyChain,
+            overlapTimeoutMs: 90_000,
+            diagnostics: [lintDiagnostic],
+          }),
+        ),
+      ),
+    );
+    expect(supplyChainRunCount).toBe(1);
+    expect(output.diagnostics.map((d) => d.rule)).toContain("low-supply-chain-score");
+  });
+
+  it("fails open on a supply-chain timeout while a folded lint failure nulls the score", async () => {
+    // A lint failure is FOLDED into Stream.empty (not propagated), so the scan
+    // still finalizes: the supply-chain fiber self-times-out to [], the score
+    // is gated to null by the lint failure, and the timeout flag is recorded.
+    const failingLinter = Layer.mock(Linter, {
+      run: () =>
+        Stream.fail(
+          new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: "synthetic failure" }) }),
+        ),
+    });
+    const hungSupplyChain = Layer.mock(SupplyChain, {
+      run: () => Stream.fromEffect(Effect.never),
+    });
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(
+          overlapLayersOf({
+            supplyChain: hungSupplyChain,
+            overlapTimeoutMs: 50,
+            linter: failingLinter,
+          }),
+        ),
+      ),
+    );
+    expect(output.didLintFail).toBe(true);
+    expect(output.score).toBeNull();
+    expect(output.supplyChainOverlapTimedOut).toBe(true);
+    expect(output.diagnostics).toHaveLength(0);
+  });
+
+  it("propagates a defect raised after the supply-chain fork without hanging", async () => {
+    // Force a defect in the afterLint hook — it fires AFTER the supply-chain
+    // fork but BEFORE the join. `forkChild` is structured, so the hung
+    // supply-chain child is interrupted with the failing parent rather than
+    // left to run out the (deliberately long) budget: the scan fails fast
+    // instead of blocking the join on `Effect.never`.
+    const hungSupplyChain = Layer.mock(SupplyChain, {
+      run: () => Stream.fromEffect(Effect.never),
+    });
+    const exit = await Effect.runPromiseExit(
+      runInspect(baseInput, {
+        afterLint: () => Effect.die(new Error("synthetic post-fork defect")),
+      }).pipe(
+        Effect.provide(
+          overlapLayersOf({
+            supplyChain: hungSupplyChain,
+            overlapTimeoutMs: 600_000,
+            diagnostics: [lintDiagnostic],
+          }),
+        ),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
   });
 });
 

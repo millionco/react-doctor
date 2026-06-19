@@ -83,7 +83,7 @@ export const effectCleanupNotOnEveryPath = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Acquire the resource AFTER any early `return`, or clean it up on every path. An early `return` that runs after the subscription/timer is created — but before the cleanup is returned — leaks it on that path.",
+    "Acquire the resource AFTER any early `return`, or clean it up on every path. An early `return` that runs after the subscription/timer is created, but before the cleanup is returned, leaks it on that path.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
@@ -114,7 +114,7 @@ export const effectCleanupNotOnEveryPath = defineRule({
         if (!leakingReturn) continue;
         context.report({
           node: acquisition.node,
-          message: `\`${acquisition.resourceName}\` is created here, but a later \`return\` exits before the cleanup runs on some path — leaking it. Move the acquisition after that early return, or clean up on every path.`,
+          message: `\`${acquisition.resourceName}\` is created here, but a later \`return\` exits before the cleanup runs on some path, leaking it. Move the acquisition after that early return, or clean up on every path.`,
         });
         return;
       }

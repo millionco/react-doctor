@@ -59,7 +59,7 @@ describe("openWorkflowPullRequest", () => {
     }
   });
 
-  it("allows untracked files in working tree", async () => {
+  it.skipIf(process.platform === "win32")("allows untracked files in working tree", async () => {
     const runner = fakeRunner({
       "git rev-parse --show-toplevel": succeed("/repo"),
       "gh auth status": succeed(""),

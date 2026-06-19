@@ -1,5 +1,75 @@
 # react-doctor
 
+## 0.5.7
+
+### Patch Changes
+
+- [#881](https://github.com/millionco/react-doctor/pull/881) [`50999f4`](https://github.com/millionco/react-doctor/commit/50999f4a09c992d534c86fe248bfdb65dd8ef377) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Add a `--debug` flag that prints the run's Sentry trace id at the end of a scan.
+
+  When something looks wrong, run `react-doctor --debug`: it forces a Sentry performance trace for that run (even if `SENTRY_TRACES_SAMPLE_RATE` was turned down) and prints `Sentry trace (mention this when reporting): <id>` as the last line so the id can be pasted into a bug report for maintainers to pull the full trace. It prints on both outcomes — a clean run and a crash (the crash's trace is surfaced even when it happens before the scan span starts). The line goes to stderr, so `--json` / `--score` stdout stays machine-clean. Combining `--debug` with `--no-score` / `--no-telemetry` is rejected up front, since those flags disable the Sentry reporting `--debug` depends on. Telemetry also gains a low-cardinality `debug` run tag so adoption of the flag is visible.
+
+- [#864](https://github.com/millionco/react-doctor/pull/864) [`b317164`](https://github.com/millionco/react-doctor/commit/b317164e3e6bc9a5d7fc0fa4870187a17ba73493) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Make `file:line` diagnostic locations clickable in the terminal, and record which terminal each run uses.
+
+  Diagnostic locations are now wrapped in OSC 8 hyperlinks pointing at each file's absolute path, so supporting terminals (iTerm2, WezTerm, Kitty, Windows Terminal, VS Code, and other VTE-based emulators) turn them into click-to-open links — even in monorepo scans where the displayed path is relative to a sub-project root rather than the terminal's cwd. The visible text is unchanged (`src/App.tsx:12`), the link rides in escape sequences, and terminals without OSC 8 support print it exactly as before. Hyperlinks are auto-detected per terminal and can be forced on/off with the standard `FORCE_HYPERLINK` env var; they are off for non-TTYs, CI, and coding agents (whose output parsers shouldn't see the escapes).
+
+  Telemetry also gains a `terminalKind` run tag (neovim, vscode, iterm, wezterm, kitty, windows-terminal, …) so we can see where React Doctor is actually run. It is a low-cardinality enum with no path, username, or secret.
+
+- [#863](https://github.com/millionco/react-doctor/pull/863) [`740211c`](https://github.com/millionco/react-doctor/commit/740211cf201ee28910c105b59b79e9aa73e1bd45) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Add a per-project `scannedFileCount` to the JSON report's `projects[]` entries —
+  the number of source files the scan's linter examined (the changed React-eligible
+  files in diff mode, the whole source tree in a full scan). It's additive and
+  optional, so the `schemaVersion` is unchanged and existing consumers are unaffected.
+
+  This lets the GitHub Action tell "a PR that changed no React-eligible files" (the
+  linter examined nothing — `scannedFileCount: 0` for every project) apart from "a
+  clean scan of real React changes" (`scannedFileCount >= 1`), which previously
+  produced identical reports. The Action now treats the former as a no-op: it skips
+  the sticky PR comment entirely and the commit status reads "Skipped — no React
+  files changed" instead of a zero-filled score line. A clean scan of real React
+  changes still posts its "no issues 🎉" comment.
+
+- [#844](https://github.com/millionco/react-doctor/pull/844) [`eafac9d`](https://github.com/millionco/react-doctor/commit/eafac9d4f1d52f68258306ad037841a981a9d6cf) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Stop recommending the deprecated `--diff` flag in agent-facing guidance ([#834](https://github.com/millionco/react-doctor/issues/834)).
+
+  The CLI "Agent guidance" section, the installed agent hooks, and the `--help` examples all advised running `react-doctor --verbose --diff`, which now prints a deprecation warning on every run. They now recommend the supported `--scope changed` (pass `--base <ref>` to pin the base). The website `llms.txt` and the `react-doctor` skill reference were updated to match.
+
+- [#832](https://github.com/millionco/react-doctor/pull/832) [`f45cb29`](https://github.com/millionco/react-doctor/commit/f45cb297ef89320bfa0b8f5d52ecbfdb3ad3552c) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - Fix a false-positive `deslop/unused-file` for a file imported only by a file in `ignore.files`. Ignored files are now kept in the dead-code dependency graph (only their reporting is suppressed), so a module reachable solely through an ignored file is no longer flagged as unused.
+
+- [#851](https://github.com/millionco/react-doctor/pull/851) [`1e260c5`](https://github.com/millionco/react-doctor/commit/1e260c5d219391dbdf18e1cfd729dbc97b3806fb) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Show the "Add React Doctor to CI" and "install React Doctor" pitches once per repo instead of on every scan.
+
+  The post-scan handoff re-asked the CI question on every run, and the agent install hint re-printed every run because its opt-out store was built but never written. Both now record a per-repo answer (reusing the existing once-per-repo `Conf` pattern) and stay quiet afterward — the first-run experience is unchanged, only the repetition stops.
+
+  The agent copy-prompt no longer carries the CI marketing preamble at all. The interactive handoff prompt is now the single once-per-repo pitch, so the agent is never instructed to re-ask what the user was just asked — capable agents were flagging that preamble as social-engineering and it was eroding trust in the actual diagnostics.
+
+- [#848](https://github.com/millionco/react-doctor/pull/848) [`431e515`](https://github.com/millionco/react-doctor/commit/431e515260a209088c2305c6372249009dd95474) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Stop a broken `eslint-plugin-react-hooks` install from sinking the whole lint pass, and fix the misleading error it produced (issue [#833](https://github.com/millionco/react-doctor/issues/833)).
+
+  When the optional `react-hooks-js` (React Compiler) plugin can't be imported in the user's environment, oxlint fails the entire config load — which previously dropped every curated react-doctor diagnostic too and left the scan with `skippedChecks: ["lint"]` and zero results. The oxlint error is also multi-line, and the 200-char error preview truncated its plugin path mid-string (often right at `…/node_modules/`), so it read as react-doctor passing an invalid directory rather than a plugin that failed to load.
+
+  - **Graceful degradation:** the oxlint runner now detects a `react-hooks-js` plugin-load failure and retries once with that plugin (and its compiler rules) dropped — mirroring the existing adopted-`extends` fallback. The curated react-doctor rules, dead-code, and environment checks all still run; only the React Compiler rules are skipped, surfaced as a clear `lint:partial` note that includes oxlint's real underlying reason.
+  - **Readable error:** the unparseable-output preview grew from 200 to 600 chars so the full plugin path and the underlying `Error:` line survive instead of being cut at `…/node_modules/`.
+
+- [#857](https://github.com/millionco/react-doctor/pull/857) [`17389ba`](https://github.com/millionco/react-doctor/commit/17389ba4feb07a54727100623b1b5a4ecc061e85) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Show a syntax-highlighted source snippet in `react-doctor why <file>:<line>`.
+
+  The `buildCodeFrame` util already powers the source frames in the scan summary, but the `why` command (the single-location explain path) never called it — so explaining a diagnostic printed the rule, category, help, and suppression hint with no view of the offending code. It now renders the same code frame directly under the headline, with the caret on the offending column (or the whole line span for a multi-site diagnostic). When the file can't be read or the line is minified, it falls back to the existing text-only output.
+
+- [#882](https://github.com/millionco/react-doctor/pull/882) [`a9d2713`](https://github.com/millionco/react-doctor/commit/a9d27134c4a5124b30f7a82f4ac3e4fd3339845c) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Group findings that a single fix resolves into one root-cause task.
+
+  Several findings can share one fix — e.g. four `useEffect`s that reset state on the same prop change all clear with a single `key` prop. Those findings now carry a shared `fixGroupId` in the JSON report and the on-disk `diagnostics.json` dump, so a tool that turns findings into work items counts one fix as one task instead of N. The terminal labels such a group "One fix clears all N findings", and the agent handoff frames it as a single task ("one fix · N sites") and tells the agent to group by `fixGroupId`.
+
+  Grouping is presentation-only and keyed on identical (file, rule, message) for an allowlist of rules where the same message means the same fix — the state-on-prop-change family today (`no-derived-state-effect`, `no-adjust-state-on-prop-change`, `no-reset-all-state-on-prop-change`, and the `no-derived-state` / `no-derived-useState` rules). The score is unchanged — it already de-weights repeated same-rule findings and never reads the new field. `fixGroupId` is an additive optional field, so existing JSON consumers are unaffected.
+
+- [#859](https://github.com/millionco/react-doctor/pull/859) [`44db3e0`](https://github.com/millionco/react-doctor/commit/44db3e0546fe0518b79e0aa2636754dcccda2939) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Improve disable-directive handling for react-doctor rules:
+
+  - `// react-doctor-disable-line` / `-next-line` (and `ignore.rules` / rule lookups) now accept a rule's bare short id, e.g. `no-eval` for `react-doctor/no-eval` — the unqualified form people reach for first.
+  - When an `eslint-disable` / `oxlint-disable` directive names a react-doctor rule by an id oxlint can't bind to a plugin rule — a bare short id (`no-eval`) or a legacy plugin prefix (`react/jsx-key`), whether inline or as a file-level block disable — the diagnostic now carries a hint to use the full `react-doctor/<id>` key.
+
+- [#884](https://github.com/millionco/react-doctor/pull/884) [`869f220`](https://github.com/millionco/react-doctor/commit/869f220d97c1c30cb3e0d6897833f9db372667bb) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Warn before mass-fixing a migration-scale bucket. When a single rule spans dozens of files (≥ `MIGRATION_SCALE_RULE_FILE_COUNT`, default 40), the report now prints a "Migration-scale change: sample before you sweep" advisory. It names the rule(s), explains the review risk, and points at `npx react-doctor@latest <path>` to scope the work down one area at a time.
+
+  The same guidance reaches coding agents. A new "Agent guidance" line and an inline note on any migration-scale bucket in the agent handoff prompt tell the agent to fix a representative sample, confirm the recipe holds, and get the code owner's sign-off before changing the rest, instead of mass-fixing a broad pattern in one unreviewed pass.
+
+  A new wide-event attribute (`migration.largestRuleBucketFiles`, plus `migration.largestRuleBucketSites` and `migration.largestRuleBucketRule`) records the widest-blast-radius rule per scan, so the threshold can be calibrated against real runs. No change to the score, exit code, or JSON report.
+
+- Updated dependencies [[`424d8f9`](https://github.com/millionco/react-doctor/commit/424d8f9f914ff98b791af6b1f88337922c80c8ef), [`81bbfcc`](https://github.com/millionco/react-doctor/commit/81bbfcc39a0ae2f7d92ebb8860d854d09a60344d), [`937a7ca`](https://github.com/millionco/react-doctor/commit/937a7ca8a1b066a62210dc4a11149b9180dc9851), [`b8170f8`](https://github.com/millionco/react-doctor/commit/b8170f814c079d7bbc9e7796dd13646a6e8175fe), [`3f7d0e7`](https://github.com/millionco/react-doctor/commit/3f7d0e7ddb055b4970cba2b393ce14f6615732e4), [`6b8e756`](https://github.com/millionco/react-doctor/commit/6b8e756c40fe300634aec766edb00cbec73d8bc4), [`03301fc`](https://github.com/millionco/react-doctor/commit/03301fcdf4adcf256ef7ef7ed83f5566181ab371), [`44db3e0`](https://github.com/millionco/react-doctor/commit/44db3e0546fe0518b79e0aa2636754dcccda2939), [`5b742fa`](https://github.com/millionco/react-doctor/commit/5b742fa28c96443bd5bbd6348ad5aba55e17405c), [`8908f98`](https://github.com/millionco/react-doctor/commit/8908f98d02ad65e58d740ab948f8111948592cb9), [`451beeb`](https://github.com/millionco/react-doctor/commit/451beeb28405aa6810946e3311dfc7fb8de74632)]:
+  - oxlint-plugin-react-doctor@0.5.7
+
 ## 0.5.6
 
 ### Patch Changes

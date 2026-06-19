@@ -9,9 +9,27 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on a PR (a new push obsoletes the in-flight one); let
+# every push to main finish so per-commit jobs aren't skipped.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Turbo Remote Cache: share build/typecheck/test artifacts across runs, runners,
+# and branches. Both are repo secrets, so they're empty on fork PRs (secrets are
+# withheld there) — turbo just runs cold, it does not fail.
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    # Fold the Node version into turbo's `test` task hash (turbo.json) so a
+    # cached result from one matrix leg is never replayed for another.
+    env:
+      MATRIX_NODE_VERSION: ${{ matrix.node-version }}
     strategy:
       fail-fast: false
       matrix:
@@ -34,16 +52,12 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --prefer-offline
 
       - run: pnpm test
 
-      - run: pnpm typecheck
-        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
-
-      - run: pnpm lint
-        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
-
+      # lint + typecheck run as dedicated jobs in code-quality.yml; don't pay for
+      # them again here.
       - name: Check formatting
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
         shell: bash

@@ -19,7 +19,8 @@
       "persistent": true
     },
     "test": {
-      "dependsOn": ["build"]
+      "dependsOn": ["build"],
+      "env": ["MATRIX_NODE_VERSION"]
     },
     "typecheck": {
       "dependsOn": ["^build"]

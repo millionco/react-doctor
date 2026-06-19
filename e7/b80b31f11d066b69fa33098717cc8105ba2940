@@ -1,0 +1,22 @@
+packages/react-doctor/tests/open-workflow-pull-request.test.ts
+  s_02949bc312ec72::t_733c5061d90c38 102-113
+packages/react-doctor/src/cli/utils/open-workflow-pull-request.ts
+  s_02949bc312ec72::t_83d55965176405 66-72,76,94-97
+  s_02949bc312ec72::t_e4d8c17bb825a1 195-198
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "e7b80b31f11d066b69fa33098717cc8105ba2940",
+  "prompts": {},
+  "sessions": {
+    "s_02949bc312ec72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8e645ba-e36a-4945-ba52-d0bb8065ddac",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

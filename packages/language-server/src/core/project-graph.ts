@@ -3,6 +3,7 @@ import {
   clearAutoSuppressionCaches,
   clearConfigCache,
   clearIgnorePatternsCache,
+  clearMinifiedFileCache,
   clearPackageJsonCache,
   clearProjectCache,
   discoverReactSubprojects,
@@ -80,6 +81,7 @@ export const createProjectGraph = (options: ProjectGraphOptions): ProjectGraph =
       clearPackageJsonCache();
       clearIgnorePatternsCache();
       clearAutoSuppressionCaches();
+      clearMinifiedFileCache();
       projects = null;
     },
   };

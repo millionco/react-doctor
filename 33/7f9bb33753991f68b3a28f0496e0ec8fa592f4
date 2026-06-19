@@ -1,0 +1,52 @@
+packages/core/src/run-inspect.ts
+  s_481a2c69d2e269::t_ce54b40160ebb8 515-519,524
+  s_481a2c69d2e269::t_2f14576d4ba9ea 15
+packages/core/src/index.ts
+  s_481a2c69d2e269::t_20123e772c37cd 82
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_481a2c69d2e269::t_f97660c236c0e3 28
+  s_481a2c69d2e269::t_1ed58c24ca8761 402-413
+packages/react-doctor/tests/handoff/build-handoff-payload.test.ts
+  s_481a2c69d2e269::t_c6648b2d40c025 54-80
+packages/core/src/utils/assign-fix-groups.ts
+  s_481a2c69d2e269::t_60d98207269df1 1-50
+.changeset/group-derived-state-fix-groups.md
+  s_481a2c69d2e269::t_bb92e6c4a51acb 1-9
+packages/core/src/schemas.ts
+  s_481a2c69d2e269::t_47eb2afdef7997 38
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_481a2c69d2e269::t_51d06ece00df10 144-148,152-157,159-160
+  s_481a2c69d2e269::t_2e1f0e90d09315 175-176
+packages/react-doctor/src/cli/utils/build-handoff-payload.ts
+  s_481a2c69d2e269::t_be472d89196221 4-8
+  s_481a2c69d2e269::t_be3273727dfdcc 37-43,45
+  s_481a2c69d2e269::t_8c5bbe98974cb5 71-72
+packages/core/src/constants.ts
+  s_481a2c69d2e269::t_311cf296698ecc 358-380
+packages/react-doctor/src/cli/utils/diagnostic-grouping.ts
+  s_481a2c69d2e269::t_08bc7b2168c631 85
+  s_481a2c69d2e269::t_4e7cf8f11e48da 1-6
+  s_481a2c69d2e269::t_5f8c5338f5fb5d 76-84,86-88
+packages/react-doctor/tests/diagnostic-grouping.test.ts
+  s_481a2c69d2e269::t_b5c6362e06c7f5 1-40
+packages/core/src/types/diagnostic.ts
+  s_481a2c69d2e269::t_dadc29e6b1bc2a 91-99
+packages/core/tests/assign-fix-groups.test.ts
+  s_481a2c69d2e269::t_c5bc73a1c37d05 1-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "337f9bb33753991f68b3a28f0496e0ec8fa592f4",
+  "prompts": {},
+  "sessions": {
+    "s_481a2c69d2e269": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c6f24a9-07e5-4e0e-890c-2f748ad3d847",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

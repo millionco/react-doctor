@@ -403,7 +403,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         if (cachedDiagnostics === null) missFiles.push(candidateFile);
         else replayedDiagnostics.push(...cachedDiagnostics);
       }
-      onCacheStats?.(candidateFiles.length - missFiles.length, candidateFiles.length);
+      const cacheHitFileCount = candidateFiles.length - missFiles.length;
 
       // Cacheable rules re-run only on changed files; the cross-file sidecar
       // always runs fresh on EVERY file so a dependency change can never serve
@@ -425,6 +425,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         candidateFiles,
         options.onFileProgress,
       );
+
+      // Reported only after both passes succeed — if lint throws, the run fails
+      // and no cache-hit ratio is attached to a failed scan's telemetry.
+      onCacheStats?.(cacheHitFileCount, candidateFiles.length);
 
       // Attribute fresh cacheable diagnostics back to their miss file by the
       // normalized path oxlint echoes. If ANY diagnostic can't be attributed,

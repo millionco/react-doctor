@@ -1,0 +1,19 @@
+action.yml
+  s_458afe03bb9c83::t_ed4f9b844efb00 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "ecb64a7836cb3fa3b98a7ebcc1713ddcb634c45a",
+  "prompts": {},
+  "sessions": {
+    "s_458afe03bb9c83": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6599546f-81ca-4824-90e1-5145226c7639",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

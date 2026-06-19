@@ -129,3 +129,30 @@ export class OxlintConcurrency extends Context.Reference<number>("react-doctor/O
     return resolveAutoScanConcurrency();
   },
 }) {}
+
+/**
+ * Three-state control for overlapping the dead-code pass with the lint pass —
+ * forking dead-code as a child fiber that runs DURING lint instead of strictly
+ * after it.
+ *
+ *   - `"auto"` (default) → defer to the runtime memory gate
+ *     (`hasDeadCodeOverlapHeadroom`): overlap only when there's headroom to run
+ *     the 8 GB dead-code child alongside the oxlint workers, else stay
+ *     sequential.
+ *   - `"on"`  → force overlap regardless of the gate.
+ *   - `"off"` → force the strictly-sequential (pre-overlap) behavior.
+ *
+ * Seeded from `REACT_DOCTOR_DEAD_CODE_OVERLAP` so operators get a redeploy-free
+ * kill switch; tests pin it via `Layer.succeed(DeadCodeOverlap, ...)`.
+ */
+export class DeadCodeOverlap extends Context.Reference<"auto" | "on" | "off">(
+  "react-doctor/DeadCodeOverlap",
+  {
+    defaultValue: () => {
+      const raw = process.env["REACT_DOCTOR_DEAD_CODE_OVERLAP"]?.trim().toLowerCase();
+      if (raw === "on" || raw === "true" || raw === "1") return "on";
+      if (raw === "off" || raw === "false" || raw === "0") return "off";
+      return "auto";
+    },
+  },
+) {}

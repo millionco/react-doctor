@@ -299,39 +299,48 @@ describe("checkDeadCode", () => {
     expect(didTerminate).toBe(true);
   });
 
-  it("terminates the worker when the surrounding Effect fiber aborts (no orphan child)", async () => {
+  it("SIGKILLs an in-flight worker when the abort signal fires", async () => {
     const directory = setupProject("aborted-worker", {
       "src/index.ts": "export const used = 1;\n",
     });
-    let didTerminate = false;
     const abortController = new AbortController();
-    // `checkDeadCode` does async setup before spawning the worker, so wait
-    // until the worker is created (the abort listener is attached
-    // synchronously right after) before signalling.
-    let signalWorkerCreated: () => void = () => {};
-    const workerCreated = new Promise<void>((resolve) => {
-      signalWorkerCreated = resolve;
-    });
+    let didTerminate = false;
 
-    // The worker never settles on its own; only the abort signal can free it,
-    // so don't await `checkDeadCode`'s (never-settling) promise.
-    void checkDeadCode({
+    const pending = checkDeadCode({
       rootDirectory: directory,
-      createWorker: () => {
-        signalWorkerCreated();
-        return {
+      createWorker: () => ({
+        // Never settles on its own — only the abort path can end it.
+        result: new Promise(() => {}),
+        terminate: () => {
+          didTerminate = true;
+        },
+      }),
+      abortSignal: abortController.signal,
+    });
+    abortController.abort();
+
+    await expect(pending).rejects.toThrow("Dead-code worker aborted");
+    expect(didTerminate).toBe(true);
+  });
+
+  it("rejects immediately when handed an already-aborted signal", async () => {
+    const directory = setupProject("pre-aborted-worker", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    let didTerminate = false;
+
+    await expect(
+      checkDeadCode({
+        rootDirectory: directory,
+        createWorker: () => ({
           result: new Promise(() => {}),
           terminate: () => {
             didTerminate = true;
           },
-        };
-      },
-      signal: abortController.signal,
-    });
-
-    await workerCreated;
-    abortController.abort();
-
+        }),
+        abortSignal: AbortSignal.abort(),
+      }),
+    ).rejects.toThrow("Dead-code worker aborted");
     expect(didTerminate).toBe(true);
   });
 

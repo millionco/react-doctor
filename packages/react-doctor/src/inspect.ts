@@ -572,6 +572,7 @@ const runInspectWithRuntime = async (
       resolveLocalGithubViewerPermission: !options.noScore,
       suppressScanSummary: options.suppressRendering,
       supplyChainManifestChanged: options.supplyChainManifestChanged,
+      concurrentScan: options.concurrentScan,
     },
     {
       beforeLint: (projectInfo, lintIncludePaths) =>
@@ -696,6 +697,7 @@ const runInspectWithRuntime = async (
     lintPartialFailures: output.lintPartialFailures,
     didDeadCodeFail: output.didDeadCodeFail,
     deadCodeFailureReason: output.deadCodeFailureReason,
+    deadCodeOverlapped: output.deadCodeOverlapped,
     directory: output.resolvedDirectory,
     scannedFileCount: output.scannedFileCount,
     scannedFilePaths: output.scannedFilePaths,
@@ -843,6 +845,7 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     lintPartialFailureCount: input.payload.lintPartialFailures.length,
     didDeadCodeFail: input.payload.didDeadCodeFail,
     supplyChainOverlapTimedOut: input.payload.supplyChainOverlapTimedOut,
+    deadCodeOverlapped: input.payload.deadCodeOverlapped,
   });
   return result;
 };

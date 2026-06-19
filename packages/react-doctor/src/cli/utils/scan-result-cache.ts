@@ -33,6 +33,7 @@ export interface CachedScanPayload {
   readonly lintPartialFailures: ReadonlyArray<string>;
   readonly didDeadCodeFail: boolean;
   readonly deadCodeFailureReason: string | null;
+  readonly deadCodeOverlapped: boolean;
   readonly directory: string;
   readonly scannedFileCount: number;
   readonly scannedFilePaths: ReadonlyArray<string>;

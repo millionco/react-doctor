@@ -21,8 +21,11 @@ export const REACT_DOCTOR_CONFIG_PROJECT_NAME = "react-doctor";
 
 export const STAGED_FILES_TEMP_DIR_PREFIX = "react-doctor-staged-";
 export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
-// Bumped to 2: `CachedScanPayload` gained `supplyChainOverlapTimedOut`, so
-// entries written by an older schema lack the field and must be discarded.
+// Bump on any breaking change to `CachedScanPayload`'s shape so a stale on-disk
+// cache (missing a newly-required field) is discarded wholesale by
+// `readPersistedCache` instead of deserializing into an invalid payload.
+// Bumped to 2: `CachedScanPayload` gained the required `supplyChainOverlapTimedOut`
+// (supply-chain overlap) and `deadCodeOverlapped` (dead-code overlap) fields.
 export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 2;
 export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
 export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;

@@ -59,6 +59,13 @@ export interface RunEventInput {
   // always reports `false`. Omitted only on the failure path (the scan threw
   // before finalizing).
   readonly supplyChainOverlapTimedOut?: boolean;
+  /**
+   * Whether the dead-code pass ran concurrently with lint this scan (gate
+   * opened / overlap forced). Lets a query compare `runInspect` wall-clock
+   * grouped by overlap, and watch for an OOM/timeout regression on
+   * overlapped scans (the kill-metric for the overlap feature).
+   */
+  readonly deadCodeOverlapped?: boolean;
   // A degraded baseline run (no delta computed) skips the CI gate, so the
   // `wouldBlock` prediction must match — never block on its plain-diff findings.
   readonly gateExempt?: boolean;
@@ -206,6 +213,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     lintPartialFailureCount: input.lintPartialFailureCount ?? null,
     didDeadCodeFail: input.didDeadCodeFail ?? null,
     supplyChainOverlapTimedOut: input.supplyChainOverlapTimedOut ?? null,
+    deadCodeOverlapped: input.deadCodeOverlapped ?? null,
   };
   for (const [category, count] of countByCategory) {
     attributes[`diag.category.${toCategoryKey(category)}`] = count;

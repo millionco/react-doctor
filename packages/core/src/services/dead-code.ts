@@ -37,11 +37,15 @@ export class DeadCode extends Context.Service<
           // of the per-call `Effect.tryPromise`).
           Effect.fn("DeadCode.run")(function* () {
             return yield* Effect.tryPromise({
+              // The signal is wired to fiber interruption: when the
+              // orchestrator interrupts this fiber (lint failed / scan
+              // cancelled) it aborts here, SIGKILLing the 8 GB worker child
+              // instead of orphaning it until the worker timeout.
               try: (signal) =>
                 checkDeadCode({
                   rootDirectory: input.rootDirectory,
                   userConfig: input.userConfig,
-                  signal,
+                  abortSignal: signal,
                 }),
               catch: (cause) =>
                 new ReactDoctorError({ reason: new DeadCodeAnalysisFailed({ cause }) }),

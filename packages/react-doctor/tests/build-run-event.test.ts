@@ -83,6 +83,7 @@ const baseInput = (overrides: Partial<RunEventInput> = {}): RunEventInput => ({
   lintFailureReasonKind: null,
   lintPartialFailureCount: 0,
   didDeadCodeFail: false,
+  deadCodeOverlapped: false,
   ...overrides,
 });
 
@@ -103,6 +104,23 @@ describe("buildRunEventAttributes", () => {
       if (previous === undefined) delete process.env[name];
       else process.env[name] = previous;
     }
+  });
+
+  it("records whether the dead-code pass overlapped lint, and drops it on the failure path", () => {
+    expect(
+      buildRunEventAttributes(baseInput({ result: buildResult(), deadCodeOverlapped: true }))
+        .deadCodeOverlapped,
+    ).toBe(true);
+    // A false dimension is still emitted (toSpanAttributes only drops null), so
+    // overlap-adoption rate is queryable across all scans.
+    expect(
+      buildRunEventAttributes(baseInput({ result: buildResult(), deadCodeOverlapped: false }))
+        .deadCodeOverlapped,
+    ).toBe(false);
+    // Failure path (no result) carries no outcome dimensions, so it's dropped.
+    expect(
+      buildRunEventAttributes(baseInput({ error: new Error("boom") })).deadCodeOverlapped,
+    ).toBeUndefined();
   });
 
   it("marks a finding-free run clean and drops absent CI signals", () => {

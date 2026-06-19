@@ -341,6 +341,23 @@ export const SCAN_TOTAL_DEADLINE_MS = 900_000;
 // the child's heap so those projects complete instead of crashing.
 export const DEAD_CODE_WORKER_MAX_OLD_SPACE_MB = 8192;
 
+// Conservative per-oxlint-worker resident-set estimate, used ONLY by the
+// dead-code overlap memory gate (`hasDeadCodeOverlapHeadroom`). Each worker
+// holds its batch's ASTs (OXLINT_MAX_FILES_PER_BATCH files); 512 MiB is a
+// generous upper bound so the gate stays cautious — when memory is tight we
+// simply don't overlap (zero correctness/memory risk, just no speedup).
+export const OXLINT_WORKER_RSS_ESTIMATE_MB = 512;
+
+// Slack the overlap gate leaves free above the estimated lint + dead-code
+// peak before it opens, so overlapping the 8 GB dead-code child with the
+// oxlint workers never pushes the box to the OOM edge.
+export const MEMORY_OVERLAP_SAFETY_MARGIN_MB = 1024;
+
+// Byte-per-megabyte conversion for comparing a megabyte budget against a
+// byte-denominated reading (`os.freemem()` in the dead-code overlap gate).
+// The `_MB` constants above store raw megabytes.
+export const BYTES_PER_MEGABYTE = 1024 * 1024;
+
 // HACK: lookahead cap for JSX opener-span scanning; bounds worst-case
 // work on pathological files. Real openers stay well under this.
 export const JSX_OPENER_SCAN_MAX_LINES = 32;

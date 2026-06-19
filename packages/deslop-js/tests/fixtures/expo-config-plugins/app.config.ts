@@ -8,7 +8,7 @@ const expoAppConfig = () => ({
     ["./plugins/directory-index-plugin", { enabled: true }],
     "./plugins/*.ts",
     "/plugins/false-positive-target.ts",
-    ["./plugins/false-positive-target.ts".replace("target", "target"), { enabled: true }],
+    ["./plugins/false-positive-placeholder.ts".replace("placeholder", "target"), { enabled: true }],
     "expo-camera",
   ],
   extra: internalToolingConfig,

@@ -1067,7 +1067,9 @@ describe("redundancy / simplifiable functions", () => {
     assert.equal(
       inlineAsyncCallbacks.length,
       0,
-      `inline 'inlineCallbackInvoker(async (input) => input * 2)' must NOT flag (callback signature is contract), got: ${JSON.stringify(inlineAsyncCallbacks)}`,
+      `inline inlineCallbackInvoker arrow must NOT flag (callback signature is contract), got: ${inlineAsyncCallbacks
+        .map((finding) => `${finding.kind} ${finding.path}:${finding.line}`)
+        .join(", ")}`,
     );
   });
 

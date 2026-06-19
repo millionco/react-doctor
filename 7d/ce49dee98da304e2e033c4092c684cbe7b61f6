@@ -1,0 +1,21 @@
+packages/react-doctor/tests/handoff/build-handoff-payload.test.ts
+  s_bbeaa972d15fa9::t_e544d5d5c1da58 76-105
+packages/react-doctor/src/cli/utils/build-handoff-payload.ts
+  s_bbeaa972d15fa9::t_56a226f0380e70 79-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "7dce49dee98da304e2e033c4092c684cbe7b61f6",
+  "prompts": {},
+  "sessions": {
+    "s_bbeaa972d15fa9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2dac245-55f2-499a-95fd-fb03d35fc757",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

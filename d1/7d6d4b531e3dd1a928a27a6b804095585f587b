@@ -1,0 +1,25 @@
+packages/react-doctor/tests/run-oxlint/file-lint-cache.test.ts
+  s_b48f74b59251fc::t_34f253fbc4d6ae 187-202
+  s_b48f74b59251fc::t_dc276495c6d255 37
+  s_b48f74b59251fc::t_d2a9e36c51f5ee 59-63
+packages/core/src/run-oxlint.ts
+  s_b48f74b59251fc::t_25605a0461f94f 316-331,342,350-351,357-358,367-372,377,450-461
+packages/core/src/utils/resolve-react-doctor-cache-dir.ts
+  s_b48f74b59251fc::t_2d5c329a9e31de 18-19,21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "d17d6d4b531e3dd1a928a27a6b804095585f587b",
+  "prompts": {},
+  "sessions": {
+    "s_b48f74b59251fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "589c5f5d-2c87-412b-8fae-4bab844ce2bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

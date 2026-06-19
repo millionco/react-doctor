@@ -1,0 +1,61 @@
+packages/react-doctor/src/inspect.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 725-726,748-749,769-776,820-821,887-888,913-915
+packages/core/src/types/inspect.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 44-50
+packages/react-doctor/tests/run-oxlint/file-lint-cache.test.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 1-222
+packages/core/src/refs.ts
+  s_2eec643ea8aa60::t_6a17b72c6f5f3b 180-208
+packages/core/src/runners/oxlint/resolve-toolchain-versions.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 1-36
+packages/oxlint-plugin-react-doctor/src/plugin/constants/cross-file-rule-ids.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 1-25
+packages/core/src/constants.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 569-588
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 210-218
+packages/core/src/run-inspect.ts
+  s_2eec643ea8aa60::t_6a17b72c6f5f3b 209-216,594-597,619-622,794-795
+packages/core/src/services/linter.ts
+  s_2eec643ea8aa60::t_6a17b72c6f5f3b 13,48,117,139-140
+packages/core/tests/cross-file-rule-ids.test.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 1-139
+packages/oxlint-plugin-react-doctor/src/index.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 23-24
+packages/core/src/run-oxlint.ts
+  s_2eec643ea8aa60::t_6a17b72c6f5f3b 12,14,16,24-25,27,70-83,201-202,245,257,276-279,281-284,288-296,311,314-322,335-337,343-530
+packages/core/tests/compute-ruleset-hash.test.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 1-118
+packages/core/src/utils/resolve-react-doctor-cache-dir.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 1-26
+packages/core/src/utils/atomic-write-json.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 1-17
+packages/core/src/runners/oxlint/config.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 3,39-51,119,121-126,147-151,185-187,189-193
+packages/core/src/utils/hash-file-contents.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 1-15
+packages/core/src/runners/oxlint/file-lint-cache.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 1-144
+packages/core/src/utils/fail-open-read-json.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 1-13
+.changeset/per-file-lint-cache.md
+  s_2eec643ea8aa60::t_5a24e628b810b4 1-11
+packages/core/tests/file-lint-cache.test.ts
+  s_2eec643ea8aa60::t_5a24e628b810b4 1-171
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "b2db26d4103e1c024a4a900ac60926c6dee2b850",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

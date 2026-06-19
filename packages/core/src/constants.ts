@@ -310,13 +310,6 @@ export const OXLINT_SPLIT_TOTAL_BUDGET_MS = 180_000;
 // even if the budget clock is somehow not advancing.
 export const OXLINT_SPLIT_MAX_DEPTH = 8;
 
-// Whole-supply-chain-check cap. At ~45 deps / 8 concurrency × the 10 s
-// per-dependency Socket.dev timeout the nominal worst case is ≈57 s; the
-// 90 s budget absorbs a handful of slow sockets while still killing the
-// many-socket pileup that otherwise turns this phase into a multi-minute
-// hang (the dominant cause of slow scans in the field).
-export const SUPPLY_CHAIN_TOTAL_TIMEOUT_MS = 90_000;
-
 // Effect-side cap on the dead-code phase. Sits ABOVE the in-worker
 // DEAD_CODE_WORKER_TIMEOUT_MS (= 120 s) as a runtime-independent
 // backstop: if the worker's own timer is wedged (or the worker never

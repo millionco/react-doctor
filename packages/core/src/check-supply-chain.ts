@@ -16,9 +16,9 @@ import {
   SUPPLY_CHAIN_FETCH_CONCURRENCY,
   SUPPLY_CHAIN_IGNORED_PACKAGES,
   SUPPLY_CHAIN_MAX_ALERTS_SHOWN,
+  SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS,
   SUPPLY_CHAIN_PLUGIN,
   SUPPLY_CHAIN_RULE,
-  SUPPLY_CHAIN_TOTAL_TIMEOUT_MS,
 } from "./constants.js";
 import { readPackageJson } from "./project-info/index.js";
 import type { Diagnostic, PackageJson, ReactDoctorConfig } from "./types/index.js";
@@ -27,7 +27,7 @@ import { sanitizeTerminalText } from "./utils/sanitize-terminal-text.js";
 export interface SupplyChainCheckInput {
   readonly rootDirectory: string;
   readonly userConfig: ReactDoctorConfig | null;
-  /** Whole-check wall-clock cap; a many-socket pileup that ignores the per-fetch abort trips this and the check fails open ([]). Defaults to SUPPLY_CHAIN_TOTAL_TIMEOUT_MS. */
+  /** Whole-check wall-clock cap; a many-socket pileup that ignores the per-fetch abort trips this and the check fails open ([]). Defaults to SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS (the same budget the orchestrator's fork-level `SupplyChainOverlapTimeoutMs` ref defaults to — one source of truth). */
   readonly totalTimeoutMs?: number;
 }
 
@@ -595,7 +595,7 @@ export const checkSupplyChain = (input: SupplyChainCheckInput): Effect.Effect<Di
       // A many-socket pileup (sockets that ignore the per-fetch abort) trips the
       // whole-check cap; recover to "no artifacts scored" — identical fail-open
       // contract to the per-fetch `orElseSucceed(() => null)`.
-      Effect.timeoutOption(input.totalTimeoutMs ?? SUPPLY_CHAIN_TOTAL_TIMEOUT_MS),
+      Effect.timeoutOption(input.totalTimeoutMs ?? SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS),
       Effect.map((maybeArtifacts) => Option.getOrElse(maybeArtifacts, () => [])),
     );
 

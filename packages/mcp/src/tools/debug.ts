@@ -20,7 +20,9 @@ const liveServers = new Set<Server>();
 const mintedEndpoints = new Set<string>();
 
 const unknownEndpointError = (): CallToolResult =>
-  errorResult("Unknown log endpoint — call debug_serve first to get the endpoint to read or clear.");
+  errorResult(
+    "Unknown log endpoint — call debug_serve first to get the endpoint to read or clear.",
+  );
 
 let cleanupRegistered = false;
 const trackLogServer = (logServer: Server): void => {

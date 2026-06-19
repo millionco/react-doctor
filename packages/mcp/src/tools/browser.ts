@@ -2,8 +2,8 @@ import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BrowserSession } from "@react-doctor/browser";
 import { z } from "zod";
+import { parseViewport } from "@react-doctor/browser";
 import { DEFAULT_CDP_ENDPOINT_HINT } from "../constants.js";
-import { parseViewport } from "../utils/parse-viewport.js";
 import { jsonResult, runTool, textResult } from "../utils/tool-result.js";
 import { withSession, type BrowserToolConnection } from "../utils/with-session.js";
 

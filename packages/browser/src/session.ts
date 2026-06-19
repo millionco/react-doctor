@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import axe from "axe-core";
 import type { Browser, CDPSession, ConsoleMessage, Page, Request, Response } from "playwright-core";
 import { connectToBrowser, type BrowserConnection } from "./connect.js";
 import {
@@ -182,8 +181,9 @@ export class BrowserSession {
   }
 
   // axe is injected with `evaluate`, not a <script> tag, so a strict CSP can't
-  // block it.
+  // block it. Loaded on demand so it stays out of bundles that don't audit.
   private async runAxe(): Promise<AccessibilityViolation[]> {
+    const { default: axe } = await import("axe-core");
     await this.page.evaluate(axe.source);
     return this.page.evaluate(async (maxTargets) => {
       const runner: typeof axe = (globalThis as unknown as { axe: typeof axe }).axe;

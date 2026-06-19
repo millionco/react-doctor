@@ -30,10 +30,6 @@ export const GIT_HOOK_EXECUTABLE_MODE = 0o755;
 // Default output path for `browser screenshot` when `--out` is omitted.
 export const DEFAULT_SCREENSHOT_FILENAME = "react-doctor-screenshot.png";
 
-// Upper bound on an emulated `--viewport` dimension, so a typo can't push an
-// absurd device-metrics override into CDP.
-export const MAX_VIEWPORT_PX = 10_000;
-
 export const AGENT_HOOK_TIMEOUT_SECONDS = 120;
 
 // Hard cap on the `gh repo view` default-branch probe. A healthy gh answers

@@ -1,10 +1,10 @@
-import type {
-  AccessibilityViolation,
+import {
   BrowserSession,
-  ConsoleMessageEntry,
-  NetworkRequestEntry,
-  PerformanceReport,
-  Viewport,
+  type AccessibilityViolation,
+  type ConsoleMessageEntry,
+  type NetworkRequestEntry,
+  type PerformanceReport,
+  type Viewport,
 } from "@react-doctor/browser";
 import { DEFAULT_SCREENSHOT_FILENAME, METRIC } from "../utils/constants.js";
 import { cliLogger as logger } from "../utils/cli-logger.js";
@@ -17,31 +17,14 @@ export interface BrowserCommandOptions {
   viewport?: Viewport;
 }
 
-const isModuleNotFoundError = (error: unknown): boolean =>
-  error instanceof Error &&
-  "code" in error &&
-  (error.code === "ERR_MODULE_NOT_FOUND" || error.code === "MODULE_NOT_FOUND");
-
-// playwright-core is heavy and only the browser jobs need it, so it's an
-// optional dependency loaded on demand. A missing install becomes an actionable
-// hint; any other failure (a real bug in the browser package) rethrows as-is.
-const loadBrowser = async (): Promise<typeof import("@react-doctor/browser")> => {
-  try {
-    return await import("@react-doctor/browser");
-  } catch (error: unknown) {
-    if (!isModuleNotFoundError(error)) throw error;
-    throw new Error(
-      "The browser tools need playwright-core, which isn't installed. Install it with `npm i -D playwright-core`, then retry.",
-    );
-  }
-};
-
+// playwright-core loads lazily inside @react-doctor/browser (only when a command
+// attaches to Chrome), so importing the session here costs nothing at startup
+// and a missing install surfaces the package's own actionable hint.
 const withSession = async (
   options: BrowserCommandOptions,
   useSession: (session: BrowserSession) => Promise<void>,
 ): Promise<void> => {
-  const { BrowserSession: Session } = await loadBrowser();
-  const session = await Session.attach({ cdpEndpoint: options.cdp, launch: options.launch });
+  const session = await BrowserSession.attach({ cdpEndpoint: options.cdp, launch: options.launch });
   try {
     if (options.viewport) await session.setViewport(options.viewport);
     await useSession(session);

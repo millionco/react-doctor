@@ -1,8 +1,10 @@
-import type { Viewport } from "@react-doctor/browser";
-import { MAX_VIEWPORT_PX } from "../constants.js";
+import { MAX_VIEWPORT_PX } from "./constants.js";
+import type { Viewport } from "./types.js";
 
-// Parse a `WIDTHxHEIGHT` string into a viewport, throwing a readable message
-// (surfaced as a tool error by `runTool`) on a malformed or out-of-range value.
+// Parse a `WIDTHxHEIGHT` string (e.g. 390x844) into a viewport, throwing a
+// readable Error on a malformed or out-of-range value. Pure (no playwright), so
+// both the CLI's `--viewport` parser and the MCP tool reuse it without dragging
+// the browser engine into their bundles.
 export const parseViewport = (value: string): Viewport => {
   const match = /^(\d+)x(\d+)$/i.exec(value.trim());
   const width = match ? Number(match[1]) : 0;

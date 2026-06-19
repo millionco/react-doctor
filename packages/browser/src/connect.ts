@@ -1,9 +1,10 @@
-import { chromium, type Browser } from "playwright-core";
+import type { Browser } from "playwright-core";
 import { CONNECT_TIMEOUT_MS, DEFAULT_CDP_ENDPOINT } from "./constants.js";
 import { launchPersistentChrome } from "./launch.js";
 import type { BrowserConnectOptions } from "./types.js";
 import { cdpPortFromEndpoint } from "./utils/cdp-port.js";
 import { isLoopbackEndpoint } from "./utils/is-loopback-endpoint.js";
+import { loadPlaywright } from "./utils/load-playwright.js";
 
 export interface BrowserConnection {
   browser: Browser;
@@ -19,6 +20,7 @@ export const connectToBrowser = async (
   options: BrowserConnectOptions = {},
 ): Promise<BrowserConnection> => {
   const endpoint = options.cdpEndpoint ?? DEFAULT_CDP_ENDPOINT;
+  const { chromium } = await loadPlaywright();
   try {
     const browser = await chromium.connectOverCDP(endpoint, { timeout: CONNECT_TIMEOUT_MS });
     return { browser, launched: false };

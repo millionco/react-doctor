@@ -42,6 +42,10 @@ export const PERFORMANCE_OBSERVE_WINDOW_MS = 1_000;
 // the problem without dumping every match on a busy page.
 export const MAX_VIOLATION_TARGETS = 5;
 
+// Upper bound on an emulated viewport dimension, so a typo can't push an absurd
+// device-metrics override into CDP.
+export const MAX_VIEWPORT_PX = 10_000;
+
 // Built React-profiler init script, relative to the bundle that imports it.
 // `react-profiler/inject.ts` is esbuilt into this self-contained IIFE at build
 // time (see vite.config.ts); the session injects it via `addInitScript`. The

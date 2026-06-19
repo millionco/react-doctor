@@ -9,10 +9,6 @@ export const DEFAULT_CDP_ENDPOINT_HINT = "http://127.0.0.1:9222";
 // summary still reports the full counts and a `truncated` flag.
 export const MAX_INLINE_DIAGNOSTICS = 100;
 
-// Upper bound on an emulated viewport dimension, so a typo can't push an
-// absurd device-metrics override into CDP (mirrors the CLI's --viewport guard).
-export const MAX_VIEWPORT_PX = 10_000;
-
 // Cap on the debug tools' HTTP calls to the local log server, so a hung or
 // unresponsive endpoint can't block the MCP tool turn indefinitely.
 export const DEBUG_FETCH_TIMEOUT_MS = 5000;

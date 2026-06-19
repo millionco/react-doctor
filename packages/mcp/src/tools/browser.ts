@@ -151,7 +151,7 @@ export const registerBrowserTools = (server: McpServer): void => {
     name: "browser_audit",
     title: "Run an accessibility audit",
     description:
-      "Run an axe-core accessibility audit on the attached page (or a URL) and return the violations with impact, help text, and affected element targets.",
+      "Run an axe-core accessibility audit on the attached page (or a URL; reloads the current page when no URL is given) and return the violations with impact, help text, and affected element targets.",
     run: async (session, url) => {
       const violations = await session.audit(url);
       return jsonResult({ violationCount: violations.length, violations });
@@ -192,7 +192,7 @@ export const registerBrowserTools = (server: McpServer): void => {
     name: "browser_report",
     title: "Capture a full page report",
     description:
-      "Capture console, network, performance, and accessibility for the attached page (or a URL) in a single load — the efficient path when you want the whole runtime picture at once.",
+      "Capture console, network, performance, and accessibility in a single load — the efficient path when you want the whole runtime picture at once. Always loads (a URL when given, otherwise reloads the current page); to measure after a browser_eval interaction without reloading, use browser_perf.",
     run: async (session, url) => jsonResult(await session.inspectPage(url)),
   });
 };

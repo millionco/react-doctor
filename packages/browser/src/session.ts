@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import axe from "axe-core";
-import type { Browser, ConsoleMessage, Page, Request, Response } from "playwright-core";
+import type { Browser, CDPSession, ConsoleMessage, Page, Request, Response } from "playwright-core";
 import { connectToBrowser, type BrowserConnection } from "./connect.js";
 import {
   MAX_VIOLATION_TARGETS,
@@ -53,6 +53,11 @@ const resolveActivePage = async (browser: Browser): Promise<Page> => {
 // A live handle to the attached page. The page state lives in the browser, so a
 // session is cheap to create per command and there is no server to keep alive.
 export class BrowserSession {
+  // Held so the device-metrics override is cleared on dispose rather than
+  // relying on the override happening to reset when the CDP client disconnects
+  // — otherwise an emulated viewport could linger on the persistent Chrome.
+  private viewportOverride: CDPSession | null = null;
+
   private constructor(
     private readonly connection: BrowserConnection,
     readonly page: Page,
@@ -109,8 +114,8 @@ export class BrowserSession {
   }
 
   // A CDP device-metrics override, not page.setViewportSize, so it works on a
-  // page we only attached to and clears on disconnect — it never resizes the
-  // user's real window.
+  // page we only attached to — it never resizes the user's real window. The
+  // session is kept and cleared in dispose() so the override doesn't linger.
   async setViewport(viewport: Viewport): Promise<void> {
     const cdpSession = await this.page.context().newCDPSession(this.page);
     await cdpSession.send("Emulation.setDeviceMetricsOverride", {
@@ -119,6 +124,7 @@ export class BrowserSession {
       deviceScaleFactor: 1,
       mobile: false,
     });
+    this.viewportOverride = cdpSession;
   }
 
   // The expression runs here in Node with the Playwright `page` in scope (the
@@ -324,6 +330,11 @@ export class BrowserSession {
   // whether the user had it open or we launched it — so the page stays alive and
   // the next `browser` command reattaches to the same live session.
   async dispose(): Promise<void> {
+    if (this.viewportOverride) {
+      await this.viewportOverride.send("Emulation.clearDeviceMetricsOverride").catch(() => {});
+      await this.viewportOverride.detach().catch(() => {});
+      this.viewportOverride = null;
+    }
     await this.connection.browser.close().catch(() => {});
   }
 }

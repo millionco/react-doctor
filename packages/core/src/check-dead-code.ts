@@ -153,6 +153,16 @@ process.stdin.on("end", () => {
         ...(workerInput.ignorePatterns.length > 0
           ? { ignorePatterns: workerInput.ignorePatterns }
           : {}),
+        // We consume only deslop's GRAPH-based findings (unusedFiles, unusedExports,
+        // unusedDependencies, circularDependencies). The semantic pass builds a full TS
+        // Program purely to derive unusedTypes/unusedEnumMembers/unusedClassMembers/
+        // misclassifiedDependencies — none of which we read — at ~37-45% of the phase's
+        // wall-clock. Disabling it is provably safe (unusedExports comes from the graph
+        // detector, independent of the semantic result; confirmed byte-identical on
+        // excalidraw + mui-material) and is the single biggest dead-code speedup.
+        // tsConfigPath stays: the module resolver still needs it for path-alias
+        // resolution in the import graph.
+        semantic: { enabled: false },
       };
       const result = await analyze(defineConfig(config));
       emit({ ok: true, result: normalizeResult(result) });

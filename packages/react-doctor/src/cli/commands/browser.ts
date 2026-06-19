@@ -4,6 +4,7 @@ import type {
   ConsoleMessageEntry,
   NetworkRequestEntry,
   PerformanceReport,
+  Viewport,
 } from "@react-doctor/browser";
 import { DEFAULT_SCREENSHOT_FILENAME, METRIC } from "../utils/constants.js";
 import { cliLogger as logger } from "../utils/cli-logger.js";
@@ -13,7 +14,7 @@ export interface BrowserCommandOptions {
   cdp?: string;
   launch?: boolean;
   out?: string;
-  viewport?: { width: number; height: number };
+  viewport?: Viewport;
 }
 
 const isModuleNotFoundError = (error: unknown): boolean =>

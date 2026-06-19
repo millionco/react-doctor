@@ -4,7 +4,7 @@ import { createLogServer, DEFAULT_HOST } from "@react-doctor/debug";
 import { z } from "zod";
 import { DEBUG_FETCH_TIMEOUT_MS } from "../constants.js";
 import { parseLogEndpoint } from "../utils/parse-log-endpoint.js";
-import { jsonResult, runTool, textResult } from "../utils/tool-result.js";
+import { errorResult, jsonResult, runTool, textResult } from "../utils/tool-result.js";
 
 // Log servers started via `debug_serve` must outlive the tool call (the agent
 // instruments the app, then reads them back), so they live for the MCP process
@@ -78,12 +78,7 @@ export const registerDebugTools = (server: McpServer): void => {
         const response = await fetch(endpoint, {
           signal: AbortSignal.timeout(DEBUG_FETCH_TIMEOUT_MS),
         });
-        if (!response.ok) {
-          return {
-            content: [{ type: "text", text: `Log server returned ${response.status}` }],
-            isError: true,
-          };
-        }
+        if (!response.ok) return errorResult(`Log server returned ${response.status}`);
         const logs = await response.text();
         return textResult(logs.length > 0 ? logs : "(no logs captured yet)");
       }),
@@ -109,10 +104,7 @@ export const registerDebugTools = (server: McpServer): void => {
         });
         return response.ok
           ? textResult("Cleared logs")
-          : {
-              content: [{ type: "text", text: `Log server returned ${response.status}` }],
-              isError: true,
-            };
+          : errorResult(`Log server returned ${response.status}`);
       }),
   );
 };

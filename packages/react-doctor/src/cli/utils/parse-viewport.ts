@@ -1,9 +1,10 @@
+import type { Viewport } from "@react-doctor/browser";
 import { InvalidArgumentError } from "commander";
 import { MAX_VIEWPORT_PX } from "./constants.js";
 
 // Throws Commander's InvalidArgumentError so a bad `--viewport WIDTHxHEIGHT`
 // value renders as a clean usage error rather than a crash report.
-export const parseViewport = (value: string): { width: number; height: number } => {
+export const parseViewport = (value: string): Viewport => {
   const match = /^(\d+)x(\d+)$/i.exec(value.trim());
   const width = match ? Number(match[1]) : 0;
   const height = match ? Number(match[2]) : 0;

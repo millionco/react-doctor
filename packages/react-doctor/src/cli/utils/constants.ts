@@ -109,11 +109,15 @@ export const SENTRY_DSN =
 // associates artifacts with (`scripts/sentry-sourcemaps.mjs`).
 export const SENTRY_RELEASE_PREFIX = "react-doctor";
 
+// Sample every trace (100%). `--debug` forces this for the run so the trace id
+// it prints always points to a delivered trace, even when the env opted down.
+export const FULL_TRACES_SAMPLE_RATE = 1;
+
 // Default Sentry performance-tracing sample rate. Each CLI invocation becomes
 // one transaction; runs are low-frequency (vs. web traffic) so full sampling
 // gives the richest crash-correlated traces. Tunable per-run via the
 // `SENTRY_TRACES_SAMPLE_RATE` env var (set to `0` to disable tracing entirely).
-export const SENTRY_DEFAULT_TRACES_SAMPLE_RATE = 1;
+export const SENTRY_DEFAULT_TRACES_SAMPLE_RATE = FULL_TRACES_SAMPLE_RATE;
 
 // Upper bound on how long the CLI blocks waiting for Sentry to deliver queued
 // events (errors + transactions) before the process exits. The CLI tears down

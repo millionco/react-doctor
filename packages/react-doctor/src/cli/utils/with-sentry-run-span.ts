@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/node";
 import type { ProjectInfo } from "@react-doctor/core";
 import { isSentryTracingEnabled } from "../../instrument.js";
-import { setActiveRunTrace } from "./active-run-trace.js";
+import { recordRunTraceId, setActiveRunTrace } from "./active-run-trace.js";
 import { buildSentryScope } from "./build-sentry-scope.js";
 import { buildSentryProjectContext, setSentryProjectInfo } from "./build-sentry-project-context.js";
 import { TRACE_FLAG_SAMPLED } from "./constants.js";
@@ -58,8 +58,11 @@ export const withSentryRunSpan = <T>(
   return Sentry.startSpan(
     { name: `react-doctor ${command}`, op: "cli.inspect", attributes: toSpanAttributes(tags) },
     (rootSpan) => {
+      const spanContext = rootSpan.spanContext();
+      // Remembered for the `--debug` end-of-run print, which reads it after the
+      // span has ended and the run-scoped error-linking handle has been reset.
+      recordRunTraceId(spanContext.traceId);
       if (options.concurrentScan !== true) {
-        const spanContext = rootSpan.spanContext();
         setActiveRunTrace({
           traceId: spanContext.traceId,
           spanId: spanContext.spanId,

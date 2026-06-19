@@ -14,6 +14,7 @@ describe("stripUnknownCliFlags", () => {
     expect(
       stripUserArguments([
         ".",
+        "--debug",
         "--no-score",
         "--project",
         "web",
@@ -27,6 +28,7 @@ describe("stripUnknownCliFlags", () => {
       ]),
     ).toEqual([
       ".",
+      "--debug",
       "--no-score",
       "--project",
       "web",

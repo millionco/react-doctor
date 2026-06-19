@@ -6,6 +6,9 @@ export interface InspectFlags {
   lint?: boolean;
   deadCode?: boolean;
   verbose?: boolean;
+  // Forces a Sentry trace and prints its id at the end. Conflicts with
+  // --no-score / --no-telemetry, which disable the telemetry it needs.
+  debug?: boolean;
   outputDir?: string;
   score?: boolean;
   json?: boolean;

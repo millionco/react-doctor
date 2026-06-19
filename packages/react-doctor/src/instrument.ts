@@ -1,6 +1,11 @@
 import * as Sentry from "@sentry/node";
 import { buildSentryScope } from "./cli/utils/build-sentry-scope.js";
-import { SENTRY_DSN, SENTRY_FLUSH_TIMEOUT_MS } from "./cli/utils/constants.js";
+import {
+  FULL_TRACES_SAMPLE_RATE,
+  SENTRY_DSN,
+  SENTRY_FLUSH_TIMEOUT_MS,
+} from "./cli/utils/constants.js";
+import { isDebugFlagEnabled } from "./cli/utils/is-debug-flag.js";
 import { scrubSentryEvent } from "./cli/utils/scrub-sentry-event.js";
 import { scrubSentryMetric } from "./cli/utils/scrub-sentry-metric.js";
 import {
@@ -76,7 +81,11 @@ export const flushSentry = async (): Promise<void> => {
 export const initializeSentry = (): void => {
   if (isInitialized || !shouldEnableSentry()) return;
   isInitialized = true;
-  resolvedTracesSampleRate = resolveTracesSampleRate();
+  // `--debug` forces full sampling so the trace id it prints at the end of the
+  // run always resolves to a delivered trace, overriding a downsampled env.
+  resolvedTracesSampleRate = isDebugFlagEnabled()
+    ? FULL_TRACES_SAMPLE_RATE
+    : resolveTracesSampleRate();
   const { tags, contexts } = buildSentryScope();
   Sentry.init({
     dsn: process.env.SENTRY_DSN || SENTRY_DSN,

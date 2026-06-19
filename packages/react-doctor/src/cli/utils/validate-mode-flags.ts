@@ -31,4 +31,13 @@ export const validateModeFlags = (flags: InspectFlags): void => {
       "Cannot combine --score with --no-telemetry; --score prints the score that --no-telemetry disables.",
     );
   }
+  // `--debug` surfaces the run's Sentry trace id, but `--no-score` /
+  // `--no-telemetry` turn off the Sentry reporting that produces it — so the
+  // combination can never do anything. Reject it instead of silently no-op'ing.
+  if (flags.debug && (flags.score === false || flags.telemetry === false)) {
+    const disablingFlag = flags.score === false ? "--no-score" : "--no-telemetry";
+    throw new CliInputError(
+      `Cannot combine --debug with ${disablingFlag}; ${disablingFlag} disables the Sentry reporting --debug needs to capture a trace.`,
+    );
+  }
 };

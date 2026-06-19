@@ -37,6 +37,7 @@ export const buildSentryScope = (runContext: RunContext = buildRunContext()): Se
     interactive: runContext.interactive,
     terminalKind: runContext.terminalKind,
     jsonMode: runContext.jsonMode,
+    debug: runContext.debug,
     invokedVia: runContext.invokedVia,
     nodeMajor: runContext.nodeMajor,
   };

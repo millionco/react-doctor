@@ -18,3 +18,17 @@ export const setActiveRunTrace = (trace: ActiveRunTrace | null): void => {
 };
 
 export const getActiveRunTrace = (): ActiveRunTrace | null => activeRunTrace;
+
+// The most recent run's trace id, kept for the `--debug` end-of-run print.
+// Unlike `activeRunTrace` (the error-linking handle, cleared after each run by
+// `resetSentryRunState`), this persists past the reset so it can be read once
+// the command has finished and the trace has flushed. Recorded for every run
+// span — including a concurrent workspace batch, where the last member to start
+// wins; any one project's trace is a fine entry point for a debug pointer.
+let lastRunTraceId: string | null = null;
+
+export const recordRunTraceId = (traceId: string): void => {
+  lastRunTraceId = traceId;
+};
+
+export const getLastRunTraceId = (): string | null => lastRunTraceId;

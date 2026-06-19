@@ -23,6 +23,7 @@ const baseRunContext: RunContext = {
   interactive: false,
   terminalKind: "ci",
   jsonMode: true,
+  debug: false,
   invokedVia: "pnpm",
 };
 
@@ -69,6 +70,7 @@ describe("buildSentryScope", () => {
       interactive: false,
       terminalKind: "ci",
       jsonMode: true,
+      debug: false,
       invokedVia: "pnpm",
       nodeMajor: 22,
     });

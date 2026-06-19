@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/node";
 import { isReactDoctorError } from "@react-doctor/core";
-import { getActiveRunTrace } from "./active-run-trace.js";
+import { getActiveRunTrace, recordRunTraceId } from "./active-run-trace.js";
 import { buildSentryScope } from "./build-sentry-scope.js";
 import { METRIC, SENTRY_FLUSH_TIMEOUT_MS } from "./constants.js";
 import { isExpectedUserError } from "./is-expected-user-error.js";
@@ -54,6 +54,11 @@ export const reportErrorToSentry = async (error: unknown): Promise<string | unde
           sampleRand: Math.random(),
         });
       }
+      // Surface the trace this crash is attached to for `--debug`, even when no
+      // scan span ran (a pre-scan throw has no run trace, but the captured event
+      // still belongs to the scope's trace). When `runTrace` exists this is the
+      // same id; otherwise it's the scope's own (matching the captured event).
+      recordRunTraceId(scope.getPropagationContext().traceId);
       return Sentry.captureException(error);
     });
     await Sentry.flush(SENTRY_FLUSH_TIMEOUT_MS);

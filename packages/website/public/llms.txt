@@ -105,5 +105,6 @@ Options:
   --no-score         skip the score API and share URL
   --staged           scan only staged (git index) files for pre-commit hooks
   --blocking <level>  severity that fails CI: error (default), warning, none
+  --debug            force a Sentry trace and print its id at the end (paste it into a bug report)
   -h, --help         display help for command
 ```

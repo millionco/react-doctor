@@ -19,9 +19,11 @@ import { applyColorPreference } from "./utils/apply-color-preference.js";
 import { exitGracefully } from "./utils/exit-gracefully.js";
 import { guardStdin } from "./utils/guard-stdin.js";
 import { handleError, handleUserError } from "./utils/handle-error.js";
+import { isDebugFlagEnabled } from "./utils/is-debug-flag.js";
 import { isExpectedUserError } from "./utils/is-expected-user-error.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
 import { normalizeHelpInvocation } from "./utils/normalize-help-command.js";
+import { printDebugTrace } from "./utils/print-debug-trace.js";
 import { assertNoRemovedFlags } from "./utils/removed-cli-flags.js";
 import { reportErrorToSentry } from "./utils/report-error.js";
 import { stripUnknownCliFlags } from "./utils/strip-unknown-cli-flags.js";
@@ -32,6 +34,14 @@ initializeSentry();
 
 process.on("SIGINT", exitGracefully);
 process.on("SIGTERM", exitGracefully);
+// `--debug`: surface the run's Sentry trace id as the very last line, on every
+// exit path. An exit handler (not a `.then`) is the one choke point that also
+// covers the error funnels, which `process.exit()` after rendering — by then
+// the trace has flushed (success path awaits `flushSentry`; error path awaits
+// `reportErrorToSentry`'s flush), so the printed id always resolves in Sentry.
+process.on("exit", () => {
+  if (isDebugFlagEnabled()) printDebugTrace();
+});
 unrefStdin();
 // HACK: a terminal that vanishes while an interactive prompt is reading
 // stdin makes Node raise `read EIO` on the raw-mode handle; with no listener
@@ -111,6 +121,10 @@ const program = new Command()
     "skip dead-code analysis (unused files / exports / dependencies, circular imports)",
   )
   .option("--verbose", "show every rule and per-file details (default shows top 3 rules)")
+  .option(
+    "--debug",
+    "force a Sentry trace and print its id at the end (paste it into a bug report)",
+  )
   .option("--output-dir <dir>", "directory for the full diagnostics dump (default: a temp folder)")
   .option("--score", "output only the score")
   .option("--json", "output a single structured JSON report (suppresses other output)")
@@ -328,7 +342,8 @@ Promise.resolve()
   .then(() => assertNoRemovedFlags(process.argv))
   .then(() => program.parseAsync(argv))
   // Deliver any queued performance transaction before the process exits on the
-  // success path; error funnels flush via `reportErrorToSentry`.
+  // success path; error funnels flush via `reportErrorToSentry`. The `--debug`
+  // trace id is printed from the `exit` handler above, after this flush.
   .then(() => flushSentry())
   .catch(async (error: unknown) => {
     // Mirror the per-command policy at the top-level funnel: expected,

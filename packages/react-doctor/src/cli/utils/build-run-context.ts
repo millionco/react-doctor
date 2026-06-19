@@ -7,6 +7,7 @@ import {
   isCodingAgentEnvironment,
   isOfficialGithubAction,
 } from "./is-ci-environment.js";
+import { isDebugFlagEnabled } from "./is-debug-flag.js";
 import { isGitHookEnvironment } from "./is-git-hook-environment.js";
 import { isNonInteractiveEnvironment } from "./is-non-interactive-environment.js";
 import { isJsonModeActive } from "./json-mode.js";
@@ -39,6 +40,9 @@ export interface RunContext {
   // "ci"/"unknown". Reveals where the CLI is actually used.
   terminalKind: string;
   jsonMode: boolean;
+  // User passed `--debug` (forces a Sentry trace and prints its id). Tracks
+  // adoption of the diagnostic flag.
+  debug: boolean;
   // Package-manager / runner the CLI was launched through (npm, pnpm, yarn,
   // bun, or "unknown"), derived from `npm_config_user_agent`. Distinguishes
   // `npx react-doctor` (npm) from `pnpm dlx` / global installs in triage.
@@ -109,6 +113,7 @@ export const buildRunContext = (): RunContext => {
     interactive: !isNonInteractiveEnvironment(),
     terminalKind: detectTerminalKind(),
     jsonMode: isJsonModeActive(),
+    debug: isDebugFlagEnabled(),
     invokedVia: detectInvokedVia(),
   };
 };

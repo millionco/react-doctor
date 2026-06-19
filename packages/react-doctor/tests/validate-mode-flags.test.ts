@@ -16,6 +16,19 @@ describe("validateModeFlags", () => {
     expect(() => validateModeFlags({ telemetry: false })).not.toThrow();
   });
 
+  it("rejects --debug combined with --no-score or --no-telemetry (the trace it needs is off)", () => {
+    expect(() => validateModeFlags({ debug: true, score: false })).toThrow(
+      "Cannot combine --debug with --no-score",
+    );
+    expect(() => validateModeFlags({ debug: true, telemetry: false })).toThrow(
+      "Cannot combine --debug with --no-telemetry",
+    );
+  });
+
+  it("allows --debug on its own", () => {
+    expect(() => validateModeFlags({ debug: true })).not.toThrow();
+  });
+
   it("allows --yes and --full together (skip prompts + force a full scan are orthogonal)", () => {
     expect(() => validateModeFlags({ yes: true, full: true })).not.toThrow();
   });

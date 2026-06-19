@@ -1,5 +1,5 @@
 ---
-"react-doctor": minor
+"react-doctor": patch
 ---
 
 Make `file:line` diagnostic locations clickable in the terminal, and record which terminal each run uses.

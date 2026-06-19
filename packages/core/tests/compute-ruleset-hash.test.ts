@@ -43,82 +43,76 @@ const cacheableConfig = (
 
 const TOOLCHAIN = ["node=v22.0.0", "oxlint/package.json=1.0.0"];
 
+// Defaults `tsconfigContent` to null so each test names only the input it varies.
+const hash = (
+  input: Partial<Parameters<typeof computeRulesetHash>[0]> & {
+    config: ReturnType<typeof createOxlintConfig>;
+  },
+): string =>
+  computeRulesetHash({
+    toolchainVersions: TOOLCHAIN,
+    ignorePatterns: [],
+    tsconfigContent: null,
+    ...input,
+  });
+
 describe("computeRulesetHash", () => {
   it("is deterministic for identical inputs", () => {
     const project = makeProject("/repo/a");
-    const first = computeRulesetHash({
-      config: cacheableConfig(project),
-      toolchainVersions: TOOLCHAIN,
-      ignorePatterns: ["dist/"],
-    });
-    const second = computeRulesetHash({
-      config: cacheableConfig(project),
-      toolchainVersions: TOOLCHAIN,
-      ignorePatterns: ["dist/"],
-    });
+    const first = hash({ config: cacheableConfig(project), ignorePatterns: ["dist/"] });
+    const second = hash({ config: cacheableConfig(project), ignorePatterns: ["dist/"] });
     expect(first).toBe(second);
   });
 
   it("ignores the absolute rootDirectory so the hash is portable across checkouts", () => {
-    const hashAtPathA = computeRulesetHash({
-      config: cacheableConfig(makeProject("/runner/work/repo/repo")),
-      toolchainVersions: TOOLCHAIN,
-      ignorePatterns: [],
-    });
-    const hashAtPathB = computeRulesetHash({
-      config: cacheableConfig(makeProject("/Users/dev/projects/repo")),
-      toolchainVersions: TOOLCHAIN,
-      ignorePatterns: [],
-    });
+    const hashAtPathA = hash({ config: cacheableConfig(makeProject("/runner/work/repo/repo")) });
+    const hashAtPathB = hash({ config: cacheableConfig(makeProject("/Users/dev/projects/repo")) });
     expect(hashAtPathA).toBe(hashAtPathB);
   });
 
   it("changes when a rule's severity changes", () => {
     const project = makeProject("/repo/a");
-    const baseline = computeRulesetHash({
-      config: cacheableConfig(project),
-      toolchainVersions: TOOLCHAIN,
-      ignorePatterns: [],
-    });
-    const withOverride = computeRulesetHash({
-      // Enable a default-disabled rule — a different enabled rule set than the
-      // baseline, so the resolved `rules` map (and thus the hash) changes.
+    const baseline = hash({ config: cacheableConfig(project) });
+    // Enable a default-disabled rule — a different enabled rule set than the
+    // baseline, so the resolved `rules` map (and thus the hash) changes.
+    const withOverride = hash({
       config: cacheableConfig(project, { rules: { "react-doctor/no-array-index-key": "error" } }),
-      toolchainVersions: TOOLCHAIN,
-      ignorePatterns: [],
     });
     expect(withOverride).not.toBe(baseline);
   });
 
   it("changes when the toolchain version changes", () => {
-    const project = makeProject("/repo/a");
-    const config = cacheableConfig(project);
-    const onOldOxlint = computeRulesetHash({
+    const config = cacheableConfig(makeProject("/repo/a"));
+    const onOldOxlint = hash({
       config,
       toolchainVersions: ["node=v22.0.0", "oxlint/package.json=1.0.0"],
-      ignorePatterns: [],
     });
-    const onNewOxlint = computeRulesetHash({
+    const onNewOxlint = hash({
       config,
       toolchainVersions: ["node=v22.0.0", "oxlint/package.json=1.1.0"],
-      ignorePatterns: [],
     });
     expect(onNewOxlint).not.toBe(onOldOxlint);
   });
 
   it("changes when ignore patterns change (they decide which files emit diagnostics)", () => {
-    const project = makeProject("/repo/a");
-    const config = cacheableConfig(project);
-    const withoutIgnore = computeRulesetHash({
-      config,
-      toolchainVersions: TOOLCHAIN,
-      ignorePatterns: [],
-    });
-    const withIgnore = computeRulesetHash({
-      config,
-      toolchainVersions: TOOLCHAIN,
-      ignorePatterns: ["src/generated/**"],
-    });
+    const config = cacheableConfig(makeProject("/repo/a"));
+    const withoutIgnore = hash({ config });
+    const withIgnore = hash({ config, ignorePatterns: ["src/generated/**"] });
     expect(withIgnore).not.toBe(withoutIgnore);
+  });
+
+  it("changes when tsconfig content changes (oxlint parses with it)", () => {
+    const config = cacheableConfig(makeProject("/repo/a"));
+    const withBaseTsconfig = hash({
+      config,
+      tsconfigContent: JSON.stringify({ compilerOptions: { jsx: "preserve", strict: false } }),
+    });
+    const withChangedTsconfig = hash({
+      config,
+      tsconfigContent: JSON.stringify({ compilerOptions: { jsx: "react-jsx", strict: true } }),
+    });
+    expect(withChangedTsconfig).not.toBe(withBaseTsconfig);
+    // A non-TS project (null) is stable and distinct from any concrete tsconfig.
+    expect(hash({ config })).not.toBe(withBaseTsconfig);
   });
 });

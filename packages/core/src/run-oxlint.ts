@@ -262,10 +262,22 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     // ignore inputs.
     const sharedArgs: string[] = [];
 
+    // Captured for the ruleset hash: oxlint parses with this tsconfig, so a
+    // tsconfig edit must bust the per-file cache even when source content is
+    // unchanged.
+    let tsconfigContent: string | null = null;
     if (project.hasTypeScript) {
       const tsconfigRelativePath = resolveTsConfigRelativePath(rootDirectory);
       if (tsconfigRelativePath) {
         sharedArgs.push("--tsconfig", tsconfigRelativePath);
+        try {
+          tsconfigContent = fs.readFileSync(
+            path.resolve(rootDirectory, tsconfigRelativePath),
+            "utf8",
+          );
+        } catch {
+          tsconfigContent = null;
+        }
       }
     }
 
@@ -384,6 +396,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         config: buildConfig({ extendsPaths: [], ruleSelection: "cacheable" }),
         toolchainVersions: resolveOxlintToolchainVersions(),
         ignorePatterns: combinedPatterns,
+        tsconfigContent,
       });
       const cache = createFileLintCache(resolveReactDoctorCacheDir(rootDirectory), rulesetHash);
 

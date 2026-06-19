@@ -116,6 +116,16 @@ export interface InspectInput {
    * (those always run it). Defaults to `false`.
    */
   readonly supplyChainManifestChanged?: boolean;
+  /**
+   * Set when this scan runs concurrently with sibling scans in one process
+   * (the CLI's multi-project pool). Such a scan can't safely reason about the
+   * shared memory budget from its own `os.freemem()` reading — N concurrent
+   * scans each reading "plenty free" would each fork an 8 GB dead-code worker
+   * and sum past the single-scan budget — so the dead-code overlap memory gate
+   * (`"auto"`) stays sequential for concurrent members. An explicit
+   * `REACT_DOCTOR_DEAD_CODE_OVERLAP=on` override still wins. Defaults to `false`.
+   */
+  readonly concurrentScan?: boolean;
 }
 
 export interface InspectOutput {
@@ -433,12 +443,18 @@ export const runInspect = <HooksR = never>(
       input.runDeadCode &&
       !isDiffMode &&
       (showWarnings || deadCodeMaySurfaceWhenWarningsHidden(resolvedConfig.config));
+    // The memory gate reads this scan's own `os.freemem()`, which can't see
+    // sibling scans in a concurrent batch — so a concurrent member never takes
+    // the gated ("auto") overlap (each would fork an 8 GB worker and sum past
+    // the budget). An explicit `"on"` override still wins for operators who own
+    // the box.
     const deadCodeOverlapMode = yield* DeadCodeOverlap;
     const shouldOverlapDeadCode =
       shouldRunDeadCode &&
       deadCodeOverlapMode !== "off" &&
       (deadCodeOverlapMode === "on" ||
-        hasDeadCodeOverlapHeadroom({ workerCount: scanConcurrency, freeBytes: os.freemem() }));
+        (input.concurrentScan !== true &&
+          hasDeadCodeOverlapHeadroom({ workerCount: scanConcurrency, freeBytes: os.freemem() })));
 
     // The dead-code collection, named once so it runs either forked (overlap)
     // or inline (sequential) — identical pipeline, identical failure Ref.

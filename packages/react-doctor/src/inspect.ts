@@ -560,6 +560,7 @@ const runInspectWithRuntime = async (
       resolveLocalGithubViewerPermission: !options.noScore,
       suppressScanSummary: options.suppressRendering,
       supplyChainManifestChanged: options.supplyChainManifestChanged,
+      concurrentScan: options.concurrentScan,
     },
     {
       beforeLint: (projectInfo, lintIncludePaths) =>

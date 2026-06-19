@@ -469,6 +469,51 @@ describe("runInspect — dead-code/lint overlap", () => {
     expect(output.diagnostics).toHaveLength(0);
     expect(output.didDeadCodeFail).toBe(false);
   });
+
+  it("never takes the gated overlap for a concurrent batch member (shared memory budget)", async () => {
+    // The "auto" gate reads this scan's own os.freemem(), blind to sibling
+    // scans in a concurrent batch, so a concurrent member must stay sequential
+    // regardless of how much memory a CI box reports — otherwise N siblings
+    // would each fork an 8 GB worker and sum past the single-scan budget.
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, concurrentScan: true }).pipe(
+        Effect.provide(
+          layersOf({
+            diagnostics: [lintDiagnostic],
+            deadCode: [deadCodeDiagnostic],
+            deadCodeOverlap: "auto",
+          }),
+        ),
+      ),
+    );
+    expect(output.deadCodeOverlapped).toBe(false);
+    // Output is unchanged — it just ran sequentially.
+    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
+      "no-derived-state",
+      "unused-file",
+    ]);
+  });
+
+  it("still overlaps a concurrent batch member when overlap is explicitly forced on", async () => {
+    // `"on"` is an operator override ("I own this box"), so it wins over the
+    // concurrent-scan auto-gate guard.
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, concurrentScan: true }).pipe(
+        Effect.provide(
+          layersOf({
+            diagnostics: [lintDiagnostic],
+            deadCode: [deadCodeDiagnostic],
+            deadCodeOverlap: "on",
+          }),
+        ),
+      ),
+    );
+    expect(output.deadCodeOverlapped).toBe(true);
+    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toEqual([
+      "no-derived-state",
+      "unused-file",
+    ]);
+  });
 });
 
 describe("runInspect — hooks fire in order", () => {

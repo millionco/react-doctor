@@ -188,10 +188,11 @@ describe("scan result cache", () => {
     const previousOrdering = process.env.REACT_DOCTOR_LINT_BATCH_ORDERING;
     try {
       delete process.env.REACT_DOCTOR_LINT_BATCH_ORDERING;
-      const costKey = cacheKey(projectDirectory, options);
-      expect(costKey).not.toBeNull();
-      process.env.REACT_DOCTOR_LINT_BATCH_ORDERING = "arrival";
-      expect(cacheKey(projectDirectory, options)).not.toBe(costKey);
+      const defaultOrderingKey = cacheKey(projectDirectory, options);
+      expect(defaultOrderingKey).not.toBeNull();
+      // The default ordering is `arrival`; opting into `cost` must change the key.
+      process.env.REACT_DOCTOR_LINT_BATCH_ORDERING = "cost";
+      expect(cacheKey(projectDirectory, options)).not.toBe(defaultOrderingKey);
     } finally {
       if (previousOrdering === undefined) {
         delete process.env.REACT_DOCTOR_LINT_BATCH_ORDERING;

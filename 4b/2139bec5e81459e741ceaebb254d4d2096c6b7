@@ -1,0 +1,27 @@
+packages/react-doctor/src/cli/utils/build-handoff-payload.ts
+  s_bbeaa972d15fa9::t_363ff57881bc9b 101
+  s_bbeaa972d15fa9::t_79cd4b22838227 66
+packages/react-doctor/src/cli/utils/render-agent-guidance.ts
+  s_bbeaa972d15fa9::t_4e328ab05cbbb7 16
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_bbeaa972d15fa9::t_a0860b10a076ac 531
+  s_bbeaa972d15fa9::t_482bd0d1f1ad37 545
+.changeset/migration-scale-advisory.md
+  s_bbeaa972d15fa9::t_d693135051546c 5,7,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "4b2139bec5e81459e741ceaebb254d4d2096c6b7",
+  "prompts": {},
+  "sessions": {
+    "s_bbeaa972d15fa9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2dac245-55f2-499a-95fd-fb03d35fc757",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

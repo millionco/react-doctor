@@ -48,6 +48,7 @@ describe("openWorkflowPullRequest", () => {
       {
         workflowPath: "/repo/.github/workflows/react-doctor.yml",
         baseBranch: "main",
+        isGhAvailable: true,
       },
       runner,
     );
@@ -80,6 +81,7 @@ describe("openWorkflowPullRequest", () => {
       {
         workflowPath: "/repo/.github/workflows/react-doctor.yml",
         baseBranch: "main",
+        isGhAvailable: true,
       },
       runner,
     );
@@ -105,6 +107,7 @@ describe("openWorkflowPullRequest", () => {
       {
         workflowPath: "/repo/.github/workflows/react-doctor.yml",
         baseBranch: "main",
+        isGhAvailable: true,
       },
       runner,
     );
@@ -128,6 +131,7 @@ describe("openWorkflowPullRequest", () => {
       {
         workflowPath: "/repo/.github/workflows/react-doctor.yml",
         baseBranch: "main",
+        isGhAvailable: true,
       },
       runner,
     );
@@ -151,6 +155,7 @@ describe("openWorkflowPullRequest", () => {
       {
         workflowPath: "/repo/.github/workflows/react-doctor.yml",
         baseBranch: "main",
+        isGhAvailable: true,
       },
       runner,
     );

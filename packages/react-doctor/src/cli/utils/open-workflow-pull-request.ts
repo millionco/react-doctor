@@ -76,6 +76,7 @@ export const openWorkflowPullRequest = async (
     // branch (to keep the installed workflow consistent with the PR base) pass
     // it here; when omitted it's detected from the repo.
     baseBranch?: string;
+    isGhAvailable?: boolean;
   },
   runner: CommandRunner = run,
 ): Promise<OpenWorkflowPullRequestResult> => {
@@ -94,7 +95,8 @@ export const openWorkflowPullRequest = async (
   if (!repoRootProbe.success) return { status: "not-attempted", reason: "not-a-git-repo" };
   const cwd = repoRootProbe.stdout;
 
-  if (!isCommandAvailable("gh")) return { status: "not-attempted", reason: "gh-not-installed" };
+  const ghAvailable = params.isGhAvailable ?? isCommandAvailable("gh");
+  if (!ghAvailable) return { status: "not-attempted", reason: "gh-not-installed" };
   if (!(await runner("gh", ["auth", "status"], cwd)).success) {
     return { status: "not-attempted", reason: "gh-not-authenticated" };
   }

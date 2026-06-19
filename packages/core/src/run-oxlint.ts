@@ -18,7 +18,8 @@ import {
 } from "./runners/oxlint/resolve-paths.js";
 import { spawnLintBatches } from "./runners/oxlint/spawn-batches.js";
 import { validateRuleRegistration } from "./runners/oxlint/validate-rule-registration.js";
-import { listSourceFiles } from "./utils/list-source-files.js";
+import { listSourceFiles, listSourceFilesWithSize } from "./utils/list-source-files.js";
+import { sortSourceFilesByCost } from "./utils/sort-source-files-by-cost.js";
 
 interface RunOxlintOptions {
   rootDirectory: string;
@@ -79,6 +80,14 @@ interface RunOxlintOptions {
    * of running on after the phase is abandoned.
    */
   signal?: AbortSignal;
+  /**
+   * Full-scan batch ordering, resolved from the `LintBatchOrdering`
+   * Reference. `"cost"` (the default) sorts discovered files largest-first
+   * so the heaviest batch starts in wave 1 (LPT); `"arrival"` keeps
+   * discovery order. Only affects the full-scan branch (`includePaths`
+   * undefined) — diff / staged scans pass explicit paths and are untouched.
+   */
+  lintBatchOrdering?: "cost" | "arrival";
 }
 
 /**
@@ -171,6 +180,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     onPartialFailure,
     spawnTimeoutMs,
     outputMaxBytes,
+    lintBatchOrdering = "cost",
   } = options;
 
   const serverAuthFunctionNames = Array.isArray(userConfig?.serverAuthFunctionNames)
@@ -270,9 +280,21 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     // diagnostics. Materializing the file list ahead of time and
     // feeding it through `batchIncludePaths` keeps each spawn under
     // the timeout and recovers the diagnostics we were dropping.
+    //
+    // `"cost"` orders discovered files largest-first (LPT) so the
+    // heaviest batch starts in wave 1 of the parallel pool instead of
+    // stranding in the tail — the size is the minified gate's existing
+    // stat, captured rather than re-paid. `"arrival"` is the
+    // env-revertable fallback (`LintBatchOrdering`). Only invoked for a
+    // full scan, so diff / staged scans never pay the discovery walk.
+    const discoverScanFiles = (): string[] =>
+      lintBatchOrdering === "cost"
+        ? sortSourceFilesByCost(listSourceFilesWithSize(rootDirectory))
+        : listSourceFiles(rootDirectory);
+
     const fileBatches = batchIncludePaths(
       baseArgs,
-      includePaths !== undefined ? includePaths : listSourceFiles(rootDirectory),
+      includePaths !== undefined ? includePaths : discoverScanFiles(),
     );
 
     const runBatches = () =>

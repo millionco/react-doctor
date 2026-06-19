@@ -176,6 +176,31 @@ describe("scan result cache", () => {
     expect(cacheKey(projectDirectory, options)).not.toBe(configCommitKey);
   });
 
+  it("misses when the lint batch ordering changes", () => {
+    // Batch ordering (`cost` vs `arrival`) can change which files trip the
+    // spawn timeout and get dropped, so a `cost` payload must not be served to
+    // an `arrival` lookup at the same commit.
+    const projectDirectory = setupReactProject(tempDirectory, "ordering", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const options = baseOptions();
+    const previousOrdering = process.env.REACT_DOCTOR_LINT_BATCH_ORDERING;
+    try {
+      delete process.env.REACT_DOCTOR_LINT_BATCH_ORDERING;
+      const costKey = cacheKey(projectDirectory, options);
+      expect(costKey).not.toBeNull();
+      process.env.REACT_DOCTOR_LINT_BATCH_ORDERING = "arrival";
+      expect(cacheKey(projectDirectory, options)).not.toBe(costKey);
+    } finally {
+      if (previousOrdering === undefined) {
+        delete process.env.REACT_DOCTOR_LINT_BATCH_ORDERING;
+      } else {
+        process.env.REACT_DOCTOR_LINT_BATCH_ORDERING = previousOrdering;
+      }
+    }
+  });
+
   it("honors REACT_DOCTOR_NO_CACHE", () => {
     const projectDirectory = setupReactProject(tempDirectory, "disabled", {
       files: { "src/App.tsx": "export const App = () => <div />;\n" },

@@ -372,6 +372,61 @@ describe("runInspect — happy path", () => {
   });
 });
 
+describe("runInspect — deterministic diagnostic ordering", () => {
+  const diagnosticZ: Diagnostic = {
+    filePath: "/repo/src/Zzz.tsx",
+    plugin: "react-doctor",
+    rule: "no-derived-state",
+    severity: "error",
+    message: "Diagnostic Z",
+    help: "Fix Z",
+    line: 1,
+    column: 1,
+    category: "Correctness",
+  };
+
+  const diagnosticA: Diagnostic = {
+    filePath: "/repo/src/Aaa.tsx",
+    plugin: "react-doctor",
+    rule: "no-derived-state",
+    severity: "error",
+    message: "Diagnostic A",
+    help: "Fix A",
+    line: 1,
+    column: 1,
+    category: "Correctness",
+  };
+
+  it("returns diagnostics in canonical order regardless of arrival order", async () => {
+    const output = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(layersOf({ diagnostics: [diagnosticZ, diagnosticA], deadCode: [] })),
+      ),
+    );
+
+    expect(output.diagnostics.map((diagnostic) => diagnostic.filePath)).toEqual([
+      "/repo/src/Aaa.tsx",
+      "/repo/src/Zzz.tsx",
+    ]);
+  });
+
+  it("produces an identical score and diagnostic set across arrival orders", async () => {
+    const reverseOrder = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(layersOf({ diagnostics: [diagnosticZ, diagnosticA], deadCode: [] })),
+      ),
+    );
+    const forwardOrder = await Effect.runPromise(
+      runInspect(baseInput).pipe(
+        Effect.provide(layersOf({ diagnostics: [diagnosticA, diagnosticZ], deadCode: [] })),
+      ),
+    );
+
+    expect(reverseOrder.score).toEqual(forwardOrder.score);
+    expect(reverseOrder.diagnostics).toEqual(forwardOrder.diagnostics);
+  });
+});
+
 describe("runInspect — missing React dependency", () => {
   it("fails with a tagged NoReactDependency reason", async () => {
     const projectWithoutReact: ProjectInfo = { ...sampleProject, reactVersion: null };
@@ -779,11 +834,15 @@ describe("runInspect — diff mode skips dead-code", () => {
       }).pipe(Effect.provide(layers)),
     );
 
+    // The returned diagnostics are in canonical (filePath-major) order — the
+    // deterministic sort, independent of the linter's arrival order.
     expect(result.output.diagnostics.map((diagnostic) => diagnostic.filePath)).toEqual([
       "/repo/middleware.ts",
-      "/repo/src/proxy.mjs",
       "/repo/src/App.tsx",
+      "/repo/src/proxy.mjs",
     ]);
+    // The Reporter captures diagnostics as they stream through, before the
+    // final sort — so it preserves the linter's arrival (includePaths) order.
     expect(result.captured.map((diagnostic) => diagnostic.filePath)).toEqual([
       "/repo/middleware.ts",
       "/repo/src/proxy.mjs",
@@ -885,11 +944,14 @@ describe("runInspect — supply-chain lint overlap", () => {
         ),
       ),
     );
-    // env (none), supply-chain, lint, dead-code — independent of which fiber
-    // settled first, the concat slot is fixed.
+    // The forked supply-chain diagnostic survives the join and the output is
+    // `sortDiagnosticsStable`-ordered by (filePath, line, …) — deterministic
+    // regardless of which fiber settled first. filePath order:
+    // "/repo/src/App.tsx" (no-derived-state) < "package.json"
+    // (low-supply-chain-score) < "src/Unused.tsx" (unused-file).
     expect(output.diagnostics.map((d) => d.rule)).toEqual([
-      "low-supply-chain-score",
       "no-derived-state",
+      "low-supply-chain-score",
       "unused-file",
     ]);
     expect(output.supplyChainOverlapTimedOut).toBe(false);

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { computeConfigFingerprint } from "@react-doctor/core";
+import { computeConfigFingerprint, resolveLintBatchOrdering } from "@react-doctor/core";
 import type {
   Diagnostic,
   InspectOutput,
@@ -253,6 +253,11 @@ export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string 
       adoptExistingLintConfig: input.options.adoptExistingLintConfig,
       ignoredTags: [...input.options.ignoredTags].sort(),
       concurrency: input.options.concurrency,
+      // Full-scan batch ordering can change which files trip the spawn
+      // timeout and get dropped, so — like `concurrency` above — it must key
+      // the cache: a `cost` run must not serve its payload to an `arrival`
+      // lookup at the same commit.
+      lintBatchOrdering: resolveLintBatchOrdering(),
       baselineRef: input.options.baseline?.ref,
       // `null` (not a `lines` scope) and an omitted field hash identically, so a
       // non-lines lookup matches a non-lines store; only real ranges shift the key.

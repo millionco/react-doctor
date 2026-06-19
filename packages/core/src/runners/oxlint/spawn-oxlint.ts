@@ -113,7 +113,9 @@ export const spawnOxlint = (
         if (!output) {
           const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
           if (stderrOutput) {
-            reject(new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: stderrOutput }) }));
+            reject(
+              new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: stderrOutput }) }),
+            );
             return;
           }
         }

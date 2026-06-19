@@ -7,39 +7,17 @@ import {
 import { OxlintBatchExceeded, OxlintSpawnFailed, ReactDoctorError } from "../../errors.js";
 import { buildOxlintChildEnv } from "../../utils/build-oxlint-child-env.js";
 
-const SANITIZED_ENV: NodeJS.ProcessEnv = buildOxlintChildEnv(process.env);
-
-/**
- * Spawn one oxlint subprocess with hard ceilings on wall time and
- * output size. Returns stdout on success; raises a tagged
- * `ReactDoctorError` for every documented failure mode:
- *
- * - `OxlintBatchExceeded { kind: "timeout" }` — wall budget elapsed.
- * - `OxlintBatchExceeded { kind: "output-too-large" }` — stdout+stderr
- *   crossed `OXLINT_OUTPUT_MAX_BYTES`.
- * - `OxlintBatchExceeded { kind: "oom" | "killed" }` — child exited
- *   on a signal (SIGABRT → OOM, others → generic kill).
- * - `OxlintSpawnFailed { cause }` — `spawn` itself errored, or the
- *   child exited successfully but printed only stderr.
- *
- * The first three are splittable (the caller's binary-split retry
- * shrinks the batch and re-spawns); the fourth isn't.
- */
 export const spawnOxlint = (
   args: string[],
   rootDirectory: string,
   nodeBinaryPath: string,
-  // Defaults preserve standalone behavior; the orchestrated path
-  // (Linter → runOxlint → spawnLintBatches) threads these from the
-  // `OxlintSpawnTimeoutMs` / `OxlintOutputMaxBytes` Context.References,
-  // so the eval harness can override them via `Layer.succeed`.
   spawnTimeoutMs: number = DEFAULT_OXLINT_SPAWN_TIMEOUT_MS,
   outputMaxBytes: number = OXLINT_OUTPUT_MAX_BYTES,
 ): Promise<string> =>
   new Promise<string>((resolve, reject) => {
     const child = spawn(nodeBinaryPath, args, {
       cwd: rootDirectory,
-      env: SANITIZED_ENV,
+      env: buildOxlintChildEnv(process.env),
       // HACK: oxlint's cli.js sets process.stdin._handle.setBlocking(true)
       // when stdout is not a TTY. This initializes and refs the child's stdin
       // handle, and since the parent never closes the pipe the child's event
@@ -50,91 +28,96 @@ export const spawnOxlint = (
       stdio: ["ignore", "pipe", "pipe"],
     });
 
+    let didSettle = false;
+    const settle = (callback: () => void): void => {
+      if (didSettle) return;
+      didSettle = true;
+      callback();
+    };
+
     const timeoutHandle = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(
-        new ReactDoctorError({
-          reason: new OxlintBatchExceeded({
-            kind: "timeout",
-            detail: `${spawnTimeoutMs / MILLISECONDS_PER_SECOND}s budget exceeded`,
+      settle(() => {
+        child.kill("SIGKILL");
+        reject(
+          new ReactDoctorError({
+            reason: new OxlintBatchExceeded({
+              kind: "timeout",
+              detail: `${spawnTimeoutMs / MILLISECONDS_PER_SECOND}s budget exceeded`,
+            }),
           }),
-        }),
-      );
+        );
+      });
     }, spawnTimeoutMs);
     timeoutHandle.unref?.();
 
     const stdoutBuffers: Buffer[] = [];
     const stderrBuffers: Buffer[] = [];
-    let stdoutByteCount = 0;
-    let stderrByteCount = 0;
+    let totalByteCount = 0;
     let didKillForSize = false;
 
-    const killIfTooLarge = (incomingBytes: number, isStdout: boolean): boolean => {
-      if (isStdout) {
-        stdoutByteCount += incomingBytes;
-      } else {
-        stderrByteCount += incomingBytes;
-      }
-      if (stdoutByteCount + stderrByteCount > outputMaxBytes && !didKillForSize) {
+    const collectOutput = (buffers: Buffer[], buffer: Buffer): void => {
+      if (didKillForSize) return;
+      totalByteCount += buffer.length;
+      if (totalByteCount > outputMaxBytes) {
         didKillForSize = true;
         child.kill("SIGKILL");
-        return true;
+        return;
       }
-      return false;
+      buffers.push(buffer);
     };
 
     child.stdout.on("data", (buffer: Buffer) => {
-      if (didKillForSize) return;
-      stdoutBuffers.push(buffer);
-      killIfTooLarge(buffer.length, true);
+      collectOutput(stdoutBuffers, buffer);
     });
     child.stderr.on("data", (buffer: Buffer) => {
-      if (didKillForSize) return;
-      stderrBuffers.push(buffer);
-      killIfTooLarge(buffer.length, false);
+      collectOutput(stderrBuffers, buffer);
     });
 
     child.on("error", (error) => {
-      clearTimeout(timeoutHandle);
-      reject(new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: error }) }));
+      settle(() => {
+        clearTimeout(timeoutHandle);
+        reject(new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: error }) }));
+      });
     });
     child.on("close", (_code, signal) => {
-      clearTimeout(timeoutHandle);
-      if (didKillForSize) {
-        reject(
-          new ReactDoctorError({
-            reason: new OxlintBatchExceeded({
-              kind: "output-too-large",
-              detail: `exceeded ${outputMaxBytes} bytes — scan a smaller subset with --diff or --staged`,
+      settle(() => {
+        clearTimeout(timeoutHandle);
+        if (didKillForSize) {
+          reject(
+            new ReactDoctorError({
+              reason: new OxlintBatchExceeded({
+                kind: "output-too-large",
+                detail: `exceeded ${outputMaxBytes} bytes — scan a smaller subset with --diff or --staged`,
+              }),
             }),
-          }),
-        );
-        return;
-      }
-      if (signal) {
-        const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
-        const isOom = signal === "SIGABRT";
-        const detailParts: string[] = [`killed by ${signal}`];
-        if (isOom) detailParts.push("try scanning fewer files with --diff");
-        if (stderrOutput) detailParts.push(stderrOutput);
-        reject(
-          new ReactDoctorError({
-            reason: new OxlintBatchExceeded({
-              kind: isOom ? "oom" : "killed",
-              detail: detailParts.join(" — "),
-            }),
-          }),
-        );
-        return;
-      }
-      const output = Buffer.concat(stdoutBuffers).toString("utf-8").trim();
-      if (!output) {
-        const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
-        if (stderrOutput) {
-          reject(new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: stderrOutput }) }));
+          );
           return;
         }
-      }
-      resolve(output);
+        if (signal) {
+          const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
+          const isOom = signal === "SIGABRT";
+          const detailParts: string[] = [`killed by ${signal}`];
+          if (isOom) detailParts.push("try scanning fewer files with --diff");
+          if (stderrOutput) detailParts.push(stderrOutput);
+          reject(
+            new ReactDoctorError({
+              reason: new OxlintBatchExceeded({
+                kind: isOom ? "oom" : "killed",
+                detail: detailParts.join(" — "),
+              }),
+            }),
+          );
+          return;
+        }
+        const output = Buffer.concat(stdoutBuffers).toString("utf-8").trim();
+        if (!output) {
+          const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
+          if (stderrOutput) {
+            reject(new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: stderrOutput }) }));
+            return;
+          }
+        }
+        resolve(output);
+      });
     });
   });

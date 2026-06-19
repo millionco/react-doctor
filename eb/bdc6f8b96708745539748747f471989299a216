@@ -1,0 +1,19 @@
+packages/core/src/run-oxlint.ts
+  s_2eec643ea8aa60::t_ac3e22be09118f 105-108,343
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "ebbdc6f8b96708745539748747f471989299a216",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

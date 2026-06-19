@@ -304,11 +304,15 @@ export const DEAD_CODE_PHASE_TIMEOUT_MS = 150_000;
 // truly wedged lint phase is still reclaimed.
 export const LINT_PHASE_TIMEOUT_MS = 300_000;
 
-// Overall scan deadline backstop. The per-phase timeouts cover the
-// lint / dead-code / supply-chain work; this catches everything that
-// isn't bounded per phase — a wedged git invocation, a stuck filesystem
-// read — so no single scan can run unbounded.
-export const SCAN_TOTAL_DEADLINE_MS = 600_000;
+// Overall scan deadline backstop. Catches everything the per-phase
+// timeouts don't bound — a wedged git invocation, a stuck filesystem
+// read, scoring — so no single scan can run unbounded. Sits comfortably
+// ABOVE the sum of the per-phase caps (supply-chain 90s + lint 5min +
+// dead-code 2.5min = 9min, run sequentially) plus discovery / git /
+// scoring overhead, so a scan that legitimately uses those budgets
+// degrades gracefully via the per-phase skips instead of hard-failing on
+// this deadline; only a genuinely wedged unbounded phase reaches it.
+export const SCAN_TOTAL_DEADLINE_MS = 900_000;
 
 // deslop's semantic pass builds a full TypeScript program and walks
 // every identifier through the type checker. On type-heavy projects

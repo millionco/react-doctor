@@ -60,6 +60,13 @@ export interface SpawnLintBatchesInput {
   /** Hard cap on binary-split recursion depth (defaults to `OXLINT_SPLIT_MAX_DEPTH`). */
   readonly splitMaxDepth?: number;
   /**
+   * Aborted when the orchestrator's lint-phase timeout fires; forwarded to
+   * every `spawnOxlint` so the in-flight subprocess is SIGKILL'd and any
+   * not-yet-spawned batch short-circuits — stopping the lint work rather than
+   * leaving subprocesses running until their own spawn timeout.
+   */
+  readonly signal?: AbortSignal;
+  /**
    * Number of batches to lint in parallel (from `OxlintConcurrency`).
    * Defaults to `1` (serial) when omitted. Each batch is its own oxlint
    * subprocess, so `N` here means up to `N` concurrent oxlint processes —
@@ -105,6 +112,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     outputMaxBytes,
     splitTotalBudgetMs = OXLINT_SPLIT_TOTAL_BUDGET_MS,
     splitMaxDepth = OXLINT_SPLIT_MAX_DEPTH,
+    signal,
   } = input;
   // Clamp at the spawn boundary so any caller — including programmatic
   // `inspect({ concurrency })` that skips the CLI's resolver — is bounded by
@@ -150,6 +158,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
           nodeBinaryPath,
           spawnTimeoutMs,
           outputMaxBytes,
+          signal,
         );
         return parseOxlintOutput(stdout, project, rootDirectory);
       } catch (error) {

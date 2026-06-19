@@ -16,25 +16,37 @@ import type { ProjectInfo } from "@react-doctor/core";
 
 interface SpawnMockState {
   callCount: number;
+  killCount: number;
+  // When false, the fake child stays in-flight (no auto-close) so an abort
+  // test can observe the teardown rather than a self-resolving exit.
+  autoClose: boolean;
 }
 
-const spawnState = vi.hoisted((): SpawnMockState => ({ callCount: 0 }));
+const spawnState = vi.hoisted(
+  (): SpawnMockState => ({
+    callCount: 0,
+    killCount: 0,
+    autoClose: true,
+  }),
+);
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
-  // Every spawn exits on a kill signal, which `spawnOxlint` maps to a
-  // splittable `OxlintBatchExceeded { kind: "killed" }` — deterministic and
+  // By default every spawn exits on a kill signal, which `spawnOxlint` maps to
+  // a splittable `OxlintBatchExceeded { kind: "killed" }` — deterministic and
   // timer-free, so the cascade bound is exercised without real waits.
   const spawn = () => {
     spawnState.callCount += 1;
     const child = Object.assign(new EventEmitter(), {
       stdout: new EventEmitter(),
       stderr: new EventEmitter(),
-      kill: () => {},
+      kill: () => {
+        spawnState.killCount += 1;
+      },
     });
     // Defer past the synchronous listener attachment in `spawnOxlint`.
     queueMicrotask(() => {
-      child.emit("close", null, "SIGKILL");
+      if (spawnState.autoClose) child.emit("close", null, "SIGKILL");
     });
     return child;
   };
@@ -73,6 +85,8 @@ const singleLargeBatch = (): string[][] => [
 
 beforeEach(() => {
   spawnState.callCount = 0;
+  spawnState.killCount = 0;
+  spawnState.autoClose = true;
 });
 
 describe("spawnLintBatches binary-split cascade bound", () => {
@@ -121,5 +135,39 @@ describe("spawnLintBatches binary-split cascade bound", () => {
     expect(spawnState.callCount).toBeLessThanOrEqual(2 ** (splitMaxDepth + 1));
     expect(partialFailures).toHaveLength(1);
     expect(partialFailures[0]).toContain("split budget exhausted");
+  });
+});
+
+describe("spawnLintBatches abort teardown", () => {
+  const runWithSignal = (signal: AbortSignal) =>
+    spawnLintBatches({
+      baseArgs: ["--stub"],
+      fileBatches: singleLargeBatch(),
+      rootDirectory: process.cwd(),
+      nodeBinaryPath: process.execPath,
+      project,
+      signal,
+    });
+
+  it("spawns nothing once the abort signal is already set", async () => {
+    const abortController = new AbortController();
+    abortController.abort();
+
+    await expect(runWithSignal(abortController.signal)).rejects.toThrow();
+    // Pre-spawn short-circuit: no oxlint subprocess is started after abort,
+    // so the lint phase can't keep burning work in the background.
+    expect(spawnState.callCount).toBe(0);
+  });
+
+  it("SIGKILLs the in-flight oxlint child when the signal aborts mid-run", async () => {
+    spawnState.autoClose = false;
+    const abortController = new AbortController();
+    const pending = runWithSignal(abortController.signal);
+
+    while (spawnState.callCount === 0) await Promise.resolve();
+    abortController.abort();
+
+    await expect(pending).rejects.toThrow();
+    expect(spawnState.killCount).toBeGreaterThan(0);
   });
 });

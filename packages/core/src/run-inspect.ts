@@ -161,6 +161,14 @@ export interface InspectOutput {
   readonly scannedFilePaths: ReadonlyArray<string>;
   /** Wall-clock duration of the scan phase, in milliseconds. */
   readonly scanElapsedMilliseconds: number;
+  /**
+   * Per-file lint cache outcome for the lint pass: files served from cache and
+   * total files considered. Both `null` when the cache was disabled or bypassed
+   * (audit mode, adopted `extends`, user plugins) so the run never split. Fed
+   * to the Sentry wide event as `lintCacheHitRatio`.
+   */
+  readonly lintCacheHitFileCount: number | null;
+  readonly lintCacheTotalFileCount: number | null;
 }
 
 /**
@@ -399,6 +407,10 @@ export const runInspect = <HooksR = never>(
     const scanProgress = yield* progressService.start("Scanning...");
     const scanStartTime = Date.now();
     let lastReportedTotalFileCount = 0;
+    // `null` until the cache path reports — stays `null` when the cache is off
+    // or bypassed so the wide event can tell "no cache" from "0% hit".
+    let lintCacheHitFileCount: number | null = null;
+    let lintCacheTotalFileCount: number | null = null;
 
     const rawLintStream = linterService
       .run({
@@ -419,6 +431,10 @@ export const runInspect = <HooksR = never>(
               `Scanning files (${scannedFileCount}/${totalFileCount})${workerCountSuffix}...`,
             ),
           );
+        },
+        onCacheStats: (cacheHitFileCount, totalConsideredFileCount) => {
+          lintCacheHitFileCount = cacheHitFileCount;
+          lintCacheTotalFileCount = totalConsideredFileCount;
         },
       })
       .pipe(
@@ -569,6 +585,8 @@ export const runInspect = <HooksR = never>(
       scannedFileCount: totalFileCount,
       scannedFilePaths,
       scanElapsedMilliseconds,
+      lintCacheHitFileCount,
+      lintCacheTotalFileCount,
     };
   }).pipe(
     Effect.withSpan("runInspect", {

@@ -71,3 +71,32 @@ export class OxlintConcurrency extends Context.Reference<number>("react-doctor/O
     return resolveScanConcurrency("auto");
   },
 }) {}
+
+const CACHE_DISABLED_VALUES = new Set(["1", "true"]);
+
+/**
+ * Whether the per-file lint cache (`runners/oxlint/file-lint-cache.ts`) is
+ * active. Defaults ON — repeat scans re-lint only the files whose content
+ * changed, and correctness is guaranteed byte-identical to a cold scan by the
+ * always-fresh cross-file sidecar. Opt-OUT, two knobs (matching the whole-repo
+ * scan cache's `REACT_DOCTOR_NO_CACHE`):
+ *
+ *   - `REACT_DOCTOR_NO_CACHE` — the global off-switch; disables BOTH the
+ *     whole-repo scan cache and this per-file cache.
+ *   - `REACT_DOCTOR_NO_FILE_CACHE` — granular: bust only the per-file cache
+ *     while keeping the whole-repo short-circuit.
+ *
+ * Tests override via `Layer.succeed(PerFileLintCacheEnabled, false)`.
+ */
+export class PerFileLintCacheEnabled extends Context.Reference<boolean>(
+  "react-doctor/PerFileLintCacheEnabled",
+  {
+    defaultValue: () => {
+      const noCache = process.env["REACT_DOCTOR_NO_CACHE"]?.toLowerCase() ?? "";
+      const noFileCache = process.env["REACT_DOCTOR_NO_FILE_CACHE"]?.toLowerCase() ?? "";
+      if (CACHE_DISABLED_VALUES.has(noCache)) return false;
+      if (CACHE_DISABLED_VALUES.has(noFileCache)) return false;
+      return true;
+    },
+  },
+) {}

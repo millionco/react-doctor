@@ -5,7 +5,12 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "../types/index.js";
 import { OxlintSpawnFailed, ReactDoctorError } from "../errors.js";
-import { OxlintConcurrency, OxlintOutputMaxBytes, OxlintSpawnTimeoutMs } from "../refs.js";
+import {
+  OxlintConcurrency,
+  OxlintOutputMaxBytes,
+  OxlintSpawnTimeoutMs,
+  PerFileLintCacheEnabled,
+} from "../refs.js";
 import { runOxlint } from "../run-oxlint.js";
 
 /**
@@ -39,6 +44,7 @@ export interface LintInput {
   readonly configSourceDirectory?: string;
   readonly nodeBinaryPath?: string;
   readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
+  readonly onCacheStats?: (cacheHitFileCount: number, totalConsideredFileCount: number) => void;
 }
 
 /**
@@ -106,6 +112,7 @@ export class Linter extends Context.Service<
             const spawnTimeoutMs = yield* OxlintSpawnTimeoutMs;
             const outputMaxBytes = yield* OxlintOutputMaxBytes;
             const concurrency = yield* OxlintConcurrency;
+            const perFileLintCacheEnabled = yield* PerFileLintCacheEnabled;
             const collectedFailures: string[] = [];
             const diagnostics = yield* Effect.tryPromise({
               try: () =>
@@ -124,6 +131,8 @@ export class Linter extends Context.Service<
                     collectedFailures.push(reason);
                   },
                   onFileProgress: input.onFileProgress,
+                  perFileLintCacheEnabled,
+                  onCacheStats: input.onCacheStats,
                   spawnTimeoutMs,
                   outputMaxBytes,
                   concurrency,

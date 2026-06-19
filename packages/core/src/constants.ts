@@ -357,16 +357,21 @@ export const COMPILER_CLEANUP_RULE_KEYS: ReadonlySet<string> = new Set([
 
 // Rules whose repeated findings in one file collapse to a single root-cause
 // fix, so presentation + consumer surfaces can count them as one task instead
-// of N (the derived-state family: several `useEffect`s resetting state on one
-// prop change all clear with a single `key` prop). `assignFixGroups` stamps a
-// shared `fixGroupId` on same-(file, rule, message) findings of these rules.
-// The allowlist is the safeguard: for an arbitrary rule the same message can
-// mean genuinely separate fixes (a missing `key` on three different `.map()`s),
-// so only rules where "same message ⇒ same fix" opt in here.
+// of N (the state-on-prop-change family: several `useEffect`s deriving,
+// adjusting, or resetting state when a prop changes all clear with one
+// structural fix — a `key` prop or computing during render). `assignFixGroups`
+// stamps a shared `fixGroupId` on same-(file, rule, message) findings of these
+// rules. The allowlist is the safeguard: for an arbitrary rule the same message
+// can mean genuinely separate fixes (a missing `key` on three different
+// `.map()`s), so only rules where "same message ⇒ same fix" opt in here. Rules
+// whose message interpolates a per-site name (`no-derived-state` etc.) stay
+// listed but naturally only group the sites that share the exact message.
 export const ROOT_CAUSE_GROUPABLE_RULE_KEYS: ReadonlySet<string> = new Set([
   "react-doctor/no-derived-state",
   "react-doctor/no-derived-state-effect",
   "react-doctor/no-derived-useState",
+  "react-doctor/no-adjust-state-on-prop-change",
+  "react-doctor/no-reset-all-state-on-prop-change",
 ]);
 
 // Minimum findings that must share a root cause before they form a fix group:

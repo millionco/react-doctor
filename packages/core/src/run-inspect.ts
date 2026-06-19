@@ -12,6 +12,7 @@ import type {
   ReactDoctorConfig,
   ScoreResult,
 } from "./types/index.js";
+import { assignFixGroups } from "./utils/assign-fix-groups.js";
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
 import { checkExpoProject } from "./check-expo-project.js";
 import { checkPnpmHardening } from "./check-pnpm-hardening.js";
@@ -511,12 +512,16 @@ export const runInspect = <HooksR = never>(
 
     yield* reporterService.finalize;
 
-    const finalDiagnostics: ReadonlyArray<Diagnostic> = [
+    // Stamp shared `fixGroupId`s once on the finalized list (post-collection,
+    // pre-output). The score below runs on a surface-filtered COPY and ignores
+    // the field, so this stays score-neutral while the id rides into the wire
+    // report, the on-disk diagnostics dump, and every CLI surface.
+    const finalDiagnostics: ReadonlyArray<Diagnostic> = assignFixGroups([
       ...envCollected,
       ...supplyChainCollected,
       ...lintCollected,
       ...deadCodeCollected,
-    ];
+    ]);
 
     const githubViewerPermission = yield* Fiber.join(githubViewerPermissionFiber);
     const scoreMetadata: ScoreRequestMetadata = {

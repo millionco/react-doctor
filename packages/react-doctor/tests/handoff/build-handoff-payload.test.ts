@@ -51,4 +51,31 @@ describe("buildHandoffPayload", () => {
     expect(fs.existsSync(`${directory}/diagnostics.json`)).toBe(true);
     fs.rmSync(directory, { recursive: true, force: true });
   });
+
+  it("frames a shared-fix group as one task and tells the agent to group by fixGroupId", () => {
+    // Four keyed-state sites that one `key` prop clears, all carrying the same
+    // fixGroupId the core layer stamps.
+    const diagnostics: Diagnostic[] = [12, 18, 24, 30].map((line) =>
+      makeDiagnostic({
+        rule: "no-derived-state-effect",
+        title: "Derived state stored in an effect",
+        severity: "warning",
+        message: "Your users briefly see stale state on every prop change.",
+        line,
+        fixGroupId: "abc123",
+      }),
+    );
+
+    const payload = buildHandoffPayload({ diagnostics, projectName: "demo" });
+
+    // One numbered task, framed as a single fix — not "×4".
+    expect(payload.match(/^\d+\. /gm)?.length).toBe(1);
+    expect(payload).toContain("one fix · 4 sites");
+    expect(payload).not.toContain("×4");
+    // The agent is told to collapse by fixGroupId when reading diagnostics.json.
+    expect(payload).toContain("fixGroupId");
+
+    const directoryMatch = payload.match(/Full results for all 4 issues[^:]*: (\S+)/);
+    if (directoryMatch) fs.rmSync(directoryMatch[1]!, { recursive: true, force: true });
+  });
 });

@@ -1,7 +1,11 @@
 import { TOP_ERRORS_DISPLAY_COUNT } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
 import { HANDOFF_MAX_FILES_PER_RULE } from "./constants.js";
-import { buildSortedRuleGroups, formatFixRecipeLine } from "./diagnostic-grouping.js";
+import {
+  buildSortedRuleGroups,
+  formatFixRecipeLine,
+  getSharedFixSiteCount,
+} from "./diagnostic-grouping.js";
 import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
 
 export interface HandoffPayloadInput {
@@ -30,8 +34,15 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
   topGroups.forEach(([ruleKey, ruleDiagnostics], index) => {
     const representative = ruleDiagnostics[0]!;
     const severityLabel = representative.severity === "error" ? "ERROR" : "WARN";
+    // A rule group whose sites all share one root-cause fix is ONE task — say
+    // "one fix · N sites" so it isn't read as N separate issues to schedule.
+    const sharedFixSiteCount = getSharedFixSiteCount(ruleDiagnostics);
+    const countBadge =
+      sharedFixSiteCount > 0
+        ? `one fix · ${sharedFixSiteCount} sites`
+        : `×${ruleDiagnostics.length}`;
     lines.push(
-      `${index + 1}. ${severityLabel} ${representative.category}: ${representative.title ?? ruleKey} (×${ruleDiagnostics.length})`,
+      `${index + 1}. ${severityLabel} ${representative.category}: ${representative.title ?? ruleKey} (${countBadge})`,
       `   ${representative.message}`,
     );
     const fixRecipeLine = formatFixRecipeLine(representative);
@@ -56,6 +67,8 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
   }
   lines.push(
     "Read each file and fix the root cause — don't suppress or silence the rule.",
+    "",
+    "Findings that share a `fixGroupId` (in diagnostics.json) are one root cause — a single fix clears all of them, so treat each `fixGroupId` as ONE task, not one per site.",
     "",
     "Verify against the real thing, don't assume: confirm each change matches the canonical fix recipe you fetched for that rule, then re-run `npx react-doctor@latest --verbose` and check the issue is actually gone against the real tool before moving on.",
     "",

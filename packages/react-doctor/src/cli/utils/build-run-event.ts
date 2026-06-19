@@ -141,10 +141,23 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
 
   let diagnosticsInTestFiles = 0;
   let diagnosticsInStoryFiles = 0;
+  // Root-cause grouping rollup: how many distinct fix groups, and how many
+  // findings they cover. `fixGroupedFindings - fixGroups` is the number of
+  // findings that collapse away (one fix, not N tasks) — the signal that says
+  // whether this feature fires on real repos and how much it folds.
+  const findingsPerFixGroup = new Map<string, number>();
   for (const diagnostic of result.diagnostics) {
     if (diagnostic.fileContext === "test") diagnosticsInTestFiles += 1;
     if (diagnostic.fileContext === "story") diagnosticsInStoryFiles += 1;
+    if (diagnostic.fixGroupId) {
+      findingsPerFixGroup.set(
+        diagnostic.fixGroupId,
+        (findingsPerFixGroup.get(diagnostic.fixGroupId) ?? 0) + 1,
+      );
+    }
   }
+  let fixGroupedFindings = 0;
+  for (const count of findingsPerFixGroup.values()) fixGroupedFindings += count;
 
   const attributes: RunEventAttributes = {
     outcome,
@@ -159,6 +172,8 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     diagnosticsInTestFiles,
     diagnosticsInStoryFiles,
     distinctRulesFired: countByRule.size,
+    "diag.fixGroups": findingsPerFixGroup.size,
+    "diag.fixGroupedFindings": fixGroupedFindings,
     topRule,
     scannedFileCount: result.scannedFileCount ?? null,
     elapsedMs: result.elapsedMilliseconds,

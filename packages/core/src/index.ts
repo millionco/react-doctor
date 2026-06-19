@@ -79,6 +79,7 @@ export * from "./rule-key-aliases.js";
 export * from "./run-oxlint.js";
 export * from "./summarize-diagnostics.js";
 export * from "./validate-config-types.js";
+export * from "./utils/assign-fix-groups.js";
 export * from "./utils/build-rule-docs-url.js";
 export * from "./utils/classify-package-role.js";
 export * from "./utils/compute-config-fingerprint.js";

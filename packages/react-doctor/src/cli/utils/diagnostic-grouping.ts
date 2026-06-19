@@ -1,4 +1,9 @@
-import { buildRuleDocsUrl, groupBy, hasPublishedFixRecipe } from "@react-doctor/core";
+import {
+  buildRuleDocsUrl,
+  groupBy,
+  hasPublishedFixRecipe,
+  MIN_SHARED_FIX_SITE_COUNT,
+} from "@react-doctor/core";
 import type { Diagnostic, ScoreResult } from "@react-doctor/core";
 
 // Ordering / formatting helpers shared by the diagnostics renderer, the
@@ -67,6 +72,19 @@ export const buildSortedRuleGroups = (
     [...groupBy([...diagnostics], (diagnostic) => `${diagnostic.plugin}/${diagnostic.rule}`)],
     rulePriority,
   );
+
+// When every finding in a group shares one root-cause fix (the `fixGroupId`
+// the core layer stamps on same-(file, rule, message) sites), the number of
+// findings that single fix resolves — else 0 (the group spans several fixes,
+// or none carry an id). Lets a surface say "one fix · N sites" instead of
+// "N findings", so one keyed-state fix reads as one task, not N.
+export const getSharedFixSiteCount = (diagnostics: ReadonlyArray<Diagnostic>): number => {
+  if (diagnostics.length < MIN_SHARED_FIX_SITE_COUNT) return 0;
+  const firstFixGroupId = diagnostics[0]?.fixGroupId;
+  if (!firstFixGroupId) return 0;
+  const sharesOneFix = diagnostics.every((diagnostic) => diagnostic.fixGroupId === firstFixGroupId);
+  return sharesOneFix ? diagnostics.length : 0;
+};
 
 // Agent-facing directive (not a bare label) so a consuming agent treats the
 // URL as a step to perform — cache-bust the canonical, reviewer-tested

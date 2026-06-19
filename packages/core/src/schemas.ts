@@ -35,6 +35,7 @@ export class Diagnostic extends Schema.Class<Diagnostic>("Diagnostic")({
   fileContext: Schema.optional(Schema.Literals(["test", "story"])),
   suppressionHint: Schema.optional(Schema.String),
   relatedLocations: Schema.optional(Schema.Array(DiagnosticRelatedLocation)),
+  fixGroupId: Schema.optional(Schema.String),
 }) {}
 
 /**

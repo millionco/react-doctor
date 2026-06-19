@@ -25,6 +25,7 @@ import {
   buildSortedRuleGroups,
   formatFixRecipeLine,
   formatLearnMoreLine,
+  getSharedFixSiteCount,
 } from "./diagnostic-grouping.js";
 import { indentMultilineText } from "./indent-multiline-text.js";
 import { resolveMeasureWidth } from "./resolve-measure-width.js";
@@ -396,6 +397,18 @@ const buildRuleDetailBlock = (
     )) {
       lines.push(highlighter.dim(`${TOP_ERROR_DETAIL_INDENT}${fixLine}`));
     }
+  }
+
+  // When this rule's sites all share one root-cause fix (e.g. several state
+  // resets on a single prop change → one `key` prop), say so explicitly so
+  // the `×N` badge reads as one task to do, not N separate problems.
+  const sharedFixSiteCount = getSharedFixSiteCount(ruleDiagnostics);
+  if (sharedFixSiteCount > 0) {
+    lines.push(
+      highlighter.dim(
+        `${TOP_ERROR_DETAIL_INDENT}↳ One fix clears all ${sharedFixSiteCount} findings.`,
+      ),
+    );
   }
 
   if (renderEverySite && isAgentEnvironment) {

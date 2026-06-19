@@ -22,7 +22,7 @@ describe("TypeScript version compatibility", () => {
   });
 
   it("parses TypeScript source with createSourceFile", () => {
-    const sourceText = 'const x: number = 42 satisfies number;';
+    const sourceText = "const x: number = 42 satisfies number;";
     const sourceFile = ts.createSourceFile(
       "test.ts",
       sourceText,

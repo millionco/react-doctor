@@ -1,0 +1,69 @@
+packages/core/src/utils/has-dead-code-overlap-headroom.ts
+  s_f2ab89d240a5e8::t_74cbfa5568bb46 1-33
+packages/core/tests/has-dead-code-overlap-headroom.test.ts
+  s_f2ab89d240a5e8::t_e84ea79414acd2 1-21,25-30,34-36,40-47
+  s_f2ab89d240a5e8::t_75ca8b27beba33 22-24,31-33,37-39
+packages/core/src/services/dead-code.ts
+  s_f2ab89d240a5e8::t_024bf44a7b9f01 40-44,48
+packages/react-doctor/src/inspect.ts
+  s_f2ab89d240a5e8::t_c9c36db69aec01 820
+  s_f2ab89d240a5e8::t_2cd1cd6f9c633f 687
+packages/core/src/run-inspect.ts
+  s_f2ab89d240a5e8::t_c8336b32683fd4 527-549
+  s_f2ab89d240a5e8::t_5a89c272f04fe5 36-37
+  s_f2ab89d240a5e8::t_6a21cf8e0bea37 416-467
+  s_f2ab89d240a5e8::t_8a69d850936f10 622
+  s_f2ab89d240a5e8::t_e2e88c567d7a08 239-249
+  s_f2ab89d240a5e8::t_5b118805186047 1
+  s_f2ab89d240a5e8::t_3c80320383f2e8 150-157
+packages/core/src/constants.ts
+  s_f2ab89d240a5e8::t_1e451cdb3adc05 282-293,297-298
+  s_f2ab89d240a5e8::t_d60401a9b117c9 294-296
+packages/core/src/check-dead-code.ts
+  s_f2ab89d240a5e8::t_ebed869fc65233 421-431
+  s_f2ab89d240a5e8::t_ae159c45ca3dc5 464
+  s_f2ab89d240a5e8::t_0f5de76b7eb4b7 33-41
+  s_f2ab89d240a5e8::t_7d2aa44c691c20 406,410-413,416-417,419-420,434-439,441-442
+packages/react-doctor/tests/build-run-event.test.ts
+  s_f2ab89d240a5e8::t_2362dd5899f9f0 86
+  s_f2ab89d240a5e8::t_07ef81fdf68ce0 109-125
+packages/core/src/refs.ts
+  s_f2ab89d240a5e8::t_1dc01f5ff02dd2 74-100
+packages/core/tests/check-dead-code.test.ts
+  s_f2ab89d240a5e8::t_21dacf1abad90b 302-346
+packages/react-doctor/src/cli/utils/constants.ts
+  s_f2ab89d240a5e8::t_fac432b30449fd 24-28
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_f2ab89d240a5e8::t_b98317ae87583a 57
+  s_f2ab89d240a5e8::t_eefe14422653a9 53-56,58-59
+  s_f2ab89d240a5e8::t_c4edbd2f57ffac 206
+packages/react-doctor/tests/scan-result-cache.test.ts
+  s_f2ab89d240a5e8::t_d61675563fd2a6 126,238
+packages/react-doctor/src/cli/utils/scan-result-cache.ts
+  s_f2ab89d240a5e8::t_b3857a322e58eb 36
+packages/core/tests/run-inspect.test.ts
+  s_f2ab89d240a5e8::t_f4fa6aafd1cd50 19
+  s_f2ab89d240a5e8::t_34c812c5a2a2c3 527-530
+  s_f2ab89d240a5e8::t_1a9390e8bf5d70 336-339
+  s_f2ab89d240a5e8::t_4cd17d9866df9b 372-374
+  s_f2ab89d240a5e8::t_1c9a7f5f51c4a2 116-119,138
+  s_f2ab89d240a5e8::t_5316a27277c55a 385-473
+.changeset/overlap-dead-code-with-lint.md
+  s_f2ab89d240a5e8::t_bfbd1e5d007182 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "f988dacde56c2c98c1f390f069d3c8d578b0b919",
+  "prompts": {},
+  "sessions": {
+    "s_f2ab89d240a5e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "039750ac-9d53-4c94-8f7f-db15ae55799a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -16,6 +16,11 @@ if (module.enableCompileCache && !process.env.NODE_DISABLE_COMPILE_CACHE) {
 if (process.argv[2] === "experimental-lsp") {
   const { startLanguageServer } = await import("../dist/lsp.js");
   startLanguageServer();
+} else if (process.argv[2] === "mcp") {
+  // Same fast-path for the MCP server: its stdio transport owns stdin/stdout,
+  // so the CLI's commander / prompts / ora layer must never load first.
+  const { startReactDoctorMcp } = await import("../dist/mcp.js");
+  await startReactDoctorMcp();
 } else {
   await import("../dist/cli.js");
 }

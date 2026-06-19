@@ -193,6 +193,30 @@ export default defineConfig({
       fixedExtension: false,
     },
     {
+      // Dedicated MCP-server entry the bin shim fast-paths to for
+      // `react-doctor mcp`. Inlines @react-doctor/mcp + its api/core/browser/
+      // debug deps and the MCP SDK; keeps the heavy/native engines external
+      // (same set as the CLI pack) so playwright-core stays an optional install
+      // and oxlint/oxc/deslop resolve their native bindings at runtime.
+      entry: { mcp: "./src/mcp.ts" },
+      deps: {
+        neverBundle: [
+          "@sentry/node",
+          "playwright-core",
+          "deslop-js",
+          "oxc-parser",
+          "oxc-resolver",
+          "oxlint",
+          "oxlint-plugin-react-doctor",
+          "typescript",
+        ],
+      },
+      dts: false,
+      target: "node20",
+      platform: "node",
+      fixedExtension: false,
+    },
+    {
       // Dedicated language-server entry the bin shim fast-paths to for
       // `react-doctor experimental-lsp`. Inlines @react-doctor/language-server + core;
       // keeps the engine + LSP transport external (the vscode-* libs use

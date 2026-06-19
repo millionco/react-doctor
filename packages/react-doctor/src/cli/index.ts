@@ -431,6 +431,17 @@ program
   .allowUnknownOption()
   .action(() => {});
 
+// NOTE: like `experimental-lsp`, `react-doctor mcp` is fast-pathed by the bin
+// shim (bin/react-doctor.js) to a dedicated stdio entry, so the CLI layer
+// (commander / prompts / ora) never touches process.stdin before the MCP
+// transport attaches. Registered here only so `--help` lists it; its body
+// never runs in practice.
+program
+  .command("mcp")
+  .description("Run the React Doctor MCP server over stdio (doctor scan + browser jobs as tools)")
+  .allowUnknownOption()
+  .action(() => {});
+
 // HACK: when stdout is piped into a process that closes early (e.g.
 // `react-doctor . | head`), Node throws an uncaught EPIPE on the next
 // write. Exit cleanly instead of dumping a stack trace.

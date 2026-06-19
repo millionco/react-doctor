@@ -78,6 +78,7 @@
     "@react-doctor/core": "workspace:*",
     "@react-doctor/debug": "workspace:*",
     "@react-doctor/language-server": "workspace:*",
+    "@react-doctor/mcp": "workspace:*",
     "@types/babel__code-frame": "^7.27.0",
     "@types/prompts": "^2.4.9",
     "@xterm/headless": "^6.0.0",

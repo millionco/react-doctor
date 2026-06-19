@@ -1,0 +1,32 @@
+packages/core/src/utils/has-dead-code-overlap-headroom.ts
+  s_2eec643ea8aa60::t_ca5d277a36ef88 3,10-15,19-23,25-30,35,37
+packages/core/src/constants.ts
+  s_2eec643ea8aa60::t_2da67024fe764a 344-354
+packages/core/src/utils/resolve-available-memory-bytes.ts
+  s_2eec643ea8aa60::t_d7966a1e90af84 1-58
+packages/core/src/run-inspect.ts
+  s_2eec643ea8aa60::t_1df4330d2ba82f 46
+  s_2eec643ea8aa60::t_1f6ca2240fe2d9 519-527
+  s_2eec643ea8aa60::t_63f0b26119ac6e 132-133
+  s_2eec643ea8aa60::t_f43d0d8009c79c 539-543,550-553
+packages/core/tests/has-dead-code-overlap-headroom.test.ts
+  s_2eec643ea8aa60::t_3e13f85e056a2b 4,11-12,15,22-25,28-35,38-50,55-56
+packages/core/tests/resolve-available-memory-bytes.test.ts
+  s_2eec643ea8aa60::t_70a6d6c7ba0a92 1-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "401b4a97e84852d7bafe6b862594f7183eb7112c",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

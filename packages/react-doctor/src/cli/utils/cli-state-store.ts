@@ -28,6 +28,19 @@ export const INITIAL_LIFECYCLE_VERSION = 1;
 // Well-known lifecycle event ids (stable storage keys). They live here because
 // `migrateCliState` maps the legacy keys onto them; the gates that own each one
 // re-import the constant so the id is written in exactly one place.
+//
+// Every onboarding/growth surface in the CLI, at a glance. Gates fire once per
+// scope ("global" = per machine, "project" = per repo); migrations run once per
+// repo. Bump a `version` to re-fire/re-run one. Keep this table in sync when you
+// add a surface.
+//
+//   surface               kind       scope    id / migration id   wired in
+//   ────────────────────  ─────────  ───────  ──────────────────  ────────────────────────
+//   first-run onboarding  gate       global   onboarding          onboarding-state.ts
+//   "add to CI?" pitch    gate       project  ci-pitch            ci-prompt-decision.ts
+//   @v1 → @v2 offer       gate       project  action-upgrade-v2   action-upgrade-prompt.ts
+//   agent install hint    gate       project  setup-hint          prompt-install-setup.ts
+//   config json → ts      migration  project  config-json-to-ts   cli-migrations.ts
 export const ONBOARDING_EVENT = "onboarding";
 export const CI_PITCH_EVENT = "ci-pitch";
 export const ACTION_UPGRADE_EVENT = "action-upgrade-v2";

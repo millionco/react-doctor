@@ -4,6 +4,7 @@ import {
   OXLINT_OUTPUT_MAX_BYTES,
   OXLINT_SPAWN_TIMEOUT_MS,
 } from "./constants.js";
+import { resolveLintBatchOrdering } from "./utils/resolve-lint-batch-ordering.js";
 import { resolveScanConcurrency } from "./utils/resolve-scan-concurrency.js";
 
 /**
@@ -71,3 +72,21 @@ export class OxlintConcurrency extends Context.Reference<number>("react-doctor/O
     return resolveScanConcurrency("auto");
   },
 }) {}
+
+/**
+ * How the full-scan lint pass orders its file batches. `"cost"` (the default)
+ * feeds the largest files into the parallel pool first so the heaviest batch
+ * starts in wave 1 instead of stranding in the tail (LPT). Set
+ * `REACT_DOCTOR_LINT_BATCH_ORDERING=arrival` to fall back to discovery order —
+ * the one-env-var revert if the kill metric (`Linter.run` p95 / dropped-file
+ * rate by cohort) fires, no code deploy needed. Tests override via
+ * `Layer.succeed(LintBatchOrdering, ...)`. Diff / staged scans never reach this
+ * — they pass user-scoped `includePaths` that skip discovery and stay in
+ * arrival order; only the full-scan branch reads it.
+ */
+export class LintBatchOrdering extends Context.Reference<"cost" | "arrival">(
+  "react-doctor/LintBatchOrdering",
+  {
+    defaultValue: resolveLintBatchOrdering,
+  },
+) {}

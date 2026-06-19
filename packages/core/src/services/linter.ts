@@ -5,7 +5,12 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "../types/index.js";
 import { OxlintSpawnFailed, ReactDoctorError } from "../errors.js";
-import { OxlintConcurrency, OxlintOutputMaxBytes, OxlintSpawnTimeoutMs } from "../refs.js";
+import {
+  LintBatchOrdering,
+  OxlintConcurrency,
+  OxlintOutputMaxBytes,
+  OxlintSpawnTimeoutMs,
+} from "../refs.js";
 import { runOxlint } from "../run-oxlint.js";
 
 /**
@@ -106,6 +111,7 @@ export class Linter extends Context.Service<
             const spawnTimeoutMs = yield* OxlintSpawnTimeoutMs;
             const outputMaxBytes = yield* OxlintOutputMaxBytes;
             const concurrency = yield* OxlintConcurrency;
+            const lintBatchOrdering = yield* LintBatchOrdering;
             const collectedFailures: string[] = [];
             const diagnostics = yield* Effect.tryPromise({
               try: () =>
@@ -127,6 +133,7 @@ export class Linter extends Context.Service<
                   spawnTimeoutMs,
                   outputMaxBytes,
                   concurrency,
+                  lintBatchOrdering,
                 }),
               catch: ensureReactDoctorError,
             });

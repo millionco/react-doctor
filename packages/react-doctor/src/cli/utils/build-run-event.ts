@@ -49,6 +49,11 @@ export interface RunEventInput {
   readonly didLintFail?: boolean;
   readonly lintFailureReasonKind?: string | null;
   readonly lintPartialFailureCount?: number;
+  // Total files the lint pass dropped (timeout-tripping batches that couldn't
+  // be split further). A per-scan outcome dim — the kill-metric signal for LPT:
+  // if cost-ordering front-loads the pathological bucket and drops MORE files,
+  // this rises on the `cost` cohort vs `arrival`.
+  readonly lintDroppedFileCount?: number;
   readonly didDeadCodeFail?: boolean;
   // A degraded baseline run (no delta computed) skips the CI gate, so the
   // `wouldBlock` prediction must match — never block on its plain-diff findings.
@@ -195,6 +200,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     didLintFail: input.didLintFail ?? null,
     lintFailureReasonKind: input.lintFailureReasonKind ?? null,
     lintPartialFailureCount: input.lintPartialFailureCount ?? null,
+    lintDroppedFileCount: input.lintDroppedFileCount ?? null,
     didDeadCodeFail: input.didDeadCodeFail ?? null,
   };
   for (const [category, count] of countByCategory) {

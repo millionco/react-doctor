@@ -13,6 +13,7 @@ import type {
   ScoreResult,
 } from "./types/index.js";
 import { assignFixGroups } from "./utils/assign-fix-groups.js";
+import { sortDiagnosticsStable } from "./utils/sort-diagnostics-stable.js";
 import { buildDiagnosticPipeline } from "./build-diagnostic-pipeline.js";
 import { checkExpoProject } from "./check-expo-project.js";
 import { checkPnpmHardening } from "./check-pnpm-hardening.js";
@@ -513,15 +514,21 @@ export const runInspect = <HooksR = never>(
     yield* reporterService.finalize;
 
     // Stamp shared `fixGroupId`s once on the finalized list (post-collection,
-    // pre-output). The score below runs on a surface-filtered COPY and ignores
-    // the field, so this stays score-neutral while the id rides into the wire
-    // report, the on-disk diagnostics dump, and every CLI surface.
-    const finalDiagnostics: ReadonlyArray<Diagnostic> = assignFixGroups([
-      ...envCollected,
-      ...supplyChainCollected,
-      ...lintCollected,
-      ...deadCodeCollected,
-    ]);
+    // pre-output), then sort into a total, content-stable order. The score
+    // below runs on a surface-filtered COPY and ignores the field + is
+    // set-based, so this stays score-neutral while the canonical order rides
+    // into the wire report, the on-disk diagnostics dump, the agent handoff,
+    // the Sentry wide event, and the scan-result cache — making all of them
+    // reproducible run-to-run, independent of the (parallel, cost-reordered)
+    // lint arrival order.
+    const finalDiagnostics: ReadonlyArray<Diagnostic> = sortDiagnosticsStable(
+      assignFixGroups([
+        ...envCollected,
+        ...supplyChainCollected,
+        ...lintCollected,
+        ...deadCodeCollected,
+      ]),
+    );
 
     const githubViewerPermission = yield* Fiber.join(githubViewerPermissionFiber);
     const scoreMetadata: ScoreRequestMetadata = {

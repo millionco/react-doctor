@@ -103,3 +103,16 @@ export interface CleanedDiagnostic {
   message: string;
   help: string;
 }
+
+/**
+ * A discovered source file paired with its on-disk byte size. The size is
+ * the single `fs.statSync` the minified-file gate already pays during
+ * discovery, captured instead of discarded so the lint pass can order
+ * batches largest-first (a free, weak AST-cost proxy) without a second stat.
+ * `sizeBytes` is `0` for a file that could not be stat'd (kept, parity with
+ * `isLargeMinifiedFile`'s keep-on-error), so such files sort to the cheap tail.
+ */
+export interface SourceFileEntry {
+  readonly path: string;
+  readonly sizeBytes: number;
+}

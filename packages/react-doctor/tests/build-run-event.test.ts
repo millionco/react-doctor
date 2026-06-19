@@ -275,6 +275,17 @@ describe("buildRunEventAttributes", () => {
     expect(buildRunEventAttributes(baseInput({ result: buildResult() })).versionPin).toBe("local");
   });
 
+  it("records lintDroppedFileCount when present and drops it when absent", () => {
+    const withDrops = buildRunEventAttributes(
+      baseInput({ result: buildResult(), lintDroppedFileCount: 4 }),
+    );
+    expect(withDrops.lintDroppedFileCount).toBe(4);
+
+    // Not passed -> null -> dropped, never coerced to a misleading "null".
+    const withoutDrops = buildRunEventAttributes(baseInput({ result: buildResult() }));
+    expect(withoutDrops.lintDroppedFileCount).toBeUndefined();
+  });
+
   it("captures config shape and drops null/undefined-valued attributes", () => {
     const attributes = buildRunEventAttributes(
       baseInput({

@@ -27,6 +27,7 @@ import { BASELINE_FILES_TEMP_DIR_PREFIX, METRIC } from "./cli/utils/constants.js
 import { recordCount } from "./cli/utils/record-metric.js";
 import { recordScanMetrics } from "./cli/utils/record-scan-metrics.js";
 import { recordRunEvent } from "./cli/utils/build-run-event.js";
+import { countDroppedLintFiles } from "./cli/utils/count-dropped-lint-files.js";
 import type {
   ChangedFileLineRanges,
   Diagnostic,
@@ -815,6 +816,7 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     didLintFail: input.payload.didLintFail,
     lintFailureReasonKind: input.payload.lintFailureReasonKind,
     lintPartialFailureCount: input.payload.lintPartialFailures.length,
+    lintDroppedFileCount: countDroppedLintFiles(input.payload.lintPartialFailures),
     didDeadCodeFail: input.payload.didDeadCodeFail,
   });
   return result;

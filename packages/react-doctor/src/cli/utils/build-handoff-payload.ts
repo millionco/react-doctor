@@ -84,8 +84,26 @@ export const buildHandoffPayload = (input: HandoffPayloadInput): string => {
     "",
     'Teach me as you go: for every issue you touch, explain it in plain language (no jargon) — what the problem is, why it\'s a problem, and how serious it is in human terms. Describe the real-world impact and severity concretely (e.g. "this crashes the page for users on Safari" vs. "this is a minor cleanup with no user impact") so I understand why it matters, not just what changed.',
     "",
-    "Then work through the rest from the full results above.",
   );
+
+  // Migration-scale rules that fall outside the shown top-N still carry the
+  // sample-first warning, so the agent doesn't blindly sweep them when it works
+  // through "the rest" — the per-rule note above only reaches the shown groups.
+  const shownRuleKeys = new Set(topGroups.map(([ruleKey]) => ruleKey));
+  const deferredMigrationBuckets = [...migrationScaleBuckets.values()].filter(
+    (bucket) => !shownRuleKeys.has(bucket.ruleKey),
+  );
+  if (deferredMigrationBuckets.length > 0) {
+    const ruleSummaries = deferredMigrationBuckets
+      .map((bucket) => `${bucket.title} (${bucket.fileCount} files)`)
+      .join(", ");
+    lines.push(
+      `Some of the rest are migration-scale (span many files): ${ruleSummaries}. For each, fix a representative sample, confirm the recipe holds, and get the code owner's sign-off before sweeping the rest in one pass.`,
+      "",
+    );
+  }
+
+  lines.push("Then work through the rest from the full results above.");
 
   return lines.join("\n");
 };

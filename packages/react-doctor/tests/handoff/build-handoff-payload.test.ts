@@ -100,4 +100,34 @@ describe("buildHandoffPayload", () => {
     const directory = payload.match(/Full results for all \d+ issues[^:]*: (\S+)/)![1]!;
     fs.rmSync(directory, { recursive: true, force: true });
   });
+
+  it("warns about a migration-scale rule that ranks outside the shown top-N", () => {
+    // Three small rules fill the shown top-N; the migration-scale rule lands
+    // outside it (scan order), so it only reaches the closing summary.
+    const diagnostics: Diagnostic[] = [
+      makeDiagnostic({ rule: "rule-a", title: "Rule A", filePath: "src/a.tsx" }),
+      makeDiagnostic({ rule: "rule-b", title: "Rule B", filePath: "src/b.tsx" }),
+      makeDiagnostic({ rule: "rule-c", title: "Rule C", filePath: "src/c.tsx" }),
+    ];
+    for (let fileIndex = 0; fileIndex < 45; fileIndex += 1) {
+      diagnostics.push(
+        makeDiagnostic({
+          rule: "react-compiler-no-manual-memoization",
+          title: "Manual memoization",
+          filePath: `src/widgets/widget-${fileIndex}.tsx`,
+          line: fileIndex + 1,
+        }),
+      );
+    }
+
+    const payload = buildHandoffPayload({ diagnostics, projectName: "demo" });
+
+    expect(payload).toContain("Some of the rest are migration-scale");
+    expect(payload).toContain("Manual memoization (45 files)");
+    // It's not one of the shown groups, so it gets no inline per-rule note.
+    expect(payload).not.toMatch(/^ {3}Migration-scale \(/m);
+
+    const directory = payload.match(/Full results for all \d+ issues[^:]*: (\S+)/)![1]!;
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
 });

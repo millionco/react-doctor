@@ -1,0 +1,28 @@
+packages/react-doctor/tests/open-workflow-pull-request.test.ts
+  s_02949bc312ec72::t_eaf0814ecb836b 1-66,68-87,90-121,123-160,162-179
+  s_02949bc312ec72::t_733c5061d90c38 88-89
+.changeset/fix-setup-flow-idempotent-pr.md
+  s_02949bc312ec72::t_09a3e7ec7253f3 1-5
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_02949bc312ec72::t_cff67f884b4422 92-95
+packages/react-doctor/src/cli/utils/set-up-github-actions.ts
+  s_02949bc312ec72::t_cff67f884b4422 73-76
+packages/react-doctor/src/cli/utils/open-workflow-pull-request.ts
+  s_02949bc312ec72::t_cff67f884b4422 4,8-14,28-30,44-47,56,68-70,72-73,75-79,82,84-113,116-121,143-146,152-153,166,171-176,179-188,202,204-206,266-269,271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "cf31adbddd9c07604be432cabcbe0e802613df23",
+  "prompts": {},
+  "sessions": {
+    "s_02949bc312ec72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8e645ba-e36a-4945-ba52-d0bb8065ddac",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

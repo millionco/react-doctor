@@ -1,0 +1,31 @@
+packages/react-doctor/tests/open-workflow-pull-request.test.ts
+  s_02949bc312ec72::t_eaf0814ecb836b 1-66,68-71,84-99,114-145,151-188,190-193,198-211,82,106-107,109,112-113
+  s_02949bc312ec72::t_733c5061d90c38 100-101,102-105,108,110-111
+  s_02949bc312ec72::t_b745a94205509b 72-81,83
+  s_02949bc312ec72::t_02f6ac58a33310 146-150
+  s_02949bc312ec72::t_2b2b4ee874c331 189,194-197
+packages/react-doctor/src/cli/utils/open-workflow-pull-request.ts
+  s_02949bc312ec72::t_cff67f884b4422 6,10-16,30-32,46-49,58,73-75,77-78,89-93,98-128,131-136,158-161,167-168,184,189-194,199-208,222,224-226,286-289,291,198
+  s_02949bc312ec72::t_acebe6818a42f1 2,5
+  s_02949bc312ec72::t_d481318b711587 79-88
+  s_02949bc312ec72::t_c89f1653ec7e05 179-182
+  s_02949bc312ec72::t_b95a50793680e4 298
+  s_02949bc312ec72::t_83d55965176405 66-72,76,94-97
+  s_02949bc312ec72::t_e4d8c17bb825a1 195-197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "702d09deeff35ee8080734dc20b1fee0b3be04dc",
+  "prompts": {},
+  "sessions": {
+    "s_02949bc312ec72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8e645ba-e36a-4945-ba52-d0bb8065ddac",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

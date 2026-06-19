@@ -239,4 +239,114 @@ describe("control-flow-graph", () => {
       expect(cfg!.exit).toBeDefined();
     });
   });
+
+  describe("isReachable", () => {
+    it("forward through straight-line code, not backward", () => {
+      const analysis = analyze(`function fn() { a(); b(); }`);
+      const a = findCalleeNode(analysis.program, "a")!;
+      const b = findCalleeNode(analysis.program, "b")!;
+      expect(analysis.isReachable(a, b)).toBe(true);
+      expect(analysis.isReachable(b, a)).toBe(false);
+    });
+
+    it("both directions inside a loop body (cycle)", () => {
+      const analysis = analyze(`function fn() { while (x) { a(); b(); } }`);
+      const a = findCalleeNode(analysis.program, "a")!;
+      const b = findCalleeNode(analysis.program, "b")!;
+      expect(analysis.isReachable(a, b)).toBe(true);
+      expect(analysis.isReachable(b, a)).toBe(true);
+    });
+
+    it("not reachable across mutually-exclusive branches", () => {
+      const analysis = analyze(`function fn() { if (x) { thenCall(); } else { elseCall(); } }`);
+      const thenCall = findCalleeNode(analysis.program, "thenCall")!;
+      const elseCall = findCalleeNode(analysis.program, "elseCall")!;
+      expect(analysis.isReachable(thenCall, elseCall)).toBe(false);
+    });
+
+    it("never reachable across function boundaries", () => {
+      const analysis = analyze(`
+        function outer() { outerCall(); const f = () => { innerCall(); }; }
+      `);
+      const outerCall = findCalleeNode(analysis.program, "outerCall")!;
+      const innerCall = findCalleeNode(analysis.program, "innerCall")!;
+      expect(analysis.isReachable(outerCall, innerCall)).toBe(false);
+    });
+  });
+
+  describe("dominates", () => {
+    it("earlier straight-line statement dominates later", () => {
+      const analysis = analyze(`function fn() { a(); b(); }`);
+      const a = findCalleeNode(analysis.program, "a")!;
+      const b = findCalleeNode(analysis.program, "b")!;
+      expect(analysis.dominates(a, b)).toBe(true);
+      expect(analysis.dominates(b, a)).toBe(false);
+    });
+
+    it("a guard before a branch dominates the post-merge, branch bodies do not", () => {
+      const analysis = analyze(`
+        function fn() { guard(); if (x) { thenCall(); } after(); }
+      `);
+      const guard = findCalleeNode(analysis.program, "guard")!;
+      const thenCall = findCalleeNode(analysis.program, "thenCall")!;
+      const after = findCalleeNode(analysis.program, "after")!;
+      expect(analysis.dominates(guard, after)).toBe(true);
+      expect(analysis.dominates(thenCall, after)).toBe(false);
+    });
+  });
+
+  describe("postDominates", () => {
+    it("a later straight-line statement post-dominates an earlier one", () => {
+      const analysis = analyze(`function fn() { a(); b(); }`);
+      const a = findCalleeNode(analysis.program, "a")!;
+      const b = findCalleeNode(analysis.program, "b")!;
+      expect(analysis.postDominates(b, a)).toBe(true);
+      expect(analysis.postDominates(a, b)).toBe(false);
+    });
+
+    it("post-merge code post-dominates a pre-branch statement, branch bodies do not", () => {
+      const analysis = analyze(`
+        function fn() { before(); if (x) { thenCall(); } after(); }
+      `);
+      const before = findCalleeNode(analysis.program, "before")!;
+      const thenCall = findCalleeNode(analysis.program, "thenCall")!;
+      const after = findCalleeNode(analysis.program, "after")!;
+      expect(analysis.postDominates(after, before)).toBe(true);
+      expect(analysis.postDominates(thenCall, before)).toBe(false);
+    });
+  });
+
+  describe("isInsideLoop", () => {
+    it("true for a node in a loop body, false after the loop", () => {
+      const analysis = analyze(`
+        function fn() { for (const item of items) { inLoop(); } afterLoop(); }
+      `);
+      expect(analysis.isInsideLoop(findCalleeNode(analysis.program, "inLoop")!)).toBe(true);
+      expect(analysis.isInsideLoop(findCalleeNode(analysis.program, "afterLoop")!)).toBe(false);
+    });
+
+    it("false for a node inside a callback that merely escapes a loop", () => {
+      // The regression that motivated cycle-based membership: the
+      // callback is a separate function with its own acyclic CFG, so
+      // `escaped()` runs per-invocation, not per-iteration.
+      const analysis = analyze(`
+        function fn() {
+          for (const item of items) {
+            element.onclick = () => { escaped(); };
+          }
+        }
+      `);
+      expect(analysis.isInsideLoop(findCalleeNode(analysis.program, "escaped")!)).toBe(false);
+    });
+  });
+
+  describe("isUnreachable", () => {
+    it("true for code after an unconditional return, false otherwise", () => {
+      const analysis = analyze(`
+        function fn() { live(); return; dead(); }
+      `);
+      expect(analysis.isUnreachable(findCalleeNode(analysis.program, "live")!)).toBe(false);
+      expect(analysis.isUnreachable(findCalleeNode(analysis.program, "dead")!)).toBe(true);
+    });
+  });
 });

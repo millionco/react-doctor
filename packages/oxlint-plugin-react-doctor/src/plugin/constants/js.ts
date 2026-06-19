@@ -1,11 +1,3 @@
-export const LOOP_TYPES = [
-  "ForStatement",
-  "ForInStatement",
-  "ForOfStatement",
-  "WhileStatement",
-  "DoWhileStatement",
-];
-
 // ESTree node type names for the three "function-like" syntactic
 // forms — declaration, expression, arrow. Used by the scope analyzer
 // (to bound function scopes) and by `rules-of-hooks` (to skip into

@@ -683,9 +683,20 @@ const analyzeReactUseReducerFunctionForStateMutation = (
             statement,
             activeState,
           );
-          const mutationsAtReturn = [...activeState.mutations, ...returnMutations];
           if (canExpressionReturnOriginalReducerStateReference(statement.argument, activeState)) {
-            reportReducerStateMutations(mutationsAtReturn);
+            // The 2^N path walker treats a loop / try body as one straight-line
+            // statement, so it can attribute a remembered mutation to a later
+            // top-level return even when an inner return/break severs that flow
+            // (mutate-then-`return { ...state }` in a loop, with a fallback
+            // `return state` after it). The CFG knows whether the mutation can
+            // actually reach this return; drop the ones that can't. Cross-file
+            // reducer nodes live in another file's CFG, so skip the filter there.
+            const rememberedMutations = options.crossFileConsumerCallSite
+              ? activeState.mutations
+              : activeState.mutations.filter((mutation) =>
+                  context.cfg.isReachable(mutation.node, statement),
+                );
+            reportReducerStateMutations([...rememberedMutations, ...returnMutations]);
           }
           continue;
         }

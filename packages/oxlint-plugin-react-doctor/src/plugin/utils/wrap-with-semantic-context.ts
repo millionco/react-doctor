@@ -52,6 +52,11 @@ const FALLBACK_CFG: ControlFlowAnalysis = {
   cfgFor: () => null,
   enclosingFunction: () => null,
   isUnconditionalFromEntry: () => false,
+  isReachable: () => false,
+  dominates: () => false,
+  postDominates: () => false,
+  isInsideLoop: () => false,
+  isUnreachable: () => false,
 };
 
 export const wrapWithSemanticContext = (rule: Rule): HostRule => ({

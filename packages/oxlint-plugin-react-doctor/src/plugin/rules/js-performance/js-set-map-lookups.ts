@@ -280,7 +280,7 @@ export const jsSetMapLookups = defineRule({
   recommendation:
     "Use a `Set` or `Map` when you check for the same items over and over. `Array.includes`/`find` scans the whole list each time",
   create: (context: RuleContext) =>
-    createLoopAwareVisitors({
+    createLoopAwareVisitors(context, {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (
           !isNodeOfType(node.callee, "MemberExpression") ||

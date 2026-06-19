@@ -12,7 +12,7 @@ export const jsHoistRegexp = defineRule({
   recommendation:
     "Move `new RegExp(...)` (or large regex literals) to a constant outside the loop so it isn't rebuilt on every pass",
   create: (context: RuleContext) =>
-    createLoopAwareVisitors({
+    createLoopAwareVisitors(context, {
       NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
         if (isNodeOfType(node.callee, "Identifier") && node.callee.name === "RegExp") {
           context.report({

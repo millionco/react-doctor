@@ -984,4 +984,54 @@ describe("no-mutating-reducer-state", () => {
     expect(result.parseErrors).toEqual([]);
     expect(Array.isArray(result.diagnostics)).toBe(true);
   });
+
+  it("does not flag a loop mutation that only precedes a fresh-object return", () => {
+    // The 2^N path walker treats the whole loop as one straight-line
+    // statement, so without CFG reachability it wrongly attributes the
+    // `push` to the trailing `return state`. But whenever the `push`
+    // runs, control hits `return { ...state }` (a NEW top-level object —
+    // React re-renders); `return state` is reached only when nothing
+    // matched, i.e. when `push` never ran. Mirrors the if-branch
+    // invariant that mutate-then-return-fresh is out of scope.
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        for (const item of action.items) {
+          if (item.id !== action.targetId) continue;
+          state.items.push(item);
+          return { ...state, changed: true };
+        }
+        return state;
+      }
+
+      useReducer(reducer, { items: [] });
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a loop mutation that reaches a same-reference return", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        for (const item of action.items) {
+          state.items.push(item);
+        }
+        return state;
+      }
+
+      useReducer(reducer, { items: [] });
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

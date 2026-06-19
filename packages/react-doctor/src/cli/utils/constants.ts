@@ -13,10 +13,10 @@ export const TERMINAL_HANGUP_EXIT_CODE = 129;
 // normalization, the `-V` alias).
 export const NODE_ARGUMENT_COUNT = 2;
 
-// `projectName` for every global `Conf` store. React Doctor keeps all per-user
-// state in one file (Conf preserves unknown keys, so each concern owns its own
-// top-level key): onboarding, the install-setup opt-out, and the once-per-repo
-// prompt decisions (CI pitch, action upgrade).
+// `projectName` for the per-user `Conf` store. React Doctor keeps all per-user
+// state in one file, opened in exactly one place (`cli-state-store.ts`), with
+// one key per concern: onboarding, the install-setup opt-out, and the
+// once-per-repo prompt decisions (CI pitch, action upgrade).
 export const REACT_DOCTOR_CONFIG_PROJECT_NAME = "react-doctor";
 
 export const STAGED_FILES_TEMP_DIR_PREFIX = "react-doctor-staged-";

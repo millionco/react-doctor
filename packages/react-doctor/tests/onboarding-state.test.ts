@@ -37,15 +37,15 @@ describe("onboarding state", () => {
   });
 
   it("keeps the first-run timestamp stable across repeated marks", () => {
-    markOnboardingComplete({ cwd: configRoot });
-    const firstStamp = JSON.parse(
-      fs.readFileSync(getOnboardingConfigPath({ cwd: configRoot }), "utf8"),
-    ).onboardedAt;
+    const readOnboardingFiredAt = (): unknown =>
+      JSON.parse(fs.readFileSync(getOnboardingConfigPath({ cwd: configRoot }), "utf8")).global
+        ?.events?.onboarding?.firedAt;
 
     markOnboardingComplete({ cwd: configRoot });
-    const secondStamp = JSON.parse(
-      fs.readFileSync(getOnboardingConfigPath({ cwd: configRoot }), "utf8"),
-    ).onboardedAt;
+    const firstStamp = readOnboardingFiredAt();
+
+    markOnboardingComplete({ cwd: configRoot });
+    const secondStamp = readOnboardingFiredAt();
 
     expect(typeof firstStamp).toBe("string");
     expect(secondStamp).toBe(firstStamp);

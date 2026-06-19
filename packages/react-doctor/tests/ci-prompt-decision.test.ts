@@ -42,12 +42,17 @@ describe("ci prompt decision state", () => {
     expect(hasHandledCiPrompt("/repo/b", { cwd: configRoot })).toBe(false);
   });
 
-  it("stores state under its own key in the shared react-doctor config file", () => {
+  it("stores the decision as a ci-pitch event in the shared react-doctor config file", () => {
     recordCiPromptDecision("/repo/a", "declined", { cwd: configRoot });
     const configPath = getCiPromptConfigPath({ cwd: configRoot });
     const stored = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    const records = Object.values(stored.ciPrompts);
+    const records = Object.values(stored.projects)
+      .map(
+        (project) =>
+          (project as { events?: Record<string, { outcome?: string }> }).events?.["ci-pitch"],
+      )
+      .filter(Boolean);
     expect(records).toHaveLength(1);
-    expect((records[0] as { outcome: string }).outcome).toBe("declined");
+    expect(records[0]?.outcome).toBe("declined");
   });
 });

@@ -1,42 +1,21 @@
-import Conf from "conf";
-import { REACT_DOCTOR_CONFIG_PROJECT_NAME } from "./constants.js";
+import { type CliStateOptions, ONBOARDING_EVENT, getCliStatePath } from "./cli-state-store.js";
+import { type Gate, isGatePending, recordGate } from "./cli-lifecycle.js";
 
-const ONBOARDED_AT_KEY = "onboardedAt";
+// The first-run onboarding reveal, expressed as a global gate: it fires once
+// per machine/user. To make the guided reveal re-appear once per repo instead,
+// flip `scope` to "project" (and pass `{ projectRoot }` through) — the gate
+// machinery supports both with no other change.
+export const ONBOARDING_GATE: Gate = { id: ONBOARDING_EVENT, scope: "global" };
 
-export interface OnboardingStoreOptions {
-  // Overrides the config dir; tests point this at a temp dir.
-  readonly cwd?: string;
-}
+export const getOnboardingConfigPath = getCliStatePath;
 
-interface OnboardingGlobalConfig {
-  // ISO timestamp of the first onboarding reveal; its presence means onboarded.
-  readonly [ONBOARDED_AT_KEY]?: string;
-}
+// `isGatePending` defaults to "not pending" on an unreadable store, so this
+// fails safe to "already onboarded" — a broken config dir never replays the
+// reveal.
+export const hasCompletedOnboarding = (options: CliStateOptions = {}): boolean =>
+  !isGatePending(ONBOARDING_GATE, {}, options);
 
-const getOnboardingStore = (options: OnboardingStoreOptions = {}): Conf<OnboardingGlobalConfig> =>
-  new Conf<OnboardingGlobalConfig>({
-    projectName: REACT_DOCTOR_CONFIG_PROJECT_NAME,
-    cwd: options.cwd,
-  });
-
-export const getOnboardingConfigPath = (options: OnboardingStoreOptions = {}): string =>
-  getOnboardingStore(options).path;
-
-export const hasCompletedOnboarding = (options: OnboardingStoreOptions = {}): boolean => {
-  try {
-    return typeof getOnboardingStore(options).get(ONBOARDED_AT_KEY) === "string";
-  } catch {
-    // Fail safe to "already onboarded" if the store is unreadable.
-    return true;
-  }
-};
-
-export const markOnboardingComplete = (options: OnboardingStoreOptions = {}): void => {
-  try {
-    const store = getOnboardingStore(options);
-    if (typeof store.get(ONBOARDED_AT_KEY) === "string") return;
-    store.set(ONBOARDED_AT_KEY, new Date().toISOString());
-  } catch {
-    // Best-effort: persisting the marker must never break a scan.
-  }
+export const markOnboardingComplete = (options: CliStateOptions = {}): void => {
+  // Record only on the first reveal so the original timestamp stays stable.
+  if (isGatePending(ONBOARDING_GATE, {}, options)) recordGate(ONBOARDING_GATE, {}, options);
 };

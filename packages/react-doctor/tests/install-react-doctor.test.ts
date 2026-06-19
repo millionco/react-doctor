@@ -20,6 +20,7 @@ import { NON_INTERACTIVE_ENVIRONMENT_VARIABLES } from "../src/cli/utils/is-non-i
 import { runInstallReactDoctor } from "../src/cli/utils/install-react-doctor.js";
 import type { InstallReactDoctorDependencyRunnerInput } from "../src/cli/utils/install-react-doctor.js";
 import { recordActionUpgradeDecision } from "../src/cli/utils/action-upgrade-prompt.js";
+import { CONFIG_DIR_ENV_VAR } from "../src/cli/utils/cli-state-store.js";
 import { hasHandledCiPrompt, recordCiPromptDecision } from "../src/cli/utils/ci-prompt-decision.js";
 import { setSpinnerSilent } from "../src/cli/utils/spinner.js";
 import { silenceConsoleForTest } from "./helpers/silence-console.js";
@@ -185,12 +186,21 @@ describe("runInstallReactDoctor", () => {
   let fixture: InstallReactDoctorFixture;
   let originalExitCode: number | string | null | undefined;
   let originalCi: string | undefined;
+  let originalConfigDir: string | undefined;
+  let configDir: string;
   let restoreConsole: () => void;
 
   beforeEach(() => {
     fixture = setupFixture();
     originalExitCode = process.exitCode;
     originalCi = process.env.CI;
+    // Isolate the per-user CLI state (onboarding / prompt decisions) into a
+    // throwaway dir so the interactive install flow — which records decisions
+    // without threading a `cwd` — never reads or writes the real user config,
+    // and parallel test runs can't pollute each other's persisted state.
+    originalConfigDir = process.env[CONFIG_DIR_ENV_VAR];
+    configDir = fs.mkdtempSync(path.join(tmpdir(), "react-doctor-install-config-"));
+    process.env[CONFIG_DIR_ENV_VAR] = configDir;
     dependencyInstallCalls = [];
     process.exitCode = 0;
     restoreConsole = silenceConsoleForTest();
@@ -199,6 +209,12 @@ describe("runInstallReactDoctor", () => {
 
   afterEach(() => {
     fixture.cleanup();
+    fs.rmSync(configDir, { recursive: true, force: true });
+    if (originalConfigDir === undefined) {
+      delete process.env[CONFIG_DIR_ENV_VAR];
+    } else {
+      process.env[CONFIG_DIR_ENV_VAR] = originalConfigDir;
+    }
     process.exitCode = originalExitCode;
     if (originalCi === undefined) {
       delete process.env.CI;

@@ -95,7 +95,7 @@ export const createLogServer = async (options: LogServerOptions = {}): Promise<L
     requestBody: string,
   ): boolean => {
     const logEntry: LogEntry = JSON.parse(requestBody);
-    if (typeof logEntry !== "object" || logEntry === null)
+    if (typeof logEntry !== "object" || logEntry === null || Array.isArray(logEntry))
       throw new Error("Body must be an object");
     if (logEntry.id && sessionState.processedEntryIds.has(logEntry.id)) return true;
 

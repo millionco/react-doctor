@@ -1,9 +1,10 @@
 import type { Server } from "node:http";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createLogServer, DEFAULT_HOST } from "@react-doctor/debug";
 import { z } from "zod";
 import { DEBUG_FETCH_TIMEOUT_MS } from "../constants.js";
-import { parseLogEndpoint } from "../utils/parse-log-endpoint.js";
+import { isLoopbackHost } from "../utils/is-loopback-host.js";
 import { errorResult, jsonResult, runTool, textResult } from "../utils/tool-result.js";
 
 // Log servers started via `debug_serve` must outlive the tool call (the agent
@@ -11,6 +12,16 @@ import { errorResult, jsonResult, runTool, textResult } from "../utils/tool-resu
 // and are closed when it exits. A stale lock from a hard kill self-heals: the
 // reuse path pings for liveness and clears a dead lock before binding.
 const liveServers = new Set<Server>();
+
+// Exact endpoints `debug_serve` has handed out this process. `debug_read_logs`
+// and `debug_clear_logs` fetch a model-supplied endpoint, so they accept only
+// one of these — a tighter SSRF guard than a loopback+path check, which would
+// still let an injected call hit any other loopback service exposing /ingest.
+const mintedEndpoints = new Set<string>();
+
+const unknownEndpointError = (): CallToolResult =>
+  errorResult("Unknown log endpoint — call debug_serve first to get the endpoint to read or clear.");
+
 let cleanupRegistered = false;
 const trackLogServer = (logServer: Server): void => {
   liveServers.add(logServer);
@@ -44,6 +55,11 @@ export const registerDebugTools = (server: McpServer): void => {
     },
     (args) =>
       runTool(async () => {
+        if (args.host !== undefined && !isLoopbackHost(args.host)) {
+          return errorResult(
+            `Refusing to bind a non-loopback host: ${args.host}. The log server must stay on loopback.`,
+          );
+        }
         const {
           server: logServer,
           info,
@@ -55,6 +71,7 @@ export const registerDebugTools = (server: McpServer): void => {
           cwd: process.cwd(),
         });
         if (logServer) trackLogServer(logServer);
+        mintedEndpoints.add(info.endpoint);
         return jsonResult({ ...info, reused });
       }),
   );
@@ -74,8 +91,8 @@ export const registerDebugTools = (server: McpServer): void => {
     },
     (args) =>
       runTool(async () => {
-        const endpoint = parseLogEndpoint(args.endpoint);
-        const response = await fetch(endpoint, {
+        if (!mintedEndpoints.has(args.endpoint)) return unknownEndpointError();
+        const response = await fetch(args.endpoint, {
           signal: AbortSignal.timeout(DEBUG_FETCH_TIMEOUT_MS),
         });
         if (!response.ok) return errorResult(`Log server returned ${response.status}`);
@@ -97,8 +114,8 @@ export const registerDebugTools = (server: McpServer): void => {
     },
     (args) =>
       runTool(async () => {
-        const endpoint = parseLogEndpoint(args.endpoint);
-        const response = await fetch(endpoint, {
+        if (!mintedEndpoints.has(args.endpoint)) return unknownEndpointError();
+        const response = await fetch(args.endpoint, {
           method: "DELETE",
           signal: AbortSignal.timeout(DEBUG_FETCH_TIMEOUT_MS),
         });

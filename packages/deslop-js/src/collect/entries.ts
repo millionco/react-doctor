@@ -1073,7 +1073,7 @@ const WEBPACK_ENTRY_BLOCK_PATTERN =
   /entry\s*:\s*(?:\{[^}]*\}|\[[^\]]*\]|['"][^'"]+['"]|path\.(?:join|resolve)\([^)]*\))/gs;
 const WEBPACK_ENTRY_FILE_PATTERN = /['"]([^'"]+)['"]/g;
 const WEBPACK_PATH_JOIN_PATTERN =
-  /path\.(?:join|resolve)\(\s*__dirname\s*,\s*((?:['"][^'"]*['"]\s*,?\s*)+)\)/g;
+  /path\.(?:join|resolve)\(\s*__dirname\s*,\s*((?:['"][^'"]*['"][\s,]*)+)\)/g;
 const REQUIRE_RESOLVE_PATTERN = /require\.resolve\(\s*['"]([^'"]+)['"]\s*\)/g;
 
 const extractWebpackEntryPoints = (directory: string): string[] => {

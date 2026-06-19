@@ -41,10 +41,10 @@ export const DEFAULT_EXCLUSIONS = [
 ];
 
 export const SCRIPT_FILE_PATTERN =
-  /(?:^|\s)(?:node|tsx|ts-node|tsc|npx|bun|esr|esno|jiti|babel-node|zx)\s+(?:(?:-[\w-]+(?:[=\s][\w./@=-]+)?\s+)|(?:[\w/-]+\s+))*([\w./@-]+\.(?:ts|tsx|js|jsx|mts|mjs|cts|cjs))(?:\s|$)/;
+  /(?:^|\s)(?:node|tsx|ts-node|tsc|npx|bun|esr|esno|jiti|babel-node|zx)\s+(?:\S+\s+)*?([\w./@-]+\.(?:ts|tsx|js|jsx|mts|mjs|cts|cjs))(?:\s|$)/;
 
 export const SCRIPT_EXTENSIONLESS_FILE_PATTERN =
-  /(?:^|\s)(?:node|tsx|ts-node|bun|esr|esno|jiti|babel-node|zx)\s+(?:(?:-[\w-]+(?:[=\s][\w./@=-]+)?\s+))*((?:[./]|[\w@][\w@-]*\/)[\w./@-]+)(?:\s|$)/;
+  /(?:^|\s)(?:node|tsx|ts-node|bun|esr|esno|jiti|babel-node|zx)\s+(?:\S+\s+)*?((?:[./]|[\w@][\w@-]*\/)[\w./@-]+)(?:\s|$)/;
 
 export const SCRIPT_CONFIG_FILE_PATTERN =
   /--config\s+([\w./@-]+\.(?:ts|tsx|js|jsx|mts|mjs|cts|cjs))/;

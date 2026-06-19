@@ -168,7 +168,7 @@ const matchCompiledMapping = (
       continue;
     }
     for (const target of mapping.targets) {
-      const resolved = resolveAliasTarget(target.replace("*", matchedWildcard));
+      const resolved = resolveAliasTarget(target.replaceAll("*", matchedWildcard));
       if (resolved) return resolved;
     }
   }
@@ -229,12 +229,12 @@ const JEST_CONFIG_GLOBS = [
 
 const ALIAS_BLOCK_PATTERN = /alias\s*:\s*\{([\s\S]*?)\}/g;
 const ALIAS_ENTRY_PATTERN =
-  /["']?([@\w$./-]+)["']?\s*:\s*(?:path\.(?:resolve|join)\(\s*__dirname\s*,\s*((?:["'][^"']+["']\s*,?\s*)+)\)|fileURLToPath\(\s*new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)\s*\)|["']([^"']+)["'])/g;
+  /["']?([@\w$./-]+)["']?\s*:\s*(?:path\.(?:resolve|join)\(\s*__dirname\s*,\s*((?:["'][^"']+["'][\s,]*)+)\)|fileURLToPath\(\s*new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)\s*\)|["']([^"']+)["'])/g;
 const JEST_MODULE_NAME_MAPPER_BLOCK_PATTERN = /moduleNameMapper\s*:\s*\{([\s\S]*?)\}/g;
 const JEST_MODULE_NAME_MAPPER_ENTRY_PATTERN = /["']([^"']+)["']\s*:\s*["']([^"']+)["']/g;
 const WEBPACK_MODULES_BLOCK_PATTERN = /modules\s*:\s*\[([\s\S]*?)\]/g;
 const WEBPACK_PATH_CALL_PATTERN =
-  /path\.(?:resolve|join)\(\s*__dirname\s*,\s*((?:["'][^"']+["']\s*,?\s*)+)\)/g;
+  /path\.(?:resolve|join)\(\s*__dirname\s*,\s*((?:["'][^"']+["'][\s,]*)+)\)/g;
 const STRING_LITERAL_PATTERN = /["']([^"']+)["']/g;
 
 const TSCONFIG_FILENAMES = [

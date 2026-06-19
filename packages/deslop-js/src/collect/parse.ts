@@ -166,7 +166,7 @@ const extractMdxImportsExports = (sourceText: string): string => {
 };
 
 const ASTRO_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---/;
-const ASTRO_SCRIPT_TAG_PATTERN = /<script\b([^>]*?)\/>|<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+const ASTRO_SCRIPT_TAG_PATTERN = /<script\b([^>]*?)\/>|<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
 const ASTRO_SCRIPT_SRC_ATTRIBUTE_PATTERN = /\bsrc\s*=\s*["']([^"']+)["']/i;
 
 const extractAstroSources = (sourceText: string): string => {
@@ -193,7 +193,8 @@ const extractAstroSources = (sourceText: string): string => {
   return sections.join("\n");
 };
 
-const VUE_SCRIPT_PATTERN = /<script[^>]*(?:lang=["'](?:ts|tsx)["'][^>]*)?>([\s\S]*?)<\/script>/gi;
+const VUE_SCRIPT_PATTERN =
+  /<script[^>]*(?:lang=["'](?:ts|tsx)["'][^>]*)?>([\s\S]*?)<\/script\s*>/gi;
 
 const extractVueScriptContent = (sourceText: string): string => {
   const scriptBlocks: string[] = [];
@@ -207,7 +208,7 @@ const extractVueScriptContent = (sourceText: string): string => {
   return scriptBlocks.join("\n");
 };
 
-const SVELTE_SCRIPT_PATTERN = /<script[^>]*>([\s\S]*?)<\/script>/gi;
+const SVELTE_SCRIPT_PATTERN = /<script[^>]*>([\s\S]*?)<\/script\s*>/gi;
 
 const extractSvelteScriptContent = (sourceText: string): string => {
   const scriptBlocks: string[] = [];

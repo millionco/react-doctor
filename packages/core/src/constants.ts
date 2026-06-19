@@ -268,6 +268,11 @@ export const OXLINT_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;
 // binding is markedly slower than on a developer laptop.
 export const OXLINT_SPAWN_TIMEOUT_MS = 60_000;
 
+// Directory name appended to os.tmpdir() to form the shared base for the V8
+// compile cache. Matches the base Node's own module.enableCompileCache() uses,
+// so the bin (parent) and the spawned oxlint batches (children) share one tree.
+export const NODE_COMPILE_CACHE_DIR_NAME = "node-compile-cache";
+
 export const DEAD_CODE_WORKER_TIMEOUT_MS = 120_000;
 
 // deslop's semantic pass builds a full TypeScript program and walks

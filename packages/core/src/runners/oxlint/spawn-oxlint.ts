@@ -5,21 +5,9 @@ import {
   OXLINT_SPAWN_TIMEOUT_MS as DEFAULT_OXLINT_SPAWN_TIMEOUT_MS,
 } from "../../constants.js";
 import { OxlintBatchExceeded, OxlintSpawnFailed, ReactDoctorError } from "../../errors.js";
+import { buildOxlintChildEnv } from "../../utils/build-oxlint-child-env.js";
 
-// HACK: Sanitize child env so a developer's NODE_OPTIONS=--inspect (or
-// --max-old-space-size=128, etc.) doesn't leak into oxlint and either spawn a
-// debugger port or starve it of memory. We also drop npm_config_* lifecycle
-// vars to keep oxlint from picking up package-manager state. PATH, HOME,
-// NODE_ENV, NODE_PATH, etc. pass through unchanged.
-const SANITIZED_ENV: NodeJS.ProcessEnv = (() => {
-  const sanitized: NodeJS.ProcessEnv = {};
-  for (const [name, value] of Object.entries(process.env)) {
-    if (name === "NODE_OPTIONS" || name === "NODE_DEBUG") continue;
-    if (name.startsWith("npm_config_")) continue;
-    sanitized[name] = value;
-  }
-  return sanitized;
-})();
+const SANITIZED_ENV: NodeJS.ProcessEnv = buildOxlintChildEnv(process.env);
 
 /**
  * Spawn one oxlint subprocess with hard ceilings on wall time and

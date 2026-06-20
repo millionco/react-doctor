@@ -19,18 +19,30 @@ describe("no-stale-closure-capture", () => {
     expect(result.diagnostics[0].nodeType).toBe("Identifier");
   });
 
-  it("flags a useEffect capturing a let reassigned later in render", () => {
+  it("flags a useMemo whose memoised callback captures a let reassigned later", () => {
     const result = run(`
       function Component() {
-        let value = 0;
-        useEffect(() => {
-          report(value);
-        }, []);
-        value = compute();
-        return null;
+        let value = props.value;
+        const events = useMemo(() => ({ onSave: () => save(value) }), []);
+        value = transform(value);
+        return events;
       }
     `);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT flag a useEffect capture (effects run after render, final value is intended)", () => {
+    const result = run(`
+      function Component() {
+        let bounds;
+        useEffect(() => {
+          report(bounds);
+        }, []);
+        bounds = compute();
+        return null;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("does NOT flag a const capture (cannot be reassigned)", () => {

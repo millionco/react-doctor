@@ -166,4 +166,56 @@ describe("no-use-before-define", () => {
     `);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does NOT flag interface heritage extending a later-declared type (type space)", () => {
+    const result = run(`
+      interface WithLength extends LengthMethods {}
+      declare class LengthMethods {
+        get length(): number;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag an interface index-signature parameter name", () => {
+    const result = run(`
+      interface TabData {
+        [tabId: string]: string;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag a computed interface key referencing a later const (erased type space)", () => {
+    const result = run(`
+      interface EditableCell {
+        [ORIGINAL_INDEX_KEY]: number;
+      }
+      const ORIGINAL_INDEX_KEY = "__originalIndex__";
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag anything in a .d.ts declaration file", () => {
+    const result = runRule(
+      noUseBeforeDefine,
+      `
+        export interface WithGet extends GetItemMethods {}
+        export declare class GetItemMethods {}
+      `,
+      { filename: "types.d.ts" },
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a const read before its declaration inside a component body (real TDZ)", () => {
+    const result = run(`
+      const TreeSelect = ({ properties }) => {
+        const [checked, setChecked] = useState(checkedData);
+        const checkedData = isArray(properties.checkedData);
+        return checked;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

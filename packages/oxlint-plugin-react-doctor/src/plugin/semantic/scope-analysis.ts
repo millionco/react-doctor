@@ -874,6 +874,15 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
     node.type === "TSInterfaceDeclaration"
   ) {
     handleTsDeclarations(node, state);
+    // An interface / type-alias body is entirely type space — erased at
+    // compile time and never executed — so nothing inside it (heritage
+    // `extends`, index-signature parameters, computed property keys) is a
+    // runtime value reference. Stop descending, or those identifiers leak in
+    // as phantom references and trip value-level rules like the TDZ check.
+    // (`import =` and namespaces can bind real values, so they keep walking.)
+    if (node.type === "TSInterfaceDeclaration" || node.type === "TSTypeAliasDeclaration") {
+      return;
+    }
   }
 
   // Reference recording. Identifier in a non-binding position, AND

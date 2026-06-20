@@ -1,7 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isDeclarationFile } from "../../utils/is-declaration-file.js";
 import { nodeStart } from "../../utils/node-start.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import type { ScopeDescriptor, SymbolKind } from "../../semantic/scope-analysis.js";
 
 // Block-scoped bindings (`let` / `const` / `class` / `using`) sit in a
@@ -56,26 +58,31 @@ export const noUseBeforeDefine = defineRule({
   severity: "warn",
   recommendation:
     "Move the access below the `let` / `const` / `class` declaration. A block-scoped binding accessed before its declaration runs throws a ReferenceError from the Temporal Dead Zone.",
-  create: (context: RuleContext) => ({
-    Identifier(node: EsTreeNodeOfType<"Identifier">) {
-      const reference = context.scopes.referenceFor(node);
-      if (!reference) return;
+  create: (context: RuleContext): RuleVisitors => {
+    // Ambient declaration files are pure type space — nothing executes, so a
+    // TDZ ReferenceError is impossible. Skip them entirely.
+    if (isDeclarationFile(context.filename)) return {};
+    return {
+      Identifier(node: EsTreeNodeOfType<"Identifier">) {
+        const reference = context.scopes.referenceFor(node);
+        if (!reference) return;
 
-      const symbol = reference.resolvedSymbol;
-      if (!symbol) return;
-      if (!TDZ_BINDING_KINDS.has(symbol.kind)) return;
+        const symbol = reference.resolvedSymbol;
+        if (!symbol) return;
+        if (!TDZ_BINDING_KINDS.has(symbol.kind)) return;
 
-      const accessStart = nodeStart(node);
-      const declarationStart = nodeStart(symbol.declarationNode);
-      if (accessStart < 0 || declarationStart < 0) return;
-      if (accessStart >= declarationStart) return;
+        const accessStart = nodeStart(node);
+        const declarationStart = nodeStart(symbol.declarationNode);
+        if (accessStart < 0 || declarationStart < 0) return;
+        if (accessStart >= declarationStart) return;
 
-      if (crossesDeferredBoundary(reference.scope, symbol.scope)) return;
+        if (crossesDeferredBoundary(reference.scope, symbol.scope)) return;
 
-      context.report({
-        node,
-        message: `"${symbol.name}" is used here before its declaration runs, which throws a ReferenceError from the Temporal Dead Zone. Move this access below the declaration.`,
-      });
-    },
-  }),
+        context.report({
+          node,
+          message: `"${symbol.name}" is used here before its declaration runs, which throws a ReferenceError from the Temporal Dead Zone. Move this access below the declaration.`,
+        });
+      },
+    };
+  },
 });

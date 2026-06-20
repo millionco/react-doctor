@@ -8,7 +8,13 @@ import type { Rule } from "../plugin/utils/rule.js";
 import type { RuleContext } from "../plugin/utils/rule-context.js";
 import type { RuleVisitors } from "../plugin/utils/rule-visitors.js";
 import { analyzeScopes } from "../plugin/semantic/scope-analysis.js";
-import { analyzeControlFlow } from "@react-doctor/cfg";
+import {
+  analyzeControlFlow,
+  analyzeDefiniteAssignment,
+  analyzeSsa,
+  ssaValueResolver,
+  verifyTypestate,
+} from "@react-doctor/cfg";
 
 export interface RunRuleOptions {
   filename?: string;
@@ -67,6 +73,10 @@ export const runRule = (rule: Rule, code: string, options: RunRuleOptions = {}):
   const diagnostics: RuleDiagnostic[] = [];
   const scopes = analyzeScopes(parsed.program);
   const cfg = analyzeControlFlow(parsed.program);
+  const resolveBinding = (identifier: EsTreeNode) => scopes.symbolFor(identifier)?.id ?? null;
+  const ssa = analyzeSsa(parsed.program, resolveBinding);
+  const resolveValue = ssaValueResolver(ssa);
+  const dataflow = analyzeDefiniteAssignment(parsed.program, resolveBinding, { resolveValue });
   const context: RuleContext = {
     report: (descriptor: ReportDescriptor) => {
       diagnostics.push({
@@ -80,6 +90,14 @@ export const runRule = (rule: Rule, code: string, options: RunRuleOptions = {}):
     settings: options.settings,
     scopes,
     cfg,
+    ssa,
+    dataflow,
+    typestate: {
+      verify: (functionLike, verifyOptions) => {
+        const functionCfg = cfg.cfgFor(functionLike);
+        return functionCfg ? verifyTypestate(functionCfg, { resolveValue, ...verifyOptions }) : [];
+      },
+    },
   };
 
   const visitors = rule.create(context);

@@ -581,6 +581,12 @@ const isNonReferencePosition = (identifier: EsTreeNode): boolean => {
     case "MethodDefinition":
     case "PropertyDefinition":
       return parent.key === identifier && !parent.computed;
+    case "TSPropertySignature":
+    case "TSMethodSignature":
+      // Interface / object-type member names (`interface X { onRender?: T }`)
+      // are type-space keys, never value references — recording them as
+      // references would resolve them to a same-named value binding.
+      return parent.key === identifier && !parent.computed;
     case "JSXAttribute":
       return parent.name === identifier;
     case "ImportSpecifier":

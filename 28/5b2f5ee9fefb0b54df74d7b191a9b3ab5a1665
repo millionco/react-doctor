@@ -1,0 +1,27 @@
+packages/deslop-js/tests/fixtures/remark-config-deps/.gitignore
+  s_e3e91498d2411f::t_3e314dbf1ea4e8 1
+packages/deslop-js/tests/fixtures/dependency-tooling/.gitignore
+  s_e3e91498d2411f::t_3e314dbf1ea4e8 1
+packages/deslop-js/tests/fixtures/dependency-tooling/src/index.ts
+  s_e3e91498d2411f::t_2bb355900ec34d 2,6
+packages/deslop-js/tests/analyze.test.ts
+  s_e3e91498d2411f::t_b0c5b1b0a9371a 174,177-179,182,185-191
+.changeset/unused-dep-binary-false-positive.md
+  s_e3e91498d2411f::t_a99556fa7ea0ac 5-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "285b2f5ee9fefb0b54df74d7b191a9b3ab5a1665",
+  "prompts": {},
+  "sessions": {
+    "s_e3e91498d2411f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "831af94d-aa65-4b36-99a0-389dcd77c6fc",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

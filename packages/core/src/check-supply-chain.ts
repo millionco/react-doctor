@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
@@ -5,12 +6,15 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as semver from "semver";
 import {
+  CACHE_FILENAME_HASH_LENGTH_CHARS,
   FETCH_TIMEOUT_MS,
   SOCKET_FREE_PURL_API_BASE,
   SOCKET_FREE_USER_AGENT,
   SOCKET_PACKAGE_PAGE_BASE,
   SOCKET_SCORE_SCALE,
   SUPPLY_CHAIN_ALERT_NOTE_MAX_CHARS,
+  SUPPLY_CHAIN_CACHE_SUBDIR,
+  SUPPLY_CHAIN_CACHE_TTL_MS,
   SUPPLY_CHAIN_CATEGORY,
   SUPPLY_CHAIN_DEFAULT_MIN_SCORE,
   SUPPLY_CHAIN_FETCH_CONCURRENCY,
@@ -22,6 +26,7 @@ import {
 } from "./constants.js";
 import { readPackageJson } from "./project-info/index.js";
 import type { Diagnostic, PackageJson, ReactDoctorConfig } from "./types/index.js";
+import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
 import { sanitizeTerminalText } from "./utils/sanitize-terminal-text.js";
 
 export interface SupplyChainCheckInput {
@@ -350,6 +355,56 @@ const parseArtifactFromBody = (body: string): SocketArtifact | null => {
   return null;
 };
 
+// Per-PURL on-disk Socket cache (TTL-bounded), so unchanged dependencies skip
+// the network on a repeated scan (the recurring CI win + faster local re-scans).
+// Disabled by the global `REACT_DOCTOR_NO_CACHE` off-switch.
+const isSupplyChainCacheDisabled = (): boolean => {
+  const noCache = process.env["REACT_DOCTOR_NO_CACHE"]?.toLowerCase() ?? "";
+  return noCache === "1" || noCache === "true";
+};
+
+const supplyChainCacheFile = (cacheDirectory: string, dependency: DependencyToScore): string => {
+  const purlHash = crypto
+    .createHash("sha256")
+    .update(toPurl(dependency))
+    .digest("hex")
+    .slice(0, CACHE_FILENAME_HASH_LENGTH_CHARS);
+  return path.join(cacheDirectory, SUPPLY_CHAIN_CACHE_SUBDIR, `${purlHash}.json`);
+};
+
+// Returns the cached raw response body when present and within the TTL, else
+// null. Fail-open: a missing / malformed / expired entry reads as a miss. We
+// cache the raw body (not the parsed artifact) and re-parse on a hit, so the
+// cached and live paths produce byte-identical artifacts through one parser.
+const readCachedSocketBody = (cacheFile: string): string | null => {
+  try {
+    const entry: unknown = JSON.parse(fs.readFileSync(cacheFile, "utf-8"));
+    if (
+      typeof entry === "object" &&
+      entry !== null &&
+      "fetchedAtMs" in entry &&
+      "body" in entry &&
+      typeof entry.fetchedAtMs === "number" &&
+      typeof entry.body === "string" &&
+      Date.now() - entry.fetchedAtMs <= SUPPLY_CHAIN_CACHE_TTL_MS
+    ) {
+      return entry.body;
+    }
+  } catch {
+    // unreadable / malformed → treat as a miss
+  }
+  return null;
+};
+
+const writeCachedSocketBody = (cacheFile: string, body: string): void => {
+  try {
+    fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
+    fs.writeFileSync(cacheFile, JSON.stringify({ fetchedAtMs: Date.now(), body }));
+  } catch {
+    // A cache write failure must never sink the scan.
+  }
+};
+
 // Fetches the free, keyless Socket artifact (score + alerts) for one
 // dependency — the same `firewall-api.socket.dev/purl/<encoded-purl>` endpoint
 // Socket Firewall's free tier hits. `Effect.tryPromise` hands `fetch` an
@@ -363,15 +418,29 @@ const parseArtifactFromBody = (body: string): SocketArtifact | null => {
 // settles. Dotted `socket.*` namespacing per the observability conventions, so
 // a trace backend can group by package or query score / alert distributions
 // across a scan. No-op without a tracer.
-const fetchSocketArtifact = (dependency: DependencyToScore): Effect.Effect<SocketArtifact | null> =>
+const fetchSocketArtifact = (
+  dependency: DependencyToScore,
+  cacheDirectory: string | null,
+): Effect.Effect<SocketArtifact | null> =>
   Effect.tryPromise(async (signal) => {
+    const cacheFile =
+      cacheDirectory === null ? null : supplyChainCacheFile(cacheDirectory, dependency);
+    if (cacheFile !== null) {
+      const cachedBody = readCachedSocketBody(cacheFile);
+      if (cachedBody !== null) return parseArtifactFromBody(cachedBody);
+    }
     const requestUrl = `${SOCKET_FREE_PURL_API_BASE}/${encodeURIComponent(toPurl(dependency))}`;
     const response = await fetch(requestUrl, {
       headers: { "User-Agent": SOCKET_FREE_USER_AGENT },
       signal,
     });
     if (!response.ok) return null;
-    return parseArtifactFromBody(await response.text());
+    const body = await response.text();
+    const artifact = parseArtifactFromBody(body);
+    // Cache only a genuine hit — a null (unknown/unscored package) re-checks next
+    // run rather than pinning a stale negative for the whole TTL.
+    if (artifact !== null && cacheFile !== null) writeCachedSocketBody(cacheFile, body);
+    return artifact;
   }).pipe(
     Effect.timeout(FETCH_TIMEOUT_MS),
     Effect.orElseSucceed(() => null),
@@ -589,9 +658,16 @@ export const checkSupplyChain = (input: SupplyChainCheckInput): Effect.Effect<Di
     );
     if (dependencies.length === 0) return [];
 
-    const artifacts = yield* Effect.forEach(dependencies, fetchSocketArtifact, {
-      concurrency: SUPPLY_CHAIN_FETCH_CONCURRENCY,
-    }).pipe(
+    // One cache dir for the whole check; `null` disables it (NO_CACHE).
+    const cacheDirectory = isSupplyChainCacheDisabled()
+      ? null
+      : resolveReactDoctorCacheDir(input.rootDirectory);
+
+    const artifacts = yield* Effect.forEach(
+      dependencies,
+      (dependency) => fetchSocketArtifact(dependency, cacheDirectory),
+      { concurrency: SUPPLY_CHAIN_FETCH_CONCURRENCY },
+    ).pipe(
       // A many-socket pileup (sockets that ignore the per-fetch abort) trips the
       // whole-check cap; recover to "no artifacts scored" — identical fail-open
       // contract to the per-fetch `orElseSucceed(() => null)`.

@@ -627,6 +627,15 @@ export const SUPPLY_CHAIN_FETCH_CONCURRENCY = 8;
 // diagnostics — the same outcome class as the per-package Socket fail-open.
 export const SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS = 90_000;
 
+// On-disk TTL for a cached Socket artifact. A dependency's score/alerts are
+// stable day-to-day and advisory, so a cached lookup within 24h skips the
+// network entirely (the recurring CI win + faster repeated local scans);
+// after expiry it re-fetches. Disabled by `REACT_DOCTOR_NO_CACHE`.
+export const SUPPLY_CHAIN_CACHE_TTL_MS = 86_400_000;
+
+// Subdirectory of the react-doctor cache dir holding per-PURL Socket responses.
+export const SUPPLY_CHAIN_CACHE_SUBDIR = "supply-chain";
+
 // Most severe Socket alerts to name in one supply-chain diagnostic before
 // collapsing the remainder into a "+N more" count, so a noisy package
 // doesn't flood the message.

@@ -84,9 +84,8 @@ export const detectStalePackages = (
     declaredNames,
   );
 
-  // A package that ships a CLI binary is routinely invoked outside what a static
-  // scan can see (Makefiles, CI steps, git hooks, ad-hoc `npx`), so providing a
-  // binary is itself sufficient evidence of use — don't flag it as unused.
+  // Shipping a CLI binary is itself evidence of use — binaries run from
+  // Makefiles, CI, git hooks, and `npx`, none of which the static scan sees.
   for (const packageName of packagesProvidingBinary) usedPackageNames.add(packageName);
 
   for (const workspacePackageJsonPath of allPackageJsonPaths) {

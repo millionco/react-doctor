@@ -81,15 +81,24 @@ const offsetOf = (node: AstNodeLike): { start: number; end: number } | null => {
   return { start: node.start, end: node.end };
 };
 
-// Length of a TemplateElement's raw (source) text, used to blank only the text
-// and never the delimiters — independent of how the parser reports the span.
-const templateRawLength = (node: AstNodeLike): number | null => {
-  const value = node.value;
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const raw = (value as { raw?: unknown }).raw;
-    if (typeof raw === "string") return raw.length;
-  }
-  return null;
+// The slice of a TemplateElement's span (in local source coordinates) that holds
+// the quasi text, with any delimiters trimmed off. oxc reports these spans
+// inconsistently — TS mode wraps the delimiters (`` ` ``/`${`/`}`), JS mode is the
+// cooked text only — and raw text can be longer than the span when it contains
+// escapes, so we never compute the end from `raw.length` (that can overrun the
+// span into unrelated source). Instead we trim the real delimiter characters off
+// the span ends, which stays strictly within `[localStart, localEnd]`.
+const templateInnerSpan = (
+  source: string,
+  localStart: number,
+  localEnd: number,
+): { start: number; end: number } => {
+  let start = localStart;
+  let end = localEnd;
+  if (source[start] === "`" || source[start] === "}") start += 1;
+  if (source.slice(end - 2, end) === "${") end -= 2;
+  else if (source[end - 1] === "`") end -= 1;
+  return { start, end };
 };
 
 const visitChildren = (node: Record<string, unknown>, visit: (child: unknown) => void): void => {
@@ -241,17 +250,14 @@ const scrambleReadable = (
       else if (typeof node.value === "number" || typeof node.value === "bigint") add(span, "0");
       else if (node.regex) add(span, "/re/");
     }
-    // oxc reports TemplateElement spans inconsistently — TS mode includes the
-    // surrounding delimiters (`` ` ``/`${`/`}`), JS mode is the cooked text only.
-    // Blank exactly the raw-text characters (length-driven) so the template's
-    // `${expr}` structure and backticks always survive in both modes; otherwise
-    // the delimiters are destroyed and adjacent `${a}${b}` fuse into one name.
+    // Blank only the quasi text so the template's `${expr}` structure and
+    // backticks survive in both parser modes; otherwise the delimiters are
+    // destroyed and adjacent `${a}${b}` fuse into one name. Trimming the real
+    // delimiter chars keeps the blanked region strictly inside the node span.
     if (node.type === "TemplateElement" && span) {
-      const rawLength = templateRawLength(node);
-      if (rawLength !== null && rawLength > 0) {
-        const includesDelimiters = span.end - span.start !== rawLength;
-        const textStart = includesDelimiters ? span.start + 1 : span.start;
-        add({ start: textStart, end: textStart + rawLength }, "");
+      const inner = templateInnerSpan(source, span.start - offsetShift, span.end - offsetShift);
+      if (inner.end > inner.start) {
+        add({ start: inner.start + offsetShift, end: inner.end + offsetShift }, "");
       }
     }
     visitChildren(node, visit);

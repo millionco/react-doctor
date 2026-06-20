@@ -154,6 +154,21 @@ export const Row = ({ customerName }) => (
     assert.equal(collides.hash, distinct.hash);
   });
 
+  it("blanks template text without overrunning the span (escapes + interpolation)", () => {
+    const result = scramble(
+      "const label = `secret\\n${first} and ${second} tail`; export { label };",
+      { language: "ts" },
+    );
+    assert.ok(result);
+    // template structure survives: backticks, both `${...}` holes, and the
+    // trailing statement are intact, and the secret text is gone
+    assert.match(result.source, /`[^`]*\$\{\w+\}[^`]*\$\{\w+\}[^`]*`/);
+    assert.doesNotMatch(result.source, /secret/);
+    assert.doesNotMatch(result.source, /tail/);
+    // re-parses (no overrun corrupted the following `export`)
+    assert.ok(scramble(result.source, { language: "ts" }), "must re-parse");
+  });
+
   it("keeps the # on private fields so they re-parse and don't collide", () => {
     const result = scramble(
       `class Vault {

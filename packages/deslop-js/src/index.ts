@@ -176,6 +176,9 @@ export type {
   DeslopErrorSeverity,
 } from "./types.js";
 
+export { scramble } from "./normalize-snippet/normalize-code-snippet.js";
+export type { ScrambleOptions, ScrambledCode } from "./normalize-snippet/normalize-code-snippet.js";
+
 /**
  * Default flags below mark rules off-by-default. Rationale for each:
  *

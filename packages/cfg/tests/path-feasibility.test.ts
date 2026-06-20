@@ -129,6 +129,21 @@ describe("lowerGuard over SSA values (correlated branches)", () => {
     ];
     expect(isPathFeasible(facts)).toBe("infeasible");
   });
+
+  it("does NOT lower loose `==` to an identity fact (it would be unsound)", () => {
+    // `x == 0 && x` is satisfiable (e.g. `x = []`), so the guard must not let
+    // the checker prove it infeasible. `==` yields no fact at all.
+    const fixture = analyzeSsaFixture(`
+      function f(x) {
+        if (x == 0) {
+          first();
+        }
+      }
+    `);
+    const resolveValue = resolveValueFrom(fixture);
+    const looseTest = fixture.identifier("x#2").parent as EsTreeNode;
+    expect(lowerGuard(looseTest, true, resolveValue)).toEqual([]);
+  });
 });
 
 const findPath = (entry: BasicBlock, target: BasicBlock): BasicBlock[] | null => {

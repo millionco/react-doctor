@@ -18,7 +18,13 @@ const lowerOperand = (node: EsTreeNode, resolveValue: ResolveValueAtom): Atom | 
   return null;
 };
 
-const EQUALITY_OPERATORS = new Set(["===", "==", "!==", "!="]);
+// Only STRICT equality lowers to an identity fact. Loose `==` / `!=` does not
+// imply value identity (`[] == 0`, `1 == "1"`, `null == undefined` are all
+// true across distinct/typed values), so treating it as `===` would let the
+// checker "prove" a satisfiable path infeasible and suppress a real
+// diagnostic. Dropping the fact is sound: fewer facts only make a path look
+// MORE feasible, never less.
+const STRICT_EQUALITY_OPERATORS = new Set(["===", "!=="]);
 
 // Lower a branch test taken with the given truthiness into path facts. Only
 // the shapes the checker understands are emitted; anything else yields no
@@ -51,12 +57,13 @@ export const lowerGuard = (
     return [];
   }
 
-  if (isNodeOfType(test, "BinaryExpression") && EQUALITY_OPERATORS.has(test.operator)) {
+  if (isNodeOfType(test, "BinaryExpression") && STRICT_EQUALITY_OPERATORS.has(test.operator)) {
     const left = lowerOperand(test.left as EsTreeNode, resolveValue);
     const right = lowerOperand(test.right as EsTreeNode, resolveValue);
     if (!left || !right) return [];
-    const isEqualityOp = test.operator === "===" || test.operator === "==";
-    return [{ kind: "equality", left, right, polarity: isEqualityOp ? polarity : !polarity }];
+    return [
+      { kind: "equality", left, right, polarity: test.operator === "===" ? polarity : !polarity },
+    ];
   }
 
   if (isNodeOfType(test, "Identifier")) {

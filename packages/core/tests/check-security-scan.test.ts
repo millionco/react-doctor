@@ -236,6 +236,76 @@ describe("checkSecurityScan", () => {
     });
   });
 
+  describe("supabase-rls-policy-risk regressions", () => {
+    it("does not flag IF EXISTS guards on disabled RLS for dropped tables", () => {
+      writeFile(
+        "supabase/migrations/001_drop_old_table.sql",
+        `drop table if exists public.old_table;`,
+      );
+      writeFile(
+        "supabase/migrations/002_cleanup.sql",
+        `alter table if exists public.old_table disable row level security;`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("does not flag policies scoped TO service_role", () => {
+      writeFile(
+        "supabase/migrations/001_service_role_policy.sql",
+        `create table audit_log (
+  id uuid primary key,
+  event text not null,
+  created_at timestamptz default now()
+);
+
+alter table audit_log enable row level security;
+
+create policy "system_insert" on audit_log
+for insert
+to service_role
+with check (true);`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("does not flag policies scoped TO authenticated", () => {
+      writeFile(
+        "supabase/migrations/001_authenticated_policy.sql",
+        `create table user_data (
+  id uuid primary key,
+  user_id uuid not null,
+  data jsonb
+);
+
+alter table user_data enable row level security;
+
+create policy "auth_insert" on user_data
+for insert
+to authenticated
+with check (auth.uid() = user_id);`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("flags auth.role() = 'service_role' in policy body as a bypass", () => {
+      writeFile(
+        "supabase/migrations/001_role_bypass.sql",
+        `create table data (id uuid primary key);
+
+alter table data enable row level security;
+
+create policy "bypass" on data
+for all
+using (auth.role() = 'service_role' or user_id = auth.uid());`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("supabase-rls-policy-risk");
+    });
+  });
+
   describe("supabase-table-missing-rls", () => {
     it("flags a vibe-coded Supabase migration that creates a public table without RLS", () => {
       expect(fixtureRules("supabase-public-table-missing-rls")).toEqual(

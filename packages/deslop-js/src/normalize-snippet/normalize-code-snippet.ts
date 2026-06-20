@@ -200,13 +200,33 @@ const scrambleReadable = (
       node.type === "PrivateIdentifier"
     ) {
       // A handful of contextual keywords surface as `Identifier` nodes and lose
-      // their meaning when renamed (not IP, so safe to keep): `constructor`
+      // their meaning when renamed, so they're kept verbatim: `constructor`
       // (TS parameter properties need the constructor-ness) and `global`
       // (`declare global { … }` ambient blocks). Both break re-parse otherwise.
       if (span && typeof node.name === "string" && !RESERVED_IDENTIFIER_NAMES.has(node.name)) {
         const kind = jsxKinds.get(node) ?? classifyByName(node.name);
-        add(span, placeholderFor(node.name, kind));
+        // A `PrivateIdentifier` span includes the leading `#`, but `name` does
+        // not. Keep the `#` (and a `#`-scoped lookup key) so `#x` stays a private
+        // field, re-parses, and never collides with a public `x`.
+        const isPrivate = node.type === "PrivateIdentifier";
+        const placeholder = placeholderFor(isPrivate ? `#${node.name}` : node.name, kind);
+        add(span, isPrivate ? `#${placeholder}` : placeholder);
       }
+      // Fall through to children: a typed binding carries its `typeAnnotation`
+      // as a child of the identifier, and those type names must be blinded too.
+      visitChildren(node, visit);
+      return;
+    }
+    if (
+      node.type === "JSXText" &&
+      span &&
+      typeof node.value === "string" &&
+      /\S/.test(node.value)
+    ) {
+      // Visible text between JSX tags can carry copy / customer data. Collapse
+      // the whole run (surrounding whitespace included) to a single token; JSX
+      // text is always re-parseable regardless of content.
+      add(span, "t");
       return;
     }
     if (node.type === "Literal" && span) {

@@ -141,6 +141,45 @@ export const Row = ({ customerName }) => (
     assert.equal(result.source, explicit.source);
   });
 
+  it("keeps the # on private fields so they re-parse and don't collide", () => {
+    const result = scramble(
+      `class Vault {
+  #secret = 1;
+  read(secret: number) { return this.#secret + secret; }
+}`,
+      { language: "ts" },
+    );
+    assert.ok(result);
+    assert.doesNotMatch(result.source, /secret/);
+    // private field keeps its #, public param does not
+    assert.match(result.source, /#\w+\s*=/);
+    assert.match(result.source, /this\.#\w+/);
+    // re-parses cleanly (no bare-# / stray identifier breakage)
+    const reparsed = scramble(result.source, { language: "ts" });
+    assert.ok(reparsed, "scrambled private-field output must re-parse");
+  });
+
+  it("blinds visible JSX text content", () => {
+    const result = scramble(`export const Banner = () => <div>Acme confidential roadmap</div>;`, {
+      language: "tsx",
+    });
+    assert.ok(result);
+    assert.doesNotMatch(result.source, /confidential/);
+    assert.doesNotMatch(result.source, /roadmap/);
+    assert.doesNotMatch(result.source, /Acme/);
+  });
+
+  it("blinds type names on typed bindings and params", () => {
+    const result = scramble(
+      `const id: AcmeInvoiceId = make();
+const lookup = (ref: InternalCustomerRef) => ref;`,
+      { language: "ts" },
+    );
+    assert.ok(result);
+    assert.doesNotMatch(result.source, /AcmeInvoiceId/);
+    assert.doesNotMatch(result.source, /InternalCustomerRef/);
+  });
+
   it("strips every identifier — including React APIs — and all literals", () => {
     const result = scramble(
       `import { useEffect } from "react";

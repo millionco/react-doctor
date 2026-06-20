@@ -26,11 +26,12 @@ export const classifyVersionSpec = (version) => {
 /**
  * Resolve a dist-tag / range (`latest`, `^2`) to the concrete published version,
  * so the install cache key is stable across runs of the same release. Network;
- * on a registry failure it falls back to the raw range — the install still
- * works, just without a stable cache key (no worse than today).
+ * returns `null` on a registry failure / unresolvable range so the caller falls
+ * back to a fresh, non-cached install rather than keying the cache on a coarse,
+ * non-concrete range (which could keep restoring a stale toolchain).
  *
  * @param {string} range
- * @returns {string}
+ * @returns {string | null}
  */
 const resolveConcreteVersion = (range) => {
   try {
@@ -44,9 +45,9 @@ const resolveConcreteVersion = (range) => {
       .split("\n")
       .map((line) => line.replace(/^.*'(.+)'.*$/, "$1").trim())
       .filter(Boolean);
-    return versions.length > 0 ? versions[versions.length - 1] : range;
+    return versions.length > 0 ? versions[versions.length - 1] : null;
   } catch {
-    return range;
+    return null;
   }
 };
 
@@ -69,6 +70,13 @@ const main = () => {
     return;
   }
   const resolved = resolveConcreteVersion(classified.registryRange);
+  if (resolved === null) {
+    // Registry unreachable / range unresolvable — don't cache under a coarse,
+    // non-concrete key (which could keep restoring a STALE toolchain across
+    // failures, even after a newer release). Install the range fresh via npx.
+    writeOutputs({ spec: classified.spec, resolved: "", cacheable: "false" });
+    return;
+  }
   writeOutputs({ spec: `react-doctor@${resolved}`, resolved, cacheable: "true" });
 };
 

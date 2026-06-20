@@ -22,6 +22,15 @@ const lowScoreArtifactBody = (): string =>
     alerts: [],
   });
 
+// The on-disk cache nests under a per-project hash subdir (and a `supply-chain`
+// subdir), so collect every cache `.json` by walking rather than guessing.
+const walkCacheFiles = (directory: string): string[] =>
+  fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) return walkCacheFiles(entryPath);
+    return entry.name.endsWith(".json") ? [entryPath] : [];
+  });
+
 let projectDirectory: string;
 let cacheDirectory: string;
 const originalCacheDirEnv = process.env["REACT_DOCTOR_CACHE_DIR"];
@@ -69,6 +78,31 @@ describe("supply-chain on-disk cache", () => {
     const second = await runCheck();
     expect(fetchMock.mock.calls.length).toBe(callsAfterFirst); // no new network calls
     expect(second).toEqual(first); // identical diagnostics, served from cache
+  });
+
+  it("treats an unparseable cached body as a miss and re-fetches (corruption / schema drift)", async () => {
+    const fetchMock = stubSocketFetch();
+    const first = await runCheck();
+    const callsAfterFirst = fetchMock.mock.calls.length;
+    expect(first.length).toBeGreaterThan(0);
+
+    // Corrupt the cached body in place while keeping a fresh, in-TTL envelope —
+    // the read still returns a string, but it no longer parses to an artifact.
+    // This is the corrupted-restore / Socket-schema-drift case: it must fall
+    // through to the network, not silently skip the advisory for the whole TTL.
+    // The cache nests under a per-project subdir, so walk for the `.json` files.
+    const cacheFiles = walkCacheFiles(cacheDirectory);
+    expect(cacheFiles.length).toBeGreaterThan(0); // the first scan populated it
+    for (const cacheFile of cacheFiles) {
+      fs.writeFileSync(
+        cacheFile,
+        JSON.stringify({ fetchedAtMs: Date.now(), body: "not-valid-json\n{partial" }),
+      );
+    }
+
+    const second = await runCheck();
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(callsAfterFirst); // re-fetched
+    expect(second).toEqual(first); // advisory still produced from the fresh fetch
   });
 
   it("re-fetches every run when REACT_DOCTOR_NO_CACHE is set (cache bypassed)", async () => {

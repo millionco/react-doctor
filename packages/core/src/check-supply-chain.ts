@@ -427,7 +427,13 @@ const fetchSocketArtifact = (
       cacheDirectory === null ? null : supplyChainCacheFile(cacheDirectory, dependency);
     if (cacheFile !== null) {
       const cachedBody = readCachedSocketBody(cacheFile);
-      if (cachedBody !== null) return parseArtifactFromBody(cachedBody);
+      if (cachedBody !== null) {
+        const cachedArtifact = parseArtifactFromBody(cachedBody);
+        // An unparseable cached body (Socket schema drift / a corrupted restore)
+        // is a MISS, not a null result — fall through to the network rather than
+        // silently skipping the advisory until the TTL expires.
+        if (cachedArtifact !== null) return cachedArtifact;
+      }
     }
     const requestUrl = `${SOCKET_FREE_PURL_API_BASE}/${encodeURIComponent(toPurl(dependency))}`;
     const response = await fetch(requestUrl, {

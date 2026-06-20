@@ -115,24 +115,26 @@ runs:
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
         CHANGED_FILES_FILE: ${{ runner.temp }}/react-doctor-changed-files.txt
       run: |
-        # Fetch the PR base commit so react-doctor can read base file content
-        # and resolve the merge-base for baseline (PR-introduced-issues-only)
-        # mode. Depth 1 covers the standard merge-ref checkout (base is a parent
-        # of HEAD); for deeper history use `fetch-depth: 0` on actions/checkout.
-        FETCHED=""
+        # Best-effort fetch of the PR base commit so react-doctor can read base
+        # file content and resolve the merge-base for baseline (PR-introduced-
+        # issues-only) mode. Depth 1 covers the standard merge-ref checkout (base
+        # is a parent of HEAD); for deeper history use `fetch-depth: 0` on
+        # actions/checkout. The base may ALREADY be present (e.g. `fetch-depth: 0`
+        # or a prior fetch), so don't gate the diff on this succeeding — `|| true`
+        # keeps a redundant/failed fetch from blocking the local diff below.
         if [ -n "$BASE_SHA" ] && git -C "$INPUT_DIRECTORY" rev-parse --git-dir >/dev/null 2>&1; then
-          if git -C "$INPUT_DIRECTORY" fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null; then
-            FETCHED="1"
-          fi
+          git -C "$INPUT_DIRECTORY" fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
         fi
 
-        # With the base fetched, derive the changed set locally. Three-dot
-        # (merge-base) + AMR (added/modified/renamed) match the `pulls.listFiles`
-        # API contract and the CLI's baseline semantics. On any failure (shallow
-        # history with no reachable merge-base), leave the file unwritten so the
-        # API fallback runs — no regression vs the previous API-only behavior.
+        # Derive the changed set locally. Three-dot (merge-base) + AMR
+        # (added/modified/renamed) match the `pulls.listFiles` API contract and
+        # the CLI's baseline semantics. Attempt it whenever a base SHA is known —
+        # the base may be reachable in history even when the fetch above was a
+        # no-op or failed. On any failure (shallow history with no reachable
+        # merge-base), leave the file unwritten so the API fallback runs — no
+        # regression vs the previous API-only behavior.
         RAW_CHANGED="${RUNNER_TEMP:-/tmp}/react-doctor-raw-changed.txt"
-        if [ -n "$FETCHED" ] && git -C "$INPUT_DIRECTORY" diff --name-only --diff-filter=AMR "$BASE_SHA...HEAD" > "$RAW_CHANGED" 2>/dev/null; then
+        if [ -n "$BASE_SHA" ] && git -C "$INPUT_DIRECTORY" diff --name-only --diff-filter=AMR "$BASE_SHA...HEAD" > "$RAW_CHANGED" 2>/dev/null; then
           node "$GITHUB_ACTION_PATH/scripts/normalize-changed-files.mjs" "$INPUT_DIRECTORY" "$CHANGED_FILES_FILE" < "$RAW_CHANGED"
           echo "path=$CHANGED_FILES_FILE" >> "$GITHUB_OUTPUT"
         else
@@ -149,12 +151,17 @@ runs:
       env:
         REACT_DOCTOR_CHANGED_FILES: ${{ runner.temp }}/react-doctor-changed-files.txt
         INPUT_DIRECTORY: ${{ inputs.directory }}
+        # `github.action_path` is THIS composite action's directory. Inside a
+        # nested `actions/github-script` step, the ambient GITHUB_ACTION_PATH env
+        # points at github-script's own dir, not ours — so the shared script
+        # would be unresolvable. Pass the composite path explicitly.
+        COMPOSITE_ACTION_PATH: ${{ github.action_path }}
       with:
         script: |
           const fs = require("fs");
           const { pathToFileURL } = require("url");
           const { normalizeChangedFiles } = await import(
-            pathToFileURL(`${process.env.GITHUB_ACTION_PATH}/scripts/normalize-changed-files.mjs`).href,
+            pathToFileURL(`${process.env.COMPOSITE_ACTION_PATH}/scripts/normalize-changed-files.mjs`).href,
           );
           const outputPath = process.env.REACT_DOCTOR_CHANGED_FILES;
           const pullRequest = context.payload.pull_request;
@@ -252,11 +259,20 @@ runs:
         TOOLCHAIN_DIR="${RUNNER_TEMP:-/tmp}/react-doctor-toolchain"
         RD_BIN=""
         if [ "$CACHEABLE" = "true" ]; then
+          # Run the install under `set +e` so a transient npm failure on a cache
+          # miss doesn't abort the whole step under the composite shell's errexit.
+          # Adopt the cached binary only if it's actually executable afterward —
+          # a failed/partial install leaves RD_BIN empty and falls through to the
+          # npx path below instead of failing the action with a raw npm error.
+          set +e
           if [ ! -x "$TOOLCHAIN_DIR/node_modules/.bin/react-doctor" ]; then
             mkdir -p "$TOOLCHAIN_DIR"
             npm install --prefix "$TOOLCHAIN_DIR" --no-save --no-audit --no-fund "$PACKAGE_SPEC"
           fi
-          RD_BIN="$TOOLCHAIN_DIR/node_modules/.bin/react-doctor"
+          set -e
+          if [ -x "$TOOLCHAIN_DIR/node_modules/.bin/react-doctor" ]; then
+            RD_BIN="$TOOLCHAIN_DIR/node_modules/.bin/react-doctor"
+          fi
         fi
 
         set +e

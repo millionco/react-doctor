@@ -104,6 +104,12 @@ describe("GitHub Action contract", () => {
     expect(prFilesStep).toContain("scripts/normalize-changed-files.mjs");
     expect(prFilesStep).toContain("normalizeChangedFiles(");
     expect(prFilesStep).toContain("steps.base.outputs.path == ''");
+    // Inside the nested github-script step, `GITHUB_ACTION_PATH` resolves to
+    // github-script's own dir — the composite path is forwarded explicitly so
+    // the shared script import resolves. Lock that it reads the forwarded var.
+    expect(prFilesStep).toContain("COMPOSITE_ACTION_PATH: ${{ github.action_path }}");
+    expect(prFilesStep).toContain("process.env.COMPOSITE_ACTION_PATH");
+    expect(prFilesStep).not.toContain("process.env.GITHUB_ACTION_PATH");
   });
 
   it("falls back to a full-project scan when listing PR files is not permitted", () => {
@@ -172,6 +178,12 @@ describe("GitHub Action contract", () => {
     expect(scanStep).toContain('npm install --prefix "$TOOLCHAIN_DIR"');
     expect(scanStep).toContain('"$RD_BIN" "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"');
     expect(scanStep).toContain("REACT_DOCTOR_CACHE_DIR: ${{ runner.temp }}/react-doctor-cache");
+    // A cache-miss install runs under `set +e` and the cached binary is adopted
+    // only when it's executable afterward — a transient npm failure leaves
+    // RD_BIN empty and falls through to the npx path instead of aborting the
+    // whole step under the composite shell's errexit.
+    expect(scanStep).toContain('if [ -x "$TOOLCHAIN_DIR/node_modules/.bin/react-doctor" ]; then');
+    expect(scanStep).toContain('RD_BIN="$TOOLCHAIN_DIR/node_modules/.bin/react-doctor"');
   });
 
   it("fetches the PR base commit and forwards it for baseline (new-vs-existing) mode", () => {
@@ -189,6 +201,12 @@ describe("GitHub Action contract", () => {
     expect(baseStep).toContain(
       'git -C "$INPUT_DIRECTORY" fetch --no-tags --depth=1 origin "$BASE_SHA"',
     );
+    // The fetch is best-effort (`|| true`) and the local diff is gated only on
+    // the base SHA, NOT on a fetch-succeeded flag — the base may already be in
+    // history (e.g. `fetch-depth: 0`), where the old FETCHED gate wrongly fell
+    // through to the API. The diff itself stays guarded against shallow misses.
+    expect(baseStep).toContain('origin "$BASE_SHA" 2>/dev/null || true');
+    expect(baseStep).not.toContain("FETCHED");
     expect(scanStep).toContain("REACT_DOCTOR_BASE_SHA: ${{ github.event.pull_request.base.sha }}");
   });
 

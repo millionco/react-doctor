@@ -28,7 +28,7 @@ const parseScoreResult = (value: unknown): ScoreResult | null =>
 // from it — neither rides the Score API payload, which keeps the
 // request shape identical to what the server has always received.
 const stripLocalFileFields = (
-  diagnostics: Diagnostic[],
+  diagnostics: ReadonlyArray<Diagnostic>,
 ): Omit<Diagnostic, "filePath" | "fileContext">[] =>
   diagnostics.map(({ filePath: _filePath, fileContext: _fileContext, ...rest }) => rest);
 
@@ -62,7 +62,7 @@ export interface ScoreRequestMetadata {
 }
 
 export const calculateScore = async (
-  diagnostics: Diagnostic[],
+  diagnostics: ReadonlyArray<Diagnostic>,
   options: CalculateScoreOptions = {},
 ): Promise<ScoreResult | null> => {
   const controller = new AbortController();

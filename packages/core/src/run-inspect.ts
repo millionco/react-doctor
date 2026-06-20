@@ -21,7 +21,14 @@ import { checkReactNativeProject } from "./check-react-native-project.js";
 import { checkReactServerComponentsAdvisory } from "./check-react-server-components-advisory.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
 import { checkSecurityScan } from "./check-security-scan.js";
-import { DEFAULT_SHOW_WARNINGS, MILLISECONDS_PER_SECOND } from "./constants.js";
+import {
+  DEAD_CODE_OVERLAP_PARSE_SHARE,
+  DEAD_CODE_PHASE_TIMEOUT_MS,
+  DEFAULT_SHOW_WARNINGS,
+  MILLISECONDS_PER_SECOND,
+  MIN_DEAD_CODE_PARSE_CONCURRENCY,
+  MIN_SCAN_CONCURRENCY,
+} from "./constants.js";
 import { highlighter } from "./highlighter.js";
 import { computeExplicitLintIncludePaths } from "./explicit-lint-include-paths.js";
 import { deadCodeMaySurfaceWhenWarningsHidden } from "./utils/dead-code-may-surface.js";
@@ -42,8 +49,7 @@ import {
   ScanDeadlineMs,
   SupplyChainOverlapTimeoutMs,
 } from "./refs.js";
-import { hasDeadCodeOverlapHeadroom } from "./utils/has-dead-code-overlap-headroom.js";
-import { resolveAvailableMemoryBytes } from "./utils/resolve-available-memory-bytes.js";
+import { resolveDeadCodeTimeout } from "./utils/resolve-dead-code-timeout.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
 import { DeadCode } from "./services/dead-code.js";
@@ -510,89 +516,120 @@ export const runInspect = <HooksR = never>(
     const scanConcurrency = resolveScanConcurrency(yield* OxlintConcurrency);
     const lintPhaseTimeoutMs = yield* LintPhaseTimeoutMs;
     const deadCodePhaseTimeoutMs = yield* DeadCodePhaseTimeoutMs;
+    // The dead-code phase timeout normally tracks the file-count-scaled worker
+    // timeout (`resolveDeadCodeTimeout`), so a large repo's legitimately-long
+    // pass isn't reclaimed before it finishes. But an EXPLICIT override (an env
+    // value or a test `Layer` that sets it off its default) is honored verbatim
+    // — tests pin it low to exercise the skip path, and that intent must win
+    // over the scaling.
+    const resolveDeadCodePhaseTimeoutMs = (scaledPhaseTimeoutMs: number): number =>
+      deadCodePhaseTimeoutMs === DEAD_CODE_PHASE_TIMEOUT_MS
+        ? scaledPhaseTimeoutMs
+        : deadCodePhaseTimeoutMs;
     const workerCountSuffix =
       scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
 
-    // ── Dead-code overlap plan (decided before lint so we can fork it) ──
-    // Reachability is a whole-project property independent of lint output, so
-    // dead-code can run DURING lint instead of strictly after. But overlapping
-    // the dead-code child with up to MAX_SCAN_CONCURRENCY oxlint children SUMS
-    // their peak RSS — exactly the pressure the dead-code worker already OOMs
-    // under on type-heavy repos — so overlap is gated on a one-shot available-
-    // memory check (or forced via the DeadCodeOverlap knob). When the gate stays
-    // closed we fall back to the strictly-sequential collect below, with zero
-    // behavior change. `resolveAvailableMemoryBytes()` (Linux MemAvailable /
-    // macOS vm_stat reclaimable / cgroup-capped — NOT `os.freemem()`, which
-    // understates a Mac's headroom and kept this gate permanently closed) is
-    // read once, here, at fork time.
-    //
-    // Dead-code emits only `"warning"`-severity diagnostics (the `deslop`
-    // plugin, all `Maintainability`); warnings show by default, so this
-    // normally runs. Only `--no-warnings` / `warnings: false` filters its
-    // output out entirely before any surface or the score, making the
-    // expensive pass pure wasted work — so skip it then, unless a severity
-    // override restamps dead-code findings so they survive the global hide.
+    // ── Dead-code plan ────────────────────────────────────────────────
+    // Dead-code (deslop reachability) emits only `"warning"`-severity
+    // diagnostics, all `Maintainability`; warnings show by default, so this
+    // normally runs. Only `--no-warnings` / `warnings: false` filters its output
+    // out entirely before any surface or the score, making the expensive pass
+    // pure wasted work — so skip it then, unless a severity override restamps
+    // dead-code findings so they survive the global hide.
     const shouldRunDeadCode =
       input.runDeadCode &&
       !isDiffMode &&
       (showWarnings || deadCodeMaySurfaceWhenWarningsHidden(resolvedConfig.config));
-    // The memory gate reads this scan's own available-memory snapshot, which
-    // can't see sibling scans in a concurrent batch — so a concurrent member
-    // never takes the gated ("auto") overlap (each would fork a dead-code worker
-    // and sum past the budget). An explicit `"on"` override still wins for
-    // operators who own the box.
+    // Dead-code runs SEQUENTIALLY (after lint, with the full core budget) by
+    // default. deslop's parse pass is CPU-bound, so overlapping it with the
+    // equally CPU-bound oxlint pool can't shrink wall-clock — there are no spare
+    // cores to absorb it — and only risks oversubscription: both pools size to
+    // all cores, so concurrently they demand ~2x the cores, thrash, and the
+    // parse pass misses its timeout and silently drops EVERY dead-code finding
+    // (observed: ~all 349 findings dropped on supply-chain-on Sentry scans).
+    // Sequential gives deslop the full cores (fastest per-phase) and never
+    // contends. `DeadCodeOverlap="on"` still forces the overlap for operators
+    // who want it; then the two pools SPLIT the budget — deslop's parse pool is
+    // capped (`parseConcurrency`) and lint shrinks to the remainder — so they
+    // sum to the cores instead of doubling them.
     const deadCodeOverlapMode = yield* DeadCodeOverlap;
-    const shouldOverlapDeadCode =
-      shouldRunDeadCode &&
-      deadCodeOverlapMode !== "off" &&
-      (deadCodeOverlapMode === "on" ||
-        (input.concurrentScan !== true &&
-          hasDeadCodeOverlapHeadroom({
-            workerCount: scanConcurrency,
-            availableBytes: resolveAvailableMemoryBytes(),
-          })));
+    const shouldOverlapDeadCode = shouldRunDeadCode && deadCodeOverlapMode === "on";
+    const deadCodeParseConcurrency = shouldOverlapDeadCode
+      ? Math.max(
+          MIN_DEAD_CODE_PARSE_CONCURRENCY,
+          Math.floor(scanConcurrency * DEAD_CODE_OVERLAP_PARSE_SHARE),
+        )
+      : undefined;
+    const lintConcurrency =
+      deadCodeParseConcurrency === undefined
+        ? scanConcurrency
+        : Math.max(MIN_SCAN_CONCURRENCY, scanConcurrency - deadCodeParseConcurrency);
 
-    // The dead-code collection, named once so it runs either forked (overlap)
-    // or inline (sequential) — identical pipeline, identical failure Ref.
-    // Building it is side-effect-free; the worker spawns only when it runs.
-    const collectDeadCode = Stream.runCollect(
-      applyPerElementPipeline(
-        deadCodeService
-          .run({ rootDirectory: scanDirectory, userConfig: resolvedConfig.config })
-          .pipe(
-            Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
-              Stream.unwrap(
-                Effect.gen(function* () {
-                  yield* Ref.set(deadCodeFailure, { didFail: true, reason: error.message });
-                  return Stream.empty as Stream.Stream<Diagnostic, never>;
-                }),
+    // Runs either forked (overlap) or inline (sequential) with the same pipeline
+    // + failure Ref. The timeout is a parameter because it scales with the repo's
+    // source-file count — known accurately only after lint, on the sequential
+    // path. Building this is side-effect-free; the worker spawns only when the
+    // effect runs.
+    const buildCollectDeadCode = (deadCodeTimeout: {
+      workerTimeoutMs: number;
+      phaseTimeoutMs: number;
+    }) =>
+      Stream.runCollect(
+        applyPerElementPipeline(
+          deadCodeService
+            .run({
+              rootDirectory: scanDirectory,
+              userConfig: resolvedConfig.config,
+              parseConcurrency: deadCodeParseConcurrency,
+              workerTimeoutMs: deadCodeTimeout.workerTimeoutMs,
+            })
+            .pipe(
+              Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
+                Stream.unwrap(
+                  Effect.gen(function* () {
+                    yield* Ref.set(deadCodeFailure, { didFail: true, reason: error.message });
+                    return Stream.empty as Stream.Stream<Diagnostic, never>;
+                  }),
+                ),
               ),
             ),
-          ),
-      ),
-    ).pipe(
-      // Dead-code phase cap (Effect-side): sits ABOVE the in-worker SIGKILL
-      // timer as a runtime-independent backstop for a starved event loop, and
-      // rides whether dead-code runs forked (overlap) or inline (sequential).
-      // On timeout, fold into the existing dead-code skip contract and yield an
-      // empty chunk so the scan still completes.
-      Effect.timeoutOption(deadCodePhaseTimeoutMs),
-      Effect.flatMap(
-        Option.match({
-          onNone: () =>
-            Ref.set(deadCodeFailure, {
-              didFail: true,
-              reason: `Dead-code analysis exceeded ${deadCodePhaseTimeoutMs / MILLISECONDS_PER_SECOND}s and was skipped.`,
-            }).pipe(Effect.as<Diagnostic[]>([])),
-          onSome: Effect.succeed,
-        }),
-      ),
-    );
-    // Default `forkChild` (not `startImmediately`): the lint `Stream.runCollect`
-    // below blocks the parent on async oxlint spawns, yielding the runtime to
-    // this child so it runs DURING lint. Auto-supervised — interrupted if the
-    // parent dies. Mirrors `githubViewerPermissionFiber` above.
-    const deadCodeFiber = shouldOverlapDeadCode ? yield* Effect.forkChild(collectDeadCode) : null;
+        ),
+      ).pipe(
+        // Dead-code phase cap (Effect-side): sits ABOVE the in-worker SIGKILL
+        // timer as a runtime-independent backstop for a starved event loop. On
+        // timeout, fold into the existing dead-code skip contract and yield an
+        // empty chunk so the scan still completes.
+        Effect.timeoutOption(deadCodeTimeout.phaseTimeoutMs),
+        Effect.flatMap(
+          Option.match({
+            onNone: () =>
+              Ref.set(deadCodeFailure, {
+                didFail: true,
+                reason: `Dead-code analysis exceeded ${Math.round(deadCodeTimeout.phaseTimeoutMs / MILLISECONDS_PER_SECOND)}s and was skipped.`,
+              }).pipe(Effect.as<Diagnostic[]>([])),
+            onSome: Effect.succeed,
+          }),
+        ),
+      );
+    // The overlap fork happens BEFORE lint, so the lint-reported file count isn't
+    // known yet — scale the timeout off the project's discovered source count and
+    // the reduced core share. (`forkChild`, not `startImmediately`: the lint
+    // `Stream.runCollect` below blocks the parent on async oxlint spawns, yielding
+    // the runtime to this child so it runs DURING lint. Auto-supervised —
+    // interrupted if the parent dies.)
+    const overlapDeadCodeTimeout = resolveDeadCodeTimeout({
+      sourceFileCount: project.sourceFileCount,
+      deadCodeConcurrency: deadCodeParseConcurrency ?? scanConcurrency,
+      fullConcurrency: scanConcurrency,
+    });
+    const deadCodeFiber = shouldOverlapDeadCode
+      ? yield* Effect.forkChild(
+          buildCollectDeadCode({
+            workerTimeoutMs: overlapDeadCodeTimeout.workerTimeoutMs,
+            phaseTimeoutMs: resolveDeadCodePhaseTimeoutMs(overlapDeadCodeTimeout.phaseTimeoutMs),
+          }),
+        )
+      : null;
 
     const scanProgress = yield* progressService.start("Scanning...");
     const scanStartTime = Date.now();
@@ -602,7 +639,7 @@ export const runInspect = <HooksR = never>(
     let lintCacheHitFileCount: number | null = null;
     let lintCacheTotalFileCount: number | null = null;
 
-    const rawLintStream = linterService
+    const baseLintStream = linterService
       .run({
         rootDirectory: scanDirectory,
         project,
@@ -642,6 +679,13 @@ export const runInspect = <HooksR = never>(
           ),
         ),
       );
+    // When dead-code is overlapped (opt-in `DeadCodeOverlap="on"`), lint runs on
+    // the reduced share of the core budget so the two CPU-bound pools sum to the
+    // cores instead of oversubscribing. The default (sequential) path leaves lint
+    // untouched at the full budget.
+    const rawLintStream = shouldOverlapDeadCode
+      ? baseLintStream.pipe(Stream.provideService(OxlintConcurrency, lintConcurrency))
+      : baseLintStream;
 
     // Lint phase cap (Effect-side, runtime-independent of the per-batch
     // spawn timeout and the bounded split cascade): on timeout, fold into
@@ -694,8 +738,23 @@ export const runInspect = <HooksR = never>(
       if (deadCodeFiber !== null) yield* Fiber.interrupt(deadCodeFiber);
     } else if (shouldRunDeadCode) {
       yield* scanProgress.update(`Scanned ${scannedFilesLabel}, analyzing dead code...`);
+      // Sequential path: deslop gets the full core budget, and lint has already
+      // reported the true file count — scale the timeout to it so a large repo's
+      // legitimately-long pass isn't reclaimed before it finishes.
+      const sequentialDeadCodeTimeout = resolveDeadCodeTimeout({
+        sourceFileCount: totalFileCount,
+        deadCodeConcurrency: scanConcurrency,
+        fullConcurrency: scanConcurrency,
+      });
       deadCodeCollected =
-        deadCodeFiber !== null ? yield* Fiber.join(deadCodeFiber) : yield* collectDeadCode;
+        deadCodeFiber !== null
+          ? yield* Fiber.join(deadCodeFiber)
+          : yield* buildCollectDeadCode({
+              workerTimeoutMs: sequentialDeadCodeTimeout.workerTimeoutMs,
+              phaseTimeoutMs: resolveDeadCodePhaseTimeoutMs(
+                sequentialDeadCodeTimeout.phaseTimeoutMs,
+              ),
+            });
     }
     // On lint failure dead-code is discarded entirely, so a failure the forked
     // fiber may have recorded before we interrupted it must not leak into the

@@ -341,33 +341,30 @@ export const SCAN_TOTAL_DEADLINE_MS = 900_000;
 // the child's heap so those projects complete instead of crashing.
 export const DEAD_CODE_WORKER_MAX_OLD_SPACE_MB = 8192;
 
-// EXPECTED dead-code worker resident set, used by the overlap gate
-// (`hasDeadCodeOverlapHeadroom`) — distinct from the 8 GB
-// `--max-old-space-size` CEILING above, which the worker almost never reaches
-// (deslop's program build + import graph typically resides in ~1–2 GB; the
-// ceiling is a crash backstop for pathological type-heavy repos, not a sizing
-// estimate). Budgeting the gate against the 8 GB ceiling demanded ~14 GB free
-// and so NEVER opened on a 16 GB machine; budgeting against the expected RSS
-// lets the overlap fire whenever the box actually has the headroom, and the
-// in-worker timeout + fail-open dead-code path absorb the rare overshoot.
-export const DEAD_CODE_WORKER_RSS_ESTIMATE_MB = 2048;
+// Dead-code timeout scales with the work. deslop is CPU-bound and roughly
+// linear in source-file count, so a single fixed timeout is at once too
+// generous for a small repo and too tight for a large one — on a multi-thousand
+// file repo the graph build legitimately approaches the old fixed 120s cap, so
+// any contention (a still-running supply-chain pass, an overlapped lint pool)
+// tips it over and the findings are silently dropped. The worker timeout is
+// `max(DEAD_CODE_WORKER_TIMEOUT_MS floor, fileCount * this)` capped at the
+// ceiling; the phase timeout sits a margin above it.
+export const DEAD_CODE_TIMEOUT_MS_PER_SOURCE_FILE = 30;
+export const DEAD_CODE_TIMEOUT_CEILING_MS = 600_000;
+export const DEAD_CODE_PHASE_TIMEOUT_OVER_WORKER_MS = 30_000;
 
-// Conservative per-oxlint-worker resident-set estimate, used ONLY by the
-// dead-code overlap memory gate (`hasDeadCodeOverlapHeadroom`). Each worker
-// holds its batch's ASTs (OXLINT_MAX_FILES_PER_BATCH files); 512 MiB is a
-// generous upper bound so the gate stays cautious — when memory is tight we
-// simply don't overlap (zero correctness/memory risk, just no speedup).
-export const OXLINT_WORKER_RSS_ESTIMATE_MB = 512;
-
-// Slack the overlap gate leaves free above the estimated lint + dead-code
-// peak before it opens, so overlapping the 8 GB dead-code child with the
-// oxlint workers never pushes the box to the OOM edge.
-export const MEMORY_OVERLAP_SAFETY_MARGIN_MB = 1024;
-
-// Byte-per-megabyte conversion for comparing a megabyte budget against a
-// byte-denominated reading (`os.freemem()` in the dead-code overlap gate).
-// The `_MB` constants above store raw megabytes.
-export const BYTES_PER_MEGABYTE = 1024 * 1024;
+// When dead-code is explicitly overlapped with lint (`DeadCodeOverlap="on"`),
+// the two CPU-bound worker pools must SHARE the cores rather than each claiming
+// all of them — uncoordinated, deslop's parse pool (`os.availableParallelism()`)
+// and the oxlint pool (one child per core) sum to ~2x the cores and thrash,
+// starving the parse pass past its timeout. The dead-code parse pool gets this
+// fraction of the scan's worker budget and lint gets the rest, so the two sum to
+// the budget instead of doubling it. (Overlap is OFF by default: dead-code is
+// CPU-bound, so a sequential full-core pass is both faster per-phase and never
+// oversubscribes — overlapping it with lint buys no wall-clock and only risks
+// the starvation. This split exists for operators who force overlap on.)
+export const DEAD_CODE_OVERLAP_PARSE_SHARE = 0.4;
+export const MIN_DEAD_CODE_PARSE_CONCURRENCY = 1;
 
 // HACK: lookahead cap for JSX opener-span scanning; bounds worst-case
 // work on pathological files. Real openers stay well under this.

@@ -31,6 +31,14 @@ interface CheckDeadCodeOptions {
   readonly createWorker?: DeadCodeWorkerFactory;
   readonly workerTimeoutMs?: number;
   /**
+   * Caps deslop's internal parse worker pool (`DESLOP_PARSE_CONCURRENCY`). The
+   * orchestrator sets this when dead-code overlaps lint so the two pools share
+   * the cores instead of each claiming all of them — the oversubscription that
+   * otherwise starves the parse pass past `workerTimeoutMs`. Omitted → deslop
+   * uses `os.availableParallelism()` (the strictly-sequential / full-CPU path).
+   */
+  readonly parseConcurrency?: number;
+  /**
    * Aborts the in-flight worker. The orchestrator threads
    * `Effect.tryPromise`'s signal here so interrupting the dead-code fiber
    * (e.g. when lint fails and dead-code becomes wasted work, or when the
@@ -47,6 +55,8 @@ interface DeadCodeWorkerInput {
   readonly tsConfigPath?: string;
   readonly ignorePatterns: ReadonlyArray<string>;
   readonly deslopJsModuleSpecifier: string;
+  /** Caps deslop's parse pool via `DESLOP_PARSE_CONCURRENCY` on the child env. */
+  readonly parseConcurrency?: number;
 }
 
 interface DeadCodeWorkerHandle {
@@ -348,6 +358,10 @@ const createDeadCodeWorker: DeadCodeWorkerFactory = (input) => {
     {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
+      env:
+        input.parseConcurrency === undefined
+          ? process.env
+          : { ...process.env, DESLOP_PARSE_CONCURRENCY: String(input.parseConcurrency) },
     },
   );
 
@@ -467,6 +481,7 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
     tsConfigPath: resolveTsConfigPath(rootDirectory),
     ignorePatterns,
     deslopJsModuleSpecifier: options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js"),
+    parseConcurrency: options.parseConcurrency,
   });
   // `runDeadCodeWorkerWithTimeout` owns the abort wiring: when the surrounding
   // Effect fiber is interrupted (lint failed / dead-code phase timeout / scan

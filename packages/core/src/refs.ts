@@ -136,15 +136,19 @@ export class OxlintConcurrency extends Context.Reference<number>("react-doctor/O
  * forking dead-code as a child fiber that runs DURING lint instead of strictly
  * after it.
  *
- *   - `"auto"` (default) → defer to the runtime memory gate
- *     (`hasDeadCodeOverlapHeadroom`): overlap only when there's headroom to run
- *     the 8 GB dead-code child alongside the oxlint workers, else stay
- *     sequential.
- *   - `"on"`  → force overlap regardless of the gate.
- *   - `"off"` → force the strictly-sequential (pre-overlap) behavior.
+ *   - `"auto"` (default) / `"off"` → strictly SEQUENTIAL: dead-code runs after
+ *     lint with the full core budget. Both deslop's parse pool and the oxlint
+ *     pool are CPU-bound and each size themselves to all cores, so overlapping
+ *     them only oversubscribes (~2x the cores) and starves the parse pass past
+ *     its timeout — for no wall-clock win, since there are no spare cores to
+ *     absorb the second pass. Sequential is both faster per-phase and safe.
+ *   - `"on"` → force the overlap anyway. The orchestrator then SPLITS the core
+ *     budget (`DEAD_CODE_OVERLAP_PARSE_SHARE`): deslop's parse pool is capped
+ *     and lint shrinks to the remainder, so the two sum to the cores instead of
+ *     doubling them, and the dead-code timeout scales up for the reduced share.
  *
  * Seeded from `REACT_DOCTOR_DEAD_CODE_OVERLAP` so operators get a redeploy-free
- * kill switch; tests pin it via `Layer.succeed(DeadCodeOverlap, ...)`.
+ * switch; tests pin it via `Layer.succeed(DeadCodeOverlap, ...)`.
  */
 export class DeadCodeOverlap extends Context.Reference<"auto" | "on" | "off">(
   "react-doctor/DeadCodeOverlap",

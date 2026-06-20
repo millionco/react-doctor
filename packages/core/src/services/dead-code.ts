@@ -9,6 +9,18 @@ import { DeadCodeAnalysisFailed, ReactDoctorError } from "../errors.js";
 interface DeadCodeInput {
   readonly rootDirectory: string;
   readonly userConfig: ReactDoctorConfig | null;
+  /**
+   * Caps deslop's parse pool so it shares cores with a concurrent lint pass
+   * instead of oversubscribing. Set by the orchestrator only when dead-code
+   * overlaps lint; omitted on the sequential path (deslop uses all cores).
+   */
+  readonly parseConcurrency?: number;
+  /**
+   * In-worker SIGKILL deadline, scaled to the repo's file count by the
+   * orchestrator (`resolveDeadCodeTimeout`). Omitted → the fixed
+   * `DEAD_CODE_WORKER_TIMEOUT_MS` floor.
+   */
+  readonly workerTimeoutMs?: number;
 }
 
 /**
@@ -45,6 +57,8 @@ export class DeadCode extends Context.Service<
                 checkDeadCode({
                   rootDirectory: input.rootDirectory,
                   userConfig: input.userConfig,
+                  parseConcurrency: input.parseConcurrency,
+                  workerTimeoutMs: input.workerTimeoutMs,
                   abortSignal: signal,
                 }),
               catch: (cause) =>

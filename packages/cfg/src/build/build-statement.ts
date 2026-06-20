@@ -66,6 +66,28 @@ const findLabel = (
   return null;
 };
 
+// A loop wrapped by one or more `LabeledStatement`s is the `continue <label>`
+// target for those labels. Their entries are pushed with `header: null` (the
+// `break <label>` merge is known up front, but the continue target only
+// exists once the loop builds its header), so point them at this header now —
+// otherwise a labeled `continue` resolves to a header-less entry and the
+// builder emits no back-edge, diverging from real control flow.
+const linkEnclosingLabelsToLoopHeader = (
+  builder: CfgBuilder,
+  statement: EsTreeNode,
+  header: BasicBlock,
+): void => {
+  let parent = statement.parent ?? null;
+  let stackIndex = builder.labelStack.length - 1;
+  while (parent && isNodeOfType(parent, "LabeledStatement") && stackIndex >= 0) {
+    const entry = builder.labelStack[stackIndex]!;
+    if (entry.label !== parent.label.name) break;
+    entry.header = header;
+    stackIndex -= 1;
+    parent = parent.parent ?? null;
+  }
+};
+
 // A protected region (the `try` body or a `catch` body) "completes
 // normally" iff its end block is reachable from its entry without
 // leaving via an exception (`throw`) or diverting into the `finally`
@@ -237,11 +259,13 @@ export const buildStatement = (
 
   if (isNodeOfType(statement, "WhileStatement") || isNodeOfType(statement, "DoWhileStatement")) {
     const isDoWhile = isNodeOfType(statement, "DoWhileStatement");
-    mapDescendantsToBlock(builder, statement.test as EsTreeNode, current);
     const isInfinite = isConstantTruthyTest(statement.test as EsTreeNode);
     const header = createBlock(builder);
     const body = createBlock(builder);
     const merge = createBlock(builder);
+    // The test is re-evaluated on the header every iteration, so its nodes
+    // belong to the header — not the pre-header `current` block.
+    mapDescendantsToBlock(builder, statement.test as EsTreeNode, header);
     appendInstruction(header, statement.test as EsTreeNode, "condition");
     if (isDoWhile) {
       // do-while: enter body first.
@@ -251,6 +275,7 @@ export const buildStatement = (
       addEdge(header, body, "cond");
       if (!isInfinite) addEdge(header, merge, "cond");
     }
+    linkEnclosingLabelsToLoopHeader(builder, statement, header);
     builder.loopStack.push({ header, merge, label: null });
     const bodyEnd = buildStatement(builder, statement.body as EsTreeNode, body);
     builder.loopStack.pop();
@@ -272,16 +297,19 @@ export const buildStatement = (
   }
 
   if (isNodeOfType(statement, "ForStatement")) {
+    // The init runs once in the pre-header; the test is re-evaluated on the
+    // header every iteration, so only the init stays on `current`.
     if (statement.init) mapDescendantsToBlock(builder, statement.init as EsTreeNode, current);
-    if (statement.test) mapDescendantsToBlock(builder, statement.test as EsTreeNode, current);
     // `for (;;)` (no test) and `for (; true;)` never exit via condition.
     const isInfinite = isConstantTruthyTest(statement.test as EsTreeNode | null);
     const header = createBlock(builder);
     const body = createBlock(builder);
     const merge = createBlock(builder);
+    if (statement.test) mapDescendantsToBlock(builder, statement.test as EsTreeNode, header);
     addEdge(current, header, "uncond");
     addEdge(header, body, "cond");
     if (!isInfinite) addEdge(header, merge, "cond");
+    linkEnclosingLabelsToLoopHeader(builder, statement, header);
     builder.loopStack.push({ header, merge, label: null });
     const bodyEnd = buildStatement(builder, statement.body as EsTreeNode, body);
     builder.loopStack.pop();
@@ -302,6 +330,7 @@ export const buildStatement = (
     addEdge(current, header, "uncond");
     addEdge(header, body, "cond");
     addEdge(header, merge, "cond");
+    linkEnclosingLabelsToLoopHeader(builder, statement, header);
     builder.loopStack.push({ header, merge, label: null });
     const bodyEnd = buildStatement(builder, statement.body as EsTreeNode, body);
     builder.loopStack.pop();

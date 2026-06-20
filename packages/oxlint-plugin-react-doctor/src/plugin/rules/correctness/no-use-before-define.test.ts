@@ -196,6 +196,22 @@ describe("no-use-before-define", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does NOT flag a type-only re-export of a later-declared class", () => {
+    const result = run(`
+      export type { IconPickerService as IIconPickerService } from "@shared/services";
+      export class IconPickerService {}
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag a value export specifier preceding the declaration", () => {
+    const result = run(`
+      export { Widget };
+      class Widget {}
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does NOT flag anything in a .d.ts declaration file", () => {
     const result = runRule(
       noUseBeforeDefine,

@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isDeclarationFile } from "../../utils/is-declaration-file.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { nodeStart } from "../../utils/node-start.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
@@ -64,6 +65,11 @@ export const noUseBeforeDefine = defineRule({
     if (isDeclarationFile(context.filename)) return {};
     return {
       Identifier(node: EsTreeNodeOfType<"Identifier">) {
+        // An export specifier (`export { Foo }` / `export type { Foo as Bar }`)
+        // is a hoisted binding re-export resolved at module-link time, never an
+        // expression-position read, so it can't trigger a TDZ ReferenceError.
+        if (node.parent && isNodeOfType(node.parent, "ExportSpecifier")) return;
+
         const reference = context.scopes.referenceFor(node);
         if (!reference) return;
 

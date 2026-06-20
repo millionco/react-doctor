@@ -1,0 +1,27 @@
+action.yml
+  s_2eec643ea8aa60::t_fe356d06f09e5e 159-163
+  s_2eec643ea8aa60::t_375ef21f8edd01 208-221,225-229
+  s_2eec643ea8aa60::t_10db8955765213 64-84
+packages/react-doctor/tests/resolve-package-spec.test.ts
+  s_2eec643ea8aa60::t_14db32f8cd92b9 1-66
+scripts/resolve-package-spec.mjs
+  s_2eec643ea8aa60::t_9e562ab9cc3b2d 1-77
+.github/workflows/react-doctor.yml
+  s_2eec643ea8aa60::t_ecc4fad471c26b 52-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "a40bde32416b768326f791393eeb0bcb61fe70eb",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

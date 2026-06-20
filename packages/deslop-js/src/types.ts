@@ -655,6 +655,16 @@ export interface DeslopConfig {
   reportTypes: boolean;
   includeEntryExports: boolean;
   reportRedundancy: boolean;
+  /**
+   * Run the non-dead-code "code quality" detectors — duplicate-block (copy-paste)
+   * detection, complexity hotspots, feature flags, TypeScript smells,
+   * private-type leaks, and re-export cycles. On by default. These are by far
+   * the most expensive detectors (duplicate-block detection alone can dominate
+   * a large-repo scan), and they're independent of the dead-code graph findings
+   * (unused files/exports/dependencies, circular dependencies) — so a consumer
+   * that only wants dead-code can set this `false` to skip the bulk of the work.
+   */
+  reportCodeQuality: boolean;
   semantic: SemanticConfig | undefined;
   duplicateBlocks: DuplicateBlocksConfig | undefined;
   featureFlags: FeatureFlagsConfig | undefined;

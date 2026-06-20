@@ -4,13 +4,16 @@ import * as path from "node:path";
 import { analyze, defineConfig } from "deslop-js";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
-// `check-dead-code.ts` passes `semantic: { enabled: false }` to deslop because
-// react-doctor consumes only deslop's GRAPH-based findings (unused files,
-// exports, dependencies, cycles); the semantic TS-Program pass derives only
-// findings we discard, at ~37-45% of the phase's wall-clock. This test LOCKS
-// that assumption: if a future deslop release ever makes a CONSUMED finding
-// depend on the semantic pass, disabling it would silently drop diagnostics —
-// and this parity check fails first, flagging that check-dead-code must change.
+// `check-dead-code.ts` passes BOTH `semantic: { enabled: false }` and
+// `reportCodeQuality: false` to deslop because react-doctor consumes only
+// deslop's GRAPH-based findings (unused files, exports, dependencies, cycles).
+// The semantic TS-Program pass and the code-quality detectors (duplicate
+// blocks, complexity, feature flags, TS smells, …) derive only findings we
+// discard — and are the bulk of the runtime (~8.5x slower with them on at
+// Sentry scale). This test LOCKS the assumption that they're independent of the
+// consumed findings: if a future deslop release ever makes a CONSUMED finding
+// depend on either pass, disabling it would silently drop diagnostics, and this
+// parity check fails first — flagging that check-dead-code must change.
 
 const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-deslop-semantic-parity-"));
 
@@ -73,21 +76,31 @@ const consumedFindingSignature = (result: {
       .sort(),
   });
 
-describe("deslop semantic-disabled parity", () => {
-  it("produces identical graph-based findings with the semantic pass on and off", async () => {
+describe("deslop discarded-passes parity", () => {
+  it("produces identical graph-based findings with semantic + code-quality on vs off", async () => {
     const projectDirectory = buildFixture();
     const tsConfigPath = path.join(projectDirectory, "tsconfig.json");
 
-    const withSemantic = await analyze(defineConfig({ rootDir: projectDirectory, tsConfigPath }));
-    const withoutSemantic = await analyze(
-      defineConfig({ rootDir: projectDirectory, tsConfigPath, semantic: { enabled: false } }),
+    // Full deslop (every detector) vs react-doctor's actual config — BOTH the
+    // semantic TS-Program pass AND the expensive code-quality detectors
+    // (duplicate blocks, complexity, feature flags, TS smells, private-type
+    // leaks, re-export cycles) disabled, since react-doctor discards their
+    // output and they are the bulk of the runtime.
+    const full = await analyze(defineConfig({ rootDir: projectDirectory, tsConfigPath }));
+    const deadCodeOnly = await analyze(
+      defineConfig({
+        rootDir: projectDirectory,
+        tsConfigPath,
+        semantic: { enabled: false },
+        reportCodeQuality: false,
+      }),
     );
 
     // The fixture must actually exercise the consumed findings, or "identical"
     // would be a vacuous pass on two empty results.
-    expect(withSemantic.unusedFiles.length).toBeGreaterThan(0);
-    expect(withSemantic.unusedExports.length).toBeGreaterThan(0);
+    expect(full.unusedFiles.length).toBeGreaterThan(0);
+    expect(full.unusedExports.length).toBeGreaterThan(0);
 
-    expect(consumedFindingSignature(withoutSemantic)).toBe(consumedFindingSignature(withSemantic));
+    expect(consumedFindingSignature(deadCodeOnly)).toBe(consumedFindingSignature(full));
   });
 });

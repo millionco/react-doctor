@@ -271,6 +271,7 @@ export const defineConfig = (
   reportTypes: options.reportTypes ?? false,
   includeEntryExports: options.includeEntryExports ?? false,
   reportRedundancy: options.reportRedundancy ?? true,
+  reportCodeQuality: options.reportCodeQuality ?? true,
   semantic: fillSemanticConfig(options.semantic),
   duplicateBlocks: fillDuplicateBlocksConfig(options.duplicateBlocks),
   featureFlags: fillFeatureFlagsConfig(options.featureFlags),

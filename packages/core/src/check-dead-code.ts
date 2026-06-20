@@ -164,15 +164,21 @@ process.stdin.on("end", () => {
           ? { ignorePatterns: workerInput.ignorePatterns }
           : {}),
         // We consume only deslop's GRAPH-based findings (unusedFiles, unusedExports,
-        // unusedDependencies, circularDependencies). The semantic pass builds a full TS
-        // Program purely to derive unusedTypes/unusedEnumMembers/unusedClassMembers/
-        // misclassifiedDependencies — none of which we read — at ~37-45% of the phase's
-        // wall-clock. Disabling it is provably safe (unusedExports comes from the graph
-        // detector, independent of the semantic result; confirmed byte-identical on
-        // excalidraw + mui-material) and is the single biggest dead-code speedup.
-        // tsConfigPath stays: the module resolver still needs it for path-alias
-        // resolution in the import graph.
+        // unusedDependencies, circularDependencies). Everything else deslop can compute
+        // is pure wasted work for us, and it's the bulk of the runtime:
+        //   - semantic: a full TS Program for unusedTypes/enum/class-members/
+        //     misclassifiedDependencies (~37-45% of the phase).
+        //   - reportCodeQuality: the duplicate-block, complexity, feature-flag,
+        //     TypeScript-smell, private-type-leak and re-export-cycle detectors. These
+        //     are the single most expensive pass — duplicate-block detection alone was
+        //     ~83s of a ~130s Sentry scan — so skipping them is an ~8.5x dead-code
+        //     speedup on a large repo.
+        // Both are provably safe: the consumed graph findings are computed by their own
+        // detectors, independent of these passes (confirmed byte-identical on
+        // excalidraw + mui-material + sentry). tsConfigPath stays — the module resolver
+        // needs it for path-alias resolution in the import graph.
         semantic: { enabled: false },
+        reportCodeQuality: false,
       };
       const result = await analyze(defineConfig(config));
       emit({ ok: true, result: normalizeResult(result) });

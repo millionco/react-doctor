@@ -177,48 +177,65 @@ export const generateReport = (graph: DependencyGraph, config: DeslopConfig): Sc
         errorSink,
       )
     : [];
-  const duplicateBlockResult = safeReportDetector(
-    "detectDuplicateBlocks",
-    () => detectDuplicateBlocks(graph, config.duplicateBlocks, config.rootDir),
-    { duplicateBlocks: [], duplicateBlockClusters: [], shadowedDirectoryPairs: [] },
-    errorSink,
-  );
+  // The "code quality" detectors below are independent of the dead-code graph
+  // findings above and are by far the most expensive (duplicate-block detection
+  // alone dominates a large-repo scan), so `reportCodeQuality: false` skips them
+  // entirely — each falls back to its empty result.
+  const emptyDuplicateBlockResult = {
+    duplicateBlocks: [],
+    duplicateBlockClusters: [],
+    shadowedDirectoryPairs: [],
+  };
+  const duplicateBlockResult = config.reportCodeQuality
+    ? safeReportDetector(
+        "detectDuplicateBlocks",
+        () => detectDuplicateBlocks(graph, config.duplicateBlocks, config.rootDir),
+        emptyDuplicateBlockResult,
+        errorSink,
+      )
+    : emptyDuplicateBlockResult;
 
-  const reExportCycles = safeReportDetector(
-    "detectReExportCycles",
-    () => detectReExportCycles(graph),
-    [],
-    errorSink,
-  );
-  const featureFlags = safeReportDetector(
-    "detectFeatureFlags",
-    () => detectFeatureFlags(graph, config.featureFlags),
-    [],
-    errorSink,
-  );
-  const complexFunctions = safeReportDetector(
-    "detectComplexHotspots",
-    () => detectComplexHotspots(graph, config.complexity),
-    [],
-    errorSink,
-  );
-  const privateTypeLeaks = safeReportDetector(
-    "detectPrivateTypeLeaks",
-    () => detectPrivateTypeLeaks(graph),
-    [],
-    errorSink,
-  );
-  const typeScriptSmellsResult = safeReportDetector(
-    "detectTypeScriptSmells",
-    () => detectTypeScriptSmells(graph),
-    {
-      unnecessaryAssertions: [],
-      lazyImportsAtTopLevel: [],
-      commonjsInEsm: [],
-      typeScriptEscapeHatches: [],
-    },
-    errorSink,
-  );
+  const reExportCycles = config.reportCodeQuality
+    ? safeReportDetector("detectReExportCycles", () => detectReExportCycles(graph), [], errorSink)
+    : [];
+  const featureFlags = config.reportCodeQuality
+    ? safeReportDetector(
+        "detectFeatureFlags",
+        () => detectFeatureFlags(graph, config.featureFlags),
+        [],
+        errorSink,
+      )
+    : [];
+  const complexFunctions = config.reportCodeQuality
+    ? safeReportDetector(
+        "detectComplexHotspots",
+        () => detectComplexHotspots(graph, config.complexity),
+        [],
+        errorSink,
+      )
+    : [];
+  const privateTypeLeaks = config.reportCodeQuality
+    ? safeReportDetector(
+        "detectPrivateTypeLeaks",
+        () => detectPrivateTypeLeaks(graph),
+        [],
+        errorSink,
+      )
+    : [];
+  const emptyTypeScriptSmellsResult = {
+    unnecessaryAssertions: [],
+    lazyImportsAtTopLevel: [],
+    commonjsInEsm: [],
+    typeScriptEscapeHatches: [],
+  };
+  const typeScriptSmellsResult = config.reportCodeQuality
+    ? safeReportDetector(
+        "detectTypeScriptSmells",
+        () => detectTypeScriptSmells(graph),
+        emptyTypeScriptSmellsResult,
+        errorSink,
+      )
+    : emptyTypeScriptSmellsResult;
   let semanticResult: ReturnType<typeof runSemanticAnalysis>;
   try {
     semanticResult = runSemanticAnalysis(graph, config);

@@ -46,6 +46,16 @@ export const CI_PITCH_EVENT = "ci-pitch";
 export const ACTION_UPGRADE_EVENT = "action-upgrade-v2";
 export const SETUP_HINT_EVENT = "setup-hint";
 
+// Well-known preference ids (stable storage keys). Unlike gates, a preference
+// is a free-form remembered value the user can change every run, read back as a
+// default rather than fired once. Kept here so the whole persisted-key surface
+// stays greppable in one place.
+//
+//   surface                       scope    id                  wired in
+//   ────────────────────────────  ───────  ──────────────────  ──────────────────────────────
+//   post-scan handoff target      global   handoff-target      handoff-target-preference.ts
+export const HANDOFF_TARGET_PREFERENCE_ID = "handoff-target";
+
 export type EventOutcome = "seen" | "accepted" | "declined";
 
 // One firing of a gate (an onboarding reveal, a CTA, a once-per-repo prompt).
@@ -66,6 +76,10 @@ export interface MigrationRecord {
 export interface ScopeState {
   readonly events?: Record<string, EventRecord>;
   readonly migrations?: Record<string, MigrationRecord>;
+  // Free-form remembered values, keyed by a well-known preference id. Additive
+  // and optional: pre-existing state files simply lack it (no migration needed),
+  // and an absent key reads back as "no preference yet".
+  readonly preferences?: Record<string, string>;
 }
 
 // Per-repo scope, keyed by hashed root under `projects`. Carries the resolved

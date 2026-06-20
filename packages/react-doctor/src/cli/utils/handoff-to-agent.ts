@@ -15,6 +15,7 @@ import {
 } from "./install-github-workflow.js";
 import { hasHandledActionUpgrade, recordActionUpgradeDecision } from "./action-upgrade-prompt.js";
 import { hasHandledCiPrompt, recordCiPromptDecision } from "./ci-prompt-decision.js";
+import { readHandoffTarget, rememberHandoffTarget } from "./handoff-target-preference.js";
 import { askAddToGitHubActions } from "./ask-add-to-github-actions.js";
 import { askUpgradeActionVersion } from "./ask-upgrade-action-version.js";
 import { setUpGitHubActions } from "./set-up-github-actions.js";
@@ -223,28 +224,42 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
   }
 
   const launchableAgents = await detectLaunchableAgents();
+  const choices = [
+    ...launchableAgents.map((agentId) => ({
+      title: getSkillAgentConfig(agentId).displayName,
+      description: `Open ${CLI_AGENT_BINARIES[agentId]} here with the top issues as a prompt`,
+      value: agentId,
+    })),
+    {
+      title: "Copy prompt to clipboard",
+      description: "Paste into any agent or chat",
+      value: CLIPBOARD_CHOICE,
+    },
+    { title: "Skip", description: "Don't hand off", value: SKIP_CHOICE },
+  ];
+
+  // Pre-select the user's last pick when it's still an available choice, so the
+  // common "always hand off to the same agent" path is a single Enter. A
+  // remembered agent that's no longer launchable (uninstalled since) won't match
+  // any choice, so we fall back to highlighting the first option.
+  const rememberedTarget = readHandoffTarget();
+  const rememberedChoiceIndex = choices.findIndex((choice) => choice.value === rememberedTarget);
+  const initial = rememberedChoiceIndex >= 0 ? rememberedChoiceIndex : 0;
+
   const { handoffTarget } = await prompts<"handoffTarget">(
     {
       type: "select",
       name: "handoffTarget",
       message: "What would you like to do next?",
-      choices: [
-        ...launchableAgents.map((agentId) => ({
-          title: getSkillAgentConfig(agentId).displayName,
-          description: `Open ${CLI_AGENT_BINARIES[agentId]} here with the top issues as a prompt`,
-          value: agentId,
-        })),
-        {
-          title: "Copy prompt to clipboard",
-          description: "Paste into any agent or chat",
-          value: CLIPBOARD_CHOICE,
-        },
-        { title: "Skip", description: "Don't hand off", value: SKIP_CHOICE },
-      ],
-      initial: 0,
+      choices,
+      initial,
     },
     { onCancel: () => true },
   );
+
+  // Remember the pick so the next scan defaults to it; a cancel (Esc) leaves the
+  // prior preference untouched.
+  if (handoffTarget !== undefined) rememberHandoffTarget(handoffTarget);
 
   // Count the agent-handoff outcome (the second activation moment). The CI
   // outcome was counted separately above, since it's now its own question.
@@ -258,6 +273,13 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
     outcome: handoffOutcome,
     agent: handoffOutcome === "launch" ? handoffTarget : undefined,
     diagnosticsCount: input.diagnostics.length,
+    // Kill metric for the remembered default: did a remembered pick pre-fill the
+    // prompt, and did the user keep what was highlighted? If `keptDefault` among
+    // `defaultRemembered` runs is no better than the first-option baseline, the
+    // remembering isn't earning its place. (A cancel makes `handoffTarget`
+    // undefined, which never equals a choice value, so it reads as not-kept.)
+    defaultRemembered: rememberedChoiceIndex >= 0,
+    keptDefault: handoffTarget === choices[initial].value,
   });
 
   if (handoffTarget === undefined || handoffTarget === SKIP_CHOICE) return;

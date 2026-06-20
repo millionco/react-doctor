@@ -1,4 +1,3 @@
-import type { ValueWithType } from "./value-with-type.js";
-
-export const hasTypeProperty = (value: unknown): value is ValueWithType =>
-  Boolean(value && typeof value === "object" && "type" in value);
+// Single source of truth lives in `@react-doctor/cfg`; re-exported here so the
+// AST shape guard can't drift between two copies.
+export { hasTypeProperty } from "@react-doctor/cfg";

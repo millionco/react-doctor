@@ -15,6 +15,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { ResourceEvent, TypestateAutomaton } from "@react-doctor/cfg";
 
 // A pure leak detector: a resource acquired in this function can rest in the
@@ -150,24 +151,11 @@ const classifyCall = (node: EsTreeNode): ResourceEvent | null => {
 // boundaries (each function owns its own CFG / resource scope).
 const collectEventsIn = (root: EsTreeNode): ResourceEvent[] => {
   const events: ResourceEvent[] = [];
-  const visit = (node: EsTreeNode): void => {
-    if (node !== root && isFunctionLike(node)) return;
+  walkAst(root, (node) => {
+    if (node !== root && isFunctionLike(node)) return false;
     const event = classifyCall(node);
     if (event) events.push(event);
-    const record = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-      if (key === "parent") continue;
-      const child = record[key];
-      if (Array.isArray(child)) {
-        for (const item of child) {
-          if (item && typeof item === "object" && "type" in item) visit(item as EsTreeNode);
-        }
-      } else if (child && typeof child === "object" && "type" in child) {
-        visit(child as EsTreeNode);
-      }
-    }
-  };
-  visit(root);
+  });
   return events;
 };
 
@@ -202,31 +190,17 @@ const isNullishReturnArgument = (argument: EsTreeNode): boolean => {
 // the two rules from double-reporting.
 const effectReturnsCleanup = (root: EsTreeNode): boolean => {
   let returnsCleanup = false;
-  const visit = (node: EsTreeNode): void => {
-    if (returnsCleanup) return;
-    if (node !== root && isFunctionLike(node)) return;
+  walkAst(root, (node) => {
+    if (returnsCleanup || (node !== root && isFunctionLike(node))) return false;
     if (
       isNodeOfType(node, "ReturnStatement") &&
       node.argument &&
       !isNullishReturnArgument(node.argument as EsTreeNode)
     ) {
       returnsCleanup = true;
-      return;
+      return false;
     }
-    const record = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-      if (key === "parent") continue;
-      const child = record[key];
-      if (Array.isArray(child)) {
-        for (const item of child) {
-          if (item && typeof item === "object" && "type" in item) visit(item as EsTreeNode);
-        }
-      } else if (child && typeof child === "object" && "type" in child) {
-        visit(child as EsTreeNode);
-      }
-    }
-  };
-  visit(root);
+  });
   return returnsCleanup;
 };
 

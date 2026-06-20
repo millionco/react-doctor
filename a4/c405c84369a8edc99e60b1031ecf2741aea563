@@ -1,0 +1,35 @@
+action.yml
+  s_2eec643ea8aa60::t_3f5983fa26b77c 85-103
+  s_2eec643ea8aa60::t_8a2010cb9d6419 203-206
+packages/core/src/utils/resolve-react-doctor-cache-dir.ts
+  s_2eec643ea8aa60::t_cba768e673c386 7-27,29-32,37
+packages/core/tests/resolve-react-doctor-cache-dir.test.ts
+  s_2eec643ea8aa60::t_b01ed9a0e2d472 1-48
+.changeset/persist-scan-caches-ci.md
+  s_2eec643ea8aa60::t_3b60d04184aa8c 1-13
+packages/core/tests/check-supply-chain-cache.test.ts
+  s_2eec643ea8aa60::t_9ce4ec9568d9fc 1-82
+packages/core/src/constants.ts
+  s_2eec643ea8aa60::t_7b9bfee66cea41 630-638
+packages/core/src/check-supply-chain.ts
+  s_2eec643ea8aa60::t_4ac4fd97c47304 1,9,16-17,29
+  s_2eec643ea8aa60::t_9efd4ef2b1d25d 421-424,426-431,438-443
+  s_2eec643ea8aa60::t_72e8175cc03769 661-670
+  s_2eec643ea8aa60::t_6ae4ac0a1e50f7 358-407
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "a4c405c84369a8edc99e60b1031ecf2741aea563",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

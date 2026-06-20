@@ -1,5 +1,6 @@
 import { CANONICAL_GITHUB_URL } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
+import { anonymizeText } from "./anonymize-text.js";
 
 interface BuildDiagnosticIssueUrlInput {
   readonly diagnostic: Diagnostic;
@@ -12,23 +13,25 @@ const formatRuleIdentifier = (diagnostic: Diagnostic): string =>
 const buildDiagnosticIssueBody = (input: BuildDiagnosticIssueUrlInput): string => {
   const { diagnostic, relativeFilePath } = input;
   const ruleIdentifier = formatRuleIdentifier(diagnostic);
+  const location = anonymizeText(relativeFilePath);
+  const message = anonymizeText(diagnostic.message);
   const lines = [
     "## Diagnostic",
     "",
     `- Rule: ${ruleIdentifier}`,
     `- Severity: ${diagnostic.severity}`,
     `- Category: ${diagnostic.category}`,
-    `- Location: ${relativeFilePath}:${diagnostic.line}`,
+    `- Location: ${location}:${diagnostic.line}`,
     "",
     "## Message",
     "",
     "```text",
-    diagnostic.message,
+    message,
     "```",
   ];
 
   if (diagnostic.help) {
-    lines.push("", "## Suggested Fix", "", "```text", diagnostic.help, "```");
+    lines.push("", "## Suggested Fix", "", "```text", anonymizeText(diagnostic.help), "```");
   }
 
   lines.push(

@@ -57,6 +57,26 @@ describe("handleError", () => {
     expect(body).toContain("Sentry reference: evt-abc123");
   });
 
+  it("scrubs home-directory paths from the prefilled issue", () => {
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/home/alice/project");
+    const savedArgv = process.argv;
+    process.argv = ["node", "/home/alice/.bin/react-doctor", "scan"];
+
+    try {
+      const issueUrl = new URL(buildErrorIssueUrl(new Error("boom in /home/alice/project")));
+      const body = issueUrl.searchParams.get("body") ?? "";
+
+      expect(issueUrl.searchParams.get("title")).toBe("CLI error: boom in ~/project");
+      expect(body).toContain("boom in ~/project");
+      expect(body).toContain("- cwd: ~/project");
+      expect(body).toContain("- command: node ~/.bin/react-doctor scan");
+      expect(body).not.toContain("/home/alice");
+    } finally {
+      process.argv = savedArgv;
+      cwdSpy.mockRestore();
+    }
+  });
+
   it("omits the Sentry reference line when no event id is provided", () => {
     const body = new URL(buildErrorIssueUrl(new Error("boom"))).searchParams.get("body") ?? "";
     expect(body).not.toContain("Sentry reference:");

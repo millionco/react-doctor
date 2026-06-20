@@ -9,6 +9,7 @@ import {
   isReactDoctorError,
 } from "@react-doctor/core";
 import type { HandleErrorOptions } from "@react-doctor/core";
+import { anonymizeText } from "./anonymize-text.js";
 import { VERSION } from "./version.js";
 
 // `shouldExit` is optional here (defaults to exiting) and the CLI adds a Sentry
@@ -37,8 +38,8 @@ const formatErrorForReport = (error: unknown): string =>
 const formatSingleLine = (text: string): string => text.replaceAll(/\s+/g, " ").trim();
 
 const getErrorReportContext = (): ErrorReportContext => ({
-  cwd: process.cwd(),
-  command: process.argv.join(" "),
+  cwd: anonymizeText(process.cwd()),
+  command: anonymizeText(process.argv.join(" ")),
   nodeVersion: process.version,
   platform: process.platform,
   architecture: process.arch,
@@ -53,7 +54,7 @@ const buildErrorIssueBody = (
   context: ErrorReportContext,
   sentryEventId: string | undefined,
 ): string => {
-  const formattedError = formatErrorForReport(error) || "(empty error)";
+  const formattedError = anonymizeText(formatErrorForReport(error)) || "(empty error)";
   const isOtlpExporterEnabled =
     context.isOtlpEndpointConfigured && context.isOtlpAuthHeaderConfigured;
 
@@ -87,7 +88,7 @@ const buildErrorIssueBody = (
 };
 
 export const buildErrorIssueUrl = (error: unknown, sentryEventId?: string): string => {
-  const formattedError = formatSingleLine(formatErrorForReport(error));
+  const formattedError = anonymizeText(formatSingleLine(formatErrorForReport(error)));
   const issueUrl = new URL(`${CANONICAL_GITHUB_URL}/issues/new`);
   issueUrl.searchParams.set("title", formattedError ? `CLI error: ${formattedError}` : "CLI error");
   issueUrl.searchParams.set("labels", "bug");

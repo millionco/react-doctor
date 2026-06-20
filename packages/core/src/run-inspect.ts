@@ -276,10 +276,10 @@ const LINT_NATIVE_BINDING_FAIL_TEXT = (nodeVersion: string): string =>
 const DEAD_CODE_FAIL_TEXT = "Scanning failed (dead-code analysis, non-fatal).";
 
 const formatLintFailText = (
-  reasonTag: ReactDoctorErrorReason["_tag"] | null,
+  reasonKind: OxlintUnavailable["kind"] | null,
   nodeVersion: string,
 ): string => {
-  if (reasonTag === "OxlintUnavailable" || reasonTag === "OxlintSpawnFailed") {
+  if (reasonKind === "native-binding-missing") {
     return LINT_NATIVE_BINDING_FAIL_TEXT(nodeVersion);
   }
   return LINT_FAIL_TEXT;
@@ -711,7 +711,7 @@ export const runInspect = <HooksR = never>(
     yield* afterLint(lintFailureState.didFail);
 
     if (lintFailureState.didFail) {
-      yield* scanProgress.fail(formatLintFailText(lintFailureState.reasonTag, process.version));
+      yield* scanProgress.fail(formatLintFailText(lintFailureState.reasonKind, process.version));
     }
 
     // ora throttles renders to its frame interval, so the final `(N, N)`

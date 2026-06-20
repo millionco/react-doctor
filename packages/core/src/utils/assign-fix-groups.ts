@@ -35,15 +35,17 @@ const isGroupableRule = (diagnostic: Diagnostic): boolean =>
 // nor the count — so this runs purely as a presentation/report concern.
 export const assignFixGroups = (diagnostics: ReadonlyArray<Diagnostic>): Diagnostic[] => {
   const siteCountByGroupId = new Map<string, number>();
-  for (const diagnostic of diagnostics) {
+  const groupIdsByIndex = new Map<number, string>();
+  for (const [index, diagnostic] of diagnostics.entries()) {
     if (!isGroupableRule(diagnostic)) continue;
     const groupId = buildFixGroupId(diagnostic);
+    groupIdsByIndex.set(index, groupId);
     siteCountByGroupId.set(groupId, (siteCountByGroupId.get(groupId) ?? 0) + 1);
   }
 
-  return diagnostics.map((diagnostic) => {
-    if (!isGroupableRule(diagnostic)) return diagnostic;
-    const groupId = buildFixGroupId(diagnostic);
+  return diagnostics.map((diagnostic, index) => {
+    const groupId = groupIdsByIndex.get(index);
+    if (groupId === undefined) return diagnostic;
     if ((siteCountByGroupId.get(groupId) ?? 0) < MIN_SHARED_FIX_SITE_COUNT) return diagnostic;
     return { ...diagnostic, fixGroupId: groupId };
   });

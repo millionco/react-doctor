@@ -1,5 +1,6 @@
 import { type CliStateOptions, SETUP_HINT_EVENT, getCliStatePath } from "./cli-state-store.js";
 import { type Gate, isGatePending, recordGate } from "./cli-lifecycle.js";
+import { cliLogger } from "./cli-logger.js";
 import { hashProjectRoot } from "./hash-project-root.js";
 import { findNearestPackageDirectory, hasDoctorScript } from "./install-doctor-script.js";
 import { isCodingAgentEnvironment } from "./is-ci-environment.js";
@@ -54,7 +55,11 @@ export const resolveInstallSetupProjectRoot = (
 };
 
 const defaultWriteLine: SetupPitchWriter = (line = "") => {
-  console.log(line);
+  if (line === "") {
+    cliLogger.break();
+    return;
+  }
+  cliLogger.log(line);
 };
 
 export interface ShouldShowAgentInstallHintOptions {

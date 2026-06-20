@@ -38,4 +38,23 @@ describe("buildDiagnosticIssueUrl", () => {
     expect(body).toContain("Move the state update into an event handler or effect");
     expect(body).toContain("false positive");
   });
+
+  it("scrubs home-directory paths from diagnostic issue text", () => {
+    const issueUrl = new URL(
+      buildDiagnosticIssueUrl({
+        diagnostic: {
+          ...diagnostic,
+          message: "State update came from /home/alice/project/src/App.tsx.",
+          help: "Check /home/alice/project/src/state.ts first.",
+        },
+        relativeFilePath: "/home/alice/project/src/App.tsx",
+      }),
+    );
+    const body = issueUrl.searchParams.get("body") ?? "";
+
+    expect(body).toContain("Location: ~/project/src/App.tsx:12");
+    expect(body).toContain("State update came from ~/project/src/App.tsx.");
+    expect(body).toContain("Check ~/project/src/state.ts first.");
+    expect(body).not.toContain("/home/alice");
+  });
 });

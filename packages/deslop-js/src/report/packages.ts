@@ -79,7 +79,15 @@ export const detectStalePackages = (
     }
   }
 
-  const binToPackage = buildBinToPackageMap(nodeModulesSearchRoots, declaredNames);
+  const { binToPackage, packagesProvidingBinary } = buildBinaryPackageIndex(
+    nodeModulesSearchRoots,
+    declaredNames,
+  );
+
+  // A package that ships a CLI binary is routinely invoked outside what a static
+  // scan can see (Makefiles, CI steps, git hooks, ad-hoc `npx`), so providing a
+  // binary is itself sufficient evidence of use — don't flag it as unused.
+  for (const packageName of packagesProvidingBinary) usedPackageNames.add(packageName);
 
   for (const workspacePackageJsonPath of allPackageJsonPaths) {
     const scriptReferenced = collectScriptReferencedPackages(
@@ -416,11 +424,17 @@ const ENV_WRAPPER_BINARY_SET = new Set(["cross-env", "dotenv", "dotenv-flow", "e
 
 const INLINE_ENV_VAR_PATTERN = /^[A-Z_][A-Z0-9_]*=/;
 
-const buildBinToPackageMap = (
+interface BinaryPackageIndex {
+  binToPackage: Map<string, string>;
+  packagesProvidingBinary: Set<string>;
+}
+
+const buildBinaryPackageIndex = (
   nodeModulesSearchRoots: string[],
   declaredNames: Set<string>,
-): Map<string, string> => {
+): BinaryPackageIndex => {
   const binToPackage = new Map<string, string>();
+  const packagesProvidingBinary = new Set<string>();
   for (const [binary, packageName] of Object.entries(CLI_BINARY_TO_PACKAGE)) {
     binToPackage.set(binary, packageName);
   }
@@ -430,18 +444,23 @@ const buildBinToPackageMap = (
     try {
       const binContent = readFileSync(packageBinJsonPath, "utf-8");
       const binPackageJson = JSON.parse(binContent);
-      if (typeof binPackageJson.bin === "string") {
+      const binField = binPackageJson.bin;
+      if (typeof binField === "string" && binField.length > 0) {
         binToPackage.set(packageName.split("/").pop()!, packageName);
-      } else if (typeof binPackageJson.bin === "object" && binPackageJson.bin !== null) {
-        for (const binaryName of Object.keys(binPackageJson.bin)) {
+        packagesProvidingBinary.add(packageName);
+      } else if (typeof binField === "object" && binField !== null) {
+        const binaryNames = Object.keys(binField);
+        if (binaryNames.length === 0) continue;
+        for (const binaryName of binaryNames) {
           binToPackage.set(binaryName, packageName);
         }
+        packagesProvidingBinary.add(packageName);
       }
     } catch {
       continue;
     }
   }
-  return binToPackage;
+  return { binToPackage, packagesProvidingBinary };
 };
 
 const collectScriptReferencedPackages = (

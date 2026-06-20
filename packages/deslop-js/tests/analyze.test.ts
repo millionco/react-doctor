@@ -249,6 +249,15 @@ describe("workspace-local-bin", () => {
       `unused-dev-tool should still be unused, got: ${deps}`,
     );
   });
+
+  it("should not flag a package that ships a binary even when no script references it", async () => {
+    const result = await scanFixture("workspace-local-bin");
+    const deps = staleDependencyNames(result);
+    assert.ok(
+      !deps.includes("bin-only-tool"),
+      `bin-only-tool declares a bin and is invokable outside the static scan (npx, hooks, CI) — it must not be flagged, got: ${deps}`,
+    );
+  });
 });
 
 describe("monorepo-script-entry", () => {

@@ -305,16 +305,29 @@ export const buildStatement = (
     const header = createBlock(builder);
     const body = createBlock(builder);
     const merge = createBlock(builder);
+    // The update runs after the body on the back-edge, so it gets its own
+    // latch block. Mapping it onto the header (entered first from `init`,
+    // before the body) would model `update` as running before the first
+    // iteration, skewing SSA placement for loop-carried bindings
+    // (`for (let i = 0; i < n; i++)`). `continue` targets the latch too, so
+    // the update still runs on an explicit `continue`. With no update clause
+    // the latch collapses onto the header (identical to a plain back-edge).
+    const latch = statement.update ? createBlock(builder) : header;
     if (statement.test) mapDescendantsToBlock(builder, statement.test as EsTreeNode, header);
     addEdge(current, header, "uncond");
     addEdge(header, body, "cond");
     if (!isInfinite) addEdge(header, merge, "cond");
-    linkEnclosingLabelsToLoopHeader(builder, statement, header);
-    builder.loopStack.push({ header, merge, label: null });
+    linkEnclosingLabelsToLoopHeader(builder, statement, latch);
+    builder.loopStack.push({ header: latch, merge, label: null });
     const bodyEnd = buildStatement(builder, statement.body as EsTreeNode, body);
     builder.loopStack.pop();
-    if (statement.update) mapDescendantsToBlock(builder, statement.update as EsTreeNode, header);
-    addEdge(bodyEnd, header, "backedge");
+    if (statement.update) {
+      mapDescendantsToBlock(builder, statement.update as EsTreeNode, latch);
+      addEdge(bodyEnd, latch, "uncond");
+      addEdge(latch, header, "backedge");
+    } else {
+      addEdge(bodyEnd, header, "backedge");
+    }
     setTerminal(header, { kind: "for", body, fallthrough: merge });
     return merge;
   }

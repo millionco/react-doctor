@@ -70,6 +70,36 @@ describe("loop test belongs to the loop body", () => {
   });
 });
 
+// Regression: the for-loop `update` runs after the body on the back-edge, not
+// in the header. If it lived on the header it would dominate the body (model
+// the first iteration as running `update` before the body), skewing SSA.
+describe("for-loop update runs after the body", () => {
+  it("does not let the update dominate the body, but keeps it inside the loop", () => {
+    const analysis = analyze("function f(n) { for (let i = 0; i < n; step()) { work(i); } }");
+    const updateCall = findNode(analysis.program, isCallTo("step"));
+    const bodyCall = findNode(analysis.program, isCallTo("work"));
+    expect(analysis.dominates(updateCall, bodyCall)).toBe(false);
+    expect(analysis.isInsideLoop(updateCall)).toBe(true);
+  });
+
+  it("still runs the update on an explicit continue", () => {
+    const analysis = analyze(`
+      function f(n) {
+        for (let i = 0; i < n; step()) {
+          if (skip(i)) continue;
+          work(i);
+        }
+      }
+    `);
+    const continueStatement = findNode(
+      analysis.program,
+      (node) => node.type === "ContinueStatement",
+    );
+    const updateCall = findNode(analysis.program, isCallTo("step"));
+    expect(analysis.isReachable(continueStatement, updateCall)).toBe(true);
+  });
+});
+
 // Regression: `continue <label>` must add a back-edge to the labeled loop's
 // header. Without it the continue block is an orphan and the body becomes
 // unreachable from the continue, diverging from real control flow.

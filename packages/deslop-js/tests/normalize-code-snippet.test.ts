@@ -141,6 +141,19 @@ export const Row = ({ customerName }) => (
     assert.equal(result.source, explicit.source);
   });
 
+  it("stays naming-invariant when a name doubles as a var and a JSX attribute", () => {
+    // Structurally identical: one destructured prop used as the value of one
+    // host attribute. The only difference is the prop's name happens to equal
+    // the attribute label in the first case — output + hash must still match.
+    const collides = scramble(`({ className }) => <div className={className} />`, {
+      language: "tsx",
+    });
+    const distinct = scramble(`({ role }) => <div className={role} />`, { language: "tsx" });
+    assert.ok(collides && distinct);
+    assert.equal(collides.source, distinct.source);
+    assert.equal(collides.hash, distinct.hash);
+  });
+
   it("keeps the # on private fields so they re-parse and don't collide", () => {
     const result = scramble(
       `class Vault {

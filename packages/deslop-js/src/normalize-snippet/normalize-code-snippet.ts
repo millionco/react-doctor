@@ -160,17 +160,24 @@ const classifyJsxNodes = (program: unknown): Map<object, PlaceholderKind> => {
   return kinds;
 };
 
+// Keyed by (role, name), not name alone: one source name can play two roles —
+// e.g. `className` as both a destructured var and a JSX attribute label — and
+// each role must keep its own prefix. Keying by name only would let whichever
+// role was seen first win, so structurally identical snippets that differ only
+// in an underlying name would scramble (and hash) differently. `\u0000` can't
+// occur in an identifier, so it's a safe key separator.
 const makePlaceholderFactory = (): ((name: string, kind: PlaceholderKind) => string) => {
-  const assignedByName = new Map<string, string>();
+  const assignedByKey = new Map<string, string>();
   const countByPrefix = new Map<string, number>();
   return (name: string, kind: PlaceholderKind): string => {
-    const existing = assignedByName.get(name);
+    const key = `${kind}\u0000${name}`;
+    const existing = assignedByKey.get(key);
     if (existing !== undefined) return existing;
     const prefix = PLACEHOLDER_PREFIX[kind];
     const nextIndex = countByPrefix.get(prefix) ?? 0;
     countByPrefix.set(prefix, nextIndex + 1);
     const placeholder = `${prefix}${nextIndex}`;
-    assignedByName.set(name, placeholder);
+    assignedByKey.set(key, placeholder);
     return placeholder;
   };
 };

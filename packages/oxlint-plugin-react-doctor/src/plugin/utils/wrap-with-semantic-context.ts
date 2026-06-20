@@ -1,13 +1,23 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findProgramRoot } from "./find-program-root.js";
 import type { Rule } from "./rule.js";
-import type { BaseRuleContext, RuleContext } from "./rule-context.js";
+import type { BaseRuleContext, RuleContext, TypestateContext } from "./rule-context.js";
 import type { HostRule } from "./rule-plugin.js";
 import type { RuleVisitors } from "./rule-visitors.js";
 import { analyzeScopes } from "../semantic/scope-analysis.js";
 import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
-import { analyzeControlFlow } from "../semantic/control-flow-graph.js";
-import type { ControlFlowAnalysis } from "../semantic/control-flow-graph.js";
+import {
+  analyzeControlFlow,
+  analyzeDefiniteAssignment,
+  analyzeSsa,
+  ssaValueResolver,
+  verifyTypestate,
+} from "@react-doctor/cfg";
+import type {
+  ControlFlowAnalysis,
+  DefiniteAssignmentAnalysis,
+  SsaAnalysis,
+} from "@react-doctor/cfg";
 
 // Wraps a rule so `context.scopes` and `context.cfg` exist at runtime
 // even when oxlint's host context doesn't pre-build them. We build the
@@ -57,6 +67,29 @@ const FALLBACK_CFG: ControlFlowAnalysis = {
   postDominates: () => false,
   isInsideLoop: () => false,
   isUnreachable: () => false,
+  dominanceFrontier: () => [],
+  isInfiniteLoopStart: () => false,
+  toDot: () => null,
+};
+
+// Unreachable in practice (see the HACK note above). `isLiveValue` defaults
+// to `true` so a value-flow rule reading it errs toward NOT flagging (no
+// false dead-store) if the root capture ever fails.
+const FALLBACK_SSA: SsaAnalysis = {
+  controlFlow: FALLBACK_CFG,
+  ssaFor: () => null,
+  bindingOf: () => null,
+  versionAt: () => null,
+  reachingDefinition: () => null,
+  isLiveValue: () => true,
+  isRedefinedBetween: () => false,
+};
+
+// Unreachable in practice (see the HACK note above). `isMaybeUnassignedAt`
+// defaults to `false` so a use-before-define rule errs toward NOT flagging
+// if the root capture ever fails.
+const FALLBACK_DATAFLOW: DefiniteAssignmentAnalysis = {
+  isMaybeUnassignedAt: () => false,
 };
 
 export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
@@ -65,6 +98,8 @@ export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
     let programRoot: EsTreeNode | null = null;
     let cachedScopes: ScopeAnalysis | null = null;
     let cachedCfg: ControlFlowAnalysis | null = null;
+    let cachedSsa: SsaAnalysis | null = null;
+    let cachedDataflow: DefiniteAssignmentAnalysis | null = null;
 
     const getScopes = (): ScopeAnalysis => {
       if (cachedScopes) return cachedScopes;
@@ -78,6 +113,49 @@ export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
       if (!programRoot) return FALLBACK_CFG;
       cachedCfg = analyzeControlFlow(programRoot);
       return cachedCfg;
+    };
+
+    // SSA shares the scope analyzer's binding identities, so a rule can
+    // cross-reference `context.scopes` symbols with SSA versions.
+    const getSsa = (): SsaAnalysis => {
+      if (cachedSsa) return cachedSsa;
+      if (!programRoot) return FALLBACK_SSA;
+      const scopes = getScopes();
+      cachedSsa = analyzeSsa(programRoot, (identifier) => scopes.symbolFor(identifier)?.id ?? null);
+      return cachedSsa;
+    };
+
+    // Layer D seam: an SSA value read at two branches resolves to the SAME
+    // atom, so the feasibility checker can refute correlated-branch
+    // counterexamples. Shared by definite-assignment and typestate so both
+    // only ever drop PROVABLY-infeasible false positives.
+    const getResolveValue = () => ssaValueResolver(getSsa());
+
+    // Definite-assignment shares the scope analyzer's binding identities,
+    // matching the SSA occurrence stream it keys off.
+    const getDataflow = (): DefiniteAssignmentAnalysis => {
+      if (cachedDataflow) return cachedDataflow;
+      if (!programRoot) return FALLBACK_DATAFLOW;
+      const scopes = getScopes();
+      cachedDataflow = analyzeDefiniteAssignment(
+        programRoot,
+        (identifier) => scopes.symbolFor(identifier)?.id ?? null,
+        { resolveValue: getResolveValue() },
+      );
+      return cachedDataflow;
+    };
+
+    // Typestate verification is parameterized per rule (automaton +
+    // classifier), so it can't be cached file-wide; we resolve the target
+    // function's CFG and run the engine on demand. The feasibility refinement
+    // rides along via `resolveValue` unless the caller already supplied one.
+    const typestate: TypestateContext = {
+      verify: (functionLike, options) => {
+        if (!programRoot) return [];
+        const cfg = getCfg().cfgFor(functionLike);
+        if (!cfg) return [];
+        return verifyTypestate(cfg, { resolveValue: getResolveValue(), ...options });
+      },
     };
 
     // Resolve from the host's modern `filename` property, falling back to
@@ -96,6 +174,13 @@ export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
       get cfg() {
         return getCfg();
       },
+      get ssa() {
+        return getSsa();
+      },
+      get dataflow() {
+        return getDataflow();
+      },
+      typestate,
     };
 
     const captureRootIfNeeded = (node: EsTreeNode): void => {

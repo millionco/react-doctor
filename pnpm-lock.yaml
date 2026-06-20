@@ -59,6 +59,19 @@ importers:
         specifier: ^25.6.0
         version: 25.6.0
 
+  packages/cfg:
+    dependencies:
+      '@typescript-eslint/types':
+        specifier: ^8.59.3
+        version: 8.59.3
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+      oxc-parser:
+        specifier: ^0.135.0
+        version: 0.135.0
+
   packages/core:
     dependencies:
       '@effect/platform-node-shared':
@@ -152,6 +165,9 @@ importers:
         specifier: ^0.135.0
         version: 0.135.0
     devDependencies:
+      '@react-doctor/cfg':
+        specifier: workspace:*
+        version: link:../cfg
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0

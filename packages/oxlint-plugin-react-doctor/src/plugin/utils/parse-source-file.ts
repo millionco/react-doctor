@@ -4,6 +4,7 @@ import { parseSync } from "oxc-parser";
 import { CROSS_FILE_PARSE_MAX_BYTES } from "../constants/thresholds.js";
 import { attachParentReferences } from "./attach-parent-references.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { isDeclarationFile } from "./is-declaration-file.js";
 
 const FILENAME_TO_LANG: Record<string, "ts" | "tsx" | "js" | "jsx"> = {
   ".ts": "ts",
@@ -75,14 +76,8 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
 
   // TypeScript declaration files are types-only — they have no
   // runtime function bodies to analyse. Cache as miss so we don't
-  // retry parsing them on every cross-file lookup. All three
-  // declaration-file extensions are handled (`.d.ts`, `.d.mts`,
-  // `.d.cts`) so the ESM/CJS variants don't slip through.
-  if (
-    absoluteFilePath.endsWith(".d.ts") ||
-    absoluteFilePath.endsWith(".d.mts") ||
-    absoluteFilePath.endsWith(".d.cts")
-  ) {
+  // retry parsing them on every cross-file lookup.
+  if (isDeclarationFile(absoluteFilePath)) {
     parseCache.set(absoluteFilePath, {
       mtimeMs: fileStat.mtimeMs,
       size: fileStat.size,

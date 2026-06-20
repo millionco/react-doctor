@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { analyzeControlFlow } from "./control-flow-graph.js";
-import { attachParentReferences } from "../../test-utils/attach-parent-references.js";
-import { parseFixture } from "../../test-utils/parse-fixture.js";
-import type { EsTreeNode } from "../utils/es-tree-node.js";
+import { analyzeControlFlow } from "../src/control-flow-graph.js";
+import { attachParentReferences } from "./attach-parent-references.js";
+import { parseFixture } from "./parse-fixture.js";
+import type { EsTreeNode } from "../src/ast/es-tree-node.js";
 
 // try / catch / finally control-flow, ported from oxc's `no-unreachable`,
 // `no-unsafe-finally`, and `getter-return` suites. These exercise the

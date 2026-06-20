@@ -1,4 +1,4 @@
-import { runCfgCases } from "../../test-utils/run-cfg.js";
+import { runCfgCases } from "./run-cfg.js";
 
 // CFG-only regression catalog mined from the Faire monorepo: control-flow
 // bug classes where AST matching is insufficient and the same shape is a bug

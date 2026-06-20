@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
+import { nodeStart } from "../../utils/node-start.js";
 import { parseSourceText } from "../../utils/parse-source-file.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getLocationAtIndex } from "./utils/get-location-at-index.js";
@@ -26,14 +27,8 @@ const SAME_APPLICATION_CHANNEL_TARGET_PATTERN =
 
 const WORKER_FILE_PATH_PATTERN = /worker/i;
 
-// oxc's parseSync emits ESTree byte offsets as `start`/`end` (it never
-// populates `range`), which TSESTree's types don't declare — so read
-// them structurally.
-const getNodeStartIndex = (node: EsTreeNode): number =>
-  "start" in node && typeof node.start === "number" ? node.start : -1;
-
 const getNodeText = (content: string, node: EsTreeNode): string => {
-  const startIndex = getNodeStartIndex(node);
+  const startIndex = nodeStart(node);
   const endIndex = "end" in node && typeof node.end === "number" ? node.end : -1;
   if (startIndex < 0 || endIndex < 0) return "";
   return content.slice(startIndex, endIndex);
@@ -84,7 +79,7 @@ export const postmessageOriginRisk = defineRule({
       const originCheckIndex = nodeText.search(POSTMESSAGE_ORIGIN_CHECK_PATTERN);
       if (originCheckIndex >= 0 && originCheckIndex < messageDataIndex) return;
 
-      const location = getLocationAtIndex(file.content, getNodeStartIndex(node));
+      const location = getLocationAtIndex(file.content, nodeStart(node));
       findings.push({
         message:
           "A message event handler reads cross-window messages without an obvious origin check.",

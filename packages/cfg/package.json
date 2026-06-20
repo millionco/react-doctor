@@ -1,0 +1,30 @@
+{
+  "name": "@react-doctor/cfg",
+  "version": "0.5.6",
+  "private": true,
+  "description": "Internal: per-function control-flow graph + dominance/reachability analyses over an ESTree AST. Models the React Compiler HIR / oxc_cfg terminal taxonomy so rules can ask whether a node runs unconditionally, is reachable, dominates, or sits inside a loop. Not published.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
+    "test": "vp test run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@typescript-eslint/types": "^8.59.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "oxc-parser": "^0.135.0"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.13.0"
+  }
+}

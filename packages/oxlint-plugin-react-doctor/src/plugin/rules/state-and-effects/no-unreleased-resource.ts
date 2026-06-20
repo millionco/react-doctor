@@ -222,7 +222,7 @@ const isEffectCallback = (functionNode: EsTreeNode): boolean => {
 
 export const noUnreleasedResource = defineRule({
   id: "no-unreleased-resource",
-  title: "Effect resource released inline on some paths but leaked on others",
+  title: "Effect resource leaked on some paths",
   severity: "warn",
   tags: ["test-noise"],
   recommendation:

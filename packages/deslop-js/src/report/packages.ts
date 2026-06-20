@@ -119,10 +119,10 @@ export const detectStalePackages = (
     const tsconfigReferenced = collectTsconfigReferencedPackages(configSearchRoot);
     for (const packageName of tsconfigReferenced) usedPackageNames.add(packageName);
 
-    const expoPluginPackageNames = extractExpoConfigPluginPackageNames(
-      configSearchRoot,
-      { ...dependencies, ...devDependencies },
-    );
+    const expoPluginPackageNames = extractExpoConfigPluginPackageNames(configSearchRoot, {
+      ...dependencies,
+      ...devDependencies,
+    });
     for (const packageName of expoPluginPackageNames) {
       if (declaredNames.has(packageName)) {
         usedPackageNames.add(packageName);

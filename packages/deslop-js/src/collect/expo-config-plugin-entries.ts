@@ -112,7 +112,13 @@ const collectExpoPluginPathsFromArray = (
         pluginName &&
         (ts.isStringLiteral(pluginName) || ts.isNoSubstitutionTemplateLiteral(pluginName))
       ) {
-        addExpoPluginEntry(entries, packageNamePlugins, rootDirectory, configDirectory, pluginName.text);
+        addExpoPluginEntry(
+          entries,
+          packageNamePlugins,
+          rootDirectory,
+          configDirectory,
+          pluginName.text,
+        );
       }
     }
   }
@@ -161,7 +167,13 @@ const collectReturnedExpoConfigPluginPaths = (
   if (!ts.isBlock(body)) {
     const expression = unwrapExpression(body);
     if (ts.isObjectLiteralExpression(expression)) {
-      collectExpoPluginPathsFromConfigObject(expression, entries, packageNamePlugins, rootDirectory, configDirectory);
+      collectExpoPluginPathsFromConfigObject(
+        expression,
+        entries,
+        packageNamePlugins,
+        rootDirectory,
+        configDirectory,
+      );
     }
     return;
   }
@@ -173,7 +185,13 @@ const collectReturnedExpoConfigPluginPaths = (
     if (ts.isReturnStatement(node) && node.expression) {
       const expression = unwrapExpression(node.expression);
       if (ts.isObjectLiteralExpression(expression)) {
-        collectExpoPluginPathsFromConfigObject(expression, entries, packageNamePlugins, rootDirectory, configDirectory);
+        collectExpoPluginPathsFromConfigObject(
+          expression,
+          entries,
+          packageNamePlugins,
+          rootDirectory,
+          configDirectory,
+        );
       }
       return;
     }
@@ -325,7 +343,13 @@ const collectExpoPluginPathsFromAppConfig = (
     }
 
     if (ts.isFunctionDeclaration(node) && hasDefaultExportModifier(node) && node.body) {
-      collectReturnedExpoConfigPluginPaths(node.body, entries, packageNamePlugins, rootDirectory, configDirectory);
+      collectReturnedExpoConfigPluginPaths(
+        node.body,
+        entries,
+        packageNamePlugins,
+        rootDirectory,
+        configDirectory,
+      );
       return;
     }
 

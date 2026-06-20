@@ -449,6 +449,22 @@ describe("expo-config-plugins", () => {
   });
 });
 
+describe("expo-plugin-packages-false-positive", () => {
+  it("should not flag Expo config plugin packages (referenced by package name) as unused", async () => {
+    const result = await scanFixture("expo-plugin-packages-false-positive");
+    const deps = staleDependencyNames(result);
+
+    assert.ok(
+      !deps.includes("expo-build-properties"),
+      `expo-build-properties is used as a config plugin in app.json and must not be flagged as unused, got: ${deps}`,
+    );
+    assert.ok(
+      !deps.includes("expo-camera"),
+      `expo-camera is used as a config plugin in app.config.js (nested under expo key) and must not be flagged as unused, got: ${deps}`,
+    );
+  });
+});
+
 describe("nested-dist-non-workspace", () => {
   it("should exclude `dist/` directories at ANY depth, not just at workspace roots", async () => {
     const result = await scanFixture("nested-dist-non-workspace");

@@ -1,0 +1,10 @@
+{
+  "name": "expo-plugin-packages-false-positive",
+  "type": "module",
+  "dependencies": {
+    "expo": "^56.0.0",
+    "react": "^19.0.0",
+    "expo-build-properties": "^1.0.0",
+    "expo-camera": "^16.0.0"
+  }
+}

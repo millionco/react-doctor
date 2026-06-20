@@ -177,15 +177,6 @@ export const detectStalePackages = (
   );
   for (const packageName of peerSatisfied) usedPackageNames.add(packageName);
 
-  const staticPeerSatisfied = collectStaticPeerSatisfiedPackages(declaredNames, usedPackageNames);
-  for (const packageName of staticPeerSatisfied) usedPackageNames.add(packageName);
-
-  const implicitCompanionPackages = collectImplicitCompanionPackages(
-    declaredNames,
-    usedPackageNames,
-  );
-  for (const packageName of implicitCompanionPackages) usedPackageNames.add(packageName);
-
   const overrideMappings = collectOverrideMappings(
     configSearchRoots,
     allPackageJsonPaths,
@@ -297,129 +288,7 @@ const findInstalledPackageJsonPath = (
   return undefined;
 };
 
-const STATIC_PEER_DEPENDENCY_MAP: Record<string, string[]> = {
-  "@apollo/client": ["graphql"],
-  "@docusaurus/core": ["@mdx-js/react"],
-  "@fortawesome/react-fontawesome": ["@fortawesome/fontawesome-svg-core"],
-  "@gorhom/bottom-sheet": ["react-native-gesture-handler", "react-native-reanimated"],
-  "@hookform/resolvers": ["zod"],
-  "@mdx-js/loader": ["@mdx-js/react"],
-  "@mui/material": ["react-transition-group", "styled-components"],
-  "@stripe/react-stripe-js": ["@stripe/stripe-js"],
-  "@tiptap/core": ["@tiptap/pm"],
-  "@tiptap/react": ["@tiptap/pm"],
-  "@trpc/server": ["zod"],
-  "chart.js": [],
-  "fumadocs-core": ["@mdx-js/react"],
-  "fumadocs-mdx": ["@mdx-js/react"],
-  "fumadocs-ui": ["@mdx-js/react"],
-  "graphql-request": ["graphql"],
-  nextra: ["@mdx-js/react"],
-  "nextra-theme-blog": ["@mdx-js/react"],
-  "nextra-theme-docs": ["@mdx-js/react"],
-  "react-app-polyfill": ["core-js"],
-  "react-bootstrap": ["react-transition-group"],
-  "react-chartjs-2": ["chart.js"],
-  "react-redux": ["redux"],
-  "react-router-dom": ["react-router"],
-  "redux-thunk": ["redux"],
-  sanity: ["styled-components"],
-  sequelize: ["pg"],
-  "stylis-plugin-rtl": ["stylis"],
-  urql: ["graphql"],
-  "use-immer": ["immer"],
-  zustand: ["immer"],
-};
-
-const collectStaticPeerSatisfiedPackages = (
-  declaredNames: Set<string>,
-  confirmedUsedNames: Set<string>,
-): Set<string> => {
-  const peerSatisfied = new Set<string>();
-
-  for (const [packageName, peerNames] of Object.entries(STATIC_PEER_DEPENDENCY_MAP)) {
-    if (!confirmedUsedNames.has(packageName)) continue;
-    for (const peerName of peerNames) {
-      if (declaredNames.has(peerName)) {
-        peerSatisfied.add(peerName);
-      }
-    }
-  }
-
-  return peerSatisfied;
-};
-
-const IMPLICIT_COMPANION_DEPENDENCY_MAP: Record<string, string[]> = {
-  jest: ["jest-config"],
-  "jest-cli": ["jest-config"],
-  "vite-plus": ["@voidzero-dev/vite-plus-core"],
-};
-
-const collectImplicitCompanionPackages = (
-  declaredNames: Set<string>,
-  confirmedUsedNames: Set<string>,
-): Set<string> => {
-  const companions = new Set<string>();
-
-  for (const [packageName, companionNames] of Object.entries(IMPLICIT_COMPANION_DEPENDENCY_MAP)) {
-    if (!confirmedUsedNames.has(packageName)) continue;
-    for (const companionName of companionNames) {
-      if (declaredNames.has(companionName)) {
-        companions.add(companionName);
-      }
-    }
-  }
-
-  return companions;
-};
-
 const SHELL_SPLIT_PATTERN = /\s*(?:&&|\|\||[;&|])\s*/;
-
-const CLI_BINARY_TO_PACKAGE: Record<string, string> = {
-  "babel-node": "@babel/node",
-  "trigger.dev": "trigger.dev",
-  "@formatjs/cli": "@formatjs/cli",
-  "react-scripts": "react-scripts",
-  "webpack-cli": "webpack-cli",
-  "webpack-dev-server": "webpack-dev-server",
-  babel: "@babel/cli",
-  chokidar: "chokidar-cli",
-  "replace-in-file": "replace-in-file",
-  tauri: "@tauri-apps/cli",
-  tinacms: "@tinacms/cli",
-  "tsc-alias": "tsc-alias",
-  formatjs: "@formatjs/cli",
-  prompt: "prompt",
-  vitest: "vitest",
-  jest: "jest",
-  prisma: "prisma",
-  sequelize: "sequelize-cli",
-  rimraf: "rimraf",
-  concurrently: "concurrently",
-  parcel: "parcel",
-  rescript: "rescript",
-  webstudio: "webstudio",
-  cap: "@capacitor/cli",
-  "source-map-explorer": "source-map-explorer",
-  "ts-standard": "ts-standard",
-  "rndebugger-open": "react-native-debugger-open",
-  "simple-git-hooks": "simple-git-hooks",
-  "generate-arg-types": "@webstudio-is/generate-arg-types",
-  email: "@react-email/preview-server",
-  vp: "vite-plus",
-  turbo: "turbo",
-  changeset: "@changesets/cli",
-  tsx: "tsx",
-};
-
-const CLI_BINARY_FALLBACK_PACKAGES: Record<string, string[]> = {
-  babel: ["babel-cli"],
-  jest: ["jest-cli"],
-  remark: ["remark-cli"],
-  dumi: ["dumi"],
-};
-
-const ENV_WRAPPER_BINARY_SET = new Set(["cross-env", "dotenv", "dotenv-flow", "env-cmd"]);
 
 const INLINE_ENV_VAR_PATTERN = /^[A-Z_][A-Z0-9_]*=/;
 
@@ -434,9 +303,6 @@ const buildBinaryPackageIndex = (
 ): BinaryPackageIndex => {
   const binToPackage = new Map<string, string>();
   const packagesProvidingBinary = new Set<string>();
-  for (const [binary, packageName] of Object.entries(CLI_BINARY_TO_PACKAGE)) {
-    binToPackage.set(binary, packageName);
-  }
   for (const packageName of declaredNames) {
     const packageBinJsonPath = findInstalledPackageJsonPath(packageName, nodeModulesSearchRoots);
     if (!packageBinJsonPath) continue;
@@ -515,17 +381,6 @@ const collectCommandReferencedPackages = (
     if (tokens.length === 0) continue;
 
     let binaryIndex = 0;
-    const firstToken = tokens[0].replace(/^.*\//, "");
-    if (ENV_WRAPPER_BINARY_SET.has(firstToken)) {
-      const envPackage = binToPackage.get(firstToken);
-      if (envPackage && declaredNames.has(envPackage)) referenced.add(envPackage);
-      binaryIndex = 1;
-      while (binaryIndex < tokens.length && INLINE_ENV_VAR_PATTERN.test(tokens[binaryIndex])) {
-        binaryIndex++;
-      }
-      if (binaryIndex >= tokens.length) continue;
-    }
-
     while (binaryIndex < tokens.length && INLINE_ENV_VAR_PATTERN.test(tokens[binaryIndex])) {
       binaryIndex++;
     }
@@ -542,11 +397,6 @@ const collectCommandReferencedPackages = (
       const mappedPackage = binToPackage.get(candidateBinary);
       if (mappedPackage && declaredNames.has(mappedPackage)) {
         referenced.add(mappedPackage);
-      }
-      for (const fallbackPackage of CLI_BINARY_FALLBACK_PACKAGES[candidateBinary] ?? []) {
-        if (declaredNames.has(fallbackPackage)) {
-          referenced.add(fallbackPackage);
-        }
       }
       if (declaredNames.has(candidateBinary)) {
         referenced.add(candidateBinary);

@@ -1,0 +1,51 @@
+packages/core/src/check-dead-code.ts
+  s_2eec643ea8aa60::t_68871d3fdf29c5 58-59
+  s_2eec643ea8aa60::t_12f3f0d10886ec 484
+  s_2eec643ea8aa60::t_75983188b112ca 34-40
+  s_2eec643ea8aa60::t_83b49974139f23 361-364
+packages/core/src/services/dead-code.ts
+  s_2eec643ea8aa60::t_8d5cfa9d3a8099 12-17
+  s_2eec643ea8aa60::t_3a10a20c9ef6f0 61
+  s_2eec643ea8aa60::t_d9c5f2ad35cb4f 18-23
+  s_2eec643ea8aa60::t_84f06b658557b5 60
+packages/core/tests/resolve-dead-code-timeout.test.ts
+  s_2eec643ea8aa60::t_d9ddb7b5e8fc10 20-22
+  s_2eec643ea8aa60::t_fb7debbe122731 1-19,23-63
+packages/core/src/utils/resolve-dead-code-timeout.ts
+  s_2eec643ea8aa60::t_399b1d51fe0ee2 46-49
+  s_2eec643ea8aa60::t_d9ddb7b5e8fc10 43
+  s_2eec643ea8aa60::t_40f8586437b636 1-42,44-45,50
+packages/core/src/constants.ts
+  s_2eec643ea8aa60::t_f8ea248ab26e43 344-367
+packages/core/src/run-inspect.ts
+  s_2eec643ea8aa60::t_e5f22b0c058ef2 741-748,752-757
+  s_2eec643ea8aa60::t_cf5c00327a73dc 642
+  s_2eec643ea8aa60::t_f28a375f9e3e2b 52
+  s_2eec643ea8aa60::t_b04ac40d28d113 519-528
+  s_2eec643ea8aa60::t_78b48badb2390e 24-25,27-31
+  s_2eec643ea8aa60::t_edf2eff8f39d75 26
+  s_2eec643ea8aa60::t_4404145af3e618 620-624,627-630
+  s_2eec643ea8aa60::t_e57f4de1060c32 532-538,543-554,556-593,596-619,625-626,631-632
+  s_2eec643ea8aa60::t_7208705cd53652 682-688
+  s_2eec643ea8aa60::t_f349b561e92913 750-751
+packages/deslop-js/src/utils/resolve-available-concurrency.ts
+  s_2eec643ea8aa60::t_ecae17df949415 4-6,8-16,21
+packages/core/src/refs.ts
+  s_2eec643ea8aa60::t_0ee2591563fa08 139-148,151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "654e70e3f1be6ef21d1f84da1b1c53bb9aa457b6",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

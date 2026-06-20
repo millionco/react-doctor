@@ -187,6 +187,49 @@ const isInFinallyBlock = (node: EsTreeNode): boolean => {
   return false;
 };
 
+const isNullishReturnArgument = (argument: EsTreeNode): boolean => {
+  if (isNodeOfType(argument, "Identifier")) return argument.name === "undefined";
+  if (isNodeOfType(argument, "Literal")) return argument.value === null;
+  return false;
+};
+
+// True when the effect hands React a cleanup on some path — a `return
+// <non-nullish>` at the top level of the callback (not inside a nested
+// function). That unmount / re-run release contract is owned by
+// `effect-cleanup-not-on-every-path`; its release sits in a nested closure
+// this rule cannot see, so any inline acquire/release alongside it is a
+// defensive remove-then-add idiom, not a leak. Deferring here is what keeps
+// the two rules from double-reporting.
+const effectReturnsCleanup = (root: EsTreeNode): boolean => {
+  let returnsCleanup = false;
+  const visit = (node: EsTreeNode): void => {
+    if (returnsCleanup) return;
+    if (node !== root && isFunctionLike(node)) return;
+    if (
+      isNodeOfType(node, "ReturnStatement") &&
+      node.argument &&
+      !isNullishReturnArgument(node.argument as EsTreeNode)
+    ) {
+      returnsCleanup = true;
+      return;
+    }
+    const record = node as unknown as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (key === "parent") continue;
+      const child = record[key];
+      if (Array.isArray(child)) {
+        for (const item of child) {
+          if (item && typeof item === "object" && "type" in item) visit(item as EsTreeNode);
+        }
+      } else if (child && typeof child === "object" && "type" in child) {
+        visit(child as EsTreeNode);
+      }
+    }
+  };
+  visit(root);
+  return returnsCleanup;
+};
+
 // React effect hooks whose callback bodies own inline resource cleanup.
 // Covers `useInsertionEffect` on top of the shared effect set, and the
 // namespaced `React.useEffect` / `React.useLayoutEffect` forms resolve through
@@ -216,11 +259,14 @@ export const noUnreleasedResource = defineRule({
     // sibling `dispose()` and non-React frameworks use their own cleanup
     // registration (Solid's `onCleanup`), neither visible to a single CFG.
     // Within an effect this catches an INLINE acquire/release pair bypassed by
-    // an early return; the returned-cleanup contract is owned by
-    // `effect-cleanup-not-on-every-path` (whose `clearTimeout` sits in a nested
-    // function `collectEventsIn` never descends into, so the two never overlap).
+    // an early return. The returned-cleanup contract is owned by
+    // `effect-cleanup-not-on-every-path`, so when the effect returns a cleanup
+    // we defer entirely — its release lives in a nested closure this rule
+    // can't see, so an inline acquire/release alongside it (the defensive
+    // remove-then-add idiom) is not a leak.
     const checkEffectCallback = (node: EsTreeNode): void => {
       if (!isEffectCallback(node)) return;
+      if (effectReturnsCleanup(node)) return;
 
       const events = collectEventsIn(node);
       const closedResources = new Set<string>();

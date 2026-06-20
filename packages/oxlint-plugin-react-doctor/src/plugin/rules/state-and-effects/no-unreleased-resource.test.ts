@@ -135,6 +135,41 @@ describe("no-unreleased-resource", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does NOT flag a conditional add with a returned cleanup (remove on unmount)", () => {
+    const result = run(`
+      function Component({ show }) {
+        useEffect(() => {
+          if (show) {
+            document.addEventListener('mousedown', handleClickOutside);
+          } else {
+            document.removeEventListener('mousedown', handleClickOutside);
+          }
+          return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+          };
+        }, [show]);
+        return null;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag the remove-then-add idiom guarded by a returned cleanup", () => {
+    const result = run(`
+      function Component({ blobUrl }) {
+        useEffect(() => {
+          audioRef.current.removeEventListener('ended', handleEnded);
+          audioRef.current.addEventListener('ended', handleEnded);
+          return () => {
+            audioRef.current.removeEventListener('ended', handleEnded);
+          };
+        }, [blobUrl]);
+        return null;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does NOT flag a class lifecycle method that releases in a sibling method", () => {
     const result = run(`
       class Manager {

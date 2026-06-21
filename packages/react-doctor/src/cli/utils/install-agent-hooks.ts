@@ -73,6 +73,11 @@ const ensureDirectoryExists = (directoryPath: string): void => {
     fs.mkdirSync(directoryPath, { recursive: true });
   } catch (error) {
     const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError.code === "EACCES" || nodeError.code === "EPERM") {
+      throw new CliInputError(
+        `Could not create directory ${directoryPath}: permission denied. Ensure you have write permissions for this location and re-run the install command.`,
+      );
+    }
     if (nodeError.code === "ENOTDIR" || nodeError.code === "EEXIST") {
       const stat = fs.existsSync(directoryPath) ? fs.statSync(directoryPath) : null;
       if (stat && !stat.isDirectory()) {
@@ -80,11 +85,6 @@ const ensureDirectoryExists = (directoryPath: string): void => {
           `Could not create directory ${directoryPath}: a file exists at this path or one of its parent paths. Remove the conflicting file and re-run the install command.`,
         );
       }
-    }
-    if (nodeError.code === "EACCES" || nodeError.code === "EPERM") {
-      throw new CliInputError(
-        `Could not create directory ${directoryPath}: permission denied. Ensure you have write permissions for this location and re-run the install command.`,
-      );
     }
     throw error;
   }

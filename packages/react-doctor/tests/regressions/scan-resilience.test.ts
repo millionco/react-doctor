@@ -725,3 +725,60 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
     }
   });
 });
+
+describe("issue #925: environment errors exit cleanly without Sentry crash reporting", () => {
+  it("isEnvironmentError classifies ENOSPC, EIO, EACCES, EPERM as environment failures", async () => {
+    const { isEnvironmentError } = await import("../../src/cli/utils/is-environment-error.js");
+
+    expect(
+      isEnvironmentError(Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" })),
+    ).toBe(true);
+    expect(
+      isEnvironmentError(Object.assign(new Error("EIO: i/o error, lstat"), { code: "EIO" })),
+    ).toBe(true);
+    expect(
+      isEnvironmentError(Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })),
+    ).toBe(true);
+    expect(
+      isEnvironmentError(Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" })),
+    ).toBe(true);
+  });
+
+  it("formatEnvironmentError renders actionable user-facing messages without stack traces", async () => {
+    const { formatEnvironmentError } = await import("../../src/cli/utils/is-environment-error.js");
+
+    const enospc = Object.assign(new Error("ENOSPC: no space left on device, mkdir"), {
+      code: "ENOSPC",
+      syscall: "mkdir",
+    });
+    expect(formatEnvironmentError(enospc)).toBe(
+      "Disk full: No space left on device. Free up disk space and try again.",
+    );
+
+    const eio = Object.assign(new Error("EIO: i/o error, lstat '/tmp/file'"), {
+      code: "EIO",
+      syscall: "lstat",
+    });
+    expect(formatEnvironmentError(eio)).toBe(
+      "I/O error: The filesystem or disk may be failing. Check your system logs.",
+    );
+
+    const eacces = Object.assign(new Error("EACCES: permission denied, open '/root/file'"), {
+      code: "EACCES",
+      path: "/root/file",
+    });
+    expect(formatEnvironmentError(eacces)).toBe(
+      "Permission denied: Cannot access /root/file. Check file permissions.",
+    );
+  });
+
+  it("isExpectedUserError includes environment errors so they skip Sentry reporting", async () => {
+    const { isExpectedUserError } = await import("../../src/cli/utils/is-expected-user-error.js");
+
+    const enospc = Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
+    const eio = Object.assign(new Error("EIO: i/o error"), { code: "EIO" });
+
+    expect(isExpectedUserError(enospc)).toBe(true);
+    expect(isExpectedUserError(eio)).toBe(true);
+  });
+});

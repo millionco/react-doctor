@@ -44,5 +44,10 @@ export default defineConfig({
   ],
   test: {
     testTimeout: 30_000,
+    // The stdio integration `beforeAll` spawns the server, initializes LSP,
+    // and waits up to 20s for the first full workspace scan. Hooks default to
+    // a 10s budget — too tight for a cold Windows CI runner — so match the
+    // test timeout and clear the internal wait with headroom.
+    hookTimeout: 30_000,
   },
 });

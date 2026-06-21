@@ -31,6 +31,26 @@ describe("no-stale-closure-capture", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a let reassigned on an early-return branch that bypasses the last statement", () => {
+    // Regression for the Bugbot finding: the reassignment runs after the memo
+    // hook on the early-return path, but it never reaches the render's FINAL
+    // statement, so the old last-statement endpoint missed it.
+    const result = run(`
+      function Component({ cond }) {
+        let value = 0;
+        const handler = useCallback(() => console.log(value), []);
+        if (cond) {
+          value = 1;
+          return handler;
+        }
+        return fallback;
+      }
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].nodeType).toBe("Identifier");
+  });
+
   it("does NOT flag a useEffect capture (effects run after render, final value is intended)", () => {
     const result = run(`
       function Component() {

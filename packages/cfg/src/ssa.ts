@@ -46,6 +46,12 @@ export interface SsaAnalysis {
     toNode: EsTreeNode,
     binding: BindingId,
   ) => boolean;
+  // `binding` is written on some control-flow path reachable from `fromNode`
+  // within the same enclosing function — i.e. reassigned AFTER `fromNode` on
+  // at least one path, with no endpoint constraint. Unlike `isRedefinedBetween`
+  // a write on a branch that returns early (never reaching a chosen exit) still
+  // counts, which is what a closure capturing the binding actually observes.
+  readonly isRedefinedAfter: (fromNode: EsTreeNode, binding: BindingId) => boolean;
 }
 
 export const analyzeSsa = (
@@ -112,8 +118,8 @@ export const analyzeSsa = (
   const versionAt = (node: EsTreeNode): SsaIdentifier | null =>
     readIdentifierAt.get(node) ?? writeIdentifierAt.get(node) ?? null;
 
-  // Index writes by binding so `isRedefinedBetween` scans only the target
-  // binding's write nodes instead of every write in the program.
+  // Index writes by binding so `isRedefinedBetween` / `isRedefinedAfter` scan
+  // only the target binding's write nodes instead of every write in the program.
   const writeNodesByBinding = new Map<BindingId, EsTreeNode[]>();
   for (const [node, identifier] of writeIdentifierAt) {
     const nodes = writeNodesByBinding.get(identifier.binding);
@@ -137,6 +143,16 @@ export const analyzeSsa = (
     return false;
   };
 
+  const isRedefinedAfter = (fromNode: EsTreeNode, binding: BindingId): boolean => {
+    const writeNodes = writeNodesByBinding.get(binding);
+    if (!writeNodes) return false;
+    for (const node of writeNodes) {
+      if (node === fromNode) continue;
+      if (controlFlow.isReachable(fromNode, node)) return true;
+    }
+    return false;
+  };
+
   return {
     controlFlow,
     ssaFor: (functionLike) => functionSsa.get(functionLike) ?? null,
@@ -145,5 +161,6 @@ export const analyzeSsa = (
     reachingDefinition: (useNode) => readIdentifierAt.get(useNode) ?? null,
     isLiveValue: (identifier) => liveValues.has(identifier),
     isRedefinedBetween,
+    isRedefinedAfter,
   };
 };

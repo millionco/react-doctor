@@ -93,6 +93,7 @@ const FALLBACK_SSA: SsaAnalysis = {
   reachingDefinition: () => null,
   isLiveValue: () => true,
   isRedefinedBetween: () => false,
+  isRedefinedAfter: () => false,
 };
 
 // Unreachable in practice (see the HACK note above). `isMaybeUnassignedAt`

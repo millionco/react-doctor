@@ -169,6 +169,31 @@ describe("ssa / value queries", () => {
     // No write between the declaration and the capture immediately after it.
     expect(fixture.ssa.isRedefinedBetween(declaration, captureUse, binding!)).toBe(false);
   });
+
+  it("isRedefinedAfter counts a write on an early-return branch that reaches no later use", () => {
+    const fixture = analyzeSsaFixture(`
+      function f(p) {
+        let x = read();
+        capture(x);
+        if (p) {
+          x = mutate();
+          return early(x);
+        }
+        return finalUse(x);
+      }
+    `);
+    const binding = fixture.ssa.bindingOf(fixture.identifier("x"));
+    expect(binding).not.toBeNull();
+    const captureUse = fixture.identifier("x#2"); // capture(x)
+    const finalUse = fixture.identifier("x#5"); // return finalUse(x)
+    // The early-return reassignment never reaches finalUse, so the
+    // endpoint-bound query misses it...
+    expect(fixture.ssa.isRedefinedBetween(captureUse, finalUse, binding!)).toBe(false);
+    // ...but it IS reachable after the capture — what a closure actually observes.
+    expect(fixture.ssa.isRedefinedAfter(captureUse, binding!)).toBe(true);
+    // Nothing is reassigned after the final use itself.
+    expect(fixture.ssa.isRedefinedAfter(finalUse, binding!)).toBe(false);
+  });
 });
 
 describe("ssa / DOT rendering", () => {

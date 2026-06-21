@@ -4,7 +4,6 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { closureCaptures } from "../../semantic/closure-captures.js";
 
@@ -14,22 +13,16 @@ import { closureCaptures } from "../../semantic/closure-captures.js";
 // memoised value/function observes the post-render mutation — a stale-value
 // bug, since the deps array signals the author intended the binding's value
 // at creation time. Verified with SSA: a write of the captured binding must
-// be reachable from the hook call and reach the render's exit
-// (`ssa.isRedefinedBetween`). Defers for `const` and for bindings that are
-// never reassigned (no write in range → no report).
+// be reachable from the hook call on some path (`ssa.isRedefinedAfter`) —
+// "after" by control flow, so a reassignment on a branch that returns before
+// the render's final statement still counts. Defers for `const` and for
+// bindings that are never reassigned (no reachable write → no report).
 //
 // Deliberately excludes the deferred effect hooks (`useEffect` /
 // `useLayoutEffect`): their callbacks run AFTER the synchronous render
 // completes, so reading the FINAL value of a render `let` assigned later in
 // the body is the intended pattern (`let bounds; useEffect(() => use(bounds));
 // bounds = compute()`), not a stale capture.
-const lastStatementOf = (functionNode: EsTreeNode): EsTreeNode | null => {
-  if (!isFunctionLike(functionNode)) return null;
-  const body = functionNode.body as EsTreeNode;
-  if (!isNodeOfType(body, "BlockStatement")) return null;
-  const statements = body.body;
-  return (statements[statements.length - 1] as EsTreeNode | undefined) ?? null;
-};
 
 export const noStaleClosureCapture = defineRule({
   id: "no-stale-closure-capture",
@@ -43,11 +36,6 @@ export const noStaleClosureCapture = defineRule({
       const closure = node.arguments[0] as EsTreeNode | undefined;
       if (!closure || !isFunctionLike(closure)) return;
 
-      const renderFunction = context.cfg.enclosingFunction(node);
-      if (!renderFunction) return;
-      const renderExit = lastStatementOf(renderFunction);
-      if (!renderExit) return;
-
       const reportedBindings = new Set<number>();
       for (const reference of closureCaptures(closure, context.scopes)) {
         const symbol = reference.resolvedSymbol;
@@ -56,7 +44,7 @@ export const noStaleClosureCapture = defineRule({
 
         const binding = context.ssa.bindingOf(reference.identifier);
         if (binding === null) continue;
-        if (!context.ssa.isRedefinedBetween(node, renderExit, binding)) continue;
+        if (!context.ssa.isRedefinedAfter(node, binding)) continue;
 
         reportedBindings.add(symbol.id);
         context.report({

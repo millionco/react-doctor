@@ -785,7 +785,8 @@ export class Git extends Context.Service<
             for (const file of files) {
               const entryLength = file.length + 1;
               const exceedsArgLength =
-                currentBatch.length > 0 && currentBatchLength + entryLength > SPAWN_ARGS_MAX_LENGTH_CHARS;
+                currentBatch.length > 0 &&
+                currentBatchLength + entryLength > SPAWN_ARGS_MAX_LENGTH_CHARS;
               if (exceedsArgLength) {
                 fileBatches.push(currentBatch);
                 currentBatch = [];

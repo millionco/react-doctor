@@ -64,23 +64,31 @@ describe("isExpectedUserError", () => {
         Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" }),
       ),
     ).toBe(true);
+    expect(isExpectedUserError(Object.assign(new Error("EIO: i/o error"), { code: "EIO" }))).toBe(
+      true,
+    );
     expect(
-      isExpectedUserError(Object.assign(new Error("EIO: i/o error"), { code: "EIO" })),
+      isExpectedUserError(
+        Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }),
+      ),
     ).toBe(true);
     expect(
-      isExpectedUserError(Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })),
+      isExpectedUserError(
+        Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" }),
+      ),
     ).toBe(true);
     expect(
-      isExpectedUserError(Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" })),
-    ).toBe(true);
-    expect(
-      isExpectedUserError(Object.assign(new Error("ENOTDIR: not a directory"), { code: "ENOTDIR" })),
+      isExpectedUserError(
+        Object.assign(new Error("ENOTDIR: not a directory"), { code: "ENOTDIR" }),
+      ),
     ).toBe(true);
     expect(
       isExpectedUserError(Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" })),
     ).toBe(true);
     expect(
-      isExpectedUserError(Object.assign(new Error("EROFS: read-only file system"), { code: "EROFS" })),
+      isExpectedUserError(
+        Object.assign(new Error("EROFS: read-only file system"), { code: "EROFS" }),
+      ),
     ).toBe(true);
   });
 

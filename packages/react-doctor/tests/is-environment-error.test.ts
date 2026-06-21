@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { formatEnvironmentError, isEnvironmentError } from "../src/cli/utils/is-environment-error.js";
+import {
+  formatEnvironmentError,
+  isEnvironmentError,
+} from "../src/cli/utils/is-environment-error.js";
 
 describe("isEnvironmentError", () => {
   it("recognizes ENOSPC errors", () => {
@@ -232,7 +235,9 @@ describe("formatEnvironmentError", () => {
     const error = Object.assign(new Error("EUNKNOWN: unknown error"), {
       code: "EUNKNOWN",
     });
-    expect(formatEnvironmentError(error)).toBe("Filesystem error (EUNKNOWN): EUNKNOWN: unknown error");
+    expect(formatEnvironmentError(error)).toBe(
+      "Filesystem error (EUNKNOWN): EUNKNOWN: unknown error",
+    );
   });
 
   it("handles non-NodeSystemError objects", () => {

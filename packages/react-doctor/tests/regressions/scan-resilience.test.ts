@@ -731,7 +731,9 @@ describe("issue #925: environment errors exit cleanly without Sentry crash repor
     const { isEnvironmentError } = await import("../../src/cli/utils/is-environment-error.js");
 
     expect(
-      isEnvironmentError(Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" })),
+      isEnvironmentError(
+        Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" }),
+      ),
     ).toBe(true);
     expect(
       isEnvironmentError(Object.assign(new Error("EIO: i/o error, lstat"), { code: "EIO" })),
@@ -740,7 +742,9 @@ describe("issue #925: environment errors exit cleanly without Sentry crash repor
       isEnvironmentError(Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })),
     ).toBe(true);
     expect(
-      isEnvironmentError(Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" })),
+      isEnvironmentError(
+        Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" }),
+      ),
     ).toBe(true);
   });
 

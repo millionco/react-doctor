@@ -2,6 +2,7 @@ import * as path from "node:path";
 import type { SkillAgentType } from "agent-install";
 import { AGENT_HOOK_TIMEOUT_SECONDS, GIT_HOOK_EXECUTABLE_MODE } from "./constants.js";
 import * as fs from "node:fs";
+import { CliInputError } from "./cli-input-error.js";
 
 interface InstallAgentHooksOptions {
   readonly projectRoot: string;
@@ -58,16 +59,44 @@ const readJsonFile = <Value>(filePath: string, fallback: Value): Value => {
   if (!fs.existsSync(filePath)) return fallback;
   const content = fs.readFileSync(filePath, "utf8").trim();
   if (content.length === 0) return fallback;
-  return JSON.parse(content);
+  try {
+    return JSON.parse(content);
+  } catch (error) {
+    throw new CliInputError(
+      `Could not parse ${filePath}: the file contains invalid JSON. Fix the syntax errors in this file and re-run the install command.`,
+    );
+  }
+};
+
+const ensureDirectoryExists = (directoryPath: string): void => {
+  try {
+    fs.mkdirSync(directoryPath, { recursive: true });
+  } catch (error) {
+    const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError.code === "ENOTDIR" || nodeError.code === "EEXIST") {
+      const stat = fs.existsSync(directoryPath) ? fs.statSync(directoryPath) : null;
+      if (stat && !stat.isDirectory()) {
+        throw new CliInputError(
+          `Could not create directory ${directoryPath}: a file exists at this path or one of its parent paths. Remove the conflicting file and re-run the install command.`,
+        );
+      }
+    }
+    if (nodeError.code === "EACCES" || nodeError.code === "EPERM") {
+      throw new CliInputError(
+        `Could not create directory ${directoryPath}: permission denied. Ensure you have write permissions for this location and re-run the install command.`,
+      );
+    }
+    throw error;
+  }
 };
 
 const writeJsonFile = (filePath: string, value: unknown): void => {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  ensureDirectoryExists(path.dirname(filePath));
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, JSON_INDENT_SPACES)}\n`);
 };
 
 const writeHookScript = (filePath: string): void => {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  ensureDirectoryExists(path.dirname(filePath));
   fs.writeFileSync(filePath, buildAgentHookScript());
   fs.chmodSync(filePath, GIT_HOOK_EXECUTABLE_MODE);
 };

@@ -45,7 +45,13 @@ import {
   getStagedSourceFiles,
   materializeStagedFiles,
 } from "../../src/cli/utils/get-staged-files.js";
-import { buildTestProject, initGitRepo, setupReactProject, writeFile, writeJson } from "./_helpers.js";
+import {
+  buildTestProject,
+  initGitRepo,
+  setupReactProject,
+  writeFile,
+  writeJson,
+} from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-scan-resilience-"));
 

@@ -405,11 +405,6 @@ export class Git extends Context.Service<
             const branch = trimOrNull(result.stdout);
             return branch === "HEAD" ? null : branch;
           }),
-          // Best-effort branch read: a non-zero exit already maps to null, but a
-          // spawn failure (git not installed — e.g. a bare container) surfaces as
-          // a tagged failure. `diffSelection` calls this first during diff
-          // auto-detection, so let it degrade to "unknown branch" instead of
-          // crashing the whole scan and reporting an env issue to Sentry.
           Effect.orElseSucceed(() => null),
         );
 
@@ -438,6 +433,11 @@ export class Git extends Context.Service<
       ): Effect.Effect<boolean, ReactDoctorError> =>
         runGit(directory, ["rev-parse", "--verify", branch]).pipe(
           Effect.map((result) => result.status === 0),
+          Effect.catch((error) =>
+            error.reason._tag === "GitInvocationFailed"
+              ? Effect.succeed(false)
+              : Effect.fail(error),
+          ),
         );
 
       const headSha = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>
@@ -548,11 +548,7 @@ export class Git extends Context.Service<
           for (const endpoint of [baseRef, headRef]) {
             const exists = yield* branchExists(input.directory, endpoint);
             if (!exists) {
-              return yield* Effect.fail(
-                new ReactDoctorError({
-                  reason: new GitBaseBranchMissing({ branch: endpoint }),
-                }),
-              );
+              return null;
             }
           }
 
@@ -640,11 +636,7 @@ export class Git extends Context.Service<
             if (explicitBaseBranch !== undefined) {
               const exists = yield* branchExists(directory, explicitBaseBranch);
               if (!exists) {
-                return yield* Effect.fail(
-                  new ReactDoctorError({
-                    reason: new GitBaseBranchMissing({ branch: explicitBaseBranch }),
-                  }),
-                );
+                return null;
               }
             }
 

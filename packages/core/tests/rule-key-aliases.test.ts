@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { isSameRuleKey, getEquivalentRuleKeys, REACT_DOCTOR_RULE_KEY_PREFIX } from "../src/rule-key-aliases.js";
+import {
+  isSameRuleKey,
+  getEquivalentRuleKeys,
+  REACT_DOCTOR_RULE_KEY_PREFIX,
+} from "../src/rule-key-aliases.js";
 
 describe("rule-key-aliases", () => {
   describe("isSameRuleKey", () => {
@@ -10,7 +14,9 @@ describe("rule-key-aliases", () => {
     it("matches legacy alias to native key", () => {
       expect(isSameRuleKey("react/jsx-key", "react-doctor/jsx-key")).toBe(true);
       expect(isSameRuleKey("jsx-a11y/alt-text", "react-doctor/alt-text")).toBe(true);
-      expect(isSameRuleKey("react-hooks/exhaustive-deps", "react-doctor/exhaustive-deps")).toBe(true);
+      expect(isSameRuleKey("react-hooks/exhaustive-deps", "react-doctor/exhaustive-deps")).toBe(
+        true,
+      );
     });
 
     it("matches native key to legacy alias", () => {

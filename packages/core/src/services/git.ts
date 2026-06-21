@@ -548,7 +548,11 @@ export class Git extends Context.Service<
           for (const endpoint of [baseRef, headRef]) {
             const exists = yield* branchExists(input.directory, endpoint);
             if (!exists) {
-              return null;
+              return yield* Effect.fail(
+                new ReactDoctorError({
+                  reason: new GitBaseBranchMissing({ branch: endpoint }),
+                }),
+              );
             }
           }
 
@@ -636,7 +640,11 @@ export class Git extends Context.Service<
             if (explicitBaseBranch !== undefined) {
               const exists = yield* branchExists(directory, explicitBaseBranch);
               if (!exists) {
-                return null;
+                return yield* Effect.fail(
+                  new ReactDoctorError({
+                    reason: new GitBaseBranchMissing({ branch: explicitBaseBranch }),
+                  }),
+                );
               }
             }
 

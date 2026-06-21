@@ -42,35 +42,35 @@ describe("Git.layerNode when the git binary is unavailable", () => {
     expect(exists).toBe(false);
   });
 
-  it("degrades diffSelection to null when git is unavailable and explicit base is provided (REACT-DOCTOR-F)", async () => {
+  it("throws GitBaseBranchMissing when git is unavailable and explicit base is provided (REACT-DOCTOR-F)", async () => {
     process.env.PATH = os.tmpdir() + "/react-doctor-no-git-on-path";
 
-    const selection = await Effect.runPromise(
-      Effect.gen(function* () {
-        const git = yield* Git;
-        return yield* git.diffSelection({
-          directory: os.tmpdir(),
-          explicitBaseBranch: "main",
-        });
-      }).pipe(Effect.provide(Git.layerNode)),
-    );
-
-    expect(selection).toBeNull();
+    await expect(
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const git = yield* Git;
+          return yield* git.diffSelection({
+            directory: os.tmpdir(),
+            explicitBaseBranch: "main",
+          });
+        }).pipe(Effect.provide(Git.layerNode)),
+      ),
+    ).rejects.toThrow(/does not exist/);
   });
 
-  it("degrades diffSelection to null when git is unavailable for range syntax (REACT-DOCTOR-F)", async () => {
+  it("throws GitBaseBranchMissing when git is unavailable for range syntax (REACT-DOCTOR-F)", async () => {
     process.env.PATH = os.tmpdir() + "/react-doctor-no-git-on-path";
 
-    const selection = await Effect.runPromise(
-      Effect.gen(function* () {
-        const git = yield* Git;
-        return yield* git.diffSelection({
-          directory: os.tmpdir(),
-          explicitBaseBranch: "main...feature",
-        });
-      }).pipe(Effect.provide(Git.layerNode)),
-    );
-
-    expect(selection).toBeNull();
+    await expect(
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const git = yield* Git;
+          return yield* git.diffSelection({
+            directory: os.tmpdir(),
+            explicitBaseBranch: "main...feature",
+          });
+        }).pipe(Effect.provide(Git.layerNode)),
+      ),
+    ).rejects.toThrow(/does not exist/);
   });
 });

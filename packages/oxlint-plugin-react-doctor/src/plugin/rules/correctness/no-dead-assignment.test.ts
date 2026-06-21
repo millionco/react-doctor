@@ -120,6 +120,79 @@ describe("no-dead-assignment", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does NOT flag a loop-carried state machine read at the next iteration (RDE: tldraw reorderShapes)", () => {
+    // An unlabeled `break` inside a `switch` inside a `for` must break the
+    // switch, not the loop — otherwise the loop-carried writes look dead.
+    const result = run(`
+      function reorder(children, moving, opts) {
+        let state = { name: 'skipping' };
+        for (let i = 0; i < children.length; i++) {
+          const isMoving = moving.has(children[i]);
+          switch (state.name) {
+            case 'skipping': {
+              if (!isMoving) continue;
+              state = { name: 'selecting', selectIndex: i };
+              break;
+            }
+            case 'selecting': {
+              if (isMoving) continue;
+              const { selectIndex } = state;
+              compute(children[i + 1]?.index).forEach((index, k) => {
+                use(children[selectIndex + k], index);
+              });
+              state = { name: 'skipping' };
+              break;
+            }
+          }
+        }
+        return state;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag an init reassigned in a try and read after it (RDE: excalidraw localStorage)", () => {
+    // If `getItem()` throws, the `null` init survives to the read after the
+    // try — so it is live, not dead.
+    const result = run(`
+      function importFromLocalStorage() {
+        let savedElements = null;
+        try {
+          savedElements = localStorage.getItem("elements");
+        } catch (error) {
+          console.error(error);
+        }
+        if (savedElements) {
+          return JSON.parse(savedElements);
+        }
+        return [];
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag a value assigned in a catch and read in an outer catch (RDE: bippy owner-stack)", () => {
+    const result = run(`
+      function determine(component) {
+        let control;
+        try {
+          try {
+            throw Error();
+          } catch (caughtError) {
+            control = caughtError;
+          }
+          component();
+        } catch (sample) {
+          if (control instanceof Error) {
+            return [sample, control];
+          }
+        }
+        return null;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags a dead store inside a loop body overwritten before use", () => {
     const result = run(`
       function compute(items) {

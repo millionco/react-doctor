@@ -47,10 +47,12 @@ import type { Terminal } from "./terminal.js";
 //     the try ENTRY to the catch. That already makes every later try-body
 //     block skippable via the catch bypass, so the primitives our rules
 //     consume (`isUnconditionalFromEntry`, post-dominance) get the same
-//     answer a per-instruction model would give. The only thing the coarse
-//     model loses is `isReachable(midTryStatement, catchStatement)`, which
-//     no rule needs — so per-instruction maybe-throw is a deliberate
-//     non-goal, not a gap.
+//     answer a per-instruction model would give. The coarse model loses
+//     `isReachable(midTryStatement, catchStatement)` and, with it, SSA
+//     liveness of a try-body def that is read only on the exceptional path
+//     (the enclosing `catch`/`finally`). Value-flow rules guard against the
+//     latter with `isInsideTryBlock` rather than pay for a per-instruction
+//     model that would perturb every dominance/reachability consumer.
 export type CfgEdgeKind = "uncond" | "cond" | "throw" | "backedge" | "finalize" | "join";
 
 export interface CfgEdge {

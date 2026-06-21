@@ -13,10 +13,14 @@ export interface CfgBuilder {
   // Map every AST node visited inside this function to the block it
   // was appended to.
   nodeBlock: Map<EsTreeNode, BasicBlock>;
+  // Monotonic nesting counter shared by loops and switches. An unlabeled
+  // `break` targets the innermost enclosing loop OR switch, so we compare
+  // the `seq` of each stack's top to find which was entered last.
+  breakScopeSeq: number;
   // Stack of "loop-merge" / "loop-header" pairs for break/continue.
-  loopStack: Array<{ header: BasicBlock; merge: BasicBlock; label: string | null }>;
+  loopStack: Array<{ header: BasicBlock; merge: BasicBlock; label: string | null; seq: number }>;
   // Stack of "switch-merge" + label, for break in switches.
-  switchStack: Array<{ merge: BasicBlock; label: string | null }>;
+  switchStack: Array<{ merge: BasicBlock; label: string | null; seq: number }>;
   // Stack of try-catch contexts: where to route ThrowStatement to.
   tryStack: Array<{ catch: BasicBlock | null; finally: BasicBlock | null }>;
   // Labels currently in scope: maps label name → loop/switch entry.
@@ -29,6 +33,7 @@ export const createBuilder = (): CfgBuilder => ({
   entry: null as unknown as BasicBlock,
   exit: null as unknown as BasicBlock,
   nodeBlock: new Map(),
+  breakScopeSeq: 0,
   loopStack: [],
   switchStack: [],
   tryStack: [],

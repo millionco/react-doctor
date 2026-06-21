@@ -191,6 +191,52 @@ runCfgCases("cfg-regression / unconditional setState in render", [
   },
 ]);
 
+// 3b. An unlabeled `break` inside a `switch` inside a loop breaks the
+// SWITCH, not the loop — JS targets the innermost enclosing breakable
+// scope. Getting this wrong reroutes the loop body's back-edge through the
+// loop exit, so a loop-carried value written in a case and read on the next
+// iteration looks dead (RDE false positive: tldraw `reorderShapes`).
+runCfgCases("cfg-regression / break in switch in loop targets the switch", [
+  {
+    name: "BUG twin would be: break exits the switch, code after it stays in the loop",
+    code: `
+      function fn() {
+        for (const item of items()) {
+          switch (kind()) {
+            case 1:
+              markCase();
+              break;
+          }
+          afterSwitch();
+        }
+      }
+    `,
+    // The case's `break` reaches the post-switch statement (it broke the
+    // switch, not the loop), and that statement is still loop-carried.
+    insideLoop: { markCase: true, afterSwitch: true },
+    reachable: [
+      ["markCase", "afterSwitch", true],
+      ["afterSwitch", "markCase", true],
+    ],
+  },
+  {
+    name: "OK twin: a LABELED break does exit the loop",
+    code: `
+      function fn() {
+        outer: for (const item of items()) {
+          switch (kind()) {
+            case 1:
+              markCase();
+              break outer;
+          }
+          afterSwitch();
+        }
+      }
+    `,
+    reachable: [["markCase", "afterSwitch", false]],
+  },
+]);
+
 // 4. Unreachable code after an abrupt completion.
 runCfgCases("cfg-regression / unreachable after abrupt completion", [
   {

@@ -46,17 +46,22 @@ const hasInternalControlFlow = (node: EsTreeNode): boolean => {
 const findLabel = (
   builder: CfgBuilder,
   name: string | null,
+  kind: "break" | "continue",
 ): { merge: BasicBlock; header: BasicBlock | null } | null => {
   if (name === null) {
-    // Unlabeled break/continue → innermost loop or switch.
-    if (builder.loopStack.length > 0) {
-      const top = builder.loopStack[builder.loopStack.length - 1]!;
-      return { merge: top.merge, header: top.header };
+    const loopTop = builder.loopStack[builder.loopStack.length - 1] ?? null;
+    // `continue` only targets a loop; `break` targets the innermost
+    // enclosing loop OR switch — whichever was entered last (greater
+    // `seq`). Checking the loop stack unconditionally first would break
+    // the loop on a `break` inside a `switch` inside that loop.
+    if (kind === "continue") {
+      return loopTop ? { merge: loopTop.merge, header: loopTop.header } : null;
     }
-    if (builder.switchStack.length > 0) {
-      const top = builder.switchStack[builder.switchStack.length - 1]!;
-      return { merge: top.merge, header: null };
+    const switchTop = builder.switchStack[builder.switchStack.length - 1] ?? null;
+    if (loopTop && (!switchTop || loopTop.seq > switchTop.seq)) {
+      return { merge: loopTop.merge, header: loopTop.header };
     }
+    if (switchTop) return { merge: switchTop.merge, header: null };
     return null;
   }
   for (let index = builder.labelStack.length - 1; index >= 0; index--) {
@@ -209,7 +214,7 @@ export const buildStatement = (
 
   if (isNodeOfType(statement, "BreakStatement")) {
     const targetLabel = statement.label ? statement.label.name : null;
-    const target = findLabel(builder, targetLabel);
+    const target = findLabel(builder, targetLabel, "break");
     appendInstruction(current, statement, "break");
     const gotoTarget = target ? target.merge : builder.exit;
     addEdge(current, gotoTarget, "uncond");
@@ -219,7 +224,7 @@ export const buildStatement = (
 
   if (isNodeOfType(statement, "ContinueStatement")) {
     const targetLabel = statement.label ? statement.label.name : null;
-    const target = findLabel(builder, targetLabel);
+    const target = findLabel(builder, targetLabel, "continue");
     appendInstruction(current, statement, "continue");
     if (target?.header) {
       addEdge(current, target.header, "backedge");
@@ -276,7 +281,7 @@ export const buildStatement = (
       if (!isInfinite) addEdge(header, merge, "cond");
     }
     linkEnclosingLabelsToLoopHeader(builder, statement, header);
-    builder.loopStack.push({ header, merge, label: null });
+    builder.loopStack.push({ header, merge, label: null, seq: builder.breakScopeSeq++ });
     const bodyEnd = buildStatement(builder, statement.body as EsTreeNode, body);
     builder.loopStack.pop();
     if (isDoWhile) {
@@ -318,7 +323,7 @@ export const buildStatement = (
     addEdge(header, body, "cond");
     if (!isInfinite) addEdge(header, merge, "cond");
     linkEnclosingLabelsToLoopHeader(builder, statement, latch);
-    builder.loopStack.push({ header: latch, merge, label: null });
+    builder.loopStack.push({ header: latch, merge, label: null, seq: builder.breakScopeSeq++ });
     const bodyEnd = buildStatement(builder, statement.body as EsTreeNode, body);
     builder.loopStack.pop();
     if (statement.update) {
@@ -344,7 +349,7 @@ export const buildStatement = (
     addEdge(header, body, "cond");
     addEdge(header, merge, "cond");
     linkEnclosingLabelsToLoopHeader(builder, statement, header);
-    builder.loopStack.push({ header, merge, label: null });
+    builder.loopStack.push({ header, merge, label: null, seq: builder.breakScopeSeq++ });
     const bodyEnd = buildStatement(builder, statement.body as EsTreeNode, body);
     builder.loopStack.pop();
     addEdge(bodyEnd, header, "backedge");
@@ -364,7 +369,7 @@ export const buildStatement = (
     );
     const merge = createBlock(builder);
     appendInstruction(afterDiscriminant, statement.discriminant as EsTreeNode, "condition");
-    builder.switchStack.push({ merge, label: null });
+    builder.switchStack.push({ merge, label: null, seq: builder.breakScopeSeq++ });
     let previousCaseEnd: BasicBlock | null = null;
     let hasDefault = false;
     const terminalCases: TerminalCase[] = [];

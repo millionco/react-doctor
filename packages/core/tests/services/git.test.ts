@@ -299,3 +299,63 @@ describe("Git.diffSelection — git-flag injection (CVE-2018-17456 shape)", () =
     await expectInvalidReason("");
   });
 });
+
+describe("Git.changedLineRanges", () => {
+  it("returns the snapshot's changed line ranges", () => {
+    const layer = Git.layerOf({
+      changedLineRanges: [
+        {
+          file: "src/a.ts",
+          ranges: [
+            [1, 3],
+            [10, 12],
+          ],
+        },
+        {
+          file: "src/b.ts",
+          ranges: [[5, 8]],
+        },
+      ],
+    });
+
+    const result = runWith(
+      layer,
+      Effect.gen(function* () {
+        const git = yield* Git;
+        return yield* git.changedLineRanges({
+          directory: "/repo",
+          files: ["src/a.ts", "src/b.ts"],
+        });
+      }),
+    );
+
+    expect(result).toEqual([
+      {
+        file: "src/a.ts",
+        ranges: [
+          [1, 3],
+          [10, 12],
+        ],
+      },
+      {
+        file: "src/b.ts",
+        ranges: [[5, 8]],
+      },
+    ]);
+  });
+
+  it("returns an empty array for zero files", () => {
+    const layer = Git.layerOf({});
+    const result = runWith(
+      layer,
+      Effect.gen(function* () {
+        const git = yield* Git;
+        return yield* git.changedLineRanges({
+          directory: "/repo",
+          files: [],
+        });
+      }),
+    );
+    expect(result).toEqual([]);
+  });
+});

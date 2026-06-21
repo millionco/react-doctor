@@ -4,9 +4,11 @@
  * one bad input" failure mode.
  *
  * Covered closed issues:
- *   #46 + #84 — oxlint must batch include-paths so a 1k+-file diff
- *               (Windows ENAMETOOLONG) or 70+ test file batch (oxlint
- *               SIGABRT @ 2.8GB RAM) doesn't blow up
+ *   #46 + #84 + #924 — batchIncludePaths (oxlint + git diff) ensures file
+ *                      arguments stay under SPAWN_ARGS_MAX_LENGTH_CHARS to
+ *                      prevent Windows ENAMETOOLONG (#46), oxlint SIGABRT
+ *                      at large batch sizes (#84), and git diff ENAMETOOLONG
+ *                      / ENOTDIR on --scope lines scans (#924)
  *   #53  — source file count must fall back to filesystem walk when not
  *          inside a git repo
  *   #115 — `--staged` snapshots git INDEX content (not working tree) so
@@ -53,7 +55,7 @@ afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
-describe("issue #46 + #84: oxlint include-path batching", () => {
+describe("issue #46 + #84 + #924: include-path batching (oxlint + git diff)", () => {
   it("SPAWN_ARGS_MAX_LENGTH_CHARS leaves headroom under Windows CreateProcessW (32_767)", () => {
     expect(SPAWN_ARGS_MAX_LENGTH_CHARS).toBeLessThan(32_767);
     expect(SPAWN_ARGS_MAX_LENGTH_CHARS).toBeGreaterThan(8_000);

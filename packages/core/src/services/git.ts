@@ -9,7 +9,11 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
-import { DEFAULT_BRANCH_CANDIDATES, GITHUB_VIEWER_PERMISSION_TIMEOUT_MS } from "../constants.js";
+import {
+  DEFAULT_BRANCH_CANDIDATES,
+  GITHUB_VIEWER_PERMISSION_TIMEOUT_MS,
+  SPAWN_ARGS_MAX_LENGTH_CHARS,
+} from "../constants.js";
 import {
   GitBaseBranchInvalid,
   GitBaseBranchMissing,
@@ -757,7 +761,13 @@ export class Git extends Context.Service<
             // failed diff both mean "couldn't compute" — return null so the
             // caller degrades to file-level scope rather than hiding everything.
             if (baseRef !== undefined && !isSafeGitRevision(baseRef)) return null;
-            const result = yield* runGit(directory, [
+            // Batch file arguments to stay under SPAWN_ARGS_MAX_LENGTH_CHARS. On
+            // Windows, CreateProcessW caps args at 32,767 chars; passing unbatched
+            // file lists to `git diff` can exceed that limit, causing ENAMETOOLONG
+            // (issue #924, regression of #46). Estimate each arg's contribution (its
+            // length + 1 for the space separator), and when adding a file would exceed
+            // the budget, start a new batch.
+            const baseArgs = [
               "diff",
               "--unified=0",
               "--diff-filter=ACMR",
@@ -765,10 +775,49 @@ export class Git extends Context.Service<
               ...(cached ? ["--cached"] : []),
               ...(baseRef !== undefined ? [baseRef] : []),
               "--",
-              ...files,
-            ]);
-            if (result.status !== 0) return null;
-            return parseChangedLineRanges(result.stdout);
+            ];
+            const estimateArgsLength = (args: string[]): number =>
+              args.reduce((total, argument) => total + argument.length + 1, 0);
+            const baseArgsLength = estimateArgsLength(baseArgs);
+            const fileBatches: string[][] = [];
+            let currentBatch: string[] = [];
+            let currentBatchLength = baseArgsLength;
+            for (const file of files) {
+              const entryLength = file.length + 1;
+              const exceedsArgLength =
+                currentBatch.length > 0 && currentBatchLength + entryLength > SPAWN_ARGS_MAX_LENGTH_CHARS;
+              if (exceedsArgLength) {
+                fileBatches.push(currentBatch);
+                currentBatch = [];
+                currentBatchLength = baseArgsLength;
+              }
+              currentBatch.push(file);
+              currentBatchLength += entryLength;
+            }
+            if (currentBatch.length > 0) {
+              fileBatches.push(currentBatch);
+            }
+            // Diff each batch and aggregate the results. parseChangedLineRanges merges
+            // ranges by file, so multiple batches compose correctly into a single result.
+            const allRanges: ChangedFileLineRanges[] = [];
+            for (const batch of fileBatches) {
+              const result = yield* runGit(directory, [...baseArgs, ...batch]);
+              if (result.status !== 0) return null;
+              allRanges.push(...parseChangedLineRanges(result.stdout));
+            }
+            // Merge ranges for files that appeared in multiple batches (shouldn't
+            // happen in practice since each file is only in one batch, but the
+            // parseChangedLineRanges contract allows it, so be defensive).
+            const rangesByFile = new Map<string, Array<readonly [number, number]>>();
+            for (const { file, ranges } of allRanges) {
+              const existing = rangesByFile.get(file);
+              if (existing) {
+                existing.push(...ranges);
+              } else {
+                rangesByFile.set(file, [...ranges]);
+              }
+            }
+            return [...rangesByFile.entries()].map(([file, ranges]) => ({ file, ranges }));
           }).pipe(Effect.withSpan("Git.changedLineRanges")),
       });
     }),

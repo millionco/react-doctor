@@ -234,4 +234,53 @@ describe("no-use-before-define", () => {
     `);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a self-referential initializer read (`const x = x`)", () => {
+    // The initializer reads the binding while it is still in its own TDZ — its
+    // offset follows the declaration's, so the offset gate alone would miss it.
+    const result = run(`
+      function f() {
+        const x = x;
+        return x;
+      }
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].nodeType).toBe("Identifier");
+  });
+
+  it("flags a `typeof` read of a block-scoped binding in its TDZ (typeof still throws)", () => {
+    // `typeof` is exempt from ReferenceError ONLY for never-declared names; a
+    // let/const in the TDZ still throws, so this is a true positive.
+    const result = run(`
+      function f() {
+        const probe = typeof value;
+        let value = 1;
+        return probe + value;
+      }
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does NOT flag `typeof` of a never-declared name (safe, evaluates to 'undefined')", () => {
+    const result = run(`
+      function f() {
+        return typeof neverDeclaredAnywhere;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag a closure inside an initializer that runs later (`const x = () => x`)", () => {
+    // The read sits in a nested arrow that executes after the binding is bound,
+    // so it never hits the TDZ — the deferred-boundary check must still let it through.
+    const result = run(`
+      function f() {
+        const x = () => x;
+        return x;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

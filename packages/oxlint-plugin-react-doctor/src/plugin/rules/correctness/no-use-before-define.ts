@@ -1,6 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isDeclarationFile } from "../../utils/is-declaration-file.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { nodeStart } from "../../utils/node-start.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -53,6 +55,32 @@ const crossesDeferredBoundary = (
   return false;
 };
 
+// True when `accessNode` reads the binding from inside the binding's OWN
+// initializer (`const x = x`, `const x = x.y`). The byte offset of such a read
+// is AFTER the declaration's, so the offset gate would skip it — but the
+// binding is uninitialized until its initializer finishes evaluating, so the
+// read always hits the Temporal Dead Zone. (A read in a closure inside the
+// initializer — `const x = () => x` — is still let through here and filtered by
+// the deferred-boundary check, since the closure runs later.)
+const isWithinOwnInitializer = (accessNode: EsTreeNode, declarationNode: EsTreeNode): boolean => {
+  let current: EsTreeNode | null | undefined = declarationNode;
+  while (current && !isNodeOfType(current, "VariableDeclarator")) {
+    if (isNodeOfType(current, "VariableDeclaration") || isFunctionLike(current)) return false;
+    current = current.parent;
+  }
+  if (!current || !isNodeOfType(current, "VariableDeclarator")) return false;
+  const initializer = current.init as EsTreeNode | null | undefined;
+  if (!initializer) return false;
+  // oxc carries byte offsets as `start` / `end` (never `range`), so compare
+  // structurally via `nodeStart` and the matching `end`.
+  const initializerStart = nodeStart(initializer);
+  const initializerEnd =
+    "end" in initializer && typeof initializer.end === "number" ? initializer.end : -1;
+  const accessStart = nodeStart(accessNode);
+  if (initializerStart < 0 || initializerEnd < 0 || accessStart < 0) return false;
+  return accessStart >= initializerStart && accessStart < initializerEnd;
+};
+
 export const noUseBeforeDefine = defineRule({
   id: "no-use-before-define",
   title: "Variable used before its declaration (Temporal Dead Zone)",
@@ -80,7 +108,15 @@ export const noUseBeforeDefine = defineRule({
         const accessStart = nodeStart(node);
         const declarationStart = nodeStart(symbol.declarationNode);
         if (accessStart < 0 || declarationStart < 0) return;
-        if (accessStart >= declarationStart) return;
+        // A same-or-later access is normally fine, EXCEPT a self-referential
+        // read inside the binding's own initializer (`const x = x`), which
+        // always hits the TDZ even though its offset follows the declaration's.
+        if (
+          accessStart >= declarationStart &&
+          !isWithinOwnInitializer(node, symbol.declarationNode)
+        ) {
+          return;
+        }
 
         if (crossesDeferredBoundary(reference.scope, symbol.scope)) return;
 

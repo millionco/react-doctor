@@ -45,7 +45,7 @@ import {
   getStagedSourceFiles,
   materializeStagedFiles,
 } from "../../src/cli/utils/get-staged-files.js";
-import { buildTestProject, initGitRepo, writeFile, writeJson } from "./_helpers.js";
+import { buildTestProject, initGitRepo, setupReactProject, writeFile, writeJson } from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-scan-resilience-"));
 
@@ -723,5 +723,46 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
       expect(pluginModule.RECOMMENDED_RULES).not.toHaveProperty(key);
       expect(pluginModule.ALL_REACT_DOCTOR_RULES).not.toHaveProperty(key);
     }
+  });
+});
+
+describe("issue #921: non-string `projects` config entry crashes selectProjects", () => {
+  it("validates projects config at load time and filters non-string entries", async () => {
+    const { loadConfigWithSource, clearConfigCache } = await import("@react-doctor/core");
+    const projectDir = setupReactProject(tempRoot, "issue-921", {
+      files: {
+        "doctor.config.ts": `export default { projects: [42, "valid", null, { name: "obj" }] };`,
+        "src/App.tsx": "export const App = () => <div />;",
+      },
+    });
+    clearConfigCache();
+    const loaded = await loadConfigWithSource(projectDir);
+    expect(loaded?.config.projects).toEqual(["valid"]);
+  });
+
+  it("does not crash when projects contains only invalid entries", async () => {
+    const { loadConfigWithSource, clearConfigCache } = await import("@react-doctor/core");
+    const projectDir = setupReactProject(tempRoot, "issue-921-all-invalid", {
+      files: {
+        "doctor.config.ts": `export default { projects: [42, null, {}] };`,
+        "src/App.tsx": "export const App = () => <div />;",
+      },
+    });
+    clearConfigCache();
+    const loaded = await loadConfigWithSource(projectDir);
+    expect(loaded?.config.projects).toEqual([]);
+  });
+
+  it("does not crash when projects is not an array", async () => {
+    const { loadConfigWithSource, clearConfigCache } = await import("@react-doctor/core");
+    const projectDir = setupReactProject(tempRoot, "issue-921-not-array", {
+      files: {
+        "doctor.config.ts": `export default { projects: "single-project" };`,
+        "src/App.tsx": "export const App = () => <div />;",
+      },
+    });
+    clearConfigCache();
+    const loaded = await loadConfigWithSource(projectDir);
+    expect(loaded?.config.projects).toBeUndefined();
   });
 });

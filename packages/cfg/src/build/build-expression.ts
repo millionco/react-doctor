@@ -110,6 +110,23 @@ export const buildExpression = (
     return merge;
   }
 
+  if (
+    isNodeOfType(node, "AssignmentExpression") &&
+    (node as { operator: string }).operator === "=" &&
+    isNodeOfType((node as { left: EsTreeNode }).left, "Identifier")
+  ) {
+    // A plain `x = <rhs>` STORES only after the rhs is evaluated. A generic
+    // left-to-right child walk would map the write target into the pre-rhs
+    // block, so for a self-referential store (`x = b || x`) the short-circuit
+    // read of `x` would resolve to the freshly-written version and the prior
+    // definition would look dead. Evaluate the rhs first, then land the target
+    // (and the node) in the block where the value becomes available.
+    const afterRight = buildExpression(builder, (node as { right: EsTreeNode }).right, current);
+    builder.nodeBlock.set((node as { left: EsTreeNode }).left, afterRight);
+    builder.nodeBlock.set(node, afterRight);
+    return afterRight;
+  }
+
   // Generic expression: evaluate children left-to-right, threading the
   // block so a control-flow child splits the siblings that follow it. The
   // node itself completes in the final cursor block.

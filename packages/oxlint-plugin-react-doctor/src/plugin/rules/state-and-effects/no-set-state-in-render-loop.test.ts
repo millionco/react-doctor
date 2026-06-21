@@ -147,4 +147,26 @@ describe("no-set-state-in-render-loop", () => {
     `);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("flags a setter guarded inside an exit-less infinite loop", () => {
+    // Regression: the setter is conditional (behind `if (gate)`) inside a
+    // `for (;;)` that never exits. With the exit unreachable the CFG briefly
+    // marked the setter "unconditional from entry", so this rule deferred to
+    // no-set-state-in-render and dropped the warning. (The sibling
+    // `while (true)` test above proves the truly-unconditional case still defers.)
+    const result = run(`
+      import { useState } from "react";
+      function Loop({ gate }) {
+        const [value, setValue] = useState(0);
+        for (;;) {
+          if (gate) {
+            setValue(1);
+          }
+        }
+      }
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("setValue");
+  });
 });

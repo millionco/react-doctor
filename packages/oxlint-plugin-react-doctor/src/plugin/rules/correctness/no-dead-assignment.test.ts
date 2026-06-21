@@ -207,4 +207,32 @@ describe("no-dead-assignment", () => {
     `);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does NOT flag the init of a self-referential `x = b || x` (the rhs reads the init)", () => {
+    // Regression: `chosen = b || chosen` reads chosen's current value (the
+    // init) on the short-circuit path before storing, so the init is live. A
+    // CFG block-mapping bug landed the store before the rhs read, collapsing
+    // the rhs read into the new version and making the init look dead.
+    const result = run(`
+      function pick(a, b) {
+        let chosen = 0;
+        (a > 0) && (chosen = a);
+        chosen = b || chosen;
+        return chosen;
+      }
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag a straight-line `x = fallback || x` idiom", () => {
+    const result = run(`
+      function pick(b) {
+        let chosen = 0;
+        chosen = b || chosen;
+        return chosen;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

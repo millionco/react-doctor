@@ -1,57 +1,103 @@
 import type { BasicBlock, FunctionCfg } from "../ir/basic-block.js";
+import { computeDominatorTree } from "./dominators.js";
 
-// A block B is "unconditional from entry" iff every execution path
-// from entry to exit passes through B. We compute this by, for each
-// block B, asking: if we removed B from the graph, is exit still
-// reachable from entry? If NO, B is on every path → unconditional.
+// A block B is "unconditional from entry" iff every execution of the function
+// passes through B. For a function that completes normally that means B lies on
+// every entry→exit path; for one that only ever loops forever it means B runs
+// on every iteration of the loop it gets stuck in.
 //
-// Cost: O(|blocks|^2) — fine for function-sized CFGs (typically <100
-// blocks). Avoids needing a full dominator tree.
+// We compute it with a cut test: B is unconditional iff, with B removed,
+// execution can no longer reach a "completion" — the exit on a normal path, or
+// the latch of an exit-less infinite loop, which we treat as a virtual edge to
+// the exit so the test stays well-defined when the real exit is unreachable.
+// Without those latch completions an exit-less `for (;;) { if (g) setX() }`
+// would leave the exit unreachable and mark EVERY block unconditional, hiding
+// the conditional `setX()` from a render-loop / hooks check. When the exit IS
+// reachable there are no infinite latches, so this matches the plain
+// "removing B disconnects exit from entry" test exactly.
+//
+// `throw` edges are skipped throughout: an uncaught throw is not a normal
+// completion path, so `if (x) throw; useHook();` keeps `useHook` unconditional.
 export const computeUnconditionalSet = (cfg: FunctionCfg): Set<BasicBlock> => {
-  // Skip "throw" edges when computing reachability — uncaught throws
-  // don't represent a normal completion path. This makes
-  // `if (x) throw; useHook();` evaluate as unconditional (the
-  // `useHook` block is the only normal path to exit).
-  const reachableFromEntry = (excluded: BasicBlock | null): Set<BasicBlock> => {
+  // Blocks that can reach the exit over non-throw edges (backward walk).
+  const reachesExit = new Set<BasicBlock>([cfg.exit]);
+  const reachesExitQueue: BasicBlock[] = [cfg.exit];
+  let reachesExitHead = 0;
+  while (reachesExitHead < reachesExitQueue.length) {
+    const block = reachesExitQueue[reachesExitHead++]!;
+    for (const edge of block.predecessors) {
+      if (edge.kind === "throw") continue;
+      if (!reachesExit.has(edge.from)) {
+        reachesExit.add(edge.from);
+        reachesExitQueue.push(edge.from);
+      }
+    }
+  }
+
+  // Latches of exit-less loops: the source of a non-throw back-edge (its target
+  // dominates it) that cannot itself reach the exit. Each is a virtual
+  // completion below. A normal loop's latch reaches the exit, so it adds
+  // nothing and the reachable-exit case is unchanged.
+  const dominatorTree = computeDominatorTree(cfg.entry);
+  const infiniteLatches = new Set<BasicBlock>();
+  for (const block of cfg.blocks) {
+    if (reachesExit.has(block)) continue;
+    for (const edge of block.successors) {
+      if (edge.kind === "throw") continue;
+      if (dominatorTree.dominates(edge.to, block)) {
+        infiniteLatches.add(block);
+        break;
+      }
+    }
+  }
+
+  // Can entry still reach a completion (the exit, or an infinite-loop latch)
+  // once `excluded` is removed?
+  const reachesCompletion = (excluded: BasicBlock | null): boolean => {
     const visited = new Set<BasicBlock>();
     const queue: BasicBlock[] = [];
     if (cfg.entry !== excluded) queue.push(cfg.entry);
-    // Index cursor instead of `queue.shift()` — the shift is O(V), which
-    // would make each traversal O(V^2); a head index keeps it O(V+E).
     let head = 0;
     while (head < queue.length) {
       const block = queue[head++]!;
       if (visited.has(block)) continue;
       visited.add(block);
+      if (block === cfg.exit || infiniteLatches.has(block)) return true;
       for (const edge of block.successors) {
         if (edge.kind === "throw") continue;
         if (edge.to === excluded) continue;
         queue.push(edge.to);
       }
     }
-    return visited;
+    return false;
   };
 
-  // Whole-graph reachability: any block NOT in this set is dead code
-  // (e.g. statements after an unconditional `return;` / `throw;`).
-  // Dead-code blocks vacuously satisfy "unconditional from entry"
-  // because the call site is never reached at runtime — there's
-  // nothing to constrain.
-  const reachableFromEntryFull = reachableFromEntry(null);
+  // Whole-graph reachability (no exclusion): a block not reachable from entry
+  // over normal edges is dead code (after an unconditional `return` / `throw`)
+  // and vacuously unconditional — its call site never runs at all.
+  const reachableFromEntry = new Set<BasicBlock>();
+  const reachableQueue: BasicBlock[] = [cfg.entry];
+  let reachableHead = 0;
+  while (reachableHead < reachableQueue.length) {
+    const block = reachableQueue[reachableHead++]!;
+    if (reachableFromEntry.has(block)) continue;
+    reachableFromEntry.add(block);
+    for (const edge of block.successors) {
+      if (edge.kind === "throw") continue;
+      reachableQueue.push(edge.to);
+    }
+  }
 
   const unconditional = new Set<BasicBlock>();
-  // Entry is trivially on every path.
   unconditional.add(cfg.entry);
-  // Exit is on every (terminating) path.
   unconditional.add(cfg.exit);
   for (const block of cfg.blocks) {
     if (unconditional.has(block)) continue;
-    if (!reachableFromEntryFull.has(block)) {
+    if (!reachableFromEntry.has(block)) {
       unconditional.add(block);
       continue;
     }
-    const stillReaches = reachableFromEntry(block).has(cfg.exit);
-    if (!stillReaches) unconditional.add(block);
+    if (!reachesCompletion(block)) unconditional.add(block);
   }
   return unconditional;
 };

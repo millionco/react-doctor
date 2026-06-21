@@ -183,8 +183,7 @@
     "rule": "no-dead-assignment",
     "name": "logical-shortcircuit-conditional-write",
     "code": "function pick(a: number, b: number) {\n  let chosen = 0;\n  (a > 0) && (chosen = a);\n  chosen = b || chosen;\n  return chosen;\n}\n",
-    "expectedToFlag": true,
-    "knownGap": "should be clean — medium rule-bug (see PR review)"
+    "expectedToFlag": false
   },
   {
     "rule": "no-dead-assignment",
@@ -442,8 +441,7 @@
     "rule": "no-set-state-in-render-loop",
     "name": "for-infinite-conditional-setter-flag",
     "code": "import { useState } from \"react\";\nfunction Loop({ gate }) {\n  const [value, setValue] = useState(0);\n  for (;;) {\n    if (gate) {\n      setValue(1);\n    }\n  }\n}\n",
-    "expectedToFlag": false,
-    "knownGap": "should flag — medium rule-bug (see PR review)"
+    "expectedToFlag": true
   },
   {
     "rule": "no-set-state-in-render-loop",

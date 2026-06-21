@@ -194,6 +194,22 @@ describe("ssa / value queries", () => {
     // Nothing is reassigned after the final use itself.
     expect(fixture.ssa.isRedefinedAfter(finalUse, binding!)).toBe(false);
   });
+
+  it("keeps the init live across a self-referential `x = b || x` store", () => {
+    // The short-circuit read of `x` in `b || x` must resolve to the prior
+    // definition (the init), not the assignment's own new version — otherwise
+    // the init has no reader and looks like a dead store.
+    const fixture = analyzeSsaFixture(`
+      function f(b) {
+        let chosen = read();
+        chosen = b || chosen;
+        return chosen;
+      }
+    `);
+    const initValue = fixture.ssa.versionAt(fixture.identifier("chosen")); // let chosen = read()
+    expect(initValue).not.toBeNull();
+    expect(fixture.ssa.isLiveValue(initValue!)).toBe(true);
+  });
 });
 
 describe("ssa / DOT rendering", () => {

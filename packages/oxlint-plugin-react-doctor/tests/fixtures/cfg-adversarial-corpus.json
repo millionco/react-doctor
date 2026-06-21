@@ -1,0 +1,1120 @@
+[
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "acq-after-loop-bare-return-in-loop",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ items, bail }) {\n  useEffect(() => {\n    for (const item of items) {\n      if (bail) return;\n    }\n    const id = setInterval(tick, 1000);\n    return () => clearInterval(id);\n  });\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "acq-in-finally-cleanup-after",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ skip }) {\n  useEffect(() => {\n    try {\n      doWork();\n      if (skip) return;\n    } finally {\n      const id = setInterval(tick, 1000);\n    }\n    return () => clearInterval(window.lastId);\n  });\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "acq-inside-do-while-then-return-after",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ run, bail }) {\n  useEffect(() => {\n    do {\n      const id = setInterval(tick, 1000);\n      if (bail) return;\n    } while (run);\n    return () => clearInterval(globalId);\n  });\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "acq-inside-for-of-callback-escape",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ targets, skip }) {\n  useEffect(() => {\n    for (const target of targets) {\n      target.addEventListener(\"click\", () => {\n        const id = setInterval(tick, 1000);\n      });\n    }\n    if (skip) return;\n    return () => cleanupAll();\n  });\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "acq-inside-while-loop-bare-return-same-block",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ items, stop }) {\n  useEffect(() => {\n    while (items.length) {\n      const id = setInterval(tick, 1000);\n      if (stop) return;\n    }\n    return () => teardown();\n  });\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "baseline-bare-return-before-cleanup",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ url, skip }) {\n  useEffect(() => {\n    const socket = new WebSocket(url);\n    socket.addEventListener(\"message\", handler);\n    if (skip) return;\n    return () => socket.removeEventListener(\"message\", handler);\n  });\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "early-return-then-acq-then-bare-return",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ off, skip }) {\n  useEffect(() => {\n    if (off) return () => noop();\n    const id = setInterval(tick, 1000);\n    if (skip) return;\n    return () => clearInterval(id);\n  });\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "guard-before-acquisition-not-reachable",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ enabled }) {\n  useEffect(() => {\n    if (!enabled) return;\n    const id = setInterval(tick, 1000);\n    return () => clearInterval(id);\n  });\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "infinite-for-loop-acq-conditional-return",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ done }) {\n  useEffect(() => {\n    for (;;) {\n      const id = setInterval(tick, 1000);\n      if (done) return;\n    }\n    return () => clearInterval(window.lastId);\n  });\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "labeled-break-skips-cleanup",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ rows, abort }) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    outer: for (const row of rows) {\n      for (const cell of row) {\n        if (abort) {\n          return;\n        }\n        if (cell) break outer;\n      }\n    }\n    return () => clearInterval(id);\n  });\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "labeled-continue-self-loop-return",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ queue, drop }) {\n  useEffect(() => {\n    loop: while (queue.length) {\n      const id = setInterval(tick, 1000);\n      if (drop) {\n        continue loop;\n      }\n      if (queue.done) return;\n    }\n    return () => clearInterval(window.lastId);\n  });\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "nested-deep-branches-bare-return",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ a, b, c, d }) {\n  useEffect(() => {\n    window.addEventListener(\"resize\", onResize);\n    if (a) {\n      if (b) {\n        if (c) {\n          if (d) {\n            return;\n          }\n        }\n      }\n    }\n    return () => window.removeEventListener(\"resize\", onResize);\n  });\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "nested-effect-inner-leaks-outer-clean",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ skip }) {\n  useEffect(() => {\n    const onMount = () => {\n      const id = setInterval(tick, 1000);\n      if (skip) return;\n      return () => clearInterval(id);\n    };\n    onMount();\n    return () => teardown();\n  });\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "return-undefined-identifier-after-acq",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ skip }) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    if (skip) return undefined;\n    return () => clearInterval(id);\n  });\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "same-block-acq-then-bare-return-straightline",
+    "code": "import { useEffect } from \"react\";\nfunction Component() {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    return;\n    return () => clearInterval(id);\n  });\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "same-block-bare-return-before-acquisition",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ mode }) {\n  useEffect(() => {\n    if (mode) return;\n    return () => doCleanup();\n    const id = setInterval(tick, 1000);\n  });\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "switch-all-cases-return-cleanup",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ kind }) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    switch (kind) {\n      case \"a\":\n        return () => clearInterval(id);\n      case \"b\":\n        return () => clearInterval(id);\n      default:\n        return () => clearInterval(id);\n    }\n  });\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "switch-fallthrough-bare-return",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ kind }) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    switch (kind) {\n      case \"a\":\n      case \"b\":\n        doThing();\n      case \"c\":\n        return;\n      default:\n        break;\n    }\n    return () => clearInterval(id);\n  });\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "ternary-short-circuit-no-bare-return",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ enabled, fast }) {\n  useEffect(() => {\n    const id = enabled && setInterval(tick, fast ? 100 : 1000);\n    return enabled ? () => clearInterval(id) : () => undefined;\n  });\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "throw-before-bare-return-try-catch",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ url, skip }) {\n  useEffect(() => {\n    const socket = new WebSocket(url);\n    socket.addEventListener(\"message\", handler);\n    try {\n      mightThrow();\n    } catch (error) {\n      if (skip) return;\n    }\n    return () => socket.removeEventListener(\"message\", handler);\n  });\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "two-acquisitions-one-leaks",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ skip, url }) {\n  useEffect(() => {\n    if (skip) {\n      const early = setTimeout(tick, 500);\n      return;\n    }\n    const socket = new WebSocket(url);\n    socket.addEventListener(\"message\", handler);\n    return () => socket.removeEventListener(\"message\", handler);\n  });\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "effect-cleanup-not-on-every-path",
+    "name": "unreachable-return-after-throw",
+    "code": "import { useEffect } from \"react\";\nfunction Component({ url }) {\n  useEffect(() => {\n    const socket = new WebSocket(url);\n    socket.addEventListener(\"message\", handler);\n    throw new Error(\"boom\");\n    return;\n    return () => socket.removeEventListener(\"message\", handler);\n  });\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "captured-by-closure-suppressed",
+    "code": "function make() {\n  let count = 0;\n  const read = () => count;\n  count = 1;\n  return read;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "compound-assignment-not-dead",
+    "code": "function compute(start: number) {\n  let total = start;\n  total += 1;\n  total *= 2;\n  return total;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "destructuring-array-dead-element",
+    "code": "function compute(pair: [number, number]) {\n  let head = 0;\n  let tail = 0;\n  [head, tail] = pair;\n  return head + tail;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "destructuring-object-rest-computed",
+    "code": "function compute(source: Record<string, number>, dynamicKey: string) {\n  let picked = 0;\n  let leftover = 0;\n  ({ [dynamicKey]: picked, ...leftover } = source);\n  return picked + leftover;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "diamond-both-branches-dead-init",
+    "code": "function compute(flag: boolean) {\n  let value = 1;\n  value = 2;\n  if (flag) {\n    value = 3;\n  } else {\n    value = 4;\n  }\n  return value;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "do-while-self-overwrite",
+    "code": "function poll(): number {\n  let attempt = 0;\n  do {\n    attempt = next();\n    attempt = next();\n  } while (attempt < 10);\n  return attempt;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "early-return-makes-init-live",
+    "code": "function compute(flag: boolean) {\n  let value = 1;\n  if (flag) {\n    return value;\n  }\n  value = 2;\n  return value;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "labeled-continue-loop-carried",
+    "code": "function scan(rows: number[][]) {\n  let best = -1;\n  outer: for (const row of rows) {\n    for (const cell of row) {\n      if (cell < 0) continue outer;\n      best = Math.max(best, cell);\n    }\n  }\n  return best;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "logical-shortcircuit-conditional-write",
+    "code": "function pick(a: number, b: number) {\n  let chosen = 0;\n  (a > 0) && (chosen = a);\n  chosen = b || chosen;\n  return chosen;\n}\n",
+    "expectedToFlag": true,
+    "knownGap": "should be clean — medium rule-bug (see PR review)"
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "loop-body-stale-then-fresh",
+    "code": "function compute(items: number[]) {\n  let result;\n  for (const item of items) {\n    result = stale(item);\n    result = fresh(item);\n    use(result);\n  }\n  return result;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "loop-carried-accumulator",
+    "code": "function sum(items: number[]) {\n  let acc = 0;\n  for (const item of items) {\n    acc = acc + item;\n  }\n  return acc;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "nested-if-deep-dead-reassign",
+    "code": "function deep(a: boolean, b: boolean, c: boolean) {\n  let mode = 0;\n  if (a) {\n    if (b) {\n      mode = 1;\n      if (c) {\n        mode = 2;\n      } else {\n        mode = 3;\n      }\n    } else {\n      mode = 4;\n    }\n  } else {\n    mode = 5;\n  }\n  return mode;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "one-branch-keeps-init-live",
+    "code": "function compute(flag: boolean) {\n  let value = 1;\n  if (flag) {\n    value = 2;\n  }\n  return value;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "phi-only-liveness-no-direct-read",
+    "code": "function compute(flag: boolean) {\n  let value = 0;\n  if (flag) {\n    value = 1;\n  } else {\n    value = 2;\n  }\n  let mirror = value;\n  return mirror;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "shadowing-inner-block-binding",
+    "code": "function shadow(flag: boolean) {\n  let value = 1;\n  if (flag) {\n    let value = 2;\n    sink(value);\n  }\n  return value;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "straight-line-double-dead-store",
+    "code": "function compute() {\n  let total = expensive();\n  total = cheap();\n  total = fresh();\n  return total;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "switch-fallthrough-dead-store",
+    "code": "function classify(code: number) {\n  let label = \"unknown\";\n  switch (code) {\n    case 1:\n      label = \"one\";\n    case 2:\n      label = \"two\";\n      break;\n    default:\n      label = \"other\";\n  }\n  return label;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "try-catch-finally-overwrite",
+    "code": "function compute(): number {\n  let status = 0;\n  try {\n    status = risky();\n  } catch (error) {\n    status = -1;\n  } finally {\n    status = 99;\n  }\n  return status;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "value-read-before-next-write",
+    "code": "function compute() {\n  let value = 1;\n  log(value);\n  value = 2;\n  return value;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "var-hoisting-redeclare-dead",
+    "code": "function legacy(flag: boolean) {\n  var counter = 0;\n  counter = 1;\n  if (flag) {\n    var counter2 = counter;\n    return counter2;\n  }\n  counter = 2;\n  return counter;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "while-true-unconditional-overwrite",
+    "code": "function loop(): number {\n  let x = seed();\n  while (true) {\n    x = compute();\n    if (done(x)) {\n      return x;\n    }\n  }\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-dead-assignment",
+    "name": "wholly-unused-no-read-reference",
+    "code": "function compute() {\n  let value = 1;\n  value = 2;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "arrow-component-unconditional-setter",
+    "code": "import { useState } from \"react\";\nconst Component = ({ count }) => {\n  const [c, setC] = useState(count);\n  setC(count + 1);\n  return null;\n};\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "bare-unconditional-setter",
+    "code": "import { useState } from \"react\";\nfunction Component() {\n  const [count, setCount] = useState(0);\n  setCount(count + 1);\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "deeply-nested-guard-not-unconditional",
+    "code": "import { useState } from \"react\";\nfunction Component({ a, b, d, count }) {\n  const [c, setC] = useState(count);\n  if (a) {\n    if (b) {\n      if (d) {\n        setC(count + 1);\n      }\n    }\n  }\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "early-return-then-setter",
+    "code": "import { useState } from \"react\";\nfunction Component({ ready }) {\n  const [count, setCount] = useState(0);\n  if (!ready) return null;\n  setCount(count + 1);\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "guarded-store-previous-render",
+    "code": "import { useState } from \"react\";\nfunction Component({ count }) {\n  const [prevCount, setPrevCount] = useState(count);\n  if (prevCount !== count) {\n    setPrevCount(count);\n  }\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "if-throw-then-setter-unconditional",
+    "code": "import { useState } from \"react\";\nfunction Component({ ready }) {\n  const [count, setCount] = useState(0);\n  if (!ready) throw new Error(\"not ready\");\n  setCount(count + 1);\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "labeled-break-bypasses-setter",
+    "code": "import { useState } from \"react\";\nfunction Component({ rows, count }) {\n  const [c, setC] = useState(count);\n  outer: for (const row of rows) {\n    for (const cell of row) {\n      if (cell == null) break outer;\n      setC(count + 1);\n    }\n  }\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "setter-after-throw-deadcode",
+    "code": "import { useState } from \"react\";\nfunction Component() {\n  const [count, setCount] = useState(0);\n  throw new Error(\"stop\");\n  setCount(count + 1);\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "setter-after-try-in-finally",
+    "code": "import { useState } from \"react\";\nfunction Component() {\n  const [count, setCount] = useState(0);\n  try {\n    doRisky();\n  } finally {\n    setCount(count + 1);\n  }\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "setter-after-unconditional-return-deadcode",
+    "code": "import { useState } from \"react\";\nfunction Component() {\n  const [count, setCount] = useState(0);\n  return null;\n  setCount(count + 1);\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "setter-guarded-short-circuit-and",
+    "code": "import { useState } from \"react\";\nfunction Component({ flag, count }) {\n  const [c, setC] = useState(count);\n  flag && setC(count + 1);\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "setter-in-both-branches-not-merged",
+    "code": "import { useState } from \"react\";\nfunction Component({ flag }) {\n  const [count, setCount] = useState(0);\n  if (flag) {\n    setCount(1);\n  } else {\n    setCount(2);\n  }\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "setter-in-catch-only",
+    "code": "import { useState } from \"react\";\nfunction Component() {\n  const [count, setCount] = useState(0);\n  try {\n    doRisky();\n  } catch {\n    setCount(count + 1);\n  }\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "setter-in-effect-callback-not-flagged",
+    "code": "import { useState, useEffect } from \"react\";\nfunction Component() {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    setCount(count + 1);\n  }, [count]);\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "setter-in-nested-callback-escapes",
+    "code": "import { useState } from \"react\";\nfunction Component({ items, count }) {\n  const [c, setC] = useState(count);\n  items.forEach(() => {\n    setC(count + 1);\n  });\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "setter-in-ternary-consequent",
+    "code": "import { useState } from \"react\";\nfunction Component({ flag, count }) {\n  const [c, setC] = useState(count);\n  const value = flag ? setC(count + 1) : count;\n  return value;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "setter-in-try-body",
+    "code": "import { useState } from \"react\";\nfunction Component({ count }) {\n  const [c, setC] = useState(count);\n  try {\n    setC(count + 1);\n  } catch {\n    recover();\n  }\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "setter-inside-do-while-body",
+    "code": "import { useState } from \"react\";\nfunction Component({ n }) {\n  const [count, setCount] = useState(0);\n  do {\n    setCount(count + 1);\n  } while (count < n);\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "setter-inside-for-ever-loop",
+    "code": "import { useState } from \"react\";\nfunction Component() {\n  const [count, setCount] = useState(0);\n  for (;;) {\n    setCount(count + 1);\n  }\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "setter-inside-infinite-while-true",
+    "code": "import { useState } from \"react\";\nfunction Component() {\n  const [count, setCount] = useState(0);\n  while (true) {\n    setCount(count + 1);\n  }\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "setter-inside-while-loop-body",
+    "code": "import { useState } from \"react\";\nfunction Component({ items }) {\n  const [count, setCount] = useState(0);\n  while (count < items.length) {\n    setCount(count + 1);\n  }\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "switch-fallthrough-default-setter",
+    "code": "import { useState } from \"react\";\nfunction Component({ kind }) {\n  const [count, setCount] = useState(0);\n  switch (kind) {\n    case \"a\":\n    case \"b\":\n      break;\n    default:\n      setCount(count + 1);\n  }\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "switch-setter-in-every-case",
+    "code": "import { useState } from \"react\";\nfunction Component({ kind }) {\n  const [count, setCount] = useState(0);\n  switch (kind) {\n    case \"a\":\n      setCount(1);\n      break;\n    default:\n      setCount(2);\n      break;\n  }\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render",
+    "name": "two-components-shared-cfg-order",
+    "code": "import { useState } from \"react\";\nfunction First() {\n  const [a, setA] = useState(0);\n  if (Math.random() > 0.5) {\n    setA(1);\n  }\n  return null;\n}\nfunction Second() {\n  const [b, setB] = useState(0);\n  setB(1);\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "callback-with-loop-inside-loop-no-flag",
+    "code": "import { useState } from \"react\";\nfunction Outer({ groups }) {\n  const [count, setCount] = useState(0);\n  for (const group of groups) {\n    group.items.forEach((item) => {\n      setCount(item);\n    });\n  }\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "conditional-loop-after-throw-flag",
+    "code": "import { useState } from \"react\";\nfunction MaybeBail({ items, abort }) {\n  const [value, setValue] = useState(0);\n  if (abort) throw new Error(\"abort\");\n  for (const item of items) {\n    setValue(item);\n  }\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "do-while-flag",
+    "code": "import { useState } from \"react\";\nfunction Poller({ probe }) {\n  const [tick, setTick] = useState(0);\n  do {\n    setTick(tick + 1);\n  } while (probe());\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "for-empty-infinite-defer",
+    "code": "import { useState } from \"react\";\nfunction Loop() {\n  const [value, setValue] = useState(0);\n  for (;;) {\n    setValue(1);\n  }\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "for-in-labeled-continue-flag",
+    "code": "import { useState } from \"react\";\nfunction Grid({ rows }) {\n  const [active, setActive] = useState(0);\n  outer: for (const key in rows) {\n    for (const inner in rows[key]) {\n      if (inner === \"skip\") continue outer;\n      setActive(inner);\n    }\n  }\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "for-infinite-conditional-setter-flag",
+    "code": "import { useState } from \"react\";\nfunction Loop({ gate }) {\n  const [value, setValue] = useState(0);\n  for (;;) {\n    if (gate) {\n      setValue(1);\n    }\n  }\n}\n",
+    "expectedToFlag": false,
+    "knownGap": "should flag — medium rule-bug (see PR review)"
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "for-of-flag-baseline",
+    "code": "import { useState } from \"react\";\nfunction List({ items }) {\n  const [selected, setSelected] = useState(null);\n  for (const item of items) {\n    setSelected(item);\n  }\n  return <div />;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "logical-shortcircuit-in-loop-flag",
+    "code": "import { useState } from \"react\";\nfunction Cond({ items }) {\n  const [hit, setHit] = useState(false);\n  for (const item of items) {\n    item.ok && setHit(true);\n  }\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "loop-after-early-return-dead-no-flag",
+    "code": "import { useState } from \"react\";\nfunction Guarded({ items, bail }) {\n  const [value, setValue] = useState(0);\n  return null;\n  for (const item of items) {\n    setValue(item);\n  }\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "loop-break-continue-mix-flag",
+    "code": "import { useState } from \"react\";\nfunction Scanner({ tokens }) {\n  const [found, setFound] = useState(null);\n  while (tokens.length) {\n    const token = tokens.pop();\n    if (token === \"stop\") break;\n    if (token === \"skip\") continue;\n    setFound(token);\n  }\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "loop-with-handler-callback-no-flag",
+    "code": "import { useState } from \"react\";\nfunction Menu({ items }) {\n  const [open, setOpen] = useState(false);\n  const handlers = [];\n  for (const item of items) {\n    handlers.push(() => setOpen(true));\n  }\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "map-callback-escapes-loop-no-flag",
+    "code": "import { useState } from \"react\";\nfunction List({ items }) {\n  const [selected, setSelected] = useState(null);\n  const rows = items.map((item) => {\n    setSelected(item);\n    return item;\n  });\n  return <ul>{rows}</ul>;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "nested-loops-inner-setter-flag",
+    "code": "import { useState } from \"react\";\nfunction Matrix({ rows, cols }) {\n  const [cell, setCell] = useState(null);\n  for (let i = 0; i < rows; i++) {\n    for (let j = 0; j < cols; j++) {\n      setCell({ i, j });\n    }\n  }\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "non-component-lowercase-loop-no-flag",
+    "code": "import { useState } from \"react\";\nfunction processItems({ items }) {\n  const [selected, setSelected] = useState(null);\n  for (const item of items) {\n    setSelected(item);\n  }\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "self-loop-single-block-conditional-flag",
+    "code": "import { useState } from \"react\";\nfunction Tight({ keepGoing }) {\n  const [n, setN] = useState(0);\n  while (keepGoing()) setN(1);\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "setter-after-loop-no-flag",
+    "code": "import { useState } from \"react\";\nfunction Summary({ items }) {\n  const [total, setTotal] = useState(0);\n  let sum = 0;\n  for (const item of items) {\n    sum += item.value;\n  }\n  setTotal(sum);\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "setter-before-loop-no-flag",
+    "code": "import { useState } from \"react\";\nfunction Init({ items }) {\n  const [ready, setReady] = useState(false);\n  setReady(true);\n  for (const item of items) {\n    doWork(item);\n  }\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "switch-in-loop-fallthrough-flag",
+    "code": "import { useState } from \"react\";\nfunction Machine({ events }) {\n  const [state, setState] = useState(\"idle\");\n  for (const event of events) {\n    switch (event.kind) {\n      case \"a\":\n        setState(\"a\");\n      case \"b\":\n        setState(\"b\");\n        break;\n      default:\n        setState(\"idle\");\n    }\n  }\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "ternary-callback-vs-loop-no-flag",
+    "code": "import { useState } from \"react\";\nfunction Mixed({ items, mode }) {\n  const [val, setVal] = useState(0);\n  const run = mode ? () => { for (const i of items) setVal(i); } : null;\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "throw-in-loop-before-setter-flag",
+    "code": "import { useState } from \"react\";\nfunction Risky({ items }) {\n  const [error, setError] = useState(null);\n  for (const item of items) {\n    if (item.bad) throw new Error(\"bad\");\n    setError(item.id);\n  }\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "try-catch-loop-in-catch-flag",
+    "code": "import { useState } from \"react\";\nfunction Retry({ attempts }) {\n  const [status, setStatus] = useState(\"idle\");\n  try {\n    doRisky();\n  } catch (e) {\n    for (const attempt of attempts) {\n      setStatus(attempt);\n    }\n  }\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "two-loops-one-setter-each-flag",
+    "code": "import { useState } from \"react\";\nfunction Dual({ a, b }) {\n  const [x, setX] = useState(0);\n  const [y, setY] = useState(0);\n  for (const item of a) {\n    setX(item);\n  }\n  for (const item of b) {\n    setY(item);\n  }\n  return null;\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-set-state-in-render-loop",
+    "name": "while-true-unconditional-defer",
+    "code": "import { useState } from \"react\";\nfunction Spinner() {\n  const [value, setValue] = useState(0);\n  while (true) {\n    setValue(1);\n  }\n  return null;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "arrow-component-write-after-hook",
+    "code": "const Component = () => {\n  let title = base;\n  const handler = useCallback(() => title, []);\n  title = title + suffix;\n  return handler;\n};",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "baseline-let-reassigned-after",
+    "code": "function Component() {\n  let count = 0;\n  const handler = useCallback(() => console.log(count), []);\n  count = 1;\n  return handler;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "const-capture-no-flag",
+    "code": "function Component() {\n  const count = 0;\n  const handler = useCallback(() => console.log(count), []);\n  return handler;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "do-while-write-after-hook",
+    "code": "function Component() {\n  let n = 0;\n  const handler = useCallback(() => n, []);\n  do {\n    n = n + 1;\n  } while (n < 10);\n  return handler;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "labeled-continue-loop-write",
+    "code": "function Component() {\n  let acc = 0;\n  const handler = useCallback(() => acc, []);\n  outer: for (let i = 0; i < 4; i = i + 1) {\n    for (let j = 0; j < 4; j = j + 1) {\n      if (skip(i, j)) continue outer;\n      acc = acc + i * j;\n    }\n  }\n  return handler;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "no-write-anywhere-let",
+    "code": "function Component() {\n  let count = 0;\n  const handler = useCallback(() => count, []);\n  use(count);\n  return handler;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "outer-captured-despite-inner-shadow",
+    "code": "function Component() {\n  let count = 0;\n  const handler = useCallback(() => {\n    let other = count;\n    return () => {\n      let count = 99;\n      return count + other;\n    };\n  }, []);\n  count = 1;\n  return handler;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "self-loop-single-block-write-at-hook",
+    "code": "function Component() {\n  let value = 0;\n  while (true) {\n    value = value + 1;\n    const handler = useCallback(() => value, []);\n    return handler;\n  }\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "shadowed-inner-let-not-captured",
+    "code": "function Component() {\n  let count = 0;\n  const handler = useCallback(() => {\n    let count = 5;\n    count = 6;\n    return count;\n  }, []);\n  count = 1;\n  return handler;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "shortcircuit-conditional-write",
+    "code": "function Component() {\n  let flag = 0;\n  const handler = useCallback(() => flag, []);\n  cond() && (flag = 1);\n  ready ? (flag = 2) : null;\n  return handler;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "switch-fallthrough-write",
+    "code": "function Component() {\n  let mode = 0;\n  const handler = useCallback(() => mode, []);\n  switch (pick()) {\n    case 1:\n      mode = 1;\n    case 2:\n      mode = 2;\n      break;\n    default:\n      mode = 3;\n  }\n  return handler;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "try-catch-finally-write-after-hook",
+    "code": "function Component() {\n  let token = null;\n  const handler = useCallback(() => token, []);\n  try {\n    token = acquire();\n  } catch (error) {\n    token = fallback();\n  } finally {\n    token = normalize(token);\n  }\n  return handler;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "two-hooks-share-binding",
+    "code": "function Component() {\n  let value = 0;\n  const a = useCallback(() => value, []);\n  value = 1;\n  const b = useMemo(() => value, []);\n  value = 2;\n  return [a, b];\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "useeffect-not-memoizing-hook",
+    "code": "function Component() {\n  let bounds;\n  useEffect(() => report(bounds), []);\n  bounds = compute();\n  return null;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "var-hoisted-reassigned-after",
+    "code": "function Component() {\n  var count = 0;\n  const handler = useCallback(() => count, []);\n  count = 1;\n  return handler;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "write-and-hook-same-block-cyclic",
+    "code": "function Component() {\n  let value = 0;\n  for (;;) {\n    const handler = useCallback(() => value, []);\n    value = value + 1;\n    use(handler);\n  }\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "write-before-and-after-hook",
+    "code": "function Component() {\n  let count = 0;\n  count = 1;\n  const handler = useCallback(() => console.log(count), []);\n  count = 2;\n  return handler;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "write-before-hook-only",
+    "code": "function Component() {\n  let count = 0;\n  count = 1;\n  const handler = useCallback(() => console.log(count), []);\n  return handler;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "write-in-loop-before-hook",
+    "code": "function Component() {\n  let total = 0;\n  for (let index = 0; index < 3; index = index + 1) {\n    total = total + index;\n  }\n  const handler = useCallback(() => total, []);\n  return handler;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "write-in-while-loop-after-hook",
+    "code": "function Component() {\n  let total = 0;\n  const handler = useCallback(() => total, []);\n  while (cond()) {\n    total = total + 1;\n  }\n  return handler;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "write-inside-closure-only",
+    "code": "function Component() {\n  let count = 0;\n  const handler = useCallback(() => {\n    count = count + 1;\n    return count;\n  }, []);\n  return handler;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "write-only-on-early-return-branch",
+    "code": "function Component() {\n  let count = 0;\n  const handler = useCallback(() => count, []);\n  if (cond()) {\n    return handler;\n  }\n  count = 1;\n  return handler;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-stale-closure-capture",
+    "name": "write-unreachable-after-throw",
+    "code": "function Component() {\n  let count = 0;\n  const handler = useCallback(() => count, []);\n  return handler;\n  count = 1;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "after-return-then-deeply-nested-blocks",
+    "code": "function compute() {\n  return 1;\n  {\n    {\n      {\n        deep();\n      }\n    }\n  }\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "both-if-branches-return-tail-dead",
+    "code": "function compute(flag: boolean) {\n  if (flag) {\n    return 1;\n  } else {\n    return 2;\n  }\n  afterIf();\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "callback-escapes-loop-body-not-dead",
+    "code": "function compute(items: number[]) {\n  items.forEach((item) => {\n    if (item > 0) return;\n    handle(item);\n  });\n  afterForEach();\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "do-while-body-returns-first-iter-tail-dead",
+    "code": "function compute(x: number) {\n  var marker = 1;\n  do {\n    return x;\n  } while (x > 0);\n  afterReturningDoWhile();\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "do-while-true-tail-dead",
+    "code": "function compute() {\n  do {\n    once();\n  } while (true);\n  afterDoWhile();\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "empty-finally-after-try-return-dead-tail",
+    "code": "function compute() {\n  var marker = 1;\n  try {\n    return 0;\n  } finally {}\n  afterEmptyFinally();\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "everything-after-return-is-hoisted-no-report",
+    "code": "function compute() {\n  return 1;\n  function helper() {}\n  type Alias = string;\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "finally-returns-code-after-try-dead",
+    "code": "function compute() {\n  try {\n    go();\n  } finally {\n    return 1;\n  }\n  after();\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "finally-runs-after-try-return-reachable",
+    "code": "function compute() {\n  try {\n    return 0;\n  } finally {\n    cleanup();\n  }\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "for-no-test-infinite-continue-only-tail-dead",
+    "code": "function compute(flag: boolean) {\n  for (;;) {\n    if (flag) continue;\n    spin();\n  }\n  unreachableTail();\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "hoisted-decls-after-return-skipped-to-runtime-stmt",
+    "code": "function compute() {\n  return 1;\n  type Helper = { id: number };\n  interface Other { name: string }\n  function helper() {}\n  var hoisted;\n  runtimeStatement();\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "if-only-then-returns-tail-reachable",
+    "code": "function compute(flag: boolean) {\n  if (flag) {\n    return 1;\n  }\n  afterIf();\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "if-true-not-folded-tail-reachable",
+    "code": "function compute() {\n  if (true) return 1;\n  afterIfTrue();\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "infinite-while-true-tail-dead",
+    "code": "function compute() {\n  while (true) {\n    tick();\n  }\n  neverRuns();\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "infinite-while-true-with-break-tail-reachable",
+    "code": "function compute(stop: () => boolean) {\n  while (true) {\n    if (stop()) break;\n    work();\n  }\n  afterLoop();\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "labeled-block-break-tail-reachable",
+    "code": "function compute() {\n  outer: {\n    side();\n    break outer;\n  }\n  afterLabeledBlock();\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "labeled-break-then-dead-in-loop-body",
+    "code": "function compute(items: number[]) {\n  outer: for (const item of items) {\n    break outer;\n    process(item);\n  }\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "loop-body-break-and-continue-trailing-dead",
+    "code": "function compute(x: number) {\n  var marker = 1;\n  while (x) {\n    if (x) break;\n    else continue;\n    trailingInLoop();\n  }\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "nested-function-dead-tail-isolated",
+    "code": "function outer(flag: boolean) {\n  if (flag) {\n    function bar() {\n      return 1;\n      deadInBar();\n    }\n  }\n  liveInOuter();\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "short-circuit-and-no-terminator-tail-reachable",
+    "code": "function compute(flag: boolean) {\n  flag && earlyEffect();\n  alwaysRuns();\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "switch-break-path-reaches-tail",
+    "code": "function compute(x: number) {\n  switch (x) {\n    case 0:\n      break;\n    default:\n      return -1;\n  }\n  afterSwitch();\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "switch-case-return-then-dead-statement",
+    "code": "function compute(kind: string) {\n  switch (kind) {\n    case \"a\":\n      return 1;\n      logA();\n    default:\n      return 0;\n  }\n}\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "switch-fallthrough-next-case-reachable",
+    "code": "function compute(kind: number) {\n  switch (kind) {\n    case 1:\n      doA();\n    case 2:\n      doB();\n    default:\n      doD();\n  }\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "switch-no-default-falls-through-tail-reachable",
+    "code": "function compute(authType: number) {\n  switch (authType) {\n    case 1:\n      return a();\n    case 2:\n      return b();\n    case 3:\n      return c();\n  }\n  afterSwitch();\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "ternary-both-arms-throw-tail-not-flagged",
+    "code": "function compute(flag: boolean) {\n  const value = flag ? raise() : fallback();\n  use(value);\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "top-level-throw-then-dead-program-body",
+    "code": "const config = loadConfig();\nthrow new Error(\"fatal\");\nbootstrap();\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreachable-code",
+    "name": "try-catch-finally-all-complete-reachable",
+    "code": "function compute() {\n  try {\n    risky();\n  } catch (error) {\n    handle(error);\n  } finally {\n    log();\n  }\n  afterTry();\n}\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "abort-controller-leaked-nested-branches",
+    "code": "function Component(a, b, c) {\n  useLayoutEffect(() => {\n    const controller = new AbortController();\n    if (a) {\n      if (b) {\n        return;\n      }\n      controller.abort();\n    } else if (c) {\n      controller.abort();\n    } else {\n      return;\n    }\n  }, []);\n  return null;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "callback-escapes-loop-close-inside-closure",
+    "code": "function Component(flag) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    items.forEach(() => {\n      clearInterval(id);\n    });\n    if (flag) {\n      return;\n    }\n  }, []);\n  return null;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "correlated-guard-leak-infeasible",
+    "code": "function Component(flag) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    if (flag) {\n      return;\n    }\n    if (!flag) {\n      clearInterval(id);\n    }\n  }, []);\n  return null;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "deep-diamond-chain-goal-sparse",
+    "code": "function Component(p) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    if (p.a) { foo(); } else { bar(); }\n    if (p.b) { foo(); } else { bar(); }\n    if (p.c) { foo(); } else { bar(); }\n    if (p.d) { foo(); } else { bar(); }\n    if (p.e) { foo(); } else { bar(); }\n    if (p.f) { foo(); } else { bar(); }\n    if (p.g) {\n      return;\n    }\n    clearInterval(id);\n  }, []);\n  return null;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "do-while-runs-once-then-leak",
+    "code": "function Component(getMore) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    do {\n      if (getMore()) {\n        return;\n      }\n    } while (getMore());\n    clearInterval(id);\n  }, []);\n  return null;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "labeled-continue-break-nested-loops",
+    "code": "function Component(rows) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    outer: for (const row of rows) {\n      for (const cell of row) {\n        if (cell.stop) {\n          break outer;\n        }\n        if (cell.skip) {\n          continue outer;\n        }\n        if (cell.bail) {\n          return;\n        }\n      }\n    }\n    clearInterval(id);\n  }, []);\n  return null;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "listener-add-remove-keyed-pair-leak",
+    "code": "function Component(flag) {\n  useEffect(() => {\n    target.addEventListener(\"click\", handler);\n    if (flag) {\n      return;\n    }\n    target.removeEventListener(\"click\", handler);\n  }, []);\n  return null;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "listener-mismatched-handler-no-pair",
+    "code": "function Component(flag) {\n  useEffect(() => {\n    target.addEventListener(\"click\", handlerA);\n    if (flag) {\n      return;\n    }\n    target.removeEventListener(\"click\", handlerB);\n  }, []);\n  return null;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "loop-break-leaves-timer-open",
+    "code": "function Component(items) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    for (const item of items) {\n      if (item.done) {\n        break;\n      }\n      if (item.skip) {\n        return;\n      }\n    }\n    clearInterval(id);\n  }, []);\n  return null;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "namespaced-effect-with-subscription-leak",
+    "code": "function Component(flag) {\n  React.useEffect(() => {\n    const sub = source.subscribe(onValue);\n    if (flag) {\n      return;\n    }\n    sub.unsubscribe();\n  }, []);\n  return null;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "not-an-effect-plain-helper",
+    "code": "function start(flag) {\n  const id = setInterval(tick, 1000);\n  if (flag) {\n    return;\n  }\n  clearInterval(id);\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "subscription-returned-as-cleanup-deferred",
+    "code": "function Component(flag) {\n  useEffect(() => {\n    const sub = source.subscribe(onValue);\n    if (flag) {\n      sub.unsubscribe();\n    }\n    return () => sub.unsubscribe();\n  }, []);\n  return null;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "switch-all-cases-close",
+    "code": "function Component(kind) {\n  useEffect(() => {\n    const id = setTimeout(tick, 500);\n    switch (kind) {\n      case \"a\":\n        clearTimeout(id);\n        break;\n      case \"b\":\n        clearTimeout(id);\n        break;\n      default:\n        clearTimeout(id);\n    }\n  }, []);\n  return null;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "switch-fallthrough-some-cases-leak",
+    "code": "function Component(kind) {\n  useEffect(() => {\n    const id = setTimeout(tick, 500);\n    switch (kind) {\n      case \"a\":\n      case \"b\":\n        clearTimeout(id);\n        break;\n      case \"c\":\n        return;\n      default:\n        clearTimeout(id);\n    }\n  }, []);\n  return null;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "throw-only-on-leak-path",
+    "code": "function Component(flag) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    if (flag) {\n      throw new Error(\"bail\");\n    }\n    clearInterval(id);\n  }, []);\n  return null;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "timer-closed-on-every-branch",
+    "code": "function Component(flag) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    if (flag) {\n      clearInterval(id);\n      return;\n    }\n    clearInterval(id);\n  }, []);\n  return null;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "timer-leaked-on-early-return",
+    "code": "function Component(flag) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    if (flag) {\n      return;\n    }\n    clearInterval(id);\n  }, []);\n  return null;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "timer-never-closed-no-intent",
+    "code": "function Component() {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    return id;\n  }, []);\n  return null;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "timer-released-only-in-finally",
+    "code": "function Component(flag) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    try {\n      if (flag) {\n        return;\n      }\n    } finally {\n      clearInterval(id);\n    }\n  }, []);\n  return null;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "try-catch-rethrow-close-after",
+    "code": "function Component(run) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    try {\n      run();\n    } catch (error) {\n      clearInterval(id);\n      throw error;\n    }\n    clearInterval(id);\n  }, []);\n  return null;\n}",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "two-timers-one-leaks-one-clean",
+    "code": "function Component(flag) {\n  useEffect(() => {\n    const a = setInterval(tickA, 1000);\n    const b = setInterval(tickB, 2000);\n    clearInterval(b);\n    if (flag) {\n      return;\n    }\n    clearInterval(a);\n  }, []);\n  return null;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "no-unreleased-resource",
+    "name": "while-loop-close-inside-body",
+    "code": "function Component(getNext) {\n  useEffect(() => {\n    const id = setInterval(tick, 1000);\n    let next = getNext();\n    while (next) {\n      clearInterval(id);\n      next = getNext();\n    }\n  }, []);\n  return null;\n}",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-conditional-throw-in-helper-callback",
+    "code": "import { useState } from \"react\";\n\nfunction useOuter(condition: boolean) {\n  const compute = () => {\n    if (condition) {\n      throw new Error(\"nope\");\n    }\n    return 42;\n  };\n  const [value] = useState(compute());\n  return value;\n}\n\nexport default useOuter;\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-deeply-nested-guards-all-return",
+    "code": "import { useEffect } from \"react\";\n\nfunction Component(props: { a: boolean; b: boolean; c: boolean; d: boolean }) {\n  if (props.a) {\n    if (props.b) {\n      if (props.c) {\n        if (props.d) {\n          return null;\n        }\n      }\n    }\n  }\n  useEffect(() => {}, []);\n  return null;\n}\n\nexport default Component;\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-deeply-nested-guards-no-return",
+    "code": "import { useEffect } from \"react\";\n\nfunction Component(props: { a: boolean; b: boolean; c: boolean }) {\n  if (props.a) {\n    if (props.b) {\n      if (props.c) {\n        doWork();\n      }\n    }\n  }\n  useEffect(() => {}, []);\n  return null;\n}\n\ndeclare function doWork(): void;\n\nexport default Component;\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-finally-fallthrough",
+    "code": "import { useState } from \"react\";\n\nfunction useAfterTry(work: () => void) {\n  try {\n    work();\n  } finally {\n    audit();\n  }\n  const [value] = useState(0);\n  return value;\n}\n\ndeclare function audit(): void;\n\nexport default useAfterTry;\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-guard-with-non-throwing-side-effect",
+    "code": "import { useState } from \"react\";\n\nfunction useGuarded(condition: boolean) {\n  if (condition) {\n    sideEffect();\n  }\n  const [value] = useState(0);\n  return value;\n}\n\ndeclare function sideEffect(): void;\n\nexport default useGuarded;\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-if-return-early",
+    "code": "import { useState } from \"react\";\n\nfunction Component({ ready }: { ready: boolean }) {\n  if (!ready) {\n    return null;\n  }\n  const [value, setValue] = useState(0);\n  return <div onClick={() => setValue((previous) => previous + 1)}>{value}</div>;\n}\n\nexport default Component;\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-if-throw-guard",
+    "code": "import { useState } from \"react\";\n\nfunction useThing(condition: boolean) {\n  if (condition) {\n    throw new Error(\"bail\");\n  }\n  const [value, setValue] = useState(0);\n  return [value, setValue] as const;\n}\n\nexport default useThing;\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-labeled-continue-break",
+    "code": "import { useEffect } from \"react\";\n\nfunction useAfterNestedLoops(rows: number[][]) {\n  outer: for (const row of rows) {\n    for (const cell of row) {\n      if (cell < 0) {\n        continue outer;\n      }\n      if (cell > 100) {\n        break outer;\n      }\n    }\n  }\n  useEffect(() => {}, []);\n}\n\nexport default useAfterNestedLoops;\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-loop-with-break",
+    "code": "import { useState } from \"react\";\n\nfunction useAfterLoop(items: number[]) {\n  for (const item of items) {\n    if (item > 10) {\n      break;\n    }\n  }\n  const [value] = useState(0);\n  return value;\n}\n\nexport default useAfterLoop;\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-nested-throw-and-return-both-branches",
+    "code": "import { useEffect } from \"react\";\n\nfunction useGuarded(a: boolean, b: boolean) {\n  if (a) {\n    if (b) {\n      throw new Error(\"x\");\n    } else {\n      throw new Error(\"y\");\n    }\n  }\n  useEffect(() => {}, []);\n}\n\nexport default useGuarded;\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-switch-all-cases-return",
+    "code": "import { useState } from \"react\";\n\nfunction useByKind(kind: \"a\" | \"b\" | \"c\") {\n  switch (kind) {\n    case \"a\":\n      return 1;\n    case \"b\":\n      return 2;\n    default:\n      return 3;\n  }\n  const [unreachable] = useState(0);\n  return unreachable;\n}\n\nexport default useByKind;\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-switch-fallthrough-no-default",
+    "code": "import { useState } from \"react\";\n\nfunction useByKind(kind: string) {\n  switch (kind) {\n    case \"a\":\n    case \"b\":\n      doSomething();\n      break;\n    case \"c\":\n      return null;\n  }\n  const [value] = useState(0);\n  return value;\n}\n\ndeclare function doSomething(): void;\n\nexport default useByKind;\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-switch-no-early-exit",
+    "code": "import { useState } from \"react\";\n\nfunction useByKind(kind: string) {\n  let label = \"\";\n  switch (kind) {\n    case \"a\":\n      label = \"A\";\n      break;\n    default:\n      label = \"other\";\n  }\n  const [value] = useState(0);\n  return label + value;\n}\n\nexport default useByKind;\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-throw-only-one-branch",
+    "code": "import { useEffect } from \"react\";\n\nfunction useGuarded(a: boolean, b: boolean) {\n  if (a) {\n    if (b) {\n      throw new Error(\"x\");\n    }\n  }\n  useEffect(() => {}, []);\n}\n\nexport default useGuarded;\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-try-finally-return",
+    "code": "import { useState } from \"react\";\n\nfunction useAfterTry(input: number) {\n  try {\n    return input;\n  } finally {\n    cleanup();\n  }\n  const [value] = useState(0);\n  return value;\n}\n\ndeclare function cleanup(): void;\n\nexport default useAfterTry;\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-after-while-true-infinite",
+    "code": "import { useState } from \"react\";\n\nfunction useInfinite() {\n  while (true) {\n    process();\n  }\n  const [value] = useState(0);\n  return value;\n}\n\ndeclare function process(): void;\n\nexport default useInfinite;\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-conditional-via-or-default-pattern",
+    "code": "import { useContext } from \"react\";\n\nconst ThemeContext = createContext(null);\n\nfunction useTheme(override?: unknown) {\n  const theme = override ?? useContext(ThemeContext);\n  return theme;\n}\n\ndeclare function createContext(value: unknown): unknown;\n\nexport default useTheme;\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-in-do-while-self-loop",
+    "code": "import { useState } from \"react\";\n\nfunction useLoopy() {\n  let value = 0;\n  do {\n    const [state] = useState(0);\n    value = state;\n  } while (false);\n  return value;\n}\n\nexport default useLoopy;\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-in-logical-and-rhs",
+    "code": "import { useEffect } from \"react\";\n\nfunction Component({ enabled }: { enabled: boolean }) {\n  enabled && useEffect(() => {}, []);\n  return null;\n}\n\nexport default Component;\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-in-ternary-condition",
+    "code": "import { useState } from \"react\";\n\nfunction Component({ flag }: { flag: boolean }) {\n  const value = flag ? useState(0)[0] : 0;\n  return <span>{value}</span>;\n}\n\nexport default Component;\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-inside-try-block",
+    "code": "import { useState } from \"react\";\n\nfunction useRisky() {\n  try {\n    const [value] = useState(0);\n    return value;\n  } catch (error) {\n    return 0;\n  }\n}\n\nexport default useRisky;\n",
+    "expectedToFlag": true
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-unconditional-after-side-effect-statements",
+    "code": "import { useState, useRef, useMemo } from \"react\";\n\nfunction useComplex(input: number) {\n  const log = () => console.log(\"init\");\n  log();\n  const ref = useRef(input);\n  const memo = useMemo(() => input * 2, [input]);\n  const [state, setState] = useState(memo);\n  ref.current = state;\n  return { ref, memo, state, setState };\n}\n\nexport default useComplex;\n",
+    "expectedToFlag": false
+  },
+  {
+    "rule": "rules-of-hooks",
+    "name": "hook-unconditional-top-level-component",
+    "code": "import { useState, useEffect } from \"react\";\n\nfunction Counter() {\n  const [count, setCount] = useState(0);\n  useEffect(() => {\n    document.title = `count: ${count}`;\n  }, [count]);\n  return <button onClick={() => setCount(count + 1)}>{count}</button>;\n}\n\nexport default Counter;\n",
+    "expectedToFlag": false
+  }
+]

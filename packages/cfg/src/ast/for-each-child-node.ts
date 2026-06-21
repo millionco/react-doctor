@@ -7,7 +7,7 @@ import { isAstNode } from "./is-ast-node.js";
 // own the recursion and any function-boundary stop.
 export const forEachChildNode = (node: EsTreeNode, visit: (child: EsTreeNode) => void): void => {
   const record = node as unknown as Record<string, unknown>;
-  for (const key of Object.keys(record)) {
+  for (const key in record) {
     if (key === "parent") continue;
     const child = record[key];
     if (Array.isArray(child)) {

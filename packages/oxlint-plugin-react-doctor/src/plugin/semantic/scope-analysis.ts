@@ -789,7 +789,7 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
     pushScope("for", node, state);
     setNodeScope(node, state);
     const nodeRecord = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(nodeRecord)) {
+    for (const key in nodeRecord) {
       if (key === "parent") continue;
       if (TYPE_POSITION_CHILD_KEYS.has(key)) continue;
       const child = nodeRecord[key];
@@ -911,7 +911,7 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
 
   // Recurse into children.
   const nodeRecord = node as unknown as Record<string, unknown>;
-  for (const key of Object.keys(nodeRecord)) {
+  for (const key in nodeRecord) {
     if (key === "parent") continue;
     if (TYPE_POSITION_CHILD_KEYS.has(key)) continue;
     const child = nodeRecord[key];

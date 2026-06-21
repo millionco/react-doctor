@@ -51,8 +51,12 @@ export interface SsaAnalysis {
 export const analyzeSsa = (
   program: EsTreeNode,
   resolveBinding: ResolveBinding = createLexicalBindingResolver(program),
+  // Optional prebuilt CFG. When the caller already has one (the oxlint
+  // plugin shares a single CFG across cfg/ssa/dataflow per file), pass it so
+  // SSA does not rebuild it. Omitting it preserves the original behavior.
+  controlFlowArg?: ControlFlowAnalysis,
 ): SsaAnalysis => {
-  const controlFlow = analyzeControlFlow(program);
+  const controlFlow = controlFlowArg ?? analyzeControlFlow(program);
   const functionSsa = new Map<EsTreeNode, FunctionSsa>();
   const readIdentifierAt = new Map<EsTreeNode, SsaIdentifier>();
   const writeIdentifierAt = new Map<EsTreeNode, SsaIdentifier>();
@@ -108,13 +112,23 @@ export const analyzeSsa = (
   const versionAt = (node: EsTreeNode): SsaIdentifier | null =>
     readIdentifierAt.get(node) ?? writeIdentifierAt.get(node) ?? null;
 
+  // Index writes by binding so `isRedefinedBetween` scans only the target
+  // binding's write nodes instead of every write in the program.
+  const writeNodesByBinding = new Map<BindingId, EsTreeNode[]>();
+  for (const [node, identifier] of writeIdentifierAt) {
+    const nodes = writeNodesByBinding.get(identifier.binding);
+    if (nodes) nodes.push(node);
+    else writeNodesByBinding.set(identifier.binding, [node]);
+  }
+
   const isRedefinedBetween = (
     fromNode: EsTreeNode,
     toNode: EsTreeNode,
     binding: BindingId,
   ): boolean => {
-    for (const [node, identifier] of writeIdentifierAt) {
-      if (identifier.binding !== binding) continue;
+    const writeNodes = writeNodesByBinding.get(binding);
+    if (!writeNodes) return false;
+    for (const node of writeNodes) {
       if (node === fromNode || node === toNode) continue;
       if (controlFlow.isReachable(fromNode, node) && controlFlow.isReachable(node, toNode)) {
         return true;

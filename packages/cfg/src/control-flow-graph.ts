@@ -57,15 +57,51 @@ export interface ControlFlowAnalysis {
   readonly toDot: (functionLike: EsTreeNode) => string | null;
 }
 
+// Per-function analysis bundle. The CFG itself is built eagerly during
+// the AST walk (cheap, and `blockOf` needs it for every lookup), but the
+// six derived structures are each computed lazily on first access and
+// memoized — a rule that only queries `isInsideLoop` pays for nothing but
+// `cyclicBlocks`, never the dominator trees or the unconditional set.
 interface FunctionCfgEntry {
-  cfg: FunctionCfg;
-  unconditionalSet: Set<BasicBlock>;
-  dominatorTree: DominatorTree;
-  postDominatorTree: DominatorTree;
-  cyclicBlocks: Set<BasicBlock>;
-  reachableFromEntry: Set<BasicBlock>;
-  nodeOrder: Map<EsTreeNode, number>;
+  readonly cfg: FunctionCfg;
+  readonly unconditionalSet: Set<BasicBlock>;
+  readonly dominatorTree: DominatorTree;
+  readonly postDominatorTree: DominatorTree;
+  readonly cyclicBlocks: Set<BasicBlock>;
+  readonly reachableFromEntry: Set<BasicBlock>;
+  readonly nodeOrder: Map<EsTreeNode, number>;
 }
+
+const createFunctionCfgEntry = (functionNode: EsTreeNode, body: EsTreeNode): FunctionCfgEntry => {
+  const cfg = buildFunctionCfg(functionNode, body);
+  let unconditionalSet: Set<BasicBlock> | undefined;
+  let dominatorTree: DominatorTree | undefined;
+  let postDominatorTree: DominatorTree | undefined;
+  let cyclicBlocks: Set<BasicBlock> | undefined;
+  let reachableFromEntry: Set<BasicBlock> | undefined;
+  let nodeOrder: Map<EsTreeNode, number> | undefined;
+  return {
+    cfg,
+    get unconditionalSet() {
+      return (unconditionalSet ??= computeUnconditionalSet(cfg));
+    },
+    get dominatorTree() {
+      return (dominatorTree ??= computeDominatorTree(cfg.entry));
+    },
+    get postDominatorTree() {
+      return (postDominatorTree ??= computePostDominatorTree(cfg.exit));
+    },
+    get cyclicBlocks() {
+      return (cyclicBlocks ??= computeCyclicBlocks(cfg));
+    },
+    get reachableFromEntry() {
+      return (reachableFromEntry ??= computeReachableFromEntry(cfg));
+    },
+    get nodeOrder() {
+      return (nodeOrder ??= computeNodeOrder(functionNode, body));
+    },
+  };
+};
 
 // Walks the AST building a CFG for every function-like node + the
 // program. Lookups for an arbitrary AST node find the enclosing
@@ -74,16 +110,7 @@ export const analyzeControlFlow = (program: EsTreeNode): ControlFlowAnalysis => 
   const functionCfgs = new Map<EsTreeNode, FunctionCfgEntry>();
 
   const buildFor = (functionNode: EsTreeNode, body: EsTreeNode): void => {
-    const cfg = buildFunctionCfg(functionNode, body);
-    functionCfgs.set(functionNode, {
-      cfg,
-      unconditionalSet: computeUnconditionalSet(cfg),
-      dominatorTree: computeDominatorTree(cfg.entry),
-      postDominatorTree: computePostDominatorTree(cfg.exit),
-      cyclicBlocks: computeCyclicBlocks(cfg),
-      reachableFromEntry: computeReachableFromEntry(cfg),
-      nodeOrder: computeNodeOrder(functionNode, body),
-    });
+    functionCfgs.set(functionNode, createFunctionCfgEntry(functionNode, body));
   };
 
   // Build CFG for the program itself (treat as a "function" for
@@ -102,14 +129,23 @@ export const analyzeControlFlow = (program: EsTreeNode): ControlFlowAnalysis => 
   };
   visit(program);
 
+  // Walking the parent chain is O(depth) and the same node is queried
+  // repeatedly across the locate/dominates/postDominates primitives, so
+  // memoize the result per node. The CFG is immutable after construction.
+  const enclosingFunctionCache = new WeakMap<EsTreeNode, EsTreeNode | null>();
+
   const enclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
+    const cached = enclosingFunctionCache.get(node);
+    if (cached !== undefined) return cached;
     let current: EsTreeNode | null | undefined = node;
     while (current) {
-      if (isFunctionLike(current)) return current;
-      if (isNodeOfType(current, "Program")) return current;
+      if (isFunctionLike(current)) break;
+      if (isNodeOfType(current, "Program")) break;
       current = current.parent ?? null;
     }
-    return null;
+    const owner = current ?? null;
+    enclosingFunctionCache.set(node, owner);
+    return owner;
   };
 
   const cfgFor = (functionLike: EsTreeNode): FunctionCfg | null => {

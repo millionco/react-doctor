@@ -2,6 +2,7 @@ import type { EsTreeNode } from "../ast/es-tree-node.js";
 import { enumerateFunctions } from "../analysis/enumerate-functions.js";
 import { collectPlacesByBlock } from "../analysis/places-by-block.js";
 import { analyzeControlFlow } from "../control-flow-graph.js";
+import type { ControlFlowAnalysis } from "../control-flow-graph.js";
 import type { BasicBlock } from "../ir/basic-block.js";
 import type { BindingId, Place, ResolveBinding } from "../ir/place.js";
 import { createLexicalBindingResolver } from "../analysis/lexical-binding-resolver.js";
@@ -31,6 +32,10 @@ export interface DefiniteAssignmentOptions {
   // identifier to its abstract atom (the caller keys it by `ssa.versionAt` so
   // correlated branches collapse to one atom).
   readonly resolveValue?: ResolveValueAtom;
+  // Optional prebuilt CFG. When the caller already has one (the oxlint plugin
+  // shares a single CFG across cfg/ssa/dataflow per file), pass it so this
+  // analysis does not rebuild it. Omitting it preserves the original behavior.
+  readonly controlFlow?: ControlFlowAnalysis;
 }
 
 // The set of bindings definitely assigned so far, or `top` for a block not
@@ -87,7 +92,7 @@ export const analyzeDefiniteAssignment = (
   resolveBinding: ResolveBinding = createLexicalBindingResolver(program),
   options: DefiniteAssignmentOptions = {},
 ): DefiniteAssignmentAnalysis => {
-  const controlFlow = analyzeControlFlow(program);
+  const controlFlow = options.controlFlow ?? analyzeControlFlow(program);
   const maybeUnassignedByNode = new Map<EsTreeNode, boolean>();
   const { resolveValue } = options;
 

@@ -201,26 +201,30 @@ export const verifyTypestate = (
   });
 
   // Error transitions: replay each reachable block from its stable entry
-  // fact, reporting at most once per offending node.
-  const reportedErrorNodes = new Set<EsTreeNode>();
-  for (const block of cfg.blocks) {
-    stepBlock(
-      block,
-      result.entryFactOf(block),
-      eventsByBlock,
-      options.automaton,
-      (resourceEvent, state) => {
-        if (reportedErrorNodes.has(resourceEvent.node)) return;
-        reportedErrorNodes.add(resourceEvent.node);
-        if (refiner.errorProvablyInfeasible(resourceEvent)) return;
-        violations.push({
-          kind: "error-transition",
-          resource: resourceEvent.resource,
-          node: resourceEvent.node,
-          state,
-        });
-      },
-    );
+  // fact, reporting at most once per offending node. Skipped entirely when the
+  // automaton has no error states — `onErrorTransition` could never fire, so
+  // the sweep (and its per-block Map/Set allocation) would be pure overhead.
+  if (options.automaton.errorStates.size > 0) {
+    const reportedErrorNodes = new Set<EsTreeNode>();
+    for (const block of cfg.blocks) {
+      stepBlock(
+        block,
+        result.entryFactOf(block),
+        eventsByBlock,
+        options.automaton,
+        (resourceEvent, state) => {
+          if (reportedErrorNodes.has(resourceEvent.node)) return;
+          reportedErrorNodes.add(resourceEvent.node);
+          if (refiner.errorProvablyInfeasible(resourceEvent)) return;
+          violations.push({
+            kind: "error-transition",
+            resource: resourceEvent.resource,
+            node: resourceEvent.node,
+            state,
+          });
+        },
+      );
+    }
   }
 
   // Leaks: a resource resting in a non-accepting (non-error) state on a

@@ -16,8 +16,11 @@ export const computeUnconditionalSet = (cfg: FunctionCfg): Set<BasicBlock> => {
     const visited = new Set<BasicBlock>();
     const queue: BasicBlock[] = [];
     if (cfg.entry !== excluded) queue.push(cfg.entry);
-    while (queue.length > 0) {
-      const block = queue.shift()!;
+    // Index cursor instead of `queue.shift()` — the shift is O(V), which
+    // would make each traversal O(V^2); a head index keeps it O(V+E).
+    let head = 0;
+    while (head < queue.length) {
+      const block = queue[head++]!;
       if (visited.has(block)) continue;
       visited.add(block);
       for (const edge of block.successors) {

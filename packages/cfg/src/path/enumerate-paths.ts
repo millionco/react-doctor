@@ -1,4 +1,4 @@
-import { MAX_PATH_BLOCK_LENGTH, MAX_VIOLATION_PATHS } from "../constants.js";
+import { MAX_PATH_BLOCK_LENGTH, MAX_PATH_VISITS, MAX_VIOLATION_PATHS } from "../constants.js";
 import type { BasicBlock, CfgEdge } from "../ir/basic-block.js";
 
 export interface SimplePathQuery {
@@ -14,6 +14,10 @@ export interface SimplePathQuery {
   readonly canFollow?: (edge: CfgEdge) => boolean;
   readonly maxPaths?: number;
   readonly maxLength?: number;
+  // Global budget on total node expansions across the search, bounding the
+  // blow-up when goal blocks are sparse (so the `maxPaths` cap never trips)
+  // and the only other limit is per-path `maxLength`.
+  readonly maxVisits?: number;
 }
 
 export interface SimplePathResult {
@@ -32,13 +36,19 @@ export const enumerateSimplePaths = (query: SimplePathQuery): SimplePathResult =
   const canTraverse = query.canTraverse ?? (() => true);
   const maxPaths = query.maxPaths ?? MAX_VIOLATION_PATHS;
   const maxLength = query.maxLength ?? MAX_PATH_BLOCK_LENGTH;
+  const maxVisits = query.maxVisits ?? MAX_PATH_VISITS;
 
   const paths: BasicBlock[][] = [];
   const onStack = new Set<BasicBlock>();
   let complete = true;
+  let visits = 0;
 
   const visit = (block: BasicBlock, trail: BasicBlock[]): void => {
     if (!complete) return;
+    if (++visits > maxVisits) {
+      complete = false;
+      return;
+    }
     if (query.isGoal(block)) {
       paths.push([...trail, block]);
       if (paths.length > maxPaths) complete = false;

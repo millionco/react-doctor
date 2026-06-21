@@ -3,6 +3,7 @@ import type { SkillAgentType } from "agent-install";
 import { AGENT_HOOK_TIMEOUT_SECONDS, GIT_HOOK_EXECUTABLE_MODE } from "./constants.js";
 import * as fs from "node:fs";
 import { CliInputError } from "./cli-input-error.js";
+import { writeJsonFile } from "./git-hook-shared.js";
 
 interface InstallAgentHooksOptions {
   readonly projectRoot: string;
@@ -62,9 +63,12 @@ const readJsonFile = <Value>(filePath: string, fallback: Value): Value => {
   try {
     return JSON.parse(content);
   } catch (error) {
-    throw new CliInputError(
-      `Could not parse ${filePath}: the file contains invalid JSON. Fix the syntax errors in this file and re-run the install command.`,
-    );
+    if (error instanceof SyntaxError) {
+      throw new CliInputError(
+        `Could not parse ${filePath}: the file contains invalid JSON. Fix the syntax errors in this file and re-run the install command.`,
+      );
+    }
+    throw error;
   }
 };
 
@@ -79,20 +83,27 @@ const ensureDirectoryExists = (directoryPath: string): void => {
       );
     }
     if (nodeError.code === "ENOTDIR" || nodeError.code === "EEXIST") {
-      const stat = fs.existsSync(directoryPath) ? fs.statSync(directoryPath) : null;
-      if (stat && !stat.isDirectory()) {
-        throw new CliInputError(
-          `Could not create directory ${directoryPath}: a file exists at this path or one of its parent paths. Remove the conflicting file and re-run the install command.`,
-        );
+      try {
+        const stat = fs.statSync(directoryPath);
+        if (!stat.isDirectory()) {
+          throw new CliInputError(
+            `Could not create directory ${directoryPath}: a file exists at this path or one of its parent paths. Remove the conflicting file and re-run the install command.`,
+          );
+        }
+      } catch (statError) {
+        const statErrnoException = statError as NodeJS.ErrnoException;
+        if (statErrnoException.code !== "ENOENT") {
+          throw statError;
+        }
       }
     }
     throw error;
   }
 };
 
-const writeJsonFile = (filePath: string, value: unknown): void => {
+const writeJsonFileWithDirectoryCheck = (filePath: string, value: unknown): void => {
   ensureDirectoryExists(path.dirname(filePath));
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, JSON_INDENT_SPACES)}\n`);
+  writeJsonFile(filePath, value);
 };
 
 const writeHookScript = (filePath: string): void => {
@@ -123,7 +134,7 @@ const installClaudeHook = (projectRoot: string): readonly string[] => {
   }
 
   hooks.PostToolBatch = postToolBatchHooks;
-  writeJsonFile(settingsPath, { ...settings, hooks });
+  writeJsonFileWithDirectoryCheck(settingsPath, { ...settings, hooks });
   writeHookScript(hookPath);
 
   return [settingsPath, hookPath];
@@ -148,7 +159,7 @@ const installCursorHook = (projectRoot: string): readonly string[] => {
   }
 
   hooks.postToolUse = postToolUseHooks;
-  writeJsonFile(configPath, {
+  writeJsonFileWithDirectoryCheck(configPath, {
     ...config,
     version: config.version ?? CURSOR_HOOKS_SCHEMA_VERSION,
     hooks,

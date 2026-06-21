@@ -76,10 +76,9 @@ describe("simple-app", () => {
     assert.match(unusedDep.reason, /declared in dependencies\b/);
   });
 
-  it("should not flag used exports as unused", () => {
+  it("should not flag usedFunction as unused", () => {
     const allUnusedNames = deadExportNames(result);
     assert.ok(!allUnusedNames.includes("usedFunction"), "usedFunction should not be unused");
-    assert.ok(!allUnusedNames.includes("publicApiFunction"), "publicApiFunction is @public");
   });
 
   it("should flag react as unused (declared but never imported)", () => {

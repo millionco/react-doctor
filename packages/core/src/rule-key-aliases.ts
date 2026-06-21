@@ -15,7 +15,7 @@
 // originals that previously shipped under non-`react-doctor/`
 // namespaces (`effect/<id>` for the you-might-not-need-an-effect
 // family).
-const LEGACY_RULE_KEY_TO_NATIVE_RULE_KEY: Readonly<Record<string, string>> = {
+const LEGACY_RULE_KEY_TO_NATIVE_RULE_KEY: Readonly<Record<string, string>> = Object.assign(Object.create(null), {
   "effect/no-adjust-state-on-prop-change": "react-doctor/no-adjust-state-on-prop-change",
   "effect/no-chain-state-updates": "react-doctor/no-chain-state-updates",
   "effect/no-derived-state": "react-doctor/no-derived-state",
@@ -134,7 +134,7 @@ const LEGACY_RULE_KEY_TO_NATIVE_RULE_KEY: Readonly<Record<string, string>> = {
   "react/state-in-constructor": "react-doctor/state-in-constructor",
   "react/style-prop-object": "react-doctor/style-prop-object",
   "react/void-dom-elements-no-children": "react-doctor/void-dom-elements-no-children",
-};
+});
 
 const NATIVE_RULE_KEY_TO_LEGACY_RULE_KEYS = new Map<string, string[]>();
 for (const [legacyRuleKey, nativeRuleKey] of Object.entries(LEGACY_RULE_KEY_TO_NATIVE_RULE_KEY)) {
@@ -148,8 +148,10 @@ const getLegacyRuleKeysForNative = (ruleKey: string): ReadonlyArray<string> =>
 
 export const REACT_DOCTOR_RULE_KEY_PREFIX = "react-doctor/";
 
-const canonicalizeRuleKey = (ruleKey: string): string =>
-  LEGACY_RULE_KEY_TO_NATIVE_RULE_KEY[ruleKey] ?? ruleKey;
+const canonicalizeRuleKey = (ruleKey: string): string => {
+  const mapped = LEGACY_RULE_KEY_TO_NATIVE_RULE_KEY[ruleKey];
+  return typeof mapped === "string" ? mapped : ruleKey;
+};
 
 // A bare short id (`no-eval`) refers to the react-doctor rule of that id:
 // react-doctor reports it as `react-doctor/no-eval`, the only rule by that

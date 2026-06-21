@@ -21,7 +21,7 @@ interface PackageJsonDependencies {
   peerDependencies?: Record<string, string>;
 }
 
-const discoverAllPackageJsonPaths = (rootDir: string): string[] => {
+const discoverAllPackageJsonPathSet = (rootDir: string): Set<string> => {
   const paths = new Set([join(rootDir, "package.json")]);
   const workspacePackageJsons = fg.sync("**/package.json", {
     cwd: rootDir,
@@ -33,7 +33,7 @@ const discoverAllPackageJsonPaths = (rootDir: string): string[] => {
   for (const workspacePath of workspacePackageJsons) {
     paths.add(workspacePath);
   }
-  return [...paths];
+  return paths;
 };
 
 export const detectStalePackages = (
@@ -70,7 +70,7 @@ export const detectStalePackages = (
       ? [config.rootDir, monorepoRoot]
       : [config.rootDir];
 
-  const allPackageJsonPathSet = new Set(discoverAllPackageJsonPaths(config.rootDir));
+  const allPackageJsonPathSet = discoverAllPackageJsonPathSet(config.rootDir);
   if (monorepoRoot) {
     const monorepoPackageJson = join(monorepoRoot, "package.json");
     if (existsSync(monorepoPackageJson)) {

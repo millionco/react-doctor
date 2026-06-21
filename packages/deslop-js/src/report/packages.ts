@@ -159,18 +159,10 @@ export const detectStalePackages = (
     }
   }
 
-  const peerSatisfied = collectPeerSatisfiedPackages(
-    searchRoots,
-    declaredNames,
-    usedPackageNames,
-  );
+  const peerSatisfied = collectPeerSatisfiedPackages(searchRoots, declaredNames, usedPackageNames);
   for (const packageName of peerSatisfied) usedPackageNames.add(packageName);
 
-  const overrideMappings = collectOverrideMappings(
-    searchRoots,
-    allPackageJsonPaths,
-    monorepoRoot,
-  );
+  const overrideMappings = collectOverrideMappings(searchRoots, allPackageJsonPaths, monorepoRoot);
   for (const { toPackage } of overrideMappings) {
     if (declaredNames.has(toPackage)) usedPackageNames.add(toPackage);
   }

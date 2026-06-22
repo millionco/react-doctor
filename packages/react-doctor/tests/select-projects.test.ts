@@ -252,4 +252,17 @@ describe("selectProjects", () => {
     expect(cliLogger.log).toHaveBeenCalledWith(expect.stringContaining("frontend"));
     expect(cliLogger.log).toHaveBeenCalledWith(expect.stringContaining("mobile"));
   });
+
+  it("resolves --project to the current directory when the name matches the directory basename", async () => {
+    const tempDirectory = createTempDirectory();
+    writeJson(path.join(tempDirectory, "package.json"), {
+      name: "workspace",
+      workspaces: ["apps/*"],
+    });
+    const websiteDirectory = setupReactProject(path.join(tempDirectory, "apps"), "website");
+
+    const selectedDirectories = await selectProjects(websiteDirectory, "website", true);
+
+    expect(selectedDirectories).toEqual([websiteDirectory]);
+  });
 });

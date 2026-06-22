@@ -1,10 +1,11 @@
 ---
 "oxlint-plugin-react-doctor": patch
-"@react-doctor/core": patch
 ---
 
-fix(rn-no-raw-text): recognize common text wrapper component names
+fix(rn-no-raw-text): recognize common text-wrapper component names
 
-Adds Button, Chip, Badge, Pill, Tab, and Link to the text component keywords, allowing the rule to properly recognize these common text-rendering wrapper components when they're imported from other files. Also improves the precedence logic so that auto-detection takes priority over the name heuristic for locally-defined components, preventing false negatives.
+Adds `Button`, `Chip`, `Badge`, `Pill`, `Tab`, and `Link` to the text-component keyword list so the rule recognizes these common text-rendering wrappers when they're imported from another file (and the single-file auto-detection can't see their implementation).
+
+Keyword matching now matches a whole PascalCase word instead of any substring, so a short keyword like `Tab` recognizes `<Tab>`/`<TabBar>` without shadowing unrelated components that merely contain it (`<Table>`, `<DataTable>`, `<Hyperlink>`), where raw text is still a real crash. Precedence is also adjusted so auto-detection wins over the name heuristic for locally-defined components.
 
 Fixes #873

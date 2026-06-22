@@ -114,6 +114,40 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
+    it("suppresses a compound name whose PascalCase word is a keyword", () => {
+      expectPass(`
+        import { TabBar, PrimaryButton, NavLink } from "./ui";
+        const App = () => (
+          <>
+            <TabBar>Home</TabBar>
+            <PrimaryButton>Save</PrimaryButton>
+            <NavLink>Docs</NavLink>
+          </>
+        );
+      `);
+    });
+
+    // The keyword match is per-word, so a short keyword like `Tab`/`Link` must
+    // not shadow an unrelated component that merely contains it as a substring
+    // (`Table`, `DataTable`, `Hyperlink`) — raw text in those is a real crash.
+    it("still fires on Table even though it contains the substring 'Tab'", () => {
+      expectFail(`
+        import { Table } from "./ui";
+        const App = () => <Table>Raw cell text</Table>;
+      `);
+    });
+
+    it("still fires on DataTable ('Tab') and Hyperlink ('Link') substrings", () => {
+      expectFail(`
+        import { DataTable } from "./ui";
+        const App = () => <DataTable>Raw text</DataTable>;
+      `);
+      expectFail(`
+        import { Hyperlink } from "./ui";
+        const App = () => <Hyperlink>Raw text</Hyperlink>;
+      `);
+    });
+
     it("suppresses a wrapper forwarding children into a nested Text", () => {
       expectPass(`
         function Chip({ children }) {

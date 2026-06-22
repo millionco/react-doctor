@@ -12,6 +12,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { collectTextWrapperComponents } from "./utils/collect-text-wrapper-components.js";
 import { isExpoUiComponentElement } from "./utils/is-expo-ui-component-element.js";
+import { splitIdentifierWords } from "./utils/split-identifier-words.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -65,7 +66,12 @@ const resolveTextBoundaryName = (
 
 const isTextHandlingComponent = (elementName: string): boolean => {
   if (REACT_NATIVE_TEXT_COMPONENTS.has(elementName)) return true;
-  return [...REACT_NATIVE_TEXT_COMPONENT_KEYWORDS].some((keyword) => elementName.includes(keyword));
+  // Match a keyword only on a whole PascalCase word, never a substring, so a
+  // short keyword like `Tab` recognizes `<Tab>`/`<TabBar>` without shadowing
+  // unrelated names that merely contain it (`<Table>`, `<DataTable>`).
+  return splitIdentifierWords(elementName).some((word) =>
+    REACT_NATIVE_TEXT_COMPONENT_KEYWORDS.has(word),
+  );
 };
 
 const isTransparentTextWrapper = (elementName: string | null): boolean =>

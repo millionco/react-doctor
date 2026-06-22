@@ -30,7 +30,8 @@
   },
   "files": [
     "dist/**/*.js",
-    "dist/**/*.d.ts"
+    "dist/**/*.d.ts",
+    "LICENSE"
   ],
   "type": "module",
   "sideEffects": false,

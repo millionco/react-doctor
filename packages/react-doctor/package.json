@@ -34,7 +34,8 @@
     "bin/**",
     "dist/**/*.js",
     "dist/**/*.d.ts",
-    "dist/skills/**"
+    "dist/skills/**",
+    "LICENSE"
   ],
   "type": "module",
   "sideEffects": false,

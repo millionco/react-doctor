@@ -341,6 +341,15 @@ export const SCAN_TOTAL_DEADLINE_MS = 900_000;
 // the child's heap so those projects complete instead of crashing.
 export const DEAD_CODE_WORKER_MAX_OLD_SPACE_MB = 8192;
 
+// Memory budgeted per concurrent dead-code worker when sizing the global
+// `withDeadCodeWorkerSlot` semaphore (`resolveDeadCodeConcurrency`). Deliberately
+// well below the worker's `--max-old-space-size` ceiling above (that's a crash
+// guard, not steady-state use): a deslop graph on a few-hundred-file project
+// peaks around 1–1.5 GB, so 2 GB leaves headroom while still collapsing the
+// concurrency toward 1 on a small CI runner — capping how many 8 GB-ceiling
+// children a multi-project scan starts at once.
+export const DEAD_CODE_WORKER_MEM_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
+
 // Dead-code timeout scales with the work. deslop is CPU-bound and roughly
 // linear in source-file count, so a single fixed timeout is at once too
 // generous for a small repo and too tight for a large one — on a multi-thousand

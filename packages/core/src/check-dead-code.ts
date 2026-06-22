@@ -6,6 +6,7 @@ import {
   collectDeadCodeEntryPatterns,
   collectDeadCodeIgnorePatterns,
 } from "./dead-code/collect-dead-code-patterns.js";
+import { withDeadCodeWorkerSlot } from "./dead-code/dead-code-worker-slots.js";
 import {
   DEAD_CODE_WORKER_MAX_OLD_SPACE_MB,
   DEAD_CODE_WORKER_TIMEOUT_MS,
@@ -246,7 +247,9 @@ const parseUnusedFiles = (value: unknown): DeadCodeWorkerUnusedFile[] => {
     if (!isRecord(entry)) {
       throw new Error(`Dead-code worker returned invalid unusedFiles[${index}].`);
     }
-    unusedFiles.push({ path: parseString(entry.path, `unusedFiles[${index}].path`) });
+    unusedFiles.push({
+      path: parseString(entry.path, `unusedFiles[${index}].path`),
+    });
   }
   return unusedFiles;
 };
@@ -367,7 +370,10 @@ const createDeadCodeWorker: DeadCodeWorkerFactory = (input) => {
       env:
         input.parseConcurrency === undefined
           ? process.env
-          : { ...process.env, DESLOP_PARSE_CONCURRENCY: String(input.parseConcurrency) },
+          : {
+              ...process.env,
+              DESLOP_PARSE_CONCURRENCY: String(input.parseConcurrency),
+            },
     },
   );
 
@@ -396,7 +402,9 @@ const createDeadCodeWorker: DeadCodeWorkerFactory = (input) => {
         settle(() =>
           reject(
             new Error(
-              `Dead-code worker exited with code ${exitCode ?? "null"}${stderr ? `: ${stderr}` : ""}.`,
+              `Dead-code worker exited with code ${exitCode ?? "null"}${
+                stderr ? `: ${stderr}` : ""
+              }.`,
             ),
           ),
         );
@@ -481,24 +489,35 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
 
   const entryPatterns = collectDeadCodeEntryPatterns(rootDirectory);
   const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory);
-  const workerHandle = (options.createWorker ?? createDeadCodeWorker)({
-    rootDirectory,
-    entryPatterns,
-    tsConfigPath: resolveTsConfigPath(rootDirectory),
-    ignorePatterns,
-    deslopJsModuleSpecifier: options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js"),
-    parseConcurrency: options.parseConcurrency,
-  });
   // `runDeadCodeWorkerWithTimeout` owns the abort wiring: when the surrounding
   // Effect fiber is interrupted (lint failed / dead-code phase timeout / scan
   // cancelled), `Effect.tryPromise` aborts `options.abortSignal`, which its
   // `settle()` path turns into an immediate worker SIGKILL — rather than
   // orphaning the child until the in-worker timer expires.
-  const rawResult = await runDeadCodeWorkerWithTimeout(
-    workerHandle,
-    options.workerTimeoutMs ?? DEAD_CODE_WORKER_TIMEOUT_MS,
-    options.abortSignal,
-  );
+  const spawnAndRun = (): Promise<unknown> => {
+    const workerHandle = (options.createWorker ?? createDeadCodeWorker)({
+      rootDirectory,
+      entryPatterns,
+      tsConfigPath: resolveTsConfigPath(rootDirectory),
+      ignorePatterns,
+      deslopJsModuleSpecifier: options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js"),
+      parseConcurrency: options.parseConcurrency,
+    });
+    return runDeadCodeWorkerWithTimeout(
+      workerHandle,
+      options.workerTimeoutMs ?? DEAD_CODE_WORKER_TIMEOUT_MS,
+      options.abortSignal,
+    );
+  };
+  // A REAL deslop spawn passes through the process-global memory-budgeted
+  // semaphore so a multi-project scan never runs more concurrent 8 GB-ceiling
+  // children than memory allows (on a roomy box the cap exceeds the project
+  // count, so nothing serializes). Injected test workers bypass it — they're
+  // fakes, not real children, and gating them would only serialize the suite.
+  const rawResult =
+    options.createWorker === undefined
+      ? await withDeadCodeWorkerSlot(spawnAndRun)
+      : await spawnAndRun();
   const result = parseDeadCodeWorkerResult(rawResult);
   const toRelative = (filePath: string): string => toRelativeFilePath(rootDirectory, filePath);
   const diagnostics: Diagnostic[] = [];
@@ -559,7 +578,11 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
       plugin: DEAD_CODE_PLUGIN,
       rule: "circular-dependency",
       severity: "warning",
-      message: `Circular import cycle: ${cycle.files.map(toRelative).join(" → ")}. Modules in the cycle can observe partially initialized exports, causing order-dependent bugs.`,
+      message: `Circular import cycle: ${cycle.files
+        .map(toRelative)
+        .join(
+          " → ",
+        )}. Modules in the cycle can observe partially initialized exports, causing order-dependent bugs.`,
       help: "Break the cycle by extracting the shared code into a third module that both files import.",
       line: 0,
       column: 0,

@@ -73,6 +73,7 @@ import { isSpinnerSilent, setSpinnerSilent, spinner } from "../utils/spinner.js"
 import { shouldBlockCi } from "../utils/should-block-ci.js";
 import { shouldSkipPrompts } from "../utils/should-skip-prompts.js";
 import { warnDeprecatedFailOn } from "../utils/warn-deprecated-fail-on.js";
+import { warnIfAiTrainingEnvironment } from "../utils/warn-ai-training-environment.js";
 import { validateModeFlags } from "../utils/validate-mode-flags.js";
 import { VERSION } from "../utils/version.js";
 
@@ -259,6 +260,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     // Emitted on every path (including the early-returning `--staged` branch),
     // so the deprecation nudge fires whenever `--diff` / `diff` is set.
     warnDeprecatedDiff(flags, userConfig);
+    warnIfAiTrainingEnvironment();
     if (scanTarget.didRedirectViaRootDir && !isQuiet) {
       logger.dim(
         `Redirected to ${highlighter.info(toRelativePath(resolvedDirectory, requestedDirectory))} via react-doctor config "rootDir".`,

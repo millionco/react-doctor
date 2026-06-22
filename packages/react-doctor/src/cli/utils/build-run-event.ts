@@ -73,12 +73,19 @@ const resolveTelemetryBlocking = (userConfig: ReactDoctorConfig | null): Blockin
 const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   if (input.result === undefined) {
     const error = input.error;
-    const known = isReactDoctorError(error);
+    if (isReactDoctorError(error)) {
+      return withNamespace("outcome", {
+        status: "error",
+        exitCode: 1,
+        knownError: true,
+        errorTag: error.reason._tag,
+      });
+    }
     return withNamespace("outcome", {
       status: "error",
       exitCode: 1,
-      knownError: known,
-      errorTag: known ? error.reason._tag : error instanceof Error ? error.name : null,
+      knownError: false,
+      errorTag: error instanceof Error ? error.name : null,
     });
   }
 

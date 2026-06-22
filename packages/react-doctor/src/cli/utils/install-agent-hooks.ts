@@ -76,26 +76,21 @@ const ensureDirectoryExists = (directoryPath: string): void => {
   try {
     fs.mkdirSync(directoryPath, { recursive: true });
   } catch (error) {
-    const nodeError = error as NodeJS.ErrnoException;
-    if (nodeError.code === "EACCES" || nodeError.code === "EPERM") {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EACCES" || code === "EPERM") {
       throw new CliInputError(
         `Could not create directory ${directoryPath}: permission denied. Ensure you have write permissions for this location and re-run the install command.`,
       );
     }
-    if (nodeError.code === "ENOTDIR" || nodeError.code === "EEXIST") {
-      try {
-        const stat = fs.statSync(directoryPath);
-        if (!stat.isDirectory()) {
-          throw new CliInputError(
-            `Could not create directory ${directoryPath}: a file exists at this path or one of its parent paths. Remove the conflicting file and re-run the install command.`,
-          );
-        }
-      } catch (statError) {
-        const statErrnoException = statError as NodeJS.ErrnoException;
-        if (statErrnoException.code !== "ENOENT") {
-          throw statError;
-        }
-      }
+    // A recursive `mkdir` reports a conflicting file two ways: `EEXIST` when the
+    // target itself is a file, `ENOTDIR` when a parent segment is. The code
+    // already settles it — don't `statSync` to confirm, because on the
+    // `ENOTDIR` (parent-is-a-file) case the stat throws `ENOTDIR` too and the
+    // actionable message would be lost (the original REACT-DOCTOR-17 path).
+    if (code === "ENOTDIR" || code === "EEXIST") {
+      throw new CliInputError(
+        `Could not create directory ${directoryPath}: a file exists at this path or one of its parent paths. Remove the conflicting file and re-run the install command.`,
+      );
     }
     throw error;
   }

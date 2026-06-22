@@ -41,6 +41,29 @@ const AI_TRAINING_ENV_VARS: ReadonlyArray<readonly [string, string]> = [
   ["SWE_BENCH_TASK", "swe-bench"],
   ["SWEBENCH_TASK", "swe-bench"],
   ["SWE_AGENT_MODEL", "swe-agent"],
+  // Notebook environments – active session markers
+  ["KAGGLE_KERNEL_RUN_TYPE", "kaggle"],
+  ["COLAB_BACKEND_VERSION", "google-colab"],
+  ["DATABRICKS_RUNTIME_VERSION", "databricks"],
+  // ML training platforms – active job or run identifiers
+  ["SM_TRAINING_ENV", "sagemaker"],
+  ["TRAINING_JOB_ARN", "sagemaker"],
+  ["AZUREML_RUN_ID", "azure-ml"],
+  ["CLOUD_ML_PROJECT_ID", "vertex-ai"],
+  ["WANDB_SWEEP_ID", "wandb"],
+  ["DVC_STAGE", "dvc"],
+  ["CLEARML_TASK_ID", "clearml"],
+  ["FLYTE_INTERNAL_EXECUTION_ID", "flyte"],
+  ["DET_MASTER", "determined-ai"],
+  ["LIGHTNING_USER_ID", "lightning-ai"],
+  ["ARGO_WORKFLOW_NAME", "argo-workflows"],
+  ["KFP_POD_NAME", "kubeflow-pipelines"],
+  // GPU cloud platforms
+  ["SPACE_ID", "huggingface-spaces"],
+  ["REPLICATE_USERNAME", "replicate"],
+  ["VAST_CONTAINERLABEL", "vast-ai"],
+  ["TPU_NAME", "google-tpu"],
+  ["ROCR_VISIBLE_DEVICES", "rocm"],
 ] as const;
 
 export const detectAiTrainingEnvironment = (): string | null => {

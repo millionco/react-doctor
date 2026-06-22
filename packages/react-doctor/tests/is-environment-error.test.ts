@@ -29,7 +29,9 @@ describe("isEnvironmentError", () => {
   it("does NOT treat ENAMETOOLONG as an environment error", () => {
     // An argv we built overflowing the OS limit is a batching bug we must fix,
     // not a user environment problem — it has to stay visible in Sentry.
-    expect(isEnvironmentError(systemError("ENAMETOOLONG", { syscall: "spawn oxlint" }))).toBe(false);
+    expect(isEnvironmentError(systemError("ENAMETOOLONG", { syscall: "spawn oxlint" }))).toBe(
+      false,
+    );
   });
 
   it("does NOT treat other speculative codes as environment errors", () => {

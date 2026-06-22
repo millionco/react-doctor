@@ -1,12 +1,33 @@
 import * as fs from "node:fs";
+import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { closeCursorDb } from "../src/stats/cursor-db.js";
 import { parseClaudeSession } from "../src/stats/sources/claude.js";
 import { parseCodexSession } from "../src/stats/sources/codex.js";
 import { cursorComposerCandidates } from "../src/stats/sources/cursor.js";
+
+interface SqliteDb {
+  exec(sql: string): void;
+  prepare(sql: string): { run(...params: unknown[]): void };
+  close(): void;
+}
+interface SqliteModule {
+  DatabaseSync: new (filePath: string) => SqliteDb;
+}
+
+// `node:sqlite` is built in on Node 22.13+/24+ and absent on older Node, where
+// the require throws. Mirror cursor-db.ts and skip the Cursor suite there rather
+// than crashing the whole file at import time.
+const loadSqlite = (): SqliteModule | null => {
+  try {
+    return createRequire(import.meta.url)("node:sqlite");
+  } catch {
+    return null;
+  }
+};
+const sqlite = loadSqlite();
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "stats-adapters-"));
 
@@ -84,8 +105,9 @@ interface ComposerFixture {
 }
 
 const writeComposerDb = (name: string, composers: ReadonlyArray<ComposerFixture>): string => {
+  if (!sqlite) throw new Error("node:sqlite unavailable");
   const dbPath = path.join(tempDir, name);
-  const database = new DatabaseSync(dbPath);
+  const database = new sqlite.DatabaseSync(dbPath);
   database.exec("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)");
   database.exec("CREATE TABLE cursorDiskKV (key TEXT PRIMARY KEY, value TEXT)");
 
@@ -113,7 +135,9 @@ const writeComposerDb = (name: string, composers: ReadonlyArray<ComposerFixture>
   return dbPath;
 };
 
-describe("cursorComposerCandidates", () => {
+const describeCursor = sqlite ? describe : describe.skip;
+
+describeCursor("cursorComposerCandidates", () => {
   it("attributes the composer model and reconstructs exact content via afterContentId", () => {
     closeCursorDb();
     const dbPath = writeComposerDb("cursor-model.vscdb", [

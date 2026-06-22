@@ -1,4 +1,5 @@
 import { highlighter } from "@react-doctor/core";
+import { STATS_LEADERBOARD_TOP_N } from "./constants.js";
 import type { GroupStats, StatsReport } from "./types.js";
 
 const SCORE_BAR_WIDTH = 16;
@@ -111,14 +112,13 @@ export const renderStatsReport = (report: StatsReport): string => {
     ].join("\n");
   }
 
-  const sections = [
-    header,
-    "",
-    renderModelTable(report.models),
-    "",
-    highlighter.dim("By tool:"),
-    renderProviderTable(report.providers),
-  ];
+  const shownModels = report.models.slice(0, STATS_LEADERBOARD_TOP_N);
+  const hiddenCount = report.models.length - shownModels.length;
+  const sections = [header, "", renderModelTable(shownModels)];
+  if (hiddenCount > 0) {
+    sections.push(highlighter.dim(`+ ${hiddenCount} more (see --json for the full ranking).`));
+  }
+  sections.push("", highlighter.dim("By tool:"), renderProviderTable(report.providers));
 
   const callout = renderCallout(report);
   if (callout) {

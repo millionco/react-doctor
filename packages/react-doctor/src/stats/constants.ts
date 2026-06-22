@@ -41,6 +41,10 @@ export const STATS_SCORE_SESSION_PRIOR = 2;
 // remaining (1 - FLOOR). Closer to 1 = files dominate even harder.
 export const STATS_SCORE_SESSION_FLOOR = 0.6;
 
+// Models shown in the terminal leaderboard. The full ranking is always in the
+// `--json` report; the table stays short so it reads at a glance.
+export const STATS_LEADERBOARD_TOP_N = 5;
+
 // Most-fired rules shown per group in the report.
 export const STATS_TOP_RULES_PER_GROUP = 3;
 

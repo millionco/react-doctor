@@ -1,12 +1,15 @@
 import { highlighter } from "@react-doctor/core";
-import { STATS_LEADERBOARD_TOP_N } from "./constants.js";
+import {
+  STATS_LEADERBOARD_TOP_N,
+  STATS_SCORE_BAR_WIDTH,
+  STATS_SCORE_COLOR_HIGH,
+  STATS_SCORE_COLOR_MEDIUM,
+} from "./constants.js";
 import type { GroupStats, StatsReport } from "./types.js";
 
-const SCORE_BAR_WIDTH = 16;
-
 const colorForScore = (score: number): ((text: string) => string) => {
-  if (score >= 80) return highlighter.success;
-  if (score >= 50) return highlighter.warn;
+  if (score >= STATS_SCORE_COLOR_HIGH) return highlighter.success;
+  if (score >= STATS_SCORE_COLOR_MEDIUM) return highlighter.warn;
   return highlighter.error;
 };
 
@@ -21,11 +24,15 @@ const renderScore = (group: GroupStats): string => {
   if (group.weightedScore === null) return highlighter.dim("n/a");
   const filledCount = Math.max(
     0,
-    Math.min(SCORE_BAR_WIDTH, Math.round((group.weightedScore / 100) * SCORE_BAR_WIDTH)),
+    Math.min(
+      STATS_SCORE_BAR_WIDTH,
+      Math.round((group.weightedScore / 100) * STATS_SCORE_BAR_WIDTH),
+    ),
   );
   const paint = colorForScore(group.weightedScore);
   const bar =
-    paint("█".repeat(filledCount)) + highlighter.dim("░".repeat(SCORE_BAR_WIDTH - filledCount));
+    paint("█".repeat(filledCount)) +
+    highlighter.dim("░".repeat(STATS_SCORE_BAR_WIDTH - filledCount));
   return `${bar} ${paint(String(group.weightedScore).padStart(3))}`;
 };
 

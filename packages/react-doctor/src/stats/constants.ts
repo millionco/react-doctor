@@ -51,3 +51,11 @@ export const STATS_TOP_RULES_PER_GROUP = 3;
 // Label used when a session does not expose a stable model id (e.g. a Cursor
 // composer left on the "Auto" default with no per-bubble model recorded).
 export const STATS_UNKNOWN_MODEL = "unknown";
+
+// Width (in cells) of the unicode score bar drawn next to each leaderboard score.
+export const STATS_SCORE_BAR_WIDTH = 16;
+
+// Score thresholds that pick the bar color: at or above HIGH is green, at or
+// above MEDIUM is yellow, below is red.
+export const STATS_SCORE_COLOR_HIGH = 80;
+export const STATS_SCORE_COLOR_MEDIUM = 50;

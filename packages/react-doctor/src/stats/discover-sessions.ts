@@ -1,5 +1,5 @@
-import * as path from "node:path";
 import { STATS_DISCOVERY_YIELD_INTERVAL } from "./constants.js";
+import { isPathInside } from "./is-path-inside.js";
 import { STATS_SOURCES } from "./sources/index.js";
 import { resolveEditPaths } from "./reconstruct-files.js";
 import type { AgentSession, StatsScopeOptions } from "./types.js";
@@ -7,14 +7,11 @@ import type { AgentSession, StatsScopeOptions } from "./types.js";
 /** Reports discovery progress: sessions kept so far, candidates scanned so far. */
 export type DiscoveryProgress = (foundCount: number, scannedCount: number) => void;
 
-const isPathUnder = (childPath: string, parentPath: string): boolean => {
-  const relative = path.relative(parentPath, childPath);
-  return !relative.startsWith("..") && !path.isAbsolute(relative);
-};
-
 const sessionTouchesRepo = (session: AgentSession, repoRoot: string): boolean => {
-  if (session.cwd && isPathUnder(session.cwd, repoRoot)) return true;
-  return resolveEditPaths(session).some((editPath) => isPathUnder(editPath, repoRoot));
+  if (session.cwd && isPathInside(session.cwd, repoRoot, { allowSame: true })) return true;
+  return resolveEditPaths(session).some((editPath) =>
+    isPathInside(editPath, repoRoot, { allowSame: true }),
+  );
 };
 
 /**
@@ -39,7 +36,14 @@ export const discoverSessions = async (
   const sessions: AgentSession[] = [];
   let scannedCount = 0;
   for (const candidate of candidates) {
-    if (sinceMs !== null && candidate.modifiedMs > 0 && candidate.modifiedMs < sinceMs) break;
+    // With `--since`, a candidate whose timestamp is unknown (`modifiedMs <= 0`)
+    // can't be proven on-or-after the cutoff, so it's excluded rather than
+    // ambiguously kept. Dated candidates are sorted newest-first, so the first
+    // one older than the cutoff ends the walk.
+    if (sinceMs !== null) {
+      if (candidate.modifiedMs <= 0) continue;
+      if (candidate.modifiedMs < sinceMs) break;
+    }
 
     const session = await candidate.load();
     scannedCount += 1;

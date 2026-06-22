@@ -7,6 +7,7 @@ import { renderStatsReport } from "../../stats/render-stats.js";
 import { runStatsScan } from "../../stats/run-stats-scan.js";
 import type { StatsProvider, StatsReport, StatsScopeOptions } from "../../stats/types.js";
 import { METRIC } from "../utils/constants.js";
+import { enableJsonMode } from "../utils/json-mode.js";
 import { recordCount } from "../utils/record-metric.js";
 import { spinner } from "../utils/spinner.js";
 
@@ -19,14 +20,16 @@ export interface StatsFlags {
   cwd?: string;
 }
 
-const VALID_PROVIDERS = new Set<StatsProvider>(["claude", "codex", "cursor"]);
+const VALID_PROVIDERS = new Set<string>(["claude", "codex", "cursor"]);
+
+const isStatsProvider = (value: string): value is StatsProvider => VALID_PROVIDERS.has(value);
 
 const parseProvider = (value: string | undefined): StatsProvider | undefined => {
   if (value === undefined) return undefined;
-  if (!VALID_PROVIDERS.has(value as StatsProvider)) {
+  if (!isStatsProvider(value)) {
     throw new Error(`Unknown provider "${value}". Expected one of: claude, codex, cursor.`);
   }
-  return value as StatsProvider;
+  return value;
 };
 
 const parseSince = (value: string | undefined): Date | undefined => {
@@ -41,7 +44,10 @@ const parseSince = (value: string | undefined): Date | undefined => {
 const parseLimit = (value: string | undefined): number => {
   if (value === undefined) return STATS_DEFAULT_SESSION_LIMIT;
   const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : STATS_DEFAULT_SESSION_LIMIT;
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Invalid --limit "${value}". Use a positive integer, e.g. 200.`);
+  }
+  return parsed;
 };
 
 const resolveTarget = async (
@@ -57,6 +63,11 @@ const resolveTarget = async (
 
 export const statsAction = async (flags: StatsFlags): Promise<void> => {
   const directory = flags.cwd ?? process.cwd();
+  // Register JSON mode up front so any throw (flag parsing, scan, or score API
+  // failure) is emitted as a structured JSON error by the top-level handler
+  // instead of plain text — and so incidental logs (e.g. a score-API warning)
+  // never corrupt the report on stdout.
+  if (flags.json) enableJsonMode({ compact: false, directory });
   const scope: StatsScopeOptions = {
     global: flags.global ?? false,
     since: parseSince(flags.since),

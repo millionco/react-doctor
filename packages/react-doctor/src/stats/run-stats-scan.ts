@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { mapWithConcurrency, runEditorScan, type Diagnostic } from "@react-doctor/core";
 import { STATS_SCAN_CONCURRENCY } from "./constants.js";
+import { isPathInside } from "./is-path-inside.js";
 import { isReactSourceFile } from "./is-react-source.js";
 import { materializeReconstructedTree } from "./materialize-reconstructed-tree.js";
 import { reconstructSession } from "./reconstruct-files.js";
@@ -93,9 +94,8 @@ const scanSession = async (
 
   const files: ReconstructedFile[] = [];
   for (const file of reactFiles) {
-    const relative = toPosix(path.relative(scanRoot, file.absolutePath));
-    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) continue;
-    files.push({ ...file, relativePath: relative });
+    if (!isPathInside(file.absolutePath, scanRoot)) continue;
+    files.push({ ...file, relativePath: toPosix(path.relative(scanRoot, file.absolutePath)) });
   }
   if (files.length === 0) return empty;
 
@@ -109,6 +109,11 @@ const scanSession = async (
       // The node running the CLI can load oxlint's native binding.
       nodeBinaryPath: process.execPath,
     });
+    // A scan that errored, was skipped (unanalyzable project), or whose lint
+    // phase failed yields zero diagnostics for reasons unrelated to code
+    // quality. Counting its files as clean would reward un-lintable code and
+    // inflate the leaderboard, so it joins the empty bucket instead.
+    if (!result.ok || result.skipped || result.didLintFail) return empty;
     const diagnostics: Diagnostic[] = result.diagnostics.map((diagnostic) => ({
       ...diagnostic,
       filePath: remapDiagnosticPath(

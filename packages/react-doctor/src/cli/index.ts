@@ -269,9 +269,10 @@ program
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .addHelpText("after", renderStatsHelpEpilog)
-  // HACK: `--json` is also declared on the root program, so Commander stashes
-  // it on the parent. Route through `optsWithGlobals()` so the merged option
-  // set (subcommand + inherited globals) is what the action sees.
+  // stats redeclares --json/--cwd/--color, but the root program also exposes
+  // them as globals (e.g. --json for the default inspect command). Merge via
+  // optsWithGlobals() so a flag works whether it lands before or after the
+  // subcommand.
   .action((_options, command) => statsAction(command.optsWithGlobals()));
 
 const rules = program

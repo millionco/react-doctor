@@ -39,7 +39,7 @@ export const resolveEditPaths = (session: AgentSession): string[] => {
   };
   for (const edit of session.edits) {
     if (edit.kind === "patch") {
-      for (const op of parseApplyPatch(edit.patch ?? "")) add(op.path);
+      for (const operation of parseApplyPatch(edit.patch ?? "")) add(operation.path);
     } else {
       add(edit.path);
     }
@@ -65,19 +65,19 @@ export const reconstructSession = (session: AgentSession): SessionReconstruction
   }
 
   const applyPatchOps = (patchText: string): void => {
-    for (const op of parseApplyPatch(patchText)) {
-      const resolved = resolveAgainstCwd(op.path, session.cwd);
+    for (const operation of parseApplyPatch(patchText)) {
+      const resolved = resolveAgainstCwd(operation.path, session.cwd);
       if (!resolved) continue;
       if (isLintablePath(resolved)) touchedLintable.add(resolved);
-      if (op.type === "add") {
-        const lines = op.addedLines ?? [];
+      if (operation.type === "add") {
+        const lines = operation.addedLines ?? [];
         buffers.set(resolved, lines.length > 0 ? `${lines.join("\n")}\n` : "");
-      } else if (op.type === "delete") {
+      } else if (operation.type === "delete") {
         buffers.set(resolved, null);
       } else {
         const base = buffers.get(resolved);
         if (typeof base !== "string") continue;
-        const applied = applyUpdateHunks(base, op.hunkLines ?? []);
+        const applied = applyUpdateHunks(base, operation.hunkLines ?? []);
         if (applied === null) {
           // The hunk didn't match our base, so our buffer is out of sync with
           // what the model actually edited. Drop it to "no faithful base" rather
@@ -85,7 +85,7 @@ export const reconstructSession = (session: AgentSession): SessionReconstruction
           buffers.delete(resolved);
           continue;
         }
-        const movedTo = op.movePath && resolveAgainstCwd(op.movePath, session.cwd);
+        const movedTo = operation.movePath && resolveAgainstCwd(operation.movePath, session.cwd);
         if (movedTo) {
           buffers.set(resolved, null);
           buffers.set(movedTo, applied);

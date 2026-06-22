@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { STAGED_FILES_PROJECT_CONFIG_FILENAMES } from "@react-doctor/core";
 import { STATS_TEMP_DIR_PREFIX } from "./constants.js";
+import { isPathInside } from "./is-path-inside.js";
 import type { ReconstructedFile } from "./types.js";
 
 export interface MaterializedReconstruction {
@@ -12,11 +13,6 @@ export interface MaterializedReconstruction {
   readonly relativePaths: string[];
   readonly cleanup: () => void;
 }
-
-const isInsideDirectory = (childPath: string, parentPath: string): boolean => {
-  const relative = path.relative(parentPath, childPath);
-  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
-};
 
 /**
  * Write reconstructed file content into a fresh temp tree mirroring the scan
@@ -35,7 +31,7 @@ export const materializeReconstructedTree = (
 
   for (const file of files) {
     const targetPath = path.resolve(resolvedTempDirectory, file.relativePath);
-    if (!isInsideDirectory(targetPath, resolvedTempDirectory)) continue;
+    if (!isPathInside(targetPath, resolvedTempDirectory)) continue;
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
     fs.writeFileSync(targetPath, file.content);
     relativePaths.push(file.relativePath);

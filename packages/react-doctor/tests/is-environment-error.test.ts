@@ -4,248 +4,85 @@ import {
   isEnvironmentError,
 } from "../src/cli/utils/is-environment-error.js";
 
+const systemError = (code: string, extra: Record<string, unknown> = {}): Error =>
+  Object.assign(new Error(`${code}: simulated`), { code, ...extra });
+
 describe("isEnvironmentError", () => {
-  it("recognizes ENOSPC errors", () => {
-    const error = Object.assign(new Error("ENOSPC: no space left on device"), {
-      code: "ENOSPC",
-      syscall: "mkdir",
-    });
-    expect(isEnvironmentError(error)).toBe(true);
+  it("recognizes the unactionable filesystem codes", () => {
+    for (const code of ["ENOSPC", "EIO", "EROFS", "EACCES", "EPERM", "ENOTDIR"]) {
+      expect(isEnvironmentError(systemError(code, { syscall: "mkdir" }))).toBe(true);
+    }
   });
 
-  it("recognizes EIO errors", () => {
-    const error = Object.assign(new Error("EIO: i/o error"), {
-      code: "EIO",
-      syscall: "lstat",
-    });
-    expect(isEnvironmentError(error)).toBe(true);
+  it("treats a spawn ENOENT (missing binary) as an environment error", () => {
+    expect(isEnvironmentError(systemError("ENOENT", { syscall: "spawn git" }))).toBe(true);
   });
 
-  it("recognizes EACCES errors", () => {
-    const error = Object.assign(new Error("EACCES: permission denied"), {
-      code: "EACCES",
-      syscall: "open",
-      path: "/root/protected",
-    });
-    expect(isEnvironmentError(error)).toBe(true);
+  it("does NOT treat a file ENOENT as an environment error (likely our bug)", () => {
+    // A file we expected to exist being missing usually points at react-doctor,
+    // not the user's machine — keep it reaching Sentry.
+    expect(isEnvironmentError(systemError("ENOENT", { syscall: "open", path: "/missing" }))).toBe(
+      false,
+    );
   });
 
-  it("recognizes EPERM errors", () => {
-    const error = Object.assign(new Error("EPERM: operation not permitted"), {
-      code: "EPERM",
-      syscall: "mkdir",
-    });
-    expect(isEnvironmentError(error)).toBe(true);
+  it("does NOT treat ENAMETOOLONG as an environment error", () => {
+    // An argv we built overflowing the OS limit is a batching bug we must fix,
+    // not a user environment problem — it has to stay visible in Sentry.
+    expect(isEnvironmentError(systemError("ENAMETOOLONG", { syscall: "spawn oxlint" }))).toBe(false);
   });
 
-  it("recognizes ENOTDIR errors", () => {
-    const error = Object.assign(new Error("ENOTDIR: not a directory"), {
-      code: "ENOTDIR",
-      path: "/some/file.txt",
-    });
-    expect(isEnvironmentError(error)).toBe(true);
+  it("does NOT treat other speculative codes as environment errors", () => {
+    for (const code of ["EINVAL", "ELOOP", "EBUSY", "ESOMETHING"]) {
+      expect(isEnvironmentError(systemError(code))).toBe(false);
+    }
   });
 
-  it("recognizes ENOENT errors", () => {
-    const error = Object.assign(new Error("ENOENT: no such file or directory"), {
-      code: "ENOENT",
-      path: "/missing/path",
-    });
-    expect(isEnvironmentError(error)).toBe(true);
+  it("does not classify by message text (no stack-string sniffing)", () => {
+    // A plain Error whose message merely contains a code must not be classified;
+    // dispatch only on the structured `code`/`syscall` fields.
+    expect(isEnvironmentError(new Error("EIO: i/o error, lstat '/tmp/file'"))).toBe(false);
+    expect(isEnvironmentError(new Error("spawn oxlint ENOENT"))).toBe(false);
   });
 
-  it("recognizes EROFS errors", () => {
-    const error = Object.assign(new Error("EROFS: read-only file system"), {
-      code: "EROFS",
-    });
-    expect(isEnvironmentError(error)).toBe(true);
-  });
-
-  it("recognizes EBUSY errors", () => {
-    const error = Object.assign(new Error("EBUSY: resource busy or locked"), {
-      code: "EBUSY",
-    });
-    expect(isEnvironmentError(error)).toBe(true);
-  });
-
-  it("recognizes EINVAL errors", () => {
-    const error = Object.assign(new Error("EINVAL: invalid argument"), {
-      code: "EINVAL",
-    });
-    expect(isEnvironmentError(error)).toBe(true);
-  });
-
-  it("recognizes ELOOP errors", () => {
-    const error = Object.assign(new Error("ELOOP: too many symbolic links encountered"), {
-      code: "ELOOP",
-    });
-    expect(isEnvironmentError(error)).toBe(true);
-  });
-
-  it("recognizes ENAMETOOLONG errors", () => {
-    const error = Object.assign(new Error("ENAMETOOLONG: name too long"), {
-      code: "ENAMETOOLONG",
-    });
-    expect(isEnvironmentError(error)).toBe(true);
-  });
-
-  it("recognizes spawn ENOENT errors by code", () => {
-    const error = Object.assign(new Error("spawn git ENOENT"), {
-      code: "ENOENT",
-      cmd: "git",
-    });
-    expect(isEnvironmentError(error)).toBe(true);
-  });
-
-  it("recognizes spawn ENOENT errors by message pattern", () => {
-    const error = new Error("spawn oxlint ENOENT");
-    expect(isEnvironmentError(error)).toBe(true);
-  });
-
-  it("recognizes error codes in message text", () => {
-    const error = new Error("EIO: i/o error, lstat '/tmp/file'");
-    expect(isEnvironmentError(error)).toBe(true);
-  });
-
-  it("returns false for non-environment errors", () => {
-    const error = new Error("Something went wrong");
-    expect(isEnvironmentError(error)).toBe(false);
-  });
-
-  it("returns false for non-Error objects", () => {
+  it("returns false for non-Error and codeless values", () => {
+    expect(isEnvironmentError(new Error("Something went wrong"))).toBe(false);
     expect(isEnvironmentError("string error")).toBe(false);
     expect(isEnvironmentError(null)).toBe(false);
     expect(isEnvironmentError(undefined)).toBe(false);
   });
-
-  it("returns false for errors with non-environment codes", () => {
-    const error = Object.assign(new Error("ESOMETHING: custom error"), {
-      code: "ESOMETHING",
-    });
-    expect(isEnvironmentError(error)).toBe(false);
-  });
 });
 
 describe("formatEnvironmentError", () => {
-  it("formats ENOSPC errors with actionable message", () => {
-    const error = Object.assign(new Error("ENOSPC: no space left on device"), {
-      code: "ENOSPC",
-      syscall: "mkdir",
-    });
-    expect(formatEnvironmentError(error)).toBe(
-      "Disk full: No space left on device. Free up disk space and try again.",
+  it("formats each environment code with an actionable message", () => {
+    expect(formatEnvironmentError(systemError("ENOSPC"))).toBe(
+      "No space left on device. Free up disk space and try again.",
+    );
+    expect(formatEnvironmentError(systemError("EIO"))).toBe(
+      "I/O error: the filesystem or disk may be failing. Check your system logs.",
+    );
+    expect(formatEnvironmentError(systemError("EROFS"))).toBe(
+      "Read-only filesystem: cannot write to this location.",
+    );
+    expect(formatEnvironmentError(systemError("ENOENT", { syscall: "spawn git" }))).toBe(
+      "Required command not found. Ensure the tool (e.g. git) is installed and on your PATH.",
     );
   });
 
-  it("formats EIO errors with system check message", () => {
-    const error = Object.assign(new Error("EIO: i/o error"), {
-      code: "EIO",
-      syscall: "lstat",
-    });
-    expect(formatEnvironmentError(error)).toBe(
-      "I/O error: The filesystem or disk may be failing. Check your system logs.",
+  it("includes the path in permission and not-a-directory messages when present", () => {
+    expect(formatEnvironmentError(systemError("EACCES", { path: "/root/protected" }))).toBe(
+      "Permission denied accessing /root/protected. Check file permissions and try again.",
+    );
+    expect(formatEnvironmentError(systemError("EPERM"))).toBe(
+      "Permission denied. Check file permissions and try again.",
+    );
+    expect(formatEnvironmentError(systemError("ENOTDIR", { path: "/some/file.txt" }))).toBe(
+      "A file exists at /some/file.txt or one of its parent paths where a directory was expected.",
     );
   });
 
-  it("formats EACCES errors with path when available", () => {
-    const error = Object.assign(new Error("EACCES: permission denied"), {
-      code: "EACCES",
-      path: "/root/protected",
-    });
-    expect(formatEnvironmentError(error)).toBe(
-      "Permission denied: Cannot access /root/protected. Check file permissions.",
-    );
-  });
-
-  it("formats EACCES errors without path", () => {
-    const error = Object.assign(new Error("EACCES: permission denied"), {
-      code: "EACCES",
-    });
-    expect(formatEnvironmentError(error)).toBe(
-      "Permission denied: Check file permissions and try again.",
-    );
-  });
-
-  it("formats EPERM errors with path when available", () => {
-    const error = Object.assign(new Error("EPERM: operation not permitted"), {
-      code: "EPERM",
-      path: "/protected/file",
-    });
-    expect(formatEnvironmentError(error)).toBe(
-      "Permission denied: Cannot access /protected/file. Check file permissions.",
-    );
-  });
-
-  it("formats ENOTDIR errors with path", () => {
-    const error = Object.assign(new Error("ENOTDIR: not a directory"), {
-      code: "ENOTDIR",
-      path: "/some/file.txt",
-    });
-    expect(formatEnvironmentError(error)).toBe(
-      "Not a directory: /some/file.txt is a file, not a directory.",
-    );
-  });
-
-  it("formats spawn ENOENT errors", () => {
-    const error = Object.assign(new Error("spawn git ENOENT"), {
-      code: "ENOENT",
-      syscall: "spawn",
-    });
-    expect(formatEnvironmentError(error)).toBe(
-      "Command not found: A required tool is not installed or not in PATH.",
-    );
-  });
-
-  it("formats file ENOENT errors with path", () => {
-    const error = Object.assign(new Error("ENOENT: no such file or directory"), {
-      code: "ENOENT",
-      path: "/missing/file",
-    });
-    expect(formatEnvironmentError(error)).toBe("File or directory not found: /missing/file");
-  });
-
-  it("formats EROFS errors", () => {
-    const error = Object.assign(new Error("EROFS: read-only file system"), {
-      code: "EROFS",
-    });
-    expect(formatEnvironmentError(error)).toBe(
-      "Read-only filesystem: Cannot write to this location.",
-    );
-  });
-
-  it("formats EBUSY errors", () => {
-    const error = Object.assign(new Error("EBUSY: resource busy"), {
-      code: "EBUSY",
-    });
-    expect(formatEnvironmentError(error)).toBe(
-      "Resource busy: A file or directory is in use by another process.",
-    );
-  });
-
-  it("formats EINVAL errors", () => {
-    const error = Object.assign(new Error("EINVAL: invalid argument"), {
-      code: "EINVAL",
-    });
-    expect(formatEnvironmentError(error)).toBe(
-      "Invalid filesystem path: The path is malformed or exceeds system limits.",
-    );
-  });
-
-  it("formats unknown error codes with fallback", () => {
-    const error = Object.assign(new Error("EUNKNOWN: unknown error"), {
-      code: "EUNKNOWN",
-    });
-    expect(formatEnvironmentError(error)).toBe(
-      "Filesystem error (EUNKNOWN): EUNKNOWN: unknown error",
-    );
-  });
-
-  it("handles non-NodeSystemError objects", () => {
-    const error = new Error("Plain error message");
-    expect(formatEnvironmentError(error)).toBe("Plain error message");
-  });
-
-  it("handles non-Error values", () => {
+  it("falls back to the raw message for non-system and non-Error values", () => {
+    expect(formatEnvironmentError(new Error("Plain error message"))).toBe("Plain error message");
     expect(formatEnvironmentError("string error")).toBe("string error");
   });
 });

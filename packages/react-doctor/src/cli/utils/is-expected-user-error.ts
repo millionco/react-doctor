@@ -22,11 +22,13 @@ import { isEnvironmentError } from "./is-environment-error.js";
  *   `--project` name.
  * - **Bad `--diff` input** (`GitBaseBranchInvalid` / `GitBaseBranchMissing`)
  *   stays the tagged `ReactDoctorError`, so dispatch on the reason `_tag`.
- * - **Environment failures** (ENOSPC, EIO, EACCES, EPERM, ENOTDIR, ENOENT,
- *   EROFS, EBUSY, EINVAL, ELOOP, ENAMETOOLONG) — filesystem or spawn errors
- *   caused by disk-full, I/O failure, permission denial, or missing binaries.
- *   React Doctor cannot fix the user's environment; exit cleanly with an
- *   actionable message instead of crashing with a stack trace.
+ * - **Environment failures** (`ENOSPC`, `EIO`, `EROFS`, `EACCES`, `EPERM`,
+ *   `ENOTDIR`, plus a `spawn`-scoped `ENOENT` for a missing binary) — disk
+ *   full / failing / read-only, permission denied, or a path blocked by a
+ *   file. React Doctor cannot fix the user's environment; exit cleanly with an
+ *   actionable message instead of crashing. See `is-environment-error.ts` for
+ *   why the set stays narrow (codes that usually mean our bug keep reaching
+ *   Sentry).
  *
  * This composes the existing core narrowers rather than introducing a new
  * error-shape helper (AGENTS.md): it encodes CLI-layer reporting policy, not

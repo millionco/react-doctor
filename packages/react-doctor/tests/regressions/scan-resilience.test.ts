@@ -756,7 +756,7 @@ describe("issue #925: environment errors exit cleanly without Sentry crash repor
       syscall: "mkdir",
     });
     expect(formatEnvironmentError(enospc)).toBe(
-      "Disk full: No space left on device. Free up disk space and try again.",
+      "No space left on device. Free up disk space and try again.",
     );
 
     const eio = Object.assign(new Error("EIO: i/o error, lstat '/tmp/file'"), {
@@ -764,7 +764,7 @@ describe("issue #925: environment errors exit cleanly without Sentry crash repor
       syscall: "lstat",
     });
     expect(formatEnvironmentError(eio)).toBe(
-      "I/O error: The filesystem or disk may be failing. Check your system logs.",
+      "I/O error: the filesystem or disk may be failing. Check your system logs.",
     );
 
     const eacces = Object.assign(new Error("EACCES: permission denied, open '/root/file'"), {
@@ -772,7 +772,7 @@ describe("issue #925: environment errors exit cleanly without Sentry crash repor
       path: "/root/file",
     });
     expect(formatEnvironmentError(eacces)).toBe(
-      "Permission denied: Cannot access /root/file. Check file permissions.",
+      "Permission denied accessing /root/file. Check file permissions and try again.",
     );
   });
 

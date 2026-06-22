@@ -83,7 +83,9 @@ describe("isExpectedUserError", () => {
       ),
     ).toBe(true);
     expect(
-      isExpectedUserError(Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" })),
+      isExpectedUserError(
+        Object.assign(new Error("spawn git ENOENT"), { code: "ENOENT", syscall: "spawn git" }),
+      ),
     ).toBe(true);
     expect(
       isExpectedUserError(

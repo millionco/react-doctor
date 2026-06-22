@@ -5,7 +5,6 @@ import { buildSentryScope } from "./build-sentry-scope.js";
 import { METRIC, SENTRY_FLUSH_TIMEOUT_MS } from "./constants.js";
 import { isExpectedUserError } from "./is-expected-user-error.js";
 import { recordCount } from "./record-metric.js";
-import { isEnvironmentError } from "./is-environment-error.js";
 
 /**
  * Sends an error to Sentry — enriched with a fresh snapshot of the current run
@@ -24,20 +23,6 @@ import { isEnvironmentError } from "./is-environment-error.js";
  */
 export const reportErrorToSentry = async (error: unknown): Promise<string | undefined> => {
   if (!Sentry.isInitialized()) return undefined;
-
-  if (isEnvironmentError(error)) {
-    try {
-      const { tags } = buildSentryScope();
-      const errorCodeMatch = error instanceof Error ? error.message.match(/^([A-Z]+):/) : null;
-      const code = (error as { code?: string }).code ?? errorCodeMatch?.[1] ?? "unknown";
-      recordCount(METRIC.cliEnvironmentError, 1, {
-        command: typeof tags.command === "string" ? tags.command : undefined,
-        code,
-      });
-    } catch {}
-    return undefined;
-  }
-
   // Expected user errors (see `isExpectedUserError`) are the user's
   // project/input, not a bug. Drop them before the metric + capture so they
   // never become a Sentry crash or inflate the alertable error rate — the one

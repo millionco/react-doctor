@@ -10,7 +10,9 @@ import {
 } from "@react-doctor/core";
 import type { HandleErrorOptions } from "@react-doctor/core";
 import { VERSION } from "./version.js";
+import { METRIC } from "./constants.js";
 import { formatEnvironmentError, isEnvironmentError } from "./is-environment-error.js";
+import { recordCount } from "./record-metric.js";
 
 // `shouldExit` is optional here (defaults to exiting) and the CLI adds a Sentry
 // event id, surfaced as a reference the user can quote so we can locate the
@@ -154,9 +156,17 @@ export const handleError = (error: unknown, options: CliHandleErrorOptions = {})
  * — because there is no bug to report.
  */
 export const handleUserError = (error: unknown, options: { shouldExit?: boolean } = {}): void => {
-  const message = isEnvironmentError(error)
-    ? formatEnvironmentError(error)
-    : formatErrorForReport(error);
+  const isEnvError = isEnvironmentError(error);
+  if (isEnvError) {
+    // Environment errors are dropped from Sentry (the user's machine, not our
+    // bug), so a low-cardinality counter keyed by code keeps the failure rate
+    // visible. `recordCount` no-ops unless Sentry is initialized, and its
+    // `withRunAttributes` already tags the command — only the code is passed.
+    recordCount(METRIC.cliEnvironmentError, 1, {
+      code: (error as NodeJS.ErrnoException).code ?? "unknown",
+    });
+  }
+  const message = isEnvError ? formatEnvironmentError(error) : formatErrorForReport(error);
 
   Effect.runSync(
     Effect.gen(function* () {

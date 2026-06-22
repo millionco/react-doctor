@@ -216,7 +216,7 @@ export interface InspectOutput {
    * Per-file lint cache outcome for the lint pass: files served from cache and
    * total files considered. Both `null` when the cache was disabled or bypassed
    * (audit mode, adopted `extends`, user plugins) so the run never split. Fed
-   * to the Sentry wide event as `lintCacheHitRatio`.
+   * to the Sentry wide event as `lint.cacheHitRatio`.
    */
   readonly lintCacheHitFileCount: number | null;
   readonly lintCacheTotalFileCount: number | null;

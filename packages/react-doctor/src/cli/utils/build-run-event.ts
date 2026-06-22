@@ -59,7 +59,7 @@ export interface RunEventInput {
   // `true` when the background supply-chain check hit its overlap budget and
   // failed open to no diagnostics. The kill metric for the lint/supply-chain
   // overlap watches the rate of this per supply-chain-eligible scan (filter to
-  // `mode == "full"`, since a skipped check also reports `false`). Known on the
+  // `scan.mode == "full"`, since a skipped check also reports `false`). Known on the
   // success path and replayed from the cached payload on a cache hit — but a
   // timed-out run is never cached (`shouldStoreScanPayload`), so a cache hit
   // always reports `false`. Omitted only on the failure path (the scan threw
@@ -127,7 +127,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   // Mirror the CLI's real blocking gate (cli/commands/inspect.ts → finalizeScans):
   // it tests the threshold against diagnostics filtered for the `ciFailure`
   // surface (weak-signal `design`-tagged rules are dropped by default), so the
-  // wide event's wouldBlock/outcome/exitCode can't disagree with the actual
+  // wide event's `outcome.wouldBlock`/`outcome.status`/`outcome.exitCode` can't disagree with the actual
   // process exit. The descriptive totals below still reflect the full findings.
   const gateDiagnostics = filterDiagnosticsForSurface(
     result.diagnostics,
@@ -136,7 +136,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   );
   // `scoreOnly` runs never raise a non-zero exit (finalizeScans guards the gate
   // on `!isScoreOnly`), and a degraded baseline run (`gateExempt`) skips the
-  // gate too — keep wouldBlock/outcome/exitCode consistent with the real exit.
+  // gate too — keep `outcome.wouldBlock`/`outcome.status`/`outcome.exitCode` consistent with the real exit.
   const wouldBlock =
     !input.scoreOnly && !input.gateExempt && shouldBlockCi(gateDiagnostics, blockingLevel);
   const hasSkippedChecks = result.skippedChecks.length > 0;

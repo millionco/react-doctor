@@ -6,7 +6,7 @@
 // and contribute 0. The count is more sensitive than the message count
 // (`lintPartialFailureCount`) for the LPT kill metric — a batch that strands
 // the timeout-tripping bucket can drop many files in a single message — so it
-// rides the wide event as `lintDroppedFileCount`. Parsing the anchored prefix
+// rides the wide event as `lint.droppedFileCount`. Parsing the anchored prefix
 // keeps the signal contained to one CLI util instead of plumbing a structured
 // count through the Linter → run-inspect → cache-payload chain.
 const DROPPED_FILES_MESSAGE_PATTERN = /^(\d+) file\(s\) failed to lint and were skipped/;

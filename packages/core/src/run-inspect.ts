@@ -296,7 +296,10 @@ const formatLintFailText = (
  *      diagnostics).
  *   2. beforeLint hook (e.g. CLI renders the project-detection block)
  *   3. environment checks (reduced-motion + pnpm hardening +
- *      expo/react-native + security scan), collected synchronously
+ *      expo/react-native), collected synchronously. The heavier
+ *      content-regex security scan is forked instead (like supply-chain
+ *      below) and joined before the concat, so its CPU overlaps lint
+ *      rather than blocking the event loop before it.
  *   4. The supply-chain check (Socket.dev) is forked onto a background
  *      fiber so its ~100% network-bound time overlaps the ~100%
  *      CPU/subprocess-bound lint pass below, collapsing two serial
@@ -316,7 +319,7 @@ const formatLintFailText = (
  *      order, so terminal output is identical either way; supply-chain
  *      rides alongside without a spinner.
  *   6. Join the supply-chain fiber, then assemble the diagnostics in a
- *      FIXED order (env, supply-chain, lint, dead-code) so the output is
+ *      FIXED order (env, security-scan, supply-chain, lint, dead-code) so the output is
  *      byte-identical regardless of which fiber settled first. The
  *      viewer-permission fiber is joined later, during score-metadata
  *      assembly (it feeds score metadata, not diagnostics). The per-element

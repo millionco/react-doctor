@@ -516,7 +516,7 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
   // fakes, not real children, and gating them would only serialize the suite.
   const rawResult =
     options.createWorker === undefined
-      ? await withDeadCodeWorkerSlot(spawnAndRun)
+      ? await withDeadCodeWorkerSlot(spawnAndRun, options.abortSignal)
       : await spawnAndRun();
   const result = parseDeadCodeWorkerResult(rawResult);
   const toRelative = (filePath: string): string => toRelativeFilePath(rootDirectory, filePath);

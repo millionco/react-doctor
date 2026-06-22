@@ -35,4 +35,40 @@ describe("withDeadCodeWorkerSlot", () => {
     // A leaked slot would (on a cap-1 runner) wedge this forever.
     expect(await withDeadCodeWorkerSlot(async () => "after")).toBe("after");
   });
+
+  it("rejects an already-aborted caller without running its task", async () => {
+    let taskRan = false;
+    await expect(
+      withDeadCodeWorkerSlot(async () => {
+        taskRan = true;
+        return "ran";
+      }, AbortSignal.abort()),
+    ).rejects.toThrow(/aborted/i);
+    expect(taskRan).toBe(false);
+  });
+
+  it("rejects a queued caller when its abort fires during the wait, without leaking the slot", async () => {
+    const cap = resolveDeadCodeConcurrency();
+    let releaseHeld!: () => void;
+    const heldGate = new Promise<void>((resolve) => {
+      releaseHeld = resolve;
+    });
+    // Occupy every slot so the next caller has to queue.
+    const held = Array.from({ length: cap }, () => withDeadCodeWorkerSlot(() => heldGate));
+    const controller = new AbortController();
+    let queuedTaskRan = false;
+    const queued = withDeadCodeWorkerSlot(async () => {
+      queuedTaskRan = true;
+      return "ran";
+    }, controller.signal);
+    await sleep(5);
+    controller.abort();
+    await expect(queued).rejects.toThrow(/aborted/i);
+    expect(queuedTaskRan).toBe(false);
+    // Drain the held slots; if the aborted waiter had leaked a slot the
+    // semaphore would now be permanently down one, wedging the call below.
+    releaseHeld();
+    await Promise.all(held);
+    expect(await withDeadCodeWorkerSlot(async () => "after")).toBe("after");
+  });
 });

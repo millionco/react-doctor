@@ -1,5 +1,4 @@
 import { parseSync } from "oxc-parser";
-import { isAstNode } from "../utils/is-ast-node.js";
 
 export interface ScrambleOptions {
   language?: "ts" | "tsx" | "js" | "jsx";
@@ -19,18 +18,28 @@ export interface ScrambledCode {
   nodeType: string | null;
 }
 
+interface AstNode {
+  type: string;
+  start?: unknown;
+  end?: unknown;
+  [field: string]: unknown;
+}
+
 interface SourceReplacement {
   start: number;
   end: number;
   text: string;
 }
 
-interface AstNodeLike {
-  type: string;
-  start?: unknown;
-  end?: unknown;
-  [field: string]: unknown;
+interface Span {
+  start: number;
+  end: number;
 }
+
+// Role inferred from a name without leaking it: `use*` hook, `set*` setter,
+// `get*` getter, PascalCase component/class, else var. JSX tag + attribute
+// roles can't be read from the name alone, so those are classified by node.
+type PlaceholderKind = "hook" | "setter" | "getter" | "component" | "element" | "prop" | "var";
 
 const FILENAME_FOR_LANGUAGE: Record<NonNullable<ScrambleOptions["language"]>, string> = {
   ts: "snippet.ts",
@@ -39,8 +48,57 @@ const FILENAME_FOR_LANGUAGE: Record<NonNullable<ScrambleOptions["language"]>, st
   jsx: "snippet.jsx",
 };
 
+// The prefix encodes the role (never the name) so the shape stays legible. The
+// component/host split (`C`/`e`) also keeps JSX valid: `<C0>` is a component,
+// `<e0>` a host tag, mirroring React's uppercase-vs-lowercase convention.
+const PLACEHOLDER_PREFIX: Record<PlaceholderKind, string> = {
+  hook: "h",
+  setter: "s",
+  getter: "g",
+  component: "C",
+  element: "e",
+  prop: "p",
+  var: "v",
+};
+
+// Contextual keywords that parse as `Identifier` but break re-parse when
+// renamed: `constructor` (TS parameter properties) and `global`
+// (`declare global { … }` ambient blocks).
+const RESERVED_IDENTIFIER_NAMES = new Set<string>(["constructor", "global"]);
+
+// Nodes too granular to be a useful diagnostic anchor; `findMinimalNode` climbs
+// past them to the nearest meaningful enclosing node.
+const TOO_GRANULAR_NODES = new Set<string>([
+  "Identifier",
+  "JSXIdentifier",
+  "PrivateIdentifier",
+  "Literal",
+  "MemberExpression",
+  "Property",
+  "JSXAttribute",
+  "JSXExpressionContainer",
+  "TemplateElement",
+]);
+const MAX_ENCLOSING_CLIMB = 6;
+
 const FNV_OFFSET_BASIS = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
+
+const isAstNode = (candidate: unknown): candidate is AstNode =>
+  typeof candidate === "object" && candidate !== null && "type" in candidate;
+
+const offsetOf = (node: AstNode): Span | null =>
+  typeof node.start === "number" && typeof node.end === "number"
+    ? { start: node.start, end: node.end }
+    : null;
+
+const visitChildren = (node: AstNode, visit: (child: unknown) => void): void => {
+  for (const key of Object.keys(node)) {
+    const value = node[key];
+    if (Array.isArray(value)) for (const item of value) visit(item);
+    else if (value && typeof value === "object") visit(value);
+  }
+};
 
 const fingerprint = (input: string): string => {
   let hash = FNV_OFFSET_BASIS;
@@ -61,9 +119,8 @@ const parseProgram = (source: string, fileName: string): unknown | null => {
   }
 };
 
-// Resolve the program for a snippet. An explicit `language` is authoritative —
-// the caller knows the file's extension. With no hint we try `tsx` first (JSX +
-// most TS) then fall back to `ts`, because value-position generics (`fn<T>()`,
+// An explicit `language` is authoritative. With no hint we try `tsx` first (JSX
+// + most TS) then fall back to `ts`, because value-position generics (`fn<T>()`,
 // `<T>() => …`) parse as JSX under TSX rules and would otherwise fail.
 const parseSnippetProgram = (
   source: string,
@@ -76,23 +133,12 @@ const parseSnippetProgram = (
   );
 };
 
-const offsetOf = (node: AstNodeLike): { start: number; end: number } | null => {
-  if (typeof node.start !== "number" || typeof node.end !== "number") return null;
-  return { start: node.start, end: node.end };
-};
-
-// The slice of a TemplateElement's span (in local source coordinates) that holds
-// the quasi text, with any delimiters trimmed off. oxc reports these spans
-// inconsistently — TS mode wraps the delimiters (`` ` ``/`${`/`}`), JS mode is the
-// cooked text only — and raw text can be longer than the span when it contains
-// escapes, so we never compute the end from `raw.length` (that can overrun the
-// span into unrelated source). Instead we trim the real delimiter characters off
-// the span ends, which stays strictly within `[localStart, localEnd]`.
-const templateInnerSpan = (
-  source: string,
-  localStart: number,
-  localEnd: number,
-): { start: number; end: number } => {
+// The quasi-text slice of a TemplateElement span (local coordinates), delimiters
+// trimmed. oxc reports these spans inconsistently (TS mode wraps the
+// `` ` ``/`${`/`}` delimiters, JS mode is the cooked text only) and raw text can
+// be longer than the span, so we trim the real delimiter characters off the span
+// ends rather than computing the end from `raw.length` (which can overrun).
+const templateInnerSpan = (source: string, localStart: number, localEnd: number): Span => {
   let start = localStart;
   let end = localEnd;
   if (source[start] === "`" || source[start] === "}") start += 1;
@@ -101,38 +147,6 @@ const templateInnerSpan = (
   return { start, end };
 };
 
-const visitChildren = (node: Record<string, unknown>, visit: (child: unknown) => void): void => {
-  for (const key of Object.keys(node)) {
-    const value = node[key];
-    if (Array.isArray(value)) for (const item of value) visit(item);
-    else if (value && typeof value === "object") visit(value);
-  }
-};
-
-// Placeholder kinds: every name is still scrambled, but the prefix encodes its
-// *role* (never its actual name) so the shape stays legible — `h0` is a hook,
-// `s0` a setter/mutation, `g0` a getter, `C0` a component, `e0` a host element,
-// `p0` a prop/attribute, `v0` an everything-else variable. The component/host
-// split (`C`/`e`) also keeps the JSX valid: `<C0>` stays a component, `<e0>` a
-// host tag, mirroring React's uppercase-vs-lowercase convention.
-type PlaceholderKind = "hook" | "setter" | "getter" | "component" | "element" | "prop" | "var";
-
-// Contextual keywords that parse as `Identifier` but break re-parse when
-// renamed, so they're left verbatim. See the rename pass.
-const RESERVED_IDENTIFIER_NAMES = new Set<string>(["constructor", "global"]);
-
-const PLACEHOLDER_PREFIX: Record<PlaceholderKind, string> = {
-  hook: "h",
-  setter: "s",
-  getter: "g",
-  component: "C",
-  element: "e",
-  prop: "p",
-  var: "v",
-};
-
-// Role inferred from naming convention alone (no name leaks): `use*` is a hook,
-// `set*` a setter, `get*` a getter, PascalCase a component/class, else a var.
 const classifyByName = (name: string): PlaceholderKind => {
   if (/^use[A-Z]/.test(name)) return "hook";
   if (/^set[A-Z]/.test(name)) return "setter";
@@ -169,16 +183,16 @@ const classifyJsxNodes = (program: unknown): Map<object, PlaceholderKind> => {
   return kinds;
 };
 
-// Keyed by (role, name), not name alone: one source name can play two roles —
-// e.g. `className` as both a destructured var and a JSX attribute label — and
-// each role must keep its own prefix. Keying by name only would let whichever
-// role was seen first win, so structurally identical snippets that differ only
-// in an underlying name would scramble (and hash) differently. `\u0000` can't
-// occur in an identifier, so it's a safe key separator.
+// Placeholders are keyed by (role, name), not name alone: one source name can
+// play two roles — e.g. `className` as both a destructured var and a JSX
+// attribute label — and each role keeps its own prefix. Keying by name only
+// would let whichever role was seen first win, so structurally identical
+// snippets differing only in an underlying name would scramble (and hash)
+// differently. `\u0000` can't occur in an identifier, so it's a safe separator.
 const makePlaceholderFactory = (): ((name: string, kind: PlaceholderKind) => string) => {
   const assignedByKey = new Map<string, string>();
   const countByPrefix = new Map<string, number>();
-  return (name: string, kind: PlaceholderKind): string => {
+  return (name, kind) => {
     const key = `${kind}\u0000${name}`;
     const existing = assignedByKey.get(key);
     if (existing !== undefined) return existing;
@@ -191,11 +205,10 @@ const makePlaceholderFactory = (): ((name: string, kind: PlaceholderKind) => str
   };
 };
 
-// --- Readable scramble: rewrite the source in place. EVERY identifier (incl.
-// React APIs, JSX tags, DOM/a11y attributes) → a role-prefixed placeholder
-// applied consistently, and every literal blinded. Nothing is preserved.
-// `offsetShift` rebases the AST's absolute offsets onto `source` when `source`
-// is a slice of the original (minimal-node extraction).
+// Rewrite the source in place: EVERY identifier (incl. React APIs, JSX tags,
+// DOM/a11y attributes) → a role-prefixed placeholder applied consistently, and
+// every literal blinded. `offsetShift` rebases the AST's absolute offsets onto
+// `source` when `source` is a slice of the original (minimal-node extraction).
 const scrambleReadable = (
   source: string,
   rootNode: unknown,
@@ -204,7 +217,9 @@ const scrambleReadable = (
 ): string => {
   const placeholderFor = makePlaceholderFactory();
   const replacements: SourceReplacement[] = [];
-  const add = (span: { start: number; end: number }, text: string): void => {
+  // Replacements are stored in `source`-local coordinates; `add` rebases the
+  // AST's absolute span once at the call site so nothing downstream re-shifts.
+  const add = (span: Span, text: string): void => {
     replacements.push({ start: span.start - offsetShift, end: span.end - offsetShift, text });
   };
   const visit = (node: unknown): void => {
@@ -215,21 +230,17 @@ const scrambleReadable = (
       node.type === "JSXIdentifier" ||
       node.type === "PrivateIdentifier"
     ) {
-      // A handful of contextual keywords surface as `Identifier` nodes and lose
-      // their meaning when renamed, so they're kept verbatim: `constructor`
-      // (TS parameter properties need the constructor-ness) and `global`
-      // (`declare global { … }` ambient blocks). Both break re-parse otherwise.
       if (span && typeof node.name === "string" && !RESERVED_IDENTIFIER_NAMES.has(node.name)) {
         const kind = jsxKinds.get(node) ?? classifyByName(node.name);
-        // A `PrivateIdentifier` span includes the leading `#`, but `name` does
-        // not. Keep the `#` (and a `#`-scoped lookup key) so `#x` stays a private
+        // A `PrivateIdentifier` span includes the leading `#` but `name` does
+        // not. Keep the `#` (and a `#`-scoped key) so `#x` stays a private
         // field, re-parses, and never collides with a public `x`.
         const isPrivate = node.type === "PrivateIdentifier";
         const placeholder = placeholderFor(isPrivate ? `#${node.name}` : node.name, kind);
         add(span, isPrivate ? `#${placeholder}` : placeholder);
       }
       // Fall through to children: a typed binding carries its `typeAnnotation`
-      // as a child of the identifier, and those type names must be blinded too.
+      // as a child, and those type names must be blinded too.
       visitChildren(node, visit);
       return;
     }
@@ -240,8 +251,7 @@ const scrambleReadable = (
       /\S/.test(node.value)
     ) {
       // Visible text between JSX tags can carry copy / customer data. Collapse
-      // the whole run (surrounding whitespace included) to a single token; JSX
-      // text is always re-parseable regardless of content.
+      // the whole run (surrounding whitespace included) to a single token.
       add(span, "t");
       return;
     }
@@ -251,13 +261,13 @@ const scrambleReadable = (
       else if (node.regex) add(span, "/re/");
     }
     // Blank only the quasi text so the template's `${expr}` structure and
-    // backticks survive in both parser modes; otherwise the delimiters are
-    // destroyed and adjacent `${a}${b}` fuse into one name. Trimming the real
-    // delimiter chars keeps the blanked region strictly inside the node span.
+    // backticks survive in both parser modes; otherwise adjacent `${a}${b}`
+    // fuse into one name. `templateInnerSpan` works in local coordinates, so
+    // push directly instead of round-tripping back through `add`.
     if (node.type === "TemplateElement" && span) {
       const inner = templateInnerSpan(source, span.start - offsetShift, span.end - offsetShift);
       if (inner.end > inner.start) {
-        add({ start: inner.start + offsetShift, end: inner.end + offsetShift }, "");
+        replacements.push({ start: inner.start, end: inner.end, text: "" });
       }
     }
     visitChildren(node, visit);
@@ -278,25 +288,13 @@ const scrambleReadable = (
   return scrambled;
 };
 
-// --- Minimal-node extraction around a diagnostic.
-const TOO_GRANULAR_NODES = new Set<string>([
-  "Identifier",
-  "JSXIdentifier",
-  "PrivateIdentifier",
-  "Literal",
-  "MemberExpression",
-  "Property",
-  "JSXAttribute",
-  "JSXExpressionContainer",
-  "TemplateElement",
-]);
-const MAX_ENCLOSING_CLIMB = 6;
-
-const findMinimalNode = (program: unknown, offset: number, length: number): AstNodeLike | null => {
+// The smallest self-contained node spanning the byte range, climbing past
+// overly granular nodes to the nearest meaningful enclosing one.
+const findMinimalNode = (program: unknown, offset: number, length: number): AstNode | null => {
   const targetEnd = offset + Math.max(length, 1);
   let bestSize = Number.POSITIVE_INFINITY;
-  const chain: AstNodeLike[] = [];
-  let bestChain: AstNodeLike[] = [];
+  const chain: AstNode[] = [];
+  let bestChain: AstNode[] = [];
   const visit = (node: unknown): void => {
     if (!isAstNode(node)) return;
     const span = offsetOf(node);

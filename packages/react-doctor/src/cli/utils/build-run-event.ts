@@ -15,22 +15,14 @@ import { toSpanAttributes } from "./to-span-attributes.js";
 import { withNamespace } from "./with-namespace.js";
 import type { SentryRootSpan } from "./with-sentry-run-span.js";
 
-// A tag-like map: `null` denotes an absent signal and is dropped by
-// `toSpanAttributes` so it never becomes a misleading `"null"` attribute.
 interface RunEventAttributes {
   [attributeName: string]: string | number | boolean | null;
 }
 
-/**
- * Outcome of one scan, attached to its root span (the canonical "wide event").
- * `result` is absent on the failure path (the scan threw before finalizing);
- * `error` is present there so the event still records what happened.
- */
 export interface RunEventInput {
   readonly result?: InspectResult;
-  /** `"diff"` / `"full"` / `"staged"`. */
+  /** `"full"` / `"diff"` / `"baseline"`. */
   readonly mode: string;
-  /** Resolved scan scope: full | files | changed | lines. */
   readonly scope: string;
   readonly parallel: boolean;
   readonly workerCount: number | undefined;
@@ -40,42 +32,18 @@ export interface RunEventInput {
   readonly noScore: boolean;
   readonly respectInlineDisables: boolean;
   readonly showWarnings: boolean;
-  /** A custom `--output-dir` was passed for the full diagnostics dump. */
   readonly usedOutputDir: boolean;
   readonly ignoredTagCount: number;
   readonly hasCustomConfig: boolean;
   readonly userConfig: ReactDoctorConfig | null;
-  // Lint / dead-code outcome — only known on the success path. The failure path
-  // (the scan threw) omits these rather than asserting a benign default.
   readonly didLintFail?: boolean;
   readonly lintFailureReasonKind?: string | null;
   readonly lintPartialFailureCount?: number;
-  // Total files the lint pass dropped (timeout-tripping batches that couldn't
-  // be split further). A per-scan outcome dim — the kill-metric signal for LPT:
-  // if cost-ordering front-loads the pathological bucket and drops MORE files,
-  // this rises on the `cost` cohort vs `arrival`.
   readonly lintDroppedFileCount?: number;
   readonly didDeadCodeFail?: boolean;
-  // `true` when the background supply-chain check hit its overlap budget and
-  // failed open to no diagnostics. The kill metric for the lint/supply-chain
-  // overlap watches the rate of this per supply-chain-eligible scan (filter to
-  // `scan.mode == "full"`, since a skipped check also reports `false`). Known on the
-  // success path and replayed from the cached payload on a cache hit — but a
-  // timed-out run is never cached (`shouldStoreScanPayload`), so a cache hit
-  // always reports `false`. Omitted only on the failure path (the scan threw
-  // before finalizing).
   readonly supplyChainOverlapTimedOut?: boolean;
-  /**
-   * Whether the dead-code pass ran concurrently with lint this scan (gate
-   * opened / overlap forced). Lets a query compare `runInspect` wall-clock
-   * grouped by overlap, and watch for an OOM/timeout regression on
-   * overlapped scans (the kill-metric for the overlap feature).
-   */
   readonly deadCodeOverlapped?: boolean;
-  // A degraded baseline run (no delta computed) skips the CI gate, so the
-  // `wouldBlock` prediction must match — never block on its plain-diff findings.
   readonly gateExempt?: boolean;
-  /** Present only when the scan threw. */
   readonly error?: unknown;
 }
 
@@ -94,12 +62,6 @@ const resolveVersionPin = (versionInput: string | undefined): string | null => {
   return "pinned";
 };
 
-// The blocking threshold for the `wouldBlock` signal. The action forwards
-// its own `blocking` input (so we see the gate even though it's handled by
-// the CLI exit code); otherwise fall back to the config value (new name, then
-// the deprecated `failOn` alias), then the `"error"` default. A bare
-// `--blocking` CLI flag (no action, no config) isn't visible here — an
-// accepted gap, since CI gating runs through the action or config.
 const resolveTelemetryBlocking = (userConfig: ReactDoctorConfig | null): BlockingLevel => {
   const fromAction = process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.blocking];
   if (fromAction !== undefined && isValidBlockingLevel(fromAction)) {
@@ -109,7 +71,6 @@ const resolveTelemetryBlocking = (userConfig: ReactDoctorConfig | null): Blockin
 };
 
 const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
-  // Failure path: the scan threw before producing a result.
   if (input.result === undefined) {
     const error = input.error;
     const known = isReactDoctorError(error);
@@ -124,24 +85,21 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   const result = input.result;
   const summary = summarizeDiagnostics(result.diagnostics);
   const blockingLevel = resolveTelemetryBlocking(input.userConfig);
-  // Mirror the CLI's real blocking gate (cli/commands/inspect.ts → finalizeScans):
-  // it tests the threshold against diagnostics filtered for the `ciFailure`
-  // surface (weak-signal `design`-tagged rules are dropped by default), so the
-  // wide event's `outcome.wouldBlock`/`outcome.status`/`outcome.exitCode` can't disagree with the actual
-  // process exit. The descriptive totals below still reflect the full findings.
   const gateDiagnostics = filterDiagnosticsForSurface(
     result.diagnostics,
     "ciFailure",
     input.userConfig,
   );
-  // `scoreOnly` runs never raise a non-zero exit (finalizeScans guards the gate
-  // on `!isScoreOnly`), and a degraded baseline run (`gateExempt`) skips the
-  // gate too — keep `outcome.wouldBlock`/`outcome.status`/`outcome.exitCode` consistent with the real exit.
   const wouldBlock =
     !input.scoreOnly && !input.gateExempt && shouldBlockCi(gateDiagnostics, blockingLevel);
   const hasSkippedChecks = result.skippedChecks.length > 0;
   const isClean = result.diagnostics.length === 0 && !hasSkippedChecks;
-  const outcome = wouldBlock ? "blocked" : isClean ? "clean" : "ok";
+  let outcome = "ok";
+  if (wouldBlock) {
+    outcome = "blocked";
+  } else if (isClean) {
+    outcome = "clean";
+  }
 
   const firings = summarizeRuleFirings(result.diagnostics);
   const countByRule = new Map<string, number>();
@@ -162,18 +120,10 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     }
   }
 
-  // Widest-blast-radius rule: how many files the single most-spread rule
-  // touches (and its site count). Lets a query see how common migration-scale
-  // buckets are and calibrate MIGRATION_SCALE_RULE_FILE_COUNT — the threshold
-  // that fires the "sample before you sweep" advisory — against real scans.
   const largestRuleBucket = buildRuleBlastRadii(result.diagnostics)[0] ?? null;
 
   let diagnosticsInTestFiles = 0;
   let diagnosticsInStoryFiles = 0;
-  // Root-cause grouping rollup: how many distinct fix groups, and how many
-  // findings they cover. `fixGroupedFindings - fixGroups` is the number of
-  // findings that collapse away (one fix, not N tasks) — the signal that says
-  // whether this feature fires on real repos and how much it folds.
   const findingsPerFixGroup = new Map<string, number>();
   for (const diagnostic of result.diagnostics) {
     if (diagnostic.fileContext === "test") diagnosticsInTestFiles += 1;
@@ -188,8 +138,6 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   let fixGroupedFindings = 0;
   for (const count of findingsPerFixGroup.values()) fixGroupedFindings += count;
 
-  // Per-category diagnostic counts, keyed so the `diag` namespace yields
-  // `diag.category.<key>` once prefixed.
   const categoryRollup: RunEventAttributes = {};
   for (const [category, count] of countByCategory) {
     categoryRollup[`category.${toCategoryKey(category)}`] = count;
@@ -227,9 +175,6 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
       failureReasonKind: input.lintFailureReasonKind ?? null,
       partialFailureCount: input.lintPartialFailureCount ?? null,
       droppedFileCount: input.lintDroppedFileCount ?? null,
-      // Per-file lint cache outcome. Numeric so Sentry can `p75(lint.cacheHitRatio)`;
-      // all `null` when the cache was off/bypassed so "no cache" reads distinctly
-      // from a 0% hit rate (`toSpanAttributes` drops the nulls).
       cacheHitFiles: result.lintCacheHitFileCount ?? null,
       cacheTotalFiles: result.lintCacheTotalFileCount ?? null,
       cacheHitRatio:
@@ -254,12 +199,6 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
       largestRuleBucketRule: largestRuleBucket ? largestRuleBucket.ruleKey : null,
     }),
   };
-  // Baseline (PR-introduced-issues-only) signal. Emitted only for baseline runs
-  // so non-baseline scans stay clean: a computed run carries the delta (`new` is
-  // the introduced count == diag.total, plus `fixed` and base `baseTotal`) and
-  // `degraded: false`; a degraded run (base ref unfetchable or lint failed,
-  // surfaced via `gateExempt`) carries only `degraded: true`. The pair lets a
-  // query compute the degradation rate over all baseline runs.
   if (result.baselineDelta) {
     Object.assign(
       attributes,
@@ -271,7 +210,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
       }),
     );
   } else if (input.gateExempt) {
-    attributes["baseline.degraded"] = true;
+    Object.assign(attributes, withNamespace("baseline", { degraded: true }));
   }
   return attributes;
 };
@@ -281,10 +220,6 @@ const buildActionAttributes = (): RunEventAttributes => {
   return withNamespace("action", {
     actorAssociation: githubActorAssociation ?? null,
     runnerOs: detectRunnerOs(),
-    // Action knobs: present only when the official action forwarded them, so
-    // they're `null` (dropped) for any non-action run. The action's `blocking`
-    // is already captured as `outcome.blocking` (resolveTelemetryBlocking
-    // prefers it).
     comment: readEnvBoolean(ACTION_INPUT_ENVIRONMENT_VARIABLES.comment),
     reviewComments: readEnvBoolean(ACTION_INPUT_ENVIRONMENT_VARIABLES.reviewComments),
     versionPin: resolveVersionPin(process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.version]),
@@ -310,27 +245,10 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     hasCustomConfig: input.hasCustomConfig,
     rulesConfigured: ruleKeys.length,
     rulesDisabled: ruleKeys.filter((key) => ruleOverrides[key] === "off").length,
-    // Scan extent — how many files this run covered (the denominator for
-    // `diag.affectedFiles`). Known only on the success path.
     fileCount: input.result?.scannedFileCount ?? null,
   });
 };
 
-/**
- * Projects a scan into the namespaced attribute set for its root span — the
- * canonical per-scan "wide event". Every attribute carries a dotted namespace
- * that groups it by concept (`scan.*` config, `action.*` CI knobs, `outcome.*`
- * verdict, `diag.*` findings, `score.*`, `lint.*`, `deadCode.*`,
- * `supplyChain.*`, `timing.*`, `migration.*`, `baseline.*`) so the attributes
- * tree up in Sentry's attribute browser and stay filter-/group-/aggregate-able
- * in the Spans dataset. Pure and exported so the projection (outcome
- * precedence, rule/category rollups, CI knobs, config shape) is unit-testable
- * without a live Sentry client. `null` values are dropped so absent signals
- * never become misleading `"null"` attributes. The run + project base context
- * (version, command, ci/provider, framework, …) is already on the span from
- * `withSentryRunSpan` / `recordSentryProjectContext`, so this adds only what
- * those don't carry.
- */
 export const buildRunEventAttributes = (
   input: RunEventInput,
 ): Record<string, string | number | boolean> =>

@@ -1,17 +1,25 @@
+import * as path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { reconstructSession, resolveEditPaths } from "../src/stats/reconstruct-files.js";
 import type { AgentSession, FileEdit } from "../src/stats/types.js";
+
+const CWD = "/repo";
 
 const session = (overrides: Partial<AgentSession>): AgentSession => ({
   provider: "claude",
   sessionId: "s1",
   transcriptPath: "/tmp/s1.jsonl",
   model: "test-model",
-  cwd: "/repo",
+  cwd: CWD,
   edits: [],
   reads: [],
   ...overrides,
 });
+
+// Mirror reconstruct-files.ts' resolveAgainstCwd so expectations match the
+// platform-normalized paths the reconstruction emits (backslashes on Windows).
+const resolved = (rawPath: string): string =>
+  path.isAbsolute(rawPath) ? path.normalize(rawPath) : path.resolve(CWD, rawPath);
 
 const byPath = (files: ReadonlyArray<{ absolutePath: string; content: string }>) =>
   new Map(files.map((file) => [file.absolutePath, file.content]));
@@ -23,7 +31,7 @@ describe("reconstructSession", () => {
       { kind: "write", path: "/repo/src/a.ts", resultContent: "export const a = 1;\n" },
     ];
     const result = reconstructSession(session({ edits }));
-    expect(byPath(result.files).get("/repo/src/a.ts")).toBe("export const a = 1;\n");
+    expect(byPath(result.files).get(resolved("/repo/src/a.ts"))).toBe("export const a = 1;\n");
     expect(result.unreconstructable).toEqual([]);
   });
 
@@ -33,7 +41,7 @@ describe("reconstructSession", () => {
       { kind: "replace", path: "/repo/src/b.ts", oldString: "1", newString: "2" },
     ];
     const result = reconstructSession(session({ provider: "cursor", edits }));
-    expect(byPath(result.files).get("/repo/src/b.ts")).toBe("const x = 2;\n");
+    expect(byPath(result.files).get(resolved("/repo/src/b.ts"))).toBe("const x = 2;\n");
   });
 
   it("flags a StrReplace with no in-session base as unreconstructable", () => {
@@ -42,7 +50,7 @@ describe("reconstructSession", () => {
     ];
     const result = reconstructSession(session({ provider: "cursor", edits }));
     expect(result.files).toEqual([]);
-    expect(result.unreconstructable).toEqual(["/repo/src/c.ts"]);
+    expect(result.unreconstructable).toEqual([resolved("/repo/src/c.ts")]);
   });
 
   it("reconstructs a Codex apply_patch Add File", () => {
@@ -51,7 +59,7 @@ describe("reconstructSession", () => {
     const result = reconstructSession(
       session({ provider: "codex", edits: [{ kind: "patch", path: "", patch }] }),
     );
-    expect(byPath(result.files).get("/repo/src/d.ts")).toBe("export const d = 1;\n");
+    expect(byPath(result.files).get(resolved("/repo/src/d.ts"))).toBe("export const d = 1;\n");
   });
 
   it("applies a Codex apply_patch Update File on an in-session base", () => {
@@ -68,7 +76,7 @@ describe("reconstructSession", () => {
         ],
       }),
     );
-    expect(byPath(result.files).get("/repo/src/e.ts")).toBe(
+    expect(byPath(result.files).get(resolved("/repo/src/e.ts"))).toBe(
       "const value = 2;\nexport default value;\n",
     );
   });
@@ -76,7 +84,7 @@ describe("reconstructSession", () => {
   it("resolves relative edit paths against the session cwd", () => {
     const edits: FileEdit[] = [{ kind: "write", path: "src/f.ts", content: "export {};\n" }];
     const result = reconstructSession(session({ edits }));
-    expect(result.files.map((file) => file.absolutePath)).toEqual(["/repo/src/f.ts"]);
+    expect(result.files.map((file) => file.absolutePath)).toEqual([resolved("src/f.ts")]);
   });
 
   it("ignores files outside the lintable extension allowlist", () => {
@@ -111,6 +119,6 @@ describe("resolveEditPaths", () => {
         ],
       }),
     );
-    expect(new Set(result)).toEqual(new Set(["/repo/src/y.ts", "/repo/src/x.ts"]));
+    expect(new Set(result)).toEqual(new Set([resolved("src/y.ts"), resolved("/repo/src/x.ts")]));
   });
 });

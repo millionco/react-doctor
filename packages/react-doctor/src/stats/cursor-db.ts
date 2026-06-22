@@ -104,12 +104,18 @@ const rowValueString = (row: unknown): string | null => {
 const prefixUpperBound = (prefix: string): string =>
   prefix.slice(0, -1) + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1);
 
-const makeHandle = (dbPath: string): CursorDbHandle | null => {
+interface OpenDb {
+  readonly handle: CursorDbHandle;
+  readonly close: () => void;
+}
+
+const makeHandle = (dbPath: string): OpenDb | null => {
   let database: {
     prepare(sql: string): {
       get(...params: unknown[]): unknown;
       all(...params: unknown[]): unknown[];
     };
+    close(): void;
   };
   try {
     // `node:sqlite` is built in on Node 22.13+/24+; absent on older Node, where
@@ -126,7 +132,7 @@ const makeHandle = (dbPath: string): CursorDbHandle | null => {
     `SELECT value FROM cursorDiskKV WHERE key >= ? AND key < ?`,
   );
 
-  return {
+  const handle: CursorDbHandle = {
     composerHeaders(): CursorComposerHeader[] {
       try {
         const raw = rowValueString(headersStatement.get(COMPOSER_HEADERS_KEY));
@@ -164,22 +170,36 @@ const makeHandle = (dbPath: string): CursorDbHandle | null => {
       }
     },
   };
+
+  return {
+    handle,
+    close: () => {
+      try {
+        database.close();
+      } catch {
+        // Already closed or never fully opened — nothing to release.
+      }
+    },
+  };
 };
 
 // One open handle per process — opening is cheap (SQLite memory-maps lazily),
-// but reopening per composer during a scan would thrash. `closeCursorDb` resets
-// it for tests; the CLI relies on process exit.
-let cachedHandle: { dbPath: string; handle: CursorDbHandle | null } | null = null;
+// but reopening per composer during a scan would thrash. `closeCursorDb` closes
+// the underlying database for tests (so Windows can unlink the fixture file);
+// the CLI relies on process exit.
+let cachedDb: { dbPath: string; handle: CursorDbHandle | null; close: () => void } | null = null;
 
 /** Open (and memoize) the composer database, or `null` when unavailable. */
 export const openCursorDb = (dbPath: string | null): CursorDbHandle | null => {
   if (!dbPath) return null;
-  if (cachedHandle && cachedHandle.dbPath === dbPath) return cachedHandle.handle;
-  cachedHandle = { dbPath, handle: makeHandle(dbPath) };
-  return cachedHandle.handle;
+  if (cachedDb && cachedDb.dbPath === dbPath) return cachedDb.handle;
+  const opened = makeHandle(dbPath);
+  cachedDb = { dbPath, handle: opened?.handle ?? null, close: opened?.close ?? (() => {}) };
+  return cachedDb.handle;
 };
 
-/** Drop the memoized handle (tests open fresh fixture databases). */
+/** Close and drop the memoized database (tests open fresh fixture databases). */
 export const closeCursorDb = (): void => {
-  cachedHandle = null;
+  cachedDb?.close();
+  cachedDb = null;
 };

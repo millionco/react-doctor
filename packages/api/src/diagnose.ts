@@ -1,4 +1,39 @@
 import * as Effect from "effect/Effect";
+
+// Env vars that signal an active AI/ML training pipeline or agent sandbox.
+// Mirrors the CLI's detect-ai-training-environment.ts — kept inline so the
+// API package has no dependency on the CLI package.
+const AI_TRAINING_ENV_VARS = [
+  "HF_DATASETS_CACHE", "HF_HOME", "HUGGINGFACE_HUB_CACHE",
+  "CUDA_VISIBLE_DEVICES", "NVIDIA_VISIBLE_DEVICES",
+  "WANDB_RUN_ID", "WANDB_SWEEP_ID", "MLFLOW_RUN_ID", "MLFLOW_TRACKING_URI",
+  "COMET_EXPERIMENT_KEY", "NEPTUNE_RUN_ID", "CLEARML_TASK_ID",
+  "RAY_WORKER_PROCESS", "RAY_ADDRESS",
+  "MUJOCO_GL", "MUJOCO_PATH", "GYM_DISABLE_ENV_CHECKER",
+  "SM_TRAINING_ENV", "TRAINING_JOB_ARN", "SAGEMAKER_BASE_DIR",
+  "AZUREML_RUN_ID", "AZURE_ML_MODEL_DIR",
+  "CLOUD_ML_PROJECT_ID", "VERTEX_AI_LOG_LEVEL",
+  "KAGGLE_KERNEL_RUN_TYPE", "COLAB_BACKEND_VERSION", "DATABRICKS_RUNTIME_VERSION",
+  "FLYTE_INTERNAL_EXECUTION_ID", "DET_MASTER", "LIGHTNING_USER_ID",
+  "ARGO_WORKFLOW_NAME", "KFP_POD_NAME", "DVC_STAGE",
+  "DAYTONA_WS_ID", "DAYTONA_WS_NAME", "E2B_SANDBOX_ID",
+  "MODAL_FUNCTION_ID", "MODAL_TASK_ID", "RUNPOD_POD_ID",
+  "SPACE_ID", "REPLICATE_USERNAME", "VAST_CONTAINERLABEL",
+  "TPU_NAME", "ROCR_VISIBLE_DEVICES",
+  "HARBOR_URL", "HARBOR_HOSTNAME",
+  "SWE_BENCH_TASK", "SWEBENCH_TASK", "SWE_AGENT_MODEL",
+] as const;
+
+let didWarnAiTraining = false;
+const warnIfAiTrainingEnvironment = (): void => {
+  if (didWarnAiTraining) return;
+  const detected = AI_TRAINING_ENV_VARS.find((envVar) => process.env[envVar] !== undefined);
+  if (detected === undefined) return;
+  didWarnAiTraining = true;
+  console.warn(
+    "[react-doctor] Use in an AI or ML pipeline requires written permission under the react-doctor license. Contact founders@million.dev to request access.",
+  );
+};
 import * as Layer from "effect/Layer";
 import {
   buildSkippedChecks,
@@ -120,6 +155,7 @@ const diagnoseDirectory = async (
   directory: string,
   options: DiagnoseOptions,
 ): Promise<DiagnoseResult> => {
+  warnIfAiTrainingEnvironment();
   const startTime = globalThis.performance.now();
   const scanTarget = await resolveScanTarget(directory);
   const program = buildInspectProgram(scanTarget, options);
@@ -210,6 +246,7 @@ const diagnoseProject = async (
 const diagnoseProjectBatch = async (
   input: DiagnoseProjectsInput,
 ): Promise<DiagnoseProjectsResult> => {
+  warnIfAiTrainingEnvironment();
   const startTime = globalThis.performance.now();
   const { projects, concurrency, config: batchConfig, ...baseOptions } = input;
 

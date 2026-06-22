@@ -78,7 +78,13 @@ export const reconstructSession = (session: AgentSession): SessionReconstruction
         const base = buffers.get(resolved);
         if (typeof base !== "string") continue;
         const applied = applyUpdateHunks(base, op.hunkLines ?? []);
-        if (applied === null) continue;
+        if (applied === null) {
+          // The hunk didn't match our base, so our buffer is out of sync with
+          // what the model actually edited. Drop it to "no faithful base" rather
+          // than emit stale content as if it were the reconstructed result.
+          buffers.delete(resolved);
+          continue;
+        }
         const movedTo = op.movePath && resolveAgainstCwd(op.movePath, session.cwd);
         if (movedTo) {
           buffers.set(resolved, null);

@@ -96,7 +96,10 @@ export const statsAction = async (flags: StatsFlags): Promise<void> => {
         (result) => result.filesScanned === 0 && result.reconstructedFiles > 0,
       ).length,
       sessionsUnreconstructable: results.filter(
-        (result) => result.filesScanned === 0 && result.reconstructedFiles === 0,
+        (result) =>
+          result.filesScanned === 0 &&
+          result.reconstructedFiles === 0 &&
+          result.unreconstructable > 0,
       ).length,
       generatedAt: new Date().toISOString(),
     };

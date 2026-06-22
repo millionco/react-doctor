@@ -81,6 +81,23 @@ describe("reconstructSession", () => {
     );
   });
 
+  it("flags an apply_patch Update whose hunk does not match the base as unreconstructable", () => {
+    const add = "*** Begin Patch\n*** Add File: /repo/src/h.ts\n+const value = 1;\n*** End Patch";
+    const update =
+      "*** Begin Patch\n*** Update File: /repo/src/h.ts\n@@\n-const value = 999;\n+const value = 2;\n*** End Patch";
+    const result = reconstructSession(
+      session({
+        provider: "codex",
+        edits: [
+          { kind: "patch", path: "", patch: add },
+          { kind: "patch", path: "", patch: update },
+        ],
+      }),
+    );
+    expect(result.files).toEqual([]);
+    expect(result.unreconstructable).toEqual([resolved("/repo/src/h.ts")]);
+  });
+
   it("resolves relative edit paths against the session cwd", () => {
     const edits: FileEdit[] = [{ kind: "write", path: "src/f.ts", content: "export {};\n" }];
     const result = reconstructSession(session({ edits }));

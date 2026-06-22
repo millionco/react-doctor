@@ -68,7 +68,9 @@ const AI_TRAINING_ENV_VARS: ReadonlyArray<readonly [string, string]> = [
 
 export const detectAiTrainingEnvironment = (): string | null => {
   for (const [envVar, label] of AI_TRAINING_ENV_VARS) {
-    if (process.env[envVar] !== undefined) return label;
+    // Truthy, not just defined: an empty value (e.g. `CUDA_VISIBLE_DEVICES=""`,
+    // which disables the GPU) shouldn't classify the run as a training pipeline.
+    if (process.env[envVar]) return label;
   }
   return null;
 };

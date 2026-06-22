@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
+import type { SkillAgentType } from "agent-install";
 import type { Answers, PromptObject } from "prompts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import * as fs from "node:fs";
@@ -22,6 +23,7 @@ import type { InstallReactDoctorDependencyRunnerInput } from "../src/cli/utils/i
 import { recordActionUpgradeDecision } from "../src/cli/utils/action-upgrade-prompt.js";
 import { CONFIG_DIR_ENV_VAR } from "../src/cli/utils/cli-state-store.js";
 import { hasHandledCiPrompt, recordCiPromptDecision } from "../src/cli/utils/ci-prompt-decision.js";
+import { readInstallAgents } from "../src/cli/utils/install-agents-preference.js";
 import { setSpinnerSilent } from "../src/cli/utils/spinner.js";
 import { silenceConsoleForTest } from "./helpers/silence-console.js";
 
@@ -113,6 +115,8 @@ interface RunInteractiveInstallReactDoctorForTestOptions {
   readonly gitHookPath: string;
   readonly setupOptions: readonly string[];
   readonly promptQuestions?: unknown[];
+  readonly detectedAgents?: readonly SkillAgentType[];
+  readonly lastSelectedAgents?: readonly SkillAgentType[];
 }
 
 const runInteractiveInstallReactDoctorForTest = async (
@@ -162,7 +166,9 @@ const runInteractiveInstallReactDoctorForTest = async (
     await runInstallReactDoctorForTest({
       sourceDir: options.sourceDir,
       projectRoot: options.projectRoot,
-      detectedAgents: ["cursor"],
+      detectedAgents: [...(options.detectedAgents ?? ["cursor"])],
+      lastSelectedAgents:
+        options.lastSelectedAgents === undefined ? undefined : [...options.lastSelectedAgents],
       gitHookPath: options.gitHookPath,
       prompt,
     });
@@ -718,6 +724,85 @@ describe("runInstallReactDoctor", () => {
     expect(workflowContent).not.toContain("\n        with:\n");
     expect(workflowContent).not.toContain("github-token");
     expect(workflowContent).not.toContain("diff: main");
+  });
+
+  const findAgentChoiceSelection = (promptQuestions: unknown[]): Map<string, boolean> => {
+    const agentQuestion = promptQuestions.find(
+      (question): question is { choices: Array<{ value: string; selected?: boolean }> } =>
+        typeof question === "object" &&
+        question !== null &&
+        "name" in question &&
+        (question as { name?: unknown }).name === "agents",
+    );
+    expect(agentQuestion).toBeDefined();
+    return new Map(
+      agentQuestion!.choices.map((choice) => [choice.value, Boolean(choice.selected)]),
+    );
+  };
+
+  it("pre-selects only the curated default agents, leaving merely-installed ones opt-in", async () => {
+    writeValidSkill(fixture.sourceDir);
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    const promptQuestions: unknown[] = [];
+
+    await runInteractiveInstallReactDoctorForTest({
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      gitHookPath: path.join(fixture.projectRoot, ".git/hooks/pre-commit"),
+      setupOptions: [],
+      promptQuestions,
+      // A machine with four AI tools installed, no remembered selection yet.
+      detectedAgents: ["claude-code", "cursor", "goose", "crush"],
+    });
+
+    const selectionByAgent = findAgentChoiceSelection(promptQuestions);
+    // Popular agents in the curated default set → pre-checked.
+    expect(selectionByAgent.get("claude-code")).toBe(true);
+    expect(selectionByAgent.get("cursor")).toBe(true);
+    // Merely installed somewhere in $HOME → shown, but not pre-checked, so a
+    // single Enter never copies the skill into their project-local dirs.
+    expect(selectionByAgent.get("goose")).toBe(false);
+    expect(selectionByAgent.get("crush")).toBe(false);
+  });
+
+  it("pre-selects the user's remembered selection over the curated defaults", async () => {
+    writeValidSkill(fixture.sourceDir);
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    const promptQuestions: unknown[] = [];
+
+    await runInteractiveInstallReactDoctorForTest({
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      gitHookPath: path.join(fixture.projectRoot, ".git/hooks/pre-commit"),
+      setupOptions: [],
+      promptQuestions,
+      detectedAgents: ["claude-code", "cursor", "goose"],
+      // Last time the user deliberately picked Goose; that wins over defaults.
+      lastSelectedAgents: ["goose"],
+    });
+
+    const selectionByAgent = findAgentChoiceSelection(promptQuestions);
+    expect(selectionByAgent.get("goose")).toBe(true);
+    expect(selectionByAgent.get("claude-code")).toBe(false);
+    expect(selectionByAgent.get("cursor")).toBe(false);
+  });
+
+  it("remembers the interactive selection so the next install defaults to it", async () => {
+    writeValidSkill(fixture.sourceDir);
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    expect(readInstallAgents()).toEqual([]);
+
+    // The interactive harness's prompt mock answers the agent question with
+    // ["cursor"], so that pick should be persisted globally for next time.
+    await runInteractiveInstallReactDoctorForTest({
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      gitHookPath: path.join(fixture.projectRoot, ".git/hooks/pre-commit"),
+      setupOptions: [],
+      detectedAgents: ["claude-code", "cursor"],
+    });
+
+    expect(readInstallAgents()).toEqual(["cursor"]);
   });
 
   it("skips optional setup when only the skip option is selected", async () => {

@@ -1,7 +1,10 @@
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { detectAvailableAgents } from "../src/cli/utils/detect-agents.js";
+import {
+  computeDefaultSelectedAgents,
+  detectAvailableAgents,
+} from "../src/cli/utils/detect-agents.js";
 import * as fs from "node:fs";
 
 const writeExecutable = (binDir: string, binaryName: string): void => {
@@ -89,5 +92,40 @@ describe.skipIf(process.platform === "win32")("detectAvailableAgents (PATH detec
     const result = await detectAvailableAgents();
     if (result.includes("claude-code")) return;
     expect(result).not.toContain("claude-code");
+  });
+});
+
+describe("computeDefaultSelectedAgents", () => {
+  it("pre-selects the remembered agents (intersected with what's detected)", () => {
+    expect(
+      computeDefaultSelectedAgents(["claude-code", "cursor", "goose"], ["goose", "crush"]),
+    ).toEqual(["goose"]);
+  });
+
+  it("prefers the remembered selection over the curated defaults", () => {
+    expect(computeDefaultSelectedAgents(["claude-code", "cursor", "goose"], ["goose"])).toEqual([
+      "goose",
+    ]);
+  });
+
+  it("falls back to the curated popular defaults when nothing is remembered", () => {
+    expect(computeDefaultSelectedAgents(["claude-code", "cursor", "goose", "crush"], [])).toEqual([
+      "claude-code",
+      "cursor",
+    ]);
+  });
+
+  it("falls back to a lone detected agent when neither remembered nor a default matches", () => {
+    expect(computeDefaultSelectedAgents(["goose"], [])).toEqual(["goose"]);
+  });
+
+  it("selects nothing when several agents are detected but none is remembered or a default", () => {
+    expect(computeDefaultSelectedAgents(["goose", "crush", "kilo"], [])).toEqual([]);
+  });
+
+  it("never pre-selects a remembered or default agent that isn't detected", () => {
+    // `codex` is a curated default but isn't installed here; `claude-code` is
+    // remembered but also not detected — neither should leak into the result.
+    expect(computeDefaultSelectedAgents(["goose", "crush"], ["claude-code"])).toEqual([]);
   });
 });

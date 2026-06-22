@@ -54,7 +54,13 @@ export const SETUP_HINT_EVENT = "setup-hint";
 //   surface                       scope    id                  wired in
 //   ────────────────────────────  ───────  ──────────────────  ──────────────────────────────
 //   post-scan handoff target      global   handoff-target      handoff-target-preference.ts
+//   install agent selection       global   install-agents      install-agents-preference.ts
 export const HANDOFF_TARGET_PREFERENCE_ID = "handoff-target";
+
+// The comma-encoded agent list the user picked at their last `install` (see the
+// Vercel `skills` CLI's `lastSelectedAgents` lock). Read back as the next
+// install's pre-selected default.
+export const INSTALL_AGENTS_PREFERENCE_ID = "install-agents";
 
 export type EventOutcome = "seen" | "accepted" | "declined";
 

@@ -317,11 +317,11 @@ export class Git extends Context.Service<
         input: CommandInvocationInput,
       ): Effect.Effect<GitInvocationResult, ReactDoctorError> => {
         // Shared by the async `PlatformError` path and the synchronous-spawn
-        // defect path so both spawn-failure shapes resolve identically: a
-        // non-`git` command degrades to a non-zero result the caller already
-        // handles; `git` fails with the tagged `GitInvocationFailed` its
-        // degradation paths (currentBranch → null, branchExists → false,
-        // changedLineRanges → null) recover from.
+        // pre-flight checks below so both spawn-failure shapes resolve
+        // identically: a non-`git` command degrades to a non-zero result the
+        // caller already handles; `git` fails with the tagged
+        // `GitInvocationFailed` its degradation paths (currentBranch → null,
+        // branchExists → false, changedLineRanges → null) recover from.
         const foldSpawnFailure = (
           cause: unknown,
         ): Effect.Effect<GitInvocationResult, ReactDoctorError> =>

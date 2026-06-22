@@ -20,14 +20,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-Our only modifications are as follows, and require prior written permission
-from the copyright holder (contact founders@million.dev):
+Our only modification is that the following uses require prior written
+permission from the copyright holder. To request permission, contact
+founders@million.dev.
 
-1. The Software, its source code, and any derivative works thereof may not be
-   used, in whole or in part, as training, fine-tuning, or evaluation data, or
-   as input to any automated pipeline for training or improving any machine
-   learning model or AI system.
+1. Using the Software, its source code, or any derivative works thereof, in
+   whole or in part, as training, fine-tuning, or evaluation data, or as input
+   to any automated pipeline for training or improving any machine learning
+   model or AI system.
 
-2. You may not sell the Software, or offer it to third parties as a paid,
-   hosted, or managed product or service (including any commercial API or SaaS
-   offering) whose value derives entirely or substantially from the Software.
+2. Selling the Software, or offering it to third parties as a paid, hosted, or
+   managed product or service (including any commercial API or SaaS offering)
+   whose value derives entirely or substantially from the Software.

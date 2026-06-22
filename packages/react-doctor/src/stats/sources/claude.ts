@@ -1,18 +1,10 @@
 import * as os from "node:os";
 import * as path from "node:path";
+import { asArray, asRecord, asString } from "../coerce.js";
+import { mostCommonKey } from "../most-common-key.js";
 import { fileSessionCandidates, findJsonlFiles, readJsonlEntries } from "../walk-transcripts.js";
 import { STATS_UNKNOWN_MODEL } from "../constants.js";
 import type { AgentSession, FileEdit, FileRead, SourceDef } from "./index.js";
-
-const asString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
-
-const asRecord = (value: unknown): Record<string, unknown> | undefined =>
-  value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-
-const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
 const EDIT_TOOL_NAMES = new Set(["Write", "Edit", "MultiEdit"]);
 
@@ -101,20 +93,11 @@ export const parseClaudeSession = (transcriptPath: string): AgentSession | null 
 
   if (!sawAnything) return null;
 
-  let model = STATS_UNKNOWN_MODEL;
-  let bestCount = 0;
-  for (const [candidate, count] of modelCounts) {
-    if (count > bestCount) {
-      model = candidate;
-      bestCount = count;
-    }
-  }
-
   return {
     provider: "claude",
     sessionId: path.basename(transcriptPath, ".jsonl"),
     transcriptPath,
-    model,
+    model: mostCommonKey(modelCounts) ?? STATS_UNKNOWN_MODEL,
     cwd,
     startedAt,
     endedAt,

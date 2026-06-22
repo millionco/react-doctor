@@ -1,16 +1,10 @@
 import * as os from "node:os";
 import * as path from "node:path";
+import { asRecord, asString } from "../coerce.js";
+import { mostCommonKey } from "../most-common-key.js";
 import { fileSessionCandidates, findJsonlFiles, readJsonlEntries } from "../walk-transcripts.js";
 import { STATS_UNKNOWN_MODEL } from "../constants.js";
 import type { AgentSession, FileEdit, SourceDef } from "./index.js";
-
-const asString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
-
-const asRecord = (value: unknown): Record<string, unknown> | undefined =>
-  value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
 
 // Codex reconstructs only `apply_patch` (`custom_tool_call`) edits — `shell`
 // function calls (sed, heredoc redirects, …) are not faithfully reconstructable
@@ -46,20 +40,11 @@ export const parseCodexSession = (transcriptPath: string): AgentSession | null =
 
   if (!sawAnything) return null;
 
-  let model = STATS_UNKNOWN_MODEL;
-  let bestCount = 0;
-  for (const [candidate, count] of modelCounts) {
-    if (count > bestCount) {
-      model = candidate;
-      bestCount = count;
-    }
-  }
-
   return {
     provider: "codex",
     sessionId: path.basename(transcriptPath, ".jsonl"),
     transcriptPath,
-    model,
+    model: mostCommonKey(modelCounts) ?? STATS_UNKNOWN_MODEL,
     cwd,
     edits,
     reads: [],

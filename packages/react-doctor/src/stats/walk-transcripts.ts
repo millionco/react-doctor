@@ -55,13 +55,7 @@ export const findJsonlFiles = (root: string, maxDepth: number): string[] => {
       if (entry.isDirectory()) {
         if (depth < maxDepth) walk(entryPath, depth + 1);
       } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
-        let modifiedMs = 0;
-        try {
-          modifiedMs = fs.statSync(entryPath).mtimeMs;
-        } catch {
-          modifiedMs = 0;
-        }
-        found.push({ filePath: entryPath, modifiedMs });
+        found.push({ filePath: entryPath, modifiedMs: statMtimeMs(entryPath) });
       }
     }
   };

@@ -1,24 +1,9 @@
+import { asRecord, asString, parseJson } from "../coerce.js";
 import { STATS_UNKNOWN_MODEL } from "../constants.js";
 import { openCursorDb, resolveCursorDbPath, type CursorDbHandle } from "../cursor-db.js";
+import { mostCommonKey } from "../most-common-key.js";
 import { isLintablePath } from "../reconstruct-files.js";
 import type { AgentSession, FileEdit, SessionCandidate, SourceDef } from "./index.js";
-
-const asString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
-
-const asRecord = (value: unknown): Record<string, unknown> | undefined =>
-  value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-
-const parseJson = (raw: string | null | undefined): unknown => {
-  if (typeof raw !== "string") return undefined;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-};
 
 // The composer's selected model, ignoring the "Auto" sentinel which carries no
 // concrete model id.
@@ -91,20 +76,11 @@ const buildCursorSession = (db: CursorDbHandle, composerId: string): AgentSessio
   // Apply edits in chronological order so the last write to a file wins.
   orderedEdits.sort((left, right) => left.createdAt - right.createdAt);
 
-  let mostCommonBubbleModel: string | undefined;
-  let bestCount = 0;
-  for (const [candidate, count] of bubbleModelCounts) {
-    if (count > bestCount) {
-      mostCommonBubbleModel = candidate;
-      bestCount = count;
-    }
-  }
-
   return {
     provider: "cursor",
     sessionId: composerId,
     transcriptPath: `cursor-composer:${composerId}`,
-    model: composerModelName(composer) ?? mostCommonBubbleModel ?? STATS_UNKNOWN_MODEL,
+    model: composerModelName(composer) ?? mostCommonKey(bubbleModelCounts) ?? STATS_UNKNOWN_MODEL,
     cwd: null,
     edits: orderedEdits.map((entry) => entry.edit),
     reads: [],

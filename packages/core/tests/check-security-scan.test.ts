@@ -270,7 +270,30 @@ with check (true);`,
       expect(checkSecurityScan(temporaryRoot)).toEqual([]);
     });
 
-    it("does not flag policies scoped TO authenticated", () => {
+    it("still flags a TO authenticated policy that grants write with (true)", () => {
+      // `authenticated` is reachable from the browser via a logged-in JWT, so
+      // `with check (true)` scoped to it lets any signed-in user write anything
+      // — a real risk, not server-only hardening. Must stay flagged.
+      writeFile(
+        "supabase/migrations/001_authenticated_open_write.sql",
+        `create table user_data (
+  id uuid primary key,
+  user_id uuid not null,
+  data jsonb
+);
+
+alter table user_data enable row level security;
+
+create policy "auth_insert" on user_data
+for insert
+to authenticated
+with check (true);`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("supabase-rls-policy-risk");
+    });
+
+    it("does not flag a TO authenticated policy whose check is a real predicate", () => {
       writeFile(
         "supabase/migrations/001_authenticated_policy.sql",
         `create table user_data (

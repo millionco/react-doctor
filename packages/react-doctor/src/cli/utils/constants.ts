@@ -155,6 +155,7 @@ export const NANOSECONDS_PER_SECOND = 1_000_000_000n;
 export const METRIC = {
   cliInvoked: "cli.invoked",
   cliError: "cli.error",
+  cliEnvironmentError: "cli.env_error",
   projectDetected: "project.detected",
   projectPathSelected: "project.path_selected",
   projectConfigSelected: "project.config_selected",

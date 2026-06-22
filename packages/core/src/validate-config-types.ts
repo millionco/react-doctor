@@ -50,6 +50,13 @@ const BOOLEAN_FIELD_NAMES = [
 
 const STRING_FIELD_NAMES = ["rootDir"] as const satisfies ReadonlyArray<keyof ReactDoctorConfig>;
 
+const STRING_ARRAY_FIELD_NAMES = [
+  "projects",
+  "textComponents",
+  "rawTextWrapperComponents",
+  "serverAuthFunctionNames",
+] as const satisfies ReadonlyArray<keyof ReactDoctorConfig>;
+
 const SURFACE_CONTROL_FIELD_NAMES = [
   "includeTags",
   "excludeTags",
@@ -231,6 +238,11 @@ export const validateConfigTypes = (config: ReactDoctorConfig): ReactDoctorConfi
   }
   for (const fieldName of STRING_FIELD_NAMES) {
     applyFieldValidator(config, validated, fieldName, (value) => validateString(fieldName, value));
+  }
+  for (const fieldName of STRING_ARRAY_FIELD_NAMES) {
+    applyFieldValidator(config, validated, fieldName, (value) =>
+      validateStringArrayField(fieldName, value),
+    );
   }
   applyFieldValidator(config, validated, "surfaces", validateSurfacesField);
   for (const fieldName of SEVERITY_FIELD_NAMES) {

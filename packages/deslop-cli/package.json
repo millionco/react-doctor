@@ -1,7 +1,7 @@
 {
   "name": "deslop-cli",
   "version": "0.5.8",
-  "description": "CLI for deslop-js — find unused files, exports, and dependencies",
+  "description": "CLI to remove AI slop from JavaScript codebases.",
   "keywords": [
     "cli",
     "dead-code",

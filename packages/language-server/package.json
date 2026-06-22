@@ -2,7 +2,7 @@
   "name": "@react-doctor/language-server",
   "version": "0.5.8",
   "private": true,
-  "description": "Internal: editor language server for React Doctor — daemonized diagnostics, hovers, and code actions over LSP. Not published directly; bundled into the react-doctor CLI as `react-doctor experimental-lsp`.",
+  "description": "Language server for React Doctor editor integrations.",
   "license": "SEE LICENSE IN LICENSE",
   "bin": {
     "react-doctor-language-server": "./bin/react-doctor-language-server.js"

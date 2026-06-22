@@ -1,5 +1,5 @@
 ---
-"react-doctor": minor
+"react-doctor": patch
 ---
 
 Add a `react-doctor stats` subcommand — a per-model code-quality leaderboard built from local AI agent chat history.

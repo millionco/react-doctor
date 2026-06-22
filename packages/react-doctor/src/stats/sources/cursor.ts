@@ -98,7 +98,7 @@ export const cursorComposerCandidates = (dbPath: string | null): SessionCandidat
   return db.composerHeaders().map((header) => ({
     provider: "cursor" as const,
     modifiedMs: header.modifiedMs,
-    load: () => buildCursorSession(db, header.composerId),
+    load: async () => buildCursorSession(db, header.composerId),
   }));
 };
 

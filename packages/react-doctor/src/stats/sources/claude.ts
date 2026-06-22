@@ -41,7 +41,7 @@ const editsFromToolUse = (name: string, input: Record<string, unknown>): FileEdi
   });
 };
 
-export const parseClaudeSession = (transcriptPath: string): AgentSession | null => {
+export const parseClaudeSession = async (transcriptPath: string): Promise<AgentSession | null> => {
   const edits: FileEdit[] = [];
   const reads: FileRead[] = [];
   const modelCounts = new Map<string, number>();
@@ -50,7 +50,7 @@ export const parseClaudeSession = (transcriptPath: string): AgentSession | null 
   let endedAt: string | undefined;
   let sawAnything = false;
 
-  readJsonlEntries(transcriptPath, (entry) => {
+  await readJsonlEntries(transcriptPath, (entry) => {
     sawAnything = true;
     const timestamp = asString(entry.timestamp);
     if (timestamp) {

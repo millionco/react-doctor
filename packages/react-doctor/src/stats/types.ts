@@ -50,7 +50,7 @@ export interface AgentSession {
 export interface SessionCandidate {
   readonly provider: StatsProvider;
   readonly modifiedMs: number;
-  load(): AgentSession | null;
+  load(): Promise<AgentSession | null>;
 }
 
 /** A faithfully reconstructed file as the model left it at session end. */

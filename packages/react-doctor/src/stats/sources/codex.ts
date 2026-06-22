@@ -9,13 +9,13 @@ import type { AgentSession, FileEdit, SourceDef } from "./index.js";
 // Codex reconstructs only `apply_patch` (`custom_tool_call`) edits — `shell`
 // function calls (sed, heredoc redirects, …) are not faithfully reconstructable
 // and are skipped. Model comes from `turn_context`, cwd from `session_meta`.
-export const parseCodexSession = (transcriptPath: string): AgentSession | null => {
+export const parseCodexSession = async (transcriptPath: string): Promise<AgentSession | null> => {
   const edits: FileEdit[] = [];
   const modelCounts = new Map<string, number>();
   let cwd: string | null = null;
   let sawAnything = false;
 
-  readJsonlEntries(transcriptPath, (entry) => {
+  await readJsonlEntries(transcriptPath, (entry) => {
     sawAnything = true;
     const payload = asRecord(entry.payload);
     if (!payload) return;

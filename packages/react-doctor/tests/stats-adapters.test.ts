@@ -43,7 +43,7 @@ afterAll(() => {
 });
 
 describe("parseClaudeSession", () => {
-  it("extracts model, cwd, edits, and post-edit result content", () => {
+  it("extracts model, cwd, edits, and post-edit result content", async () => {
     const filePath = writeTranscript("claude.jsonl", [
       {
         type: "assistant",
@@ -66,7 +66,7 @@ describe("parseClaudeSession", () => {
         toolUseResult: { filePath: "/repo/src/a.ts", content: "export const a = 1;\n" },
       },
     ]);
-    const session = parseClaudeSession(filePath);
+    const session = await parseClaudeSession(filePath);
     expect(session?.model).toBe("claude-x");
     expect(session?.cwd).toBe("/repo");
     expect(session?.edits.some((edit) => edit.resultContent === "export const a = 1;\n")).toBe(
@@ -76,7 +76,7 @@ describe("parseClaudeSession", () => {
 });
 
 describe("parseCodexSession", () => {
-  it("extracts model from turn_context, cwd from session_meta, and apply_patch edits", () => {
+  it("extracts model from turn_context, cwd from session_meta, and apply_patch edits", async () => {
     const filePath = writeTranscript("codex.jsonl", [
       { type: "session_meta", payload: { cwd: "/repo" } },
       { type: "turn_context", payload: { model: "gpt-5.5" } },
@@ -89,7 +89,7 @@ describe("parseCodexSession", () => {
         },
       },
     ]);
-    const session = parseCodexSession(filePath);
+    const session = await parseCodexSession(filePath);
     expect(session?.model).toBe("gpt-5.5");
     expect(session?.cwd).toBe("/repo");
     expect(session?.edits).toHaveLength(1);
@@ -138,7 +138,7 @@ const writeComposerDb = (name: string, composers: ReadonlyArray<ComposerFixture>
 const describeCursor = sqlite ? describe : describe.skip;
 
 describeCursor("cursorComposerCandidates", () => {
-  it("attributes the composer model and reconstructs exact content via afterContentId", () => {
+  it("attributes the composer model and reconstructs exact content via afterContentId", async () => {
     closeCursorDb();
     const dbPath = writeComposerDb("cursor-model.vscdb", [
       {
@@ -172,7 +172,7 @@ describeCursor("cursorComposerCandidates", () => {
 
     const candidates = cursorComposerCandidates(dbPath);
     expect(candidates).toHaveLength(1);
-    const session = candidates[0].load();
+    const session = await candidates[0].load();
     expect(session?.provider).toBe("cursor");
     expect(session?.model).toBe("claude-opus-4-8");
     expect(session?.edits).toHaveLength(2);
@@ -184,7 +184,7 @@ describeCursor("cursorComposerCandidates", () => {
     ).toBe(true);
   });
 
-  it("falls back to the dominant bubble model when the composer is on Auto", () => {
+  it("falls back to the dominant bubble model when the composer is on Auto", async () => {
     closeCursorDb();
     const dbPath = writeComposerDb("cursor-auto.vscdb", [
       {
@@ -207,12 +207,12 @@ describeCursor("cursorComposerCandidates", () => {
       },
     ]);
 
-    const session = cursorComposerCandidates(dbPath)[0]?.load();
+    const session = await cursorComposerCandidates(dbPath)[0]?.load();
     expect(session?.model).toBe("gpt-5.5");
     expect(session?.edits[0]?.resultContent).toBe("export const y = 2;\n");
   });
 
-  it("ignores non-lintable edits and skips when the database is absent", () => {
+  it("ignores non-lintable edits and skips when the database is absent", async () => {
     closeCursorDb();
     expect(cursorComposerCandidates(null)).toEqual([]);
 
@@ -234,7 +234,7 @@ describeCursor("cursorComposerCandidates", () => {
         ],
       },
     ]);
-    const session = cursorComposerCandidates(dbPath)[0]?.load();
+    const session = await cursorComposerCandidates(dbPath)[0]?.load();
     expect(session?.edits).toEqual([]);
   });
 });

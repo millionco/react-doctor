@@ -41,7 +41,7 @@ export const discoverSessions = async (
   for (const candidate of candidates) {
     if (sinceMs !== null && candidate.modifiedMs > 0 && candidate.modifiedMs < sinceMs) break;
 
-    const session = candidate.load();
+    const session = await candidate.load();
     scannedCount += 1;
     if (
       session &&

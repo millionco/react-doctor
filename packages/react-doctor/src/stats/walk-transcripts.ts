@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as readline from "node:readline";
 import type { AgentSession, SessionCandidate, StatsProvider } from "./types.js";
 
 /** File modification time in ms, or 0 when the file is missing/unreadable. */
@@ -20,7 +21,7 @@ export const fileSessionCandidates = (
   provider: StatsProvider,
   roots: ReadonlyArray<string>,
   discover: (root: string) => string[],
-  parse: (transcriptPath: string) => AgentSession | null,
+  parse: (transcriptPath: string) => Promise<AgentSession | null>,
 ): SessionCandidate[] => {
   const candidates: SessionCandidate[] = [];
   for (const root of roots) {
@@ -66,28 +67,33 @@ export const findJsonlFiles = (root: string, maxDepth: number): string[] => {
 };
 
 /**
- * Parse each non-empty line of a JSONL file, invoking `onEntry` with the decoded
- * object. Unparseable lines and unreadable files are skipped silently so one
- * corrupt transcript never sinks a whole run.
+ * Stream a JSONL file line-by-line through `node:readline`, invoking `onEntry`
+ * with each decoded object. Streaming keeps memory flat on large transcripts
+ * (no whole-file read). Unparseable lines and unreadable files are skipped
+ * silently so one corrupt transcript never sinks a whole run.
  */
-export const readJsonlEntries = (
+export const readJsonlEntries = async (
   filePath: string,
   onEntry: (entry: Record<string, unknown>) => void,
-): void => {
-  let raw: string;
+): Promise<void> => {
+  const lines = readline.createInterface({
+    input: fs.createReadStream(filePath, { encoding: "utf8" }),
+    crlfDelay: Infinity,
+  });
   try {
-    raw = fs.readFileSync(filePath, "utf8");
-  } catch {
-    return;
-  }
-  for (const line of raw.split("\n")) {
-    if (!line.trim()) continue;
-    let entry: unknown;
-    try {
-      entry = JSON.parse(line);
-    } catch {
-      continue;
+    for await (const line of lines) {
+      if (!line.trim()) continue;
+      let entry: unknown;
+      try {
+        entry = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (entry && typeof entry === "object") onEntry(entry as Record<string, unknown>);
     }
-    if (entry && typeof entry === "object") onEntry(entry as Record<string, unknown>);
+  } catch {
+    // Unreadable file / stream error: stop silently, keep partial entries.
+  } finally {
+    lines.close();
   }
 };

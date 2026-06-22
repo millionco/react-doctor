@@ -27,6 +27,8 @@ interface Accumulator {
   readonly key: string;
   readonly provider: StatsProvider | "mixed";
   sessions: number;
+  /** Sessions that contributed at least one scanned file — the weighting unit. */
+  scoredSessions: number;
   filesScanned: number;
   unreconstructable: number;
   diagnostics: Diagnostic[];
@@ -40,10 +42,19 @@ const upsert = (
 ): void => {
   let group = groups.get(key);
   if (!group) {
-    group = { key, provider, sessions: 0, filesScanned: 0, unreconstructable: 0, diagnostics: [] };
+    group = {
+      key,
+      provider,
+      sessions: 0,
+      scoredSessions: 0,
+      filesScanned: 0,
+      unreconstructable: 0,
+      diagnostics: [],
+    };
     groups.set(key, group);
   }
   group.sessions += 1;
+  if (result.filesScanned > 0) group.scoredSessions += 1;
   group.filesScanned += result.filesScanned;
   group.unreconstructable += result.unreconstructable;
   group.diagnostics.push(...result.diagnostics);
@@ -62,13 +73,14 @@ export const confidenceWeightedScore = (
   rawScore: number | null,
   priorScore: number | null,
   filesScanned: number,
-  sessions: number,
+  scoredSessions: number,
 ): number | null => {
   if (rawScore === null) return null;
   if (priorScore === null) return rawScore;
   const sessionReliability =
     STATS_SCORE_SESSION_FLOOR +
-    (1 - STATS_SCORE_SESSION_FLOOR) * (sessions / (sessions + STATS_SCORE_SESSION_PRIOR));
+    (1 - STATS_SCORE_SESSION_FLOOR) *
+      (scoredSessions / (scoredSessions + STATS_SCORE_SESSION_PRIOR));
   const effectiveFiles = filesScanned * sessionReliability;
   return Math.round(
     (priorScore * STATS_SCORE_PRIOR_FILES + rawScore * effectiveFiles) /
@@ -123,7 +135,7 @@ const toGroupStats = async (
       rawScore,
       priorScore,
       accumulator.filesScanned,
-      accumulator.sessions,
+      accumulator.scoredSessions,
     ),
     topRules: topRules(accumulator.diagnostics),
   };

@@ -110,6 +110,27 @@ describe("aggregateStats", () => {
     expect(aggregated.models[0]?.weightedScore ?? 0).toBeGreaterThan(small?.weightedScore ?? 0);
   });
 
+  it("does not let dead (0-file) sessions inflate a group's weighting", async () => {
+    const productive = [
+      result("claude", "a", 10, [diagnostic("r1")]),
+      result("claude", "a", 10, [diagnostic("r1")]),
+    ];
+    // Same model "b": identical scored output, but padded with non-React/failed
+    // sessions that scanned no files. Those must not change the weighted score.
+    const padded = [
+      result("codex", "b", 10, [diagnostic("r1")]),
+      result("codex", "b", 10, [diagnostic("r1")]),
+      ...Array.from({ length: 8 }, () => result("codex", "b", 0, [])),
+    ];
+    const aggregated = await aggregateStats([...productive, ...padded], null, stubScore);
+    const a = aggregated.models.find((group) => group.key === "claude/a");
+    const b = aggregated.models.find((group) => group.key === "codex/b");
+    expect(a?.score).toBe(b?.score);
+    expect(a?.weightedScore).toBe(b?.weightedScore);
+    // The reported session count still reflects every analyzed session.
+    expect(b?.sessions).toBe(10);
+  });
+
   it("leaves the score null when a group lacks enough files to rank fairly", async () => {
     const results = [result("claude", "m1", 1, [diagnostic("r1")])];
     let called = false;

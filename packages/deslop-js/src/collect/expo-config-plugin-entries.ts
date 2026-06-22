@@ -462,26 +462,3 @@ export const extractExpoConfigPluginEntries = (
 
   return { filePaths: [...entries], packageNames: [...packageNamePlugins] };
 };
-
-export const extractExpoConfigPluginPackageNames = (
-  directory: string,
-  dependencies: Record<string, string>,
-): string[] => {
-  if (!isExpoOrReactNativeWorkspace(dependencies)) return [];
-
-  const packageNamePlugins = new Set<string>();
-  const entries = new Set<string>();
-  const configPaths = fg.sync(NESTED_EXPO_CONFIG_FILE_GLOBS, {
-    cwd: directory,
-    absolute: true,
-    onlyFiles: true,
-    ignore: ["**/node_modules/**", "**/dist/**", "**/build/**"],
-    deep: EXPO_CONFIG_SCAN_MAX_DEPTH,
-  });
-
-  for (const configPath of configPaths) {
-    collectExpoPluginPathsFromConfig(configPath, entries, packageNamePlugins, directory);
-  }
-
-  return [...packageNamePlugins];
-};

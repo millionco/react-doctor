@@ -2,7 +2,7 @@
   "expo": {
     "name": "TestApp",
     "plugins": [
-      ["expo-build-properties", { "ios": { "deploymentTarget": "15.1" } }]
+      ["@config-plugins/detox", { "skipProguardConfig": false }]
     ]
   }
 }

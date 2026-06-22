@@ -4,12 +4,12 @@
 
 Fix false positives in Expo config plugin detection for package-name plugins and nested expo config
 
-Expo config plugins can be referenced by package name (not just local paths) from app.json / app.config.\*, but the collector only kept plugins that resolved to local file paths. Additionally, the standard Expo config shape nests plugins under an `expo` key, which was never visited.
+Expo config plugins can be referenced by package name (not just local file paths) from `app.json` / `app.config.*`, but the collector dropped any plugin entry that didn't resolve to a local file — so packages referenced only as config plugins were reported as unused. The `app.config.{js,ts}` AST path also only matched a top-level `plugins` property and never descended into the standard `{ expo: { plugins: [...] } }` shape (the JSON `app.json` path already read `expo.plugins`).
 
 Fixed by:
 
-- Tracking package-name plugins (like "expo-build-properties" or "expo-camera") alongside file-path plugins
-- Descending into nested `expo` object in config objects
-- Marking package-name plugins as used dependencies in detectStalePackages
+- Tracking package-name plugins (e.g. `@config-plugins/detox`, `@react-native-firebase/app`) alongside local file-path plugins
+- Descending into the nested `expo` object in the config-object AST collector
+- Marking those package-name plugins as used in `detectStalePackages` (gated on the declared dependency set, so unrelated strings can't suppress real unused deps)
 
 Closes #914

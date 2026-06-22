@@ -2,7 +2,7 @@ export default () => ({
   expo: {
     name: "TestApp",
     plugins: [
-      "expo-camera"
+      "@react-native-firebase/app"
     ]
   }
 });

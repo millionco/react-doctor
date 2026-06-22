@@ -1,5 +1,6 @@
-import { StatusBar } from 'expo-status-bar';
+import { registerRootComponent } from "expo";
+import { createElement } from "react";
 
-export default function App() {
-  return null;
-}
+const App = () => createElement("div", null, "Hello");
+
+registerRootComponent(App);

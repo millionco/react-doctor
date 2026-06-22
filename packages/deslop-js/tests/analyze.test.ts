@@ -454,13 +454,25 @@ describe("expo-plugin-packages-false-positive", () => {
     const result = await scanFixture("expo-plugin-packages-false-positive");
     const deps = staleDependencyNames(result);
 
+    // Both plugin packages are deliberately NOT covered by the always-used
+    // prefix allowlist (unlike `expo-*` / `react-native-*`), and neither is
+    // imported in source — so without the config-plugin detection they WOULD
+    // be flagged. This makes the test fail on unfixed code.
     assert.ok(
-      !deps.includes("expo-build-properties"),
-      `expo-build-properties is used as a config plugin in app.json and must not be flagged as unused, got: ${deps}`,
+      !deps.includes("@config-plugins/detox"),
+      `@config-plugins/detox is a config plugin (tuple form) in app.json and must not be flagged as unused, got: ${deps}`,
     );
     assert.ok(
-      !deps.includes("expo-camera"),
-      `expo-camera is used as a config plugin in app.config.js (nested under expo key) and must not be flagged as unused, got: ${deps}`,
+      !deps.includes("@react-native-firebase/app"),
+      `@react-native-firebase/app is a config plugin nested under the \`expo\` key in app.config.js and must not be flagged as unused, got: ${deps}`,
+    );
+
+    // Negative control: a declared dependency that is neither a plugin nor
+    // imported must STILL be reported, proving the scan runs and the plugin
+    // assertions above aren't passing vacuously.
+    assert.ok(
+      deps.includes("left-pad"),
+      `left-pad is genuinely unused and must still be flagged, got: ${deps}`,
     );
   });
 });

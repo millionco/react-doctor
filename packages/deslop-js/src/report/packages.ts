@@ -9,7 +9,7 @@ import { collectPnpmWorkspaceOverrideMappings } from "../utils/parse-pnpm-worksp
 import { matchesPackageImportReference } from "../utils/matches-package-import-reference.js";
 import { matchesPackageTokenReference } from "../utils/matches-package-token-reference.js";
 import { findMonorepoRoot } from "../utils/find-monorepo-root.js";
-import { extractExpoConfigPluginPackageNames } from "../collect/expo-config-plugin-entries.js";
+import { extractExpoConfigPluginEntries } from "../collect/expo-config-plugin-entries.js";
 
 interface OverrideMapping {
   fromPackage: string;
@@ -119,10 +119,10 @@ export const detectStalePackages = (
     const tsconfigReferenced = collectTsconfigReferencedPackages(configSearchRoot);
     for (const packageName of tsconfigReferenced) usedPackageNames.add(packageName);
 
-    const expoPluginPackageNames = extractExpoConfigPluginPackageNames(configSearchRoot, {
-      ...dependencies,
-      ...devDependencies,
-    });
+    const { packageNames: expoPluginPackageNames } = extractExpoConfigPluginEntries(
+      configSearchRoot,
+      { ...dependencies, ...devDependencies },
+    );
     for (const packageName of expoPluginPackageNames) {
       if (declaredNames.has(packageName)) {
         usedPackageNames.add(packageName);

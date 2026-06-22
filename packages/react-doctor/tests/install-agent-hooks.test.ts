@@ -419,4 +419,73 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     expect(fs.existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
     expect(fs.existsSync(path.join(fixture.projectRoot, ".claude/settings.json"))).toBe(false);
   });
+
+  it("throws CliInputError when settings file contains malformed JSON", () => {
+    const settingsPath = path.join(fixture.projectRoot, ".claude/settings.json");
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(settingsPath, '{ "permissions": { "allow": ["Bash(git status)"] }');
+
+    expect(() => {
+      installReactDoctorAgentHooks({
+        projectRoot: fixture.projectRoot,
+        agents: ["claude-code"],
+      });
+    }).toThrow(/Could not parse.*invalid JSON/);
+  });
+
+  it("throws CliInputError when config file contains malformed JSON", () => {
+    const configPath = path.join(fixture.projectRoot, ".cursor/hooks.json");
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(configPath, '{ "version": 1, "hooks": {');
+
+    expect(() => {
+      installReactDoctorAgentHooks({
+        projectRoot: fixture.projectRoot,
+        agents: ["cursor"],
+      });
+    }).toThrow(/Could not parse.*invalid JSON/);
+  });
+
+  it("throws CliInputError when .claude directory exists as a file", () => {
+    const claudePath = path.join(fixture.projectRoot, ".claude");
+    fs.writeFileSync(claudePath, "i am a file not a directory");
+
+    expect(() => {
+      installReactDoctorAgentHooks({
+        projectRoot: fixture.projectRoot,
+        agents: ["claude-code"],
+      });
+    }).toThrow(/Could not create directory.*file exists at this path/);
+  });
+
+  it("throws CliInputError when .cursor/hooks exists as a file", () => {
+    const hooksPath = path.join(fixture.projectRoot, ".cursor/hooks");
+    fs.mkdirSync(path.dirname(hooksPath), { recursive: true });
+    fs.writeFileSync(hooksPath, "i am a file not a directory");
+
+    expect(() => {
+      installReactDoctorAgentHooks({
+        projectRoot: fixture.projectRoot,
+        agents: ["cursor"],
+      });
+    }).toThrow(/Could not create directory.*file exists at this path/);
+  });
+
+  it("throws CliInputError when target directory is not writable", () => {
+    if (process.getuid?.() === 0) {
+      return;
+    }
+
+    const readOnlyRoot = path.join(fixture.projectRoot, "readonly");
+    fs.mkdirSync(readOnlyRoot, { mode: 0o555 });
+
+    expect(() => {
+      installReactDoctorAgentHooks({
+        projectRoot: readOnlyRoot,
+        agents: ["cursor"],
+      });
+    }).toThrow(/Could not create directory.*permission denied/);
+
+    fs.chmodSync(readOnlyRoot, 0o755);
+  });
 });

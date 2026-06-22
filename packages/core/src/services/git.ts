@@ -438,6 +438,11 @@ export class Git extends Context.Service<
       ): Effect.Effect<boolean, ReactDoctorError> =>
         runGit(directory, ["rev-parse", "--verify", branch]).pipe(
           Effect.map((result) => result.status === 0),
+          Effect.catch((error) =>
+            error.reason._tag === "GitInvocationFailed"
+              ? Effect.succeed(false)
+              : Effect.fail(error),
+          ),
         );
 
       const headSha = (directory: string): Effect.Effect<string | null, ReactDoctorError> =>

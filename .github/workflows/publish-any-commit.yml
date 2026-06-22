@@ -40,7 +40,8 @@ jobs:
             if pnpm dlx pkg-pr-new publish \
               ./packages/react-doctor \
               ./packages/oxlint-plugin-react-doctor \
-              ./packages/eslint-plugin-react-doctor; then
+              ./packages/eslint-plugin-react-doctor \
+              ./packages/deslop-js; then
               exit 0
             fi
 

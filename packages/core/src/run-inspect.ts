@@ -20,7 +20,7 @@ import { checkPnpmHardening } from "./check-pnpm-hardening.js";
 import { checkReactNativeProject } from "./check-react-native-project.js";
 import { checkReactServerComponentsAdvisory } from "./check-react-server-components-advisory.js";
 import { checkReducedMotion } from "./check-reduced-motion.js";
-import { checkSecurityScan } from "./check-security-scan.js";
+import { checkSecurityScanCooperative } from "./check-security-scan.js";
 import {
   DEAD_CODE_OVERLAP_PARSE_SHARE,
   DEAD_CODE_PHASE_TIMEOUT_MS,
@@ -436,6 +436,8 @@ export const runInspect = <HooksR = never>(
       );
 
     // ── Phase: environment checks ──────────────────────────────────
+    // The project-shape checks below are sub-millisecond; the security scan
+    // (whole-tree content pass) is heavy and forks separately just below.
     const environmentDiagnostics: ReadonlyArray<Diagnostic> = isDiffMode
       ? []
       : [
@@ -444,10 +446,37 @@ export const runInspect = <HooksR = never>(
           ...checkReactServerComponentsAdvisory(scanDirectory, project),
           ...checkExpoProject(scanDirectory, project),
           ...checkReactNativeProject(scanDirectory, project),
-          ...checkSecurityScan(scanDirectory, { project, ignoredTags: input.ignoredTags }),
         ];
     const envCollected = yield* Stream.runCollect(
       applyPerElementPipeline(Stream.fromIterable(environmentDiagnostics)),
+    );
+
+    // ── Phase: security scan (content-regex over the whole tree) ───
+    // Registry rules carrying a `scan` run here, not via oxlint — over shipped
+    // artifacts / dotenv / SQL that lint never parses. It's the heaviest CPU
+    // phase on real repos (~O(rules × files × content)) and previously ran
+    // SYNCHRONOUSLY before lint, blocking the event loop the whole time. Fork it
+    // here (before lint) and join it just before the concat so its main-thread
+    // CPU overlaps the subprocess-bound lint pass; `checkSecurityScanCooperative`
+    // yields to the event loop between file chunks so it can't starve lint's
+    // subprocess I/O or concurrently-scanning sibling projects. Skipped in
+    // diff/staged mode like the env checks. The final stable sort makes the
+    // concat order irrelevant, so output stays byte-identical to the serial path.
+    const securityScanFiber = yield* Effect.forkChild(
+      Stream.runCollect(
+        applyPerElementPipeline(
+          isDiffMode
+            ? (Stream.empty as Stream.Stream<Diagnostic, never>)
+            : Stream.unwrap(
+                Effect.promise(() =>
+                  checkSecurityScanCooperative(scanDirectory, {
+                    project,
+                    ignoredTags: input.ignoredTags,
+                  }),
+                ).pipe(Effect.map((diagnostics) => Stream.fromIterable(diagnostics))),
+              ),
+        ),
+      ).pipe(Effect.withSpan("SecurityScan.run")),
     );
 
     // ── Phase: supply-chain score check (Socket.dev, opt-in) ───────
@@ -488,13 +517,21 @@ export const runInspect = <HooksR = never>(
               }),
             ),
           ).pipe(
-            Effect.map((diagnostics): SupplyChainForkResult => ({ diagnostics, timedOut: false })),
+            Effect.map(
+              (diagnostics): SupplyChainForkResult => ({
+                diagnostics,
+                timedOut: false,
+              }),
+            ),
             Effect.timeout(supplyChainOverlapTimeout),
             Effect.orElseSucceed(
               (): SupplyChainForkResult => ({ diagnostics: [], timedOut: true }),
             ),
           )
-        : Effect.succeed<SupplyChainForkResult>({ diagnostics: [], timedOut: false }),
+        : Effect.succeed<SupplyChainForkResult>({
+            diagnostics: [],
+            timedOut: false,
+          }),
     );
 
     const lintFailure = yield* Ref.make<{
@@ -503,7 +540,10 @@ export const runInspect = <HooksR = never>(
       reasonTag: ReactDoctorErrorReason["_tag"] | null;
       reasonKind: OxlintUnavailable["kind"] | null;
     }>({ didFail: false, reason: null, reasonTag: null, reasonKind: null });
-    const deadCodeFailure = yield* Ref.make<{ didFail: boolean; reason: string | null }>({
+    const deadCodeFailure = yield* Ref.make<{
+      didFail: boolean;
+      reason: string | null;
+    }>({
       didFail: false,
       reason: null,
     });
@@ -587,7 +627,10 @@ export const runInspect = <HooksR = never>(
               Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
                 Stream.unwrap(
                   Effect.gen(function* () {
-                    yield* Ref.set(deadCodeFailure, { didFail: true, reason: error.message });
+                    yield* Ref.set(deadCodeFailure, {
+                      didFail: true,
+                      reason: error.message,
+                    });
                     return Stream.empty as Stream.Stream<Diagnostic, never>;
                   }),
                 ),
@@ -605,7 +648,9 @@ export const runInspect = <HooksR = never>(
             onNone: () =>
               Ref.set(deadCodeFailure, {
                 didFail: true,
-                reason: `Dead-code analysis exceeded ${Math.round(deadCodeTimeout.phaseTimeoutMs / MILLISECONDS_PER_SECOND)}s and was skipped.`,
+                reason: `Dead-code analysis exceeded ${Math.round(
+                  deadCodeTimeout.phaseTimeoutMs / MILLISECONDS_PER_SECOND,
+                )}s and was skipped.`,
               }).pipe(Effect.as<Diagnostic[]>([])),
             onSome: Effect.succeed,
           }),
@@ -699,7 +744,9 @@ export const runInspect = <HooksR = never>(
           onNone: () =>
             Ref.set(lintFailure, {
               didFail: true,
-              reason: `Lint analysis exceeded ${lintPhaseTimeoutMs / MILLISECONDS_PER_SECOND}s and was skipped.`,
+              reason: `Lint analysis exceeded ${
+                lintPhaseTimeoutMs / MILLISECONDS_PER_SECOND
+              }s and was skipped.`,
               reasonTag: "OxlintBatchExceeded",
               reasonKind: null,
             }).pipe(Effect.as<Diagnostic[]>([])),
@@ -787,6 +834,9 @@ export const runInspect = <HooksR = never>(
     // overlap budget fired (the rare hung-socket guard) for telemetry.
     const supplyChainResult = yield* Fiber.join(supplyChainFiber);
     const supplyChainCollected = supplyChainResult.diagnostics;
+    // Join the forked security scan (it overlapped lint). Its diagnostics are
+    // kept regardless of lint outcome, mirroring the other environment checks.
+    const securityScanCollected = yield* Fiber.join(securityScanFiber);
 
     yield* reporterService.finalize;
 
@@ -801,6 +851,7 @@ export const runInspect = <HooksR = never>(
     const finalDiagnostics: ReadonlyArray<Diagnostic> = sortDiagnosticsStable(
       assignFixGroups([
         ...envCollected,
+        ...securityScanCollected,
         ...supplyChainCollected,
         ...lintCollected,
         ...deadCodeCollected,

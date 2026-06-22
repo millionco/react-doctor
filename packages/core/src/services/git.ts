@@ -9,7 +9,11 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
-import { DEFAULT_BRANCH_CANDIDATES, GITHUB_VIEWER_PERMISSION_TIMEOUT_MS } from "../constants.js";
+import {
+  DEFAULT_BRANCH_CANDIDATES,
+  GITHUB_VIEWER_PERMISSION_TIMEOUT_MS,
+  SPAWN_ARGS_MAX_LENGTH_CHARS,
+} from "../constants.js";
 import {
   GitBaseBranchInvalid,
   GitBaseBranchMissing,
@@ -17,6 +21,7 @@ import {
   ReactDoctorError,
 } from "../errors.js";
 import { parseChangedLineRanges } from "../parse-changed-line-ranges.js";
+import { isDirectory } from "../project-info/utils/is-directory.js";
 import type { ChangedFileLineRanges } from "../types/index.js";
 
 interface GitInvocationResult {
@@ -310,9 +315,54 @@ export class Git extends Context.Service<
        */
       const runCommand = (
         input: CommandInvocationInput,
-      ): Effect.Effect<GitInvocationResult, ReactDoctorError> =>
-        Effect.scoped(
+      ): Effect.Effect<GitInvocationResult, ReactDoctorError> => {
+        // Shared by the async `PlatformError` path and the synchronous-spawn
+        // defect path so both spawn-failure shapes resolve identically: a
+        // non-`git` command degrades to a non-zero result the caller already
+        // handles; `git` fails with the tagged `GitInvocationFailed` its
+        // degradation paths (currentBranch → null, branchExists → false,
+        // changedLineRanges → null) recover from.
+        const foldSpawnFailure = (
+          cause: unknown,
+        ): Effect.Effect<GitInvocationResult, ReactDoctorError> =>
+          input.command !== "git"
+            ? Effect.succeed({ status: 127, stdout: "", stderr: String(cause) })
+            : Effect.fail(
+                new ReactDoctorError({
+                  reason: new GitInvocationFailed({
+                    args: [...input.args],
+                    directory: input.directory,
+                    cause,
+                  }),
+                }),
+              );
+        return Effect.scoped(
           Effect.gen(function* () {
+            // `child_process.spawn` THROWS synchronously — escaping Effect's
+            // failure channel as an uncatchable runtime exception, because
+            // Effect's `Async` register isn't guarded — when the cwd isn't a
+            // directory (`ENOTDIR`) or the argv exceeds the OS command-line
+            // limit (`ENAMETOOLONG`, e.g. `git diff -- <1k files>` under
+            // `--scope lines` on Windows). The 'error' event (which becomes a
+            // catchable `PlatformError`) never fires. Both conditions are
+            // predictable, so fail them on the typed channel up front; the
+            // degradation paths (currentBranch → null, branchExists → false,
+            // changedLineRanges → null) then recover instead of the whole scan
+            // crashing and reporting to Sentry (REACT-DOCTOR-1E / 1P / 20).
+            if (!isDirectory(input.directory)) {
+              return yield* foldSpawnFailure(
+                `spawn ENOTDIR (cwd is not a directory: ${input.directory})`,
+              );
+            }
+            const argvLengthChars =
+              input.command.length +
+              1 +
+              input.args.reduce((total, arg) => total + arg.length + 1, 0);
+            if (argvLengthChars > SPAWN_ARGS_MAX_LENGTH_CHARS) {
+              return yield* foldSpawnFailure(
+                `spawn ENAMETOOLONG (${argvLengthChars} argv chars exceed ${SPAWN_ARGS_MAX_LENGTH_CHARS})`,
+              );
+            }
             const handle = yield* spawner.spawn(
               // HACK: `extendEnv: true` is required for spawned commands
               // to inherit `process.env.PATH` — without it Effect's
@@ -365,22 +415,7 @@ export class Git extends Context.Service<
             return { status, stdout, stderr } satisfies GitInvocationResult;
           }),
         ).pipe(
-          Effect.catchTag("PlatformError", (cause) => {
-            if (input.command !== "git") {
-              return Effect.succeed({
-                status: 127,
-                stdout: "",
-                stderr: String(cause),
-              } satisfies GitInvocationResult);
-            }
-            return new ReactDoctorError({
-              reason: new GitInvocationFailed({
-                args: [...input.args],
-                directory: input.directory,
-                cause,
-              }),
-            });
-          }),
+          Effect.catchTag("PlatformError", foldSpawnFailure),
           // One span per actual subprocess invocation. The subcommand
           // (`args[0]`) is safe to attribute; full args/paths are omitted so
           // no scanned path leaks into an exported trace.
@@ -391,6 +426,7 @@ export class Git extends Context.Service<
             },
           }),
         );
+      };
 
       const runGit = (
         directory: string,
@@ -774,7 +810,18 @@ export class Git extends Context.Service<
             ]);
             if (result.status !== 0) return null;
             return parseChangedLineRanges(result.stdout);
-          }).pipe(Effect.withSpan("Git.changedLineRanges")),
+          }).pipe(
+            // A git invocation failure (binary missing, or a synchronous spawn
+            // throw such as ENAMETOOLONG on a 1k-file `--scope lines` diff) means
+            // "couldn't compute" — degrade to file-level scope per this method's
+            // documented null contract instead of crashing the scan.
+            Effect.catch((error) =>
+              error.reason._tag === "GitInvocationFailed"
+                ? Effect.succeed(null)
+                : Effect.fail(error),
+            ),
+            Effect.withSpan("Git.changedLineRanges"),
+          ),
       });
     }),
   ).pipe(

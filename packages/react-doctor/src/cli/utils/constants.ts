@@ -187,4 +187,5 @@ export const METRIC = {
   lspScanCompleted: "lsp.scan.completed",
   lspScanDuration: "lsp.scan.duration",
   lspScanDiagnostics: "lsp.scan.diagnostics",
+  aiTrainingWarningShown: "ai.training.warning_shown",
 } as const;

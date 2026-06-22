@@ -108,32 +108,34 @@ describe("buildRunEventAttributes", () => {
 
   it("records whether the dead-code pass overlapped lint, and drops it on the failure path", () => {
     expect(
-      buildRunEventAttributes(baseInput({ result: buildResult(), deadCodeOverlapped: true }))
-        .deadCodeOverlapped,
+      buildRunEventAttributes(baseInput({ result: buildResult(), deadCodeOverlapped: true }))[
+        "deadCode.overlapped"
+      ],
     ).toBe(true);
     // A false dimension is still emitted (toSpanAttributes only drops null), so
     // overlap-adoption rate is queryable across all scans.
     expect(
-      buildRunEventAttributes(baseInput({ result: buildResult(), deadCodeOverlapped: false }))
-        .deadCodeOverlapped,
+      buildRunEventAttributes(baseInput({ result: buildResult(), deadCodeOverlapped: false }))[
+        "deadCode.overlapped"
+      ],
     ).toBe(false);
     // Failure path (no result) carries no outcome dimensions, so it's dropped.
     expect(
-      buildRunEventAttributes(baseInput({ error: new Error("boom") })).deadCodeOverlapped,
+      buildRunEventAttributes(baseInput({ error: new Error("boom") }))["deadCode.overlapped"],
     ).toBeUndefined();
   });
 
   it("marks a finding-free run clean and drops absent CI signals", () => {
     const attributes = buildRunEventAttributes(baseInput({ result: buildResult() }));
-    expect(attributes.outcome).toBe("clean");
-    expect(attributes.scanClean).toBe(true);
-    expect(attributes.totalDiagnostics).toBe(0);
-    expect(attributes.exitCode).toBe(0);
-    expect(attributes.wouldBlock).toBe(false);
+    expect(attributes["outcome.status"]).toBe("clean");
+    expect(attributes["outcome.clean"]).toBe(true);
+    expect(attributes["diag.total"]).toBe(0);
+    expect(attributes["outcome.exitCode"]).toBe(0);
+    expect(attributes["outcome.wouldBlock"]).toBe(false);
     // No GitHub signals in the cleared env -> these are dropped, not "null".
-    expect(attributes.actorAssociation).toBeUndefined();
-    expect(attributes.runnerOs).toBeUndefined();
-    expect(attributes.versionPin).toBeUndefined();
+    expect(attributes["action.actorAssociation"]).toBeUndefined();
+    expect(attributes["action.runnerOs"]).toBeUndefined();
+    expect(attributes["action.versionPin"]).toBeUndefined();
     // Nothing fired -> no migration bucket to report (dropped, not "null").
     expect(attributes["migration.largestRuleBucketFiles"]).toBeUndefined();
     expect(attributes["migration.largestRuleBucketRule"]).toBeUndefined();
@@ -184,28 +186,28 @@ describe("buildRunEventAttributes", () => {
       score: { score: 73, label: "Fair" },
     });
     const attributes = buildRunEventAttributes(baseInput({ result }));
-    expect(attributes.outcome).toBe("ok");
-    expect(attributes.totalDiagnostics).toBe(3);
-    expect(attributes.errorCount).toBe(1);
-    expect(attributes.warningCount).toBe(2);
-    expect(attributes.affectedFiles).toBe(2);
-    expect(attributes.distinctRulesFired).toBe(2);
-    expect(attributes.topRule).toBe("react-doctor/no-foo");
+    expect(attributes["outcome.status"]).toBe("ok");
+    expect(attributes["diag.total"]).toBe(3);
+    expect(attributes["diag.errors"]).toBe(1);
+    expect(attributes["diag.warnings"]).toBe(2);
+    expect(attributes["diag.affectedFiles"]).toBe(2);
+    expect(attributes["diag.distinctRules"]).toBe(2);
+    expect(attributes["diag.topRule"]).toBe("react-doctor/no-foo");
     expect(attributes["diag.category.performance"]).toBe(2);
     expect(attributes["diag.category.correctness"]).toBe(1);
-    expect(attributes.score).toBe(73);
-    expect(attributes.scoreLabel).toBe("Fair");
-    expect(attributes.scoreAvailable).toBe(true);
+    expect(attributes["score.value"]).toBe(73);
+    expect(attributes["score.label"]).toBe("Fair");
+    expect(attributes["score.available"]).toBe(true);
   });
 
   it("flags a blocking run when the action blocking gate would trip", () => {
     process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.blocking] = "error";
     const result = buildResult({ diagnostics: [buildDiagnostic({ severity: "error" })] });
     const attributes = buildRunEventAttributes(baseInput({ result }));
-    expect(attributes.blocking).toBe("error");
-    expect(attributes.wouldBlock).toBe(true);
-    expect(attributes.outcome).toBe("blocked");
-    expect(attributes.exitCode).toBe(1);
+    expect(attributes["outcome.blocking"]).toBe("error");
+    expect(attributes["outcome.wouldBlock"]).toBe(true);
+    expect(attributes["outcome.status"]).toBe("blocked");
+    expect(attributes["outcome.exitCode"]).toBe(1);
   });
 
   it("derives wouldBlock from the CI-failure surface, not the full diagnostic list", () => {
@@ -214,7 +216,7 @@ describe("buildRunEventAttributes", () => {
       diagnostics: [buildDiagnostic({ severity: "error", rule: "no-foo" })],
     });
     // No surface exclusion: the error trips the gate.
-    expect(buildRunEventAttributes(baseInput({ result })).wouldBlock).toBe(true);
+    expect(buildRunEventAttributes(baseInput({ result }))["outcome.wouldBlock"]).toBe(true);
     // Excluding the rule from the `ciFailure` surface (what the real CLI gate
     // does for weak-signal `design`-tagged rules) -> the wide event must agree
     // the run doesn't block, instead of disagreeing with the actual exit code.
@@ -224,34 +226,34 @@ describe("buildRunEventAttributes", () => {
         userConfig: { surfaces: { ciFailure: { excludeRules: ["react-doctor/no-foo"] } } },
       }),
     );
-    expect(excluded.wouldBlock).toBe(false);
-    expect(excluded.outcome).toBe("ok");
-    expect(excluded.exitCode).toBe(0);
+    expect(excluded["outcome.wouldBlock"]).toBe(false);
+    expect(excluded["outcome.status"]).toBe("ok");
+    expect(excluded["outcome.exitCode"]).toBe(0);
   });
 
   it("never reports a blocked run in score-only mode (matches the CLI exit guard)", () => {
     process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.blocking] = "error";
     const result = buildResult({ diagnostics: [buildDiagnostic({ severity: "error" })] });
     // A normal run with these findings blocks...
-    expect(buildRunEventAttributes(baseInput({ result })).wouldBlock).toBe(true);
+    expect(buildRunEventAttributes(baseInput({ result }))["outcome.wouldBlock"]).toBe(true);
     // ...but `scoreOnly` runs never raise a non-zero exit, so the wide event
     // must not claim blocked/exitCode 1 when the process actually exits 0.
     const scoreOnly = buildRunEventAttributes(baseInput({ result, scoreOnly: true }));
-    expect(scoreOnly.wouldBlock).toBe(false);
-    expect(scoreOnly.outcome).toBe("ok");
-    expect(scoreOnly.exitCode).toBe(0);
+    expect(scoreOnly["outcome.wouldBlock"]).toBe(false);
+    expect(scoreOnly["outcome.status"]).toBe("ok");
+    expect(scoreOnly["outcome.exitCode"]).toBe(0);
   });
 
   it("records the error taxonomy on the failure path", () => {
     const attributes = buildRunEventAttributes(
       baseInput({ result: undefined, error: new TypeError("boom") }),
     );
-    expect(attributes.outcome).toBe("error");
-    expect(attributes.knownError).toBe(false);
-    expect(attributes.errorTag).toBe("TypeError");
-    expect(attributes.exitCode).toBe(1);
+    expect(attributes["outcome.status"]).toBe("error");
+    expect(attributes["outcome.knownError"]).toBe(false);
+    expect(attributes["outcome.errorTag"]).toBe("TypeError");
+    expect(attributes["outcome.exitCode"]).toBe(1);
     // No result -> no outcome rollups.
-    expect(attributes.totalDiagnostics).toBeUndefined();
+    expect(attributes["diag.total"]).toBeUndefined();
   });
 
   it("records the supply-chain overlap timeout outcome and drops it when absent", () => {
@@ -261,15 +263,15 @@ describe("buildRunEventAttributes", () => {
     expect(
       buildRunEventAttributes(
         baseInput({ result: buildResult(), supplyChainOverlapTimedOut: true }),
-      ).supplyChainOverlapTimedOut,
+      )["supplyChain.overlapTimedOut"],
     ).toBe(true);
     expect(
       buildRunEventAttributes(
         baseInput({ result: buildResult(), supplyChainOverlapTimedOut: false }),
-      ).supplyChainOverlapTimedOut,
+      )["supplyChain.overlapTimedOut"],
     ).toBe(false);
     expect(
-      buildRunEventAttributes(baseInput({ result: buildResult() })).supplyChainOverlapTimedOut,
+      buildRunEventAttributes(baseInput({ result: buildResult() }))["supplyChain.overlapTimedOut"],
     ).toBeUndefined();
   });
 
@@ -294,33 +296,37 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["baseline.new"]).toBeUndefined();
     expect(attributes["baseline.fixed"]).toBeUndefined();
     // Gate-exempt: the degraded run never blocks even with an error finding.
-    expect(attributes.wouldBlock).toBe(false);
+    expect(attributes["outcome.wouldBlock"]).toBe(false);
   });
 
   it("captures forwarded action knobs and classifies the version pin", () => {
     process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.reviewComments] = "false";
     process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.version] = "latest";
     const attributes = buildRunEventAttributes(baseInput({ result: buildResult() }));
-    expect(attributes.reviewComments).toBe(false);
-    expect(attributes.versionPin).toBe("latest");
+    expect(attributes["action.reviewComments"]).toBe(false);
+    expect(attributes["action.versionPin"]).toBe("latest");
     // `comment` env not set -> dropped, never coerced to a value.
-    expect(attributes.comment).toBeUndefined();
+    expect(attributes["action.comment"]).toBeUndefined();
 
     process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.version] = "1.2.3";
-    expect(buildRunEventAttributes(baseInput({ result: buildResult() })).versionPin).toBe("pinned");
+    expect(buildRunEventAttributes(baseInput({ result: buildResult() }))["action.versionPin"]).toBe(
+      "pinned",
+    );
     process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.version] = "./local/pkg";
-    expect(buildRunEventAttributes(baseInput({ result: buildResult() })).versionPin).toBe("local");
+    expect(buildRunEventAttributes(baseInput({ result: buildResult() }))["action.versionPin"]).toBe(
+      "local",
+    );
   });
 
-  it("records lintDroppedFileCount when present and drops it when absent", () => {
+  it("records lint.droppedFileCount when present and drops it when absent", () => {
     const withDrops = buildRunEventAttributes(
       baseInput({ result: buildResult(), lintDroppedFileCount: 4 }),
     );
-    expect(withDrops.lintDroppedFileCount).toBe(4);
+    expect(withDrops["lint.droppedFileCount"]).toBe(4);
 
     // Not passed -> null -> dropped, never coerced to a misleading "null".
     const withoutDrops = buildRunEventAttributes(baseInput({ result: buildResult() }));
-    expect(withoutDrops.lintDroppedFileCount).toBeUndefined();
+    expect(withoutDrops["lint.droppedFileCount"]).toBeUndefined();
   });
 
   it("captures config shape and drops null/undefined-valued attributes", () => {
@@ -333,13 +339,13 @@ describe("buildRunEventAttributes", () => {
         userConfig: { rules: { "react-doctor/no-foo": "off", "react-doctor/no-bar": "error" } },
       }),
     );
-    expect(attributes.mode).toBe("full");
-    expect(attributes.rulesConfigured).toBe(2);
-    expect(attributes.rulesDisabled).toBe(1);
-    expect(attributes.ignoredTagCount).toBe(2);
-    expect(attributes.hasCustomConfig).toBe(true);
-    expect(attributes.workerCount).toBeUndefined();
-    expect(attributes.scannedFileCount).toBeUndefined();
-    expect(attributes.scanPhaseMs).toBeUndefined();
+    expect(attributes["scan.mode"]).toBe("full");
+    expect(attributes["scan.rulesConfigured"]).toBe(2);
+    expect(attributes["scan.rulesDisabled"]).toBe(1);
+    expect(attributes["scan.ignoredTagCount"]).toBe(2);
+    expect(attributes["scan.hasCustomConfig"]).toBe(true);
+    expect(attributes["scan.workerCount"]).toBeUndefined();
+    expect(attributes["scan.fileCount"]).toBeUndefined();
+    expect(attributes["timing.scanMs"]).toBeUndefined();
   });
 });

@@ -12,6 +12,7 @@ import { isValidBlockingLevel } from "./resolve-blocking-level.js";
 import { shouldBlockCi } from "./should-block-ci.js";
 import { toCategoryKey } from "./to-category-key.js";
 import { toSpanAttributes } from "./to-span-attributes.js";
+import { withNamespace } from "./with-namespace.js";
 import type { SentryRootSpan } from "./with-sentry-run-span.js";
 
 // A tag-like map: `null` denotes an absent signal and is dropped by
@@ -112,12 +113,12 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   if (input.result === undefined) {
     const error = input.error;
     const known = isReactDoctorError(error);
-    return {
-      outcome: "error",
+    return withNamespace("outcome", {
+      status: "error",
       exitCode: 1,
       knownError: known,
       errorTag: known ? error.reason._tag : error instanceof Error ? error.name : null,
-    };
+    });
   }
 
   const result = input.result;
@@ -187,88 +188,113 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   let fixGroupedFindings = 0;
   for (const count of findingsPerFixGroup.values()) fixGroupedFindings += count;
 
-  const attributes: RunEventAttributes = {
-    outcome,
-    exitCode: wouldBlock ? 1 : 0,
-    wouldBlock,
-    blocking: blockingLevel,
-    scanClean: isClean,
-    totalDiagnostics: summary.totalDiagnosticCount,
-    errorCount: summary.errorCount,
-    warningCount: summary.warningCount,
-    affectedFiles: summary.affectedFileCount,
-    diagnosticsInTestFiles,
-    diagnosticsInStoryFiles,
-    distinctRulesFired: countByRule.size,
-    "diag.fixGroups": findingsPerFixGroup.size,
-    "diag.fixGroupedFindings": fixGroupedFindings,
-    topRule,
-    "migration.largestRuleBucketFiles": largestRuleBucket ? largestRuleBucket.fileCount : null,
-    "migration.largestRuleBucketSites": largestRuleBucket ? largestRuleBucket.siteCount : null,
-    "migration.largestRuleBucketRule": largestRuleBucket ? largestRuleBucket.ruleKey : null,
-    scannedFileCount: result.scannedFileCount ?? null,
-    // Per-file lint cache outcome. Numeric so Sentry can `p75(lintCacheHitRatio)`;
-    // all `null` when the cache was off/bypassed so "no cache" reads distinctly
-    // from a 0% hit rate (`toSpanAttributes` drops the nulls).
-    lintCacheHitFiles: result.lintCacheHitFileCount ?? null,
-    lintCacheTotalFiles: result.lintCacheTotalFileCount ?? null,
-    lintCacheHitRatio:
-      result.lintCacheTotalFileCount != null && result.lintCacheTotalFileCount > 0
-        ? (result.lintCacheHitFileCount ?? 0) / result.lintCacheTotalFileCount
-        : null,
-    elapsedMs: result.elapsedMilliseconds,
-    scanPhaseMs: result.scanElapsedMilliseconds ?? null,
-    score: result.score ? result.score.score : null,
-    scoreLabel: result.score ? result.score.label : null,
-    scoreAvailable: result.score !== null,
-    skippedCheckCount: result.skippedChecks.length,
-    didLintFail: input.didLintFail ?? null,
-    lintFailureReasonKind: input.lintFailureReasonKind ?? null,
-    lintPartialFailureCount: input.lintPartialFailureCount ?? null,
-    lintDroppedFileCount: input.lintDroppedFileCount ?? null,
-    didDeadCodeFail: input.didDeadCodeFail ?? null,
-    supplyChainOverlapTimedOut: input.supplyChainOverlapTimedOut ?? null,
-    deadCodeOverlapped: input.deadCodeOverlapped ?? null,
-  };
+  // Per-category diagnostic counts, keyed so the `diag` namespace yields
+  // `diag.category.<key>` once prefixed.
+  const categoryRollup: RunEventAttributes = {};
   for (const [category, count] of countByCategory) {
-    attributes[`diag.category.${toCategoryKey(category)}`] = count;
+    categoryRollup[`category.${toCategoryKey(category)}`] = count;
   }
+
+  const attributes: RunEventAttributes = {
+    ...withNamespace("outcome", {
+      status: outcome,
+      exitCode: wouldBlock ? 1 : 0,
+      wouldBlock,
+      blocking: blockingLevel,
+      clean: isClean,
+      skippedChecks: result.skippedChecks.length,
+    }),
+    ...withNamespace("diag", {
+      total: summary.totalDiagnosticCount,
+      errors: summary.errorCount,
+      warnings: summary.warningCount,
+      affectedFiles: summary.affectedFileCount,
+      inTestFiles: diagnosticsInTestFiles,
+      inStoryFiles: diagnosticsInStoryFiles,
+      distinctRules: countByRule.size,
+      topRule,
+      fixGroups: findingsPerFixGroup.size,
+      fixGroupedFindings,
+      ...categoryRollup,
+    }),
+    ...withNamespace("score", {
+      value: result.score ? result.score.score : null,
+      label: result.score ? result.score.label : null,
+      available: result.score !== null,
+    }),
+    ...withNamespace("lint", {
+      failed: input.didLintFail ?? null,
+      failureReasonKind: input.lintFailureReasonKind ?? null,
+      partialFailureCount: input.lintPartialFailureCount ?? null,
+      droppedFileCount: input.lintDroppedFileCount ?? null,
+      // Per-file lint cache outcome. Numeric so Sentry can `p75(lint.cacheHitRatio)`;
+      // all `null` when the cache was off/bypassed so "no cache" reads distinctly
+      // from a 0% hit rate (`toSpanAttributes` drops the nulls).
+      cacheHitFiles: result.lintCacheHitFileCount ?? null,
+      cacheTotalFiles: result.lintCacheTotalFileCount ?? null,
+      cacheHitRatio:
+        result.lintCacheTotalFileCount != null && result.lintCacheTotalFileCount > 0
+          ? (result.lintCacheHitFileCount ?? 0) / result.lintCacheTotalFileCount
+          : null,
+    }),
+    ...withNamespace("deadCode", {
+      failed: input.didDeadCodeFail ?? null,
+      overlapped: input.deadCodeOverlapped ?? null,
+    }),
+    ...withNamespace("supplyChain", {
+      overlapTimedOut: input.supplyChainOverlapTimedOut ?? null,
+    }),
+    ...withNamespace("timing", {
+      elapsedMs: result.elapsedMilliseconds,
+      scanMs: result.scanElapsedMilliseconds ?? null,
+    }),
+    ...withNamespace("migration", {
+      largestRuleBucketFiles: largestRuleBucket ? largestRuleBucket.fileCount : null,
+      largestRuleBucketSites: largestRuleBucket ? largestRuleBucket.siteCount : null,
+      largestRuleBucketRule: largestRuleBucket ? largestRuleBucket.ruleKey : null,
+    }),
+  };
   // Baseline (PR-introduced-issues-only) signal. Emitted only for baseline runs
   // so non-baseline scans stay clean: a computed run carries the delta (`new` is
-  // the introduced count == totalDiagnostics, plus `fixed` and base `baseTotal`)
-  // and `degraded: false`; a degraded run (base ref unfetchable or lint failed,
+  // the introduced count == diag.total, plus `fixed` and base `baseTotal`) and
+  // `degraded: false`; a degraded run (base ref unfetchable or lint failed,
   // surfaced via `gateExempt`) carries only `degraded: true`. The pair lets a
   // query compute the degradation rate over all baseline runs.
   if (result.baselineDelta) {
-    attributes["baseline.new"] = summary.totalDiagnosticCount;
-    attributes["baseline.fixed"] = result.baselineDelta.fixedCount;
-    attributes["baseline.baseTotal"] = result.baselineDelta.baseTotalCount;
-    attributes["baseline.degraded"] = false;
+    Object.assign(
+      attributes,
+      withNamespace("baseline", {
+        new: summary.totalDiagnosticCount,
+        fixed: result.baselineDelta.fixedCount,
+        baseTotal: result.baselineDelta.baseTotalCount,
+        degraded: false,
+      }),
+    );
   } else if (input.gateExempt) {
     attributes["baseline.degraded"] = true;
   }
   return attributes;
 };
 
-const buildCiAttributes = (): RunEventAttributes => {
+const buildActionAttributes = (): RunEventAttributes => {
   const { githubActorAssociation } = resolveGithubActionsScoreMetadata();
-  return {
+  return withNamespace("action", {
     actorAssociation: githubActorAssociation ?? null,
     runnerOs: detectRunnerOs(),
     // Action knobs: present only when the official action forwarded them, so
-    // they're `null` (dropped) for any non-action run. The action's
-    // `blocking` is already captured as `blocking`
-    // (resolveTelemetryBlocking prefers it).
+    // they're `null` (dropped) for any non-action run. The action's `blocking`
+    // is already captured as `outcome.blocking` (resolveTelemetryBlocking
+    // prefers it).
     comment: readEnvBoolean(ACTION_INPUT_ENVIRONMENT_VARIABLES.comment),
     reviewComments: readEnvBoolean(ACTION_INPUT_ENVIRONMENT_VARIABLES.reviewComments),
     versionPin: resolveVersionPin(process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.version]),
-  };
+  });
 };
 
-const buildConfigAttributes = (input: RunEventInput): RunEventAttributes => {
+const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
   const ruleOverrides = input.userConfig?.rules ?? {};
   const ruleKeys = Object.keys(ruleOverrides);
-  return {
+  return withNamespace("scan", {
     mode: input.mode,
     scope: input.scope,
     parallel: input.parallel,
@@ -284,12 +310,20 @@ const buildConfigAttributes = (input: RunEventInput): RunEventAttributes => {
     hasCustomConfig: input.hasCustomConfig,
     rulesConfigured: ruleKeys.length,
     rulesDisabled: ruleKeys.filter((key) => ruleOverrides[key] === "off").length,
-  };
+    // Scan extent — how many files this run covered (the denominator for
+    // `diag.affectedFiles`). Known only on the success path.
+    fileCount: input.result?.scannedFileCount ?? null,
+  });
 };
 
 /**
- * Projects a scan into the flat attribute set for its root span — the canonical
- * per-scan "wide event". Pure and exported so the projection (outcome
+ * Projects a scan into the namespaced attribute set for its root span — the
+ * canonical per-scan "wide event". Every attribute carries a dotted namespace
+ * that groups it by concept (`scan.*` config, `action.*` CI knobs, `outcome.*`
+ * verdict, `diag.*` findings, `score.*`, `lint.*`, `deadCode.*`,
+ * `supplyChain.*`, `timing.*`, `migration.*`, `baseline.*`) so the attributes
+ * tree up in Sentry's attribute browser and stay filter-/group-/aggregate-able
+ * in the Spans dataset. Pure and exported so the projection (outcome
  * precedence, rule/category rollups, CI knobs, config shape) is unit-testable
  * without a live Sentry client. `null` values are dropped so absent signals
  * never become misleading `"null"` attributes. The run + project base context
@@ -301,8 +335,8 @@ export const buildRunEventAttributes = (
   input: RunEventInput,
 ): Record<string, string | number | boolean> =>
   toSpanAttributes({
-    ...buildConfigAttributes(input),
-    ...buildCiAttributes(),
+    ...buildScanAttributes(input),
+    ...buildActionAttributes(),
     ...buildOutcomeAttributes(input),
   });
 

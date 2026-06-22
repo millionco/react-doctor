@@ -327,6 +327,25 @@ describe("issue #115: --staged uses git INDEX content, not working tree", () => 
   });
 });
 
+describe("issue #937: getStagedSourceFiles logs warnings on git errors", () => {
+  it("getStagedSourceFiles returns [] and logs a warning when git command fails", async () => {
+    const nonExistentDir = path.join(tempRoot, "issue-937-nonexistent");
+    const warnSpy: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (message: string) => {
+      warnSpy.push(message);
+    };
+    try {
+      const result = await getStagedSourceFiles(nonExistentDir);
+      expect(result).toEqual([]);
+      expect(warnSpy.length).toBeGreaterThan(0);
+      expect(warnSpy[0]).toContain("Failed to discover staged files");
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+});
+
 describe("issue #141: oxlint config must not reference unloaded plugins", () => {
   // HACK: the bug only fires when eslint-plugin-react-hooks is missing
   // AND React Compiler is detected — so REACT_COMPILER_RULES (under the

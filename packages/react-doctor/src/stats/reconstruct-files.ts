@@ -13,14 +13,19 @@ const resolveAgainstCwd = (rawPath: string, cwd: string | null): string | null =
   return path.resolve(cwd, rawPath);
 };
 
+/**
+ * Apply a string-replace edit, or `null` when it can't be applied faithfully
+ * (the `oldString` isn't in our buffer, so we're out of sync with what the
+ * model actually edited). An empty `oldString` is a no-op rather than a failure.
+ */
 const applyStringReplace = (
   source: string,
   oldString: string,
   newString: string,
   replaceAll: boolean,
-): string => {
+): string | null => {
   if (oldString === "") return source;
-  if (!source.includes(oldString)) return source;
+  if (!source.includes(oldString)) return null;
   return replaceAll
     ? source.split(oldString).join(newString)
     : source.replace(oldString, newString);
@@ -112,15 +117,20 @@ export const reconstructSession = (session: AgentSession): SessionReconstruction
     } else {
       const base = buffers.get(resolved);
       if (typeof base !== "string") continue;
-      buffers.set(
-        resolved,
-        applyStringReplace(
-          base,
-          edit.oldString ?? "",
-          edit.newString ?? "",
-          edit.replaceAll ?? false,
-        ),
+      const applied = applyStringReplace(
+        base,
+        edit.oldString ?? "",
+        edit.newString ?? "",
+        edit.replaceAll ?? false,
       );
+      // The oldString wasn't in our buffer, so it's out of sync with what the
+      // model actually edited. Drop to "no faithful base" rather than lint stale
+      // content — mirrors the apply_patch hunk-mismatch handling above.
+      if (applied === null) {
+        buffers.delete(resolved);
+        continue;
+      }
+      buffers.set(resolved, applied);
     }
   }
 

@@ -53,6 +53,16 @@ describe("reconstructSession", () => {
     expect(result.unreconstructable).toEqual([resolved("/repo/src/c.ts")]);
   });
 
+  it("drops a StrReplace whose oldString is absent from the base rather than linting stale content", () => {
+    const edits: FileEdit[] = [
+      { kind: "write", path: "/repo/src/r.ts", content: "const x = 1;\n" },
+      { kind: "replace", path: "/repo/src/r.ts", oldString: "does-not-exist", newString: "y" },
+    ];
+    const result = reconstructSession(session({ provider: "cursor", edits }));
+    expect(result.files).toEqual([]);
+    expect(result.unreconstructable).toEqual([resolved("/repo/src/r.ts")]);
+  });
+
   it("reconstructs a Codex apply_patch Add File", () => {
     const patch =
       "*** Begin Patch\n*** Add File: /repo/src/d.ts\n+export const d = 1;\n*** End Patch";

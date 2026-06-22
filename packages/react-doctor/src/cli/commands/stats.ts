@@ -71,7 +71,9 @@ export const statsAction = async (flags: StatsFlags): Promise<void> => {
   let report: StatsReport;
   let providerCount: number;
   try {
-    const sessions = discoverSessions(root, scope);
+    const sessions = await discoverSessions(root, scope, (foundCount) =>
+      progress?.update(`Looking through your agent history… (${foundCount} found)`),
+    );
     progress?.update("Checking the code each agent wrote…");
     const results = await runStatsScan(sessions, scope.global ? null : root, {
       onProgress: (completedCount, totalCount) =>

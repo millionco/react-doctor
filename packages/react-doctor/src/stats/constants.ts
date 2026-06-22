@@ -14,6 +14,11 @@ export const STATS_SCAN_CONCURRENCY = 6;
 // Temp-dir prefix for a per-session reconstructed source tree.
 export const STATS_TEMP_DIR_PREFIX = "react-doctor-stats-";
 
+// Discovery loads each candidate session from disk/SQLite synchronously. Yield
+// to the event loop after this many loads so the spinner keeps animating instead
+// of looking frozen during the initial history walk.
+export const STATS_DISCOVERY_YIELD_INTERVAL = 10;
+
 // A group (model/provider) needs at least this many scanned files before its
 // score is shown; below it the sample is too small to rank fairly.
 export const STATS_MIN_FILES_FOR_SCORE = 3;

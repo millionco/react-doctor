@@ -15,11 +15,11 @@ export interface ScrambledCode {
   nodeType: string | null;
 }
 
-interface AstNode {
+interface OxcAstNode {
   type: string;
-  start?: unknown;
-  end?: unknown;
-  [field: string]: unknown;
+  start?: number;
+  end?: number;
+  [key: string]: unknown;
 }
 
 interface SourceReplacement {
@@ -70,15 +70,15 @@ const MAX_ENCLOSING_CLIMB = 6;
 const FNV_OFFSET_BASIS = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
 
-const isAstNode = (candidate: unknown): candidate is AstNode =>
+const isOxcAstNode = (candidate: unknown): candidate is OxcAstNode =>
   typeof candidate === "object" && candidate !== null && "type" in candidate;
 
-const offsetOf = (node: AstNode): Span | null =>
+const offsetOf = (node: OxcAstNode): Span | null =>
   typeof node.start === "number" && typeof node.end === "number"
     ? { start: node.start, end: node.end }
     : null;
 
-const visitChildren = (node: AstNode, visit: (child: unknown) => void): void => {
+const visitChildren = (node: OxcAstNode, visit: (child: unknown) => void): void => {
   for (const key of Object.keys(node)) {
     const value = node[key];
     if (Array.isArray(value)) for (const item of value) visit(item);
@@ -141,10 +141,10 @@ const classifyByName = (name: string): PlaceholderKind => {
 const classifyJsxNodes = (program: unknown): Map<object, PlaceholderKind> => {
   const kinds = new Map<object, PlaceholderKind>();
   const visit = (node: unknown): void => {
-    if (!isAstNode(node)) return;
+    if (!isOxcAstNode(node)) return;
     if (
       (node.type === "JSXOpeningElement" || node.type === "JSXClosingElement") &&
-      isAstNode(node.name) &&
+      isOxcAstNode(node.name) &&
       node.name.type === "JSXIdentifier" &&
       typeof node.name.name === "string"
     ) {
@@ -152,7 +152,7 @@ const classifyJsxNodes = (program: unknown): Map<object, PlaceholderKind> => {
     }
     if (
       node.type === "JSXAttribute" &&
-      isAstNode(node.name) &&
+      isOxcAstNode(node.name) &&
       node.name.type === "JSXIdentifier"
     ) {
       kinds.set(node.name, "prop");
@@ -194,7 +194,7 @@ const scrambleReadable = (
     replacements.push({ start: span.start - offsetShift, end: span.end - offsetShift, text });
   };
   const visit = (node: unknown): void => {
-    if (!isAstNode(node)) return;
+    if (!isOxcAstNode(node)) return;
     const span = offsetOf(node);
     if (
       node.type === "Identifier" ||
@@ -246,13 +246,13 @@ const scrambleReadable = (
   return scrambled;
 };
 
-const findMinimalNode = (program: unknown, offset: number, length: number): AstNode | null => {
+const findMinimalNode = (program: unknown, offset: number, length: number): OxcAstNode | null => {
   const targetEnd = offset + Math.max(length, 1);
   let bestSize = Number.POSITIVE_INFINITY;
-  const chain: AstNode[] = [];
-  let bestChain: AstNode[] = [];
+  const chain: OxcAstNode[] = [];
+  let bestChain: OxcAstNode[] = [];
   const visit = (node: unknown): void => {
-    if (!isAstNode(node)) return;
+    if (!isOxcAstNode(node)) return;
     const span = offsetOf(node);
     if (span && span.start <= offset && span.end >= targetEnd) {
       chain.push(node);

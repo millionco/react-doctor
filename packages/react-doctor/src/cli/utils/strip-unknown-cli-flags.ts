@@ -100,14 +100,14 @@ const WHY_FLAG_SPEC: CliFlagSpec = {
 };
 
 // Union of every flag across the `browser` subcommands (open / eval / snapshot /
-// screenshot / audit / console / network / perf / report). The sub-subcommand
-// name and any URL / expression positional pass through untouched; only these
-// options need to survive the pre-parse strip so Commander can route them —
-// without this, `--cdp <endpoint>` is dropped and its value leaks in as a stray
-// positional.
+// screenshot / audit / console / network / perf / profile / report). The
+// sub-subcommand name and any URL / expression positional pass through
+// untouched; only these options need to survive the pre-parse strip so Commander
+// can route them — without this, e.g. `--cdp <endpoint>` is dropped and its
+// value leaks in as a stray positional.
 const BROWSER_FLAG_SPEC: CliFlagSpec = {
   longOptionsWithoutValues: new Set(["--help", "--no-launch"]),
-  longOptionsWithRequiredValues: new Set(["--cdp", "--out", "--viewport"]),
+  longOptionsWithRequiredValues: new Set(["--cdp", "--interaction", "--out", "--viewport"]),
   longOptionsWithOptionalValues: new Set(),
   shortOptionsWithoutValues: new Set(["-h"]),
   shortOptionsWithRequiredValues: new Set(),

@@ -158,6 +158,23 @@ describe("stripUnknownCliFlags", () => {
     expect(
       stripUserArguments(["browser", "eval", 'page.locator("a").click()', "--cdp", "http://x"]),
     ).toEqual(["browser", "eval", 'page.locator("a").click()', "--cdp", "http://x"]);
+    // Regression: `--interaction`'s Playwright expression must not leak as a
+    // positional, or `browser profile` rejects it as too many arguments.
+    expect(
+      stripUserArguments([
+        "browser",
+        "profile",
+        "https://example.com",
+        "--interaction",
+        'page.getByText("Next").click()',
+      ]),
+    ).toEqual([
+      "browser",
+      "profile",
+      "https://example.com",
+      "--interaction",
+      'page.getByText("Next").click()',
+    ]);
   });
 
   it("keeps debug serve flags and consumes their values (no value leaks as a positional)", () => {

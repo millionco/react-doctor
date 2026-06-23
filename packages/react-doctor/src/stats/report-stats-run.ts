@@ -1,4 +1,3 @@
-import { gzipSync } from "node:zlib";
 import { FETCH_TIMEOUT_MS, STATS_API_URL } from "@react-doctor/core";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -59,17 +58,16 @@ export const reportStatsRun = async (report: StatsReport): Promise<CommunityLead
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const requestBody = JSON.stringify({
-      schemaVersion: STATS_REPORT_SCHEMA_VERSION,
-      models: report.models.map(toLeaderboardRow),
-    });
     const response = await fetch(resolveStatsApiUrl(), {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Encoding": "gzip",
-      },
-      body: gzipSync(requestBody),
+      headers: { "Content-Type": "application/json" },
+      // Plain JSON, not gzip: the payload is a handful of tiny rows, so
+      // compression would cost more than it saves (unlike the score API's large
+      // diagnostics body).
+      body: JSON.stringify({
+        schemaVersion: STATS_REPORT_SCHEMA_VERSION,
+        models: report.models.map(toLeaderboardRow),
+      }),
       signal: controller.signal,
     });
 

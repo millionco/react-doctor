@@ -1,4 +1,3 @@
-import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { reportStatsRun } from "../src/stats/report-stats-run.js";
 import type { GroupStats, StatsReport } from "../src/stats/types.js";
@@ -39,8 +38,7 @@ const stubFetch = (impl: typeof fetch): void => {
   vi.stubGlobal("fetch", vi.fn(impl));
 };
 
-const decodeBody = (body: BodyInit | null | undefined): unknown =>
-  JSON.parse(gunzipSync(body as Uint8Array).toString("utf8"));
+const decodeBody = (body: BodyInit | null | undefined): unknown => JSON.parse(body as string);
 
 describe("reportStatsRun", () => {
   afterEach(() => {
@@ -77,7 +75,7 @@ describe("reportStatsRun", () => {
     }
   });
 
-  it("gzips the body and returns the parsed community leaderboard", async () => {
+  it("sends plain JSON (no gzip) and returns the parsed community leaderboard", async () => {
     let encoding: string | undefined;
     stubFetch(async (_url, init) => {
       encoding = new Headers(init?.headers).get("content-encoding") ?? undefined;
@@ -103,7 +101,7 @@ describe("reportStatsRun", () => {
 
     const community = await reportStatsRun(report([group({})]));
 
-    expect(encoding).toBe("gzip");
+    expect(encoding).toBeUndefined();
     expect(community?.models[0]).toEqual({
       model: "claude-sonnet-4-5",
       harness: "claude",

@@ -1,4 +1,5 @@
 import * as ts from "typescript";
+import { utf8OffsetToUtf16 } from "../../utils/utf8-offset-to-utf16.js";
 
 interface ReactImportBindings {
   namespaceNames: Set<string>;
@@ -35,9 +36,6 @@ const getScriptKind = (filename: string): ts.ScriptKind => {
   if (filename.endsWith(".ts")) return ts.ScriptKind.TS;
   return ts.ScriptKind.JS;
 };
-
-const getUtf16Offset = (sourceText: string, utf8Offset: number): number =>
-  Buffer.from(sourceText).subarray(0, utf8Offset).toString("utf8").length;
 
 const unwrapExpression = (expression: ts.Expression): ts.Expression => {
   let currentExpression = expression;
@@ -606,7 +604,7 @@ export const resolveUseCallBinding = (
     true,
     getScriptKind(filename),
   );
-  const useOffset = getUtf16Offset(sourceText, utf8Offset);
+  const useOffset = utf8OffsetToUtf16(sourceText, utf8Offset);
   const useIdentifier = findUseCallIdentifier(sourceFile, useOffset);
   if (!useIdentifier) return null;
   return resolveIdentifierBinding(

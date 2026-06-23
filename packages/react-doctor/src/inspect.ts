@@ -26,6 +26,7 @@ import type { SentryRootSpan } from "./cli/utils/with-sentry-run-span.js";
 import { BASELINE_FILES_TEMP_DIR_PREFIX, METRIC } from "./cli/utils/constants.js";
 import { recordCount } from "./cli/utils/record-metric.js";
 import { recordScanMetrics } from "./cli/utils/record-scan-metrics.js";
+import { recordDiagnosticSnippets } from "./cli/utils/record-diagnostic-snippets.js";
 import { recordRunEvent } from "./cli/utils/build-run-event.js";
 import type {
   ChangedFileLineRanges,
@@ -816,6 +817,10 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     lintFailureReasonKind: input.payload.lintFailureReasonKind,
     lintPartialFailureCount: input.payload.lintPartialFailures.length,
     didDeadCodeFail: input.payload.didDeadCodeFail,
+  });
+  recordDiagnosticSnippets({
+    diagnostics: result.diagnostics,
+    rootDirectory: input.payload.directory,
   });
   return result;
 };

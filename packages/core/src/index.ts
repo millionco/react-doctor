@@ -96,6 +96,7 @@ export * from "./utils/redact-sensitive-text.js";
 export * from "./utils/resolve-github-actions-score-metadata.js";
 export * from "./utils/resolve-scan-concurrency.js";
 export * from "./utils/to-relative-path.js";
+export * from "./utils/utf8-offset-to-utf16.js";
 export * from "./utils/warn-config-issue.js";
 export * from "./runners/oxlint/capabilities.js";
 export * from "./runners/oxlint/config.js";

@@ -37,6 +37,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
     "--category",
     "--changed-files-from",
     "--blocking",
+    "--json-out",
     "--output-dir",
     "--fail-on",
     "--project",

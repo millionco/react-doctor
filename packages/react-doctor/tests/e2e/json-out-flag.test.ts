@@ -24,7 +24,7 @@ afterAll(() => {
 const runCli = (
   args: string[],
   cwd: string,
-): Promise<{ readonly stdout: string; readonly exitCode: number | null }> =>
+): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number | null }> =>
   new Promise((resolve) => {
     const environment = { ...process.env, CI: "1", FORCE_COLOR: "0" };
     const child = spawn(process.execPath, [builtCliPath, ...args], {
@@ -33,11 +33,14 @@ const runCli = (
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
+    let stderr = "";
     child.stdout.on("data", (chunk) => {
       stdout += String(chunk);
     });
-    child.stderr.on("data", () => {});
-    child.on("close", (exitCode) => resolve({ stdout, exitCode }));
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("close", (exitCode) => resolve({ stdout, stderr, exitCode }));
   });
 
 describe.skipIf(!hasBuiltCli)("--json-out flag", () => {
@@ -49,11 +52,15 @@ describe.skipIf(!hasBuiltCli)("--json-out flag", () => {
     });
 
     const outputFile = path.join(projectDirectory, "report.json");
-    const { stdout, exitCode } = await runCli(
+    const { stdout, stderr, exitCode } = await runCli(
       [".", "--json", "--json-out", "./report.json", "--no-score"],
       projectDirectory,
     );
 
+    if (exitCode !== 0) {
+      console.error("STDERR:", stderr);
+      console.error("STDOUT:", stdout);
+    }
     expect(exitCode).toBe(0);
     expect(stdout).not.toContain('"ok"');
     expect(fs.existsSync(outputFile)).toBe(true);

@@ -402,6 +402,11 @@ const Terminal = () => {
               Star on GitHub
             </a>
           </div>
+          <div className="mt-3 text-sm text-neutral-500">
+            Large backlog? Run{" "}
+            <span className="text-neutral-300">npx react-doctor@latest triage</span> to walk rules
+            one by one and copy focused fix prompts.
+          </div>
         </FadeIn>
       )}
 

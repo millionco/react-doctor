@@ -27,6 +27,7 @@ import { detectDefaultBranch } from "./detect-default-branch.js";
 import { hasHandledActionUpgrade, recordActionUpgradeDecision } from "./action-upgrade-prompt.js";
 import { hasHandledCiPrompt, recordCiPromptDecision } from "./ci-prompt-decision.js";
 import { installReactDoctorAgentHooks } from "./install-agent-hooks.js";
+import { ensureReactDoctorGitignore } from "./ensure-react-doctor-gitignore.js";
 import {
   getReactDoctorWorkflowPath,
   installReactDoctorWorkflow,
@@ -630,6 +631,7 @@ export const runInstallReactDoctor = async (
       projectRoot,
       options.installDependencyRunner,
     );
+    ensureReactDoctorGitignore(projectRoot);
   }
 
   // The CI decision from Step 1 lands here, after the core skill + package setup
@@ -734,6 +736,7 @@ export const runInstallReactDoctor = async (
     logger.dim(`  Source: ${sourceDir}`);
     logger.dim("  Package script: doctor (or react-doctor if doctor exists)");
     logger.dim("  Dev dependency: react-doctor");
+    logger.dim("  Gitignore: .react-doctor/");
     if (shouldInstallGitHook) {
       logger.dim(`  Git hook: ${gitHookPath}`);
     }

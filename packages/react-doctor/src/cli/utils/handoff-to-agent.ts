@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { getSkillAgentConfig } from "agent-install";
 import type { Diagnostic } from "@react-doctor/core";
 import { highlighter } from "@react-doctor/core";
@@ -32,6 +33,9 @@ import {
 } from "./launch-agent.js";
 import { prompts } from "./prompts.js";
 import { spinner } from "./spinner.js";
+import { runTriageLoop } from "./run-triage-loop.js";
+import { writeDiagnosticsDirectory } from "./write-diagnostics-directory.js";
+import { ensureReactDoctorGitignore } from "./ensure-react-doctor-gitignore.js";
 
 export interface HandoffToAgentInput {
   readonly diagnostics: ReadonlyArray<Diagnostic>;
@@ -43,6 +47,7 @@ export interface HandoffToAgentInput {
 
 const CLIPBOARD_CHOICE = "clipboard";
 const SKIP_CHOICE = "skip";
+const TRIAGE_CHOICE = "triage";
 
 const printPayload = (payload: string): void => {
   logger.break();
@@ -235,6 +240,11 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
       description: "Paste into any agent or chat",
       value: CLIPBOARD_CHOICE,
     },
+    {
+      title: "Triage rules one by one",
+      description: "Pick which rules to prompt, skip, or disable",
+      value: TRIAGE_CHOICE,
+    },
     { title: "Skip", description: "Don't hand off", value: SKIP_CHOICE },
   ];
 
@@ -269,6 +279,7 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
   if (handoffTarget === undefined) handoffOutcome = "cancel";
   else if (handoffTarget === SKIP_CHOICE) handoffOutcome = "skip";
   else if (handoffTarget === CLIPBOARD_CHOICE) handoffOutcome = "clipboard";
+  else if (handoffTarget === TRIAGE_CHOICE) handoffOutcome = "triage";
   recordCount(METRIC.agentHandoff, 1, {
     outcome: handoffOutcome,
     agent: handoffOutcome === "launch" ? handoffTarget : undefined,
@@ -283,6 +294,28 @@ export const handoffToAgent = async (input: HandoffToAgentInput): Promise<void> 
   });
 
   if (handoffTarget === undefined || handoffTarget === SKIP_CHOICE) return;
+
+  if (handoffTarget === TRIAGE_CHOICE) {
+    const outputDirectory = writeDiagnosticsDirectory(
+      [...input.diagnostics],
+      input.outputDirectory ?? path.join(input.rootDirectory, ".react-doctor", "triage"),
+    );
+    ensureReactDoctorGitignore(input.rootDirectory);
+    const result = await runTriageLoop({
+      diagnostics: input.diagnostics,
+      outputDirectory,
+      projectName: input.projectName,
+      rootDirectory: input.rootDirectory,
+    });
+    recordCount(METRIC.triage, 1, {
+      totalRules: result.totalRules,
+      rulesPrompted: result.rulesPrompted,
+      rulesSkipped: result.rulesSkipped,
+      rulesDisabled: result.rulesDisabled,
+      rulesRemaining: result.rulesRemaining,
+    });
+    return;
+  }
 
   const payload = buildHandoffPayload({
     diagnostics: input.diagnostics,

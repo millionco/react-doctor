@@ -4,7 +4,11 @@ export interface ScrambleOptions {
   language?: "ts" | "tsx" | "js" | "jsx";
   /**
    * When set, scrambles only the smallest self-contained node spanning this
-   * byte range (an `offset`/`length`) instead of the whole source.
+   * range instead of the whole source. `offset`/`length` are UTF-16 code-unit
+   * indices into `source` (the same units oxc AST spans and `String.slice`
+   * use) — NOT UTF-8 byte offsets. A caller holding oxlint `Diagnostic` byte
+   * offsets must convert them to UTF-16 first, or non-ASCII source picks the
+   * wrong node.
    */
   diagnostic?: { offset: number; length: number };
 }
@@ -334,8 +338,8 @@ const findMinimalNode = (program: unknown, offset: number, length: number): AstN
  * `v`ar). Returns the readable scrambled `source` plus a stable `hash` of it.
  *
  * With `options.diagnostic`, scrambles only the minimal node spanning the given
- * byte range. Returns `null` when the source can't be parsed or no node spans
- * the range.
+ * range (UTF-16 code-unit offsets, matching oxc AST spans). Returns `null` when
+ * the source can't be parsed or no node spans the range.
  */
 export const scramble = (source: string, options: ScrambleOptions = {}): ScrambledCode | null => {
   const program = parseSnippetProgram(source, options.language);

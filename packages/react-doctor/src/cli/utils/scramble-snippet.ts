@@ -1,4 +1,5 @@
 import { parseSync } from "oxc-parser";
+import { isOxcAstNode, type OxcAstNode } from "deslop-js";
 
 export interface ScrambleOptions {
   language?: "ts" | "tsx" | "js" | "jsx";
@@ -13,13 +14,6 @@ export interface ScrambledCode {
   source: string;
   hash: string;
   nodeType: string | null;
-}
-
-interface OxcAstNode {
-  type: string;
-  start?: number;
-  end?: number;
-  [key: string]: unknown;
 }
 
 interface SourceReplacement {
@@ -69,9 +63,6 @@ const MAX_ENCLOSING_CLIMB = 6;
 
 const FNV_OFFSET_BASIS = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
-
-const isOxcAstNode = (candidate: unknown): candidate is OxcAstNode =>
-  typeof candidate === "object" && candidate !== null && "type" in candidate;
 
 const offsetOf = (node: OxcAstNode): Span | null =>
   typeof node.start === "number" && typeof node.end === "number"

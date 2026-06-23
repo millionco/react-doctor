@@ -176,6 +176,9 @@ export type {
   DeslopErrorSeverity,
 } from "./types.js";
 
+export { isOxcAstNode } from "./utils/oxc-ast-node.js";
+export type { OxcAstNode } from "./utils/oxc-ast-node.js";
+
 /**
  * Default flags below mark rules off-by-default. Rationale for each:
  *

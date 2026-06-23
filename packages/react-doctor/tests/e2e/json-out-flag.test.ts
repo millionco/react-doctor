@@ -24,7 +24,11 @@ afterAll(() => {
 const runCli = (
   args: string[],
   cwd: string,
-): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number | null }> =>
+): Promise<{
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly exitCode: number | null;
+}> =>
   new Promise((resolve) => {
     const environment = { ...process.env, CI: "1", FORCE_COLOR: "0" };
     const child = spawn(process.execPath, [builtCliPath, ...args], {
@@ -115,10 +119,7 @@ describe.skipIf(!hasBuiltCli)("--json-out flag", () => {
       },
     });
 
-    const { stdout, exitCode } = await runCli(
-      [".", "--json", "--no-score"],
-      projectDirectory,
-    );
+    const { stdout, exitCode } = await runCli([".", "--json", "--no-score"], projectDirectory);
 
     expect(exitCode).toBe(0);
     expect(stdout).toContain('"ok"');

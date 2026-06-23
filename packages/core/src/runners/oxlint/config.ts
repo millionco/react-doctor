@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import reactDoctorPlugin, {
+  CROSS_FILE_RULE_IDS,
   REACT_COMPILER_RULES,
   REACT_DOCTOR_RULES,
 } from "oxlint-plugin-react-doctor";
@@ -35,6 +36,19 @@ export interface OxlintConfigOptions {
    * the whole lint pass failing (issue #833). See `run-oxlint.ts`.
    */
   disableReactHooksJsPlugin?: boolean;
+  /**
+   * Partitions the rule set for the per-file lint cache (`run-oxlint.ts`).
+   * Omitted (the default) builds the full config — every caller outside the
+   * cache path is unaffected.
+   *
+   *   - `"cacheable"` — every enabled rule EXCEPT the cross-file set
+   *     (`CROSS_FILE_RULE_IDS`). These rules' verdicts depend only on the
+   *     linted file's own content, so their output is content-addressable.
+   *   - `"sidecar"` — ONLY the cross-file react-doctor rules; the React
+   *     Compiler frontend and user plugins are dropped (none are cross-file).
+   *     This config always runs fresh on every file and is never cached.
+   */
+  ruleSelection?: "cacheable" | "sidecar";
 }
 
 const resolveSettingsRootDirectory = (rootDirectory: string): string => {
@@ -102,10 +116,14 @@ export const createOxlintConfig = ({
   severityControls,
   userPlugins = [],
   disableReactHooksJsPlugin = false,
+  ruleSelection,
 }: OxlintConfigOptions) => {
-  const reactHooksJsPlugin = disableReactHooksJsPlugin
-    ? null
-    : resolveReactHooksJsPlugin(project.hasReactCompiler, customRulesOnly);
+  // The sidecar carries only cross-file react-doctor rules — the React
+  // Compiler frontend isn't cross-file, so it never belongs there.
+  const reactHooksJsPlugin =
+    disableReactHooksJsPlugin || ruleSelection === "sidecar"
+      ? null
+      : resolveReactHooksJsPlugin(project.hasReactCompiler, customRulesOnly);
   const reactCompilerRules = reactHooksJsPlugin
     ? applyRuleSeverityControls(
         filterRulesToAvailable(
@@ -126,6 +144,11 @@ export const createOxlintConfig = ({
   for (const registryEntry of REACT_DOCTOR_RULES) {
     const rule = reactDoctorPlugin.rules[registryEntry.id];
     if (!rule) continue;
+    // Per-file-cache partition: the cacheable config drops the cross-file
+    // rules (they run always-fresh in the sidecar); the sidecar config keeps
+    // only them. The default (undefined) keeps every rule.
+    if (ruleSelection === "cacheable" && CROSS_FILE_RULE_IDS.has(registryEntry.id)) continue;
+    if (ruleSelection === "sidecar" && !CROSS_FILE_RULE_IDS.has(registryEntry.id)) continue;
     // Scan rules run via core's check-security-scan environment
     // check, not oxlint — registering them would only add dead visitors.
     if (rule.scan !== undefined) continue;
@@ -159,10 +182,15 @@ export const createOxlintConfig = ({
   // present) → user plugins → react-doctor itself. The react-doctor
   // plugin stays last so its rules can reference earlier plugins'
   // settings if a future composition pattern needs that hook.
+  // User plugins are opaque — we can't prove their rules are within-file, so
+  // they never go in the cacheable sidecar split. They only run on the full
+  // (uncached) config; the cache path bypasses entirely when any are present.
   const userPluginRules: Record<string, OxlintRuleSeverity> = {};
-  for (const userPlugin of userPlugins) {
-    Object.assign(userPluginRules, buildUserPluginRules(userPlugin, severityControls));
-    jsPlugins.push(userPlugin.entry);
+  if (ruleSelection !== "sidecar") {
+    for (const userPlugin of userPlugins) {
+      Object.assign(userPluginRules, buildUserPluginRules(userPlugin, severityControls));
+      jsPlugins.push(userPlugin.entry);
+    }
   }
 
   return {

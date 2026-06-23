@@ -2,6 +2,8 @@ import * as path from "node:path";
 import type { SkillAgentType } from "agent-install";
 import { AGENT_HOOK_TIMEOUT_SECONDS, GIT_HOOK_EXECUTABLE_MODE } from "./constants.js";
 import * as fs from "node:fs";
+import { CliInputError } from "./cli-input-error.js";
+import { writeJsonFile } from "./git-hook-shared.js";
 
 interface InstallAgentHooksOptions {
   readonly projectRoot: string;
@@ -58,16 +60,49 @@ const readJsonFile = <Value>(filePath: string, fallback: Value): Value => {
   if (!fs.existsSync(filePath)) return fallback;
   const content = fs.readFileSync(filePath, "utf8").trim();
   if (content.length === 0) return fallback;
-  return JSON.parse(content);
+  try {
+    return JSON.parse(content);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new CliInputError(
+        `Could not parse ${filePath}: the file contains invalid JSON. Fix the syntax errors in this file and re-run the install command.`,
+      );
+    }
+    throw error;
+  }
 };
 
-const writeJsonFile = (filePath: string, value: unknown): void => {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, JSON_INDENT_SPACES)}\n`);
+const ensureDirectoryExists = (directoryPath: string): void => {
+  try {
+    fs.mkdirSync(directoryPath, { recursive: true });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EACCES" || code === "EPERM") {
+      throw new CliInputError(
+        `Could not create directory ${directoryPath}: permission denied. Ensure you have write permissions for this location and re-run the install command.`,
+      );
+    }
+    // A recursive `mkdir` reports a conflicting file two ways: `EEXIST` when the
+    // target itself is a file, `ENOTDIR` when a parent segment is. The code
+    // already settles it — don't `statSync` to confirm, because on the
+    // `ENOTDIR` (parent-is-a-file) case the stat throws `ENOTDIR` too and the
+    // actionable message would be lost (the original REACT-DOCTOR-17 path).
+    if (code === "ENOTDIR" || code === "EEXIST") {
+      throw new CliInputError(
+        `Could not create directory ${directoryPath}: a file exists at this path or one of its parent paths. Remove the conflicting file and re-run the install command.`,
+      );
+    }
+    throw error;
+  }
+};
+
+const writeJsonFileWithDirectoryCheck = (filePath: string, value: unknown): void => {
+  ensureDirectoryExists(path.dirname(filePath));
+  writeJsonFile(filePath, value);
 };
 
 const writeHookScript = (filePath: string): void => {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  ensureDirectoryExists(path.dirname(filePath));
   fs.writeFileSync(filePath, buildAgentHookScript());
   fs.chmodSync(filePath, GIT_HOOK_EXECUTABLE_MODE);
 };
@@ -94,7 +129,7 @@ const installClaudeHook = (projectRoot: string): readonly string[] => {
   }
 
   hooks.PostToolBatch = postToolBatchHooks;
-  writeJsonFile(settingsPath, { ...settings, hooks });
+  writeJsonFileWithDirectoryCheck(settingsPath, { ...settings, hooks });
   writeHookScript(hookPath);
 
   return [settingsPath, hookPath];
@@ -119,7 +154,7 @@ const installCursorHook = (projectRoot: string): readonly string[] => {
   }
 
   hooks.postToolUse = postToolUseHooks;
-  writeJsonFile(configPath, {
+  writeJsonFileWithDirectoryCheck(configPath, {
     ...config,
     version: config.version ?? CURSOR_HOOKS_SCHEMA_VERSION,
     hooks,

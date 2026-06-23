@@ -45,7 +45,13 @@ import {
   getStagedSourceFiles,
   materializeStagedFiles,
 } from "../../src/cli/utils/get-staged-files.js";
-import { buildTestProject, initGitRepo, writeFile, writeJson } from "./_helpers.js";
+import {
+  buildTestProject,
+  initGitRepo,
+  setupReactProject,
+  writeFile,
+  writeJson,
+} from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-scan-resilience-"));
 
@@ -324,6 +330,25 @@ describe("issue #115: --staged uses git INDEX content, not working tree", () => 
     writeJson(path.join(repoDir, "package.json"), { name: "empty-staged" });
     initGitRepo(repoDir);
     await expect(getStagedSourceFiles(repoDir)).resolves.toEqual([]);
+  });
+});
+
+describe("issue #937: getStagedSourceFiles logs warnings on git errors", () => {
+  it("getStagedSourceFiles returns [] and logs a warning when git command fails", async () => {
+    const nonExistentDir = path.join(tempRoot, "issue-937-nonexistent");
+    const warnSpy: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (message: string) => {
+      warnSpy.push(message);
+    };
+    try {
+      const result = await getStagedSourceFiles(nonExistentDir);
+      expect(result).toEqual([]);
+      expect(warnSpy.length).toBeGreaterThan(0);
+      expect(warnSpy[0]).toContain("Failed to discover staged files");
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 });
 
@@ -723,5 +748,107 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
       expect(pluginModule.RECOMMENDED_RULES).not.toHaveProperty(key);
       expect(pluginModule.ALL_REACT_DOCTOR_RULES).not.toHaveProperty(key);
     }
+  });
+});
+
+describe("issue #925: environment errors exit cleanly without Sentry crash reporting", () => {
+  it("isEnvironmentError classifies ENOSPC, EIO, EACCES, EPERM as environment failures", async () => {
+    const { isEnvironmentError } = await import("../../src/cli/utils/is-environment-error.js");
+
+    expect(
+      isEnvironmentError(
+        Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" }),
+      ),
+    ).toBe(true);
+    expect(
+      isEnvironmentError(Object.assign(new Error("EIO: i/o error, lstat"), { code: "EIO" })),
+    ).toBe(true);
+    expect(
+      isEnvironmentError(Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" })),
+    ).toBe(true);
+    expect(
+      isEnvironmentError(
+        Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("formatEnvironmentError renders actionable user-facing messages without stack traces", async () => {
+    const { formatEnvironmentError } = await import("../../src/cli/utils/is-environment-error.js");
+
+    const enospc = Object.assign(new Error("ENOSPC: no space left on device, mkdir"), {
+      code: "ENOSPC",
+      syscall: "mkdir",
+    });
+    expect(formatEnvironmentError(enospc)).toBe(
+      "No space left on device. Free up disk space and try again.",
+    );
+
+    const eio = Object.assign(new Error("EIO: i/o error, lstat '/tmp/file'"), {
+      code: "EIO",
+      syscall: "lstat",
+    });
+    expect(formatEnvironmentError(eio)).toBe(
+      "I/O error: the filesystem or disk may be failing. Check your system logs.",
+    );
+
+    const eacces = Object.assign(new Error("EACCES: permission denied, open '/root/file'"), {
+      code: "EACCES",
+      path: "/root/file",
+    });
+    expect(formatEnvironmentError(eacces)).toBe(
+      "Permission denied accessing /root/file. Check file permissions and try again.",
+    );
+  });
+
+  it("isExpectedUserError includes environment errors so they skip Sentry reporting", async () => {
+    const { isExpectedUserError } = await import("../../src/cli/utils/is-expected-user-error.js");
+
+    const enospc = Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
+    const eio = Object.assign(new Error("EIO: i/o error"), { code: "EIO" });
+
+    expect(isExpectedUserError(enospc)).toBe(true);
+    expect(isExpectedUserError(eio)).toBe(true);
+  });
+});
+
+describe("issue #921: non-string `projects` config entry crashes selectProjects", () => {
+  it("validates projects config at load time and filters non-string entries", async () => {
+    const { loadConfigWithSource, clearConfigCache } = await import("@react-doctor/core");
+    const projectDir = setupReactProject(tempRoot, "issue-921", {
+      files: {
+        "doctor.config.ts": `export default { projects: [42, "valid", null, { name: "obj" }] };`,
+        "src/App.tsx": "export const App = () => <div />;",
+      },
+    });
+    clearConfigCache();
+    const loaded = await loadConfigWithSource(projectDir);
+    expect(loaded?.config.projects).toEqual(["valid"]);
+  });
+
+  it("does not crash when projects contains only invalid entries", async () => {
+    const { loadConfigWithSource, clearConfigCache } = await import("@react-doctor/core");
+    const projectDir = setupReactProject(tempRoot, "issue-921-all-invalid", {
+      files: {
+        "doctor.config.ts": `export default { projects: [42, null, {}] };`,
+        "src/App.tsx": "export const App = () => <div />;",
+      },
+    });
+    clearConfigCache();
+    const loaded = await loadConfigWithSource(projectDir);
+    expect(loaded?.config.projects).toEqual([]);
+  });
+
+  it("does not crash when projects is not an array", async () => {
+    const { loadConfigWithSource, clearConfigCache } = await import("@react-doctor/core");
+    const projectDir = setupReactProject(tempRoot, "issue-921-not-array", {
+      files: {
+        "doctor.config.ts": `export default { projects: "single-project" };`,
+        "src/App.tsx": "export const App = () => <div />;",
+      },
+    });
+    clearConfigCache();
+    const loaded = await loadConfigWithSource(projectDir);
+    expect(loaded?.config.projects).toBeUndefined();
   });
 });

@@ -1,18 +1,31 @@
 import { spawnSync } from "node:child_process";
 import * as path from "node:path";
+import type { SourceFileEntry } from "../types/index.js";
 import { readDirectoryEntries } from "../project-info/index.js";
 import { GIT_LS_FILES_MAX_BUFFER_BYTES, IGNORED_DIRECTORIES } from "../constants.js";
 import { isLintableSourceFile } from "./is-lintable-source-file.js";
-import { isLargeMinifiedFile } from "./is-large-minified-file.js";
+import { isLargeMinifiedFile, statSourceFileSize } from "./is-large-minified-file.js";
 
-// Drops minified / generated files that slipped past the extension gate
-// (e.g. a one-line `public/inject.js` bundle). Shares its predicate with
+// Stats each candidate once (the same stat the minified gate already paid),
+// drops files that sniff as large minified bundles, and keeps the size so the
+// lint pass can order batches largest-first. Shares its predicate with
 // `countSourceFiles` so the scanned set and the reported source-file count
-// stay in lockstep.
-const excludeMinifiedFiles = (rootDirectory: string, relativePaths: string[]): string[] =>
-  relativePaths.filter(
-    (relativePath) => !isLargeMinifiedFile(path.resolve(rootDirectory, relativePath)),
-  );
+// stay in lockstep. A file that can't be stat'd is KEPT (parity with
+// `isLargeMinifiedFile`'s keep-on-error) with size `0`, so it sorts to the
+// cheap tail.
+const collectSizedSourceFiles = (
+  rootDirectory: string,
+  relativePaths: ReadonlyArray<string>,
+): SourceFileEntry[] => {
+  const entries: SourceFileEntry[] = [];
+  for (const relativePath of relativePaths) {
+    const absolutePath = path.resolve(rootDirectory, relativePath);
+    const sizeBytes = statSourceFileSize(absolutePath);
+    if (isLargeMinifiedFile(absolutePath, sizeBytes)) continue;
+    entries.push({ path: relativePath, sizeBytes: sizeBytes ?? 0 });
+  }
+  return entries;
+};
 
 const listSourceFilesViaGit = (rootDirectory: string): string[] | null => {
   // HACK: --recurse-submodules is incompatible with --others /
@@ -66,12 +79,20 @@ const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
   return filePaths;
 };
 
-// Returns every source file under `rootDirectory` (relative paths,
-// forward-slash separators). Prefers a single `git ls-files` call when
-// the directory is a git repository — much faster than the fallback
-// filesystem walk and respects `.gitignore` automatically.
-export const listSourceFiles = (rootDirectory: string): string[] =>
-  excludeMinifiedFiles(
+// Returns every source file under `rootDirectory` paired with its byte size
+// (relative paths, forward-slash separators). Prefers a single `git ls-files`
+// call when the directory is a git repository — much faster than the fallback
+// filesystem walk and respects `.gitignore` automatically. The size is the
+// minified gate's existing stat, captured rather than discarded, so the lint
+// pass can order batches largest-first at zero extra syscall cost.
+export const listSourceFilesWithSize = (rootDirectory: string): ReadonlyArray<SourceFileEntry> =>
+  collectSizedSourceFiles(
     rootDirectory,
     listSourceFilesViaGit(rootDirectory) ?? listSourceFilesViaFilesystem(rootDirectory),
   );
+
+// Returns every source file under `rootDirectory` (relative paths,
+// forward-slash separators). The size-free view of `listSourceFilesWithSize`
+// for the many callers that only want the path list.
+export const listSourceFiles = (rootDirectory: string): string[] =>
+  listSourceFilesWithSize(rootDirectory).map((entry) => entry.path);

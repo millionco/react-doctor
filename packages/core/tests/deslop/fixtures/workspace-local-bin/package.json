@@ -7,6 +7,7 @@
   },
   "devDependencies": {
     "react-email": "^3.0.0",
+    "bin-only-tool": "^1.0.0",
     "unused-dev-tool": "^1.0.0"
   }
 }

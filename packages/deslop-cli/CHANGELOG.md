@@ -1,5 +1,14 @@
 # deslop-cli
 
+## 0.5.8
+
+### Patch Changes
+
+- [#880](https://github.com/millionco/react-doctor/pull/880) [`8bbcca8`](https://github.com/millionco/react-doctor/commit/8bbcca87daf06e60d0fa3005f8ad636fc929e513) Thanks [@aidenybai](https://github.com/aidenybai)! - Develop in the react-doctor monorepo. Package metadata (repository, homepage, bugs) now points at `millionco/react-doctor`, and `deslop-js` now ships the README and LICENSE its `files` list already declared. No runtime behavior changes.
+
+- Updated dependencies [[`627f9ca`](https://github.com/millionco/react-doctor/commit/627f9ca4b363f7b7a037f2a77cba1213b7d605ae), [`8bbcca8`](https://github.com/millionco/react-doctor/commit/8bbcca87daf06e60d0fa3005f8ad636fc929e513), [`627f9ca`](https://github.com/millionco/react-doctor/commit/627f9ca4b363f7b7a037f2a77cba1213b7d605ae)]:
+  - deslop-js@0.5.8
+
 ## 0.0.24
 
 ### Patch Changes

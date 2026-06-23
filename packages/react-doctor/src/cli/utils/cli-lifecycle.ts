@@ -13,13 +13,16 @@ import {
 import { hashProjectRoot } from "./hash-project-root.js";
 import { nowIso } from "./now-iso.js";
 
-// The CLI growth/lifecycle framework. Three primitives, all backed by the one
+// The CLI growth/lifecycle framework. Four primitives, all backed by the one
 // per-user state file and all idempotent + fail-safe:
 //
 //   • Gate      — fire something ONCE per scope (onboarding, a CTA, a one-time
 //                 prompt). Carries an outcome and a version.
 //   • Migration — run a code/config change ONCE per scope, tracked so it never
 //                 re-runs (action + config updates).
+//   • Preference — remember a free-form value the user picks every run (e.g. the
+//                 post-scan handoff target), read back as the next run's default.
+//                 Unlike a gate it has no version/outcome and is rewritten freely.
 //   • Invalidate — bump a gate's or migration's `version` and it re-fires /
 //                 re-runs, so a reworded CTA or a new migration shows again.
 //
@@ -62,6 +65,16 @@ export interface Migration extends Scoped {
   // safe. Returns whether it actually applied — a `false` (nothing to do, or
   // failed) is NOT recorded, so it stays pending and retries next time.
   readonly run: (context: MigrationRunContext) => boolean | Promise<boolean>;
+}
+
+export interface Preference extends Scoped {
+  // Stable storage key for this preference's remembered value.
+  readonly id: string;
+}
+
+export interface PreferenceTarget {
+  // Required for `scope: "project"` preferences; ignored for global ones.
+  readonly projectRoot?: string;
 }
 
 export interface MigrationRunContext {
@@ -194,6 +207,40 @@ export const clearGate = (
       updateScope(state, gate, target.projectRoot, (scope) => ({
         ...scope,
         events: omitKey(scope.events, gate.id),
+      })),
+    options,
+  );
+
+// === Preferences ===
+
+// The value last written for this preference, or null when never written (or
+// the store is unreadable) — callers treat null as "no remembered default".
+export const readPreference = (
+  preference: Preference,
+  target: PreferenceTarget = {},
+  options: CliStateOptions = {},
+): string | null =>
+  readCliState(
+    (state) =>
+      selectScope(state, preference, target.projectRoot)?.preferences?.[preference.id] ?? null,
+    null,
+    options,
+  );
+
+// Remembers `value` as this preference's latest pick (overwriting any prior).
+// Returns whether it persisted; a read-only store just means the next run won't
+// pre-fill the default. A project preference with no `projectRoot` is a no-op.
+export const writePreference = (
+  preference: Preference,
+  value: string,
+  target: PreferenceTarget = {},
+  options: CliStateOptions = {},
+): boolean =>
+  updateCliState(
+    (state) =>
+      updateScope(state, preference, target.projectRoot, (scope) => ({
+        ...scope,
+        preferences: { ...scope.preferences, [preference.id]: value },
       })),
     options,
   );

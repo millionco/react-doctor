@@ -174,4 +174,64 @@ describe("validateConfigTypes", () => {
       expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining(`config field "categories"`));
     });
   });
+
+  describe("string array fields (projects, textComponents, etc.)", () => {
+    it("passes through valid string arrays untouched", () => {
+      const input: ReactDoctorConfig = {
+        projects: ["app", "packages/core"],
+        textComponents: ["MyText", "Label"],
+        rawTextWrapperComponents: ["Button"],
+        serverAuthFunctionNames: ["requireAuth", "checkPermissions"],
+      };
+      expect(validateConfigTypes(input)).toEqual(input);
+      expect(stderrSpy).not.toHaveBeenCalled();
+    });
+
+    it("filters out non-string entries from projects array with warnings", () => {
+      const result = validateConfigTypes({
+        projects: [42, "valid-project", null, { name: "obj" }] as unknown as string[],
+      });
+      expect(result.projects).toEqual(["valid-project"]);
+      expect(stderrSpy).toHaveBeenCalledTimes(3);
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('config field "projects"'));
+    });
+
+    it("filters out non-string entries from textComponents", () => {
+      const result = validateConfigTypes({
+        textComponents: ["Text", 123, "Label", false] as unknown as string[],
+      });
+      expect(result.textComponents).toEqual(["Text", "Label"]);
+      expect(stderrSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("drops the entire field when it isn't an array", () => {
+      const result = validateConfigTypes({
+        projects: "app" as unknown as string[],
+        textComponents: 42 as unknown as string[],
+      });
+      expect(result.projects).toBeUndefined();
+      expect(result.textComponents).toBeUndefined();
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('config field "projects"'));
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining('config field "textComponents"'),
+      );
+    });
+
+    it("handles empty arrays", () => {
+      const input: ReactDoctorConfig = {
+        projects: [],
+        serverAuthFunctionNames: [],
+      };
+      expect(validateConfigTypes(input)).toEqual(input);
+      expect(stderrSpy).not.toHaveBeenCalled();
+    });
+
+    it("handles arrays with all invalid entries", () => {
+      const result = validateConfigTypes({
+        projects: [null, 42, {}] as unknown as string[],
+      });
+      expect(result.projects).toEqual([]);
+      expect(stderrSpy).toHaveBeenCalledTimes(3);
+    });
+  });
 });

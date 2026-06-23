@@ -58,6 +58,42 @@ describe("isExpectedUserError", () => {
     ).toBe(true);
   });
 
+  it("classifies environment failures as expected user errors", () => {
+    expect(
+      isExpectedUserError(
+        Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" }),
+      ),
+    ).toBe(true);
+    expect(isExpectedUserError(Object.assign(new Error("EIO: i/o error"), { code: "EIO" }))).toBe(
+      true,
+    );
+    expect(
+      isExpectedUserError(
+        Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }),
+      ),
+    ).toBe(true);
+    expect(
+      isExpectedUserError(
+        Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" }),
+      ),
+    ).toBe(true);
+    expect(
+      isExpectedUserError(
+        Object.assign(new Error("ENOTDIR: not a directory"), { code: "ENOTDIR" }),
+      ),
+    ).toBe(true);
+    expect(
+      isExpectedUserError(
+        Object.assign(new Error("spawn git ENOENT"), { code: "ENOENT", syscall: "spawn git" }),
+      ),
+    ).toBe(true);
+    expect(
+      isExpectedUserError(
+        Object.assign(new Error("EROFS: read-only file system"), { code: "EROFS" }),
+      ),
+    ).toBe(true);
+  });
+
   it("does not mask genuine bugs (those stay reportable)", () => {
     expect(isExpectedUserError(new Error("boom"))).toBe(false);
     expect(isExpectedUserError(undefined)).toBe(false);

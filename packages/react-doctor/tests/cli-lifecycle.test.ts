@@ -5,12 +5,15 @@ import * as fs from "node:fs";
 import {
   type Gate,
   type Migration,
+  type Preference,
   clearGate,
   isGatePending,
   isMigrationPending,
   readGateOutcome,
+  readPreference,
   recordGate,
   runMigrations,
+  writePreference,
 } from "../src/cli/utils/cli-lifecycle.js";
 
 describe("cli-lifecycle", () => {
@@ -158,6 +161,45 @@ describe("cli-lifecycle", () => {
       expect(isMigrationPending(v2, {}, options)).toBe(true);
       await runMigrations([v2], {}, options);
       expect(calls).toEqual(["v1", "v2"]);
+    });
+  });
+
+  describe("preferences", () => {
+    it("reads null before anything is written (global scope)", () => {
+      const preference: Preference = { id: "handoff-target", scope: "global" };
+      expect(readPreference(preference, {}, options)).toBe(null);
+    });
+
+    it("remembers the last written value and overwrites on re-write (global scope)", () => {
+      const preference: Preference = { id: "handoff-target", scope: "global" };
+      expect(writePreference(preference, "claude", {}, options)).toBe(true);
+      expect(readPreference(preference, {}, options)).toBe("claude");
+      expect(writePreference(preference, "skip", {}, options)).toBe(true);
+      expect(readPreference(preference, {}, options)).toBe("skip");
+    });
+
+    it("scopes preferences per repo independently (project scope)", () => {
+      const preference: Preference = { id: "handoff-target", scope: "project" };
+      writePreference(preference, "cursor", { projectRoot: "/repo/a" }, options);
+      expect(readPreference(preference, { projectRoot: "/repo/a" }, options)).toBe("cursor");
+      expect(readPreference(preference, { projectRoot: "/repo/b" }, options)).toBe(null);
+    });
+
+    it("is a no-op for a project preference with no projectRoot", () => {
+      const preference: Preference = { id: "handoff-target", scope: "project" };
+      writePreference(preference, "claude", {}, options);
+      expect(readPreference(preference, {}, options)).toBe(null);
+    });
+
+    it("keeps gate outcomes and preferences in separate namespaces", () => {
+      const gate: Gate = { id: "handoff-target", scope: "global" };
+      const preference: Preference = { id: "handoff-target", scope: "global" };
+      recordGate(gate, { outcome: "accepted" }, options);
+      writePreference(preference, "skip", {}, options);
+      // Same id, different stores: the gate outcome is "accepted", the
+      // preference value is "skip" — neither clobbers the other.
+      expect(readGateOutcome(gate, {}, options)).toBe("accepted");
+      expect(readPreference(preference, {}, options)).toBe("skip");
     });
   });
 });

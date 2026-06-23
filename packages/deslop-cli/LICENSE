@@ -1,6 +1,6 @@
-MIT License
+Modified MIT License
 
-Copyright (c) 2025 Million Software, Inc.
+Copyright (c) 2026 Million Software, Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,16 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Our only modification is that the following uses require prior written
+permission from the copyright holder. To request permission, contact
+founders@million.dev.
+
+1. Using the Software, its source code, or any derivative works thereof, in
+   whole or in part, as training, fine-tuning, or evaluation data, or as input
+   to any automated pipeline for training or improving any machine learning
+   model or AI system.
+
+2. Selling the Software, or offering it to third parties as a paid, hosted, or
+   managed product or service (including any commercial API or SaaS offering)
+   whose value derives entirely or substantially from the Software.

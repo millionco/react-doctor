@@ -1,7 +1,7 @@
 {
   "name": "eslint-plugin-react-doctor",
-  "version": "0.5.7",
-  "description": "ESLint plugin for React Doctor: diagnose React codebases for security, performance, correctness, accessibility, bundle-size, and architecture issues",
+  "version": "0.5.8",
+  "description": "React Doctor rules for ESLint.",
   "keywords": [
     "accessibility",
     "eslint",
@@ -21,7 +21,7 @@
   "bugs": {
     "url": "https://github.com/millionco/react-doctor/issues"
   },
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "author": "Aiden Bai",
   "repository": {
     "type": "git",
@@ -30,7 +30,8 @@
   },
   "files": [
     "dist/**/*.js",
-    "dist/**/*.d.ts"
+    "dist/**/*.d.ts",
+    "LICENSE"
   ],
   "type": "module",
   "sideEffects": false,

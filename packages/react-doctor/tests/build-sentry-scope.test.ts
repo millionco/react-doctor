@@ -25,6 +25,7 @@ const baseRunContext: RunContext = {
   jsonMode: true,
   debug: false,
   invokedVia: "pnpm",
+  lintBatchOrdering: "cost",
 };
 
 const projectInfo: ProjectInfo = {
@@ -73,6 +74,7 @@ describe("buildSentryScope", () => {
       debug: false,
       invokedVia: "pnpm",
       nodeMajor: 22,
+      lintBatchOrdering: "cost",
     });
   });
 

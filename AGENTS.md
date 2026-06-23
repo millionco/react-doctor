@@ -276,30 +276,35 @@ for this codebase) for canonical examples.
   `cli/utils/build-run-event.ts` (`recordRunEvent`, plus the pure, testable
   `buildRunEventAttributes`). `inspect.ts` calls it on the success path (after
   `recordScanMetrics`) and, via a `try/catch` around the span body, on the
-  failure path — so the event lands with an `outcome` (`clean`/`ok`/`blocked`/
-  `error`), `exitCode`, and `errorTag` taxonomy even when the scan throws. The
-  run + project base context is already on the span (run tags from
-  `withSentryRunSpan`, project shape from `recordSentryProjectContext`), so the
-  event adds only what those don't: scan config (`mode`, `parallel`,
-  `workerCount`, `rulesConfigured`/`rulesDisabled`, `ignoredTagCount`,
-  `hasCustomConfig`, …), outcome (`totalDiagnostics`, `errorCount`/
-  `warningCount`, `affectedFiles`, `distinctRulesFired`, `topRule`, per-category
-  `diag.category.*`, `score`/`scoreLabel`/`scoreAvailable`, `scanClean`,
-  `skippedCheckCount`, lint/dead-code failure), and the CI/PR specifics
-  (`actorAssociation`, `runnerOs`, the forwarded action knobs `failOn`/
-  `nonBlocking`/`comment`/`annotations`/`versionPin`, and the `wouldBlock` gate).
-  Typing matters for querying: numeric outcomes are numbers (so Sentry can do
-  `p75(score)`), dimensions are strings/bools (so they filter/group); `null` is
-  dropped via `toSpanAttributes` so absent signals never become `"null"`. Query
-  it in Sentry's **Trace Explorer** and build **Dashboard widgets on the Spans
-  dataset** (filter/group by any attribute) instead of pre-aggregating counters.
-  Put new run-level dimensions on `build-run-context.ts` → `build-sentry-scope.ts`
-  (now also the `eventName` + `viaAction` tags) so they ride every event and
-  metric; put per-scan outcome dimensions on the wide event, **not** new
-  counters (we deliberately did not add `ci.*` counters — those dims are wide-
-  event attributes; the `scan.*`/`rule.fired` counters stay as the cheap,
+  failure path — so the event lands with an `outcome.status` (`clean`/`ok`/
+  `blocked`/`error`), `outcome.exitCode`, and `outcome.errorTag` taxonomy even
+  when the scan throws. The run + project base context is already on the span
+  (run tags from `withSentryRunSpan`, project shape from
+  `recordSentryProjectContext`), so the event adds only what those don't — every
+  attribute namespaced by concept via `withNamespace` (`cli/utils/with-namespace.ts`)
+  so the keys tree up in Sentry's attribute browser: scan config (`scan.mode`,
+  `scan.parallel`, `scan.workerCount`, `scan.rulesConfigured`/`scan.rulesDisabled`,
+  `scan.ignoredTagCount`, `scan.hasCustomConfig`, … plus the `scan.fileCount`
+  extent), the verdict (`outcome.wouldBlock`/`outcome.blocking`/`outcome.clean`/
+  `outcome.skippedChecks`), findings (`diag.total`, `diag.errors`/`diag.warnings`,
+  `diag.affectedFiles`, `diag.distinctRules`, `diag.topRule`, per-category
+  `diag.category.*`), `score.value`/`score.label`/`score.available`, the
+  `lint.*`/`deadCode.*`/`supplyChain.*` pass outcomes, `timing.*` durations, and
+  the CI/PR specifics (`action.actorAssociation`, `action.runnerOs`, and the
+  forwarded action knobs `action.comment`/`action.reviewComments`/
+  `action.versionPin`). Typing matters for querying: numeric outcomes are numbers
+  (so Sentry can do `p75(score.value)`), dimensions are strings/bools (so they
+  filter/group); `null` is dropped via `toSpanAttributes` so absent signals never
+  become `"null"`. Query it in Sentry's **Trace Explorer** and build **Dashboard
+  widgets on the Spans dataset** (filter/group by any attribute) instead of
+  pre-aggregating counters. Put new run-level dimensions on `build-run-context.ts`
+  → `build-sentry-scope.ts` (now also the `eventName` + `viaAction` tags) so they
+  ride every event and metric; put per-scan outcome dimensions on the wide event
+  (wrapped in `withNamespace`), **not** new counters (we deliberately did not add
+  `ci.*` counters — those dims are wide-event attributes; the `scan.completed`/
+  `scan.duration`/`rule.fired` metric counters stay as the cheap,
   trace-sampling-independent floor alongside `cli.invoked`/`cli.error`). Score
-  reachability is derivable (`!scoreAvailable && !didLintFail && !noScore`) and
+  reachability is derivable (`!score.available && !lint.failed && !scan.noScore`) and
   score latency is the `Score.compute` child span's duration, so neither needs a
   dedicated field. CI detection + the official-action marker and forwarded
   inputs live in `cli/utils/is-ci-environment.ts`; `action.yml` sets the

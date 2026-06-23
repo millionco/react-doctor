@@ -3,7 +3,7 @@
   "displayName": "React Doctor",
   "version": "0.2.11",
   "private": true,
-  "description": "React Doctor diagnostics, hovers, and quick fixes in your editor.",
+  "description": "React Doctor for VS Code.",
   "categories": [
     "Linters",
     "Programming Languages"
@@ -19,7 +19,7 @@
   "bugs": {
     "url": "https://github.com/millionco/react-doctor/issues"
   },
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
     "url": "https://github.com/millionco/react-doctor.git",

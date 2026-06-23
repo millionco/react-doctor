@@ -100,11 +100,9 @@ export const warnDeprecatedDiff = (
 
 const warnDiffUnavailable = (requested: RequestedScope, isQuiet: boolean): void => {
   if (isQuiet) return;
-  // A base-aware message: when the user named a base, "no feature branch" is
-  // misleading — they told us exactly what to diff against.
   if (typeof requested.base === "string") {
     logger.warn(
-      `Could not compute diff against "${requested.base}" (merge-base failed or HEAD has no history). Running full scan.`,
+      `Could not compute diff against "${requested.base}" (git unavailable, ref not found, or merge-base failed). Running full scan.`,
     );
   } else {
     logger.warn("No feature branch or uncommitted changes detected. Running full scan.");

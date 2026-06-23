@@ -11,7 +11,8 @@ import {
 } from "agent-install";
 import { highlighter, SKILL_NAME } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
-import { detectAvailableAgents } from "./detect-agents.js";
+import { computeDefaultSelectedAgents, detectAvailableAgents } from "./detect-agents.js";
+import { readInstallAgents, rememberInstallAgents } from "./install-agents-preference.js";
 import { METRIC } from "./constants.js";
 import { recordCount } from "./record-metric.js";
 import {
@@ -336,6 +337,7 @@ interface InstallReactDoctorOptions {
   sourceDir?: string;
   projectRoot?: string;
   detectedAgents?: SkillAgentType[];
+  lastSelectedAgents?: SkillAgentType[];
   gitHookPath?: string | null;
   onPromptCancel?: () => void;
   installDependencyRunner?: (
@@ -582,6 +584,17 @@ export const runInstallReactDoctor = async (
   }
 
   // Step 2 — the agent skill + package setup (the core of `install`).
+  // Default agent selection follows the Vercel `skills` CLI: pre-select the
+  // user's remembered last pick, else a small curated set of popular agents.
+  // The rest of the detected agents — tools merely installed somewhere in $HOME
+  // — stay shown-but-unselected, so a machine full of AI tools doesn't get the
+  // skill copied into a dozen project-local directories just by pressing Enter.
+  // A non-interactive run can't ask, so (matching that CLI's `--yes`) it installs
+  // every detected agent.
+  const rememberedAgents = options.lastSelectedAgents ?? readInstallAgents();
+  const defaultSelectedAgents = computeDefaultSelectedAgents(detectedAgents, rememberedAgents);
+  const usedRememberedAgents = rememberedAgents.some((agent) => detectedAgents.includes(agent));
+
   const selectedAgents: SkillAgentType[] = skipPrompts
     ? detectedAgents
     : ((
@@ -593,7 +606,7 @@ export const runInstallReactDoctor = async (
             choices: detectedAgents.map((agent) => ({
               title: getSkillAgentConfig(agent).displayName,
               value: agent,
-              selected: true,
+              selected: defaultSelectedAgents.includes(agent),
             })),
             instructions: false,
             min: 1,
@@ -603,6 +616,12 @@ export const runInstallReactDoctor = async (
       ).agents ?? []);
 
   if (selectedAgents.length === 0) return;
+
+  // Remember the interactive pick so the next install defaults to it. A
+  // non-interactive run installs everything detected rather than making a
+  // deliberate choice, and a dry run previews without writing, so neither
+  // overwrites the remembered set.
+  if (!skipPrompts && !options.dryRun) rememberInstallAgents(selectedAgents);
 
   let dependencyResult: InstallReactDoctorDependencyResult | undefined;
   if (!options.dryRun) {
@@ -740,6 +759,13 @@ export const runInstallReactDoctor = async (
   // the agent set down so per-agent adoption is queryable.
   recordCount(METRIC.installCompleted, 1, {
     agentsCount: selectedAgents.length,
+    // Kill metric for the narrower default: how many agents we detected vs. how
+    // many actually got installed, and whether a remembered selection pre-filled
+    // the prompt. A large `agentsDetected` with a small `agentsCount` is the
+    // anti-pollution default working; if interactive users routinely select well
+    // beyond the curated defaults, the default set should be widened.
+    agentsDetected: detectedAgents.length,
+    usedRememberedAgents,
     gitHook: shouldInstallGitHook,
     agentHooks: shouldInstallAgentHooks,
     workflow: didInstallWorkflow,

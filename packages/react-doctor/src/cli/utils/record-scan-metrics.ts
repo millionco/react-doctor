@@ -47,8 +47,14 @@ export interface ScanMetricsInput {
   readonly result: InspectResult;
   /** `"diff"` (changed/staged files) or `"full"` (whole project). */
   readonly mode: string;
+  /** Whether the lint pass fanned out to more than one worker (`workerCount > 1`). */
   readonly parallel: boolean;
-  /** Resolved oxlint worker count when `--experimental-parallel` is active. */
+  /**
+   * Resolved lint worker count the scan actually used — the auto-detected
+   * count on the default parallel path, or the caller's `REACT_DOCTOR_PARALLEL`
+   * / `inspect({ concurrency })` pin. `undefined` only when a pre-field cache
+   * hit can't recover it.
+   */
   readonly workerCount: number | undefined;
   readonly lint: boolean;
   readonly deadCode: boolean;

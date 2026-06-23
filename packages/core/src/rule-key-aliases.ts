@@ -148,8 +148,16 @@ const getLegacyRuleKeysForNative = (ruleKey: string): ReadonlyArray<string> =>
 
 export const REACT_DOCTOR_RULE_KEY_PREFIX = "react-doctor/";
 
-const canonicalizeRuleKey = (ruleKey: string): string =>
-  LEGACY_RULE_KEY_TO_NATIVE_RULE_KEY[ruleKey] ?? ruleKey;
+// Index access, not `?? ruleKey`: a `ruleKey` matching an inherited
+// `Object.prototype` member (`constructor`, `toString`, `__proto__`, …) reads
+// that member off the literal's prototype — a function/object, not a real
+// alias — and `??` only guards null/undefined, so the non-string would slip
+// through and crash a later `.includes` (#920). Accept the mapping only when
+// it's actually a string.
+const canonicalizeRuleKey = (ruleKey: string): string => {
+  const nativeRuleKey = LEGACY_RULE_KEY_TO_NATIVE_RULE_KEY[ruleKey];
+  return typeof nativeRuleKey === "string" ? nativeRuleKey : ruleKey;
+};
 
 // A bare short id (`no-eval`) refers to the react-doctor rule of that id:
 // react-doctor reports it as `react-doctor/no-eval`, the only rule by that

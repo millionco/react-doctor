@@ -9,7 +9,6 @@ export const DEFAULT_CDP_ENDPOINT = `http://127.0.0.1:${DEFAULT_CDP_PORT}`;
 // How long to wait for a CDP attach before falling back to launching Chrome.
 export const CONNECT_TIMEOUT_MS = 5_000;
 
-// How long a single page navigation may take before we give up.
 export const NAVIGATION_TIMEOUT_MS = 30_000;
 
 // Upper bound on waiting for the page to settle (network quiet + fonts) before
@@ -29,8 +28,6 @@ export const LAUNCHED_CHROME_PROFILE_DIRECTORY = join(
   "chrome-profile",
 );
 
-// How long to wait for a freshly launched Chrome to expose its CDP endpoint,
-// and how often to poll for it.
 export const LAUNCH_READY_TIMEOUT_MS = 20_000;
 export const LAUNCH_POLL_INTERVAL_MS = 100;
 

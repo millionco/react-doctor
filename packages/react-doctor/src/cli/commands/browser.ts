@@ -42,11 +42,6 @@ export const browserOpenAction = async (
 ): Promise<void> => {
   recordCount(METRIC.cliInvoked, 1, { command: "browser.open" });
   await withSession(options, async (session) => {
-    // Wires the DevTools profiler before the page's React loads, drives this one
-    // load, then removes the init-script registration — so it doesn't stack on
-    // repeated opens or re-run on a later `perf`/`report` navigation in the same
-    // persistent Chrome. The page persists, so later `eval`s reach
-    // `window.__REACT_PERF__`.
     await session.openWithReactProfiler(url);
     logger.success(`Opened ${url}`);
     logger.log(

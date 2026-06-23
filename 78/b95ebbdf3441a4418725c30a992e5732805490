@@ -1,0 +1,19 @@
+.gitignore
+  s_73e70d03ab56c7::t_37a030649eff6b 36-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "78b95ebbdf3441a4418725c30a992e5732805490",
+  "prompts": {},
+  "sessions": {
+    "s_73e70d03ab56c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73cbba86-0cac-423b-8352-7a7a75dfa60b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

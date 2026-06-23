@@ -1,0 +1,24 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-inline-exhaustive-style.regressions.test.ts
+  s_4a8a33da697e0f::t_4d46a27c627085 1-114
+.changeset/fix-inline-exhaustive-style-satori-og.md
+  s_4a8a33da697e0f::t_f3b578e648443e 1-7
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-inline-exhaustive-style.ts
+  s_4a8a33da697e0f::t_76aee686f986f9 33-35
+  s_4a8a33da697e0f::t_4356298f7026c0 4,6,18-19,21-32,36,42-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "6ae13765e046c680e7b7c28252cb6eadba5740e7",
+  "prompts": {},
+  "sessions": {
+    "s_4a8a33da697e0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c97a98db-da21-439c-91f9-4d22c18b09dd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

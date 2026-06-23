@@ -1,0 +1,19 @@
+packages/react-doctor/tests/cli-migrations.test.ts
+  s_02949bc312ec72::t_f43415b7800662 1-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "f33dbd348772f24f19c3ca15af9a2a68bdf8cb8c",
+  "prompts": {},
+  "sessions": {
+    "s_02949bc312ec72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8e645ba-e36a-4945-ba52-d0bb8065ddac",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

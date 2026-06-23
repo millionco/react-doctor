@@ -1,0 +1,53 @@
+packages/core/src/runners/oxlint/spawn-batches.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 2,5-6,52-68,113-115,147-152,161,166-170,173-176,182-183,211
+packages/core/src/services/linter.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 111-114,133
+.changeset/bound-phases-hard-timeouts.md
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 1-13
+packages/core/tests/check-dead-code.test.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 302-337
+packages/core/src/runners/oxlint/spawn-oxlint.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 38-42,45-50,64-74,76,122,127
+packages/core/tests/errors.test.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 16,129-137
+packages/core/src/check-dead-code.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 33,444-455
+packages/core/src/constants.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 298-341
+packages/core/tests/check-supply-chain.test.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 87-103
+packages/core/tests/spawn-batches-cascade-bound.test.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 1-173
+packages/core/src/refs.ts
+  s_2eec643ea8aa60::t_2565c086ee313f 3-4,8,10,23-24,28-62
+packages/core/src/run-oxlint.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 76-81,290
+packages/core/tests/run-inspect.test.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 19,136-220
+packages/core/src/errors.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 49-59,174
+packages/core/src/services/dead-code.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 40,44
+packages/core/src/utils/read-positive-env-ms.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 1-11
+packages/core/src/run-inspect.ts
+  s_2eec643ea8aa60::t_2565c086ee313f 32,36-41,412-413,458-477,532-546,636-654
+packages/core/src/check-supply-chain.ts
+  s_2eec643ea8aa60::t_cbe7c3e7ba41fa 21,30-31,594-600
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "28d6722f19d4293bdca764a3519ae65d74fdb536",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

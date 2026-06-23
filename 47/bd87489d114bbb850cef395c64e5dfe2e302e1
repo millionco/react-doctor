@@ -1,0 +1,36 @@
+scripts/resolve-package-spec.mjs
+  s_2eec643ea8aa60::t_91608353585cd8 73-79
+  s_2eec643ea8aa60::t_ff2b1d136a642c 48,50
+  s_2eec643ea8aa60::t_22d792daac7b21 29-31,34
+packages/core/src/check-supply-chain.ts
+  s_2eec643ea8aa60::t_de7e090ef1cbff 430-436
+packages/react-doctor/tests/github-action.test.ts
+  s_2eec643ea8aa60::t_7396c4c9dda84c 107-112
+  s_2eec643ea8aa60::t_023d609847487b 204-209
+  s_2eec643ea8aa60::t_ed806bbc5957e2 181-186
+action.yml
+  s_2eec643ea8aa60::t_fdf429fc09e892 155
+  s_2eec643ea8aa60::t_fa70db48490907 262-267,272-275
+  s_2eec643ea8aa60::t_c2f6dacc67f583 118-124,126,129-135,137
+  s_2eec643ea8aa60::t_7561805b086e1b 154,156-158,164
+packages/core/tests/check-supply-chain-cache.test.ts
+  s_2eec643ea8aa60::t_bd20b3c70a112d 25-33
+  s_2eec643ea8aa60::t_c03fc25bde0e68 83-92,97,99-107
+  s_2eec643ea8aa60::t_9c02fa44d0ca11 93-96,98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "47bd87489d114bbb850cef395c64e5dfe2e302e1",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

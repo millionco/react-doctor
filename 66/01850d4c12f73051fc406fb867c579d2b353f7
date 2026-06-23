@@ -1,0 +1,23 @@
+packages/core/tests/fixtures/check-security-scan/real-sanity-studio-browser-bundle/package.json
+  s_dd1bd24d624594::t_024c8945d2cbda 2,8,11-12
+packages/core/tests/fixtures/check-security-scan/real-sanity-studio-browser-bundle/.next/static/chunks/12eziff4_l68u.js
+  s_dd1bd24d624594::t_473be87a25f639 1-34
+packages/core/tests/check-security-scan.test.ts
+  s_dd1bd24d624594::t_e67dd1e49228c6 212,214
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "6601850d4c12f73051fc406fb867c579d2b353f7",
+  "prompts": {},
+  "sessions": {
+    "s_dd1bd24d624594": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "076d5ab2-4c7e-4745-96c7-647d6e09616b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

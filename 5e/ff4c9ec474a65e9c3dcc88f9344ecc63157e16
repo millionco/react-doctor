@@ -1,0 +1,36 @@
+packages/core/tests/is-large-minified-file.test.ts
+  s_e33293b9bef6eb::t_e3251ffcf33845 1-100
+.changeset/memoize-minified-file-stat.md
+  s_e33293b9bef6eb::t_19510910d33dbd 1-5
+packages/core/src/index.ts
+  s_e33293b9bef6eb::t_ad0ec5c25f8e65 90
+packages/react-doctor/tests/clear-caches.test.ts
+  s_e33293b9bef6eb::t_9a16f6ab09bb1e 1-43
+packages/react-doctor/src/index.ts
+  s_e33293b9bef6eb::t_8b1eb394037e72 7
+  s_e33293b9bef6eb::t_44a3c678fefad7 93
+packages/language-server/src/core/project-graph.ts
+  s_e33293b9bef6eb::t_dd7fb1ae5417f9 84
+  s_e33293b9bef6eb::t_ba04e3c0e14221 6
+packages/core/src/utils/is-large-minified-file.ts
+  s_e33293b9bef6eb::t_69960d47e3ce63 5-6,10-13,22-23,32-33
+  s_e33293b9bef6eb::t_afabb4cd700e6a 7-9,18-20,24-25,27-28,30
+packages/language-server/tests/unit/project-graph-invalidate.test.ts
+  s_e33293b9bef6eb::t_dc6ff18e87b70e 1-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "5eff4c9ec474a65e9c3dcc88f9344ecc63157e16",
+  "prompts": {},
+  "sessions": {
+    "s_e33293b9bef6eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d4380a20-5d93-4890-841b-1b46d7dd6aa1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

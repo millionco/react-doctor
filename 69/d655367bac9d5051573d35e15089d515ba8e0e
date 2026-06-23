@@ -1,0 +1,26 @@
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_13a13dc5a50c13::t_9e468983ca2133 177-180
+packages/react-doctor/tests/handoff/build-handoff-payload.test.ts
+  s_13a13dc5a50c13::t_23a670609e4b41 39-40
+.changeset/fix-marketing-pitch-once-per-repo.md
+  s_13a13dc5a50c13::t_30f0d36a599cb7 7,9
+packages/react-doctor/src/cli/utils/build-handoff-payload.ts
+  s_13a13dc5a50c13::t_2bdbcf510ff6e9 1,3
+  s_13a13dc5a50c13::t_5d50cb38bafe38 25,28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "69d655367bac9d5051573d35e15089d515ba8e0e",
+  "prompts": {},
+  "sessions": {
+    "s_13a13dc5a50c13": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8711feb-b345-464b-894a-4a47906c1e3f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

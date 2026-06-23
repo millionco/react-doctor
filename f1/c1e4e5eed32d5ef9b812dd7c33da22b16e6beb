@@ -1,0 +1,70 @@
+packages/react-doctor/tests/install-react-doctor.test.ts
+  s_02949bc312ec72::t_26625ff762e2dd 23
+  s_02949bc312ec72::t_d59d9e04801d2d 189-190,197-203,212-217
+packages/react-doctor/src/cli/utils/prompt-install-setup.ts
+  s_02949bc312ec72::t_73fa9cad9ff056 1-2,16-19,29,32
+  s_02949bc312ec72::t_7ae38d13946b4c 21,28,31
+  s_02949bc312ec72::t_c328d63877dd8a 68
+.changeset/onboarding-lifecycle-framework.md
+  s_02949bc312ec72::t_cc4eccd0db4df4 1-5
+packages/react-doctor/src/cli/utils/action-upgrade-prompt.ts
+  s_02949bc312ec72::t_7327a3ca3ddf19 1-2,4-17,20-24
+packages/react-doctor/src/cli/utils/cli-migrations.ts
+  s_02949bc312ec72::t_21770daab7d44a 1-44
+packages/react-doctor/src/cli/utils/constants.ts
+  s_02949bc312ec72::t_63326f5249dd5a 16-19
+packages/react-doctor/tests/ci-prompt-decision.test.ts
+  s_02949bc312ec72::t_50f20bc938f4b2 45,49-54,56
+packages/react-doctor/src/cli/utils/ci-prompt-decision.ts
+  s_02949bc312ec72::t_d087a07907e5b0 1-17,19-23
+packages/react-doctor/src/cli/utils/onboarding-state.ts
+  s_02949bc312ec72::t_37b1b97895fd44 10
+  s_02949bc312ec72::t_d5abe0e31e0fd0 15,18
+  s_02949bc312ec72::t_b1e4015caed49f 1-2,4-8,12-14,16,19-20
+packages/react-doctor/src/cli/utils/cli-lifecycle.ts
+  s_02949bc312ec72::t_0208f3fd033c35 9
+  s_02949bc312ec72::t_9ce35219c0dcb0 82-86,257-262
+  s_02949bc312ec72::t_aeb5eb595a3792 1-8,10-77,80-81,87-133,139-145,147-206,212-218,220-256,263-267
+  s_02949bc312ec72::t_7795cc1d939afa 78-79
+  s_02949bc312ec72::t_8f14d345a47e44 134-138,146
+  s_02949bc312ec72::t_623bda3e6aeefe 207-211,219
+packages/react-doctor/tests/cli-lifecycle.test.ts
+  s_02949bc312ec72::t_c6974ff9c6ecfb 1-82,88-143,150-151,158-163
+  s_02949bc312ec72::t_9ce35219c0dcb0 83-87,144-149,152-157
+packages/react-doctor/tests/onboarding-state.test.ts
+  s_02949bc312ec72::t_0ba203649724a0 40-43,45,48
+packages/react-doctor/tests/action-upgrade.test.ts
+  s_02949bc312ec72::t_ae930724835b5b 125,129-136,138
+packages/react-doctor/tests/cli-state-store.test.ts
+  s_02949bc312ec72::t_9ce35219c0dcb0 23-36,82-84
+  s_02949bc312ec72::t_60d8f5fd6f4b0d 1-22,37-81,85-107
+packages/react-doctor/src/cli/utils/cli-state-store.ts
+  s_02949bc312ec72::t_c1be2a16197a09 15-16,22,62-65,70,81-85,146,159-166,177-181,183-188,190-201,203-207
+  s_02949bc312ec72::t_10da3352e70c1c 4-9,11-14,17-21,27-49,52-59,61,66-69,71-72,75-78,86-104,106-133,139-145,147-148,154-158,167-176,182,189,202
+  s_02949bc312ec72::t_5a3651357c5ea0 134-138,149-151,153
+  s_02949bc312ec72::t_8901444b34fbe3 23-26
+  s_02949bc312ec72::t_a6b6537df38353 105
+packages/react-doctor/tests/prompt-install-setup.test.ts
+  s_02949bc312ec72::t_bd61001a10d5c3 145,148-150,163-167,169-173
+  s_02949bc312ec72::t_9ce35219c0dcb0 155
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_02949bc312ec72::t_af8a79ffc0c53f 218,221,226-229
+  s_02949bc312ec72::t_e738e849ff264d 36
+  s_02949bc312ec72::t_9ce35219c0dcb0 249-252
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "f1c1e4e5eed32d5ef9b812dd7c33da22b16e6beb",
+  "prompts": {},
+  "sessions": {
+    "s_02949bc312ec72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8e645ba-e36a-4945-ba52-d0bb8065ddac",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

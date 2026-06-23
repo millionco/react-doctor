@@ -1,0 +1,23 @@
+.agents/skills/rde-eval/SKILL.md
+  s_d37b310351c6e8::t_24dcfa4328dae6 38-40
+  s_d37b310351c6e8::t_fbeaeb81204139 41-47
+  s_d37b310351c6e8::t_8224aad7ee240f 87-105
+  s_d37b310351c6e8::t_a72bf64c7da7c5 134-146
+  s_d37b310351c6e8::t_626f60be097515 16-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "bce02502022f77226dff212932054b51060689a3",
+  "prompts": {},
+  "sessions": {
+    "s_d37b310351c6e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f985917-83b1-4ff2-83b2-f02b13617b71",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,109 @@
+packages/language-server/package.json
+  s_3a115153e46df0::t_1e67bfc04b05c8 3
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-call-component-as-function.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-77
+packages/website/public/schema/config.json
+  s_3a115153e46df0::t_1e67bfc04b05c8 127
+.changeset/fix-server-auth-actions-custom-guards.md
+  s_3a115153e46df0::t_1e67bfc04b05c8 5,7
+packages/core/CHANGELOG.md
+  s_3a115153e46df0::t_1e67bfc04b05c8 3-40
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/no-img-lazy-with-high-fetchpriority.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-36
+.changeset/fix-deslop-unused-file-ignored-imports.md
+  s_3a115153e46df0::t_1e67bfc04b05c8 5
+packages/api/CHANGELOG.md
+  s_3a115153e46df0::t_1e67bfc04b05c8 3-9
+packages/core/package.json
+  s_3a115153e46df0::t_1e67bfc04b05c8 3
+packages/core/src/dead-code/collect-dead-code-patterns.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 93-96
+packages/core/src/check-dead-code.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 438
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-create-ref-in-function-component.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-56
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/dialog-has-accessible-name.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-49
+packages/oxlint-plugin-react-doctor/src/plugin/rules/server/server-auth-actions.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 11,94-95,102-106
+packages/core/src/run-inspect.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 447-456,472,507
+packages/core/tests/check-dead-code.test.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 107,113-126,129,134
+packages/eslint-plugin-react-doctor/package.json
+  s_3a115153e46df0::t_1e67bfc04b05c8 3
+packages/react-doctor/package.json
+  s_3a115153e46df0::t_1e67bfc04b05c8 3
+packages/react-doctor/tests/regressions/server-auth-actions.test.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 414-508
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-async-effect-callback.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-36
+packages/oxlint-plugin-react-doctor/CHANGELOG.md
+  s_3a115153e46df0::t_1e67bfc04b05c8 3-27
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security/auth-token-in-web-storage.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-83
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-auth-guard-name.test.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-92
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security/auth-token-in-web-storage.test.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-60
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/no-async-effect-callback.test.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-92
+packages/oxlint-plugin-react-doctor/src/plugin/rules/a11y/dialog-has-accessible-name.test.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-78
+packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 30,49,151,155,161,196,203,637-647,864-875,2046-2057,2093-2104,2165-2176,2573-2584,2657-2665
+packages/eslint-plugin-react-doctor/CHANGELOG.md
+  s_3a115153e46df0::t_1e67bfc04b05c8 3-9
+packages/oxlint-plugin-react-doctor/package.json
+  s_3a115153e46df0::t_1e67bfc04b05c8 3,58
+packages/oxlint-plugin-react-doctor/src/plugin/utils/is-auth-guard-name.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-61
+packages/core/src/types/config.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 324-327
+pnpm-lock.yaml
+  s_3a115153e46df0::t_b6c4417eb0c063 152-153,875,881,887,893,899,905,911,917,924,931,938,945,952,959,966,973,1088,1095,1102,1109,1177-1182,1189-1194,1201-1206,1213-1218,1225-1230,1237-1242,1249-1254,1260-1267,1274-1281,1288-1295,1302-1309,1316-1323,1330-1337,1344-1351,1358-1365,1373-1378,1384-1388,1395-1400,1407-1412,1419-1424,1435-1437,1477,1483,1489,1495,1501,1507,1513,1519,1593,1600,1607,1614,1621,1628,1635,1642,1745,1752,1759,1766,1773,1780,1787,1794,1862,1868,1874,1880,1886,1892,1898,1904,1910,1916,1922,1928,1934,2106,2113,2120,2127,2379,2386,2393,2400,3053,3060,3067,3074,3250-3253,4629-4631,4635-4637,4641-4643,4647-4649,4653-4655,4659-4661,4665-4667,4671-4673,4677-4679,4683-4685,4689-4691,4695-4697,4701-4703,4707-4709,4713-4715,4719-4721,4729-4735,4739-4741,4745-4747,4751-4753,4760-4761,6228-6251
+packages/api/package.json
+  s_3a115153e46df0::t_1e67bfc04b05c8 3
+packages/core/tests/run-inspect.test.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 446-453
+packages/oxlint-plugin-react-doctor/src/plugin/constants/security.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 20-115
+packages/oxlint-plugin-react-doctor/src/plugin/rules/performance/no-img-lazy-with-high-fetchpriority.test.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-63
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-create-ref-in-function-component.test.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-92
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-call-component-as-function.test.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-106
+packages/oxlint-plugin-react-doctor/src/plugin/utils/tokenize-identifier-words.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-11
+.changeset/mined-correctness-perf-a11y-rules.md
+  s_3a115153e46df0::t_1e67bfc04b05c8 5,7-13
+packages/oxlint-plugin-react-doctor/src/plugin/utils/get-identifier-trailing-word.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-4
+packages/react-doctor/CHANGELOG.md
+  s_3a115153e46df0::t_1e67bfc04b05c8 3-40
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/no-json-parse-stringify-clone.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-42
+docs/rule-candidates-backlog.md
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-145
+packages/language-server/CHANGELOG.md
+  s_3a115153e46df0::t_1e67bfc04b05c8 3-9
+packages/oxlint-plugin-react-doctor/src/plugin/rules/js-performance/no-json-parse-stringify-clone.test.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 1-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "33d9d6f8b2cd398292fecccd8c0d37d9e9dd0232",
+  "prompts": {},
+  "sessions": {
+    "s_3a115153e46df0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2922f7ff-119a-484d-b46b-d1aff0a2b802",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

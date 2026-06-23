@@ -1,0 +1,23 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/url-prefilled-privileged-action.ts
+  s_a4af0528f8dc78::t_7e62f1ec1e6eea 9-13,15
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/url-prefilled-privileged-action.regressions.test.ts
+  s_a4af0528f8dc78::t_051c07ce2a2191 37-76
+.changeset/fix-url-prefilled-privileged-action-validator-receiver-chain.md
+  s_a4af0528f8dc78::t_16b1210d968907 1-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "e57f7c05319578d8fa4e8b2091e3b8699dc6693f",
+  "prompts": {},
+  "sessions": {
+    "s_a4af0528f8dc78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "579dacc7-6e5d-4589-8019-0a649619b08a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

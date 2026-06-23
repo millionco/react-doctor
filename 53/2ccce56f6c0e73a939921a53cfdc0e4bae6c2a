@@ -1,0 +1,21 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 30,49,150,154,160,195,202,637-647,864-875,2035-2046,2082-2093,2154-2165,2562-2573,2646-2654,3557-3558
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-full-viewport-width.test.ts
+  s_3a115153e46df0::t_b3787846217d55 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "532ccce56f6c0e73a939921a53cfdc0e4bae6c2a",
+  "prompts": {},
+  "sessions": {
+    "s_3a115153e46df0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2922f7ff-119a-484d-b46b-d1aff0a2b802",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

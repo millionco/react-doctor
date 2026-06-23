@@ -1,0 +1,29 @@
+packages/core/tests/fixtures/check-security-scan/real-next-sanity-studio-bundle/.next/static/chunks/sanity-studio.js
+  s_dd1bd24d624594::t_b77de0df2ac1cc 1-3
+  s_dd1bd24d624594::t_d247a9b82c766c 4-20
+.changeset/fix-baas-authority-sanity-false-positive.md
+  s_dd1bd24d624594::t_3224abad1394c3 7
+  s_dd1bd24d624594::t_5d2652b897d02a 1-6
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/artifact-baas-authority-surface.ts
+  s_dd1bd24d624594::t_caf8694e134521 5-8,10
+packages/core/tests/fixtures/check-security-scan/real-next-sanity-studio-bundle/package.json
+  s_dd1bd24d624594::t_54354177ce2cba 1-12
+packages/core/tests/check-security-scan.test.ts
+  s_dd1bd24d624594::t_95bd89114e1b9b 212-217
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "522e72f427729f35bf73e31f9518dc4bd0772075",
+  "prompts": {},
+  "sessions": {
+    "s_dd1bd24d624594": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "076d5ab2-4c7e-4745-96c7-647d6e09616b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

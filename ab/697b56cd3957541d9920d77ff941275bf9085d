@@ -1,0 +1,33 @@
+.changeset/supply-chain-lint-overlap.md
+  s_2eec643ea8aa60::t_9265ae470c4aa5 1-12
+packages/react-doctor/tests/scan-result-cache.test.ts
+  s_2eec643ea8aa60::t_9265ae470c4aa5 132
+packages/react-doctor/src/cli/utils/constants.ts
+  s_2eec643ea8aa60::t_9265ae470c4aa5 24-26
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_2eec643ea8aa60::t_9265ae470c4aa5 53-61,208
+packages/core/src/constants.ts
+  s_2eec643ea8aa60::t_9265ae470c4aa5 582-591
+packages/react-doctor/src/inspect.ts
+  s_2eec643ea8aa60::t_9265ae470c4aa5 708,845
+packages/react-doctor/tests/build-run-event.test.ts
+  s_2eec643ea8aa60::t_9265ae470c4aa5 239-257
+packages/core/src/services/supply-chain.ts
+  s_2eec643ea8aa60::t_9265ae470c4aa5 27-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "ab697b56cd3957541d9920d77ff941275bf9085d",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

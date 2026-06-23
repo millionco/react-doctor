@@ -1,0 +1,37 @@
+packages/react-doctor/src/cli/utils/build-handoff-payload.ts
+  s_13a13dc5a50c13::t_61f16b27a148c0 11-15
+  s_13a13dc5a50c13::t_a9d79d43aab879 30-41,44
+packages/react-doctor/tests/handoff/build-handoff-payload.test.ts
+  s_13a13dc5a50c13::t_3f60f3915d5e94 54-76
+  s_13a13dc5a50c13::t_ae43926db81a7a 39-42
+packages/react-doctor/src/cli/utils/ci-prompt-decision.ts
+  s_13a13dc5a50c13::t_cc4a87260a5d41 28,34-35,44,64
+  s_13a13dc5a50c13::t_109547684be33b 1-27,29-33,36-43,45-63,65-81
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_13a13dc5a50c13::t_f31c7ea328b45b 17
+  s_13a13dc5a50c13::t_8fe5bf6211c522 177-180,186,193-194,199,203-209
+  s_13a13dc5a50c13::t_6d661e1af4c759 256
+packages/react-doctor/src/cli/commands/inspect.ts
+  s_13a13dc5a50c13::t_aaf002ff96217c 716-718
+packages/react-doctor/tests/ci-prompt-decision.test.ts
+  s_13a13dc5a50c13::t_6e732c54e163b4 1-29,31-53
+  s_13a13dc5a50c13::t_cc4a87260a5d41 30
+.changeset/fix-marketing-pitch-once-per-repo.md
+  s_13a13dc5a50c13::t_1dfbec22306ae2 1-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "54de9718c0db3cb8e5525f5d14e668433ad9183b",
+  "prompts": {},
+  "sessions": {
+    "s_13a13dc5a50c13": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8711feb-b345-464b-894a-4a47906c1e3f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

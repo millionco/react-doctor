@@ -1,0 +1,24 @@
+packages/react-doctor/tests/install-react-doctor.test.ts
+  s_13a13dc5a50c13::t_2a19d603304d84 929-970
+  s_13a13dc5a50c13::t_cdbeee7ffd006d 23
+packages/react-doctor/src/cli/utils/install-react-doctor.ts
+  s_13a13dc5a50c13::t_eb59fc20b6f437 574-581
+  s_13a13dc5a50c13::t_83101b39bdc211 27
+  s_13a13dc5a50c13::t_d82719560f1642 549-556,558
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "c7a4c69ea8aeae870dc7441479434365f049d71d",
+  "prompts": {},
+  "sessions": {
+    "s_13a13dc5a50c13": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8711feb-b345-464b-894a-4a47906c1e3f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

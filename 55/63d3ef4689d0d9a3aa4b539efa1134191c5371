@@ -1,0 +1,19 @@
+.changeset/fix-jsx-key-consumer-prop-false-positive.md
+  s_08743895ac0342::t_134dfcc3cea8bb 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "5563d3ef4689d0d9a3aa4b539efa1134191c5371",
+  "prompts": {},
+  "sessions": {
+    "s_08743895ac0342": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "906c6351-25a1-4c53-b50d-5cbdecf2bb68",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

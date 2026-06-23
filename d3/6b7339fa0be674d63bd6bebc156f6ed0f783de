@@ -1,0 +1,24 @@
+packages/core/tests/evaluate-suppression.test.ts
+  s_2e5d4e529aade4::t_fa7db467f009d3 130-132
+  s_2e5d4e529aade4::t_01f48eb8503dfd 129,133-135
+  s_2e5d4e529aade4::t_70a80269086ab7 194-198
+packages/core/src/detect-foreign-disable-near-miss.ts
+  s_2e5d4e529aade4::t_0a6f9be56b76b3 81-89
+  s_2e5d4e529aade4::t_3a6c4042ff7c3d 55-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "d36b7339fa0be674d63bd6bebc156f6ed0f783de",
+  "prompts": {},
+  "sessions": {
+    "s_2e5d4e529aade4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "445e40c7-537e-4139-b096-8582f3ad6bef",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

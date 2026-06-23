@@ -1,0 +1,27 @@
+.changeset/migrate-action-pin-main.md
+  s_2eec643ea8aa60::t_f3ddfd3b1145a7 1-7
+packages/react-doctor/src/cli/utils/migrate-action-pin.ts
+  s_2eec643ea8aa60::t_989784e086f6a3 1-60
+packages/react-doctor/src/cli/utils/cli-migrations.ts
+  s_2eec643ea8aa60::t_6fcb919d4fa9fe 5
+  s_2eec643ea8aa60::t_9fd7d8c491aeae 38-68
+packages/react-doctor/tests/migrate-action-pin.test.ts
+  s_2eec643ea8aa60::t_f5bd6061539615 30-32,36,42
+  s_2eec643ea8aa60::t_9058c2ff133297 1-29,33-35,37-41,43-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "53a0e4904483eb2adfac5705e42f9b8853a9ed56",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

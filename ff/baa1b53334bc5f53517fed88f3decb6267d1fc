@@ -1,0 +1,19 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-string-false-on-boolean-attribute.ts
+  s_d37b310351c6e8::t_97a2e926965200 38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "ffbaa1b53334bc5f53517fed88f3decb6267d1fc",
+  "prompts": {},
+  "sessions": {
+    "s_d37b310351c6e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f985917-83b1-4ff2-83b2-f02b13617b71",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

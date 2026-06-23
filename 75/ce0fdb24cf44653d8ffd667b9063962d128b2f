@@ -1,0 +1,21 @@
+.changeset/dead-code-sequential-default-scaled-timeout.md
+  s_2eec643ea8aa60::t_9be25bf9d19276 4,7,9-13
+.changeset/deslop-skip-discarded-passes.md
+  s_2eec643ea8aa60::t_d1e8d6ac8b83b2 1-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "75ce0fdb24cf44653d8ffd667b9063962d128b2f",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/utils/strip-comments-preserving-positions.ts
+  s_6de7c249307126::t_f4cae2d0c9d60d 86,90-96
+  s_6de7c249307126::t_fd02b9d97377a8 88-89
+  s_6de7c249307126::t_d39f0c31d2d4d8 3-22,24,34-35
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/utils/strip-comments-preserving-positions.test.ts
+  s_6de7c249307126::t_009ee0b9a1b2ed 46-47,50
+  s_6de7c249307126::t_7cb2ff355cacad 68,74,81-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "6c8596d24c62f0920d1642ecf58a92a75d3c78ba",
+  "prompts": {},
+  "sessions": {
+    "s_6de7c249307126": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "92e7361a-39ae-4147-9745-b16d7d1d9dc6",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

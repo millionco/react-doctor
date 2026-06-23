@@ -1,0 +1,27 @@
+packages/core/src/utils/resolve-lint-batch-ordering.ts
+  s_2eec643ea8aa60::t_03e5c38dda2c07 1-13,16
+packages/core/tests/resolve-lint-batch-ordering.test.ts
+  s_2eec643ea8aa60::t_d44c7606d37501 22,26-28,31-33,36-37,41-46,48,51,53
+packages/core/src/run-oxlint.ts
+  s_2eec643ea8aa60::t_12b4efd149de77 183
+packages/react-doctor/tests/build-run-context.test.ts
+  s_2eec643ea8aa60::t_a51220f2df2c68 99,101-103
+packages/core/src/refs.ts
+  s_2eec643ea8aa60::t_ca9c93dd396a7c 162-169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "2c017b49eb0a0fb6173224ba0115c877c5495279",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

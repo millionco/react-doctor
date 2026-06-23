@@ -1,0 +1,31 @@
+packages/react-doctor/src/cli/utils/constants.ts
+  s_13a13dc5a50c13::t_5d61162b2d0471 16-21
+packages/react-doctor/src/cli/utils/ci-prompt-decision.ts
+  s_13a13dc5a50c13::t_0f8f34881026bd 1-13,15,17-21
+packages/react-doctor/src/cli/utils/project-decision-store.ts
+  s_13a13dc5a50c13::t_9339b1294954f9 1-76
+packages/react-doctor/src/cli/utils/prompt-install-setup.ts
+  s_13a13dc5a50c13::t_eb22bb374e4db0 3
+  s_13a13dc5a50c13::t_c92ef3ab93b593 34
+packages/react-doctor/src/cli/utils/action-upgrade-prompt.ts
+  s_13a13dc5a50c13::t_f42609340e5e98 1-20
+packages/react-doctor/src/cli/utils/onboarding-state.ts
+  s_13a13dc5a50c13::t_07df3448f7c8e1 2
+  s_13a13dc5a50c13::t_f7c5344f220438 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "d17c21663bb48d5649cfd706d000674d387af6b1",
+  "prompts": {},
+  "sessions": {
+    "s_13a13dc5a50c13": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8711feb-b345-464b-894a-4a47906c1e3f",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+packages/core/tests/run-inspect.test.ts
+  s_f2ab89d240a5e8::t_47c85267e5b809 472-516
+packages/core/src/run-inspect.ts
+  s_f2ab89d240a5e8::t_73dcfaaef27d1b 446-450,456-457
+  s_f2ab89d240a5e8::t_b3ee45bdfed630 119-128
+packages/react-doctor/src/inspect.ts
+  s_f2ab89d240a5e8::t_2816b7a29767a0 563
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "8c48c4db724b56029ae83f28ea58494db31f8978",
+  "prompts": {},
+  "sessions": {
+    "s_f2ab89d240a5e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "039750ac-9d53-4c94-8f7f-db15ae55799a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

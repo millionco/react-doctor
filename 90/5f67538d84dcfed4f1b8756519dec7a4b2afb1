@@ -1,0 +1,20 @@
+packages/react-doctor/tests/render-diagnostics-hyperlinks.test.ts
+  s_9c95402b28796f::t_4e253c6711cd5d 1-2
+  s_9c95402b28796f::t_323c02f0ee4d8f 48-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "905f67538d84dcfed4f1b8756519dec7a4b2afb1",
+  "prompts": {},
+  "sessions": {
+    "s_9c95402b28796f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "682dcad7-c559-4e46-aa26-7ef343796818",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

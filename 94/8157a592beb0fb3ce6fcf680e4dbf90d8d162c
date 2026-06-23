@@ -1,0 +1,29 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/mcp-tool-capability-risk.regressions.test.ts
+  s_6de7c249307126::t_15a5db78089c55 20-34
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/agent-tool-capability-risk.regressions.test.ts
+  s_6de7c249307126::t_f300ceed6d9c60 68-77
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/utils/strip-comments-preserving-positions.test.ts
+  s_6de7c249307126::t_5fd4bff053f7f5 87-108
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/utils/strip-comments-preserving-positions.ts
+  s_6de7c249307126::t_afe9f7c3956bbe 42-43,47,68-82,117-131
+.changeset/fix-agent-tool-capability-risk-string-literals.md
+  s_6de7c249307126::t_2cefcb8d137d8a 5,7-9
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/mcp-tool-capability-risk.ts
+  s_6de7c249307126::t_2d067ba6619dd7 28-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "948157a592beb0fb3ce6fcf680e4dbf90d8d162c",
+  "prompts": {},
+  "sessions": {
+    "s_6de7c249307126": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "92e7361a-39ae-4147-9745-b16d7d1d9dc6",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+.changeset/feat-debug-trace-id.md
+  s_461d0be08a2944::t_5d62361cab9f7c 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "7ad93fd3edb2e6613d82c491c7e284a1a55ee297",
+  "prompts": {},
+  "sessions": {
+    "s_461d0be08a2944": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67c9d006-2def-450a-85d1-300d668076bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+packages/core/src/run-oxlint.ts
+  s_b48f74b59251fc::t_6ea9cadaedbbc5 24,476-484
+packages/react-doctor/tests/run-oxlint/file-lint-cache.test.ts
+  s_b48f74b59251fc::t_d770935fa2e3ad 190-206
+  s_b48f74b59251fc::t_55232284edaf53 38
+  s_b48f74b59251fc::t_c0910ffa3b635c 66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "0b0c6ee166e8581f9309c55bb08dce4488eadd2e",
+  "prompts": {},
+  "sessions": {
+    "s_b48f74b59251fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "589c5f5d-2c87-412b-8fae-4bab844ce2bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

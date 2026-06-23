@@ -1,0 +1,75 @@
+packages/react-doctor/src/cli/utils/render-diagnostics.ts
+  s_9c95402b28796f::t_1d37ba9346d295 661
+  s_9c95402b28796f::t_98e44a6ebcd0a5 644-649
+  s_9c95402b28796f::t_457e7e29404e4a 326,332-334
+  s_9c95402b28796f::t_d1d8119599bf5b 518
+  s_9c95402b28796f::t_2cdf971da5b3c7 448-450
+  s_9c95402b28796f::t_a2da0a08bb87ab 296-305,309-311
+  s_9c95402b28796f::t_ff99b50cdaf0e0 286-295,308
+  s_9c95402b28796f::t_4c2e3e477c98f8 536,545
+  s_9c95402b28796f::t_c5e18465c3f93c 373
+  s_9c95402b28796f::t_c7a902b6228817 537-544
+  s_9c95402b28796f::t_45aebd005699db 15,19-20
+  s_9c95402b28796f::t_db5c4b149fc601 620-624
+packages/react-doctor/src/inspect.ts
+  s_9c95402b28796f::t_d1cfc7c5ae3a76 960
+  s_9c95402b28796f::t_aec1e2659c7552 904
+  s_9c95402b28796f::t_f9c7446c6282c1 54
+packages/react-doctor/tests/format-hyperlink.test.ts
+  s_9c95402b28796f::t_4c29510416fd56 1-17,22-24
+  s_9c95402b28796f::t_c7a902b6228817 18-21
+packages/react-doctor/src/cli/utils/build-sentry-scope.ts
+  s_9c95402b28796f::t_d6923a9042ccda 38
+.changeset/feat-osc8-clickable-locations.md
+  s_9c95402b28796f::t_8f21137f313e19 1-9
+packages/react-doctor/src/cli/utils/format-hyperlink.ts
+  s_9c95402b28796f::t_378ada692c340f 4-7
+  s_9c95402b28796f::t_a52284e4d0bb18 1-3,8-15
+packages/react-doctor/tests/render-diagnostics-hyperlinks.test.ts
+  s_9c95402b28796f::t_a10931f0bef2f9 1-59
+packages/react-doctor/src/cli/utils/supports-hyperlinks.ts
+  s_9c95402b28796f::t_65b84cb9d739cd 1-47
+packages/react-doctor/src/cli/utils/constants.ts
+  s_9c95402b28796f::t_d77fa7f2ab2ce9 90-93
+packages/react-doctor/src/cli/utils/render-multi-project-summary.ts
+  s_9c95402b28796f::t_8c4beb64a5749b 152
+  s_9c95402b28796f::t_ea288891be6988 15
+packages/react-doctor/tests/build-run-context.test.ts
+  s_9c95402b28796f::t_18edf1b9823f4a 49-52
+packages/react-doctor/src/cli/utils/build-run-context.ts
+  s_9c95402b28796f::t_60f7bfef02d665 1
+  s_9c95402b28796f::t_a9534e9bd37066 110
+  s_9c95402b28796f::t_837251018fbb38 38-40
+packages/react-doctor/tests/build-sentry-scope.test.ts
+  s_9c95402b28796f::t_de6095d9260a5d 24
+  s_9c95402b28796f::t_d96909913a1fb3 70
+packages/react-doctor/tests/supports-hyperlinks.test.ts
+  s_9c95402b28796f::t_09828596427bd0 1-60
+packages/react-doctor/src/cli/utils/build-code-frame.ts
+  s_9c95402b28796f::t_a4a33b93e65a21 8
+  s_9c95402b28796f::t_bd90cf2f9de5aa 34
+packages/react-doctor/src/cli/utils/detect-terminal-kind.ts
+  s_9c95402b28796f::t_37550772a32979 1-43
+packages/react-doctor/tests/detect-terminal-kind.test.ts
+  s_9c95402b28796f::t_81bb824d28a675 1-38
+packages/react-doctor/src/cli/utils/resolve-absolute-path.ts
+  s_9c95402b28796f::t_a1ec8905b373bf 1-10
+packages/react-doctor/src/cli/utils/should-render-hyperlinks.ts
+  s_9c95402b28796f::t_9852f2cb4e56ea 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "40bd491ffd8c327e4c963b3c787d8c5e1ae4af7e",
+  "prompts": {},
+  "sessions": {
+    "s_9c95402b28796f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "682dcad7-c559-4e46-aa26-7ef343796818",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

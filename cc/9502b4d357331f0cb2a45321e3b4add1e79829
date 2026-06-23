@@ -1,0 +1,25 @@
+packages/core/tests/check-supply-chain.test.ts
+  s_08d23b4b83e72f::t_8c76241cc877f5 266,270,275,277
+  s_08d23b4b83e72f::t_136552869cd544 234-265,267-269,271-274,276,278-279
+packages/core/src/check-supply-chain.ts
+  s_08d23b4b83e72f::t_60ea794d109321 232-234
+  s_08d23b4b83e72f::t_136552869cd544 225-227,235-236
+.changeset/supply-chain-dist-tag-crash.md
+  s_08d23b4b83e72f::t_9508aeaa7f0301 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "cc9502b4d357331f0cb2a45321e3b4add1e79829",
+  "prompts": {},
+  "sessions": {
+    "s_08d23b4b83e72f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d22368d5-1dd8-4f04-9771-632f6dc6c1cc",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

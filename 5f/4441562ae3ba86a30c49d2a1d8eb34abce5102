@@ -1,0 +1,21 @@
+packages/react-doctor/tests/github-action.test.ts
+  s_2eec643ea8aa60::t_d80f0d4864f1d4 90-93,95-102,104-106
+  s_2eec643ea8aa60::t_685e420829674d 148-150
+  s_2eec643ea8aa60::t_dc5f51e8f15a2d 156-176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "5f4441562ae3ba86a30c49d2a1d8eb34abce5102",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

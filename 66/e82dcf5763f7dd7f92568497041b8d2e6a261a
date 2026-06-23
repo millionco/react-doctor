@@ -1,0 +1,19 @@
+packages/react-doctor/src/cli/utils/cli-state-store.ts
+  s_02949bc312ec72::t_d3fd5b22cef89b 31-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "66e82dcf5763f7dd7f92568497041b8d2e6a261a",
+  "prompts": {},
+  "sessions": {
+    "s_02949bc312ec72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8e645ba-e36a-4945-ba52-d0bb8065ddac",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

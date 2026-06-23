@@ -1,0 +1,41 @@
+package.json
+  s_f817d387cdd304::t_1f86cb72319674 16
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-new-function-as-prop.regressions.test.ts
+  s_f817d387cdd304::t_9a90dbdfd37b54 1-4,17-26,28-30,32-33
+  s_f817d387cdd304::t_f9144f8cb3cbf9 5-16,27,31
+packages/oxlint-plugin-react-doctor/src/plugin/rules/state-and-effects/hooks-no-nan-in-deps.test.ts
+  s_f817d387cdd304::t_211a500ae8d78a 25
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/no-multi-comp.regressions.test.ts
+  s_f817d387cdd304::t_30626816cc87ae 1-4,17-20,23-24,26-28,30-32,34-36,40-41
+  s_f817d387cdd304::t_321d4066a53d9e 5-16,21-22,25,29,33,37-39
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-new-array-as-prop.regressions.test.ts
+  s_f817d387cdd304::t_d986d6ec0c5a3a 21,23
+  s_f817d387cdd304::t_564672fb589dd8 17-19
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/jsx-no-new-object-as-prop.regressions.test.ts
+  s_f817d387cdd304::t_5bc1b7ef692f50 32-34
+  s_f817d387cdd304::t_89c73a34c14037 21-23
+  s_f817d387cdd304::t_aed4445eab7de1 1-4,17-20,24-27,29-31,35-37,39-40
+  s_f817d387cdd304::t_5cbc8b6c8d5787 5-16,28,38
+packages/oxlint-plugin-react-doctor/src/plugin/rules/react-builtins/__fixtures__/oxc-divergences.ts
+  s_f817d387cdd304::t_d986d6ec0c5a3a 87,140
+  s_f817d387cdd304::t_1244cc3a2e25e0 131-139,141-154,157
+  s_f817d387cdd304::t_6bd12a7e5d61fb 101,111-118,120
+  s_f817d387cdd304::t_1e58fff5dcb89c 155-156
+  s_f817d387cdd304::t_a02c6941d36456 74-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "9a62c308906d8302218d7d7079edb53bbb7f9163",
+  "prompts": {},
+  "sessions": {
+    "s_f817d387cdd304": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "481bd8dd-32b7-49f9-b1ef-af6d989d2d26",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

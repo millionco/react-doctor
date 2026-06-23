@@ -1,0 +1,21 @@
+packages/core/src/check-supply-chain.ts
+  s_2eec643ea8aa60::t_a50160203b8bb7 19
+  s_2eec643ea8aa60::t_a2814962439665 598
+  s_2eec643ea8aa60::t_8d565036acf878 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "1e9b0c6debbc8e0271c28328f2923c277129839d",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

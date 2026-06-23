@@ -1,0 +1,27 @@
+scripts/normalize-changed-files.mjs
+  s_2eec643ea8aa60::t_d0afc0feff8fa5 1-52
+packages/react-doctor/tests/normalize-changed-files.test.ts
+  s_2eec643ea8aa60::t_9cff6bf22005e1 1-8,13-46
+  s_2eec643ea8aa60::t_c911956ecad943 9-12
+packages/react-doctor/tests/diff-fast-path.test.ts
+  s_2eec643ea8aa60::t_716573c4553745 1-74
+action.yml
+  s_2eec643ea8aa60::t_4891f29688d924 179
+  s_2eec643ea8aa60::t_8ba54b7d06dc11 85-91,93-128,136-139,159-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "59f5cdd1ee48d378a592734058c438af3b3c9f0b",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+packages/core/src/refs.ts
+  s_2eec643ea8aa60::t_760470aae93c25 132-158
+packages/core/src/utils/has-dead-code-overlap-headroom.ts
+  s_2eec643ea8aa60::t_760470aae93c25 1-33
+packages/react-doctor/tests/build-run-event.test.ts
+  s_2eec643ea8aa60::t_760470aae93c25 86,109-123
+.changeset/overlap-dead-code-with-lint.md
+  s_2eec643ea8aa60::t_760470aae93c25 1-8
+packages/core/src/constants.ts
+  s_2eec643ea8aa60::t_760470aae93c25 344-360
+packages/react-doctor/tests/scan-result-cache.test.ts
+  s_2eec643ea8aa60::t_760470aae93c25 126,239
+packages/react-doctor/src/cli/utils/scan-result-cache.ts
+  s_2eec643ea8aa60::t_760470aae93c25 36
+packages/core/tests/has-dead-code-overlap-headroom.test.ts
+  s_2eec643ea8aa60::t_760470aae93c25 1-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "b5075044e4d130928fa54e1bc3b3ee2628099a63",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

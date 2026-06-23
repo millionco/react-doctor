@@ -1,0 +1,22 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-deprecated-tailwind-class.ts
+  s_3a115153e46df0::t_b3787846217d55 14-16
+packages/oxlint-plugin-react-doctor/src/plugin/rules/design/no-deprecated-tailwind-class.test.ts
+  s_3a115153e46df0::t_b3787846217d55 44-49,40-43
+  s_3a115153e46df0::t_d08483688d6565 38-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "e3172b6064846abba005f37982901a6d95e3b95b",
+  "prompts": {},
+  "sessions": {
+    "s_3a115153e46df0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2922f7ff-119a-484d-b46b-d1aff0a2b802",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

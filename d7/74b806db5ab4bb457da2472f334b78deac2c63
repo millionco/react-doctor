@@ -1,0 +1,26 @@
+packages/react-doctor/tests/handoff/build-handoff-payload.test.ts
+  s_bbeaa972d15fa9::t_6f593730531e10 54,68-70,77,80
+  s_bbeaa972d15fa9::t_e544d5d5c1da58 81,84-88,90-96,99-132
+packages/react-doctor/src/cli/utils/build-handoff-payload.ts
+  s_bbeaa972d15fa9::t_76a5a2f444d3b9 4-7,9
+  s_bbeaa972d15fa9::t_ad808926ab6742 24,26
+  s_bbeaa972d15fa9::t_532471291e97f1 25
+  s_bbeaa972d15fa9::t_c39142fdd60f6c 63-68
+  s_bbeaa972d15fa9::t_56a226f0380e70 87,89-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "d774b806db5ab4bb457da2472f334b78deac2c63",
+  "prompts": {},
+  "sessions": {
+    "s_bbeaa972d15fa9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2dac245-55f2-499a-95fd-fb03d35fc757",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,67 @@
+packages/core/src/services/dead-code.ts
+  s_a79cca406d6c28::t_49fc39c130a4d4 40,44
+packages/core/tests/check-dead-code.test.ts
+  s_a79cca406d6c28::t_963caf04c78edb 308-314,316-317,320-328,332
+  s_a79cca406d6c28::t_ad88379ccbb227 302-307,315,318-319,329-331,333-337
+packages/core/src/utils/read-positive-env-ms.ts
+  s_a79cca406d6c28::t_f20a6a6635ba12 1-11
+packages/core/src/constants.ts
+  s_a79cca406d6c28::t_b690949221e8b4 275-312
+  s_a79cca406d6c28::t_450705d182aeb4 273-274
+packages/core/tests/spawn-batches-cascade-bound.test.ts
+  s_a79cca406d6c28::t_82d14899d64714 1-125
+.changeset/bound-phases-hard-timeouts.md
+  s_a79cca406d6c28::t_3fa8a3a944b80b 1-13
+packages/core/tests/errors.test.ts
+  s_a79cca406d6c28::t_87bbb1807b03d5 16
+  s_a79cca406d6c28::t_8faa2a3a936bef 134-136
+  s_a79cca406d6c28::t_15da9349c2dd8e 129-133,137-138
+packages/core/src/errors.ts
+  s_a79cca406d6c28::t_990d86e1bd6cc5 174
+  s_a79cca406d6c28::t_f5fc6fb3122f29 49-59
+packages/core/tests/check-supply-chain.test.ts
+  s_a79cca406d6c28::t_7d92f5d7ca0899 87-103
+packages/core/tests/run-inspect.test.ts
+  s_a79cca406d6c28::t_32d76c4fe23e3c 19
+  s_a79cca406d6c28::t_892175d8dcfffe 136-221
+packages/core/src/check-supply-chain.ts
+  s_a79cca406d6c28::t_5bde7fc3bc969e 594-600
+  s_a79cca406d6c28::t_d17fc1058fcf5a 30-31
+  s_a79cca406d6c28::t_a093bb9351dde2 21
+packages/core/src/runners/oxlint/spawn-batches.ts
+  s_a79cca406d6c28::t_6782f32e68f994 202
+  s_a79cca406d6c28::t_0858550b3bebaf 2,5-6
+  s_a79cca406d6c28::t_b7b769a4e57d27 139-144,157-161,164-167,173-174
+  s_a79cca406d6c28::t_94a0d9842f0929 106-107
+  s_a79cca406d6c28::t_bdc961852e1e65 53-61
+packages/core/src/run-inspect.ts
+  s_a79cca406d6c28::t_f5d75cf2e1303d 32
+  s_a79cca406d6c28::t_4ef9d83397bd2d 625-643
+  s_a79cca406d6c28::t_fc3fe2a7caa8d5 533
+  s_a79cca406d6c28::t_597d7b629a2dbb 36-41
+  s_a79cca406d6c28::t_46990cbe31f21b 402-403
+  s_a79cca406d6c28::t_9f826fe350cdc8 448-462,464-467
+  s_a79cca406d6c28::t_066c00389de3f9 463
+  s_a79cca406d6c28::t_e519efdb880229 522-532,534-536
+packages/core/src/check-dead-code.ts
+  s_a79cca406d6c28::t_e6bc253fa4f29b 33
+  s_a79cca406d6c28::t_4712e150652d57 444-455
+packages/core/src/refs.ts
+  s_a79cca406d6c28::t_61ce09bc6640dd 3-4,8,10,22-23,27-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "5850024ac15c669789419e6a4f8cf300cd577798",
+  "prompts": {},
+  "sessions": {
+    "s_a79cca406d6c28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b965809e-9576-40e0-8e24-d39a5c382892",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

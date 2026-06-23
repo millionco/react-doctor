@@ -1,0 +1,40 @@
+packages/react-doctor/tests/cli-lifecycle.test.ts
+  s_5422ad527388fb::t_a33c1b46b807be 8,13,16
+  s_5422ad527388fb::t_b98f2b2993296e 166-204
+packages/react-doctor/tests/handoff-target-preference.test.ts
+  s_5422ad527388fb::t_f0b4a4280fd4d6 1-45
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_5422ad527388fb::t_c276500aaf6fec 18
+  s_5422ad527388fb::t_6301dba120b093 227-248,254-255,260-262
+  s_5422ad527388fb::t_7422feb924e5c7 276-278,281
+  s_5422ad527388fb::t_747f327623ec2a 279-280,282
+packages/react-doctor/src/cli/utils/handoff-target-preference.ts
+  s_5422ad527388fb::t_12efb98f695852 1,8-9,16,21
+  s_5422ad527388fb::t_c448adceef947a 2-7,10-15,17-20
+.changeset/remember-handoff-target.md
+  s_5422ad527388fb::t_6d9082e60691cf 1-5
+packages/react-doctor/src/cli/utils/cli-lifecycle.ts
+  s_5422ad527388fb::t_e57d30b0993d6d 16,23-25
+  s_5422ad527388fb::t_200654adc2e65a 70-79
+  s_5422ad527388fb::t_132ea26dd80cb0 211-212,214-244
+packages/react-doctor/src/cli/utils/cli-state-store.ts
+  s_5422ad527388fb::t_01d711791173f1 49-56,58
+  s_5422ad527388fb::t_2b60ffca159ca4 79-82
+  s_5422ad527388fb::t_6b960c94483ce1 57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "a9791623fea6ac62c8c63236ec3867f2ed954763",
+  "prompts": {},
+  "sessions": {
+    "s_5422ad527388fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8ec3ef4e-ff55-4c3f-9350-936f9eb5b9b9",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

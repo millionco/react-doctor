@@ -1,0 +1,70 @@
+packages/core/tests/run-inspect.test.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 375-429,837-838,842,844-845
+  s_2eec643ea8aa60::t_90134a05a29b11 947-951,954
+packages/core/src/types/index.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 27
+packages/core/src/utils/sort-source-files-by-cost.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 1-13
+.changeset/deterministic-diagnostics-lpt-ordering.md
+  s_2eec643ea8aa60::t_a35f93ea7d0635 1-6
+packages/core/src/utils/list-source-files.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 3,7,9-11,13-28,82-89,93-98
+packages/react-doctor/tests/count-dropped-lint-files.test.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 1-38
+packages/core/tests/spawn-batches.test.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 156-206
+packages/core/src/types/diagnostic.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 106-118
+packages/react-doctor/src/cli/utils/build-sentry-scope.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 43-45
+packages/react-doctor/tests/build-run-event.test.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 315-325
+packages/core/src/run-inspect.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 17,713-727
+packages/react-doctor/tests/diagnostic-grouping.test.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 3-7,45-67
+packages/core/tests/sort-source-files-by-cost.test.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 1-37
+packages/core/src/utils/sort-diagnostics-stable.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 1-25
+packages/react-doctor/src/cli/utils/count-dropped-lint-files.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 1-18
+packages/react-doctor/tests/build-run-context.test.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 9,15-16,31-35,98-103
+packages/core/src/index.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 99,101
+packages/core/tests/list-source-files-with-size.test.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 1-59
+packages/core/tests/resolve-lint-batch-ordering.test.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 1-55
+packages/core/tests/sort-diagnostics-stable.test.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 1-111
+packages/core/src/utils/resolve-lint-batch-ordering.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 1-10
+packages/react-doctor/src/cli/utils/build-run-context.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 1,51-55,124
+packages/react-doctor/src/cli/utils/scan-result-cache.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 6,256-260
+packages/react-doctor/tests/build-sentry-scope.test.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 28,77
+packages/react-doctor/tests/scan-result-cache.test.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 179-203
+packages/react-doctor/src/cli/utils/build-run-event.ts
+  s_2eec643ea8aa60::t_a35f93ea7d0635 52-56,219
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "e10c5baa177bb0de1a3d293b9990b1e0b50d3c8b",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

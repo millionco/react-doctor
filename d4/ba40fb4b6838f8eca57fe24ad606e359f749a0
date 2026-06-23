@@ -1,0 +1,19 @@
+.changeset/feat-osc8-clickable-locations.md
+  s_a038390dafd4a2::t_d379de8997076c 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "d4ba40fb4b6838f8eca57fe24ad606e359f749a0",
+  "prompts": {},
+  "sessions": {
+    "s_a038390dafd4a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f361f6db-6f37-46a4-9b0d-d83190de07a7",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+packages/core/tests/dead-code-semantic-disabled-parity.test.ts
+  s_2eec643ea8aa60::t_a990d42865331b 1-27,29-80,82-93
+  s_2eec643ea8aa60::t_c658ce0f06a705 28,81
+packages/core/src/check-dead-code.ts
+  s_2eec643ea8aa60::t_78cd47e65bb05e 165
+  s_2eec643ea8aa60::t_4da21ef781626b 156-164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "42721e747256446e7305db4a9c95e24f67bdc4b6",
+  "prompts": {},
+  "sessions": {
+    "s_2eec643ea8aa60": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8a7bb0-4bbd-4bae-b387-65aeebd106bd",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

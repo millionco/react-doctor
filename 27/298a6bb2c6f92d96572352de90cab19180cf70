@@ -1,0 +1,24 @@
+packages/deslop-js/src/report/packages.ts
+  s_e3e91498d2411f::t_93d076b55fc08c 431
+  s_e3e91498d2411f::t_873b8931f7e27b 86
+.changeset/unused-dep-binary-false-positive.md
+  s_e3e91498d2411f::t_640cef0a7d87f5 1-5
+packages/deslop-js/tests/fixtures/workspace-local-bin/package.json
+  s_e3e91498d2411f::t_39a572256fe0ad 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "27298a6bb2c6f92d96572352de90cab19180cf70",
+  "prompts": {},
+  "sessions": {
+    "s_e3e91498d2411f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "831af94d-aa65-4b36-99a0-389dcd77c6fc",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

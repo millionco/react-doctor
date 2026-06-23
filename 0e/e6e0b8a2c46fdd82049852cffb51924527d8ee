@@ -1,0 +1,23 @@
+packages/core/src/check-pnpm-hardening.ts
+  s_b7e0201c707cbf::t_648091bd385d16 131-133
+packages/core/tests/check-pnpm-hardening.test.ts
+  s_b7e0201c707cbf::t_08167f8da9de52 476,496,513,530
+  s_b7e0201c707cbf::t_2f9b6f65e57a24 6
+  s_b7e0201c707cbf::t_fe679e26fa7c68 393-399
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "0ee6e0b8a2c46fdd82049852cffb51924527d8ee",
+  "prompts": {},
+  "sessions": {
+    "s_b7e0201c707cbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "91af6388-8a18-4c1b-9105-6b047e31dd7b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

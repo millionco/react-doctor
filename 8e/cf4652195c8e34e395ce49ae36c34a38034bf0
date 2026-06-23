@@ -1,0 +1,26 @@
+packages/react-doctor/tests/run-explain.test.ts
+  s_73e90a21e59a4f::t_a1ef52332485a3 1-22,27-66,71-94
+  s_73e90a21e59a4f::t_5a59a5652efe6d 26
+  s_73e90a21e59a4f::t_16df2f93f88b06 67-70
+  s_73e90a21e59a4f::t_720e54a5597363 23-25
+.changeset/fix-why-show-code-frame.md
+  s_73e90a21e59a4f::t_c1bc8aef75811e 1-7
+packages/react-doctor/src/cli/utils/run-explain.ts
+  s_73e90a21e59a4f::t_0e4aba6749a33d 5,8,77-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.8",
+  "base_commit_sha": "8ecf4652195c8e34e395ce49ae36c34a38034bf0",
+  "prompts": {},
+  "sessions": {
+    "s_73e90a21e59a4f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd794799-457c-4fc9-b435-a1249922e794",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

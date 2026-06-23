@@ -1,0 +1,19 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rule-registry.ts
+  s_3a115153e46df0::t_1e67bfc04b05c8 30,49,150,154,160,194,201,634-644,861-872,2032-2043,2079-2090,2151-2162,2548-2559,2632-2640
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "7697a14ef7d62c669a4872379255c4109d726568",
+  "prompts": {},
+  "sessions": {
+    "s_3a115153e46df0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2922f7ff-119a-484d-b46b-d1aff0a2b802",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

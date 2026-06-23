@@ -1,0 +1,33 @@
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/agent-tool-capability-risk.ts
+  s_6de7c249307126::t_02288a54e8d2b1 24-27
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/utils/strip-comments-preserving-positions.test.ts
+  s_6de7c249307126::t_19a55da1c68237 2-5
+  s_6de7c249307126::t_1935cba482673e 36-67
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/agent-tool-capability-risk.regressions.test.ts
+  s_6de7c249307126::t_5aa5e62be685b7 1-51
+.changeset/fix-agent-tool-capability-risk-string-literals.md
+  s_6de7c249307126::t_37b88f923009a5 1-7
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/utils/strip-comments-preserving-positions.ts
+  s_6de7c249307126::t_e7b1b98d48db9d 63
+  s_6de7c249307126::t_c3f7008b45cc45 9
+  s_6de7c249307126::t_e58b25edac237f 74-79
+  s_6de7c249307126::t_968cf119ee0099 4-8,14-17,24-27,31-36
+packages/oxlint-plugin-react-doctor/src/plugin/rules/security-scan/utils/scan-by-pattern.ts
+  s_6de7c249307126::t_9590362ce9f55e 4-7,20-24,29,34,36-37,39-42,47-54,57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "fd85c79f46c2c0510fa4698abc23aa37b8a8a05e",
+  "prompts": {},
+  "sessions": {
+    "s_6de7c249307126": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "92e7361a-39ae-4147-9745-b16d7d1d9dc6",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Rayhan Noufal Arayilakath <me@rayhanadev.com>"
+    }
+  }
+}

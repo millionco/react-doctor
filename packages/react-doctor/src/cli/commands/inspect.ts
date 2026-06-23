@@ -238,11 +238,18 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
   const startTime = performance.now();
 
   if (isJsonMode) {
-    enableJsonMode({ compact: Boolean(flags.jsonCompact), directory: requestedDirectory });
+    enableJsonMode({
+      compact: Boolean(flags.jsonCompact),
+      directory: requestedDirectory,
+      outputFile: flags.jsonOut,
+    });
   }
   // Recorded after JSON mode is enabled so the metric's run attributes reflect
   // the true `jsonMode` (run context is rebuilt per emit in `record-metric.ts`).
   recordCount(METRIC.cliInvoked, 1, { command: "inspect" });
+  if (flags.jsonOut) {
+    recordCount(METRIC.jsonOutUsed, 1);
+  }
 
   try {
     validateModeFlags(flags);

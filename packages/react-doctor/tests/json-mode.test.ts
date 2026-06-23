@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { JsonReport } from "@react-doctor/core";
 import {
   enableJsonMode,
@@ -154,5 +157,55 @@ describe("json-mode lifecycle", () => {
     const parsed = JSON.parse(written.trim());
     expect(parsed.ok).toBe(false);
     expect(parsed.schemaVersion).toBe(1);
+  });
+
+  it("writeJsonReport writes to a file when outputFile is provided", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "json-mode-test-"));
+    const outputFile = path.join(tempDir, "report.json");
+    enableJsonMode({ compact: false, directory: "/tmp/foo", outputFile });
+    captured.lines.length = 0;
+    writeJsonReport(buildOkReport());
+    expect(captured.lines.length).toBe(0);
+    expect(fs.existsSync(outputFile)).toBe(true);
+    const fileContent = fs.readFileSync(outputFile, "utf8");
+    expect(() => JSON.parse(fileContent)).not.toThrow();
+    const parsed = JSON.parse(fileContent);
+    expect(parsed.ok).toBe(true);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("writeJsonReport creates parent directories when outputFile is in a nested path", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "json-mode-test-"));
+    const outputFile = path.join(tempDir, "nested", "deep", "report.json");
+    enableJsonMode({ compact: false, directory: "/tmp/foo", outputFile });
+    captured.lines.length = 0;
+    writeJsonReport(buildOkReport());
+    expect(captured.lines.length).toBe(0);
+    expect(fs.existsSync(outputFile)).toBe(true);
+    const fileContent = fs.readFileSync(outputFile, "utf8");
+    expect(() => JSON.parse(fileContent)).not.toThrow();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("writeJsonReport writes to stdout when outputFile is not provided", () => {
+    enableJsonMode({ compact: false, directory: "/tmp/foo" });
+    captured.lines.length = 0;
+    writeJsonReport(buildOkReport());
+    expect(captured.lines.length).toBeGreaterThan(0);
+    const written = captured.lines.join("");
+    expect(() => JSON.parse(written.trim())).not.toThrow();
+    const parsed = JSON.parse(written.trim());
+    expect(parsed.ok).toBe(true);
+  });
+
+  it("writeJsonReport respects compact mode when writing to file", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "json-mode-test-"));
+    const outputFile = path.join(tempDir, "compact.json");
+    enableJsonMode({ compact: true, directory: "/tmp/foo", outputFile });
+    writeJsonReport(buildOkReport());
+    const fileContent = fs.readFileSync(outputFile, "utf8");
+    expect(fileContent).not.toContain("\n  ");
+    expect(fileContent.endsWith("\n")).toBe(true);
+    fs.rmSync(tempDir, { recursive: true, force: true });
   });
 });

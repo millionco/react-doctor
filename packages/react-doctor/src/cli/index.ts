@@ -129,6 +129,7 @@ const program = new Command()
   .option("--score", "output only the score")
   .option("--json", "output a single structured JSON report (suppresses other output)")
   .option("--json-compact", "with --json, emit compact JSON (no indentation)")
+  .option("--json-out <path>", "with --json, write the report to a file instead of stdout")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
   .option(
     "--no-parallel",

@@ -77,4 +77,21 @@ describe("renderStatsReport", () => {
     expect(output).toContain("Skipped 3 that changed only non-React files");
     expect(output).toContain("Skipped 1 that used edits we could not replay");
   });
+
+  it("appends the community leaderboard with sample sizes when one is supplied", () => {
+    const only = group({ key: "claude/opus" });
+    const output = renderStatsReport(report({ models: [only], providers: [only], best: only }), {
+      generatedAt: "2026-06-22T00:00:00.000Z",
+      models: [{ model: "opus", harness: "claude", communityScore: 81, runs: 42, files: 900 }],
+    });
+    expect(output).toContain("Community leaderboard (all react-doctor users)");
+    expect(output).toContain("81");
+    expect(output).toContain("42");
+  });
+
+  it("omits the community section when no board is supplied (offline / --no-telemetry)", () => {
+    const only = group({});
+    const output = renderStatsReport(report({ models: [only], providers: [only], best: only }));
+    expect(output).not.toContain("Community leaderboard");
+  });
 });

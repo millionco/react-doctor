@@ -133,3 +133,23 @@ export interface StatsScopeOptions {
   readonly limit: number;
   readonly provider?: StatsProvider;
 }
+
+/** One model's standing across every `react-doctor stats` run (the community). */
+export interface CommunityModel {
+  readonly model: string;
+  readonly harness: string;
+  /** Files-weighted mean score across all runs (null if undersampled globally). */
+  readonly communityScore: number | null;
+  /** Distinct runs that contributed this model — the sample size behind the score. */
+  readonly runs: number;
+  readonly files: number;
+}
+
+/**
+ * The global agent leaderboard returned by `/api/stats` in exchange for a run's
+ * rows — how these agents rank across everyone, so a local board reads in context.
+ */
+export interface CommunityLeaderboard {
+  readonly generatedAt: string;
+  readonly models: ReadonlyArray<CommunityModel>;
+}

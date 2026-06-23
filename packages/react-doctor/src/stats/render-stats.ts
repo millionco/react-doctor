@@ -6,7 +6,7 @@ import {
   STATS_SCORE_COLOR_MEDIUM,
 } from "./constants.js";
 import { modelLabel } from "./model-label.js";
-import type { GroupStats, StatsReport } from "./types.js";
+import type { CommunityLeaderboard, CommunityModel, GroupStats, StatsReport } from "./types.js";
 
 const colorForScore = (score: number): ((text: string) => string) => {
   if (score >= STATS_SCORE_COLOR_HIGH) return highlighter.success;
@@ -74,6 +74,21 @@ const renderProviderTable = (providers: ReadonlyArray<GroupStats>): string => {
   return renderTable(["Tool", "Files", "Score"], rows);
 };
 
+const renderCommunityScore = (score: number | null): string =>
+  score === null ? highlighter.dim("n/a") : colorForScore(score)(String(score).padStart(3));
+
+const renderCommunityTable = (models: ReadonlyArray<CommunityModel>): string => {
+  const rows = models.map((model, index) => [
+    String(index + 1),
+    highlighter.bold(model.model),
+    colorForProvider(model.harness)(model.harness),
+    renderCommunityScore(model.communityScore),
+    // Sample size beside the score so a thinly-sampled model isn't read as authoritative.
+    highlighter.dim(String(model.runs)),
+  ]);
+  return renderTable(["#", "Model", "Tool", "Score", "Runs"], rows);
+};
+
 const calloutScore = (group: GroupStats): string =>
   group.weightedScore !== null ? ` (${group.weightedScore})` : "";
 
@@ -95,8 +110,15 @@ const renderCallout = (report: StatsReport): string => {
   return lines.join("\n");
 };
 
-/** Render the leaderboard to a string for the terminal. */
-export const renderStatsReport = (report: StatsReport): string => {
+/**
+ * Render the leaderboard to a string for the terminal. When a `community` board is
+ * supplied (telemetry on, `/api/stats` reachable), append how these agents rank
+ * across everyone for context.
+ */
+export const renderStatsReport = (
+  report: StatsReport,
+  community: CommunityLeaderboard | null = null,
+): string => {
   const scopePhrase = report.scope === "global" ? "across all your projects" : "in this project";
   const header = [
     highlighter.bold("React Doctor leaderboard"),
@@ -126,6 +148,14 @@ export const renderStatsReport = (report: StatsReport): string => {
   const callout = renderCallout(report);
   if (callout) {
     sections.push("", callout);
+  }
+
+  if (community && community.models.length > 0) {
+    sections.push(
+      "",
+      highlighter.dim("Community leaderboard (all react-doctor users):"),
+      renderCommunityTable(community.models.slice(0, STATS_LEADERBOARD_TOP_N)),
+    );
   }
 
   const notes: string[] = [];

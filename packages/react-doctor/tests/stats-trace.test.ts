@@ -3,6 +3,7 @@ import {
   buildStatsRowAttributes,
   recordStatsLeaderboard,
 } from "../src/cli/utils/with-sentry-stats-span.js";
+import { toLeaderboardRow } from "../src/stats/leaderboard-row.js";
 import type { GroupStats } from "../src/stats/types.js";
 
 const group = (overrides: Partial<GroupStats>): GroupStats => ({
@@ -48,6 +49,31 @@ describe("buildStatsRowAttributes", () => {
     expect(buildStatsRowAttributes(group({ key: "codex", provider: "codex" }))["stats.model"]).toBe(
       "codex",
     );
+  });
+
+  it("emits only the four leaderboard attribute keys — never code, paths, or identity", () => {
+    expect(Object.keys(buildStatsRowAttributes(group({}))).sort()).toEqual([
+      "stats.files",
+      "stats.harness",
+      "stats.model",
+      "stats.score",
+    ]);
+  });
+
+  it("derives the span attributes from the same projection the /api/stats payload uses (no drift)", () => {
+    const sample = group({
+      key: "cursor/composer-2.5",
+      provider: "cursor",
+      weightedScore: 67,
+      filesScanned: 12,
+    });
+    const row = toLeaderboardRow(sample);
+    expect(buildStatsRowAttributes(sample)).toEqual({
+      "stats.model": row.model,
+      "stats.harness": row.harness,
+      "stats.score": row.score,
+      "stats.files": row.files,
+    });
   });
 });
 

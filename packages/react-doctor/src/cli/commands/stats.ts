@@ -4,8 +4,14 @@ import { aggregateStats } from "../../stats/aggregate-stats.js";
 import { STATS_DEFAULT_SESSION_LIMIT } from "../../stats/constants.js";
 import { discoverSessions } from "../../stats/discover-sessions.js";
 import { renderStatsReport } from "../../stats/render-stats.js";
+import { reportStatsRun } from "../../stats/report-stats-run.js";
 import { runStatsScan } from "../../stats/run-stats-scan.js";
-import type { StatsProvider, StatsReport, StatsScopeOptions } from "../../stats/types.js";
+import type {
+  CommunityLeaderboard,
+  StatsProvider,
+  StatsReport,
+  StatsScopeOptions,
+} from "../../stats/types.js";
 import { METRIC } from "../utils/constants.js";
 import { enableJsonMode } from "../utils/json-mode.js";
 import { recordCount } from "../utils/record-metric.js";
@@ -23,6 +29,10 @@ export interface StatsFlags {
   provider?: string;
   json?: boolean;
   cwd?: string;
+  // Commander negations from the root program: `--no-score` → `score: false`,
+  // `--no-telemetry` → `telemetry: false`. Both opt out of the network.
+  score?: boolean;
+  telemetry?: boolean;
 }
 
 const VALID_PROVIDERS = new Set<string>(["claude", "codex", "cursor"]);
@@ -82,10 +92,23 @@ export const statsAction = async (flags: StatsFlags): Promise<void> => {
 
   const { root, userConfig } = await resolveTarget(directory);
 
+  // `--no-score` / `--no-telemetry` (or `noScore` in config) opt out of the
+  // network entirely — same signal `resolve-cli-inspect-options` uses. When off,
+  // we skip the score API (scores show n/a, ranked by diagnostics-per-file) and
+  // the `/api/stats` report, so a `--no-telemetry` run is fully local.
+  const telemetryEnabled = !(
+    flags.score === false ||
+    flags.telemetry === false ||
+    Boolean(userConfig?.noScore)
+  );
+
   // ora renders to stderr; suppress it in JSON mode so the run stays quiet.
   // The whole run is one Sentry trace: each phase below is a child span, and
   // every ranked model becomes a queryable leaderboard-row span.
-  const report = await withSentryStatsSpan<StatsReport>(async (rootSpan) => {
+  const { report, community } = await withSentryStatsSpan<{
+    report: StatsReport;
+    community: CommunityLeaderboard | null;
+  }>(async (rootSpan) => {
     const progress = flags.json ? null : spinner("Looking through your agent history…").start();
     try {
       const sessions = await traceStatsPhase("discover sessions", () =>
@@ -102,9 +125,15 @@ export const statsAction = async (flags: StatsFlags): Promise<void> => {
             ),
         }),
       );
-      progress?.update("Scoring…");
+      progress?.update(telemetryEnabled ? "Scoring…" : "Ranking…");
       const aggregated = await traceStatsPhase("aggregate + score", () =>
-        aggregateStats(results, userConfig),
+        // Skip the score API when telemetry is off: a null scorer leaves every
+        // score null, and ranking falls back to diagnostics-per-file.
+        aggregateStats(
+          results,
+          userConfig,
+          telemetryEnabled ? undefined : () => Promise.resolve(null),
+        ),
       );
 
       const built: StatsReport = {
@@ -128,8 +157,14 @@ export const statsAction = async (flags: StatsFlags): Promise<void> => {
         generatedAt: new Date().toISOString(),
       };
       recordStatsLeaderboard(built.models, rootSpan);
+      // Send the same leaderboard rows to our own store and get the community
+      // board back. Best-effort and telemetry-gated; never blocks the result.
+      progress?.update("Comparing with the community…");
+      const communityBoard = telemetryEnabled
+        ? await traceStatsPhase("report leaderboard", () => reportStatsRun(built))
+        : null;
       progress?.succeed("Done.");
-      return built;
+      return { report: built, community: communityBoard };
     } finally {
       progress?.stop();
     }
@@ -147,5 +182,5 @@ export const statsAction = async (flags: StatsFlags): Promise<void> => {
     return;
   }
 
-  process.stdout.write(`${renderStatsReport(report)}\n`);
+  process.stdout.write(`${renderStatsReport(report, community)}\n`);
 };

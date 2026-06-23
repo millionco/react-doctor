@@ -59,3 +59,7 @@ export const STATS_SCORE_BAR_WIDTH = 16;
 // above MEDIUM is yellow, below is red.
 export const STATS_SCORE_COLOR_HIGH = 80;
 export const STATS_SCORE_COLOR_MEDIUM = 50;
+
+// Wire-format version for the `/api/stats` request body. Bump when the shape of
+// the reported leaderboard rows changes so the endpoint can branch on it.
+export const STATS_REPORT_SCHEMA_VERSION = 1;

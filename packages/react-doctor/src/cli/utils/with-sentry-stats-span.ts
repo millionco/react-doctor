@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/node";
 import { isSentryTracingEnabled } from "../../instrument.js";
-import { modelLabel } from "../../stats/model-label.js";
+import { toLeaderboardRow } from "../../stats/leaderboard-row.js";
 import type { GroupStats } from "../../stats/types.js";
 import { buildSentryScope } from "./build-sentry-scope.js";
 import { toSpanAttributes } from "./to-span-attributes.js";
@@ -46,22 +46,23 @@ export const traceStatsPhase = <T>(name: string, thunk: () => Promise<T>): Promi
 };
 
 /**
- * The four leaderboard dimensions of one ranked model, projected to span
- * attributes: the model name, its harness (the agent tool that ran it), the
- * confidence-weighted 0-100 score (the column the board ranks on — `null` when
- * undersampled, dropped rather than coerced), and the React files scored. Pure
- * and exported so the projection is unit-testable without a live SDK, mirroring
- * `build-run-event.ts`'s `buildRunEventAttributes`.
+ * One ranked model's four leaderboard dimensions projected to span attributes,
+ * built from the shared {@link toLeaderboardRow} projection so the Sentry span and
+ * the `/api/stats` payload carry identical, code-free data. `null` score is
+ * dropped rather than coerced. Pure and exported so it's unit-testable without a
+ * live SDK, mirroring `build-run-event.ts`'s `buildRunEventAttributes`.
  */
 export const buildStatsRowAttributes = (
   model: GroupStats,
-): Record<string, string | number | boolean> =>
-  toSpanAttributes({
-    "stats.model": modelLabel(model),
-    "stats.harness": model.provider,
-    "stats.score": model.weightedScore,
-    "stats.files": model.filesScanned,
+): Record<string, string | number | boolean> => {
+  const row = toLeaderboardRow(model);
+  return toSpanAttributes({
+    "stats.model": row.model,
+    "stats.harness": row.harness,
+    "stats.score": row.score,
+    "stats.files": row.files,
   });
+};
 
 /**
  * Emits one zero-duration child span per ranked model so the leaderboard is

@@ -14,6 +14,10 @@
     "./schemas": {
       "types": "./dist/schemas.d.ts",
       "default": "./dist/schemas.js"
+    },
+    "./deslop": {
+      "types": "./dist/deslop.d.ts",
+      "default": "./dist/deslop.js"
     }
   },
   "scripts": {
@@ -23,11 +27,15 @@
   },
   "dependencies": {
     "@effect/platform-node-shared": "4.0.0-beta.70",
+    "@oxc-project/types": "^0.132.0",
     "confbox": "^0.2.4",
-    "deslop-js": "workspace:*",
     "effect": "4.0.0-beta.70",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "fast-glob": "^3.3.3",
     "jiti": "^2.7.0",
+    "minimatch": "^10.2.5",
+    "oxc-parser": "^0.132.0",
+    "oxc-resolver": "^11.19.1",
     "oxlint": ">=1.66.0 <1.67.0",
     "oxlint-plugin-react-doctor": "workspace:*",
     "picomatch": "^4.0.4",
@@ -36,9 +44,11 @@
   },
   "devDependencies": {
     "@effect/vitest": "4.0.0-beta.70",
+    "@types/minimatch": "^5.1.2",
     "@types/node": "^25.6.0",
     "@types/picomatch": "^4.0.3",
-    "@types/semver": "^7.7.1"
+    "@types/semver": "^7.7.1",
+    "tsx": "^4.21.0"
   },
   "engines": {
     "node": "^20.19.0 || >=22.13.0"

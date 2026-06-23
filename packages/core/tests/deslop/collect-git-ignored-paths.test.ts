@@ -1,11 +1,11 @@
-import { describe, it } from "node:test";
+import { describe, it } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { collectGitIgnoredPaths } from "../src/utils/collect-git-ignored-paths.js";
-import { toPosixPath } from "../src/utils/to-posix-path.js";
+import { collectGitIgnoredPaths } from "../../src/deslop/utils/collect-git-ignored-paths.js";
+import { toPosixPath } from "../../src/deslop/utils/to-posix-path.js";
 
 const createTempProject = (): string => mkdtempSync(join(tmpdir(), "deslop-gitignore-"));
 

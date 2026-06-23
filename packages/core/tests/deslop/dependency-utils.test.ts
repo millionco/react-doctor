@@ -1,9 +1,9 @@
-import { describe, it } from "node:test";
+import { describe, it } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { collectOverrideMappingsFromRecord } from "../src/utils/collect-override-mappings-from-record.js";
-import { collectPnpmWorkspaceOverrideMappings } from "../src/utils/parse-pnpm-workspace-overrides.js";
-import { matchesPackageImportReference } from "../src/utils/matches-package-import-reference.js";
-import { matchesPackageTokenReference } from "../src/utils/matches-package-token-reference.js";
+import { collectOverrideMappingsFromRecord } from "../../src/deslop/utils/collect-override-mappings-from-record.js";
+import { collectPnpmWorkspaceOverrideMappings } from "../../src/deslop/utils/parse-pnpm-workspace-overrides.js";
+import { matchesPackageImportReference } from "../../src/deslop/utils/matches-package-import-reference.js";
+import { matchesPackageTokenReference } from "../../src/deslop/utils/matches-package-token-reference.js";
 import { resolve } from "node:path";
 
 describe("collectOverrideMappingsFromRecord", () => {

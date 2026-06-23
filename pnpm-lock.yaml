@@ -51,6 +51,9 @@ importers:
       '@react-doctor/core':
         specifier: workspace:*
         version: link:../core
+      deslop-js:
+        specifier: workspace:*
+        version: link:../deslop-js
       effect:
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70
@@ -64,21 +67,33 @@ importers:
       '@effect/platform-node-shared':
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70(effect@4.0.0-beta.70)
+      '@oxc-project/types':
+        specifier: ^0.132.0
+        version: 0.132.0
       confbox:
         specifier: ^0.2.4
         version: 0.2.4
-      deslop-js:
-        specifier: workspace:*
-        version: link:../deslop-js
       effect:
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70
       eslint-plugin-react-hooks:
         specifier: ^7.1.1
         version: 7.1.1(eslint@9.39.2(jiti@2.7.0))
+      fast-glob:
+        specifier: ^3.3.3
+        version: 3.3.3
       jiti:
         specifier: ^2.7.0
         version: 2.7.0
+      minimatch:
+        specifier: ^10.2.5
+        version: 10.2.5
+      oxc-parser:
+        specifier: ^0.132.0
+        version: 0.132.0
+      oxc-resolver:
+        specifier: ^11.19.1
+        version: 11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       oxlint:
         specifier: '>=1.66.0 <1.67.0'
         version: 1.66.0(oxlint-tsgolint@0.23.0)
@@ -98,6 +113,9 @@ importers:
       '@effect/vitest':
         specifier: 4.0.0-beta.70
         version: 4.0.0-beta.70(effect@4.0.0-beta.70)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(vite@7.3.1(@types/node@25.6.0)(jiti@2.7.0)(lightningcss@1.30.2)(terser@5.46.0)(tsx@4.22.4)(yaml@2.9.0)))
+      '@types/minimatch':
+        specifier: ^5.1.2
+        version: 5.1.2
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
@@ -107,6 +125,9 @@ importers:
       '@types/semver':
         specifier: ^7.7.1
         version: 7.7.1
+      tsx:
+        specifier: ^4.21.0
+        version: 4.22.4
 
   packages/deslop-cli:
     dependencies:
@@ -142,15 +163,12 @@ importers:
         specifier: ^6.0.3
         version: 6.0.3
     devDependencies:
-      '@types/minimatch':
-        specifier: ^5.1.2
-        version: 5.1.2
+      '@react-doctor/core':
+        specifier: workspace:*
+        version: link:../core
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
-      tsx:
-        specifier: ^4.21.0
-        version: 4.22.4
 
   packages/eslint-plugin-react-doctor:
     dependencies:

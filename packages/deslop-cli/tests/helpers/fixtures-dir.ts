@@ -7,9 +7,10 @@ import { join, resolve } from "node:path";
 // them OUTSIDE the repository and `git init` the copy so the CLI's
 // findMonorepoRoot walk stops at the temp boundary instead of escaping into the
 // enclosing react-doctor workspace and folding its packages into the scan.
-// Mirrors packages/deslop-js/tests/helpers/fixtures-dir.ts (kept local rather
-// than shared because the two packages publish independently).
-const sourceFixturesDirectory = resolve(import.meta.dirname, "../../../deslop-js/tests/fixtures");
+// Mirrors packages/core/tests/deslop/helpers/fixtures-dir.ts (kept local rather
+// than shared because the two packages publish independently). The deslop
+// engine — and its fixtures — now live in @react-doctor/core.
+const sourceFixturesDirectory = resolve(import.meta.dirname, "../../../core/tests/deslop/fixtures");
 const temporaryFixturesRoot = mkdtempSync(join(tmpdir(), "deslop-cli-fixtures-"));
 cpSync(sourceFixturesDirectory, temporaryFixturesRoot, { recursive: true });
 

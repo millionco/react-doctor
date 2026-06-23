@@ -1,8 +1,8 @@
-import { describe, it } from "node:test";
+import { describe, it } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { analyze, defineConfig } from "../src/index.js";
-import type { ScanResult, SemanticConfig } from "../src/types.js";
+import { analyze, defineConfig } from "../../src/deslop/index.js";
+import type { ScanResult, SemanticConfig } from "../../src/deslop/types.js";
 import { FIXTURES_DIR } from "./helpers/fixtures-dir.js";
 
 const scanFixtureWithSemantic = async (

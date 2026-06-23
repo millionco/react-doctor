@@ -1,7 +1,11 @@
 import * as path from "node:path";
-import { mapWithConcurrency, runEditorScan, type Diagnostic } from "@react-doctor/core";
+import {
+  isPathInside,
+  mapWithConcurrency,
+  runEditorScan,
+  type Diagnostic,
+} from "@react-doctor/core";
 import { STATS_SCAN_CONCURRENCY } from "./constants.js";
-import { isPathInside } from "./is-path-inside.js";
 import { isReactSourceFile } from "./is-react-source.js";
 import { materializeReconstructedTree } from "./materialize-reconstructed-tree.js";
 import { reconstructSession } from "./reconstruct-files.js";

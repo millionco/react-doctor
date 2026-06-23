@@ -59,7 +59,7 @@ const codexRoots = (): string[] => {
 export const codexSource: SourceDef = {
   name: "codex",
   candidates() {
-    // sessions/YYYY/MM/DD/rollout-*.jsonl → 4 levels.
+    // sessions/YYYY/MM/DD/rollout-*.jsonl — files sit 3 levels below the root; 5 leaves headroom.
     return fileSessionCandidates(
       "codex",
       codexRoots(),

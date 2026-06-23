@@ -35,8 +35,6 @@ export interface AgentSession {
   readonly transcriptPath: string;
   readonly model: string;
   readonly cwd: string | null;
-  readonly startedAt?: string;
-  readonly endedAt?: string;
   readonly edits: FileEdit[];
   readonly reads: FileRead[];
 }

@@ -69,7 +69,7 @@ const upsert = (
  * mean; high-evidence groups keep their raw score. Returns the raw score when
  * there's no prior.
  */
-export const confidenceWeightedScore = (
+const confidenceWeightedScore = (
   rawScore: number | null,
   priorScore: number | null,
   filesScanned: number,

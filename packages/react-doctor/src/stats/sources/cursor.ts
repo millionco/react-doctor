@@ -1,6 +1,6 @@
 import { asRecord, asString, parseJson } from "../coerce.js";
 import { STATS_UNKNOWN_MODEL } from "../constants.js";
-import { openCursorDb, resolveCursorDbPath, type CursorDbHandle } from "../cursor-db.js";
+import { openCursorDb, resolveCursorDbPaths, type CursorDbHandle } from "../cursor-db.js";
 import { mostCommonKey } from "../most-common-key.js";
 import { isLintablePath } from "../reconstruct-files.js";
 import type { AgentSession, FileEdit, SessionCandidate, SourceDef } from "./index.js";
@@ -37,7 +37,7 @@ const editFromToolCall = (
   const afterContentId = result && asString(result.afterContentId);
   const content = afterContentId ? db.contentValue(afterContentId) : null;
   const resultContent = content ?? asString(params?.streamingContent);
-  if (resultContent === undefined || resultContent === null) return null;
+  if (resultContent === undefined) return null;
   return { kind: "write", path: filePath, resultContent };
 };
 
@@ -105,6 +105,6 @@ export const cursorComposerCandidates = (dbPath: string | null): SessionCandidat
 export const cursorSource: SourceDef = {
   name: "cursor",
   candidates() {
-    return cursorComposerCandidates(resolveCursorDbPath());
+    return resolveCursorDbPaths().flatMap((dbPath) => cursorComposerCandidates(dbPath));
   },
 };

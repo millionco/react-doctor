@@ -1,9 +1,8 @@
 import * as fs from "node:fs";
-import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-
-const nodeRequire = createRequire(import.meta.url);
+import { asNullableString } from "./coerce.js";
+import { openReadOnlySqlite } from "./open-sqlite.js";
 
 // Cursor persists chat state in a single SQLite file. The GUI agent's model
 // selection, tool calls (edits), and full post-edit file snapshots all live in
@@ -29,34 +28,39 @@ interface CursorDbHandle {
 
 export type { CursorComposerHeader, CursorDbHandle };
 
-const asString = (value: unknown): string | null => (typeof value === "string" ? value : null);
-
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 
-const cursorAppDir = (): string => {
+// Cursor ships a stable build and a "Nightly" build; each keeps its own
+// application-support tree, so both are scanned.
+const CURSOR_APP_DIR_NAMES = ["Cursor", "Cursor Nightly"];
+
+const cursorAppDirs = (): string[] => {
   if (process.platform === "darwin") {
-    return path.join(os.homedir(), "Library", "Application Support", "Cursor");
+    const base = path.join(os.homedir(), "Library", "Application Support");
+    return CURSOR_APP_DIR_NAMES.map((name) => path.join(base, name));
   }
   if (process.platform === "win32") {
     const appData = process.env.APPDATA ?? path.join(os.homedir(), "AppData", "Roaming");
-    return path.join(appData, "Cursor");
+    return CURSOR_APP_DIR_NAMES.map((name) => path.join(appData, name));
   }
   const configHome = process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config");
-  return path.join(configHome, "Cursor");
+  return CURSOR_APP_DIR_NAMES.map((name) => path.join(configHome, name));
 };
 
 /**
- * Absolute path to the Cursor composer database, honoring a
- * `REACT_DOCTOR_CURSOR_DB` override (used by tests). Returns `null` when no
- * readable database exists.
+ * Absolute paths to every readable Cursor composer database — the stable and
+ * Nightly builds each keep their own. A `REACT_DOCTOR_CURSOR_DB` override pins
+ * a single database (used by tests). Returns `[]` when none exist.
  */
-export const resolveCursorDbPath = (): string | null => {
-  const candidate =
-    process.env.REACT_DOCTOR_CURSOR_DB ?? path.join(cursorAppDir(), CURSOR_DB_RELATIVE_PATH);
-  return fs.existsSync(candidate) ? candidate : null;
+export const resolveCursorDbPaths = (): string[] => {
+  const override = process.env.REACT_DOCTOR_CURSOR_DB;
+  const candidates = override
+    ? [override]
+    : cursorAppDirs().map((directory) => path.join(directory, CURSOR_DB_RELATIVE_PATH));
+  return candidates.filter((candidate) => fs.existsSync(candidate));
 };
 
 const modifiedMsFromHeader = (head: Record<string, unknown>): number => {
@@ -75,15 +79,16 @@ const parseComposerHeaders = (raw: string): CursorComposerHeader[] => {
     return [];
   }
   const record = asRecord(decoded);
-  const list = Array.isArray(decoded)
-    ? decoded
-    : record && Array.isArray(record.allComposers)
-      ? record.allComposers
-      : [];
+  let list: unknown[] = [];
+  if (Array.isArray(decoded)) {
+    list = decoded;
+  } else if (record && Array.isArray(record.allComposers)) {
+    list = record.allComposers;
+  }
   const headers: CursorComposerHeader[] = [];
   for (const entry of list) {
     const head = asRecord(entry);
-    const composerId = head && asString(head.composerId);
+    const composerId = head && asNullableString(head.composerId);
     if (head && composerId) {
       headers.push({ composerId, modifiedMs: modifiedMsFromHeader(head) });
     }
@@ -94,7 +99,7 @@ const parseComposerHeaders = (raw: string): CursorComposerHeader[] => {
 // node:sqlite returns each row as an object keyed by column name.
 const rowValueString = (row: unknown): string | null => {
   const record = asRecord(row);
-  return record ? asString(record.value) : null;
+  return record ? asNullableString(record.value) : null;
 };
 
 // The exclusive upper bound for a key prefix: the prefix with its last byte
@@ -110,96 +115,93 @@ interface OpenDb {
 }
 
 const makeHandle = (dbPath: string): OpenDb | null => {
-  let database: {
-    prepare(sql: string): {
-      get(...params: unknown[]): unknown;
-      all(...params: unknown[]): unknown[];
-    };
-    close(): void;
+  // `node:sqlite` is built in on Node 22.13+/24+; absent on older Node, where
+  // opening returns null and Cursor stats degrade to "no sessions found".
+  const database = openReadOnlySqlite(dbPath);
+  if (!database) return null;
+  const close = (): void => {
+    try {
+      database.close();
+    } catch {
+      // Already closed or never fully opened — nothing to release.
+    }
   };
+
   try {
-    // `node:sqlite` is built in on Node 22.13+/24+; absent on older Node, where
-    // the require throws and Cursor stats degrade to "no sessions found".
-    const { DatabaseSync } = nodeRequire("node:sqlite");
-    database = new DatabaseSync(dbPath, { readOnly: true });
+    const headersStatement = database.prepare(`SELECT value FROM ItemTable WHERE key = ?`);
+    const composerStatement = database.prepare(`SELECT value FROM cursorDiskKV WHERE key = ?`);
+    const bubbleStatement = database.prepare(
+      `SELECT value FROM cursorDiskKV WHERE key >= ? AND key < ?`,
+    );
+
+    const handle: CursorDbHandle = {
+      composerHeaders(): CursorComposerHeader[] {
+        try {
+          const raw = rowValueString(headersStatement.get(COMPOSER_HEADERS_KEY));
+          return raw ? parseComposerHeaders(raw) : [];
+        } catch {
+          return [];
+        }
+      },
+      composerValue(composerId: string): string | null {
+        try {
+          return rowValueString(composerStatement.get(`${COMPOSER_DATA_PREFIX}${composerId}`));
+        } catch {
+          return null;
+        }
+      },
+      bubbleValues(composerId: string): string[] {
+        try {
+          const prefix = `${BUBBLE_PREFIX}${composerId}:`;
+          const rows = bubbleStatement.all(prefix, prefixUpperBound(prefix));
+          const values: string[] = [];
+          for (const row of rows) {
+            const value = rowValueString(row);
+            if (value) values.push(value);
+          }
+          return values;
+        } catch {
+          return [];
+        }
+      },
+      contentValue(contentId: string): string | null {
+        try {
+          return rowValueString(composerStatement.get(contentId));
+        } catch {
+          return null;
+        }
+      },
+    };
+
+    return { handle, close };
   } catch {
+    // A locked or unreadable database can throw when statements are prepared;
+    // skip it rather than sinking the whole stats run.
+    close();
     return null;
   }
-
-  const headersStatement = database.prepare(`SELECT value FROM ItemTable WHERE key = ?`);
-  const composerStatement = database.prepare(`SELECT value FROM cursorDiskKV WHERE key = ?`);
-  const bubbleStatement = database.prepare(
-    `SELECT value FROM cursorDiskKV WHERE key >= ? AND key < ?`,
-  );
-
-  const handle: CursorDbHandle = {
-    composerHeaders(): CursorComposerHeader[] {
-      try {
-        const raw = rowValueString(headersStatement.get(COMPOSER_HEADERS_KEY));
-        return raw ? parseComposerHeaders(raw) : [];
-      } catch {
-        return [];
-      }
-    },
-    composerValue(composerId: string): string | null {
-      try {
-        return rowValueString(composerStatement.get(`${COMPOSER_DATA_PREFIX}${composerId}`));
-      } catch {
-        return null;
-      }
-    },
-    bubbleValues(composerId: string): string[] {
-      try {
-        const prefix = `${BUBBLE_PREFIX}${composerId}:`;
-        const rows = bubbleStatement.all(prefix, prefixUpperBound(prefix));
-        const values: string[] = [];
-        for (const row of rows) {
-          const value = rowValueString(row);
-          if (value) values.push(value);
-        }
-        return values;
-      } catch {
-        return [];
-      }
-    },
-    contentValue(contentId: string): string | null {
-      try {
-        return rowValueString(composerStatement.get(contentId));
-      } catch {
-        return null;
-      }
-    },
-  };
-
-  return {
-    handle,
-    close: () => {
-      try {
-        database.close();
-      } catch {
-        // Already closed or never fully opened — nothing to release.
-      }
-    },
-  };
 };
 
-// One open handle per process — opening is cheap (SQLite memory-maps lazily),
-// but reopening per composer during a scan would thrash. `closeCursorDb` closes
-// the underlying database for tests (so Windows can unlink the fixture file);
-// the CLI relies on process exit.
-let cachedDb: { dbPath: string; handle: CursorDbHandle | null; close: () => void } | null = null;
+// One open handle per database path — opening is cheap (SQLite memory-maps
+// lazily), but reopening per composer during a scan would thrash. The stable
+// and Nightly databases can both be open at once, so they're memoized by path.
+// `closeCursorDb` closes them for tests (so Windows can unlink the fixture
+// file); the CLI relies on process exit.
+const openDatabases = new Map<string, { handle: CursorDbHandle | null; close: () => void }>();
 
-/** Open (and memoize) the composer database, or `null` when unavailable. */
+/** Open (and memoize) a composer database by path, or `null` when unavailable. */
 export const openCursorDb = (dbPath: string | null): CursorDbHandle | null => {
   if (!dbPath) return null;
-  if (cachedDb && cachedDb.dbPath === dbPath) return cachedDb.handle;
+  const cached = openDatabases.get(dbPath);
+  if (cached) return cached.handle;
   const opened = makeHandle(dbPath);
-  cachedDb = { dbPath, handle: opened?.handle ?? null, close: opened?.close ?? (() => {}) };
-  return cachedDb.handle;
+  const entry = { handle: opened?.handle ?? null, close: opened?.close ?? (() => {}) };
+  openDatabases.set(dbPath, entry);
+  return entry.handle;
 };
 
-/** Close and drop the memoized database (tests open fresh fixture databases). */
+/** Close and drop every memoized database (tests open fresh fixture databases). */
 export const closeCursorDb = (): void => {
-  cachedDb?.close();
-  cachedDb = null;
+  for (const database of openDatabases.values()) database.close();
+  openDatabases.clear();
 };

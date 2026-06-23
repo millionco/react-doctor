@@ -80,7 +80,6 @@ export const statsAction = async (flags: StatsFlags): Promise<void> => {
   // ora renders to stderr; suppress it in JSON mode so the run stays quiet.
   const progress = flags.json ? null : spinner("Looking through your agent history…").start();
   let report: StatsReport;
-  let providerCount: number;
   try {
     const sessions = await discoverSessions(root, scope, (foundCount) =>
       progress?.update(`Looking through your agent history… (${foundCount} found)`),
@@ -92,7 +91,6 @@ export const statsAction = async (flags: StatsFlags): Promise<void> => {
     });
     progress?.update("Scoring…");
     const aggregated = await aggregateStats(results, userConfig);
-    providerCount = aggregated.providers.length;
 
     report = {
       scope: scope.global ? "global" : "repo",
@@ -122,7 +120,7 @@ export const statsAction = async (flags: StatsFlags): Promise<void> => {
   recordCount(METRIC.statsRun, 1, {
     scope: report.scope,
     sessions: report.sessionsAnalyzed,
-    providers: providerCount,
+    providers: report.providers.length,
     provider: scope.provider ?? "all",
   });
 

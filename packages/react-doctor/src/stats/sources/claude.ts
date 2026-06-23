@@ -46,17 +46,10 @@ export const parseClaudeSession = async (transcriptPath: string): Promise<AgentS
   const reads: FileRead[] = [];
   const modelCounts = new Map<string, number>();
   let cwd: string | null = null;
-  let startedAt: string | undefined;
-  let endedAt: string | undefined;
   let sawAnything = false;
 
   await readJsonlEntries(transcriptPath, (entry) => {
     sawAnything = true;
-    const timestamp = asString(entry.timestamp);
-    if (timestamp) {
-      if (!startedAt || timestamp < startedAt) startedAt = timestamp;
-      if (!endedAt || timestamp > endedAt) endedAt = timestamp;
-    }
     if (!cwd) cwd = asString(entry.cwd) ?? null;
 
     // Post-edit / read snapshots ride a top-level `toolUseResult` on the
@@ -99,8 +92,6 @@ export const parseClaudeSession = async (transcriptPath: string): Promise<AgentS
     transcriptPath,
     model: mostCommonKey(modelCounts) ?? STATS_UNKNOWN_MODEL,
     cwd,
-    startedAt,
-    endedAt,
     edits,
     reads,
   };

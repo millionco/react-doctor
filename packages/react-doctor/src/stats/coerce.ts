@@ -6,6 +6,10 @@
 export const asString = (value: unknown): string | undefined =>
   typeof value === "string" && value.length > 0 ? value : undefined;
 
+/** Narrow an unknown to a string, preserving the empty string (unlike `asString`). */
+export const asNullableString = (value: unknown): string | null =>
+  typeof value === "string" ? value : null;
+
 /** Narrow an unknown to a plain object record, else undefined. */
 export const asRecord = (value: unknown): Record<string, unknown> | undefined =>
   value && typeof value === "object" && !Array.isArray(value)

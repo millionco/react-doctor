@@ -1,9 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { STAGED_FILES_PROJECT_CONFIG_FILENAMES } from "@react-doctor/core";
+import { isPathInside, STAGED_FILES_PROJECT_CONFIG_FILENAMES } from "@react-doctor/core";
 import { STATS_TEMP_DIR_PREFIX } from "./constants.js";
-import { isPathInside } from "./is-path-inside.js";
 import type { ReconstructedFile } from "./types.js";
 
 export interface MaterializedReconstruction {
@@ -49,7 +48,7 @@ export const materializeReconstructedTree = (
   try {
     realTempDirectory = fs.realpathSync(resolvedTempDirectory);
   } catch {
-    realTempDirectory = resolvedTempDirectory;
+    // realpath unavailable (broken symlink, permission); keep the resolved path.
   }
 
   return {

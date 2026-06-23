@@ -123,12 +123,12 @@ describe("aggregateStats", () => {
       ...Array.from({ length: 8 }, () => result("codex", "b", 0, [])),
     ];
     const aggregated = await aggregateStats([...productive, ...padded], null, stubScore);
-    const a = aggregated.models.find((group) => group.key === "claude/a");
-    const b = aggregated.models.find((group) => group.key === "codex/b");
-    expect(a?.score).toBe(b?.score);
-    expect(a?.weightedScore).toBe(b?.weightedScore);
+    const productiveGroup = aggregated.models.find((group) => group.key === "claude/a");
+    const paddedGroup = aggregated.models.find((group) => group.key === "codex/b");
+    expect(productiveGroup?.score).toBe(paddedGroup?.score);
+    expect(productiveGroup?.weightedScore).toBe(paddedGroup?.weightedScore);
     // The reported session count still reflects every analyzed session.
-    expect(b?.sessions).toBe(10);
+    expect(paddedGroup?.sessions).toBe(10);
   });
 
   it("leaves the score null when a group lacks enough files to rank fairly", async () => {

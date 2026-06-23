@@ -1,5 +1,5 @@
+import { isPathInside } from "@react-doctor/core";
 import { STATS_DISCOVERY_YIELD_INTERVAL } from "./constants.js";
-import { isPathInside } from "./is-path-inside.js";
 import { STATS_SOURCES } from "./sources/index.js";
 import { resolveEditPaths } from "./reconstruct-files.js";
 import type { AgentSession, StatsScopeOptions } from "./types.js";

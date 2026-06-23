@@ -13,6 +13,11 @@ export interface PatchOp {
 
 const FILE_HEADER = /^\*\*\* (Add|Update|Delete) File: (.+)$/;
 const MOVE_HEADER = /^\*\*\* Move to: (.+)$/;
+const KIND_TO_OP_TYPE: Record<string, PatchOpType> = {
+  add: "add",
+  update: "update",
+  delete: "delete",
+};
 
 /**
  * Parse a Codex / Cursor `apply_patch` envelope (`*** Begin Patch` …
@@ -55,7 +60,7 @@ export const parseApplyPatch = (patchText: string): PatchOp[] => {
       flush();
       const kind = header[1].toLowerCase();
       current = {
-        type: kind === "add" ? "add" : kind === "delete" ? "delete" : "update",
+        type: KIND_TO_OP_TYPE[kind],
         path: header[2].trim(),
         body: [],
       };

@@ -185,6 +185,9 @@ importers:
       '@react-doctor/core':
         specifier: workspace:*
         version: link:../core
+      deslop-js:
+        specifier: workspace:*
+        version: link:../deslop-js
       vscode-languageserver:
         specifier: ^9.0.1
         version: 9.0.1

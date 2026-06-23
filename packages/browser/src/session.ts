@@ -14,6 +14,7 @@ import {
 } from "./constants.js";
 import { collectPerformanceReport } from "./perf-observer.js";
 import { analyzeReactProfile } from "./react-profiler/analyze-profile.js";
+import type { ReactProfilerDataExport } from "./react-profiler/types/profiling-export.js";
 import type {
   AccessibilityViolation,
   BrowserConnectOptions,
@@ -346,13 +347,24 @@ export class BrowserSession {
         globalThis.__REACT_PERF__.start();
         return true;
       });
-      if (options.interaction) await this.evaluate(options.interaction);
-      // Let React's commits flush (concurrent renders land async) and any
-      // interaction-triggered work run; skip the idle wait when neither applies.
-      if (reactStarted || options.interaction) await delay(REACT_PROFILE_FLUSH_MS);
-      const reactExport = reactStarted
-        ? await this.page.evaluate(() => globalThis.__REACT_PERF__?.stop() ?? null)
-        : null;
+
+      let reactExport: ReactProfilerDataExport | null = null;
+      try {
+        if (options.interaction) await this.evaluate(options.interaction);
+        // Let React's commits flush (concurrent renders land async) and any
+        // interaction-triggered work run; skip the idle wait when neither applies.
+        if (reactStarted || options.interaction) await delay(REACT_PROFILE_FLUSH_MS);
+      } finally {
+        // Always stop the React profiler, even if `interaction` threw: the
+        // renderer profiles the persistent page, and `start()` no-ops while
+        // already profiling, so a left-running recording would skew later runs
+        // until the page reloads.
+        if (reactStarted) {
+          reactExport = await this.page
+            .evaluate(() => globalThis.__REACT_PERF__?.stop() ?? null)
+            .catch(() => null);
+        }
+      }
 
       const { profile } = await cdpSession.send("Profiler.stop");
 

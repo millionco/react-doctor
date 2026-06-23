@@ -48,6 +48,17 @@ export default defineConfig({
     // The deslop engine's tests scan fixture projects that deliberately
     // contain their own `*.test.ts` / `*.spec.ts` files (test data for the
     // dead-code analyzer); never collect those as real tests.
-    exclude: ["**/node_modules/**", "**/dist/**", "**/fixtures/**"],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/fixtures/**",
+      // deslop's analyze() returns OS-native path separators; production
+      // normalizes them to POSIX in check-dead-code's toRelativeFilePath, but
+      // these integration tests assert POSIX paths against the raw engine
+      // output. They're POSIX-only (the same reason check-dead-code.test.ts
+      // skips its import-graph cases on win32), and never ran on Windows under
+      // deslop-js's `node --test tests/*.test.ts` glob.
+      ...(process.platform === "win32" ? ["tests/deslop/analyze.test.ts"] : []),
+    ],
   },
 });

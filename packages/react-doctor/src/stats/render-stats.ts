@@ -5,6 +5,7 @@ import {
   STATS_SCORE_COLOR_HIGH,
   STATS_SCORE_COLOR_MEDIUM,
 } from "./constants.js";
+import { modelLabel } from "./model-label.js";
 import type { GroupStats, StatsReport } from "./types.js";
 
 const colorForScore = (score: number): ((text: string) => string) => {
@@ -34,11 +35,6 @@ const renderScore = (group: GroupStats): string => {
     paint("█".repeat(filledCount)) +
     highlighter.dim("░".repeat(STATS_SCORE_BAR_WIDTH - filledCount));
   return `${bar} ${paint(String(group.weightedScore).padStart(3))}`;
-};
-
-const modelLabel = (group: GroupStats): string => {
-  const slash = group.key.indexOf("/");
-  return slash === -1 ? group.key : group.key.slice(slash + 1);
 };
 
 const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");

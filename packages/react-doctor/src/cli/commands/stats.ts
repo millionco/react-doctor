@@ -10,6 +10,11 @@ import { METRIC } from "../utils/constants.js";
 import { enableJsonMode } from "../utils/json-mode.js";
 import { recordCount } from "../utils/record-metric.js";
 import { spinner } from "../utils/spinner.js";
+import {
+  recordStatsLeaderboard,
+  traceStatsPhase,
+  withSentryStatsSpan,
+} from "../utils/with-sentry-stats-span.js";
 
 export interface StatsFlags {
   global?: boolean;
@@ -78,44 +83,57 @@ export const statsAction = async (flags: StatsFlags): Promise<void> => {
   const { root, userConfig } = await resolveTarget(directory);
 
   // ora renders to stderr; suppress it in JSON mode so the run stays quiet.
-  const progress = flags.json ? null : spinner("Looking through your agent history…").start();
-  let report: StatsReport;
-  try {
-    const sessions = await discoverSessions(root, scope, (foundCount) =>
-      progress?.update(`Looking through your agent history… (${foundCount} found)`),
-    );
-    progress?.update("Checking the code each agent wrote…");
-    const results = await runStatsScan(sessions, scope.global ? null : root, {
-      onProgress: (completedCount, totalCount) =>
-        progress?.update(`Checking the code each agent wrote… (${completedCount}/${totalCount})`),
-    });
-    progress?.update("Scoring…");
-    const aggregated = await aggregateStats(results, userConfig);
+  // The whole run is one Sentry trace: each phase below is a child span, and
+  // every ranked model becomes a queryable leaderboard-row span.
+  const report = await withSentryStatsSpan<StatsReport>(async (rootSpan) => {
+    const progress = flags.json ? null : spinner("Looking through your agent history…").start();
+    try {
+      const sessions = await traceStatsPhase("discover sessions", () =>
+        discoverSessions(root, scope, (foundCount) =>
+          progress?.update(`Looking through your agent history… (${foundCount} found)`),
+        ),
+      );
+      progress?.update("Checking the code each agent wrote…");
+      const results = await traceStatsPhase("scan sessions", () =>
+        runStatsScan(sessions, scope.global ? null : root, {
+          onProgress: (completedCount, totalCount) =>
+            progress?.update(
+              `Checking the code each agent wrote… (${completedCount}/${totalCount})`,
+            ),
+        }),
+      );
+      progress?.update("Scoring…");
+      const aggregated = await traceStatsPhase("aggregate + score", () =>
+        aggregateStats(results, userConfig),
+      );
 
-    report = {
-      scope: scope.global ? "global" : "repo",
-      directory: root,
-      models: aggregated.models,
-      providers: aggregated.providers,
-      best: aggregated.best,
-      worst: aggregated.worst,
-      sessionsAnalyzed: results.length,
-      sessionsRanked: results.filter((result) => result.filesScanned > 0).length,
-      sessionsNonReact: results.filter(
-        (result) => result.filesScanned === 0 && result.reconstructedFiles > 0,
-      ).length,
-      sessionsUnreconstructable: results.filter(
-        (result) =>
-          result.filesScanned === 0 &&
-          result.reconstructedFiles === 0 &&
-          result.unreconstructable > 0,
-      ).length,
-      generatedAt: new Date().toISOString(),
-    };
-    progress?.succeed("Done.");
-  } finally {
-    progress?.stop();
-  }
+      const built: StatsReport = {
+        scope: scope.global ? "global" : "repo",
+        directory: root,
+        models: aggregated.models,
+        providers: aggregated.providers,
+        best: aggregated.best,
+        worst: aggregated.worst,
+        sessionsAnalyzed: results.length,
+        sessionsRanked: results.filter((result) => result.filesScanned > 0).length,
+        sessionsNonReact: results.filter(
+          (result) => result.filesScanned === 0 && result.reconstructedFiles > 0,
+        ).length,
+        sessionsUnreconstructable: results.filter(
+          (result) =>
+            result.filesScanned === 0 &&
+            result.reconstructedFiles === 0 &&
+            result.unreconstructable > 0,
+        ).length,
+        generatedAt: new Date().toISOString(),
+      };
+      recordStatsLeaderboard(built.models, rootSpan);
+      progress?.succeed("Done.");
+      return built;
+    } finally {
+      progress?.stop();
+    }
+  });
 
   recordCount(METRIC.statsRun, 1, {
     scope: report.scope,

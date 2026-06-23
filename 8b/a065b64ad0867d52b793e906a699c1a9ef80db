@@ -1,0 +1,79 @@
+packages/website/src/components/terminal.tsx
+  s_29d91623fa4817::t_c0727eadc7bfb2 405,409
+  s_29d91623fa4817::t_370163f18e0f0f 406-408
+packages/react-doctor/src/cli/utils/write-diagnostics-directory.ts
+  s_29d91623fa4817::t_13e73be40db410 9
+packages/react-doctor/src/cli/utils/build-triage-rule-prompt.ts
+  s_29d91623fa4817::t_fe2baad583edeb 1-20,23-38,40-71,73-77
+  s_29d91623fa4817::t_f14e594a2b0323 21-22,72
+  s_29d91623fa4817::t_729acc99286757 39
+packages/react-doctor/src/cli/utils/ensure-react-doctor-gitignore.ts
+  s_29d91623fa4817::t_08a7e5fac8536a 1-25
+packages/react-doctor/src/cli/utils/run-triage-loop.ts
+  s_29d91623fa4817::t_dce647cbac4979 7,84-85,89,94,112-116,142,147,152
+  s_29d91623fa4817::t_db04e7ea3c8371 1-5,8-24,26-39,52-56,68-83,88,93,95,117-119,123-141,144-145,148-150,153-155,157-194,198-220
+  s_29d91623fa4817::t_370163f18e0f0f 67,195-197
+  s_29d91623fa4817::t_53a5ee86e3e77d 6,43-45,47-51,57-62,64,96-106,109-111,120-122
+  s_29d91623fa4817::t_63551d60d61025 46,107-108
+  s_29d91623fa4817::t_186fe616b9d29b 25
+  s_29d91623fa4817::t_913bed1598e082 63,65-66
+  s_29d91623fa4817::t_5596ec3f570626 40-42,86-87
+  s_29d91623fa4817::t_34691eaab4ab04 90-92
+  s_29d91623fa4817::t_81a75bfa93a39b 143,146,151,156
+packages/react-doctor/src/cli/index.ts
+  s_29d91623fa4817::t_71d71e16fd5a36 16,80,200-267
+packages/react-doctor/src/cli/utils/handoff-to-agent.ts
+  s_29d91623fa4817::t_1a6eb6b58b0a79 282
+  s_29d91623fa4817::t_bfde749f3449d3 2,36-38,50,298-303,305-308,316-318
+  s_29d91623fa4817::t_ba35cce6fdd1a1 304,309-315
+  s_fd528823e8d35d::t_8feca507b00112 243-247
+packages/core/src/types/index.ts
+  s_29d91623fa4817::t_edce2fab0265fb 49-54
+packages/react-doctor/src/cli/utils/prompts.ts
+  s_29d91623fa4817::t_b14f4a7c3d6dcd 3,11,14,68-98,105
+packages/core/src/types/prompts.ts
+  s_29d91623fa4817::t_7c608e71941151 13-25
+packages/react-doctor/src/cli/utils/triage-state.ts
+  s_29d91623fa4817::t_ebe2c87738599e 1-2,4-35,45-47,51-70,72-92,94-95
+  s_29d91623fa4817::t_54fe4a87545831 3,36-44,93
+  s_29d91623fa4817::t_370163f18e0f0f 48-50,71
+packages/react-doctor/src/cli/commands/triage.ts
+  s_29d91623fa4817::t_63551d60d61025 119-121
+  s_29d91623fa4817::t_370163f18e0f0f 253-255,318-320
+  s_29d91623fa4817::t_7c5c13afda3c75 312,324
+  s_29d91623fa4817::t_a2ac9fa49b1f4e 73
+  s_29d91623fa4817::t_0f70d7e0587323 98,155,224-226,284-288,295
+  s_29d91623fa4817::t_e4eaa49404ea9d 102-108,110-118,122-148,150-153
+  s_29d91623fa4817::t_7738b58f3f1dac 1-72,74-97,99-101,109,149,154,156-223,227-252,256-283,289-294,296-311,313-317,321-323,325-376
+packages/react-doctor/tests/triage-utils.test.ts
+  s_29d91623fa4817::t_a7b7e75c68073a 1-41,43-85
+  s_29d91623fa4817::t_4c6512f8cc78ad 42
+.changeset/triage-rule-prompts.md
+  s_29d91623fa4817::t_d94b06fb5027ff 1-5
+packages/react-doctor/src/cli/utils/strip-unknown-cli-flags.ts
+  s_29d91623fa4817::t_df4b940c357526 65-96,137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.10",
+  "base_commit_sha": "8ba065b64ad0867d52b793e906a699c1a9ef80db",
+  "prompts": {},
+  "sessions": {
+    "s_29d91623fa4817": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2c1bd3a0-be04-4a70-a668-b1bacaf6d8cf",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    },
+    "s_fd528823e8d35d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "",
+        "model": ""
+      },
+      "human_author": "Nisarg Patel <awesomenisarg@gmail.com>"
+    }
+  }
+}

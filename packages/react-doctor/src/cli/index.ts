@@ -8,6 +8,7 @@ import {
   browserNetworkAction,
   browserOpenAction,
   browserPerfAction,
+  browserProfileAction,
   browserReportAction,
   browserScreenshotAction,
   browserSnapshotAction,
@@ -312,6 +313,18 @@ withRenderOptions(
       "Capture long animation frames (jank) with per-script attribution, plus LCP/CLS (reloads if no URL)",
     ),
 ).action(browserPerfAction);
+
+withRenderOptions(
+  browser
+    .command("profile [url]")
+    .description(
+      "Profile React renders and CPU in one recording: slowest commits, hottest components, unnecessary re-renders, and the hottest JS functions",
+    )
+    .option(
+      "--interaction <expression>",
+      "Playwright expression to drive while recording, e.g. 'page.getByText(\"Next\").click()'",
+    ),
+).action(browserProfileAction);
 
 withRenderOptions(
   browser

@@ -36,7 +36,14 @@ npx react-doctor browser open http://localhost:3000
 
 For trustworthy timings, run against React's profiling build (alias `react-dom` to `react-dom/profiling` in your bundler) in a dev or non-prod build. Dev timings work but are inflated.
 
-Drive it through `browser eval` (the Playwright `page` is in scope). `stop()` returns a JSON profiling export and resolves to `null` when nothing was recorded (a production React build records no profiling data):
+The fastest path is `browser profile`: one recording, both lenses. It returns `react` (slowest commits, components that render most/cost the most self time, and the count of unnecessary re-renders — components that re-rendered with nothing they own changed, the memoization candidates) and `cpu` (a Chrome DevTools CPU profile via V8's sampling profiler over CDP, the hottest JS functions ranked by self time):
+
+```bash
+npx react-doctor browser profile http://localhost:3000 --interaction 'page.getByText("Next").click()'
+# omit the url to profile a page already opened with `browser open`
+```
+
+The `react` lens is null on a production React build (it records no profiling data); the `cpu` lens works on any build. For manual control of the React profiler, drive it through `browser eval` (the Playwright `page` is in scope):
 
 ```bash
 npx react-doctor browser eval 'page.evaluate(() => window.__REACT_PERF__.start())'
@@ -44,7 +51,7 @@ npx react-doctor browser eval 'page.evaluate(() => window.__REACT_PERF__.start()
 npx react-doctor browser eval 'page.evaluate(() => window.__REACT_PERF__.stop())'
 ```
 
-Aggregate `dataForRoots[].commitData[]`: per fiber, render count and summed `fiberActualDurations` and `fiberSelfDurations` (both `[fiberID, ms]` pairs); `changeDescriptions[fiberID]` for why it rendered (which props, state, hooks, or context changed, plus `isFirstMount` and `didHooksChange`). Everything keys by fiber id; map ids to component names with `dataForRoots[].elementNames` (`[fiberID, name]` pairs). Rank by components that render most often, cost the most self time, or re-render with no meaningful prop change (memoization candidates).
+Reading the raw React export: aggregate `dataForRoots[].commitData[]`: per fiber, render count and summed `fiberActualDurations` and `fiberSelfDurations` (both `[fiberID, ms]` pairs); `changeDescriptions[fiberID]` for why it rendered (which props, state, hooks, or context changed, plus `isFirstMount` and `didHooksChange`). Everything keys by fiber id; map ids to component names with `dataForRoots[].elementNames` (`[fiberID, name]` pairs). Rank by components that render most often, cost the most self time, or re-render with no meaningful prop change (memoization candidates) — which is exactly what `browser profile` computes for you.
 
 ## 5. Fix, only with proof
 

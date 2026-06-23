@@ -25,6 +25,7 @@ test("registers the doctor, browser, and debug tools", async () => {
     "browser_network",
     "browser_open",
     "browser_perf",
+    "browser_profile",
     "browser_report",
     "browser_screenshot",
     "browser_snapshot",

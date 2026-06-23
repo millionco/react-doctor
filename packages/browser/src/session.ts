@@ -2,14 +2,18 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { Browser, CDPSession, ConsoleMessage, Page, Request, Response } from "playwright-core";
 import { connectToBrowser, type BrowserConnection } from "./connect.js";
+import { analyzeCpuProfile } from "./analyze-cpu-profile.js";
 import {
+  DEFAULT_CPU_SAMPLING_INTERVAL_US,
   MAX_VIOLATION_TARGETS,
   NAVIGATION_TIMEOUT_MS,
   PERFORMANCE_OBSERVE_WINDOW_MS,
+  REACT_PROFILE_FLUSH_MS,
   REACT_PROFILER_INJECT_FILE,
   SETTLE_TIMEOUT_MS,
 } from "./constants.js";
 import { collectPerformanceReport } from "./perf-observer.js";
+import { analyzeReactProfile } from "./react-profiler/analyze-profile.js";
 import type {
   AccessibilityViolation,
   BrowserConnectOptions,
@@ -17,8 +21,11 @@ import type {
   NetworkRequestEntry,
   PageInspection,
   PerformanceReport,
+  ProfileAnalysis,
+  ProfileOptions,
   Viewport,
 } from "./types.js";
+import { delay } from "./utils/delay.js";
 
 // Which signals to collect during a single capture load. Listeners and the perf
 // observers all attach before one navigation, so any combination costs one load.
@@ -310,6 +317,53 @@ export class BrowserSession {
       return performance;
     }
     return this.measureCurrentPerformance();
+  }
+
+  // Profile a page with both lenses in one recording: the V8 CPU profiler (the
+  // literal Chrome DevTools profiler, over CDP) and the React DevTools render
+  // profiler. Navigation happens first: a top-level navigation can swap renderer
+  // processes, so a profiler must attach to the *final* document — and the React
+  // profiler can only start once renderers are attached. Both lenses therefore
+  // cover the same window: post-load plus whatever `interaction` drives. React
+  // data is null on a production build or a page not opened with the profiler.
+  async profile(options: ProfileOptions = {}): Promise<ProfileAnalysis> {
+    if (options.url) {
+      await this.openWithReactProfiler(options.url);
+    } else {
+      await this.settle();
+    }
+
+    const cdpSession = await this.page.context().newCDPSession(this.page);
+    try {
+      await cdpSession.send("Profiler.enable");
+      await cdpSession.send("Profiler.setSamplingInterval", {
+        interval: options.samplingIntervalUs ?? DEFAULT_CPU_SAMPLING_INTERVAL_US,
+      });
+      await cdpSession.send("Profiler.start");
+
+      const reactStarted = await this.page.evaluate(() => {
+        if (!globalThis.__REACT_PERF__) return false;
+        globalThis.__REACT_PERF__.start();
+        return true;
+      });
+      if (options.interaction) await this.evaluate(options.interaction);
+      // Let React's commits flush (concurrent renders land async) and any
+      // interaction-triggered work run; skip the idle wait when neither applies.
+      if (reactStarted || options.interaction) await delay(REACT_PROFILE_FLUSH_MS);
+      const reactExport = reactStarted
+        ? await this.page.evaluate(() => globalThis.__REACT_PERF__?.stop() ?? null)
+        : null;
+
+      const { profile } = await cdpSession.send("Profiler.stop");
+
+      return {
+        react: reactExport ? analyzeReactProfile(reactExport) : null,
+        cpu: analyzeCpuProfile(profile),
+      };
+    } finally {
+      await cdpSession.send("Profiler.disable").catch(() => {});
+      await cdpSession.detach().catch(() => {});
+    }
   }
 
   async inspectPage(url?: string): Promise<PageInspection> {

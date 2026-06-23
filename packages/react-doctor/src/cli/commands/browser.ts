@@ -2,8 +2,10 @@ import {
   BrowserSession,
   type AccessibilityViolation,
   type ConsoleMessageEntry,
+  type CpuProfileAnalysis,
   type NetworkRequestEntry,
   type PerformanceReport,
+  type ReactProfileAnalysis,
   type Viewport,
 } from "@react-doctor/browser";
 import { DEFAULT_SCREENSHOT_FILENAME, METRIC } from "../utils/constants.js";
@@ -15,6 +17,7 @@ export interface BrowserCommandOptions {
   launch?: boolean;
   out?: string;
   viewport?: Viewport;
+  interaction?: string;
 }
 
 // playwright-core loads lazily inside @react-doctor/browser (only when a command
@@ -47,7 +50,7 @@ export const browserOpenAction = async (
     await session.openWithReactProfiler(url);
     logger.success(`Opened ${url}`);
     logger.log(
-      "React profiler ready: `browser eval 'page.evaluate(() => window.__REACT_PERF__.start())'`, run a scenario, then `stop()` for the DevTools profiling export.",
+      "React profiler ready: `browser profile --interaction '...'` for a one-shot record + analysis, or drive it manually with `browser eval 'page.evaluate(() => window.__REACT_PERF__.start())'` then `stop()`.",
     );
     if (session.launched) {
       logger.log(
@@ -136,6 +139,63 @@ const printPerformanceReport = (report: PerformanceReport): void => {
       );
     }
   }
+};
+
+const printReactProfile = (analysis: ReactProfileAnalysis): void => {
+  logger.log(
+    `${analysis.commitCount} commit(s) across ${analysis.rootCount} root(s), ${analysis.totalCommitDurationMs}ms total render time, ${analysis.unnecessaryRenderCount} unnecessary render(s)`,
+  );
+  if (analysis.topComponents.length > 0) {
+    logger.log("Hottest components (self time):");
+    for (const component of analysis.topComponents) {
+      const wasted =
+        component.unnecessaryRenderCount > 0
+          ? `, ${component.unnecessaryRenderCount} unnecessary`
+          : "";
+      logger.log(
+        `  ${component.totalSelfMs}ms  ${component.name} — ${component.renderCount} render(s)${wasted}`,
+      );
+    }
+  }
+  if (analysis.slowestCommits.length > 0) {
+    logger.log("Slowest commits:");
+    for (const commit of analysis.slowestCommits) {
+      logger.log(`  ${commit.durationMs}ms — ${commit.components.join(", ") || "(no components)"}`);
+    }
+  }
+};
+
+const printCpuProfile = (analysis: CpuProfileAnalysis): void => {
+  logger.log(`${analysis.durationMs}ms profiled, ${analysis.sampleCount} sample(s)`);
+  if (analysis.topFunctions.length > 0) {
+    logger.log("Hottest functions (self time):");
+    for (const fn of analysis.topFunctions) {
+      const location = fn.url ? ` — ${fn.url}` : "";
+      logger.log(`  ${fn.selfMs}ms (${fn.selfPercent}%)  ${fn.functionName}${location}`);
+    }
+  }
+};
+
+export const browserProfileAction = async (
+  url: string | undefined,
+  options: BrowserCommandOptions,
+): Promise<void> => {
+  recordCount(METRIC.cliInvoked, 1, { command: "browser.profile" });
+  await withSession(options, async (session) => {
+    const analysis = await session.profile({ url, interaction: options.interaction });
+
+    logger.log("# React renders");
+    if (analysis.react) {
+      printReactProfile(analysis.react);
+    } else {
+      logger.log(
+        "(no React data — needs a development build of React and renders during the recording)",
+      );
+    }
+
+    logger.log("\n# CPU");
+    printCpuProfile(analysis.cpu);
+  });
 };
 
 export const browserAuditAction = async (

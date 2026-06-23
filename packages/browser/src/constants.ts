@@ -46,6 +46,23 @@ export const MAX_VIOLATION_TARGETS = 5;
 // device-metrics override into CDP.
 export const MAX_VIEWPORT_PX = 10_000;
 
+// After driving a profiled interaction, wait this long for React's commits to
+// flush (concurrent renders land asynchronously) before stopping the recording.
+export const REACT_PROFILE_FLUSH_MS = 500;
+
+// Caps on what a profile analysis returns inline, so a long recording stays a
+// readable result rather than a dump keyed by thousands of fibers. The summary
+// counts still reflect everything recorded.
+export const MAX_PROFILE_COMPONENTS = 20;
+export const MAX_PROFILE_COMMITS = 10;
+export const MAX_COMMIT_COMPONENTS = 8;
+
+// V8 CPU profiler sampling interval, matching Chrome DevTools' default (100us).
+export const DEFAULT_CPU_SAMPLING_INTERVAL_US = 100;
+
+// Functions returned inline by a CPU profile analysis, ranked by self time.
+export const MAX_PROFILE_FUNCTIONS = 20;
+
 // Built React-profiler init script, relative to the bundle that imports it.
 // `react-profiler/inject.ts` is esbuilt into this self-contained IIFE at build
 // time (see vite.config.ts); the session injects it via `addInitScript`. The

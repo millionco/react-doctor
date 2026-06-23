@@ -78,7 +78,7 @@ export const registerBrowserTools = (server: McpServer): void => {
     {
       title: "Open a URL with the React profiler",
       description:
-        "Open a URL in the attached Chrome and keep the page, injecting the React DevTools profiler so browser_eval can drive window.__REACT_PERF__ (start()/stop()) for render profiling. Attaches to your running Chrome over CDP, launching a dedicated one only as a fallback.",
+        "Open a URL in the attached Chrome and keep the page, injecting the React DevTools profiler. Use browser_profile for a one-shot record + analysis; for manual control, browser_eval can drive window.__REACT_PERF__ (start()/stop()). Attaches to your running Chrome over CDP, launching a dedicated one only as a fallback.",
       inputSchema: { url: z.string().describe("URL to open"), ...connectionShape },
       annotations: { openWorldHint: true },
     },
@@ -89,6 +89,40 @@ export const registerBrowserTools = (server: McpServer): void => {
           `Opened ${args.url}. React profiler ready: call browser_eval with "page.evaluate(() => window.__REACT_PERF__.start())", drive a scenario, then stop() for the DevTools profiling export.`,
         );
       }),
+  );
+
+  server.registerTool(
+    "browser_profile",
+    {
+      title: "Profile React renders and CPU in one recording",
+      description:
+        "Record one profile with both lenses and return { react, cpu }. `react`: the React render profile — slowest commits, components that render most/cost the most self time, and unnecessary re-renders (re-rendered with nothing they own changed: memo/useCallback/context targets); null on a production React build. `cpu`: a Chrome DevTools CPU profile (V8 sampler over CDP) with functions ranked by self time (DevTools' bottom-up view). Pass `url` to load and profile a page, and/or `interaction` (a Playwright expression, `page` in scope) to record what it triggers. Omit `url` to profile a page already opened with browser_open.",
+      inputSchema: {
+        url: z
+          .string()
+          .optional()
+          .describe(
+            "URL to load with the profiler before recording; omit to profile the open page",
+          ),
+        interaction: z
+          .string()
+          .optional()
+          .describe(
+            'Playwright expression to drive while recording, e.g. page.getByRole("button").click()',
+          ),
+        ...connectionShape,
+        ...viewportShape,
+      },
+      annotations: { openWorldHint: true },
+    },
+    (args) =>
+      runTool(async () =>
+        jsonResult(
+          await withSession(toConnection(args), (session) =>
+            session.profile({ url: args.url, interaction: args.interaction }),
+          ),
+        ),
+      ),
   );
 
   server.registerTool(

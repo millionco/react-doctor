@@ -60,3 +60,67 @@ export interface PageInspection {
   performance: PerformanceReport;
   accessibility: AccessibilityViolation[];
 }
+
+export interface ProfileOptions {
+  // Load this URL with the React profiler injected before recording. Omit to
+  // profile a page already opened with the profiler (`browser open`).
+  url?: string;
+  // Playwright expression (the `page` is in scope) driven while recording, so the
+  // renders and CPU work it triggers are captured. Omit to profile post-load.
+  interaction?: string;
+  // V8 CPU sampling interval in microseconds (default like DevTools, 100us).
+  samplingIntervalUs?: number;
+}
+
+export interface ReactComponentRenderStat {
+  name: string;
+  renderCount: number;
+  totalSelfMs: number;
+  totalActualMs: number;
+  maxSelfMs: number;
+  // Renders where nothing this component owns changed — not a first mount, no
+  // hook/state/props/context change — so it re-rendered only because a parent
+  // did. These are the memo / useCallback / context-split targets.
+  unnecessaryRenderCount: number;
+}
+
+export interface ReactProfileCommitStat {
+  commitIndex: number;
+  durationMs: number;
+  // Components that rendered in this commit, slowest self-time first.
+  components: string[];
+}
+
+export interface ReactProfileAnalysis {
+  rootCount: number;
+  commitCount: number;
+  totalCommitDurationMs: number;
+  // Total wasted renders across all components (see ReactComponentRenderStat).
+  unnecessaryRenderCount: number;
+  topComponents: ReactComponentRenderStat[];
+  slowestCommits: ReactProfileCommitStat[];
+}
+
+export interface CpuProfileFunctionStat {
+  functionName: string;
+  // Source `url:line` (1-based), or null for V8 synthetic frames ((idle), etc.).
+  url: string | null;
+  selfMs: number;
+  selfPercent: number;
+}
+
+export interface CpuProfileAnalysis {
+  durationMs: number;
+  sampleCount: number;
+  // Functions ranked by self time — where JS wall time actually went, the same
+  // signal as DevTools' bottom-up view.
+  topFunctions: CpuProfileFunctionStat[];
+}
+
+// One recording, both lenses: the React render profile (which components
+// re-rendered and why) and the V8 CPU profile (which JS functions cost time).
+// `react` is null on a production React build or a page without the profiler.
+export interface ProfileAnalysis {
+  react: ReactProfileAnalysis | null;
+  cpu: CpuProfileAnalysis;
+}

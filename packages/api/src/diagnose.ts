@@ -148,7 +148,9 @@ const diagnoseDirectory = async (
   const output: InspectOutput = await Effect.runPromise(
     restoreLegacyThrow(
       program.pipe(
-        Effect.provide(buildDiagnoseLayer(scanTarget.userConfig, undefined, shouldRunLint)),
+        Effect.provide(
+          buildDiagnoseLayer(scanTarget.userConfig, undefined, shouldRunLint),
+        ),
         Effect.provide(layerOtlp),
       ),
     ),

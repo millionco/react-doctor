@@ -65,7 +65,7 @@ npx react-doctor@latest --verbose --scope changed
 
 If the score dropped, fix the regressions before committing. For a cleanup of the whole codebase, drop `--scope changed` (the default is `--scope full`) and fix by severity: errors first, then warnings.
 
-When the user types `/react-doctor`, `/doctor`, says "run react doctor", or asks for a full triage or cleanup pass (not a regression check), fetch the canonical local-triage playbook and follow every step in it:
+When the user types `/react-doctor`, says "run react doctor", or asks for a full triage or cleanup pass (not a regression check), fetch the canonical local-triage playbook and follow every step in it:
 
 ```bash
 curl --fail --silent --show-error \

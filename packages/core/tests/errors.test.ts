@@ -13,6 +13,7 @@ import {
   OxlintUnavailable,
   ProjectNotFound,
   ReactDoctorError,
+  ScanDeadlineExceeded,
 } from "@react-doctor/core";
 
 describe("ReactDoctorError leaves", () => {
@@ -124,6 +125,16 @@ describe("ReactDoctorError leaves", () => {
     });
     expect(formatReactDoctorError(error)).toContain("Dead-code analysis failed");
     expect(formatReactDoctorError(error)).toContain("SIGABRT from native binding");
+  });
+
+  it("ScanDeadlineExceeded renders the elapsed detail and is not splittable", () => {
+    const error = new ReactDoctorError({
+      reason: new ScanDeadlineExceeded({ detail: "600s elapsed" }),
+    });
+    expect(formatReactDoctorError(error)).toBe(
+      "Scan exceeded its overall time budget: 600s elapsed",
+    );
+    expect(isSplittableReactDoctorError(error)).toBe(false);
   });
 });
 

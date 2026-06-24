@@ -142,19 +142,17 @@ describe("disableSetupPrompt", () => {
     fixture.cleanup();
   });
 
-  it("preserves existing global config values when disabling", () => {
+  it("migrates a legacy opt-out forward and preserves it when disabling another", () => {
     writePackageJson(fixture.projectRoot, { scripts: {} });
     const otherProjectKey = getSetupPromptProjectKey("/other/project");
+    // Seed a pre-v2, legacy-shaped opt-out (`setupPrompt: false`) for a
+    // different project; opening the store should migrate it forward to a
+    // setup-hint event without losing the opt-out.
     fs.writeFileSync(
       getSetupPromptConfigPath({ cwd: fixture.configRoot }),
       `${JSON.stringify(
         {
-          projects: {
-            [otherProjectKey]: {
-              rootDirectory: "/other/project",
-              setupPrompt: false,
-            },
-          },
+          projects: { [otherProjectKey]: { rootDirectory: "/other/project", setupPrompt: false } },
         },
         null,
         2,
@@ -162,17 +160,17 @@ describe("disableSetupPrompt", () => {
     );
 
     expect(disableSetupPrompt(fixture.projectRoot, { cwd: fixture.configRoot })).toBe(true);
+
+    // Both repos stay disabled — the migrated legacy one and the newly recorded one.
+    expect(hasDisabledSetupPrompt("/other/project", { cwd: fixture.configRoot })).toBe(true);
+    expect(hasDisabledSetupPrompt(fixture.projectRoot, { cwd: fixture.configRoot })).toBe(true);
+
     const projectKey = getSetupPromptProjectKey(fixture.projectRoot);
-    expect(readSetupPromptConfig(fixture.configRoot).projects).toEqual({
-      [otherProjectKey]: {
-        rootDirectory: "/other/project",
-        setupPrompt: false,
-      },
-      [projectKey]: {
-        rootDirectory: path.resolve(fixture.projectRoot),
-        setupPrompt: false,
-      },
-    });
+    const projects = readSetupPromptConfig(fixture.configRoot).projects;
+    expect(projects[otherProjectKey].rootDirectory).toBe("/other/project");
+    expect(projects[otherProjectKey].events["setup-hint"].outcome).toBe("declined");
+    expect(projects[projectKey].rootDirectory).toBe(path.resolve(fixture.projectRoot));
+    expect(projects[projectKey].events["setup-hint"].outcome).toBe("declined");
   });
 
   it("does not write the package.json when disabling directly", () => {

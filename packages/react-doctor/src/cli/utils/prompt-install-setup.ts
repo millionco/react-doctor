@@ -1,6 +1,5 @@
-import * as path from "node:path";
-import Conf from "conf";
-import { REACT_DOCTOR_CONFIG_PROJECT_NAME } from "./constants.js";
+import { type CliStateOptions, SETUP_HINT_EVENT, getCliStatePath } from "./cli-state-store.js";
+import { type Gate, isGatePending, recordGate } from "./cli-lifecycle.js";
 import { hashProjectRoot } from "./hash-project-root.js";
 import { findNearestPackageDirectory, hasDoctorScript } from "./install-doctor-script.js";
 import { isCodingAgentEnvironment } from "./is-ci-environment.js";
@@ -9,78 +8,28 @@ export interface SetupPitchWriter {
   (line?: string): void;
 }
 
-export interface SetupPromptStoreOptions {
-  readonly cwd?: string;
-}
-
-interface SetupPromptProjectConfig {
-  readonly rootDirectory: string;
-  readonly setupPrompt?: false;
-}
-
-interface SetupPromptGlobalConfig {
-  readonly projects?: Record<string, SetupPromptProjectConfig>;
-}
-
 export interface ResolveInstallSetupProjectRootOptions {
   readonly scanRoot: string;
   readonly scanDirectories: ReadonlyArray<string>;
 }
 
-const getSetupPromptStore = (
-  options: SetupPromptStoreOptions = {},
-): Conf<SetupPromptGlobalConfig> =>
-  new Conf<SetupPromptGlobalConfig>({
-    projectName: REACT_DOCTOR_CONFIG_PROJECT_NAME,
-    cwd: options.cwd,
-  });
+// The agent install hint is a persistent per-repo nudge shown until dismissed,
+// so it's a gate with `fireWhenUnknown: true`: an unreadable store fails safe to
+// "show again" (better than crashing a scan), matching the prior behavior.
+const SETUP_HINT_GATE: Gate = { id: SETUP_HINT_EVENT, scope: "project", fireWhenUnknown: true };
 
-export const getSetupPromptConfigPath = (options: SetupPromptStoreOptions = {}): string =>
-  getSetupPromptStore(options).path;
+export const getSetupPromptConfigPath = getCliStatePath;
 
 export const getSetupPromptProjectKey = (projectRoot: string): string =>
   hashProjectRoot(projectRoot);
 
 export const hasDisabledSetupPrompt = (
   projectRoot: string,
-  storeOptions: SetupPromptStoreOptions = {},
-): boolean => {
-  try {
-    const store = getSetupPromptStore(storeOptions);
-    const projects = store.get("projects", {});
-    return projects[getSetupPromptProjectKey(projectRoot)]?.setupPrompt === false;
-  } catch {
-    // A read-only or otherwise inaccessible global-config directory (EPERM /
-    // EROFS in locked-down CI and sandboxes) is an environment limitation, not
-    // a react-doctor bug. Degrade to "not disabled" rather than crashing the
-    // scan and reporting it to Sentry — at worst the install hint shows again.
-    return false;
-  }
-};
+  options: CliStateOptions = {},
+): boolean => !isGatePending(SETUP_HINT_GATE, { projectRoot }, options);
 
-export const disableSetupPrompt = (
-  projectRoot: string,
-  storeOptions: SetupPromptStoreOptions = {},
-): boolean => {
-  try {
-    const store = getSetupPromptStore(storeOptions);
-    const projects = store.get("projects", {});
-    const projectKey = getSetupPromptProjectKey(projectRoot);
-    store.set("projects", {
-      ...projects,
-      [projectKey]: {
-        ...(projects[projectKey] ?? {}),
-        rootDirectory: path.resolve(projectRoot),
-        setupPrompt: false,
-      },
-    });
-    return true;
-  } catch {
-    // Couldn't persist the opt-out (read-only config dir). Signal failure to
-    // the caller instead of crashing — the choice just won't be remembered.
-    return false;
-  }
-};
+export const disableSetupPrompt = (projectRoot: string, options: CliStateOptions = {}): boolean =>
+  recordGate(SETUP_HINT_GATE, { projectRoot, outcome: "declined" }, options);
 
 export const resolveInstallSetupProjectRoot = (
   options: ResolveInstallSetupProjectRootOptions,
@@ -116,7 +65,7 @@ export interface ShouldShowAgentInstallHintOptions {
   readonly isScoreOnly: boolean;
   readonly isStaged: boolean;
   readonly isCodingAgent?: boolean;
-  readonly store?: SetupPromptStoreOptions;
+  readonly store?: CliStateOptions;
 }
 
 export const shouldShowAgentInstallHint = (options: ShouldShowAgentInstallHintOptions): boolean => {

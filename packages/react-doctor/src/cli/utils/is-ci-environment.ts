@@ -20,6 +20,24 @@ const CI_PROVIDER_BY_ENVIRONMENT_VARIABLE: ReadonlyArray<readonly [string, strin
   ["BITBUCKET_BUILD_NUMBER", "bitbucket"],
   ["TRAVIS", "travis"],
   ["DRONE", "drone"],
+  ["SEMAPHORE", "semaphore"],
+  ["APPVEYOR", "appveyor"],
+  ["HARNESS_BUILD_ID", "harness"],
+  ["BUDDY", "buddy"],
+  ["CF_BUILD_ID", "codefresh"],
+  ["NETLIFY", "netlify"],
+  ["RAILWAY_SERVICE_ID", "railway"],
+  ["VERCEL", "vercel"],
+  ["CM_BUILD_ID", "codemagic"],
+  ["PROW_JOB_ID", "prow"],
+  ["AGOLA_GIT_REF", "agola"],
+  ["CIRRUS_CI", "cirrus-ci"],
+  ["BLACKSMITH_STICKYDISK_TOKEN", "blacksmith"],
+  ["WARPBUILD_RUNNER_VERIFICATION_TOKEN", "warpbuild"],
+  ["NSC_CACHE_PATH", "namespace"],
+  ["UBICLOUD_CACHE_URL", "ubicloud"],
+  ["RENDER", "render"],
+  ["FLY_APP_NAME", "fly-io"],
 ];
 
 // Marker the official react-doctor GitHub Action sets on its scan step so CLI
@@ -54,6 +72,9 @@ const CODING_AGENT_BY_ENVIRONMENT_VARIABLE: ReadonlyArray<readonly [string, stri
   ["OPENCODE", "opencode"],
   ["GOOSE_TERMINAL", "goose"],
   ["AMP_THREAD_ID", "amp"],
+  ["CLINE_ACTIVE", "cline"],
+  ["AUGMENT_AGENT", "augment"],
+  ["TRAE_AI_SHELL_ID", "trae-ai"],
 ];
 
 // Generic "an agent is driving this" markers that signal an agent without

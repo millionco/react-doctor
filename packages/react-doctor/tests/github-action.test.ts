@@ -87,22 +87,29 @@ describe("GitHub Action contract", () => {
     expect(actionYaml).not.toContain('git checkout "$HEAD_REF"');
   });
 
-  it("rewrites repo-relative PR paths to the scanned directory for --changed-files-from", () => {
-    const prFilesStep = normalizeWhitespace(extractStep(readActionYaml(), "- id: pr-files"));
+  it("derives changed files (local git diff first, API fallback) via the shared scan-relative normalizer", () => {
+    const actionYaml = readActionYaml();
+    const baseStep = normalizeWhitespace(extractStep(actionYaml, "- id: base"));
+    const prFilesStep = normalizeWhitespace(extractStep(actionYaml, "- id: pr-files"));
 
-    // The GitHub API returns repo-root-relative paths, but the CLI resolves
-    // --changed-files-from entries relative to the scanned `directory`. The step
-    // must strip the `directory` prefix (and drop files outside it) so a
-    // subdirectory scan (`directory: UI`) doesn't double up to `UI/UI/src/...`
-    // and miss every base read — the bug in issue #858.
+    // The repo-root → scan-relative prefix-stripping (strip the `directory`
+    // prefix, drop files outside it, so `directory: UI` doesn't double up to
+    // `UI/UI/src/...` and miss every base read — issue #858) now lives in the
+    // shared scripts/normalize-changed-files.mjs and is unit-tested there. The
+    // action delegates to it from BOTH the local-diff base step and the API
+    // fallback, which only runs when the base wasn't reachable for a local diff.
+    expect(baseStep).toContain('git -C "$INPUT_DIRECTORY" diff --name-only --diff-filter=AMR');
+    expect(baseStep).toContain("scripts/normalize-changed-files.mjs");
     expect(prFilesStep).toContain("INPUT_DIRECTORY: ${{ inputs.directory }}");
-    expect(prFilesStep).toContain("const directoryPrefix = (process.env.INPUT_DIRECTORY");
-    expect(prFilesStep).toContain('.replace(/^\\.\\/?/, "")');
-    expect(prFilesStep).toContain('.replace(/\\/$/, "")');
-    expect(prFilesStep).toContain("const scopedPrefix = `${directoryPrefix}/`;");
-    expect(prFilesStep).toContain(
-      "filename.startsWith(scopedPrefix) ? [filename.slice(scopedPrefix.length)] : []",
-    );
+    expect(prFilesStep).toContain("scripts/normalize-changed-files.mjs");
+    expect(prFilesStep).toContain("normalizeChangedFiles(");
+    expect(prFilesStep).toContain("steps.base.outputs.path == ''");
+    // Inside the nested github-script step, `GITHUB_ACTION_PATH` resolves to
+    // github-script's own dir — the composite path is forwarded explicitly so
+    // the shared script import resolves. Lock that it reads the forwarded var.
+    expect(prFilesStep).toContain("COMPOSITE_ACTION_PATH: ${{ github.action_path }}");
+    expect(prFilesStep).toContain("process.env.COMPOSITE_ACTION_PATH");
+    expect(prFilesStep).not.toContain("process.env.GITHUB_ACTION_PATH");
   });
 
   it("falls back to a full-project scan when listing PR files is not permitted", () => {
@@ -144,10 +151,39 @@ describe("GitHub Action contract", () => {
     expect(scanStep).toContain(
       'npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"',
     );
-    expect(scanStep).toContain('PACKAGE_SPEC="react-doctor@$INPUT_VERSION"');
+    // PACKAGE_SPEC is resolved once (and made cacheable) by the resolve-version
+    // step and read from its output, not derived inline in the scan step.
+    expect(scanStep).toContain("PACKAGE_SPEC: ${{ steps.resolve-version.outputs.spec }}");
     expect(scanStep).toContain("SCAN_STATUS=$?");
     expect(scanStep).toContain("scripts/ensure-json-report.mjs");
     expect(actionYaml).not.toContain("--score");
+  });
+
+  it("resolves the version once and caches the install + persistent scan caches", () => {
+    const actionYaml = readActionYaml();
+    const resolveStep = normalizeWhitespace(extractStep(actionYaml, "- id: resolve-version"));
+    const scanStep = normalizeWhitespace(
+      extractStep(actionYaml, "INPUT_PROJECT: ${{ inputs.project }}"),
+    );
+
+    // resolve-version pins the version so the install cache key is stable even
+    // for `latest`; actions/cache (SHA-pinned or floating) restores the toolchain
+    // install + the persistent scan caches; the scan installs into the cached
+    // prefix on a published version and runs the local binary, falling back to
+    // npx for a local-path spec.
+    expect(resolveStep).toContain("scripts/resolve-package-spec.mjs");
+    expect(actionYaml).toMatch(/actions\/cache@(?:v4\b|[0-9a-f]{40} # v4\b)/);
+    expect(actionYaml).toContain("react-doctor-toolchain");
+    expect(actionYaml).toContain("react-doctor-scan-cache-");
+    expect(scanStep).toContain('npm install --prefix "$TOOLCHAIN_DIR"');
+    expect(scanStep).toContain('"$RD_BIN" "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"');
+    expect(scanStep).toContain("REACT_DOCTOR_CACHE_DIR: ${{ runner.temp }}/react-doctor-cache");
+    // A cache-miss install runs under `set +e` and the cached binary is adopted
+    // only when it's executable afterward — a transient npm failure leaves
+    // RD_BIN empty and falls through to the npx path instead of aborting the
+    // whole step under the composite shell's errexit.
+    expect(scanStep).toContain('if [ -x "$TOOLCHAIN_DIR/node_modules/.bin/react-doctor" ]; then');
+    expect(scanStep).toContain('RD_BIN="$TOOLCHAIN_DIR/node_modules/.bin/react-doctor"');
   });
 
   it("fetches the PR base commit and forwards it for baseline (new-vs-existing) mode", () => {
@@ -165,6 +201,12 @@ describe("GitHub Action contract", () => {
     expect(baseStep).toContain(
       'git -C "$INPUT_DIRECTORY" fetch --no-tags --depth=1 origin "$BASE_SHA"',
     );
+    // The fetch is best-effort (`|| true`) and the local diff is gated only on
+    // the base SHA, NOT on a fetch-succeeded flag — the base may already be in
+    // history (e.g. `fetch-depth: 0`), where the old FETCHED gate wrongly fell
+    // through to the API. The diff itself stays guarded against shallow misses.
+    expect(baseStep).toContain('origin "$BASE_SHA" 2>/dev/null || true');
+    expect(baseStep).not.toContain("FETCHED");
     expect(scanStep).toContain("REACT_DOCTOR_BASE_SHA: ${{ github.event.pull_request.base.sha }}");
   });
 

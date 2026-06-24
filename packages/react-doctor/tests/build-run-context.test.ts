@@ -6,11 +6,14 @@ const CI_ENV_VARS = ["GITHUB_EVENT_NAME", "REACT_DOCTOR_GITHUB_ACTION"] as const
 
 describe("buildRunContext", () => {
   let savedUserAgent: string | undefined;
+  let savedLintBatchOrdering: string | undefined;
   let savedArgv: string[];
   let savedEnv: Record<string, string | undefined>;
 
   beforeEach(() => {
     savedUserAgent = process.env.npm_config_user_agent;
+    savedLintBatchOrdering = process.env.REACT_DOCTOR_LINT_BATCH_ORDERING;
+    delete process.env.REACT_DOCTOR_LINT_BATCH_ORDERING;
     savedArgv = process.argv;
     savedEnv = {};
     for (const name of CI_ENV_VARS) {
@@ -24,6 +27,11 @@ describe("buildRunContext", () => {
       delete process.env.npm_config_user_agent;
     } else {
       process.env.npm_config_user_agent = savedUserAgent;
+    }
+    if (savedLintBatchOrdering === undefined) {
+      delete process.env.REACT_DOCTOR_LINT_BATCH_ORDERING;
+    } else {
+      process.env.REACT_DOCTOR_LINT_BATCH_ORDERING = savedLintBatchOrdering;
     }
     process.argv = savedArgv;
     for (const name of CI_ENV_VARS) {
@@ -86,5 +94,12 @@ describe("buildRunContext", () => {
     const context = buildRunContext();
     expect(context.eventName).toBeNull();
     expect(context.viaAction).toBe(false);
+  });
+
+  it("defaults lintBatchOrdering to 'arrival' and honors the cost override", () => {
+    expect(buildRunContext().lintBatchOrdering).toBe("arrival");
+
+    process.env.REACT_DOCTOR_LINT_BATCH_ORDERING = "cost";
+    expect(buildRunContext().lintBatchOrdering).toBe("cost");
   });
 });

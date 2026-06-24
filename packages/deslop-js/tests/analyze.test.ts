@@ -133,7 +133,6 @@ describe("dependency-tooling", () => {
       "chart.js",
       "chokidar-cli",
       "jest-cli",
-      "jest-config",
       "prompt",
       "react-chartjs-2",
       "react-redux",
@@ -172,15 +171,24 @@ describe("dependency-tooling", () => {
     assert.ok(deps.includes("unused-dep"), `unused-dep should be unused, got: ${deps}`);
   });
 
-  it("should keep script-invoked CLI packages used without node_modules bin metadata", async () => {
+  it("resolves script-invoked CLIs without installed metadata only via same-name binaries, prefixes, or implicit deps", async () => {
     const result = await scanFixture("script-cli-deps");
     const deps = staleDependencyNames(result);
-    for (const dependencyName of ["turbo", "vite-plus", "tsx", "@changesets/cli"]) {
+    // turbo's binary is `turbo` (same name), tsx is implicit, and `@changesets/*`
+    // is an always-used prefix — all resolve with no node_modules present.
+    for (const dependencyName of ["turbo", "tsx", "@changesets/cli"]) {
       assert.ok(
         !deps.includes(dependencyName),
-        `${dependencyName} should be treated as used from scripts, got: ${deps}`,
+        `${dependencyName} should still be treated as used, got: ${deps}`,
       );
     }
+    // vite-plus exposes the `vp` binary, whose name differs from the package; with
+    // no installed bin metadata there is nothing to map `vp` -> vite-plus, so it is
+    // flagged. Installing it (real bin metadata) resolves it — see dependency-tooling.
+    assert.ok(
+      deps.includes("vite-plus"),
+      `vite-plus (bin "vp") is unresolvable without installed metadata, got: ${deps}`,
+    );
     assert.ok(deps.includes("unused-dep"), `unused-dep should be unused, got: ${deps}`);
   });
 
@@ -247,6 +255,15 @@ describe("workspace-local-bin", () => {
     assert.ok(
       deps.includes("unused-dev-tool"),
       `unused-dev-tool should still be unused, got: ${deps}`,
+    );
+  });
+
+  it("should not flag a package that ships a binary even when no script references it", async () => {
+    const result = await scanFixture("workspace-local-bin");
+    const deps = staleDependencyNames(result);
+    assert.ok(
+      !deps.includes("bin-only-tool"),
+      `bin-only-tool declares a bin and is invokable outside the static scan (npx, hooks, CI) — it must not be flagged, got: ${deps}`,
     );
   });
 });

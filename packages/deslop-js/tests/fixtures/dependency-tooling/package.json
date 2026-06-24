@@ -32,7 +32,6 @@
     "babel-eslint": "^10.0.0",
     "chokidar-cli": "^3.0.0",
     "jest-cli": "^29.0.0",
-    "jest-config": "^29.0.0",
     "prompt": "^1.0.0",
     "replace-in-file": "^8.0.0",
     "tsc-alias": "^1.0.0",

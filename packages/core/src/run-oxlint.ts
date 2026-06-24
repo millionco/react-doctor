@@ -9,8 +9,11 @@ import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
 import { detectUserLintConfigPaths } from "./detect-user-lint-config.js";
 import { ReactDoctorError } from "./errors.js";
 import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js";
+import { computeRulesetHash } from "./runners/oxlint/compute-ruleset-hash.js";
 import { createOxlintConfig } from "./runners/oxlint/config.js";
+import { createFileLintCache } from "./runners/oxlint/file-lint-cache.js";
 import { resolveUserPlugins } from "./runners/oxlint/plugin-resolution.js";
+import { resolveOxlintToolchainVersions } from "./runners/oxlint/resolve-toolchain-versions.js";
 import {
   resolveOxlintBinary,
   resolvePluginPath,
@@ -18,7 +21,11 @@ import {
 } from "./runners/oxlint/resolve-paths.js";
 import { spawnLintBatches } from "./runners/oxlint/spawn-batches.js";
 import { validateRuleRegistration } from "./runners/oxlint/validate-rule-registration.js";
-import { listSourceFiles } from "./utils/list-source-files.js";
+import { dedupeDiagnostics } from "./utils/dedupe-diagnostics.js";
+import { hashFileContents } from "./utils/hash-file-contents.js";
+import { listSourceFiles, listSourceFilesWithSize } from "./utils/list-source-files.js";
+import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
+import { sortSourceFilesByCost } from "./utils/sort-source-files-by-cost.js";
 
 interface RunOxlintOptions {
   rootDirectory: string;
@@ -60,6 +67,20 @@ interface RunOxlintOptions {
    */
   onPartialFailure?: (reason: string) => void;
   onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
+  /**
+   * Enables the per-file lint cache, resolved from the
+   * `PerFileLintCacheEnabled` Reference. When on (and the scan is eligible —
+   * no audit mode, no adopted `extends`, no user plugins), unchanged files
+   * replay their cached cacheable-rule diagnostics and only changed files are
+   * re-linted; the cross-file rules always run fresh in a sidecar pass.
+   */
+  perFileLintCacheEnabled?: boolean;
+  /**
+   * Called once after the cache split with `(cacheHitFileCount,
+   * totalConsideredFileCount)`. Surfaced to the Sentry wide event as
+   * `lintCacheHitRatio`. Not invoked when the cache is disabled or bypassed.
+   */
+  onCacheStats?: (cacheHitFileCount: number, totalConsideredFileCount: number) => void;
   /** Per-batch wall-clock budget, resolved from the `OxlintSpawnTimeoutMs` Reference. */
   spawnTimeoutMs?: number;
   /** Per-batch stdout+stderr byte cap, resolved from the `OxlintOutputMaxBytes` Reference. */
@@ -73,6 +94,20 @@ interface RunOxlintOptions {
    * exhaustion (see `spawnLintBatches`).
    */
   concurrency?: number;
+  /**
+   * Aborted when the orchestrator's lint-phase timeout fires; forwarded to
+   * `spawnLintBatches` so in-flight oxlint subprocesses are torn down instead
+   * of running on after the phase is abandoned.
+   */
+  signal?: AbortSignal;
+  /**
+   * Full-scan batch ordering, resolved from the `LintBatchOrdering`
+   * Reference. `"arrival"` (the default) keeps discovery order; `"cost"`
+   * opts into LPT (largest files first). Only affects the full-scan branch
+   * (`includePaths` undefined) — diff / staged scans pass explicit paths and
+   * are untouched.
+   */
+  lintBatchOrdering?: "cost" | "arrival";
 }
 
 /**
@@ -163,8 +198,11 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     userConfig,
     configSourceDirectory = rootDirectory,
     onPartialFailure,
+    perFileLintCacheEnabled = false,
+    onCacheStats,
     spawnTimeoutMs,
     outputMaxBytes,
+    lintBatchOrdering = "arrival",
   } = options;
 
   const serverAuthFunctionNames = Array.isArray(userConfig?.serverAuthFunctionNames)
@@ -204,6 +242,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   const buildConfig = (overrides: {
     extendsPaths: string[];
     disableReactHooksJsPlugin?: boolean;
+    ruleSelection?: "cacheable" | "sidecar";
   }) =>
     createOxlintConfig({
       pluginPath,
@@ -215,6 +254,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       severityControls,
       userPlugins,
       disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
+      ruleSelection: overrides.ruleSelection,
     });
 
   // HACK: only neutralize disable comments in audit mode. Default
@@ -233,12 +273,27 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
 
   try {
     const oxlintBinary = resolveOxlintBinary();
-    const baseArgs = [oxlintBinary, "-c", configPath, "--format", "json"];
+    // Args shared by every batch regardless of which oxlintrc is active, so
+    // the cache path can point separate `-c` configs at the same tsconfig +
+    // ignore inputs.
+    const sharedArgs: string[] = [];
 
+    // Captured for the ruleset hash: oxlint parses with this tsconfig, so a
+    // tsconfig edit must bust the per-file cache even when source content is
+    // unchanged.
+    let tsconfigContent: string | null = null;
     if (project.hasTypeScript) {
       const tsconfigRelativePath = resolveTsConfigRelativePath(rootDirectory);
       if (tsconfigRelativePath) {
-        baseArgs.push("--tsconfig", tsconfigRelativePath);
+        sharedArgs.push("--tsconfig", tsconfigRelativePath);
+        try {
+          tsconfigContent = fs.readFileSync(
+            path.resolve(rootDirectory, tsconfigRelativePath),
+            "utf8",
+          );
+        } catch {
+          tsconfigContent = null;
+        }
       }
     }
 
@@ -253,8 +308,17 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     if (combinedPatterns.length > 0) {
       const combinedIgnorePath = path.join(configDirectory, "combined.ignore");
       fs.writeFileSync(combinedIgnorePath, `${combinedPatterns.join("\n")}\n`);
-      baseArgs.push("--ignore-path", combinedIgnorePath);
+      sharedArgs.push("--ignore-path", combinedIgnorePath);
     }
+
+    const makeBaseArgs = (oxlintConfigPath: string): string[] => [
+      oxlintBinary,
+      "-c",
+      oxlintConfigPath,
+      "--format",
+      "json",
+      ...sharedArgs,
+    ];
 
     // HACK: when `includePaths` is undefined we used to pass `["."]`
     // and let oxlint walk the tree itself. That defeated batching
@@ -264,10 +328,205 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     // diagnostics. Materializing the file list ahead of time and
     // feeding it through `batchIncludePaths` keeps each spawn under
     // the timeout and recovers the diagnostics we were dropping.
-    const fileBatches = batchIncludePaths(
-      baseArgs,
-      includePaths !== undefined ? includePaths : listSourceFiles(rootDirectory),
-    );
+    //
+    // `"cost"` orders discovered files largest-first (LPT) so the
+    // heaviest batch starts in wave 1 of the parallel pool instead of
+    // stranding in the tail — the size is the minified gate's existing
+    // stat, captured rather than re-paid. `"arrival"` (the default) keeps
+    // discovery order; `cost` is the env opt-in (`LintBatchOrdering`). Only
+    // invoked for a full scan, so diff / staged scans never pay the walk.
+    const discoverScanFiles = (): string[] =>
+      lintBatchOrdering === "cost"
+        ? sortSourceFilesByCost(listSourceFilesWithSize(rootDirectory))
+        : listSourceFiles(rootDirectory);
+
+    const candidateFiles = includePaths !== undefined ? includePaths : discoverScanFiles();
+
+    // Runs one oxlintrc over a file list, retrying once with the optional
+    // react-hooks-js plugin stripped if it fails to import (issue #833).
+    // Shared by the cacheable + sidecar passes; the sidecar carries no
+    // react-hooks-js plugin, so its fallback never fires.
+    const runConfigOverFiles = async (
+      buildConfigForPass: (overrides: {
+        disableReactHooksJsPlugin?: boolean;
+      }) => ReturnType<typeof createOxlintConfig>,
+      configFileName: string,
+      files: string[],
+      fileProgress: ((scannedFileCount: number, totalFileCount: number) => void) | undefined,
+    ): Promise<{
+      diagnostics: Diagnostic[];
+      didDropReactHooksJsPlugin: boolean;
+      hadPartialFailure: boolean;
+    }> => {
+      if (files.length === 0) {
+        return { diagnostics: [], didDropReactHooksJsPlugin: false, hadPartialFailure: false };
+      }
+      // A file dropped by the binary-split retry (timeout / OOM) produces no
+      // diagnostics — indistinguishable from a clean file by output alone. Track
+      // it so the caller never caches a dropped file as a zero-finding hit.
+      let hadPartialFailure = false;
+      const reportPartialFailure = (reason: string): void => {
+        hadPartialFailure = true;
+        onPartialFailure?.(reason);
+      };
+      const passConfigPath = path.join(configDirectory, configFileName);
+      const passBaseArgs = makeBaseArgs(passConfigPath);
+      const passFileBatches = batchIncludePaths(passBaseArgs, files);
+      const spawnPass = () =>
+        spawnLintBatches({
+          baseArgs: passBaseArgs,
+          fileBatches: passFileBatches,
+          rootDirectory,
+          nodeBinaryPath,
+          project,
+          onPartialFailure: reportPartialFailure,
+          onFileProgress: fileProgress,
+          spawnTimeoutMs,
+          outputMaxBytes,
+          concurrency: options.concurrency,
+          signal: options.signal,
+        });
+      writeOxlintConfig(passConfigPath, buildConfigForPass({}));
+      try {
+        const diagnostics = await spawnPass();
+        return { diagnostics, didDropReactHooksJsPlugin: false, hadPartialFailure };
+      } catch (error) {
+        const reactHooksJsDropNote = reactHooksJsPluginDropNote(error);
+        if (reactHooksJsDropNote === null) throw error;
+        writeOxlintConfig(passConfigPath, buildConfigForPass({ disableReactHooksJsPlugin: true }));
+        const diagnostics = await spawnPass();
+        reportPartialFailure(reactHooksJsDropNote);
+        return { diagnostics, didDropReactHooksJsPlugin: true, hadPartialFailure };
+      }
+    };
+
+    // The cache is sound only when nothing rewrites file content out from
+    // under the content hash and every linted rule is one we can analyze:
+    //   - audit mode (`!respectInlineDisables`) mutates files in place, so the
+    //     hash wouldn't match what oxlint saw;
+    //   - adopted `extends` and user plugins carry opaque rules that may read
+    //     other files, which a content-of-self key can't invalidate;
+    //   - React Compiler (`react-hooks-js`) can fail to LOAD at lint time
+    //     (issue #833) and get stripped mid-run. A warm scan with zero misses
+    //     never spawns the cacheable pass, so that load failure would never
+    //     trigger while stale React Compiler diagnostics keep replaying —
+    //     breaking the byte-identical guarantee. Bypass entirely instead.
+    // Any of those falls back to the original single-config path.
+    const useFileLintCache =
+      perFileLintCacheEnabled &&
+      respectInlineDisables &&
+      !project.hasReactCompiler &&
+      extendsPaths.length === 0 &&
+      userPlugins.length === 0;
+
+    if (useFileLintCache) {
+      const rulesetHash = computeRulesetHash({
+        config: buildConfig({ extendsPaths: [], ruleSelection: "cacheable" }),
+        toolchainVersions: resolveOxlintToolchainVersions(),
+        ignorePatterns: combinedPatterns,
+        tsconfigContent,
+      });
+      const cache = createFileLintCache(resolveReactDoctorCacheDir(rootDirectory), rulesetHash);
+
+      // Partition candidates by content hash. An unreadable file (no hash) is
+      // treated as a miss and re-linted.
+      const cacheKeyByFile = new Map<string, string>();
+      const missFiles: string[] = [];
+      const replayedDiagnostics: Diagnostic[] = [];
+      for (const candidateFile of candidateFiles) {
+        const contentHash = hashFileContents(path.resolve(rootDirectory, candidateFile));
+        if (contentHash === null) {
+          missFiles.push(candidateFile);
+          continue;
+        }
+        const cacheKey = `${candidateFile.replaceAll("\\", "/")} ${contentHash}`;
+        cacheKeyByFile.set(candidateFile, cacheKey);
+        const cachedDiagnostics = cache.lookup(cacheKey);
+        if (cachedDiagnostics === null) missFiles.push(candidateFile);
+        else replayedDiagnostics.push(...cachedDiagnostics);
+      }
+      const cacheHitFileCount = candidateFiles.length - missFiles.length;
+
+      // Cacheable rules re-run only on changed files; the cross-file sidecar
+      // always runs fresh on EVERY file so a dependency change can never serve
+      // a stale cross-file verdict for an unchanged file.
+      const cacheableResult = await runConfigOverFiles(
+        (overrides) =>
+          buildConfig({
+            extendsPaths: [],
+            ruleSelection: "cacheable",
+            disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
+          }),
+        "oxlintrc.cacheable.json",
+        missFiles,
+        undefined,
+      );
+      const sidecarResult = await runConfigOverFiles(
+        () => buildConfig({ extendsPaths: [], ruleSelection: "sidecar" }),
+        "oxlintrc.sidecar.json",
+        candidateFiles,
+        options.onFileProgress,
+      );
+
+      // Reported only after both passes succeed — if lint throws, the run fails
+      // and no cache-hit ratio is attached to a failed scan's telemetry.
+      onCacheStats?.(cacheHitFileCount, candidateFiles.length);
+
+      // Attribute fresh cacheable diagnostics back to their miss file by the
+      // normalized path oxlint echoes. If ANY diagnostic can't be attributed,
+      // the path forms don't align — skip the store rather than risk caching a
+      // wrong empty result for a file that actually had diagnostics.
+      const missFileByNormalizedPath = new Map<string, string>();
+      for (const missFile of missFiles) {
+        missFileByNormalizedPath.set(missFile.replaceAll("\\", "/"), missFile);
+      }
+      const freshDiagnosticsByFile = new Map<string, Diagnostic[]>();
+      let isAttributionSound = true;
+      for (const diagnostic of cacheableResult.diagnostics) {
+        const missFile = missFileByNormalizedPath.get(diagnostic.filePath);
+        if (missFile === undefined) {
+          isAttributionSound = false;
+          break;
+        }
+        const fileDiagnostics = freshDiagnosticsByFile.get(missFile) ?? [];
+        fileDiagnostics.push(diagnostic);
+        freshDiagnosticsByFile.set(missFile, fileDiagnostics);
+      }
+
+      // Skip the store when this run can't be trusted to represent a clean,
+      // complete lint of the miss files:
+      //   - a react-hooks-js fallback rewrote the cacheable config, so its
+      //     output no longer matches `rulesetHash`;
+      //   - a partial failure dropped a file (timeout / OOM) — caching its
+      //     empty output would mask the failure as a clean hit next scan;
+      //   - the diagnostics couldn't be attributed back to their miss file.
+      if (
+        !cacheableResult.didDropReactHooksJsPlugin &&
+        !cacheableResult.hadPartialFailure &&
+        isAttributionSound
+      ) {
+        for (const missFile of missFiles) {
+          const cacheKey = cacheKeyByFile.get(missFile);
+          if (cacheKey !== undefined) {
+            cache.store(cacheKey, freshDiagnosticsByFile.get(missFile) ?? []);
+          }
+        }
+        cache.persist();
+      }
+
+      // Dedupe the merged result to match the non-cached path (which dedupes
+      // at the end of `spawnLintBatches`): a duplicate path in `includePaths`
+      // replays the same cached set twice, which dedupe collapses — so warm
+      // output stays equal to a cache-off scan of the same inputs.
+      return dedupeDiagnostics([
+        ...replayedDiagnostics,
+        ...cacheableResult.diagnostics,
+        ...sidecarResult.diagnostics,
+      ]);
+    }
+
+    const baseArgs = makeBaseArgs(configPath);
+    const fileBatches = batchIncludePaths(baseArgs, candidateFiles);
 
     const runBatches = () =>
       spawnLintBatches({
@@ -281,6 +540,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         spawnTimeoutMs,
         outputMaxBytes,
         concurrency: options.concurrency,
+        signal: options.signal,
       });
 
     writeOxlintConfig(configPath, buildConfig({ extendsPaths }));

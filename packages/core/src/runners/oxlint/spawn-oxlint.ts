@@ -5,21 +5,9 @@ import {
   OXLINT_SPAWN_TIMEOUT_MS as DEFAULT_OXLINT_SPAWN_TIMEOUT_MS,
 } from "../../constants.js";
 import { OxlintBatchExceeded, OxlintSpawnFailed, ReactDoctorError } from "../../errors.js";
+import { buildOxlintChildEnv } from "../../utils/build-oxlint-child-env.js";
 
-// HACK: Sanitize child env so a developer's NODE_OPTIONS=--inspect (or
-// --max-old-space-size=128, etc.) doesn't leak into oxlint and either spawn a
-// debugger port or starve it of memory. We also drop npm_config_* lifecycle
-// vars to keep oxlint from picking up package-manager state. PATH, HOME,
-// NODE_ENV, NODE_PATH, etc. pass through unchanged.
-const SANITIZED_ENV: NodeJS.ProcessEnv = (() => {
-  const sanitized: NodeJS.ProcessEnv = {};
-  for (const [name, value] of Object.entries(process.env)) {
-    if (name === "NODE_OPTIONS" || name === "NODE_DEBUG") continue;
-    if (name.startsWith("npm_config_")) continue;
-    sanitized[name] = value;
-  }
-  return sanitized;
-})();
+const SANITIZED_ENV: NodeJS.ProcessEnv = buildOxlintChildEnv(process.env);
 
 /**
  * Spawn one oxlint subprocess with hard ceilings on wall time and
@@ -47,8 +35,19 @@ export const spawnOxlint = (
   // so the eval harness can override them via `Layer.succeed`.
   spawnTimeoutMs: number = DEFAULT_OXLINT_SPAWN_TIMEOUT_MS,
   outputMaxBytes: number = OXLINT_OUTPUT_MAX_BYTES,
+  // Aborted when the orchestrator's lint-phase timeout fires. Reclaims the
+  // in-flight oxlint child (and short-circuits one not yet spawned) so the
+  // bounded lint phase actually stops work instead of leaving subprocesses
+  // running until their own per-batch spawn timeout.
+  abortSignal?: AbortSignal,
 ): Promise<string> =>
   new Promise<string>((resolve, reject) => {
+    if (abortSignal?.aborted) {
+      reject(
+        new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: "lint phase aborted" }) }),
+      );
+      return;
+    }
     const child = spawn(nodeBinaryPath, args, {
       cwd: rootDirectory,
       env: SANITIZED_ENV,
@@ -62,7 +61,19 @@ export const spawnOxlint = (
       stdio: ["ignore", "pipe", "pipe"],
     });
 
+    const onAbort = () => {
+      child.kill("SIGKILL");
+      reject(
+        new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: "lint phase aborted" }) }),
+      );
+    };
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
+    // The signal is shared across every batch's spawn in one lint run, so
+    // each settle path must drop its listener or they accumulate.
+    const clearAbortListener = () => abortSignal?.removeEventListener("abort", onAbort);
+
     const timeoutHandle = setTimeout(() => {
+      clearAbortListener();
       child.kill("SIGKILL");
       reject(
         new ReactDoctorError({
@@ -108,10 +119,12 @@ export const spawnOxlint = (
 
     child.on("error", (error) => {
       clearTimeout(timeoutHandle);
+      clearAbortListener();
       reject(new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: error }) }));
     });
     child.on("close", (_code, signal) => {
       clearTimeout(timeoutHandle);
+      clearAbortListener();
       if (didKillForSize) {
         reject(
           new ReactDoctorError({

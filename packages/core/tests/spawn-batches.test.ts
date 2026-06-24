@@ -153,3 +153,54 @@ describe("spawnLintBatches concurrency", () => {
     expect(peak).toBe(1);
   });
 });
+
+/**
+ * LPT-invariance guard for the cost-aware batch ordering: reordering the
+ * input batches must not change the deduped diagnostic SET (only its arrival
+ * order, which the downstream `sortDiagnosticsStable` then makes canonical).
+ * Each `node -e` stub emits one oxlint-format diagnostic per file argument, so
+ * a faithful set comparison across two batch orders is possible without oxlint.
+ */
+const EMIT_ONE_DIAGNOSTIC_PER_FILE_SCRIPT = [
+  "const files = process.argv.slice(1);",
+  "const diagnostics = files.map((filename) => ({",
+  '  message: "Array index used as a key",',
+  '  code: "react-doctor(no-array-index-as-key)",',
+  '  severity: "warning",',
+  '  causes: [], url: "", help: "",',
+  "  filename,",
+  '  labels: [{ label: "", span: { offset: 0, length: 1, line: 1, column: 1 } }],',
+  "  related: [],",
+  "}));",
+  "process.stdout.write(JSON.stringify({ diagnostics, number_of_files: files.length, number_of_rules: 1 }));",
+].join("\n");
+
+const lintFileBatches = (fileBatches: string[][]) =>
+  spawnLintBatches({
+    baseArgs: ["-e", EMIT_ONE_DIAGNOSTIC_PER_FILE_SCRIPT],
+    fileBatches,
+    rootDirectory: process.cwd(),
+    nodeBinaryPath: process.execPath,
+    project,
+    concurrency: 4,
+  });
+
+const sortByFilePath = (diagnostics: Awaited<ReturnType<typeof lintFileBatches>>) =>
+  [...diagnostics].sort((left, right) => left.filePath.localeCompare(right.filePath));
+
+describe("spawnLintBatches — LPT batch-order invariance", () => {
+  it("returns the same deduped diagnostic set regardless of batch input order", async () => {
+    const forwardOrder = [["src/a.tsx"], ["src/b.tsx"], ["src/c.tsx"]];
+    const reversedOrder = [["src/c.tsx"], ["src/b.tsx"], ["src/a.tsx"]];
+
+    const fromForward = await lintFileBatches(forwardOrder);
+    const fromReversed = await lintFileBatches(reversedOrder);
+
+    expect(sortByFilePath(fromForward)).toEqual(sortByFilePath(fromReversed));
+    expect(fromForward.map((diagnostic) => diagnostic.filePath).sort()).toEqual([
+      "src/a.tsx",
+      "src/b.tsx",
+      "src/c.tsx",
+    ]);
+  });
+});

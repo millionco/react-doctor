@@ -112,6 +112,10 @@ const resolveRequestedProjects = (
     );
     if (matched) return matched.directory;
 
+    if (path.basename(rootDirectory) === requestedName) {
+      return rootDirectory;
+    }
+
     const candidateDirectory = path.resolve(rootDirectory, requestedName);
     if (isDirectory(candidateDirectory)) {
       recordCount(METRIC.projectPathSelected);

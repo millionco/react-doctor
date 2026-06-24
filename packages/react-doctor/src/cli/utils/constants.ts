@@ -13,15 +13,20 @@ export const TERMINAL_HANGUP_EXIT_CODE = 129;
 // normalization, the `-V` alias).
 export const NODE_ARGUMENT_COUNT = 2;
 
-// `projectName` for every global `Conf` store. React Doctor keeps all per-user
-// state in one file (Conf preserves unknown keys, so each concern owns its own
-// top-level key): onboarding, the install-setup opt-out, and the once-per-repo
-// prompt decisions (CI pitch, action upgrade).
+// `projectName` for the per-user `Conf` store. React Doctor keeps all per-user
+// state in one file, opened in exactly one place (`cli-state-store.ts`), with
+// one key per concern: onboarding, the install-setup opt-out, and the
+// once-per-repo prompt decisions (CI pitch, action upgrade).
 export const REACT_DOCTOR_CONFIG_PROJECT_NAME = "react-doctor";
 
 export const STAGED_FILES_TEMP_DIR_PREFIX = "react-doctor-staged-";
 export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
-export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 1;
+// Bump on any breaking change to `CachedScanPayload`'s shape so a stale on-disk
+// cache (missing a newly-required field) is discarded wholesale by
+// `readPersistedCache` instead of deserializing into an invalid payload.
+// Bumped to 2: `CachedScanPayload` gained the required `supplyChainOverlapTimedOut`
+// (supply-chain overlap) and `deadCodeOverlapped` (dead-code overlap) fields.
+export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 2;
 export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
 export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
 
@@ -43,6 +48,11 @@ export const AGENT_HOOK_TIMEOUT_SECONDS = 120;
 // well under a second; a cold gh.exe on Windows CI has taken 30s+, and the
 // git fallbacks behind it are correct for almost every repo — so fail fast.
 export const GH_DEFAULT_BRANCH_PROBE_TIMEOUT_MS = 5000;
+
+// Cap on open PRs scanned when checking for an already-open React Doctor
+// setup PR (the idempotency guard). Far above any realistic count of open
+// PRs whose head sits under the setup-branch prefix.
+export const GH_PR_LIST_MAX = 100;
 
 // Cap on files listed per rule in the agent-handoff prompt so it stays a
 // compact, passable CLI argument.
@@ -155,6 +165,7 @@ export const NANOSECONDS_PER_SECOND = 1_000_000_000n;
 export const METRIC = {
   cliInvoked: "cli.invoked",
   cliError: "cli.error",
+  cliEnvironmentError: "cli.env_error",
   projectDetected: "project.detected",
   projectPathSelected: "project.path_selected",
   projectConfigSelected: "project.config_selected",
@@ -187,4 +198,5 @@ export const METRIC = {
   lspScanCompleted: "lsp.scan.completed",
   lspScanDuration: "lsp.scan.duration",
   lspScanDiagnostics: "lsp.scan.diagnostics",
+  aiTrainingWarningShown: "ai.training.warning_shown",
 } as const;

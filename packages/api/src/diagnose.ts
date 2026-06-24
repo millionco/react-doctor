@@ -6,6 +6,7 @@ import {
   DEFAULT_PROJECT_SCAN_CONCURRENCY,
   DEFAULT_SHOW_WARNINGS,
   DeadCode,
+  detectAiTrainingEnvironment,
   Files,
   Git,
   layerOtlp,
@@ -34,6 +35,18 @@ import type {
   ReactDoctorConfig,
   ScoreResult,
 } from "@react-doctor/core";
+
+// The CLI carries the richer warning (logger + telemetry); the library only
+// has stdout, so it warns once per process via console.warn when a scan runs
+// inside an AI/ML training environment (license requires written permission).
+let didWarnAiTraining = false;
+const warnIfAiTrainingEnvironment = (): void => {
+  if (didWarnAiTraining || detectAiTrainingEnvironment() === null) return;
+  didWarnAiTraining = true;
+  console.warn(
+    "[react-doctor] Use in an AI or ML pipeline requires written permission under the react-doctor license. Contact founders@million.dev to request access.",
+  );
+};
 
 // The production layer stack for the programmatic API. The only axis that
 // varies across calls is `Config`: with no override we load from disk
@@ -120,6 +133,7 @@ const diagnoseDirectory = async (
   directory: string,
   options: DiagnoseOptions,
 ): Promise<DiagnoseResult> => {
+  warnIfAiTrainingEnvironment();
   const startTime = globalThis.performance.now();
   const scanTarget = await resolveScanTarget(directory);
   const program = buildInspectProgram(scanTarget, options);
@@ -210,6 +224,7 @@ const diagnoseProject = async (
 const diagnoseProjectBatch = async (
   input: DiagnoseProjectsInput,
 ): Promise<DiagnoseProjectsResult> => {
+  warnIfAiTrainingEnvironment();
   const startTime = globalThis.performance.now();
   const { projects, concurrency, config: batchConfig, ...baseOptions } = input;
 

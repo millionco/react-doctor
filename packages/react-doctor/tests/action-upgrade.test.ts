@@ -122,12 +122,19 @@ describe("action upgrade prompt state", () => {
     expect(hasHandledActionUpgrade("/repo/b", { cwd: configRoot })).toBe(false);
   });
 
-  it("stores state in the shared react-doctor config file", () => {
+  it("stores the decision as an action-upgrade event in the shared react-doctor config file", () => {
     recordActionUpgradeDecision("/repo/a", "declined", { cwd: configRoot });
     const configPath = getActionUpgradePromptConfigPath({ cwd: configRoot });
     const stored = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    const records = Object.values(stored.actionUpgrades);
+    const records = Object.values(stored.projects)
+      .map(
+        (project) =>
+          (project as { events?: Record<string, { outcome?: string }> }).events?.[
+            "action-upgrade-v2"
+          ],
+      )
+      .filter(Boolean);
     expect(records).toHaveLength(1);
-    expect(records[0].outcome).toBe("declined");
+    expect(records[0]?.outcome).toBe("declined");
   });
 });

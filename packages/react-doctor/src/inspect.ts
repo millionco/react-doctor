@@ -27,6 +27,8 @@ import { BASELINE_FILES_TEMP_DIR_PREFIX, METRIC } from "./cli/utils/constants.js
 import { recordCount } from "./cli/utils/record-metric.js";
 import { recordScanMetrics } from "./cli/utils/record-scan-metrics.js";
 import { recordRunEvent } from "./cli/utils/build-run-event.js";
+import { resolveWorkerTelemetry } from "./cli/utils/resolve-worker-telemetry.js";
+import { countDroppedLintFiles } from "./cli/utils/count-dropped-lint-files.js";
 import type {
   ChangedFileLineRanges,
   Diagnostic,
@@ -234,21 +236,32 @@ const buildRunEventConfig = (
   options: ResolvedInspectOptions,
   userConfig: ReactDoctorConfig | null,
   hasCustomConfig: boolean,
-) => ({
-  scope: deriveScope(options),
-  parallel: options.concurrency !== undefined,
-  workerCount: options.concurrency,
-  lint: options.lint,
-  deadCode: options.deadCode,
-  scoreOnly: options.scoreOnly,
-  noScore: options.noScore,
-  respectInlineDisables: options.respectInlineDisables,
-  showWarnings: options.warnings,
-  usedOutputDir: options.outputDirectory !== null,
-  ignoredTagCount: options.ignoredTags.size,
-  hasCustomConfig,
-  userConfig,
-});
+  // The worker count the scan actually resolved to (`output.scanConcurrency`),
+  // which is the real value on the auto path where `options.concurrency` is
+  // `undefined`. Omitted on the pre-scan failure path (no scan ran), where it
+  // falls back to the caller's pin.
+  resolvedWorkerCount?: number,
+) => {
+  const { workerCount, parallel } = resolveWorkerTelemetry(
+    resolvedWorkerCount,
+    options.concurrency,
+  );
+  return {
+    scope: deriveScope(options),
+    parallel,
+    workerCount,
+    lint: options.lint,
+    deadCode: options.deadCode,
+    scoreOnly: options.scoreOnly,
+    noScore: options.noScore,
+    respectInlineDisables: options.respectInlineDisables,
+    showWarnings: options.warnings,
+    usedOutputDir: options.outputDirectory !== null,
+    ignoredTagCount: options.ignoredTags.size,
+    hasCustomConfig,
+    userConfig,
+  };
+};
 
 export const inspect = async (
   directory: string,
@@ -560,6 +573,7 @@ const runInspectWithRuntime = async (
       resolveLocalGithubViewerPermission: !options.noScore,
       suppressScanSummary: options.suppressRendering,
       supplyChainManifestChanged: options.supplyChainManifestChanged,
+      concurrentScan: options.concurrentScan,
     },
     {
       beforeLint: (projectInfo, lintIncludePaths) =>
@@ -684,14 +698,17 @@ const runInspectWithRuntime = async (
     lintPartialFailures: output.lintPartialFailures,
     didDeadCodeFail: output.didDeadCodeFail,
     deadCodeFailureReason: output.deadCodeFailureReason,
+    deadCodeOverlapped: output.deadCodeOverlapped,
     directory: output.resolvedDirectory,
     scannedFileCount: output.scannedFileCount,
     scannedFilePaths: output.scannedFilePaths,
     scanElapsedMilliseconds: output.scanElapsedMilliseconds,
+    scanConcurrency: output.scanConcurrency,
     baselineDelta,
     lintFailureReasonKind: lintBindingMissing
       ? "native-binding-missing"
       : output.lintFailureReasonKind,
+    supplyChainOverlapTimedOut: output.supplyChainOverlapTimedOut,
   };
   if (cacheKey !== null && scanResultCache !== null && shouldStoreScanPayload(payload)) {
     scanResultCache.store(cacheKey, payload);
@@ -705,6 +722,8 @@ const runInspectWithRuntime = async (
     rootSentrySpan,
     scanMode: baselineDelta ? "baseline" : isDiffMode ? "diff" : "full",
     baselineDegraded,
+    lintCacheHitFileCount: output.lintCacheHitFileCount,
+    lintCacheTotalFileCount: output.lintCacheTotalFileCount,
   });
   recordOnboardingCompletion(options);
   return result;
@@ -726,6 +745,8 @@ interface FinalizeInput {
   scannedFileCount: number;
   scannedFilePaths: ReadonlyArray<string>;
   scanElapsedMilliseconds: number;
+  lintCacheHitFileCount: number | null;
+  lintCacheTotalFileCount: number | null;
   baselineDelta: InspectResult["baselineDelta"];
 }
 
@@ -745,6 +766,14 @@ interface RenderAndRecordScanInput {
   readonly rootSentrySpan: SentryRootSpan;
   readonly scanMode: "full" | "diff" | "baseline";
   readonly baselineDegraded: boolean;
+  /**
+   * Per-file lint cache outcome for THIS scan's lint pass. Threaded outside
+   * `CachedScanPayload` on purpose — it's telemetry about the lint that ran in
+   * this process, not part of the cacheable result, so a whole-repo cache
+   * replay (where no lint ran) correctly leaves it absent.
+   */
+  readonly lintCacheHitFileCount?: number | null;
+  readonly lintCacheTotalFileCount?: number | null;
 }
 
 const runMaybeSilent = <A, E, R>(
@@ -788,17 +817,26 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     scannedFileCount: input.payload.scannedFileCount,
     scannedFilePaths: input.payload.scannedFilePaths,
     scanElapsedMilliseconds: input.payload.scanElapsedMilliseconds,
+    lintCacheHitFileCount: input.lintCacheHitFileCount ?? null,
+    lintCacheTotalFileCount: input.lintCacheTotalFileCount ?? null,
     baselineDelta: input.payload.baselineDelta,
   };
   const result = await Effect.runPromise(
     runMaybeSilent(finalizeAndRender(finalizeInput), input.options.silent),
   );
+  // The real worker count the scan fanned out to (resolved auto count on the
+  // common parallel path, where the caller pinned no `concurrency`). A stale
+  // cache hit predating the field falls back to the caller's pin.
+  const { workerCount: resolvedWorkerCount, parallel } = resolveWorkerTelemetry(
+    input.payload.scanConcurrency,
+    input.options.concurrency,
+  );
   recordScanMetrics({
     result,
     mode: input.scanMode,
     baselineDegraded: input.baselineDegraded,
-    parallel: input.options.concurrency !== undefined,
-    workerCount: input.options.concurrency,
+    parallel,
+    workerCount: resolvedWorkerCount,
     lint: input.options.lint,
     deadCode: input.options.deadCode,
     scoreOnly: input.options.scoreOnly,
@@ -808,14 +846,22 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     didDeadCodeFail: input.payload.didDeadCodeFail,
   });
   recordRunEvent(input.rootSentrySpan, {
-    ...buildRunEventConfig(input.options, input.userConfig, input.hasCustomConfig),
+    ...buildRunEventConfig(
+      input.options,
+      input.userConfig,
+      input.hasCustomConfig,
+      resolvedWorkerCount,
+    ),
     result,
     mode: input.scanMode,
     gateExempt: input.baselineDegraded,
     didLintFail: input.payload.didLintFail,
     lintFailureReasonKind: input.payload.lintFailureReasonKind,
     lintPartialFailureCount: input.payload.lintPartialFailures.length,
+    lintDroppedFileCount: countDroppedLintFiles(input.payload.lintPartialFailures),
     didDeadCodeFail: input.payload.didDeadCodeFail,
+    supplyChainOverlapTimedOut: input.payload.supplyChainOverlapTimedOut,
+    deadCodeOverlapped: input.payload.deadCodeOverlapped,
   });
   return result;
 };
@@ -838,6 +884,8 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       scannedFileCount,
       scannedFilePaths,
       scanElapsedMilliseconds,
+      lintCacheHitFileCount,
+      lintCacheTotalFileCount,
       baselineDelta,
     } = input;
 
@@ -862,6 +910,9 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       scannedFileCount,
       scannedFilePaths,
       scanElapsedMilliseconds,
+      ...(lintCacheTotalFileCount !== null
+        ? { lintCacheHitFileCount, lintCacheTotalFileCount }
+        : {}),
       ...(baselineDelta ? { baselineDelta } : {}),
     });
 

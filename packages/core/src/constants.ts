@@ -131,16 +131,36 @@ export const SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000;
 // vs the hard-cap perf cliffs they prevent.
 export const OXLINT_MAX_FILES_PER_BATCH = 100;
 
-// Bounds for the lint worker count (the `OxlintConcurrency` Reference, seeded
-// by the `REACT_DOCTOR_PARALLEL` env var; the CLI's `--no-parallel` flag forces
-// the MIN end). React Doctor's rules are oxlint JS plugins — single-threaded
-// per process — so
-// running the file batches across N concurrent oxlint subprocesses scales the
-// scan nearly linearly with N. MAX bounds peak memory (each worker holds its
-// batch's ASTs); the resolved count is clamped to [MIN, MAX].
+// Bounds for the lint worker count (the `OxlintConcurrency` Reference, seeded by
+// the `REACT_DOCTOR_PARALLEL` env var; the CLI's `--no-parallel` flag forces the
+// MIN end). React Doctor's rules are oxlint JS plugins — single-threaded per
+// process — so running the file batches across N concurrent oxlint subprocesses
+// scales the scan nearly linearly with N up to the straggler / per-spawn-overhead
+// knee (~10 workers). `resolveAutoScanConcurrency` chooses N for the auto path;
+// every requested count is clamped to [MIN, HARD_MAX].
 export const MIN_SCAN_CONCURRENCY = 1;
 
-export const MAX_SCAN_CONCURRENCY = 16;
+// Absolute upper bound on lint workers, and the clamp applied to every requested
+// count (auto-detected, `REACT_DOCTOR_PARALLEL=N`, or `inspect({ concurrency })`).
+// Past ~10 workers parallel efficiency already collapses (stragglers + per-spawn
+// overhead), so 32 is headroom that stops a 32/64-core CI runner from idling
+// cores behind the old fixed 16 — not a promise of proportionally more speed.
+export const HARD_MAX_SCAN_CONCURRENCY = 32;
+
+// Memory one oxlint subprocess is budgeted at the OXLINT_MAX_FILES_PER_BATCH=100
+// batch size (the native binding's parser arena + the batch's ASTs + the
+// JS-plugin heap). The auto path takes `floor(availableMemory / this)` as a
+// second ceiling alongside the core count, so a high-core / memory-starved box
+// (or a memory-limited container) doesn't spawn enough workers to trip the
+// native-binding SIGABRT that OXLINT_MAX_FILES_PER_BATCH and the EAGAIN/ENOMEM
+// serial replay already guard. 1 GiB matches the per-worker footprint the old
+// fixed-16 ceiling implicitly tolerated (16 workers on a typical 16 GiB CI box),
+// so any machine with >= ~1 GiB/core stays core-bound and the memory term only
+// binds on genuinely memory-constrained hosts — exactly where over-subscription
+// would OOM. `availableMemory` is `os.totalmem()` floored by the cgroup memory
+// limit, NOT `os.freemem()`, which excludes reclaimable page cache and reads
+// near-zero on macOS / cache-heavy Linux, collapsing the auto path to one worker.
+export const PER_WORKER_MEM_BUDGET_BYTES = 1024 * 1024 * 1024;
 
 // Default worker count for a `diagnose({ projects })` batch. Each project
 // scan already fans out its own oxlint workers (bounded by the constants
@@ -268,7 +288,49 @@ export const OXLINT_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;
 // binding is markedly slower than on a developer laptop.
 export const OXLINT_SPAWN_TIMEOUT_MS = 60_000;
 
+// Directory name appended to os.tmpdir() to form the shared base for the V8
+// compile cache. Matches the base Node's own module.enableCompileCache() uses,
+// so the bin (parent) and the spawned oxlint batches (children) share one tree.
+export const NODE_COMPILE_CACHE_DIR_NAME = "node-compile-cache";
+
 export const DEAD_CODE_WORKER_TIMEOUT_MS = 120_000;
+
+// Cumulative wall-clock budget across ALL binary-split retries of one
+// batch pass. A pathological file recurses through ~log2(100)≈7
+// split levels, and each level re-waits a full OXLINT_SPAWN_TIMEOUT_MS;
+// without a cumulative cap that cascade can stall the scan for minutes.
+// 180 s bounds the whole cascade while leaving room for a few healthy
+// re-spawns at the upper levels.
+export const OXLINT_SPLIT_TOTAL_BUDGET_MS = 180_000;
+
+// Recursion-depth cap on the binary-split recovery — a belt to the
+// OXLINT_SPLIT_TOTAL_BUDGET_MS suspenders. A 100-file batch needs at
+// most ceil(log2(100))=7 levels to isolate a single offender; 8 leaves
+// one level of slack and still terminates the recursion deterministically
+// even if the budget clock is somehow not advancing.
+export const OXLINT_SPLIT_MAX_DEPTH = 8;
+
+// Effect-side cap on the dead-code phase. Sits ABOVE the in-worker
+// DEAD_CODE_WORKER_TIMEOUT_MS (= 120 s) as a runtime-independent
+// backstop: if the worker's own timer is wedged (or the worker never
+// reports back), the Effect timeout still reclaims the phase.
+export const DEAD_CODE_PHASE_TIMEOUT_MS = 150_000;
+
+// Effect-side cap on the lint phase. Sits ABOVE the worst bounded split
+// cascade (OXLINT_SPLIT_TOTAL_BUDGET_MS plus scheduling overhead across
+// parallel workers) so a healthy-but-slow large repo finishes while a
+// truly wedged lint phase is still reclaimed.
+export const LINT_PHASE_TIMEOUT_MS = 300_000;
+
+// Overall scan deadline backstop. Catches everything the per-phase
+// timeouts don't bound — a wedged git invocation, a stuck filesystem
+// read, scoring — so no single scan can run unbounded. Sits comfortably
+// ABOVE the sum of the per-phase caps (supply-chain 90s + lint 5min +
+// dead-code 2.5min = 9min, run sequentially) plus discovery / git /
+// scoring overhead, so a scan that legitimately uses those budgets
+// degrades gracefully via the per-phase skips instead of hard-failing on
+// this deadline; only a genuinely wedged unbounded phase reaches it.
+export const SCAN_TOTAL_DEADLINE_MS = 900_000;
 
 // deslop's semantic pass builds a full TypeScript program and walks
 // every identifier through the type checker. On type-heavy projects
@@ -278,6 +340,40 @@ export const DEAD_CODE_WORKER_TIMEOUT_MS = 120_000;
 // surfaces as a silent "Scanning failed (dead-code analysis)". Raise
 // the child's heap so those projects complete instead of crashing.
 export const DEAD_CODE_WORKER_MAX_OLD_SPACE_MB = 8192;
+
+// Memory budgeted per concurrent dead-code worker when sizing the global
+// `withDeadCodeWorkerSlot` semaphore (`resolveDeadCodeConcurrency`). Deliberately
+// well below the worker's `--max-old-space-size` ceiling above (that's a crash
+// guard, not steady-state use): a deslop graph on a few-hundred-file project
+// peaks around 1–1.5 GB, so 2 GB leaves headroom while still collapsing the
+// concurrency toward 1 on a small CI runner — capping how many 8 GB-ceiling
+// children a multi-project scan starts at once.
+export const DEAD_CODE_WORKER_MEM_BUDGET_BYTES = 2 * 1024 * 1024 * 1024;
+
+// Dead-code timeout scales with the work. deslop is CPU-bound and roughly
+// linear in source-file count, so a single fixed timeout is at once too
+// generous for a small repo and too tight for a large one — on a multi-thousand
+// file repo the graph build legitimately approaches the old fixed 120s cap, so
+// any contention (a still-running supply-chain pass, an overlapped lint pool)
+// tips it over and the findings are silently dropped. The worker timeout is
+// `max(DEAD_CODE_WORKER_TIMEOUT_MS floor, fileCount * this)` capped at the
+// ceiling; the phase timeout sits a margin above it.
+export const DEAD_CODE_TIMEOUT_MS_PER_SOURCE_FILE = 30;
+export const DEAD_CODE_TIMEOUT_CEILING_MS = 600_000;
+export const DEAD_CODE_PHASE_TIMEOUT_OVER_WORKER_MS = 30_000;
+
+// When dead-code is explicitly overlapped with lint (`DeadCodeOverlap="on"`),
+// the two CPU-bound worker pools must SHARE the cores rather than each claiming
+// all of them — uncoordinated, deslop's parse pool (`os.availableParallelism()`)
+// and the oxlint pool (one child per core) sum to ~2x the cores and thrash,
+// starving the parse pass past its timeout. The dead-code parse pool gets this
+// fraction of the scan's worker budget and lint gets the rest, so the two sum to
+// the budget instead of doubling it. (Overlap is OFF by default: dead-code is
+// CPU-bound, so a sequential full-core pass is both faster per-phase and never
+// oversubscribes — overlapping it with lint buys no wall-clock and only risks
+// the starvation. This split exists for operators who force overlap on.)
+export const DEAD_CODE_OVERLAP_PARSE_SHARE = 0.4;
+export const MIN_DEAD_CODE_PARSE_CONCURRENCY = 1;
 
 // HACK: lookahead cap for JSX opener-span scanning; bounds worst-case
 // work on pathological files. Real openers stay well under this.
@@ -487,6 +583,26 @@ export const SOCKET_PACKAGE_PAGE_BASE = "https://socket.dev/npm/package";
 // identifies itself to the same endpoint.
 export const SOCKET_FREE_USER_AGENT = "react-doctor-supply-chain";
 
+// Per-file lint cache (`runners/oxlint/file-lint-cache.ts`). Caches the raw
+// oxlint diagnostics of unchanged files keyed by content hash + ruleset hash,
+// so repeat scans re-lint only the files that actually changed.
+export const FILE_LINT_CACHE_SCHEMA_VERSION = 1;
+
+export const FILE_LINT_CACHE_FILENAME = "file-lint-cache.json";
+
+// Number of distinct ruleset buckets kept in one cache file. Each toolchain /
+// config change mints a new ruleset hash; older buckets are pruned LRU so the
+// file can't grow without bound across upgrades.
+export const FILE_LINT_CACHE_MAX_RULESET_COUNT = 8;
+
+// Per-ruleset ceiling on cached files. Bounds memory + disk on very large
+// repos; the most-recently-stored entries are kept when over the cap.
+export const FILE_LINT_CACHE_MAX_FILE_COUNT = 50_000;
+
+// Length (chars) of the project-directory hash used to name the tmp-dir cache
+// fallback when a project has no `node_modules` to host `.cache/react-doctor`.
+export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
+
 // Plugin / rule / category identity for the diagnostics the supply-chain
 // check emits. `plugin: "socket"` keeps Socket findings visually distinct
 // from the `react-doctor` lint surface in the printed list and JSON report.
@@ -509,6 +625,25 @@ export const SOCKET_SCORE_SCALE = 100;
 // large dependency list doesn't open hundreds of sockets or trip Socket's
 // per-route rate limit.
 export const SUPPLY_CHAIN_FETCH_CONCURRENCY = 8;
+
+// Belt-and-suspenders wall-clock cap on the supply-chain check while it runs on
+// a background fiber overlapping the lint pass. `Effect.timeout` measures from
+// when the forked effect STARTS (at fork, before lint) — NOT from the join — so
+// this is sized generously above the worst-case healthy run (FETCH_TIMEOUT_MS ×
+// ceil(~45 deps / SUPPLY_CHAIN_FETCH_CONCURRENCY) ≈ 60s) to avoid cutting a
+// slow-but-working scan, while still bounding a hung undici socket instead of
+// letting it drag out the join. On expiry the check fails open to no
+// diagnostics — the same outcome class as the per-package Socket fail-open.
+export const SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS = 90_000;
+
+// On-disk TTL for a cached Socket artifact. A dependency's score/alerts are
+// stable day-to-day and advisory, so a cached lookup within 24h skips the
+// network entirely (the recurring CI win + faster repeated local scans);
+// after expiry it re-fetches. Disabled by `REACT_DOCTOR_NO_CACHE`.
+export const SUPPLY_CHAIN_CACHE_TTL_MS = 86_400_000;
+
+// Subdirectory of the react-doctor cache dir holding per-PURL Socket responses.
+export const SUPPLY_CHAIN_CACHE_SUBDIR = "supply-chain";
 
 // Most severe Socket alerts to name in one supply-chain diagnostic before
 // collapsing the remainder into a "+N more" count, so a noisy package

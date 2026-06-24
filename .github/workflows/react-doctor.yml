@@ -49,3 +49,23 @@ jobs:
           blocking: none
           node-version: 22.18.0
           version: ./packages/react-doctor
+
+  # Exercise the NEW cacheable install path (a published `version:` →
+  # resolve-version + actions/cache + `npm install --prefix` into the toolchain
+  # dir, then run the local binary). The job above covers the non-cacheable
+  # local-path / npx branch; this one guards the prefix-install branch so it
+  # can't silently break. Cross-run cache HITS (the ~15s→~1s win) are validated
+  # by dogfooding on real runs — the cache service persists between runs, not
+  # within a single job. Advisory (`blocking: none`), so it never reds the repo.
+  action-cacheable-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: ./
+        with:
+          blocking: none
+          node-version: 22.18.0
+          version: latest

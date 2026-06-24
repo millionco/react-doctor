@@ -1,3 +1,4 @@
+import { resolveLintBatchOrdering } from "@react-doctor/core";
 import { detectTerminalKind } from "./detect-terminal-kind.js";
 import {
   detectCiEventName,
@@ -47,6 +48,11 @@ export interface RunContext {
   // bun, or "unknown"), derived from `npm_config_user_agent`. Distinguishes
   // `npx react-doctor` (npm) from `pnpm dlx` / global installs in triage.
   invokedVia: string;
+  // Full-scan lint batch ordering in effect for this run: `"cost"` (LPT,
+  // largest-first) or `"arrival"` (the env-revertable fallback). The cohort
+  // dimension for the LPT before/after — `Linter.run` p95 and dropped-file
+  // rate are queried grouped by it.
+  lintBatchOrdering: "cost" | "arrival";
 }
 
 const ROOT_SUBCOMMANDS = new Set(["install", "setup"]);
@@ -115,5 +121,6 @@ export const buildRunContext = (): RunContext => {
     jsonMode: isJsonModeActive(),
     debug: isDebugFlagEnabled(),
     invokedVia: detectInvokedVia(),
+    lintBatchOrdering: resolveLintBatchOrdering(),
   };
 };

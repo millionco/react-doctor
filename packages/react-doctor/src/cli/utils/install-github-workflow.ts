@@ -17,8 +17,13 @@ export interface InstallGitHubWorkflowResult {
 // pinned to the floating major `@v2` (never `@main`, per the supply-chain
 // guidance in AGENTS.md): `@main` would run whatever HEAD points to with
 // `pull-requests: write` granted.
-const buildWorkflowContent = (
+// `actionRef` is the floating-major (or pin) the `uses:` line carries. It
+// defaults to the current major so fresh installs always pin `@v2`; the
+// `ci config` round-trip passes the ref it read back so editing a workflow's
+// gate never silently bumps its version across a major boundary.
+export const buildWorkflowContent = (
   defaultBranch: string,
+  actionRef: string = "v2",
 ): string => `# React Doctor — finds security, performance, correctness, accessibility,
 # bundle-size, and architecture issues in React codebases.
 #
@@ -52,7 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: millionco/react-doctor@v2
+      - uses: millionco/react-doctor@${actionRef}
         # Advisory by default: React Doctor reports findings on every PR — a
         # sticky summary comment, inline review comments, and a commit status
         # with the health score — but never fails the check, so it won't red-X

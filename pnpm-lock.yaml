@@ -259,8 +259,8 @@ importers:
         specifier: ^10.54.0
         version: 10.54.0
       agent-install:
-        specifier: 0.0.5
-        version: 0.0.5
+        specifier: 0.0.8
+        version: 0.0.8
       conf:
         specifier: ^15.1.0
         version: 15.1.0
@@ -2746,8 +2746,8 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
-  agent-install@0.0.5:
-    resolution: {integrity: sha512-nHlms9BkP8ZiY79HrwCGiA2DcNaXrAaJrCM/BEqQ7MEsSKyCk+2A76xPGylIfASZSZE0SaU3T0bNSg4rBPIJAQ==}
+  agent-install@0.0.8:
+    resolution: {integrity: sha512-x/AxHAzJx788UnM3MfjPIpIda8swS+x5Dz9wTt9MfteWzQXLgAtWuYU21FKj4rfwZa4Ru8R+xJIhxBnZBNsR+w==}
     hasBin: true
 
   ajv-formats@3.0.1:
@@ -4407,11 +4407,6 @@ packages:
 
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
-
-  yaml@2.8.3:
-    resolution: {integrity: sha512-AvbaCLOO2Otw/lW5bmh9d/WEdcDFdQp2Z2ZUH3pX9U2ihyUY0nvLv7J6TrWowklRGPYbB/IuIMfYgxaCPg5Bpg==}
-    engines: {node: '>= 14.6'}
-    hasBin: true
 
   yaml@2.9.0:
     resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
@@ -6105,14 +6100,14 @@ snapshots:
 
   acorn@8.16.0: {}
 
-  agent-install@0.0.5:
+  agent-install@0.0.8:
     dependencies:
       '@iarna/toml': 2.2.5
       commander: 14.0.3
       jsonc-parser: 3.3.1
       picocolors: 1.1.1
       prompts: 2.4.2
-      yaml: 2.8.3
+      yaml: 2.9.0
 
   ajv-formats@3.0.1(ajv@8.20.0):
     optionalDependencies:
@@ -7895,8 +7890,6 @@ snapshots:
   ws@8.20.0: {}
 
   yallist@3.1.1: {}
-
-  yaml@2.8.3: {}
 
   yaml@2.9.0: {}
 

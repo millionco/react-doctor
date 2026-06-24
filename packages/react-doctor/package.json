@@ -58,7 +58,7 @@
   "dependencies": {
     "@babel/code-frame": "^7.29.0",
     "@sentry/node": "^10.54.0",
-    "agent-install": "0.0.5",
+    "agent-install": "0.0.8",
     "conf": "^15.1.0",
     "confbox": "^0.2.4",
     "deslop-js": "workspace:*",

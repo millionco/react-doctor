@@ -449,6 +449,35 @@ describe("react-native/rn-no-raw-text", () => {
         const App = () => <Box>Hello</Box>;
       `);
     });
+
+    // An in-file forwarder into an imported component is as un-analyzable as the
+    // import itself — the import may wrap the children in `<Text>` — so it must
+    // not be flagged either, the same false positive avoided for direct usage.
+    it("does not fire on an in-file forwarder into an imported component", () => {
+      expectPass(`
+        import { MyButton } from "./my-button";
+        const Label = ({ children }) => <MyButton>{children}</MyButton>;
+        const App = () => <Label>Click me</Label>;
+      `);
+    });
+
+    it("does not fire on an in-file forwarder that spreads props onto an imported component", () => {
+      expectPass(`
+        import { BaseButton } from "./base-button";
+        const PrimaryButton = (props) => <BaseButton {...props} />;
+        const App = () => <PrimaryButton>Save</PrimaryButton>;
+      `);
+    });
+
+    // Transitive: `Box` is proven to render children inside a `<View>`, so a
+    // forwarder into `Box` renders them outside `<Text>` too — a certain crash.
+    it("still fires on a forwarder into a proven non-text wrapper", () => {
+      expectFail(`
+        const Box = ({ children }) => <View>{children}</View>;
+        const Badge = ({ children }) => <Box>{children}</Box>;
+        const App = () => <Badge>New</Badge>;
+      `);
+    });
   });
 
   describe("test-noise suppression", () => {

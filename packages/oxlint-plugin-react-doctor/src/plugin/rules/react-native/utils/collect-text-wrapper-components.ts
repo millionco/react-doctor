@@ -249,20 +249,21 @@ const jsxRootForwardsChildrenIntoText = (
 const isMeaningfulJsxChild = (child: EsTreeNode): boolean =>
   !isNodeOfType(child, "JSXText") || Boolean(child.value?.trim());
 
-// True when a non-text element directly receives the component's children
-// (`<View>{children}</View>`, or a children-carrying attribute like
-// `<View {...props} />` with no JSX children to override it) — a return path
-// like this would render the wrapper's raw string children outside any
-// `<Text>`, so the component must not be treated as a safe wrapper even if
-// another path forwards into text.
-const jsxRootRendersChildrenOutsideText = (
+// True when the component's children are forwarded into an element the caller
+// counts as a forward target — directly (`<X>{children}</X>`) or via a
+// children-carrying attribute (`<X {...props} />` with no JSX children to
+// override it). Text-handling elements are always skipped (their children land
+// safely inside text); `countsAsForwardTarget` selects which of the remaining
+// receivers matter.
+const jsxRootForwardsChildren = (
   jsxRoot: EsTreeNode,
   bindings: ChildrenBindings,
   isTextHandlingElement: (elementName: string) => boolean,
+  countsAsForwardTarget: (node: EsTreeNode) => boolean,
 ): boolean => {
-  let didRenderOutsideText = false;
+  let didForward = false;
   walkAst(jsxRoot, (node) => {
-    if (didRenderOutsideText || isFunctionNode(node)) return false;
+    if (didForward || isFunctionNode(node)) return false;
     if (!isNodeOfType(node, "JSXElement") && !isNodeOfType(node, "JSXFragment")) {
       return undefined;
     }
@@ -272,21 +273,52 @@ const jsxRootRendersChildrenOutsideText = (
       const hasJsxChildren = (node.children ?? []).some(isMeaningfulJsxChild);
       if (
         !hasJsxChildren &&
+        countsAsForwardTarget(node) &&
         (node.openingElement.attributes ?? []).some((attribute) =>
           isChildrenForwardingAttribute(attribute, bindings),
         )
       ) {
-        didRenderOutsideText = true;
+        didForward = true;
         return undefined;
       }
     }
-    didRenderOutsideText = (node.children ?? []).some((child) =>
-      isChildrenForwardingJsxChild(child, bindings),
-    );
+    if (
+      countsAsForwardTarget(node) &&
+      (node.children ?? []).some((child) => isChildrenForwardingJsxChild(child, bindings))
+    ) {
+      didForward = true;
+    }
     return undefined;
   });
-  return didRenderOutsideText;
+  return didForward;
 };
+
+// True when a return path forwards the component's children into any non-text
+// element — so the component must not be treated as a safe text wrapper, even
+// if another path forwards into text.
+const jsxRootRendersChildrenOutsideText = (
+  jsxRoot: EsTreeNode,
+  bindings: ChildrenBindings,
+  isTextHandlingElement: (elementName: string) => boolean,
+): boolean => jsxRootForwardsChildren(jsxRoot, bindings, isTextHandlingElement, () => true);
+
+// True when a return path forwards the component's children into a *known*
+// non-text host (`<View>{children}</View>`, a lowercase intrinsic, or another
+// proven non-text wrapper). This is the report-worthy subset of "outside text":
+// forwarding into an unanalyzed import (`<MyButton>{children}</MyButton>`) is
+// excluded, since that import may itself wrap its children in a `<Text>` — the
+// same uncertainty that keeps a direct `<MyButton>text</MyButton>` unreported.
+const jsxRootRendersChildrenIntoNonTextHost = (
+  jsxRoot: EsTreeNode,
+  bindings: ChildrenBindings,
+  isTextHandlingElement: (elementName: string) => boolean,
+  isNonTextHostElement: (elementName: string) => boolean,
+): boolean =>
+  jsxRootForwardsChildren(jsxRoot, bindings, isTextHandlingElement, (node) => {
+    if (!isNodeOfType(node, "JSXElement")) return false;
+    const elementName = resolveJsxElementName(node.openingElement);
+    return elementName !== null && isNonTextHostElement(elementName);
+  });
 
 // Resolves a styled-component factory back to its base element name —
 // `styled(Text)`…``, `styled.Text`…``, `styled(Text)({})`, and
@@ -355,14 +387,15 @@ export interface ChildrenForwardingComponents {
 
 // Records a component declaration into the text-wrapper or non-text-wrapper set
 // based on where it forwards its children: into a text-handling element
-// (`textWrappers`) or out into a non-text host (`nonTextWrappers`). A component
-// that never forwards its children at all (e.g. ignores them, or only renders a
-// `title` prop) lands in neither — raw text passed to it renders nothing, so it
-// is left unreported.
+// (`textWrappers`) or into a known non-text host (`nonTextWrappers`). A
+// component that forwards its children only into an unanalyzed import, or never
+// forwards them at all (ignores them, or renders only a `title` prop), lands in
+// neither — we can't prove a crash, so raw text passed to it is left unreported.
 const recordWrapperFromDeclaration = (
   componentName: string | null,
   definitionNode: EsTreeNode | null | undefined,
   isTextHandlingElement: (elementName: string) => boolean,
+  isNonTextHostElement: (elementName: string) => boolean,
   wrappers: Set<string>,
   nonTextWrappers: Set<string>,
 ): void => {
@@ -372,7 +405,9 @@ const recordWrapperFromDeclaration = (
   const unwrapped = unwrapComponentDefinition(definitionNode);
   const styledBaseName = resolveStyledFactoryBaseName(unwrapped);
   if (styledBaseName) {
-    (isTextHandlingElement(styledBaseName) ? wrappers : nonTextWrappers).add(componentName);
+    if (isTextHandlingElement(styledBaseName)) wrappers.add(componentName);
+    else if (isNonTextHostElement(styledBaseName)) nonTextWrappers.add(componentName);
+    // A `styled()` factory over an unanalyzed base is left unclassified.
     return;
   }
   const functionNode =
@@ -383,10 +418,25 @@ const recordWrapperFromDeclaration = (
   const jsxRoots = collectReturnedJsxRoots(functionNode);
   if (
     jsxRoots.some((jsxRoot) =>
-      jsxRootRendersChildrenOutsideText(jsxRoot, bindings, isTextHandlingElement),
+      jsxRootRendersChildrenIntoNonTextHost(
+        jsxRoot,
+        bindings,
+        isTextHandlingElement,
+        isNonTextHostElement,
+      ),
     )
   ) {
     nonTextWrappers.add(componentName);
+    return;
+  }
+  if (
+    jsxRoots.some((jsxRoot) =>
+      jsxRootRendersChildrenOutsideText(jsxRoot, bindings, isTextHandlingElement),
+    )
+  ) {
+    // Children are forwarded somewhere non-text, but not into a known host — an
+    // unanalyzed import that may wrap them in `<Text>`. Not a safe wrapper, but
+    // not a proven crash either, so leave it unclassified.
     return;
   }
   for (const jsxRoot of jsxRoots) {
@@ -408,50 +458,60 @@ const MAX_TRANSITIVE_WRAPPER_PASSES = 3;
 
 // Walks a program and classifies its in-file PascalCase components by where
 // they forward their `children`: into a text-handling element (`textWrappers`)
-// or out into a non-text host (`nonTextWrappers`). Text wrappers behave like
+// or into a known non-text host (`nonTextWrappers`). Text wrappers behave like
 // configured `rawTextWrapperComponents` — raw text inside them is safe (the
 // `<Text>` wraps whatever lands in it). Non-text wrappers are the inverse: raw
-// text inside them is a certain crash. Repeats the walk a bounded number of
-// times so wrappers-of-wrappers (`const Badge = ({ children }) =>
-// <Chip>{children}</Chip>`) resolve transitively; the final pass drops any name
-// that settled as a text wrapper from `nonTextWrappers`, since an early pass can
+// text inside them is a certain crash. `isNonTextHostRoot` reports the built-in
+// crash hosts (React Native host primitives + lowercase intrinsics); the walk
+// extends it transitively, so a component that forwards into another proven
+// non-text wrapper is itself non-text. Repeats a bounded number of times so
+// wrappers-of-wrappers (`const Badge = ({ children }) => <Chip>{children}</Chip>`)
+// resolve regardless of declaration order; the final pass drops any name that
+// settled as a text wrapper from `nonTextWrappers`, since an early pass can
 // classify a component as non-text before the wrapper it forwards into is known.
 export const collectTextWrapperComponents = (
   programNode: EsTreeNode,
   isTextHandlingRoot: (elementName: string) => boolean,
+  isNonTextHostRoot: (elementName: string) => boolean,
 ): ChildrenForwardingComponents => {
   const wrappers = new Set<string>();
   const nonTextWrappers = new Set<string>();
   const isTextHandlingElement = (elementName: string): boolean =>
     isTextHandlingRoot(elementName) || wrappers.has(elementName);
+  const isNonTextHostElement = (elementName: string): boolean =>
+    isNonTextHostRoot(elementName) || nonTextWrappers.has(elementName);
+
+  const recordDeclaration = (componentName: string | null, definitionNode: EsTreeNode | null) =>
+    recordWrapperFromDeclaration(
+      componentName,
+      definitionNode,
+      isTextHandlingElement,
+      isNonTextHostElement,
+      wrappers,
+      nonTextWrappers,
+    );
 
   for (let pass = 0; pass < MAX_TRANSITIVE_WRAPPER_PASSES; pass += 1) {
-    const sizeBeforePass = wrappers.size;
+    const wrappersSizeBeforePass = wrappers.size;
+    const nonTextSizeBeforePass = nonTextWrappers.size;
     walkAst(programNode, (node) => {
       if (isNodeOfType(node, "VariableDeclarator")) {
         const componentName = node.id && isNodeOfType(node.id, "Identifier") ? node.id.name : null;
-        recordWrapperFromDeclaration(
-          componentName,
-          node.init,
-          isTextHandlingElement,
-          wrappers,
-          nonTextWrappers,
-        );
+        recordDeclaration(componentName, node.init ?? null);
       } else if (
         isNodeOfType(node, "FunctionDeclaration") ||
         isNodeOfType(node, "ClassDeclaration")
       ) {
         const componentName = node.id && isNodeOfType(node.id, "Identifier") ? node.id.name : null;
-        recordWrapperFromDeclaration(
-          componentName,
-          node,
-          isTextHandlingElement,
-          wrappers,
-          nonTextWrappers,
-        );
+        recordDeclaration(componentName, node);
       }
     });
-    if (wrappers.size === sizeBeforePass) break;
+    if (
+      wrappers.size === wrappersSizeBeforePass &&
+      nonTextWrappers.size === nonTextSizeBeforePass
+    ) {
+      break;
+    }
   }
 
   for (const wrapperName of wrappers) nonTextWrappers.delete(wrapperName);

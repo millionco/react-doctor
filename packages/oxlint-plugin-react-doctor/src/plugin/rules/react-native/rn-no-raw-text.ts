@@ -121,23 +121,24 @@ export const rnNoRawText = defineRule({
     let autoDetectedTextWrappers: ReadonlySet<string> = new Set();
     let autoDetectedNonTextWrappers: ReadonlySet<string> = new Set();
 
+    // A built-in crash host: a React Native host primitive, or a lowercase
+    // intrinsic (`div`, and compile-time wrappers like `fbt`). Rendering raw
+    // text directly inside one is a certain crash regardless of any
+    // implementation we can't see.
+    const isNonTextHostName = (elementName: string): boolean =>
+      !isReactComponentName(elementName) || REACT_NATIVE_RAW_TEXT_HOST_COMPONENTS.has(elementName);
+
     // A raw-text child only crashes at a host boundary, so we report it only
     // when its enclosing element is one we can be sure renders it outside a
-    // `<Text>`: a React Native host primitive, a lowercase intrinsic (`div`,
-    // and compile-time wrappers like `fbt`), or an in-file component proven to
-    // forward its children into a non-text host. An arbitrary custom component
-    // (`<MyButton>`) is left alone — whether it wraps its children in `<Text>`
-    // depends on internals this single-file pass can't see across imports, so
-    // reporting it would be a false positive. Projects can still opt such a
-    // wrapper in (or out) via the config-driven `rawTextWrapperComponents`.
-    const isRawTextReportTarget = (elementName: string | null): boolean => {
-      if (elementName === null) return false;
-      if (!isReactComponentName(elementName)) return true;
-      return (
-        REACT_NATIVE_RAW_TEXT_HOST_COMPONENTS.has(elementName) ||
-        autoDetectedNonTextWrappers.has(elementName)
-      );
-    };
+    // `<Text>`: a built-in crash host, or an in-file component proven to forward
+    // its children into one. An arbitrary custom component (`<MyButton>`) is
+    // left alone — whether it wraps its children in `<Text>` depends on
+    // internals this single-file pass can't see across imports, so reporting it
+    // would be a false positive. Projects can still opt such a wrapper in (or
+    // out) via the config-driven `rawTextWrapperComponents`.
+    const isRawTextReportTarget = (elementName: string | null): boolean =>
+      elementName !== null &&
+      (isNonTextHostName(elementName) || autoDetectedNonTextWrappers.has(elementName));
 
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
@@ -145,6 +146,7 @@ export const rnNoRawText = defineRule({
         const childrenForwarding = collectTextWrapperComponents(
           programNode,
           isTextHandlingComponent,
+          isNonTextHostName,
         );
         autoDetectedTextWrappers = childrenForwarding.textWrappers;
         autoDetectedNonTextWrappers = childrenForwarding.nonTextWrappers;

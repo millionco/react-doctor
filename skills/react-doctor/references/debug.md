@@ -2,7 +2,7 @@
 
 Reproduce and fix UI bugs with runtime evidence, never by guessing from code alone. Use this when the user says something is broken, crashes, throws, hangs, or behaves wrong in the running app.
 
-This is the [debug-agent](https://github.com/millionco/debug-agent) loop, built into React Doctor: hypothesize, instrument with logs, reproduce, analyze the logs, fix only once the logs prove the cause, verify, clean up.
+The loop: hypothesize, instrument with logs, reproduce, analyze the logs, fix only once the logs prove the cause, verify, clean up.
 
 ## 0. Start the logging server (before any instrumentation)
 
@@ -51,7 +51,7 @@ Wrap every debug log in `// #region debug log` and `// #endregion` so cleanup la
 
 Clear the log file (`DELETE` the file at `logPath`) before each run, then trigger the exact behavior the user described:
 
-- **Browser bugs:** drive the repro with whatever controls a live Chrome. The bundled browser core attaches to the Chrome you already have open over the Chrome DevTools Protocol, so the real session, logins, and cookies come along. If nothing debuggable is running, it launches a dedicated persistent Chrome (its own profile, headless — pass `--headed` to watch it, and `browser close` to stop it) that later commands reattach to, so the flow below works either way. To drive your real logged-in session, open Chrome with `--remote-debugging-port=9222` first and it attaches to that instead. `browser eval --profile` hands you the whole runtime picture in one pass — the console (with uncaught errors), the network waterfall with failures flagged, performance, memory (heap, DOM nodes, listeners), accessibility, and the React + CPU profiles — so you rarely need to instrument at all. Run it with no expression to read the page as it is, or pass the repro to record what it triggers. If [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) (`chrome-devtools`) is in your tools, it also covers this and adds performance traces and Lighthouse.
+- **Browser bugs:** drive the repro with a live Chrome. The bundled browser attaches to your open Chrome over the Chrome DevTools Protocol (real session, logins, cookies come along), or launches a dedicated persistent one (own profile, headless — `--headed` to watch, `browser close` to stop) that later commands reattach to. To drive your logged-in session, start Chrome with `--remote-debugging-port=9222` first. `browser eval --profile` hands you the whole runtime picture in one pass — console (with uncaught errors), network with failures flagged, performance, memory, accessibility, and the React + CPU profiles — so you rarely need to instrument at all. Run it with no expression to read the page as-is, or pass the repro to record what it triggers. [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp), if present, also covers this and adds Lighthouse.
 
 ```bash
 npx react-doctor browser open http://localhost:3000           # attach + open the page
@@ -62,7 +62,7 @@ npx react-doctor browser eval 'page.getByRole("button", { name: "Checkout" }).cl
 npx react-doctor browser eval 'page.evaluate(() => document.title)'   # raw DOM when you need it
 ```
 
-`snapshot` and `eval` are a pair. `snapshot` lists the rendered elements by role and accessible name. `eval` runs an expression with the Playwright `page` in scope, so you act on what you saw using Playwright's own selectors: `page.locator("text=Login").click()`, `page.getByRole(...)`, `page.fill(...)`, `page.waitForSelector(...)`. For raw DOM, reach through `page.evaluate(() => …)`. No separate ref scheme to track.
+Locate from the accessibility tree, then act — cheaper and more stable than coordinates or DOM scraping. `snapshot` lists rendered elements by role and accessible name; inside `eval`, `page.locator("…").ariaSnapshot()` does the same for one subtree. `eval` runs Playwright code with the `page` in scope: `page.getByRole("button", { name: "Checkout" }).click()`, `page.getByLabel(...).fill(...)`, `page.waitForSelector(...)`. When the code only acts, `eval` returns the resulting accessibility tree (one call drives the page and shows the new state); if it triggers a page-side error (`console.error` or an uncaught throw), `eval` appends an "Errors during eval" section. Multiple statements work without an IIFE. For raw DOM, reach through `page.evaluate(() => …)` — bare `window`/`document` at the top level won't, since `eval` runs in Node.
 
 - **Backend or CLI bugs:** write and run a small repro script (Node, shell) yourself.
 - Otherwise ask the user for numbered steps, and remind them to restart any app or service whose instrumented files are bundled or cached.
@@ -72,6 +72,8 @@ Reuse the same repro pathway for every iteration.
 ## 4. Analyze the logs
 
 Read the NDJSON at `logPath`. Mark each hypothesis CONFIRMED, REJECTED, or INCONCLUSIVE, citing the specific log lines. If the file is empty, the repro likely did not run the instrumented path, so try again. If every hypothesis is rejected, revert the rejected code changes, generate new hypotheses from a different subsystem, and add more instrumentation.
+
+When reasoning from black-box behavior rather than logs (a driven interaction, a measured delta), the same proof bar applies: confirm the mechanism in the source before calling it a bug. An internally-consistent anomaly — the box grows by exactly the distance the page scrolled — is usually intended behavior (auto-pan, momentum, a debounce), not a defect. Synthetic input is not real input: `page.mouse.move(..., { steps })` spreads over wall-clock time, so an effect that looks like it "scales with event count" may be time-based. Read the handler, then conclude.
 
 ## 5. Fix, only with proof
 

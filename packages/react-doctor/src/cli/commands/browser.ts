@@ -8,6 +8,7 @@ import {
   type CpuProfileAnalysis,
   type MemoryStats,
   type NetworkRequestEntry,
+  type PageGeometry,
   type PageInspection,
   type PerformanceReport,
   type ReactProfileAnalysis,
@@ -98,9 +99,7 @@ export const browserEvalAction = async (
     return;
   }
   await withSession(options, async (session) => {
-    const result = await session.evaluate(expression);
-    if (result === undefined) return;
-    logger.log(formatEvalValue(result));
+    logger.log(await session.evaluateOrSnapshot(expression));
   });
 };
 
@@ -175,6 +174,20 @@ const printMemoryStats = (memory: MemoryStats): void => {
   logger.log(
     `${memory.domNodes} DOM nodes, ${memory.jsEventListeners} listeners, ${memory.documents} document(s), ${memory.frames} frame(s)`,
   );
+};
+
+// Scroll + viewport context. The scroll delta is only printed when the page
+// actually moved during the action — that's the signal worth noticing (the
+// viewport shifted under you), so a still page stays quiet.
+const printGeometry = (geometry: PageGeometry): void => {
+  logger.log(
+    `Viewport: ${geometry.viewportWidth}x${geometry.viewportHeight} @ ${geometry.devicePixelRatio}x, scroll ${geometry.scrollX},${geometry.scrollY}`,
+  );
+  if (geometry.scrolledX !== 0 || geometry.scrolledY !== 0) {
+    logger.log(
+      `Page scrolled ${geometry.scrolledX},${geometry.scrolledY} during the action (the viewport moved under you)`,
+    );
+  }
 };
 
 const printPerformanceReport = (report: PerformanceReport): void => {
@@ -279,6 +292,7 @@ const printInspection = (inspection: PageInspection): void => {
 
   logger.log("\n# Memory");
   printMemoryStats(inspection.memory);
+  printGeometry(inspection.geometry);
 
   logger.log("\n# Accessibility");
   if (inspection.accessibility.length === 0) logger.log("(none)");

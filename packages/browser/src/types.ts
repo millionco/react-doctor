@@ -96,6 +96,23 @@ export interface MemoryStats {
   frames: number;
 }
 
+// The page's scroll + viewport state around the driven action. `scrolledX/Y` is
+// how far the page scrolled while the expression ran — a large value means the
+// action moved the viewport under you (auto-scroll, focus jump, scroll-into-
+// view), which can masquerade as an element moving or resizing. `devicePixelRatio`
+// and the viewport size also confirm a `--viewport` emulation took effect. Note:
+// this is native page scroll only — an app with its own camera/pan (a canvas
+// editor) won't show its movement here.
+export interface PageGeometry {
+  scrollX: number;
+  scrollY: number;
+  scrolledX: number;
+  scrolledY: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  devicePixelRatio: number;
+}
+
 // Everything `inspect` observes that the page itself reports (LoAF / LCP / CLS),
 // before the trace-derived `timeline` is folded in to form the PerformanceReport.
 export type PageVitals = Omit<PerformanceReport, "timeline">;
@@ -117,6 +134,7 @@ export interface PageInspection {
   network: NetworkRequestEntry[];
   performance: PerformanceReport;
   memory: MemoryStats;
+  geometry: PageGeometry;
   accessibility: AccessibilityViolation[];
   // Absolute path the raw timeline trace was written to, or null when none was.
   tracePath: string | null;

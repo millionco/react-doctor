@@ -14,6 +14,10 @@ import {
   TIMELINE_TRACE_CATEGORIES,
 } from "./constants.js";
 import { collectPerformanceReport } from "./perf-observer.js";
+import { appendEvalErrors } from "./utils/append-eval-errors.js";
+import { compileEval } from "./utils/compile-eval.js";
+import { enrichEvalError } from "./utils/enrich-eval-error.js";
+import { formatEvalValue } from "./utils/format-eval-value.js";
 import { writeTraceFile } from "./utils/write-trace-file.js";
 import { analyzeReactProfile } from "./react-profiler/analyze-profile.js";
 import type { ReactProfilerDataExport } from "./react-profiler/types/profiling-export.js";
@@ -25,6 +29,7 @@ import type {
   InspectOptions,
   MemoryStats,
   NetworkRequestEntry,
+  PageGeometry,
   PageInspection,
   PageVitals,
   Viewport,
@@ -149,14 +154,39 @@ export class BrowserSession {
     this.viewportOverride = cdpSession;
   }
 
-  // The expression runs here in Node with the Playwright `page` in scope (the
-  // whole driver API), not in the page — so an agent acts on what `snapshot`
-  // showed it using Playwright's own selectors.
+  // The source runs here in Node with the Playwright `page` (the whole driver
+  // API) in scope, not in the page — so an agent locates and acts with
+  // Playwright's own selectors: `page.getByRole("button", { name: "Open" })
+  // .click()`. A bare expression returns its value; multi-statement source works
+  // too (see `compileEval`). Page globals (`window`, `document`, …) live in the
+  // page, so reach them via `page.evaluate(...)`.
   async evaluate<T = unknown>(expression: string): Promise<T> {
-    const run = new Function("page", `"use strict"; return (async () => (${expression}))();`) as (
-      page: Page,
-    ) => Promise<T>;
-    return run(this.page);
+    try {
+      return await compileEval<T>(expression)(this.page);
+    } catch (error) {
+      throw enrichEvalError(error);
+    }
+  }
+
+  // The driving path the CLI and MCP use: run the source, and when it was a pure
+  // action (returned nothing) hand back the resulting accessibility tree so one
+  // call both acts and shows the new page state — no follow-up `snapshot`. An
+  // expression that returns a value yields that value instead. Page-side errors
+  // the action triggered (console.error, an uncaught throw) are appended so a
+  // silent failure can't slip past without the agent hand-wiring a console hook.
+  async evaluateOrSnapshot(expression: string): Promise<string> {
+    const consoleEntries: ConsoleMessageEntry[] = [];
+    const detach = this.collectConsole(consoleEntries);
+    try {
+      const result = await this.evaluate(expression);
+      const output = result === undefined ? await this.snapshot() : formatEvalValue(result);
+      // HACK: one event-loop turn lets page-side console/pageerror events queued
+      // during the action drain (CDP delivers them async) before we read them.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return appendEvalErrors(output, consoleEntries);
+    } finally {
+      detach();
+    }
   }
 
   // Wait for the page to stop changing before we read it: in-flight requests
@@ -290,6 +320,42 @@ export class BrowserSession {
     return this.page.evaluate(collectPerformanceReport, PERFORMANCE_OBSERVE_WINDOW_MS);
   }
 
+  // The page's native scroll offset, read before the action so `captureGeometry`
+  // can report how far it moved while the action ran.
+  private readScroll(): Promise<{ x: number; y: number }> {
+    return this.page
+      .evaluate(() => ({ x: window.scrollX, y: window.scrollY }))
+      .catch(() => ({ x: 0, y: 0 }));
+  }
+
+  // Post-action scroll + viewport state, plus how far the page scrolled during
+  // the action (`scrolledX/Y`). A large scroll delta means the viewport moved
+  // under you — useful context for "did the element move, or did the page?".
+  private captureGeometry(scrollBefore: { x: number; y: number }): Promise<PageGeometry> {
+    return this.page
+      .evaluate(
+        (before) => ({
+          scrollX: Math.round(window.scrollX),
+          scrollY: Math.round(window.scrollY),
+          scrolledX: Math.round(window.scrollX - before.x),
+          scrolledY: Math.round(window.scrollY - before.y),
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          devicePixelRatio: window.devicePixelRatio,
+        }),
+        scrollBefore,
+      )
+      .catch(() => ({
+        scrollX: 0,
+        scrollY: 0,
+        scrolledX: 0,
+        scrolledY: 0,
+        viewportWidth: 0,
+        viewportHeight: 0,
+        devicePixelRatio: 1,
+      }));
+  }
+
   // The page's current runtime footprint from the CDP Performance domain (heap,
   // DOM nodes, listeners, documents/frames) — the counters DevTools' Performance
   // monitor shows. A snapshot, not a window, so it reflects the post-action state.
@@ -381,6 +447,7 @@ export class BrowserSession {
         return true;
       });
 
+      const scrollBefore = await this.readScroll();
       let result: unknown = null;
       let vitals = emptyVitals();
       let reactExport: ReactProfilerDataExport | null = null;
@@ -417,6 +484,7 @@ export class BrowserSession {
       // Read memory before axe runs so the snapshot reflects the app's footprint,
       // not axe's injected globals.
       const memory = await this.captureMemory(cdpSession);
+      const geometry = await this.captureGeometry(scrollBefore);
 
       // Detach the page listeners before the accessibility audit so axe's injected
       // evaluate (and anything it logs) can't land in the captured signals.
@@ -431,6 +499,7 @@ export class BrowserSession {
         network,
         performance: { ...vitals, timeline: analyzeTimelineTrace(traceEvents) },
         memory,
+        geometry,
         accessibility,
         tracePath: writtenTracePath,
         profile: {

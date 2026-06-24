@@ -32,7 +32,7 @@ Apply these on every React edit, before any tool runs. They shape how you write 
 | "review", "before commit", "clean up", or changed files | **doctor** | static scan plus 0 to 100 score |
 | "slow", "laggy", "janky", "re-rendering"                | **perf**   | React render + CPU profilers    |
 | "broken", "crashes", "doesn't work" in the UI           | **debug**  | reproduce in a real browser     |
-| "looks off", "polish", a screenshot or pasted element   | **design** | measured UI review              |
+| "looks off", "polish", "animate", a screenshot/element  | **design** | measured UI + motion review     |
 
 doctor runs from code alone, so it is the one that fires in the background. The browser jobs (perf, debug, design) need a live page and are slower, so they run only when asked.
 
@@ -41,7 +41,7 @@ doctor runs from code alone, so it is the one that fires in the background. The 
 debug, design, and perf need a real Chrome. Two ways to get one:
 
 1. **A browser MCP already in your tools.** Prefer [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) (`chrome-devtools`) or similar for console, network, and snapshots. It adds full performance traces and Lighthouse on top.
-2. **The bundled `react-doctor browser` command.** Attaches to the Chrome you already have open over the Chrome DevTools Protocol, and launches a dedicated persistent one only as a fallback. Four commands: `open` (load a URL, leave the page, React profiler injected), `eval` (run a Playwright expression with `page` in scope — returns its value), `snapshot` (accessibility tree), and `screenshot`. Add `--profile` to `eval` to record the whole runtime picture while the expression runs — console, network, performance (long animation frames with per-script attribution, LCP, CLS), an axe-core accessibility audit, a React render profile (slowest commits, hottest components, unnecessary re-renders), and a V8/DevTools CPU profile over CDP (hottest JS functions by self time). Run `eval --profile` with no expression to measure the live page as it is.
+2. **The bundled `react-doctor browser` command.** Attaches to your open Chrome over the Chrome DevTools Protocol, launching a dedicated persistent one only as a fallback. Four commands: `open` (load a URL, inject the React profiler), `eval` (run Playwright code with `page` in scope), `snapshot` (accessibility tree), and `screenshot`. Locate from the a11y tree, then act with Playwright selectors: `eval 'page.getByRole("button", { name: "Save" }).click()'`. `eval` returns the expression's value, or — when it only acts — the resulting a11y tree, so one call both drives the page and shows the new state. Reach page globals through `page.evaluate(() => …)`. Add `--profile` to record the whole runtime picture while the expression runs: console, network, performance (LoAF with per-script attribution, LCP, CLS), an axe-core a11y audit, a React render profile, and a V8 CPU profile. With no expression it measures the live page as-is.
 
 It is the same Chrome either way, so the playbooks apply to both: `browser open`, `eval`, `snapshot`, and `screenshot` map onto the MCP's `navigate_page`, `evaluate_script`, `take_snapshot`, and `take_screenshot`.
 
@@ -53,7 +53,7 @@ React Doctor ships its own Model Context Protocol server over stdio so any MCP-c
 npx react-doctor@latest mcp
 ```
 
-It exposes `doctor_scan` (the static scan), the `browser_*` tools (`browser_open`, `browser_eval`, `browser_snapshot`, `browser_screenshot`), and the `debug_*` log server (`debug_serve`, `debug_read_logs`, `debug_clear_logs`). `browser_eval` takes a `profile: true` argument that records the whole runtime picture — console, network, performance, accessibility, a React render profile, and a literal Chrome DevTools CPU profile — in one pass while the expression runs.
+It exposes `doctor_scan`, the `browser_*` tools (`browser_open`, `browser_eval`, `browser_snapshot`, `browser_screenshot`), and the `debug_*` log server (`debug_serve`, `debug_read_logs`, `debug_clear_logs`). `browser_eval` takes `profile: true` to record the whole runtime picture (console, network, performance, accessibility, React + CPU profiles) in one pass.
 
 ## doctor: scan and triage
 
@@ -81,11 +81,11 @@ When the user reports jank, slow interactions, dropped frames, excessive re-rend
 
 ## debug: reproduce in a real browser
 
-When the user says something is broken, crashes, throws, or behaves wrong in the running app, read [references/debug.md](references/debug.md) and follow it. It runs the [debug-agent](https://github.com/millionco/debug-agent) loop: generate hypotheses, instrument the code with runtime NDJSON logs, reproduce the bug in the live browser, and fix only once the logs prove the cause.
+When the user says something is broken, crashes, throws, or behaves wrong in the running app, read [references/debug.md](references/debug.md) and follow it. It runs an evidence-driven loop: generate hypotheses, instrument the code with runtime NDJSON logs, reproduce in the live browser, and fix only once the logs prove the cause.
 
-## design: review and improve UI
+## design: review and improve UI (incl. motion)
 
-When the user wants to build, polish, or review an interface ("looks off", "make this nicer", a pasted screenshot or element), read [references/design.md](references/design.md) and follow it. It opens the page, takes a screenshot, and reports what it can measure (contrast, line length, spacing, tap-target size), not only taste.
+When the user wants to build, polish, or review an interface ("looks off", "make this nicer", a pasted screenshot or element) — or to add or fix animation (it "feels janky", sluggish, or off) — read [references/design.md](references/design.md) and follow it. It opens the page, takes a screenshot, and reports what it can measure (contrast, line length, spacing, tap-target size), not only taste. The same file carries the motion ruleset (§15–17): when to animate, easing and duration, physics, interruptibility, GPU performance, gestures, and accessibility, measured with `browser eval --profile`.
 
 ## Configuring or explaining rules
 

@@ -270,7 +270,7 @@ withRenderOptions(
   browser
     .command("eval [expression]")
     .description(
-      "Run an expression with the Playwright `page` in scope, e.g. 'page.getByText(\"Login\").click()'. Add --profile to also record the full runtime picture.",
+      'Run Playwright code with `page` in scope, e.g. \'page.getByRole("button", { name: "Login" }).click()\'. Returns the expression\'s value, or — when it just acts — the resulting accessibility tree (so one call drives + shows the new state). Multiple statements work; reach page globals via page.evaluate(...). Add --profile to record the full runtime picture instead.',
     )
     .option(
       "--profile",

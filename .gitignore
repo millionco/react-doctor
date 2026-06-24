@@ -15,8 +15,7 @@ review-*.md
 /.agents/*
 !/.agents/skills/
 /.agents/skills/*
-!/.agents/skills/react-doctor/
-!/.agents/skills/react-doctor/**
+!/.agents/skills/react-doctor
 !/.agents/skills/rule-research/
 !/.agents/skills/rule-research/**
 !/.agents/skills/rule-writing/

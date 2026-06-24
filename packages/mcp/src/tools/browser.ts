@@ -1,11 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import {
-  closeLaunchedBrowser,
-  DEFAULT_TRACE_FILENAME,
-  formatEvalValue,
-  parseViewport,
-} from "@react-doctor/browser";
+import { closeLaunchedBrowser, DEFAULT_TRACE_FILENAME, parseViewport } from "@react-doctor/browser";
 import { DEFAULT_CDP_ENDPOINT_HINT } from "../constants.js";
 import { jsonResult, runTool, textResult } from "../utils/tool-result.js";
 import { withSession, type BrowserToolConnection } from "../utils/with-session.js";
@@ -70,13 +65,13 @@ export const registerBrowserTools = (server: McpServer): void => {
     {
       title: "Run Playwright code, optionally profiling it",
       description:
-        'Run an async expression with the Playwright `page` in scope (e.g. page.getByText("Login").click()) against the attached page. Two modes: by default it returns the expression\'s value — use it to locate, read, or drive the page. Set profile:true to instead record and return the full runtime picture while the expression runs. Open the page first with browser_open for React render data.',
+        'Run Playwright code with the `page` in scope (e.g. page.getByRole("button", { name: "Login" }).click()) against the attached page. Locate with the accessibility tree (browser_snapshot, or page.locator(...).ariaSnapshot() for a subtree) then act. By default: an expression that returns a value yields the value; an expression that just acts (returns nothing) yields the resulting accessibility tree, so one call drives the page and shows the new state. Multi-statement source works without wrapping it yourself. Page globals (window/document) live in the page — reach them via page.evaluate(() => ...). Set profile:true to instead record and return the full runtime picture while the code runs. Open the page first with browser_open for React render data.',
       inputSchema: {
         expression: z
           .string()
           .optional()
           .describe(
-            "Async expression with the Playwright `page` in scope; omit together with profile:true to measure the live page idle",
+            "Playwright code with `page` in scope (single expression or multiple statements); omit together with profile:true to measure the live page idle",
           ),
         profile: z
           .boolean()
@@ -109,11 +104,11 @@ export const registerBrowserTools = (server: McpServer): void => {
         }
         if (args.expression === undefined) return textResult("(no value)");
         const expression = args.expression;
-        const result = await withSession(toConnection(args), (session) =>
-          session.evaluate(expression),
+        return textResult(
+          await withSession(toConnection(args), (session) =>
+            session.evaluateOrSnapshot(expression),
+          ),
         );
-        if (result === undefined) return textResult("(no value)");
-        return textResult(formatEvalValue(result));
       }),
   );
 

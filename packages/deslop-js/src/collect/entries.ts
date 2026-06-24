@@ -10,7 +10,6 @@ import {
   SCRIPT_FILE_PATTERN,
   SCRIPT_EXTENSIONLESS_FILE_PATTERN,
   SCRIPT_CONFIG_FILE_PATTERN,
-  SCRIPT_ENTRY_PATTERNS,
   SHALLOW_WORKSPACE_MAX_DEPTH,
   SOURCE_EXTENSIONS as IMPORTABLE_SOURCE_EXTENSIONS,
 } from "../constants.js";
@@ -893,14 +892,6 @@ const extractScriptEntries = (directory: string): string[] => {
       }
     }
   } catch {}
-
-  const scriptDirectoryFiles = fg.sync(SCRIPT_ENTRY_PATTERNS, {
-    cwd: directory,
-    absolute: true,
-    onlyFiles: true,
-    ignore: ["**/node_modules/**"],
-  });
-  entries.push(...scriptDirectoryFiles);
 
   return entries;
 };

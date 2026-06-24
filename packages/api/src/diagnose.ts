@@ -58,6 +58,7 @@ const warnIfAiTrainingEnvironment = (): void => {
 const buildDiagnoseLayer = (
   config: ReactDoctorConfig | null,
   configOverrideTarget?: Pick<ResolvedScanTarget, "resolvedDirectory" | "configSourceDirectory">,
+  shouldRunLint = true,
 ) => {
   const configLayer =
     configOverrideTarget === undefined
@@ -73,7 +74,7 @@ const buildDiagnoseLayer = (
     DeadCode.layerNode,
     Files.layerNode,
     Git.layerNode,
-    Linter.layerOxlint,
+    shouldRunLint ? Linter.layerOxlint : Linter.layerOf([]),
     LintPartialFailures.layerLive,
     Progress.layerNoop,
     Reporter.layerNoop,
@@ -81,6 +82,11 @@ const buildDiagnoseLayer = (
     config?.supplyChain?.enabled !== false ? SupplyChain.layerNode : SupplyChain.layerOf([]),
   );
 };
+
+const resolveShouldRunLint = (
+  options: DiagnoseOptions,
+  config: ReactDoctorConfig | null | undefined,
+): boolean => options.lint ?? config?.lint ?? true;
 
 const buildInspectProgram = (
   scanTarget: ResolvedScanTarget,
@@ -137,11 +143,12 @@ const diagnoseDirectory = async (
   const startTime = globalThis.performance.now();
   const scanTarget = await resolveScanTarget(directory);
   const program = buildInspectProgram(scanTarget, options);
+  const shouldRunLint = resolveShouldRunLint(options, scanTarget.userConfig);
 
   const output: InspectOutput = await Effect.runPromise(
     restoreLegacyThrow(
       program.pipe(
-        Effect.provide(buildDiagnoseLayer(scanTarget.userConfig)),
+        Effect.provide(buildDiagnoseLayer(scanTarget.userConfig, undefined, shouldRunLint)),
         Effect.provide(layerOtlp),
       ),
     ),
@@ -173,6 +180,7 @@ const diagnoseProject = async (
   try {
     const scanTarget = await resolveScanTarget(projectDefinition.directory);
     const { directory: _, config: projectConfig, ...perProjectOptions } = projectDefinition;
+    const options = { ...baseOptions, ...perProjectOptions };
 
     // Config layers, least to most specific: on-disk `doctor.config.*` ←
     // batch `config` ← per-project `config`. With no overrides the merge is
@@ -185,7 +193,7 @@ const diagnoseProject = async (
 
     const program = buildInspectProgram(
       scanTarget,
-      { ...baseOptions, ...perProjectOptions },
+      options,
       effectiveConfig ?? undefined,
     );
     // `plugins` is override-wins in the merge: when a caller layer supplies
@@ -201,6 +209,7 @@ const diagnoseProject = async (
             configSourceDirectory: didOverridePlugins ? null : scanTarget.configSourceDirectory,
           }
         : undefined,
+      resolveShouldRunLint(options, effectiveConfig),
     );
 
     const output: InspectOutput = await Effect.runPromise(

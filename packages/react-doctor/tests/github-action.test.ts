@@ -40,6 +40,7 @@ describe("GitHub Action contract", () => {
       "comment",
       "review-comments",
       "commit-status",
+      "scope",
       "node-version",
       "version",
     ]) {

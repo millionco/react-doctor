@@ -11,6 +11,7 @@
         "vite.config.ts",
         "../../skills/**"
       ],
+      "env": ["REACT_DOCTOR_PACKAGE_SPECIFIER"],
       "outputs": ["dist/**"]
     },
     "dev": {

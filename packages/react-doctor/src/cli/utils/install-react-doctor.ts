@@ -16,11 +16,11 @@ import { readInstallAgents, rememberInstallAgents } from "./install-agents-prefe
 import { METRIC } from "./constants.js";
 import { recordCount } from "./record-metric.js";
 import {
-  DOCTOR_PACKAGE_NAME,
   findNearestPackageDirectory,
   hasDoctorDependency,
   installReactDoctorScriptStep,
 } from "./install-doctor-script.js";
+import { PACKAGE_SPECIFIER } from "./package-specifier.js";
 import { askAddToGitHubActions } from "./ask-add-to-github-actions.js";
 import { askUpgradeActionVersion } from "./ask-upgrade-action-version.js";
 import { detectDefaultBranch } from "./detect-default-branch.js";
@@ -141,7 +141,7 @@ const packageManagerNeedsWorkspaceFlag = (projectRoot: string): boolean =>
 
 const buildInstallCommand = (projectRoot: string): InstallReactDoctorDependencyRunnerInput => {
   const packageManager = detectPackageManager(projectRoot);
-  const packageSpecifier = `${DOCTOR_PACKAGE_NAME}@latest`;
+  const packageSpecifier = PACKAGE_SPECIFIER;
   if (packageManager === "npm") {
     return {
       command: "npm",
@@ -282,8 +282,7 @@ const buildDependencyFollowUp = (
   ) {
     return undefined;
   }
-  const installCommand =
-    result.installCommand ?? `npm install --save-dev ${DOCTOR_PACKAGE_NAME}@latest`;
+  const installCommand = result.installCommand ?? `npm install --save-dev ${PACKAGE_SPECIFIER}`;
   return `  React Doctor still works via \`npx react-doctor\`. To install locally: ${installCommand}`;
 };
 

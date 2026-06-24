@@ -1,11 +1,12 @@
 import * as path from "node:path";
 import { getPackageJsonPath, isRecord, readPackageJson, writeJsonFile } from "./git-hook-shared.js";
+import { PACKAGE_SPECIFIER } from "./package-specifier.js";
 import { spinner } from "./spinner.js";
 import * as fs from "node:fs";
 
 const DOCTOR_SCRIPT_NAME = "doctor";
 const FALLBACK_DOCTOR_SCRIPT_NAME = "react-doctor";
-const DOCTOR_SCRIPT_COMMAND = "npx react-doctor@latest";
+const DOCTOR_SCRIPT_COMMAND = `npx ${PACKAGE_SPECIFIER}`;
 export const DOCTOR_PACKAGE_NAME = "react-doctor";
 
 const DEPENDENCY_FIELD_NAMES: readonly string[] = [

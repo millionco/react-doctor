@@ -2,8 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
+import { rewriteSkillPackageSpecifier } from "./src/cli/utils/rewrite-skill-package-specifier.js";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
+
+const DEFAULT_PACKAGE_SPECIFIER = "react-doctor@latest";
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8")) as {
   version: string;
@@ -56,6 +59,30 @@ const copySkillsToDist = () => {
     fs.mkdirSync(skillTarget, { recursive: true });
     fs.cpSync(skillSource, skillTarget, { recursive: true });
   }
+};
+
+// On a pkg.pr.new preview build (REACT_DOCTOR_PACKAGE_SPECIFIER set to the
+// preview's immutable tarball URL), rewrite the shipped skill's `npx` commands
+// to that URL so a beta tester's agent drives the previewed branch end to end.
+// A normal release leaves the env unset, so the skill ships verbatim
+// (`npx react-doctor@latest`). Runs after copySkillsToDist has populated dist.
+const bakeSkillPackageSpecifier = () => {
+  const specifier = process.env.REACT_DOCTOR_PACKAGE_SPECIFIER;
+  if (!specifier || specifier === DEFAULT_PACKAGE_SPECIFIER) return;
+  const rewriteMarkdownFiles = (directory: string): void => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        rewriteMarkdownFiles(entryPath);
+        continue;
+      }
+      if (!entry.name.endsWith(".md")) continue;
+      const original = fs.readFileSync(entryPath, "utf8");
+      const rewritten = rewriteSkillPackageSpecifier(original, specifier);
+      if (rewritten !== original) fs.writeFileSync(entryPath, rewritten);
+    }
+  };
+  rewriteMarkdownFiles(path.resolve(packageRoot, "dist/skills"));
 };
 
 // The React-profiler init script is a prebuilt browser-only asset, not JS the
@@ -157,6 +184,8 @@ export default defineConfig({
       sourcemap: true,
       env: {
         VERSION: process.env.VERSION ?? packageJson.version,
+        REACT_DOCTOR_PACKAGE_SPECIFIER:
+          process.env.REACT_DOCTOR_PACKAGE_SPECIFIER ?? DEFAULT_PACKAGE_SPECIFIER,
       },
       // HACK: no shebang on dist/cli.js — the published `bin` entry is
       // bin/react-doctor.js, which owns the `#!/usr/bin/env node` line
@@ -169,6 +198,7 @@ export default defineConfig({
       hooks: {
         "build:done": () => {
           copySkillsToDist();
+          bakeSkillPackageSpecifier();
           copyBrowserInjectToDist();
         },
       },

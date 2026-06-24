@@ -30,7 +30,13 @@ jobs:
 
       - run: pnpm install --frozen-lockfile --prefer-offline
 
+      # Bake the preview's own immutable pkg.pr.new URL into the build so the
+      # shipped skill's `npx` commands and `react-doctor install` reference this
+      # exact commit — a beta tester then exercises the previewed branch instead
+      # of silently falling back to the published `react-doctor@latest`.
       - run: pnpm build
+        env:
+          REACT_DOCTOR_PACKAGE_SPECIFIER: https://pkg.pr.new/react-doctor@${{ github.sha }}
 
       - name: Publish packages (retry on transient failures)
         run: |

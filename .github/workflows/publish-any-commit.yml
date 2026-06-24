@@ -43,10 +43,18 @@ jobs:
           max_attempts=4
           attempt=1
           while [ "$attempt" -le "$max_attempts" ]; do
+            # deslop-js MUST be published too: react-doctor depends on it
+            # (`deslop-js: workspace:*`), and pkg-pr-new only rewrites a
+            # workspace dep to a preview URL when that package is in the publish
+            # set. Omitting it shipped a tarball with a raw `workspace:*` spec
+            # that `npx https://pkg.pr.new/react-doctor@<sha> install` rejected
+            # with EUNSUPPORTEDPROTOCOL. (The private @react-doctor/* workspace
+            # devDependencies stay `workspace:*` but are ignored on install.)
             if pnpm dlx pkg-pr-new publish \
               ./packages/react-doctor \
               ./packages/oxlint-plugin-react-doctor \
-              ./packages/eslint-plugin-react-doctor; then
+              ./packages/eslint-plugin-react-doctor \
+              ./packages/deslop-js; then
               exit 0
             fi
 

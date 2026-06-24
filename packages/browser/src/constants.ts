@@ -83,6 +83,12 @@ export const TIMELINE_TRACE_CATEGORIES = [
 // Default file the raw timeline trace is written to (in the working directory).
 export const DEFAULT_TRACE_FILENAME = "react-doctor-trace.json";
 
+// Default file `eval --codegen` writes the generated Playwright spec to.
+export const DEFAULT_CODEGEN_FILENAME = "react-doctor.spec.ts";
+
+// Default file `eval --video` writes the screen recording (.webm) to.
+export const DEFAULT_VIDEO_FILENAME = "react-doctor.webm";
+
 // Functions returned inline by a CPU profile analysis, ranked by self time.
 export const MAX_PROFILE_FUNCTIONS = 20;
 

@@ -59,6 +59,8 @@ npx react-doctor browser eval --profile                       # console + networ
 npx react-doctor browser snapshot                             # what rendered, by role + name
 npx react-doctor browser eval 'page.getByRole("button", { name: "Checkout" }).click()'
 npx react-doctor browser eval 'page.getByRole("button", { name: "Checkout" }).click()' --profile  # drive + measure it
+npx react-doctor browser eval 'page.getByRole("button", { name: "Checkout" }).click()' --codegen  # save it as a Playwright test
+npx react-doctor browser eval 'page.getByRole("button", { name: "Checkout" }).click()' --video    # record a .webm to play back
 npx react-doctor browser eval 'page.evaluate(() => document.title)'   # raw DOM when you need it
 ```
 

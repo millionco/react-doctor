@@ -1,6 +1,8 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser, CDPSession, ConsoleMessage, Page, Request, Response } from "playwright-core";
+import { BrowserEnvironmentError } from "./browser-environment-error.js";
 import { connectToBrowser, type BrowserConnection } from "./connect.js";
 import { analyzeCpuProfile, type CdpCpuProfile } from "./analyze-cpu-profile.js";
 import { analyzeTimelineTrace } from "./analyze-timeline-trace.js";
@@ -18,6 +20,7 @@ import { appendEvalErrors } from "./utils/append-eval-errors.js";
 import { compileEval } from "./utils/compile-eval.js";
 import { enrichEvalError } from "./utils/enrich-eval-error.js";
 import { formatEvalValue } from "./utils/format-eval-value.js";
+import { generatePlaywrightTest } from "./utils/generate-playwright-test.js";
 import { writeTraceFile } from "./utils/write-trace-file.js";
 import { analyzeReactProfile } from "./react-profiler/analyze-profile.js";
 import type { ReactProfilerDataExport } from "./react-profiler/types/profiling-export.js";
@@ -197,7 +200,53 @@ export class BrowserSession {
   // HACK: one event-loop turn lets page-side console/pageerror events queued
   // during an action drain (CDP delivers them async) before we read them.
   private drainPageEvents(): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, 0));
+    return new Promise((resolveEvents) => setTimeout(resolveEvents, 0));
+  }
+
+  // Record a .webm of the page while `action` runs, returning its absolute path
+  // alongside the result. Uses Playwright's imperative screencast (1.59+) — the
+  // only video API that works on a CDP-attached page, since the declarative
+  // `recordVideo` context option can't record a context we merely connected to.
+  // Stops in a finally so the file is flushed even when the action throws (you
+  // still get the footage of the failing run). Encoding needs Playwright's
+  // bundled ffmpeg; a missing one surfaces as an actionable environment error.
+  async withVideo<T>(
+    videoPath: string,
+    action: () => Promise<T>,
+  ): Promise<{ result: T; video: string }> {
+    const video = resolve(videoPath);
+    try {
+      await this.page.screencast.start({ path: video });
+    } catch (error) {
+      throw new BrowserEnvironmentError(
+        "Could not start video recording — Playwright needs its bundled ffmpeg to encode the .webm. Install it with `npx playwright install ffmpeg`.",
+        { cause: error },
+      );
+    }
+    try {
+      return { result: await action(), video };
+    } finally {
+      await this.page.screencast.stop().catch(() => {});
+    }
+  }
+
+  // Persist a verified `eval` action as a runnable Playwright regression test:
+  // capture the page's current URL (so the test recreates the starting point),
+  // run the expression through the same drive path (which surfaces — and on a
+  // hard failure throws — page errors, so a broken action never writes a green-
+  // looking test), then emit a spec pinned to that URL + action. Returns the
+  // generated source, the drive output, and the absolute path written.
+  async codegen(options: { expression: string; outPath: string }): Promise<{
+    path: string;
+    source: string;
+    output: string;
+  }> {
+    const url = this.page.url();
+    const output = await this.evaluateOrSnapshot(options.expression);
+    const source = generatePlaywrightTest({ url, expression: options.expression });
+    const path = resolve(options.outPath);
+    await writeFile(path, source);
+    return { path, source, output };
   }
 
   // Wait for the page to stop changing before we read it: in-flight requests

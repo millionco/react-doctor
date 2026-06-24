@@ -277,8 +277,16 @@ withRenderOptions(
       "record console, network, performance (incl. a DevTools timeline trace), accessibility, and the React + CPU profiles while the expression runs (omit the expression to measure the live page idle)",
     )
     .option(
+      "--codegen",
+      "drive the expression, then write it as a runnable Playwright test (page.goto the current URL + the action + a no-console-error assertion) so a verified interaction becomes a regression test",
+    )
+    .option(
+      "--video [path]",
+      "record a .webm of the page while the expression runs, for playback in any eval mode (default react-doctor.webm; needs Playwright's ffmpeg: npx playwright install ffmpeg)",
+    )
+    .option(
       "--out <path>",
-      "with --profile, write the raw timeline trace here for DevTools (default react-doctor-trace.json)",
+      "where to write the artifact: the raw timeline trace with --profile (default react-doctor-trace.json), or the Playwright spec with --codegen (default react-doctor.spec.ts)",
     ),
 ).action(browserEvalAction);
 

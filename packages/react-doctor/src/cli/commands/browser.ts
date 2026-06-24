@@ -1,7 +1,9 @@
 import {
   BrowserSession,
   closeLaunchedBrowser,
+  DEFAULT_CODEGEN_FILENAME,
   DEFAULT_TRACE_FILENAME,
+  DEFAULT_VIDEO_FILENAME,
   formatEvalValue,
   type AccessibilityViolation,
   type ConsoleMessageEntry,
@@ -32,7 +34,26 @@ export interface BrowserCommandOptions {
   out?: string;
   viewport?: Viewport;
   profile?: boolean;
+  codegen?: boolean;
+  video?: boolean | string;
 }
+
+// Run `action` on the page, wrapping it in a screen recording when `--video` is
+// set so any eval mode (plain, --profile, --codegen) can ship a playback .webm.
+const recordIf = async <T>(
+  session: BrowserSession,
+  videoPath: string | null,
+  action: () => Promise<T>,
+): Promise<{ result: T; video: string | null }> => {
+  if (!videoPath) return { result: await action(), video: null };
+  return session.withVideo(videoPath, action);
+};
+
+// `--video` takes an optional path; bare `--video` records to the default file.
+const resolveVideoPath = (video: boolean | string | undefined): string | null => {
+  if (!video) return null;
+  return typeof video === "string" ? video : DEFAULT_VIDEO_FILENAME;
+};
 
 // playwright-core loads lazily inside @react-doctor/browser (only when a command
 // attaches to Chrome), so importing the session here costs nothing at startup
@@ -84,11 +105,40 @@ export const browserEvalAction = async (
   expression: string | undefined,
   options: BrowserCommandOptions,
 ): Promise<void> => {
-  recordCount(METRIC.cliInvoked, 1, { command: "browser.eval" });
+  recordCount(METRIC.cliInvoked, 1, {
+    command: "browser.eval",
+    codegen: options.codegen ? "true" : "false",
+    video: options.video ? "true" : "false",
+  });
+  const videoPath = resolveVideoPath(options.video);
+  const logVideo = (video: string | null): void => {
+    if (video) logger.success(`Recorded video to ${video}`);
+  };
+
+  if (options.codegen) {
+    if (expression === undefined) {
+      logger.log("Pass an expression to generate a Playwright test from.");
+      return;
+    }
+    const outPath = options.out ?? DEFAULT_CODEGEN_FILENAME;
+    await withSession(options, async (session) => {
+      const { result, video } = await recordIf(session, videoPath, () =>
+        session.codegen({ expression, outPath }),
+      );
+      logger.log(result.output);
+      logger.success(`Wrote Playwright test to ${result.path}`);
+      logVideo(video);
+    });
+    return;
+  }
   if (options.profile) {
     const tracePath = options.out ?? DEFAULT_TRACE_FILENAME;
     await withSession(options, async (session) => {
-      printInspection(await session.inspect({ expression, tracePath }));
+      const { result, video } = await recordIf(session, videoPath, () =>
+        session.inspect({ expression, tracePath }),
+      );
+      printInspection(result);
+      logVideo(video);
     });
     return;
   }
@@ -99,7 +149,11 @@ export const browserEvalAction = async (
     return;
   }
   await withSession(options, async (session) => {
-    logger.log(await session.evaluateOrSnapshot(expression));
+    const { result, video } = await recordIf(session, videoPath, () =>
+      session.evaluateOrSnapshot(expression),
+    );
+    logger.log(result);
+    logVideo(video);
   });
 };
 

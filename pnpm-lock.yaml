@@ -65,7 +65,7 @@ importers:
         specifier: ^4.10.2
         version: 4.12.1
       playwright-core:
-        specifier: ^1.49.1
+        specifier: ^1.59.0
         version: 1.60.0
     devDependencies:
       '@types/node':

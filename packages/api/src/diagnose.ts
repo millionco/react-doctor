@@ -148,9 +148,7 @@ const diagnoseDirectory = async (
   const output: InspectOutput = await Effect.runPromise(
     restoreLegacyThrow(
       program.pipe(
-        Effect.provide(
-          buildDiagnoseLayer(scanTarget.userConfig, undefined, shouldRunLint),
-        ),
+        Effect.provide(buildDiagnoseLayer(scanTarget.userConfig, undefined, shouldRunLint)),
         Effect.provide(layerOtlp),
       ),
     ),
@@ -193,11 +191,7 @@ const diagnoseProject = async (
       projectConfig,
     );
 
-    const program = buildInspectProgram(
-      scanTarget,
-      options,
-      effectiveConfig ?? undefined,
-    );
+    const program = buildInspectProgram(scanTarget, options, effectiveConfig ?? undefined);
     // `plugins` is override-wins in the merge: when a caller layer supplies
     // it, relative entries resolve against the scan root (caller configs
     // have no file location); otherwise the on-disk config's directory.

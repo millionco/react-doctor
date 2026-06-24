@@ -105,9 +105,14 @@ export const collectPerformanceReport = (windowMs: number): Promise<PageVitals> 
       for (const observer of observers) observer.disconnect();
       windowScope[WATERMARK_KEY] = nextWatermark;
       resolve({
-        longAnimationFrames: report.longAnimationFrames.sort(
-          (left, right) => right.durationMs - left.durationMs,
-        ),
+        // Blocking duration — not total duration — is the jank signal: a long
+        // frame that blocks nothing (an idle/backgrounded render, the first
+        // frame after navigation) isn't main-thread jank, and ranking by total
+        // duration buries the frames that actually stalled input behind those
+        // artifacts. Drop the non-blocking frames and rank by what blocked.
+        longAnimationFrames: report.longAnimationFrames
+          .filter((frame) => frame.blockingDurationMs > 0)
+          .sort((left, right) => right.blockingDurationMs - left.blockingDurationMs),
         largestContentfulPaintMs: report.largestContentfulPaintMs,
         cumulativeLayoutShift: Math.round(report.cumulativeLayoutShift * 1000) / 1000,
       });

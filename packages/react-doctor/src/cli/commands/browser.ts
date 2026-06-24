@@ -136,10 +136,12 @@ const printPerformanceReport = (report: PerformanceReport): void => {
   logger.log(`LCP: ${lcp === null ? "n/a" : `${lcp}ms`}   CLS: ${report.cumulativeLayoutShift}`);
   printTimelineAnalysis(report.timeline);
   if (report.longAnimationFrames.length === 0) {
-    logger.log("No long animation frames (>50ms) — no main-thread jank captured");
+    logger.log("No blocking long animation frames — no main-thread jank captured");
     return;
   }
-  logger.log(`${report.longAnimationFrames.length} long animation frame(s), worst first:`);
+  logger.log(
+    `${report.longAnimationFrames.length} blocking long animation frame(s), most blocking first:`,
+  );
   for (const frame of report.longAnimationFrames) {
     logger.log(
       `${frame.durationMs}ms frame (blocking ${frame.blockingDurationMs}ms) @ ${frame.startTimeMs}ms`,

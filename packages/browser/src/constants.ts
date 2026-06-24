@@ -16,16 +16,25 @@ export const NAVIGATION_TIMEOUT_MS = 30_000;
 // polling, analytics) hits this cap and we proceed anyway.
 export const SETTLE_TIMEOUT_MS = 10_000;
 
+export const REACT_DOCTOR_CACHE_DIRECTORY = join(homedir(), ".cache", "react-doctor");
+
 // Dedicated Chrome profile for the browser we launch ourselves. Mirrors how
 // Chrome DevTools MCP keeps a persistent profile out of the user's real one, so
 // our launched instance is reattachable across commands and never touches their
 // main browsing data. (Chrome also refuses --remote-debugging-port on the
 // default profile, so a dedicated dir is required regardless.)
 export const LAUNCHED_CHROME_PROFILE_DIRECTORY = join(
-  homedir(),
-  ".cache",
-  "react-doctor",
+  REACT_DOCTOR_CACHE_DIRECTORY,
   "chrome-profile",
+);
+
+// Where we remember the endpoint of the Chrome we launched. The default port may
+// be taken by another app, so the launch can land on a free port instead; the
+// next command reads this to reattach to that same persistent instance before
+// falling back to the well-known default.
+export const LAUNCHED_CHROME_ENDPOINT_FILE = join(
+  REACT_DOCTOR_CACHE_DIRECTORY,
+  "launched-endpoint",
 );
 
 export const LAUNCH_READY_TIMEOUT_MS = 20_000;

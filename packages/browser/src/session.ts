@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { Browser, CDPSession, ConsoleMessage, Page, Request, Response } from "playwright-core";
 import { connectToBrowser, type BrowserConnection } from "./connect.js";
-import { analyzeCpuProfile } from "./analyze-cpu-profile.js";
+import { analyzeCpuProfile, type CdpCpuProfile } from "./analyze-cpu-profile.js";
 import { analyzeTimelineTrace } from "./analyze-timeline-trace.js";
 import {
   DEFAULT_CPU_SAMPLING_INTERVAL_US,
@@ -21,6 +21,7 @@ import type {
   AccessibilityViolation,
   BrowserConnectOptions,
   ConsoleMessageEntry,
+  CpuProfileAnalysis,
   InspectOptions,
   NetworkRequestEntry,
   PageInspection,
@@ -32,6 +33,15 @@ const emptyVitals = (): PageVitals => ({
   longAnimationFrames: [],
   largestContentfulPaintMs: null,
   cumulativeLayoutShift: 0,
+});
+
+// Used only when `Profiler.stop` fails (the recording is otherwise still useful):
+// the rest of the inspection — console, network, React, axe — shouldn't be lost
+// over a CPU-profile hiccup, so the CPU lens degrades to empty instead of throwing.
+const emptyCpuAnalysis = (): CpuProfileAnalysis => ({
+  durationMs: 0,
+  sampleCount: 0,
+  topFunctions: [],
 });
 
 // A Chrome DevTools trace event as it streams over CDP (loosely typed there as a
@@ -322,6 +332,8 @@ export class BrowserSession {
       let result: unknown = null;
       let vitals = emptyVitals();
       let reactExport: ReactProfilerDataExport | null = null;
+      let traceEvents: TraceEventRecord[] = [];
+      let cpuProfile: CdpCpuProfile | null = null;
       try {
         if (expression) result = (await this.evaluate(expression)) ?? null;
         // The perf observe window doubles as the recording window: it runs after
@@ -329,20 +341,23 @@ export class BrowserSession {
         // renders land async), and CPU samples all land before we stop.
         vitals = await this.measureCurrentPerformance();
       } finally {
-        // Always stop the React profiler, even if the expression threw: the
-        // renderer profiles the persistent page, and `start()` no-ops while
-        // already profiling, so a left-running recording would skew later runs
-        // until the page reloads.
+        // Stop the recorders BEFORE reading the React profile, and always (even
+        // if the expression threw — a left-running recording on the persistent
+        // page would skew later runs). The React export serializes its data
+        // in-page (a large structured clone), so stopping the V8 CPU profiler
+        // and the timeline trace first keeps that serialization out of the
+        // user-facing profiles instead of dominating them as our own overhead.
+        if (stopTimelineTrace) {
+          traceEvents = await stopTimelineTrace().catch(() => []);
+          stopTimelineTrace = null;
+        }
+        cpuProfile = (await cdpSession.send("Profiler.stop").catch(() => null))?.profile ?? null;
         if (reactStarted) {
           reactExport = await this.page
             .evaluate(() => globalThis.__REACT_PERF__?.stop() ?? null)
             .catch(() => null);
         }
       }
-
-      const traceEvents = await stopTimelineTrace();
-      stopTimelineTrace = null;
-      const { profile } = await cdpSession.send("Profiler.stop");
 
       const writtenTracePath =
         tracePath && traceEvents.length > 0 ? await writeTraceFile(tracePath, traceEvents) : null;
@@ -362,7 +377,7 @@ export class BrowserSession {
         tracePath: writtenTracePath,
         profile: {
           react: reactExport ? analyzeReactProfile(reactExport) : null,
-          cpu: analyzeCpuProfile(profile),
+          cpu: cpuProfile ? analyzeCpuProfile(cpuProfile) : emptyCpuAnalysis(),
         },
       };
     } finally {

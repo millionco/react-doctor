@@ -1,5 +1,6 @@
 import {
   BrowserSession,
+  DEFAULT_TRACE_FILENAME,
   formatEvalValue,
   type AccessibilityViolation,
   type ConsoleMessageEntry,
@@ -8,6 +9,8 @@ import {
   type PageInspection,
   type PerformanceReport,
   type ReactProfileAnalysis,
+  type TimelineAnalysis,
+  type TimelinePhaseStat,
   type Viewport,
 } from "@react-doctor/browser";
 import { DEFAULT_SCREENSHOT_FILENAME, METRIC } from "../utils/constants.js";
@@ -63,8 +66,9 @@ export const browserEvalAction = async (
 ): Promise<void> => {
   recordCount(METRIC.cliInvoked, 1, { command: "browser.eval" });
   if (options.profile) {
+    const tracePath = options.out ?? DEFAULT_TRACE_FILENAME;
     await withSession(options, async (session) => {
-      printInspection(await session.inspect(expression));
+      printInspection(await session.inspect({ expression, tracePath }));
     });
     return;
   }
@@ -130,6 +134,7 @@ const printNetworkRequests = (requests: NetworkRequestEntry[]): void => {
 const printPerformanceReport = (report: PerformanceReport): void => {
   const lcp = report.largestContentfulPaintMs;
   logger.log(`LCP: ${lcp === null ? "n/a" : `${lcp}ms`}   CLS: ${report.cumulativeLayoutShift}`);
+  printTimelineAnalysis(report.timeline);
   if (report.longAnimationFrames.length === 0) {
     logger.log("No long animation frames (>50ms) — no main-thread jank captured");
     return;
@@ -147,6 +152,25 @@ const printPerformanceReport = (report: PerformanceReport): void => {
         `  ${script.durationMs}ms ${functionName} — ${script.sourceUrl || "(inline)"}${reflow}`,
       );
     }
+  }
+};
+
+// Trace-derived forced-reflow cost: each phase is the native style/layout/
+// hit-test/paint wall time the recording spent, naming where reads on a dirty
+// page land (getComputedStyle/getBoundingClientRect → style-recalc/layout;
+// elementsFromPoint → hit-test). Phases with no events are dropped.
+const printTimelineAnalysis = (timeline: TimelineAnalysis): void => {
+  const phases: Array<[string, TimelinePhaseStat]> = [
+    ["style-recalc", timeline.styleRecalc],
+    ["layout", timeline.layout],
+    ["hit-test", timeline.hitTest],
+    ["paint", timeline.paint],
+  ];
+  const recorded = phases.filter(([, stat]) => stat.count > 0);
+  if (recorded.length === 0) return;
+  logger.log("Timeline (trace), forced-reflow cost:");
+  for (const [label, stat] of recorded) {
+    logger.log(`  ${label}: ${stat.totalMs}ms across ${stat.count} (longest ${stat.longestMs}ms)`);
   }
 };
 
@@ -220,4 +244,10 @@ const printInspection = (inspection: PageInspection): void => {
 
   logger.log("\n# CPU");
   printCpuProfile(inspection.profile.cpu);
+
+  if (inspection.tracePath) {
+    logger.log(
+      `\nTimeline trace written to ${inspection.tracePath} (load in DevTools → Performance).`,
+    );
+  }
 };

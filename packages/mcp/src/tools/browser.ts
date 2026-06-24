@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { formatEvalValue, parseViewport } from "@react-doctor/browser";
+import { DEFAULT_TRACE_FILENAME, formatEvalValue, parseViewport } from "@react-doctor/browser";
 import { DEFAULT_CDP_ENDPOINT_HINT } from "../constants.js";
 import { jsonResult, runTool, textResult } from "../utils/tool-result.js";
 import { withSession, type BrowserToolConnection } from "../utils/with-session.js";
@@ -71,7 +71,13 @@ export const registerBrowserTools = (server: McpServer): void => {
           .boolean()
           .optional()
           .describe(
-            "Set true to record and return the full runtime picture while the expression runs — console, network, performance (jank/LCP/CLS), accessibility, the React render profile (slow commits, hot components, unnecessary re-renders), and a V8 CPU profile. Omit for just the expression's return value.",
+            "Set true to record and return the full runtime picture while the expression runs — console, network, performance (LoAF jank/LCP/CLS plus a `timeline` roll-up of forced style-recalc/layout/hit-test/paint cost from a DevTools trace), accessibility, the React render profile (slow commits, hot components, unnecessary re-renders), and a V8 CPU profile. Also writes the raw timeline trace to `out` (loadable in DevTools) and returns its path as `tracePath`. Omit for just the expression's return value.",
+          ),
+        out: z
+          .string()
+          .optional()
+          .describe(
+            `With profile:true, write the raw DevTools timeline trace here (default ${DEFAULT_TRACE_FILENAME} in the working directory)`,
           ),
         ...connectionShape,
         ...viewportShape,
@@ -82,7 +88,12 @@ export const registerBrowserTools = (server: McpServer): void => {
       runTool(async () => {
         if (args.profile) {
           return jsonResult(
-            await withSession(toConnection(args), (session) => session.inspect(args.expression)),
+            await withSession(toConnection(args), (session) =>
+              session.inspect({
+                expression: args.expression,
+                tracePath: args.out ?? DEFAULT_TRACE_FILENAME,
+              }),
+            ),
           );
         }
         if (args.expression === undefined) return textResult("(no value)");

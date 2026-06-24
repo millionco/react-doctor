@@ -48,10 +48,41 @@ export interface LongAnimationFrame {
   scripts: PerformanceScriptAttribution[];
 }
 
+// One timeline phase rolled up from the Chrome DevTools trace: how much wall
+// time the page spent in it during the recording, and the single longest event.
+export interface TimelinePhaseStat {
+  totalMs: number;
+  count: number;
+  longestMs: number;
+}
+
+// Forced reflows show up in the timeline trace as style-recalc / layout /
+// hit-test events; this is where `getComputedStyle` / `getBoundingClientRect` /
+// `elementsFromPoint` cost lands, which the script-level LoAF rows can't isolate.
+export interface TimelineAnalysis {
+  styleRecalc: TimelinePhaseStat;
+  layout: TimelinePhaseStat;
+  hitTest: TimelinePhaseStat;
+  paint: TimelinePhaseStat;
+}
+
 export interface PerformanceReport {
   longAnimationFrames: LongAnimationFrame[];
   largestContentfulPaintMs: number | null;
   cumulativeLayoutShift: number;
+  timeline: TimelineAnalysis;
+}
+
+// Everything `inspect` observes that the page itself reports (LoAF / LCP / CLS),
+// before the trace-derived `timeline` is folded in to form the PerformanceReport.
+export type PageVitals = Omit<PerformanceReport, "timeline">;
+
+export interface InspectOptions {
+  // Async expression with the Playwright `page` in scope, driven while recording.
+  expression?: string;
+  // Where to write the raw Chrome DevTools timeline trace (loadable in the
+  // DevTools Performance panel). Omit to skip writing the file.
+  tracePath?: string;
 }
 
 // The full runtime picture from one `inspect` pass: the driven expression's
@@ -63,6 +94,8 @@ export interface PageInspection {
   network: NetworkRequestEntry[];
   performance: PerformanceReport;
   accessibility: AccessibilityViolation[];
+  // Absolute path the raw timeline trace was written to, or null when none was.
+  tracePath: string | null;
   profile: ProfileAnalysis;
 }
 

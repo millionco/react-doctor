@@ -19,6 +19,8 @@ npx react-doctor browser eval --profile   # measures the current page, no reload
 
 It drives the same Chrome the other `browser` commands do: your real logged-in session when you started Chrome with `--remote-debugging-port=9222`, otherwise a dedicated persistent one. The performance section leads with the worst frame (duration plus input-blocking time), then each script that ran in it (time, function name, source, and sync-layout time when present), with LCP and CLS for context. LoAF is Chromium-only; on a quiet page it reports no long frames, which is a result, not a failure.
 
+It also captures a Chrome DevTools timeline trace over the same window. The perf section rolls it up into the native cost a forced reflow incurs — total/longest **style-recalc**, **layout**, **hit-test**, and **paint** time — which the script-level LoAF rows can't isolate (this is where `getComputedStyle` / `getBoundingClientRect` / `elementsFromPoint` land). The raw trace is written to `react-doctor-trace.json` (override with `--out`); drop it into the DevTools **Performance** panel for the full flame chart.
+
 To attribute interaction jank (a slow click, scroll, or keypress), pass the repro as the expression so it runs while recording: `browser open` the page, then `browser eval 'page.getByText("Next").click()' --profile`. The recording covers the action, so its frames, renders, and CPU samples are all included.
 
 ## 3. Analyze the worst frame first

@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import type { Browser, CDPSession, ConsoleMessage, Page, Request, Response } from "playwright-core";
 import { connectToBrowser, type BrowserConnection } from "./connect.js";
 import { analyzeCpuProfile } from "./analyze-cpu-profile.js";
+import { analyzeTimelineTrace } from "./analyze-timeline-trace.js";
 import {
   DEFAULT_CPU_SAMPLING_INTERVAL_US,
   MAX_VIOLATION_TARGETS,
@@ -10,25 +11,35 @@ import {
   PERFORMANCE_OBSERVE_WINDOW_MS,
   REACT_PROFILER_INJECT_FILE,
   SETTLE_TIMEOUT_MS,
+  TIMELINE_TRACE_CATEGORIES,
 } from "./constants.js";
 import { collectPerformanceReport } from "./perf-observer.js";
+import { writeTraceFile } from "./utils/write-trace-file.js";
 import { analyzeReactProfile } from "./react-profiler/analyze-profile.js";
 import type { ReactProfilerDataExport } from "./react-profiler/types/profiling-export.js";
 import type {
   AccessibilityViolation,
   BrowserConnectOptions,
   ConsoleMessageEntry,
+  InspectOptions,
   NetworkRequestEntry,
   PageInspection,
-  PerformanceReport,
+  PageVitals,
   Viewport,
 } from "./types.js";
 
-const emptyPerformanceReport = (): PerformanceReport => ({
+const emptyVitals = (): PageVitals => ({
   longAnimationFrames: [],
   largestContentfulPaintMs: null,
   cumulativeLayoutShift: 0,
 });
+
+// A Chrome DevTools trace event as it streams over CDP (loosely typed there as a
+// string map). The full record — every field — is written to the trace file; the
+// roll-up only reads `name`/`dur`, which it narrows itself.
+interface TraceEventRecord {
+  [key: string]: unknown;
+}
 
 const resolveActivePage = async (browser: Browser): Promise<Page> => {
   for (const context of browser.contexts()) {
@@ -232,25 +243,66 @@ export class BrowserSession {
   // A per-page watermark inside collectPerformanceReport keeps a repeated
   // no-reload measurement from re-counting frames an earlier command already
   // reported on the same persistent page.
-  private measureCurrentPerformance(): Promise<PerformanceReport> {
+  private measureCurrentPerformance(): Promise<PageVitals> {
     return this.page.evaluate(collectPerformanceReport, PERFORMANCE_OBSERVE_WINDOW_MS);
   }
 
-  // Drive the current page (optionally running `expression` — the same Playwright
-  // code `evaluate` takes) while recording the whole runtime picture in one pass:
-  // console + network listeners, a V8 CPU profile (the literal Chrome DevTools
-  // profiler over CDP), the React DevTools render profile, page performance, and
-  // an accessibility audit. This never navigates on its own — drive a fresh load
-  // with `inspect("page.goto('...')")`, or `open` a URL first then inspect an
-  // action on it. React data is null on a production build or a page not opened
-  // with the profiler; it covers the driven action, not the initial mount.
-  async inspect(expression?: string): Promise<PageInspection> {
+  // Begin a best-effort DevTools timeline trace on the CDP session, returning a
+  // `stop()` that resolves the collected events (empty if tracing never started),
+  // so the caller can bracket exactly the recording window. Runs alongside the
+  // Profiler domain — the categories deliberately exclude the V8 CPU profiler so
+  // the two don't collide.
+  private async startTimelineTrace(
+    cdpSession: CDPSession,
+  ): Promise<() => Promise<TraceEventRecord[]>> {
+    const events: TraceEventRecord[] = [];
+    const onData = (payload: { value?: TraceEventRecord[] }): void => {
+      if (payload.value) events.push(...payload.value);
+    };
+    cdpSession.on("Tracing.dataCollected", onData);
+    const started = await cdpSession
+      .send("Tracing.start", {
+        categories: TIMELINE_TRACE_CATEGORIES,
+        transferMode: "ReportEvents",
+      })
+      .then(() => true)
+      .catch(() => false);
+    if (!started) {
+      cdpSession.off("Tracing.dataCollected", onData);
+      return async () => [];
+    }
+    let stopped = false;
+    return async () => {
+      if (stopped) return events;
+      stopped = true;
+      await new Promise<void>((resolve) => {
+        cdpSession.once("Tracing.tracingComplete", () => resolve());
+        cdpSession.send("Tracing.end").catch(() => resolve());
+      });
+      cdpSession.off("Tracing.dataCollected", onData);
+      return events;
+    };
+  }
+
+  // Drive the current page (optionally running `options.expression` — the same
+  // Playwright code `evaluate` takes) while recording the whole runtime picture
+  // in one pass: console + network listeners, a V8 CPU profile (the literal
+  // Chrome DevTools profiler over CDP), a DevTools timeline trace (style/layout/
+  // hit-test cost, written to `options.tracePath` and rolled up into the perf
+  // report), the React DevTools render profile, page performance, and an
+  // accessibility audit. This never navigates on its own — drive a fresh load
+  // with `inspect({ expression: "page.goto('...')" })`, or `open` a URL first
+  // then inspect an action on it. React data is null on a production build or a
+  // page not opened with the profiler; it covers the driven action, not mount.
+  async inspect(options: InspectOptions = {}): Promise<PageInspection> {
+    const { expression, tracePath } = options;
     const consoleEntries: ConsoleMessageEntry[] = [];
     const networkByRequest = new Map<Request, NetworkRequestEntry>();
     // Open the CDP session before attaching listeners: if `newCDPSession` throws,
     // the listeners are never bound, so they can't leak onto the persistent page.
     const cdpSession = await this.page.context().newCDPSession(this.page);
     const detachers: Array<() => void> = [];
+    let stopTimelineTrace: (() => Promise<TraceEventRecord[]>) | null = null;
     try {
       detachers.push(this.collectConsole(consoleEntries), this.collectNetwork(networkByRequest));
       await this.settle();
@@ -259,6 +311,7 @@ export class BrowserSession {
         interval: DEFAULT_CPU_SAMPLING_INTERVAL_US,
       });
       await cdpSession.send("Profiler.start");
+      stopTimelineTrace = await this.startTimelineTrace(cdpSession);
 
       const reactStarted = await this.page.evaluate(() => {
         if (!globalThis.__REACT_PERF__) return false;
@@ -267,14 +320,14 @@ export class BrowserSession {
       });
 
       let result: unknown = null;
-      let performance = emptyPerformanceReport();
+      let vitals = emptyVitals();
       let reactExport: ReactProfilerDataExport | null = null;
       try {
         if (expression) result = (await this.evaluate(expression)) ?? null;
         // The perf observe window doubles as the recording window: it runs after
         // the driven action so post-action jank, React commits (concurrent
         // renders land async), and CPU samples all land before we stop.
-        performance = await this.measureCurrentPerformance();
+        vitals = await this.measureCurrentPerformance();
       } finally {
         // Always stop the React profiler, even if the expression threw: the
         // renderer profiles the persistent page, and `start()` no-ops while
@@ -287,7 +340,12 @@ export class BrowserSession {
         }
       }
 
+      const traceEvents = await stopTimelineTrace();
+      stopTimelineTrace = null;
       const { profile } = await cdpSession.send("Profiler.stop");
+
+      const writtenTracePath =
+        tracePath && traceEvents.length > 0 ? await writeTraceFile(tracePath, traceEvents) : null;
 
       // Detach the page listeners before the accessibility audit so axe's injected
       // evaluate (and anything it logs) can't land in the captured signals.
@@ -299,18 +357,20 @@ export class BrowserSession {
         result,
         console: consoleEntries,
         network: [...networkByRequest.values()],
-        performance,
+        performance: { ...vitals, timeline: analyzeTimelineTrace(traceEvents) },
         accessibility,
+        tracePath: writtenTracePath,
         profile: {
           react: reactExport ? analyzeReactProfile(reactExport) : null,
           cpu: analyzeCpuProfile(profile),
         },
       };
     } finally {
-      // Stop V8 sampling before disabling, so a throw before the happy-path
-      // `Profiler.stop` above can't leave the persistent page recording and skew
-      // later runs. A second stop after a clean run just returns an ignored
-      // profile, so this is safe on every path.
+      // Stop the timeline trace and V8 sampling before disabling, so a throw
+      // before the happy-path stops above can't leave the persistent page
+      // recording and skew later runs. A second stop after a clean run is a
+      // no-op / ignored, so this is safe on every path.
+      if (stopTimelineTrace) await stopTimelineTrace().catch(() => []);
       await cdpSession.send("Profiler.stop").catch(() => {});
       await cdpSession.send("Profiler.disable").catch(() => {});
       await cdpSession.detach().catch(() => {});

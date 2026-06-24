@@ -1,4 +1,4 @@
-import type { PerformanceReport } from "./types.js";
+import type { PageVitals } from "./types.js";
 
 // Runs in the page (via evaluate) and resolves after `windowMs`. Installs fresh
 // LoAF / LCP / CLS observers with `buffered: true`, so frames already in the
@@ -12,7 +12,7 @@ import type { PerformanceReport } from "./types.js";
 // anything at or below it: the first run after an interaction still captures its
 // frames, a second run sees only what fired since. LoAF fields are not in
 // lib.dom, so the casts here are unavoidable.
-export const collectPerformanceReport = (windowMs: number): Promise<PerformanceReport> => {
+export const collectPerformanceReport = (windowMs: number): Promise<PageVitals> => {
   interface ScriptTiming {
     sourceURL?: string;
     sourceFunctionName?: string;
@@ -31,7 +31,7 @@ export const collectPerformanceReport = (windowMs: number): Promise<PerformanceR
     hadRecentInput: boolean;
   }
   interface MutableReport {
-    longAnimationFrames: PerformanceReport["longAnimationFrames"];
+    longAnimationFrames: PageVitals["longAnimationFrames"];
     largestContentfulPaintMs: number | null;
     cumulativeLayoutShift: number;
   }
@@ -42,7 +42,7 @@ export const collectPerformanceReport = (windowMs: number): Promise<PerformanceR
   }
   const WATERMARK_KEY = "__REACT_DOCTOR_PERF_WATERMARK__";
 
-  return new Promise<PerformanceReport>((resolve) => {
+  return new Promise<PageVitals>((resolve) => {
     const report: MutableReport = {
       longAnimationFrames: [],
       largestContentfulPaintMs: null,

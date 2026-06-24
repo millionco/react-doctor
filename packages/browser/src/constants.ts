@@ -53,6 +53,27 @@ export const MAX_COMMIT_COMPONENTS = 8;
 // V8 CPU profiler sampling interval, matching Chrome DevTools' default (100us).
 export const DEFAULT_CPU_SAMPLING_INTERVAL_US = 100;
 
+// Trace categories for the timeline recording captured alongside the CPU profile.
+// `-*` drops everything, then we opt into the DevTools timeline events
+// (style/layout/hit-test/paint, with their triggering JS stacks) — but NOT
+// `disabled-by-default-v8.cpu_profiler`, which would collide with the Profiler
+// domain we already run for the CPU analysis. The result loads in the DevTools
+// Performance panel and carries the forced-reflow events we roll up.
+export const TIMELINE_TRACE_CATEGORIES = [
+  "-*",
+  "devtools.timeline",
+  "disabled-by-default-devtools.timeline",
+  "disabled-by-default-devtools.timeline.frame",
+  "disabled-by-default-devtools.timeline.stack",
+  "blink.user_timing",
+  "latencyInfo",
+  "loading",
+  "toplevel",
+].join(",");
+
+// Default file the raw timeline trace is written to (in the working directory).
+export const DEFAULT_TRACE_FILENAME = "react-doctor-trace.json";
+
 // Functions returned inline by a CPU profile analysis, ranked by self time.
 export const MAX_PROFILE_FUNCTIONS = 20;
 

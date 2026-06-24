@@ -269,7 +269,11 @@ withRenderOptions(
     )
     .option(
       "--profile",
-      "record console, network, performance, accessibility, and the React + CPU profiles while the expression runs (omit the expression to measure the live page idle)",
+      "record console, network, performance (incl. a DevTools timeline trace), accessibility, and the React + CPU profiles while the expression runs (omit the expression to measure the live page idle)",
+    )
+    .option(
+      "--out <path>",
+      "with --profile, write the raw timeline trace here for DevTools (default react-doctor-trace.json)",
     ),
 ).action(browserEvalAction);
 

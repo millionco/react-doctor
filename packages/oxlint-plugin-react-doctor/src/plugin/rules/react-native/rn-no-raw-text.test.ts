@@ -480,6 +480,46 @@ describe("react-native/rn-no-raw-text", () => {
     });
   });
 
+  // Transparent wrappers (`<fbt>`, `<Fragment>`) render no host view of their
+  // own, so the "inside a <Text>" check must step through them. The transparent
+  // set is config-independent on purpose — i18n `<Trans>` / `<FormattedMessage>`
+  // are NOT here (their RN wrapper is a provider-config choice).
+  describe("transparent wrappers", () => {
+    it("does not fire on an fbt nested inside a Fragment inside a Text", () => {
+      expectPass(`
+        const App = () => (
+          <Text>
+            <Fragment>
+              <fbt desc="greeting">Hello</fbt>
+            </Fragment>
+          </Text>
+        );
+      `);
+    });
+
+    it("does not fire on an fbt nested inside a React.Fragment inside a Text", () => {
+      expectPass(`
+        const App = () => (
+          <Text>
+            <React.Fragment>
+              <fbt desc="greeting">Hello</fbt>
+            </React.Fragment>
+          </Text>
+        );
+      `);
+    });
+
+    it("still fires on a bare fbt that is not inside a Text", () => {
+      expectFail(`
+        const App = () => (
+          <View>
+            <fbt desc="greeting">Hello</fbt>
+          </View>
+        );
+      `);
+    });
+  });
+
   describe("test-noise suppression", () => {
     it("does not fire in testlike files", () => {
       const result = runRule(rnNoRawText, `const App = () => <View>Hello</View>;`, {

@@ -46,21 +46,40 @@ export const REACT_NATIVE_TEXT_COMPONENT_KEYWORDS = new Set([
   "Body",
 ]);
 
-// Compile-time translation wrappers — fbtee's <fbt> / <fbs> and their
-// namespaced children (<fbt:param>, <fbt:plural>, <fbt:name>, …) — are NOT
-// React Native layout components. A Babel/SWC transform erases them at build
-// time, so their text really renders inside the surrounding <Text>. The
-// rn-no-raw-text rule treats them as *transparent*: raw text inside them is
-// safe only when an enclosing element is a real text component (so a bare
-// <fbt> outside <Text> is still reported).
+// Transparent wrappers — components that render NO React Native host view of
+// their own, so their children render at the surrounding location. The
+// rn-no-raw-text rule steps through them when deciding whether raw text sits
+// inside a real <Text>: raw text inside a transparent wrapper is safe only when
+// an enclosing element is a text component (so a bare <fbt> outside <Text> is
+// still reported). Two config-INDEPENDENT flavors qualify for this always-on
+// set — anything whose transparency depends on project setup must not be here:
 //
-// To extend the same behavior to another compile-time / i18n wrapper, add its
-// tag name here — namespaced children are matched by their namespace, so a
-// single entry (e.g. "fbt") covers every "<fbt:*>" child.
+//   - Compile-erased i18n markers — fbtee's <fbt> / <fbs> and their namespaced
+//     children (<fbt:param>, <fbt:plural>, <fbt:enum>, <fbt:pronoun>,
+//     <fbt:list>, <fbt:name>). A Babel/SWC transform erases them at build time.
+//     Namespaced children are matched by their namespace, so the single "fbt"
+//     entry covers every "<fbt:*>" child. The maintained fork (@nkzw/fbtee)
+//     uses the same tags.
+//   - React's structural <Fragment> / <React.Fragment> — renders nothing in any
+//     build, so a <Fragment> between a <Text> and its text (or an <fbt>) must
+//     not break the "inside a Text" check. (The "<>" shorthand is a JSXFragment
+//     node the rule doesn't visit, so it isn't covered by this name.)
+//
+// Deliberately NOT here: the i18n <Trans> (react-i18next, @lingui/react) and
+// <FormattedMessage> (react-intl). Whether they render transparently or wrap
+// their children in a <Text> is a per-project PROVIDER choice the rule can't
+// see — Lingui's `defaultComponent={Text}` and react-intl's
+// `textComponent={Text}` are the recommended React Native setups — so
+// hardcoding them as transparent would false-positive on the common
+// "globally wrapped in <Text>" projects. They belong in an opt-in
+// `transparentComponents` config whitelist instead.
 //
 // Ref: https://github.com/millionco/react-doctor/issues/581
 //      https://facebook.github.io/fbt/docs/api_intro
-export const REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS = new Set(["fbt", "fbs"]);
+//      https://react.i18next.com/latest/trans-component
+//      https://lingui.dev/tutorials/react-native
+//      https://formatjs.github.io/docs/react-intl/components/
+export const REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS = new Set(["Fragment", "fbt", "fbs"]);
 
 // HACK: Maps (not plain objects) so that an unusual `import { constructor }
 // from "react-native"` (or any other Object.prototype name) doesn't fall

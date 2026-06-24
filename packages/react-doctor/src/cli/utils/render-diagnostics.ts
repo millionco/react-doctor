@@ -86,7 +86,8 @@ const buildVerboseFileEntries = (diagnostics: Diagnostic[]): Map<string, Verbose
   return fileEntries;
 };
 
-const formatSiteCountBadge = (count: number): string => (count > 1 ? `${MULTIPLY_SIGN}${count}` : "");
+const formatSiteCountBadge = (count: number): string =>
+  count > 1 ? `${MULTIPLY_SIGN}${count}` : "";
 
 // The dim `×N` badge that trails a rule's header line, or empty for a
 // single site. Shared by the error and warning rule headers so the badge

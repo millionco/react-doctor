@@ -514,18 +514,17 @@ export class BrowserSession {
       // window: pre-action jank and idle frames are dropped while the setup work
       // below still falls inside the window for every signal alike. It lives on
       // the document, so an expression that navigates wipes it and the new page
-      // keeps its full load vitals (see collectPerformanceReport).
-      await this.page
-        .evaluate((markerKey) => {
-          Reflect.set(globalThis, markerKey, performance.now());
-        }, PERFORMANCE_RECORDING_MARKER)
-        .catch(() => {});
-
-      const reactStarted = await this.page.evaluate(() => {
+      // keeps its full load vitals (see collectPerformanceReport). It rides the
+      // same awaited evaluate that starts the React profiler so the write isn't
+      // silently swallowed: a page that can't take the marker fails the inspect
+      // loudly instead of leaving a stale floor for a later no-reload run to
+      // over-count buffered jank/CLS against.
+      const reactStarted = await this.page.evaluate((markerKey) => {
+        Reflect.set(globalThis, markerKey, performance.now());
         if (!globalThis.__REACT_PERF__) return false;
         globalThis.__REACT_PERF__.start();
         return true;
-      });
+      }, PERFORMANCE_RECORDING_MARKER);
 
       const scrollBefore = await this.readScroll();
       let result: unknown = null;

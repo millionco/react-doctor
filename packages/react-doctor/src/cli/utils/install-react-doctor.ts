@@ -26,7 +26,8 @@ import { askUpgradeActionVersion } from "./ask-upgrade-action-version.js";
 import { detectDefaultBranch } from "./detect-default-branch.js";
 import { hasHandledActionUpgrade, recordActionUpgradeDecision } from "./action-upgrade-prompt.js";
 import { hasHandledCiPrompt, recordCiPromptDecision } from "./ci-prompt-decision.js";
-import { installReactDoctorAgentHooks } from "./install-agent-hooks.js";
+// Disabled with the optional agent-hook setup (see Step 3).
+// import { installReactDoctorAgentHooks } from "./install-agent-hooks.js";
 import {
   getReactDoctorWorkflowPath,
   installReactDoctorWorkflow,
@@ -37,26 +38,28 @@ import {
 import { reportWorkflowResult } from "./report-workflow-result.js";
 import { isRecord, readPackageJson } from "./git-hook-shared.js";
 import { GitHookKind, type GitHookTarget } from "./git-hook-types.js";
-import { detectGitHookTarget, installReactDoctorGitHook } from "./install-git-hook.js";
+import { detectGitHookTarget } from "./install-git-hook.js";
 import { prompts } from "./prompts.js";
 import { shouldSkipPrompts } from "./should-skip-prompts.js";
 import { spinner } from "./spinner.js";
 
-const SETUP_OPTION_GIT_HOOK = "git-hook";
-const SETUP_OPTION_AGENT_HOOKS = "agent-hooks";
-const SETUP_OPTION_SKIP = "skip";
+// Optional pre-commit / agent-hook setup is disabled (see Step 3 below), so the
+// supporting constants and helpers are commented out alongside it.
+// const SETUP_OPTION_GIT_HOOK = "git-hook";
+// const SETUP_OPTION_AGENT_HOOKS = "agent-hooks";
+// const SETUP_OPTION_SKIP = "skip";
 
-const CONFIG_ONLY_GIT_HOOK_KINDS = new Set([
-  GitHookKind.Ghooks,
-  GitHookKind.GitHooksJs,
-  GitHookKind.Lefthook,
-  GitHookKind.Overcommit,
-  GitHookKind.PreCommit,
-  GitHookKind.PreCommitNpm,
-  GitHookKind.PrettyQuick,
-  GitHookKind.SimpleGitHooks,
-  GitHookKind.Yorkie,
-]);
+// const CONFIG_ONLY_GIT_HOOK_KINDS = new Set([
+//   GitHookKind.Ghooks,
+//   GitHookKind.GitHooksJs,
+//   GitHookKind.Lefthook,
+//   GitHookKind.Overcommit,
+//   GitHookKind.PreCommit,
+//   GitHookKind.PreCommitNpm,
+//   GitHookKind.PrettyQuick,
+//   GitHookKind.SimpleGitHooks,
+//   GitHookKind.Yorkie,
+// ]);
 
 export interface InstallReactDoctorDependencyRunnerInput {
   readonly command: string;
@@ -245,14 +248,15 @@ const buildManualGitHookTarget = (hookPath: string, projectRoot: string): GitHoo
   kind: GitHookKind.Git,
 });
 
-const formatGitHookInstallMessage = (
-  hookResult: ReturnType<typeof installReactDoctorGitHook>,
-): string => {
-  if (CONFIG_ONLY_GIT_HOOK_KINDS.has(hookResult.kind)) {
-    return `React Doctor pre-commit config ${hookResult.status} at ${hookResult.hookPath}. Run your hook manager's install command if hooks are not already installed.`;
-  }
-  return `React Doctor pre-commit hook ${hookResult.status} at ${hookResult.hookPath}.`;
-};
+// Disabled with the optional pre-commit hook setup (see Step 3 below).
+// const formatGitHookInstallMessage = (
+//   hookResult: ReturnType<typeof installReactDoctorGitHook>,
+// ): string => {
+//   if (CONFIG_ONLY_GIT_HOOK_KINDS.has(hookResult.kind)) {
+//     return `React Doctor pre-commit config ${hookResult.status} at ${hookResult.hookPath}. Run your hook manager's install command if hooks are not already installed.`;
+//   }
+//   return `React Doctor pre-commit hook ${hookResult.status} at ${hookResult.hookPath}.`;
+// };
 
 const formatDependencyInstallMessage = (result: InstallReactDoctorDependencyResult): string => {
   if (result.dependencyStatus === "created") {
@@ -350,8 +354,9 @@ export const getSkillSourceDirectory = (): string => {
   return path.join(distDirectory, "skills", SKILL_NAME);
 };
 
-const canInstallNativeAgentHooks = (agents: readonly SkillAgentType[]): boolean =>
-  agents.some((agent) => agent === "claude-code" || agent === "cursor");
+// Disabled with the optional agent-hook setup (see Step 3 below).
+// const canInstallNativeAgentHooks = (agents: readonly SkillAgentType[]): boolean =>
+//   agents.some((agent) => agent === "claude-code" || agent === "cursor");
 
 // Installs the primary skill (throws on failure — the install can't continue
 // without it).
@@ -393,50 +398,51 @@ const installReactDoctorSkillStep = async (
   }
 };
 
-const installReactDoctorGitHookStep = (gitHookTarget: GitHookTarget): void => {
-  const hookSpinner = spinner("Installing React Doctor pre-commit hook...").start();
-  try {
-    const hookResult = installReactDoctorGitHook({
-      hookPath: gitHookTarget.hookPath,
-      projectRoot: gitHookTarget.runnerRoot,
-      kind: gitHookTarget.kind,
-      hooksPathConfig: gitHookTarget.hooksPathConfig,
-    });
-    hookSpinner.succeed(formatGitHookInstallMessage(hookResult));
-    recordCount(METRIC.installGitHook, 1, { kind: hookResult.kind });
-  } catch (error) {
-    hookSpinner.fail("Failed to install React Doctor pre-commit hook.");
-    throw error;
-  }
-};
+// Disabled: `install` no longer installs pre-commit or agent hooks (see Step 3).
+// const installReactDoctorGitHookStep = (gitHookTarget: GitHookTarget): void => {
+//   const hookSpinner = spinner("Installing React Doctor pre-commit hook...").start();
+//   try {
+//     const hookResult = installReactDoctorGitHook({
+//       hookPath: gitHookTarget.hookPath,
+//       projectRoot: gitHookTarget.runnerRoot,
+//       kind: gitHookTarget.kind,
+//       hooksPathConfig: gitHookTarget.hooksPathConfig,
+//     });
+//     hookSpinner.succeed(formatGitHookInstallMessage(hookResult));
+//     recordCount(METRIC.installGitHook, 1, { kind: hookResult.kind });
+//   } catch (error) {
+//     hookSpinner.fail("Failed to install React Doctor pre-commit hook.");
+//     throw error;
+//   }
+// };
 
-const installReactDoctorAgentHooksStep = (
-  projectRoot: string,
-  selectedAgents: SkillAgentType[],
-): void => {
-  const hookSpinner = spinner("Installing React Doctor agent hooks...").start();
-  try {
-    const hookResult = installReactDoctorAgentHooks({
-      projectRoot,
-      agents: selectedAgents,
-    });
-    if (hookResult.installedAgents.length === 0) {
-      hookSpinner.succeed("No supported native agent hook targets selected.");
-    } else {
-      hookSpinner.succeed(
-        `React Doctor agent hooks installed for ${hookResult.installedAgents
-          .map((agent) => getSkillAgentConfig(agent).displayName)
-          .join(", ")}.`,
-      );
-      recordCount(METRIC.installAgentHooks, 1, {
-        agentsCount: hookResult.installedAgents.length,
-      });
-    }
-  } catch (error) {
-    hookSpinner.fail("Failed to install React Doctor agent hooks.");
-    throw error;
-  }
-};
+// const installReactDoctorAgentHooksStep = (
+//   projectRoot: string,
+//   selectedAgents: SkillAgentType[],
+// ): void => {
+//   const hookSpinner = spinner("Installing React Doctor agent hooks...").start();
+//   try {
+//     const hookResult = installReactDoctorAgentHooks({
+//       projectRoot,
+//       agents: selectedAgents,
+//     });
+//     if (hookResult.installedAgents.length === 0) {
+//       hookSpinner.succeed("No supported native agent hook targets selected.");
+//     } else {
+//       hookSpinner.succeed(
+//         `React Doctor agent hooks installed for ${hookResult.installedAgents
+//           .map((agent) => getSkillAgentConfig(agent).displayName)
+//           .join(", ")}.`,
+//       );
+//       recordCount(METRIC.installAgentHooks, 1, {
+//         agentsCount: hookResult.installedAgents.length,
+//       });
+//     }
+//   } catch (error) {
+//     hookSpinner.fail("Failed to install React Doctor agent hooks.");
+//     throw error;
+//   }
+// };
 
 // Writes the workflow into the working tree alongside the other files `install`
 // lands (skill, package script, git hook) so the user reviews and commits it
@@ -647,83 +653,90 @@ export const runInstallReactDoctor = async (
     }
   }
 
-  // Step 3 — optional setup (pre-commit hook, agent hooks).
-  const setupActionChoices = [
-    ...(gitHookPath === null || gitHookPath === undefined
-      ? []
-      : [
-          {
-            title: "Pre-commit hook",
-            description: "Check staged changes before each commit",
-            value: SETUP_OPTION_GIT_HOOK,
-            selected: true,
-          },
-        ]),
-    ...(canInstallNativeAgentHooks(selectedAgents)
-      ? [
-          {
-            title: "Agent hooks",
-            description: "Ask Claude Code or Cursor to scan after code edits",
-            value: SETUP_OPTION_AGENT_HOOKS,
-            selected: Boolean(options.agentHooks),
-          },
-        ]
-      : []),
-  ];
-  const setupChoices =
-    setupActionChoices.length === 0
-      ? []
-      : [
-          {
-            title: "Skip optional setup",
-            description: "Install only the agent skill and package setup",
-            value: SETUP_OPTION_SKIP,
-            selected: false,
-          },
-          ...setupActionChoices,
-        ];
+  // Step 3 — optional setup (pre-commit hook, agent hooks) is intentionally
+  // disabled: `install` no longer prompts for, nor installs, pre-commit or
+  // agent hooks. The prompt and the install steps below are commented out;
+  // flip these flags back to the prompt-driven values (and uncomment the
+  // multiselect + install calls) to re-enable.
+  const shouldInstallGitHook = false;
+  const shouldInstallAgentHooks = false;
 
-  // Blank line between the skill group and the optional-setup group.
-  if (setupChoices.length > 0 && !options.dryRun) logger.break();
-
-  const selectedSetupOptions: string[] =
-    skipPrompts || setupChoices.length === 0
-      ? []
-      : ((
-          await prompt<"setupOptions">(
-            {
-              type: "multiselect",
-              name: "setupOptions",
-              message: "Select additional React Doctor setup:",
-              choices: setupChoices,
-              instructions: false,
-            },
-            promptOptions,
-          )
-        ).setupOptions ?? []);
-  const selectedSetupActions = selectedSetupOptions.filter(
-    (setupOption) => setupOption !== SETUP_OPTION_SKIP,
-  );
-  const didSkipOptionalSetup =
-    selectedSetupActions.length === 0 && selectedSetupOptions.includes(SETUP_OPTION_SKIP);
-
-  const shouldInstallGitHook =
-    gitHookPath != null &&
-    (Boolean(options.yes) ||
-      (!didSkipOptionalSetup && selectedSetupActions.includes(SETUP_OPTION_GIT_HOOK)));
-
-  const shouldInstallAgentHooks =
-    Boolean(options.agentHooks) ||
-    (!didSkipOptionalSetup && selectedSetupActions.includes(SETUP_OPTION_AGENT_HOOKS));
-
-  if (!options.dryRun) {
-    if (shouldInstallGitHook && gitHookTarget !== null && gitHookTarget !== undefined) {
-      installReactDoctorGitHookStep(gitHookTarget);
-    }
-    if (shouldInstallAgentHooks) {
-      installReactDoctorAgentHooksStep(projectRoot, selectedAgents);
-    }
-  }
+  // const setupActionChoices = [
+  //   ...(gitHookPath === null || gitHookPath === undefined
+  //     ? []
+  //     : [
+  //         {
+  //           title: "Pre-commit hook",
+  //           description: "Check staged changes before each commit",
+  //           value: SETUP_OPTION_GIT_HOOK,
+  //           selected: true,
+  //         },
+  //       ]),
+  //   ...(canInstallNativeAgentHooks(selectedAgents)
+  //     ? [
+  //         {
+  //           title: "Agent hooks",
+  //           description: "Ask Claude Code or Cursor to scan after code edits",
+  //           value: SETUP_OPTION_AGENT_HOOKS,
+  //           selected: Boolean(options.agentHooks),
+  //         },
+  //       ]
+  //     : []),
+  // ];
+  // const setupChoices =
+  //   setupActionChoices.length === 0
+  //     ? []
+  //     : [
+  //         {
+  //           title: "Skip optional setup",
+  //           description: "Install only the agent skill and package setup",
+  //           value: SETUP_OPTION_SKIP,
+  //           selected: false,
+  //         },
+  //         ...setupActionChoices,
+  //       ];
+  //
+  // // Blank line between the skill group and the optional-setup group.
+  // if (setupChoices.length > 0 && !options.dryRun) logger.break();
+  //
+  // const selectedSetupOptions: string[] =
+  //   skipPrompts || setupChoices.length === 0
+  //     ? []
+  //     : ((
+  //         await prompt<"setupOptions">(
+  //           {
+  //             type: "multiselect",
+  //             name: "setupOptions",
+  //             message: "Select additional React Doctor setup:",
+  //             choices: setupChoices,
+  //             instructions: false,
+  //           },
+  //           promptOptions,
+  //         )
+  //       ).setupOptions ?? []);
+  // const selectedSetupActions = selectedSetupOptions.filter(
+  //   (setupOption) => setupOption !== SETUP_OPTION_SKIP,
+  // );
+  // const didSkipOptionalSetup =
+  //   selectedSetupActions.length === 0 && selectedSetupOptions.includes(SETUP_OPTION_SKIP);
+  //
+  // const shouldInstallGitHook =
+  //   gitHookPath != null &&
+  //   (Boolean(options.yes) ||
+  //     (!didSkipOptionalSetup && selectedSetupActions.includes(SETUP_OPTION_GIT_HOOK)));
+  //
+  // const shouldInstallAgentHooks =
+  //   Boolean(options.agentHooks) ||
+  //   (!didSkipOptionalSetup && selectedSetupActions.includes(SETUP_OPTION_AGENT_HOOKS));
+  //
+  // if (!options.dryRun) {
+  //   if (shouldInstallGitHook && gitHookTarget !== null && gitHookTarget !== undefined) {
+  //     installReactDoctorGitHookStep(gitHookTarget);
+  //   }
+  //   if (shouldInstallAgentHooks) {
+  //     installReactDoctorAgentHooksStep(projectRoot, selectedAgents);
+  //   }
+  // }
 
   if (options.dryRun) {
     logger.log(`Dry run — would install ${SKILL_NAME} skill for:`);

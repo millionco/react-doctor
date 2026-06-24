@@ -87,8 +87,10 @@ export default defineConfig({
         // require so the runtime copy must be on disk), agent-install
         // (its jsonc-parser/yaml/toml transitives ship as UMD that
         // doesn't bundle cleanly), and the typescript compiler all
-        // stay external.
-        alwaysBundle: ["commander", "ora"],
+        // stay external. @react-doctor/browser is private, so it MUST
+        // inline — declaring it here makes that explicit and fails the
+        // build loudly rather than emitting a phantom external import.
+        alwaysBundle: ["@react-doctor/browser", "commander", "ora"],
         neverBundle: [
           // Sentry bundles its own OpenTelemetry instrumentation chain
           // and resolves native/optional deps via require() at runtime;
@@ -200,6 +202,10 @@ export default defineConfig({
       // and oxlint/oxc/deslop resolve their native bindings at runtime.
       entry: { mcp: "./src/mcp.ts" },
       deps: {
+        // @react-doctor/browser is reached transitively through @react-doctor/mcp
+        // here; it's private, so force-inline it (the same reason the CLI pack
+        // does) instead of letting it slip out as a phantom external import.
+        alwaysBundle: ["@react-doctor/browser"],
         neverBundle: [
           "@sentry/node",
           "playwright-core",

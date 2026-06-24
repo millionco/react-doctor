@@ -45,16 +45,26 @@ export const connectToBrowser = async (
   // Without an explicit --cdp, prefer the instance we previously launched (which
   // may be on a non-default port) before the well-known default.
   const launchedEndpoint = readLaunchedEndpoint();
+  const preferredLaunchedEndpoint =
+    !options.cdpEndpoint && launchedEndpoint && launchedEndpoint !== DEFAULT_CDP_ENDPOINT
+      ? launchedEndpoint
+      : null;
   const attachCandidates = options.cdpEndpoint
     ? [options.cdpEndpoint]
-    : launchedEndpoint && launchedEndpoint !== DEFAULT_CDP_ENDPOINT
-      ? [launchedEndpoint, DEFAULT_CDP_ENDPOINT]
+    : preferredLaunchedEndpoint
+      ? [preferredLaunchedEndpoint, DEFAULT_CDP_ENDPOINT]
       : [DEFAULT_CDP_ENDPOINT];
 
   let lastAttachError: unknown;
   for (const candidate of attachCandidates) {
     try {
       const browser = await chromium.connectOverCDP(candidate, { timeout: CONNECT_TIMEOUT_MS });
+      // Reached the default fallback because the recorded launched endpoint
+      // didn't answer: that instance is gone, so forget it — otherwise every
+      // later command pays the full attach timeout against a dead port first.
+      if (preferredLaunchedEndpoint && candidate !== preferredLaunchedEndpoint) {
+        clearLaunchedEndpoint();
+      }
       return { browser, launched: false };
     } catch (attachError) {
       lastAttachError = attachError;

@@ -235,10 +235,11 @@ export default defineConfig({
       // and oxlint/oxc/deslop resolve their native bindings at runtime.
       entry: { mcp: "./src/mcp.ts" },
       deps: {
-        // @react-doctor/browser is reached transitively through @react-doctor/mcp
-        // here; it's private, so force-inline it (the same reason the CLI pack
-        // does) instead of letting it slip out as a phantom external import.
-        alwaysBundle: ["@react-doctor/browser"],
+        // @react-doctor/browser and @react-doctor/debug are reached transitively
+        // through @react-doctor/mcp here; both are private, so force-inline them
+        // (the same reason the CLI pack does) instead of letting them slip out as
+        // phantom external imports that break `npm i react-doctor`.
+        alwaysBundle: ["@react-doctor/browser", "@react-doctor/debug"],
         neverBundle: [
           "@sentry/node",
           "playwright-core",

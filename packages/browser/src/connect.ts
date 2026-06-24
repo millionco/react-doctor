@@ -49,19 +49,30 @@ export const connectToBrowser = async (
     !options.cdpEndpoint && launchedEndpoint && launchedEndpoint !== DEFAULT_CDP_ENDPOINT
       ? launchedEndpoint
       : null;
+  // When we have our own launched instance, fall back to the well-known default
+  // ONLY if launching is disabled (attaching to whatever is already there is then
+  // the only option). With launching enabled we relaunch our own below instead:
+  // another Chromium app often squats on 9222, so a launched instance that is
+  // briefly unreachable (slow, mid-restart) must not be silently swapped for a
+  // foreign browser there — that orphans our profile and runs later commands
+  // against the wrong session. The default is also tried on a cold start (no
+  // launched endpoint yet), where it is the user's own running Chrome.
+  const shouldTryDefaultFallback = !preferredLaunchedEndpoint || options.launch === false;
   const attachCandidates = options.cdpEndpoint
     ? [options.cdpEndpoint]
-    : preferredLaunchedEndpoint
-      ? [preferredLaunchedEndpoint, DEFAULT_CDP_ENDPOINT]
-      : [DEFAULT_CDP_ENDPOINT];
+    : [
+        ...(preferredLaunchedEndpoint ? [preferredLaunchedEndpoint] : []),
+        ...(shouldTryDefaultFallback ? [DEFAULT_CDP_ENDPOINT] : []),
+      ];
 
   let lastAttachError: unknown;
   for (const candidate of attachCandidates) {
     try {
       const browser = await chromium.connectOverCDP(candidate, { timeout: CONNECT_TIMEOUT_MS });
-      // Reached the default fallback because the recorded launched endpoint
-      // didn't answer: that instance is gone, so forget it — otherwise every
-      // later command pays the full attach timeout against a dead port first.
+      // Adopted the default because the recorded launched endpoint didn't answer
+      // (only reachable here when launching is disabled): that instance is gone,
+      // so forget it — otherwise every later command pays the full attach timeout
+      // against a dead port first.
       if (preferredLaunchedEndpoint && candidate !== preferredLaunchedEndpoint) {
         clearLaunchedEndpoint();
       }

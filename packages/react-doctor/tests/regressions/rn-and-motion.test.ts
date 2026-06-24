@@ -201,7 +201,12 @@ describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper ch
     const projectDir = setupReactProject(tempRoot, "issue-183-e2e", {
       packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
       files: {
-        "src/App.tsx": `export const App = () => <Button>Cancel</Button>;\n`,
+        // `Button` is an in-file wrapper that renders its children inside a
+        // non-text `<View>`, so `rn-no-raw-text` flags `<Button>Cancel</Button>`
+        // (an imported/un-analyzable `<Button>` is no longer flagged). The
+        // `rawTextWrapperComponents` config then suppresses that real
+        // diagnostic — which is what this end-to-end test exercises.
+        "src/App.tsx": `const Button = ({ children }) => <View>{children}</View>;\nexport const App = () => <Button>Cancel</Button>;\n`,
       },
     });
 

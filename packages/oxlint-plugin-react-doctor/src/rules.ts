@@ -82,7 +82,6 @@ export const EXTERNAL_RULES = [
   // the local `react-compiler-no-manual-memoization` rule instead.
   { key: "react-hooks-js/use-memo", source: "react-compiler", severity: "error" },
   { key: "react-hooks-js/void-use-memo", source: "react-compiler", severity: "error" },
-  { key: "react-hooks-js/incompatible-library", source: "react-compiler", severity: "error" },
   { key: "react-hooks-js/todo", source: "react-compiler", severity: "error" },
 ] as const;
 

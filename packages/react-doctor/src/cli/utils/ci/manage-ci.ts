@@ -300,8 +300,14 @@ export const runCiInstall = async (options: CiCommandOptions = {}): Promise<void
 
   if (result.status === "exists") {
     scaffoldSpinner.succeed(`${provider.fileLabel} already exists.`);
-    if (provider.supportedGateKeys.includes("comment")) {
-      logger.dim(`  Change its settings with ${highlighter.info("react-doctor ci config")}.`);
+    if (provider.id === "github-actions") {
+      // The file is left untouched, so any gate flags weren't applied — say so
+      // and point at the command that does edit an existing workflow.
+      logger.dim(
+        hasAnyGateFlag(options)
+          ? `  Left unchanged, so those settings weren't applied. Set them with ${highlighter.info("react-doctor ci config")}.`
+          : `  Change its settings with ${highlighter.info("react-doctor ci config")}.`,
+      );
     } else {
       logger.break();
       logger.log("  Add this job to your existing config:");

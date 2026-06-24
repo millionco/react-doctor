@@ -168,6 +168,21 @@ describe("gitlabCiProvider", () => {
     fs.writeFileSync(path.join(project.root, ".gitlab-ci.yml"), "stages: [test]\n");
     expect(gitlabCiProvider.scaffold(project.root, "main", ADVISORY_GATE).status).toBe("exists");
   });
+
+  it("reads the gate off React Doctor's own job, not another job's flags", () => {
+    const merged = [
+      "other-tool:",
+      "  script:",
+      "    - some-tool --blocking warning --scope full",
+      "react-doctor:",
+      "  script:",
+      '    - npx react-doctor@latest --blocking error --scope changed --base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"',
+      "",
+    ].join("\n");
+    const gate = gitlabCiProvider.parseGate(merged);
+    expect(gate.blocking).toBe("error");
+    expect(gate.scope).toBe("changed");
+  });
 });
 
 describe("detectCiProvider", () => {
@@ -200,6 +215,13 @@ describe("detectCiProvider", () => {
     expect(
       await detectCiProvider(project.root, runner(succeed("git@gitlab.example.com:o/r.git"))),
     ).toBe("gitlab-ci");
+  });
+
+  it("prefers the GitHub remote over a stray .gitlab-ci.yml", async () => {
+    fs.writeFileSync(path.join(project.root, ".gitlab-ci.yml"), "stages: [test]\n");
+    expect(
+      await detectCiProvider(project.root, runner(succeed("https://github.com/o/r.git"))),
+    ).toBe("github-actions");
   });
 
   it("returns null when nothing is conclusive", async () => {

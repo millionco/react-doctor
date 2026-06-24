@@ -46,12 +46,18 @@ react-doctor:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 `;
 
-// GitLab keeps its gate in the scan command's flags rather than a mapping, so
-// the parser reads `--blocking` / `--scope` straight off the `npx` line. The
-// `['"]?` tolerates a hand-quoted value (`--blocking "error"`).
+// GitLab keeps its gate in the scan command's flags rather than a mapping. The
+// flags are read off React Doctor's own scan line, not file-wide, so a merged
+// pipeline that runs other jobs (or tools) with their own `--blocking` /
+// `--scope` can't be mistaken for the gate. The `['"]?` tolerates a hand-quoted
+// value (`--blocking "error"`).
 const parseGate = (content: string): CiGate => {
-  const blockingMatch = content.match(/--blocking[ =]['"]?([\w-]+)/);
-  const scopeMatch = content.match(/--scope[ =]['"]?([\w-]+)/);
+  const scanLine =
+    content
+      .split(/\r?\n/)
+      .find((line) => /react-doctor/.test(line) && /--(blocking|scope)\b/.test(line)) ?? "";
+  const blockingMatch = scanLine.match(/--blocking[ =]['"]?([\w-]+)/);
+  const scopeMatch = scanLine.match(/--scope[ =]['"]?([\w-]+)/);
   const blocking =
     blockingMatch && isValidBlockingLevel(blockingMatch[1]) ? blockingMatch[1] : null;
   const scope = scopeMatch && isScopeValue(scopeMatch[1]) ? scopeMatch[1] : null;

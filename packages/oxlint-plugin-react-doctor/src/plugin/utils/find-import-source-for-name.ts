@@ -147,3 +147,33 @@ export const getImportSourceForName = (
   if (!lookup) return null;
   return lookup.get(localIdentifierName)?.source ?? null;
 };
+
+export interface ImportBinding {
+  // Module the local binding was imported from.
+  source: string;
+  // The originally-exported name in `source` — "default" for a default import,
+  // the pre-rename name for a named import. Null for a namespace import, which
+  // binds the whole module rather than a single export.
+  exportedName: string | null;
+  isNamespace: boolean;
+}
+
+// The full import binding for a local name — its source plus the original
+// exported name (resolving renames and default imports) — or null when the name
+// has no import in the enclosing module. Use over `getImportSourceForName` when
+// you need to follow the import into its source file and locate the right
+// export.
+export const getImportBindingForName = (
+  contextNode: EsTreeNode,
+  localIdentifierName: string,
+): ImportBinding | null => {
+  const lookup = getImportLookup(contextNode);
+  const info = lookup?.get(localIdentifierName);
+  if (!info) return null;
+  if (info.isNamespace) return { source: info.source, exportedName: null, isNamespace: true };
+  return {
+    source: info.source,
+    exportedName: info.isDefault ? "default" : info.imported,
+    isNamespace: false,
+  };
+};

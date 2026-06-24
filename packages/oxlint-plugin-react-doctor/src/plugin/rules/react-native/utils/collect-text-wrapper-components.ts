@@ -385,34 +385,31 @@ export interface ChildrenForwardingComponents {
   nonTextWrappers: ReadonlySet<string>;
 }
 
-// Records a component declaration into the text-wrapper or non-text-wrapper set
-// based on where it forwards its children: into a text-handling element
-// (`textWrappers`) or into a known non-text host (`nonTextWrappers`). A
-// component that forwards its children only into an unanalyzed import, or never
-// forwards them at all (ignores them, or renders only a `title` prop), lands in
-// neither — we can't prove a crash, so raw text passed to it is left unreported.
-const recordWrapperFromDeclaration = (
-  componentName: string | null,
-  definitionNode: EsTreeNode | null | undefined,
+export type ChildrenForwardingKind = "text" | "nonText" | "unknown";
+
+// Classifies a component definition by where it forwards its `children`:
+// "text" — into a `<Text>` (raw text inside it is safe); "nonText" — into a
+// known non-text host (a certain crash); "unknown" — into an unanalyzed import
+// that may itself wrap them in `<Text>`, or not forwarded at all (so raw text
+// renders nothing). `isTextHandlingElement` / `isNonTextHostElement` decide
+// which receiving elements count as text vs. host — pass the in-file-aware
+// closures for a same-file declaration, or the global root predicates for a
+// component resolved from another file.
+export const classifyChildrenForwarding = (
+  definitionNode: EsTreeNode,
   isTextHandlingElement: (elementName: string) => boolean,
   isNonTextHostElement: (elementName: string) => boolean,
-  wrappers: Set<string>,
-  nonTextWrappers: Set<string>,
-): void => {
-  if (!componentName || !isReactComponentName(componentName)) return;
-  if (wrappers.has(componentName)) return;
-  if (!definitionNode) return;
+): ChildrenForwardingKind => {
   const unwrapped = unwrapComponentDefinition(definitionNode);
   const styledBaseName = resolveStyledFactoryBaseName(unwrapped);
   if (styledBaseName) {
-    if (isTextHandlingElement(styledBaseName)) wrappers.add(componentName);
-    else if (isNonTextHostElement(styledBaseName)) nonTextWrappers.add(componentName);
-    // A `styled()` factory over an unanalyzed base is left unclassified.
-    return;
+    if (isTextHandlingElement(styledBaseName)) return "text";
+    if (isNonTextHostElement(styledBaseName)) return "nonText";
+    return "unknown";
   }
   const functionNode =
     resolveClassRenderFunction(unwrapped) ?? (isFunctionNode(unwrapped) ? unwrapped : null);
-  if (!functionNode) return;
+  if (!functionNode) return "unknown";
   const bindings = resolveParamChildrenBindings(functionNode);
   collectChildrenAliases(functionNode, bindings);
   const jsxRoots = collectReturnedJsxRoots(functionNode);
@@ -426,32 +423,50 @@ const recordWrapperFromDeclaration = (
       ),
     )
   ) {
-    nonTextWrappers.add(componentName);
-    return;
+    return "nonText";
   }
+  // Children are forwarded somewhere non-text, but not into a known host — an
+  // unanalyzed import that may wrap them in `<Text>`. Not a safe wrapper, but
+  // not a proven crash either.
   if (
     jsxRoots.some((jsxRoot) =>
       jsxRootRendersChildrenOutsideText(jsxRoot, bindings, isTextHandlingElement),
     )
   ) {
-    // Children are forwarded somewhere non-text, but not into a known host — an
-    // unanalyzed import that may wrap them in `<Text>`. Not a safe wrapper, but
-    // not a proven crash either, so leave it unclassified.
-    return;
+    return "unknown";
   }
   for (const jsxRoot of jsxRoots) {
     if (isNodeOfType(jsxRoot, "JSXElement")) {
       const rootName = resolveJsxElementName(jsxRoot.openingElement);
-      if (rootName && isTextHandlingElement(rootName)) {
-        wrappers.add(componentName);
-        return;
-      }
+      if (rootName && isTextHandlingElement(rootName)) return "text";
     }
-    if (jsxRootForwardsChildrenIntoText(jsxRoot, bindings, isTextHandlingElement)) {
-      wrappers.add(componentName);
-      return;
-    }
+    if (jsxRootForwardsChildrenIntoText(jsxRoot, bindings, isTextHandlingElement)) return "text";
   }
+  return "unknown";
+};
+
+// Records a same-file component declaration into the text-wrapper or
+// non-text-wrapper set per its `classifyChildrenForwarding` verdict. "unknown"
+// components land in neither — we can't prove a crash, so raw text passed to
+// them is left unreported.
+const recordWrapperFromDeclaration = (
+  componentName: string | null,
+  definitionNode: EsTreeNode | null | undefined,
+  isTextHandlingElement: (elementName: string) => boolean,
+  isNonTextHostElement: (elementName: string) => boolean,
+  wrappers: Set<string>,
+  nonTextWrappers: Set<string>,
+): void => {
+  if (!componentName || !isReactComponentName(componentName)) return;
+  if (wrappers.has(componentName)) return;
+  if (!definitionNode) return;
+  const kind = classifyChildrenForwarding(
+    definitionNode,
+    isTextHandlingElement,
+    isNonTextHostElement,
+  );
+  if (kind === "text") wrappers.add(componentName);
+  else if (kind === "nonText") nonTextWrappers.add(componentName);
 };
 
 const MAX_TRANSITIVE_WRAPPER_PASSES = 3;

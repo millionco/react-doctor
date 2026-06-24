@@ -255,6 +255,50 @@ describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper ch
   });
 });
 
+describe("rn-no-raw-text resolves imported components across files", () => {
+  it("stays silent on an imported wrapper that renders <Text>, but fires on one that renders <View>", async () => {
+    const projectDir = setupReactProject(tempRoot, "rn-raw-text-crossfile", {
+      packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
+      files: {
+        // A first-party button that wraps its label in <Text> — safe, even
+        // though the call site can't see that without following the import.
+        "src/safe-button.tsx":
+          `import { Text } from "react-native";\n` +
+          `export const SafeButton = ({ children }) => <Text>{children}</Text>;\n`,
+        // A first-party card that renders its children inside a <View> — a real
+        // crash the rule should still catch through the import.
+        "src/crashing-card.tsx":
+          `import { View } from "react-native";\n` +
+          `export const CrashingCard = ({ children }) => <View>{children}</View>;\n`,
+        "src/App.tsx":
+          `import { SafeButton } from "./safe-button";\n` +
+          `import { CrashingCard } from "./crashing-card";\n` +
+          `export const App = () => (\n` +
+          `  <>\n` +
+          `    <SafeButton>Safe label</SafeButton>\n` +
+          `    <CrashingCard>Crashing text</CrashingCard>\n` +
+          `  </>\n` +
+          `);\n`,
+      },
+    });
+
+    const rawDiagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({
+        rootDirectory: projectDir,
+        framework: "react-native",
+      }),
+    });
+    const rnRawTextMessages = rawDiagnostics
+      .filter((diagnostic) => diagnostic.rule === "rn-no-raw-text")
+      .map((diagnostic) => diagnostic.message);
+
+    expect(rnRawTextMessages).toHaveLength(1);
+    expect(rnRawTextMessages[0]).toContain("Crashing text");
+    expect(rnRawTextMessages.some((message) => message.includes("Safe label"))).toBe(false);
+  });
+});
+
 describe("issue #581: fbtee tags stay transparent inside <Text>", () => {
   const buildFbteeProject = (projectName: string, appSource: string) =>
     setupReactProject(tempRoot, projectName, {

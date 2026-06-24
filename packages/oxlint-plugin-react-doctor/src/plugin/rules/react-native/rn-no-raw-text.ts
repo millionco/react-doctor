@@ -13,6 +13,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { collectTextWrapperComponents } from "./utils/collect-text-wrapper-components.js";
+import { resolveImportedComponentForwarding } from "./utils/resolve-imported-component-forwarding.js";
 import { isExpoUiComponentElement } from "./utils/is-expo-ui-component-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -115,9 +116,10 @@ export const rnNoRawText = defineRule({
     // safe), `nonTextWrappers` render their children inside a non-text host
     // (raw text inside them is a certain crash). Populated from the program on
     // first visit so usage anywhere in the file (declared before or after) is
-    // seen. Manual `textComponents` / `rawTextWrapperComponents` overrides are
-    // applied separately in the core diagnostic pipeline (config-driven), so a
-    // project can name cross-file wrappers this single-file pass can't see.
+    // seen. Components imported from other first-party files are resolved on
+    // demand below; `textComponents` / `rawTextWrapperComponents` config
+    // overrides (applied in the core pipeline) cover the rest — `node_modules`
+    // and anything the resolver can't follow.
     let autoDetectedTextWrappers: ReadonlySet<string> = new Set();
     let autoDetectedNonTextWrappers: ReadonlySet<string> = new Set();
 
@@ -131,14 +133,43 @@ export const rnNoRawText = defineRule({
     // A raw-text child only crashes at a host boundary, so we report it only
     // when its enclosing element is one we can be sure renders it outside a
     // `<Text>`: a built-in crash host, or an in-file component proven to forward
-    // its children into one. An arbitrary custom component (`<MyButton>`) is
-    // left alone — whether it wraps its children in `<Text>` depends on
-    // internals this single-file pass can't see across imports, so reporting it
-    // would be a false positive. Projects can still opt such a wrapper in (or
-    // out) via the config-driven `rawTextWrapperComponents`.
+    // its children into one. Imported components are handled separately by
+    // `isImportedNonTextWrapper` (which resolves them cross-file); everything
+    // else is left alone, since assuming a crash we can't see would be a false
+    // positive.
     const isRawTextReportTarget = (elementName: string | null): boolean =>
       elementName !== null &&
       (isNonTextHostName(elementName) || autoDetectedNonTextWrappers.has(elementName));
+
+    // An imported component resolves to a crash only when we can follow it into
+    // its source file and prove it renders its children into a non-text host.
+    // A first-party `<MyButton>` that wraps its children in `<Text>` resolves to
+    // "text" → safe; one that renders `<View>{children}</View>` resolves to
+    // "nonText" → reported. Imports the resolver can't follow (`node_modules`,
+    // namespace imports, unanalyzable exports) resolve to null → left alone.
+    // Cached per name (and gated on `context.filename`, which drives path
+    // resolution) so `runRule` tests with no filename keep single-file behavior.
+    const importedNonTextWrapperCache = new Map<string, boolean>();
+    const isImportedNonTextWrapper = (
+      elementName: string | null,
+      contextNode: EsTreeNode,
+    ): boolean => {
+      if (elementName === null || !isReactComponentName(elementName)) return false;
+      const { filename } = context;
+      if (filename === undefined) return false;
+      const cached = importedNonTextWrapperCache.get(elementName);
+      if (cached !== undefined) return cached;
+      const forwardingKind = resolveImportedComponentForwarding(
+        contextNode,
+        filename,
+        elementName,
+        isTextHandlingComponent,
+        isNonTextHostName,
+      );
+      const isNonTextWrapper = forwardingKind === "nonText";
+      importedNonTextWrapperCache.set(elementName, isNonTextWrapper);
+      return isNonTextWrapper;
+    };
 
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
@@ -187,7 +218,13 @@ export const rnNoRawText = defineRule({
           return;
         }
 
-        if (!isRawTextReportTarget(elementName)) return;
+        // Resolve imports only when there's actually raw text to report — the
+        // cross-file lookup is the one expensive step, so it stays behind both
+        // the raw-text gate and the cheap built-in/in-file checks.
+        if (!(node.children ?? []).some(isRawTextContent)) return;
+        if (!isRawTextReportTarget(elementName) && !isImportedNonTextWrapper(elementName, node)) {
+          return;
+        }
 
         for (const child of node.children ?? []) {
           if (!isRawTextContent(child)) continue;

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { TOP_ERRORS_DISPLAY_COUNT } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
 import { buildHandoffPayload } from "../../src/cli/utils/build-handoff-payload.js";
+import { MULTIPLY_SIGN } from "../../src/cli/utils/unicode-chars.js";
 
 const makeDiagnostic = (overrides: Partial<Diagnostic>): Diagnostic => ({
   filePath: "src/app.tsx",
@@ -68,10 +69,10 @@ describe("buildHandoffPayload", () => {
 
     const payload = buildHandoffPayload({ diagnostics, projectName: "demo" });
 
-    // One numbered task, framed as a single fix — not "×4".
+    // One numbered task, framed as a single fix — not "x4" or "×4".
     expect(payload.match(/^\d+\. /gm)?.length).toBe(1);
     expect(payload).toContain("one fix · 4 sites");
-    expect(payload).not.toContain("×4");
+    expect(payload).not.toContain(`${MULTIPLY_SIGN}4`);
     // The agent is told to collapse by fixGroupId when reading diagnostics.json.
     expect(payload).toContain("fixGroupId");
 

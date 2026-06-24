@@ -87,10 +87,13 @@ export default defineConfig({
         // require so the runtime copy must be on disk), agent-install
         // (its jsonc-parser/yaml/toml transitives ship as UMD that
         // doesn't bundle cleanly), and the typescript compiler all
-        // stay external. @react-doctor/browser is private, so it MUST
-        // inline — declaring it here makes that explicit and fails the
-        // build loudly rather than emitting a phantom external import.
-        alwaysBundle: ["@react-doctor/browser", "commander", "ora"],
+        // stay external. @react-doctor/browser and @react-doctor/debug
+        // are private (never published), so they MUST inline — declaring
+        // them here makes that explicit and fails the build loudly rather
+        // than emitting a phantom external import that resolves locally but
+        // breaks `npm i react-doctor` (the packed-CLI smoke caught exactly
+        // this when @react-doctor/debug went external on one platform).
+        alwaysBundle: ["@react-doctor/browser", "@react-doctor/debug", "commander", "ora"],
         neverBundle: [
           // Sentry bundles its own OpenTelemetry instrumentation chain
           // and resolves native/optional deps via require() at runtime;

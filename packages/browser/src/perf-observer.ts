@@ -4,17 +4,21 @@ import type { PageVitals } from "./types.js";
 // LoAF / LCP / CLS observers with `buffered: true`, so frames already in the
 // timeline when the observer attaches (an interaction the caller drove just
 // before measuring) are replayed immediately, while the window catches anything
-// that fires next. `sinceMs` is the recording-start `performance.now()` the
-// caller captured right before the driven action: every entry at or below it is
-// skipped, so the report only counts frames from this window — never initial
-// page-load jank still sitting in the buffer, and never frames an earlier
-// no-reload run on the persistent page already reported. LoAF fields are not in
-// lib.dom, so the casts here are unavoidable.
+// that fires next. The recording-start floor is read in-page from `markerKey`
+// (the `performance.now()` the caller stashed when the recorders armed): every
+// entry at or below it is skipped, so the report only counts this window's
+// frames — never initial page-load jank still in the buffer, never frames an
+// earlier no-reload run already reported. A navigation during the driven action
+// wipes the marker with the old document, so the new document reads 0 and keeps
+// its full load vitals — the navigation is itself the measured event. LoAF
+// fields are not in lib.dom, so the casts here are unavoidable.
 export const collectPerformanceReport = (options: {
   windowMs: number;
-  sinceMs: number;
+  markerKey: string;
 }): Promise<PageVitals> => {
-  const { windowMs, sinceMs } = options;
+  const { windowMs, markerKey } = options;
+  const markerValue = Reflect.get(globalThis, markerKey);
+  const sinceMs = typeof markerValue === "number" ? markerValue : 0;
   interface ScriptTiming {
     sourceURL?: string;
     sourceFunctionName?: string;
@@ -74,6 +78,7 @@ export const collectPerformanceReport = (options: {
     });
 
     observe("largest-contentful-paint", (entry) => {
+      if (entry.startTime <= sinceMs) return;
       report.largestContentfulPaintMs = Math.round(entry.startTime);
     });
 

@@ -44,6 +44,12 @@ export const LAUNCH_POLL_INTERVAL_MS = 100;
 // post-load jank (hydration, late effects) is captured, not just the load burst.
 export const PERFORMANCE_OBSERVE_WINDOW_MS = 1_000;
 
+// Window property the perf recording-start timestamp is stashed under so the
+// in-page observer can floor its entries to the current recording window. Lives
+// on the document so a navigation during the driven action wipes it — the new
+// document then keeps its full load vitals instead of filtering them all out.
+export const PERFORMANCE_RECORDING_MARKER = "__REACT_DOCTOR_PERF_SINCE__";
+
 // Failing element selectors kept per accessibility violation — enough to locate
 // the problem without dumping every match on a busy page.
 export const MAX_VIOLATION_TARGETS = 5;

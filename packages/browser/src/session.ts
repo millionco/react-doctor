@@ -11,6 +11,7 @@ import {
   MAX_VIOLATION_TARGETS,
   NAVIGATION_TIMEOUT_MS,
   PERFORMANCE_OBSERVE_WINDOW_MS,
+  PERFORMANCE_RECORDING_MARKER,
   REACT_PROFILER_INJECT_FILE,
   SETTLE_TIMEOUT_MS,
   TIMELINE_TRACE_CATEGORIES,
@@ -373,14 +374,14 @@ export class BrowserSession {
     return [...entriesByRequest.values()];
   }
 
-  // `sinceMs` is the recording-start timestamp captured right before the driven
-  // action, so collectPerformanceReport's buffered observers skip pre-action
-  // load jank and frames an earlier no-reload run on the persistent page already
-  // counted, leaving only this window's frames.
-  private measureCurrentPerformance(sinceMs: number): Promise<PageVitals> {
+  // collectPerformanceReport's buffered observers floor their entries to the
+  // recording-start marker stashed on the page when the recorders armed, so they
+  // skip pre-action load jank and frames an earlier no-reload run on the
+  // persistent page already counted, leaving only this window's frames.
+  private measureCurrentPerformance(): Promise<PageVitals> {
     return this.page.evaluate(collectPerformanceReport, {
       windowMs: PERFORMANCE_OBSERVE_WINDOW_MS,
-      sinceMs,
+      markerKey: PERFORMANCE_RECORDING_MARKER,
     });
   }
 
@@ -508,11 +509,17 @@ export class BrowserSession {
       });
       await cdpSession.send("Profiler.start");
       stopTimelineTrace = await this.startTimelineTrace(cdpSession);
-      // Recording start, captured the instant the CPU + timeline recorders are
-      // armed so the LoAF/CLS floor shares their window: entries at or before it
-      // (pre-action load jank, idle frames) are dropped, and the setup work below
-      // falls inside the window for every signal alike — not just the trace.
-      const recordingStartMs = await this.page.evaluate(() => performance.now()).catch(() => 0);
+      // Stash the recording-start timestamp on the page the instant the CPU +
+      // timeline recorders are armed, so the LoAF/LCP/CLS floor shares their
+      // window: pre-action jank and idle frames are dropped while the setup work
+      // below still falls inside the window for every signal alike. It lives on
+      // the document, so an expression that navigates wipes it and the new page
+      // keeps its full load vitals (see collectPerformanceReport).
+      await this.page
+        .evaluate((markerKey) => {
+          Reflect.set(globalThis, markerKey, performance.now());
+        }, PERFORMANCE_RECORDING_MARKER)
+        .catch(() => {});
 
       const reactStarted = await this.page.evaluate(() => {
         if (!globalThis.__REACT_PERF__) return false;
@@ -541,7 +548,7 @@ export class BrowserSession {
         // The perf observe window doubles as the recording window: it runs after
         // the driven action so post-action jank, React commits (concurrent
         // renders land async), and CPU samples all land before we stop.
-        vitals = await this.measureCurrentPerformance(recordingStartMs);
+        vitals = await this.measureCurrentPerformance();
       } finally {
         // Stop the recorders BEFORE reading the React profile, and always (even
         // if the expression threw — a left-running recording on the persistent

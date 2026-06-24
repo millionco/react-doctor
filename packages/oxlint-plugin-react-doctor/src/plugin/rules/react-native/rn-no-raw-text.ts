@@ -1,5 +1,6 @@
 import {
   RAW_TEXT_PREVIEW_MAX_CHARS,
+  REACT_NATIVE_RAW_TEXT_HOST_COMPONENTS,
   REACT_NATIVE_TEXT_COMPONENTS,
   REACT_NATIVE_TEXT_COMPONENT_KEYWORDS,
   REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS,
@@ -7,6 +8,7 @@ import {
 import { defineRule } from "../../utils/define-rule.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { isInsidePlatformOsWebBranch } from "../../utils/is-inside-platform-os-web-branch.js";
+import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
@@ -108,20 +110,44 @@ export const rnNoRawText = defineRule({
     // in a WebView as DOM rather than on React Native primitives.
     let isDomComponentFile = false;
 
-    // Auto-detected in-file text wrappers — components that forward their
-    // children into a real `<Text>` (either as the returned root or nested
-    // inside the returned markup). Populated from the
-    // program on first visit so usage anywhere in the file (declared before or
-    // after) is seen. Manual `textComponents` / `rawTextWrapperComponents`
-    // overrides are applied separately in the core diagnostic pipeline
-    // (config-driven), so a project can name cross-file wrappers this
-    // single-file pass can't see.
-    let autoDetectedWrappers: ReadonlySet<string> = new Set();
+    // In-file components classified by where they forward their children:
+    // `textWrappers` forward into a real `<Text>` (raw text inside them is
+    // safe), `nonTextWrappers` render their children inside a non-text host
+    // (raw text inside them is a certain crash). Populated from the program on
+    // first visit so usage anywhere in the file (declared before or after) is
+    // seen. Manual `textComponents` / `rawTextWrapperComponents` overrides are
+    // applied separately in the core diagnostic pipeline (config-driven), so a
+    // project can name cross-file wrappers this single-file pass can't see.
+    let autoDetectedTextWrappers: ReadonlySet<string> = new Set();
+    let autoDetectedNonTextWrappers: ReadonlySet<string> = new Set();
+
+    // A raw-text child only crashes at a host boundary, so we report it only
+    // when its enclosing element is one we can be sure renders it outside a
+    // `<Text>`: a React Native host primitive, a lowercase intrinsic (`div`,
+    // and compile-time wrappers like `fbt`), or an in-file component proven to
+    // forward its children into a non-text host. An arbitrary custom component
+    // (`<MyButton>`) is left alone — whether it wraps its children in `<Text>`
+    // depends on internals this single-file pass can't see across imports, so
+    // reporting it would be a false positive. Projects can still opt such a
+    // wrapper in (or out) via the config-driven `rawTextWrapperComponents`.
+    const isRawTextReportTarget = (elementName: string | null): boolean => {
+      if (elementName === null) return false;
+      if (!isReactComponentName(elementName)) return true;
+      return (
+        REACT_NATIVE_RAW_TEXT_HOST_COMPONENTS.has(elementName) ||
+        autoDetectedNonTextWrappers.has(elementName)
+      );
+    };
 
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
         isDomComponentFile = hasDirective(programNode, "use dom");
-        autoDetectedWrappers = collectTextWrapperComponents(programNode, isTextHandlingComponent);
+        const childrenForwarding = collectTextWrapperComponents(
+          programNode,
+          isTextHandlingComponent,
+        );
+        autoDetectedTextWrappers = childrenForwarding.textWrappers;
+        autoDetectedNonTextWrappers = childrenForwarding.nonTextWrappers;
       },
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         if (isDomComponentFile) return;
@@ -137,7 +163,7 @@ export const rnNoRawText = defineRule({
         // we can't see the implementation.
         if (
           elementName &&
-          (isTextHandlingComponent(elementName) || autoDetectedWrappers.has(elementName))
+          (isTextHandlingComponent(elementName) || autoDetectedTextWrappers.has(elementName))
         ) {
           return;
         }
@@ -158,6 +184,8 @@ export const rnNoRawText = defineRule({
         if (isTransparentTextWrapper(elementName) && isInsideTextHandlingComponent(node)) {
           return;
         }
+
+        if (!isRawTextReportTarget(elementName)) return;
 
         for (const child of node.children ?? []) {
           if (!isRawTextContent(child)) continue;

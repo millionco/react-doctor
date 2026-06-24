@@ -14,6 +14,25 @@ export const REACT_NATIVE_TEXT_COMPONENTS = new Set([
   "H6",
 ]);
 
+// React Native host/layout primitives that mount their children into a native
+// view, so rendering a raw string directly inside one throws the runtime
+// "Text strings must be rendered within a <Text> component" crash. Raw text is
+// a certain crash here without seeing any implementation, so `rn-no-raw-text`
+// anchors its report on this set (see `isRawTextReportTarget`).
+export const REACT_NATIVE_RAW_TEXT_HOST_COMPONENTS = new Set([
+  "View",
+  "ScrollView",
+  "SafeAreaView",
+  "KeyboardAvoidingView",
+  "ImageBackground",
+  "Modal",
+  "Pressable",
+  "TouchableOpacity",
+  "TouchableHighlight",
+  "TouchableWithoutFeedback",
+  "TouchableNativeFeedback",
+]);
+
 export const REACT_NATIVE_TEXT_COMPONENT_KEYWORDS = new Set([
   "Text",
   "Title",

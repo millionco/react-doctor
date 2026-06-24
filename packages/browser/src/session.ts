@@ -324,11 +324,15 @@ export class BrowserSession {
     return [...entriesByRequest.values()];
   }
 
-  // A per-page watermark inside collectPerformanceReport keeps a repeated
-  // no-reload measurement from re-counting frames an earlier command already
-  // reported on the same persistent page.
-  private measureCurrentPerformance(): Promise<PageVitals> {
-    return this.page.evaluate(collectPerformanceReport, PERFORMANCE_OBSERVE_WINDOW_MS);
+  // `sinceMs` is the recording-start timestamp captured right before the driven
+  // action, so collectPerformanceReport's buffered observers skip pre-action
+  // load jank and frames an earlier no-reload run on the persistent page already
+  // counted, leaving only this window's frames.
+  private measureCurrentPerformance(sinceMs: number): Promise<PageVitals> {
+    return this.page.evaluate(collectPerformanceReport, {
+      windowMs: PERFORMANCE_OBSERVE_WINDOW_MS,
+      sinceMs,
+    });
   }
 
   // The page's native scroll offset, read before the action so `captureGeometry`
@@ -463,6 +467,10 @@ export class BrowserSession {
       });
 
       const scrollBefore = await this.readScroll();
+      // Recording start: every LoAF/CLS entry at or before this is pre-action
+      // (load jank, idle frames) and gets dropped, so the perf report covers the
+      // same window as the CPU/timeline/React recorders started just above.
+      const recordingStartMs = await this.page.evaluate(() => performance.now()).catch(() => 0);
       let result: unknown = null;
       let evalError: string | null = null;
       let vitals = emptyVitals();
@@ -483,7 +491,7 @@ export class BrowserSession {
         // The perf observe window doubles as the recording window: it runs after
         // the driven action so post-action jank, React commits (concurrent
         // renders land async), and CPU samples all land before we stop.
-        vitals = await this.measureCurrentPerformance();
+        vitals = await this.measureCurrentPerformance(recordingStartMs);
       } finally {
         // Stop the recorders BEFORE reading the React profile, and always (even
         // if the expression threw — a left-running recording on the persistent

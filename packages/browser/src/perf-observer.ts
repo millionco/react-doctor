@@ -2,17 +2,19 @@ import type { PageVitals } from "./types.js";
 
 // Runs in the page (via evaluate) and resolves after `windowMs`. Installs fresh
 // LoAF / LCP / CLS observers with `buffered: true`, so frames already in the
-// performance timeline (a load just navigated to, or an interaction a previous
-// command drove) are replayed immediately, while the window catches anything
-// that fires next. A reload resets the timeline, so a fresh-load measurement
-// always starts clean. For repeated no-reload measurements on the persistent
-// page, `buffered: true` would otherwise replay — and re-count — every frame
-// from earlier runs, inflating LoAF rows and CLS. So we keep a per-page
-// watermark of the latest entry `startTime` already counted (per type) and skip
-// anything at or below it: the first run after an interaction still captures its
-// frames, a second run sees only what fired since. LoAF fields are not in
+// timeline when the observer attaches (an interaction the caller drove just
+// before measuring) are replayed immediately, while the window catches anything
+// that fires next. `sinceMs` is the recording-start `performance.now()` the
+// caller captured right before the driven action: every entry at or below it is
+// skipped, so the report only counts frames from this window — never initial
+// page-load jank still sitting in the buffer, and never frames an earlier
+// no-reload run on the persistent page already reported. LoAF fields are not in
 // lib.dom, so the casts here are unavoidable.
-export const collectPerformanceReport = (windowMs: number): Promise<PageVitals> => {
+export const collectPerformanceReport = (options: {
+  windowMs: number;
+  sinceMs: number;
+}): Promise<PageVitals> => {
+  const { windowMs, sinceMs } = options;
   interface ScriptTiming {
     sourceURL?: string;
     sourceFunctionName?: string;
@@ -36,27 +38,12 @@ export const collectPerformanceReport = (windowMs: number): Promise<PageVitals> 
     cumulativeLayoutShift: number;
   }
 
-  interface CountedEntryWatermark {
-    longAnimationFrame: number;
-    layoutShift: number;
-  }
-  const WATERMARK_KEY = "__REACT_DOCTOR_PERF_WATERMARK__";
-
   return new Promise<PageVitals>((resolve) => {
     const report: MutableReport = {
       longAnimationFrames: [],
       largestContentfulPaintMs: null,
       cumulativeLayoutShift: 0,
     };
-
-    // Persisted on the page so it survives across no-reload measurements (and is
-    // wiped by a navigation, which is exactly when we want a clean slate).
-    const windowScope = window as unknown as Record<string, CountedEntryWatermark | undefined>;
-    const previousWatermark: CountedEntryWatermark = windowScope[WATERMARK_KEY] ?? {
-      longAnimationFrame: -1,
-      layoutShift: -1,
-    };
-    const nextWatermark: CountedEntryWatermark = { ...previousWatermark };
 
     const observers: PerformanceObserver[] = [];
     const observe = (type: string, onEntry: (entry: PerformanceEntry) => void): void => {
@@ -70,11 +57,7 @@ export const collectPerformanceReport = (windowMs: number): Promise<PageVitals> 
     };
 
     observe("long-animation-frame", (entry) => {
-      if (entry.startTime <= previousWatermark.longAnimationFrame) return;
-      nextWatermark.longAnimationFrame = Math.max(
-        nextWatermark.longAnimationFrame,
-        entry.startTime,
-      );
+      if (entry.startTime <= sinceMs) return;
       const longAnimationFrame = entry as unknown as LongAnimationFrameEntry;
       report.longAnimationFrames.push({
         startTimeMs: Math.round(longAnimationFrame.startTime),
@@ -95,15 +78,13 @@ export const collectPerformanceReport = (windowMs: number): Promise<PageVitals> 
     });
 
     observe("layout-shift", (entry) => {
-      if (entry.startTime <= previousWatermark.layoutShift) return;
-      nextWatermark.layoutShift = Math.max(nextWatermark.layoutShift, entry.startTime);
+      if (entry.startTime <= sinceMs) return;
       const layoutShift = entry as unknown as LayoutShiftEntry;
       if (!layoutShift.hadRecentInput) report.cumulativeLayoutShift += layoutShift.value;
     });
 
     setTimeout(() => {
       for (const observer of observers) observer.disconnect();
-      windowScope[WATERMARK_KEY] = nextWatermark;
       resolve({
         // Blocking duration — not total duration — is the jank signal: a long
         // frame that blocks nothing (an idle/backgrounded render, the first

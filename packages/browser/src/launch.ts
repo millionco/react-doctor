@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { BrowserEnvironmentError } from "./browser-environment-error.js";
 import {
   LAUNCH_POLL_INTERVAL_MS,
   LAUNCH_READY_TIMEOUT_MS,
@@ -38,7 +39,7 @@ const resolveChromeExecutable = (): string => {
     (candidate): candidate is string => typeof candidate === "string" && existsSync(candidate),
   );
   if (!executable) {
-    throw new Error(
+    throw new BrowserEnvironmentError(
       "Could not find Google Chrome to launch. Install Chrome, set CHROME_PATH, or start Chrome with --remote-debugging-port and pass --cdp to attach to it.",
     );
   }
@@ -72,19 +73,26 @@ const waitForCdpEndpoint = async (endpoint: string): Promise<string> => {
     }
     await delay(LAUNCH_POLL_INTERVAL_MS);
   }
-  throw new Error(`Launched Chrome but it never exposed its debugger at ${endpoint}.`);
+  throw new BrowserEnvironmentError(
+    `Launched Chrome but it never exposed its debugger at ${endpoint}. Start Chrome yourself with --remote-debugging-port and pass --cdp, or set CHROME_PATH to a working Chrome.`,
+  );
 };
 
 // Detached and unref'd on success so the browser outlives this process and the
 // next `browser` command reattaches over CDP — the persistent model Chrome
-// DevTools MCP uses to keep state across calls.
-export const launchPersistentChrome = async (endpoint: string): Promise<string> => {
+// DevTools MCP uses to keep state across calls. Headless by default (an agent
+// rarely needs the window); `headless: false` shows it for a human to watch.
+export const launchPersistentChrome = async (
+  endpoint: string,
+  headless: boolean,
+): Promise<string> => {
   const executable = resolveChromeExecutable();
   const args = [
     `--remote-debugging-port=${cdpPortFromEndpoint(endpoint)}`,
     `--user-data-dir=${LAUNCHED_CHROME_PROFILE_DIRECTORY}`,
     "--no-first-run",
     "--no-default-browser-check",
+    ...(headless ? ["--headless=new"] : []),
   ];
 
   const child = spawn(executable, args, { detached: true, stdio: "ignore" });

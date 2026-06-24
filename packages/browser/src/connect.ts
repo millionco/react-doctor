@@ -1,4 +1,5 @@
 import type { Browser } from "playwright-core";
+import { BrowserEnvironmentError } from "./browser-environment-error.js";
 import { CONNECT_TIMEOUT_MS, DEFAULT_CDP_ENDPOINT } from "./constants.js";
 import { launchPersistentChrome } from "./launch.js";
 import type { BrowserConnectOptions } from "./types.js";
@@ -61,7 +62,7 @@ export const connectToBrowser = async (
   const fallbackEndpoint = options.cdpEndpoint ?? DEFAULT_CDP_ENDPOINT;
   // Only launch for a loopback endpoint — we can't spawn Chrome on a remote host.
   if (options.launch === false || !isLoopbackEndpoint(fallbackEndpoint)) {
-    throw new Error(
+    throw new BrowserEnvironmentError(
       `Could not attach to Chrome at ${fallbackEndpoint}. Start Chrome with --remote-debugging-port=${cdpPortFromEndpoint(fallbackEndpoint)}, or allow launching a local browser.`,
       { cause: lastAttachError },
     );
@@ -70,7 +71,7 @@ export const connectToBrowser = async (
   const launchEndpoint = options.cdpEndpoint
     ? options.cdpEndpoint
     : await resolveLaunchEndpoint(fallbackEndpoint);
-  const reachableEndpoint = await launchPersistentChrome(launchEndpoint);
+  const reachableEndpoint = await launchPersistentChrome(launchEndpoint, options.headless ?? true);
   writeLaunchedEndpoint(reachableEndpoint);
   try {
     return {
@@ -78,8 +79,9 @@ export const connectToBrowser = async (
       launched: true,
     };
   } catch (launchedAttachError) {
-    throw new Error(`Launched Chrome at ${reachableEndpoint} but could not attach to it.`, {
-      cause: launchedAttachError,
-    });
+    throw new BrowserEnvironmentError(
+      `Launched Chrome at ${reachableEndpoint} but could not attach to it. Update Chrome (or playwright-core), or start Chrome yourself with --remote-debugging-port and pass --cdp.`,
+      { cause: launchedAttachError },
+    );
   }
 };

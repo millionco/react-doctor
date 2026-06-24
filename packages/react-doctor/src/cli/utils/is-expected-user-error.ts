@@ -1,3 +1,4 @@
+import { isBrowserEnvironmentError } from "@react-doctor/browser";
 import { isProjectDiscoveryError, isReactDoctorError } from "@react-doctor/core";
 import { CliInputError } from "./cli-input-error.js";
 
@@ -21,13 +22,19 @@ import { CliInputError } from "./cli-input-error.js";
  *   `--project` name.
  * - **Bad `--diff` input** (`GitBaseBranchInvalid` / `GitBaseBranchMissing`)
  *   stays the tagged `ReactDoctorError`, so dispatch on the reason `_tag`.
+ * - **Browser environment failures** (`BrowserEnvironmentError`): no Chrome to
+ *   launch, `playwright-core` not installed, or no debuggable Chrome to attach
+ *   to. The message is the fix ("install Chrome", "npm i -D playwright-core"),
+ *   so a newcomer running a `browser` command on a fresh machine gets that —
+ *   not a "this is a bug, file an issue" crash report.
  *
- * This composes the existing core narrowers rather than introducing a new
+ * This composes the existing narrowers rather than introducing a new
  * error-shape helper (AGENTS.md): it encodes CLI-layer reporting policy, not
  * knowledge of the `ReactDoctorError` shape.
  */
 export const isExpectedUserError = (error: unknown): boolean =>
   error instanceof CliInputError ||
+  isBrowserEnvironmentError(error) ||
   isProjectDiscoveryError(error) ||
   (isReactDoctorError(error) &&
     (error.reason._tag === "GitBaseBranchInvalid" || error.reason._tag === "GitBaseBranchMissing"));

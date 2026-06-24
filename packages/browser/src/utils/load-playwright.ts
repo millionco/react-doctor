@@ -1,4 +1,5 @@
 import type * as PlaywrightCore from "playwright-core";
+import { BrowserEnvironmentError } from "../browser-environment-error.js";
 
 const isModuleNotFoundError = (error: unknown): boolean =>
   error instanceof Error &&
@@ -15,7 +16,7 @@ export const loadPlaywright = async (): Promise<typeof PlaywrightCore> => {
     return await import("playwright-core");
   } catch (error: unknown) {
     if (!isModuleNotFoundError(error)) throw error;
-    throw new Error(
+    throw new BrowserEnvironmentError(
       "The browser tools need playwright-core, which isn't installed. Install it with `npm i -D playwright-core`, then retry.",
     );
   }

@@ -345,11 +345,14 @@ describe("in-process render across terminal widths and render modes", () => {
 
   it("matches the rendered 100-column layout snapshot", async () => {
     const rendered = await renderInTerminal(defaultScenarioBytes, { cols: 100 });
-    // Normalize the category pointer: the renderer uses `›` on
-    // unicode-capable terminals and falls back to `>` where unicode
-    // isn't supported (Windows CI), so the raw glyph is platform-variable
-    // and not what this layout snapshot is asserting.
-    const platformStableLayout = rendered.logicalLines.join("\n").replaceAll("›", ">");
+    // Normalize the category pointer and multiply sign: the renderer uses
+    // `›` and `×` on unicode-capable terminals and falls back to `>` and `x`
+    // where unicode isn't supported (Windows CI), so the raw glyphs are
+    // platform-variable and not what this layout snapshot is asserting.
+    const platformStableLayout = rendered.logicalLines
+      .join("\n")
+      .replaceAll("›", ">")
+      .replaceAll("×", "x");
     expect(platformStableLayout).toMatchSnapshot();
   });
 });

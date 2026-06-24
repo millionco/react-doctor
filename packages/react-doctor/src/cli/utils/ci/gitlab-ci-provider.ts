@@ -52,10 +52,17 @@ react-doctor:
 // `--scope` can't be mistaken for the gate. The `['"]?` tolerates a hand-quoted
 // value (`--blocking "error"`).
 const parseGate = (content: string): CiGate => {
-  const scanLine =
+  // The scan command is a YAML sequence item (`- npx react-doctor@latest …`);
+  // requiring the `- ` prefix and stripping any trailing `# comment` keeps a
+  // comment line (or an inline note) from being read as the gate.
+  const scanLine = (
     content
       .split(/\r?\n/)
-      .find((line) => /react-doctor/.test(line) && /--(blocking|scope)\b/.test(line)) ?? "";
+      .find(
+        (line) =>
+          /^\s*-\s/.test(line) && /react-doctor/.test(line) && /--(blocking|scope)\b/.test(line),
+      ) ?? ""
+  ).replace(/#.*$/, "");
   const blockingMatch = scanLine.match(/--blocking[ =]['"]?([\w-]+)/);
   const scopeMatch = scanLine.match(/--scope[ =]['"]?([\w-]+)/);
   const blocking =

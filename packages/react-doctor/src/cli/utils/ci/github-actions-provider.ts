@@ -130,13 +130,17 @@ const parseScalar = (raw: string): string =>
     .replace(/^(["'])(.*)\1$/, "$2");
 
 // Reads the `with:` mapping React Doctor's own step currently applies. The
-// search is anchored to the `millionco/react-doctor@…` line so a preceding
-// step's `with:` block (e.g. actions/setup-node) is never mistaken for the
-// gate. A step with no active `with:` reports the action's own defaults, so the
-// gate the user sees in `ci config` matches what a scan actually does.
+// search is anchored to the step's `- uses: millionco/react-doctor@…` line —
+// requiring the `- uses:` prefix, not just the ref, so a comment mentioning the
+// action (or a preceding step's `with:` block, e.g. actions/setup-node) is
+// never mistaken for the gate. A step with no active `with:` reports the
+// action's own defaults, so the gate the user sees in `ci config` matches what
+// a scan actually does.
 const parseGate = (content: string): CiGate => {
   const lines = content.split(/\r?\n/);
-  const stepIndex = lines.findIndex((line) => /millionco\/react-doctor@/.test(line));
+  const stepIndex = lines.findIndex((line) =>
+    /^\s*-\s*uses:\s*millionco\/react-doctor@/.test(line),
+  );
   if (stepIndex === -1) return ADVISORY_GATE;
 
   // The active `with:` for this step (a leading `#` rules out the commented

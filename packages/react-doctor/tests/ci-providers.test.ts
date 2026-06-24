@@ -60,6 +60,22 @@ describe("githubActionsProvider gate parsing", () => {
     expect(githubActionsProvider.parseGate(workflow)).toEqual(ERROR_GATE);
   });
 
+  it("ignores a comment mentioning the action above the real step", () => {
+    const workflow = [
+      "jobs:",
+      "  ci:",
+      "    steps:",
+      "      # we run millionco/react-doctor@v2 on every PR",
+      "      - uses: actions/checkout@v5",
+      "      - uses: millionco/react-doctor@v2",
+      "        with:",
+      "          blocking: error",
+      "          scope: full",
+      "",
+    ].join("\n");
+    expect(githubActionsProvider.parseGate(workflow)).toEqual(ERROR_GATE);
+  });
+
   it("reads quoted scalar values like the bare forms", () => {
     const workflow = [
       "      - uses: millionco/react-doctor@v2",
@@ -180,6 +196,19 @@ describe("gitlabCiProvider", () => {
       "",
     ].join("\n");
     const gate = gitlabCiProvider.parseGate(merged);
+    expect(gate.blocking).toBe("error");
+    expect(gate.scope).toBe("changed");
+  });
+
+  it("ignores a comment line that mentions react-doctor and gate flags", () => {
+    const config = [
+      "# legacy: react-doctor --blocking warning --scope full",
+      "react-doctor:",
+      "  script:",
+      "    - npx react-doctor@latest --blocking error --scope changed",
+      "",
+    ].join("\n");
+    const gate = gitlabCiProvider.parseGate(config);
     expect(gate.blocking).toBe("error");
     expect(gate.scope).toBe("changed");
   });

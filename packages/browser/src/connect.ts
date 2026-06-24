@@ -4,9 +4,11 @@ import { CONNECT_TIMEOUT_MS, DEFAULT_CDP_ENDPOINT } from "./constants.js";
 import { launchPersistentChrome } from "./launch.js";
 import type { BrowserConnectOptions } from "./types.js";
 import { cdpPortFromEndpoint } from "./utils/cdp-port.js";
+import { clearLaunchedEndpoint } from "./utils/clear-launched-endpoint.js";
 import { findAvailablePort } from "./utils/find-available-port.js";
 import { isLoopbackEndpoint } from "./utils/is-loopback-endpoint.js";
 import { isPortAvailable } from "./utils/is-port-available.js";
+import { killProcess } from "./utils/kill-process.js";
 import { loadPlaywright } from "./utils/load-playwright.js";
 import { readLaunchedEndpoint } from "./utils/read-launched-endpoint.js";
 import { writeLaunchedEndpoint } from "./utils/write-launched-endpoint.js";
@@ -71,16 +73,22 @@ export const connectToBrowser = async (
   const launchEndpoint = options.cdpEndpoint
     ? options.cdpEndpoint
     : await resolveLaunchEndpoint(fallbackEndpoint);
-  const reachableEndpoint = await launchPersistentChrome(launchEndpoint, options.headless ?? true);
-  writeLaunchedEndpoint(reachableEndpoint);
+  const launched = await launchPersistentChrome(launchEndpoint, options.headless ?? true);
+  writeLaunchedEndpoint(launched.endpoint);
   try {
     return {
-      browser: await chromium.connectOverCDP(reachableEndpoint, { timeout: CONNECT_TIMEOUT_MS }),
+      browser: await chromium.connectOverCDP(launched.endpoint, { timeout: CONNECT_TIMEOUT_MS }),
       launched: true,
     };
   } catch (launchedAttachError) {
+    // The debugger answered /json/version, yet the CDP handshake still failed
+    // (usually a Chrome/playwright-core mismatch). Terminate the instance we
+    // just spawned and forget its endpoint, so a retry doesn't attach-fail
+    // against it again and stack another orphan Chrome on a fresh port.
+    if (launched.pid !== undefined) killProcess(launched.pid);
+    clearLaunchedEndpoint();
     throw new BrowserEnvironmentError(
-      `Launched Chrome at ${reachableEndpoint} but could not attach to it. Update Chrome (or playwright-core), or start Chrome yourself with --remote-debugging-port and pass --cdp.`,
+      `Launched Chrome at ${launched.endpoint} but could not attach to it. Update Chrome (or playwright-core), or start Chrome yourself with --remote-debugging-port and pass --cdp.`,
       { cause: launchedAttachError },
     );
   }

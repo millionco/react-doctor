@@ -78,6 +78,14 @@ const waitForCdpEndpoint = async (endpoint: string): Promise<string> => {
   );
 };
 
+export interface LaunchedChrome {
+  // The loopback form that actually responded, to attach to.
+  endpoint: string;
+  // The spawned process, so the caller can terminate it if the CDP handshake
+  // still fails after the debugger came up — otherwise it leaks as an orphan.
+  pid: number | undefined;
+}
+
 // Detached and unref'd on success so the browser outlives this process and the
 // next `browser` command reattaches over CDP — the persistent model Chrome
 // DevTools MCP uses to keep state across calls. Headless by default (an agent
@@ -85,7 +93,7 @@ const waitForCdpEndpoint = async (endpoint: string): Promise<string> => {
 export const launchPersistentChrome = async (
   endpoint: string,
   headless: boolean,
-): Promise<string> => {
+): Promise<LaunchedChrome> => {
   const executable = resolveChromeExecutable();
   const args = [
     `--remote-debugging-port=${cdpPortFromEndpoint(endpoint)}`,
@@ -105,5 +113,5 @@ export const launchPersistentChrome = async (
     throw error;
   });
   child.unref();
-  return reachableEndpoint;
+  return { endpoint: reachableEndpoint, pid: child.pid };
 };

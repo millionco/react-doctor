@@ -336,6 +336,11 @@ interface InstallReactDoctorOptions {
   yes?: boolean;
   dryRun?: boolean;
   agentHooks?: boolean;
+  // Install the skill into each agent's home directory (~/.cursor, ~/.claude, …)
+  // so it applies to every project, instead of this repo's local agent dirs.
+  // Undefined means "ask interactively" (defaults to local on non-interactive
+  // runs); the `--global` flag sets it explicitly.
+  global?: boolean;
   // Overrides for tests; production callers leave these unset.
   sourceDir?: string;
   projectRoot?: string;
@@ -364,6 +369,7 @@ const installReactDoctorSkillStep = async (
   sourceDir: string,
   selectedAgents: SkillAgentType[],
   projectRoot: string,
+  installGlobally: boolean,
 ): Promise<void> => {
   const installSpinner = spinner(`Installing ${SKILL_NAME} skill...`).start();
   try {
@@ -372,6 +378,7 @@ const installReactDoctorSkillStep = async (
       agents: selectedAgents,
       cwd: projectRoot,
       mode: "copy",
+      global: installGlobally,
     });
 
     if (installResult.skills.length === 0) {
@@ -388,7 +395,7 @@ const installReactDoctorSkillStep = async (
     }
 
     installSpinner.succeed(
-      `${SKILL_NAME} skill installed for ${selectedAgents
+      `${SKILL_NAME} skill installed ${installGlobally ? "globally" : "for this project"} for ${selectedAgents
         .map((agent) => getSkillAgentConfig(agent).displayName)
         .join(", ")}.`,
     );
@@ -628,9 +635,43 @@ export const runInstallReactDoctor = async (
   // overwrites the remembered set.
   if (!skipPrompts && !options.dryRun) rememberInstallAgents(selectedAgents);
 
+  // Skill install scope: project-local (default) copies into this repo's agent
+  // dirs (.cursor, .claude, …); global copies into each agent's home dir
+  // (~/.cursor, ~/.claude, …) so the skill applies to every project. The
+  // `--global` flag forces it; otherwise ask interactively, defaulting to local
+  // (and a non-interactive run stays local unless `--global` is passed).
+  const isGlobalInstall =
+    options.global !== undefined
+      ? options.global
+      : skipPrompts
+        ? false
+        : (
+            await prompt<"installScope">(
+              {
+                type: "select",
+                name: "installScope",
+                message: "Where should the skill be installed?",
+                choices: [
+                  {
+                    title: "This project",
+                    description: "Agent dirs in this repo (.cursor, .claude, …)",
+                    value: "local",
+                  },
+                  {
+                    title: "All projects (global)",
+                    description: "Your home agent dirs (~/.cursor, ~/.claude, …)",
+                    value: "global",
+                  },
+                ],
+                initial: 0,
+              },
+              promptOptions,
+            )
+          ).installScope === "global";
+
   let dependencyResult: InstallReactDoctorDependencyResult | undefined;
   if (!options.dryRun) {
-    await installReactDoctorSkillStep(sourceDir, selectedAgents, projectRoot);
+    await installReactDoctorSkillStep(sourceDir, selectedAgents, projectRoot, isGlobalInstall);
     dependencyResult = await installReactDoctorPackageSetup(
       projectRoot,
       options.installDependencyRunner,
@@ -739,11 +780,16 @@ export const runInstallReactDoctor = async (
   // }
 
   if (options.dryRun) {
-    logger.log(`Dry run — would install ${SKILL_NAME} skill for:`);
+    logger.log(
+      `Dry run — would install ${SKILL_NAME} skill ${isGlobalInstall ? "globally" : "for this project"} for:`,
+    );
     for (const agent of selectedAgents) {
       logger.dim(`  - ${getSkillAgentConfig(agent).displayName}`);
     }
     logger.dim(`  Source: ${sourceDir}`);
+    logger.dim(
+      `  Location: ${isGlobalInstall ? "global (home agent dirs)" : "this project (repo agent dirs)"}`,
+    );
     logger.dim("  Package script: doctor (or react-doctor if doctor exists)");
     logger.dim("  Dev dependency: react-doctor");
     if (shouldInstallGitHook) {
@@ -778,6 +824,9 @@ export const runInstallReactDoctor = async (
     // beyond the curated defaults, the default set should be widened.
     agentsDetected: detectedAgents.length,
     usedRememberedAgents,
+    // Adoption + kill metric for the new `--global` surface: what share of
+    // installs put the skill in the home agent dirs vs. this project.
+    global: isGlobalInstall,
     gitHook: shouldInstallGitHook,
     agentHooks: shouldInstallAgentHooks,
     workflow: didInstallWorkflow,

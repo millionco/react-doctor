@@ -118,6 +118,9 @@ interface RunInteractiveInstallReactDoctorForTestOptions {
   readonly promptQuestions?: unknown[];
   readonly detectedAgents?: readonly SkillAgentType[];
   readonly lastSelectedAgents?: readonly SkillAgentType[];
+  // Answer to the "Where should the skill be installed?" prompt. Defaults to
+  // "local" so tests never write into the real home agent dirs.
+  readonly installScope?: "local" | "global";
 }
 
 const runInteractiveInstallReactDoctorForTest = async (
@@ -142,6 +145,8 @@ const runInteractiveInstallReactDoctorForTest = async (
     if (typeof questionName !== "string") return answers;
     if (questionName === "agents") {
       answers[questionName] = ["cursor"];
+    } else if (questionName === "installScope") {
+      answers[questionName] = options.installScope ?? "local";
     } else if (questionName === "ciChoice") {
       answers[questionName] = options.setupOptions.includes("workflow") ? "ci-yes" : "ci-no";
     } else if (questionName === "upgradeChoice") {
@@ -789,6 +794,36 @@ describe("runInstallReactDoctor", () => {
     expect(selectionByAgent.get("goose")).toBe(true);
     expect(selectionByAgent.get("claude-code")).toBe(false);
     expect(selectionByAgent.get("cursor")).toBe(false);
+  });
+
+  it("prompts for skill install location and installs into the project on the default (local) choice", async () => {
+    writeValidSkill(fixture.sourceDir);
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    const promptQuestions: unknown[] = [];
+
+    await runInteractiveInstallReactDoctorForTest({
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      gitHookPath: path.join(fixture.projectRoot, ".git/hooks/pre-commit"),
+      setupOptions: [],
+      promptQuestions,
+      installScope: "local",
+    });
+
+    const scopeQuestion = promptQuestions.find(
+      (question): question is { choices: Array<{ value: string }> } =>
+        typeof question === "object" &&
+        question !== null &&
+        "name" in question &&
+        (question as { name?: unknown }).name === "installScope",
+    );
+    expect(scopeQuestion).toBeDefined();
+    expect(scopeQuestion!.choices.map((choice) => choice.value)).toEqual(["local", "global"]);
+    // The default (local) choice copies the skill into this repo's agent dir,
+    // not the home agent dirs.
+    expect(
+      fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md")),
+    ).toBe(true);
   });
 
   it("remembers the interactive selection so the next install defaults to it", async () => {

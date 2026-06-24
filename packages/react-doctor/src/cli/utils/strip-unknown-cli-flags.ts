@@ -52,6 +52,7 @@ const INSTALL_FLAG_SPEC: CliFlagSpec = {
     "--agent-hooks",
     "--color",
     "--dry-run",
+    "--global",
     "--help",
     "--no-color",
     "--yes",

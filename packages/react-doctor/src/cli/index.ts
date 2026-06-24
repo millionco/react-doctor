@@ -106,6 +106,7 @@ ${formatExampleLines([
   ["react-doctor install", "interactive setup"],
   ["react-doctor install --yes", "non-interactive; all detected agents"],
   ["react-doctor install --dry-run", "preview without writing files"],
+  ["react-doctor install --global", "install the skill for every project"],
   ["react-doctor install --agent-hooks", "also install native agent hooks"],
 ])}
 
@@ -223,6 +224,10 @@ program
   .description("Install the react-doctor skill into your coding agents and optional git hook")
   .option("-y, --yes", "skip prompts, install for all detected agents")
   .option("--dry-run", "show what would be installed without writing files")
+  .option(
+    "--global",
+    "install the skill in your home agent dirs (~/.cursor, ~/.claude, …) for every project instead of just this one",
+  )
   .option("--agent-hooks", "install native non-blocking agent hooks for Claude Code and Cursor")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
   .option("--color", "force colored output")

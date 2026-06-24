@@ -11,6 +11,7 @@ interface InstallCommandOptions {
   yes?: boolean;
   dryRun?: boolean;
   agentHooks?: boolean;
+  global?: boolean;
   // Commander's `--cwd` always supplies `process.cwd()` as the default,
   // so this is defined when invoked via the CLI. The fallback is for
   // direct callers (tests) that construct the options object manually.
@@ -37,6 +38,7 @@ export const installAction = async (
       yes: options.yes ?? parentOptions?.yes,
       dryRun: options.dryRun,
       agentHooks: options.agentHooks,
+      global: options.global,
       projectRoot: options.cwd ?? process.cwd(),
     });
   } catch (error) {

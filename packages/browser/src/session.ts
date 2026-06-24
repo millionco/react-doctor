@@ -180,13 +180,24 @@ export class BrowserSession {
     try {
       const result = await this.evaluate(expression);
       const output = result === undefined ? await this.snapshot() : formatEvalValue(result);
-      // HACK: one event-loop turn lets page-side console/pageerror events queued
-      // during the action drain (CDP delivers them async) before we read them.
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await this.drainPageEvents();
       return appendEvalErrors(output, consoleEntries);
+    } catch (error) {
+      // A throwing action (a missing locator, a timeout) is exactly when the page
+      // usually logged the real cause (a React error boundary, a failed fetch), so
+      // append those page errors to the thrown message instead of dropping them.
+      await this.drainPageEvents();
+      if (error instanceof Error) error.message = appendEvalErrors(error.message, consoleEntries);
+      throw error;
     } finally {
       detach();
     }
+  }
+
+  // HACK: one event-loop turn lets page-side console/pageerror events queued
+  // during an action drain (CDP delivers them async) before we read them.
+  private drainPageEvents(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 0));
   }
 
   // Wait for the page to stop changing before we read it: in-flight requests
@@ -431,8 +442,12 @@ export class BrowserSession {
     const detachers: Array<() => void> = [];
     let stopTimelineTrace: (() => Promise<TraceEventRecord[]>) | null = null;
     try {
-      detachers.push(this.collectConsole(consoleEntries), this.collectNetwork(networkByRequest));
+      // Settle the current page BEFORE attaching listeners and starting the
+      // recorders, so console/network cover the same window as the CPU/timeline/
+      // React profilers instead of also capturing pre-action load/idle traffic.
+      // An expression that navigates runs after this, so its load is still seen.
       await this.settle();
+      detachers.push(this.collectConsole(consoleEntries), this.collectNetwork(networkByRequest));
       await cdpSession.send("Performance.enable").catch(() => {});
       await cdpSession.send("Profiler.enable");
       await cdpSession.send("Profiler.setSamplingInterval", {
@@ -449,12 +464,22 @@ export class BrowserSession {
 
       const scrollBefore = await this.readScroll();
       let result: unknown = null;
+      let evalError: string | null = null;
       let vitals = emptyVitals();
       let reactExport: ReactProfilerDataExport | null = null;
       let traceEvents: TraceEventRecord[] = [];
       let cpuProfile: CdpCpuProfile | null = null;
       try {
-        if (expression) result = (await this.evaluate(expression)) ?? null;
+        if (expression) {
+          // A failing action is when the recorded picture (console, CPU, React,
+          // timeline) is most useful, so capture the failure and still return the
+          // inspection rather than throwing it all away.
+          result =
+            (await this.evaluate(expression).catch((error: unknown) => {
+              evalError = error instanceof Error ? error.message : String(error);
+              return null;
+            })) ?? null;
+        }
         // The perf observe window doubles as the recording window: it runs after
         // the driven action so post-action jank, React commits (concurrent
         // renders land async), and CPU samples all land before we stop.
@@ -495,6 +520,7 @@ export class BrowserSession {
 
       return {
         result,
+        evalError,
         console: consoleEntries,
         network,
         performance: { ...vitals, timeline: analyzeTimelineTrace(traceEvents) },

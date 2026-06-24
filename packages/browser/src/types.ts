@@ -130,6 +130,10 @@ export interface InspectOptions {
 export interface PageInspection {
   // The `expression`'s return value, or null when none was driven or it had none.
   result: unknown;
+  // The message of the error the driven expression threw, or null when it
+  // succeeded. A failing action still returns the recorded picture (console, CPU,
+  // React, …) rather than throwing it away — that picture is the failure's context.
+  evalError: string | null;
   console: ConsoleMessageEntry[];
   network: NetworkRequestEntry[];
   performance: PerformanceReport;

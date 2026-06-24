@@ -279,6 +279,12 @@ const printInspection = (inspection: PageInspection): void => {
     logger.log("");
   }
 
+  if (inspection.evalError !== null) {
+    logger.log("# Eval error (the recording below is the failure's context)");
+    logger.log(inspection.evalError);
+    logger.log("");
+  }
+
   logger.log("# Console");
   if (inspection.console.length === 0) logger.log("(none)");
   else printConsoleMessages(inspection.console);

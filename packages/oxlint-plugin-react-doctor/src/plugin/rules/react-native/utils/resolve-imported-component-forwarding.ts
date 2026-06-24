@@ -1,8 +1,10 @@
+import { findProgramRoot } from "../../../utils/find-program-root.js";
 import { getImportBindingForName } from "../../../utils/find-import-source-for-name.js";
 import { resolveCrossFileFunctionExport } from "../../../utils/resolve-cross-file-function-export.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import {
   classifyChildrenForwarding,
+  collectTextWrapperComponents,
   type ChildrenForwardingKind,
 } from "./collect-text-wrapper-components.js";
 
@@ -29,5 +31,27 @@ export const resolveImportedComponentForwarding = (
     binding.exportedName,
   );
   if (!resolvedNode) return null;
-  return classifyChildrenForwarding(resolvedNode, isTextHandlingRoot, isNonTextHostRoot);
+
+  // Classify against the resolved component's OWN module, not just its body:
+  // run the same in-file transitive analysis on that module so a wrapper that
+  // forwards its children through another component declared there (e.g.
+  // `Card` → `Inner` → `<View>`) is resolved instead of bailing to "unknown".
+  // `collectTextWrapperComponents` does no further file I/O, so this stays
+  // bounded to the resolved module; a chain that hops into yet another file is
+  // still left unresolved (conservative). `parseSourceFile` attaches parents,
+  // so the resolved node always has a `Program` root here.
+  const moduleProgram = findProgramRoot(resolvedNode);
+  if (moduleProgram === null) {
+    return classifyChildrenForwarding(resolvedNode, isTextHandlingRoot, isNonTextHostRoot);
+  }
+  const { textWrappers, nonTextWrappers } = collectTextWrapperComponents(
+    moduleProgram,
+    isTextHandlingRoot,
+    isNonTextHostRoot,
+  );
+  return classifyChildrenForwarding(
+    resolvedNode,
+    (elementName) => isTextHandlingRoot(elementName) || textWrappers.has(elementName),
+    (elementName) => isNonTextHostRoot(elementName) || nonTextWrappers.has(elementName),
+  );
 };

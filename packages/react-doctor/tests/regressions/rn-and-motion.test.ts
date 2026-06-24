@@ -297,6 +297,52 @@ describe("rn-no-raw-text resolves imported components across files", () => {
     expect(rnRawTextMessages[0]).toContain("Crashing text");
     expect(rnRawTextMessages.some((message) => message.includes("Safe label"))).toBe(false);
   });
+
+  it("follows a wrapper that forwards children through another component in the same module", async () => {
+    const projectDir = setupReactProject(tempRoot, "rn-raw-text-crossfile-chain", {
+      packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
+      files: {
+        // `ChainButton` forwards into a module-local `InnerText` that renders a
+        // <Text> — safe, even though the crash/safety is two hops from the call
+        // site.
+        "src/chain-button.tsx":
+          `import { Text } from "react-native";\n` +
+          `const InnerText = ({ children }) => <Text>{children}</Text>;\n` +
+          `export const ChainButton = ({ children }) => <InnerText>{children}</InnerText>;\n`,
+        // `ChainCard` forwards into a module-local `Inner` that renders a <View>
+        // — a real crash the rule must still catch through the import + the
+        // in-module hop.
+        "src/chain-card.tsx":
+          `import { View } from "react-native";\n` +
+          `const Inner = ({ children }) => <View>{children}</View>;\n` +
+          `export const ChainCard = ({ children }) => <Inner>{children}</Inner>;\n`,
+        "src/App.tsx":
+          `import { ChainButton } from "./chain-button";\n` +
+          `import { ChainCard } from "./chain-card";\n` +
+          `export const App = () => (\n` +
+          `  <>\n` +
+          `    <ChainButton>Chain safe</ChainButton>\n` +
+          `    <ChainCard>Chain crash</ChainCard>\n` +
+          `  </>\n` +
+          `);\n`,
+      },
+    });
+
+    const rawDiagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({
+        rootDirectory: projectDir,
+        framework: "react-native",
+      }),
+    });
+    const rnRawTextMessages = rawDiagnostics
+      .filter((diagnostic) => diagnostic.rule === "rn-no-raw-text")
+      .map((diagnostic) => diagnostic.message);
+
+    expect(rnRawTextMessages).toHaveLength(1);
+    expect(rnRawTextMessages[0]).toContain("Chain crash");
+    expect(rnRawTextMessages.some((message) => message.includes("Chain safe"))).toBe(false);
+  });
 });
 
 describe("issue #581: fbtee tags stay transparent inside <Text>", () => {

@@ -1,9 +1,11 @@
 import {
   BrowserSession,
+  formatEvalValue,
   type AccessibilityViolation,
   type ConsoleMessageEntry,
   type CpuProfileAnalysis,
   type NetworkRequestEntry,
+  type PageInspection,
   type PerformanceReport,
   type ReactProfileAnalysis,
   type Viewport,
@@ -17,7 +19,7 @@ export interface BrowserCommandOptions {
   launch?: boolean;
   out?: string;
   viewport?: Viewport;
-  interaction?: string;
+  profile?: boolean;
 }
 
 // playwright-core loads lazily inside @react-doctor/browser (only when a command
@@ -45,7 +47,7 @@ export const browserOpenAction = async (
     await session.openWithReactProfiler(url);
     logger.success(`Opened ${url}`);
     logger.log(
-      "React profiler ready: `browser profile --interaction '...'` for a one-shot record + analysis, or drive it manually with `browser eval 'page.evaluate(() => window.__REACT_PERF__.start())'` then `stop()`.",
+      "React profiler ready: `browser eval '<action>' --profile` records + analyzes that action, or drive it manually with `browser eval 'page.evaluate(() => window.__REACT_PERF__.start())'` then `stop()`.",
     );
     if (session.launched) {
       logger.log(
@@ -56,14 +58,26 @@ export const browserOpenAction = async (
 };
 
 export const browserEvalAction = async (
-  expression: string,
+  expression: string | undefined,
   options: BrowserCommandOptions,
 ): Promise<void> => {
   recordCount(METRIC.cliInvoked, 1, { command: "browser.eval" });
+  if (options.profile) {
+    await withSession(options, async (session) => {
+      printInspection(await session.inspect(expression));
+    });
+    return;
+  }
+  // Without --profile, an expression is required: guard before attaching (or
+  // launching) Chrome so a bare `browser eval` doesn't spin one up to do nothing.
+  if (expression === undefined) {
+    logger.log("Pass an expression to run, or --profile to measure the page.");
+    return;
+  }
   await withSession(options, async (session) => {
     const result = await session.evaluate(expression);
     if (result === undefined) return;
-    logger.log(typeof result === "string" ? result : JSON.stringify(result, null, 2));
+    logger.log(formatEvalValue(result));
   });
 };
 
@@ -83,9 +97,9 @@ export const browserScreenshotAction = async (options: BrowserCommandOptions): P
   });
 };
 
-// Section printers, shared by the focused commands and the combined `report` so
-// the line format lives in one place. Each prints the section body only; the
-// callers decide on headers and empty-state messaging.
+// Section printers for `eval --profile`, one per section of the inspection, so
+// the line format lives in one place. `printInspection` owns the headers and the
+// "(none)" line for the list sections that can be empty.
 const printAuditViolations = (violations: AccessibilityViolation[]): void => {
   for (const violation of violations) {
     const impact = violation.impact ? `[${violation.impact}] ` : "";
@@ -171,107 +185,39 @@ const printCpuProfile = (analysis: CpuProfileAnalysis): void => {
   }
 };
 
-export const browserProfileAction = async (
-  url: string | undefined,
-  options: BrowserCommandOptions,
-): Promise<void> => {
-  recordCount(METRIC.cliInvoked, 1, { command: "browser.profile" });
-  await withSession(options, async (session) => {
-    const analysis = await session.profile({ url, interaction: options.interaction });
+// The whole runtime picture from one `eval --profile` recording, printed
+// section by section. Each section reuses the shared printers above.
+const printInspection = (inspection: PageInspection): void => {
+  if (inspection.result !== null) {
+    logger.log("# Result");
+    logger.log(formatEvalValue(inspection.result));
+    logger.log("");
+  }
 
-    logger.log("# React renders");
-    if (analysis.react) {
-      printReactProfile(analysis.react);
-    } else {
-      logger.log(
-        "(no React data — needs a development build of React and renders during the recording)",
-      );
-    }
+  logger.log("# Console");
+  if (inspection.console.length === 0) logger.log("(none)");
+  else printConsoleMessages(inspection.console);
 
-    logger.log("\n# CPU");
-    printCpuProfile(analysis.cpu);
-  });
-};
+  logger.log("\n# Network");
+  if (inspection.network.length === 0) logger.log("(none)");
+  else printNetworkRequests(inspection.network);
 
-export const browserAuditAction = async (
-  url: string | undefined,
-  options: BrowserCommandOptions,
-): Promise<void> => {
-  recordCount(METRIC.cliInvoked, 1, { command: "browser.audit" });
-  await withSession(options, async (session) => {
-    const violations = await session.audit(url);
-    if (violations.length === 0) {
-      logger.success("No accessibility violations found");
-      return;
-    }
-    logger.log(`${violations.length} accessibility violation(s):\n`);
-    printAuditViolations(violations);
-  });
-};
+  logger.log("\n# Performance");
+  printPerformanceReport(inspection.performance);
 
-export const browserConsoleAction = async (
-  url: string | undefined,
-  options: BrowserCommandOptions,
-): Promise<void> => {
-  recordCount(METRIC.cliInvoked, 1, { command: "browser.console" });
-  await withSession(options, async (session) => {
-    const messages = await session.captureConsole(url);
-    if (messages.length === 0) {
-      logger.success("No console output captured");
-      return;
-    }
-    printConsoleMessages(messages);
-  });
-};
+  logger.log("\n# Accessibility");
+  if (inspection.accessibility.length === 0) logger.log("(none)");
+  else printAuditViolations(inspection.accessibility);
 
-export const browserNetworkAction = async (
-  url: string | undefined,
-  options: BrowserCommandOptions,
-): Promise<void> => {
-  recordCount(METRIC.cliInvoked, 1, { command: "browser.network" });
-  await withSession(options, async (session) => {
-    const requests = await session.captureNetwork(url);
-    if (requests.length === 0) {
-      logger.success("No network requests captured");
-      return;
-    }
-    printNetworkRequests(requests);
-  });
-};
+  logger.log("\n# React renders");
+  if (inspection.profile.react) {
+    printReactProfile(inspection.profile.react);
+  } else {
+    logger.log(
+      "(no React data — needs a development build of React and renders during the recording)",
+    );
+  }
 
-export const browserPerfAction = async (
-  url: string | undefined,
-  options: BrowserCommandOptions,
-): Promise<void> => {
-  recordCount(METRIC.cliInvoked, 1, { command: "browser.perf" });
-  await withSession(options, async (session) => {
-    printPerformanceReport(await session.measurePerformance(url));
-  });
-};
-
-// One navigation, every signal — the efficient path when an agent wants the
-// whole runtime picture instead of reloading the page once per command.
-export const browserReportAction = async (
-  url: string | undefined,
-  options: BrowserCommandOptions,
-): Promise<void> => {
-  recordCount(METRIC.cliInvoked, 1, { command: "browser.report" });
-  await withSession(options, async (session) => {
-    const inspection = await session.inspectPage(url);
-
-    logger.log("# Console");
-    if (inspection.console.length === 0) logger.log("(none)");
-    else printConsoleMessages(inspection.console);
-
-    logger.log("\n# Network");
-    if (inspection.network.length === 0) logger.log("(none)");
-    else printNetworkRequests(inspection.network);
-
-    logger.log("\n# Performance");
-    printPerformanceReport(inspection.performance);
-
-    logger.log("\n# Accessibility");
-    if (inspection.accessibility.length === 0) logger.log("(none)");
-    else printAuditViolations(inspection.accessibility);
-  });
+  logger.log("\n# CPU");
+  printCpuProfile(inspection.profile.cpu);
 };

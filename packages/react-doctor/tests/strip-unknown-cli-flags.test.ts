@@ -132,17 +132,11 @@ describe("stripUnknownCliFlags", () => {
 
   it("keeps browser subcommand flags and consumes --cdp's value (no value leaks as a positional)", () => {
     // Regression: without a browser flag spec, --cdp is dropped and its endpoint
-    // value leaks in as a second positional, so `browser audit <url> --cdp <endpoint>`
+    // value leaks in as a second positional, so `browser eval <expr> --cdp <endpoint>`
     // makes Commander throw "too many arguments".
     expect(
-      stripUserArguments([
-        "browser",
-        "audit",
-        "https://example.com",
-        "--cdp",
-        "http://127.0.0.1:9456",
-      ]),
-    ).toEqual(["browser", "audit", "https://example.com", "--cdp", "http://127.0.0.1:9456"]);
+      stripUserArguments(["browser", "eval", "page.title()", "--cdp", "http://127.0.0.1:9456"]),
+    ).toEqual(["browser", "eval", "page.title()", "--cdp", "http://127.0.0.1:9456"]);
     expect(stripUserArguments(["browser", "open", "https://example.com", "--no-launch"])).toEqual([
       "browser",
       "open",
@@ -158,23 +152,17 @@ describe("stripUnknownCliFlags", () => {
     expect(
       stripUserArguments(["browser", "eval", 'page.locator("a").click()', "--cdp", "http://x"]),
     ).toEqual(["browser", "eval", 'page.locator("a").click()', "--cdp", "http://x"]);
-    // Regression: `--interaction`'s Playwright expression must not leak as a
-    // positional, or `browser profile` rejects it as too many arguments.
+    // `--profile` is a boolean (no value), so the expression positional after it
+    // must stay a positional and the flag must not swallow the next argument.
     expect(
       stripUserArguments([
         "browser",
-        "profile",
-        "https://example.com",
-        "--interaction",
+        "eval",
         'page.getByText("Next").click()',
+        "--profile",
+        "--offline",
       ]),
-    ).toEqual([
-      "browser",
-      "profile",
-      "https://example.com",
-      "--interaction",
-      'page.getByText("Next").click()',
-    ]);
+    ).toEqual(["browser", "eval", 'page.getByText("Next").click()', "--profile"]);
   });
 
   it("keeps debug serve flags and consumes their values (no value leaks as a positional)", () => {

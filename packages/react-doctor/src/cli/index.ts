@@ -2,14 +2,8 @@ import { Command, Option } from "commander";
 import { CANONICAL_GITHUB_URL, highlighter } from "@react-doctor/core";
 import { flushSentry, initializeSentry } from "../instrument.js";
 import {
-  browserAuditAction,
-  browserConsoleAction,
   browserEvalAction,
-  browserNetworkAction,
   browserOpenAction,
-  browserPerfAction,
-  browserProfileAction,
-  browserReportAction,
   browserScreenshotAction,
   browserSnapshotAction,
 } from "./commands/browser.js";
@@ -269,9 +263,13 @@ withConnectionOptions(
 
 withRenderOptions(
   browser
-    .command("eval <expression>")
+    .command("eval [expression]")
     .description(
-      "Run an expression with the Playwright `page` in scope, e.g. 'page.locator(\"text=Login\").click()'",
+      "Run an expression with the Playwright `page` in scope, e.g. 'page.getByText(\"Login\").click()'. Add --profile to also record the full runtime picture.",
+    )
+    .option(
+      "--profile",
+      "record console, network, performance, accessibility, and the React + CPU profiles while the expression runs (omit the expression to measure the live page idle)",
     ),
 ).action(browserEvalAction);
 
@@ -287,52 +285,6 @@ withRenderOptions(
     .description("Save a screenshot of the page")
     .option("--out <path>", "output file path (default react-doctor-screenshot.png)"),
 ).action(browserScreenshotAction);
-
-withRenderOptions(
-  browser
-    .command("audit [url]")
-    .description("Run an accessibility audit (axe-core) on the page or a URL"),
-).action(browserAuditAction);
-
-withRenderOptions(
-  browser
-    .command("console [url]")
-    .description("Capture console output and page errors during a load (reloads if no URL)"),
-).action(browserConsoleAction);
-
-withRenderOptions(
-  browser
-    .command("network [url]")
-    .description("Capture network requests during a load, flagging failures (reloads if no URL)"),
-).action(browserNetworkAction);
-
-withRenderOptions(
-  browser
-    .command("perf [url]")
-    .description(
-      "Capture long animation frames (jank) with per-script attribution, plus LCP/CLS (reloads if no URL)",
-    ),
-).action(browserPerfAction);
-
-withRenderOptions(
-  browser
-    .command("profile [url]")
-    .description(
-      "Profile React renders and CPU in one recording: slowest commits, hottest components, unnecessary re-renders, and the hottest JS functions",
-    )
-    .option(
-      "--interaction <expression>",
-      "Playwright expression to drive while recording, e.g. 'page.getByText(\"Next\").click()'",
-    ),
-).action(browserProfileAction);
-
-withRenderOptions(
-  browser
-    .command("report [url]")
-    .description(
-      "Capture console, network, performance, and accessibility in a single load (reloads if no URL)",
-    ),
-).action(browserReportAction);
 
 const debug = program
   .command("debug")

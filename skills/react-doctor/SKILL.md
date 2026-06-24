@@ -1,7 +1,7 @@
 ---
 name: react-doctor
 description: Use when writing, finishing, or committing React or React Native code, when the user types `/react-doctor`, or when they ask to scan, triage, lint, profile performance, debug a UI in the browser, or review design and accessibility. Covers lint, accessibility, performance, bundle size, and architecture.
-version: "1.6.0"
+version: "1.7.0"
 ---
 
 # React Doctor
@@ -41,7 +41,7 @@ doctor runs from code alone, so it is the one that fires in the background. The 
 debug, design, and perf need a real Chrome. Two ways to get one:
 
 1. **A browser MCP already in your tools.** Prefer [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) (`chrome-devtools`) or similar for console, network, and snapshots. It adds full performance traces and Lighthouse on top.
-2. **The bundled `react-doctor browser` command.** Attaches to the Chrome you already have open over the Chrome DevTools Protocol, and launches a dedicated persistent one only as a fallback. It covers `open`, `eval`, `snapshot`, `screenshot`, `console`, `network`, an axe-core `audit`, `perf` (long animation frames with per-script attribution), `profile` (one recording with both lenses — a React render profile of slowest commits, hottest components, and unnecessary re-renders, plus a V8/DevTools CPU profile over CDP with the hottest JS functions ranked by self time), and `report` (every signal in one load).
+2. **The bundled `react-doctor browser` command.** Attaches to the Chrome you already have open over the Chrome DevTools Protocol, and launches a dedicated persistent one only as a fallback. Four commands: `open` (load a URL, leave the page, React profiler injected), `eval` (run a Playwright expression with `page` in scope — returns its value), `snapshot` (accessibility tree), and `screenshot`. Add `--profile` to `eval` to record the whole runtime picture while the expression runs — console, network, performance (long animation frames with per-script attribution, LCP, CLS), an axe-core accessibility audit, a React render profile (slowest commits, hottest components, unnecessary re-renders), and a V8/DevTools CPU profile over CDP (hottest JS functions by self time). Run `eval --profile` with no expression to measure the live page as it is.
 
 It is the same Chrome either way, so the playbooks apply to both: `browser open`, `eval`, `snapshot`, and `screenshot` map onto the MCP's `navigate_page`, `evaluate_script`, `take_snapshot`, and `take_screenshot`.
 
@@ -53,7 +53,7 @@ React Doctor ships its own Model Context Protocol server over stdio so any MCP-c
 npx react-doctor@latest mcp
 ```
 
-It exposes `doctor_scan` (the static scan), the `browser_*` tools (`browser_open`, `browser_eval`, `browser_snapshot`, `browser_screenshot`, `browser_audit`, `browser_console`, `browser_network`, `browser_perf`, `browser_profile`, `browser_report`), and the `debug_*` log server (`debug_serve`, `debug_read_logs`, `debug_clear_logs`). `browser_profile` records both a React render profile and a literal Chrome DevTools CPU profile in one pass.
+It exposes `doctor_scan` (the static scan), the `browser_*` tools (`browser_open`, `browser_eval`, `browser_snapshot`, `browser_screenshot`), and the `debug_*` log server (`debug_serve`, `debug_read_logs`, `debug_clear_logs`). `browser_eval` takes a `profile: true` argument that records the whole runtime picture — console, network, performance, accessibility, a React render profile, and a literal Chrome DevTools CPU profile — in one pass while the expression runs.
 
 ## doctor: scan and triage
 

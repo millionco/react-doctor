@@ -19,14 +19,8 @@ const listToolNames = async (): Promise<string[]> => {
 
 test("registers the doctor, browser, and debug tools", async () => {
   expect(await listToolNames()).toEqual([
-    "browser_audit",
-    "browser_console",
     "browser_eval",
-    "browser_network",
     "browser_open",
-    "browser_perf",
-    "browser_profile",
-    "browser_report",
     "browser_screenshot",
     "browser_snapshot",
     "debug_clear_logs",

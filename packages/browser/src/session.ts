@@ -8,7 +8,6 @@ import {
   MAX_VIOLATION_TARGETS,
   NAVIGATION_TIMEOUT_MS,
   PERFORMANCE_OBSERVE_WINDOW_MS,
-  REACT_PROFILE_FLUSH_MS,
   REACT_PROFILER_INJECT_FILE,
   SETTLE_TIMEOUT_MS,
 } from "./constants.js";
@@ -22,25 +21,8 @@ import type {
   NetworkRequestEntry,
   PageInspection,
   PerformanceReport,
-  ProfileAnalysis,
-  ProfileOptions,
   Viewport,
 } from "./types.js";
-import { delay } from "./utils/delay.js";
-
-// Which signals to collect during a single capture load. Listeners and the perf
-// observers all attach before one navigation, so any combination costs one load.
-interface CaptureSignals {
-  console: boolean;
-  network: boolean;
-  performance: boolean;
-}
-
-interface CaptureResult {
-  console: ConsoleMessageEntry[];
-  network: NetworkRequestEntry[];
-  performance: PerformanceReport;
-}
 
 const emptyPerformanceReport = (): PerformanceReport => ({
   longAnimationFrames: [],
@@ -179,15 +161,6 @@ export class BrowserSession {
     return this.page.screenshot({ path });
   }
 
-  async audit(url?: string): Promise<AccessibilityViolation[]> {
-    if (url) {
-      await this.navigate(url);
-    } else {
-      await this.settle();
-    }
-    return this.runAxe();
-  }
-
   // axe is injected with `evaluate`, not a <script> tag, so a strict CSP can't
   // block it. Loaded on demand so it stays out of bundles that don't audit.
   private async runAxe(): Promise<AccessibilityViolation[]> {
@@ -256,31 +229,6 @@ export class BrowserSession {
     };
   }
 
-  // Arm every requested observer before a single navigation, drive that one
-  // load, then read everything back — so capturing N signals costs ONE load,
-  // not N. Listeners detach in `finally` so a navigation error can't leak them.
-  private async runCapture(
-    url: string | undefined,
-    signals: CaptureSignals,
-  ): Promise<CaptureResult> {
-    const consoleEntries: ConsoleMessageEntry[] = [];
-    const networkByRequest = new Map<Request, NetworkRequestEntry>();
-    const detachers: Array<() => void> = [];
-    if (signals.console) detachers.push(this.collectConsole(consoleEntries));
-    if (signals.network) detachers.push(this.collectNetwork(networkByRequest));
-    let performance = emptyPerformanceReport();
-    try {
-      await this.navigate(url);
-      // Measure perf inside the try so console/network listeners stay attached
-      // through its observation window (the collector waits internally), catching
-      // post-load errors and requests. `buffered: true` replays the load's frames.
-      if (signals.performance) performance = await this.measureCurrentPerformance();
-    } finally {
-      for (const detach of detachers) detach();
-    }
-    return { console: consoleEntries, network: [...networkByRequest.values()], performance };
-  }
-
   // A per-page watermark inside collectPerformanceReport keeps a repeated
   // no-reload measurement from re-counting frames an earlier command already
   // reported on the same persistent page.
@@ -288,57 +236,27 @@ export class BrowserSession {
     return this.page.evaluate(collectPerformanceReport, PERFORMANCE_OBSERVE_WINDOW_MS);
   }
 
-  async captureConsole(url?: string): Promise<ConsoleMessageEntry[]> {
-    const { console } = await this.runCapture(url, {
-      console: true,
-      network: false,
-      performance: false,
-    });
-    return console;
-  }
-
-  async captureNetwork(url?: string): Promise<NetworkRequestEntry[]> {
-    const { network } = await this.runCapture(url, {
-      console: false,
-      network: true,
-      performance: false,
-    });
-    return network;
-  }
-
-  // Without a `url`, measure the page as it is now with no reload — a reload
-  // would wipe a just-performed `eval` interaction and its jank.
-  async measurePerformance(url?: string): Promise<PerformanceReport> {
-    if (url) {
-      const { performance } = await this.runCapture(url, {
-        console: false,
-        network: false,
-        performance: true,
-      });
-      return performance;
-    }
-    return this.measureCurrentPerformance();
-  }
-
-  // Profile a page with both lenses in one recording: the V8 CPU profiler (the
-  // literal Chrome DevTools profiler, over CDP) and the React DevTools render
-  // profiler. Navigation happens first: a top-level navigation can swap renderer
-  // processes, so a profiler must attach to the *final* document — and the React
-  // profiler can only start once renderers are attached. Both lenses therefore
-  // cover the same window: post-load plus whatever `interaction` drives. React
-  // data is null on a production build or a page not opened with the profiler.
-  async profile(options: ProfileOptions = {}): Promise<ProfileAnalysis> {
-    if (options.url) {
-      await this.openWithReactProfiler(options.url);
-    } else {
-      await this.settle();
-    }
-
+  // Drive the current page (optionally running `expression` — the same Playwright
+  // code `evaluate` takes) while recording the whole runtime picture in one pass:
+  // console + network listeners, a V8 CPU profile (the literal Chrome DevTools
+  // profiler over CDP), the React DevTools render profile, page performance, and
+  // an accessibility audit. This never navigates on its own — drive a fresh load
+  // with `inspect("page.goto('...')")`, or `open` a URL first then inspect an
+  // action on it. React data is null on a production build or a page not opened
+  // with the profiler; it covers the driven action, not the initial mount.
+  async inspect(expression?: string): Promise<PageInspection> {
+    const consoleEntries: ConsoleMessageEntry[] = [];
+    const networkByRequest = new Map<Request, NetworkRequestEntry>();
+    // Open the CDP session before attaching listeners: if `newCDPSession` throws,
+    // the listeners are never bound, so they can't leak onto the persistent page.
     const cdpSession = await this.page.context().newCDPSession(this.page);
+    const detachers: Array<() => void> = [];
     try {
+      detachers.push(this.collectConsole(consoleEntries), this.collectNetwork(networkByRequest));
+      await this.settle();
       await cdpSession.send("Profiler.enable");
       await cdpSession.send("Profiler.setSamplingInterval", {
-        interval: options.samplingIntervalUs ?? DEFAULT_CPU_SAMPLING_INTERVAL_US,
+        interval: DEFAULT_CPU_SAMPLING_INTERVAL_US,
       });
       await cdpSession.send("Profiler.start");
 
@@ -348,14 +266,17 @@ export class BrowserSession {
         return true;
       });
 
+      let result: unknown = null;
+      let performance = emptyPerformanceReport();
       let reactExport: ReactProfilerDataExport | null = null;
       try {
-        if (options.interaction) await this.evaluate(options.interaction);
-        // Let React's commits flush (concurrent renders land async) and any
-        // interaction-triggered work run; skip the idle wait when neither applies.
-        if (reactStarted || options.interaction) await delay(REACT_PROFILE_FLUSH_MS);
+        if (expression) result = (await this.evaluate(expression)) ?? null;
+        // The perf observe window doubles as the recording window: it runs after
+        // the driven action so post-action jank, React commits (concurrent
+        // renders land async), and CPU samples all land before we stop.
+        performance = await this.measureCurrentPerformance();
       } finally {
-        // Always stop the React profiler, even if `interaction` threw: the
+        // Always stop the React profiler, even if the expression threw: the
         // renderer profiles the persistent page, and `start()` no-ops while
         // already profiling, so a left-running recording would skew later runs
         // until the page reloads.
@@ -368,28 +289,28 @@ export class BrowserSession {
 
       const { profile } = await cdpSession.send("Profiler.stop");
 
+      // Detach the page listeners before the accessibility audit so axe's injected
+      // evaluate (and anything it logs) can't land in the captured signals.
+      for (const detach of detachers) detach();
+      detachers.length = 0;
+      const accessibility = await this.runAxe();
+
       return {
-        react: reactExport ? analyzeReactProfile(reactExport) : null,
-        cpu: analyzeCpuProfile(profile),
+        result,
+        console: consoleEntries,
+        network: [...networkByRequest.values()],
+        performance,
+        accessibility,
+        profile: {
+          react: reactExport ? analyzeReactProfile(reactExport) : null,
+          cpu: analyzeCpuProfile(profile),
+        },
       };
     } finally {
       await cdpSession.send("Profiler.disable").catch(() => {});
       await cdpSession.detach().catch(() => {});
+      for (const detach of detachers) detach();
     }
-  }
-
-  async inspectPage(url?: string): Promise<PageInspection> {
-    const capture = await this.runCapture(url, {
-      console: true,
-      network: true,
-      performance: true,
-    });
-    return {
-      console: capture.console,
-      network: capture.network,
-      performance: capture.performance,
-      accessibility: await this.runAxe(),
-    };
   }
 
   // Drop our CDP connection. This only disconnects — it never kills the browser,

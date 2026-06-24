@@ -54,22 +54,16 @@ export interface PerformanceReport {
   cumulativeLayoutShift: number;
 }
 
+// The full runtime picture from one `inspect` pass: the driven expression's
+// return value plus every signal recorded while it ran.
 export interface PageInspection {
+  // The `expression`'s return value, or null when none was driven or it had none.
+  result: unknown;
   console: ConsoleMessageEntry[];
   network: NetworkRequestEntry[];
   performance: PerformanceReport;
   accessibility: AccessibilityViolation[];
-}
-
-export interface ProfileOptions {
-  // Load this URL with the React profiler injected before recording. Omit to
-  // profile a page already opened with the profiler (`browser open`).
-  url?: string;
-  // Playwright expression (the `page` is in scope) driven while recording, so the
-  // renders and CPU work it triggers are captured. Omit to profile post-load.
-  interaction?: string;
-  // V8 CPU sampling interval in microseconds (default like DevTools, 100us).
-  samplingIntervalUs?: number;
+  profile: ProfileAnalysis;
 }
 
 export interface ReactComponentRenderStat {

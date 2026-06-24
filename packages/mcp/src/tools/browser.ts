@@ -1,8 +1,6 @@
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { BrowserSession } from "@react-doctor/browser";
 import { z } from "zod";
-import { parseViewport } from "@react-doctor/browser";
+import { formatEvalValue, parseViewport } from "@react-doctor/browser";
 import { DEFAULT_CDP_ENDPOINT_HINT } from "../constants.js";
 import { jsonResult, runTool, textResult } from "../utils/tool-result.js";
 import { withSession, type BrowserToolConnection } from "../utils/with-session.js";
@@ -25,13 +23,6 @@ const viewportShape = {
     .describe("Emulate a viewport for this call, WIDTHxHEIGHT in pixels (e.g. 390x844)"),
 };
 
-const urlShape = {
-  url: z
-    .string()
-    .optional()
-    .describe("URL to load; omit to read the current page without reloading"),
-};
-
 interface ConnectionArgs {
   cdp?: string;
   noLaunch?: boolean;
@@ -44,41 +35,13 @@ const toConnection = (args: ConnectionArgs): BrowserToolConnection => ({
   viewport: args.viewport ? parseViewport(args.viewport) : undefined,
 });
 
-interface PageToolDefinition {
-  name: string;
-  title: string;
-  description: string;
-  // Build the result inside the session scope (the session is disposed once
-  // this resolves), against the optional `url` to load.
-  run: (session: BrowserSession, url: string | undefined) => Promise<CallToolResult>;
-}
-
-// The read-only "load a page (or read the current one) and report" tools all
-// share the same url + connection + viewport inputs and session lifecycle, so
-// they register through this table rather than repeating the scaffolding.
-const registerPageTool = (server: McpServer, definition: PageToolDefinition): void => {
-  server.registerTool(
-    definition.name,
-    {
-      title: definition.title,
-      description: definition.description,
-      inputSchema: { ...urlShape, ...connectionShape, ...viewportShape },
-      annotations: { readOnlyHint: true, openWorldHint: true },
-    },
-    (args) =>
-      runTool(() =>
-        withSession(toConnection(args), (session) => definition.run(session, args.url)),
-      ),
-  );
-};
-
 export const registerBrowserTools = (server: McpServer): void => {
   server.registerTool(
     "browser_open",
     {
       title: "Open a URL with the React profiler",
       description:
-        "Open a URL in the attached Chrome and keep the page, injecting the React DevTools profiler. Use browser_profile for a one-shot record + analysis; for manual control, browser_eval can drive window.__REACT_PERF__ (start()/stop()). Attaches to your running Chrome over CDP, launching a dedicated one only as a fallback.",
+        "Open a URL in the attached Chrome and keep the page, injecting the React DevTools profiler so a later browser_eval with profile:true can capture React renders. Attaches to your running Chrome over CDP, launching a dedicated one only as a fallback.",
       inputSchema: { url: z.string().describe("URL to open"), ...connectionShape },
       annotations: { openWorldHint: true },
     },
@@ -86,29 +49,29 @@ export const registerBrowserTools = (server: McpServer): void => {
       runTool(async () => {
         await withSession(toConnection(args), (session) => session.openWithReactProfiler(args.url));
         return textResult(
-          `Opened ${args.url}. React profiler ready: call browser_eval with "page.evaluate(() => window.__REACT_PERF__.start())", drive a scenario, then stop() for the DevTools profiling export.`,
+          `Opened ${args.url}. To measure an action, call browser_eval with profile:true and an expression, e.g. page.getByText("Load more").click().`,
         );
       }),
   );
 
   server.registerTool(
-    "browser_profile",
+    "browser_eval",
     {
-      title: "Profile React renders and CPU in one recording",
+      title: "Run Playwright code, optionally profiling it",
       description:
-        "Record one profile with both lenses and return { react, cpu }. `react`: the React render profile — slowest commits, components that render most/cost the most self time, and unnecessary re-renders (re-rendered with nothing they own changed: memo/useCallback/context targets); null on a production React build. `cpu`: a Chrome DevTools CPU profile (V8 sampler over CDP) with functions ranked by self time (DevTools' bottom-up view). Pass `url` to load and profile a page, and/or `interaction` (a Playwright expression, `page` in scope) to record what it triggers. Omit `url` to profile a page already opened with browser_open.",
+        'Run an async expression with the Playwright `page` in scope (e.g. page.getByText("Login").click()) against the attached page. Two modes: by default it returns the expression\'s value — use it to locate, read, or drive the page. Set profile:true to instead record and return the full runtime picture while the expression runs. Open the page first with browser_open for React render data.',
       inputSchema: {
-        url: z
+        expression: z
           .string()
           .optional()
           .describe(
-            "URL to load with the profiler before recording; omit to profile the open page",
+            "Async expression with the Playwright `page` in scope; omit together with profile:true to measure the live page idle",
           ),
-        interaction: z
-          .string()
+        profile: z
+          .boolean()
           .optional()
           .describe(
-            'Playwright expression to drive while recording, e.g. page.getByRole("button").click()',
+            "Set true to record and return the full runtime picture while the expression runs — console, network, performance (jank/LCP/CLS), accessibility, the React render profile (slow commits, hot components, unnecessary re-renders), and a V8 CPU profile. Omit for just the expression's return value.",
           ),
         ...connectionShape,
         ...viewportShape,
@@ -116,34 +79,19 @@ export const registerBrowserTools = (server: McpServer): void => {
       annotations: { openWorldHint: true },
     },
     (args) =>
-      runTool(async () =>
-        jsonResult(
-          await withSession(toConnection(args), (session) =>
-            session.profile({ url: args.url, interaction: args.interaction }),
-          ),
-        ),
-      ),
-  );
-
-  server.registerTool(
-    "browser_eval",
-    {
-      title: "Evaluate Playwright code on the page",
-      description:
-        'Run an async expression with the Playwright `page` in scope (e.g. page.locator("text=Login").click()) against the attached page. Use to drive the exact repro between opening a page and measuring it.',
-      inputSchema: {
-        expression: z.string().describe("Async expression with the Playwright `page` in scope"),
-        ...connectionShape,
-      },
-      annotations: { openWorldHint: true },
-    },
-    (args) =>
       runTool(async () => {
+        if (args.profile) {
+          return jsonResult(
+            await withSession(toConnection(args), (session) => session.inspect(args.expression)),
+          );
+        }
+        if (args.expression === undefined) return textResult("(no value)");
+        const expression = args.expression;
         const result = await withSession(toConnection(args), (session) =>
-          session.evaluate(args.expression),
+          session.evaluate(expression),
         );
         if (result === undefined) return textResult("(no value)");
-        return textResult(typeof result === "string" ? result : JSON.stringify(result, null, 2));
+        return textResult(formatEvalValue(result));
       }),
   );
 
@@ -180,53 +128,4 @@ export const registerBrowserTools = (server: McpServer): void => {
         };
       }),
   );
-
-  registerPageTool(server, {
-    name: "browser_audit",
-    title: "Run an accessibility audit",
-    description:
-      "Run an axe-core accessibility audit on the attached page (or a URL; reloads the current page when no URL is given) and return the violations with impact, help text, and affected element targets.",
-    run: async (session, url) => {
-      const violations = await session.audit(url);
-      return jsonResult({ violationCount: violations.length, violations });
-    },
-  });
-
-  registerPageTool(server, {
-    name: "browser_console",
-    title: "Capture console output",
-    description:
-      "Capture console messages and page errors during a load of the attached page (or a URL; reloads when no URL is given).",
-    run: async (session, url) => {
-      const messages = await session.captureConsole(url);
-      return jsonResult({ messageCount: messages.length, messages });
-    },
-  });
-
-  registerPageTool(server, {
-    name: "browser_network",
-    title: "Capture network requests",
-    description:
-      "Capture network requests during a load of the attached page (or a URL; reloads when no URL is given), flagging failures and non-2xx/3xx responses.",
-    run: async (session, url) => {
-      const requests = await session.captureNetwork(url);
-      return jsonResult({ requestCount: requests.length, requests });
-    },
-  });
-
-  registerPageTool(server, {
-    name: "browser_perf",
-    title: "Measure runtime performance (jank)",
-    description:
-      "Capture long animation frames (>50ms main-thread jank) with per-script attribution, plus LCP and CLS. Loads a URL when given; omit the URL to measure the current page without reloading (so a browser_eval interaction's jank is included).",
-    run: async (session, url) => jsonResult(await session.measurePerformance(url)),
-  });
-
-  registerPageTool(server, {
-    name: "browser_report",
-    title: "Capture a full page report",
-    description:
-      "Capture console, network, performance, and accessibility in a single load — the efficient path when you want the whole runtime picture at once. Always loads (a URL when given, otherwise reloads the current page); to measure after a browser_eval interaction without reloading, use browser_perf.",
-    run: async (session, url) => jsonResult(await session.inspectPage(url)),
-  });
 };

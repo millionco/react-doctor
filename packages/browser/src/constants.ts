@@ -43,10 +43,6 @@ export const MAX_VIOLATION_TARGETS = 5;
 // device-metrics override into CDP.
 export const MAX_VIEWPORT_PX = 10_000;
 
-// After driving a profiled interaction, wait this long for React's commits to
-// flush (concurrent renders land asynchronously) before stopping the recording.
-export const REACT_PROFILE_FLUSH_MS = 500;
-
 // Caps on what a profile analysis returns inline, so a long recording stays a
 // readable result rather than a dump keyed by thousands of fibers. The summary
 // counts still reflect everything recorded.

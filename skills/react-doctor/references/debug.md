@@ -51,15 +51,14 @@ Wrap every debug log in `// #region debug log` and `// #endregion` so cleanup la
 
 Clear the log file (`DELETE` the file at `logPath`) before each run, then trigger the exact behavior the user described:
 
-- **Browser bugs:** drive the repro with whatever controls a live Chrome. The bundled browser core attaches to the Chrome you already have open over the Chrome DevTools Protocol, so the real session, logins, and cookies come along. If nothing debuggable is running, it launches a dedicated persistent Chrome (its own profile) that later commands reattach to, so the flow below works either way. To drive your real logged-in session, open Chrome with `--remote-debugging-port=9222` first and it attaches to that instead. `browser console` and `browser network` hand you the runtime console (with uncaught errors) and the request waterfall with failures flagged, often the evidence you need before instrumenting at all. To get the whole picture in one pass, `browser report` captures console, network, performance, and accessibility in a single page load instead of reloading once per command; prefer it over running the four separately. If [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) (`chrome-devtools`) is in your tools, it also covers this and adds performance traces and Lighthouse.
+- **Browser bugs:** drive the repro with whatever controls a live Chrome. The bundled browser core attaches to the Chrome you already have open over the Chrome DevTools Protocol, so the real session, logins, and cookies come along. If nothing debuggable is running, it launches a dedicated persistent Chrome (its own profile) that later commands reattach to, so the flow below works either way. To drive your real logged-in session, open Chrome with `--remote-debugging-port=9222` first and it attaches to that instead. `browser eval --profile` hands you the whole runtime picture in one pass — the console (with uncaught errors), the network waterfall with failures flagged, performance, accessibility, and the React + CPU profiles — so you rarely need to instrument at all. Run it with no expression to read the page as it is, or pass the repro to record what it triggers. If [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) (`chrome-devtools`) is in your tools, it also covers this and adds performance traces and Lighthouse.
 
 ```bash
 npx react-doctor browser open http://localhost:3000           # attach + open the page
-npx react-doctor browser report http://localhost:3000         # console + network + perf + a11y in one load
-npx react-doctor browser console http://localhost:3000        # console output + uncaught errors
-npx react-doctor browser network http://localhost:3000        # request waterfall, failures flagged
+npx react-doctor browser eval --profile                       # console + network + perf + a11y + React/CPU in one pass
 npx react-doctor browser snapshot                             # what rendered, by role + name
 npx react-doctor browser eval 'page.getByRole("button", { name: "Checkout" }).click()'
+npx react-doctor browser eval 'page.getByRole("button", { name: "Checkout" }).click()' --profile  # drive + measure it
 npx react-doctor browser eval 'page.evaluate(() => document.title)'   # raw DOM when you need it
 ```
 

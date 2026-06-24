@@ -163,6 +163,15 @@ describe("stripUnknownCliFlags", () => {
         "--offline",
       ]),
     ).toEqual(["browser", "eval", 'page.getByText("Next").click()', "--profile"]);
+    // `--headed` is a boolean (no value), so it survives without swallowing the
+    // expression positional after it.
+    expect(stripUserArguments(["browser", "eval", "--profile", "--headed", "--offline"])).toEqual([
+      "browser",
+      "eval",
+      "--profile",
+      "--headed",
+    ]);
+    expect(stripUserArguments(["browser", "close"])).toEqual(["browser", "close"]);
   });
 
   it("keeps debug serve flags and consumes their values (no value leaks as a positional)", () => {

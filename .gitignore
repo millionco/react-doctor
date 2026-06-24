@@ -46,3 +46,8 @@ review-*.md
 /scripts/print-batch-input.mjs
 /scripts/rule-prompts/
 /rules.json
+
+# Local-only artifacts written by `react-doctor browser` (timeline trace,
+# screenshot) when run from the repo root during development.
+/react-doctor-trace.json
+/react-doctor-screenshot.png

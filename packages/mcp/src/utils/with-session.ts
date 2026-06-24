@@ -3,6 +3,7 @@ import { BrowserSession, type Viewport } from "@react-doctor/browser";
 export interface BrowserToolConnection {
   cdp?: string;
   noLaunch?: boolean;
+  headed?: boolean;
   viewport?: Viewport;
 }
 
@@ -18,6 +19,7 @@ export const withSession = async <ResultType>(
   const session = await BrowserSession.attach({
     cdpEndpoint: connection.cdp,
     launch: connection.noLaunch === true ? false : undefined,
+    headless: connection.headed ? false : undefined,
   });
   try {
     if (connection.viewport) await session.setViewport(connection.viewport);

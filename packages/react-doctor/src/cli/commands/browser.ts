@@ -1,10 +1,12 @@
 import {
   BrowserSession,
+  closeLaunchedBrowser,
   DEFAULT_TRACE_FILENAME,
   formatEvalValue,
   type AccessibilityViolation,
   type ConsoleMessageEntry,
   type CpuProfileAnalysis,
+  type MemoryStats,
   type NetworkRequestEntry,
   type PageInspection,
   type PerformanceReport,
@@ -13,13 +15,19 @@ import {
   type TimelinePhaseStat,
   type Viewport,
 } from "@react-doctor/browser";
-import { DEFAULT_SCREENSHOT_FILENAME, METRIC } from "../utils/constants.js";
+import {
+  DEFAULT_SCREENSHOT_FILENAME,
+  HEAVY_REQUEST_BYTES,
+  METRIC,
+  SLOW_REQUEST_MS,
+} from "../utils/constants.js";
 import { cliLogger as logger } from "../utils/cli-logger.js";
 import { recordCount } from "../utils/record-metric.js";
 
 export interface BrowserCommandOptions {
   cdp?: string;
   launch?: boolean;
+  headed?: boolean;
   out?: string;
   viewport?: Viewport;
   profile?: boolean;
@@ -32,7 +40,11 @@ const withSession = async (
   options: BrowserCommandOptions,
   useSession: (session: BrowserSession) => Promise<void>,
 ): Promise<void> => {
-  const session = await BrowserSession.attach({ cdpEndpoint: options.cdp, launch: options.launch });
+  const session = await BrowserSession.attach({
+    cdpEndpoint: options.cdp,
+    launch: options.launch,
+    headless: options.headed ? false : undefined,
+  });
   try {
     if (options.viewport) await session.setViewport(options.viewport);
     await useSession(session);
@@ -54,10 +66,17 @@ export const browserOpenAction = async (
     );
     if (session.launched) {
       logger.log(
-        "Launched a dedicated Chrome (separate from your main profile); later browser commands reuse it. Quit that window when you're done.",
+        "Launched a dedicated headless Chrome (separate from your main profile); later browser commands reuse it. Run `react-doctor browser close` when done, or pass --headed to see the window.",
       );
     }
   });
+};
+
+export const browserCloseAction = async (): Promise<void> => {
+  recordCount(METRIC.cliInvoked, 1, { command: "browser.close" });
+  const closed = await closeLaunchedBrowser();
+  if (closed) logger.success("Closed the launched browser.");
+  else logger.log("No launched browser to close (it only stops the one React Doctor launched).");
 };
 
 export const browserEvalAction = async (
@@ -120,15 +139,42 @@ const printConsoleMessages = (messages: ConsoleMessageEntry[]): void => {
   }
 };
 
+// ` (123ms, 45.6kB)` from whichever of duration/size is known, or "" when
+// neither is — a cache hit or a request that never finished in the window.
+const formatRequestCost = (request: NetworkRequestEntry): string => {
+  const parts: string[] = [];
+  if (request.durationMs !== null) parts.push(`${request.durationMs}ms`);
+  if (request.encodedBytes !== null) parts.push(`${(request.encodedBytes / 1024).toFixed(1)}kB`);
+  return parts.length > 0 ? ` (${parts.join(", ")})` : "";
+};
+
 const printNetworkRequests = (requests: NetworkRequestEntry[]): void => {
   const failures = requests.filter(
     (request) => request.failure !== null || (request.status !== null && request.status >= 400),
   );
+  const slow = requests.filter(
+    (request) => request.durationMs !== null && request.durationMs >= SLOW_REQUEST_MS,
+  );
+  const heavy = requests.filter(
+    (request) => request.encodedBytes !== null && request.encodedBytes >= HEAVY_REQUEST_BYTES,
+  );
   for (const request of requests) {
     const outcome = request.failure ?? (request.status === null ? "pending" : request.status);
-    logger.log(`${outcome} ${request.method} ${request.url}`);
+    logger.log(`${outcome} ${request.method} ${request.url}${formatRequestCost(request)}`);
   }
-  logger.log(`${requests.length} request(s), ${failures.length} failed`);
+  const heavyMb = HEAVY_REQUEST_BYTES / 1024 / 1024;
+  logger.log(
+    `${requests.length} request(s), ${failures.length} failed, ${slow.length} slow (>${SLOW_REQUEST_MS}ms), ${heavy.length} heavy (>${heavyMb}MB)`,
+  );
+};
+
+const printMemoryStats = (memory: MemoryStats): void => {
+  const heapMb = (memory.jsHeapUsedBytes / 1024 / 1024).toFixed(1);
+  const totalMb = (memory.jsHeapTotalBytes / 1024 / 1024).toFixed(1);
+  logger.log(`JS heap: ${heapMb}MB used / ${totalMb}MB total`);
+  logger.log(
+    `${memory.domNodes} DOM nodes, ${memory.jsEventListeners} listeners, ${memory.documents} document(s), ${memory.frames} frame(s)`,
+  );
 };
 
 const printPerformanceReport = (report: PerformanceReport): void => {
@@ -230,6 +276,9 @@ const printInspection = (inspection: PageInspection): void => {
 
   logger.log("\n# Performance");
   printPerformanceReport(inspection.performance);
+
+  logger.log("\n# Memory");
+  printMemoryStats(inspection.memory);
 
   logger.log("\n# Accessibility");
   if (inspection.accessibility.length === 0) logger.log("(none)");

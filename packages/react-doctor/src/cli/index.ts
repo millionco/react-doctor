@@ -2,6 +2,7 @@ import { Command, Option } from "commander";
 import { CANONICAL_GITHUB_URL, highlighter } from "@react-doctor/core";
 import { flushSentry, initializeSentry } from "../instrument.js";
 import {
+  browserCloseAction,
   browserEvalAction,
   browserOpenAction,
   browserScreenshotAction,
@@ -239,7 +240,11 @@ const browser = program
 const withConnectionOptions = (command: Command): Command =>
   command
     .option("--cdp <endpoint>", "CDP endpoint to attach to (default http://127.0.0.1:9222)")
-    .option("--no-launch", "fail instead of launching Chrome when no attach target exists");
+    .option("--no-launch", "fail instead of launching Chrome when no attach target exists")
+    .option(
+      "--headed",
+      "show the launched browser window (the launched Chrome is headless by default)",
+    );
 
 // Commands that render or measure the page also accept a one-shot emulated
 // viewport (e.g. a phone). It's applied via a CDP override that clears when the
@@ -289,6 +294,13 @@ withRenderOptions(
     .description("Save a screenshot of the page")
     .option("--out <path>", "output file path (default react-doctor-screenshot.png)"),
 ).action(browserScreenshotAction);
+
+browser
+  .command("close")
+  .description(
+    "Stop the dedicated Chrome React Doctor launched (the persistent fallback); never touches a browser you started",
+  )
+  .action(browserCloseAction);
 
 const debug = program
   .command("debug")

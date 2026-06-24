@@ -1,6 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { DEFAULT_TRACE_FILENAME, formatEvalValue, parseViewport } from "@react-doctor/browser";
+import {
+  closeLaunchedBrowser,
+  DEFAULT_TRACE_FILENAME,
+  formatEvalValue,
+  parseViewport,
+} from "@react-doctor/browser";
 import { DEFAULT_CDP_ENDPOINT_HINT } from "../constants.js";
 import { jsonResult, runTool, textResult } from "../utils/tool-result.js";
 import { withSession, type BrowserToolConnection } from "../utils/with-session.js";
@@ -14,6 +19,10 @@ const connectionShape = {
     .boolean()
     .optional()
     .describe("Fail instead of launching Chrome when no attach target exists"),
+  headed: z
+    .boolean()
+    .optional()
+    .describe("Show the launched browser window (the launched Chrome is headless by default)"),
 };
 
 const viewportShape = {
@@ -26,12 +35,14 @@ const viewportShape = {
 interface ConnectionArgs {
   cdp?: string;
   noLaunch?: boolean;
+  headed?: boolean;
   viewport?: string;
 }
 
 const toConnection = (args: ConnectionArgs): BrowserToolConnection => ({
   cdp: args.cdp,
   noLaunch: args.noLaunch,
+  headed: args.headed,
   viewport: args.viewport ? parseViewport(args.viewport) : undefined,
 });
 
@@ -71,7 +82,7 @@ export const registerBrowserTools = (server: McpServer): void => {
           .boolean()
           .optional()
           .describe(
-            "Set true to record and return the full runtime picture while the expression runs — console, network, performance (LoAF jank/LCP/CLS plus a `timeline` roll-up of forced style-recalc/layout/hit-test/paint cost from a DevTools trace), accessibility, the React render profile (slow commits, hot components, unnecessary re-renders), and a V8 CPU profile. Also writes the raw timeline trace to `out` (loadable in DevTools) and returns its path as `tracePath`. Omit for just the expression's return value.",
+            "Set true to record and return the full runtime picture while the expression runs — console, network (failures, plus each request's time and transfer size, with slow/heavy ones flagged), performance (LoAF jank/LCP/CLS plus a `timeline` roll-up of forced style-recalc/layout/hit-test/paint cost from a DevTools trace), memory (JS heap, DOM nodes, listeners, documents/frames — watch these climb across runs for leaks), accessibility, the React render profile (slow commits, hot components, unnecessary re-renders), and a V8 CPU profile. Also writes the raw timeline trace to `out` (loadable in DevTools) and returns its path as `tracePath`. Omit for just the expression's return value.",
           ),
         out: z
           .string()
@@ -137,6 +148,26 @@ export const registerBrowserTools = (server: McpServer): void => {
             { type: "image", data: Buffer.from(bytes).toString("base64"), mimeType: "image/png" },
           ],
         };
+      }),
+  );
+
+  server.registerTool(
+    "browser_close",
+    {
+      title: "Close the launched browser",
+      description:
+        "Stop the dedicated Chrome React Doctor launched as a fallback (the persistent instance reused across calls). Never touches a browser you started yourself. Use it to free that headless instance when done.",
+      inputSchema: {},
+      annotations: { openWorldHint: true },
+    },
+    () =>
+      runTool(async () => {
+        const closed = await closeLaunchedBrowser();
+        return textResult(
+          closed
+            ? "Closed the launched browser."
+            : "No launched browser to close (it only stops the one React Doctor launched).",
+        );
       }),
   );
 };

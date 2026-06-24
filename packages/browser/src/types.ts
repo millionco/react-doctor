@@ -3,6 +3,9 @@ export interface BrowserConnectOptions {
   // a local endpoint launches our own persistent Chrome instead.
   cdpEndpoint?: string;
   launch?: boolean;
+  // Only applies to the Chrome we launch ourselves (not a browser we attach to):
+  // launch it headless unless explicitly false. Defaults to headless.
+  headless?: boolean;
 }
 
 export interface Viewport {
@@ -30,6 +33,12 @@ export interface NetworkRequestEntry {
   resourceType: string;
   status: number | null;
   failure: string | null;
+  // Wall time from request start to response end in ms (Playwright resource
+  // timing), or null if the request never finished within the recording window.
+  durationMs: number | null;
+  // Encoded response body size in bytes, or null when unknown (still pending, or
+  // served from cache with no transfer). The "heavy request" signal.
+  encodedBytes: number | null;
 }
 
 export interface PerformanceScriptAttribution {
@@ -73,6 +82,20 @@ export interface PerformanceReport {
   timeline: TimelineAnalysis;
 }
 
+// A point-in-time snapshot of the page's runtime footprint, read from the CDP
+// Performance domain after the driven action. Growth across repeated `inspect`
+// runs on the same persistent page is the leak signal: detached DOM keeps
+// `domNodes` climbing, leaked closures keep `jsEventListeners`/`jsHeapUsedBytes`
+// climbing, and orphaned iframes keep `documents`/`frames` climbing.
+export interface MemoryStats {
+  jsHeapUsedBytes: number;
+  jsHeapTotalBytes: number;
+  domNodes: number;
+  jsEventListeners: number;
+  documents: number;
+  frames: number;
+}
+
 // Everything `inspect` observes that the page itself reports (LoAF / LCP / CLS),
 // before the trace-derived `timeline` is folded in to form the PerformanceReport.
 export type PageVitals = Omit<PerformanceReport, "timeline">;
@@ -93,6 +116,7 @@ export interface PageInspection {
   console: ConsoleMessageEntry[];
   network: NetworkRequestEntry[];
   performance: PerformanceReport;
+  memory: MemoryStats;
   accessibility: AccessibilityViolation[];
   // Absolute path the raw timeline trace was written to, or null when none was.
   tracePath: string | null;

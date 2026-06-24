@@ -23,6 +23,7 @@ import type {
   ConsoleMessageEntry,
   CpuProfileAnalysis,
   InspectOptions,
+  MemoryStats,
   NetworkRequestEntry,
   PageInspection,
   PageVitals,
@@ -42,6 +43,17 @@ const emptyCpuAnalysis = (): CpuProfileAnalysis => ({
   durationMs: 0,
   sampleCount: 0,
   topFunctions: [],
+});
+
+// When the CDP Performance domain is unavailable (older Chrome, a failed
+// enable): a zeroed snapshot degrades the memory lens without losing the rest.
+const emptyMemory = (): MemoryStats => ({
+  jsHeapUsedBytes: 0,
+  jsHeapTotalBytes: 0,
+  domNodes: 0,
+  jsEventListeners: 0,
+  documents: 0,
+  frames: 0,
 });
 
 // A Chrome DevTools trace event as it streams over CDP (loosely typed there as a
@@ -230,6 +242,8 @@ export class BrowserSession {
         resourceType: request.resourceType(),
         status: null,
         failure: null,
+        durationMs: null,
+        encodedBytes: null,
       });
     };
     const onResponse = (response: Response): void => {
@@ -250,11 +264,48 @@ export class BrowserSession {
     };
   }
 
+  // Fold per-request timing and transfer size onto the listener-collected
+  // entries: `timing()` is the page's own resource timing (sync), `sizes()`
+  // resolves once the response is received, so this runs after the recording
+  // window when the requests have settled. Best-effort per request — a still
+  // in-flight one keeps its null duration/size rather than failing the inspect.
+  private async finalizeNetwork(
+    entriesByRequest: Map<Request, NetworkRequestEntry>,
+  ): Promise<NetworkRequestEntry[]> {
+    await Promise.all(
+      [...entriesByRequest].map(async ([request, entry]) => {
+        const responseEndMs = request.timing().responseEnd;
+        entry.durationMs = responseEndMs > 0 ? Math.round(responseEndMs) : null;
+        const sizes = await request.sizes().catch(() => null);
+        entry.encodedBytes = sizes ? sizes.responseBodySize : null;
+      }),
+    );
+    return [...entriesByRequest.values()];
+  }
+
   // A per-page watermark inside collectPerformanceReport keeps a repeated
   // no-reload measurement from re-counting frames an earlier command already
   // reported on the same persistent page.
   private measureCurrentPerformance(): Promise<PageVitals> {
     return this.page.evaluate(collectPerformanceReport, PERFORMANCE_OBSERVE_WINDOW_MS);
+  }
+
+  // The page's current runtime footprint from the CDP Performance domain (heap,
+  // DOM nodes, listeners, documents/frames) — the counters DevTools' Performance
+  // monitor shows. A snapshot, not a window, so it reflects the post-action state.
+  private async captureMemory(cdpSession: CDPSession): Promise<MemoryStats> {
+    const result = await cdpSession.send("Performance.getMetrics").catch(() => null);
+    if (!result) return emptyMemory();
+    const valueByName = new Map(result.metrics.map((metric) => [metric.name, metric.value]));
+    const read = (name: string): number => Math.round(valueByName.get(name) ?? 0);
+    return {
+      jsHeapUsedBytes: read("JSHeapUsedSize"),
+      jsHeapTotalBytes: read("JSHeapTotalSize"),
+      domNodes: read("Nodes"),
+      jsEventListeners: read("JSEventListeners"),
+      documents: read("Documents"),
+      frames: read("Frames"),
+    };
   }
 
   // Begin a best-effort DevTools timeline trace on the CDP session, returning a
@@ -316,6 +367,7 @@ export class BrowserSession {
     try {
       detachers.push(this.collectConsole(consoleEntries), this.collectNetwork(networkByRequest));
       await this.settle();
+      await cdpSession.send("Performance.enable").catch(() => {});
       await cdpSession.send("Profiler.enable");
       await cdpSession.send("Profiler.setSamplingInterval", {
         interval: DEFAULT_CPU_SAMPLING_INTERVAL_US,
@@ -362,17 +414,23 @@ export class BrowserSession {
       const writtenTracePath =
         tracePath && traceEvents.length > 0 ? await writeTraceFile(tracePath, traceEvents) : null;
 
+      // Read memory before axe runs so the snapshot reflects the app's footprint,
+      // not axe's injected globals.
+      const memory = await this.captureMemory(cdpSession);
+
       // Detach the page listeners before the accessibility audit so axe's injected
       // evaluate (and anything it logs) can't land in the captured signals.
       for (const detach of detachers) detach();
       detachers.length = 0;
+      const network = await this.finalizeNetwork(networkByRequest);
       const accessibility = await this.runAxe();
 
       return {
         result,
         console: consoleEntries,
-        network: [...networkByRequest.values()],
+        network,
         performance: { ...vitals, timeline: analyzeTimelineTrace(traceEvents) },
+        memory,
         accessibility,
         tracePath: writtenTracePath,
         profile: {

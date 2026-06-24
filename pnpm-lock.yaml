@@ -336,7 +336,7 @@ importers:
         version: 9.4.0
     optionalDependencies:
       playwright-core:
-        specifier: ^1.49.1
+        specifier: ^1.59.0
         version: 1.60.0
 
   packages/vscode-react-doctor:

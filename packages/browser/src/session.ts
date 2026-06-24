@@ -508,6 +508,11 @@ export class BrowserSession {
       });
       await cdpSession.send("Profiler.start");
       stopTimelineTrace = await this.startTimelineTrace(cdpSession);
+      // Recording start, captured the instant the CPU + timeline recorders are
+      // armed so the LoAF/CLS floor shares their window: entries at or before it
+      // (pre-action load jank, idle frames) are dropped, and the setup work below
+      // falls inside the window for every signal alike — not just the trace.
+      const recordingStartMs = await this.page.evaluate(() => performance.now()).catch(() => 0);
 
       const reactStarted = await this.page.evaluate(() => {
         if (!globalThis.__REACT_PERF__) return false;
@@ -516,10 +521,6 @@ export class BrowserSession {
       });
 
       const scrollBefore = await this.readScroll();
-      // Recording start: every LoAF/CLS entry at or before this is pre-action
-      // (load jank, idle frames) and gets dropped, so the perf report covers the
-      // same window as the CPU/timeline/React recorders started just above.
-      const recordingStartMs = await this.page.evaluate(() => performance.now()).catch(() => 0);
       let result: unknown = null;
       let evalError: string | null = null;
       let vitals = emptyVitals();

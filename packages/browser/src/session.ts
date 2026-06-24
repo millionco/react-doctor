@@ -307,6 +307,11 @@ export class BrowserSession {
         },
       };
     } finally {
+      // Stop V8 sampling before disabling, so a throw before the happy-path
+      // `Profiler.stop` above can't leave the persistent page recording and skew
+      // later runs. A second stop after a clean run just returns an ignored
+      // profile, so this is safe on every path.
+      await cdpSession.send("Profiler.stop").catch(() => {});
       await cdpSession.send("Profiler.disable").catch(() => {});
       await cdpSession.detach().catch(() => {});
       for (const detach of detachers) detach();

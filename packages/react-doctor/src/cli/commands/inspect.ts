@@ -243,13 +243,14 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       directory: requestedDirectory,
       outputFile: flags.jsonOut,
     });
+    // `--json-out` only takes effect in JSON mode, so the adoption metric lives
+    // here too — outside the guard it would also count `--json-out` without
+    // `--json`, where the flag is a no-op.
+    if (flags.jsonOut) recordCount(METRIC.jsonOutUsed, 1);
   }
   // Recorded after JSON mode is enabled so the metric's run attributes reflect
   // the true `jsonMode` (run context is rebuilt per emit in `record-metric.ts`).
   recordCount(METRIC.cliInvoked, 1, { command: "inspect" });
-  if (flags.jsonOut) {
-    recordCount(METRIC.jsonOutUsed, 1);
-  }
 
   try {
     validateModeFlags(flags);

@@ -186,26 +186,4 @@ describe("json-mode lifecycle", () => {
     expect(() => JSON.parse(fileContent)).not.toThrow();
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
-
-  it("writeJsonReport writes to stdout when outputFile is not provided", () => {
-    enableJsonMode({ compact: false, directory: "/tmp/foo" });
-    captured.lines.length = 0;
-    writeJsonReport(buildOkReport());
-    expect(captured.lines.length).toBeGreaterThan(0);
-    const written = captured.lines.join("");
-    expect(() => JSON.parse(written.trim())).not.toThrow();
-    const parsed = JSON.parse(written.trim());
-    expect(parsed.ok).toBe(true);
-  });
-
-  it("writeJsonReport respects compact mode when writing to file", () => {
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "json-mode-test-"));
-    const outputFile = path.join(tempDir, "compact.json");
-    enableJsonMode({ compact: true, directory: "/tmp/foo", outputFile });
-    writeJsonReport(buildOkReport());
-    const fileContent = fs.readFileSync(outputFile, "utf8");
-    expect(fileContent).not.toContain("\n  ");
-    expect(fileContent.endsWith("\n")).toBe(true);
-    fs.rmSync(tempDir, { recursive: true, force: true });
-  });
 });

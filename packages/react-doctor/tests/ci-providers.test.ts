@@ -297,6 +297,21 @@ describe("gitlabCiProvider", () => {
     expect(edited?.content).toContain("--scope full");
   });
 
+  it("ignores an install step and edits the real scan line", () => {
+    const withInstall = [
+      "react-doctor:",
+      "  script:",
+      "    - npm install react-doctor@latest",
+      "    - npx react-doctor@latest --blocking none --scope changed",
+      "",
+    ].join("\n");
+    expect(gitlabCiProvider.parseGate(withInstall)).toEqual(ADVISORY_GATE);
+    const edited = gitlabCiProvider.applyGate(withInstall, { ...ADVISORY_GATE, blocking: "error" });
+    expect(edited?.content).toContain("- npm install react-doctor@latest");
+    expect(edited?.content).toContain("--blocking error");
+    expect(edited?.content).not.toContain("install react-doctor@latest --blocking");
+  });
+
   it("reports whether a file wires up a React Doctor job", () => {
     const config = fs.readFileSync(
       gitlabCiProvider.scaffold(project.root, "main", ADVISORY_GATE).path,

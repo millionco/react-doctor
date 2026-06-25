@@ -21,11 +21,14 @@ const getGitlabConfigPath = (projectRoot: string): string =>
 // scan ("full") ignores the base, so it's left off.
 const BASE_FLAG = ' --base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"';
 
-// React Doctor's scan command is a YAML sequence item that invokes the npx
-// package spec (`- npx react-doctor@latest …`). The `react-doctor@` anchor
-// matches it with or without gate flags, and the `- ` prefix excludes comment
-// lines and other jobs' commands.
-const isScanLine = (line: string): boolean => /^\s*-\s/.test(line) && /react-doctor@/.test(line);
+// React Doctor's scan command RUNS the tool, as a YAML sequence item: via a
+// runner (`npx` / `pnpm dlx` / `yarn dlx` / `bunx`) or a bare `react-doctor`
+// command. Matching the run (not a mere `react-doctor@` mention) keeps an
+// `- npm install react-doctor@latest` step, a comment, or another job's command
+// from being mistaken for the scan line.
+const isScanLine = (line: string): boolean =>
+  /^\s*-\s/.test(line) &&
+  (/(?:npx|dlx|bunx)\s+react-doctor\b/.test(line) || /^\s*-\s+react-doctor\b/.test(line));
 
 const stripTrailingComment = (line: string): string => line.replace(/\s+#.*$/, "");
 

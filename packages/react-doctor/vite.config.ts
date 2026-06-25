@@ -2,8 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
+import { rewriteSkillPackageSpecifier } from "./src/cli/utils/rewrite-skill-package-specifier.js";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
+
+const DEFAULT_PACKAGE_SPECIFIER = "react-doctor@latest";
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf8")) as {
   version: string;
@@ -58,6 +61,47 @@ const copySkillsToDist = () => {
   }
 };
 
+// On a pkg.pr.new preview build (REACT_DOCTOR_PACKAGE_SPECIFIER set to the
+// preview's immutable tarball URL), rewrite the shipped skill's `npx` commands
+// to that URL so a beta tester's agent drives the previewed branch end to end.
+// A normal release leaves the env unset, so the skill ships verbatim
+// (`npx react-doctor@latest`). Runs after copySkillsToDist has populated dist.
+const bakeSkillPackageSpecifier = () => {
+  const specifier = process.env.REACT_DOCTOR_PACKAGE_SPECIFIER;
+  if (!specifier || specifier === DEFAULT_PACKAGE_SPECIFIER) return;
+  const rewriteMarkdownFiles = (directory: string): void => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        rewriteMarkdownFiles(entryPath);
+        continue;
+      }
+      if (!entry.name.endsWith(".md")) continue;
+      const original = fs.readFileSync(entryPath, "utf8");
+      const rewritten = rewriteSkillPackageSpecifier(original, specifier);
+      if (rewritten !== original) fs.writeFileSync(entryPath, rewritten);
+    }
+  };
+  rewriteMarkdownFiles(path.resolve(packageRoot, "dist/skills"));
+};
+
+// The React-profiler init script is a prebuilt browser-only asset, not JS the
+// CLI bundle imports. @react-doctor/browser is inlined into dist/cli.js, so its
+// session resolves the asset relative to its own output — which after bundling
+// is dist/cli.js. Copy it next to the CLI bundle so that path resolves in the
+// published tarball. (`dist/**/*.js` in package.json "files" then ships it.)
+const copyBrowserInjectToDist = () => {
+  const injectSource = path.resolve(packageRoot, "../browser/dist/inject");
+  const injectTarget = path.resolve(packageRoot, "dist/inject");
+  if (!fs.existsSync(injectSource)) {
+    throw new Error(
+      `Browser inject asset missing at ${injectSource}; build @react-doctor/browser first.`,
+    );
+  }
+  fs.rmSync(injectTarget, { recursive: true, force: true });
+  fs.cpSync(injectSource, injectTarget, { recursive: true });
+};
+
 export default defineConfig({
   pack: [
     {
@@ -70,13 +114,26 @@ export default defineConfig({
         // require so the runtime copy must be on disk), agent-install
         // (its jsonc-parser/yaml/toml transitives ship as UMD that
         // doesn't bundle cleanly), and the typescript compiler all
-        // stay external.
-        alwaysBundle: ["commander", "ora"],
+        // stay external. @react-doctor/browser and @react-doctor/debug
+        // are private (never published), so they MUST inline — declaring
+        // them here makes that explicit and fails the build loudly rather
+        // than emitting a phantom external import that resolves locally but
+        // breaks `npm i react-doctor` (the packed-CLI smoke caught exactly
+        // this when @react-doctor/debug went external on one platform).
+        alwaysBundle: ["@react-doctor/browser", "@react-doctor/debug", "commander", "ora"],
         neverBundle: [
           // Sentry bundles its own OpenTelemetry instrumentation chain
           // and resolves native/optional deps via require() at runtime;
           // keep it external so those lookups run untouched.
           "@sentry/node",
+          // playwright-core (a browser engine) backs only the debug and design
+          // jobs and is reached lazily through @react-doctor/browser's dynamic
+          // import, so keep it external — never inlined into the CLI's hot path.
+          // @react-doctor/browser itself is a thin wrapper, so it's bundled; that
+          // lets the published CLI load it without it being a runtime dependency (it
+          // is private), while playwright-core ships as an optional dependency
+          // installed only when present.
+          "playwright-core",
           "agent-install",
           // Config loading/editing: jiti (TS/JS config eval) + confbox
           // (JSONC parse) power the loader in @react-doctor/core (bundled
@@ -127,6 +184,8 @@ export default defineConfig({
       sourcemap: true,
       env: {
         VERSION: process.env.VERSION ?? packageJson.version,
+        REACT_DOCTOR_PACKAGE_SPECIFIER:
+          process.env.REACT_DOCTOR_PACKAGE_SPECIFIER ?? DEFAULT_PACKAGE_SPECIFIER,
       },
       // HACK: no shebang on dist/cli.js — the published `bin` entry is
       // bin/react-doctor.js, which owns the `#!/usr/bin/env node` line
@@ -139,6 +198,8 @@ export default defineConfig({
       hooks: {
         "build:done": () => {
           copySkillsToDist();
+          bakeSkillPackageSpecifier();
+          copyBrowserInjectToDist();
         },
       },
     },
@@ -162,6 +223,35 @@ export default defineConfig({
         ],
       },
       dts: true,
+      target: "node20",
+      platform: "node",
+      fixedExtension: false,
+    },
+    {
+      // Dedicated MCP-server entry the bin shim fast-paths to for
+      // `react-doctor mcp`. Inlines @react-doctor/mcp + its api/core/browser/
+      // debug deps and the MCP SDK; keeps the heavy/native engines external
+      // (same set as the CLI pack) so playwright-core stays an optional install
+      // and oxlint/oxc/deslop resolve their native bindings at runtime.
+      entry: { mcp: "./src/mcp.ts" },
+      deps: {
+        // @react-doctor/browser and @react-doctor/debug are reached transitively
+        // through @react-doctor/mcp here; both are private, so force-inline them
+        // (the same reason the CLI pack does) instead of letting them slip out as
+        // phantom external imports that break `npm i react-doctor`.
+        alwaysBundle: ["@react-doctor/browser", "@react-doctor/debug"],
+        neverBundle: [
+          "@sentry/node",
+          "playwright-core",
+          "deslop-js",
+          "oxc-parser",
+          "oxc-resolver",
+          "oxlint",
+          "oxlint-plugin-react-doctor",
+          "typescript",
+        ],
+      },
+      dts: false,
       target: "node20",
       platform: "node",
       fixedExtension: false,

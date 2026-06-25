@@ -32,6 +32,16 @@ export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
 
 export const GIT_HOOK_EXECUTABLE_MODE = 0o755;
 
+// Default output path for `browser screenshot` when `--out` is omitted.
+export const DEFAULT_SCREENSHOT_FILENAME = "react-doctor-screenshot.png";
+
+// Thresholds for flagging requests in the `eval --profile` network section: a
+// request slower than this, or with a larger encoded body, is called out.
+// Bytes are a binary MiB so the printed `kB`/`MB` (both /1024) read as whole
+// units.
+export const SLOW_REQUEST_MS = 500;
+export const HEAVY_REQUEST_BYTES = 1_048_576;
+
 export const AGENT_HOOK_TIMEOUT_SECONDS = 120;
 
 // Hard cap on the `gh repo view` default-branch probe. A healthy gh answers

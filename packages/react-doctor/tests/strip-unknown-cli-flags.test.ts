@@ -130,6 +130,66 @@ describe("stripUnknownCliFlags", () => {
     ]);
   });
 
+  it("keeps browser subcommand flags and consumes --cdp's value (no value leaks as a positional)", () => {
+    // Regression: without a browser flag spec, --cdp is dropped and its endpoint
+    // value leaks in as a second positional, so `browser eval <expr> --cdp <endpoint>`
+    // makes Commander throw "too many arguments".
+    expect(
+      stripUserArguments(["browser", "eval", "page.title()", "--cdp", "http://127.0.0.1:9456"]),
+    ).toEqual(["browser", "eval", "page.title()", "--cdp", "http://127.0.0.1:9456"]);
+    expect(stripUserArguments(["browser", "open", "https://example.com", "--no-launch"])).toEqual([
+      "browser",
+      "open",
+      "https://example.com",
+      "--no-launch",
+    ]);
+    expect(stripUserArguments(["browser", "screenshot", "--out", "shot.png", "--offline"])).toEqual(
+      ["browser", "screenshot", "--out", "shot.png"],
+    );
+    expect(
+      stripUserArguments(["browser", "screenshot", "--viewport", "390x844", "--out", "m.png"]),
+    ).toEqual(["browser", "screenshot", "--viewport", "390x844", "--out", "m.png"]);
+    expect(
+      stripUserArguments(["browser", "eval", 'page.locator("a").click()', "--cdp", "http://x"]),
+    ).toEqual(["browser", "eval", 'page.locator("a").click()', "--cdp", "http://x"]);
+    // `--profile` is a boolean (no value), so the expression positional after it
+    // must stay a positional and the flag must not swallow the next argument.
+    expect(
+      stripUserArguments([
+        "browser",
+        "eval",
+        'page.getByText("Next").click()',
+        "--profile",
+        "--offline",
+      ]),
+    ).toEqual(["browser", "eval", 'page.getByText("Next").click()', "--profile"]);
+    // `--headed` is a boolean (no value), so it survives without swallowing the
+    // expression positional after it.
+    expect(stripUserArguments(["browser", "eval", "--profile", "--headed", "--offline"])).toEqual([
+      "browser",
+      "eval",
+      "--profile",
+      "--headed",
+    ]);
+    expect(stripUserArguments(["browser", "close"])).toEqual(["browser", "close"]);
+  });
+
+  it("keeps debug serve flags and consumes their values (no value leaks as a positional)", () => {
+    expect(
+      stripUserArguments(["debug", "serve", "--port", "9000", "--daemon", "--offline"]),
+    ).toEqual(["debug", "serve", "--port", "9000", "--daemon"]);
+    expect(stripUserArguments(["debug", "--json"])).toEqual(["debug", "--json"]);
+    expect(stripUserArguments(["debug", "serve", "-p", "9000", "-s", "abc123", "-d"])).toEqual([
+      "debug",
+      "serve",
+      "-p",
+      "9000",
+      "-s",
+      "abc123",
+      "-d",
+    ]);
+  });
+
   it("keeps color flags on rules subcommands so the color resolver can see them", () => {
     expect(stripUserArguments(["rules", "list", "--no-color"])).toEqual([
       "rules",

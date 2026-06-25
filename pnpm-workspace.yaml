@@ -2,6 +2,10 @@ packages:
   - "packages/*"
 
 minimumReleaseAge: 7200
+# agent-install is our own first-party package, so the release-age vetting delay
+# (meant for third-party supply-chain risk) doesn't apply.
+minimumReleaseAgeExclude:
+  - agent-install
 trustPolicy: no-downgrade
 blockExoticSubdeps: true
 

@@ -1,6 +1,15 @@
 import { Command, Option } from "commander";
 import { CANONICAL_GITHUB_URL, highlighter } from "@react-doctor/core";
 import { flushSentry, initializeSentry } from "../instrument.js";
+import {
+  browserCloseAction,
+  browserEvalAction,
+  browserOpenAction,
+  browserScreenshotAction,
+  browserSnapshotAction,
+} from "./commands/browser.js";
+import { DEFAULT_HOST } from "@react-doctor/debug";
+import { debugServeAction } from "./commands/debug.js";
 import { inspectAction } from "./commands/inspect.js";
 import { installAction } from "./commands/install.js";
 import {
@@ -23,6 +32,7 @@ import { isDebugFlagEnabled } from "./utils/is-debug-flag.js";
 import { isExpectedUserError } from "./utils/is-expected-user-error.js";
 import { isJsonModeActive, writeJsonErrorReport } from "./utils/json-mode.js";
 import { normalizeHelpInvocation } from "./utils/normalize-help-command.js";
+import { parseViewport } from "./utils/parse-viewport.js";
 import { printDebugTrace } from "./utils/print-debug-trace.js";
 import { assertNoRemovedFlags } from "./utils/removed-cli-flags.js";
 import { reportErrorToSentry } from "./utils/report-error.js";
@@ -96,6 +106,7 @@ ${formatExampleLines([
   ["react-doctor install", "interactive setup"],
   ["react-doctor install --yes", "non-interactive; all detected agents"],
   ["react-doctor install --dry-run", "preview without writing files"],
+  ["react-doctor install --global", "install the skill for every project"],
   ["react-doctor install --agent-hooks", "also install native agent hooks"],
 ])}
 
@@ -213,12 +224,118 @@ program
   .description("Install the react-doctor skill into your coding agents and optional git hook")
   .option("-y, --yes", "skip prompts, install for all detected agents")
   .option("--dry-run", "show what would be installed without writing files")
+  .option(
+    "--global",
+    "install the skill in your home agent dirs (~/.cursor, ~/.claude, …) for every project instead of just this one",
+  )
   .option("--agent-hooks", "install native non-blocking agent hooks for Claude Code and Cursor")
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .addHelpText("after", renderInstallHelpEpilog)
   .action(installAction);
+
+const browser = program
+  .command("browser")
+  .description(
+    "Drive a real browser for the debug and design jobs (attaches to your running Chrome over CDP, launches one only as a fallback)",
+  );
+
+// Every browser subcommand attaches the same way, so they share the connection flags.
+const withConnectionOptions = (command: Command): Command =>
+  command
+    .option("--cdp <endpoint>", "CDP endpoint to attach to (default http://127.0.0.1:9222)")
+    .option("--no-launch", "fail instead of launching Chrome when no attach target exists")
+    .option(
+      "--headed",
+      "show the launched browser window (the launched Chrome is headless by default)",
+    );
+
+// Commands that render or measure the page also accept a one-shot emulated
+// viewport (e.g. a phone). It's applied via a CDP override that clears when the
+// command ends, so it never resizes the user's real window — which is why `open`
+// (whose job is to leave a persistent page behind) does not take it.
+const withRenderOptions = (command: Command): Command =>
+  withConnectionOptions(command).addOption(
+    new Option(
+      "--viewport <size>",
+      "emulate a viewport for this command, WIDTHxHEIGHT (e.g. 390x844)",
+    ).argParser(parseViewport),
+  );
+
+withConnectionOptions(
+  browser
+    .command("open <url>")
+    .description(
+      "Open a URL and keep the page, with the React DevTools profiler injected for `browser eval` (window.__REACT_PERF__)",
+    ),
+).action(browserOpenAction);
+
+withRenderOptions(
+  browser
+    .command("eval [expression]")
+    .description(
+      'Run Playwright code with `page` in scope, e.g. \'page.getByRole("button", { name: "Login" }).click()\'. Returns the expression\'s value, or — when it just acts — the resulting accessibility tree (so one call drives + shows the new state). Multiple statements work; reach page globals via page.evaluate(...). Add --profile to record the full runtime picture instead.',
+    )
+    .option(
+      "--profile",
+      "record console, network, performance (incl. a DevTools timeline trace), accessibility, and the React + CPU profiles while the expression runs (omit the expression to measure the live page idle)",
+    )
+    .option(
+      "--codegen",
+      "drive the expression, then write it as a runnable Playwright test (page.goto the current URL + the action + a no-console-error assertion) so a verified interaction becomes a regression test",
+    )
+    .option(
+      "--video [path]",
+      "record a .webm of the page while the expression runs, for playback in any eval mode (default react-doctor.webm; needs Playwright's ffmpeg: npx playwright install ffmpeg)",
+    )
+    .option(
+      "--out <path>",
+      "where to write the artifact: the raw timeline trace with --profile (default react-doctor-trace.json), or the Playwright spec with --codegen (default react-doctor.spec.ts)",
+    ),
+).action(browserEvalAction);
+
+withRenderOptions(
+  browser
+    .command("snapshot")
+    .description("Print the page's accessibility tree (a stable view of what is rendered)"),
+).action(browserSnapshotAction);
+
+withRenderOptions(
+  browser
+    .command("screenshot")
+    .description("Save a screenshot of the page")
+    .option("--out <path>", "output file path (default react-doctor-screenshot.png)"),
+).action(browserScreenshotAction);
+
+browser
+  .command("close")
+  .description(
+    "Stop the dedicated Chrome React Doctor launched (the persistent fallback); never touches a browser you started",
+  )
+  .action(browserCloseAction);
+
+const debug = program
+  .command("debug")
+  .description("Runtime debugging tools for the debug job (NDJSON logging server)");
+
+// `serve` is the default so `react-doctor debug` starts the server. Agents use
+// `--daemon` to get the endpoint and a detached server in one shot.
+debug
+  .command("serve", { isDefault: true })
+  .description("Start the NDJSON logging server the debug job posts runtime logs to")
+  .option("-p, --port <number>", "port to listen on (default: random)", (value) =>
+    parseInt(value, 10),
+  )
+  .option("-H, --host <address>", "host to bind to", DEFAULT_HOST)
+  .option("-s, --session-id <id>", "session id (default: random hex)")
+  .option(
+    "-l, --log-path <path>",
+    "log file path (default: <tmpdir>/react-doctor-debug/debug-<sessionId>.log)",
+  )
+  .option("-d, --daemon", "start in the background, print the server info, then exit")
+  .option("--json", "print the server info as one JSON line (for agents)")
+  .action(debugServeAction);
 
 program
   .command("version")
@@ -305,6 +422,17 @@ rules
 program
   .command("experimental-lsp", { hidden: false })
   .description("[experimental] run the React Doctor language server over stdio (for editors)")
+  .allowUnknownOption()
+  .action(() => {});
+
+// NOTE: like `experimental-lsp`, `react-doctor mcp` is fast-pathed by the bin
+// shim (bin/react-doctor.js) to a dedicated stdio entry, so the CLI layer
+// (commander / prompts / ora) never touches process.stdin before the MCP
+// transport attaches. Registered here only so `--help` lists it; its body
+// never runs in practice.
+program
+  .command("mcp")
+  .description("Run the React Doctor MCP server over stdio (doctor scan + browser jobs as tools)")
   .allowUnknownOption()
   .action(() => {});
 

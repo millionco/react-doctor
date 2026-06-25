@@ -120,11 +120,27 @@ jobs:
           pnpm build
           pnpm check:published-deps
 
+      # Pack the publishable tarballs ONCE on Linux — the OS the release and the
+      # pkg.pr.new preview actually build on — then verify the install here and
+      # hand the same artifact to the windows/macos `smoke-packed-cli-cross-os`
+      # job. A per-OS rebuild would test a bundle that never ships (Windows
+      # rollup intermittently externalizes a private workspace dep), so this
+      # tests the real artifact on every OS instead of a per-OS false negative.
       - name: Smoke test packed CLI install
-        if: ${{ matrix.node-version == '22.18.0' && (matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest') }}
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
         run: |
           pnpm build
-          pnpm smoke:packed-cli-install
+          pnpm smoke:packed-cli-install --pack-only "${{ runner.temp }}/packed-cli-tarballs"
+          pnpm smoke:packed-cli-install --tarballs "${{ runner.temp }}/packed-cli-tarballs"
+
+      - name: Upload packed CLI tarballs for cross-OS smoke
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: packed-cli-tarballs
+          path: ${{ runner.temp }}/packed-cli-tarballs/*.tgz
+          retention-days: 1
+          if-no-files-found: error
 
       # Allocates a real pseudo-terminal (`pty.openpty()`) so the CLI sees an
       # interactive TTY and renders the multiselect prompt, then asserts the
@@ -133,3 +149,43 @@ jobs:
       - name: Smoke test interactive TTY prompt
         if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
         run: pnpm smoke:tty-prompt
+
+  # Install the Linux-packed tarballs (the exact artifact npm + pkg.pr.new ship)
+  # on Windows and macOS. The CLI bundle is platform-independent JS, so the only
+  # per-OS variable is install + native-binding resolution + runtime — which is
+  # what we want to test, without a per-OS rebuild's bundling drift.
+  smoke-packed-cli-cross-os:
+    needs: test
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile --prefer-offline
+
+      # The verify step validates the CLI's JSON output against
+      # @react-doctor/core/schemas, so only core needs building here; the CLI
+      # under test comes from the downloaded Linux-packed tarball, never a local
+      # build of the package whose Windows bundle is the thing we're avoiding.
+      - run: pnpm --filter @react-doctor/core build
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: packed-cli-tarballs
+          path: ${{ runner.temp }}/packed-cli-tarballs
+
+      - name: Smoke test packed CLI install
+        run: pnpm smoke:packed-cli-install --tarballs "${{ runner.temp }}/packed-cli-tarballs"

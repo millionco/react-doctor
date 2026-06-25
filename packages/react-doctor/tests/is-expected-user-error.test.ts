@@ -10,6 +10,7 @@ import {
   ProjectNotFoundError,
   ReactDoctorError,
 } from "@react-doctor/core";
+import { BrowserEnvironmentError } from "@react-doctor/browser";
 import { CliInputError } from "../src/cli/utils/cli-input-error.js";
 import { isExpectedUserError } from "../src/cli/utils/is-expected-user-error.js";
 
@@ -55,6 +56,19 @@ describe("isExpectedUserError", () => {
       isExpectedUserError(
         new ReactDoctorError({ reason: new GitBaseBranchMissing({ branch: "main" }) }),
       ),
+    ).toBe(true);
+  });
+
+  it("classifies browser environment failures as expected user errors (a fresh machine missing Chrome / playwright-core gets the fix, not a crash report)", () => {
+    expect(
+      isExpectedUserError(
+        new BrowserEnvironmentError(
+          "The browser tools need playwright-core, which isn't installed.",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isExpectedUserError(new BrowserEnvironmentError("Could not find Google Chrome to launch.")),
     ).toBe(true);
   });
 

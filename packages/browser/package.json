@@ -1,0 +1,32 @@
+{
+  "name": "@react-doctor/browser",
+  "version": "0.5.4",
+  "private": true,
+  "description": "Internal: React Doctor's browser driver. Attaches to a running Chrome over CDP (or launches one) and keeps the page open across commands, backing the debug and design jobs.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && cross-env NODE_ENV=production vp pack",
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run"
+  },
+  "dependencies": {
+    "axe-core": "^4.10.2",
+    "playwright-core": "^1.59.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "esbuild": "^0.25.12",
+    "react-devtools-inline": "^6.1.5"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.13.0"
+  }
+}

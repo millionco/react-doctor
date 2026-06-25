@@ -1,4 +1,5 @@
-import { execFileSync } from "node:child_process";
+// Only used by the disabled hook tests below (see install-react-doctor.ts Step 3).
+// import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import type { SkillAgentType } from "agent-install";
@@ -117,6 +118,9 @@ interface RunInteractiveInstallReactDoctorForTestOptions {
   readonly promptQuestions?: unknown[];
   readonly detectedAgents?: readonly SkillAgentType[];
   readonly lastSelectedAgents?: readonly SkillAgentType[];
+  // Answer to the "Where should the skill be installed?" prompt. Defaults to
+  // "local" so tests never write into the real home agent dirs.
+  readonly installScope?: "local" | "global";
 }
 
 const runInteractiveInstallReactDoctorForTest = async (
@@ -141,6 +145,8 @@ const runInteractiveInstallReactDoctorForTest = async (
     if (typeof questionName !== "string") return answers;
     if (questionName === "agents") {
       answers[questionName] = ["cursor"];
+    } else if (questionName === "installScope") {
+      answers[questionName] = options.installScope ?? "local";
     } else if (questionName === "ciChoice") {
       answers[questionName] = options.setupOptions.includes("workflow") ? "ci-yes" : "ci-no";
     } else if (questionName === "upgradeChoice") {
@@ -626,105 +632,108 @@ describe("runInstallReactDoctor", () => {
     ).toBe(true);
   });
 
-  it("--yes installs a non-blocking pre-commit hook when a git hook target is detected", async () => {
-    writeValidSkill(fixture.sourceDir);
-    const hookPath = path.join(fixture.projectRoot, ".git/hooks/pre-commit");
+  // Optional pre-commit / agent-hook setup is disabled in `install` (the prompt
+  // and the install steps are commented out), so these hook-installation tests
+  // are commented out alongside it. Re-enable them when the feature is restored.
+  // it("--yes installs a non-blocking pre-commit hook when a git hook target is detected", async () => {
+  //   writeValidSkill(fixture.sourceDir);
+  //   const hookPath = path.join(fixture.projectRoot, ".git/hooks/pre-commit");
+  //
+  //   await runInstallReactDoctorForTest({
+  //     yes: true,
+  //     sourceDir: fixture.sourceDir,
+  //     projectRoot: fixture.projectRoot,
+  //     detectedAgents: ["cursor"],
+  //     gitHookPath: hookPath,
+  //   });
+  //
+  //   expect(
+  //     fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md")),
+  //   ).toBe(true);
+  //   expect(fs.readFileSync(hookPath, "utf8")).toContain("react-doctor --staged --blocking warning");
+  //   expect(fs.existsSync(path.join(fixture.projectRoot, ".react-doctor/hooks/pre-commit"))).toBe(
+  //     false,
+  //   );
+  // });
 
-    await runInstallReactDoctorForTest({
-      yes: true,
-      sourceDir: fixture.sourceDir,
-      projectRoot: fixture.projectRoot,
-      detectedAgents: ["cursor"],
-      gitHookPath: hookPath,
-    });
+  // it("--agent-hooks installs native hooks for selected supported agents", async () => {
+  //   writeValidSkill(fixture.sourceDir);
+  //
+  //   await runInstallReactDoctorForTest({
+  //     yes: true,
+  //     agentHooks: true,
+  //     sourceDir: fixture.sourceDir,
+  //     projectRoot: fixture.projectRoot,
+  //     detectedAgents: ["cursor", "claude-code", "codex"],
+  //     gitHookPath: null,
+  //   });
+  //
+  //   expect(
+  //     fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md")),
+  //   ).toBe(true);
+  //   expect(
+  //     fs.existsSync(path.join(fixture.projectRoot, ".claude/skills/react-doctor/SKILL.md")),
+  //   ).toBe(true);
+  //   expect(
+  //     fs.readFileSync(path.join(fixture.projectRoot, ".claude/settings.json"), "utf8"),
+  //   ).toContain("PostToolBatch");
+  //   expect(fs.readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
+  //     "postToolUse",
+  //   );
+  //   expect(fs.existsSync(path.join(fixture.projectRoot, ".codex/hooks.json"))).toBe(false);
+  // });
 
-    expect(
-      fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md")),
-    ).toBe(true);
-    expect(fs.readFileSync(hookPath, "utf8")).toContain("react-doctor --staged --blocking warning");
-    expect(fs.existsSync(path.join(fixture.projectRoot, ".react-doctor/hooks/pre-commit"))).toBe(
-      false,
-    );
-  });
-
-  it("--agent-hooks installs native hooks for selected supported agents", async () => {
-    writeValidSkill(fixture.sourceDir);
-
-    await runInstallReactDoctorForTest({
-      yes: true,
-      agentHooks: true,
-      sourceDir: fixture.sourceDir,
-      projectRoot: fixture.projectRoot,
-      detectedAgents: ["cursor", "claude-code", "codex"],
-      gitHookPath: null,
-    });
-
-    expect(
-      fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md")),
-    ).toBe(true);
-    expect(
-      fs.existsSync(path.join(fixture.projectRoot, ".claude/skills/react-doctor/SKILL.md")),
-    ).toBe(true);
-    expect(
-      fs.readFileSync(path.join(fixture.projectRoot, ".claude/settings.json"), "utf8"),
-    ).toContain("PostToolBatch");
-    expect(fs.readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
-      "postToolUse",
-    );
-    expect(fs.existsSync(path.join(fixture.projectRoot, ".codex/hooks.json"))).toBe(false);
-  });
-
-  it("prompts once for optional setup and installs only selected options", async () => {
-    writeValidSkill(fixture.sourceDir);
-    writePackageJson(fixture.projectRoot, { scripts: {} });
-    const promptQuestions: unknown[] = [];
-    const hookPath = path.join(fixture.projectRoot, ".git/hooks/pre-commit");
-    const workflowPath = path.join(fixture.projectRoot, ".github/workflows/react-doctor.yml");
-
-    await runInteractiveInstallReactDoctorForTest({
-      sourceDir: fixture.sourceDir,
-      projectRoot: fixture.projectRoot,
-      gitHookPath: hookPath,
-      setupOptions: ["workflow"],
-      promptQuestions,
-    });
-
-    expect(promptQuestions).toHaveLength(3);
-    // CI is asked first, as its own dedicated question (the shared pitch).
-    expect(promptQuestions[0]).toEqual(
-      expect.objectContaining({ type: "select", name: "ciChoice" }),
-    );
-    expect(promptQuestions[2]).toEqual(
-      expect.objectContaining({
-        type: "multiselect",
-        name: "setupOptions",
-        message: "Select additional React Doctor setup:",
-      }),
-    );
-    expect(promptQuestions[2]).toEqual(
-      expect.objectContaining({
-        choices: expect.arrayContaining([
-          expect.objectContaining({ value: "skip" }),
-          expect.objectContaining({ value: "git-hook" }),
-          expect.objectContaining({ value: "agent-hooks" }),
-        ]),
-      }),
-    );
-    expect(fs.existsSync(hookPath)).toBe(false);
-    expect(fs.existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
-    const workflowContent = fs.readFileSync(workflowPath, "utf8");
-    expect(workflowContent).toContain("name: React Doctor");
-    expect(workflowContent).toContain("pull-requests: write");
-    expect(workflowContent).toContain("issues: write");
-    expect(workflowContent).toContain("statuses: write");
-    expect(workflowContent).toContain("actions/checkout@v5");
-    expect(workflowContent).toContain("millionco/react-doctor@v2");
-    expect(workflowContent).toContain("Advisory by default");
-    expect(workflowContent).toContain("#   blocking: error");
-    expect(workflowContent).not.toContain("\n        with:\n");
-    expect(workflowContent).not.toContain("github-token");
-    expect(workflowContent).not.toContain("diff: main");
-  });
+  // it("prompts once for optional setup and installs only selected options", async () => {
+  //   writeValidSkill(fixture.sourceDir);
+  //   writePackageJson(fixture.projectRoot, { scripts: {} });
+  //   const promptQuestions: unknown[] = [];
+  //   const hookPath = path.join(fixture.projectRoot, ".git/hooks/pre-commit");
+  //   const workflowPath = path.join(fixture.projectRoot, ".github/workflows/react-doctor.yml");
+  //
+  //   await runInteractiveInstallReactDoctorForTest({
+  //     sourceDir: fixture.sourceDir,
+  //     projectRoot: fixture.projectRoot,
+  //     gitHookPath: hookPath,
+  //     setupOptions: ["workflow"],
+  //     promptQuestions,
+  //   });
+  //
+  //   expect(promptQuestions).toHaveLength(3);
+  //   // CI is asked first, as its own dedicated question (the shared pitch).
+  //   expect(promptQuestions[0]).toEqual(
+  //     expect.objectContaining({ type: "select", name: "ciChoice" }),
+  //   );
+  //   expect(promptQuestions[2]).toEqual(
+  //     expect.objectContaining({
+  //       type: "multiselect",
+  //       name: "setupOptions",
+  //       message: "Select additional React Doctor setup:",
+  //     }),
+  //   );
+  //   expect(promptQuestions[2]).toEqual(
+  //     expect.objectContaining({
+  //       choices: expect.arrayContaining([
+  //         expect.objectContaining({ value: "skip" }),
+  //         expect.objectContaining({ value: "git-hook" }),
+  //         expect.objectContaining({ value: "agent-hooks" }),
+  //       ]),
+  //     }),
+  //   );
+  //   expect(fs.existsSync(hookPath)).toBe(false);
+  //   expect(fs.existsSync(path.join(fixture.projectRoot, ".cursor/hooks.json"))).toBe(false);
+  //   const workflowContent = fs.readFileSync(workflowPath, "utf8");
+  //   expect(workflowContent).toContain("name: React Doctor");
+  //   expect(workflowContent).toContain("pull-requests: write");
+  //   expect(workflowContent).toContain("issues: write");
+  //   expect(workflowContent).toContain("statuses: write");
+  //   expect(workflowContent).toContain("actions/checkout@v5");
+  //   expect(workflowContent).toContain("millionco/react-doctor@v2");
+  //   expect(workflowContent).toContain("Advisory by default");
+  //   expect(workflowContent).toContain("#   blocking: error");
+  //   expect(workflowContent).not.toContain("\n        with:\n");
+  //   expect(workflowContent).not.toContain("github-token");
+  //   expect(workflowContent).not.toContain("diff: main");
+  // });
 
   const findAgentChoiceSelection = (promptQuestions: unknown[]): Map<string, boolean> => {
     const agentQuestion = promptQuestions.find(
@@ -785,6 +794,36 @@ describe("runInstallReactDoctor", () => {
     expect(selectionByAgent.get("goose")).toBe(true);
     expect(selectionByAgent.get("claude-code")).toBe(false);
     expect(selectionByAgent.get("cursor")).toBe(false);
+  });
+
+  it("prompts for skill install location and installs into the project on the default (local) choice", async () => {
+    writeValidSkill(fixture.sourceDir);
+    writePackageJson(fixture.projectRoot, { scripts: {} });
+    const promptQuestions: unknown[] = [];
+
+    await runInteractiveInstallReactDoctorForTest({
+      sourceDir: fixture.sourceDir,
+      projectRoot: fixture.projectRoot,
+      gitHookPath: path.join(fixture.projectRoot, ".git/hooks/pre-commit"),
+      setupOptions: [],
+      promptQuestions,
+      installScope: "local",
+    });
+
+    const scopeQuestion = promptQuestions.find(
+      (question): question is { choices: Array<{ value: string }> } =>
+        typeof question === "object" &&
+        question !== null &&
+        "name" in question &&
+        (question as { name?: unknown }).name === "installScope",
+    );
+    expect(scopeQuestion).toBeDefined();
+    expect(scopeQuestion!.choices.map((choice) => choice.value)).toEqual(["local", "global"]);
+    // The default (local) choice copies the skill into this repo's agent dir,
+    // not the home agent dirs.
+    expect(
+      fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md")),
+    ).toBe(true);
   });
 
   it("remembers the interactive selection so the next install defaults to it", async () => {
@@ -862,35 +901,36 @@ describe("runInstallReactDoctor", () => {
     expect(fs.existsSync(path.join(fixture.projectRoot, ".claude/settings.json"))).toBe(false);
   });
 
-  it("--yes installs Git and agent hooks in CI using real git detection", async () => {
-    writeValidSkill(fixture.sourceDir);
-    process.env.CI = "1";
-    execFileSync("git", ["init"], {
-      cwd: fixture.projectRoot,
-      stdio: "ignore",
-    });
-
-    await runInstallReactDoctorForTest({
-      yes: true,
-      agentHooks: true,
-      sourceDir: fixture.sourceDir,
-      projectRoot: fixture.projectRoot,
-      detectedAgents: ["cursor", "claude-code"],
-    });
-
-    expect(
-      fs.readFileSync(path.join(fixture.projectRoot, ".git/hooks/pre-commit"), "utf8"),
-    ).toContain("react-doctor --staged --blocking warning");
-    expect(fs.existsSync(path.join(fixture.projectRoot, ".react-doctor/hooks/pre-commit"))).toBe(
-      false,
-    );
-    expect(fs.readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
-      "postToolUse",
-    );
-    expect(
-      fs.readFileSync(path.join(fixture.projectRoot, ".claude/settings.json"), "utf8"),
-    ).toContain("PostToolBatch");
-  });
+  // Disabled with the optional pre-commit / agent-hook setup (see install-react-doctor.ts Step 3).
+  // it("--yes installs Git and agent hooks in CI using real git detection", async () => {
+  //   writeValidSkill(fixture.sourceDir);
+  //   process.env.CI = "1";
+  //   execFileSync("git", ["init"], {
+  //     cwd: fixture.projectRoot,
+  //     stdio: "ignore",
+  //   });
+  //
+  //   await runInstallReactDoctorForTest({
+  //     yes: true,
+  //     agentHooks: true,
+  //     sourceDir: fixture.sourceDir,
+  //     projectRoot: fixture.projectRoot,
+  //     detectedAgents: ["cursor", "claude-code"],
+  //   });
+  //
+  //   expect(
+  //     fs.readFileSync(path.join(fixture.projectRoot, ".git/hooks/pre-commit"), "utf8"),
+  //   ).toContain("react-doctor --staged --blocking warning");
+  //   expect(fs.existsSync(path.join(fixture.projectRoot, ".react-doctor/hooks/pre-commit"))).toBe(
+  //     false,
+  //   );
+  //   expect(fs.readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
+  //     "postToolUse",
+  //   );
+  //   expect(
+  //     fs.readFileSync(path.join(fixture.projectRoot, ".claude/settings.json"), "utf8"),
+  //   ).toContain("PostToolBatch");
+  // });
 
   it("--yes upgrades an existing @v1 workflow to @v2 in place", async () => {
     writeValidSkill(fixture.sourceDir);
@@ -1090,30 +1130,31 @@ describe("runInstallReactDoctor", () => {
     expect(fs.existsSync(workflowPath)).toBe(false);
   });
 
-  it("CI skips prompts without --yes but does not install the optional Git hook", async () => {
-    writeValidSkill(fixture.sourceDir);
-    process.env.CI = "1";
-    execFileSync("git", ["init"], {
-      cwd: fixture.projectRoot,
-      stdio: "ignore",
-    });
-
-    await runInstallReactDoctorForTest({
-      agentHooks: true,
-      sourceDir: fixture.sourceDir,
-      projectRoot: fixture.projectRoot,
-      detectedAgents: ["cursor"],
-    });
-
-    expect(
-      fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md")),
-    ).toBe(true);
-    expect(fs.readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
-      "postToolUse",
-    );
-    expect(fs.existsSync(path.join(fixture.projectRoot, ".git/hooks/pre-commit"))).toBe(false);
-    expect(fs.existsSync(path.join(fixture.projectRoot, ".react-doctor/hooks/pre-commit"))).toBe(
-      false,
-    );
-  });
+  // Disabled with the optional pre-commit / agent-hook setup (see install-react-doctor.ts Step 3).
+  // it("CI skips prompts without --yes but does not install the optional Git hook", async () => {
+  //   writeValidSkill(fixture.sourceDir);
+  //   process.env.CI = "1";
+  //   execFileSync("git", ["init"], {
+  //     cwd: fixture.projectRoot,
+  //     stdio: "ignore",
+  //   });
+  //
+  //   await runInstallReactDoctorForTest({
+  //     agentHooks: true,
+  //     sourceDir: fixture.sourceDir,
+  //     projectRoot: fixture.projectRoot,
+  //     detectedAgents: ["cursor"],
+  //   });
+  //
+  //   expect(
+  //     fs.existsSync(path.join(fixture.projectRoot, ".agents/skills/react-doctor/SKILL.md")),
+  //   ).toBe(true);
+  //   expect(fs.readFileSync(path.join(fixture.projectRoot, ".cursor/hooks.json"), "utf8")).toContain(
+  //     "postToolUse",
+  //   );
+  //   expect(fs.existsSync(path.join(fixture.projectRoot, ".git/hooks/pre-commit"))).toBe(false);
+  //   expect(fs.existsSync(path.join(fixture.projectRoot, ".react-doctor/hooks/pre-commit"))).toBe(
+  //     false,
+  //   );
+  // });
 });

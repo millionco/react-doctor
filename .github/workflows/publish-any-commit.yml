@@ -30,17 +30,31 @@ jobs:
 
       - run: pnpm install --frozen-lockfile --prefer-offline
 
+      # Bake the preview's own immutable pkg.pr.new URL into the build so the
+      # shipped skill's `npx` commands and `react-doctor install` reference this
+      # exact commit — a beta tester then exercises the previewed branch instead
+      # of silently falling back to the published `react-doctor@latest`.
       - run: pnpm build
+        env:
+          REACT_DOCTOR_PACKAGE_SPECIFIER: https://pkg.pr.new/react-doctor@${{ github.sha }}
 
       - name: Publish packages (retry on transient failures)
         run: |
           max_attempts=4
           attempt=1
           while [ "$attempt" -le "$max_attempts" ]; do
+            # deslop-js MUST be published too: react-doctor depends on it
+            # (`deslop-js: workspace:*`), and pkg-pr-new only rewrites a
+            # workspace dep to a preview URL when that package is in the publish
+            # set. Omitting it shipped a tarball with a raw `workspace:*` spec
+            # that `npx https://pkg.pr.new/react-doctor@<sha> install` rejected
+            # with EUNSUPPORTEDPROTOCOL. (The private @react-doctor/* workspace
+            # devDependencies stay `workspace:*` but are ignored on install.)
             if pnpm dlx pkg-pr-new publish \
               ./packages/react-doctor \
               ./packages/oxlint-plugin-react-doctor \
-              ./packages/eslint-plugin-react-doctor; then
+              ./packages/eslint-plugin-react-doctor \
+              ./packages/deslop-js; then
               exit 0
             fi
 

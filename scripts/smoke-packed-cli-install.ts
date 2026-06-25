@@ -97,54 +97,62 @@ const assertFixtureExists = (): void => {
   process.exit(1);
 };
 
-const main = (): void => {
-  assertFixtureExists();
+// Pack the CLI together with its unbundled workspace dependencies:
+// changesets version-bumps and publishes them as a pinned set, so installing
+// the tarballs mirrors what a release ships. The CLI keeps
+// `oxlint-plugin-react-doctor` and `deslop-js` external (neverBundle — both
+// wrap native binaries), so installing only the CLI tarball would resolve them
+// from the registry and reject any PR before their matching versions are
+// published (e.g. a workspace-locked `deslop-js@0.5.x` that npm has never seen).
+const packTarballs = (packDirectory: string): void => {
+  fs.mkdirSync(packDirectory, { recursive: true });
+  runCommand({
+    command: "pnpm",
+    args: [
+      "--filter",
+      "react-doctor",
+      "--filter",
+      "oxlint-plugin-react-doctor",
+      "--filter",
+      "deslop-js",
+      "pack",
+      "--pack-destination",
+      packDirectory,
+    ],
+    cwd: REPOSITORY_ROOT,
+    needsShell: process.platform === "win32",
+  });
+  assertTarballPaths(packDirectory);
+};
 
-  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-packed-cli-"));
-  const packDirectory = path.join(temporaryDirectory, "pack");
-  const installDirectory = path.join(temporaryDirectory, "install");
+const assertTarballPaths = (packDirectory: string): readonly string[] => {
+  const tarballs = fs.readdirSync(packDirectory).filter((fileName) => fileName.endsWith(".tgz"));
+  if (tarballs.length !== 3) {
+    console.error(
+      `Expected exactly three packed tarballs in ${packDirectory}, found ${tarballs.length}.`,
+    );
+    process.exit(1);
+  }
+  return tarballs.map((tarball) => path.join(packDirectory, tarball));
+};
+
+// Install the packed tarballs into a throwaway project and assert the published
+// CLI installs cleanly, pulls no forbidden transitives, reports a real version,
+// and emits a schema-valid JSON report. Split from packing so CI can pack once
+// on Linux (the OS that builds the published bundle) and run this verify step on
+// Windows/macOS against that exact artifact — the platform-divergent bundling a
+// per-OS rebuild would introduce never ships, so testing a per-OS rebuild only
+// produced false negatives.
+const verifyTarballs = (packDirectory: string): void => {
+  assertFixtureExists();
+  const tarballPaths = assertTarballPaths(packDirectory);
+  const installDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-packed-cli-"));
 
   try {
-    fs.mkdirSync(packDirectory);
-    fs.mkdirSync(installDirectory);
     fs.writeFileSync(
       path.join(installDirectory, "package.json"),
       `${JSON.stringify({ name: "react-doctor-packed-cli-smoke", private: true }, null, 2)}\n`,
     );
-
-    // Pack the CLI together with its unbundled workspace dependencies:
-    // changesets version-bumps and publishes them as a pinned set, so
-    // installing the tarballs mirrors what a release ships. The CLI keeps
-    // `oxlint-plugin-react-doctor` and `deslop-js` external (neverBundle —
-    // both wrap native binaries), so installing only the CLI tarball would
-    // resolve them from the registry and reject any PR before their matching
-    // versions are published (e.g. a workspace-locked `deslop-js@0.5.x` that
-    // npm has never seen).
-    runCommand({
-      command: "pnpm",
-      args: [
-        "--filter",
-        "react-doctor",
-        "--filter",
-        "oxlint-plugin-react-doctor",
-        "--filter",
-        "deslop-js",
-        "pack",
-        "--pack-destination",
-        packDirectory,
-      ],
-      cwd: REPOSITORY_ROOT,
-      needsShell: process.platform === "win32",
-    });
-
-    const tarballs = fs.readdirSync(packDirectory).filter((fileName) => fileName.endsWith(".tgz"));
-    if (tarballs.length !== 3) {
-      console.error(
-        `Expected exactly three packed tarballs in ${packDirectory}, found ${tarballs.length}.`,
-      );
-      process.exit(1);
-    }
-    const tarballPaths = tarballs.map((tarball) => path.join(packDirectory, tarball));
 
     runCommand({
       command: "npm",
@@ -212,6 +220,43 @@ const main = (): void => {
     console.log(
       `Packed install smoke OK: version=${version} diagnostics=${decoded.diagnostics.length} forbiddenPackages=0`,
     );
+  } finally {
+    fs.rmSync(installDirectory, { recursive: true, force: true });
+  }
+};
+
+const readDirectoryArgument = (flag: string): string | null => {
+  const flagIndex = process.argv.indexOf(flag);
+  if (flagIndex === -1) return null;
+  const value = process.argv[flagIndex + 1];
+  if (value === undefined || value.startsWith("--")) {
+    console.error(`${flag} requires a directory path.`);
+    process.exit(1);
+  }
+  return path.resolve(value);
+};
+
+const main = (): void => {
+  // `--pack-only <dir>` packs the publishable tarballs for a CI artifact upload;
+  // `--tarballs <dir>` verifies a previously packed set (the cross-OS leg). With
+  // neither flag, pack and verify in one throwaway directory (local default).
+  const packOnlyDirectory = readDirectoryArgument("--pack-only");
+  if (packOnlyDirectory !== null) {
+    packTarballs(packOnlyDirectory);
+    console.log(`Packed CLI tarballs into ${packOnlyDirectory}`);
+    return;
+  }
+
+  const tarballsDirectory = readDirectoryArgument("--tarballs");
+  if (tarballsDirectory !== null) {
+    verifyTarballs(tarballsDirectory);
+    return;
+  }
+
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-packed-cli-"));
+  try {
+    packTarballs(temporaryDirectory);
+    verifyTarballs(temporaryDirectory);
   } finally {
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   }

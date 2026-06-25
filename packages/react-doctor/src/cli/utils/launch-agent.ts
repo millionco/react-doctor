@@ -93,14 +93,9 @@ export const resolveWindowsCmdEntryScript = (command: string): string | null => 
   return null;
 };
 
-const spawnAgent = (
-  command: string,
-  args: ReadonlyArray<string>,
-  cwd: string,
-  shell = false,
-): Promise<number> =>
+const spawnAgent = (command: string, args: ReadonlyArray<string>, cwd: string): Promise<number> =>
   new Promise<number>((resolve, reject) => {
-    const child = spawn(command, [...args], { cwd, stdio: "inherit", shell });
+    const child = spawn(command, [...args], { cwd, stdio: "inherit" });
     child.on("error", reject);
     child.on("close", (code) => resolve(code ?? 0));
   });
@@ -124,16 +119,6 @@ export const launchCliAgent = async (
     const entryScript = resolveWindowsCmdEntryScript(binary);
     if (entryScript) {
       return spawnAgent(process.execPath, [entryScript, ...agentArgs], cwd);
-    }
-
-    const pathDirectories = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
-    for (const directory of pathDirectories) {
-      const cmdFilePath = path.join(directory, `${binary}.cmd`);
-      try {
-        if (fs.statSync(cmdFilePath).isFile()) {
-          return spawnAgent(binary, agentArgs, cwd, true);
-        }
-      } catch {}
     }
   }
 

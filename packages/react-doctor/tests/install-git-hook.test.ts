@@ -717,7 +717,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () =>
     expect(fs.readFileSync(invocationPath, "utf8")).toBe("--staged\n--blocking\nwarning\n");
   });
 
-  it("prints a minimal non-invasive prompt during a real git commit", () => {
+  it("surfaces the diagnostics and still allows the commit (non-blocking)", () => {
     execFileSync("git", ["init"], { cwd: fixture.projectRoot, stdio: "ignore" });
     execFileSync("git", ["config", "user.email", "doctor@example.com"], {
       cwd: fixture.projectRoot,
@@ -768,8 +768,10 @@ describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () =>
     expect(commitResult.stderr).toContain(
       "Want them fixed? Ask your agent to run that command and resolve the findings.",
     );
-    expect(commitResult.stderr).not.toContain("noisy stdout diagnostic");
-    expect(commitResult.stderr).not.toContain("noisy stderr diagnostic");
+    // The scan output is surfaced (not swallowed) so the developer sees what was
+    // flagged — #969. The commit still succeeds (non-blocking).
+    expect(commitResult.stderr).toContain("noisy stdout diagnostic");
+    expect(commitResult.stderr).toContain("noisy stderr diagnostic");
     expect(commitResult.stderr).not.toContain("Stop commit");
     expect(fs.readFileSync(invocationPath, "utf8")).toBe("--staged\n--blocking\nwarning\n");
     expect(

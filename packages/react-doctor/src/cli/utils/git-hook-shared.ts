@@ -18,6 +18,9 @@ export const NON_BLOCKING_REACT_DOCTOR_COMMAND = [
   `if ${REACT_DOCTOR_COMMAND} > "$react_doctor_output" 2>&1; then`,
   'rm -f "$react_doctor_output";',
   "else",
+  // Show the findings before deleting the temp file — non-blocking (the commit
+  // still proceeds), but no longer swallowing what was reported (#969).
+  'cat "$react_doctor_output" >&2;',
   'rm -f "$react_doctor_output";',
   `printf "%s\\n" "React Doctor found staged regressions." "Run ${REACT_DOCTOR_COMMAND} to inspect." "Want them fixed? Ask your agent to run that command and resolve the findings." >&2;`,
   "fi",

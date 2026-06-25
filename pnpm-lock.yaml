@@ -92,8 +92,8 @@ importers:
         specifier: ^7.7.4
         version: 7.7.4
       typescript:
-        specifier: '>=5.0.4 <7'
-        version: 6.0.3
+        specifier: '>=5.0.4 <6'
+        version: 5.9.3
     devDependencies:
       '@effect/vitest':
         specifier: 4.0.0-beta.70
@@ -239,7 +239,7 @@ importers:
         specifier: ^2.4.2
         version: 2.4.2
       typescript:
-        specifier: '>=5.0.4 <7'
+        specifier: '>=5.0.4 <6'
         version: 5.9.3
       vscode-languageserver:
         specifier: ^9.0.1

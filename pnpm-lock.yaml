@@ -139,8 +139,8 @@ importers:
         specifier: ^11.19.1
         version: 11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
       typescript:
-        specifier: ^6.0.3
-        version: 6.0.3
+        specifier: '>=5.0.4 <6'
+        version: 5.9.3
     devDependencies:
       '@types/minimatch':
         specifier: ^5.1.2
@@ -239,7 +239,7 @@ importers:
         specifier: ^2.4.2
         version: 2.4.2
       typescript:
-        specifier: '>=5.0.4 <7'
+        specifier: '>=5.0.4 <6'
         version: 5.9.3
       vscode-languageserver:
         specifier: ^9.0.1

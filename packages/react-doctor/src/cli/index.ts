@@ -16,6 +16,7 @@ import {
 import { versionAction } from "./commands/version.js";
 import { whyAction } from "./commands/why.js";
 import { applyColorPreference } from "./utils/apply-color-preference.js";
+import { ensureWindowsUtf8Console } from "./utils/ensure-windows-utf8-console.js";
 import { exitGracefully } from "./utils/exit-gracefully.js";
 import { guardStdin } from "./utils/guard-stdin.js";
 import { handleError, handleUserError } from "./utils/handle-error.js";
@@ -333,6 +334,10 @@ if (process.argv.includes("-V") && !strippedArgv.includes("-V")) {
 // trailing tokens like `react-doctor help --no-color`) so the choice
 // reaches help output too.
 applyColorPreference(strippedArgv);
+
+// Switch the Windows console to UTF-8 before any output, so the diagnostics and
+// handoff payload don't mojibake on a non-UTF-8 code page (issue #956).
+ensureWindowsUtf8Console();
 
 // 12-factor (#1): map `help` / `help <command>` to Commander's `--help`.
 const argv = normalizeHelpInvocation(strippedArgv, knownCommands);

@@ -1,0 +1,8 @@
+{
+  "name": "jsx-namespace-member",
+  "main": "src/index.tsx",
+  "dependencies": {
+    "react": "^18.0.0",
+    "styled-components": "^6.0.0"
+  }
+}

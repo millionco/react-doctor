@@ -7,7 +7,9 @@
 // Two flavors live here, both safe to keep always-fresh:
 //   - Source-file readers — resolve imports / walk ancestor layouts and read
 //     OTHER source files (`no-barrel-import`, the two `nextjs-*` rules,
-//     `no-mutating-reducer-state`). These MUST stay uncached.
+//     `no-mutating-reducer-state`, and `rn-no-raw-text`, which resolves an
+//     imported component to see whether it forwards its children into a
+//     `<Text>` or a non-text host). These MUST stay uncached.
 //   - Project-config readers — `rn-prefer-expo-image` classifies the owning
 //     package by reading the nearest `package.json`. That input is not folded
 //     into the ruleset hash, so it is carved here too (conservative, and only
@@ -21,5 +23,6 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "nextjs-missing-metadata",
   "nextjs-no-use-search-params-without-suspense",
   "no-mutating-reducer-state",
+  "rn-no-raw-text",
   "rn-prefer-expo-image",
 ]);

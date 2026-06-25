@@ -716,7 +716,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () =>
     expect(fs.readFileSync(invocationPath, "utf8")).toBe("--staged\n--blocking\nwarning\n");
   });
 
-  it("blocks commit when react-doctor finds regressions", () => {
+  it("blocks the commit and surfaces the diagnostics when react-doctor finds regressions", () => {
     execFileSync("git", ["init"], { cwd: fixture.projectRoot, stdio: "ignore" });
     execFileSync("git", ["config", "user.email", "doctor@example.com"], {
       cwd: fixture.projectRoot,

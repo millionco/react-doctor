@@ -101,6 +101,7 @@ export * from "./utils/resolve-lint-batch-ordering.js";
 export * from "./utils/resolve-scan-concurrency.js";
 export * from "./utils/sort-diagnostics-stable.js";
 export * from "./utils/to-relative-path.js";
+export * from "./utils/utf8-offset-to-utf16.js";
 export * from "./utils/warn-config-issue.js";
 export * from "./runners/oxlint/capabilities.js";
 export * from "./runners/oxlint/config.js";

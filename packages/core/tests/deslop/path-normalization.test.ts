@@ -1,12 +1,12 @@
-import { describe, it } from "node:test";
+import { describe, it } from "vite-plus/test";
 import assert from "node:assert/strict";
-import { toPosixPath } from "../src/utils/to-posix-path.js";
-import { buildDependencyGraph, type ModuleLinkInput } from "../src/linker/build.js";
-import { traceReachability } from "../src/linker/reachability.js";
-import { detectDeadExports } from "../src/report/exports.js";
-import type { ParsedSource } from "../src/collect/parse.js";
-import type { ResolvedImport } from "../src/resolver/resolve.js";
-import type { DeslopConfig, ExportReference, ImportReference } from "../src/types.js";
+import { toPosixPath } from "../../src/deslop/utils/to-posix-path.js";
+import { buildDependencyGraph, type ModuleLinkInput } from "../../src/deslop/linker/build.js";
+import { traceReachability } from "../../src/deslop/linker/reachability.js";
+import { detectDeadExports } from "../../src/deslop/report/exports.js";
+import type { ParsedSource } from "../../src/deslop/collect/parse.js";
+import type { ResolvedImport } from "../../src/deslop/resolver/resolve.js";
+import type { DeslopConfig, ExportReference, ImportReference } from "../../src/deslop/types.js";
 
 const emptyParsed = (overrides: Partial<ParsedSource> = {}): ParsedSource => ({
   imports: [],

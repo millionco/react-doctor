@@ -1,8 +1,8 @@
-import { describe, it } from "node:test";
+import { describe, it } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { resolve, dirname } from "node:path";
 import ts from "typescript";
-import { analyze, defineConfig } from "../src/index.js";
+import { analyze, defineConfig } from "../../src/deslop/index.js";
 import { FIXTURES_DIR } from "./helpers/fixtures-dir.js";
 
 interface DifferentialOutcome {

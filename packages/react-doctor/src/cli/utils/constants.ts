@@ -48,6 +48,13 @@ export const GH_PR_LIST_MAX = 100;
 // compact, passable CLI argument.
 export const HANDOFF_MAX_FILES_PER_RULE = 3;
 
+// Telemetry sampling for anonymized diagnostic snippets: at most this many
+// distinct (by structural hash) scrambled snippets ship per scan, and at most
+// this many diagnostics are inspected before giving up — bounds the parse work
+// so a huge result set never pays to scramble every site.
+export const SCRAMBLED_SNIPPET_LIMIT = 20;
+export const SCRAMBLED_SNIPPET_SCAN_LIMIT = 200;
+
 // Social proof for the "Add to CI" pitch (shown in the post-scan handoff
 // prompt and embedded in the agent-handoff prompt).
 export const CI_TRUST_COMPANIES = "PayPal, Rippling, and Alibaba";

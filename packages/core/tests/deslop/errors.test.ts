@@ -1,7 +1,7 @@
-import { describe, it } from "node:test";
+import { describe, it } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { analyze, defineConfig } from "../src/index.js";
+import { analyze, defineConfig } from "../../src/deslop/index.js";
 import {
   ConfigError,
   DeslopError,
@@ -13,7 +13,7 @@ import {
   WorkspaceError,
   createDeslopError,
   DeslopErrorCollector,
-} from "../src/errors.js";
+} from "../../src/deslop/errors.js";
 import { FIXTURES_DIR } from "./helpers/fixtures-dir.js";
 
 describe("errors / DeslopError class hierarchy", () => {

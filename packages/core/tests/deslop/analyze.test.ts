@@ -1,8 +1,8 @@
-import { describe, it, test } from "node:test";
+import { describe, it, it as test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import { resolve, relative } from "node:path";
-import { analyze, defineConfig } from "../src/index.js";
-import type { ScanResult } from "../src/types.js";
+import { analyze, defineConfig } from "../../src/deslop/index.js";
+import type { ScanResult } from "../../src/deslop/types.js";
 import { FIXTURES_DIR } from "./helpers/fixtures-dir.js";
 
 const scanFixture = async (

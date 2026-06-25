@@ -12,7 +12,11 @@ export default defineConfig({
       minify: process.env.NODE_ENV === "production",
     },
     {
-      entry: ["./src/collect/parse-worker.ts"],
+      // The engine moved into `@react-doctor/core/deslop`; build the worker
+      // entry straight from core's source so this package still emits a
+      // sibling `dist/parse-worker.mjs` for the bundled parallel parser to
+      // resolve via `import.meta.url`.
+      entry: ["../core/src/deslop/collect/parse-worker.ts"],
       format: ["esm"],
       dts: false,
       clean: false,

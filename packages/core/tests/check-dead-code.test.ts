@@ -3,6 +3,7 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { checkDeadCode } from "../src/check-dead-code.js";
+import { inProcessDeadCodeWorker } from "./helpers/in-process-dead-code-worker.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-check-dead-code-"));
 
@@ -76,7 +77,7 @@ const setupAliasProject = (caseId: string): string => {
 };
 
 const flaggedUnusedFiles = async (rootDirectory: string): Promise<string[]> =>
-  (await checkDeadCode({ rootDirectory }))
+  (await checkDeadCode({ rootDirectory, createWorker: inProcessDeadCodeWorker }))
     .filter((diagnostic) => diagnostic.rule === "unused-file")
     .map((diagnostic) => diagnostic.filePath)
     .sort();
@@ -93,7 +94,10 @@ describe("checkDeadCode", () => {
       "src/index.ts": "export const used = 1;\n",
       "src/orphan.ts": "export const orphan = 1;\n",
     });
-    const diagnostics = await checkDeadCode({ rootDirectory: directory });
+    const diagnostics = await checkDeadCode({
+      rootDirectory: directory,
+      createWorker: inProcessDeadCodeWorker,
+    });
     const orphan = diagnostics.find(
       (diagnostic) =>
         diagnostic.rule === "unused-file" && diagnostic.filePath.endsWith("orphan.ts"),
@@ -127,6 +131,7 @@ describe("checkDeadCode", () => {
     const diagnostics = await checkDeadCode({
       rootDirectory: directory,
       userConfig: { ignore: { files: ["src/sanity/components/**"] } },
+      createWorker: inProcessDeadCodeWorker,
     });
     const flagged = diagnostics
       .filter((diagnostic) => diagnostic.rule === "unused-file")

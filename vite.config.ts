@@ -14,7 +14,7 @@ export default defineConfig({
       "packages/zed-react-doctor/**",
       "packages/react-doctor/tests/fixtures/**",
       "packages/language-server/tests/fixtures/**",
-      "packages/deslop-js/tests/fixtures/**",
+      "packages/core/tests/deslop/fixtures/**",
     ],
     plugins: ["typescript", "react", "import"],
     rules: {},
@@ -30,7 +30,7 @@ export default defineConfig({
       "pnpm-lock.yaml",
       "packages/zed-react-doctor/**",
       "packages/language-server/tests/fixtures/**",
-      "packages/deslop-js/tests/fixtures/**",
+      "packages/core/tests/deslop/fixtures/**",
     ],
   },
 });

@@ -1,3 +1,4 @@
+import isUnicodeSupported from "is-unicode-supported";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import {
@@ -35,7 +36,8 @@ import { indentMultilineText } from "./indent-multiline-text.js";
 import { resolveMeasureWidth } from "./resolve-measure-width.js";
 import { wrapTextToWidth } from "./wrap-indented-text.js";
 import { writeStdout } from "./write-stdout.js";
-import { MULTIPLY_SIGN, POINTER } from "./unicode-chars.js";
+
+const POINTER = isUnicodeSupported() ? "›" : ">";
 
 const colorizeBySeverity = (text: string, severity: Diagnostic["severity"]): string =>
   severity === "error" ? highlighter.error(text) : highlighter.warn(text);
@@ -86,8 +88,7 @@ const buildVerboseFileEntries = (diagnostics: Diagnostic[]): Map<string, Verbose
   return fileEntries;
 };
 
-const formatSiteCountBadge = (count: number): string =>
-  count > 1 ? `${MULTIPLY_SIGN}${count}` : "";
+const formatSiteCountBadge = (count: number): string => (count > 1 ? `×${count}` : "");
 
 // The dim `×N` badge that trails a rule's header line, or empty for a
 // single site. Shared by the error and warning rule headers so the badge

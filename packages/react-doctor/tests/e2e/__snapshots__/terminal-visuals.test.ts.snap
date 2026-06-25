@@ -3,7 +3,7 @@
 exports[`in-process render across terminal widths and render modes > matches the rendered 100-column layout snapshot 1`] = `
 "  Top 3 errors you should fix
 
-  ✖ Bugs: react-doctor/no-adjust-state-on-prop-change x2
+  ✖ Bugs: react-doctor/no-adjust-state-on-prop-change ×2
     State adjusted in a useEffect when a prop changes — forces
     an extra render with a stale UI between the two commits.
     Adjust the state during render with a \`prev\`-prop

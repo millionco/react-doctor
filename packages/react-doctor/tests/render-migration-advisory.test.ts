@@ -6,7 +6,6 @@ import {
   buildMigrationScaleAdvisoryLines,
   printDiagnostics,
 } from "../src/cli/utils/render-diagnostics.js";
-import { MULTIPLY_SIGN } from "../src/cli/utils/unicode-chars.js";
 
 const makeDiagnostic = (overrides: Partial<Diagnostic> = {}): Diagnostic => ({
   filePath: "src/App.tsx",

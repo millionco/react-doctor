@@ -10,7 +10,6 @@ import {
   type CiScaffoldResult,
   type CiWorkflowFile,
 } from "./ci-provider.js";
-import { normalizeWorkflowContent } from "./normalize-workflow-content.js";
 
 const GITLAB_CONFIG_FILENAME = ".gitlab-ci.yml";
 
@@ -75,17 +74,38 @@ const parseGate = (content: string): CiGate => {
   };
 };
 
-// Edits the gate only when the file is still exactly the React Doctor scaffold
-// (reconstructed from its own parsed gate). A user who folded the job into a
-// larger pipeline gets the paste snippet instead of an overwrite.
+const BASE_FLAG = ' --base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"';
+
+// Splices the gate flags on React Doctor's own scan line in place — preserving
+// every other line and job, so a scan job folded into a larger pipeline edits
+// cleanly. Only `--blocking` / `--scope` values change; the canonical `--base`
+// is dropped/re-added per scope (a user's custom `--base` is left alone), and a
+// trailing comment is kept. Returns null when there's no scan line to edit.
 const applyGate = (content: string, gate: CiGate): CiEditResult | null => {
-  const canonical = buildGitlabConfig(parseGate(content));
-  if (normalizeWorkflowContent(canonical) !== normalizeWorkflowContent(content)) return null;
-  const next = buildGitlabConfig(gate);
-  return {
-    content: next,
-    changed: normalizeWorkflowContent(next) !== normalizeWorkflowContent(content),
-  };
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+  const lines = content.split(/\r?\n/);
+  const index = lines.findIndex(
+    (line) =>
+      /^\s*-\s/.test(line) && /react-doctor/.test(line) && /--(blocking|scope)\b/.test(line),
+  );
+  if (index === -1) return null;
+
+  // Edit only the command, re-attaching any trailing `# comment` verbatim.
+  const commentMatch = lines[index].match(/\s+#.*$/);
+  const comment = commentMatch ? commentMatch[0] : "";
+  let command = comment
+    ? lines[index].slice(0, lines[index].length - comment.length)
+    : lines[index];
+
+  command = command
+    .replace(/--blocking[ =]\S+/, `--blocking ${gate.blocking}`)
+    .replace(/--scope[ =]\S+/, `--scope ${gate.scope}`)
+    .replace(/\s*--base[ =]"\$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"/, "");
+  if (gate.scope !== "full" && !/--base\b/.test(command)) command = `${command}${BASE_FLAG}`;
+
+  lines[index] = `${command}${comment}`;
+  const next = lines.join(newline);
+  return { content: next, changed: next !== content };
 };
 
 // Never overwrites an existing `.gitlab-ci.yml`: most repos already have one

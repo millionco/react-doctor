@@ -78,6 +78,9 @@ describe("githubActionsProvider gate parsing", () => {
 
   it("reads quoted scalar values like the bare forms", () => {
     const workflow = [
+      "jobs:",
+      "  ci:",
+      "    steps:",
       "      - uses: millionco/react-doctor@v2",
       "        with:",
       '          blocking: "error"',
@@ -105,9 +108,85 @@ describe("githubActionsProvider gate parsing", () => {
     expect(edited?.content).toContain("blocking: error");
   });
 
-  it("declines to edit a hand-customized workflow so it's never clobbered", () => {
-    const customized = `${buildWorkflowContent("main")}\n# a teammate added this line\n`;
-    expect(githubActionsProvider.applyGate(customized, ERROR_GATE)).toBeNull();
+  it("surgically edits a customized workflow, preserving everything else", () => {
+    const customized = [
+      "name: React Doctor",
+      "on:",
+      "  pull_request:",
+      "jobs:",
+      "  react-doctor:",
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      "      - uses: actions/checkout@v5",
+      "      - uses: millionco/react-doctor@v2 # pinned",
+      "        with:",
+      "          directory: apps/web",
+      "          node-version: 24",
+      "          blocking: none",
+      "",
+    ].join("\n");
+    const edited = githubActionsProvider.applyGate(customized, ERROR_GATE);
+    expect(edited).not.toBeNull();
+    expect(githubActionsProvider.parseGate(edited?.content ?? "")).toEqual(ERROR_GATE);
+    // The other step, the action ref + its comment, and the unmanaged inputs survive.
+    expect(edited?.content).toContain("actions/checkout@v5");
+    expect(edited?.content).toContain("millionco/react-doctor@v2 # pinned");
+    expect(edited?.content).toContain("directory: apps/web");
+    expect(edited?.content).toContain("node-version: 24");
+  });
+
+  it("creates a with: block when the React Doctor step has none", () => {
+    const customized = [
+      "jobs:",
+      "  react-doctor:",
+      "    steps:",
+      "      - run: echo hi",
+      "      - uses: millionco/react-doctor@v2",
+      "",
+    ].join("\n");
+    const edited = githubActionsProvider.applyGate(customized, ERROR_GATE);
+    expect(githubActionsProvider.parseGate(edited?.content ?? "")).toEqual(ERROR_GATE);
+    expect(edited?.content).toContain("- run: echo hi");
+  });
+
+  it("removes a managed key when it returns to the action default", () => {
+    const active = githubActionsProvider.applyGate(
+      [
+        "jobs:",
+        "  react-doctor:",
+        "    steps:",
+        "      - uses: millionco/react-doctor@v2",
+        "        with:",
+        "          blocking: error",
+        "          directory: apps/web",
+        "",
+      ].join("\n"),
+      ADVISORY_GATE,
+    );
+    expect(active?.content).not.toContain("blocking:");
+    expect(active?.content).toContain("directory: apps/web");
+    expect(githubActionsProvider.parseGate(active?.content ?? "")).toEqual(ADVISORY_GATE);
+  });
+
+  it("edits a flow-style with: mapping", () => {
+    const flow = [
+      "jobs:",
+      "  react-doctor:",
+      "    steps:",
+      "      - uses: millionco/react-doctor@v2",
+      "        with: { blocking: none, directory: apps/web }",
+      "",
+    ].join("\n");
+    const edited = githubActionsProvider.applyGate(flow, ERROR_GATE);
+    expect(githubActionsProvider.parseGate(edited?.content ?? "").blocking).toBe("error");
+    expect(edited?.content).toContain("apps/web");
+  });
+
+  it("refuses (null) when there is no React Doctor step", () => {
+    const other = ["jobs:", "  ci:", "    steps:", "      - uses: actions/checkout@v5", ""].join(
+      "\n",
+    );
+    expect(githubActionsProvider.applyGate(other, ERROR_GATE)).toBeNull();
   });
 
   it("upgrades a floating @v1 ref to @v2", () => {
@@ -170,14 +249,33 @@ describe("gitlabCiProvider", () => {
     expect(content).not.toContain("--base");
   });
 
-  it("parses and edits its own gate, declining hand-edited files", () => {
+  it("edits the scan line in place, even folded into a larger pipeline", () => {
     const advisory = gitlabCiProvider.scaffold(project.root, "main", ADVISORY_GATE);
     const content = fs.readFileSync(advisory.path, "utf8");
     expect(gitlabCiProvider.parseGate(content)).toEqual(ADVISORY_GATE);
     expect(gitlabCiProvider.applyGate(content, ERROR_GATE)?.content).toContain("--blocking error");
-    expect(
-      gitlabCiProvider.applyGate(`${content}\nrubocop:\n  script: true\n`, ERROR_GATE),
-    ).toBeNull();
+
+    const merged = `${content}\nrubocop:\n  script: true\n`;
+    const edited = gitlabCiProvider.applyGate(merged, ERROR_GATE);
+    expect(edited?.content).toContain("--blocking error");
+    expect(edited?.content).toContain("rubocop:");
+  });
+
+  it("adds --base on a diff scope and removes it on full", () => {
+    const full = fs.readFileSync(
+      gitlabCiProvider.scaffold(project.root, "main", ERROR_GATE).path,
+      "utf8",
+    );
+    expect(full).not.toContain("--base");
+    const toDiff = gitlabCiProvider.applyGate(full, { ...ERROR_GATE, scope: "changed" });
+    expect(toDiff?.content).toContain('--base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"');
+    expect(gitlabCiProvider.applyGate(toDiff?.content ?? "", ERROR_GATE)?.content).not.toContain(
+      "--base",
+    );
+  });
+
+  it("refuses (null) when there is no scan line", () => {
+    expect(gitlabCiProvider.applyGate("stages: [test]\n", ERROR_GATE)).toBeNull();
   });
 
   it("never overwrites an existing .gitlab-ci.yml", () => {

@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import * as fs from "node:fs";
+import * as YAML from "yaml";
 import {
   buildWorkflowContent,
   getReactDoctorWorkflowPath,
@@ -34,6 +35,50 @@ const ACTION_INPUT_NAME = {
   reviewComments: "review-comments",
   commitStatus: "commit-status",
 } as const;
+
+// The five gate fields paired with their action-input names, for iterating when
+// reading or writing the `with:` mapping.
+const MANAGED_INPUTS = Object.entries(ACTION_INPUT_NAME) as ReadonlyArray<
+  [keyof typeof ACTION_INPUT_NAME, string]
+>;
+
+const ACTION_REF_PREFIX = "millionco/react-doctor@";
+
+// Locates React Doctor's own step in a parsed workflow and its active `with:`
+// mapping (null when the step has none). Anchored to the step's `uses` scalar
+// (any ref, including a SHA pin), so a comment mentioning the action or a
+// sibling step's `with:` block is never mistaken for the gate.
+const findReactDoctorStep = (
+  doc: YAML.Document.Parsed,
+): { step: YAML.YAMLMap; withMap: YAML.YAMLMap | null } | null => {
+  const jobs = doc.get("jobs");
+  if (!YAML.isMap(jobs)) return null;
+  for (const jobPair of jobs.items) {
+    const job = jobPair.value;
+    if (!YAML.isMap(job)) continue;
+    const steps = job.get("steps");
+    if (!YAML.isSeq(steps)) continue;
+    for (const step of steps.items) {
+      if (!YAML.isMap(step)) continue;
+      const uses = step.get("uses");
+      if (typeof uses === "string" && uses.startsWith(ACTION_REF_PREFIX)) {
+        const withNode = step.get("with");
+        return { step, withMap: YAML.isMap(withNode) ? withNode : null };
+      }
+    }
+  }
+  return null;
+};
+
+// Per-level indentation the file uses, so a `yaml` re-stringify matches a
+// consistently-indented workflow instead of forcing the 2-space default.
+const detectIndent = (content: string): number => {
+  for (const line of content.split(/\r?\n/)) {
+    const match = line.match(/^( +)\S/);
+    if (match) return Math.max(2, match[1].length);
+  }
+  return 2;
+};
 
 const buildGateLines = (gate: CiGate): ReadonlyArray<string> => {
   const lines: string[] = [];
@@ -120,84 +165,94 @@ const parseBoolean = (raw: string, fallback: boolean): boolean => {
   return fallback;
 };
 
-// Strips an inline `# comment` and any matching surrounding quotes, so a
-// hand-written `blocking: "error"` reads the same as the bare `blocking: error`
-// React Doctor generates.
-const parseScalar = (raw: string): string =>
-  raw
-    .replace(/\s*#.*$/, "")
-    .trim()
-    .replace(/^(["'])(.*)\1$/, "$2");
-
-// Reads the `with:` mapping React Doctor's own step currently applies. The
-// search is anchored to the step's `- uses: millionco/react-doctor@…` line —
-// requiring the `- uses:` prefix, not just the ref, so a comment mentioning the
-// action (or a preceding step's `with:` block, e.g. actions/setup-node) is
-// never mistaken for the gate. A step with no active `with:` reports the
+// Reads the `with:` mapping React Doctor's own step currently applies, via the
+// YAML AST so comments, a preceding step's `with:`, and quoted scalars can't
+// fool it. A step with no active `with:` (or an unparseable file) reports the
 // action's own defaults, so the gate the user sees in `ci config` matches what
 // a scan actually does.
 const parseGate = (content: string): CiGate => {
-  const lines = content.split(/\r?\n/);
-  const stepIndex = lines.findIndex((line) =>
-    /^\s*-\s*uses:\s*millionco\/react-doctor@/.test(line),
-  );
-  if (stepIndex === -1) return ADVISORY_GATE;
-
-  // The active `with:` for this step (a leading `#` rules out the commented
-  // example the advisory template ships); stop at the next step.
-  let withLineIndex = -1;
-  for (let lineIndex = stepIndex + 1; lineIndex < lines.length; lineIndex += 1) {
-    const line = lines[lineIndex];
-    if (line.trim() === "") continue;
-    if (/^\s*-\s/.test(line)) break;
-    if (/^\s*with:\s*$/.test(line)) {
-      withLineIndex = lineIndex;
-      break;
-    }
+  let withMap: YAML.YAMLMap | null;
+  try {
+    withMap = findReactDoctorStep(YAML.parseDocument(content))?.withMap ?? null;
+  } catch {
+    return ADVISORY_GATE;
   }
-  if (withLineIndex === -1) return ADVISORY_GATE;
+  if (withMap === null) return ADVISORY_GATE;
 
-  const entries = new Map<string, string>();
-  for (const line of lines.slice(withLineIndex + 1)) {
-    if (line.trim() === "") continue;
-    const keyValue = line.match(/^\s+([\w-]+):\s*(.+?)\s*$/);
-    if (!keyValue) break;
-    entries.set(keyValue[1], parseScalar(keyValue[2]));
-  }
-
-  const blockingRaw = entries.get(ACTION_INPUT_NAME.blocking);
-  const scopeRaw = entries.get(ACTION_INPUT_NAME.scope);
+  const readInput = (input: string): string | undefined => {
+    const value = withMap.get(input);
+    return value === undefined || value === null ? undefined : String(value);
+  };
+  const blockingRaw = readInput(ACTION_INPUT_NAME.blocking);
+  const scopeRaw = readInput(ACTION_INPUT_NAME.scope);
   return {
     blocking:
       blockingRaw && isValidBlockingLevel(blockingRaw) ? blockingRaw : ADVISORY_GATE.blocking,
     scope: scopeRaw && isScopeValue(scopeRaw) ? scopeRaw : ADVISORY_GATE.scope,
-    comment: parseBoolean(entries.get(ACTION_INPUT_NAME.comment) ?? "", ADVISORY_GATE.comment),
+    comment: parseBoolean(readInput(ACTION_INPUT_NAME.comment) ?? "", ADVISORY_GATE.comment),
     reviewComments: parseBoolean(
-      entries.get(ACTION_INPUT_NAME.reviewComments) ?? "",
+      readInput(ACTION_INPUT_NAME.reviewComments) ?? "",
       ADVISORY_GATE.reviewComments,
     ),
     commitStatus: parseBoolean(
-      entries.get(ACTION_INPUT_NAME.commitStatus) ?? "",
+      readInput(ACTION_INPUT_NAME.commitStatus) ?? "",
       ADVISORY_GATE.commitStatus,
     ),
   };
 };
 
-// Rewrites the gate only when the file on disk is still exactly what React
-// Doctor generates for its current gate (reconstructed from the parsed gate +
-// the file's own branch and ref). That guarantees a hand-customized workflow is
-// never silently overwritten: the caller falls back to printing the snippet.
+// Surgically edits React Doctor's step `with:` mapping in place, setting the
+// keys that deviate from the advisory defaults and deleting those that return
+// to a default (so the block stays minimal and round-trips). Comments, the
+// action ref, and the step's other inputs (directory / project / node-version /
+// version) are preserved by the YAML AST. An empty `with:` is removed entirely.
+// Returns null when the file doesn't parse or has no React Doctor step.
+const surgicalApplyGate = (content: string, gate: CiGate): CiEditResult | null => {
+  let doc: YAML.Document.Parsed;
+  try {
+    doc = YAML.parseDocument(content);
+  } catch {
+    return null;
+  }
+  const located = findReactDoctorStep(doc);
+  if (located === null) return null;
+
+  let withMap = located.withMap;
+  if (withMap === null) {
+    withMap = new YAML.YAMLMap();
+    located.step.set("with", withMap);
+  }
+  for (const [field, input] of MANAGED_INPUTS) {
+    if (gate[field] === ADVISORY_GATE[field]) {
+      withMap.delete(input);
+    } else {
+      withMap.set(input, gate[field]);
+    }
+  }
+  if (withMap.items.length === 0) located.step.delete("with");
+
+  const next = doc.toString({ flowCollectionPadding: false, indent: detectIndent(content) });
+  return { content: next, changed: next !== content };
+};
+
+// Two paths: a pristine scaffold is rebuilt from the template (the cleanest
+// diff, and it restores the commented advisory block when graduating back to
+// advisory); any other workflow that contains the React Doctor step is edited
+// surgically in place. Only a file with no React Doctor step (or unparseable
+// YAML) is refused — the caller then prints the snippet.
 const applyGate = (content: string, gate: CiGate): CiEditResult | null => {
   const defaultBranch = extractDefaultBranch(content) ?? "main";
   const actionRef = extractActionRef(content) ?? "v2";
   const currentGate = parseGate(content);
   const canonical = buildGithubWorkflow(defaultBranch, currentGate, actionRef);
-  if (normalizeWorkflowContent(canonical) !== normalizeWorkflowContent(content)) return null;
-  const next = buildGithubWorkflow(defaultBranch, gate, actionRef);
-  return {
-    content: next,
-    changed: normalizeWorkflowContent(next) !== normalizeWorkflowContent(content),
-  };
+  if (normalizeWorkflowContent(canonical) === normalizeWorkflowContent(content)) {
+    const next = buildGithubWorkflow(defaultBranch, gate, actionRef);
+    return {
+      content: next,
+      changed: normalizeWorkflowContent(next) !== normalizeWorkflowContent(content),
+    };
+  }
+  return surgicalApplyGate(content, gate);
 };
 
 const renderSnippet = (gate: CiGate): string => {

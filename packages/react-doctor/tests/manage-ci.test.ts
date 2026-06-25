@@ -99,14 +99,16 @@ describe("runCiConfig", () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it("leaves a hand-customized workflow untouched", async () => {
+  it("surgically edits a customized workflow in place", async () => {
     const customized = `${buildWorkflowContent("main")}\n# teammate edit\n`;
     fs.mkdirSync(path.dirname(githubActionsProvider.workflowPath(project.root)), {
       recursive: true,
     });
     fs.writeFileSync(githubActionsProvider.workflowPath(project.root), customized);
     await runCiConfig(baseOptions({ provider: "github-actions", blocking: "error" }));
-    expect(githubContent(project.root)).toBe(customized);
+    const updated = githubContent(project.root);
+    expect(githubActionsProvider.parseGate(updated).blocking).toBe("error");
+    expect(updated).toContain("# teammate edit");
   });
 
   it("walks an interactive session and writes the chosen gate", async () => {

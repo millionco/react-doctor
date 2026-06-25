@@ -49,15 +49,21 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     reason: "Intentional: default allowLeadingUnderscore=true for Radix-style wrappers.",
   },
   "jsx-key": {
-    // OXC can be configured to report shorthand fragments (`<>...</>`)
-    // in arrays / iterators via `checkFragmentShorthand`. React Doctor
-    // intentionally never reports shorthand fragments here: a shorthand
-    // fragment cannot carry a key, and the actionable fix would be
-    // rewriting syntax rather than adding the missing prop the rule is
-    // meant to guide. fail[14-15] are the explicit fragment-option
-    // fixtures.
-    failSkips: [14, 15],
-    reason: "Intentional: never report shorthand fragments from jsx-key.",
+    // Two intentional divergences:
+    // (1) Shorthand fragments (fail[14-15]) — OXC can report `<>...</>` in
+    //     arrays / iterators via `checkFragmentShorthand`. React Doctor never
+    //     does: a shorthand fragment cannot carry a key, and the actionable
+    //     fix is rewriting syntax rather than adding the missing prop.
+    // (2) key-after-spread (fail[16-17, 23]) — OXC's `checkKeyMustBeforeSpread`
+    //     flags `<App {...obj} key="x" />`, but a spread can only clobber an
+    //     explicit `key` when it sits AFTER the key (later attribute wins
+    //     under both the classic and automatic JSX runtimes). A key written
+    //     after every spread always survives, so flagging it is a false
+    //     positive. We instead report the real override risk — a spread after
+    //     the key — which OXC's fixtures don't cover.
+    failSkips: [14, 15, 16, 17, 23],
+    reason:
+      "Intentional: never report shorthand fragments; flag key-before-spread (the real override risk), not key-after-spread.",
   },
   "no-unstable-nested-components": {
     // OXC defaults `allowAsProps: false`, which flags render-prop

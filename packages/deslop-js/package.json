@@ -64,7 +64,7 @@
     "minimatch": "^10.2.5",
     "oxc-parser": "^0.132.0",
     "oxc-resolver": "^11.19.1",
-    "typescript": "^6.0.3"
+    "typescript": ">=5.0.4 <6"
   },
   "devDependencies": {
     "@types/minimatch": "^5.1.2",

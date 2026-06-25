@@ -111,44 +111,33 @@ export const rnNoRawText = defineRule({
     // in a WebView as DOM rather than on React Native primitives.
     let isDomComponentFile = false;
 
-    // In-file components classified by where they forward their children:
-    // `textWrappers` forward into a real `<Text>` (raw text inside them is
-    // safe), `nonTextWrappers` render their children inside a non-text host
-    // (raw text inside them is a certain crash). Populated from the program on
-    // first visit so usage anywhere in the file (declared before or after) is
-    // seen. Components imported from other first-party files are resolved on
-    // demand below; `textComponents` / `rawTextWrapperComponents` config
-    // overrides (applied in the core pipeline) cover the rest — `node_modules`
-    // and anything the resolver can't follow.
+    // In-file components classified by where they forward their children (see
+    // `collectTextWrapperComponents`), populated on the first Program visit so
+    // declaration order doesn't matter. Imported components are resolved on
+    // demand below; `textComponents` / `rawTextWrapperComponents` config covers
+    // the rest (`node_modules` and anything the resolver can't follow).
     let autoDetectedTextWrappers: ReadonlySet<string> = new Set();
     let autoDetectedNonTextWrappers: ReadonlySet<string> = new Set();
 
-    // A built-in crash host: a React Native host primitive, or a lowercase
-    // intrinsic (`div`, and compile-time wrappers like `fbt`). Rendering raw
-    // text directly inside one is a certain crash regardless of any
-    // implementation we can't see.
+    // A built-in crash host: a React Native host primitive, or any lowercase
+    // intrinsic (`div`, `fbt`, …) — raw text directly inside one always crashes.
     const isNonTextHostName = (elementName: string): boolean =>
       !isReactComponentName(elementName) || REACT_NATIVE_RAW_TEXT_HOST_COMPONENTS.has(elementName);
 
-    // A raw-text child only crashes at a host boundary, so we report it only
-    // when its enclosing element is one we can be sure renders it outside a
-    // `<Text>`: a built-in crash host, or an in-file component proven to forward
-    // its children into one. Imported components are handled separately by
-    // `isImportedNonTextWrapper` (which resolves them cross-file); everything
-    // else is left alone, since assuming a crash we can't see would be a false
-    // positive.
+    // A raw-text child only crashes at a host boundary, so report it only when
+    // its enclosing element is a proven non-text renderer: a built-in crash host
+    // or an in-file component classified as one. Imported components go through
+    // `isImportedNonTextWrapper`; everything else is left alone (assuming an
+    // unseen crash would be a false positive).
     const isRawTextReportTarget = (elementName: string | null): boolean =>
       elementName !== null &&
       (isNonTextHostName(elementName) || autoDetectedNonTextWrappers.has(elementName));
 
-    // An imported component resolves to a crash only when we can follow it into
-    // its source file and prove it renders its children into a non-text host.
-    // A first-party `<MyButton>` that wraps its children in `<Text>` resolves to
-    // "text" → safe; one that renders `<View>{children}</View>` resolves to
-    // "nonText" → reported. Imports the resolver can't follow (`node_modules`,
-    // namespace imports, unanalyzable exports) resolve to null → left alone.
-    // Cached per name (and gated on `context.filename`, which drives path
-    // resolution) so `runRule` tests with no filename keep single-file behavior.
+    // Resolve an imported component cross-file: "nonText" (renders children into
+    // a host) → reported; "text" or unresolvable (`node_modules`, namespace
+    // imports, unanalyzable exports) → left alone. Cached per name and gated on
+    // `context.filename` (which drives path resolution), so `runRule` tests with
+    // no filename keep single-file behavior.
     const importedNonTextWrapperCache = new Map<string, boolean>();
     const isImportedNonTextWrapper = (
       elementName: string | null,
@@ -218,9 +207,8 @@ export const rnNoRawText = defineRule({
           return;
         }
 
-        // Resolve imports only when there's actually raw text to report — the
-        // cross-file lookup is the one expensive step, so it stays behind both
-        // the raw-text gate and the cheap built-in/in-file checks.
+        // The cross-file lookup is the one expensive step, so gate it behind the
+        // raw-text check and the cheap built-in/in-file checks.
         if (!(node.children ?? []).some(isRawTextContent)) return;
         if (!isRawTextReportTarget(elementName) && !isImportedNonTextWrapper(elementName, node)) {
           return;

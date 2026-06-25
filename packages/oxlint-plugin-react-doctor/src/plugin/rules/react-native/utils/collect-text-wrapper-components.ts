@@ -372,16 +372,10 @@ const resolveClassRenderFunction = (classNode: EsTreeNode): FunctionNode | null 
 };
 
 export interface ChildrenForwardingComponents {
-  // PascalCase components that forward their children into a `<Text>` — either a
-  // text-handling returned root (`const Label = (...) => <Text>…</Text>`) or a
-  // nested `<Text>{children}</Text>` inside any returned markup. Raw text inside
-  // them is safe (the `<Text>` wraps whatever children land in it).
+  // Forward their children into a `<Text>` — raw text inside them is safe.
   textWrappers: ReadonlySet<string>;
-  // PascalCase components proven to render their children *outside* any
-  // `<Text>` — a non-text host receives them (`const Box = ({ children }) =>
-  // <View>{children}</View>`) or a `styled(View)`-style factory. Raw text
-  // inside these is a certain crash, so `rn-no-raw-text` reports it even though
-  // the component name isn't a built-in host primitive.
+  // Proven to render their children into a non-text host — raw text inside them
+  // is a certain crash, so `rn-no-raw-text` reports it.
   nonTextWrappers: ReadonlySet<string>;
 }
 
@@ -425,9 +419,8 @@ export const classifyChildrenForwarding = (
   ) {
     return "nonText";
   }
-  // Children are forwarded somewhere non-text, but not into a known host — an
-  // unanalyzed import that may wrap them in `<Text>`. Not a safe wrapper, but
-  // not a proven crash either.
+  // Forwarded somewhere non-text but not into a known host — an unanalyzed
+  // import that may itself wrap them in `<Text>`. Not safe, not a proven crash.
   if (
     jsxRoots.some((jsxRoot) =>
       jsxRootRendersChildrenOutsideText(jsxRoot, bindings, isTextHandlingElement),
@@ -445,10 +438,8 @@ export const classifyChildrenForwarding = (
   return "unknown";
 };
 
-// Records a same-file component declaration into the text-wrapper or
-// non-text-wrapper set per its `classifyChildrenForwarding` verdict. "unknown"
-// components land in neither — we can't prove a crash, so raw text passed to
-// them is left unreported.
+// Records a same-file declaration into `wrappers` or `nonTextWrappers` per its
+// `classifyChildrenForwarding` verdict ("unknown" lands in neither).
 const recordWrapperFromDeclaration = (
   componentName: string | null,
   definitionNode: EsTreeNode | null | undefined,
@@ -471,19 +462,15 @@ const recordWrapperFromDeclaration = (
 
 const MAX_TRANSITIVE_WRAPPER_PASSES = 3;
 
-// Walks a program and classifies its in-file PascalCase components by where
-// they forward their `children`: into a text-handling element (`textWrappers`)
-// or into a known non-text host (`nonTextWrappers`). Text wrappers behave like
-// configured `rawTextWrapperComponents` — raw text inside them is safe (the
-// `<Text>` wraps whatever lands in it). Non-text wrappers are the inverse: raw
-// text inside them is a certain crash. `isNonTextHostRoot` reports the built-in
-// crash hosts (React Native host primitives + lowercase intrinsics); the walk
-// extends it transitively, so a component that forwards into another proven
-// non-text wrapper is itself non-text. Repeats a bounded number of times so
-// wrappers-of-wrappers (`const Badge = ({ children }) => <Chip>{children}</Chip>`)
-// resolve regardless of declaration order; the final pass drops any name that
-// settled as a text wrapper from `nonTextWrappers`, since an early pass can
-// classify a component as non-text before the wrapper it forwards into is known.
+// Walks a program and classifies its in-file PascalCase components into
+// `textWrappers` / `nonTextWrappers` (see `ChildrenForwardingComponents`).
+// `isNonTextHostRoot` seeds the built-in crash hosts; the walk extends it
+// transitively (a component forwarding into a proven non-text wrapper is itself
+// non-text), repeating a bounded number of times so wrappers-of-wrappers
+// (`const Badge = ({ children }) => <Chip>{children}</Chip>`) resolve regardless
+// of declaration order. A final pass drops any name that settled as a text
+// wrapper from `nonTextWrappers`, since an early pass can mark a component
+// non-text before the wrapper it forwards into is known.
 export const collectTextWrapperComponents = (
   programNode: EsTreeNode,
   isTextHandlingRoot: (elementName: string) => boolean,

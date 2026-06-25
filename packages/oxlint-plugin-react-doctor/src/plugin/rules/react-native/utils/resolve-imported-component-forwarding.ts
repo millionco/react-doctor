@@ -10,12 +10,10 @@ import {
 
 // Resolves a JSX element name imported from another first-party file (relative
 // or tsconfig-alias) to how that component forwards its `children`, by parsing
-// the source file and classifying the exported component the same way an
-// in-file declaration is classified. Returns null when the name isn't a
-// resolvable single-export import — a namespace import, a bare `node_modules`
-// specifier (the resolver deliberately won't follow there), a barrel/re-export
-// that doesn't bind to an analyzable function — so the caller stays
-// conservative and leaves such an element unreported.
+// the source file and classifying its exported component like an in-file one.
+// Returns null when the import isn't a resolvable single export — a namespace
+// import, a `node_modules` specifier (deliberately not followed), or an export
+// that doesn't bind to an analyzable function — so the caller stays conservative.
 export const resolveImportedComponentForwarding = (
   contextNode: EsTreeNode,
   fromFilename: string,
@@ -32,14 +30,12 @@ export const resolveImportedComponentForwarding = (
   );
   if (!resolvedNode) return null;
 
-  // Classify against the resolved component's OWN module, not just its body:
-  // run the same in-file transitive analysis on that module so a wrapper that
-  // forwards its children through another component declared there (e.g.
-  // `Card` → `Inner` → `<View>`) is resolved instead of bailing to "unknown".
+  // Classify against the resolved component's OWN module so a wrapper that
+  // forwards its children through another component declared there (`Card` →
+  // `Inner` → `<View>`) resolves instead of bailing to "unknown".
   // `collectTextWrapperComponents` does no further file I/O, so this stays
-  // bounded to the resolved module; a chain that hops into yet another file is
-  // still left unresolved (conservative). `parseSourceFile` attaches parents,
-  // so the resolved node always has a `Program` root here.
+  // bounded to that module (a chain hopping into yet another file is left
+  // unresolved). `parseSourceFile` attaches parents, so there's always a root.
   const moduleProgram = findProgramRoot(resolvedNode);
   if (moduleProgram === null) {
     return classifyChildrenForwarding(resolvedNode, isTextHandlingRoot, isNonTextHostRoot);

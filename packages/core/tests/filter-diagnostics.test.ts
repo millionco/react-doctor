@@ -432,3 +432,37 @@ describe("mergeAndFilterDiagnostics — file-context stamping", () => {
     expect(filtered[0].fileContext).toBeUndefined();
   });
 });
+
+describe("mergeAndFilterDiagnostics — runtimeGlobals (issue #959)", () => {
+  const jsxNoUndef = (identifier: string): Diagnostic =>
+    createDiagnostic({
+      plugin: "react-doctor",
+      rule: "jsx-no-undef",
+      severity: "error",
+      message: `\`${identifier}\` crashes at runtime because it isn't defined here.`,
+    });
+
+  it("suppresses jsx-no-undef for an identifier listed in runtimeGlobals", () => {
+    const filtered = filterIgnoredDiagnostics(
+      [jsxNoUndef("DatePicker"), jsxNoUndef("Mystery")],
+      { runtimeGlobals: ["DatePicker"] },
+      TEST_ROOT_DIRECTORY,
+      testReadFileLines,
+    );
+    // `DatePicker` is declared runtime-injected → suppressed; an identifier not
+    // in the list still reports, so the filter isn't blanket-silencing the rule.
+    expect(filtered.map((diagnostic) => diagnostic.message)).toEqual([
+      "`Mystery` crashes at runtime because it isn't defined here.",
+    ]);
+  });
+
+  it("leaves jsx-no-undef untouched when runtimeGlobals is unset", () => {
+    const filtered = filterIgnoredDiagnostics(
+      [jsxNoUndef("DatePicker")],
+      {},
+      TEST_ROOT_DIRECTORY,
+      testReadFileLines,
+    );
+    expect(filtered).toHaveLength(1);
+  });
+});

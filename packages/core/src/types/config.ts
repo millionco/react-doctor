@@ -313,6 +313,15 @@ export interface ReactDoctorConfig {
    */
   rawTextWrapperComponents?: string[];
   /**
+   * Capitalized identifiers that exist at runtime but aren't imported in
+   * the file that uses them — react-live's `<LiveProvider scope={...}>`,
+   * Storybook globals, MDX live blocks, or an ambient `declare global` in a
+   * separate `.d.ts`. The single-file `jsx-no-undef` rule can't see those
+   * bindings and would report `<DatePicker />` as an undefined JSX component.
+   * List the injected names here and `jsx-no-undef` treats them as known.
+   */
+  runtimeGlobals?: string[];
+  /**
    * Project-level allowlist of function names that the
    * `server-auth-actions` rule treats as an auth check at the top of
    * a server action. Names are accepted whether called as a bare

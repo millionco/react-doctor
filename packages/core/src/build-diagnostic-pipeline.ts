@@ -50,6 +50,11 @@ const collectStringSet = (values: unknown): ReadonlySet<string> => {
   return new Set(values.filter((value): value is string => typeof value === "string"));
 };
 
+// `jsx-no-undef` reports the flagged root identifier as the first backticked
+// token of its message (`` `Foo` crashes at runtime… ``), so the configured
+// `runtimeGlobals` allowlist matches against that token.
+const JSX_NO_UNDEF_IDENTIFIER_PATTERN = /^`([^`]+)`/;
+
 /**
  * Pre-compiles every stateful filter and returns a single
  * `apply(diagnostic)` closure that runs (in order):
@@ -91,8 +96,10 @@ export const buildDiagnosticPipeline = (
   const compiledOverrides = compileIgnoreOverrides(userConfig);
   const textComponentNames = collectStringSet(userConfig?.textComponents);
   const rawTextWrapperComponentNames = collectStringSet(userConfig?.rawTextWrapperComponents);
+  const runtimeGlobalNames = collectStringSet(userConfig?.runtimeGlobals);
   const hasTextComponents = textComponentNames.size > 0;
   const hasRawTextWrappers = rawTextWrapperComponentNames.size > 0;
+  const hasRuntimeGlobals = runtimeGlobalNames.size > 0;
   const fileLinesCache = new Map<string, string[] | null>();
   const fileContextCache = new Map<string, DiagnosticFileContext>();
   const libraryFileCache = new Map<string, boolean>();
@@ -177,6 +184,17 @@ export const buildDiagnosticPipeline = (
     return false;
   };
 
+  // `runtimeGlobals` declares identifiers that exist at runtime but aren't
+  // imported in-file — react-live `<LiveProvider scope>`, Storybook globals,
+  // ambient `declare global` — which the single-file `jsx-no-undef` rule can't
+  // see and would flag as undefined (#959).
+  const isJsxNoUndefSuppressedByConfig = (diagnostic: Diagnostic): boolean => {
+    if (!hasRuntimeGlobals) return false;
+    if (diagnostic.rule !== "jsx-no-undef") return false;
+    const identifierMatch = JSX_NO_UNDEF_IDENTIFIER_PATTERN.exec(diagnostic.message);
+    return identifierMatch !== null && runtimeGlobalNames.has(identifierMatch[1]);
+  };
+
   return {
     apply: (diagnostic) => {
       if (shouldAutoSuppress(diagnostic)) return null;
@@ -227,6 +245,7 @@ export const buildDiagnosticPipeline = (
         }
         if (isDiagnosticIgnoredByOverrides(current, rootDirectory, compiledOverrides)) return null;
         if (isRnRawTextSuppressedByConfig(current)) return null;
+        if (isJsxNoUndefSuppressedByConfig(current)) return null;
       }
 
       if (respectInlineDisables && current.line > 0) {

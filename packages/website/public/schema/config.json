@@ -119,6 +119,13 @@
           },
           "description": "Names of components that safely route string-only children through a React Native `<Text>` internally (e.g. `heroui-native`'s `Button`, which stringifies its children and renders them through a `ButtonLabel` → `Text`). For listed components, `rn-no-raw-text` is suppressed ONLY when the wrapper's children are entirely stringifiable (no nested JSX elements). A wrapper with mixed children — e.g. `<Button>Save<Icon /></Button>` — still reports, because the wrapper can't safely route raw text alongside a sibling JSX element.\n\nUse this instead of `textComponents` when the component is not itself a text element but is known to wrap its string children in one. `textComponents` is the broader escape hatch and suppresses regardless of sibling content."
         },
+        "runtimeGlobals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Capitalized identifiers that exist at runtime but aren't imported in the file that uses them — react-live's `<LiveProvider scope={...}>`, Storybook globals, MDX live blocks, or an ambient `declare global` in a separate `.d.ts`. The single-file `jsx-no-undef` rule can't see those bindings and would report `<DatePicker />` as an undefined JSX component. List the injected names here and `jsx-no-undef` treats them as known."
+        },
         "serverAuthFunctionNames": {
           "type": "array",
           "items": {

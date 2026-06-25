@@ -43,7 +43,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () =>
     fixture.cleanup();
   });
 
-  it("creates a dependency-free non-blocking pre-commit hook without a managed runner", () => {
+  it("creates a dependency-free pre-commit hook without a managed runner", () => {
     const result = installReactDoctorGitHook({
       hookPath: fixture.hookPath,
       projectRoot: fixture.projectRoot,
@@ -56,8 +56,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () =>
     expect(hookContent).toContain("react-doctor --staged --blocking warning");
     expect(hookContent).toContain("pnpm dlx react-doctor@latest --staged --blocking warning");
     expect(hookContent).toContain("npx --yes react-doctor@latest --staged --blocking warning");
-    expect(hookContent).toContain("Want them fixed?");
-    expect(hookContent).not.toContain("Stop commit");
+    expect(hookContent).toContain("exit 1");
     expect(hookContent).not.toContain(".react-doctor/hooks/pre-commit");
     expect(hookContent).not.toContain("husky");
     expect(fs.existsSync(fixture.hookPath)).toBe(true);
@@ -717,7 +716,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () =>
     expect(fs.readFileSync(invocationPath, "utf8")).toBe("--staged\n--blocking\nwarning\n");
   });
 
-  it("prints a minimal non-invasive prompt during a real git commit", () => {
+  it("blocks commit when react-doctor finds regressions", () => {
     execFileSync("git", ["init"], { cwd: fixture.projectRoot, stdio: "ignore" });
     execFileSync("git", ["config", "user.email", "doctor@example.com"], {
       cwd: fixture.projectRoot,
@@ -760,24 +759,11 @@ describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () =>
       encoding: "utf8",
     });
 
-    expect(commitResult.status).toBe(0);
+    expect(commitResult.status).toBe(1);
+    expect(commitResult.stderr).toContain("noisy stdout diagnostic");
+    expect(commitResult.stderr).toContain("noisy stderr diagnostic");
     expect(commitResult.stderr).toContain("React Doctor found staged regressions.");
-    expect(commitResult.stderr).toContain(
-      "Run react-doctor --staged --blocking warning to inspect.",
-    );
-    expect(commitResult.stderr).toContain(
-      "Want them fixed? Ask your agent to run that command and resolve the findings.",
-    );
-    expect(commitResult.stderr).not.toContain("noisy stdout diagnostic");
-    expect(commitResult.stderr).not.toContain("noisy stderr diagnostic");
-    expect(commitResult.stderr).not.toContain("Stop commit");
     expect(fs.readFileSync(invocationPath, "utf8")).toBe("--staged\n--blocking\nwarning\n");
-    expect(
-      execFileSync("git", ["rev-parse", "--verify", "HEAD"], {
-        cwd: fixture.projectRoot,
-        encoding: "utf8",
-      }).trim(),
-    ).toHaveLength(40);
   });
 
   it("preserves and executes existing hook content during a real git commit", () => {

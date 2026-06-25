@@ -55,12 +55,13 @@ const buildReactDoctorHookBlock = (): string =>
     "}",
     "",
     'react_doctor_output=$(mktemp "${TMPDIR:-/tmp}/react-doctor-hook.XXXXXX")',
-    'if react_doctor_scan_staged_files > "$react_doctor_output" 2>&1; then',
+    'if ! react_doctor_scan_staged_files > "$react_doctor_output" 2>&1; then',
+    '  cat "$react_doctor_output" >&2',
     '  rm -f "$react_doctor_output"',
-    "else",
-    '  rm -f "$react_doctor_output"',
-    `  printf '%s\\n' "React Doctor found staged regressions." "Run ${REACT_DOCTOR_COMMAND} to inspect." "Want them fixed? Ask your agent to run that command and resolve the findings." >&2`,
+    `  printf '%s\\n' "React Doctor found staged regressions." >&2`,
+    "  exit 1",
     "fi",
+    'rm -f "$react_doctor_output"',
     REACT_DOCTOR_BLOCK_END,
   ].join("\n");
 

@@ -626,7 +626,7 @@ describe("runInstallReactDoctor", () => {
     ).toBe(true);
   });
 
-  it("--yes installs a non-blocking pre-commit hook when a git hook target is detected", async () => {
+  it("--yes installs a pre-commit hook when a git hook target is detected", async () => {
     writeValidSkill(fixture.sourceDir);
     const hookPath = path.join(fixture.projectRoot, ".git/hooks/pre-commit");
 

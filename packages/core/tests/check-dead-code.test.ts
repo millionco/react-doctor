@@ -258,6 +258,36 @@ describe("checkDeadCode", () => {
     ).toBe("Unused devDependency: `vitest`");
   });
 
+  it("does not report react-doctor's own toolchain as unused (#961)", async () => {
+    const directory = setupProject("react-doctor-self-toolchain", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+
+    const diagnostics = await checkDeadCode({
+      rootDirectory: directory,
+      createWorker: () => ({
+        result: Promise.resolve({
+          unusedFiles: [],
+          unusedExports: [],
+          unusedDependencies: [
+            { name: "react-doctor", isDevDependency: true },
+            { name: "eslint-plugin-react-doctor", isDevDependency: true },
+            { name: "oxlint-plugin-react-doctor", isDevDependency: true },
+            { name: "genuinely-unused", isDevDependency: true },
+          ],
+          circularDependencies: [],
+        }),
+      }),
+    });
+
+    const flaggedDevDeps = diagnostics
+      .filter((diagnostic) => diagnostic.rule === "unused-dev-dependency")
+      .map((diagnostic) => diagnostic.message);
+    // The react-doctor toolchain is used via the CLI/hooks/CI, never imported —
+    // it must not be self-flagged; an unrelated unused dep still is.
+    expect(flaggedDevDeps).toEqual(["Unused devDependency: `genuinely-unused`"]);
+  });
+
   it("rejects malformed worker results instead of silently dropping diagnostics", async () => {
     const directory = setupProject("malformed-worker-result", {
       "src/index.ts": "export const used = 1;\n",

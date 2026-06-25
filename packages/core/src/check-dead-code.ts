@@ -24,6 +24,17 @@ import { toRelativePath } from "./utils/to-relative-path.js";
 export const DEAD_CODE_PLUGIN = "deslop";
 export const DEAD_CODE_CATEGORY = "Maintainability";
 
+// react-doctor's own toolchain is used via the CLI, git hooks, CI, and the agent
+// skill — never imported in source — so deslop's import-graph scan can't see the
+// usage and flags it as unused after `react-doctor install` (especially via
+// `bunx`, where the package is declared but not in node_modules, so deslop can't
+// read its `bin` either). react-doctor never reports its own tooling as unused.
+const REACT_DOCTOR_TOOLCHAIN_PACKAGES: ReadonlySet<string> = new Set([
+  "react-doctor",
+  "eslint-plugin-react-doctor",
+  "oxlint-plugin-react-doctor",
+]);
+
 interface CheckDeadCodeOptions {
   readonly rootDirectory: string;
   /** Loaded react-doctor config — `ignore.files` is forwarded to deslop. */
@@ -553,6 +564,7 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
   }
 
   for (const unusedDependency of result.unusedDependencies) {
+    if (REACT_DOCTOR_TOOLCHAIN_PACKAGES.has(unusedDependency.name)) continue;
     const label = unusedDependency.isDevDependency ? "devDependency" : "dependency";
     // Every unused dependency reports at `package.json` with no line, so the
     // renderer lists all of them under one location. Keep the per-item message

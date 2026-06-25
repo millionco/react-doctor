@@ -5072,3 +5072,16 @@ describe("typescript-smells", () => {
     );
   });
 });
+
+describe("jsx-namespace-member (issue #875)", () => {
+  it("treats a namespace member used only in JSX (<S.Custom/>) as used", async () => {
+    const result = await scanFixture("jsx-namespace-member");
+    const dead = deadExportNames(result);
+    assert.ok(
+      !dead.includes("Custom"),
+      `Custom is used via <S.Custom/> and must not be flagged unused, got: ${dead}`,
+    );
+    // `Plain` is genuinely unused — proves the scan ran and isn't passing vacuously.
+    assert.ok(dead.includes("Plain"), `Plain is unused and should still be flagged, got: ${dead}`);
+  });
+});

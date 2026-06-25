@@ -17,12 +17,20 @@ const getGitlabConfigPath = (projectRoot: string): string =>
   path.join(projectRoot, GITLAB_CONFIG_FILENAME);
 
 // A diff-based scope needs a base to compare against; on a merge-request
-// pipeline GitLab exposes the target branch as `$CI_MERGE_REQUEST_TARGET_BRANCH_NAME`.
-// A whole-project scan ("full") ignores the base, so it's left off.
-const buildScanCommand = (gate: CiGate): string => {
-  const baseFlag = gate.scope === "full" ? "" : ' --base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"';
-  return `npx react-doctor@latest --blocking ${gate.blocking} --scope ${gate.scope}${baseFlag}`;
-};
+// pipeline GitLab exposes the target branch as this variable. A whole-project
+// scan ("full") ignores the base, so it's left off.
+const BASE_FLAG = ' --base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"';
+
+// React Doctor's scan command is a YAML sequence item that invokes the npx
+// package spec (`- npx react-doctor@latest …`). The `react-doctor@` anchor
+// matches it with or without gate flags, and the `- ` prefix excludes comment
+// lines and other jobs' commands.
+const isScanLine = (line: string): boolean => /^\s*-\s/.test(line) && /react-doctor@/.test(line);
+
+const stripTrailingComment = (line: string): string => line.replace(/\s+#.*$/, "");
+
+const buildScanCommand = (gate: CiGate): string =>
+  `npx react-doctor@latest --blocking ${gate.blocking} --scope ${gate.scope}${gate.scope === "full" ? "" : BASE_FLAG}`;
 
 // A single GitLab CI job that scans every merge request. GitLab has no React
 // Doctor comment or commit-status reporter yet, so the scaffold is gate-only:
@@ -46,24 +54,13 @@ react-doctor:
 `;
 
 // GitLab keeps its gate in the scan command's flags rather than a mapping. The
-// flags are read off React Doctor's own scan line, not file-wide, so a merged
-// pipeline that runs other jobs (or tools) with their own `--blocking` /
-// `--scope` can't be mistaken for the gate. The `['"]?` tolerates a hand-quoted
-// value (`--blocking "error"`).
+// flags are read off React Doctor's own scan line (with any trailing comment
+// stripped), so a comment or another job can't be mistaken for the gate. The
+// `['"]?` tolerates a hand-quoted value (`--blocking "error"`).
 const parseGate = (content: string): CiGate => {
-  // The scan command is a YAML sequence item (`- npx react-doctor@latest …`);
-  // requiring the `- ` prefix and stripping any trailing `# comment` keeps a
-  // comment line (or an inline note) from being read as the gate.
-  const scanLine = (
-    content
-      .split(/\r?\n/)
-      .find(
-        (line) =>
-          /^\s*-\s/.test(line) && /react-doctor/.test(line) && /--(blocking|scope)\b/.test(line),
-      ) ?? ""
-  ).replace(/#.*$/, "");
-  const blockingMatch = scanLine.match(/--blocking[ =]['"]?([\w-]+)/);
-  const scopeMatch = scanLine.match(/--scope[ =]['"]?([\w-]+)/);
+  const command = stripTrailingComment(content.split(/\r?\n/).find(isScanLine) ?? "");
+  const blockingMatch = command.match(/--blocking[ =]['"]?([\w-]+)/);
+  const scopeMatch = command.match(/--scope[ =]['"]?([\w-]+)/);
   const blocking =
     blockingMatch && isValidBlockingLevel(blockingMatch[1]) ? blockingMatch[1] : null;
   const scope = scopeMatch && isScopeValue(scopeMatch[1]) ? scopeMatch[1] : null;
@@ -74,33 +71,38 @@ const parseGate = (content: string): CiGate => {
   };
 };
 
-const BASE_FLAG = ' --base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"';
+const containsReactDoctor = (content: string): boolean => content.split(/\r?\n/).some(isScanLine);
+
+// Replaces a flag's value in place, or appends the flag when it isn't present,
+// so a requested change always lands even if the user had removed the flag.
+const upsertFlag = (command: string, flag: string, value: string): string => {
+  const pattern = new RegExp(`(--${flag})[ =]\\S+`);
+  return pattern.test(command)
+    ? command.replace(pattern, `$1 ${value}`)
+    : `${command} --${flag} ${value}`;
+};
 
 // Splices the gate flags on React Doctor's own scan line in place — preserving
 // every other line and job, so a scan job folded into a larger pipeline edits
-// cleanly. Only `--blocking` / `--scope` values change; the canonical `--base`
-// is dropped/re-added per scope (a user's custom `--base` is left alone), and a
-// trailing comment is kept. Returns null when there's no scan line to edit.
+// cleanly. `--blocking` / `--scope` are set (added if missing); the canonical
+// `--base` is dropped/re-added per scope (a user's custom `--base` is left
+// alone), and a trailing comment is kept. Returns null when there's no scan
+// line to edit (the caller then prints the snippet).
 const applyGate = (content: string, gate: CiGate): CiEditResult | null => {
   const newline = content.includes("\r\n") ? "\r\n" : "\n";
   const lines = content.split(/\r?\n/);
-  const index = lines.findIndex(
-    (line) =>
-      /^\s*-\s/.test(line) && /react-doctor/.test(line) && /--(blocking|scope)\b/.test(line),
-  );
+  const index = lines.findIndex(isScanLine);
   if (index === -1) return null;
 
-  // Edit only the command, re-attaching any trailing `# comment` verbatim.
   const commentMatch = lines[index].match(/\s+#.*$/);
   const comment = commentMatch ? commentMatch[0] : "";
   let command = comment
     ? lines[index].slice(0, lines[index].length - comment.length)
     : lines[index];
 
-  command = command
-    .replace(/--blocking[ =]\S+/, `--blocking ${gate.blocking}`)
-    .replace(/--scope[ =]\S+/, `--scope ${gate.scope}`)
-    .replace(/\s*--base[ =]"\$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"/, "");
+  command = upsertFlag(command, "blocking", gate.blocking);
+  command = upsertFlag(command, "scope", gate.scope);
+  command = command.replace(/\s*--base[ =]"\$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"/, "");
   if (gate.scope !== "full" && !/--base\b/.test(command)) command = `${command}${BASE_FLAG}`;
 
   lines[index] = `${command}${comment}`;
@@ -141,6 +143,7 @@ export const gitlabCiProvider: CiProvider = {
   supportsPullRequest: false,
   workflowPath: getGitlabConfigPath,
   readWorkflow,
+  containsReactDoctor,
   scaffold,
   parseGate,
   applyGate,

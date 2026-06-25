@@ -280,6 +280,14 @@ const readWorkflow = (projectRoot: string): CiWorkflowFile | null => {
   return workflow ? { path: workflow.workflowPath, content: workflow.content } : null;
 };
 
+const containsReactDoctor = (content: string): boolean => {
+  try {
+    return findReactDoctorStep(YAML.parseDocument(content)) !== null;
+  } catch {
+    return false;
+  }
+};
+
 export const githubActionsProvider: CiProvider = {
   id: "github-actions",
   displayName: "GitHub Actions",
@@ -288,6 +296,7 @@ export const githubActionsProvider: CiProvider = {
   supportsPullRequest: true,
   workflowPath: getReactDoctorWorkflowPath,
   readWorkflow,
+  containsReactDoctor,
   scaffold,
   parseGate,
   applyGate,

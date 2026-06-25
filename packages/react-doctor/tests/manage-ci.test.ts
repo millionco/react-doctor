@@ -99,6 +99,15 @@ describe("runCiConfig", () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it("errors when the file has no React Doctor job", async () => {
+    fs.writeFileSync(
+      path.join(project.root, ".gitlab-ci.yml"),
+      "stages: [test]\nrubocop:\n  script: true\n",
+    );
+    await runCiConfig(baseOptions({ provider: "gitlab-ci", blocking: "error" }));
+    expect(process.exitCode).toBe(1);
+  });
+
   it("surgically edits a customized workflow in place", async () => {
     const customized = `${buildWorkflowContent("main")}\n# teammate edit\n`;
     fs.mkdirSync(path.dirname(githubActionsProvider.workflowPath(project.root)), {

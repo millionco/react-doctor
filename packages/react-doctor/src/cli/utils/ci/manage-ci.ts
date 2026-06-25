@@ -426,6 +426,16 @@ export const runCiConfig = async (options: CiCommandOptions = {}): Promise<void>
     return;
   }
 
+  // The file can exist without wiring up React Doctor (a `.gitlab-ci.yml` is
+  // often a full pipeline with no scan job); say so plainly instead of treating
+  // its absent gate as advisory and offering an edit that can't land.
+  if (!provider.containsReactDoctor(workflow.content)) {
+    logger.error(`${path.relative(projectRoot, workflow.path)} has no React Doctor job.`);
+    logger.dim(`  Run ${highlighter.info("react-doctor ci install")} to add one first.`);
+    process.exitCode = 1;
+    return;
+  }
+
   warnUnsupportedGateFlags(provider, options);
   const currentGate = provider.parseGate(workflow.content);
 

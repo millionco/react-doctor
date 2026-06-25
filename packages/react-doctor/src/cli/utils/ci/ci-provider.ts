@@ -166,6 +166,10 @@ export interface CiProvider {
   readonly workflowPath: (projectRoot: string) => string;
   // Reads the provider's file, or null when it's absent or unreadable.
   readonly readWorkflow: (projectRoot: string) => CiWorkflowFile | null;
+  // Whether `content` actually wires up React Doctor (a GitHub step, a GitLab
+  // scan job) — distinct from the file merely existing, since a `.gitlab-ci.yml`
+  // can be a full pipeline with no React Doctor job at all.
+  readonly containsReactDoctor: (content: string) => boolean;
   // Writes a fresh file from the gate. Returns "exists" without overwriting.
   readonly scaffold: (projectRoot: string, defaultBranch: string, gate: CiGate) => CiScaffoldResult;
   // The gate currently in effect in `content` (advisory defaults when nothing

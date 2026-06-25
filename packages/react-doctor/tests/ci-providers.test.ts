@@ -189,6 +189,14 @@ describe("githubActionsProvider gate parsing", () => {
     expect(githubActionsProvider.applyGate(other, ERROR_GATE)).toBeNull();
   });
 
+  it("reports whether a workflow wires up React Doctor", () => {
+    expect(githubActionsProvider.containsReactDoctor(buildWorkflowContent("main"))).toBe(true);
+    const noStep = ["jobs:", "  ci:", "    steps:", "      - uses: actions/checkout@v5", ""].join(
+      "\n",
+    );
+    expect(githubActionsProvider.containsReactDoctor(noStep)).toBe(false);
+  });
+
   it("upgrades a floating @v1 ref to @v2", () => {
     const v1 = buildWorkflowContent("main", "v1");
     const upgraded = githubActionsProvider.upgradeMajor?.(v1);
@@ -276,6 +284,28 @@ describe("gitlabCiProvider", () => {
 
   it("refuses (null) when there is no scan line", () => {
     expect(gitlabCiProvider.applyGate("stages: [test]\n", ERROR_GATE)).toBeNull();
+  });
+
+  it("adds a missing flag instead of skipping the change", () => {
+    const onlyBlocking = [
+      "react-doctor:",
+      "  script:",
+      "    - npx react-doctor@latest --blocking none",
+      "",
+    ].join("\n");
+    const edited = gitlabCiProvider.applyGate(onlyBlocking, { ...ADVISORY_GATE, scope: "full" });
+    expect(edited?.content).toContain("--scope full");
+  });
+
+  it("reports whether a file wires up a React Doctor job", () => {
+    const config = fs.readFileSync(
+      gitlabCiProvider.scaffold(project.root, "main", ADVISORY_GATE).path,
+      "utf8",
+    );
+    expect(gitlabCiProvider.containsReactDoctor(config)).toBe(true);
+    expect(gitlabCiProvider.containsReactDoctor("stages: [test]\nrubocop:\n  script: true\n")).toBe(
+      false,
+    );
   });
 
   it("never overwrites an existing .gitlab-ci.yml", () => {

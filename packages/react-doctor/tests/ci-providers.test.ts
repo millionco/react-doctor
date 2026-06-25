@@ -230,6 +230,30 @@ describe("githubActionsProvider scaffold", () => {
     githubActionsProvider.scaffold(project.root, "main", ADVISORY_GATE);
     expect(githubActionsProvider.scaffold(project.root, "main", ERROR_GATE).status).toBe("exists");
   });
+
+  it("finds and manages the action in a non-canonical workflow file", () => {
+    const workflowsDir = path.join(project.root, ".github", "workflows");
+    fs.mkdirSync(workflowsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(workflowsDir, "ci.yml"),
+      [
+        "jobs:",
+        "  build:",
+        "    steps:",
+        "      - uses: millionco/react-doctor@v2",
+        "        with:",
+        "          blocking: error",
+        "",
+      ].join("\n"),
+    );
+    const found = githubActionsProvider.readWorkflow(project.root);
+    expect(found?.path.endsWith("ci.yml")).toBe(true);
+    expect(githubActionsProvider.parseGate(found?.content ?? "").blocking).toBe("error");
+    // `ci install` must not add a duplicate react-doctor.yml.
+    expect(githubActionsProvider.scaffold(project.root, "main", ADVISORY_GATE).status).toBe(
+      "exists",
+    );
+  });
 });
 
 describe("gitlabCiProvider", () => {
@@ -310,6 +334,21 @@ describe("gitlabCiProvider", () => {
     expect(edited?.content).toContain("- npm install react-doctor@latest");
     expect(edited?.content).toContain("--blocking error");
     expect(edited?.content).not.toContain("install react-doctor@latest --blocking");
+  });
+
+  it("handles a multiline block-scalar script", () => {
+    const block = [
+      "react-doctor:",
+      "  script:",
+      "    - |",
+      "      npx react-doctor@latest --blocking error --scope changed",
+      "",
+    ].join("\n");
+    expect(gitlabCiProvider.containsReactDoctor(block)).toBe(true);
+    expect(gitlabCiProvider.parseGate(block).blocking).toBe("error");
+    const edited = gitlabCiProvider.applyGate(block, { ...ADVISORY_GATE, blocking: "warning" });
+    expect(edited?.content).toContain("--blocking warning");
+    expect(edited?.content).toContain("- |");
   });
 
   it("reports whether a file wires up a React Doctor job", () => {

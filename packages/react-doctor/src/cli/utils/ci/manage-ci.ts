@@ -299,7 +299,9 @@ export const runCiInstall = async (options: CiCommandOptions = {}): Promise<void
   }
 
   if (result.status === "exists") {
-    scaffoldSpinner.succeed(`${provider.fileLabel} already exists.`);
+    scaffoldSpinner.succeed(
+      `${path.relative(projectRoot, result.path)} already configured React Doctor.`,
+    );
     if (provider.id === "github-actions") {
       // The file is left untouched, so any gate flags weren't applied — say so
       // and point at the command that does edit an existing workflow.

@@ -263,7 +263,49 @@ const renderSnippet = (gate: CiGate): string => {
   return [`${WITH_INDENT}with:`, ...gateLines].join("\n");
 };
 
+const containsReactDoctor = (content: string): boolean => {
+  try {
+    return findReactDoctorStep(YAML.parseDocument(content)) !== null;
+  } catch {
+    return false;
+  }
+};
+
+// Scans `.github/workflows/*.{yml,yaml}` for the first file that wires up the
+// React Doctor action step — a user may have added the step to their existing
+// CI workflow instead of a dedicated `react-doctor.yml`.
+const findActionWorkflowFile = (projectRoot: string): CiWorkflowFile | null => {
+  const workflowsDir = path.join(projectRoot, ".github", "workflows");
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(workflowsDir).sort();
+  } catch {
+    return null;
+  }
+  for (const entry of entries) {
+    if (!/\.ya?ml$/.test(entry)) continue;
+    try {
+      const content = fs.readFileSync(path.join(workflowsDir, entry), "utf8");
+      if (containsReactDoctor(content)) return { path: path.join(workflowsDir, entry), content };
+    } catch {}
+  }
+  return null;
+};
+
+// The canonical `react-doctor.yml` when present (it's ours, so edit it), else
+// the first other workflow that wires up the action — so `ci config` /
+// `ci upgrade` manage the step wherever the user put it.
+const readWorkflow = (projectRoot: string): CiWorkflowFile | null => {
+  const canonical = readReactDoctorWorkflow(projectRoot);
+  if (canonical) return { path: canonical.workflowPath, content: canonical.content };
+  return findActionWorkflowFile(projectRoot);
+};
+
+// Reports "exists" when the action is already wired up anywhere (or our
+// canonical file is present), so `ci install` never adds a second workflow.
 const scaffold = (projectRoot: string, defaultBranch: string, gate: CiGate): CiScaffoldResult => {
+  const existing = readWorkflow(projectRoot);
+  if (existing) return { status: "exists", path: existing.path };
   const workflowPath = getReactDoctorWorkflowPath(projectRoot);
   if (fs.existsSync(workflowPath)) return { status: "exists", path: workflowPath };
   try {
@@ -272,19 +314,6 @@ const scaffold = (projectRoot: string, defaultBranch: string, gate: CiGate): CiS
     return { status: "created", path: workflowPath };
   } catch {
     return { status: "failed", path: workflowPath };
-  }
-};
-
-const readWorkflow = (projectRoot: string): CiWorkflowFile | null => {
-  const workflow = readReactDoctorWorkflow(projectRoot);
-  return workflow ? { path: workflow.workflowPath, content: workflow.content } : null;
-};
-
-const containsReactDoctor = (content: string): boolean => {
-  try {
-    return findReactDoctorStep(YAML.parseDocument(content)) !== null;
-  } catch {
-    return false;
   }
 };
 

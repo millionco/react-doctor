@@ -21,14 +21,20 @@ const getGitlabConfigPath = (projectRoot: string): string =>
 // scan ("full") ignores the base, so it's left off.
 const BASE_FLAG = ' --base "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"';
 
-// React Doctor's scan command RUNS the tool, as a YAML sequence item: via a
-// runner (`npx` / `pnpm dlx` / `yarn dlx` / `bunx`) or a bare `react-doctor`
-// command. Matching the run (not a mere `react-doctor@` mention) keeps an
-// `- npm install react-doctor@latest` step, a comment, or another job's command
-// from being mistaken for the scan line.
-const isScanLine = (line: string): boolean =>
-  /^\s*-\s/.test(line) &&
-  (/(?:npx|dlx|bunx)\s+react-doctor\b/.test(line) || /^\s*-\s+react-doctor\b/.test(line));
+// True when `line` RUNS React Doctor — via a runner (`npx` / `pnpm dlx` /
+// `yarn dlx` / `bunx`) or a bare `react-doctor` command. The leading `- `
+// sequence marker is optional, so a command inside a multiline `script: - |`
+// block scalar is matched too; a leading `#` (comment) and an
+// `npm install react-doctor` step are excluded because the run must be the
+// first token.
+const isScanLine = (line: string): boolean => {
+  const command = line.replace(/^\s*-?\s*/, "");
+  if (command.startsWith("#")) return false;
+  // `react-doctor` followed by `@`, whitespace, or end — the run. The trailing
+  // class excludes the YAML job key `react-doctor:` and names like
+  // `react-doctor-setup`.
+  return /^(?:(?:npx|bunx|dlx|(?:pnpm|yarn)\s+dlx)\s+)?react-doctor(?:@|\s|$)/.test(command);
+};
 
 const stripTrailingComment = (line: string): string => line.replace(/\s+#.*$/, "");
 

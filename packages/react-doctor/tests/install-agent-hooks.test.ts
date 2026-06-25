@@ -131,7 +131,7 @@ const writeFakePathReactDoctorBinary = (
   }
 };
 
-describe("installReactDoctorAgentHooks", () => {
+describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", () => {
   let fixture: AgentHooksFixture;
 
   beforeEach(() => {

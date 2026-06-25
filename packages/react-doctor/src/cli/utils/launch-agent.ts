@@ -51,7 +51,9 @@ export const resolveCursorBundledNode = (): WindowsCommandResolution | null => {
   try {
     const versions = fs.readdirSync(cursorAgentRoot);
     if (versions.length === 0) return null;
-    const latestVersion = versions.sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))[0];
+    const latestVersion = versions.sort((a, b) =>
+      b.localeCompare(a, undefined, { numeric: true }),
+    )[0];
     const bundledNodePath = path.join(cursorAgentRoot, latestVersion, "node.exe");
     const entryScriptPath = path.join(cursorAgentRoot, latestVersion, "index.js");
     if (fs.statSync(bundledNodePath).isFile() && fs.statSync(entryScriptPath).isFile()) {

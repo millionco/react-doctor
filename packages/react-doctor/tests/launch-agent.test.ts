@@ -95,10 +95,7 @@ describe.skipIf(process.platform !== "win32")("Windows CLI agent launching", () 
   it("resolves npm-style .cmd wrappers pointing to .js files", () => {
     const cmdFilePath = path.join(fakeBinDirectory, "test-cli.cmd");
     const entryScriptPath = path.join(fakeBinDirectory, "test-cli.js");
-    fs.writeFileSync(
-      cmdFilePath,
-      '@echo off\r\nnode "%~dp0\\test-cli.js" %*\r\n',
-    );
+    fs.writeFileSync(cmdFilePath, '@echo off\r\nnode "%~dp0\\test-cli.js" %*\r\n');
     fs.writeFileSync(entryScriptPath, "console.log('test');");
 
     const resolved = resolveWindowsCmdEntryScript("test-cli");

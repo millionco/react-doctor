@@ -366,7 +366,12 @@ export const runCiUpgrade = async (options: CiCommandOptions = {}): Promise<void
 
   const edit = provider.upgradeMajor(workflow.content);
   if (!edit.changed) {
-    logger.success(`Your workflow already uses the current major (${highlighter.info("@v2")}).`);
+    // Nothing was rewritten: the workflow either already uses the current
+    // floating major or pins a specific version/SHA we shouldn't bump. Don't
+    // claim it's on `@v2` when it might be deliberately pinned elsewhere.
+    logger.success(
+      `Nothing to upgrade: your workflow doesn't use the floating ${highlighter.info("@v1")} ref.`,
+    );
     return;
   }
 

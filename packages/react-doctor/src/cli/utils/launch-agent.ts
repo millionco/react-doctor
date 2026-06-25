@@ -51,13 +51,17 @@ export const resolveCursorBundledNode = (): WindowsCommandResolution | null => {
   try {
     const versions = fs.readdirSync(cursorAgentRoot);
     if (versions.length === 0) return null;
-    const latestVersion = versions.sort((a, b) =>
+    const sortedVersions = versions.sort((a, b) =>
       b.localeCompare(a, undefined, { numeric: true }),
-    )[0];
-    const bundledNodePath = path.join(cursorAgentRoot, latestVersion, "node.exe");
-    const entryScriptPath = path.join(cursorAgentRoot, latestVersion, "index.js");
-    if (fs.statSync(bundledNodePath).isFile() && fs.statSync(entryScriptPath).isFile()) {
-      return { command: bundledNodePath, args: [entryScriptPath] };
+    );
+    for (const version of sortedVersions) {
+      try {
+        const bundledNodePath = path.join(cursorAgentRoot, version, "node.exe");
+        const entryScriptPath = path.join(cursorAgentRoot, version, "index.js");
+        if (fs.statSync(bundledNodePath).isFile() && fs.statSync(entryScriptPath).isFile()) {
+          return { command: bundledNodePath, args: [entryScriptPath] };
+        }
+      } catch {}
     }
   } catch {}
   return null;

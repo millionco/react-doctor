@@ -92,6 +92,26 @@ describe.skipIf(process.platform !== "win32")("Windows CLI agent launching", () 
     expect(resolution).toBeNull();
   });
 
+  it("falls back to older version when latest is incomplete", () => {
+    const versionsRoot = path.join(fakeLocalAppData, "cursor-agent", "versions");
+    fs.mkdirSync(versionsRoot, { recursive: true });
+
+    const version1 = path.join(versionsRoot, "1.0.0");
+    const version2 = path.join(versionsRoot, "2.0.0");
+
+    fs.mkdirSync(version1, { recursive: true });
+    fs.writeFileSync(path.join(version1, "node.exe"), "fake node");
+    fs.writeFileSync(path.join(version1, "index.js"), "fake entry");
+
+    fs.mkdirSync(version2, { recursive: true });
+    fs.writeFileSync(path.join(version2, "node.exe"), "fake node");
+
+    const resolution = resolveCursorBundledNode();
+
+    expect(resolution).not.toBeNull();
+    expect(resolution?.command).toBe(path.join(version1, "node.exe"));
+  });
+
   it("resolves npm-style .cmd wrappers pointing to .js files", () => {
     const cmdFilePath = path.join(fakeBinDirectory, "test-cli.cmd");
     const entryScriptPath = path.join(fakeBinDirectory, "test-cli.js");

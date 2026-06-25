@@ -32,7 +32,7 @@ export const jsIndexMaps = defineRule({
   recommendation:
     "Build a `Map` once before the loop instead of calling `array.find(...)` inside it",
   create: (context: RuleContext) =>
-    createLoopAwareVisitors({
+    createLoopAwareVisitors(context, {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (
           !isNodeOfType(node.callee, "MemberExpression") ||

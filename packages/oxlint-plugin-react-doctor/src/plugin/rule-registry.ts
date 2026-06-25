@@ -48,6 +48,7 @@ import { noThreePeriodEllipsis } from "./rules/react-ui/no-three-period-ellipsis
 import { noVagueButtonLabel } from "./rules/react-ui/no-vague-button-label.js";
 import { dialogHasAccessibleName } from "./rules/a11y/dialog-has-accessible-name.js";
 import { displayName } from "./rules/react-builtins/display-name.js";
+import { effectCleanupNotOnEveryPath } from "./rules/state-and-effects/effect-cleanup-not-on-every-path.js";
 import { effectNeedsCleanup } from "./rules/state-and-effects/effect-needs-cleanup.js";
 import { exhaustiveDeps } from "./rules/react-builtins/exhaustive-deps.js";
 import { expoNoNonInlinedEnv } from "./rules/react-native/expo-no-non-inlined-env.js";
@@ -161,6 +162,7 @@ import { noCreateStoreInRender } from "./rules/state-and-effects/no-create-store
 import { noDanger } from "./rules/react-builtins/no-danger.js";
 import { noDangerWithChildren } from "./rules/react-builtins/no-danger-with-children.js";
 import { noDarkModeGlow } from "./rules/design/no-dark-mode-glow.js";
+import { noDeadAssignment } from "./rules/correctness/no-dead-assignment.js";
 import { noDefaultProps } from "./rules/architecture/no-default-props.js";
 import { noDerivedState } from "./rules/state-and-effects/no-derived-state.js";
 import { noDerivedStateEffect } from "./rules/state-and-effects/no-derived-state-effect.js";
@@ -241,7 +243,9 @@ import { noSecretsInClientCode } from "./rules/security/no-secrets-in-client-cod
 import { noSelfUpdatingEffect } from "./rules/state-and-effects/no-self-updating-effect.js";
 import { noSetState } from "./rules/react-builtins/no-set-state.js";
 import { noSetStateInRender } from "./rules/state-and-effects/no-set-state-in-render.js";
+import { noSetStateInRenderLoop } from "./rules/state-and-effects/no-set-state-in-render-loop.js";
 import { noSideTabBorder } from "./rules/design/no-side-tab-border.js";
+import { noStaleClosureCapture } from "./rules/state-and-effects/no-stale-closure-capture.js";
 import { noStaticElementInteractions } from "./rules/a11y/no-static-element-interactions.js";
 import { noStringFalseOnBooleanAttribute } from "./rules/react-builtins/no-string-false-on-boolean-attribute.js";
 import { noStringRefs } from "./rules/react-builtins/no-string-refs.js";
@@ -253,8 +257,11 @@ import { noUncontrolledInput } from "./rules/correctness/no-uncontrolled-input.j
 import { noUndeferredThirdParty } from "./rules/bundle-size/no-undeferred-third-party.js";
 import { noUnescapedEntities } from "./rules/react-builtins/no-unescaped-entities.js";
 import { noUnknownProperty } from "./rules/react-builtins/no-unknown-property.js";
+import { noUnreachableCode } from "./rules/correctness/no-unreachable-code.js";
+import { noUnreleasedResource } from "./rules/state-and-effects/no-unreleased-resource.js";
 import { noUnsafe } from "./rules/react-builtins/no-unsafe.js";
 import { noUnstableNestedComponents } from "./rules/react-builtins/no-unstable-nested-components.js";
+import { noUseBeforeDefine } from "./rules/correctness/no-use-before-define.js";
 import { noUsememoSimpleExpression } from "./rules/performance/no-usememo-simple-expression.js";
 import { noWideLetterSpacing } from "./rules/design/no-wide-letter-spacing.js";
 import { noWillUpdateSetState } from "./rules/react-builtins/no-will-update-set-state.js";
@@ -874,6 +881,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       requires: [...new Set(["react", ...(displayName.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/effect-cleanup-not-on-every-path",
+    id: "effect-cleanup-not-on-every-path",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...effectCleanupNotOnEveryPath,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(effectCleanupNotOnEveryPath.requires ?? [])])],
     },
   },
   {
@@ -2190,6 +2209,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-dead-assignment",
+    id: "no-dead-assignment",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noDeadAssignment,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
     key: "react-doctor/no-default-props",
     id: "no-default-props",
     source: "react-doctor",
@@ -3121,6 +3151,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-set-state-in-render-loop",
+    id: "no-set-state-in-render-loop",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noSetStateInRenderLoop,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(noSetStateInRenderLoop.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-side-tab-border",
     id: "no-side-tab-border",
     source: "react-doctor",
@@ -3129,6 +3171,18 @@ export const reactDoctorRules = [
       ...noSideTabBorder,
       framework: "global",
       category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-stale-closure-capture",
+    id: "no-stale-closure-capture",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noStaleClosureCapture,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(noStaleClosureCapture.requires ?? [])])],
     },
   },
   {
@@ -3260,6 +3314,29 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-unreachable-code",
+    id: "no-unreachable-code",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noUnreachableCode,
+      framework: "global",
+      category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/no-unreleased-resource",
+    id: "no-unreleased-resource",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noUnreleasedResource,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(noUnreleasedResource.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-unsafe",
     id: "no-unsafe",
     source: "react-doctor",
@@ -3281,6 +3358,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       requires: [...new Set(["react", ...(noUnstableNestedComponents.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-use-before-define",
+    id: "no-use-before-define",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noUseBeforeDefine,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {

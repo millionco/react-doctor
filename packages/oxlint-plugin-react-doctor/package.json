@@ -59,6 +59,7 @@
     "oxc-parser": "^0.135.0"
   },
   "devDependencies": {
+    "@react-doctor/cfg": "workspace:*",
     "@types/node": "^25.6.0"
   },
   "engines": {

@@ -1,8 +1,3 @@
-import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
-import type { EsTreeNodeType } from "./es-tree-node-type.js";
-import { hasTypeProperty } from "./has-type-property.js";
-
-export const isNodeOfType = <NodeType extends EsTreeNodeType>(
-  node: unknown,
-  type: NodeType,
-): node is EsTreeNodeOfType<NodeType> => Boolean(hasTypeProperty(node) && node.type === type);
+// Single source of truth lives in `@react-doctor/cfg`; re-exported here so the
+// node-narrowing guard can't drift between two copies.
+export { isNodeOfType } from "@react-doctor/cfg";

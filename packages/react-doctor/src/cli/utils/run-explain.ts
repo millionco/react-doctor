@@ -49,8 +49,10 @@ export const runExplain = async (
 
   const scanResult = await inspect(targetDirectory, {
     ...context.scanOptions,
+    deadCode: false,
     silent: true,
     noScore: true,
+    suppressRendering: true,
     configOverride: context.userConfig,
   });
 

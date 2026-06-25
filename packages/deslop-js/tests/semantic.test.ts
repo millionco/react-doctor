@@ -22,8 +22,8 @@ const scanFixtureWithSemantic = async (
 const unusedTypeNames = (result: ScanResult): string[] =>
   result.unusedTypes.map((unusedType) => unusedType.name).sort();
 
-describe("semantic (Phase 0)", () => {
-  it("populates unusedTypes as [] by default (semantic disabled)", async () => {
+describe("semantic analysis", () => {
+  it("populates unusedTypes as [] on fixtures without a tsconfig", async () => {
     const result = await analyze(defineConfig({ rootDir: resolve(FIXTURES_DIR, "simple-app") }));
     assert.deepEqual(result.unusedTypes, []);
   });
@@ -36,7 +36,7 @@ describe("semantic (Phase 0)", () => {
       }),
     );
     assert.ok(Array.isArray(result.unusedTypes), "unusedTypes must be an array");
-    assert.equal(result.unusedTypes.length, 0, "Phase 0 returns no findings yet");
+    assert.equal(result.unusedTypes.length, 0, "projects without tsconfig return no findings");
   });
 
   it("preserves all pre-existing ScanResult fields when semantic is enabled", async () => {

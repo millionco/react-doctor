@@ -200,10 +200,9 @@ export type {
  * - `reportRedundancy: true` — on because redundancy findings are mostly
  *   high-signal and the detectors carry their own confidence tiers.
  *
- * - `duplicateBlocks: undefined` — token-based copy-paste detection (suffix
- *   array + LCP) is opt-in. It re-parses every source
- *   file to emit a token stream and adds significant runtime to the scan.
- *   Pass `duplicateBlocks: { enabled: true }` to turn it on.
+ * - `duplicateBlocks.enabled: true` — token-based copy-paste detection is
+ *   part of the default code-quality pass. Disable `reportCodeQuality` or
+ *   pass `duplicateBlocks: { enabled: false }` to skip the extra token pass.
  */
 const fillSemanticConfig = (
   semanticOverrides: Partial<DeslopConfig["semantic"]> | undefined,

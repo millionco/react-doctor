@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeAll, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic } from "@react-doctor/core";
 import { runOxlint } from "@react-doctor/core";
 import { buildTestProject } from "./regressions/_helpers.js";
@@ -26,7 +26,7 @@ const findDiagnosticsInFile = (
 let diagnostics: Diagnostic[];
 
 describe("namespace hook detection (React.useEffect, React.useState, etc.)", () => {
-  it("loads diagnostics from namespace-hooks fixture", async () => {
+  beforeAll(async () => {
     diagnostics = await runOxlint({
       rootDirectory: BASIC_REACT_DIRECTORY,
       project: buildTestProject({
@@ -34,6 +34,9 @@ describe("namespace hook detection (React.useEffect, React.useState, etc.)", () 
         hasTanStackQuery: true,
       }),
     });
+  });
+
+  it("loads diagnostics from namespace-hooks fixture", () => {
     expect(diagnostics.length).toBeGreaterThan(0);
   });
 

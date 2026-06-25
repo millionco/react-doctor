@@ -194,6 +194,9 @@ export default defineConfig({
       dts: false,
       target: "node20",
       platform: "node",
+      env: {
+        VERSION: process.env.VERSION ?? packageJson.version,
+      },
       fixedExtension: false,
     },
   ],

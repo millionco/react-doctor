@@ -99,11 +99,9 @@ export class JsonReportProjectEntry extends Schema.Class<JsonReportProjectEntry>
 }) {}
 
 /**
- * Versioned JsonReport schema. `JsonReport` is a `Schema.Union` so we
- * can add `schemaVersion: 2` later as one new union member without
- * breaking existing v1 consumers (the GitHub Action keys off the
- * version literal). Today's union is single-arm; the shape is
- * intentional.
+ * Versioned JsonReport schema. `JsonReport` stays a `Schema.Union` so
+ * consumers can branch on the version literal while v1 and baseline v2
+ * payloads remain independently decodable.
  */
 export class JsonReportV1 extends Schema.Class<JsonReportV1>("JsonReportV1")({
   schemaVersion: Schema.Literal(1),

@@ -12,9 +12,6 @@ interface CompiledIgnoreOverride {
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === "string");
 
-const collectStringList = (value: unknown): string[] =>
-  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
-
 const validateOverrideEntry = (entry: unknown, index: number): ReactDoctorIgnoreOverride | null => {
   if (!isPlainObject(entry)) {
     warnConfigIssue(
@@ -52,11 +49,11 @@ export const compileIgnoreOverrides = (
   return overrides.flatMap((entry, index) => {
     const validated = validateOverrideEntry(entry, index);
     if (!validated) return [];
-    const filePatterns = compileGlobPatternsLenient(collectStringList(validated.files), (error) =>
+    const filePatterns = compileGlobPatternsLenient(validated.files, (error) =>
       warnConfigIssue(`ignore.overrides[${index}]: ${error.message}`),
     );
     if (filePatterns.length === 0) return [];
-    const ruleIds = new Set(collectStringList(validated.rules));
+    const ruleIds = new Set(validated.rules ?? []);
     return [{ filePatterns, ruleIds }];
   });
 };

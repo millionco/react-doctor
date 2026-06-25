@@ -26,6 +26,9 @@ export const USER_OXLINT_CONFIG_BROKEN_DIRECTORY = path.join(
 const findDiagnosticsByRule = (diagnostics: Diagnostic[], rule: string): Diagnostic[] =>
   diagnostics.filter((diagnostic) => diagnostic.rule === rule);
 
+const pathIncludesFixture = (filePath: string, fixture: string): boolean =>
+  filePath.split(path.sep).join("/").replaceAll("\\", "/").includes(fixture);
+
 export interface RuleTestCase {
   fixture: string;
   ruleSource: string;
@@ -43,6 +46,9 @@ export const describeRules = (
       it(`${ruleName} (${testCase.fixture} → ${testCase.ruleSource})`, () => {
         const issues = findDiagnosticsByRule(getDiagnostics(), ruleName);
         expect(issues.length).toBeGreaterThan(0);
+        expect(issues.some((issue) => pathIncludesFixture(issue.filePath, testCase.fixture))).toBe(
+          true,
+        );
         if (testCase.severity) expect(issues[0].severity).toBe(testCase.severity);
         if (testCase.category) expect(issues[0].category).toBe(testCase.category);
       });

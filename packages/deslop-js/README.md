@@ -164,7 +164,7 @@ const config = defineConfig({
 | `reportTypes`         | `boolean`                               | `false`                                                          | Include type-only exports in `unusedExports`                                                            |
 | `includeEntryExports` | `boolean`                               | `false`                                                          | Report unused exports from entry files                                                                  |
 | `reportRedundancy`    | `boolean`                               | `true`                                                           | Emit the redundancy / DRY findings listed above                                                         |
-| `semantic`            | `SemanticConfig`                        | `undefined`                                                      | Opt-in TypeScript type-aware analysis (see below)                                                       |
+| `semantic`            | `SemanticConfig`                        | `{ enabled: true }`                                              | TypeScript type-aware analysis (see below)                                                              |
 
 Path aliases are auto-detected by default — from `tsconfig` `paths`, Vite (`resolve.alias`), webpack, Babel (`module-resolver`), and Jest (`moduleNameMapper`) configs, plus the workspace layout (a `@scope/<dir>` import resolves to the matching workspace package even when its `package.json` name differs). Use `paths` / `--paths` only for mappings none of those cover.
 
@@ -189,7 +189,7 @@ const config = defineConfig({
 
 | Option                            | Default     | Notes                                                                                                                                                          |
 | --------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `enabled`                         | `false`     | Master switch; semantic analysis loads the TS program and adds ~1–3s per scan                                                                                  |
+| `enabled`                         | `true`      | Master switch; semantic analysis loads the TS program and adds ~1–3s per scan                                                                                  |
 | `reportUnusedTypes`               | `true`      | Type aliases / interfaces / type-only exports never referenced                                                                                                 |
 | `reportUnusedEnumMembers`         | `true`      | Enum members no reference site reads or writes                                                                                                                 |
 | `reportUnusedClassMembers`        | **`false`** | Subclass overrides, framework method-by-name invocation (`@HttpGet`, lifecycle hooks) produce too many stylistic FPs to enable by default. Opt in selectively. |

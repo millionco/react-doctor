@@ -1,5 +1,13 @@
 import pc from "picocolors";
 
+// picocolors only ships the 16-color palette, so orange (Claude's brand) is a
+// 256-color escape built by hand. Honors color-disabled by returning the input.
+const ORANGE_ANSI_CODE = 208;
+const makeOrange =
+  (enabled: boolean): ((input: string | number) => string) =>
+  (input) =>
+    enabled ? `\u001b[38;5;${ORANGE_ANSI_CODE}m${input}\u001b[39m` : String(input);
+
 export const highlighter = {
   error: pc.red,
   warn: pc.yellow,
@@ -7,6 +15,7 @@ export const highlighter = {
   success: pc.green,
   dim: pc.dim,
   gray: pc.gray,
+  orange: makeOrange(pc.isColorSupported),
   bold: pc.bold,
 };
 
@@ -27,5 +36,6 @@ export const setColorEnabled = (enabled: boolean): void => {
   highlighter.success = colors.green;
   highlighter.dim = colors.dim;
   highlighter.gray = colors.gray;
+  highlighter.orange = makeOrange(enabled);
   highlighter.bold = colors.bold;
 };

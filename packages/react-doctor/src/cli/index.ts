@@ -13,6 +13,7 @@ import {
   rulesSetAction,
   rulesUnignoreTagAction,
 } from "./commands/rules.js";
+import { statsAction } from "./commands/stats.js";
 import { versionAction } from "./commands/version.js";
 import { whyAction } from "./commands/why.js";
 import { applyColorPreference } from "./utils/apply-color-preference.js";
@@ -80,8 +81,12 @@ ${formatExampleLines([
 ])}
 
 ${highlighter.dim("Configuration:")}
-  Add a ${highlighter.info("doctor.config.ts")} (or .js/.mjs/.json — or a ${highlighter.info('"reactDoctor"')} key in your package.json) in the project root.
-  Use ${highlighter.info("react-doctor rules")} to list, explain, and configure rules. CLI flags always override config values.
+  Add a ${highlighter.info("doctor.config.ts")} (or .js/.mjs/.json — or a ${highlighter.info(
+    '"reactDoctor"',
+  )} key in your package.json) in the project root.
+  Use ${highlighter.info(
+    "react-doctor rules",
+  )} to list, explain, and configure rules. CLI flags always override config values.
 
 ${highlighter.dim("Feedback & bug reports:")}
   ${highlighter.info(`${CANONICAL_GITHUB_URL}/issues`)}
@@ -98,6 +103,31 @@ ${formatExampleLines([
   ["react-doctor install --dry-run", "preview without writing files"],
   ["react-doctor install --agent-hooks", "also install native agent hooks"],
 ])}
+
+${highlighter.dim("Learn more:")}
+  ${highlighter.info(CANONICAL_GITHUB_URL)}
+`;
+
+const renderStatsHelpEpilog = (): string => `
+${highlighter.dim("Examples:")}
+${formatExampleLines([
+  ["react-doctor stats", "rank agents on sessions that touched this repo"],
+  ["react-doctor stats --global", "rank across every repository on this machine"],
+  ["react-doctor stats --provider claude", "only Claude Code sessions"],
+  ["react-doctor stats --since 2026-06-01", "only recent sessions"],
+  ["react-doctor stats --json", "machine-readable leaderboard"],
+])}
+
+${highlighter.dim("How it works:")}
+  Reads local agent history (Claude Code + Codex transcripts, the Cursor
+  composer database), reconstructs the code each model wrote, lints it, and
+  ranks models + providers by score.
+
+${highlighter.dim("Caveats:")}
+  Codex shell-based edits aren't reconstructable (partial coverage). Cursor uses
+  the GUI composer database (cursor-agent CLI transcripts are not included), and
+  attribution falls back to "unknown" only for chats left on "Auto". The score
+  requires network access.
 
 ${highlighter.dim("Learn more:")}
   ${highlighter.info(CANONICAL_GITHUB_URL)}
@@ -205,7 +235,7 @@ program
   .option("-c, --cwd <cwd>", "working directory", process.cwd())
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
-  .action((location, options) => whyAction(location, options));
+  .action(whyAction);
 
 program
   .command("install")
@@ -226,6 +256,24 @@ program
   .option("--color", "force colored output")
   .option("--no-color", "disable colored output (also honors NO_COLOR)")
   .action(versionAction);
+
+program
+  .command("stats")
+  .description("Rank agents/models by the React Doctor health of the code they wrote")
+  .option("--global", "include sessions from every repository (default: this repo only)")
+  .option("--since <date>", "only sessions modified on or after this date (e.g. 2026-06-01)")
+  .option("--limit <n>", "max sessions to analyze, newest first (default: 200)")
+  .option("--provider <name>", "only one source: claude, codex, or cursor")
+  .option("--json", "output a structured JSON leaderboard")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .option("--color", "force colored output")
+  .option("--no-color", "disable colored output (also honors NO_COLOR)")
+  .addHelpText("after", renderStatsHelpEpilog)
+  // stats redeclares --json/--cwd/--color, but the root program also exposes
+  // them as globals (e.g. --json for the default inspect command). Merge via
+  // optsWithGlobals() so a flag works whether it lands before or after the
+  // subcommand.
+  .action((_options, command) => statsAction(command.optsWithGlobals()));
 
 const rules = program
   .command("rules")

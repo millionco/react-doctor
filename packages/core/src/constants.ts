@@ -81,6 +81,12 @@ export const SCORE_BAR_WIDTH_CHARS = 50;
 
 export const SCORE_API_URL = "https://www.react.doctor/api/score";
 
+// Sink for the `react-doctor stats` leaderboard rows: the CLI POSTs the same
+// code-free `{model, harness, score, files}` rows it reports to Sentry, and the
+// endpoint stores them and returns the community leaderboard. Overridable for
+// local e2e via `REACT_DOCTOR_STATS_API_URL` (read in the CLI client, not here).
+export const STATS_API_URL = "https://www.react.doctor/api/stats";
+
 export const ENTERPRISE_CONTACT_URL = "https://react.doctor/enterprise";
 
 export const SHARE_BASE_URL = "https://react.doctor/share";

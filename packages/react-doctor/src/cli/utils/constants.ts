@@ -182,6 +182,9 @@ export const METRIC = {
   installDependency: "install.dependency",
   rulesChanged: "rules.changed",
   rulesQueried: "rules.queried",
+  // `react-doctor stats`: one counter per run (adoption), with the providers
+  // discovered and the number of agent sessions scored as attributes.
+  statsRun: "stats.run",
   // Editor language server (`react-doctor experimental-lsp`). Each workspace
   // scan burst is one wide-event span (op `lsp.scan`) plus these metrics.
   lspSessionStarted: "lsp.session.started",

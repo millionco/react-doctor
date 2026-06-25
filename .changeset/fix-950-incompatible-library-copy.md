@@ -11,8 +11,8 @@ memoize through a third-party hook (e.g. `@tanstack/react-virtual`'s
 "reimplement the library locally" and steered users off mature libraries.
 
 The rule stays active (the compiler's own bail-out reason is informative), but
-its remediation now names the real fix: it's a limitation of the library, not a
-bug in your code — memoize any of its values you pass into other memoized
-components, or disable the rule if it's noise.
+its remediation now names the real fix: it's how the library works, not a bug in
+your code — memoize values you pass from it into other memoized components, or
+suppress it with `// react-doctor-disable-next-line react-hooks-js/incompatible-library`.
 
 Closes #950

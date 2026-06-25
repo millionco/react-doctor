@@ -82,7 +82,10 @@ describe("parseOxlintOutput react-hooks-js bail-out reason in primary message", 
     const [diagnostic] = parseOxlintOutput(stdout, buildProject(), TEST_ROOT_DIRECTORY);
 
     expect(diagnostic.message).toContain(reason);
-    expect(diagnostic.message).toContain("limitation of the library");
+    expect(diagnostic.message).toContain("not a bug in your code");
+    expect(diagnostic.message).toContain(
+      "react-doctor-disable-next-line react-hooks-js/incompatible-library",
+    );
     expect(diagnostic.message).not.toContain("Rewrite the flagged code");
   });
 });

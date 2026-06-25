@@ -39,7 +39,7 @@ const REACT_COMPILER_ACTION = "Rewrite the flagged code so the compiler can opti
 // can't and shouldn't rewrite. The generic "rewrite it" action wrongly steers
 // users off mature libraries (#950), so this rule names the real fix instead.
 const REACT_COMPILER_INCOMPATIBLE_LIBRARY_ACTION =
-  "This is a limitation of the library, not a bug in your code; memoize any of its values you pass into other memoized components, or disable this rule if it's noise.";
+  "It's how the library works, not a bug in your code. Memoize values you pass from it into other memoized components, or suppress it with `// react-doctor-disable-next-line react-hooks-js/incompatible-library`.";
 const REACT_COMPILER_GENERIC_MESSAGE = `${REACT_COMPILER_IMPACT}. ${REACT_COMPILER_ACTION}`;
 
 const buildReactCompilerMessage = (

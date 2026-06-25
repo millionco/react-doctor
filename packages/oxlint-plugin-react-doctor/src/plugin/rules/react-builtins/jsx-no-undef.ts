@@ -43,7 +43,7 @@ const parseGlobalComments = (sourceText: string): Set<string> => {
   const globals = new Set<string>();
   const blockCommentPattern = /\/\*\s*global\s+([^*]+)\*\//g;
   const lineCommentPattern = /\/\/\s*global\s+(.+)$/gm;
-  
+
   let match: RegExpExecArray | null;
   while ((match = blockCommentPattern.exec(sourceText)) !== null) {
     const identifiers = match[1].split(",");
@@ -52,7 +52,7 @@ const parseGlobalComments = (sourceText: string): Set<string> => {
       if (trimmed) globals.add(trimmed);
     }
   }
-  
+
   while ((match = lineCommentPattern.exec(sourceText)) !== null) {
     const identifiers = match[1].split(",");
     for (const identifier of identifiers) {
@@ -60,7 +60,7 @@ const parseGlobalComments = (sourceText: string): Set<string> => {
       if (trimmed) globals.add(trimmed);
     }
   }
-  
+
   return globals;
 };
 

@@ -37,61 +37,20 @@ const setupFixture = (): AgentHooksFixture => {
 
 const readJson = <Value>(filePath: string): Value => JSON.parse(fs.readFileSync(filePath, "utf8"));
 
-const writeFakeReactDoctorBinary = (projectRoot: string, options: FakeBinaryOptions): void => {
-  const binDir = path.join(projectRoot, "node_modules/.bin");
-  fs.mkdirSync(binDir, { recursive: true });
-  const output = options.output ?? "fake scan output";
-  const invocationFileName = options.invocationFileName ?? "agent-hook-args.txt";
-  
-  const scriptPath = path.join(binDir, "react-doctor.mjs");
-  const scriptContent = [
-    "import { writeFileSync } from 'node:fs';",
-    "import { join } from 'node:path';",
-    "",
-    `const projectRoot = ${JSON.stringify(projectRoot)};`,
-    `const output = ${JSON.stringify(output)};`,
-    `const exitCode = ${options.exitCode};`,
-    `const invocationFileName = ${JSON.stringify(invocationFileName)};`,
-    "",
-    "try {",
-    "  writeFileSync(",
-    "    join(projectRoot, '.react-doctor', 'agent-hook-cwd.txt'),",
-    "    process.cwd() + '\\n'",
-    "  );",
-    "  writeFileSync(",
-    "    join(projectRoot, '.react-doctor', invocationFileName),",
-    "    process.argv.slice(2).join('\\n') + '\\n'",
-    "  );",
-    "  console.log(output);",
-    "} catch (error) {}",
-    "process.exit(exitCode);",
-  ].join("\n");
-  
-  fs.writeFileSync(scriptPath, scriptContent);
-  
-  const wrapperPath = process.platform === "win32"
-    ? path.join(binDir, "react-doctor.cmd")
-    : path.join(binDir, "react-doctor");
-  
-  const wrapperContent = process.platform === "win32"
-    ? `@echo off\r\nnode "${scriptPath}" %*`
-    : `#!/bin/sh\nexec node "${scriptPath}" "$@"`;
-  
-  fs.writeFileSync(wrapperPath, wrapperContent);
-  if (process.platform !== "win32") {
-    fs.chmodSync(wrapperPath, fs.constants.S_IRWXU);
-  }
-};
-
-const writeFakePathReactDoctorBinary = (
+// The agent-hooks suite is POSIX-only (describe.skipIf win32), so the fake
+// binary is a plain `#!/bin/sh` wrapper that execs a node script recording its
+// cwd + argv and emitting the configured output/exit code.
+const writeFakeReactDoctorBinaryAt = (
   binDirectory: string,
   projectRoot: string,
   options: FakeBinaryOptions,
+  cwdFileName: string,
+  defaultInvocationFileName: string,
 ): void => {
   fs.mkdirSync(binDirectory, { recursive: true });
   const output = options.output ?? "fake scan output";
-  const invocationFileName = options.invocationFileName ?? "path-agent-hook-args.txt";
-  
+  const invocationFileName = options.invocationFileName ?? defaultInvocationFileName;
+
   const scriptPath = path.join(binDirectory, "react-doctor.mjs");
   const scriptContent = [
     "import { writeFileSync } from 'node:fs';",
@@ -101,12 +60,10 @@ const writeFakePathReactDoctorBinary = (
     `const output = ${JSON.stringify(output)};`,
     `const exitCode = ${options.exitCode};`,
     `const invocationFileName = ${JSON.stringify(invocationFileName)};`,
+    `const cwdFileName = ${JSON.stringify(cwdFileName)};`,
     "",
     "try {",
-    "  writeFileSync(",
-    "    join(projectRoot, '.react-doctor', 'path-agent-hook-cwd.txt'),",
-    "    process.cwd() + '\\n'",
-    "  );",
+    "  writeFileSync(join(projectRoot, '.react-doctor', cwdFileName), process.cwd() + '\\n');",
     "  writeFileSync(",
     "    join(projectRoot, '.react-doctor', invocationFileName),",
     "    process.argv.slice(2).join('\\n') + '\\n'",
@@ -115,21 +72,34 @@ const writeFakePathReactDoctorBinary = (
     "} catch (error) {}",
     "process.exit(exitCode);",
   ].join("\n");
-  
   fs.writeFileSync(scriptPath, scriptContent);
-  
-  const binaryName = process.platform === "win32" ? "react-doctor.cmd" : "react-doctor";
-  const binaryPath = path.join(binDirectory, binaryName);
-  
-  const wrapperContent = process.platform === "win32"
-    ? `@echo off\r\nnode "${scriptPath}" %*`
-    : `#!/bin/sh\nexec node "${scriptPath}" "$@"`;
-  
-  fs.writeFileSync(binaryPath, wrapperContent);
-  if (process.platform !== "win32") {
-    fs.chmodSync(binaryPath, fs.constants.S_IRWXU);
-  }
+
+  const wrapperPath = path.join(binDirectory, "react-doctor");
+  fs.writeFileSync(wrapperPath, `#!/bin/sh\nexec node "${scriptPath}" "$@"`);
+  fs.chmodSync(wrapperPath, fs.constants.S_IRWXU);
 };
+
+const writeFakeReactDoctorBinary = (projectRoot: string, options: FakeBinaryOptions): void =>
+  writeFakeReactDoctorBinaryAt(
+    path.join(projectRoot, "node_modules/.bin"),
+    projectRoot,
+    options,
+    "agent-hook-cwd.txt",
+    "agent-hook-args.txt",
+  );
+
+const writeFakePathReactDoctorBinary = (
+  binDirectory: string,
+  projectRoot: string,
+  options: FakeBinaryOptions,
+): void =>
+  writeFakeReactDoctorBinaryAt(
+    binDirectory,
+    projectRoot,
+    options,
+    "path-agent-hook-cwd.txt",
+    "path-agent-hook-args.txt",
+  );
 
 describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", () => {
   let fixture: AgentHooksFixture;
@@ -228,7 +198,7 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
       timeout: 120,
     });
     expect(fs.existsSync(hookPath)).toBe(true);
-    expect(hookContent).toContain('__dirname');
+    expect(hookContent).toContain("__dirname");
     expect(hookContent).toContain("additional_context");
   });
 

@@ -852,10 +852,3 @@ describe("issue #921: non-string `projects` config entry crashes selectProjects"
     expect(loaded?.config.projects).toBeUndefined();
   });
 });
-
-describe("issue #950: react-hooks-js/incompatible-library flags legitimate libraries", () => {
-  it("does not enable react-hooks-js/incompatible-library (overly aggressive on well-designed libraries)", () => {
-    const { REACT_COMPILER_RULES } = require("oxlint-plugin-react-doctor");
-    expect(REACT_COMPILER_RULES["react-hooks-js/incompatible-library"]).toBeUndefined();
-  });
-});

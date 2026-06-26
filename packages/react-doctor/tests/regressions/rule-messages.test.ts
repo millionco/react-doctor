@@ -292,4 +292,3 @@ export const AuthGuard = () => {
     expect(redirectDiagnostics.length).toBeGreaterThan(0);
   });
 });
-

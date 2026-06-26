@@ -16,9 +16,6 @@ const isStringArray = (value: unknown): value is string[] =>
 const collectStringList = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 
-const hasRuleOverride = (ruleIds: ReadonlySet<string>, ruleIdentifier: string): boolean =>
-  ruleIds.size === 0 || [...ruleIds].some((ruleId) => isSameRuleKey(ruleId, ruleIdentifier));
-
 const validateOverrideEntry = (entry: unknown, index: number): ReactDoctorIgnoreOverride | null => {
   if (!isPlainObject(entry)) {
     warnConfigIssue(
@@ -74,9 +71,12 @@ export const isDiagnosticIgnoredByOverrides = (
   const relativeFilePath = toRelativePath(diagnostic.filePath, rootDirectory);
   const ruleIdentifier = `${diagnostic.plugin}/${diagnostic.rule}`;
 
-  return overrides.some(
-    (override) =>
-      override.filePatterns.some((pattern) => pattern.test(relativeFilePath)) &&
-      hasRuleOverride(override.ruleIds, ruleIdentifier),
-  );
+  return overrides.some((override) => {
+    if (!override.filePatterns.some((pattern) => pattern.test(relativeFilePath))) return false;
+    if (override.ruleIds.size === 0) return true;
+    for (const ruleId of override.ruleIds) {
+      if (isSameRuleKey(ruleId, ruleIdentifier)) return true;
+    }
+    return false;
+  });
 };

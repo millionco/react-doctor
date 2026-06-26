@@ -54,6 +54,10 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
     capabilities.add("nextjs:15");
   }
 
+  if (project.hasNextjsStaticExport) {
+    capabilities.add("nextjs:static-export");
+  }
+
   const reactMajor = project.reactMajorVersion;
   if (reactMajor !== null) {
     // Clamp the upper bound: `reactMajor` is parsed from an arbitrary

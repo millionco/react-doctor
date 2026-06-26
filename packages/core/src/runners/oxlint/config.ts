@@ -222,6 +222,7 @@ export const createOxlintConfig = ({
         ...(serverAuthFunctionNames && serverAuthFunctionNames.length > 0
           ? { serverAuthFunctionNames: [...serverAuthFunctionNames] }
           : {}),
+        ...(project.hasNextjsStaticExport ? { hasNextjsStaticExport: true } : {}),
       },
     },
     rules: {

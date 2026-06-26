@@ -1,6 +1,9 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
-import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
+import {
+  getReactDoctorStringSetting,
+  getReactDoctorBooleanSetting,
+} from "../../utils/get-react-doctor-setting.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -77,7 +80,13 @@ export const noPreventDefault = defineRule({
     "Use `<form action>` where your framework supports it (it works without JS), or use a `<button>` instead of an `<a>` with preventDefault.",
   create: (context: RuleContext) => {
     const framework = getReactDoctorStringSetting(context.settings, "framework");
-    const isClientOnlyFramework = framework !== undefined && CLIENT_ONLY_FRAMEWORKS.has(framework);
+    const hasNextjsStaticExport = getReactDoctorBooleanSetting(
+      context.settings,
+      "hasNextjsStaticExport",
+    );
+    const isClientOnlyFramework =
+      (framework !== undefined && CLIENT_ONLY_FRAMEWORKS.has(framework)) ||
+      (framework === "nextjs" && hasNextjsStaticExport);
     const formMessage = selectFormMessage(framework);
 
     return {

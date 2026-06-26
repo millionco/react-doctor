@@ -52,6 +52,15 @@ export interface ProjectInfo {
   nextjsVersion: string | null;
   nextjsMajorVersion: number | null;
   /**
+   * `true` when Next.js is configured with `output: "export"` in
+   * `next.config.*` — static export mode, where there's no server runtime,
+   * no middleware, and no Server Actions. Drives the `nextjs:static-export`
+   * capability in `buildCapabilities` so rules recommending server-side
+   * fixes (server `redirect()`, middleware, Server Actions) are gated on
+   * projects where those features don't exist.
+   */
+  hasNextjsStaticExport: boolean;
+  /**
    * The declared `expo` package version spec (e.g. `"~51.0.0"`), looked up
    * in the project or any of its workspace packages, or `null` when `expo`
    * isn't a dependency. Doubles as react-doctor's "is this an Expo project?"

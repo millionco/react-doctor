@@ -203,7 +203,10 @@ const diagnoseProject = async (
       batchConfig?.plugins !== undefined || projectConfig?.plugins !== undefined;
     const layer = buildDiagnoseLayer({
       config: effectiveConfig,
-      shouldRunLint: resolveShouldRunLint({ ...baseOptions, ...perProjectOptions }, effectiveConfig),
+      shouldRunLint: resolveShouldRunLint(
+        { ...baseOptions, ...perProjectOptions },
+        effectiveConfig,
+      ),
       configOverrideTarget: didOverrideConfig
         ? {
             resolvedDirectory: scanTarget.resolvedDirectory,

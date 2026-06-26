@@ -227,10 +227,7 @@ describe("Git.layerNode staged content", () => {
     try {
       fs.mkdirSync(path.join(projectDirectory, "src"), { recursive: true });
       execFileSync("git", ["init"], { cwd: repositoryDirectory, stdio: "ignore" });
-      fs.writeFileSync(
-        path.join(projectDirectory, "src", "a.ts"),
-        "export const value = 1;\n",
-      );
+      fs.writeFileSync(path.join(projectDirectory, "src", "a.ts"), "export const value = 1;\n");
       execFileSync("git", ["add", "packages/app/src/a.ts"], {
         cwd: repositoryDirectory,
         stdio: "ignore",

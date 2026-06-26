@@ -178,3 +178,121 @@ describe("issue #55: nextjs-no-native-script ignores JSON-LD data scripts", () =
     );
   });
 });
+
+describe("issue #976: Next.js static export gates server-only rule recommendations", () => {
+  it("does not flag client-side redirects when output: 'export' is configured", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-976-static-export", {
+      packageJsonExtras: {
+        dependencies: { next: "^15.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+      },
+      files: {
+        "next.config.ts": `import type { NextConfig } from 'next';
+const nextConfig: NextConfig = { output: 'export' };
+export default nextConfig;
+`,
+        "src/app/guard.tsx": `"use client";
+import { useEffect } from "react";
+declare const router: { replace: (path: string) => void };
+declare const isLoggedIn: boolean;
+export const AuthGuard = () => {
+  useEffect(() => {
+    if (!isLoggedIn) router.replace("/login");
+  }, []);
+  return null;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({
+        rootDirectory: projectDir,
+        framework: "nextjs",
+        hasNextjsStaticExport: true,
+      }),
+    });
+
+    const redirectDiagnostics = diagnostics.filter(
+      (diagnostic) => diagnostic.rule === "nextjs-no-client-side-redirect",
+    );
+    expect(redirectDiagnostics).toHaveLength(0);
+  });
+
+  it("does not recommend server actions in forms when output: 'export' is configured", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-976-static-export-form", {
+      packageJsonExtras: {
+        dependencies: { next: "^15.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+      },
+      files: {
+        "next.config.ts": `import type { NextConfig } from 'next';
+const nextConfig: NextConfig = { output: 'export' };
+export default nextConfig;
+`,
+        "src/app/form.tsx": `"use client";
+export const ContactForm = () => {
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); console.log("submit"); }}>
+      <input name="email" />
+      <button type="submit">Send</button>
+    </form>
+  );
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({
+        rootDirectory: projectDir,
+        framework: "nextjs",
+        hasNextjsStaticExport: true,
+      }),
+    });
+
+    const preventDefaultDiagnostics = diagnostics.filter(
+      (diagnostic) => diagnostic.rule === "no-prevent-default",
+    );
+    expect(preventDefaultDiagnostics).toHaveLength(0);
+  });
+
+  it("still flags client-side redirects when output is not 'export'", async () => {
+    const projectDir = setupReactProject(tempRoot, "issue-976-non-static", {
+      packageJsonExtras: {
+        dependencies: { next: "^15.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+      },
+      files: {
+        "next.config.ts": `import type { NextConfig } from 'next';
+const nextConfig: NextConfig = {};
+export default nextConfig;
+`,
+        "src/app/guard.tsx": `"use client";
+import { useEffect } from "react";
+declare const router: { replace: (path: string) => void };
+export const AuthGuard = () => {
+  useEffect(() => {
+    router.replace("/login");
+  }, []);
+  return null;
+};
+`,
+      },
+    });
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({
+        rootDirectory: projectDir,
+        framework: "nextjs",
+        hasNextjsStaticExport: false,
+      }),
+    });
+
+    const redirectDiagnostics = diagnostics.filter(
+      (diagnostic) => diagnostic.rule === "nextjs-no-client-side-redirect",
+    );
+    expect(redirectDiagnostics.length).toBeGreaterThan(0);
+  });
+});
+

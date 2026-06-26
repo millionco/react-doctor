@@ -16,6 +16,7 @@ const baseProject: ProjectInfo = {
   hasTanStackQuery: false,
   nextjsVersion: null,
   nextjsMajorVersion: null,
+  hasNextjsStaticExport: false,
   hasReactNativeWorkspace: false,
   expoVersion: null,
   shopifyFlashListVersion: null,
@@ -229,6 +230,44 @@ describe("buildCapabilities", () => {
     });
     expect(capabilities.has("nextjs")).toBe(true);
     expect(capabilities.has("nextjs:15")).toBe(false);
+  });
+
+  it("emits `nextjs:static-export` capability when hasNextjsStaticExport is true", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "nextjs",
+      nextjsVersion: "^15.0.0",
+      nextjsMajorVersion: 15,
+      hasNextjsStaticExport: true,
+    });
+    expect(capabilities.has("nextjs")).toBe(true);
+    expect(capabilities.has("nextjs:static-export")).toBe(true);
+  });
+
+  it("omits `nextjs:static-export` capability when hasNextjsStaticExport is false", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "nextjs",
+      nextjsVersion: "^15.0.0",
+      nextjsMajorVersion: 15,
+      hasNextjsStaticExport: false,
+    });
+    expect(capabilities.has("nextjs")).toBe(true);
+    expect(capabilities.has("nextjs:static-export")).toBe(false);
+  });
+
+  it("disables rules with disabledBy: ['nextjs:static-export'] when static export is configured", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "nextjs",
+      nextjsVersion: "^15.0.0",
+      nextjsMajorVersion: 15,
+      hasNextjsStaticExport: true,
+    });
+
+    expect(
+      shouldEnableRule(undefined, undefined, capabilities, new Set(), ["nextjs:static-export"]),
+    ).toBe(false);
   });
 
   it("emits `pre-es2023` when the project target predates ES2023", () => {

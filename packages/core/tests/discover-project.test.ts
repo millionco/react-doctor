@@ -683,6 +683,82 @@ describe("discoverProject", () => {
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.hasReactCompiler).toBe(true);
   });
+
+  it("does not detect static export when Next.js has default config", () => {
+    const projectDirectory = path.join(tempDirectory, "next-no-static-export");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "next-no-static-export",
+        dependencies: { next: "^15.0.0", react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "next.config.ts"),
+      "import type { NextConfig } from 'next';\nconst nextConfig: NextConfig = {};\nexport default nextConfig;\n",
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasNextjsStaticExport).toBe(false);
+  });
+
+  it("detects static export when next.config sets output to 'export'", () => {
+    const projectDirectory = path.join(tempDirectory, "next-static-export");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "next-static-export",
+        dependencies: { next: "^15.0.0", react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "next.config.ts"),
+      "import type { NextConfig } from 'next';\nconst nextConfig: NextConfig = { output: 'export' };\nexport default nextConfig;\n",
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasNextjsStaticExport).toBe(true);
+  });
+
+  it("detects static export in next.config.js with double quotes", () => {
+    const projectDirectory = path.join(tempDirectory, "next-static-export-js");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "next-static-export-js",
+        dependencies: { next: "^15.0.0", react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "next.config.js"),
+      'module.exports = { output: "export" };\n',
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasNextjsStaticExport).toBe(true);
+  });
+
+  it("does not detect static export when output is 'standalone'", () => {
+    const projectDirectory = path.join(tempDirectory, "next-standalone");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "next-standalone",
+        dependencies: { next: "^15.0.0", react: "^19.0.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(projectDirectory, "next.config.ts"),
+      "import type { NextConfig } from 'next';\nconst nextConfig: NextConfig = { output: 'standalone' };\nexport default nextConfig;\n",
+    );
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.hasNextjsStaticExport).toBe(false);
+  });
 });
 
 describe("listWorkspacePackages", () => {

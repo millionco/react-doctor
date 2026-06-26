@@ -204,13 +204,12 @@ export const AuthGuard = () => {
       },
     });
 
+    const { discoverProject } = await import("@react-doctor/core");
+    const project = discoverProject(projectDir);
+
     const diagnostics = await runOxlint({
       rootDirectory: projectDir,
-      project: buildTestProject({
-        rootDirectory: projectDir,
-        framework: "nextjs",
-        hasNextjsStaticExport: true,
-      }),
+      project,
     });
 
     const redirectDiagnostics = diagnostics.filter(
@@ -242,13 +241,12 @@ export const ContactForm = () => {
       },
     });
 
+    const { discoverProject } = await import("@react-doctor/core");
+    const project = discoverProject(projectDir);
+
     const diagnostics = await runOxlint({
       rootDirectory: projectDir,
-      project: buildTestProject({
-        rootDirectory: projectDir,
-        framework: "nextjs",
-        hasNextjsStaticExport: true,
-      }),
+      project,
     });
 
     const preventDefaultDiagnostics = diagnostics.filter(
@@ -280,13 +278,12 @@ export const AuthGuard = () => {
       },
     });
 
+    const { discoverProject } = await import("@react-doctor/core");
+    const project = discoverProject(projectDir);
+
     const diagnostics = await runOxlint({
       rootDirectory: projectDir,
-      project: buildTestProject({
-        rootDirectory: projectDir,
-        framework: "nextjs",
-        hasNextjsStaticExport: false,
-      }),
+      project,
     });
 
     const redirectDiagnostics = diagnostics.filter(

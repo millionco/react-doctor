@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -213,6 +217,36 @@ describe("Git.layerOf", () => {
       status: 0,
       stdout: "src/a.ts\nsrc/b.tsx\n",
     });
+  });
+});
+
+describe("Git.layerNode staged content", () => {
+  it("reads staged content relative to a monorepo subproject cwd", async () => {
+    const repositoryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rdc-git-"));
+    const projectDirectory = path.join(repositoryDirectory, "packages", "app");
+    try {
+      fs.mkdirSync(path.join(projectDirectory, "src"), { recursive: true });
+      execFileSync("git", ["init"], { cwd: repositoryDirectory, stdio: "ignore" });
+      fs.writeFileSync(
+        path.join(projectDirectory, "src", "a.ts"),
+        "export const value = 1;\n",
+      );
+      execFileSync("git", ["add", "packages/app/src/a.ts"], {
+        cwd: repositoryDirectory,
+        stdio: "ignore",
+      });
+
+      const program = Effect.gen(function* () {
+        const git = yield* Git;
+        return yield* git.showStagedContent(projectDirectory, "src/a.ts");
+      });
+
+      await expect(Effect.runPromise(program.pipe(Effect.provide(Git.layerNode)))).resolves.toBe(
+        "export const value = 1;\n",
+      );
+    } finally {
+      fs.rmSync(repositoryDirectory, { recursive: true, force: true });
+    }
   });
 });
 

@@ -24,8 +24,23 @@ fs.writeFileSync(
   JSON.stringify({ name: "no-react", dependencies: {} }),
 );
 
+const lintToggleTempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rdc-api-lint-"));
+fs.mkdirSync(path.join(lintToggleTempDirectory, "src"), { recursive: true });
+fs.writeFileSync(
+  path.join(lintToggleTempDirectory, "package.json"),
+  JSON.stringify({ name: "lint-toggle", dependencies: { react: "19.0.0" } }),
+);
+fs.writeFileSync(
+  path.join(lintToggleTempDirectory, "src", "App.tsx"),
+  `const items = [1, 2, 3];
+
+export const App = () => items.map((item, index) => <div key={index}>{item}</div>);
+`,
+);
+
 afterAll(() => {
   fs.rmSync(noReactTempDirectory, { recursive: true, force: true });
+  fs.rmSync(lintToggleTempDirectory, { recursive: true, force: true });
 });
 
 describe("diagnose", () => {
@@ -75,6 +90,16 @@ describe("diagnose", () => {
       lint: false,
     });
     expect(result.elapsedMilliseconds).toBeGreaterThanOrEqual(0);
+  });
+
+  it("honors lint: false by disabling the linter layer", async () => {
+    const result = await diagnose(lintToggleTempDirectory, {
+      deadCode: false,
+      lint: false,
+      warnings: true,
+    });
+
+    expect(result.diagnostics).toEqual([]);
   });
 });
 

@@ -569,7 +569,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         includePaths,
         configOverride: projectConfig,
         configSourceDirectory: projectConfigSourceDirectory ?? undefined,
-        suppressRendering: isMultiProject,
+        suppressRendering: isJsonMode || isMultiProject,
         // Pool members overlap; they must not own the process-global Sentry
         // run state (see `InspectOptions.concurrentScan`).
         concurrentScan: isMultiProject,

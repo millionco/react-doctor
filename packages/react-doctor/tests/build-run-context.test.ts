@@ -76,6 +76,18 @@ describe("buildRunContext", () => {
     expect(argv).toContain("--json");
   });
 
+  it("detects root subcommands instead of tagging them as inspect", () => {
+    for (const command of ["ci", "rules", "version", "why"]) {
+      process.argv = ["node", "react-doctor", command];
+      expect(buildRunContext().command).toBe(command);
+    }
+  });
+
+  it("treats positional project paths as inspect scans", () => {
+    process.argv = ["node", "react-doctor", "packages/app"];
+    expect(buildRunContext().command).toBe("inspect");
+  });
+
   it("memoizes a stable runId across calls", () => {
     const { runId } = buildRunContext();
     expect(runId).toMatch(/[0-9a-f-]{36}/i);

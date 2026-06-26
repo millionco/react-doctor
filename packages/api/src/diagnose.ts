@@ -36,9 +36,15 @@ import type {
   ScoreResult,
 } from "@react-doctor/core";
 
-// The CLI carries the richer warning (logger + telemetry); the library only
-// has stdout, so it warns once per process via console.warn when a scan runs
-// inside an AI/ML training environment (license requires written permission).
+interface BuildDiagnoseLayerInput {
+  readonly config: ReactDoctorConfig | null;
+  readonly shouldRunLint: boolean;
+  readonly configOverrideTarget?: Pick<
+    ResolvedScanTarget,
+    "resolvedDirectory" | "configSourceDirectory"
+  >;
+}
+
 let didWarnAiTraining = false;
 const warnIfAiTrainingEnvironment = (): void => {
   if (didWarnAiTraining || detectAiTrainingEnvironment() === null) return;
@@ -48,17 +54,13 @@ const warnIfAiTrainingEnvironment = (): void => {
   );
 };
 
-// The production layer stack for the programmatic API. The only axis that
-// varies across calls is `Config`: with no override we load from disk
-// (`Config.layerNode`); with a per-project override the caller's already
-// resolved config drives `Config.layerOf(...)`. The supply-chain gate reads
-// `supplyChain.enabled` from that same effective config (default on), so the
-// one config input decides both. Every other service is identical, so the
-// stack is built once here rather than duplicated per variant.
-const buildDiagnoseLayer = (
-  config: ReactDoctorConfig | null,
-  configOverrideTarget?: Pick<ResolvedScanTarget, "resolvedDirectory" | "configSourceDirectory">,
-) => {
+const resolveShouldRunLint = (
+  options: DiagnoseOptions,
+  effectiveConfig: ReactDoctorConfig | null,
+): boolean => options.lint ?? effectiveConfig?.lint ?? true;
+
+const buildDiagnoseLayer = (input: BuildDiagnoseLayerInput) => {
+  const { config, configOverrideTarget, shouldRunLint } = input;
   const configLayer =
     configOverrideTarget === undefined
       ? Config.layerNode
@@ -73,7 +75,7 @@ const buildDiagnoseLayer = (
     DeadCode.layerNode,
     Files.layerNode,
     Git.layerNode,
-    Linter.layerOxlint,
+    shouldRunLint ? Linter.layerOxlint : Linter.layerOf([]),
     LintPartialFailures.layerLive,
     Progress.layerNoop,
     Reporter.layerNoop,
@@ -137,11 +139,17 @@ const diagnoseDirectory = async (
   const startTime = globalThis.performance.now();
   const scanTarget = await resolveScanTarget(directory);
   const program = buildInspectProgram(scanTarget, options);
+  const shouldRunLint = resolveShouldRunLint(options, scanTarget.userConfig);
 
   const output: InspectOutput = await Effect.runPromise(
     restoreLegacyThrow(
       program.pipe(
-        Effect.provide(buildDiagnoseLayer(scanTarget.userConfig)),
+        Effect.provide(
+          buildDiagnoseLayer({
+            config: scanTarget.userConfig,
+            shouldRunLint,
+          }),
+        ),
         Effect.provide(layerOtlp),
       ),
     ),
@@ -193,15 +201,16 @@ const diagnoseProject = async (
     // have no file location); otherwise the on-disk config's directory.
     const didOverridePlugins =
       batchConfig?.plugins !== undefined || projectConfig?.plugins !== undefined;
-    const layer = buildDiagnoseLayer(
-      effectiveConfig,
-      didOverrideConfig
+    const layer = buildDiagnoseLayer({
+      config: effectiveConfig,
+      shouldRunLint: resolveShouldRunLint({ ...baseOptions, ...perProjectOptions }, effectiveConfig),
+      configOverrideTarget: didOverrideConfig
         ? {
             resolvedDirectory: scanTarget.resolvedDirectory,
             configSourceDirectory: didOverridePlugins ? null : scanTarget.configSourceDirectory,
           }
         : undefined,
-    );
+    });
 
     const output: InspectOutput = await Effect.runPromise(
       restoreLegacyThrow(program.pipe(Effect.provide(layer), Effect.provide(layerOtlp))),

@@ -23,7 +23,7 @@ export type PackageRole = "library" | "app" | "unknown";
 // The nearest-`package.json` ancestor walk + safe-manifest read below are
 // INTENTIONALLY duplicated with `oxlint-plugin-react-doctor`'s
 // `plugin/utils/classify-package-platform.ts` — same rationale as
-// `project-info/internal-rn-dependency-names.ts`: this leaf lives in core's
+// `project-info/rn-metadata.ts`: this leaf lives in core's
 // pipeline layer, the plugin's copy runs inside oxlint at lint time, and we
 // keep them separate so each side stays decoupled from the other's bundle.
 // Only the plumbing overlaps; the SIGNAL each reads differs (publish contract

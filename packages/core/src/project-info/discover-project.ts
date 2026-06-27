@@ -2,37 +2,46 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { PackageJsonNotFoundError } from "./errors.js";
 import type { ProjectInfo } from "../types/index.js";
-import { isFile } from "./utils/is-file.js";
+import { isFile } from "./fs-utils.js";
 import { countSourceFiles } from "./count-source-files.js";
-import { detectReactCompiler } from "./detect-react-compiler.js";
-import { extractDependencyInfo } from "./extract-dependency-info.js";
-import { findDependencyInfoFromMonorepoRoot } from "./find-dependency-info-from-monorepo-root.js";
-import { findMonorepoRoot, isMonorepoRoot } from "./find-monorepo-root.js";
-import { findReactInWorkspaces } from "./find-react-in-workspaces.js";
-import { getDependencyDeclaration } from "./utils/get-dependency-declaration.js";
-import { hasReactNativeWorkspaceAnywhere } from "./has-react-native-workspace-anywhere.js";
-import { findExpoVersion } from "./find-expo-version.js";
 import {
+  detectNextjsStaticExport,
+  detectPreES2023Target,
+  detectReactCompiler,
+} from "./detectors.js";
+import {
+  extractDependencyInfo,
+  getDependencyDeclaration,
+  getPreactVersion,
+  hasTanStackQuery,
+  isCatalogReference,
+  resolveCatalogBackedDependencyVersion,
+  resolveCatalogVersion,
+} from "./dependencies.js";
+import { findMonorepoRoot, isMonorepoRoot } from "./monorepo-root.js";
+import {
+  findDependencyInfoFromMonorepoRoot,
+  findReactInWorkspaces,
+  hasReactNativeWorkspaceAnywhere,
+  someWorkspacePackageJson,
+} from "./workspaces.js";
+import {
+  findExpoVersion,
+  findNextjsVersion,
   findShopifyFlashListVersion,
   SHOPIFY_FLASH_LIST_PACKAGE_NAME,
-} from "./find-shopify-flash-list-version.js";
-import { resolveCatalogBackedDependencyVersion } from "./resolve-catalog-backed-dependency-version.js";
-import { findNextjsVersion } from "./find-nextjs-version.js";
-import { getPreactVersion } from "./get-preact-version.js";
-import { hasTanStackQuery } from "./has-tanstack-query.js";
-import { someWorkspacePackageJson } from "./some-workspace-package-json.js";
-import { isPackageJsonReanimatedAware } from "./utils/is-package-json-reanimated-aware.js";
-import { readPackageJson } from "./read-package-json.js";
-import { getLowestDependencyMajor } from "./utils/dependency-version-spec.js";
-import { isCatalogReference, resolveCatalogVersion } from "./resolve-catalog-version.js";
-import { parseReactMajor } from "./parse-react-major.js";
-import { parseZodMajor } from "./parse-zod-major.js";
-import { resolveEffectiveReactMajor } from "./resolve-effective-react-major.js";
-import { detectPreES2023Target } from "./detect-pre-es2023-target.js";
+} from "./per-dependency-version.js";
+import { isPackageJsonReanimatedAware } from "./rn-metadata.js";
+import { readPackageJson } from "./package-json.js";
+import {
+  getLowestDependencyMajor,
+  parseReactMajor,
+  resolveEffectiveReactMajor,
+} from "./version.js";
 
 export { discoverReactSubprojects } from "./discover-react-subprojects.js";
-export { formatFrameworkName } from "./detect-framework.js";
-export { listWorkspacePackages } from "./list-workspace-packages.js";
+export { formatFrameworkName } from "./detectors.js";
+export { listWorkspacePackages } from "./workspaces.js";
 
 const cachedProjectInfos = new Map<string, ProjectInfo>();
 
@@ -105,6 +114,7 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     shopifyFlashListMajorVersion: null,
     hasReanimated: false,
     isPreES2023Target: hasOwnTsConfig && detectPreES2023Target(directory),
+    isStaticExport: false,
     sourceFileCount,
   };
 };
@@ -307,7 +317,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     reactMajorVersion: resolveEffectiveReactMajor(reactVersion, packageJson),
     tailwindVersion,
     zodVersion,
-    zodMajorVersion: parseZodMajor(zodVersion),
+    zodMajorVersion: zodVersion === null ? null : getLowestDependencyMajor(zodVersion),
     framework,
     hasTypeScript,
     hasReactCompiler: detectReactCompiler(directory, packageJson),
@@ -323,6 +333,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
       shopifyFlashListVersion === null ? null : getLowestDependencyMajor(shopifyFlashListVersion),
     hasReanimated,
     isPreES2023Target,
+    isStaticExport: framework === "nextjs" && detectNextjsStaticExport(directory),
     sourceFileCount,
   };
   cachedProjectInfos.set(directory, projectInfo);

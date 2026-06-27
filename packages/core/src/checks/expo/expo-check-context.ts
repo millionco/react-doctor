@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { readPackageJson } from "../../project-info/index.js";
-import { getLowestDependencyMajor } from "../../project-info/utils/dependency-version-spec.js";
+import { getLowestDependencyMajor } from "../../project-info/version.js";
 import type { PackageJson } from "../../types/index.js";
 import { getDirectDependencyNames } from "./utils/get-direct-dependency-names.js";
 

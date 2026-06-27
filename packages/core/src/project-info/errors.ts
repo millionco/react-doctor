@@ -31,7 +31,7 @@
  *   generic "expected a package.json" guidance is misleading here, so point
  *   at the missing path instead.
  */
-export interface ProjectNotFoundOptions extends ErrorOptions {
+interface ProjectNotFoundOptions extends ErrorOptions {
   readonly kind?: "no-project" | "missing-path";
 }
 

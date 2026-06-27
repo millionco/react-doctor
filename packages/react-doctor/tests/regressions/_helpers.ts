@@ -127,6 +127,7 @@ export interface BuildTestProjectOptions {
   nextjsMajorVersion?: number | null;
   shopifyFlashListVersion?: string | null;
   shopifyFlashListMajorVersion?: number | null;
+  isStaticExport?: boolean;
 }
 
 export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo => {
@@ -169,6 +170,7 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     shopifyFlashListMajorVersion: options.shopifyFlashListMajorVersion ?? null,
     hasReanimated: options.hasReanimated ?? false,
     isPreES2023Target: false,
+    isStaticExport: options.isStaticExport ?? false,
     preactVersion: null,
     preactMajorVersion: null,
     sourceFileCount: 0,

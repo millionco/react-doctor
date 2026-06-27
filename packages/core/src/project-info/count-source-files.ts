@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { GIT_LS_FILES_MAX_BUFFER_BYTES, IGNORED_DIRECTORIES } from "./constants.js";
 import { isLintableSourceFile } from "../utils/is-lintable-source-file.js";
 import { isLargeMinifiedFile } from "../utils/is-large-minified-file.js";
-import { readDirectoryEntries } from "./utils/read-directory-entries.js";
+import { readDirectoryEntries } from "./fs-utils.js";
 
 const countSourceFilesViaFilesystem = (rootDirectory: string): number => {
   let count = 0;

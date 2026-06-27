@@ -5,7 +5,7 @@ import {
   shouldReadSecurityScanContent,
 } from "oxlint-plugin-react-doctor";
 import type { ScannedFile } from "oxlint-plugin-react-doctor";
-import { readDirectoryEntries } from "../../project-info/utils/read-directory-entries.js";
+import { readDirectoryEntries } from "../../project-info/fs-utils.js";
 import { isLargeMinifiedFile } from "../../utils/is-large-minified-file.js";
 import {
   SECURITY_SCAN_MAX_BUNDLE_FILE_SIZE_BYTES,

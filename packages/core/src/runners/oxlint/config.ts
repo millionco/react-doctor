@@ -216,6 +216,10 @@ export const createOxlintConfig = ({
       "react-doctor": {
         framework: project.framework,
         rootDirectory: resolveSettingsRootDirectory(project.rootDirectory),
+        // The framework-capability vocabulary, available to any rule via
+        // `hasReactDoctorCapability`. Sorted so equivalent projects hash
+        // identically (this bag feeds the ruleset cache key).
+        capabilities: [...capabilities].sort(),
         ...(project.shopifyFlashListMajorVersion !== null
           ? { shopifyFlashListMajorVersion: project.shopifyFlashListMajorVersion }
           : {}),

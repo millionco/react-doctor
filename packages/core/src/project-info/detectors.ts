@@ -3,8 +3,10 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import * as ts from "typescript";
 import { ES2023_YEAR, ES_TARGET_YEAR_BY_NAME, TSCONFIG_EXTENDS_MAX_DEPTH } from "../constants.js";
-import { isFile } from "./utils/is-file.js";
-import { isPlainObject } from "./utils/is-plain-object.js";
+import type { Framework, PackageJson } from "../types/index.js";
+import { isProjectBoundary } from "../utils/is-project-boundary.js";
+import { isFile, isPlainObject } from "./fs-utils.js";
+import { readPackageJson } from "./package-json.js";
 
 const TSCONFIG_FILENAME = "tsconfig.json";
 
@@ -168,3 +170,153 @@ export const detectPreES2023Target = (directory: string): boolean => {
 
   return false;
 };
+
+const FRAMEWORK_PACKAGES: Record<string, Framework> = {
+  next: "nextjs",
+  "@tanstack/react-start": "tanstack-start",
+  vite: "vite",
+  "react-scripts": "cra",
+  "@remix-run/react": "remix",
+  gatsby: "gatsby",
+  expo: "expo",
+  "react-native": "react-native",
+};
+
+const FRAMEWORK_DISPLAY_NAMES: Record<Framework, string> = {
+  nextjs: "Next.js",
+  "tanstack-start": "TanStack Start",
+  vite: "Vite",
+  cra: "Create React App",
+  remix: "Remix",
+  gatsby: "Gatsby",
+  expo: "Expo",
+  "react-native": "React Native",
+  preact: "Preact",
+  unknown: "React",
+};
+
+export const formatFrameworkName = (framework: Framework): string =>
+  FRAMEWORK_DISPLAY_NAMES[framework];
+
+// Preact is treated as a framework only when no React-based framework
+// (`next` / `vite` / `react-scripts` / …) AND no `react` itself is
+// present — i.e. a pure-Preact codebase with no bundler manifest react-
+// doctor recognises. Component libraries that list both `react` and
+// `preact` as peer deps stay `unknown`, which is what they were before
+// this branch existed; they still pick up a non-null `preactVersion`
+// (see `discover-project.ts`) so Preact-bucket rules activate without
+// overwriting the framework classification.
+export const detectFramework = (dependencies: Record<string, string>): Framework => {
+  for (const [packageName, frameworkName] of Object.entries(FRAMEWORK_PACKAGES)) {
+    if (dependencies[packageName]) {
+      return frameworkName;
+    }
+  }
+  if (dependencies.preact && !dependencies.react) {
+    return "preact";
+  }
+  return "unknown";
+};
+
+const REACT_COMPILER_PACKAGES = new Set([
+  "babel-plugin-react-compiler",
+  "react-compiler-runtime",
+  "eslint-plugin-react-compiler",
+]);
+
+const NEXT_CONFIG_FILENAMES = [
+  "next.config.js",
+  "next.config.mjs",
+  "next.config.ts",
+  "next.config.cjs",
+];
+
+const BABEL_CONFIG_FILENAMES = [
+  ".babelrc",
+  ".babelrc.json",
+  "babel.config.js",
+  "babel.config.json",
+  "babel.config.cjs",
+  "babel.config.mjs",
+];
+
+const VITE_CONFIG_FILENAMES = [
+  "vite.config.js",
+  "vite.config.ts",
+  "vite.config.mjs",
+  "vite.config.mts",
+  "vite.config.cjs",
+  "vite.config.cts",
+  "vitest.config.ts",
+  "vitest.config.js",
+];
+
+const EXPO_APP_CONFIG_FILENAMES = ["app.json", "app.config.js", "app.config.ts"];
+
+const REACT_COMPILER_PACKAGE_REFERENCE_PATTERN =
+  /babel-plugin-react-compiler|react-compiler-runtime|eslint-plugin-react-compiler|["']react-compiler["']/;
+const REACT_COMPILER_ENABLED_FLAG_PATTERN = /["']?reactCompiler["']?\s*:\s*(?:true\b|\{)/;
+
+// `output: "export"` (static HTML export) in next.config.*. The leading
+// `(?:^|[^.\w])` boundary keeps it from matching a nested/namespaced key like
+// `experimental.output` or `outputFileTracingRoot`.
+const STATIC_EXPORT_OUTPUT_PATTERN = /(?:^|[^.\w])["']?output["']?\s*:\s*["']export["']/m;
+
+const hasCompilerPackage = (packageJson: PackageJson): boolean => {
+  const allDependencies = {
+    ...packageJson.peerDependencies,
+    ...packageJson.dependencies,
+    ...packageJson.devDependencies,
+  };
+  return Object.keys(allDependencies).some((packageName) =>
+    REACT_COMPILER_PACKAGES.has(packageName),
+  );
+};
+
+const hasCompilerInConfigFile = (filePath: string): boolean => {
+  if (!isFile(filePath)) return false;
+  const content = fs.readFileSync(filePath, "utf-8");
+  return (
+    REACT_COMPILER_ENABLED_FLAG_PATTERN.test(content) ||
+    REACT_COMPILER_PACKAGE_REFERENCE_PATTERN.test(content)
+  );
+};
+
+const hasCompilerInConfigFiles = (directory: string, filenames: string[]): boolean =>
+  filenames.some((filename) => hasCompilerInConfigFile(path.join(directory, filename)));
+
+export const detectReactCompiler = (directory: string, packageJson: PackageJson): boolean => {
+  if (hasCompilerPackage(packageJson)) return true;
+
+  if (hasCompilerInConfigFiles(directory, NEXT_CONFIG_FILENAMES)) return true;
+  if (hasCompilerInConfigFiles(directory, BABEL_CONFIG_FILENAMES)) return true;
+  if (hasCompilerInConfigFiles(directory, VITE_CONFIG_FILENAMES)) return true;
+  if (hasCompilerInConfigFiles(directory, EXPO_APP_CONFIG_FILENAMES)) return true;
+
+  if (isProjectBoundary(directory)) return false;
+
+  let ancestorDirectory = path.dirname(directory);
+  while (ancestorDirectory !== path.dirname(ancestorDirectory)) {
+    const ancestorPackagePath = path.join(ancestorDirectory, "package.json");
+    if (isFile(ancestorPackagePath)) {
+      const ancestorPackageJson = readPackageJson(ancestorPackagePath);
+      if (hasCompilerPackage(ancestorPackageJson)) return true;
+    }
+    if (isProjectBoundary(ancestorDirectory)) return false;
+    ancestorDirectory = path.dirname(ancestorDirectory);
+  }
+
+  return false;
+};
+
+// Whether `next.config.*` opts into static HTML export (`output: "export"`).
+// Reuses the same next.config filenames + raw-text read as the React Compiler
+// detector above (the config can be TS/ESM, so it can't be cheaply imported at
+// discovery time). A per-project fact — not walked into ancestors.
+export const detectNextjsStaticExport = (directory: string): boolean =>
+  NEXT_CONFIG_FILENAMES.some((filename) => {
+    const filePath = path.join(directory, filename);
+    return (
+      isFile(filePath) && STATIC_EXPORT_OUTPUT_PATTERN.test(fs.readFileSync(filePath, "utf-8"))
+    );
+  });

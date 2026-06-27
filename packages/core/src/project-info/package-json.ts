@@ -1,3 +1,5 @@
+// HACK: kept standalone (not folded into dependencies.ts) to break an import
+// cycle — both detectors.ts and dependencies.ts import readPackageJson.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { PackageJson } from "../types/index.js";

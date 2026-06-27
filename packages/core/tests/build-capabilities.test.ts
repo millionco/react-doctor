@@ -24,10 +24,45 @@ const baseProject: ProjectInfo = {
   preactMajorVersion: null,
   hasReanimated: false,
   isPreES2023Target: false,
+  isStaticExport: false,
   sourceFileCount: 1,
 };
 
 describe("buildCapabilities", () => {
+  it("emits exactly the expected token set for a fully-featured Next.js project", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "nextjs",
+      reactVersion: "19.2.0",
+      reactMajorVersion: 19,
+      tailwindVersion: "^3.4.1",
+      zodVersion: "^4.0.0",
+      zodMajorVersion: 4,
+      nextjsVersion: "^15.3.0",
+      nextjsMajorVersion: 15,
+      hasReactCompiler: true,
+      hasTanStackQuery: true,
+      hasTypeScript: true,
+    });
+    expect([...capabilities].sort()).toEqual([
+      "nextjs",
+      "nextjs:15",
+      "react",
+      "react-compiler",
+      "react:17",
+      "react:18",
+      "react:19",
+      "react:19.2",
+      "server-actions",
+      "tailwind",
+      "tailwind:3.4",
+      "tanstack-query",
+      "typescript",
+      "zod",
+      "zod:4",
+    ]);
+  });
+
   it("emits the `preact` capability when `preactVersion` is set on a Preact-on-Vite project", () => {
     const capabilities = buildCapabilities({
       ...baseProject,
@@ -229,6 +264,29 @@ describe("buildCapabilities", () => {
     });
     expect(capabilities.has("nextjs")).toBe(true);
     expect(capabilities.has("nextjs:15")).toBe(false);
+  });
+
+  it("emits `server-actions` for server-capable frameworks only", () => {
+    for (const framework of ["nextjs", "tanstack-start", "remix"] as const) {
+      expect(buildCapabilities({ ...baseProject, framework }).has("server-actions")).toBe(true);
+    }
+    for (const framework of ["vite", "cra", "gatsby", "expo", "react-native", "unknown"] as const) {
+      expect(buildCapabilities({ ...baseProject, framework }).has("server-actions")).toBe(false);
+    }
+  });
+
+  it("emits `nextjs:static-export` and drops `server-actions` for a statically-exported Next.js app", () => {
+    const staticExport = buildCapabilities({
+      ...baseProject,
+      framework: "nextjs",
+      isStaticExport: true,
+    });
+    expect(staticExport.has("nextjs:static-export")).toBe(true);
+    expect(staticExport.has("server-actions")).toBe(false);
+
+    const serverNext = buildCapabilities({ ...baseProject, framework: "nextjs" });
+    expect(serverNext.has("nextjs:static-export")).toBe(false);
+    expect(serverNext.has("server-actions")).toBe(true);
   });
 
   it("emits `pre-es2023` when the project target predates ES2023", () => {

@@ -6,127 +6,158 @@ import {
   LATEST_KNOWN_REACT_MAJOR,
 } from "../../constants.js";
 import {
-  isReactAtLeast,
-  isTailwindAtLeast,
+  isMajorMinorAtLeast,
   parseReactMajorMinor,
   parseTailwindMajorMinor,
 } from "../../project-info/index.js";
 
+interface MajorLadder {
+  name: string;
+  majorOf: (project: ProjectInfo) => number | null;
+  earliest: number;
+  latest: number;
+}
+
+interface CapabilityRule {
+  // A static token added when `when` holds (or unconditionally if absent).
+  token?: string;
+  // A token computed from the project (e.g. the bare framework name);
+  // a `null` return emits nothing.
+  tokenFor?: (project: ProjectInfo) => string | null;
+  when?: (project: ProjectInfo) => boolean;
+  // A `<name>:<major>` ladder emitted from a detected major version.
+  ladder?: MajorLadder;
+}
+
+// The single source of truth for which capability tokens a project exposes.
+// `buildCapabilities` is a pure projection over `ProjectInfo` (no I/O) — it
+// runs in the hot synchronous security-scan path. Add a framework capability
+// by adding a row here, not by hardcoding a framework `Set` in a rule.
+const FRAMEWORK_CAPABILITIES: CapabilityRule[] = [
+  { tokenFor: (project) => project.framework },
+  // `react` gates every React-runtime rule family (hooks, JSX, a11y, render
+  // performance) so they stay off on a plain TS/JS project. Preact satisfies
+  // it too (same hooks + JSX model).
+  {
+    token: "react",
+    when: (project) => project.reactVersion !== null || project.preactVersion !== null,
+  },
+  // `hasReactNativeWorkspace` / `expoVersion` cover the inverted case the
+  // file-level gate can't reach: a web-rooted monorepo whose `apps/mobile`
+  // workspace targets React Native / Expo. Without it every `rn-*` / Expo
+  // rule is dropped before the package boundary runs.
+  {
+    token: "react-native",
+    when: (project) =>
+      project.framework === "expo" ||
+      project.framework === "react-native" ||
+      project.hasReactNativeWorkspace,
+  },
+  { token: "expo", when: (project) => project.expoVersion !== null },
+  // Derived framework trait: the project ships a first-class server-mutation
+  // story tied to a plain `<form action>` (Next.js Server Actions, TanStack
+  // server functions, Remix actions). Lets rules ask one question instead of
+  // re-listing frameworks (replaces `no-prevent-default`'s hardcoded set). A
+  // statically-exported Next.js app is excluded — it has no request-time server.
+  {
+    token: "server-actions",
+    when: (project) =>
+      (project.framework === "nextjs" ||
+        project.framework === "tanstack-start" ||
+        project.framework === "remix") &&
+      !project.isStaticExport,
+  },
+  // `output: "export"` Next.js app — no request-time server, so server-only
+  // remediations (server `redirect()`, middleware, Server Actions) don't apply.
+  { token: "nextjs:static-export", when: (project) => project.isStaticExport },
+  {
+    token: "nextjs:15",
+    when: (project) => project.nextjsMajorVersion !== null && project.nextjsMajorVersion >= 15,
+  },
+  {
+    ladder: {
+      name: "react",
+      majorOf: (project) => project.reactMajorVersion,
+      earliest: EARLIEST_GATED_REACT_MAJOR,
+      latest: LATEST_KNOWN_REACT_MAJOR,
+    },
+  },
+  // `react:19.2` gates `<Activity>` (shipped in 19.2, not 19.0). The
+  // `>= 19` guard is load-bearing: `isMajorMinorAtLeast` is optimistic on a
+  // null parse, so without it an 18 project with an unparseable spec would
+  // wrongly gain the token.
+  {
+    token: "react:19.2",
+    when: (project) =>
+      project.reactMajorVersion !== null &&
+      project.reactMajorVersion >= 19 &&
+      isMajorMinorAtLeast(parseReactMajorMinor(project.reactVersion), { major: 19, minor: 2 }),
+  },
+  { token: "tailwind", when: (project) => project.tailwindVersion !== null },
+  {
+    token: "tailwind:3.4",
+    when: (project) =>
+      project.tailwindVersion !== null &&
+      isMajorMinorAtLeast(parseTailwindMajorMinor(project.tailwindVersion), { major: 3, minor: 4 }),
+  },
+  { token: "zod", when: (project) => project.zodVersion !== null },
+  {
+    token: "zod:4",
+    when: (project) => project.zodMajorVersion !== null && project.zodMajorVersion >= 4,
+  },
+  { token: "pre-es2023", when: (project) => project.isPreES2023Target },
+  { token: "react-compiler", when: (project) => project.hasReactCompiler },
+  { token: "tanstack-query", when: (project) => project.hasTanStackQuery },
+  { token: "typescript", when: (project) => project.hasTypeScript },
+  // Keyed off `preactVersion`, not `framework === "preact"`, so Preact-on-Vite
+  // still gets the `preact` bucket.
+  { token: "preact", when: (project) => project.preactVersion !== null },
+  {
+    ladder: {
+      name: "preact",
+      majorOf: (project) => project.preactMajorVersion,
+      earliest: EARLIEST_GATED_PREACT_MAJOR,
+      latest: LATEST_KNOWN_PREACT_MAJOR,
+    },
+  },
+  // `pure-preact`: Preact present AND no `react` package, so the project
+  // can't be running through `preact/compat` aliasing.
+  {
+    token: "pure-preact",
+    when: (project) => project.preactVersion !== null && project.reactVersion === null,
+  },
+];
+
+const emitMajorLadder = (
+  capabilities: Set<string>,
+  ladder: MajorLadder,
+  project: ProjectInfo,
+): void => {
+  const major = ladder.majorOf(project);
+  if (major === null) return;
+  // Clamp the upper bound: a major parsed from an arbitrary package.json
+  // spec can be implausibly large (e.g. a date-like typo `"20240101"`),
+  // which would otherwise turn this loop into a multi-minute hang / OOM.
+  const cappedMajor = Math.min(major, ladder.latest);
+  for (let candidate = ladder.earliest; candidate <= cappedMajor; candidate += 1) {
+    capabilities.add(`${ladder.name}:${candidate}`);
+  }
+};
+
 export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => {
   const capabilities = new Set<string>();
-
-  capabilities.add(project.framework);
-
-  // `react` gates every React-runtime rule family (hooks, JSX, a11y,
-  // render performance, …) so they stay off on a plain TypeScript /
-  // JavaScript project — where, lacking a React dependency, a function
-  // named `useX` or a `setState` call is just ordinary code, not a hook.
-  // Preact satisfies it too: it ships the same hooks + JSX model, so the
-  // React-family rules are equally applicable there. Framework-agnostic
-  // rules (security, architecture, bundle-size, js-performance, zod, …)
-  // never require this and keep running on non-React codebases.
-  if (project.reactVersion !== null || project.preactVersion !== null) {
-    capabilities.add("react");
-  }
-  if (
-    project.framework === "expo" ||
-    project.framework === "react-native" ||
-    project.hasReactNativeWorkspace
-  ) {
-    // `hasReactNativeWorkspace` covers the inverted case the
-    // file-level gate alone cannot reach: a web-rooted monorepo
-    // (`next` / `vite` at the entry point) whose `apps/mobile`
-    // workspace targets React Native. Without this, every `rn-*`
-    // rule is dropped before the file-level package boundary in
-    // `oxlint-plugin-react-doctor` ever runs.
-    capabilities.add("react-native");
-  }
-  // `expoVersion` covers the same inverted case as `hasReactNativeWorkspace`
-  // above: a web-rooted monorepo (or a project declaring both `expo` and a web
-  // bundler) classifies as a web `framework` yet still ships Expo. Without
-  // this, Expo-specific rules would be dropped before the file-level package
-  // boundary in `oxlint-plugin-react-doctor` ever runs.
-  if (project.expoVersion !== null) {
-    capabilities.add("expo");
-  }
-
-  if (project.nextjsMajorVersion !== null && project.nextjsMajorVersion >= 15) {
-    capabilities.add("nextjs:15");
-  }
-
-  const reactMajor = project.reactMajorVersion;
-  if (reactMajor !== null) {
-    // Clamp the upper bound: `reactMajor` is parsed from an arbitrary
-    // package.json version string and can be implausibly large (e.g. a
-    // date-like typo `"20240101"`), which would otherwise turn this loop
-    // into a multi-minute hang / OOM.
-    const cappedReactMajor = Math.min(reactMajor, LATEST_KNOWN_REACT_MAJOR);
-    for (let major = EARLIEST_GATED_REACT_MAJOR; major <= cappedReactMajor; major++) {
-      capabilities.add(`react:${major}`);
+  for (const rule of FRAMEWORK_CAPABILITIES) {
+    if (rule.ladder) {
+      emitMajorLadder(capabilities, rule.ladder, project);
+      continue;
     }
-    // Minor-version-pinned capabilities for APIs introduced after a
-    // major release. Mirrors the `tailwind:3.4` pattern below.
-    // `react:19.2` is the gate for `<Activity>`, which shipped in
-    // React 19.2 (the major landed at 19.0 without it). Only consider
-    // the minor gate when we've already detected React 19+ — and use
-    // `isReactAtLeast`'s optimistic-on-null policy so projects with
-    // unparseable specs (workspace protocols, dist-tags) still get
-    // the rule when React 19 is otherwise detected.
-    if (reactMajor >= 19) {
-      const parsedReact = parseReactMajorMinor(project.reactVersion);
-      if (isReactAtLeast(parsedReact, { major: 19, minor: 2 })) {
-        capabilities.add("react:19.2");
-      }
+    if (rule.tokenFor) {
+      const token = rule.tokenFor(project);
+      if (token !== null) capabilities.add(token);
+      continue;
     }
+    if (rule.token && (rule.when?.(project) ?? true)) capabilities.add(rule.token);
   }
-
-  if (project.tailwindVersion !== null) {
-    capabilities.add("tailwind");
-    const tailwind = parseTailwindMajorMinor(project.tailwindVersion);
-    // HACK: when version is unparseable (dist-tag, workspace protocol),
-    // assume latest so version-gated rules still fire.
-    if (isTailwindAtLeast(tailwind, { major: 3, minor: 4 })) {
-      capabilities.add("tailwind:3.4");
-    }
-  }
-
-  if (project.zodVersion !== null) {
-    capabilities.add("zod");
-    if (project.zodMajorVersion !== null && project.zodMajorVersion >= 4) capabilities.add("zod:4");
-  }
-
-  if (project.isPreES2023Target) capabilities.add("pre-es2023");
-
-  if (project.hasReactCompiler) capabilities.add("react-compiler");
-  if (project.hasTanStackQuery) capabilities.add("tanstack-query");
-  if (project.hasTypeScript) capabilities.add("typescript");
-  // Keyed off `preactVersion`, not `framework === "preact"`, so the
-  // dominant Preact-on-Vite setup (which classifies as `vite` for
-  // build-tool reasons) still gets the `preact` capability and its
-  // matching rule bucket.
-  if (project.preactVersion !== null) {
-    capabilities.add("preact");
-    // Mirror the React major ladder: a Preact 11 project satisfies rules
-    // requiring `preact:10` or `preact:11`. Same clamp rationale as React —
-    // `preactMajorVersion` comes from an arbitrary package.json spec.
-    const preactMajor = project.preactMajorVersion;
-    if (preactMajor !== null) {
-      const cappedPreactMajor = Math.min(preactMajor, LATEST_KNOWN_PREACT_MAJOR);
-      for (let major = EARLIEST_GATED_PREACT_MAJOR; major <= cappedPreactMajor; major++) {
-        capabilities.add(`preact:${major}`);
-      }
-    }
-    // `pure-preact` is the strict-mode signal: Preact is in the
-    // dependency graph AND no `react` package is present, so the
-    // project cannot be running through `preact/compat` aliasing.
-    // Rules that flag patterns which are silently broken in pure
-    // Preact but *correct* under `preact/compat` (e.g. importing
-    // hooks from `react`, since `react` is the alias entry point)
-    // gate on this stricter capability to avoid false positives in
-    // compat-aliased codebases.
-    if (project.reactVersion === null) capabilities.add("pure-preact");
-  }
-
   return capabilities;
 };
 

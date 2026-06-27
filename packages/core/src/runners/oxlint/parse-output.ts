@@ -87,6 +87,12 @@ const PLUGIN_CATEGORY_MAP: Record<string, string> = {
 const lookupOwnString = (record: Record<string, string>, key: string): string | undefined =>
   Object.hasOwn(record, key) ? record[key] : undefined;
 
+// Under `output: "export"` there is no request-time server, so the rule's
+// default "use middleware / getServerSideProps" advice is impossible. Keep the
+// still-valid client-side + render-time fixes and drop the server-only clause.
+const STATIC_EXPORT_REDIRECT_RECOMMENDATION =
+  'Avoid redirects inside useEffect — they flash the wrong page first. Use an event handler (e.g. onClick), or call redirect() from next/navigation during render (it prerenders a client-side redirect under output: "export"). Middleware and getServerSideProps redirects aren\'t available in a static export.';
+
 const getRuleRecommendation = (ruleName: string, project: ProjectInfo): string | undefined => {
   if (ruleName === "no-secrets-in-client-code") {
     return buildNoSecretsRecommendation(
@@ -94,6 +100,9 @@ const getRuleRecommendation = (ruleName: string, project: ProjectInfo): string |
       reactDoctorPlugin.rules["no-secrets-in-client-code"]?.recommendation ??
         "Move secrets to server-only code",
     );
+  }
+  if (ruleName === "nextjs-no-client-side-redirect" && project.isStaticExport) {
+    return STATIC_EXPORT_REDIRECT_RECOMMENDATION;
   }
   return reactDoctorPlugin.rules[ruleName]?.recommendation;
 };

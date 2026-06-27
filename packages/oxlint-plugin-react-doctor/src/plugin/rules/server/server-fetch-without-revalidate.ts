@@ -63,7 +63,7 @@ export const serverFetchWithoutRevalidate = defineRule({
   id: "server-fetch-without-revalidate",
   title: "Fetch without revalidate",
   severity: "warn",
-  disabledBy: ["nextjs:15"],
+  disabledBy: ["nextjs:15", "nextjs:static-export"],
   recommendation:
     'Pass `{ next: { revalidate: <seconds> } }` (or `cache: "no-store"`) so old data doesn\'t stick around.',
   create: (context: RuleContext) => {

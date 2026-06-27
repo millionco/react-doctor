@@ -1,4 +1,4 @@
-import { getLowestDependencyMajor } from "../../project-info/utils/dependency-version-spec.js";
+import { getLowestDependencyMajor } from "../../project-info/version.js";
 import type { Diagnostic } from "../../types/index.js";
 import type { ExpoCheckContext } from "./expo-check-context.js";
 import { buildExpoDiagnostic } from "./utils/build-expo-diagnostic.js";

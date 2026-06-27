@@ -2,7 +2,10 @@ import { NAVIGATION_RECEIVER_NAMES } from "../../constants/react.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
-import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
+import {
+  getReactDoctorStringSetting,
+  hasReactDoctorCapability,
+} from "../../utils/get-react-doctor-setting.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
@@ -26,13 +29,6 @@ const PREVENT_DEFAULT_ELEMENTS = new Map<string, string[]>([
   ["form", ["onSubmit"]],
   ["a", ["onClick"]],
 ]);
-
-// Frameworks that ship a first-class server-mutation story tied to
-// plain `<form>` elements — Next.js Server Actions, TanStack Server
-// Functions, Remix loader/action handlers. Recommending
-// `<form action={serverAction}>` is honest progressive-enhancement
-// advice in these projects.
-const SERVER_CAPABLE_FRAMEWORKS = new Set<string>(["nextjs", "tanstack-start", "remix"]);
 
 // SPA / mobile frameworks where calling `preventDefault()` inside an
 // onSubmit IS the canonical pattern. The framework has no server-side
@@ -175,11 +171,6 @@ const containsNavigationEffect = (handlerExpression: EsTreeNode): boolean => {
   return didFindNavigation;
 };
 
-const selectFormMessage = (framework: string | undefined): string =>
-  framework !== undefined && SERVER_CAPABLE_FRAMEWORKS.has(framework)
-    ? FORM_MESSAGE_SERVER_CAPABLE
-    : FORM_MESSAGE_GENERIC;
-
 export const noPreventDefault = defineRule({
   id: "no-prevent-default",
   title: "preventDefault on a form or link",
@@ -190,7 +181,12 @@ export const noPreventDefault = defineRule({
   create: (context: RuleContext) => {
     const framework = getReactDoctorStringSetting(context.settings, "framework");
     const isClientOnlyFramework = framework !== undefined && CLIENT_ONLY_FRAMEWORKS.has(framework);
-    const formMessage = selectFormMessage(framework);
+    // Server-capable projects (Next.js / TanStack / Remix, but not a statically
+    // exported Next.js app) get the progressive-enhancement "server action"
+    // advice; everything else gets the framework-neutral message.
+    const formMessage = hasReactDoctorCapability(context.settings, "server-actions")
+      ? FORM_MESSAGE_SERVER_CAPABLE
+      : FORM_MESSAGE_GENERIC;
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

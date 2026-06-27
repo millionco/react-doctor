@@ -1,15 +1,15 @@
 import * as path from "node:path";
 import { IGNORED_DIRECTORIES } from "./constants.js";
 import type { PackageJson, WorkspacePackage } from "../types/index.js";
-import { isDirectory } from "./utils/is-directory.js";
-import { isFile } from "./utils/is-file.js";
-import { readDirectoryEntries } from "./utils/read-directory-entries.js";
-import { getNxWorkspaceDirectories } from "./get-nx-workspace-directories.js";
-import { hasReactDependency } from "./has-react-dependency.js";
-import { listWorkspacePackages } from "./list-workspace-packages.js";
-import { parsePnpmWorkspacePatterns } from "./parse-pnpm-workspace-patterns.js";
-import { readPackageJson } from "./read-package-json.js";
-import { resolveWorkspaceDirectories } from "./resolve-workspace-directories.js";
+import { isDirectory, isFile, readDirectoryEntries } from "./fs-utils.js";
+import { hasReactDependency } from "./dependencies.js";
+import { readPackageJson } from "./package-json.js";
+import {
+  getNxWorkspaceDirectories,
+  listWorkspacePackages,
+  parsePnpmWorkspacePatterns,
+  resolveWorkspaceDirectories,
+} from "./workspaces.js";
 
 const toReactWorkspacePackages = (directories: string[]): WorkspacePackage[] => {
   const packages: WorkspacePackage[] = [];

@@ -1,8 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { PackageJson } from "../types/index.js";
-import { isFile } from "./utils/is-file.js";
-import { isPlainObject } from "./utils/is-plain-object.js";
+import type { DependencyInfo, PackageJson } from "../types/index.js";
+import { detectFramework } from "./detectors.js";
+import { isFile, isPlainObject } from "./fs-utils.js";
+import { findMonorepoRoot } from "./monorepo-root.js";
+import { readPackageJson } from "./package-json.js";
+import { isConcreteDependencyVersion } from "./version.js";
 
 export const isCatalogReference = (version: string): boolean => version.startsWith("catalog:");
 
@@ -213,4 +216,182 @@ export const resolveCatalogVersion = (
   }
 
   return null;
+};
+
+export const EMPTY_DEPENDENCY_INFO: DependencyInfo = {
+  reactVersion: null,
+  tailwindVersion: null,
+  zodVersion: null,
+  framework: "unknown",
+};
+
+const pickConcreteVersion = (
+  packageJson: PackageJson,
+  packageName: string,
+  sections: ReadonlyArray<"dependencies" | "peerDependencies" | "devDependencies">,
+): string | null => {
+  for (const section of sections) {
+    const version = packageJson[section]?.[packageName];
+    if (version === undefined) continue;
+    if (isCatalogReference(version)) return null;
+    if (isConcreteDependencyVersion(version)) return version;
+  }
+  return null;
+};
+
+export const extractDependencyInfo = (packageJson: PackageJson): DependencyInfo => {
+  const allDependencies = {
+    ...packageJson.peerDependencies,
+    ...packageJson.dependencies,
+    ...packageJson.devDependencies,
+  };
+  const reactVersion = pickConcreteVersion(packageJson, "react", [
+    "dependencies",
+    "peerDependencies",
+    "devDependencies",
+  ]);
+  const tailwindVersion = pickConcreteVersion(packageJson, "tailwindcss", [
+    "dependencies",
+    "devDependencies",
+    "peerDependencies",
+  ]);
+  const zodVersion = pickConcreteVersion(packageJson, "zod", [
+    "dependencies",
+    "devDependencies",
+    "peerDependencies",
+  ]);
+  return {
+    reactVersion,
+    tailwindVersion,
+    zodVersion,
+    framework: detectFramework(allDependencies),
+  };
+};
+
+// Reads a package's declared version spec from any of the four dependency
+// sections (runtime → dev → peer → optional), so detection matches the
+// framework / RN-workspace gates that also treat `peer`/`optional` entries as
+// present. The `typeof` guard keeps a malformed non-string entry (e.g.
+// `"expo": 54`) from reaching downstream `.trim()` parsing and aborting the scan.
+export const getDependencySpec = (packageJson: PackageJson, packageName: string): string | null => {
+  const spec =
+    packageJson.dependencies?.[packageName] ??
+    packageJson.devDependencies?.[packageName] ??
+    packageJson.peerDependencies?.[packageName] ??
+    packageJson.optionalDependencies?.[packageName];
+  return typeof spec === "string" ? spec : null;
+};
+
+interface DependencyDeclaration {
+  catalogReference: string | null;
+  hasDeclaration: boolean;
+  version: string | null;
+}
+
+interface GetDependencyDeclarationOptions {
+  packageJson: PackageJson;
+  packageName: string;
+  sections: ReadonlyArray<"dependencies" | "peerDependencies" | "devDependencies">;
+}
+
+export const getDependencyDeclaration = ({
+  packageJson,
+  packageName,
+  sections,
+}: GetDependencyDeclarationOptions): DependencyDeclaration => {
+  for (const section of sections) {
+    const version = packageJson[section]?.[packageName];
+    if (version === undefined) continue;
+
+    return {
+      catalogReference: extractCatalogName(version) ?? null,
+      hasDeclaration: true,
+      version,
+    };
+  }
+
+  return {
+    catalogReference: null,
+    hasDeclaration: false,
+    version: null,
+  };
+};
+
+const REACT_DEPENDENCY_NAMES = new Set(["react", "react-native", "next", "preact"]);
+
+export const hasReactDependency = (packageJson: PackageJson): boolean => {
+  const allDependencies = {
+    ...packageJson.peerDependencies,
+    ...packageJson.dependencies,
+    ...packageJson.devDependencies,
+  };
+  return Object.keys(allDependencies).some((packageName) =>
+    REACT_DEPENDENCY_NAMES.has(packageName),
+  );
+};
+
+export const getPreactVersion = (packageJson: PackageJson): string | null => {
+  const allDependencies = {
+    ...packageJson.peerDependencies,
+    ...packageJson.dependencies,
+    ...packageJson.devDependencies,
+  };
+  return allDependencies.preact ?? null;
+};
+
+const TANSTACK_QUERY_PACKAGES = new Set([
+  "@tanstack/react-query",
+  "@tanstack/query-core",
+  "react-query",
+]);
+
+export const hasTanStackQuery = (packageJson: PackageJson): boolean => {
+  const allDependencies = {
+    ...packageJson.peerDependencies,
+    ...packageJson.dependencies,
+    ...packageJson.devDependencies,
+  };
+  return Object.keys(allDependencies).some((packageName) =>
+    TANSTACK_QUERY_PACKAGES.has(packageName),
+  );
+};
+
+interface ResolveCatalogBackedDependencyVersionOptions {
+  rootDirectory: string;
+  rootPackageJson: PackageJson;
+  packageName: string;
+  version: string | null;
+}
+
+export const resolveCatalogBackedDependencyVersion = ({
+  rootDirectory,
+  rootPackageJson,
+  packageName,
+  version,
+}: ResolveCatalogBackedDependencyVersionOptions): string | null => {
+  if (version === null || !isCatalogReference(version)) return version;
+
+  const catalogName = extractCatalogName(version);
+  const resolvedLocalVersion = resolveCatalogVersion(
+    rootPackageJson,
+    packageName,
+    rootDirectory,
+    catalogName,
+  );
+  if (resolvedLocalVersion) return resolvedLocalVersion;
+
+  const monorepoRoot = findMonorepoRoot(rootDirectory);
+  if (!monorepoRoot) return version;
+
+  const monorepoPackageJsonPath = path.join(monorepoRoot, "package.json");
+  if (!isFile(monorepoPackageJsonPath)) return version;
+
+  return (
+    resolveCatalogVersion(
+      readPackageJson(monorepoPackageJsonPath),
+      packageName,
+      monorepoRoot,
+      catalogName,
+    ) ?? version
+  );
 };

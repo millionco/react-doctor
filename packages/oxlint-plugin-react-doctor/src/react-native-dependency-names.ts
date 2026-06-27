@@ -1,7 +1,7 @@
 // Canonical RN-aware-manifest detection rules. Co-located with the rule
 // gate (`classify-package-platform.ts`) that is the only direct consumer.
 // A short-lived twin list lives at
-// `core/src/project-info/internal-rn-dependency-names.ts` (see #440) so
+// `core/src/project-info/rn-metadata.ts` (see #440) so
 // the project-discovery gate can stay independent of this plugin.
 //
 // `react-native-web` is intentionally NOT included — it's a DOM compat

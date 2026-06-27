@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { isErrnoException } from "../../utils/is-errno-exception.js";
+import { isErrnoException } from "../utils/is-errno-exception.js";
 
 // Discovery crawls an unknown tree best-effort: a directory we can't enumerate
 // is skipped, never a crash. These are the "can't read this path" codes —
@@ -27,4 +27,26 @@ export const readDirectoryEntries = (directoryPath: string): fs.Dirent[] => {
     if (isIgnorableReaddirError(error)) return [];
     throw error;
   }
+};
+
+export const isFile = (filePath: string): boolean => {
+  try {
+    return fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+};
+
+export const isDirectory = (directoryPath: string): boolean => {
+  try {
+    return fs.statSync(directoryPath).isDirectory();
+  } catch {
+    return false;
+  }
+};
+
+export const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === null || prototype === Object.prototype;
 };

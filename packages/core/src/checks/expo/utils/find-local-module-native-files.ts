@@ -1,7 +1,5 @@
 import * as path from "node:path";
-import { isDirectory } from "../../../project-info/utils/is-directory.js";
-import { isFile } from "../../../project-info/utils/is-file.js";
-import { readDirectoryEntries } from "../../../project-info/utils/read-directory-entries.js";
+import { isDirectory, isFile, readDirectoryEntries } from "../../../project-info/fs-utils.js";
 
 // Representative native files for a local Expo module: the iOS podspec and
 // the Android Gradle build script. expo-doctor globs

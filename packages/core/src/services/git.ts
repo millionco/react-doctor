@@ -23,7 +23,7 @@ import {
   ReactDoctorError,
 } from "../errors.js";
 import { parseChangedLineRanges } from "../parse-changed-line-ranges.js";
-import { isDirectory } from "../project-info/utils/is-directory.js";
+import { isDirectory } from "../project-info/fs-utils.js";
 import type { ChangedFileLineRanges } from "../types/index.js";
 
 interface GitInvocationResult {

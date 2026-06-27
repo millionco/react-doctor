@@ -6,8 +6,7 @@ import {
   VERCEL_NEXTJS_SECURITY_RELEASE_URL,
 } from "./constants.js";
 import { findMonorepoRoot, isFile, readPackageJson } from "./project-info/index.js";
-import { getWorkspacePatterns } from "./project-info/get-workspace-patterns.js";
-import { resolveWorkspaceDirectories } from "./project-info/resolve-workspace-directories.js";
+import { getWorkspacePatterns, resolveWorkspaceDirectories } from "./project-info/workspaces.js";
 import type { Diagnostic, PackageJson, ProjectInfo } from "./types/index.js";
 
 const RULE_KEY = "no-vulnerable-react-server-components";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { isTailwindAtLeast, parseTailwindMajorMinor } from "@react-doctor/core";
+import { parseTailwindMajorMinor } from "@react-doctor/core";
 
 describe("parseTailwindMajorMinor", () => {
   it("extracts major.minor from caret/tilde/exact ranges", () => {
@@ -45,20 +45,5 @@ describe("parseTailwindMajorMinor", () => {
   it("still reads pre-release tags on real majors", () => {
     expect(parseTailwindMajorMinor("4.0.0-beta.1")).toEqual({ major: 4, minor: 0 });
     expect(parseTailwindMajorMinor("^3.4.0-rc.1")).toEqual({ major: 3, minor: 4 });
-  });
-});
-
-describe("isTailwindAtLeast", () => {
-  it("treats unknown (null) detection as latest — passes every gate", () => {
-    expect(isTailwindAtLeast(null, { major: 3, minor: 4 })).toBe(true);
-    expect(isTailwindAtLeast(null, { major: 4, minor: 0 })).toBe(true);
-  });
-
-  it("compares majors first, then minors", () => {
-    expect(isTailwindAtLeast({ major: 3, minor: 4 }, { major: 3, minor: 4 })).toBe(true);
-    expect(isTailwindAtLeast({ major: 3, minor: 5 }, { major: 3, minor: 4 })).toBe(true);
-    expect(isTailwindAtLeast({ major: 4, minor: 0 }, { major: 3, minor: 4 })).toBe(true);
-    expect(isTailwindAtLeast({ major: 3, minor: 3 }, { major: 3, minor: 4 })).toBe(false);
-    expect(isTailwindAtLeast({ major: 2, minor: 9 }, { major: 3, minor: 4 })).toBe(false);
   });
 });

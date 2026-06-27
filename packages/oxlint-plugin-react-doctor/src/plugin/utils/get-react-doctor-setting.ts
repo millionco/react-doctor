@@ -60,3 +60,14 @@ export const getReactDoctorStringArraySetting = (
     (entry): entry is string => typeof entry === "string" && entry.length > 0,
   );
 };
+
+// Whether the project exposes a given capability token (e.g. "server-actions",
+// "nextjs:static-export"). The capability set is the single framework-capability
+// vocabulary that `@react-doctor/core` serializes into the settings bag — rules
+// ask `hasReactDoctorCapability(...)` instead of hardcoding their own framework
+// `Set`. Returns `false` on a missing/malformed bag (the safe default: a rule
+// that can't see a capability behaves as if the project lacks it).
+export const hasReactDoctorCapability = (
+  settings: RuleContext["settings"],
+  capability: string,
+): boolean => getReactDoctorStringArraySetting(settings, "capabilities").includes(capability);

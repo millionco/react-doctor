@@ -101,6 +101,13 @@ describe("resolveCliInspectOptions: --no-telemetry alias", () => {
   it("keeps scoring on by default", () => {
     expect(resolveCliInspectOptions({}, null).noScore).toBe(false);
   });
+
+  it("suppresses rendering when JSON owns stdout", () => {
+    expect(resolveCliInspectOptions({ json: true }, null)).toMatchObject({
+      silent: true,
+      suppressRendering: true,
+    });
+  });
 });
 
 describe("resolveCliInspectOptions: category filtering", () => {

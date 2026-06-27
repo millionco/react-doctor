@@ -1,8 +1,10 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { MINIFIED_MIN_SIZE_BYTES } from "../src/project-info/constants.js";
+import { countSourceFiles } from "../src/project-info/count-source-files.js";
 import { listSourceFiles, listSourceFilesWithSize } from "../src/utils/list-source-files.js";
 
 describe("listSourceFilesWithSize", () => {
@@ -55,5 +57,21 @@ describe("listSourceFilesWithSize", () => {
     expect(listSourceFiles(temporaryDirectory)).toEqual(
       listSourceFilesWithSize(temporaryDirectory).map((entry) => entry.path),
     );
+  });
+
+  it("scopes git listings to the requested subdirectory", () => {
+    const workspaceDirectory = path.join(temporaryDirectory, "workspace");
+    const appDirectory = path.join(workspaceDirectory, "apps", "web");
+    const packageDirectory = path.join(workspaceDirectory, "packages", "ui");
+    fs.mkdirSync(appDirectory, { recursive: true });
+    fs.mkdirSync(packageDirectory, { recursive: true });
+    fs.writeFileSync(path.join(appDirectory, "App.tsx"), "export const App = () => null;\n");
+    fs.writeFileSync(path.join(packageDirectory, "Button.tsx"), "export const Button = () => null;\n");
+
+    spawnSync("git", ["init"], { cwd: workspaceDirectory });
+    spawnSync("git", ["add", "."], { cwd: workspaceDirectory });
+
+    expect(listSourceFiles(appDirectory)).toEqual(["App.tsx"]);
+    expect(countSourceFiles(appDirectory)).toBe(1);
   });
 });

@@ -45,6 +45,7 @@ export const resolveCliInspectOptions = (
     noScore: flags.score === false || flags.telemetry === false || (userConfig?.noScore ?? false),
     isCi: isCiEnvironment(),
     silent: Boolean(flags.json),
+    suppressRendering: Boolean(flags.json),
     concurrency: resolveParallelFlag(flags.parallel),
     categoryFilters: resolveCliCategories(flags.category),
   };

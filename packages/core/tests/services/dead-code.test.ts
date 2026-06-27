@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Stream from "effect/Stream";
 import { describe, expect, it } from "vite-plus/test";
-import type { Diagnostic, ProjectInfo } from "@react-doctor/core";
+import type { Diagnostic } from "@react-doctor/core";
 import { DeadCode } from "../../src/services/dead-code.js";
 
 const sampleDiagnostic: Diagnostic = {
@@ -15,14 +15,6 @@ const sampleDiagnostic: Diagnostic = {
   line: 0,
   column: 0,
   category: "Maintainability",
-};
-
-const sampleInput = {
-  rootDirectory: "/repo",
-  userConfig: null,
-} satisfies {
-  rootDirectory: string;
-  userConfig: ProjectInfo["framework"] extends string ? null : null;
 };
 
 describe("DeadCode.layerOf", () => {
@@ -71,4 +63,3 @@ describe("DeadCode.layerNode", () => {
   });
 });
 
-void sampleInput;

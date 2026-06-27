@@ -35,7 +35,7 @@ const listSourceFilesViaGit = (rootDirectory: string): string[] | null => {
   // skipping submodule files entirely.
   const result = spawnSync(
     "git",
-    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "."],
     {
       cwd: rootDirectory,
       encoding: "utf-8",

@@ -40,7 +40,7 @@ const countSourceFilesViaGit = (rootDirectory: string): number | null => {
   // filesystem walk in countSourceFilesViaFilesystem.
   const result = spawnSync(
     "git",
-    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "."],
     {
       cwd: rootDirectory,
       encoding: "utf-8",

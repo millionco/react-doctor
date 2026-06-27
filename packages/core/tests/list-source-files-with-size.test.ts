@@ -66,7 +66,10 @@ describe("listSourceFilesWithSize", () => {
     fs.mkdirSync(appDirectory, { recursive: true });
     fs.mkdirSync(packageDirectory, { recursive: true });
     fs.writeFileSync(path.join(appDirectory, "App.tsx"), "export const App = () => null;\n");
-    fs.writeFileSync(path.join(packageDirectory, "Button.tsx"), "export const Button = () => null;\n");
+    fs.writeFileSync(
+      path.join(packageDirectory, "Button.tsx"),
+      "export const Button = () => null;\n",
+    );
 
     spawnSync("git", ["init"], { cwd: workspaceDirectory });
     spawnSync("git", ["add", "."], { cwd: workspaceDirectory });

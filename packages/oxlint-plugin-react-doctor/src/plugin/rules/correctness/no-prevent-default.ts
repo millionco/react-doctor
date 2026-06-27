@@ -4,7 +4,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import {
   getReactDoctorStringSetting,
-  hasReactDoctorCapability,
+  hasCapability,
 } from "../../utils/get-react-doctor-setting.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -184,7 +184,7 @@ export const noPreventDefault = defineRule({
     // Server-capable projects (Next.js / TanStack / Remix, but not a statically
     // exported Next.js app) get the progressive-enhancement "server action"
     // advice; everything else gets the framework-neutral message.
-    const formMessage = hasReactDoctorCapability(context.settings, "server-actions")
+    const formMessage = hasCapability(context.settings, "server-actions")
       ? FORM_MESSAGE_SERVER_CAPABLE
       : FORM_MESSAGE_GENERIC;
 

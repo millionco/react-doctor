@@ -298,7 +298,7 @@ describe("buildCapabilities", () => {
     expect(capabilities.has("pre-es2023")).toBe(true);
   });
 
-  it("disables rules when a disabledBy capability is present", () => {
+  it("disables rules when a disabledWhen capability is present", () => {
     const capabilities = buildCapabilities({
       ...baseProject,
       isPreES2023Target: true,

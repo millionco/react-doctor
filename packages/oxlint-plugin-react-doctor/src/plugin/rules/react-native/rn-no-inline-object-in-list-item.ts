@@ -20,7 +20,7 @@ export const rnNoInlineObjectInListItem = defineRule({
   // React Compiler auto-memoizes inline functions/objects in list rows, so the
   // perf footgun this rule guards against doesn't exist in compiler-enabled
   // projects (#723).
-  disabledBy: ["react-compiler"],
+  disabledWhen: ["react-compiler"],
   recommendation:
     "Move style and object props out of renderItem (StyleSheet.create, useMemo at list scope, or pass primitives) so memo() rows stop redrawing when their data has not changed.",
   create: (context: RuleContext) => {

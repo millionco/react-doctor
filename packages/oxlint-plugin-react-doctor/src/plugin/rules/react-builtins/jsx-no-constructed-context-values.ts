@@ -136,7 +136,7 @@ export const jsxNoConstructedContextValues = defineRule({
   title: "Unstable context provider value",
   tags: ["react-jsx-only"],
   severity: "warn",
-  disabledBy: ["react-compiler"],
+  disabledWhen: ["react-compiler"],
   recommendation:
     "Wrap the context value in `useMemo` or move it outside the component so consumers do not redraw every render.",
   category: "Performance",

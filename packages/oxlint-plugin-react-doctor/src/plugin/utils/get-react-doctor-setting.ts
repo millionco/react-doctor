@@ -64,7 +64,7 @@ export const getReactDoctorStringArraySetting = (
 // A project's capabilities (e.g. "server-actions", "nextjs:static-export") are
 // one vocabulary describing what it can do. `@react-doctor/core` builds the set
 // once and serializes it into the settings bag. Rules use it two ways:
-//   build time: a rule's `requires` / `disabledBy` turn it fully on or off
+//   build time: a rule's `requires` / `disabledWhen` turn it fully on or off
 //     (via `shouldEnableRule` in core, before the lint runs);
 //   runtime: `hasCapability(...)` lets a rule that stays on pick its wording.
 // Returns false on a missing/malformed bag (the safe default: behave as if the

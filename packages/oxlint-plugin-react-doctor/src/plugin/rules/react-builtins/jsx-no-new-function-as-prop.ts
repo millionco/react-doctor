@@ -502,7 +502,7 @@ export const jsxNoNewFunctionAsProp = defineRule({
   severity: "warn",
   // React Compiler auto-memoizes inline callbacks. The perf footgun this
   // rule guards against doesn't exist in compiler-enabled projects.
-  disabledBy: ["react-compiler"],
+  disabledWhen: ["react-compiler"],
   recommendation:
     "Wrap the callback in `useCallback` or move it outside the component so memoized children do not redraw every render.",
   category: "Performance",

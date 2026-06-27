@@ -571,7 +571,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
   // These perf rules guard against fresh allocations that React Compiler
   // auto-fixes at compile time. When RC is in scope they're unactionable
   // noise, so they ship with
-  // `disabledBy: ["react-compiler"]` and the gate must drop them.
+  // `disabledWhen: ["react-compiler"]` and the gate must drop them.
   it("disables react-compiler-redundant perf rules when React Compiler is detected", () => {
     const reactCompilerGatedRules = [
       "react-doctor/jsx-no-new-object-as-prop",
@@ -600,7 +600,7 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
 
   // The renderItem-family RN perf rules guard against inline functions/objects
   // in list rows, which React Compiler auto-memoizes. RC users were seeing them
-  // as noise (#723), so all three ship with `disabledBy: ["react-compiler"]`
+  // as noise (#723), so all three ship with `disabledWhen: ["react-compiler"]`
   // and must drop once the compiler is detected. They `requires: ["react-native"]`,
   // so the assertion needs an RN-capable test project.
   it("disables the renderItem-family RN perf rules when React Compiler is detected", () => {

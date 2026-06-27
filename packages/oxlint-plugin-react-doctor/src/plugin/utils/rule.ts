@@ -54,7 +54,7 @@ export interface Rule {
   // project ships with React Compiler (auto-memoization makes the four
   // `jsx-no-new-*-as-prop` perf rules unnecessary, for example). If
   // ANY listed capability is present the rule is skipped.
-  disabledBy?: ReadonlyArray<string>;
+  disabledWhen?: ReadonlyArray<string>;
   // Behavioral tags (e.g. `"test-noise"`, `"design"`) consumed by
   // `--ignore-tag` / `shouldEnableRule` to opt families of rules in
   // or out of a scan independently of the framework gate.

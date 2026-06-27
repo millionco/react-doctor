@@ -88,7 +88,7 @@ export const jsTosortedImmutable = defineRule({
   // predates ES2023 — applying the suggestion would produce a type error
   // (`Property 'toSorted' does not exist`) and/or a runtime crash on
   // browsers without the method. See issue #750.
-  disabledBy: ["react-native", "pre-es2023"],
+  disabledWhen: ["react-native", "pre-es2023"],
   recommendation:
     "Use `array.toSorted()` (ES2023) instead of `[...array].sort()` so you sort without copying the array first",
   create: (context: RuleContext) => ({

@@ -40,7 +40,7 @@ const objectExpressionHasSpread = (
 // `cache: "no-store"` for fully dynamic data, or `next: { tags: [..., "test-noise"] }`
 // for tag-based invalidation). Forgetting this is a common silent-stale
 // data bug. Next.js 15+ changed the default to `no-store`, so the rule
-// is gated with `disabledBy: ["nextjs:15"]`.
+// is gated with `disabledWhen: ["nextjs:15"]`.
 //
 // Heuristic: `fetch(url)` in an App Router file (`app/.../route.*`,
 // `app/.../page.*`, `app/.../layout.*`) without a config object —
@@ -63,7 +63,7 @@ export const serverFetchWithoutRevalidate = defineRule({
   id: "server-fetch-without-revalidate",
   title: "Fetch without revalidate",
   severity: "warn",
-  disabledBy: ["nextjs:15", "nextjs:static-export"],
+  disabledWhen: ["nextjs:15", "nextjs:static-export"],
   recommendation:
     'Pass `{ next: { revalidate: <seconds> } }` (or `cache: "no-store"`) so old data doesn\'t stick around.',
   create: (context: RuleContext) => {

@@ -43,7 +43,7 @@ const createSecurityScanSession = (
     const scan = rule.scan;
     if (typeof scan !== "function") return [];
     if (rule.defaultEnabled === false) return [];
-    if (!shouldEnableRule(rule.requires, rule.tags, capabilities, ignoredTags, rule.disabledBy)) {
+    if (!shouldEnableRule(rule.requires, rule.tags, capabilities, ignoredTags, rule.disabledWhen)) {
       return [];
     }
     return [{ entry, scan, committedFilesOnly: rule.committedFilesOnly === true }];
@@ -89,7 +89,7 @@ const createSecurityScanSession = (
 // over one bounded whole-tree walk (shipped artifacts, dotenv/config files,
 // SQL — paths lint never sees). Selection goes through the same
 // `shouldEnableRule` capability/tag gate as lint rules, so `--ignore-tag
-// security-scan` and `disabledBy` behave identically across both engines.
+// security-scan` and `disabledWhen` behave identically across both engines.
 export const checkSecurityScan = (
   rootDirectory: string,
   options: CheckSecurityScanOptions = {},

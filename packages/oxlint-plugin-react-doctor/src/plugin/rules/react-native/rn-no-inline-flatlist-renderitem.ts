@@ -14,7 +14,7 @@ export const rnNoInlineFlatlistRenderitem = defineRule({
   // React Compiler auto-memoizes inline functions/objects in list rows, so the
   // perf footgun this rule guards against doesn't exist in compiler-enabled
   // projects (#723).
-  disabledBy: ["react-compiler"],
+  disabledWhen: ["react-compiler"],
   recommendation:
     "Move renderItem to a named function or wrap it in useCallback so it is not rebuilt every time the screen redraws.",
   create: (context: RuleContext) => ({

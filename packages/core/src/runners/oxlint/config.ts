@@ -157,7 +157,7 @@ export const createOxlintConfig = ({
     // from upstream OXC plugins.
     if (customRulesOnly && registryEntry.originallyExternal) continue;
     if (rule.framework !== "global" && !rule.requires) continue;
-    if (!shouldEnableRule(rule.requires, rule.tags, capabilities, ignoredTags, rule.disabledBy))
+    if (!shouldEnableRule(rule.requires, rule.tags, capabilities, ignoredTags, rule.disabledWhen))
       continue;
     const explicitSeverity = resolveRuleSeverityOverride(
       { ruleKey: registryEntry.key, category: rule.category },

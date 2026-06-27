@@ -166,7 +166,7 @@ export const shouldEnableRule = (
   tags: ReadonlyArray<string> | undefined,
   capabilities: ReadonlySet<string>,
   ignoredTags: ReadonlySet<string>,
-  disabledBy?: ReadonlyArray<string>,
+  disabledWhen?: ReadonlyArray<string>,
 ): boolean => {
   if (requires) {
     for (const capability of requires) {
@@ -179,8 +179,8 @@ export const shouldEnableRule = (
   // hook-name heuristics — on a project without React, so gate them on
   // the `react` capability the same way an explicit `requires` would.
   if (tags?.includes("react-jsx-only") && !capabilities.has("react")) return false;
-  if (disabledBy) {
-    for (const capability of disabledBy) {
+  if (disabledWhen) {
+    for (const capability of disabledWhen) {
       if (capabilities.has(capability)) return false;
     }
   }

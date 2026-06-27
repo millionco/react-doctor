@@ -327,7 +327,7 @@ export const jsxNoJsxAsProp = defineRule({
   severity: "warn",
   // React Compiler auto-memoizes inline JSX. The perf footgun this rule
   // guards against doesn't exist in compiler-enabled projects.
-  disabledBy: ["react-compiler"],
+  disabledWhen: ["react-compiler"],
   recommendation:
     "Move the JSX outside the component or wrap it in `useMemo` so memoized children do not redraw every render.",
   category: "Performance",

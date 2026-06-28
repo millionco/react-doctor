@@ -1,6 +1,7 @@
 import type { JsonReport, JsonReportMode } from "./types/index.js";
 import { formatReactDoctorError, isReactDoctorError } from "./errors.js";
 import { getErrorChainMessages } from "./format-error-chain.js";
+import { anonymizeSensitiveText } from "./utils/anonymize-sensitive-text.js";
 
 interface BuildJsonReportErrorInput {
   version: string;
@@ -28,30 +29,37 @@ const safeGetErrorChain = (error: unknown): string[] => {
   }
 };
 
+const anonymizeMessages = (messages: string[]): string[] => messages.map(anonymizeSensitiveText);
+
 export const buildJsonReportError = (input: BuildJsonReportErrorInput): JsonReport => {
-  const chain = safeGetErrorChain(input.error);
+  const chain = anonymizeMessages(safeGetErrorChain(input.error));
   const sentryEventId = input.sentryEventId ?? null;
   const errorPayload = isReactDoctorError(input.error)
     ? {
-        message: formatReactDoctorError(input.error),
+        message: anonymizeSensitiveText(formatReactDoctorError(input.error)),
         name: `ReactDoctorError(${input.error.reason._tag})`,
         chain,
         sentryEventId,
       }
     : input.error instanceof Error
       ? {
-          message: input.error.message || input.error.name || "Error",
+          message: anonymizeSensitiveText(input.error.message || input.error.name || "Error"),
           name: input.error.name || "Error",
           chain,
           sentryEventId,
         }
-      : { message: safeStringify(input.error), name: "Error", chain, sentryEventId };
+      : {
+          message: anonymizeSensitiveText(safeStringify(input.error)),
+          name: "Error",
+          chain,
+          sentryEventId,
+        };
 
   return {
     schemaVersion: 1,
     version: input.version,
     ok: false,
-    directory: input.directory,
+    directory: anonymizeSensitiveText(input.directory),
     mode: input.mode ?? "full",
     diff: null,
     projects: [],

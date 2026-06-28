@@ -1,6 +1,5 @@
 import type { Event } from "@sentry/node";
 import { anonymizeInPlace, anonymizeText } from "./anonymize-text.js";
-import { scrubSensitivePaths } from "./scrub-sensitive-text.js";
 
 /**
  * Anonymizes a Sentry event (error or transaction) before it leaves the
@@ -42,11 +41,9 @@ export const scrubSentryEvent = <T extends Event>(event: T): T | null => {
         // Local variables can hold arbitrary user data we can't reliably
         // anonymize, so drop them outright rather than risk a leak.
         delete frame.vars;
-        if (typeof frame.filename === "string")
-          frame.filename = scrubSensitivePaths(frame.filename);
-        if (typeof frame.abs_path === "string")
-          frame.abs_path = scrubSensitivePaths(frame.abs_path);
-        if (typeof frame.module === "string") frame.module = scrubSensitivePaths(frame.module);
+        if (typeof frame.filename === "string") frame.filename = anonymizeText(frame.filename);
+        if (typeof frame.abs_path === "string") frame.abs_path = anonymizeText(frame.abs_path);
+        if (typeof frame.module === "string") frame.module = anonymizeText(frame.module);
       }
     }
 

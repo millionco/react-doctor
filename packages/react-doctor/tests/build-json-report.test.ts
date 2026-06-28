@@ -181,6 +181,26 @@ describe("buildJsonReportError", () => {
     });
   });
 
+  it("scrubs sensitive paths and secrets from error reports", () => {
+    const token = `ghp_${"a".repeat(36)}`;
+    const report = buildJsonReportError({
+      version: "1.0.0",
+      directory: "/Users/jane/project",
+      error: new Error(`failed in /Users/jane/project with ${token}`, {
+        cause: new Error(`root at /Users/jane/project/src/app.ts ${token}`),
+      }),
+      elapsedMilliseconds: 50,
+    });
+
+    expect(report.directory).toBe("~/project");
+    expect(report.error?.message).toContain("~/project");
+    expect(report.error?.message).not.toContain("/Users/jane");
+    expect(report.error?.message).not.toContain(token);
+    expect(report.error?.chain.join("\n")).toContain("~/project");
+    expect(report.error?.chain.join("\n")).not.toContain("/Users/jane");
+    expect(report.error?.chain.join("\n")).not.toContain(token);
+  });
+
   it("preserves the cause chain of nested errors", () => {
     const root = new Error("root cause");
     const middle = new Error("middle layer", { cause: root });

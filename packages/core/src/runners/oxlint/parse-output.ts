@@ -13,7 +13,7 @@ import { isMinifiedSource } from "../../utils/is-minified-source.js";
 import { OxlintOutputUnparseable, ReactDoctorError } from "../../errors.js";
 import { buildNoSecretsRecommendation } from "../../utils/build-no-secrets-recommendation.js";
 import { appendReanimatedSharedValueHint } from "../../utils/append-reanimated-shared-value-hint.js";
-import { redactSensitiveText } from "../../utils/redact-sensitive-text.js";
+import { anonymizeSensitiveText } from "../../utils/anonymize-sensitive-text.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
@@ -142,8 +142,8 @@ const cleanDiagnosticMessage = (
   // diagnostic flows through — so it reaches neither the terminal, the
   // JSON report, nor the score API.
   return {
-    message: redactSensitiveText(cleaned.message),
-    help: redactSensitiveText(cleaned.help),
+    message: anonymizeSensitiveText(cleaned.message),
+    help: anonymizeSensitiveText(cleaned.help),
   };
 };
 
@@ -223,7 +223,7 @@ const buildRelatedLocations = (
       column: label.span.column ?? 0,
       offset: label.span.offset,
       length: label.span.length,
-      message: label.label ?? "",
+      message: anonymizeSensitiveText(label.label ?? ""),
     });
   }
   return related;
@@ -262,7 +262,7 @@ export const parseOxlintOutput = (
   } catch {
     throw new ReactDoctorError({
       reason: new OxlintOutputUnparseable({
-        preview: stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS),
+        preview: anonymizeSensitiveText(stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS)),
       }),
     });
   }
@@ -270,7 +270,7 @@ export const parseOxlintOutput = (
   if (!isOxlintOutput(parsed)) {
     throw new ReactDoctorError({
       reason: new OxlintOutputUnparseable({
-        preview: stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS),
+        preview: anonymizeSensitiveText(stdout.slice(0, ERROR_PREVIEW_LENGTH_CHARS)),
       }),
     });
   }

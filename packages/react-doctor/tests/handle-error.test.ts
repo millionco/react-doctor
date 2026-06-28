@@ -57,6 +57,39 @@ describe("handleError", () => {
     expect(body).toContain("Sentry reference: evt-abc123");
   });
 
+  it("scrubs home paths and secrets from prefilled issue text", () => {
+    const originalArgv = process.argv;
+    const cwdSpy = vi.spyOn(process, "cwd").mockReturnValue("/Users/jane/project");
+    const token = `ghp_${"a".repeat(36)}`;
+    process.argv = [
+      "/usr/local/bin/node",
+      "/usr/local/bin/react-doctor",
+      "inspect",
+      "/Users/jane/project",
+      "--token",
+      token,
+    ];
+
+    try {
+      const issueUrl = new URL(
+        buildErrorIssueUrl(new Error(`failed in /Users/jane/project ${token}`)),
+      );
+      const body = issueUrl.searchParams.get("body") ?? "";
+      const title = issueUrl.searchParams.get("title") ?? "";
+
+      expect(title).toContain("~/project");
+      expect(title).not.toContain("/Users/jane");
+      expect(title).not.toContain(token);
+      expect(body).toContain("- cwd: ~/project");
+      expect(body).toContain("inspect ~/project --token");
+      expect(body).not.toContain("/Users/jane");
+      expect(body).not.toContain(token);
+    } finally {
+      process.argv = originalArgv;
+      cwdSpy.mockRestore();
+    }
+  });
+
   it("omits the Sentry reference line when no event id is provided", () => {
     const body = new URL(buildErrorIssueUrl(new Error("boom"))).searchParams.get("body") ?? "";
     expect(body).not.toContain("Sentry reference:");

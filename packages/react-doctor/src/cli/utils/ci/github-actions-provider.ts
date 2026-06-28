@@ -287,27 +287,32 @@ const findActionWorkflowFile = (projectRoot: string): CiWorkflowFile | null => {
     try {
       const content = fs.readFileSync(path.join(workflowsDir, entry), "utf8");
       if (containsReactDoctor(content)) return { path: path.join(workflowsDir, entry), content };
-    } catch {}
+    } catch {
+      continue;
+    }
   }
   return null;
 };
 
-// The canonical `react-doctor.yml` when present (it's ours, so edit it), else
-// the first other workflow that wires up the action — so `ci config` /
-// `ci upgrade` manage the step wherever the user put it.
-const readWorkflow = (projectRoot: string): CiWorkflowFile | null => {
+const readCanonicalWorkflow = (projectRoot: string): CiWorkflowFile | null => {
   const canonical = readReactDoctorWorkflow(projectRoot);
-  if (canonical) return { path: canonical.workflowPath, content: canonical.content };
-  return findActionWorkflowFile(projectRoot);
+  if (canonical === null || !containsReactDoctor(canonical.content)) return null;
+  return { path: canonical.workflowPath, content: canonical.content };
 };
 
-// Reports "exists" when the action is already wired up anywhere (or our
-// canonical file is present), so `ci install` never adds a second workflow.
+// Prefer the canonical workflow when it actually wires up React Doctor, else
+// manage the action wherever the user put the step.
+const readWorkflow = (projectRoot: string): CiWorkflowFile | null => {
+  return readCanonicalWorkflow(projectRoot) ?? findActionWorkflowFile(projectRoot);
+};
+
+// Reports "exists" only when the action is already wired up, so a stale empty
+// canonical file doesn't mask the workflow users actually run.
 const scaffold = (projectRoot: string, defaultBranch: string, gate: CiGate): CiScaffoldResult => {
   const existing = readWorkflow(projectRoot);
   if (existing) return { status: "exists", path: existing.path };
   const workflowPath = getReactDoctorWorkflowPath(projectRoot);
-  if (fs.existsSync(workflowPath)) return { status: "exists", path: workflowPath };
+  if (fs.existsSync(workflowPath)) return { status: "failed", path: workflowPath };
   try {
     fs.mkdirSync(path.dirname(workflowPath), { recursive: true });
     fs.writeFileSync(workflowPath, buildGithubWorkflow(defaultBranch, gate, "v2"));

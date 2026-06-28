@@ -254,6 +254,33 @@ describe("githubActionsProvider scaffold", () => {
       "exists",
     );
   });
+
+  it("prefers a real action step over a stale empty canonical workflow", () => {
+    const workflowsDir = path.join(project.root, ".github", "workflows");
+    fs.mkdirSync(workflowsDir, { recursive: true });
+    fs.writeFileSync(path.join(workflowsDir, "react-doctor.yml"), "name: React Doctor\njobs: {}\n");
+    fs.writeFileSync(
+      path.join(workflowsDir, "ci.yml"),
+      ["jobs:", "  build:", "    steps:", "      - uses: millionco/react-doctor@v2", ""].join("\n"),
+    );
+
+    const found = githubActionsProvider.readWorkflow(project.root);
+    expect(found?.path.endsWith("ci.yml")).toBe(true);
+    expect(githubActionsProvider.scaffold(project.root, "main", ADVISORY_GATE).status).toBe(
+      "exists",
+    );
+  });
+
+  it("does not report an empty canonical workflow as configured", () => {
+    const workflowsDir = path.join(project.root, ".github", "workflows");
+    fs.mkdirSync(workflowsDir, { recursive: true });
+    fs.writeFileSync(path.join(workflowsDir, "react-doctor.yml"), "name: React Doctor\njobs: {}\n");
+
+    expect(githubActionsProvider.readWorkflow(project.root)).toBeNull();
+    expect(githubActionsProvider.scaffold(project.root, "main", ADVISORY_GATE).status).toBe(
+      "failed",
+    );
+  });
 });
 
 describe("gitlabCiProvider", () => {
@@ -407,7 +434,13 @@ describe("detectCiProvider", () => {
     fs.mkdirSync(path.join(project.root, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(project.root, ".github", "workflows", "react-doctor.yml"),
-      "name: React Doctor\n",
+      [
+        "jobs:",
+        "  react-doctor:",
+        "    steps:",
+        "      - uses: millionco/react-doctor@v2",
+        "",
+      ].join("\n"),
     );
     expect(await detectCiProvider(project.root, runner(succeed("git@gitlab.com:o/r.git")))).toBe(
       "github-actions",

@@ -57,6 +57,11 @@ const resolveProjectRoot = (options: CiCommandOptions): string => {
 const setupDocsUrl = (provider: CiProvider): string =>
   provider.id === "github-actions" ? GITHUB_ACTIONS_SETUP_URL : CI_URL;
 
+const logMissingWorkflow = (provider: CiProvider): void => {
+  logger.error(`No ${provider.displayName} workflow found.`);
+  logger.dim(`  Run ${highlighter.info("react-doctor ci install")} to add one first.`);
+};
+
 // Resolves the CI backend: an explicit `--provider`, else autodetection, else a
 // prompt (or GitHub Actions when prompts are off). Returns null when the user
 // passed an unknown id (after reporting it) so the caller stops cleanly.
@@ -295,6 +300,7 @@ export const runCiInstall = async (options: CiCommandOptions = {}): Promise<void
   if (result.status === "failed") {
     scaffoldSpinner.fail(`Couldn't write ${provider.fileLabel}.`);
     logger.dim(`  Set it up by hand: ${highlighter.info(setupDocsUrl(provider))}`);
+    process.exitCode = 1;
     return;
   }
 
@@ -353,8 +359,7 @@ export const runCiUpgrade = async (options: CiCommandOptions = {}): Promise<void
 
   const workflow = provider.readWorkflow(projectRoot);
   if (workflow === null) {
-    logger.error(`No ${provider.displayName} workflow found.`);
-    logger.dim(`  Run ${highlighter.info("react-doctor ci install")} to add one first.`);
+    logMissingWorkflow(provider);
     process.exitCode = 1;
     return;
   }
@@ -427,8 +432,7 @@ export const runCiConfig = async (options: CiCommandOptions = {}): Promise<void>
 
   const workflow = provider.readWorkflow(projectRoot);
   if (workflow === null) {
-    logger.error(`No ${provider.displayName} workflow found.`);
-    logger.dim(`  Run ${highlighter.info("react-doctor ci install")} to add one first.`);
+    logMissingWorkflow(provider);
     process.exitCode = 1;
     return;
   }

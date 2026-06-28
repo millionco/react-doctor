@@ -13,6 +13,8 @@ import { VERSION } from "./version.js";
 import { METRIC } from "./constants.js";
 import { formatEnvironmentError, isEnvironmentError } from "./is-environment-error.js";
 import { recordCount } from "./record-metric.js";
+import { anonymizeText } from "./anonymize-text.js";
+import { buildRunContext } from "./build-run-context.js";
 
 // `shouldExit` is optional here (defaults to exiting) and the CLI adds a Sentry
 // event id, surfaced as a reference the user can quote so we can locate the
@@ -37,17 +39,22 @@ interface ErrorReportContext {
 const formatErrorForReport = (error: unknown): string =>
   isReactDoctorError(error) ? formatReactDoctorError(error) : formatErrorChain(error);
 
+const formatErrorForIssue = (error: unknown): string => anonymizeText(formatErrorForReport(error));
+
 const formatSingleLine = (text: string): string => text.replaceAll(/\s+/g, " ").trim();
 
-const getErrorReportContext = (): ErrorReportContext => ({
-  cwd: process.cwd(),
-  command: process.argv.join(" "),
-  nodeVersion: process.version,
-  platform: process.platform,
-  architecture: process.arch,
-  isOtlpEndpointConfigured: Boolean(process.env[OTLP_ENDPOINT_ENVIRONMENT_VARIABLE]),
-  isOtlpAuthHeaderConfigured: Boolean(process.env[OTLP_AUTH_HEADER_ENVIRONMENT_VARIABLE]),
-});
+const getErrorReportContext = (): ErrorReportContext => {
+  const runContext = buildRunContext();
+  return {
+    cwd: runContext.cwd,
+    command: runContext.argv,
+    nodeVersion: runContext.node,
+    platform: process.platform,
+    architecture: process.arch,
+    isOtlpEndpointConfigured: Boolean(process.env[OTLP_ENDPOINT_ENVIRONMENT_VARIABLE]),
+    isOtlpAuthHeaderConfigured: Boolean(process.env[OTLP_AUTH_HEADER_ENVIRONMENT_VARIABLE]),
+  };
+};
 
 const formatConfiguredState = (isConfigured: boolean): string => (isConfigured ? "yes" : "no");
 
@@ -56,7 +63,7 @@ const buildErrorIssueBody = (
   context: ErrorReportContext,
   sentryEventId: string | undefined,
 ): string => {
-  const formattedError = formatErrorForReport(error) || "(empty error)";
+  const formattedError = formatErrorForIssue(error) || "(empty error)";
   const isOtlpExporterEnabled =
     context.isOtlpEndpointConfigured && context.isOtlpAuthHeaderConfigured;
 
@@ -90,7 +97,7 @@ const buildErrorIssueBody = (
 };
 
 export const buildErrorIssueUrl = (error: unknown, sentryEventId?: string): string => {
-  const formattedError = formatSingleLine(formatErrorForReport(error));
+  const formattedError = formatSingleLine(formatErrorForIssue(error));
   const issueUrl = new URL(`${CANONICAL_GITHUB_URL}/issues/new`);
   issueUrl.searchParams.set("title", formattedError ? `CLI error: ${formattedError}` : "CLI error");
   issueUrl.searchParams.set("labels", "bug");

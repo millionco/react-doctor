@@ -78,6 +78,18 @@ describe("runCiInstall", () => {
     expect(githubActionsProvider.readWorkflow(project.root)).toBeNull();
   });
 
+  it("exits non-zero when the canonical workflow path is occupied by another file", async () => {
+    fs.mkdirSync(path.dirname(githubActionsProvider.workflowPath(project.root)), {
+      recursive: true,
+    });
+    fs.writeFileSync(githubActionsProvider.workflowPath(project.root), "name: Not React Doctor\n");
+
+    await runCiInstall(baseOptions({ provider: "github-actions" }));
+
+    expect(process.exitCode).toBe(1);
+    expect(githubActionsProvider.readWorkflow(project.root)).toBeNull();
+  });
+
   it("scaffolds a GitLab merge-request job", async () => {
     await runCiInstall(baseOptions({ provider: "gitlab-ci" }));
     const content = fs.readFileSync(path.join(project.root, ".gitlab-ci.yml"), "utf8");

@@ -1,5 +1,4 @@
-import { isPlainObject, redactSensitiveText } from "@react-doctor/core";
-import { scrubSensitivePaths } from "./scrub-sensitive-text.js";
+import { anonymizeSensitiveText, isPlainObject } from "@react-doctor/core";
 
 /**
  * Free-text fields can carry both a home-directory path (the OS username) and a
@@ -8,8 +7,7 @@ import { scrubSensitivePaths } from "./scrub-sensitive-text.js";
  * event scrubber ({@link scrubSentryEvent}) and metric scrubber
  * ({@link scrubSentryMetric}).
  */
-export const anonymizeText = (text: string): string =>
-  redactSensitiveText(scrubSensitivePaths(text));
+export const anonymizeText = (text: string): string => anonymizeSensitiveText(text);
 
 /**
  * Recursively rewrites every string within an arbitrary value (object / array /

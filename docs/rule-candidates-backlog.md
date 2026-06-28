@@ -164,3 +164,31 @@ Each shipped rule passed an OSS noise sweep (react-use, radix-ui/primitives, exc
 
 > Raw per-cluster candidate detail (bad/good for all ~200) was produced in `/tmp/rd-mine/*.md`
 > (ephemeral). Ask to persist any cluster's full detail into the repo if needed.
+
+---
+
+## From the design-to-code skills (`designing-for-agents` synthesis)
+
+Deterministic residue of the agent failure catalog in `.agents/skills/designing-for-agents`. Most
+of that catalog is judgment (→ guidance, not rules); these are the few statically-detectable ones.
+
+- **`no-icon-name-switch`** — a component that selects among ≥3 distinct **inline** `<svg>` artworks
+  by a prop discriminant (`switch`/if-chain/object-map), instead of one component per icon.
+  scope + branch · **med** FP (must distinguish inline-SVG branches from component-reference
+  branches). Genuinely new (adjacent: `no-giant-component`, `no-multi-comp`). bundle-size cost: a
+  runtime switch over inline JSX is not tree-shakeable, so every icon ships. **Full stage-1 contract:
+  `docs/rule-research/no-icon-name-switch.md`.** _(corro: `paper-to-code-components` §3)_
+
+- **`no-on-scale-arbitrary-spacing`** — ⚠️ **re-opens the dropped `no-arbitrary-over-bare-value`**
+  with a narrower, more defensible cut: ONLY sizing/spacing utilities (`w-`/`h-`/`max-w-`/`min-w-`/
+  `p-`/`m-`/`gap-`/`inset-`/`top-`/`left-`/…) whose arbitrary bracket value lands exactly on the
+  default 4px scale (`max-w-[1160px]` → `max-w-290`, `gap-[24px]` → `gap-6`). syntax · **med** FP.
+  The generic `z-[999]→z-999` version was dropped as too noisy; this scope may clear the bar, but
+  it MUST pass an OSS noise sweep first and is a **default-off** candidate at best — custom theme
+  scales and non-default `--spacing` break the 4px assumption. _(corro: `paper-to-code-components`
+  §6; do not implement without re-validating against the original drop reason.)_
+
+- _Lower confidence, not yet a contract:_ **`no-state-for-static-variant`** — a `useState` whose
+  setter is never called, used only to pick a static presentational variant (→ a prop/constant).
+  Detectable in principle but FP-prone; route through `rule-research` before committing.
+  _(corro: `paper-to-code-components` §5 "no hooks for static variants".)_

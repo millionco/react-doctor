@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { formatReactDoctorError, isReactDoctorError } from "@react-doctor/core";
+import { formatReactDoctorError, isReactDoctorError } from "../src/errors.js";
 import { parseOxlintOutput } from "../src/runners/oxlint/parse-output.js";
 import { buildProject, TEST_ROOT_DIRECTORY } from "./helpers/oxlint-parse-harness.js";
 

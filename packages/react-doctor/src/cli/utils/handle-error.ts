@@ -46,8 +46,8 @@ const formatSingleLine = (text: string): string => text.replaceAll(/\s+/g, " ").
 const getErrorReportContext = (): ErrorReportContext => {
   const runContext = buildRunContext();
   return {
-    cwd: runContext.cwd,
-    command: runContext.argv,
+    cwd: anonymizeText(runContext.cwd),
+    command: anonymizeText(runContext.argv),
     nodeVersion: runContext.node,
     platform: process.platform,
     architecture: process.arch,

@@ -60,11 +60,15 @@ const resolveExpoPluginPath = (configDirectory: string, pluginPath: string): str
 
 const addExpoPluginEntry = (
   entries: Set<string>,
+  packageNamePlugins: Set<string>,
   rootDirectory: string,
   configDirectory: string,
   pluginPath: string,
 ): void => {
-  if (!isLocalExpoPluginPath(pluginPath)) return;
+  if (!isLocalExpoPluginPath(pluginPath)) {
+    packageNamePlugins.add(pluginPath);
+    return;
+  }
 
   const resolvedPath = resolveExpoPluginPath(configDirectory, pluginPath);
   if (!resolvedPath) return;
@@ -92,12 +96,13 @@ const unwrapExpression = (expression: ts.Expression): ts.Expression => {
 const collectExpoPluginPathsFromArray = (
   array: ts.ArrayLiteralExpression,
   entries: Set<string>,
+  packageNamePlugins: Set<string>,
   rootDirectory: string,
   configDirectory: string,
 ): void => {
   for (const element of array.elements) {
     if (ts.isStringLiteral(element) || ts.isNoSubstitutionTemplateLiteral(element)) {
-      addExpoPluginEntry(entries, rootDirectory, configDirectory, element.text);
+      addExpoPluginEntry(entries, packageNamePlugins, rootDirectory, configDirectory, element.text);
       continue;
     }
 
@@ -107,7 +112,13 @@ const collectExpoPluginPathsFromArray = (
         pluginName &&
         (ts.isStringLiteral(pluginName) || ts.isNoSubstitutionTemplateLiteral(pluginName))
       ) {
-        addExpoPluginEntry(entries, rootDirectory, configDirectory, pluginName.text);
+        addExpoPluginEntry(
+          entries,
+          packageNamePlugins,
+          rootDirectory,
+          configDirectory,
+          pluginName.text,
+        );
       }
     }
   }
@@ -116,18 +127,29 @@ const collectExpoPluginPathsFromArray = (
 const collectExpoPluginPathsFromConfigObject = (
   objectLiteral: ts.ObjectLiteralExpression,
   entries: Set<string>,
+  packageNamePlugins: Set<string>,
   rootDirectory: string,
   configDirectory: string,
 ): void => {
   for (const property of objectLiteral.properties) {
-    if (
-      ts.isPropertyAssignment(property) &&
-      getPropertyName(property.name) === "plugins" &&
-      ts.isArrayLiteralExpression(property.initializer)
-    ) {
+    if (!ts.isPropertyAssignment(property)) continue;
+
+    const propertyName = getPropertyName(property.name);
+    if (propertyName === "plugins" && ts.isArrayLiteralExpression(property.initializer)) {
       collectExpoPluginPathsFromArray(
         property.initializer,
         entries,
+        packageNamePlugins,
+        rootDirectory,
+        configDirectory,
+      );
+    }
+
+    if (propertyName === "expo" && ts.isObjectLiteralExpression(property.initializer)) {
+      collectExpoPluginPathsFromConfigObject(
+        property.initializer,
+        entries,
+        packageNamePlugins,
         rootDirectory,
         configDirectory,
       );
@@ -138,13 +160,20 @@ const collectExpoPluginPathsFromConfigObject = (
 const collectReturnedExpoConfigPluginPaths = (
   body: ts.ConciseBody,
   entries: Set<string>,
+  packageNamePlugins: Set<string>,
   rootDirectory: string,
   configDirectory: string,
 ): void => {
   if (!ts.isBlock(body)) {
     const expression = unwrapExpression(body);
     if (ts.isObjectLiteralExpression(expression)) {
-      collectExpoPluginPathsFromConfigObject(expression, entries, rootDirectory, configDirectory);
+      collectExpoPluginPathsFromConfigObject(
+        expression,
+        entries,
+        packageNamePlugins,
+        rootDirectory,
+        configDirectory,
+      );
     }
     return;
   }
@@ -156,7 +185,13 @@ const collectReturnedExpoConfigPluginPaths = (
     if (ts.isReturnStatement(node) && node.expression) {
       const expression = unwrapExpression(node.expression);
       if (ts.isObjectLiteralExpression(expression)) {
-        collectExpoPluginPathsFromConfigObject(expression, entries, rootDirectory, configDirectory);
+        collectExpoPluginPathsFromConfigObject(
+          expression,
+          entries,
+          packageNamePlugins,
+          rootDirectory,
+          configDirectory,
+        );
       }
       return;
     }
@@ -170,6 +205,7 @@ const collectReturnedExpoConfigPluginPaths = (
 const collectExpoPluginPathsFromConfigExpression = (
   expression: ts.Expression,
   entries: Set<string>,
+  packageNamePlugins: Set<string>,
   rootDirectory: string,
   configDirectory: string,
   bindings: StaticConfigBindings,
@@ -180,6 +216,7 @@ const collectExpoPluginPathsFromConfigExpression = (
     collectExpoPluginPathsFromConfigObject(
       configExpression,
       entries,
+      packageNamePlugins,
       rootDirectory,
       configDirectory,
     );
@@ -195,6 +232,7 @@ const collectExpoPluginPathsFromConfigExpression = (
       collectExpoPluginPathsFromConfigExpression(
         boundExpression,
         entries,
+        packageNamePlugins,
         rootDirectory,
         configDirectory,
         bindings,
@@ -208,6 +246,7 @@ const collectExpoPluginPathsFromConfigExpression = (
       collectReturnedExpoConfigPluginPaths(
         boundFunction.body,
         entries,
+        packageNamePlugins,
         rootDirectory,
         configDirectory,
       );
@@ -219,6 +258,7 @@ const collectExpoPluginPathsFromConfigExpression = (
     collectReturnedExpoConfigPluginPaths(
       configExpression.body,
       entries,
+      packageNamePlugins,
       rootDirectory,
       configDirectory,
     );
@@ -229,6 +269,7 @@ const collectExpoPluginPathsFromConfigExpression = (
     collectReturnedExpoConfigPluginPaths(
       configExpression.body,
       entries,
+      packageNamePlugins,
       rootDirectory,
       configDirectory,
     );
@@ -272,6 +313,7 @@ const collectStaticConfigBindings = (sourceFile: ts.SourceFile): StaticConfigBin
 const collectExpoPluginPathsFromAppConfig = (
   configPath: string,
   entries: Set<string>,
+  packageNamePlugins: Set<string>,
   rootDirectory: string,
 ): void => {
   const extension = extname(configPath);
@@ -292,6 +334,7 @@ const collectExpoPluginPathsFromAppConfig = (
       collectExpoPluginPathsFromConfigExpression(
         node.expression,
         entries,
+        packageNamePlugins,
         rootDirectory,
         configDirectory,
         bindings,
@@ -300,7 +343,13 @@ const collectExpoPluginPathsFromAppConfig = (
     }
 
     if (ts.isFunctionDeclaration(node) && hasDefaultExportModifier(node) && node.body) {
-      collectReturnedExpoConfigPluginPaths(node.body, entries, rootDirectory, configDirectory);
+      collectReturnedExpoConfigPluginPaths(
+        node.body,
+        entries,
+        packageNamePlugins,
+        rootDirectory,
+        configDirectory,
+      );
       return;
     }
 
@@ -312,6 +361,7 @@ const collectExpoPluginPathsFromAppConfig = (
       collectExpoPluginPathsFromConfigExpression(
         node.right,
         entries,
+        packageNamePlugins,
         rootDirectory,
         configDirectory,
         bindings,
@@ -344,6 +394,7 @@ const collectPluginPathsFromJsonValue = (value: unknown): string[] => {
 const collectExpoPluginPathsFromAppJson = (
   configPath: string,
   entries: Set<string>,
+  packageNamePlugins: Set<string>,
   rootDirectory: string,
 ): void => {
   const parsedJson: unknown = JSON.parse(readFileSync(configPath, "utf8"));
@@ -359,34 +410,41 @@ const collectExpoPluginPathsFromAppJson = (
     ...expoPluginPaths,
     ...collectPluginPathsFromJsonValue(parsedJson.plugins),
   ]) {
-    addExpoPluginEntry(entries, rootDirectory, configDirectory, pluginPath);
+    addExpoPluginEntry(entries, packageNamePlugins, rootDirectory, configDirectory, pluginPath);
   }
 };
 
 const collectExpoPluginPathsFromConfig = (
   configPath: string,
   entries: Set<string>,
+  packageNamePlugins: Set<string>,
   rootDirectory: string,
 ): void => {
   try {
     if (basename(configPath) === "app.json") {
-      collectExpoPluginPathsFromAppJson(configPath, entries, rootDirectory);
+      collectExpoPluginPathsFromAppJson(configPath, entries, packageNamePlugins, rootDirectory);
       return;
     }
 
-    collectExpoPluginPathsFromAppConfig(configPath, entries, rootDirectory);
+    collectExpoPluginPathsFromAppConfig(configPath, entries, packageNamePlugins, rootDirectory);
   } catch {}
 };
+
+interface ExpoConfigPluginCollection {
+  readonly filePaths: string[];
+  readonly packageNames: string[];
+}
 
 export const extractExpoConfigPluginEntries = (
   directory: string,
   dependencies: Record<string, string>,
   rootDirectory = directory,
   includeNestedConfigs = true,
-): string[] => {
-  if (!isExpoOrReactNativeWorkspace(dependencies)) return [];
+): ExpoConfigPluginCollection => {
+  if (!isExpoOrReactNativeWorkspace(dependencies)) return { filePaths: [], packageNames: [] };
 
   const entries = new Set<string>();
+  const packageNamePlugins = new Set<string>();
   const configPaths = fg.sync(
     includeNestedConfigs ? NESTED_EXPO_CONFIG_FILE_GLOBS : EXPO_CONFIG_FILE_GLOBS,
     {
@@ -399,8 +457,8 @@ export const extractExpoConfigPluginEntries = (
   );
 
   for (const configPath of configPaths) {
-    collectExpoPluginPathsFromConfig(configPath, entries, rootDirectory);
+    collectExpoPluginPathsFromConfig(configPath, entries, packageNamePlugins, rootDirectory);
   }
 
-  return [...entries];
+  return { filePaths: [...entries], packageNames: [...packageNamePlugins] };
 };

@@ -466,6 +466,34 @@ describe("expo-config-plugins", () => {
   });
 });
 
+describe("expo-plugin-packages-false-positive", () => {
+  it("should not flag Expo config plugin packages (referenced by package name) as unused", async () => {
+    const result = await scanFixture("expo-plugin-packages-false-positive");
+    const deps = staleDependencyNames(result);
+
+    // Both plugin packages are deliberately NOT covered by the always-used
+    // prefix allowlist (unlike `expo-*` / `react-native-*`), and neither is
+    // imported in source — so without the config-plugin detection they WOULD
+    // be flagged. This makes the test fail on unfixed code.
+    assert.ok(
+      !deps.includes("@config-plugins/detox"),
+      `@config-plugins/detox is a config plugin (tuple form) in app.json and must not be flagged as unused, got: ${deps}`,
+    );
+    assert.ok(
+      !deps.includes("@react-native-firebase/app"),
+      `@react-native-firebase/app is a config plugin nested under the \`expo\` key in app.config.js and must not be flagged as unused, got: ${deps}`,
+    );
+
+    // Negative control: a declared dependency that is neither a plugin nor
+    // imported must STILL be reported, proving the scan runs and the plugin
+    // assertions above aren't passing vacuously.
+    assert.ok(
+      deps.includes("left-pad"),
+      `left-pad is genuinely unused and must still be flagged, got: ${deps}`,
+    );
+  });
+});
+
 describe("nested-dist-non-workspace", () => {
   it("should exclude `dist/` directories at ANY depth, not just at workspace roots", async () => {
     const result = await scanFixture("nested-dist-non-workspace");
@@ -5042,5 +5070,18 @@ describe("typescript-smells", () => {
       1,
       `expected exactly one ts-expect-error-without-explanation finding, got ${expectErrorFindings.length}: ${JSON.stringify(expectErrorFindings)}`,
     );
+  });
+});
+
+describe("jsx-namespace-member (issue #875)", () => {
+  it("treats a namespace member used only in JSX (<S.Custom/>) as used", async () => {
+    const result = await scanFixture("jsx-namespace-member");
+    const dead = deadExportNames(result);
+    assert.ok(
+      !dead.includes("Custom"),
+      `Custom is used via <S.Custom/> and must not be flagged unused, got: ${dead}`,
+    );
+    // `Plain` is genuinely unused — proves the scan ran and isn't passing vacuously.
+    assert.ok(dead.includes("Plain"), `Plain is unused and should still be flagged, got: ${dead}`);
   });
 });

@@ -13,6 +13,7 @@ export interface InspectFlags {
   score?: boolean;
   json?: boolean;
   jsonCompact?: boolean;
+  jsonOut?: string;
   telemetry?: boolean;
   yes?: boolean;
   staged?: boolean;

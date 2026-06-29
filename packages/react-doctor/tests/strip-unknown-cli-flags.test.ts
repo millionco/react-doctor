@@ -143,4 +143,36 @@ describe("stripUnknownCliFlags", () => {
       "--color",
     ]);
   });
+
+  it("keeps ci subcommand options (including the gate toggles) and drops unknown ones", () => {
+    expect(
+      stripUserArguments([
+        "ci",
+        "config",
+        "--blocking",
+        "error",
+        "--scope",
+        "full",
+        "--no-comment",
+        "--review-comments",
+        "--offline",
+      ]),
+    ).toEqual([
+      "ci",
+      "config",
+      "--blocking",
+      "error",
+      "--scope",
+      "full",
+      "--no-comment",
+      "--review-comments",
+    ]);
+    expect(stripUserArguments(["ci", "install", "--provider", "gitlab-ci", "--pr"])).toEqual([
+      "ci",
+      "install",
+      "--provider",
+      "gitlab-ci",
+      "--pr",
+    ]);
+  });
 });

@@ -15,9 +15,32 @@ const expectPass = (code: string): void => {
 };
 
 describe("react-builtins/jsx-key — regressions", () => {
-  // Bugbot review: key sandwiched between two spreads should still flag
-  // (key appears after the FIRST spread, even if before LATER spreads).
+  // A spread can only clobber an explicit `key` when it sits AFTER the key:
+  // the later attribute wins under both the classic runtime (`{ key, ...spread }`)
+  // and the automatic runtime (falls back to `createElement`). So we flag
+  // key-before-spread and stay silent on key-after-spread.
+  it("flags a spread placed after the key", () => expectFail(`[<App key="x" {...b} />];`));
+
+  it("does not flag a key placed after every spread", () =>
+    expectPass(`[<App {...b} key="x" />];`));
+
+  // Sandwiched: a spread (`{...b}`) still comes after the key, so it can
+  // overwrite it — keep flagging.
   it("flags key between two spreads", () => expectFail(`[<App {...a} key="x" {...b} />];`));
+
+  it("does not flag a key after two leading spreads", () =>
+    expectPass(`[<App {...a} {...b} key="x" />];`));
+
+  // A spread of an object literal that provably carries no `key` cannot
+  // overwrite the explicit one, even when written after it.
+  it("does not flag an empty-object spread after the key", () =>
+    expectPass(`<App key="x" {...{}} />;`));
+
+  it("does not flag a keyless-object-literal spread after the key", () =>
+    expectPass(`<App key="x" {...{ className: c }} />;`));
+
+  it("flags an object-literal spread that carries a key", () =>
+    expectFail(`<App key="x" {...{ key: y }} />;`));
 
   it("does not flag shorthand fragments returned from iterators", () => {
     expectPass(`items.map((item) => <>{item.name}</>);`);

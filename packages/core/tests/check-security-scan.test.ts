@@ -236,6 +236,161 @@ describe("checkSecurityScan", () => {
     });
   });
 
+  describe("supabase-rls-policy-risk regressions", () => {
+    it("conservatively flags IF EXISTS disable-RLS (cross-migration drop state not tracked)", () => {
+      // The per-file scan can't see that an earlier migration dropped the table,
+      // and an `if exists` guard on a LIVE table still disables its RLS — a real
+      // risk — so this is flagged. The dropped-table false positive (#910 #1/#3)
+      // needs cross-migration analysis and is deferred.
+      writeFile(
+        "supabase/migrations/002_cleanup.sql",
+        `alter table if exists public.old_table disable row level security;`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("supabase-rls-policy-risk");
+    });
+
+    it("does not flag policies scoped TO service_role", () => {
+      writeFile(
+        "supabase/migrations/001_service_role_policy.sql",
+        `create table audit_log (
+  id uuid primary key,
+  event text not null,
+  created_at timestamptz default now()
+);
+
+alter table audit_log enable row level security;
+
+create policy "system_insert" on audit_log
+for insert
+to service_role
+with check (true);`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("still flags a TO authenticated policy that grants write with (true)", () => {
+      // `authenticated` is reachable from the browser via a logged-in JWT, so
+      // `with check (true)` scoped to it lets any signed-in user write anything
+      // — a real risk, not server-only hardening. Must stay flagged.
+      writeFile(
+        "supabase/migrations/001_authenticated_open_write.sql",
+        `create table user_data (
+  id uuid primary key,
+  user_id uuid not null,
+  data jsonb
+);
+
+alter table user_data enable row level security;
+
+create policy "auth_insert" on user_data
+for insert
+to authenticated
+with check (true);`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("supabase-rls-policy-risk");
+    });
+
+    it("does not flag a TO authenticated policy whose check is a real predicate", () => {
+      writeFile(
+        "supabase/migrations/001_authenticated_policy.sql",
+        `create table user_data (
+  id uuid primary key,
+  user_id uuid not null,
+  data jsonb
+);
+
+alter table user_data enable row level security;
+
+create policy "auth_insert" on user_data
+for insert
+to authenticated
+with check (auth.uid() = user_id);`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("flags auth.role() = 'service_role' in policy body as a bypass", () => {
+      writeFile(
+        "supabase/migrations/001_role_bypass.sql",
+        `create table data (id uuid primary key);
+
+alter table data enable row level security;
+
+create policy "bypass" on data
+for all
+using (auth.role() = 'service_role' or user_id = auth.uid());`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("supabase-rls-policy-risk");
+    });
+
+    it("does not flag a two-clause FOR ALL policy scoped TO service_role", () => {
+      writeFile(
+        "supabase/migrations/001_for_all_service_role.sql",
+        `create table data (id uuid primary key);
+alter table data enable row level security;
+create policy "svc" on data for all to service_role using (true) with check (true);`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("does not flag a FOR UPDATE policy scoped TO an all-server-only role list", () => {
+      writeFile(
+        "supabase/migrations/001_for_update_roles.sql",
+        `create table data (id uuid primary key);
+alter table data enable row level security;
+create policy "svc" on data for update to postgres, service_role using (true) with check (true);`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("flags a permissive policy whose role list mixes in a client-reachable role", () => {
+      writeFile(
+        "supabase/migrations/001_mixed_roles.sql",
+        `create policy "mixed" on data for all to service_role, authenticated using (true);`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("supabase-rls-policy-risk");
+    });
+
+    it("flags a permissive FOR ALL policy with no TO clause (applies to PUBLIC)", () => {
+      writeFile(
+        "supabase/migrations/001_public_open.sql",
+        `create policy "open" on data for all using (true) with check (true);`,
+      );
+
+      expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("supabase-rls-policy-risk");
+    });
+
+    it("does not flag a public-read FOR SELECT using (true) policy", () => {
+      writeFile(
+        "supabase/migrations/001_public_read.sql",
+        `create table data (id uuid primary key);
+alter table data enable row level security;
+create policy "read" on data for select using (true);`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+
+    it("does not flag a commented-out permissive policy", () => {
+      writeFile(
+        "supabase/migrations/001_commented.sql",
+        `create table data (id uuid primary key);
+alter table data enable row level security;
+-- create policy "open" on data for all using (true);`,
+      );
+
+      expect(checkSecurityScan(temporaryRoot)).toEqual([]);
+    });
+  });
+
   describe("supabase-table-missing-rls", () => {
     it("flags a vibe-coded Supabase migration that creates a public table without RLS", () => {
       expect(fixtureRules("supabase-public-table-missing-rls")).toEqual(

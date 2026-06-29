@@ -71,7 +71,9 @@ export default defineConfig({
         // (its jsonc-parser/yaml/toml transitives ship as UMD that
         // doesn't bundle cleanly), and the typescript compiler all
         // stay external.
-        alwaysBundle: ["commander", "ora"],
+        // `yaml` (pure JS, no native deps) backs the `ci config` in-place
+        // workflow editor; inline it so end users get no extra install.
+        alwaysBundle: ["commander", "ora", "yaml"],
         neverBundle: [
           // Sentry bundles its own OpenTelemetry instrumentation chain
           // and resolves native/optional deps via require() at runtime;
@@ -145,7 +147,7 @@ export default defineConfig({
     {
       entry: { index: "./src/index.ts" },
       deps: {
-        alwaysBundle: ["commander", "ora"],
+        alwaysBundle: ["commander", "ora", "yaml"],
         neverBundle: [
           "@sentry/node",
           "agent-install",

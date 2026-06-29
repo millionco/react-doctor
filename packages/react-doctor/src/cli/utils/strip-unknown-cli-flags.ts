@@ -37,6 +37,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
     "--category",
     "--changed-files-from",
     "--blocking",
+    "--json-out",
     "--output-dir",
     "--fail-on",
     "--project",
@@ -121,6 +122,30 @@ const RULES_FLAG_SPEC: CliFlagSpec = {
   shortOptionsWithRequiredValues: new Set(["-c"]),
 };
 
+// Union of every flag across the `ci` subcommands (install / config / upgrade).
+// The subcommand name is a non-flag token that passes through untouched; only
+// the options here need to survive the pre-parse strip so Commander can route
+// them to the right subcommand.
+const CI_FLAG_SPEC: CliFlagSpec = {
+  longOptionsWithoutValues: new Set([
+    "--color",
+    "--comment",
+    "--commit-status",
+    "--help",
+    "--no-color",
+    "--no-comment",
+    "--no-commit-status",
+    "--no-review-comments",
+    "--pr",
+    "--review-comments",
+    "--yes",
+  ]),
+  longOptionsWithRequiredValues: new Set(["--blocking", "--cwd", "--provider", "--scope"]),
+  longOptionsWithOptionalValues: new Set(),
+  shortOptionsWithoutValues: new Set(["-h", "-y"]),
+  shortOptionsWithRequiredValues: new Set(["-c"]),
+};
+
 // `why <file:line>` takes a positional location (passed through untouched) plus
 // the working-directory / project / color options.
 const WHY_FLAG_SPEC: CliFlagSpec = {
@@ -137,6 +162,7 @@ const COMMAND_FLAG_SPECS = new Map<string, CliFlagSpec>([
   ["triage", TRIAGE_FLAG_SPEC],
   ["version", VERSION_FLAG_SPEC],
   ["rules", RULES_FLAG_SPEC],
+  ["ci", CI_FLAG_SPEC],
   ["why", WHY_FLAG_SPEC],
 ]);
 

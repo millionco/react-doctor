@@ -1,6 +1,7 @@
 import { Command, Option } from "commander";
-import { CANONICAL_GITHUB_URL, highlighter } from "@react-doctor/core";
+import { CANONICAL_GITHUB_URL, CI_URL, highlighter } from "@react-doctor/core";
 import { flushSentry, initializeSentry } from "../instrument.js";
+import { ciConfigAction, ciInstallAction, ciUpgradeAction } from "./commands/ci.js";
 import { inspectAction } from "./commands/inspect.js";
 import { installAction } from "./commands/install.js";
 import {
@@ -17,6 +18,7 @@ import { triageAction } from "./commands/triage.js";
 import { versionAction } from "./commands/version.js";
 import { whyAction } from "./commands/why.js";
 import { applyColorPreference } from "./utils/apply-color-preference.js";
+import { ensureWindowsUtf8Console } from "./utils/ensure-windows-utf8-console.js";
 import { exitGracefully } from "./utils/exit-gracefully.js";
 import { guardStdin } from "./utils/guard-stdin.js";
 import { handleError, handleUserError } from "./utils/handle-error.js";
@@ -78,6 +80,7 @@ ${formatExampleLines([
   ["react-doctor --json > report.json", "write a machine-readable report"],
   ["react-doctor why src/App.tsx:42", "explain why a rule fired there"],
   ["react-doctor triage", "walk rules one by one and copy focused fix prompts"],
+  ["react-doctor ci install", "scan every pull request in CI"],
   ["react-doctor install", "set up the agent skill and git hook"],
 ])}
 
@@ -101,8 +104,30 @@ ${formatExampleLines([
   ["react-doctor install --agent-hooks", "also install native agent hooks"],
 ])}
 
+${highlighter.dim("Managing CI:")}
+  ${highlighter.info("react-doctor ci install")} sets up, upgrades, and configures CI on its own.
+
 ${highlighter.dim("Learn more:")}
   ${highlighter.info(CANONICAL_GITHUB_URL)}
+`;
+
+const renderCiHelpEpilog = (): string => `
+${highlighter.dim("Examples:")}
+${formatExampleLines([
+  ["react-doctor ci install", "add a workflow that scans every pull request"],
+  ["react-doctor ci install --blocking error", "add it and fail the check on new errors"],
+  ["react-doctor ci install --pr", "open a pull request with the workflow"],
+  ["react-doctor ci config", "change the gate, scope, and reporting settings"],
+  ["react-doctor ci config --scope full", "scan the whole project on every pull request"],
+  ["react-doctor ci upgrade", "bump the action to its current major"],
+])}
+
+${highlighter.dim("Providers:")}
+  GitHub Actions is auto-detected and fully supported. GitLab CI is a gate-only
+  scaffold. Pass ${highlighter.info("--provider gitlab-ci")} to choose it explicitly.
+
+${highlighter.dim("Learn more:")}
+  ${highlighter.info(CI_URL)}
 `;
 
 const collectCategoryOption = (value: string, previousValues: string[] | undefined): string[] => [
@@ -131,6 +156,7 @@ const program = new Command()
   .option("--score", "output only the score")
   .option("--json", "output a single structured JSON report (suppresses other output)")
   .option("--json-compact", "with --json, emit compact JSON (no indentation)")
+  .option("--json-out <path>", "with --json, write the report to a file instead of stdout")
   .option("-y, --yes", "skip prompts, scan all workspace projects")
   .option(
     "--no-parallel",
@@ -291,6 +317,73 @@ program
   .addHelpText("after", renderInstallHelpEpilog)
   .action(installAction);
 
+const providerOption: [string, string] = [
+  "--provider <name>",
+  "ci provider: github-actions or gitlab-ci (auto-detected by default)",
+];
+const prOption: [string, string] = [
+  "--pr",
+  "open a pull request with the change instead of writing it to the working tree",
+];
+
+// HACK: `--blocking`, `--scope`, `--yes`, and `--color` are also declared on
+// the root program (for the default inspect command), so Commander stashes a
+// colliding flag on the parent rather than the `ci` subcommand. Route every
+// action through `optsWithGlobals()` so the merged option set (subcommand +
+// inherited globals) is what the action sees — mirroring the `rules` group.
+const ci = program
+  .command("ci")
+  .description("Set up, upgrade, and configure React Doctor in your CI");
+
+ci.command("install")
+  .description("Add a CI workflow that scans every pull request")
+  .option(...providerOption)
+  .option(...prOption)
+  .option("--blocking <level>", "gate level: none (advisory, default), warning, or error")
+  .option(
+    "--scope <value>",
+    "what a pull-request scan reports: changed (default), files, lines, full",
+  )
+  .option("--comment", "post a summary comment on each pull request")
+  .option("--no-comment", "don't post a summary comment")
+  .option("--review-comments", "add inline review comments on changed lines")
+  .option("--no-review-comments", "don't add inline review comments")
+  .option("--commit-status", "report a commit status with the health score")
+  .option("--no-commit-status", "don't report a commit status")
+  .option("-y, --yes", "skip prompts; use the defaults")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .option("--color", "force colored output")
+  .option("--no-color", "disable colored output (also honors NO_COLOR)")
+  .addHelpText("after", renderCiHelpEpilog)
+  .action((_options, command) => ciInstallAction(command.optsWithGlobals()));
+
+ci.command("config")
+  .description("Change the gate, scan scope, and pull-request reporting")
+  .option(...providerOption)
+  .option("--blocking <level>", "gate level: none (advisory), warning, or error")
+  .option("--scope <value>", "what a pull-request scan reports: changed, files, lines, or full")
+  .option("--comment", "post a summary comment on each pull request")
+  .option("--no-comment", "don't post a summary comment")
+  .option("--review-comments", "add inline review comments on changed lines")
+  .option("--no-review-comments", "don't add inline review comments")
+  .option("--commit-status", "report a commit status with the health score")
+  .option("--no-commit-status", "don't report a commit status")
+  .option("-y, --yes", "skip prompts; print the current settings")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .option("--color", "force colored output")
+  .option("--no-color", "disable colored output (also honors NO_COLOR)")
+  .action((_options, command) => ciConfigAction(command.optsWithGlobals()));
+
+ci.command("upgrade")
+  .description("Upgrade the CI workflow to the action's current major")
+  .option(...providerOption)
+  .option(...prOption)
+  .option("-y, --yes", "skip prompts")
+  .option("-c, --cwd <cwd>", "working directory", process.cwd())
+  .option("--color", "force colored output")
+  .option("--no-color", "disable colored output (also honors NO_COLOR)")
+  .action((_options, command) => ciUpgradeAction(command.optsWithGlobals()));
+
 program
   .command("version")
   .description("show the version with Node and platform info")
@@ -403,6 +496,10 @@ if (process.argv.includes("-V") && !strippedArgv.includes("-V")) {
 // trailing tokens like `react-doctor help --no-color`) so the choice
 // reaches help output too.
 applyColorPreference(strippedArgv);
+
+// Switch the Windows console to UTF-8 before any output, so the diagnostics and
+// handoff payload don't mojibake on a non-UTF-8 code page (issue #956).
+ensureWindowsUtf8Console();
 
 // 12-factor (#1): map `help` / `help <command>` to Commander's `--help`.
 const argv = normalizeHelpInvocation(strippedArgv, knownCommands);

@@ -1,5 +1,6 @@
 import {
   RAW_TEXT_PREVIEW_MAX_CHARS,
+  REACT_NATIVE_RAW_TEXT_HOST_COMPONENTS,
   REACT_NATIVE_TEXT_COMPONENTS,
   REACT_NATIVE_TEXT_COMPONENT_KEYWORDS,
   REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS,
@@ -7,10 +8,12 @@ import {
 import { defineRule } from "../../utils/define-rule.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { isInsidePlatformOsWebBranch } from "../../utils/is-inside-platform-os-web-branch.js";
+import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { collectTextWrapperComponents } from "./utils/collect-text-wrapper-components.js";
+import { resolveImportedComponentForwarding } from "./utils/resolve-imported-component-forwarding.js";
 import { isExpoUiComponentElement } from "./utils/is-expo-ui-component-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -108,20 +111,65 @@ export const rnNoRawText = defineRule({
     // in a WebView as DOM rather than on React Native primitives.
     let isDomComponentFile = false;
 
-    // Auto-detected in-file text wrappers — components that forward their
-    // children into a real `<Text>` (either as the returned root or nested
-    // inside the returned markup). Populated from the
-    // program on first visit so usage anywhere in the file (declared before or
-    // after) is seen. Manual `textComponents` / `rawTextWrapperComponents`
-    // overrides are applied separately in the core diagnostic pipeline
-    // (config-driven), so a project can name cross-file wrappers this
-    // single-file pass can't see.
-    let autoDetectedWrappers: ReadonlySet<string> = new Set();
+    // In-file components classified by where they forward their children (see
+    // `collectTextWrapperComponents`), populated on the first Program visit so
+    // declaration order doesn't matter. Imported components are resolved on
+    // demand below; `textComponents` / `rawTextWrapperComponents` config covers
+    // the rest (`node_modules` and anything the resolver can't follow).
+    let autoDetectedTextWrappers: ReadonlySet<string> = new Set();
+    let autoDetectedNonTextWrappers: ReadonlySet<string> = new Set();
+
+    // A built-in crash host: a React Native host primitive, or any lowercase
+    // intrinsic (`div`, `fbt`, …) — raw text directly inside one always crashes.
+    const isNonTextHostName = (elementName: string): boolean =>
+      !isReactComponentName(elementName) || REACT_NATIVE_RAW_TEXT_HOST_COMPONENTS.has(elementName);
+
+    // A raw-text child only crashes at a host boundary, so report it only when
+    // its enclosing element is a proven non-text renderer: a built-in crash host
+    // or an in-file component classified as one. Imported components go through
+    // `isImportedNonTextWrapper`; everything else is left alone (assuming an
+    // unseen crash would be a false positive).
+    const isRawTextReportTarget = (elementName: string | null): boolean =>
+      elementName !== null &&
+      (isNonTextHostName(elementName) || autoDetectedNonTextWrappers.has(elementName));
+
+    // Resolve an imported component cross-file: "nonText" (renders children into
+    // a host) → reported; "text" or unresolvable (`node_modules`, namespace
+    // imports, unanalyzable exports) → left alone. Cached per name and gated on
+    // `context.filename` (which drives path resolution), so `runRule` tests with
+    // no filename keep single-file behavior.
+    const importedNonTextWrapperCache = new Map<string, boolean>();
+    const isImportedNonTextWrapper = (
+      elementName: string | null,
+      contextNode: EsTreeNode,
+    ): boolean => {
+      if (elementName === null || !isReactComponentName(elementName)) return false;
+      const { filename } = context;
+      if (filename === undefined) return false;
+      const cached = importedNonTextWrapperCache.get(elementName);
+      if (cached !== undefined) return cached;
+      const forwardingKind = resolveImportedComponentForwarding(
+        contextNode,
+        filename,
+        elementName,
+        isTextHandlingComponent,
+        isNonTextHostName,
+      );
+      const isNonTextWrapper = forwardingKind === "nonText";
+      importedNonTextWrapperCache.set(elementName, isNonTextWrapper);
+      return isNonTextWrapper;
+    };
 
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
         isDomComponentFile = hasDirective(programNode, "use dom");
-        autoDetectedWrappers = collectTextWrapperComponents(programNode, isTextHandlingComponent);
+        const childrenForwarding = collectTextWrapperComponents(
+          programNode,
+          isTextHandlingComponent,
+          isNonTextHostName,
+        );
+        autoDetectedTextWrappers = childrenForwarding.textWrappers;
+        autoDetectedNonTextWrappers = childrenForwarding.nonTextWrappers;
       },
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         if (isDomComponentFile) return;
@@ -137,7 +185,7 @@ export const rnNoRawText = defineRule({
         // we can't see the implementation.
         if (
           elementName &&
-          (isTextHandlingComponent(elementName) || autoDetectedWrappers.has(elementName))
+          (isTextHandlingComponent(elementName) || autoDetectedTextWrappers.has(elementName))
         ) {
           return;
         }
@@ -156,6 +204,13 @@ export const rnNoRawText = defineRule({
         if (isInsidePlatformOsWebBranch(node)) return;
 
         if (isTransparentTextWrapper(elementName) && isInsideTextHandlingComponent(node)) {
+          return;
+        }
+
+        // The cross-file lookup is the one expensive step, so gate it behind the
+        // raw-text check and the cheap built-in/in-file checks.
+        if (!(node.children ?? []).some(isRawTextContent)) return;
+        if (!isRawTextReportTarget(elementName) && !isImportedNonTextWrapper(elementName, node)) {
           return;
         }
 

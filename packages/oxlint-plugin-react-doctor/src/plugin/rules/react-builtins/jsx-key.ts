@@ -193,18 +193,42 @@ const isWithinChildrenToArray = (jsxNode: EsTreeNode): boolean => {
   return false;
 };
 
+// A spread can only clobber an explicit `key` when it could carry a `key` of
+// its own. A spread of an object literal whose members are all statically
+// known and none is `key` (e.g. `{...{}}`, `{...{ className }}`) provably
+// cannot, so it never overwrites the key. Every other spread (an identifier,
+// a call, a computed/nested member) is treated as capable of supplying one.
+const spreadCanOverwriteKey = (
+  spreadAttribute: EsTreeNodeOfType<"JSXSpreadAttribute">,
+): boolean => {
+  const argument = spreadAttribute.argument;
+  if (!isNodeOfType(argument, "ObjectExpression")) return true;
+  for (const property of argument.properties) {
+    if (!isNodeOfType(property, "Property")) return true;
+    if (property.computed) return true;
+    const propertyKey = property.key;
+    if (isNodeOfType(propertyKey, "Identifier") && propertyKey.name === "key") return true;
+    if (isNodeOfType(propertyKey, "Literal") && String(propertyKey.value) === "key") return true;
+  }
+  return false;
+};
+
 const checkKeyBeforeSpread = (
   context: Parameters<Rule["create"]>[0],
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
 ): void => {
-  // Track the FIRST spread we see; the diagnostic should fire whenever
-  // any spread comes before the key, not just when ALL spreads do. Bug
-  // caught by Bugbot: previously we recorded the LAST spread, so
-  // `<App {...a} key="x" {...b} />` (key after `{...a}` but before
-  // `{...b}`) was incorrectly silent.
+  // A `{...spread}` only clobbers an explicit `key` when it sits AFTER the
+  // key. JSX applies attributes left-to-right, so a later spread's `key`
+  // property wins under the classic runtime (`{ key: "x", ...spread }`), and
+  // under the automatic runtime React falls back to `createElement` and the
+  // later spread wins there too. When every spread precedes the key, the
+  // explicit `key` is applied last and always survives, so there is nothing
+  // to flag. We compare the key against the LAST overwrite-capable spread so
+  // a spread sandwiched after the key — `<App {...a} key="x" {...b} />` —
+  // still reports.
   let keyIndex: number | null = null;
   let keyAttribute: EsTreeNode | null = null;
-  let firstSpreadIndex: number | null = null;
+  let lastOverwritingSpreadIndex: number | null = null;
   for (
     let attributeIndex = 0;
     attributeIndex < openingElement.attributes.length;
@@ -216,14 +240,14 @@ const checkKeyBeforeSpread = (
         keyIndex = attributeIndex;
         keyAttribute = attribute;
       }
-    } else if (isNodeOfType(attribute, "JSXSpreadAttribute")) {
-      if (firstSpreadIndex === null) firstSpreadIndex = attributeIndex;
+    } else if (isNodeOfType(attribute, "JSXSpreadAttribute") && spreadCanOverwriteKey(attribute)) {
+      lastOverwritingSpreadIndex = attributeIndex;
     }
   }
   if (
     keyIndex !== null &&
-    firstSpreadIndex !== null &&
-    keyIndex > firstSpreadIndex &&
+    lastOverwritingSpreadIndex !== null &&
+    lastOverwritingSpreadIndex > keyIndex &&
     keyAttribute
   ) {
     context.report({ node: keyAttribute, message: KEY_BEFORE_SPREAD });

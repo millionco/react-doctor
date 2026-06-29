@@ -33,12 +33,46 @@ const CLI_AGENT_AUTO_FLAGS = {
   cursor: ["--force"],
 } as const satisfies Record<CliAgentId, ReadonlyArray<string>>;
 
+export interface WindowsCommandResolution {
+  readonly command: string;
+  readonly args: ReadonlyArray<string>;
+}
+
+// HACK: Cursor installs its CLI as a bundled node.exe + index.js under
+// %LOCALAPPDATA%\cursor-agent\versions\<latest>\. The .cmd wrapper on PATH
+// calls PowerShell, which then runs the bundled node. We bypass the
+// PowerShell hop by resolving the bundled node directly — preserving argv
+// integrity and avoiding shell mangling of the multi-line prompt.
+export const resolveCursorBundledNode = (): WindowsCommandResolution | null => {
+  if (!isWindows) return null;
+  const localAppData = process.env.LOCALAPPDATA;
+  if (!localAppData) return null;
+  const cursorAgentRoot = path.join(localAppData, "cursor-agent", "versions");
+  try {
+    const versions = fs.readdirSync(cursorAgentRoot);
+    if (versions.length === 0) return null;
+    const sortedVersions = versions.sort((a, b) =>
+      b.localeCompare(a, undefined, { numeric: true }),
+    );
+    for (const version of sortedVersions) {
+      try {
+        const bundledNodePath = path.join(cursorAgentRoot, version, "node.exe");
+        const entryScriptPath = path.join(cursorAgentRoot, version, "index.js");
+        if (fs.statSync(bundledNodePath).isFile() && fs.statSync(entryScriptPath).isFile()) {
+          return { command: bundledNodePath, args: [entryScriptPath] };
+        }
+      } catch {}
+    }
+  } catch {}
+  return null;
+};
+
 // HACK: On Windows, npm/pnpm/yarn install CLI tools as .cmd batch wrappers
 // that Node's `spawn` cannot execute without `shell: true`. Using a shell
 // would mangle the multi-line prompt (cmd.exe splits at newlines), so we
 // parse the .cmd to find the underlying JS entry script and spawn Node
 // directly — preserving argv integrity and bypassing cmd.exe entirely.
-const resolveWindowsCmdEntryScript = (command: string): string | null => {
+export const resolveWindowsCmdEntryScript = (command: string): string | null => {
   if (!isWindows) return null;
   const pathDirectories = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
   for (const directory of pathDirectories) {
@@ -59,14 +93,9 @@ const resolveWindowsCmdEntryScript = (command: string): string | null => {
   return null;
 };
 
-const spawnAgent = (
-  command: string,
-  args: ReadonlyArray<string>,
-  cwd: string,
-  shell = false,
-): Promise<number> =>
+const spawnAgent = (command: string, args: ReadonlyArray<string>, cwd: string): Promise<number> =>
   new Promise<number>((resolve, reject) => {
-    const child = spawn(command, [...args], { cwd, stdio: "inherit", shell });
+    const child = spawn(command, [...args], { cwd, stdio: "inherit" });
     child.on("error", reject);
     child.on("close", (code) => resolve(code ?? 0));
   });
@@ -80,6 +109,13 @@ export const launchCliAgent = async (
   const agentArgs = [...CLI_AGENT_AUTO_FLAGS[agentId], prompt];
 
   if (isWindows) {
+    if (agentId === "cursor") {
+      const cursorResolution = resolveCursorBundledNode();
+      if (cursorResolution) {
+        return spawnAgent(cursorResolution.command, [...cursorResolution.args, ...agentArgs], cwd);
+      }
+    }
+
     const entryScript = resolveWindowsCmdEntryScript(binary);
     if (entryScript) {
       return spawnAgent(process.execPath, [entryScript, ...agentArgs], cwd);

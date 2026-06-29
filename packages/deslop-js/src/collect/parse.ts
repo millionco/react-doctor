@@ -942,6 +942,27 @@ const collectMemberAccesses = (
       }
     }
 
+    // `<S.Custom />` — a JSX element whose name is a member of a namespace
+    // import. The name node is a `JSXMemberExpression`, not a `MemberExpression`,
+    // so it would otherwise be missed and the export reported unused (#875).
+    if (node.type === "JSXMemberExpression") {
+      const jsxMember = node as unknown as {
+        object: { type: string; name?: string };
+        property: { name?: string };
+      };
+      if (
+        jsxMember.object.type === "JSXIdentifier" &&
+        jsxMember.object.name !== undefined &&
+        namespaceLocalNames.has(jsxMember.object.name) &&
+        jsxMember.property.name !== undefined
+      ) {
+        memberAccesses.push({
+          objectName: jsxMember.object.name,
+          memberName: jsxMember.property.name,
+        });
+      }
+    }
+
     if (node.type === "SpreadElement") {
       const spreadArgument = (node as unknown as { argument: WalkableNode }).argument;
       if (

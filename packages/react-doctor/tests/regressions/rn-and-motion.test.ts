@@ -201,7 +201,12 @@ describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper ch
     const projectDir = setupReactProject(tempRoot, "issue-183-e2e", {
       packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
       files: {
-        "src/App.tsx": `export const App = () => <Button>Cancel</Button>;\n`,
+        // `Button` is an in-file wrapper that renders its children inside a
+        // non-text `<View>`, so `rn-no-raw-text` flags `<Button>Cancel</Button>`
+        // (an imported/un-analyzable `<Button>` is no longer flagged). The
+        // `rawTextWrapperComponents` config then suppresses that real
+        // diagnostic — which is what this end-to-end test exercises.
+        "src/App.tsx": `const Button = ({ children }) => <View>{children}</View>;\nexport const App = () => <Button>Cancel</Button>;\n`,
       },
     });
 
@@ -247,6 +252,96 @@ describe("issue #183: rawTextWrapperComponents suppresses string-only wrapper ch
     );
     expect(filtered).toHaveLength(1);
     expect(filtered[0].line).toBe(3);
+  });
+});
+
+describe("rn-no-raw-text resolves imported components across files", () => {
+  it("stays silent on an imported wrapper that renders <Text>, but fires on one that renders <View>", async () => {
+    const projectDir = setupReactProject(tempRoot, "rn-raw-text-crossfile", {
+      packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
+      files: {
+        // A first-party button that wraps its label in <Text> — safe, even
+        // though the call site can't see that without following the import.
+        "src/safe-button.tsx":
+          `import { Text } from "react-native";\n` +
+          `export const SafeButton = ({ children }) => <Text>{children}</Text>;\n`,
+        // A first-party card that renders its children inside a <View> — a real
+        // crash the rule should still catch through the import.
+        "src/crashing-card.tsx":
+          `import { View } from "react-native";\n` +
+          `export const CrashingCard = ({ children }) => <View>{children}</View>;\n`,
+        "src/App.tsx":
+          `import { SafeButton } from "./safe-button";\n` +
+          `import { CrashingCard } from "./crashing-card";\n` +
+          `export const App = () => (\n` +
+          `  <>\n` +
+          `    <SafeButton>Safe label</SafeButton>\n` +
+          `    <CrashingCard>Crashing text</CrashingCard>\n` +
+          `  </>\n` +
+          `);\n`,
+      },
+    });
+
+    const rawDiagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({
+        rootDirectory: projectDir,
+        framework: "react-native",
+      }),
+    });
+    const rnRawTextMessages = rawDiagnostics
+      .filter((diagnostic) => diagnostic.rule === "rn-no-raw-text")
+      .map((diagnostic) => diagnostic.message);
+
+    expect(rnRawTextMessages).toHaveLength(1);
+    expect(rnRawTextMessages[0]).toContain("Crashing text");
+    expect(rnRawTextMessages.some((message) => message.includes("Safe label"))).toBe(false);
+  });
+
+  it("follows a wrapper that forwards children through another component in the same module", async () => {
+    const projectDir = setupReactProject(tempRoot, "rn-raw-text-crossfile-chain", {
+      packageJsonExtras: { dependencies: { react: "^19.0.0", "react-native": "0.76.0" } },
+      files: {
+        // `ChainButton` forwards into a module-local `InnerText` that renders a
+        // <Text> — safe, even though the crash/safety is two hops from the call
+        // site.
+        "src/chain-button.tsx":
+          `import { Text } from "react-native";\n` +
+          `const InnerText = ({ children }) => <Text>{children}</Text>;\n` +
+          `export const ChainButton = ({ children }) => <InnerText>{children}</InnerText>;\n`,
+        // `ChainCard` forwards into a module-local `Inner` that renders a <View>
+        // — a real crash the rule must still catch through the import + the
+        // in-module hop.
+        "src/chain-card.tsx":
+          `import { View } from "react-native";\n` +
+          `const Inner = ({ children }) => <View>{children}</View>;\n` +
+          `export const ChainCard = ({ children }) => <Inner>{children}</Inner>;\n`,
+        "src/App.tsx":
+          `import { ChainButton } from "./chain-button";\n` +
+          `import { ChainCard } from "./chain-card";\n` +
+          `export const App = () => (\n` +
+          `  <>\n` +
+          `    <ChainButton>Chain safe</ChainButton>\n` +
+          `    <ChainCard>Chain crash</ChainCard>\n` +
+          `  </>\n` +
+          `);\n`,
+      },
+    });
+
+    const rawDiagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({
+        rootDirectory: projectDir,
+        framework: "react-native",
+      }),
+    });
+    const rnRawTextMessages = rawDiagnostics
+      .filter((diagnostic) => diagnostic.rule === "rn-no-raw-text")
+      .map((diagnostic) => diagnostic.message);
+
+    expect(rnRawTextMessages).toHaveLength(1);
+    expect(rnRawTextMessages[0]).toContain("Chain crash");
+    expect(rnRawTextMessages.some((message) => message.includes("Chain safe"))).toBe(false);
   });
 });
 

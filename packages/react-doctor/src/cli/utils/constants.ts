@@ -186,6 +186,13 @@ export const METRIC = {
   installWorkflow: "install.workflow",
   installAgentHooks: "install.agent_hooks",
   installDependency: "install.dependency",
+  // `react-doctor ci` management. `ci.scaffolded` counts a fresh workflow
+  // (mode: tree | pr | exists), `ci.upgraded` an action-major bump, and
+  // `ci.configured` a gate edit (applied: true|false). High-cardinality detail
+  // — provider, gate level, scope — rides the attributes, never the name.
+  ciScaffolded: "ci.scaffolded",
+  ciUpgraded: "ci.upgraded",
+  ciConfigured: "ci.configured",
   rulesChanged: "rules.changed",
   rulesQueried: "rules.queried",
   // Editor language server (`react-doctor experimental-lsp`). Each workspace
@@ -195,4 +202,5 @@ export const METRIC = {
   lspScanDuration: "lsp.scan.duration",
   lspScanDiagnostics: "lsp.scan.diagnostics",
   aiTrainingWarningShown: "ai.training.warning_shown",
+  jsonOutUsed: "json.out_used",
 } as const;

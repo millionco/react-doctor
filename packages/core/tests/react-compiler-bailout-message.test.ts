@@ -74,4 +74,18 @@ describe("parseOxlintOutput react-hooks-js bail-out reason in primary message", 
 
     expect(diagnostic.message).toContain(": This value is impure. Rewrite");
   });
+
+  it("gives incompatible-library a library-specific action, not the generic 'rewrite it' copy", () => {
+    const reason =
+      "This API returns functions which cannot be memoized without leading to stale UI";
+    const stdout = buildOxlintStdout("react-hooks-js(incompatible-library)", reason);
+    const [diagnostic] = parseOxlintOutput(stdout, buildProject(), TEST_ROOT_DIRECTORY);
+
+    expect(diagnostic.message).toContain(reason);
+    expect(diagnostic.message).toContain("not a bug in your code");
+    expect(diagnostic.message).toContain(
+      "react-doctor-disable-next-line react-hooks-js/incompatible-library",
+    );
+    expect(diagnostic.message).not.toContain("Rewrite the flagged code");
+  });
 });

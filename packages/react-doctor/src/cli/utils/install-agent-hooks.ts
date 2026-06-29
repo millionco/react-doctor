@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import type { SkillAgentType } from "agent-install";
-import { AGENT_HOOK_TIMEOUT_SECONDS, GIT_HOOK_EXECUTABLE_MODE } from "./constants.js";
+import { AGENT_HOOK_TIMEOUT_SECONDS } from "./constants.js";
 import * as fs from "node:fs";
 import { CliInputError } from "./cli-input-error.js";
 import { writeJsonFile } from "./git-hook-shared.js";
@@ -45,10 +45,11 @@ interface CursorHooksConfig {
 const CLAUDE_AGENT = "claude-code";
 const CURSOR_AGENT = "cursor";
 const CLAUDE_SETTINGS_RELATIVE_PATH = ".claude/settings.json";
-const CLAUDE_HOOK_RELATIVE_PATH = ".claude/hooks/react-doctor.sh";
-const CLAUDE_HOOK_COMMAND = 'sh "$CLAUDE_PROJECT_DIR/.claude/hooks/react-doctor.sh"';
+const CLAUDE_HOOK_RELATIVE_PATH = ".claude/hooks/react-doctor.mjs";
+const CLAUDE_HOOK_COMMAND = 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/react-doctor.mjs"';
 const CURSOR_HOOKS_RELATIVE_PATH = ".cursor/hooks.json";
-const CURSOR_HOOK_RELATIVE_PATH = ".cursor/hooks/react-doctor.sh";
+const CURSOR_HOOK_RELATIVE_PATH = ".cursor/hooks/react-doctor.mjs";
+const CURSOR_HOOK_COMMAND = "node .cursor/hooks/react-doctor.mjs";
 const CURSOR_HOOK_MATCHER = "Write|Edit|MultiEdit|ApplyPatch";
 const CURSOR_HOOKS_SCHEMA_VERSION = 1;
 const JSON_INDENT_SPACES = 2;
@@ -104,7 +105,6 @@ const writeJsonFileWithDirectoryCheck = (filePath: string, value: unknown): void
 const writeHookScript = (filePath: string): void => {
   ensureDirectoryExists(path.dirname(filePath));
   fs.writeFileSync(filePath, buildAgentHookScript());
-  fs.chmodSync(filePath, GIT_HOOK_EXECUTABLE_MODE);
 };
 
 const hasClaudeHookCommand = (groups: readonly ClaudeHookGroup[]): boolean =>
@@ -136,7 +136,7 @@ const installClaudeHook = (projectRoot: string): readonly string[] => {
 };
 
 const hasCursorHookCommand = (handlers: readonly CursorHookHandler[]): boolean =>
-  handlers.some((handler) => handler.command === CURSOR_HOOK_RELATIVE_PATH);
+  handlers.some((handler) => handler.command === CURSOR_HOOK_COMMAND);
 
 const installCursorHook = (projectRoot: string): readonly string[] => {
   const configPath = path.join(projectRoot, CURSOR_HOOKS_RELATIVE_PATH);
@@ -147,7 +147,7 @@ const installCursorHook = (projectRoot: string): readonly string[] => {
 
   if (!hasCursorHookCommand(postToolUseHooks)) {
     postToolUseHooks.push({
-      command: CURSOR_HOOK_RELATIVE_PATH,
+      command: CURSOR_HOOK_COMMAND,
       matcher: CURSOR_HOOK_MATCHER,
       timeout: AGENT_HOOK_TIMEOUT_SECONDS,
     });
@@ -166,102 +166,111 @@ const installCursorHook = (projectRoot: string): readonly string[] => {
 
 const buildAgentHookScript = (): string =>
   [
-    "#!/bin/sh",
-    "set -u",
+    "import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';",
+    "import { tmpdir } from 'node:os';",
+    "import { join, dirname } from 'node:path';",
+    "import { fileURLToPath } from 'node:url';",
+    "import { spawnSync } from 'node:child_process';",
     "",
-    'input_file=$(mktemp "${TMPDIR:-/tmp}/react-doctor-agent-hook.XXXXXX")',
-    'output_file=$(mktemp "${TMPDIR:-/tmp}/react-doctor-agent-hook-output.XXXXXX")',
-    'trap \'rm -f "$input_file" "$output_file"\' EXIT',
-    'cat > "$input_file"',
+    "const __filename = fileURLToPath(import.meta.url);",
+    "const __dirname = dirname(__filename);",
     "",
-    'script_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)',
-    "project_root=${CLAUDE_PROJECT_DIR:-}",
-    'if [ -z "$project_root" ]; then',
-    '  project_root=$(CDPATH= cd "$script_dir/../.." && pwd)',
-    "fi",
-    'if ! cd "$project_root"; then',
-    "  exit 0",
-    "fi",
+    "const EDIT_TOOL_NAMES = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'ApplyPatch']);",
     "",
-    "should_scan() {",
-    "  if ! command -v node >/dev/null 2>&1; then",
-    "    return 0",
-    "  fi",
+    "const readStdin = () => {",
+    "  try {",
+    "    return readFileSync(0, 'utf8');",
+    "  } catch {",
+    "    return '';",
+    "  }",
+    "};",
     "",
-    "  node - \"$input_file\" <<'NODE'",
-    "const fs = require('node:fs');",
-    "const inputPath = process.argv[2];",
-    "const editToolNames = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'ApplyPatch']);",
-    "try {",
-    "  const input = JSON.parse(fs.readFileSync(inputPath, 'utf8') || '{}');",
+    "const shouldScan = (input) => {",
     "  const eventName = input.hook_event_name || input.eventName || input.event_name;",
     "  if (eventName === 'PostToolBatch') {",
     "    const toolCalls = Array.isArray(input.tool_calls) ? input.tool_calls : [];",
-    "    process.exit(toolCalls.some((toolCall) => editToolNames.has(toolCall.tool_name)) ? 0 : 10);",
+    "    return toolCalls.some((toolCall) => EDIT_TOOL_NAMES.has(toolCall.tool_name));",
     "  }",
     "  const toolName = input.tool_name || input.toolName || input.tool;",
-    "  process.exit(!toolName || editToolNames.has(toolName) ? 0 : 10);",
-    "} catch {",
-    "  process.exit(0);",
-    "}",
-    "NODE",
-    "}",
+    "  return !toolName || EDIT_TOOL_NAMES.has(toolName);",
+    "};",
     "",
-    "run_react_doctor() {",
-    "  if [ -x ./node_modules/.bin/react-doctor ]; then",
-    "    ./node_modules/.bin/react-doctor --verbose --scope changed --blocking warning --no-score",
-    "    return",
-    "  fi",
+    "const runReactDoctor = (outputPath) => {",
+    "  // Each candidate is a single shell command string (not an args array):",
+    "  // `shell: true` is required to run the Windows `.cmd` shims, and an args",
+    "  // array with `shell: true` trips Node's DEP0190. A missing command exits",
+    "  // 127 via the shell (no ENOENT error), so fall through on that. With no",
+    "  // runner found, exit 0 silently — stdout is parsed as the hook's JSON.",
+    "  const commands = [",
+    "    './node_modules/.bin/react-doctor --verbose --scope changed --blocking warning --no-score',",
+    "    'react-doctor --verbose --scope changed --blocking warning --no-score',",
+    "    'pnpm dlx react-doctor@latest --verbose --scope changed --blocking warning --no-score',",
+    "    'npx --yes react-doctor@latest --verbose --scope changed --blocking warning --no-score',",
+    "  ];",
     "",
-    "  if command -v react-doctor >/dev/null 2>&1; then",
-    "    react-doctor --verbose --scope changed --blocking warning --no-score",
-    "    return",
-    "  fi",
+    "  for (const command of commands) {",
+    "    const result = spawnSync(command, { encoding: 'utf8', shell: true });",
+    "    if (result.error?.code === 'ENOENT' || result.status === 127) continue;",
+    "    try {",
+    "      writeFileSync(outputPath, (result.stdout || '') + (result.stderr || ''));",
+    "    } catch {}",
+    "    return result.status;",
+    "  }",
     "",
-    "  if command -v pnpm >/dev/null 2>&1; then",
-    "    pnpm dlx react-doctor@latest --verbose --scope changed --blocking warning --no-score",
-    "    return",
-    "  fi",
+    "  return 0;",
+    "};",
     "",
-    "  if command -v npx >/dev/null 2>&1; then",
-    "    npx --yes react-doctor@latest --verbose --scope changed --blocking warning --no-score",
-    "    return",
-    "  fi",
-    "",
-    "  printf '%s\\n' 'react-doctor: command not found; skipping agent hook scan.'",
-    "  return 0",
-    "}",
-    "",
-    "if ! should_scan; then",
-    "  exit 0",
-    "fi",
-    "",
-    'if run_react_doctor > "$output_file" 2>&1; then',
-    "  exit 0",
-    "fi",
-    "",
-    'node - "$input_file" "$output_file" <<\'NODE\'',
-    "const fs = require('node:fs');",
-    "const inputPath = process.argv[2];",
-    "const outputPath = process.argv[3];",
-    "const readInput = () => {",
-    "  try {",
-    "    return JSON.parse(fs.readFileSync(inputPath, 'utf8') || '{}');",
-    "  } catch {",
-    "    return {};",
+    "const cleanup = (...paths) => {",
+    "  for (const path of paths) {",
+    "    try { unlinkSync(path); } catch {}",
     "  }",
     "};",
-    "const input = readInput();",
-    "const scanOutput = fs.readFileSync(outputPath, 'utf8').trim();",
-    "if (!scanOutput) process.exit(0);",
-    "const message = `React Doctor found issues in the changed files. Review this output and fix the regressions before finishing. For confirmed issues that cannot be fixed now, create GitHub issues with the rule, file/line, confidence, impact, and proposed fix.\\n\\n${scanOutput}`;",
-    "if (input.hook_event_name === 'PostToolBatch') {",
-    "  console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolBatch', additionalContext: message } }));",
-    "} else {",
-    "  console.log(JSON.stringify({ additional_context: message }));",
-    "}",
-    "NODE",
     "",
+    "const main = () => {",
+    "  let input;",
+    "  try {",
+    "    const stdinContent = readStdin();",
+    "    input = JSON.parse(stdinContent || '{}');",
+    "  } catch {",
+    "    input = {};",
+    "  }",
+    "",
+    "  if (!shouldScan(input)) {",
+    "    process.exit(0);",
+    "  }",
+    "",
+    "  const projectRoot = process.env.CLAUDE_PROJECT_DIR || join(__dirname, '../..');",
+    "  const outputPath = join(tmpdir(), `react-doctor-agent-hook-output-${process.pid}.txt`);",
+    "",
+    "  try {",
+    "    process.chdir(projectRoot);",
+    "  } catch {",
+    "    process.exit(0);",
+    "  }",
+    "",
+    "  const scanResult = runReactDoctor(outputPath);",
+    "  if (scanResult === 0) {",
+    "    cleanup(outputPath);",
+    "    process.exit(0);",
+    "  }",
+    "",
+    "  const scanOutput = readFileSync(outputPath, 'utf8').trim();",
+    "  cleanup(outputPath);",
+    "",
+    "  if (!scanOutput) {",
+    "    process.exit(0);",
+    "  }",
+    "",
+    "  const message = `React Doctor found issues in the changed files. Review this output and fix the regressions before finishing. For confirmed issues that cannot be fixed now, create GitHub issues with the rule, file/line, confidence, impact, and proposed fix.\\n\\n${scanOutput}`;",
+    "",
+    "  if (input.hook_event_name === 'PostToolBatch') {",
+    "    console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolBatch', additionalContext: message } }));",
+    "  } else {",
+    "    console.log(JSON.stringify({ additional_context: message }));",
+    "  }",
+    "};",
+    "",
+    "main();",
   ].join("\n");
 
 export const installReactDoctorAgentHooks = (

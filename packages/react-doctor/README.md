@@ -39,9 +39,15 @@ Works with Claude Code, Cursor, Codex, OpenCode, and many more.
 
 ### 3. Run in CI
 
-React Doctor CI (GitHub Actions) reviews every pull request automatically and reports only the issues your change introduced, not your existing backlog.
+React Doctor reviews every pull request and reports only the issues your change introduced, not your existing backlog. Set it up with one command:
 
-[Add GitHub Action →](https://react.doctor/docs/ci-and-prs/github-actions-setup)
+```bash
+npx react-doctor@latest ci install
+```
+
+This adds the workflow, scans every pull request, and posts a summary comment. Change the gate, scan scope, and comments anytime with `react-doctor ci config`, and bump the action with `react-doctor ci upgrade`. GitHub Actions is fully supported; GitLab CI gets a gate-only scaffold.
+
+[CI docs →](https://react.doctor/ci)
 
 ### 4. Configure rules
 
@@ -57,7 +63,7 @@ We collect:
 
 - Environment: CLI version, platform, Node version
 - Invocation: which command, package manager, and run context (whether it's local vs. CI vs. coding agent)
-- Project shape: framework, React version, TypeScript, project size NO file contents)
+- Project shape: framework, React version, TypeScript, project size (NO file contents)
 - Rules fired: rule names and counts only (e.g. `react-doctor/no-array-index-as-key`) (NO code or specific findings)
 - De-minified React Doctor CLI stack traces
 

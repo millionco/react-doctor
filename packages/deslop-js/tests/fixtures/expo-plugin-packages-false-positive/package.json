@@ -1,0 +1,11 @@
+{
+  "name": "expo-plugin-packages-false-positive",
+  "type": "module",
+  "dependencies": {
+    "expo": "^56.0.0",
+    "react": "^19.0.0",
+    "@config-plugins/detox": "^9.0.0",
+    "@react-native-firebase/app": "^21.0.0",
+    "left-pad": "^1.3.0"
+  }
+}

@@ -58,6 +58,10 @@ const buildReactDoctorHookBlock = (): string =>
     'if react_doctor_scan_staged_files > "$react_doctor_output" 2>&1; then',
     '  rm -f "$react_doctor_output"',
     "else",
+    // Surface the scan output before deleting the temp file — the hook stays
+    // non-blocking (the commit still proceeds), but the developer can now see
+    // which findings were reported instead of just a generic notice (#969).
+    '  cat "$react_doctor_output" >&2',
     '  rm -f "$react_doctor_output"',
     `  printf '%s\\n' "React Doctor found staged regressions." "Run ${REACT_DOCTOR_COMMAND} to inspect." "Want them fixed? Ask your agent to run that command and resolve the findings." >&2`,
     "fi",

@@ -34,12 +34,21 @@ const REACT_COMPILER_TODO_TITLE = "React Compiler doesn't support this syntax";
 const REACT_COMPILER_IMPACT =
   "This component misses React Compiler's automatic memoization & re-renders more than it should";
 const REACT_COMPILER_ACTION = "Rewrite the flagged code so the compiler can optimize it.";
+// `incompatible-library` fires on a third-party hook the compiler can't memoize
+// through (e.g. @tanstack/react-virtual's `useVirtualizer`) — code the user
+// can't and shouldn't rewrite. The generic "rewrite it" action wrongly steers
+// users off mature libraries (#950), so this rule names the real fix instead.
+const REACT_COMPILER_INCOMPATIBLE_LIBRARY_ACTION =
+  "It's how the library works, not a bug in your code. Memoize values you pass from it into other memoized components, or suppress it with `// react-doctor-disable-next-line react-hooks-js/incompatible-library`.";
 const REACT_COMPILER_GENERIC_MESSAGE = `${REACT_COMPILER_IMPACT}. ${REACT_COMPILER_ACTION}`;
 
-const buildReactCompilerMessage = (reasonSummary: string): string => {
+const buildReactCompilerMessage = (
+  reasonSummary: string,
+  action = REACT_COMPILER_ACTION,
+): string => {
   const normalizedSummary = reasonSummary.replace(TRAILING_PERIOD_PATTERN, "");
-  if (!normalizedSummary) return REACT_COMPILER_GENERIC_MESSAGE;
-  return `${REACT_COMPILER_IMPACT}: ${normalizedSummary}. ${REACT_COMPILER_ACTION}`;
+  if (!normalizedSummary) return `${REACT_COMPILER_IMPACT}. ${action}`;
+  return `${REACT_COMPILER_IMPACT}: ${normalizedSummary}. ${action}`;
 };
 
 // Adopted third-party plugins (not in the react-doctor registry) → the
@@ -167,7 +176,12 @@ const resolveCleanedDiagnostic = (
     const [reasonSummary = "", ...reasonDetailLines] = bailoutReason.split("\n");
     const reasonDetail = reasonDetailLines.join("\n").trim();
     return {
-      message: buildReactCompilerMessage(reasonSummary.trim()),
+      message: buildReactCompilerMessage(
+        reasonSummary.trim(),
+        rule === "incompatible-library"
+          ? REACT_COMPILER_INCOMPATIBLE_LIBRARY_ACTION
+          : REACT_COMPILER_ACTION,
+      ),
       help: appendReanimatedSharedValueHint(reasonDetail || help, rule, project),
     };
   }

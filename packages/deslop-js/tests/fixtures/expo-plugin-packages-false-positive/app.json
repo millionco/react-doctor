@@ -1,0 +1,8 @@
+{
+  "expo": {
+    "name": "TestApp",
+    "plugins": [
+      ["@config-plugins/detox", { "skipProguardConfig": false }]
+    ]
+  }
+}

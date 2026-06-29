@@ -1,4 +1,6 @@
 import { performance } from "node:perf_hooks";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { buildJsonReportError } from "@react-doctor/core";
 import type { JsonReport, JsonReportMode } from "@react-doctor/core";
 import { INTERNAL_ERROR_JSON_FALLBACK } from "./constants.js";
@@ -10,6 +12,7 @@ interface JsonModeContext {
   startTime: number;
   directory: string;
   mode: JsonReportMode;
+  outputFile: string | null;
 }
 
 let context: JsonModeContext | null = null;
@@ -17,6 +20,7 @@ let context: JsonModeContext | null = null;
 interface EnableJsonModeInput {
   compact: boolean;
   directory: string;
+  outputFile?: string;
 }
 
 /**
@@ -49,8 +53,14 @@ const installSilentConsole = (): void => {
   }
 };
 
-export const enableJsonMode = ({ compact, directory }: EnableJsonModeInput): void => {
-  context = { compact, directory, startTime: performance.now(), mode: "full" };
+export const enableJsonMode = ({ compact, directory, outputFile }: EnableJsonModeInput): void => {
+  context = {
+    compact,
+    directory,
+    startTime: performance.now(),
+    mode: "full",
+    outputFile: outputFile ?? null,
+  };
   installSilentConsole();
 };
 
@@ -66,7 +76,13 @@ export const setJsonReportMode = (mode: JsonReportMode): void => {
 
 export const writeJsonReport = (report: JsonReport): void => {
   const serialized = context?.compact ? JSON.stringify(report) : JSON.stringify(report, null, 2);
-  process.stdout.write(`${serialized}\n`);
+  if (context?.outputFile) {
+    const resolvedPath = path.resolve(context.outputFile);
+    fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+    fs.writeFileSync(resolvedPath, `${serialized}\n`);
+  } else {
+    process.stdout.write(`${serialized}\n`);
+  }
 };
 
 export const writeJsonErrorReport = (error: unknown, sentryEventId?: string | null): void => {

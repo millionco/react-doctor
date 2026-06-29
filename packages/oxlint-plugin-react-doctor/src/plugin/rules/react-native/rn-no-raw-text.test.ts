@@ -191,6 +191,23 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
+    // Declaration order reversed: an early pass classifies `Badge` as a
+    // non-text wrapper (it forwards children into the not-yet-known `Chip`),
+    // then a later pass promotes it to a text wrapper once `Chip` is known. The
+    // final settle must drop the stale non-text classification so `Badge` isn't
+    // reported.
+    it("suppresses a forwarder declared before the wrapper it forwards into", () => {
+      expectPass(`
+        const Badge = ({ children }) => <Chip>{children}</Chip>;
+        const Chip = ({ children }) => (
+          <View>
+            <Text>{children}</Text>
+          </View>
+        );
+        const App = () => <Badge>New</Badge>;
+      `);
+    });
+
     it("suppresses a wrapper that aliases children to a variable", () => {
       expectPass(`
         function Chip({ children }) {
@@ -307,8 +324,11 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
-    it("still fires when children comes from an unrelated destructure", () => {
-      expectFail(`
+    // `Chip` renders `item.children`, never its own `children` prop, so the raw
+    // text passed as `<Chip>Test Chip</Chip>` renders nowhere — no crash. Chip
+    // forwards no children into a non-text host, so it isn't a report target.
+    it("does not fire when the component ignores its children prop (unrelated destructure)", () => {
+      expectPass(`
         const Chip = ({ item }) => {
           const { children } = item;
           return (
@@ -321,8 +341,8 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
-    it("still fires when the nested Text receives an unrelated object's children", () => {
-      expectFail(`
+    it("does not fire when the component ignores its children prop (unrelated member)", () => {
+      expectPass(`
         const Chip = ({ item }) => (
           <View>
             <Text>{item.children}</Text>
@@ -367,6 +387,135 @@ describe("react-native/rn-no-raw-text", () => {
           </View>
         );
         const App = () => <Card title="hi">Body copy</Card>;
+      `);
+    });
+  });
+
+  // A raw-text child only crashes at a host boundary, so the rule reports it
+  // only inside a known React Native host primitive, a lowercase intrinsic, or
+  // an in-file component proven to forward its children outside a `<Text>`. An
+  // imported custom component is left alone — whether it wraps its children in
+  // `<Text>` is invisible across files, so reporting it would be a false
+  // positive.
+  describe("conservative report targets", () => {
+    // The reported false positive: a custom button imported from another file
+    // that wraps its label in `<Text>` internally. We can't see that, but we
+    // also must not assume it crashes.
+    it("does not fire on an imported custom button", () => {
+      expectPass(`
+        import { MyButton } from "./my-button";
+        const App = () => <MyButton>Click me</MyButton>;
+      `);
+    });
+
+    it("does not fire on an imported custom component with a template-literal child", () => {
+      expectPass(`
+        import { Card } from "./ui";
+        const App = ({ name }) => <Card>{\`Hi \${name}\`}</Card>;
+      `);
+    });
+
+    it("still fires inside every React Native host primitive", () => {
+      for (const hostComponent of [
+        "View",
+        "ScrollView",
+        "SafeAreaView",
+        "KeyboardAvoidingView",
+        "ImageBackground",
+        "Modal",
+        "Pressable",
+        "TouchableOpacity",
+        "TouchableHighlight",
+        "TouchableWithoutFeedback",
+        "TouchableNativeFeedback",
+      ]) {
+        expectFail(`const App = () => <${hostComponent}>Hello</${hostComponent}>;`);
+      }
+    });
+
+    // `Animated.View` resolves to its `View` member, so wrapped host primitives
+    // are still treated as host boundaries.
+    it("still fires inside an Animated host primitive", () => {
+      expectFail(`const App = () => <Animated.View>Hello</Animated.View>;`);
+    });
+
+    it("still fires inside a lowercase intrinsic", () => {
+      expectFail(`const App = () => <div>Hello</div>;`);
+    });
+
+    it("still fires on an in-file component proven to render children outside Text", () => {
+      expectFail(`
+        const Box = ({ children }) => <View>{children}</View>;
+        const App = () => <Box>Hello</Box>;
+      `);
+    });
+
+    // An in-file forwarder into an imported component is as un-analyzable as the
+    // import itself — the import may wrap the children in `<Text>` — so it must
+    // not be flagged either, the same false positive avoided for direct usage.
+    it("does not fire on an in-file forwarder into an imported component", () => {
+      expectPass(`
+        import { MyButton } from "./my-button";
+        const Label = ({ children }) => <MyButton>{children}</MyButton>;
+        const App = () => <Label>Click me</Label>;
+      `);
+    });
+
+    it("does not fire on an in-file forwarder that spreads props onto an imported component", () => {
+      expectPass(`
+        import { BaseButton } from "./base-button";
+        const PrimaryButton = (props) => <BaseButton {...props} />;
+        const App = () => <PrimaryButton>Save</PrimaryButton>;
+      `);
+    });
+
+    // Transitive: `Box` is proven to render children inside a `<View>`, so a
+    // forwarder into `Box` renders them outside `<Text>` too — a certain crash.
+    it("still fires on a forwarder into a proven non-text wrapper", () => {
+      expectFail(`
+        const Box = ({ children }) => <View>{children}</View>;
+        const Badge = ({ children }) => <Box>{children}</Box>;
+        const App = () => <Badge>New</Badge>;
+      `);
+    });
+  });
+
+  // Transparent wrappers (`<fbt>`, `<Fragment>`) render no host view of their
+  // own, so the "inside a <Text>" check must step through them. The transparent
+  // set is config-independent on purpose — i18n `<Trans>` / `<FormattedMessage>`
+  // are NOT here (their RN wrapper is a provider-config choice).
+  describe("transparent wrappers", () => {
+    it("does not fire on an fbt nested inside a Fragment inside a Text", () => {
+      expectPass(`
+        const App = () => (
+          <Text>
+            <Fragment>
+              <fbt desc="greeting">Hello</fbt>
+            </Fragment>
+          </Text>
+        );
+      `);
+    });
+
+    it("does not fire on an fbt nested inside a React.Fragment inside a Text", () => {
+      expectPass(`
+        const App = () => (
+          <Text>
+            <React.Fragment>
+              <fbt desc="greeting">Hello</fbt>
+            </React.Fragment>
+          </Text>
+        );
+      `);
+    });
+
+    it("still fires on a bare fbt that is not inside a Text", () => {
+      expectFail(`
+        const App = () => (
+          <View>
+            <fbt desc="greeting">Hello</fbt>
+          </View>
+        );
       `);
     });
   });
@@ -427,11 +576,11 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
-    // The namespace branch must match only `import * as X` — a *named*
-    // `@expo/ui` import reused via member access (`<Row.ListItem>`) is not the
-    // namespace form and must still report.
-    it("still fires on member access off a named (non-namespace) @expo/ui import", () => {
-      expectFail(`
+    // Member access off a named import resolves to a custom component name
+    // (`ListItem`) we can't analyze across files — not a host boundary, so the
+    // conservative default leaves it alone rather than guessing it crashes.
+    it("does not fire on member access off a named @expo/ui import", () => {
+      expectPass(`
         import { Row } from "@expo/ui";
         const App = () => <Row.ListItem>text</Row.ListItem>;
       `);
@@ -444,19 +593,24 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
-    it("still fires on a same-named ListItem imported from elsewhere", () => {
-      expectFail(`
+    // A ListItem imported from a non-`@expo/ui` module is a custom component we
+    // can't see — it may well wrap its children in `<Text>` — so it's no longer
+    // reported. Projects that know it crashes can name it in config.
+    it("does not fire on a same-named ListItem imported from elsewhere", () => {
+      expectPass(`
         import { ListItem } from "./ui";
         const App = () => <ListItem>Settings</ListItem>;
       `);
     });
 
-    it("still fires on a ListItem with no import", () => {
-      expectFail(`const App = () => <ListItem>Settings</ListItem>;`);
+    it("does not fire on an undeclared ListItem", () => {
+      expectPass(`const App = () => <ListItem>Settings</ListItem>;`);
     });
 
-    it("still fires on raw text in a non-ListItem @expo/ui layout child", () => {
-      expectFail(`
+    // `Row` is a custom `@expo/ui` component we don't model — not a host
+    // boundary — so its raw text is left alone under the conservative default.
+    it("does not fire on raw text in a non-ListItem @expo/ui layout child", () => {
+      expectPass(`
         import { ListItem, Row } from "@expo/ui";
         const App = () => <ListItem><Row>raw headline</Row></ListItem>;
       `);

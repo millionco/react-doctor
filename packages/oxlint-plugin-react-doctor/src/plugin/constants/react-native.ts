@@ -14,6 +14,23 @@ export const REACT_NATIVE_TEXT_COMPONENTS = new Set([
   "H6",
 ]);
 
+// React Native host/layout primitives that mount children into a native view,
+// so raw text directly inside one is a certain runtime crash ("Text strings
+// must be rendered within a <Text>"). `rn-no-raw-text` anchors its report here.
+export const REACT_NATIVE_RAW_TEXT_HOST_COMPONENTS = new Set([
+  "View",
+  "ScrollView",
+  "SafeAreaView",
+  "KeyboardAvoidingView",
+  "ImageBackground",
+  "Modal",
+  "Pressable",
+  "TouchableOpacity",
+  "TouchableHighlight",
+  "TouchableWithoutFeedback",
+  "TouchableNativeFeedback",
+]);
+
 export const REACT_NATIVE_TEXT_COMPONENT_KEYWORDS = new Set([
   "Text",
   "Title",
@@ -27,21 +44,17 @@ export const REACT_NATIVE_TEXT_COMPONENT_KEYWORDS = new Set([
   "Body",
 ]);
 
-// Compile-time translation wrappers — fbtee's <fbt> / <fbs> and their
-// namespaced children (<fbt:param>, <fbt:plural>, <fbt:name>, …) — are NOT
-// React Native layout components. A Babel/SWC transform erases them at build
-// time, so their text really renders inside the surrounding <Text>. The
-// rn-no-raw-text rule treats them as *transparent*: raw text inside them is
-// safe only when an enclosing element is a real text component (so a bare
-// <fbt> outside <Text> is still reported).
-//
-// To extend the same behavior to another compile-time / i18n wrapper, add its
-// tag name here — namespaced children are matched by their namespace, so a
-// single entry (e.g. "fbt") covers every "<fbt:*>" child.
-//
+// Transparent wrappers render no host view of their own, so their children
+// render at the surrounding location; the rule steps through them when checking
+// whether raw text sits inside a real <Text> (a bare <fbt> outside <Text> is
+// still reported). Only config-INDEPENDENT wrappers belong here: compile-erased
+// i18n markers (fbtee's <fbt> / <fbs>; their <fbt:*> children match by
+// namespace, so the one "fbt" entry covers them) and React's structural
+// <Fragment> / <React.Fragment>. <Trans> / <FormattedMessage> are excluded —
+// whether they wrap children in a <Text> is a per-project provider choice, so
+// they belong in an opt-in `transparentComponents` config instead.
 // Ref: https://github.com/millionco/react-doctor/issues/581
-//      https://facebook.github.io/fbt/docs/api_intro
-export const REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS = new Set(["fbt", "fbs"]);
+export const REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS = new Set(["Fragment", "fbt", "fbs"]);
 
 // HACK: Maps (not plain objects) so that an unusual `import { constructor }
 // from "react-native"` (or any other Object.prototype name) doesn't fall

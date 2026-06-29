@@ -9,6 +9,7 @@ import { getReactDoctorStringArraySetting } from "../../utils/get-react-doctor-s
 import { hasDirective } from "../../utils/has-directive.js";
 import { hasUseServerDirective } from "../../utils/has-use-server-directive.js";
 import { isAuthGuardName } from "../../utils/is-auth-guard-name.js";
+import { isCacheRevalidationOnlyAction } from "../../utils/is-cache-revalidation-only-action.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -162,6 +163,11 @@ const inspectServerAction = (
 ): void => {
   const isServerAction = fileHasUseServerDirective || hasUseServerDirective(candidate.functionNode);
   if (!isServerAction) return;
+
+  // Cache revalidation (`revalidateTag` / `revalidatePath` / …) reads no
+  // data and mutates no records, so an action that only busts the cache is
+  // not a privileged operation and needs no auth guard.
+  if (isCacheRevalidationOnlyAction(candidate.functionNode.body)) return;
 
   const rootNodes = getAuthScanRoots(candidate.functionNode);
   if (containsAuthCheck(rootNodes, allowedFunctionNames, GENERIC_AUTH_METHOD_NAMES)) return;

@@ -489,6 +489,55 @@ export async function updateBio(bio: string) {
     await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
+  it("accepts an action that only revalidates a cache tag (caching needs no auth)", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-tag-only", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+
+export async function refreshPosts() {
+  revalidateTag("posts");
+}`),
+      },
+    });
+
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("accepts an action that only revalidates a path", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-path-only", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidatePath } from "next/cache";
+
+export const refreshDashboard = async () => {
+  revalidatePath("/dashboard");
+};`),
+      },
+    });
+
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("still flags an action that mutates data alongside a cache revalidation", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-mutation", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+import { db } from "@/lib/db";
+
+export async function deletePost(postId: string) {
+  await db.post.delete({ where: { id: postId } });
+  revalidateTag("posts");
+}`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("deletePost");
+  });
+
   it("still flags actions whose only top-level call is a non-auth helper", async () => {
     const projectDirectory = setupReactProject(tempRoot, "issue-829-non-auth-helper", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },

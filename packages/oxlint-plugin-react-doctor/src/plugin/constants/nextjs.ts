@@ -33,6 +33,19 @@ export const NEXTJS_NAVIGATION_FUNCTIONS = new Set([
   "unauthorized",
 ]);
 
+// Next.js cache-invalidation helpers from `next/cache`. Calling one only
+// busts the data cache — it reads no data and mutates no records — so a
+// server action whose only work is revalidation is not a privileged
+// operation and needs no auth guard.
+export const CACHE_REVALIDATION_FUNCTION_NAMES = new Set([
+  "revalidateTag",
+  "revalidatePath",
+  "expireTag",
+  "expirePath",
+  "unstable_expireTag",
+  "unstable_expirePath",
+]);
+
 export const GOOGLE_FONTS_PATTERN = /fonts\.googleapis\.com/;
 
 export const POLYFILL_SCRIPT_PATTERN = /polyfill\.io|polyfill\.min\.js|cdn\.polyfill/;

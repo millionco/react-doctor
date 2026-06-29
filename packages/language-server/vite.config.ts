@@ -44,5 +44,11 @@ export default defineConfig({
   ],
   test: {
     testTimeout: 30_000,
+    // The integration suite boots a real LSP server subprocess and waits up
+    // to 20s for it to publish diagnostics inside `beforeAll`. The default
+    // 10s hook timeout is shorter than that wait, so a slow cold start on
+    // macOS / Windows CI runners trips the hook before the server is ready.
+    // Match it to `testTimeout` so the hook gets the same budget as the tests.
+    hookTimeout: 30_000,
   },
 });

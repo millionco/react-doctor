@@ -150,7 +150,9 @@ describe("GitHub Action contract", () => {
     expect(scanStep).toContain(
       'if [ -n "$INPUT_PROJECT" ]; then FLAGS+=("--project" "$INPUT_PROJECT"); fi',
     );
-    expect(scanStep).toContain('SCOPE="$(printf \'%s\' "$INPUT_SCOPE" | tr \'[:upper:]\' \'[:lower:]\')"');
+    expect(scanStep).toContain(
+      "SCOPE=\"$(printf '%s' \"$INPUT_SCOPE\" | tr '[:upper:]' '[:lower:]')\"",
+    );
     expect(scanStep).toContain('if [ "$SCOPE" = "full" ]; then');
     expect(scanStep).toContain('FLAGS+=("--scope" "full")');
     expect(scanStep).toContain('FLAGS+=("--changed-files-from" "$CHANGED_FILES_FROM")');

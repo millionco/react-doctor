@@ -519,6 +519,73 @@ export const refreshDashboard = async () => {
     await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
+  it("accepts an action that revalidates a tag read from its own form data", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-tag-from-formdata", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+
+export async function refresh(formData: FormData) {
+  const tag = formData.get("tag") as string;
+  revalidateTag(tag);
+}`),
+      },
+    });
+
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("accepts an action that revalidates then redirects", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-then-redirect", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+
+export async function refresh() {
+  revalidatePath("/");
+  redirect("/");
+}`),
+      },
+    });
+
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("accepts an action whose only effect is a navigation", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "redirect-only", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { redirect } from "next/navigation";
+
+export async function go() {
+  redirect("/dashboard");
+}`),
+      },
+    });
+
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("still flags a revalidation action that also reads data from a non-parameter source", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-db-read", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+import { db } from "@/lib/db";
+
+export async function refresh(userId: string) {
+  const user = await db.user.findUnique({ where: { id: userId } });
+  revalidateTag(\`user-\${user.id}\`);
+}`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("refresh");
+  });
+
   it("still flags an action that mutates data alongside a cache revalidation", async () => {
     const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-mutation", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },

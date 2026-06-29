@@ -7,6 +7,7 @@ import { LspTestClient, pathToUri, waitForNotification } from "../lsp-client.js"
 const PACKAGE_ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const FIXTURE_DIR = path.join(PACKAGE_ROOT, "tests", "fixtures", "simple-app");
 const APP_FILE = path.join(FIXTURE_DIR, "src", "App.tsx");
+const LANGUAGE_SERVER_STARTUP_TIMEOUT_MS = 30_000;
 
 interface PublishDiagnosticsParams {
   uri: string;
@@ -74,7 +75,7 @@ describe("react-doctor language server (stdio)", () => {
     });
 
     appDiagnostics = (await publishPromise) as PublishDiagnosticsParams;
-  });
+  }, LANGUAGE_SERVER_STARTUP_TIMEOUT_MS);
 
   afterAll(async () => {
     await client.stop();

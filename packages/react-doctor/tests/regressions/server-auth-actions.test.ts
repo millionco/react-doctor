@@ -519,22 +519,6 @@ export const refreshDashboard = async () => {
     await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
-  it("accepts an action that revalidates a tag read from its own form data", async () => {
-    const projectDirectory = setupReactProject(tempRoot, "revalidate-tag-from-formdata", {
-      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
-      files: {
-        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
-
-export async function refresh(formData: FormData) {
-  const tag = formData.get("tag") as string;
-  revalidateTag(tag);
-}`),
-      },
-    });
-
-    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
-  });
-
   it("accepts an action that revalidates then redirects", async () => {
     const projectDirectory = setupReactProject(tempRoot, "revalidate-then-redirect", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
@@ -603,6 +587,80 @@ export async function deletePost(postId: string) {
     const issues = await collectAuthActionIssues(projectDirectory);
     expect(issues).toHaveLength(1);
     expect(issues[0].message).toContain("deletePost");
+  });
+
+  it("still flags a raw-SQL tagged-template write next to a revalidation", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-sql-template", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+import { sql } from "@vercel/postgres";
+
+export async function deleteUser(formData: FormData) {
+  await sql\`DELETE FROM users WHERE id = \${formData.get("id")}\`;
+  revalidateTag("users");
+}`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("deleteUser");
+  });
+
+  it("still flags a constructor side effect next to a revalidation", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-new", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+import { AuditLogger } from "@/lib/audit";
+
+export async function refresh() {
+  new AuditLogger("secret");
+  revalidateTag("posts");
+}`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("refresh");
+  });
+
+  it("still flags a module-state assignment next to a revalidation", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-assignment", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+import { sessionStore } from "@/lib/store";
+
+export async function grantAdmin(formData: FormData) {
+  sessionStore[formData.get("user") as string] = "admin";
+  revalidateTag("users");
+}`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("grantAdmin");
+  });
+
+  it("does not treat a same-named method call (obj.redirect()) as a safe navigation", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "member-named-redirect", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { emitter } from "@/lib/emitter";
+
+export async function go(payload: string) {
+  emitter.redirect(payload);
+}`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("go");
   });
 
   it("still flags actions whose only top-level call is a non-auth helper", async () => {

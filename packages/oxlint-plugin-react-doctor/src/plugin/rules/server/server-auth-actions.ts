@@ -164,14 +164,13 @@ const inspectServerAction = (
   const isServerAction = fileHasUseServerDirective || hasUseServerDirective(candidate.functionNode);
   if (!isServerAction) return;
 
-  // An action that only busts the cache (`revalidateTag` / `revalidatePath`
-  // / …), navigates (`redirect` / `notFound` / …), or reads its own
-  // client-supplied input touches no protected data, so it is safe to call
-  // unauthenticated and needs no auth guard.
-  if (isNonPrivilegedServerAction(candidate.functionNode)) return;
-
   const rootNodes = getAuthScanRoots(candidate.functionNode);
   if (containsAuthCheck(rootNodes, allowedFunctionNames, GENERIC_AUTH_METHOD_NAMES)) return;
+
+  // A cache-busting / navigation-only action touches no protected data, so it
+  // is safe to call unauthenticated. Checked after the bounded auth scan so
+  // the full-body walk is skipped for the common authenticated case.
+  if (isNonPrivilegedServerAction(candidate.functionNode)) return;
 
   context.report({
     node: candidate.reportNode,

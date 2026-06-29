@@ -57,4 +57,18 @@ describe("auth-token-in-web-storage", () => {
     const result = runRule(authTokenInWebStorage, `const t = localStorage.token;`);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag a token write in a `.test.ts` file (throwaway test token)", () => {
+    const result = runRule(authTokenInWebStorage, `localStorage.setItem("authToken", token);`, {
+      filename: "src/auth.test.ts",
+    });
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a token write inside a `__tests__` directory", () => {
+    const result = runRule(authTokenInWebStorage, `localStorage.setItem("jwt", x);`, {
+      filename: "src/__tests__/auth.ts",
+    });
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

@@ -108,6 +108,14 @@ describe("filterDiagnosticsForSurface — user overrides", () => {
     expect(filterDiagnosticsForSurface(diagnostics, "cli", config)).toEqual([designDiagnostic]);
   });
 
+  it("matches short rule ids in `excludeRules`", () => {
+    const config: ReactDoctorConfig = {
+      surfaces: { cli: { excludeRules: ["no-array-index-as-key"] } },
+    };
+    const diagnostics = [designDiagnostic, correctnessDiagnostic];
+    expect(filterDiagnosticsForSurface(diagnostics, "cli", config)).toEqual([designDiagnostic]);
+  });
+
   it("`includeRules` overrides excludeTags for a single rule (include wins)", () => {
     const config: ReactDoctorConfig = {
       surfaces: {
@@ -117,6 +125,22 @@ describe("filterDiagnosticsForSurface — user overrides", () => {
       },
     };
     expect(isDiagnosticOnSurface(designDiagnostic, "prComment", config)).toBe(true);
+  });
+
+  it("matches legacy rule ids in `includeRules`", () => {
+    const config: ReactDoctorConfig = {
+      surfaces: {
+        prComment: {
+          includeRules: ["react/jsx-key"],
+        },
+      },
+    };
+    const jsxKeyDiagnostic: Diagnostic = {
+      ...correctnessDiagnostic,
+      rule: "jsx-key",
+      message: "Missing key prop",
+    };
+    expect(isDiagnosticOnSurface(jsxKeyDiagnostic, "prComment", config)).toBe(true);
   });
 });
 

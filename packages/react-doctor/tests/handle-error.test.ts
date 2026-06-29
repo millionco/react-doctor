@@ -57,6 +57,17 @@ describe("handleError", () => {
     expect(body).toContain("Sentry reference: evt-abc123");
   });
 
+  it("scrubs home-directory paths from the prefilled issue title and body", () => {
+    const issueUrl = new URL(buildErrorIssueUrl(new Error("boom at /home/alice/app/src/App.tsx")));
+    const body = issueUrl.searchParams.get("body") ?? "";
+    const title = issueUrl.searchParams.get("title") ?? "";
+
+    expect(title).toContain("~/app/src/App.tsx");
+    expect(body).toContain("~/app/src/App.tsx");
+    expect(title).not.toContain("/home/alice");
+    expect(body).not.toContain("/home/alice");
+  });
+
   it("omits the Sentry reference line when no event id is provided", () => {
     const body = new URL(buildErrorIssueUrl(new Error("boom"))).searchParams.get("body") ?? "";
     expect(body).not.toContain("Sentry reference:");
@@ -133,5 +144,26 @@ describe("handleUserError", () => {
     expect(output).not.toContain("Discord");
     expect(output).not.toContain("Reference (mention this when reporting)");
     expect(process.exitCode).toBe(1);
+  });
+
+  it("scrubs home-directory paths in environment errors", () => {
+    const errorMessages: string[] = [];
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation((...messages) => {
+      errorMessages.push(messages.join(" "));
+    });
+    const environmentError = Object.assign(new Error("permission denied"), {
+      code: "EACCES",
+      path: "/home/alice/private/package.json",
+    });
+
+    try {
+      handleUserError(environmentError, { shouldExit: false });
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+
+    const output = errorMessages.join("\n");
+    expect(output).toContain("~/private/package.json");
+    expect(output).not.toContain("/home/alice");
   });
 });

@@ -32,8 +32,7 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 
-import { runOxlint } from "@react-doctor/core";
-import { discoverProject } from "@react-doctor/core";
+import { discoverProject, runOxlint } from "@react-doctor/core";
 import type { Diagnostic, PackageJson } from "@react-doctor/core";
 import { buildTestProject, setupReactProject, writeFile, writeJson } from "./_helpers.js";
 

@@ -3,8 +3,12 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import type { JsonReport } from "@react-doctor/core";
-import type { Diagnostic, JsonReportProjectEntry, ProjectInfo } from "@react-doctor/core";
+import type {
+  Diagnostic,
+  JsonReport,
+  JsonReportProjectEntry,
+  ProjectInfo,
+} from "@react-doctor/core";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 const RENDER_SCRIPT_PATH = path.join(REPOSITORY_ROOT, "scripts/render-github-action-comment.mjs");

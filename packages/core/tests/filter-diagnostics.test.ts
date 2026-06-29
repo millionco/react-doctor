@@ -250,6 +250,51 @@ describe("mergeAndFilterDiagnostics — ignore rules / files / overrides", () =>
     ).toBe(true);
   });
 
+  it("ignore.overrides matches short and legacy rule ids", () => {
+    const diagnostics = [
+      createDiagnostic({
+        plugin: "react-doctor",
+        rule: "no-array-index-key",
+        filePath: "components/diff/Hunk.tsx",
+      }),
+      createDiagnostic({
+        plugin: "react-doctor",
+        rule: "jsx-key",
+        filePath: "components/diff/Hunk.tsx",
+      }),
+      createDiagnostic({
+        plugin: "react-doctor",
+        rule: "no-cascading-set-state",
+        filePath: "components/diff/Hunk.tsx",
+      }),
+    ];
+    const config: ReactDoctorConfig = {
+      ignore: {
+        overrides: [
+          {
+            files: ["components/diff/**"],
+            rules: ["no-array-index-key", "react/jsx-key"],
+          },
+        ],
+      },
+    };
+
+    const filtered = filterIgnoredDiagnostics(
+      diagnostics,
+      config,
+      TEST_ROOT_DIRECTORY,
+      testReadFileLines,
+    );
+
+    expect(filtered).toEqual([
+      createDiagnostic({
+        plugin: "react-doctor",
+        rule: "no-cascading-set-state",
+        filePath: "components/diff/Hunk.tsx",
+      }),
+    ]);
+  });
+
   it("ignore.overrides with no rules list suppresses every rule for the matched files", () => {
     const diagnostics = [
       createDiagnostic({ plugin: "react", rule: "no-danger", filePath: "src/legacy/A.tsx" }),

@@ -57,8 +57,11 @@ const warnIfAiTrainingEnvironment = (): void => {
 // stack is built once here rather than duplicated per variant.
 const buildDiagnoseLayer = (
   config: ReactDoctorConfig | null,
+  options: DiagnoseOptions,
   configOverrideTarget?: Pick<ResolvedScanTarget, "resolvedDirectory" | "configSourceDirectory">,
 ) => {
+  const shouldRunDeadCode = options.deadCode ?? config?.deadCode ?? true;
+  const shouldRunLint = options.lint ?? config?.lint ?? true;
   const configLayer =
     configOverrideTarget === undefined
       ? Config.layerNode
@@ -70,10 +73,10 @@ const buildDiagnoseLayer = (
   return Layer.mergeAll(
     Project.layerNode,
     configLayer,
-    DeadCode.layerNode,
+    shouldRunDeadCode ? DeadCode.layerNode : DeadCode.layerOf([]),
     Files.layerNode,
     Git.layerNode,
-    Linter.layerOxlint,
+    shouldRunLint ? Linter.layerOxlint : Linter.layerOf([]),
     LintPartialFailures.layerLive,
     Progress.layerNoop,
     Reporter.layerNoop,
@@ -141,7 +144,7 @@ const diagnoseDirectory = async (
   const output: InspectOutput = await Effect.runPromise(
     restoreLegacyThrow(
       program.pipe(
-        Effect.provide(buildDiagnoseLayer(scanTarget.userConfig)),
+        Effect.provide(buildDiagnoseLayer(scanTarget.userConfig, options)),
         Effect.provide(layerOtlp),
       ),
     ),
@@ -195,6 +198,7 @@ const diagnoseProject = async (
       batchConfig?.plugins !== undefined || projectConfig?.plugins !== undefined;
     const layer = buildDiagnoseLayer(
       effectiveConfig,
+      { ...baseOptions, ...perProjectOptions },
       didOverrideConfig
         ? {
             resolvedDirectory: scanTarget.resolvedDirectory,

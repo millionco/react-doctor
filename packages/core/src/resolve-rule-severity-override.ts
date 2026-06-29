@@ -1,5 +1,5 @@
 import type { RuleSeverityControls, RuleSeverityOverride } from "./types/index.js";
-import { getEquivalentRuleKeys } from "./rule-key-aliases.js";
+import { isSameRuleKey } from "./rule-key-aliases.js";
 
 interface RuleOverrideLookupInput {
   ruleKey: string;
@@ -17,12 +17,10 @@ export const resolveRuleSeverityOverride = (
   controls: RuleSeverityControls | undefined,
 ): RuleSeverityOverride | undefined => {
   if (!controls) return undefined;
-  const exactRuleOverride = controls.rules?.[input.ruleKey];
-  if (exactRuleOverride !== undefined) return exactRuleOverride;
-  for (const equivalentRuleKey of getEquivalentRuleKeys(input.ruleKey)) {
-    if (equivalentRuleKey === input.ruleKey) continue;
-    const equivalentRuleOverride = controls.rules?.[equivalentRuleKey];
-    if (equivalentRuleOverride !== undefined) return equivalentRuleOverride;
+  if (controls.rules) {
+    for (const [configuredRuleKey, configuredRuleOverride] of Object.entries(controls.rules)) {
+      if (isSameRuleKey(configuredRuleKey, input.ruleKey)) return configuredRuleOverride;
+    }
   }
   return input.category !== undefined ? controls.categories?.[input.category] : undefined;
 };

@@ -105,6 +105,13 @@ describe("severity controls (via mergeAndFilterDiagnostics)", () => {
     expect(applySeverityControls([nativePortedDiagnostic], config)).toEqual([]);
   });
 
+  it("matches short rule ids against native diagnostics", () => {
+    const config: ReactDoctorConfig = {
+      rules: { "no-danger": "off" },
+    };
+    expect(applySeverityControls([nativePortedDiagnostic], config)).toEqual([]);
+  });
+
   it("matches native rule keys against legacy plugin diagnostics", () => {
     const config: ReactDoctorConfig = {
       rules: { "react-doctor/no-danger": "off" },

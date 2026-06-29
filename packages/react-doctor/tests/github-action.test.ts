@@ -35,6 +35,7 @@ describe("GitHub Action contract", () => {
 
     for (const inputName of [
       "directory",
+      "scope",
       "project",
       "blocking",
       "comment",
@@ -61,10 +62,13 @@ describe("GitHub Action contract", () => {
     expect(inputsBlock).toContain('default: "none"');
     expect(outputsBlock).toContain("${{ steps.render.outputs.score }}");
     expect(outputsBlock).toContain("${{ steps.render.outputs.total-issues }}");
+    expect(outputsBlock).toContain("${{ steps.render.outputs.error-count }}");
+    expect(outputsBlock).toContain("${{ steps.render.outputs.warning-count }}");
     expect(outputsBlock).toContain("${{ steps.render.outputs.affected-files }}");
+    expect(outputsBlock).toContain("${{ steps.render.outputs.fixed-issues }}");
   });
 
-  it("collects PR changed files through the GitHub API instead of git ref checkout", () => {
+  it("falls back to the GitHub API when local PR changed files are unavailable", () => {
     const actionYaml = readActionYaml();
     const prFilesStep = normalizeWhitespace(extractStep(actionYaml, "- id: pr-files"));
 
@@ -83,7 +87,6 @@ describe("GitHub Action contract", () => {
     expect(prFilesStep).toContain(".map((file) => file.filename)");
     expect(prFilesStep).toContain('core.setOutput("path", outputPath)');
     expect(prFilesStep).not.toContain("filename)h");
-    expect(actionYaml).not.toContain("git fetch origin");
     expect(actionYaml).not.toContain('git checkout "$HEAD_REF"');
   });
 
@@ -147,6 +150,9 @@ describe("GitHub Action contract", () => {
     expect(scanStep).toContain(
       'if [ -n "$INPUT_PROJECT" ]; then FLAGS+=("--project" "$INPUT_PROJECT"); fi',
     );
+    expect(scanStep).toContain('SCOPE="$(printf \'%s\' "$INPUT_SCOPE" | tr \'[:upper:]\' \'[:lower:]\')"');
+    expect(scanStep).toContain('if [ "$SCOPE" = "full" ]; then');
+    expect(scanStep).toContain('FLAGS+=("--scope" "full")');
     expect(scanStep).toContain('FLAGS+=("--changed-files-from" "$CHANGED_FILES_FROM")');
     expect(scanStep).toContain(
       'npm exec --yes --package "$PACKAGE_SPEC" -- react-doctor "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"',

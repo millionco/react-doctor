@@ -1,3 +1,5 @@
+import { scrubSensitivePaths } from "./scrub-sensitive-text.js";
+
 interface NodeSystemError extends Error {
   code?: string;
   errno?: number;
@@ -41,11 +43,11 @@ export const formatEnvironmentError = (error: unknown): string => {
     case "EACCES":
     case "EPERM":
       return error.path
-        ? `Permission denied accessing ${error.path}. Check file permissions and try again.`
+        ? `Permission denied accessing ${scrubSensitivePaths(error.path)}. Check file permissions and try again.`
         : "Permission denied. Check file permissions and try again.";
     case "ENOTDIR":
       return error.path
-        ? `A file exists at ${error.path} or one of its parent paths where a directory was expected.`
+        ? `A file exists at ${scrubSensitivePaths(error.path)} or one of its parent paths where a directory was expected.`
         : "A file exists where a directory was expected.";
     case "ENOENT":
       return "Required command not found. Ensure the tool (e.g. git) is installed and on your PATH.";

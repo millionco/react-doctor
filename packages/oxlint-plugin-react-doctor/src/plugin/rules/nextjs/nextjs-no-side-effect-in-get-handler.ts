@@ -25,7 +25,7 @@ const extractMutatingRouteSegment = (rawFilename: string): string | null => {
 };
 
 const buildProgramBindingLookup = (
-  programNode: EsTreeNode,
+  programNode: EsTreeNode
 ): ((identifierName: string) => EsTreeNode | null) => {
   const topLevelBindings = new Map<string, EsTreeNode>();
   if (!isNodeOfType(programNode, "Program")) return () => null;
@@ -48,14 +48,18 @@ const buildProgramBindingLookup = (
         topLevelBindings.set(statement.id.name, statement);
         continue;
       }
-      if (isNodeOfType(statement, "ExportNamedDeclaration") && statement.declaration) {
+      if (
+        isNodeOfType(statement, "ExportNamedDeclaration") &&
+        statement.declaration
+      ) {
         collectFromStatements([statement.declaration]);
       }
     }
   };
 
   collectFromStatements(programNode.body ?? []);
-  return (identifierName: string) => topLevelBindings.get(identifierName) ?? null;
+  return (identifierName: string) =>
+    topLevelBindings.get(identifierName) ?? null;
 };
 
 const isExportedGetHandler = (node: EsTreeNode): boolean => {
@@ -63,13 +67,19 @@ const isExportedGetHandler = (node: EsTreeNode): boolean => {
   const declaration = node.declaration;
   if (!declaration) return false;
 
-  if (isNodeOfType(declaration, "FunctionDeclaration") && declaration.id?.name === "GET") {
+  if (
+    isNodeOfType(declaration, "FunctionDeclaration") &&
+    declaration.id?.name === "GET"
+  ) {
     return true;
   }
 
   if (isNodeOfType(declaration, "VariableDeclaration")) {
     for (const declarator of declaration.declarations ?? []) {
-      if (isNodeOfType(declarator?.id, "Identifier") && declarator.id.name === "GET") {
+      if (
+        isNodeOfType(declarator?.id, "Identifier") &&
+        declarator.id.name === "GET"
+      ) {
         return true;
       }
     }
@@ -89,7 +99,7 @@ const isStringLikeNode = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "TemplateLiteral");
 
 const getHandlerCallbackBody = (
-  callExpression: EsTreeNodeOfType<"CallExpression">,
+  callExpression: EsTreeNodeOfType<"CallExpression">
 ): EsTreeNode | null => {
   const callArguments = callExpression.arguments ?? [];
   if (callArguments.length < 2) return null;
@@ -114,7 +124,9 @@ const collectChainedGetHandlerBodies = (initNode: EsTreeNode): EsTreeNode[] => {
       const body = getHandlerCallbackBody(cursor);
       if (body) chainedBodies.push(body);
     }
-    cursor = isNodeOfType(cursor.callee, "MemberExpression") ? cursor.callee.object : null;
+    cursor = isNodeOfType(cursor.callee, "MemberExpression")
+      ? cursor.callee.object
+      : null;
   }
   return chainedBodies;
 };
@@ -122,7 +134,7 @@ const collectChainedGetHandlerBodies = (initNode: EsTreeNode): EsTreeNode[] => {
 const resolveBodiesFromExpression = (
   expression: EsTreeNode,
   resolveBinding: (identifierName: string) => EsTreeNode | null,
-  remainingDepth: number,
+  remainingDepth: number
 ): EsTreeNode[] => {
   if (remainingDepth <= 0) return [];
 
@@ -144,7 +156,7 @@ const resolveBodiesFromExpression = (
       const resolvedBodies = resolveBodiesFromExpression(
         argumentInit,
         resolveBinding,
-        remainingDepth - 1,
+        remainingDepth - 1
       );
       if (resolvedBodies.length > 0) return resolvedBodies;
       const chainedBodies = collectChainedGetHandlerBodies(argumentInit);
@@ -156,7 +168,11 @@ const resolveBodiesFromExpression = (
   if (isNodeOfType(expression, "Identifier")) {
     const boundInit = resolveBinding(expression.name);
     if (!boundInit) return [];
-    return resolveBodiesFromExpression(boundInit, resolveBinding, remainingDepth - 1);
+    return resolveBodiesFromExpression(
+      boundInit,
+      resolveBinding,
+      remainingDepth - 1
+    );
   }
 
   return [];
@@ -164,25 +180,32 @@ const resolveBodiesFromExpression = (
 
 const resolveGetHandlerBodies = (
   exportNode: EsTreeNode,
-  resolveBinding: (identifierName: string) => EsTreeNode | null,
+  resolveBinding: (identifierName: string) => EsTreeNode | null
 ): EsTreeNode[] => {
   if (!isNodeOfType(exportNode, "ExportNamedDeclaration")) return [];
   const declaration = exportNode.declaration;
   if (!declaration) return [];
 
-  if (isNodeOfType(declaration, "FunctionDeclaration") && declaration.id?.name === "GET") {
+  if (
+    isNodeOfType(declaration, "FunctionDeclaration") &&
+    declaration.id?.name === "GET"
+  ) {
     return declaration.body ? [declaration.body] : [];
   }
 
   if (!isNodeOfType(declaration, "VariableDeclaration")) return [];
 
   for (const declarator of declaration.declarations ?? []) {
-    if (!isNodeOfType(declarator.id, "Identifier") || declarator.id.name !== "GET") continue;
+    if (
+      !isNodeOfType(declarator.id, "Identifier") ||
+      declarator.id.name !== "GET"
+    )
+      continue;
     if (!declarator.init) return [];
     return resolveBodiesFromExpression(
       declarator.init,
       resolveBinding,
-      GET_HANDLER_BINDING_RESOLUTION_DEPTH,
+      GET_HANDLER_BINDING_RESOLUTION_DEPTH
     );
   }
 
@@ -199,7 +222,8 @@ export const nextjsNoSideEffectInGetHandler = defineRule({
   recommendation:
     "GET requests can be prefetched and are open to CSRF. Move the side effect to a POST handler.",
   create: (context: RuleContext) => {
-    let resolveBinding: (identifierName: string) => EsTreeNode | null = () => null;
+    let resolveBinding: (identifierName: string) => EsTreeNode | null = () =>
+      null;
 
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
@@ -211,28 +235,27 @@ export const nextjsNoSideEffectInGetHandler = defineRule({
         if (CRON_ROUTE_PATTERN.test(filename)) return;
         if (!isExportedGetHandler(node)) return;
 
+        // A "mutating-sounding" route segment (cancel, delete, logout, …) is a
+        // hint, NOT proof: a read-only GET that returns a cancellation policy
+        // is safe. Require an actual side effect before reporting, and only
+        // use the segment to flavor the message.
         const mutatingSegment = extractMutatingRouteSegment(filename);
-        if (mutatingSegment) {
-          context.report({
-            node,
-            message: `This GET handler on the "/${mutatingSegment}" route is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`,
-          });
-          return;
-        }
 
         const handlerBodies = resolveGetHandlerBodies(node, resolveBinding);
         for (const handlerBody of handlerBodies) {
-          const locallyScopedSafeBindings = collectLocallyScopedSafeBindings(handlerBody);
-          const locallyScopedCookieBindings = collectLocallyScopedCookieBindings(handlerBody);
+          const locallyScopedSafeBindings =
+            collectLocallyScopedSafeBindings(handlerBody);
+          const locallyScopedCookieBindings =
+            collectLocallyScopedCookieBindings(handlerBody);
           const sideEffect = findSideEffect(handlerBody, {
             locallyScopedSafeBindings,
             locallyScopedCookieBindings,
           });
           if (!sideEffect) continue;
-          context.report({
-            node,
-            message: `This GET handler's side effect (${sideEffect}) is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`,
-          });
+          const message = mutatingSegment
+            ? `This GET handler on the "/${mutatingSegment}" route performs a side effect (${sideEffect}) and is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`
+            : `This GET handler's side effect (${sideEffect}) is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`;
+          context.report({ node, message });
           return;
         }
       },

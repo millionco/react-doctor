@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { hasJsxAttribute } from "../../utils/has-jsx-attribute.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -14,14 +15,20 @@ export const nextjsImageMissingSizes = defineRule({
     "Add `sizes` matching your layout so `next/image` does not assume the largest candidate and make users download oversized images.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "Image") return;
+      if (
+        !isNodeOfType(node.name, "JSXIdentifier") ||
+        node.name.name !== "Image"
+      )
+        return;
       const attributes = node.attributes ?? [];
+      if (hasJsxSpreadAttribute(attributes)) return;
       if (!hasJsxAttribute(attributes, "fill")) return;
       if (hasJsxAttribute(attributes, "sizes")) return;
 
       context.report({
         node,
-        message: "next/image uses fill without sizes, so your users download the largest image.",
+        message:
+          "next/image uses fill without sizes, so your users download the largest image.",
       });
     },
   }),

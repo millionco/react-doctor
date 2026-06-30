@@ -13,7 +13,9 @@ export const rnNoSingleElementStyleArray = defineRule({
     "Use `style={value}` instead of `style={[value]}`. A one-item array just adds extra work for nothing.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-      const propName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : null;
+      const propName = isNodeOfType(node.name, "JSXIdentifier")
+        ? node.name.name
+        : null;
       if (!propName) return;
       if (propName !== "style" && !propName.endsWith("Style")) return;
       if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;
@@ -21,6 +23,11 @@ export const rnNoSingleElementStyleArray = defineRule({
       const expression = node.value.expression;
       if (!isNodeOfType(expression, "ArrayExpression")) return;
       if (expression.elements?.length !== 1) return;
+      // `[...base]` is a single SpreadElement but expands to N styles — it
+      // clones a style array (e.g. to avoid mutating the source), not a
+      // one-item wrapper, and `style={value}` can't replace it.
+      const onlyElement = expression.elements[0];
+      if (!onlyElement || isNodeOfType(onlyElement, "SpreadElement")) return;
 
       context.report({
         node: expression,

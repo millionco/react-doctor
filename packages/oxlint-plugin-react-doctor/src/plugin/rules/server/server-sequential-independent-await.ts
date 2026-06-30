@@ -1,5 +1,7 @@
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { isAuthGuardName } from "../../utils/is-auth-guard-name.js";
+import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -38,7 +40,10 @@ const declarationStartsWithAwait = (declaration: EsTreeNode): boolean => {
 // b()` after `const { data } = await a()`) is a re-bind evaluated after
 // the await resolves, not a read of the first result — counting it would
 // miss the waterfall.
-const declarationReadsAnyName = (declaration: EsTreeNode, names: Set<string>): boolean => {
+const declarationReadsAnyName = (
+  declaration: EsTreeNode,
+  names: Set<string>
+): boolean => {
   if (names.size === 0) return false;
   if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
   let didRead = false;
@@ -46,10 +51,64 @@ const declarationReadsAnyName = (declaration: EsTreeNode, names: Set<string>): b
     if (!declarator.init) continue;
     walkAst(declarator.init, (child: EsTreeNode) => {
       if (didRead) return;
-      if (isNodeOfType(child, "Identifier") && names.has(child.name)) didRead = true;
+      if (isNodeOfType(child, "Identifier") && names.has(child.name))
+        didRead = true;
     });
   }
   return didRead;
+};
+
+// Leading verbs that mark an await run for ordering / a side effect rather
+// than to fetch data: a permission gate, a connection, a transaction begin, an
+// acquired lock, an init step. Parallelizing such a call with `Promise.all`
+// would change behavior (e.g. run the next call even when the gate throws), so
+// the pair is NOT an independent-fetch waterfall.
+const GATE_LEADING_VERBS = new Set([
+  "require",
+  "ensure",
+  "assert",
+  "verify",
+  "validate",
+  "check",
+  "connect",
+  "disconnect",
+  "begin",
+  "acquire",
+  "lock",
+  "init",
+  "initialize",
+  "setup",
+  "authorize",
+  "authenticate",
+]);
+
+const calleeNameOf = (callExpression: EsTreeNode): string | null => {
+  if (!isNodeOfType(callExpression, "CallExpression")) return null;
+  const callee = callExpression.callee;
+  if (isNodeOfType(callee, "Identifier")) return callee.name;
+  if (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier")
+  ) {
+    return callee.property.name;
+  }
+  return null;
+};
+
+// True when the first declaration awaits a guard / side-effect gate, so its
+// ordering before the next await is intentional (`await requireSession()`,
+// `await db.connect()`, `await beginTransaction()`).
+const declarationAwaitsGate = (declaration: EsTreeNode): boolean => {
+  if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
+  for (const declarator of declaration.declarations ?? []) {
+    if (!isNodeOfType(declarator.init, "AwaitExpression")) continue;
+    const calleeName = calleeNameOf(declarator.init.argument);
+    if (!calleeName) continue;
+    if (isAuthGuardName(calleeName)) return true;
+    const [leadingToken] = tokenizeIdentifierWords(calleeName);
+    if (leadingToken && GATE_LEADING_VERBS.has(leadingToken)) return true;
+  }
+  return false;
 };
 
 export const serverSequentialIndependentAwait = defineRule({
@@ -61,7 +120,11 @@ export const serverSequentialIndependentAwait = defineRule({
     "These two awaits don't depend on each other. Wrap them in `Promise.all([...])` so they run at the same time.",
   create: (context: RuleContext) => {
     const inspectStatements = (statements: EsTreeNode[]): void => {
-      for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {
+      for (
+        let statementIndex = 0;
+        statementIndex < statements.length - 1;
+        statementIndex++
+      ) {
         const currentStatement = statements[statementIndex];
         if (!isNodeOfType(currentStatement, "VariableDeclaration")) continue;
         if (!declarationStartsWithAwait(currentStatement)) continue;
@@ -72,6 +135,10 @@ export const serverSequentialIndependentAwait = defineRule({
         if (!declarationStartsWithAwait(nextStatement)) continue;
 
         if (declarationReadsAnyName(nextStatement, declaredNames)) continue;
+        // A guard / side-effect gate (`await requireSession()`, `db.connect()`)
+        // must run before the next await — its ordering is intentional, not a
+        // parallelizable waterfall.
+        if (declarationAwaitsGate(currentStatement)) continue;
 
         context.report({
           node: nextStatement,

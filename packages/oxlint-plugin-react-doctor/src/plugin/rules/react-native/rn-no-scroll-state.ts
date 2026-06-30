@@ -8,6 +8,51 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const SET_STATE_PATTERN = /^set[A-Z]/;
 
+// `setHasScrolled` → `hasScrolled`: the state name the setter mutates.
+const setterToStateName = (setterName: string): string => {
+  const withoutPrefix = setterName.slice(3);
+  return withoutPrefix.charAt(0).toLowerCase() + withoutPrefix.slice(1);
+};
+
+const testReadsName = (
+  test: EsTreeNode | null | undefined,
+  name: string
+): boolean => {
+  if (!test) return false;
+  let didRead = false;
+  walkAst(test, (child: EsTreeNode) => {
+    if (didRead) return;
+    if (isNodeOfType(child, "Identifier") && child.name === name)
+      didRead = true;
+  });
+  return didRead;
+};
+
+// A set-once latch (`if (!hasScrolled) setHasScrolled(true)`) runs the setter
+// at most once — after the first scroll the guard is false forever, so there
+// is no per-frame re-render storm. Only exempt when the guard reads the SAME
+// state the setter writes; `if (offset > 100) setShowShadow(true)` (guard on a
+// different value) can still fire every frame and stays reported.
+const isGuardedSetOnceLatch = (
+  callNode: EsTreeNode,
+  setterName: string,
+  boundary: EsTreeNode
+): boolean => {
+  const stateName = setterToStateName(setterName);
+  let ancestor: EsTreeNode | null | undefined = callNode.parent;
+  while (ancestor && ancestor !== boundary) {
+    if (
+      (isNodeOfType(ancestor, "IfStatement") ||
+        isNodeOfType(ancestor, "ConditionalExpression")) &&
+      testReadsName(ancestor.test, stateName)
+    ) {
+      return true;
+    }
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
+};
+
 const findSetStateInBody = (body: EsTreeNode): EsTreeNode | null => {
   let setStateCallNode: EsTreeNode | null = null;
   walkAst(body, (child: EsTreeNode) => {
@@ -16,7 +61,8 @@ const findSetStateInBody = (body: EsTreeNode): EsTreeNode | null => {
       isNodeOfType(child, "CallExpression") &&
       isNodeOfType(child.callee, "Identifier") &&
       SET_STATE_PATTERN.test(child.callee.name) &&
-      isUseStateSetterInScope(child, child.callee.name)
+      isUseStateSetterInScope(child, child.callee.name) &&
+      !isGuardedSetOnceLatch(child, child.callee.name, body)
     ) {
       setStateCallNode = child;
     }

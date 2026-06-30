@@ -19,7 +19,14 @@ const FRESH_ARRAY_METHODS = new Set([
 ]);
 
 const isFreshArrayExpression = (node: EsTreeNode): string | null => {
-  if (isNodeOfType(node, "ArrayExpression")) return "[...spread]";
+  if (isNodeOfType(node, "ArrayExpression")) {
+    // `data={[]}` is an empty-state / placeholder branch with zero rows, so
+    // there is no per-row memo cost to warn about (matches the empty-array
+    // skip in rn-list-missing-estimated-item-size). Non-empty inline arrays
+    // still allocate a fresh reference every render.
+    if ((node.elements?.length ?? 0) === 0) return null;
+    return "[...spread]";
+  }
 
   if (isNodeOfType(node, "CallExpression")) {
     const callee = node.callee;
@@ -64,11 +71,16 @@ export const rnListDataMapped = defineRule({
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
-      if (!elementName || !REACT_NATIVE_LIST_COMPONENTS.has(elementName)) return;
+      if (!elementName || !REACT_NATIVE_LIST_COMPONENTS.has(elementName))
+        return;
 
       for (const attr of node.attributes ?? []) {
         if (!isNodeOfType(attr, "JSXAttribute")) continue;
-        if (!isNodeOfType(attr.name, "JSXIdentifier") || attr.name.name !== "data") continue;
+        if (
+          !isNodeOfType(attr.name, "JSXIdentifier") ||
+          attr.name.name !== "data"
+        )
+          continue;
         if (!isNodeOfType(attr.value, "JSXExpressionContainer")) continue;
         const expression = attr.value.expression;
 

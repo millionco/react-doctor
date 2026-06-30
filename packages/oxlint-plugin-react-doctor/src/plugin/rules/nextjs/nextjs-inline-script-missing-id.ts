@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { hasJsxAttribute } from "../../utils/has-jsx-attribute.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -14,15 +15,21 @@ export const nextjsInlineScriptMissingId = defineRule({
     'Add `id="descriptive-name"` so Next.js can track, deduplicate, and re-execute the script correctly',
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "Script") return;
+      if (
+        !isNodeOfType(node.name, "JSXIdentifier") ||
+        node.name.name !== "Script"
+      )
+        return;
       const attributes = node.attributes ?? [];
 
+      if (hasJsxSpreadAttribute(attributes)) return;
       if (hasJsxAttribute(attributes, "src")) return;
       if (hasJsxAttribute(attributes, "id")) return;
 
       context.report({
         node,
-        message: "Without an id, Next.js can't track this inline <Script> & may execute it twice.",
+        message:
+          "Without an id, Next.js can't track this inline <Script> & may execute it twice.",
       });
     },
   }),

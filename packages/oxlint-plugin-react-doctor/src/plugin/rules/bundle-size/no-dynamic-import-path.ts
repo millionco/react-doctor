@@ -3,6 +3,21 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
+// True when a template-literal import path opens with a static RELATIVE
+// directory prefix (`./locales/${lang}.js`, `../widgets/${id}.js`). Vite/webpack
+// build a context module from that relative prefix and DO code-split it, so it
+// must not be flagged. The glob trick is relative-specifier only: a protocol or
+// absolute prefix (`https://cdn/${v}/lib.js`, `/assets/${v}.js`) is not
+// bundler-analyzable, and a path that starts with the interpolation
+// (`${dir}/x.js`) has no static prefix — both stay flagged.
+const hasStaticDirectoryPrefix = (template: EsTreeNodeOfType<"TemplateLiteral">): boolean => {
+  const firstQuasi = template.quasis?.[0];
+  if (!firstQuasi || !isNodeOfType(firstQuasi, "TemplateElement")) return false;
+  const text = firstQuasi.value?.cooked ?? firstQuasi.value?.raw;
+  if (typeof text !== "string") return false;
+  return text.startsWith("./") || text.startsWith("../");
+};
+
 // HACK: bundlers can only tree-shake / split when the import target is a
 // statically-analyzable string literal. `import(variable)` or
 // `require(variable)` defeats trace targets and forces a fat bundle.
@@ -24,7 +39,11 @@ export const noDynamicImportPath = defineRule({
         });
         return;
       }
-      if (isNodeOfType(source, "TemplateLiteral") && (source.expressions?.length ?? 0) > 0) {
+      if (
+        isNodeOfType(source, "TemplateLiteral") &&
+        (source.expressions?.length ?? 0) > 0 &&
+        !hasStaticDirectoryPrefix(source)
+      ) {
         context.report({
           node,
           message:
@@ -44,7 +63,11 @@ export const noDynamicImportPath = defineRule({
         });
         return;
       }
-      if (isNodeOfType(arg, "TemplateLiteral") && (arg.expressions?.length ?? 0) > 0) {
+      if (
+        isNodeOfType(arg, "TemplateLiteral") &&
+        (arg.expressions?.length ?? 0) > 0 &&
+        !hasStaticDirectoryPrefix(arg)
+      ) {
         context.report({
           node,
           message:

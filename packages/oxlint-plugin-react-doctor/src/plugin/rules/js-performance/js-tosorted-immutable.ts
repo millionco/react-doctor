@@ -1,8 +1,43 @@
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+
+// Method calls whose result is a *brand new* array or an iterator with
+// no `toSorted()`. Spreading either before `.sort()` is not a wasteful
+// copy of a shared array: iterators (`values`/`keys`/`entries`) have no
+// `toSorted()` at all, so the suggested rewrite wouldn't even run, and a
+// freshly produced array (`map`/`filter`/…) is private throwaway data.
+const FRESH_ARRAY_PRODUCING_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "values",
+  "keys",
+  "entries",
+  "map",
+  "filter",
+  "flatMap",
+  "slice",
+  "concat",
+  "from",
+]);
+
+const isFreshOrIteratorAllocation = (node: EsTreeNode | null | undefined): boolean => {
+  if (!node) return false;
+  if (isNodeOfType(node, "ArrayExpression")) return true;
+  // `[...new Set(x)].sort()` / `[...new Map(...).values()]` — spreading a
+  // freshly constructed iterable allocates a private throwaway array, not a
+  // copy of a shared binding, and many iterables have no `toSorted()` at all.
+  if (isNodeOfType(node, "NewExpression")) return true;
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = node.callee;
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier") &&
+    FRESH_ARRAY_PRODUCING_METHOD_NAMES.has(callee.property.name)
+  );
+};
 
 export const jsTosortedImmutable = defineRule({
   id: "js-tosorted-immutable",
@@ -30,6 +65,16 @@ export const jsTosortedImmutable = defineRule({
         receiver.elements?.length === 1 &&
         isNodeOfType(receiver.elements[0], "SpreadElement")
       ) {
+        const spreadArgument = receiver.elements[0].argument as EsTreeNode;
+        const resolvedArgument = isNodeOfType(spreadArgument, "Identifier")
+          ? (findVariableInitializer(spreadArgument, spreadArgument.name)?.initializer ?? null)
+          : spreadArgument;
+        if (
+          isFreshOrIteratorAllocation(spreadArgument) ||
+          isFreshOrIteratorAllocation(resolvedArgument)
+        ) {
+          return;
+        }
         context.report({
           node,
           message:

@@ -31,14 +31,20 @@ const findIndexedArrayObject = (
 const unwrapChainExpression = (node: EsTreeNode): EsTreeNode =>
   isNodeOfType(node, "ChainExpression") ? node.expression : node;
 
-const isMatchingLengthEqualityGuard = (
-  guardOperand: EsTreeNode,
+const LENGTH_EQUALITY_OPERATORS: ReadonlySet<string> = new Set(["===", "=="]);
+const LENGTH_MISMATCH_OPERATORS: ReadonlySet<string> = new Set(["!==", "!="]);
+
+// `<a>.length <op> <b>.length` (in either operand order) comparing the
+// two arrays under test, for the given operator set.
+const isLengthComparison = (
+  candidate: EsTreeNode,
   receiverArray: EsTreeNode,
   indexedArray: EsTreeNode,
+  operators: ReadonlySet<string>,
 ): boolean => {
-  const binaryGuard = unwrapChainExpression(guardOperand);
+  const binaryGuard = unwrapChainExpression(candidate);
   if (!isNodeOfType(binaryGuard, "BinaryExpression")) return false;
-  if (binaryGuard.operator !== "===" && binaryGuard.operator !== "==") return false;
+  if (!operators.has(binaryGuard.operator)) return false;
   const leftSide = unwrapChainExpression(binaryGuard.left);
   const rightSide = unwrapChainExpression(binaryGuard.right);
   if (!isMemberProperty(leftSide, "length")) return false;
@@ -54,6 +60,76 @@ const isMatchingLengthEqualityGuard = (
     areExpressionsStructurallyEqual(leftLengthObject, normalizedIndexed) &&
     areExpressionsStructurallyEqual(rightLengthObject, normalizedReceiver);
   return matchesReceiverThenIndexed || matchesIndexedThenReceiver;
+};
+
+const isMatchingLengthEqualityGuard = (
+  guardOperand: EsTreeNode,
+  receiverArray: EsTreeNode,
+  indexedArray: EsTreeNode,
+): boolean =>
+  isLengthComparison(guardOperand, receiverArray, indexedArray, LENGTH_EQUALITY_OPERATORS);
+
+// A statement that ends the current control-flow path (so a guarded
+// `if (mismatch) return/throw` makes the comparison below unreachable on
+// the mismatch path). Handles both `if (…) return x;` and a single-stmt
+// `if (…) { return x; }` block.
+const doesStatementTerminate = (statement: EsTreeNode | null | undefined): boolean => {
+  if (!statement) return false;
+  if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
+    return true;
+  }
+  if (isNodeOfType(statement, "BlockStatement")) {
+    const statements = statement.body ?? [];
+    return statements.some((inner) => doesStatementTerminate(inner as EsTreeNode));
+  }
+  return false;
+};
+
+// Find the statement-level ancestor of `node` (the node whose parent is a
+// BlockStatement / Program) so we can inspect its preceding siblings.
+const findEnclosingStatement = (
+  node: EsTreeNode,
+): { block: EsTreeNode; statement: EsTreeNode } | null => {
+  let current: EsTreeNode | null | undefined = node;
+  while (current?.parent) {
+    const parent: EsTreeNode = current.parent;
+    if (isNodeOfType(parent, "BlockStatement") || isNodeOfType(parent, "Program")) {
+      return { block: parent, statement: current };
+    }
+    current = parent;
+  }
+  return null;
+};
+
+// `if (a.length !== b.length) return false;` written as an early-return
+// guard in a PRECEDING statement (not an `&&` operand in the same
+// expression) already short-circuits the comparison — recognize it.
+const hasPrecedingLengthMismatchGuard = (
+  callNode: EsTreeNode,
+  receiverArray: EsTreeNode,
+  indexedArray: EsTreeNode,
+): boolean => {
+  const enclosing = findEnclosingStatement(callNode);
+  if (!enclosing) return false;
+  const statements = (enclosing.block as { body?: EsTreeNode[] }).body ?? [];
+  const statementIndex = statements.indexOf(enclosing.statement);
+  if (statementIndex <= 0) return false;
+  for (let index = 0; index < statementIndex; index += 1) {
+    const statement = statements[index];
+    if (!isNodeOfType(statement, "IfStatement")) continue;
+    if (
+      isLengthComparison(
+        statement.test as EsTreeNode,
+        receiverArray,
+        indexedArray,
+        LENGTH_MISMATCH_OPERATORS,
+      ) &&
+      doesStatementTerminate(statement.consequent as EsTreeNode)
+    ) {
+      return true;
+    }
+  }
+  return false;
 };
 
 // HACK: when comparing two arrays element-by-element via .every / .some /
@@ -91,6 +167,7 @@ export const jsLengthCheckFirst = defineRule({
         isMatchingLengthEqualityGuard(guardOperand, receiverArrayObject, indexedArrayObject),
       );
       if (isAlreadyLengthGuarded) return;
+      if (hasPrecedingLengthMismatchGuard(node, receiverArrayObject, indexedArrayObject)) return;
 
       context.report({
         node,

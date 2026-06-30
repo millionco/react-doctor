@@ -5,6 +5,17 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
+// A member chain is a write target when it is the left-hand side of an
+// assignment (`a.b.c = …`) or the argument of an update (`a.b.c++`). Such
+// a chain is mutated inside the loop, so it is NOT loop-invariant and
+// caching it once at the top would snapshot a stale value.
+const isWriteTarget = (node: EsTreeNode): boolean => {
+  const parent = node.parent;
+  if (isNodeOfType(parent, "AssignmentExpression") && parent.left === node) return true;
+  if (isNodeOfType(parent, "UpdateExpression") && parent.argument === node) return true;
+  return false;
+};
+
 const buildMemberAccessKey = (node: EsTreeNode): string | null => {
   if (isNodeOfType(node, "Identifier")) return node.name;
   if (isNodeOfType(node, "ThisExpression")) return "this";
@@ -29,7 +40,24 @@ export const jsCachePropertyAccess = defineRule({
     "Read the value once into a variable at the top of the loop: `const { x, y } = obj.deeply.nested`",
   create: (context: RuleContext) => {
     const inspectLoopBody = (loopBody: EsTreeNode): void => {
-      const counts = new Map<string, { count: number; firstNode: EsTreeNode }>();
+      const counts = new Map<
+        string,
+        { count: number; firstNode: EsTreeNode; isMutated: boolean }
+      >();
+      // Root identifiers reassigned inside the loop (`node = node.next`,
+      // `node++`). When the base of a cached chain is rebound mid-loop,
+      // later reads dereference a different object, so caching the first
+      // read would snapshot a stale value — same rationale as the
+      // member-chain write guard below.
+      const reassignedRoots = new Set<string>();
+      walkAst(loopBody, (child: EsTreeNode) => {
+        if (isNodeOfType(child, "AssignmentExpression") && isNodeOfType(child.left, "Identifier")) {
+          reassignedRoots.add(child.left.name);
+        }
+        if (isNodeOfType(child, "UpdateExpression") && isNodeOfType(child.argument, "Identifier")) {
+          reassignedRoots.add(child.argument.name);
+        }
+      });
       walkAst(loopBody, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "MemberExpression")) return;
         if (child.computed) return;
@@ -47,15 +75,20 @@ export const jsCachePropertyAccess = defineRule({
         const key = buildMemberAccessKey(child);
         if (!key) return;
         if (key.split(".").length < 3) return;
+        const writeTarget = isWriteTarget(child);
         const existing = counts.get(key);
         if (existing) {
-          existing.count++;
+          if (writeTarget) existing.isMutated = true;
+          // A write LHS is not a "read" we could hoist, so don't tally it.
+          else existing.count++;
         } else {
-          counts.set(key, { count: 1, firstNode: child });
+          counts.set(key, { count: writeTarget ? 0 : 1, firstNode: child, isMutated: writeTarget });
         }
       });
 
-      for (const [key, { count, firstNode }] of counts) {
+      for (const [key, { count, firstNode, isMutated }] of counts) {
+        if (isMutated) continue;
+        if (reassignedRoots.has(key.split(".")[0])) continue;
         if (count >= PROPERTY_ACCESS_REPEAT_THRESHOLD) {
           context.report({
             node: firstNode,

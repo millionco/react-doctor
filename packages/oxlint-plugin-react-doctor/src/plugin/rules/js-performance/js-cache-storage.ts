@@ -14,9 +14,24 @@ export const jsCacheStorage = defineRule({
   recommendation:
     "Read `localStorage`/`sessionStorage` once and reuse the value. Every read has to parse the data again, which is slow",
   create: (context: RuleContext) => {
-    const storageReadCounts = new Map<string, number>();
+    // Each function gets its own read tally so reads of the same key in
+    // unrelated functions aren't summed into a phantom duplicate. The base
+    // map covers module-scope reads outside any function.
+    const storageReadCountStack: Array<Map<string, number>> = [new Map()];
+    const enterFunctionScope = (): void => {
+      storageReadCountStack.push(new Map());
+    };
+    const exitFunctionScope = (): void => {
+      if (storageReadCountStack.length > 1) storageReadCountStack.pop();
+    };
 
     return {
+      FunctionDeclaration: enterFunctionScope,
+      "FunctionDeclaration:exit": exitFunctionScope,
+      FunctionExpression: enterFunctionScope,
+      "FunctionExpression:exit": exitFunctionScope,
+      ArrowFunctionExpression: enterFunctionScope,
+      "ArrowFunctionExpression:exit": exitFunctionScope,
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isMemberProperty(node.callee, "getItem")) return;
         if (
@@ -26,6 +41,7 @@ export const jsCacheStorage = defineRule({
           return;
         if (!isNodeOfType(node.arguments?.[0], "Literal")) return;
 
+        const storageReadCounts = storageReadCountStack[storageReadCountStack.length - 1];
         const storageKey = String(node.arguments[0].value);
         const readCount = (storageReadCounts.get(storageKey) ?? 0) + 1;
         storageReadCounts.set(storageKey, readCount);

@@ -12,8 +12,9 @@ const isSimpleExpression = (node: EsTreeNode | null): boolean => {
   switch (node.type) {
     case "Identifier":
     case "Literal":
-    case "TemplateLiteral":
       return true;
+    case "TemplateLiteral":
+      return (node.expressions ?? []).every(isSimpleExpression);
     case "BinaryExpression":
       return isSimpleExpression(node.left) && isSimpleExpression(node.right);
     case "UnaryExpression":

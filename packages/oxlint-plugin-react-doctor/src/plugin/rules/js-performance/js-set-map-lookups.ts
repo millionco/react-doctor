@@ -1,3 +1,4 @@
+import { SMALL_LITERAL_ARRAY_MAX_ELEMENTS } from "../../constants/thresholds.js";
 import { createLoopAwareVisitors } from "../../utils/create-loop-aware-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -27,6 +28,7 @@ const STRING_RETURNING_METHODS: ReadonlySet<string> = new Set([
   "substring",
   "substr",
   "charAt",
+  "join",
   "toFixed",
   "toExponential",
   "toPrecision",
@@ -166,6 +168,10 @@ const STRING_TYPED_IDENTIFIER_NAMES: ReadonlySet<string> = new Set([
   "search",
   "haystack",
   "needle",
+  // A destructured `for (const [key] of Object.entries(...))` key is a
+  // string; `key.includes(sep)` is a substring search (a numeric Map key
+  // wouldn't have `.includes` at all), so the Set-rewrite never applies.
+  "key",
   // Common string-typed naming conventions in addition to the above
   "suffix",
   "prefix",
@@ -272,6 +278,18 @@ const isIndexedArrayElementWithStringArgument = (
   return false;
 };
 
+// `["admin", "owner"].includes(role)` — an inline literal array small
+// enough that a linear scan is trivial. Building a `Set` for a handful of
+// constants is pure ceremony, so skip it (same threshold the iteration-
+// combination rules use). A named/large array still scans on every loop
+// pass, so those stay flagged.
+const isSmallInlineLiteralArray = (receiver: EsTreeNode | null | undefined): boolean => {
+  if (!receiver || !isNodeOfType(receiver, "ArrayExpression")) return false;
+  const elements = receiver.elements ?? [];
+  if (elements.length === 0 || elements.length > SMALL_LITERAL_ARRAY_MAX_ELEMENTS) return false;
+  return elements.every((element) => element == null || !isNodeOfType(element, "SpreadElement"));
+};
+
 export const jsSetMapLookups = defineRule({
   id: "js-set-map-lookups",
   title: "Array lookup inside a loop",
@@ -290,6 +308,7 @@ export const jsSetMapLookups = defineRule({
         const methodName = node.callee.property.name;
         if (methodName !== "includes" && methodName !== "indexOf") return;
         if (isLikelyStringReceiver(node.callee.object)) return;
+        if (isSmallInlineLiteralArray(node.callee.object)) return;
         if (
           isIndexedArrayElementWithStringArgument(
             node.callee.object,

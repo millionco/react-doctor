@@ -18,6 +18,13 @@ const isMemoCall = (node: EsTreeNode): boolean => {
   return false;
 };
 
+// `memo(Comp, areEqual)` with a custom comparator decides re-renders on
+// its own terms — an inline prop the comparator never inspects doesn't
+// defeat memoization. We can't prove which props the comparator reads, so
+// conservatively skip flagging inline props for such components.
+const hasCustomComparator = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "CallExpression") && (node.arguments?.length ?? 0) >= 2;
+
 const isInlineReference = (node: EsTreeNode): string | null => {
   if (
     isNodeOfType(node, "ArrowFunctionExpression") ||
@@ -49,7 +56,7 @@ export const noInlinePropOnMemoComponent = defineRule({
     return {
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isNodeOfType(node.id, "Identifier") || !node.init) return;
-        if (isMemoCall(node.init)) {
+        if (isMemoCall(node.init) && !hasCustomComparator(node.init)) {
           memoizedComponentNames.add(node.id.name);
         }
       },
@@ -57,7 +64,8 @@ export const noInlinePropOnMemoComponent = defineRule({
         if (
           node.declaration &&
           isNodeOfType(node.declaration, "CallExpression") &&
-          isMemoCall(node.declaration)
+          isMemoCall(node.declaration) &&
+          !hasCustomComparator(node.declaration)
         ) {
           const innerArgument = node.declaration.arguments?.[0];
           if (isNodeOfType(innerArgument, "Identifier")) {
@@ -67,6 +75,16 @@ export const noInlinePropOnMemoComponent = defineRule({
       },
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
+
+        // `ref` and `key` are reserved props that React strips before the
+        // memo comparison, so an inline `ref`/`key` callback never defeats
+        // memoization.
+        if (
+          isNodeOfType(node.name, "JSXIdentifier") &&
+          (node.name.name === "ref" || node.name.name === "key")
+        ) {
+          return;
+        }
 
         const openingElement = node.parent;
         if (!openingElement || !isNodeOfType(openingElement, "JSXOpeningElement")) return;

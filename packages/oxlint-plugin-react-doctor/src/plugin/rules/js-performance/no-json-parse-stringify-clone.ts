@@ -25,6 +25,53 @@ const isJsonMethodCall = (
   );
 };
 
+// A `JSON.parse(JSON.stringify(x))` round-trip inside a `snapshot*`
+// helper is serialization-for-persistence (localStorage / sync-storage),
+// not a general deep clone — the values are JSON-serializable by
+// definition, so the `structuredClone` advice (preserve Date/Map/Set/
+// cycles) is moot. `clone`-named helpers are intentionally NOT exempt:
+// those are the deep clones the rule exists to redirect.
+const SNAPSHOT_FUNCTION_NAME_PATTERN = /snapshot/i;
+
+const getName = (candidate: EsTreeNode | null | undefined): string | null => {
+  if (!candidate) return null;
+  if (isNodeOfType(candidate, "Identifier")) return candidate.name;
+  return null;
+};
+
+const isInsideSnapshotHelper = (node: EsTreeNode): boolean => {
+  let current: EsTreeNode | null | undefined = node.parent;
+  while (current) {
+    if (
+      isNodeOfType(current, "FunctionDeclaration") ||
+      isNodeOfType(current, "FunctionExpression") ||
+      isNodeOfType(current, "ArrowFunctionExpression")
+    ) {
+      const directName = isNodeOfType(current, "ArrowFunctionExpression")
+        ? null
+        : getName(current.id);
+      const parent = current.parent;
+      let boundName: string | null = directName;
+      if (!boundName && parent && isNodeOfType(parent, "VariableDeclarator")) {
+        boundName = getName(parent.id);
+      }
+      if (
+        !boundName &&
+        parent &&
+        (isNodeOfType(parent, "Property") || isNodeOfType(parent, "MethodDefinition")) &&
+        isNodeOfType(parent.key, "Identifier")
+      ) {
+        boundName = parent.key.name;
+      }
+      if (boundName && SNAPSHOT_FUNCTION_NAME_PATTERN.test(boundName)) return true;
+      // Only the *nearest* enclosing function's name matters.
+      return false;
+    }
+    current = current.parent ?? null;
+  }
+  return false;
+};
+
 export const noJsonParseStringifyClone = defineRule({
   id: "no-json-parse-stringify-clone",
   title: "JSON parse/stringify deep clone",
@@ -36,6 +83,7 @@ export const noJsonParseStringifyClone = defineRule({
       if (!isJsonMethodCall(node, "parse")) return;
       const firstArgument = node.arguments?.[0];
       if (!firstArgument || !isJsonMethodCall(firstArgument, "stringify")) return;
+      if (isInsideSnapshotHelper(node)) return;
       context.report({ node, message: MESSAGE });
     },
   }),

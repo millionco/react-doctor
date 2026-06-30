@@ -1,4 +1,5 @@
 import { INTENTIONAL_SEQUENCING_CALLEE_NAMES } from "../../constants/js.js";
+import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -106,17 +107,105 @@ const collectAwaitedArgIdentifiers = (block: EsTreeNode): Set<string> => {
   return referenced;
 };
 
+const ARRAY_MUTATION_METHOD_NAMES = new Set(["push", "unshift", "splice"]);
+
+// Arrays mutated in-place (`results.push(...)`, `acc.unshift(...)`) carry
+// state across iterations just like a reassigned variable. Collect the
+// mutated object's name so a later iteration reading from it counts as a
+// loop-carried dependency.
+const collectMutatedArrayNames = (block: EsTreeNode): Set<string> => {
+  const mutated = new Set<string>();
+  walkAst(block, (child: EsTreeNode): boolean | void => {
+    if (isInlineFunctionExpression(child) || isNodeOfType(child, "FunctionDeclaration"))
+      return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = child.callee;
+    if (
+      isNodeOfType(callee, "MemberExpression") &&
+      !callee.computed &&
+      isNodeOfType(callee.property, "Identifier") &&
+      ARRAY_MUTATION_METHOD_NAMES.has(callee.property.name) &&
+      isNodeOfType(callee.object, "Identifier")
+    ) {
+      mutated.add(callee.object.name);
+    }
+  });
+  return mutated;
+};
+
+// Variables initialized by reading any of `sourceNames` (e.g.
+// `const prev = results[results.length - 1]`) carry the mutated array's
+// state forward, so awaiting on them is also order-dependent. Iterated to
+// a fixpoint to follow multi-step derivations.
+const addDerivedBindings = (block: EsTreeNode, names: Set<string>): void => {
+  let didGrow = true;
+  while (didGrow) {
+    didGrow = false;
+    walkAst(block, (child: EsTreeNode): boolean | void => {
+      if (isInlineFunctionExpression(child) || isNodeOfType(child, "FunctionDeclaration"))
+        return false;
+      if (!isNodeOfType(child, "VariableDeclarator") || !child.init) return;
+      if (!isNodeOfType(child.id, "Identifier") || names.has(child.id.name)) return;
+      const initReferences = new Set<string>();
+      collectReferenceIdentifierNames(child.init, initReferences);
+      for (const referenced of initReferences) {
+        if (names.has(referenced)) {
+          names.add(child.id.name);
+          didGrow = true;
+          break;
+        }
+      }
+    });
+  }
+};
+
 // HACK: detects patterns like `cursor = (await fetch(cursor)).next` where
 // the loop body assigns a variable that is then read by the next
-// iteration's await argument — paginated fetch, retry loops, etc.
+// iteration's await argument — paginated fetch, retry loops, etc. Also
+// covers carries that flow through an in-place array mutation
+// (`results.push(await fetchNext(id, prev))` with `prev` read from
+// `results`): the awaited argument reads a binding the loop mutates.
 const hasLoopCarriedDependency = (block: EsTreeNode): boolean => {
-  const assigned = collectAssignedIdentifiers(block);
-  if (assigned.size === 0) return false;
+  const carried = collectAssignedIdentifiers(block);
+  for (const name of collectMutatedArrayNames(block)) carried.add(name);
+  if (carried.size === 0) return false;
+  addDerivedBindings(block, carried);
   const awaitedReferences = collectAwaitedArgIdentifiers(block);
-  for (const name of assigned) {
+  for (const name of carried) {
     if (awaitedReferences.has(name)) return true;
   }
   return false;
+};
+
+const NESTED_LOOP_OR_SWITCH_TYPES: ReadonlySet<string> = new Set([
+  "ForStatement",
+  "ForInStatement",
+  "ForOfStatement",
+  "WhileStatement",
+  "DoWhileStatement",
+  "SwitchStatement",
+]);
+
+// A `return` / `break` at this loop's own level means iterations are
+// NOT independent: the loop short-circuits on the first hit (ordered
+// fallback / first-success search), so the awaits must run in sequence
+// — you can't decide whether to try iteration N+1 until N resolves.
+// Such a loop is order-dependent, not parallelizable, so we don't flag
+// it. Nested functions / loops / switches are pruned so their own
+// `break`s don't count as this loop's early exit.
+const loopBodyHasEarlyExit = (block: EsTreeNode): boolean => {
+  let didFindEarlyExit = false;
+  walkAst(block, (child: EsTreeNode): boolean | void => {
+    if (didFindEarlyExit) return false;
+    if (child !== block && (isFunctionLike(child) || NESTED_LOOP_OR_SWITCH_TYPES.has(child.type))) {
+      return false;
+    }
+    if (isNodeOfType(child, "ReturnStatement") || isNodeOfType(child, "BreakStatement")) {
+      didFindEarlyExit = true;
+      return false;
+    }
+  });
+  return didFindEarlyExit;
 };
 
 const loopBodyHasOnlySleepLikeAwaits = (block: EsTreeNode): boolean => {
@@ -178,6 +267,7 @@ export const asyncAwaitInLoop = defineRule({
       if (!loopBody) return;
       if (loopBodyHasOnlySleepLikeAwaits(loopBody)) return;
       if (hasLoopCarriedDependency(loopBody)) return;
+      if (loopBodyHasEarlyExit(loopBody)) return;
       const firstAwait = findFirstAwaitOutsideNestedFunctions(loopBody);
       if (firstAwait) {
         context.report({

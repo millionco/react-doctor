@@ -98,14 +98,13 @@ const bindsToDestructuredTypeProp = (expression: EsTreeNodeOfType<"Identifier">)
   const binding = findVariableInitializer(expression, expression.name);
   const declaration = binding?.bindingIdentifier;
   const property = declaration?.parent;
-  return Boolean(
-    property &&
-    isNodeOfType(property, "Property") &&
-    !property.computed &&
-    property.value === declaration &&
-    isNodeOfType(property.key, "Identifier") &&
-    property.key.name === "type",
-  );
+  if (!property || !isNodeOfType(property, "Property") || property.computed) return false;
+  if (property.value !== declaration) return false;
+  // The original key is `type`, whether written bare (`{ type: kind }`) or
+  // quoted (`{ "type": kind }`).
+  if (isNodeOfType(property.key, "Identifier")) return property.key.name === "type";
+  if (isNodeOfType(property.key, "Literal")) return property.key.value === "type";
+  return false;
 };
 
 const isConsumerPropForward = (expression: EsTreeNode): boolean => {
@@ -199,12 +198,27 @@ export const buttonHasType = defineRule({
           return;
         }
         const propsArgument = node.arguments[1];
-        if (!propsArgument || !isNodeOfType(propsArgument, "ObjectExpression")) {
+        // No props (`createElement("button")`) or explicitly nullish props
+        // (`…, null)`) genuinely carries no `type` → missing.
+        if (!propsArgument) {
           context.report({ node, message: MISSING_MESSAGE });
           return;
         }
+        if (isNodeOfType(propsArgument, "Literal") && propsArgument.value === null) {
+          context.report({ node, message: MISSING_MESSAGE });
+          return;
+        }
+        // An opaque props bag (`createElement("button", props)`) may forward
+        // `type` at runtime — mirror the JSX spread bailout, which doesn't
+        // report a missing attribute it cannot see.
+        if (!isNodeOfType(propsArgument, "ObjectExpression")) return;
         let typeProp: EsTreeNode | null = null;
+        let hasSpread = false;
         for (const property of propsArgument.properties) {
+          if (isNodeOfType(property, "SpreadElement")) {
+            hasSpread = true;
+            continue;
+          }
           if (!isNodeOfType(property, "Property")) continue;
           const propertyKey = property.key;
           const matches =
@@ -216,6 +230,8 @@ export const buttonHasType = defineRule({
           }
         }
         if (!typeProp) {
+          // `{ ...props }` may supply `type` at runtime, just like a JSX spread.
+          if (hasSpread) return;
           context.report({ node: propsArgument, message: MISSING_MESSAGE });
           return;
         }

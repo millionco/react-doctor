@@ -70,4 +70,50 @@ describe("react-builtins/button-has-type — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // Bugbot: a QUOTED destructured `type` key (`{ "type": kind }`) is the same
+  // consumer forward as the bare-identifier key.
+  it("stays silent on a quoted renamed destructured type prop forward", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = ({ "type": kind }) => <button type={kind}>x</button>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // Bugbot: the createElement arm must mirror the JSX spread bailout — a
+  // spread-only props object may supply `type` at runtime.
+  it("stays silent on createElement('button', { ...props })", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = (props) => React.createElement("button", { ...props });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on createElement('button', props) with an opaque props bag", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = (props) => React.createElement("button", props);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags createElement('button', { type: 'foo' }) with an invalid type", () => {
+    const result = runRule(
+      buttonHasType,
+      `React.createElement("button", { ...rest, type: "foo" });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags createElement('button', {}) with no type and no spread", () => {
+    const result = runRule(buttonHasType, `React.createElement("button", {});`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

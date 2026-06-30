@@ -190,22 +190,39 @@ const NESTED_LOOP_OR_SWITCH_TYPES: ReadonlySet<string> = new Set([
 // NOT independent: the loop short-circuits on the first hit (ordered
 // fallback / first-success search), so the awaits must run in sequence
 // — you can't decide whether to try iteration N+1 until N resolves.
-// Such a loop is order-dependent, not parallelizable, so we don't flag
-// it. Nested functions / loops / switches are pruned so their own
-// `break`s don't count as this loop's early exit.
+// Such a loop is order-dependent, not parallelizable, so we don't flag it.
+//
+// The two exits prune differently:
+//   - `return` exits the whole function (and so this loop) from anywhere
+//     except a NESTED function — including from inside a `switch` or a
+//     nested loop. Prune only function-like subtrees.
+//   - `break` is captured by the nearest enclosing loop/switch, so it only
+//     short-circuits THIS loop when it isn't nested inside another one.
+//     Prune nested loops/switches (and functions) too.
 const loopBodyHasEarlyExit = (block: EsTreeNode): boolean => {
-  let didFindEarlyExit = false;
+  let hasReturn = false;
   walkAst(block, (child: EsTreeNode): boolean | void => {
-    if (didFindEarlyExit) return false;
-    if (child !== block && (isFunctionLike(child) || NESTED_LOOP_OR_SWITCH_TYPES.has(child.type))) {
-      return false;
-    }
-    if (isNodeOfType(child, "ReturnStatement") || isNodeOfType(child, "BreakStatement")) {
-      didFindEarlyExit = true;
+    if (hasReturn) return false;
+    if (child !== block && isFunctionLike(child)) return false;
+    if (isNodeOfType(child, "ReturnStatement")) {
+      hasReturn = true;
       return false;
     }
   });
-  return didFindEarlyExit;
+  if (hasReturn) return true;
+
+  let hasBreak = false;
+  walkAst(block, (child: EsTreeNode): boolean | void => {
+    if (hasBreak) return false;
+    if (child !== block && (isFunctionLike(child) || NESTED_LOOP_OR_SWITCH_TYPES.has(child.type))) {
+      return false;
+    }
+    if (isNodeOfType(child, "BreakStatement")) {
+      hasBreak = true;
+      return false;
+    }
+  });
+  return hasBreak;
 };
 
 const loopBodyHasOnlySleepLikeAwaits = (block: EsTreeNode): boolean => {

@@ -12,7 +12,11 @@ const RAW_SQL_RISK_PATTERNS = [
   /\bPrisma\.raw\s*\((?!\s*(?:["'][^"'\n]*["']\s*[,)]|`[^`$]*`))/,
   /\bsql\.\s*(?:raw|unsafe)\s*\((?!\s*(?:["'][^"'\n]*["']\s*[,)]|`[^`$]*`))/,
   /\b(?:client|pool|conn)\.query\s*\(\s*['"`]\s*(?:SELECT|INSERT|UPDATE|DELETE)\b[^)]{0,400}\$\{(?!\s*[\w$.]*(?:sanitiz|escape|quote)[\w$]*\s*\()/i,
-  /\.query\s*\(\s*['"`][^'"`]{0,200}['"`]\s*\+/,
+  // The mysqljs/sqlstring `.escape()`/`.escapeId()` escapers return a fully
+  // quoted+escaped SQL literal — the documented-safe parameterization
+  // alternative — so concatenating their output is exempt. Scoped to the
+  // method form so `escapeHtml(` (not SQL-safe) keeps firing.
+  /\.query\s*\(\s*['"`][^'"`]{0,200}['"`]\s*\+(?!\s*[\w$]+(?:\.[\w$]+)*\.escape(?:Id)?\s*\()/,
   /\.(?:where|orderBy|having)Raw\s*\((?!\s*(?:["'][^"'\n]*["']\s*[,)]|`[^`$]*`))/,
   /\bcursor\.execute\s*\(\s*f['"]/,
   /\bcursor\.execute\s*\(\s*(?:"[^"]{0,400}"|'[^']{0,400}')\s*(?:%|\.format\s*\(|\+)/,

@@ -50,4 +50,22 @@ describe("security-scan/clickjacking-redirect-risk — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  // FP wave 4: the ARIA `role` attribute on an iframe is not a redirect
+  // query param. `role=` only matters in a URL-query position (`?role=`).
+  it("stays silent on an ARIA role attribute on an iframe", () => {
+    const findings = runScanRule(clickjackingRedirectRisk, {
+      relativePath: "src/app.tsx",
+      content: `export const F = ({ url }) => <iframe role="presentation" src={url} title="x" />;`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags a role= query param in an iframe src", () => {
+    const findings = runScanRule(clickjackingRedirectRisk, {
+      relativePath: "src/app.tsx",
+      content: `export const F = () => <iframe src="/embed?role=admin" />;`,
+    });
+    expect(findings.length).toBeGreaterThan(0);
+  });
 });

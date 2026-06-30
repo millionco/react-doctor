@@ -11,8 +11,13 @@ const BAAS_CLIENT_CONFIG_PATTERN =
 
 // TODO(follow-up): de-overfit — the `boosts` / `candidateJobs` / `ghostOrg`
 // collection literals mirror specific regression fixtures.
+// NOTE: the bare `role`/`roles` tokens were dropped — they collided with the
+// ubiquitous ARIA `role` attribute that ships in nearly every React bundle
+// (`createElement("button", { role: "button" })`). Specific authority fields
+// (`isAdmin`/`ownerId`/`tenantId`/…) plus the collection literals carry the
+// real signal.
 const BAAS_AUTHORITY_SURFACE_PATTERN =
-  /\b(?:collection\s*\(\s*["'](?:boosts|sessions|sessions_admin|users|orgs|candidateJobs|conversations|documents|profiles)|from\s*\(\s*["'](?:users|profiles|documents|organizations|memberships)|creatorID|creatorId|providerId|ghostOrg|ownerId|orgId|tenantId|workspaceId|role|roles|isAdmin|SuperAdmin)\b/i;
+  /\b(?:collection\s*\(\s*["'](?:boosts|sessions|sessions_admin|users|orgs|candidateJobs|conversations|documents|profiles)|from\s*\(\s*["'](?:users|profiles|documents|organizations|memberships)|creatorID|creatorId|providerId|ghostOrg|ownerId|orgId|tenantId|workspaceId|isAdmin|SuperAdmin)\b/i;
 
 export const artifactBaasAuthoritySurface = defineRule({
   id: "artifact-baas-authority-surface",

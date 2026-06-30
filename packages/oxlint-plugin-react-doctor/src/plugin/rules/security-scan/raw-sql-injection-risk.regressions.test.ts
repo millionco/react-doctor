@@ -61,4 +61,52 @@ describe("security-scan/raw-sql-injection-risk — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent when concat output is wrapped in connection.escape()", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content: 'connection.query("SELECT * FROM users WHERE id = " + connection.escape(id));\n',
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent when concat output is wrapped in connection.escapeId()", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content: 'connection.query("SELECT * FROM t ORDER BY " + connection.escapeId(col));\n',
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent when concat output is wrapped in SqlString.escape()", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content: 'pool.query("SELECT * FROM t WHERE name = " + SqlString.escape(name));\n',
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("flags concat with raw req.body input", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content: 'connection.query("SELECT * FROM users WHERE id = " + req.body.id);\n',
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags concat with a bare variable", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content: 'connection.query("SELECT * FROM users WHERE id = " + userId);\n',
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags concat wrapped in escapeHtml (HTML escaping is not SQL-safe)", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content: 'connection.query("SELECT * FROM users WHERE name = " + utils.escapeHtml(v));\n',
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

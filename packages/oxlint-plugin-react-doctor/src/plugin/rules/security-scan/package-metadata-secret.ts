@@ -3,6 +3,15 @@ import { defineRule } from "../../utils/define-rule.js";
 import { findSuspiciousPublicEnvSecretNamePattern } from "./utils/find-suspicious-public-env-secret-name.js";
 import { getMatchLocation } from "./utils/get-match-location.js";
 
+// The bare keyword `service_role` (a Supabase role *name*) is a legitimate
+// word in a helper package's `description`/`keywords` — not a leaked secret.
+// A genuine service_role *credential* is a JWT (`eyJ…`) or `sb_secret_…`,
+// both caught by their own high-entropy value patterns, so dropping the bare
+// keyword from package-metadata scanning loses no real-secret coverage.
+const PACKAGE_METADATA_VALUE_PATTERNS = SECRET_VALUE_PATTERNS.filter(
+  (pattern) => pattern.source !== "\\bservice_role\\b",
+);
+
 export const packageMetadataSecret = defineRule({
   id: "package-metadata-secret",
   title: "Secret-like package metadata",
@@ -13,7 +22,7 @@ export const packageMetadataSecret = defineRule({
     if (!file.relativePath.endsWith("package.json")) return [];
     const pattern =
       findSuspiciousPublicEnvSecretNamePattern(file.content) ??
-      SECRET_VALUE_PATTERNS.find((candidate) => candidate.test(file.content));
+      PACKAGE_METADATA_VALUE_PATTERNS.find((candidate) => candidate.test(file.content));
     if (pattern === undefined) return [];
 
     const location = getMatchLocation(file.content, pattern);

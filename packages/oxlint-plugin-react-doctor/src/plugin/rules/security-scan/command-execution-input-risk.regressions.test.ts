@@ -58,4 +58,28 @@ describe("security-scan/command-execution-input-risk — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent on spawn with a fixed command and request input in the argv array (no shell)", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "src/server/git.ts",
+      content: `spawn("git", ["log", req.query.branch]);\nspawnSync("ls", ["-la", req.query.dir]);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags spawn when the command itself is request input", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "src/server/run.ts",
+      content: `spawn(req.query.cmd, args);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("still flags spawn when a shell is explicitly enabled", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "src/server/run.ts",
+      content: `spawn("sh", ["-c", command], { shell: true, env: req.body });\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

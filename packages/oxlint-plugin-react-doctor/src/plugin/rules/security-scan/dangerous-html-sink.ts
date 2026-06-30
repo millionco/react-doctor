@@ -201,6 +201,55 @@ const isInertParseTarget = (target: string, fileContent: string): boolean => {
   return scratchReadPattern.test(fileContent);
 };
 
+// Split a value expression on top-level `+` operators, ignoring `+` inside
+// parentheses, brackets, braces, or string/template literals.
+const splitTopLevelByPlus = (text: string): string[] => {
+  const parts: string[] = [];
+  let current = "";
+  let depth = 0;
+  let openQuote: string | null = null;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (openQuote !== null) {
+      current += character;
+      if (character === openQuote && text[index - 1] !== "\\") openQuote = null;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      openQuote = character;
+      current += character;
+      continue;
+    }
+    if (character === "(" || character === "[" || character === "{") depth += 1;
+    else if (character === ")" || character === "]" || character === "}") depth -= 1;
+    if (character === "+" && depth === 0 && text[index - 1] !== "+" && text[index + 1] !== "+") {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  parts.push(current);
+  return parts;
+};
+
+// `a.innerHTML = (icon as SVGElement).outerHTML + (text as HTMLSpanElement).outerHTML`
+// re-serializes already-rendered DOM on BOTH sides of the concat — no fresh
+// input is spliced in — so it is no more dangerous than a single DOM read.
+const isAllOperandsDomContentConcat = (valueExpression: string): boolean => {
+  const body = valueExpression.replace(/[;}]\s*$/, "").trim();
+  if (!body.includes("+")) return false;
+  const operands = splitTopLevelByPlus(body)
+    .map((operand) => operand.trim())
+    .filter((operand) => operand.length > 0);
+  if (operands.length < 2) return false;
+  return operands.every((operand) => {
+    const withoutCast = operand.replace(/\(\s*([\w$]+(?:\??\.[\w$]+)*)\s+as\s+[^)]*\)/g, "$1");
+    if (!DOM_CONTENT_SOURCE_VALUE_PATTERN.test(withoutCast)) return false;
+    return !HTML_TAINT_PATTERN.test(withoutCast.replace(DOM_CONTENT_SOURCE_VALUE_PATTERN, ""));
+  });
+};
+
 export const dangerousHtmlSink = defineRule({
   id: "dangerous-html-sink",
   title: "HTML injection sink with dynamic content",
@@ -253,6 +302,7 @@ export const dangerousHtmlSink = defineRule({
         const afterDomRead = valueExpression.replace(DOM_CONTENT_SOURCE_VALUE_PATTERN, "");
         if (!HTML_TAINT_PATTERN.test(afterDomRead)) continue;
       }
+      if (isAllOperandsDomContentConcat(valueExpression)) continue;
 
       const longValueTail = HTML_VALUE_START_PATTERN.exec(
         lines.slice(lineIndex, lineIndex + 1 + STATIC_TEMPLATE_LOOKAHEAD_LINES).join("\n"),

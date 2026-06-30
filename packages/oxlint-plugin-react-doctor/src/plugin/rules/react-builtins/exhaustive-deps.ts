@@ -256,6 +256,17 @@ const computeDeclaredDepKey = (entry: EsTreeNode): string | null => {
   if (isNodeOfType(stripped, "MemberExpression")) {
     return stringifyMemberChain(stripped);
   }
+  // Solid-style accessor call in deps: a zero-arg `foo()` / `foo.bar()`
+  // declares the SAME member chain the capture side keys it as (the
+  // capture side keys the call by its callee, not the CallExpression —
+  // see computeDepKey). Keying the declared side off the callee makes
+  // the two symmetric so a listed accessor call matches the captured
+  // accessor instead of being dropped as a complex dep.
+  if (isNodeOfType(stripped, "CallExpression") && (stripped.arguments?.length ?? 0) === 0) {
+    const callee = unwrapExpression(stripped.callee);
+    if (isNodeOfType(callee, "Identifier")) return callee.name;
+    if (isNodeOfType(callee, "MemberExpression")) return stringifyMemberChain(callee);
+  }
   return null;
 };
 

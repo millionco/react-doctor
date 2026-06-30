@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isComponentDeclaration } from "../../utils/is-component-declaration.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -26,6 +27,20 @@ const symbolIsLocalComponent = (symbol: SymbolDescriptor, context: RuleContext):
     return functionContainsReactRenderOutput(symbol.initializer, context.scopes);
   }
   return false;
+};
+
+// True when `declaration` lives at module scope (no enclosing
+// function). A PascalCase arrow defined INSIDE a parent component and
+// only ever called as `Name()` (never `<Name/>`) is a render helper
+// that closes over the parent's hooks — calling it inline is correct,
+// and rendering it as JSX would break those closed-over reads.
+const isModuleScopeDeclaration = (declaration: EsTreeNode | null | undefined): boolean => {
+  let current: EsTreeNode | null | undefined = declaration?.parent;
+  while (current) {
+    if (isFunctionLike(current)) return false;
+    current = current.parent ?? null;
+  }
+  return true;
 };
 
 // A component is only flagged on strong, shadow-safe evidence: the called
@@ -63,9 +78,12 @@ export const noCallComponentAsFunction = defineRule({
         for (const candidate of candidateCalls) {
           const symbol = context.scopes.symbolFor(candidate.callee);
           if (!symbol) continue;
+          const isLocalComponent =
+            symbolIsLocalComponent(symbol, context) &&
+            (isModuleScopeDeclaration(symbol.declarationNode) ||
+              renderedJsxNames.has(candidate.name));
           const isComponent =
-            symbolIsLocalComponent(symbol, context) ||
-            (symbol.kind === "import" && renderedJsxNames.has(candidate.name));
+            isLocalComponent || (symbol.kind === "import" && renderedJsxNames.has(candidate.name));
           if (isComponent) {
             context.report({ node: candidate.node, message: message(candidate.name) });
           }

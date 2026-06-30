@@ -8,6 +8,7 @@ import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
+import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 
 const buildMessage = (parentName: string | null): string => {
   let message =
@@ -316,7 +317,28 @@ export const noUnstableNestedComponents = defineRule({
     const settings = resolveSettings(context.settings);
     const renderPropRegex = compileGlob(settings.propNamePattern);
 
-    const reportCandidate = (candidateNode: EsTreeNode, reportNode: EsTreeNode): void => {
+    // Names actually INSTANTIATED as React elements (`<Name/>` or
+    // `createElement(Name)`). A capitalized nested helper that is only
+    // ever invoked as `Name()` is inlined into the parent's render —
+    // no child fiber, no state to lose — so requiring instantiation
+    // before reporting drops the inline-render-helper false positives.
+    // Only enforced for candidates that qualify SOLELY by their
+    // PascalCase name; prop / object-callback / HoC candidates are
+    // instantiated by their consumer and keep firing as before.
+    const instantiatedComponentNames = new Set<string>();
+
+    interface QueuedReport {
+      reportNode: EsTreeNode;
+      message: string;
+      requiredInstantiationName: string | null;
+    }
+    const queuedReports: QueuedReport[] = [];
+
+    const enqueueCandidate = (
+      candidateNode: EsTreeNode,
+      reportNode: EsTreeNode,
+      requiredInstantiationName: string | null,
+    ): void => {
       if (isFirstArgumentOfHocCall(candidateNode)) return;
       if (isReturnOfMapCallback(candidateNode)) return;
       const propInfo = isComponentDeclaredInProp(candidateNode);
@@ -327,9 +349,12 @@ export const noUnstableNestedComponents = defineRule({
       }
       const enclosing = findEnclosingComponent(candidateNode);
       if (!enclosing) return;
-      context.report({
-        node: reportNode,
+      queuedReports.push({
+        reportNode,
         message: buildMessage(enclosing.name),
+        // A prop / object-callback candidate is instantiated by its
+        // consumer, so don't gate it on local instantiation.
+        requiredInstantiationName: propInfo ? null : requiredInstantiationName,
       });
     };
 
@@ -343,15 +368,21 @@ export const noUnstableNestedComponents = defineRule({
       }
       const inferredName = inferFunctionLikeName(node as EsTreeNode);
       const propInfo = isComponentDeclaredInProp(node as EsTreeNode);
-      const isCandidate =
-        (inferredName !== null && isReactComponentName(inferredName)) ||
-        propInfo !== null ||
-        isObjectCallbackCandidate(node as EsTreeNode);
+      const isObjectCallback = isObjectCallbackCandidate(node as EsTreeNode);
+      const isNameCandidate = inferredName !== null && isReactComponentName(inferredName);
+      const isCandidate = isNameCandidate || propInfo !== null || isObjectCallback;
       if (!isCandidate) return;
-      reportCandidate(node as EsTreeNode, node as EsTreeNode);
+      const requiredInstantiationName =
+        isNameCandidate && propInfo === null && !isObjectCallback ? inferredName : null;
+      enqueueCandidate(node as EsTreeNode, node as EsTreeNode, requiredInstantiationName);
     };
 
     return {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (isNodeOfType(node.name, "JSXIdentifier") && isUppercaseName(node.name.name)) {
+          instantiatedComponentNames.add(node.name.name);
+        }
+      },
       FunctionDeclaration: checkFunctionLike,
       FunctionExpression: checkFunctionLike,
       ArrowFunctionExpression: checkFunctionLike,
@@ -364,18 +395,35 @@ export const noUnstableNestedComponents = defineRule({
         // tldraw, `class Tool extends BaseTool`, etc.) as a nested React
         // component candidate.
         if (!isReactClassComponent(node as EsTreeNode)) return;
-        reportCandidate(node as EsTreeNode, node as EsTreeNode);
+        enqueueCandidate(node as EsTreeNode, node as EsTreeNode, null);
       },
       ClassExpression(node: EsTreeNodeOfType<"ClassExpression">) {
         const inferredName = node.id?.name ?? inferFunctionLikeName(node as EsTreeNode);
         if (!inferredName || !isReactComponentName(inferredName)) return;
         if (!isReactClassComponent(node as EsTreeNode)) return;
-        reportCandidate(node as EsTreeNode, node as EsTreeNode);
+        enqueueCandidate(node as EsTreeNode, node as EsTreeNode, null);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (isCreateElementCall(node)) {
+          const firstArgument = node.arguments[0] as EsTreeNode | undefined;
+          if (firstArgument && isNodeOfType(firstArgument, "Identifier")) {
+            instantiatedComponentNames.add(firstArgument.name);
+          }
+        }
         if (!isHocCallee(node)) return;
         if (!hocCallContainsComponent(node)) return;
-        reportCandidate(node as EsTreeNode, node as EsTreeNode);
+        enqueueCandidate(node as EsTreeNode, node as EsTreeNode, null);
+      },
+      "Program:exit"() {
+        for (const report of queuedReports) {
+          if (
+            report.requiredInstantiationName !== null &&
+            !instantiatedComponentNames.has(report.requiredInstantiationName)
+          ) {
+            continue;
+          }
+          context.report({ node: report.reportNode, message: report.message });
+        }
       },
     };
   },

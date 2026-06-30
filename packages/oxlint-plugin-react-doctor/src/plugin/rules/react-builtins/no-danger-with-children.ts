@@ -4,6 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
+import { isMeaningfulJsxChild } from "../../utils/is-meaningful-jsx-child.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const MESSAGE = "React throws an error when you set both children & `dangerouslySetInnerHTML`.";
@@ -12,13 +13,6 @@ interface PropsShape {
   hasDangerously: boolean;
   hasChildren: boolean;
 }
-
-// True when JSXText is whitespace-only with at least one newline (the
-// "auto-formatted JSX" line break that doesn't count as a child).
-const isLineBreak = (child: EsTreeNode): boolean => {
-  if (!isNodeOfType(child, "JSXText")) return false;
-  return child.value.trim().length === 0 && child.value.includes("\n");
-};
 
 const mergePropsShape = (target: PropsShape, source: PropsShape): void => {
   target.hasDangerously ||= source.hasDangerously;
@@ -98,8 +92,9 @@ export const noDangerWithChildren = defineRule({
       const hasChildrenProp =
         Boolean(hasJsxPropIgnoreCase(opening.attributes, "children")) ||
         spreadPropsShape.hasChildren;
-      const hasNestedChildren =
-        node.children.length > 0 && !isLineBreak(node.children[0] as EsTreeNode);
+      const hasNestedChildren = node.children.some((child) =>
+        isMeaningfulJsxChild(child as EsTreeNode),
+      );
       if (!hasChildrenProp && !hasNestedChildren) return;
       if (
         hasJsxPropIgnoreCase(opening.attributes, "dangerouslySetInnerHTML") ||

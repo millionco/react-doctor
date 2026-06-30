@@ -38,6 +38,8 @@ const KNOWN_SLOT_PROP_NAMES: ReadonlySet<string> = new Set([
   // Generic content slots
   "prefix",
   "suffix",
+  "separator",
+  "divider",
   "before",
   "after",
   "header",

@@ -83,6 +83,57 @@ describe("react-builtins/rules-of-hooks — regressions: HoC callbacks under non
     );
   });
 
+  it("does not flag hooks in a context-factory `init` callback that issues several hooks", () => {
+    const result = runTsx(`
+      const FileContext = createSimpleContext({
+        name: "File",
+        init: () => {
+          const sdk = useSDK();
+          useSync();
+          const params = useParams();
+          return { sdk, params };
+        },
+      });
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag hooks in a create*-named factory that issues several hooks", () => {
+    const result = runTsx(`
+      export function createSessionComposerState(initial) {
+        const params = useParams();
+        const sdk = useSDK();
+        return { params, sdk };
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a single hook in a non-component named helper", () => {
+    const result = runTsx(`
+      import { useState } from "react";
+      function calculateTotal() {
+        const [value] = useState(0);
+        return value;
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags conditional hooks inside a multi-hook factory body", () => {
+    const result = runTsx(`
+      export function createThing(cond) {
+        const params = useParams();
+        if (cond) {
+          const sdk = useSDK();
+          return sdk;
+        }
+        return params;
+      }
+    `);
+    expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
+  });
+
   it("still flags hooks in a memo props comparator (second argument is not a render callback)", () => {
     const result = runTsx(`
       import { memo, useState } from "react";

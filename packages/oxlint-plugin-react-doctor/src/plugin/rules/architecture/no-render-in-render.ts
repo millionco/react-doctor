@@ -13,10 +13,13 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analy
 // construction.
 const isRenderPropReceiver = (object: EsTreeNode): boolean => {
   if (isNodeOfType(object, "Identifier")) return object.name === "props";
+  // Only `this.props.renderX()` — not an arbitrary `someObject.props.renderX()`,
+  // whose `.props` is an unrelated field and should not exempt an inline call.
   return (
     isNodeOfType(object, "MemberExpression") &&
     isNodeOfType(object.property, "Identifier") &&
-    object.property.name === "props"
+    object.property.name === "props" &&
+    isNodeOfType(object.object, "ThisExpression")
   );
 };
 

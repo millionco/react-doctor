@@ -65,4 +65,14 @@ describe("architecture/no-render-in-render — regressions", () => {
     );
     expect(result.diagnostics).toEqual([]);
   });
+
+  // Bugbot: the render-prop exemption is only for `props` / `this.props`. An
+  // unrelated object that happens to have a `.props` field must not hide a real
+  // inline `render*` call.
+  it("still flags an inline render* call on an arbitrary object's .props field", () => {
+    const result = run(
+      `function List(){ const renderRow = (x) => <li>{x}</li>; const cfg = { props: { renderRow } }; return <ul>{cfg.props.renderRow(1)}</ul>; }`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

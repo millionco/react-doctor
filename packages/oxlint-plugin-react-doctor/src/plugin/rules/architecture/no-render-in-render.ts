@@ -4,7 +4,10 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import type {
+  ScopeAnalysis,
+  SymbolDescriptor,
+} from "../../semantic/scope-analysis.js";
 
 // `props.renderX(...)` / `this.props.renderX(...)` is a render-prop
 // invocation: a function received FROM the parent, so its identity is
@@ -38,7 +41,7 @@ const isStableMethodReceiver = (object: EsTreeNode): boolean =>
 // source isn't a parameter) still carries the smell and stays flagged.
 const tracesToPropOrParameter = (
   symbol: SymbolDescriptor | null,
-  scopes: ScopeAnalysis,
+  scopes: ScopeAnalysis
 ): boolean => {
   if (!symbol) return false;
   if (symbol.kind === "parameter") return true;
@@ -57,12 +60,33 @@ const tracesToPropOrParameter = (
     const sourceSymbol = scopes.symbolFor(source);
     return sourceSymbol?.kind === "parameter";
   }
-  // `const { renderItem } = this.props` / `const { renderItem } = props.slots`.
-  return (
-    isNodeOfType(source, "MemberExpression") &&
-    isNodeOfType(source.property, "Identifier") &&
-    source.property.name === "props"
-  );
+  // `const { renderItem } = this.props` / `const { renderItem } = props.slots`
+  // (a nested prop bag): the source still roots in the parent-owned `props`
+  // (or `this.props`), so the destructured render prop is parent-owned too.
+  return rootsInProps(source, scopes);
+};
+
+// True when a member-expression chain bottoms out in the `props` parameter
+// (`props.slots.header`), a `this.props` access (`this.props.slots`), or any
+// other function parameter used as a prop bag (`slots.header` where `slots`
+// is a parameter).
+const rootsInProps = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  let current: EsTreeNode = node;
+  while (isNodeOfType(current, "MemberExpression")) {
+    if (
+      isNodeOfType(current.object, "ThisExpression") &&
+      isNodeOfType(current.property, "Identifier") &&
+      current.property.name === "props"
+    ) {
+      return true;
+    }
+    current = current.object;
+  }
+  if (isNodeOfType(current, "Identifier")) {
+    if (current.name === "props") return true;
+    return scopes.symbolFor(current)?.kind === "parameter";
+  }
+  return false;
 };
 
 export const noRenderInRender = defineRule({
@@ -79,7 +103,12 @@ export const noRenderInRender = defineRule({
 
       let calleeName: string | null = null;
       if (isNodeOfType(expression.callee, "Identifier")) {
-        if (tracesToPropOrParameter(context.scopes.symbolFor(expression.callee), context.scopes)) {
+        if (
+          tracesToPropOrParameter(
+            context.scopes.symbolFor(expression.callee),
+            context.scopes
+          )
+        ) {
           return;
         }
         calleeName = expression.callee.name;

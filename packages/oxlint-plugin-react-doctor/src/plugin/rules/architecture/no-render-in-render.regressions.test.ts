@@ -2,7 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noRenderInRender } from "./no-render-in-render.js";
 
-const run = (code: string) => runRule(noRenderInRender, code, { filename: "fixture.tsx" });
+const run = (code: string) =>
+  runRule(noRenderInRender, code, { filename: "fixture.tsx" });
 
 describe("architecture/no-render-in-render — regressions", () => {
   it("flags a locally-declared render* helper called inline", () => {
@@ -11,25 +12,55 @@ describe("architecture/no-render-in-render — regressions", () => {
   });
 
   it("does not flag a props.render* render-prop invocation", () => {
-    const result = run(`const Foo = (props) => <div>{props.renderProject(project)}</div>;`);
+    const result = run(
+      `const Foo = (props) => <div>{props.renderProject(project)}</div>;`
+    );
     expect(result.diagnostics).toEqual([]);
   });
 
   it("does not flag a this.props.render* render-prop invocation", () => {
-    const result = run(`const Foo = () => <div>{this.props.renderPanel()}</div>;`);
+    const result = run(
+      `const Foo = () => <div>{this.props.renderPanel()}</div>;`
+    );
     expect(result.diagnostics).toEqual([]);
   });
 
   it("does not flag a render prop destructured from props", () => {
     const result = run(
-      `function List(props){ const { renderItem } = props; return <div>{renderItem(1)}</div>; }`,
+      `function List(props){ const { renderItem } = props; return <div>{renderItem(1)}</div>; }`
     );
     expect(result.diagnostics).toEqual([]);
   });
 
   it("does not flag a render prop destructured directly in the parameter list", () => {
-    const result = run(`function List({ renderItem }){ return <div>{renderItem(1)}</div>; }`);
+    const result = run(
+      `function List({ renderItem }){ return <div>{renderItem(1)}</div>; }`
+    );
     expect(result.diagnostics).toEqual([]);
+  });
+
+  // Bugbot wave 4: a render prop destructured from a nested prop bag
+  // (`props.slots`) still roots in the parent-owned props, so it's exempt —
+  // the comment documented this but the code only matched `this.props`.
+  it("does not flag a render prop destructured from a nested prop bag", () => {
+    const result = run(
+      `function List(props){ const { renderItem } = props.slots; return <div>{renderItem(1)}</div>; }`
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a render prop destructured from this.props.slots", () => {
+    const result = run(
+      `function List(){ const { renderItem } = this.props.slots; return <div>{renderItem(1)}</div>; }`
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a render prop destructured from a non-prop object", () => {
+    const result = run(
+      `function List(){ const { renderItem } = config.slots; return <div>{renderItem(1)}</div>; }`
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
   it("does not flag a this.render* class-component helper method call", () => {
@@ -37,7 +68,7 @@ describe("architecture/no-render-in-render — regressions", () => {
       `class Chart extends React.Component {
         renderLine(props) { return <g>{props.x}</g>; }
         render() { return <g>{this.renderLine(this.props)}</g>; }
-      }`,
+      }`
     );
     expect(result.diagnostics).toEqual([]);
   });

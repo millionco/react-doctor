@@ -8,7 +8,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // candidate chunks and DO code-split it, so it must not be flagged. A path
 // that starts with the interpolation (`${dir}/x.js`) has no static prefix and
 // stays flagged.
-const hasStaticDirectoryPrefix = (template: EsTreeNodeOfType<"TemplateLiteral">): boolean => {
+const hasStaticDirectoryPrefix = (
+  template: EsTreeNodeOfType<"TemplateLiteral">
+): boolean => {
   const firstQuasi = template.quasis?.[0];
   if (!firstQuasi || !isNodeOfType(firstQuasi, "TemplateElement")) return false;
   const text = firstQuasi.value?.cooked ?? firstQuasi.value?.raw;
@@ -28,7 +30,11 @@ export const noDynamicImportPath = defineRule({
   create: (context: RuleContext) => ({
     ImportExpression(node: EsTreeNodeOfType<"ImportExpression">) {
       const source = node.source;
-      if (source && !isNodeOfType(source, "Literal") && !isNodeOfType(source, "TemplateLiteral")) {
+      if (
+        source &&
+        !isNodeOfType(source, "Literal") &&
+        !isNodeOfType(source, "TemplateLiteral")
+      ) {
         context.report({
           node,
           message:
@@ -49,10 +55,17 @@ export const noDynamicImportPath = defineRule({
       }
     },
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "require") return;
+      if (
+        !isNodeOfType(node.callee, "Identifier") ||
+        node.callee.name !== "require"
+      )
+        return;
       const arg = node.arguments?.[0];
       if (!arg) return;
-      if (!isNodeOfType(arg, "Literal") && !isNodeOfType(arg, "TemplateLiteral")) {
+      if (
+        !isNodeOfType(arg, "Literal") &&
+        !isNodeOfType(arg, "TemplateLiteral")
+      ) {
         context.report({
           node,
           message:
@@ -60,7 +73,11 @@ export const noDynamicImportPath = defineRule({
         });
         return;
       }
-      if (isNodeOfType(arg, "TemplateLiteral") && (arg.expressions?.length ?? 0) > 0) {
+      if (
+        isNodeOfType(arg, "TemplateLiteral") &&
+        (arg.expressions?.length ?? 0) > 0 &&
+        !hasStaticDirectoryPrefix(arg)
+      ) {
         context.report({
           node,
           message:

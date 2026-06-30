@@ -211,14 +211,11 @@ export const nextjsNoSideEffectInGetHandler = defineRule({
         if (CRON_ROUTE_PATTERN.test(filename)) return;
         if (!isExportedGetHandler(node)) return;
 
+        // A "mutating-sounding" route segment (cancel, delete, logout, …) is a
+        // hint, NOT proof: a read-only GET that returns a cancellation policy
+        // is safe. Require an actual side effect before reporting, and only
+        // use the segment to flavor the message.
         const mutatingSegment = extractMutatingRouteSegment(filename);
-        if (mutatingSegment) {
-          context.report({
-            node,
-            message: `This GET handler on the "/${mutatingSegment}" route is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`,
-          });
-          return;
-        }
 
         const handlerBodies = resolveGetHandlerBodies(node, resolveBinding);
         for (const handlerBody of handlerBodies) {
@@ -229,10 +226,10 @@ export const nextjsNoSideEffectInGetHandler = defineRule({
             locallyScopedCookieBindings,
           });
           if (!sideEffect) continue;
-          context.report({
-            node,
-            message: `This GET handler's side effect (${sideEffect}) is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`,
-          });
+          const message = mutatingSegment
+            ? `This GET handler on the "/${mutatingSegment}" route performs a side effect (${sideEffect}) and is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`
+            : `This GET handler's side effect (${sideEffect}) is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`;
+          context.report({ node, message });
           return;
         }
       },

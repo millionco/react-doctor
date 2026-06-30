@@ -28,7 +28,7 @@ export const nextjsNoClientFetchForServerData = defineRule({
         if (!fileHasUseClient || !isHookCall(node, EFFECT_HOOK_NAMES)) return;
 
         const callback = getEffectCallback(node);
-        if (!callback || !containsFetchCall(callback)) return;
+        if (!callback || !containsFetchCall(callback, { stopAtFunctionBoundary: true })) return;
 
         const filename = normalizeFilename(context.filename ?? "");
         const isPageOrLayoutFile =

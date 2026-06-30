@@ -67,9 +67,19 @@ const FRESH_ARRAY_INSTANCE_METHODS = new Set([
   "reverse",
 ]);
 
+// `.sort()` / `.reverse()` mutate AND return the SAME reference. Applied
+// straight to a `get(...)` result (`get(items).sort()`) they hand back the
+// stored array — no fresh allocation, no spurious re-render. They only yield a
+// fresh value when their receiver is itself a fresh-allocating chain
+// (`get(items).slice().sort()`), handled in `freshFromMethodChain`.
+const MUTATING_RETURN_SAME_REFERENCE_METHODS = new Set(["sort", "reverse"]);
+
 // Static methods that allocate a fresh array / object from upstream.
+// `Object.assign` is intentionally absent: it returns its FIRST argument
+// (a stable reference), so it only allocates when that first argument is
+// itself a fresh literal — handled explicitly in `freshFromMethodChain`.
 const FRESH_STATIC_OBJECT_CALLS: Record<string, ReadonlySet<string>> = {
-  Object: new Set(["keys", "values", "entries", "fromEntries", "assign", "create"]),
+  Object: new Set(["keys", "values", "entries", "fromEntries", "create"]),
   Array: new Set(["from", "of"]),
 };
 
@@ -102,7 +112,24 @@ const freshFromMethodChain = (expression: EsTreeNode): FreshReturn | null => {
   if (!isNodeOfType(callee.property, "Identifier")) return null;
   const methodName = callee.property.name;
   if (FRESH_ARRAY_INSTANCE_METHODS.has(methodName)) {
+    if (MUTATING_RETURN_SAME_REFERENCE_METHODS.has(methodName)) {
+      const receiver = stripParenExpression(callee.object);
+      const receiverIsFresh = freshFromObjectLiteral(receiver) ?? freshFromMethodChain(receiver);
+      return receiverIsFresh ? { kind: "array", reportNode: expression } : null;
+    }
     return { kind: "array", reportNode: expression };
+  }
+  // `Object.assign(target, ...)` returns `target`. It's only a fresh
+  // allocation when the target is itself a fresh literal (`Object.assign({}, x)`).
+  if (
+    isNodeOfType(callee.object, "Identifier") &&
+    callee.object.name === "Object" &&
+    methodName === "assign"
+  ) {
+    const target = expression.arguments?.[0];
+    return target && freshFromObjectLiteral(stripParenExpression(target))
+      ? { kind: "object", reportNode: expression }
+      : null;
   }
   // Static-method form: `Object.entries(get(x))`, `Array.from(get(x))`.
   if (isNodeOfType(callee.object, "Identifier")) {

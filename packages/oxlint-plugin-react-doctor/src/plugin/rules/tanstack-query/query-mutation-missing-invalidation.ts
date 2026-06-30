@@ -35,11 +35,21 @@ export const queryMutationMissingInvalidation = defineRule({
       let hasCacheUpdate = false;
       walkAst(optionsArgument, (child: EsTreeNode) => {
         if (hasCacheUpdate) return false;
+        if (!isNodeOfType(child, "CallExpression")) return;
+        // `queryClient.invalidateQueries(...)` — member-call form.
         if (
-          isNodeOfType(child, "CallExpression") &&
           isNodeOfType(child.callee, "MemberExpression") &&
           isNodeOfType(child.callee.property, "Identifier") &&
           QUERY_CACHE_UPDATE_METHODS.has(child.callee.property.name)
+        ) {
+          hasCacheUpdate = true;
+          return false;
+        }
+        // `const { invalidateQueries } = useQueryClient()` then a bare
+        // `invalidateQueries(...)` — destructured-callee form.
+        if (
+          isNodeOfType(child.callee, "Identifier") &&
+          QUERY_CACHE_UPDATE_METHODS.has(child.callee.name)
         ) {
           hasCacheUpdate = true;
           return false;

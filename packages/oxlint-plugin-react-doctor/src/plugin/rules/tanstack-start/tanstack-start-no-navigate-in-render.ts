@@ -5,6 +5,7 @@ import {
   UPPERCASE_PATTERN,
 } from "../../constants/react.js";
 import { TANSTACK_ROUTE_FILE_PATTERN } from "../../constants/tanstack.js";
+import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -12,7 +13,11 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+const HOOK_NAME_PATTERN = /^use[A-Z]/;
+const PROMISE_CONTINUATION_METHODS = new Set(["then", "catch", "finally"]);
 
 export const tanstackStartNoNavigateInRender = defineRule({
   id: "tanstack-start-no-navigate-in-render",
@@ -41,6 +46,44 @@ export const tanstackStartNoNavigateInRender = defineRule({
       isHookCall(node, EFFECT_HOOK_NAMES) ||
       isHookCall(node, "useCallback") ||
       isHookCall(node, "useMemo");
+
+    // True when navigate() lives in a callback the surrounding code runs
+    // LATER: the function-typed first argument of ANY `use*` custom hook
+    // (`useInterval(() => navigate(...), 1000)`) or a promise continuation
+    // (`.then`/`.catch`/`.finally`). Synchronous-iteration callbacks
+    // (`arr.forEach(x => navigate(x))`) are NOT deferred — they run during
+    // render — so only hook-first-arg and promise-chain callbacks qualify.
+    const isDeferredEnclosingCallback = (callNode: EsTreeNode): boolean => {
+      let cursor: EsTreeNode | null | undefined = callNode.parent;
+      let enclosingFunction: EsTreeNode | null = null;
+      while (cursor) {
+        if (isFunctionLike(cursor)) {
+          enclosingFunction = cursor;
+          break;
+        }
+        cursor = cursor.parent ?? null;
+      }
+      if (!enclosingFunction) return false;
+
+      const callParent = enclosingFunction.parent;
+      if (!isNodeOfType(callParent, "CallExpression")) return false;
+      if (callParent.callee === enclosingFunction) return false;
+
+      if (
+        isNodeOfType(callParent.callee, "MemberExpression") &&
+        !callParent.callee.computed &&
+        isNodeOfType(callParent.callee.property, "Identifier") &&
+        PROMISE_CONTINUATION_METHODS.has(callParent.callee.property.name)
+      ) {
+        return true;
+      }
+
+      return (
+        isNodeOfType(callParent.callee, "Identifier") &&
+        HOOK_NAME_PATTERN.test(callParent.callee.name) &&
+        callParent.arguments?.[0] === enclosingFunction
+      );
+    };
 
     const isEventHandlerAttribute = (node: EsTreeNode): boolean =>
       isNodeOfType(node, "JSXAttribute") &&
@@ -72,6 +115,116 @@ export const tanstackStartNoNavigateInRender = defineRule({
       typeof node.id.name === "string" &&
       HANDLER_FUNCTION_NAME_PATTERN.test(node.id.name);
 
+    // Names referenced by any JSX `onXxx` attribute value or `onXxx` object
+    // property — i.e. functions wired up as event handlers. Computed lazily
+    // once per file and cached; `navigate()` calls are rare so the walk is cheap.
+    let handlerReferencedNames: Set<string> | null = null;
+    const getHandlerReferencedNames = (startNode: EsTreeNode): Set<string> => {
+      if (handlerReferencedNames) return handlerReferencedNames;
+      let root: EsTreeNode = startNode;
+      while (root.parent) root = root.parent;
+      const names = new Set<string>();
+      walkAst(root, (inner: EsTreeNode) => {
+        if (isEventHandlerAttribute(inner) && isNodeOfType(inner, "JSXAttribute") && inner.value) {
+          collectReferenceIdentifierNames(inner.value, names);
+          return;
+        }
+        if (
+          isNodeOfType(inner, "Property") &&
+          ((isNodeOfType(inner.key, "Identifier") &&
+            REACT_HANDLER_PROP_PATTERN.test(inner.key.name)) ||
+            (isNodeOfType(inner.key, "Literal") &&
+              typeof inner.key.value === "string" &&
+              REACT_HANDLER_PROP_PATTERN.test(inner.key.value)))
+        ) {
+          collectReferenceIdentifierNames(inner.value, names);
+        }
+      });
+      handlerReferencedNames = names;
+      return names;
+    };
+
+    // True when `navigate()` lives in a local function whose binding is wired
+    // to an event handler (`const goHome = () => navigate(...)` +
+    // `onClick={goHome}`). The depth counters only catch `handle*`/`on*`-named
+    // bindings; this covers idiomatic names like `goHome`/`logout` by usage.
+    const isNavigateBindingUsedAsHandler = (callNode: EsTreeNode): boolean => {
+      let cursor: EsTreeNode | null | undefined = callNode.parent;
+      let enclosingFunction: EsTreeNode | null = null;
+      while (cursor) {
+        if (isFunctionLike(cursor)) {
+          enclosingFunction = cursor;
+          break;
+        }
+        cursor = cursor.parent ?? null;
+      }
+      if (!enclosingFunction) return false;
+
+      let bindingName: string | null = null;
+      if (isNodeOfType(enclosingFunction, "FunctionDeclaration") && enclosingFunction.id) {
+        bindingName = enclosingFunction.id.name;
+      } else {
+        const fnParent = enclosingFunction.parent;
+        if (
+          isNodeOfType(fnParent, "VariableDeclarator") &&
+          isNodeOfType(fnParent.id, "Identifier")
+        ) {
+          bindingName = fnParent.id.name;
+        } else if (
+          isNodeOfType(fnParent, "AssignmentExpression") &&
+          isNodeOfType(fnParent.left, "Identifier")
+        ) {
+          bindingName = fnParent.left.name;
+        }
+      }
+      if (!bindingName) return false;
+      return getHandlerReferencedNames(callNode).has(bindingName);
+    };
+
+    // True when `navigate()` lives in a closure that a custom hook RETURNS
+    // (`export const useLogout = () => { ...; return () => navigate(...); }`).
+    // The returned function is the caller's deferred handler, not render-time
+    // code, so it must not be flagged.
+    const isReturnedFromCustomHook = (callNode: EsTreeNode): boolean => {
+      let cursor: EsTreeNode | null | undefined = callNode.parent;
+      let enclosingFunction: EsTreeNode | null = null;
+      while (cursor) {
+        if (isFunctionLike(cursor)) {
+          enclosingFunction = cursor;
+          break;
+        }
+        cursor = cursor.parent ?? null;
+      }
+      if (!enclosingFunction) return false;
+      if (!isNodeOfType(enclosingFunction.parent, "ReturnStatement")) return false;
+
+      let outer: EsTreeNode | null | undefined = enclosingFunction.parent.parent;
+      while (outer) {
+        if (isFunctionLike(outer)) break;
+        outer = outer.parent ?? null;
+      }
+      if (!outer) return false;
+
+      let hookName: string | null = null;
+      if (isNodeOfType(outer, "FunctionDeclaration") && outer.id) {
+        hookName = outer.id.name;
+      } else {
+        const outerParent = outer.parent;
+        if (
+          isNodeOfType(outerParent, "VariableDeclarator") &&
+          isNodeOfType(outerParent.id, "Identifier")
+        ) {
+          hookName = outerParent.id.name;
+        } else if (
+          isNodeOfType(outerParent, "AssignmentExpression") &&
+          isNodeOfType(outerParent.left, "Identifier")
+        ) {
+          hookName = outerParent.left.name;
+        }
+      }
+      return Boolean(hookName && HOOK_NAME_PATTERN.test(hookName));
+    };
+
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const filename = normalizeFilename(context.filename ?? "");
@@ -86,6 +239,9 @@ export const tanstackStartNoNavigateInRender = defineRule({
           node.callee.name === "navigate" &&
           (node.arguments?.length ?? 0) > 0
         ) {
+          if (isDeferredEnclosingCallback(node)) return;
+          if (isNavigateBindingUsedAsHandler(node)) return;
+          if (isReturnedFromCustomHook(node)) return;
           context.report({
             node,
             message:

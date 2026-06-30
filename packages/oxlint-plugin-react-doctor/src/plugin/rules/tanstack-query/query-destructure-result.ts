@@ -1,18 +1,43 @@
 import { TANSTACK_QUERY_HOOKS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { isTanstackQuerySource } from "../../utils/is-tanstack-query-source.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-// TanStack Query packages (`@tanstack/react-query`, `@tanstack/vue-query`,
-// `@tanstack/query-core`, the Angular `*-query-experimental`, …) plus the
-// legacy `react-query`. A `useQuery` imported from anything else — notably
-// Convex's `convex/react`, whose `useQuery` returns the data directly — must
-// not be treated as a TanStack result object.
-const TANSTACK_QUERY_PACKAGE_PATTERN = /^@tanstack\/[\w-]*query[\w-]*$/;
-const isTanstackQuerySource = (source: string): boolean =>
-  TANSTACK_QUERY_PACKAGE_PATTERN.test(source) || source === "react-query";
+// True when the whole-query binding is FORWARDED rather than consumed
+// field-by-field in this scope: returned from a custom hook, passed as a JSX
+// attribute / call argument, or spread. Those are the documented
+// wrap-a-query patterns — TanStack's tracked-properties optimization keys off
+// which fields are accessed during render, so forwarding the object does not
+// "subscribe to every field." A reference that is the object of a member
+// access (`query.data`) is a field read and keeps the binding flag-eligible.
+const isForwardedBinding = (
+  declarator: EsTreeNodeOfType<"VariableDeclarator">,
+  bindingName: string,
+): boolean => {
+  let enclosingScope: EsTreeNode | null | undefined = declarator.parent;
+  while (enclosingScope && !isFunctionLike(enclosingScope)) {
+    enclosingScope = enclosingScope.parent ?? null;
+  }
+  const scope = enclosingScope ?? declarator.parent;
+  if (!scope) return false;
+
+  let forwarded = false;
+  walkAst(scope, (node: EsTreeNode) => {
+    if (forwarded) return;
+    if (!isNodeOfType(node, "Identifier") || node.name !== bindingName) return;
+    if (node === declarator.id) return;
+    const parent = node.parent;
+    if (isNodeOfType(parent, "MemberExpression") && parent.object === node) return;
+    forwarded = true;
+  });
+  return forwarded;
+};
 
 export const queryDestructureResult = defineRule({
   id: "query-destructure-result",
@@ -44,6 +69,8 @@ export const queryDestructureResult = defineRule({
       // re-introduce the Convex false positive this gate exists to prevent.
       const importSource = getImportSourceForName(node, calleeName);
       if (importSource !== null && !isTanstackQuerySource(importSource)) return;
+
+      if (isForwardedBinding(node, node.id.name)) return;
 
       context.report({
         node: node.id,

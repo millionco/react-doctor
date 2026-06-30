@@ -1,4 +1,5 @@
 import { ROUTE_HANDLER_HTTP_METHODS } from "../../constants/nextjs.js";
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -103,11 +104,13 @@ const inspectHandlerBody = (
   });
 };
 
-const collectIdentifierParams = (params: EsTreeNode[]): Set<string> => {
+// Collects every name a handler's params introduce, recursing into
+// destructuring so `{ params }`, `{ params: p }`, `{ searchParams }`
+// count as per-request handler args — a read whose path depends on one
+// of these varies per request and must NOT be hoisted.
+const collectHandlerParamNames = (params: EsTreeNode[]): Set<string> => {
   const names = new Set<string>();
-  for (const param of params) {
-    if (isNodeOfType(param, "Identifier")) names.add(param.name);
-  }
+  for (const param of params) collectPatternNames(param, names);
   return names;
 };
 
@@ -135,7 +138,7 @@ export const serverHoistStaticIo = defineRule({
         context,
         declaration.body,
         `${handlerName} route handler`,
-        collectIdentifierParams(declaration.params ?? []),
+        collectHandlerParamNames(declaration.params ?? []),
       );
     },
     ExportDefaultDeclaration(node: EsTreeNodeOfType<"ExportDefaultDeclaration">) {
@@ -157,7 +160,7 @@ export const serverHoistStaticIo = defineRule({
         context,
         body,
         "pages/api handler",
-        collectIdentifierParams(declaration.params ?? []),
+        collectHandlerParamNames(declaration.params ?? []),
       );
     },
   }),

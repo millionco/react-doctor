@@ -25,28 +25,45 @@ export const tanstackStartServerFnValidateInput = defineRule({
 
       const handlerFunction = node.arguments?.[0];
       if (!handlerFunction) return;
+      if (
+        !isNodeOfType(handlerFunction, "ArrowFunctionExpression") &&
+        !isNodeOfType(handlerFunction, "FunctionExpression")
+      )
+        return;
+
+      // `.data` is only the network INPUT when it binds to the handler's
+      // FIRST parameter. A bare `.data`/`{ data }` anywhere else in the body
+      // is unrelated — e.g. Supabase's `const { data } = await db.select()`
+      // destructures its own `{ data, error }` result, not handler input.
+      const firstParameter = handlerFunction.params?.[0];
+      if (!firstParameter) return;
 
       let accessesData = false;
-      walkAst(handlerFunction, (child: EsTreeNode) => {
-        if (
-          isNodeOfType(child, "MemberExpression") &&
-          isNodeOfType(child.property, "Identifier") &&
-          child.property.name === "data"
-        ) {
-          accessesData = true;
-        }
-        if (
-          isNodeOfType(child, "ObjectPattern") &&
-          child.properties?.some(
+      if (isNodeOfType(firstParameter, "ObjectPattern")) {
+        // `.handler(({ data }) => …)` — the param itself reads input.data.
+        accessesData = Boolean(
+          firstParameter.properties?.some(
             (property) =>
               isNodeOfType(property, "Property") &&
               isNodeOfType(property.key, "Identifier") &&
               property.key.name === "data",
-          )
-        ) {
-          accessesData = true;
-        }
-      });
+          ),
+        );
+      } else if (isNodeOfType(firstParameter, "Identifier")) {
+        // `.handler((ctx) => ctx.data)` — member access on the param binding.
+        const parameterName = firstParameter.name;
+        walkAst(handlerFunction, (child: EsTreeNode) => {
+          if (
+            isNodeOfType(child, "MemberExpression") &&
+            isNodeOfType(child.object, "Identifier") &&
+            child.object.name === parameterName &&
+            isNodeOfType(child.property, "Identifier") &&
+            child.property.name === "data"
+          ) {
+            accessesData = true;
+          }
+        });
+      }
 
       if (accessesData && !chainInfo.hasInputValidation) {
         context.report({

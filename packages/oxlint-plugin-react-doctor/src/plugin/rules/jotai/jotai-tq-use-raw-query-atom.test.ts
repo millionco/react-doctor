@@ -134,7 +134,10 @@ describe("jotai-tq-use-raw-query-atom", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags cross-file imported `*QueryAtom` binding (naming convention)", () => {
+  it("does NOT flag a cross-file `*QueryAtom` binding (collides with plain search-query atoms)", () => {
+    // The `*QueryAtom` naming convention was dropped: `searchQueryAtom`,
+    // `userQueryAtom`, etc. are mainstream names for a plain `atom('')` holding
+    // a search-query string, so trusting the suffix produced false positives.
     const code = `
       import { userQueryAtom } from "./atoms";
       function UserProfile() {
@@ -143,10 +146,10 @@ describe("jotai-tq-use-raw-query-atom", () => {
       }
     `;
     const result = runRule(jotaiTqUseRawQueryAtom, code);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags cross-file imported `*SuspenseQueryAtom` binding", () => {
+  it("does NOT flag a cross-file `*SuspenseQueryAtom` binding (naming convention dropped)", () => {
     const code = `
       import { userSuspenseQueryAtom } from "./atoms";
       function UserProfile() {
@@ -154,10 +157,10 @@ describe("jotai-tq-use-raw-query-atom", () => {
       }
     `;
     const result = runRule(jotaiTqUseRawQueryAtom, code);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags cross-file imported `*InfiniteQueryAtom` binding", () => {
+  it("does NOT flag a cross-file `*InfiniteQueryAtom` binding (naming convention dropped)", () => {
     const code = `
       import { feedInfiniteQueryAtom } from "./atoms";
       function Feed() {
@@ -165,7 +168,7 @@ describe("jotai-tq-use-raw-query-atom", () => {
       }
     `;
     const result = runRule(jotaiTqUseRawQueryAtom, code);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does NOT flag cross-file binding without the QueryAtom suffix", () => {

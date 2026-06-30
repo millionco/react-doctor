@@ -65,8 +65,12 @@ export const rerenderStateOnlyInHandlers = defineRule({
         eventHandlerReferenceNames,
       );
       const renderReachableNames = expandTransitiveDependencies(directRenderNames, dependencyGraph);
-      for (const dependencyName of collectDependencyArrayNames(componentBody)) {
-        renderReachableNames.add(dependencyName);
+      const effectDependencyNames = collectDependencyArrayNames(componentBody);
+      for (const reachableName of expandTransitiveDependencies(
+        effectDependencyNames,
+        dependencyGraph,
+      )) {
+        renderReachableNames.add(reachableName);
       }
 
       for (const binding of bindings) {

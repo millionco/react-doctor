@@ -43,6 +43,26 @@ const STRUCTURAL_ROLES_WITHOUT_CLEAN_TAG: ReadonlySet<string> = new Set([
   "status",
 ]);
 
+// Roles whose first reverse-mapped tag isn't the idiomatic choice:
+// `getTagsForRole("list")` returns `<menu>` first, but the conventional
+// list element is `<ul>`.
+const PREFERRED_TAG_OVERRIDES: Readonly<Record<string, string>> = {
+  list: "ul",
+};
+
+// Attributes that turn a `role="separator"` into a focusable, valued
+// window-splitter widget (the ARIA splitter pattern). A native `<hr>`
+// can't take focus or carry a value, so suggesting it would break the
+// widget — only a decorative (non-focusable, valueless) separator maps
+// cleanly to `<hr>`.
+const SPLITTER_SIGNAL_ATTRIBUTES: ReadonlyArray<string> = [
+  "tabindex",
+  "aria-valuenow",
+  "aria-valuemin",
+  "aria-valuemax",
+  "aria-orientation",
+];
+
 // Port of `oxc_linter::rules::jsx_a11y::prefer_tag_over_role`. When a
 // generic element (`div`/`span`) uses `role` to emulate a built-in
 // element's semantics, suggest using the built-in directly.
@@ -63,9 +83,17 @@ export const preferTagOverRole = defineRule({
       const role = getJsxPropStringValue(roleAttr);
       if (!role) return;
       if (COMPOSITE_WIDGET_ROLES.has(role) || STRUCTURAL_ROLES_WITHOUT_CLEAN_TAG.has(role)) return;
+      if (
+        role === "separator" &&
+        SPLITTER_SIGNAL_ATTRIBUTES.some((attribute) =>
+          hasJsxPropIgnoreCase(node.attributes, attribute),
+        )
+      ) {
+        return;
+      }
       const matchingTags = getTagsForRole(role);
       if (matchingTags.length === 0) return;
-      const preferred = matchingTags[0]!;
+      const preferred = PREFERRED_TAG_OVERRIDES[role] ?? matchingTags[0]!;
       context.report({ node: roleAttr, message: buildMessage(role, preferred) });
     },
   }),

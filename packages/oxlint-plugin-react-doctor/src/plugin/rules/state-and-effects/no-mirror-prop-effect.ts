@@ -6,10 +6,30 @@ import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+
+// Number of times `setterName` is invoked as a bare `setterName(...)` call
+// anywhere in the component. The pure prop mirror calls the setter only from
+// the effect (1 site); a controlled/uncontrolled draft mirror also writes it
+// from an event handler (>1 site).
+const countSetterCallSites = (componentBody: EsTreeNode, setterName: string): number => {
+  let callSiteCount = 0;
+  walkAst(componentBody, (child: EsTreeNode) => {
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      child.callee.name === setterName
+    ) {
+      callSiteCount += 1;
+    }
+  });
+  return callSiteCount;
+};
 
 // HACK: §1 of "You Might Not Need an Effect" — mirroring a prop into
 // local state with a useEffect that re-syncs it. The combined shape
@@ -145,6 +165,26 @@ export const noMirrorPropEffect = defineRule({
             areExpressionsStructurallyEqual(binding.initializer, setterArgument),
         );
         if (!matchedBinding) continue;
+        // Controlled/uncontrolled draft mirror: when the setter argument is
+        // the bare prop AND the same setter is also written from an event
+        // handler (>1 call site), the state holds the user's live edits and
+        // merely re-syncs to the controlled prop. Deleting it would drop the
+        // edits, so this is not a pure mirror. Matches the sibling
+        // `isControlledPropMirror` guard in `no-derived-state`.
+        const isSetterArgumentBareProp =
+          isNodeOfType(setterArgument, "Identifier") && propNames.has(setterArgument.name);
+        if (
+          isSetterArgumentBareProp &&
+          countSetterCallSites(componentBody, matchedBinding.setterName) > 1
+        ) {
+          continue;
+        }
+        // Initial-only / seed prop names (`initialCount`, `defaultX`,
+        // `seedY`) are the documented "re-seed when the caller passes a
+        // new initial value" idiom — the sibling rules
+        // `no-derived-state-effect` and `no-derived-state` already
+        // exempt this exact shape, so match them here.
+        if (isInitialOnlyPropName(matchedBinding.propRootName)) continue;
 
         context.report({
           node: effectCall,

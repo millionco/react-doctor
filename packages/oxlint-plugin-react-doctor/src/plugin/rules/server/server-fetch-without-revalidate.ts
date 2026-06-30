@@ -94,7 +94,15 @@ export const serverFetchWithoutRevalidate = defineRule({
         if (isMutatingFetchCall(node)) return;
 
         const optionsArg = node.arguments?.[1];
-        if (optionsArg && objectExpressionHasNextRevalidate(optionsArg)) return;
+        if (optionsArg) {
+          // Only an inline `{ … }` is transparent enough to prove the
+          // caching config is missing. A non-literal options arg
+          // (`fetch(url, options)`) may carry `next: { revalidate }` we
+          // can't see through, so abstain instead of risking a false
+          // positive.
+          if (!isNodeOfType(optionsArg, "ObjectExpression")) return;
+          if (objectExpressionHasNextRevalidate(optionsArg)) return;
+        }
 
         const urlArg = node.arguments?.[0];
         const urlText =

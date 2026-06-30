@@ -1,4 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
+import { RECYCLABLE_LIST_PACKAGES } from "../../constants/react-native.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -15,8 +17,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // We fire when `recycleItems` is present (explicit opt-in or FlashList
 // v2 default) AND `getItemType` is absent. Bare `recycleItems` (no
 // value) or `recycleItems={true}` counts as enabled.
-const RECYCLABLE_LIST_NAMES = new Set(["FlashList", "LegendList"]);
-
 export const rnListRecyclableWithoutTypes = defineRule({
   id: "rn-list-recyclable-without-types",
   title: "Recyclable list missing getItemType",
@@ -28,7 +28,18 @@ export const rnListRecyclableWithoutTypes = defineRule({
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
-      if (!elementName || !RECYCLABLE_LIST_NAMES.has(elementName)) return;
+      if (!elementName) return;
+      // Resolve the LOCAL JSX name back to a recycler that was really imported
+      // from `@shopify/flash-list` / `@legendapp/list`. A name-only match on a
+      // homegrown `FlashList` (`const FlashList = MyOwnList`) isn't a recycler.
+      const isImportedRecycler = Object.entries(RECYCLABLE_LIST_PACKAGES).some(
+        ([canonicalName, packageSources]) =>
+          packageSources.some(
+            (packageSource) =>
+              getImportedNameFromModule(node, elementName, packageSource) === canonicalName,
+          ),
+      );
+      if (!isImportedRecycler) return;
 
       let hasRecycleItemsEnabled = false;
       let hasGetItemType = false;

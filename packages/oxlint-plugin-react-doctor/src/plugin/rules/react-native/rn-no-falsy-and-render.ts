@@ -74,11 +74,22 @@ const isBooleanUseStateName = (referenceNode: EsTreeNode, name: string): boolean
   return isBooleanState;
 };
 
-// True when `identifier` provably holds a boolean (so it can never render a
-// bare `0`): a boolean initializer, or boolean `useState`.
+// A literal initializer that is always truthy, so `{value && <X/>}` can never
+// render a bare `0`: a non-zero numeric literal or a non-empty string literal.
+const isProvablyTruthyLiteral = (node: EsTreeNode | null | undefined): boolean => {
+  if (!node || !isNodeOfType(node, "Literal")) return false;
+  if (typeof node.value === "number") return node.value !== 0;
+  if (typeof node.value === "string") return node.value.length > 0;
+  return false;
+};
+
+// True when `identifier` provably holds a never-bare-`0` value: a boolean
+// initializer, boolean `useState`, or a constant truthy literal (non-zero
+// number / non-empty string).
 const isProvablyBooleanIdentifier = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
   const binding = findVariableInitializer(identifier, identifier.name);
   if (isBooleanExpression(binding?.initializer)) return true;
+  if (isProvablyTruthyLiteral(binding?.initializer)) return true;
   return isBooleanUseStateName(identifier, identifier.name);
 };
 

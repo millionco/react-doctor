@@ -19,8 +19,14 @@ export const firebaseClientOwnedAuthzField = defineRule({
       isClientSourcePath(file.relativePath) &&
       (CLIENT_DATABASE_EVIDENCE_PATTERN.test(file.content) ||
         CLIENT_DATABASE_EVIDENCE_PATTERN.test(file.relativePath)),
+    // The trailing window is `[^;]` (not `[\s\S]`) so it cannot cross a
+    // statement boundary into an UNRELATED later statement — the authz field
+    // must appear inside the write call's own statement. `setDoc(doc(db,
+    // "users", uid), { displayName })` followed by a separate `useRole = …
+    // .role` no longer fires; an authz field inside the write's own object
+    // still does.
     pattern:
-      /(?:\b(?:setDoc|updateDoc|addDoc)\s*\(|(?:\b(?:firebase|firestore|getFirestore)\b|\bcollection\s*\(|\.collection\s*\()[\s\S]{0,500}\.(?:set|update|add)\s*\()[\s\S]{0,700}\b(?:ownerId|ownerID|creatorId|creatorID|providerId|providerID|orgId|orgID|tenantId|tenantID|workspaceId|workspaceID|ghostOrg|role|roles|isAdmin)\b/i,
+      /(?:\b(?:setDoc|updateDoc|addDoc)\s*\(|(?:\b(?:firebase|firestore|getFirestore)\b|\bcollection\s*\(|\.collection\s*\()[\s\S]{0,500}\.(?:set|update|add)\s*\()[^;]{0,700}\b(?:ownerId|ownerID|creatorId|creatorID|providerId|providerID|orgId|orgID|tenantId|tenantID|workspaceId|workspaceID|ghostOrg|role|roles|isAdmin)\b/i,
     message:
       "Client code writes an ownership, tenant, or role field that should be server-owned and immutable.",
   }),

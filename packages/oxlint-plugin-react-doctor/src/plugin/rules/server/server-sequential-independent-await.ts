@@ -78,6 +78,51 @@ const GATE_LEADING_VERBS = new Set([
   "authenticate",
 ]);
 
+// True when `name` is bound by an earlier statement in the same block to
+// a non-awaited expression — i.e. a promise that was *started* before
+// this await. `const p = fetchUser(); ... const user = await p;` is
+// already concurrent, so awaiting `p` is not a waterfall.
+const isStartedPromiseBinding = (
+  name: string,
+  statements: EsTreeNode[],
+  beforeIndex: number,
+): boolean => {
+  for (let index = 0; index < beforeIndex; index++) {
+    const statement = statements[index];
+    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
+    for (const declarator of statement.declarations ?? []) {
+      if (!isNodeOfType(declarator.id, "Identifier")) continue;
+      if (declarator.id.name !== name) continue;
+      if (declarator.init && !isNodeOfType(declarator.init, "AwaitExpression")) return true;
+    }
+  }
+  return false;
+};
+
+// True when the declaration awaits a bare Identifier that was started as
+// a promise earlier in the same block (`await postsPromise`). Such an
+// await is already running concurrently, so it is not the second leg of
+// a waterfall.
+const declarationAwaitsStartedPromise = (
+  declaration: EsTreeNode,
+  statements: EsTreeNode[],
+  declarationIndex: number,
+): boolean => {
+  if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
+  for (const declarator of declaration.declarations ?? []) {
+    const init = declarator.init;
+    if (!isNodeOfType(init, "AwaitExpression")) continue;
+    const argument = init.argument;
+    if (
+      isNodeOfType(argument, "Identifier") &&
+      isStartedPromiseBinding(argument.name, statements, declarationIndex)
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const calleeNameOf = (callExpression: EsTreeNode): string | null => {
   if (!isNodeOfType(callExpression, "CallExpression")) return null;
   const callee = callExpression.callee;
@@ -124,6 +169,11 @@ export const serverSequentialIndependentAwait = defineRule({
         if (!declarationStartsWithAwait(nextStatement)) continue;
 
         if (declarationReadsAnyName(nextStatement, declaredNames)) continue;
+        // The second await is on a promise started earlier in the block
+        // (`const p = fetchPosts(); … const posts = await p;`) — already
+        // concurrent, so there's no waterfall to flatten.
+        if (declarationAwaitsStartedPromise(nextStatement, statements, statementIndex + 1))
+          continue;
         // A guard / side-effect gate (`await requireSession()`, `db.connect()`)
         // must run before the next await — its ordering is intentional, not a
         // parallelizable waterfall.

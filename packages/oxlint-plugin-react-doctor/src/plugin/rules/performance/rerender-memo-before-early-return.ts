@@ -1,3 +1,4 @@
+import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -29,16 +30,31 @@ const callbackReturnsJsx = (callback: EsTreeNode | undefined): boolean => {
   return false;
 };
 
-const containsEarlyReturn = (ifStatement: EsTreeNode): boolean => {
+const returnArgumentUsesName = (returnStatement: EsTreeNode, memoName: string): boolean => {
+  if (!isNodeOfType(returnStatement, "ReturnStatement") || !returnStatement.argument) return false;
+  const referenced = new Set<string>();
+  collectReferenceIdentifierNames(returnStatement.argument, referenced);
+  return referenced.has(memoName);
+};
+
+// An early return is only wasteful when its bail path does NOT consume the
+// memoized value. `if (cond) return content;` uses the memo on both
+// branches, so the work isn't wasted — skip it. We report only when there
+// is an early return whose returned expression doesn't reference the memo.
+const hasEarlyReturnNotUsingMemo = (ifStatement: EsTreeNode, memoName: string): boolean => {
   if (!isNodeOfType(ifStatement, "IfStatement")) return false;
   const consequent = ifStatement.consequent;
   if (!consequent) return false;
-  if (isNodeOfType(consequent, "ReturnStatement")) return true;
-  if (!isNodeOfType(consequent, "BlockStatement")) return false;
-  for (const stmt of consequent.body ?? []) {
-    if (isNodeOfType(stmt, "ReturnStatement")) return true;
+  const returns: EsTreeNode[] = [];
+  if (isNodeOfType(consequent, "ReturnStatement")) {
+    returns.push(consequent);
+  } else if (isNodeOfType(consequent, "BlockStatement")) {
+    for (const stmt of consequent.body ?? []) {
+      if (isNodeOfType(stmt, "ReturnStatement")) returns.push(stmt);
+    }
   }
-  return false;
+  if (returns.length === 0) return false;
+  return returns.some((returnStatement) => !returnArgumentUsesName(returnStatement, memoName));
 };
 
 // HACK: `useMemo(() => <jsx/>)` followed by an early return wastes the
@@ -56,6 +72,7 @@ export const rerenderMemoBeforeEarlyReturn = defineRule({
   create: (context: RuleContext) => {
     const inspectFunctionBody = (statements: EsTreeNode[]): void => {
       let memoNode: EsTreeNode | null = null;
+      let memoName: string | null = null;
 
       for (const stmt of statements) {
         if (!memoNode) {
@@ -68,12 +85,17 @@ export const rerenderMemoBeforeEarlyReturn = defineRule({
               callbackReturnsJsx(init.arguments?.[0])
             ) {
               memoNode = declarator;
+              memoName = isNodeOfType(declarator.id, "Identifier") ? declarator.id.name : null;
               break;
             }
           }
           continue;
         }
-        if (isNodeOfType(stmt, "IfStatement") && containsEarlyReturn(stmt)) {
+        if (
+          isNodeOfType(stmt, "IfStatement") &&
+          memoName &&
+          hasEarlyReturnNotUsingMemo(stmt, memoName)
+        ) {
           context.report({
             node: memoNode,
             message:

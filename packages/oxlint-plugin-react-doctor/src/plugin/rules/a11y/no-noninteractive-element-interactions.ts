@@ -4,6 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { NON_INTERACTIVE_ELEMENTS } from "../../constants/html-tags.js";
 import { INTERACTIVE_ROLES } from "../../constants/aria-roles.js";
@@ -59,6 +60,7 @@ export const noNoninteractiveElementInteractions = defineRule({
         hasJsxPropIgnoreCase(node.attributes, handler),
       );
       if (!hasHandler) return;
+      if (isHiddenFromScreenReader(node, context.settings)) return;
       const roleAttr = hasJsxPropIgnoreCase(node.attributes, "role");
       if (roleAttr) {
         const role = getJsxPropStringValue(roleAttr);

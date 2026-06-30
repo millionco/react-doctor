@@ -44,6 +44,10 @@ export const noStringFalseOnBooleanAttribute = defineRule({
       if (!isNodeOfType(node.name, "JSXIdentifier")) return;
       const firstCharacter = node.name.name.charCodeAt(0);
       if (firstCharacter < 97 || firstCharacter > 122) return;
+      // Custom elements (hyphenated tag names) own their attribute
+      // semantics — many web components read `checked="false"` as a real
+      // boolean. Matches `no-unknown-property`'s custom-element skip.
+      if (node.name.name.includes("-")) return;
 
       for (const attribute of node.attributes) {
         if (!isNodeOfType(attribute, "JSXAttribute")) continue;

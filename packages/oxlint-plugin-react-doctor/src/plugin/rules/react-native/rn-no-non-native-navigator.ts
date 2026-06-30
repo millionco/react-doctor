@@ -30,6 +30,9 @@ export const rnNoNonNativeNavigator = defineRule({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
       if (typeof source !== "string") return;
+      // Type-only imports are erased at build time, so `import type {
+      // StackNavigationProp }` instantiates no navigator at runtime.
+      if (node.importKind === "type") return;
       const replacement = NON_NATIVE_NAVIGATOR_PACKAGES.get(source);
       if (!replacement) return;
       context.report({

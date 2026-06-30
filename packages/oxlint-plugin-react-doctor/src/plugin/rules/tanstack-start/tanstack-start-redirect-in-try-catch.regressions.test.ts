@@ -1,0 +1,43 @@
+import { describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../../test-utils/run-rule.js";
+import { tanstackStartRedirectInTryCatch } from "./tanstack-start-redirect-in-try-catch.js";
+
+const ROUTE = { filename: "src/routes/index.tsx" };
+
+describe("tanstack-start/tanstack-start-redirect-in-try-catch — regressions", () => {
+  it("stays silent when the catch re-throws via an isRedirect guard", () => {
+    const { diagnostics } = runRule(
+      tanstackStartRedirectInTryCatch,
+      `export const Route = createFileRoute('/dashboard')({ beforeLoad: async () => { try { const user = await getUser(); if (!user) throw redirect({ to: '/login' }); return { user }; } catch (error) { if (isRedirect(error)) throw error; throw new Error('Failed to load user'); } } });`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when the catch bare re-throws the caught binding", () => {
+    const { diagnostics } = runRule(
+      tanstackStartRedirectInTryCatch,
+      `async function load() { try { throw redirect({ to: '/x' }); } catch (e) { throw e; } }`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when the throw runs in a deferred setTimeout callback", () => {
+    const { diagnostics } = runRule(
+      tanstackStartRedirectInTryCatch,
+      `function load() { try { setTimeout(() => { throw redirect({ to: '/login' }); }, 1000); } catch (e) { console.log(e); } }`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a catch that logs and swallows the redirect", () => {
+    const { diagnostics } = runRule(
+      tanstackStartRedirectInTryCatch,
+      `async function load() { try { throw redirect({ to: '/login' }); } catch (error) { console.error(error); return null; } }`,
+      ROUTE,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+});

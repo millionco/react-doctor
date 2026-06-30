@@ -1,4 +1,6 @@
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { isHookCall } from "../../utils/is-hook-call.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
 import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -86,6 +88,28 @@ const isInsideDeferredCallback = (node: EsTreeNode): boolean => {
   return false;
 };
 
+// Dep identifiers of the nearest enclosing useEffect / useLayoutEffect, or
+// null when there is no such effect (or its second argument isn't a literal
+// deps array). When the read state is among these, the effect re-runs — and
+// its closure refreshes — every time that state changes, so the deferred
+// setter never reads a stale value.
+const getEnclosingEffectDependencyNames = (node: EsTreeNode): Set<string> | null => {
+  let current: EsTreeNode | null | undefined = node.parent;
+  while (current) {
+    if (isNodeOfType(current, "CallExpression") && isHookCall(current, EFFECT_HOOK_NAMES)) {
+      const dependencyArray = current.arguments?.[1];
+      if (!isNodeOfType(dependencyArray, "ArrayExpression")) return null;
+      const dependencyNames = new Set<string>();
+      for (const element of dependencyArray.elements ?? []) {
+        if (isNodeOfType(element, "Identifier")) dependencyNames.add(element.name);
+      }
+      return dependencyNames;
+    }
+    current = current.parent;
+  }
+  return null;
+};
+
 export const rerenderFunctionalSetstate = defineRule({
   id: "rerender-functional-setstate",
   title: "setState reads a stale value",
@@ -114,6 +138,14 @@ export const rerenderFunctionalSetstate = defineRule({
       // only the spread shapes; the arithmetic / update shapes over-
       // reported one-shot handlers without it.
       if (!isInsideDeferredCallback(node)) return;
+
+      // The read state is a dependency of the enclosing effect, so the effect
+      // re-runs and rebuilds the closure on every change — the timer/handler
+      // always reads the latest value and cannot lose an update.
+      if (expectedStateName) {
+        const effectDependencyNames = getEnclosingEffectDependencyNames(node);
+        if (effectDependencyNames?.has(expectedStateName)) return;
+      }
 
       if (
         isNodeOfType(argument, "BinaryExpression") &&

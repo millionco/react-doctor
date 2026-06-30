@@ -20,6 +20,18 @@ describe("architecture/no-render-in-render — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag a render prop destructured from props", () => {
+    const result = run(
+      `function List(props){ const { renderItem } = props; return <div>{renderItem(1)}</div>; }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a render prop destructured directly in the parameter list", () => {
+    const result = run(`function List({ renderItem }){ return <div>{renderItem(1)}</div>; }`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not flag a this.render* class-component helper method call", () => {
     const result = run(
       `class Chart extends React.Component {

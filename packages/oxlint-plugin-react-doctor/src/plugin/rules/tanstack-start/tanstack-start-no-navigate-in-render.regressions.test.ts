@@ -14,6 +14,15 @@ describe("tanstack-start/tanstack-start-no-navigate-in-render — regressions", 
     expect(diagnostics).toHaveLength(0);
   });
 
+  it("stays silent when navigate() is in a closure returned from a custom hook", () => {
+    const { diagnostics } = runRule(
+      tanstackStartNoNavigateInRender,
+      `export const useLogout = () => { const navigate = useNavigate(); return () => navigate({ to: '/login' }); };`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
   it("still flags navigate() called directly during render", () => {
     const { diagnostics } = runRule(
       tanstackStartNoNavigateInRender,
@@ -30,5 +39,23 @@ describe("tanstack-start/tanstack-start-no-navigate-in-render — regressions", 
       ROUTE,
     );
     expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when navigate() runs in a non-memo custom hook's callback", () => {
+    const { diagnostics } = runRule(
+      tanstackStartNoNavigateInRender,
+      `function RouteComponent() { const navigate = useNavigate(); useInterval(() => navigate({ to: '/refresh' }), 1000); return null; }`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when navigate() runs in a .then() promise callback", () => {
+    const { diagnostics } = runRule(
+      tanstackStartNoNavigateInRender,
+      `function RouteComponent() { const navigate = useNavigate(); doThing().then(() => navigate({ to: '/x' })); return null; }`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
   });
 });

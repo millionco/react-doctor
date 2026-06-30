@@ -1,6 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
+import { isMeaningfulJsxChild } from "../../utils/is-meaningful-jsx-child.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const VOID_DOM_ELEMENTS = new Set([
@@ -53,7 +55,9 @@ export const voidDomElementsNoChildren = defineRule({
       if (!isNodeOfType(openingElement.name, "JSXIdentifier")) return;
       const tagName = openingElement.name.name;
       if (!VOID_DOM_ELEMENTS.has(tagName)) return;
-      const hasChildrenContent = node.children.length > 0;
+      const hasChildrenContent = node.children.some((child) =>
+        isMeaningfulJsxChild(child as EsTreeNode),
+      );
       const hasChildrenLikeProp = findChildrenLikePropName(openingElement.attributes);
       if (hasChildrenContent || hasChildrenLikeProp) {
         context.report({ node: openingElement.name, message: buildMessage(tagName) });

@@ -33,4 +33,31 @@ describe("a11y/no-redundant-roles regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it('exempts `<a role="link">` without `href` (a bare anchor has no implicit role)', () => {
+    const result = runRule(
+      noRedundantRoles,
+      `const Go = () => <a role="link" tabIndex={0} onClick={() => go()}>Go</a>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('still flags `<a href role="link">` (an anchor with href is genuinely a link)', () => {
+    const result = runRule(noRedundantRoles, `const Go = () => <a role="link" href="/x">Go</a>;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  for (const code of [
+    `<td role="gridcell" />`,
+    `<th role="gridcell" />`,
+    `<th role="rowheader" />`,
+  ]) {
+    it(`exempts the W3C grid-pattern role in ${code} (only the primary default role is redundant)`, () => {
+      expect(runRule(noRedundantRoles, code).diagnostics).toEqual([]);
+    });
+  }
+
+  it('still flags `<td role="cell">` (cell is the primary default role of `<td>`)', () => {
+    expect(runRule(noRedundantRoles, `<td role="cell" />`).diagnostics).toHaveLength(1);
+  });
 });

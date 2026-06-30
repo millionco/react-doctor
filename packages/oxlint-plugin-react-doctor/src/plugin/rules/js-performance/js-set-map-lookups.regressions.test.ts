@@ -26,4 +26,10 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
       `function f(users){ const a=[]; for(const u of users){ if(["admin","owner"].includes(u.role)) a.push(u);} return a; }`,
     );
   });
+
+  it("does not flag `.includes()` on a `.join()` result (substring search)", () => {
+    expectPass(
+      `function f(items, parts){ for (const item of items){ if (parts.join("/").includes("..")){ use(item); } } }`,
+    );
+  });
 });

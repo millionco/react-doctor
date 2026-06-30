@@ -53,6 +53,17 @@ const getAwaitedStatementInfo = (statement: EsTreeNode): AwaitedStatementInfo | 
   return { awaitedExpressions, boundNames: [...boundNames] };
 };
 
+// Names a non-await statement binds (its `const`/`let`/`var` declarators).
+// Used to launder taint: `const id = user.id` binds `id`, which inherits the
+// taint of the awaited `user` so a later `await getPosts(id)` is still seen as
+// dependent.
+const collectStatementBoundNames = (statement: EsTreeNode, into: Set<string>): void => {
+  if (!isNodeOfType(statement, "VariableDeclaration")) return;
+  for (const declarator of statement.declarations ?? []) {
+    collectPatternNames(declarator.id, into);
+  }
+};
+
 export const tanstackStartLoaderParallelFetch = defineRule({
   id: "tanstack-start-loader-parallel-fetch",
   title: "Sequential awaits in loader",
@@ -92,7 +103,21 @@ export const tanstackStartLoaderParallelFetch = defineRule({
         const boundByEarlierAwaits = new Set<string>();
         for (const statement of functionBody.body ?? []) {
           const awaitedInfo = getAwaitedStatementInfo(statement);
-          if (!awaitedInfo) continue;
+          if (!awaitedInfo) {
+            // Non-await statement: launder taint through intermediate
+            // bindings. `const id = user.id` makes `id` depend on the
+            // earlier `await getUser()`, so a later `await getPosts(id)`
+            // is correctly treated as dependent (not parallelizable).
+            const boundNames = new Set<string>();
+            collectStatementBoundNames(statement, boundNames);
+            if (boundNames.size === 0) continue;
+            const referencedNames = new Set<string>();
+            collectReferenceIdentifierNames(statement, referencedNames);
+            if ([...referencedNames].some((name) => boundByEarlierAwaits.has(name))) {
+              for (const name of boundNames) boundByEarlierAwaits.add(name);
+            }
+            continue;
+          }
 
           const referencedNames = new Set<string>();
           for (const awaitedExpression of awaitedInfo.awaitedExpressions) {

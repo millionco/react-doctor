@@ -21,7 +21,11 @@ interface MediaHasCaptionSettings {
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
-): { audio: ReadonlyArray<string>; video: ReadonlyArray<string>; track: ReadonlyArray<string> } => {
+): {
+  audio: ReadonlyArray<string>;
+  video: ReadonlyArray<string>;
+  track: ReadonlyArray<string>;
+} => {
   const reactDoctor = settings?.["react-doctor"];
   const ruleSettings =
     typeof reactDoctor === "object" && reactDoctor !== null
@@ -122,7 +126,11 @@ export const mediaHasCaption = defineRule({
           if (!settings.track.includes(childTag)) return false;
           const kindAttribute = hasJsxPropIgnoreCase(opening.attributes, "kind");
           if (!kindAttribute) return false;
-          const kindValue = kindAttribute.value as EsTreeNode | null;
+          let kindValue = kindAttribute.value as EsTreeNode | null;
+          // `kind={"captions"}` wraps the literal in an expression container.
+          if (kindValue && isNodeOfType(kindValue, "JSXExpressionContainer")) {
+            kindValue = kindValue.expression as EsTreeNode;
+          }
           if (!kindValue || !isNodeOfType(kindValue, "Literal")) return false;
           if (typeof kindValue.value !== "string") return false;
           return kindValue.value.toLowerCase() === "captions";

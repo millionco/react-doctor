@@ -16,7 +16,11 @@ const LITERAL_TEXT_TAGS: ReadonlySet<string> = new Set(["code", "pre", "kbd", "s
 const hasCommentLikePattern = (text: string): boolean => {
   for (const rawLine of text.split("\n")) {
     const trimmed = rawLine.trim();
-    if (trimmed.startsWith("//") || trimmed.startsWith("/*")) return true;
+    if (trimmed.startsWith("/*")) return true;
+    // A line that trims to just `//` (or `// `) is an interpolated
+    // separator glyph (`{used} // {total} GB`), not a `// comment` —
+    // require some comment body after the slashes before flagging.
+    if (trimmed.startsWith("//") && trimmed.slice(2).trim().length > 0) return true;
   }
   return false;
 };

@@ -19,12 +19,18 @@ const isNumericLiteralNode = (node: EsTreeNode | null | undefined): boolean => {
   );
 };
 
+const STATIC_ARITHMETIC_OPERATORS = new Set(["+", "-", "*", "/"]);
+
 // A value is "static" when it can't change between renders: a numeric literal,
-// or an identifier that resolves to a module/const numeric constant
-// (`const TAB_BAR_HEIGHT = 56`). State / hook / prop values (keyboardHeight,
-// insets.bottom) don't resolve to a numeric literal, so they still fire.
+// an identifier that resolves to a module/const numeric constant
+// (`const TAB_BAR_HEIGHT = 56`), or arithmetic over static numeric values
+// (`BASE + 8`). State / hook / prop values (keyboardHeight, insets.bottom)
+// don't resolve to a numeric literal, so they still fire.
 const isStaticNumericValue = (value: EsTreeNode): boolean => {
   if (isNumericLiteralNode(value)) return true;
+  if (isNodeOfType(value, "BinaryExpression") && STATIC_ARITHMETIC_OPERATORS.has(value.operator)) {
+    return isStaticNumericValue(value.left) && isStaticNumericValue(value.right);
+  }
   if (!isNodeOfType(value, "Identifier")) return false;
   const binding = findVariableInitializer(value, value.name);
   return isNumericLiteralNode(binding?.initializer);

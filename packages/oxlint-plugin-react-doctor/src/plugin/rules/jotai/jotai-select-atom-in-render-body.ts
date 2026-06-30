@@ -5,6 +5,7 @@ import {
   REACT_HANDLER_PROP_PATTERN,
   UPPERCASE_PATTERN,
 } from "../../constants/react.js";
+import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import {
   isImportedFromModule,
@@ -13,6 +14,7 @@ import {
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: `selectAtom(base, selector)` returns a NEW atom on every call.
@@ -56,12 +58,20 @@ const isDeferredCallback = (functionNode: EsTreeNode): boolean => {
 
   if (
     isNodeOfType(parent, "CallExpression") &&
-    isNodeOfType(parent.callee, "Identifier") &&
-    (MEMOIZING_HOOK_NAMES.has(parent.callee.name) || EFFECT_HOOK_NAMES.has(parent.callee.name)) &&
     // First argument only — `useMemo(..., [selectAtomFn])` is not the callback.
     parent.arguments?.[0] === functionNode
   ) {
-    return true;
+    // Bare callee (`useMemo(...)`) or namespaced (`React.useMemo(...)`) — read
+    // the hook name from the Identifier or the MemberExpression property.
+    const hookName = isNodeOfType(parent.callee, "Identifier")
+      ? parent.callee.name
+      : isNodeOfType(parent.callee, "MemberExpression") &&
+          isNodeOfType(parent.callee.property, "Identifier")
+        ? parent.callee.property.name
+        : null;
+    if (hookName && (MEMOIZING_HOOK_NAMES.has(hookName) || EFFECT_HOOK_NAMES.has(hookName))) {
+      return true;
+    }
   }
 
   if (
@@ -111,6 +121,51 @@ const isDeferredCallback = (functionNode: EsTreeNode): boolean => {
   return false;
 };
 
+const getFunctionBindingName = (functionNode: EsTreeNode): string | null => {
+  if (isNodeOfType(functionNode, "FunctionDeclaration") && functionNode.id) {
+    return functionNode.id.name;
+  }
+  const parent = functionNode.parent;
+  if (isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")) {
+    return parent.id.name;
+  }
+  if (isNodeOfType(parent, "AssignmentExpression") && isNodeOfType(parent.left, "Identifier")) {
+    return parent.left.name;
+  }
+  return null;
+};
+
+// Names referenced by any JSX `onXxx` attribute value or `onXxx` object
+// property — functions wired up as event handlers. Ported from the
+// sibling `tanstack-start-no-navigate-in-render` rule so an idiomatically
+// named handler (`pick`, `select`, `toggle`) wired via `onClick={pick}` is
+// recognized by usage, not just by a `handle*`/`on*` name.
+const collectHandlerReferencedNames = (root: EsTreeNode): Set<string> => {
+  const names = new Set<string>();
+  walkAst(root, (inner: EsTreeNode) => {
+    if (
+      isNodeOfType(inner, "JSXAttribute") &&
+      isNodeOfType(inner.name, "JSXIdentifier") &&
+      inner.name.name.startsWith("on") &&
+      UPPERCASE_PATTERN.test(inner.name.name.charAt(2)) &&
+      inner.value
+    ) {
+      collectReferenceIdentifierNames(inner.value, names);
+      return;
+    }
+    if (
+      isNodeOfType(inner, "Property") &&
+      ((isNodeOfType(inner.key, "Identifier") && REACT_HANDLER_PROP_PATTERN.test(inner.key.name)) ||
+        (isNodeOfType(inner.key, "Literal") &&
+          typeof inner.key.value === "string" &&
+          REACT_HANDLER_PROP_PATTERN.test(inner.key.value)))
+    ) {
+      collectReferenceIdentifierNames(inner.value, names);
+    }
+  });
+  return names;
+};
+
 const containingFunctionIsComponentOrHook = (functionNode: EsTreeNode): boolean => {
   if (isNodeOfType(functionNode, "FunctionDeclaration") && functionNode.id) {
     const declaredName = functionNode.id.name;
@@ -136,40 +191,55 @@ export const jotaiSelectAtomInRenderBody = defineRule({
   severity: "error",
   recommendation:
     "Lift `selectAtom(base, fn)` to module scope, or wrap it: `const atom = useMemo(() => selectAtom(base, fn), [deps])`. Calling it during render makes a new atom every time and re-subscribes forever.",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isImportedSelectAtom(node)) return;
-
-      // Walk up to find the nearest enclosing function. If that
-      // function itself is the callback of useMemo / useCallback,
-      // the selectAtom call is memoized — fine.
-      let cursor: EsTreeNode | null | undefined = node.parent ?? null;
-      let nearestFunctionLike: EsTreeNode | null = null;
-      while (cursor) {
-        if (isFunctionLikeNode(cursor)) {
-          nearestFunctionLike = cursor;
-          break;
-        }
-        cursor = cursor.parent ?? null;
+  create: (context: RuleContext) => {
+    let handlerReferencedNames: Set<string> | null = null;
+    const isBindingUsedAsHandler = (functionNode: EsTreeNode): boolean => {
+      const bindingName = getFunctionBindingName(functionNode);
+      if (!bindingName) return false;
+      if (!handlerReferencedNames) {
+        let root: EsTreeNode = functionNode;
+        while (root.parent) root = root.parent;
+        handlerReferencedNames = collectHandlerReferencedNames(root);
       }
-      if (!nearestFunctionLike) return;
-      if (isDeferredCallback(nearestFunctionLike)) return;
+      return handlerReferencedNames.has(bindingName);
+    };
 
-      // Now walk up again from the nearest function looking for any
-      // enclosing component or hook. Helpers nested inside a
-      // component are still "render-time" execution paths.
-      let outerCursor: EsTreeNode | null = nearestFunctionLike;
-      while (outerCursor) {
-        if (isFunctionLikeNode(outerCursor) && containingFunctionIsComponentOrHook(outerCursor)) {
-          context.report({
-            node,
-            message:
-              "`selectAtom(...)` runs in a component or hook without `useMemo`, so every render makes a new atom & re-subscribes forever, freezing the page for your users. Lift it to module scope, or wrap it in `useMemo(() => selectAtom(...), [deps])`.",
-          });
-          return;
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isImportedSelectAtom(node)) return;
+
+        // Walk up to find the nearest enclosing function. If that
+        // function itself is the callback of useMemo / useCallback,
+        // the selectAtom call is memoized — fine.
+        let cursor: EsTreeNode | null | undefined = node.parent ?? null;
+        let nearestFunctionLike: EsTreeNode | null = null;
+        while (cursor) {
+          if (isFunctionLikeNode(cursor)) {
+            nearestFunctionLike = cursor;
+            break;
+          }
+          cursor = cursor.parent ?? null;
         }
-        outerCursor = outerCursor.parent ?? null;
-      }
-    },
-  }),
+        if (!nearestFunctionLike) return;
+        if (isDeferredCallback(nearestFunctionLike)) return;
+        if (isBindingUsedAsHandler(nearestFunctionLike)) return;
+
+        // Now walk up again from the nearest function looking for any
+        // enclosing component or hook. Helpers nested inside a
+        // component are still "render-time" execution paths.
+        let outerCursor: EsTreeNode | null = nearestFunctionLike;
+        while (outerCursor) {
+          if (isFunctionLikeNode(outerCursor) && containingFunctionIsComponentOrHook(outerCursor)) {
+            context.report({
+              node,
+              message:
+                "`selectAtom(...)` runs in a component or hook without `useMemo`, so every render makes a new atom & re-subscribes forever, freezing the page for your users. Lift it to module scope, or wrap it in `useMemo(() => selectAtom(...), [deps])`.",
+            });
+            return;
+          }
+          outerCursor = outerCursor.parent ?? null;
+        }
+      },
+    };
+  },
 });

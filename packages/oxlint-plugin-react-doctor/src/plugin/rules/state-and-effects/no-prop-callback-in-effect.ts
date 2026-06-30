@@ -3,6 +3,7 @@ import { createComponentPropStackTracker } from "../../utils/create-component-pr
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import type { Reference } from "eslint-scope";
 import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blocks.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -84,6 +85,11 @@ export const noPropCallbackInEffect = defineRule({
           if (!isNodeOfType(child.callee, "Identifier")) return;
           const calleeName = child.callee.name;
           if (!propStackTracker.isPropName(calleeName)) return;
+          // Only the "lift state up" hand-back fires: a discarded
+          // `onChange(state)`. When the prop call's result flows somewhere
+          // (`setError(validate(value))`) the prop is a pure transform consumed
+          // locally, not a parent sync — leave it alone.
+          if (!isResultDiscardedCall(child)) return;
           if (reportedNodes.has(child)) return;
           reportedNodes.add(child);
           context.report({

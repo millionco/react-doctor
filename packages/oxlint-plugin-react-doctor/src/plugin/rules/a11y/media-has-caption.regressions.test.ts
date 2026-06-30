@@ -31,4 +31,20 @@ describe("a11y/media-has-caption regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it('accepts a captions `<track kind={"captions"}>` (literal in an expression container)', () => {
+    const result = runRule(
+      mediaHasCaption,
+      `const V = () => <video src={s}><track kind={"captions"} src="c.vtt" /></video>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a `<video>` whose track `kind` is a dynamic expression", () => {
+    const result = runRule(
+      mediaHasCaption,
+      `const V = () => <video src={s}><track kind={dynamic} /></video>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

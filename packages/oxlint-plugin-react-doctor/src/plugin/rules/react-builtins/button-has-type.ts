@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
@@ -51,6 +52,7 @@ const isValidTypeValue = (rawValue: string, settings: Required<ButtonHasTypeSett
 const isProvenValidExpression = (
   expression: EsTreeNode,
   settings: Required<ButtonHasTypeSettings>,
+  resolvedBindings: ReadonlySet<string> = new Set(),
 ): boolean => {
   if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
     return isValidTypeValue(expression.value, settings);
@@ -61,8 +63,23 @@ const isProvenValidExpression = (
   }
   if (isNodeOfType(expression, "ConditionalExpression")) {
     return (
-      isProvenValidExpression(expression.consequent, settings) &&
-      isProvenValidExpression(expression.alternate, settings)
+      isProvenValidExpression(expression.consequent, settings, resolvedBindings) &&
+      isProvenValidExpression(expression.alternate, settings, resolvedBindings)
+    );
+  }
+  // A bare identifier may name a local binding that resolves to a
+  // provably valid literal (`const kind = "submit"; type={kind}`). Walk
+  // to its initializer and re-test. `resolvedBindings` guards against a
+  // cyclic chain. An unresolvable binding (prop / param / external)
+  // stays "unknown → invalid".
+  if (isNodeOfType(expression, "Identifier")) {
+    if (resolvedBindings.has(expression.name)) return false;
+    const binding = findVariableInitializer(expression, expression.name);
+    if (!binding?.initializer) return false;
+    return isProvenValidExpression(
+      binding.initializer,
+      settings,
+      new Set(resolvedBindings).add(expression.name),
     );
   }
   return false;
@@ -73,9 +90,28 @@ const isProvenValidExpression = (
 // should fire at the CONSUMER's call site (where the literal value
 // lives), not at the trampoline. Without this every styled-button
 // wrapper that exposes `type` to its caller eats a diagnostic.
+// True when the identifier binds to a destructured `type` prop, renamed
+// or not (`({ type }) => …` / `({ type: kind }) => …`). The binding
+// identifier's parent Property carries the original key `type`, so the
+// real value still lives at the consumer's call site.
+const bindsToDestructuredTypeProp = (expression: EsTreeNodeOfType<"Identifier">): boolean => {
+  const binding = findVariableInitializer(expression, expression.name);
+  const declaration = binding?.bindingIdentifier;
+  const property = declaration?.parent;
+  return Boolean(
+    property &&
+    isNodeOfType(property, "Property") &&
+    !property.computed &&
+    property.value === declaration &&
+    isNodeOfType(property.key, "Identifier") &&
+    property.key.name === "type",
+  );
+};
+
 const isConsumerPropForward = (expression: EsTreeNode): boolean => {
-  if (isNodeOfType(expression, "Identifier") && expression.name === "type") {
-    return true;
+  if (isNodeOfType(expression, "Identifier")) {
+    if (expression.name === "type") return true;
+    return bindsToDestructuredTypeProp(expression);
   }
   if (
     isNodeOfType(expression, "MemberExpression") &&

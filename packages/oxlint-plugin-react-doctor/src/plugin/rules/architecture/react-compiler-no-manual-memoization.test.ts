@@ -124,14 +124,16 @@ const Component = () => {
     expectFlaggedApiNames(`_react.useMemo(() => 1, []);`, ["useMemo"]);
   });
 
-  it("flags `React.memo(Component, areEqual)` with custom comparator", () => {
-    expectFlaggedApiNames(
+  it("does not flag `React.memo(Component, areEqual)` with a custom comparator", () => {
+    // A bespoke comparator encodes equality the compiler can't replicate,
+    // so the memo() is not redundant.
+    expectDiagnosticCount(
       `import React from "react";
 const Inner = ({ value }) => <span>{value}</span>;
 const areEqual = (prev, next) => prev.value === next.value;
 const Wrapped = React.memo(Inner, areEqual);
 export default Wrapped;`,
-      ["memo()"],
+      0,
     );
   });
 

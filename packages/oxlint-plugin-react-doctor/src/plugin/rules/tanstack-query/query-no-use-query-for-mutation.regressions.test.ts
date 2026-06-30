@@ -11,6 +11,22 @@ describe("tanstack-query/query-no-usequery-for-mutation — regressions", () => 
     expect(diagnostics).toHaveLength(0);
   });
 
+  it("stays silent on a template-literal GraphQL URL with a dynamic base", () => {
+    const { diagnostics } = runRule(
+      queryNoUseQueryForMutation,
+      "const r = useQuery({ queryKey: ['x'], queryFn: () => fetch(`${BASE}/graphql`, { method: 'POST', body }) });",
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on a const-resolved GraphQL URL", () => {
+    const { diagnostics } = runRule(
+      queryNoUseQueryForMutation,
+      `const GRAPHQL_URL = "/graphql"; const r = useQuery({ queryKey: ['x'], queryFn: () => fetch(GRAPHQL_URL, { method: "POST" }) });`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
   it("still flags a genuine mutating fetch inside useQuery", () => {
     const { diagnostics } = runRule(
       queryNoUseQueryForMutation,

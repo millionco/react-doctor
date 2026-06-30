@@ -14,6 +14,15 @@ describe("tanstack-start/tanstack-start-loader-parallel-fetch — regressions", 
     expect(diagnostics).toHaveLength(0);
   });
 
+  it("stays silent when a dependency is laundered through a non-await variable", () => {
+    const { diagnostics } = runRule(
+      tanstackStartLoaderParallelFetch,
+      `createFileRoute('/x')({ loader: async () => { const user = await getUser(); const id = user.id; const posts = await getPosts(id); return { user, posts }; } });`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
   it("still flags two independent awaits (a real waterfall)", () => {
     const { diagnostics } = runRule(
       tanstackStartLoaderParallelFetch,

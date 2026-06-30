@@ -16,6 +16,38 @@ describe("react-native/rn-no-scroll-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on a ref-guarded set-once latch", () => {
+    const result = runRule(
+      rnNoScrollState,
+      `const C = () => {
+  const [hasScrolled, setHasScrolled] = useState(false);
+  const hasScrolledRef = useRef(false);
+  const handleScroll = () => {
+    if (!hasScrolledRef.current) {
+      hasScrolledRef.current = true;
+      setHasScrolled(true);
+    }
+  };
+  return <ScrollView onScroll={handleScroll} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a different-value per-frame setState guard", () => {
+    const result = runRule(
+      rnNoScrollState,
+      `const C = () => {
+  const [showShadow, setShowShadow] = useState(false);
+  const handleScroll = (offset) => { if (offset > 100) setShowShadow(true); };
+  return <ScrollView onScroll={handleScroll} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags unconditional per-frame setState", () => {
     const result = runRule(
       rnNoScrollState,

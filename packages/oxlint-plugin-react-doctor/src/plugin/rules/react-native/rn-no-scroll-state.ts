@@ -27,19 +27,22 @@ const testReadsName = (test: EsTreeNode | null | undefined, name: string): boole
 // A set-once latch (`if (!hasScrolled) setHasScrolled(true)`) runs the setter
 // at most once — after the first scroll the guard is false forever, so there
 // is no per-frame re-render storm. Only exempt when the guard reads the SAME
-// state the setter writes; `if (offset > 100) setShowShadow(true)` (guard on a
-// different value) can still fire every frame and stays reported.
+// state the setter writes, or the ref that latches it
+// (`if (!hasScrolledRef.current) { hasScrolledRef.current = true; setHasScrolled(true) }`);
+// `if (offset > 100) setShowShadow(true)` (guard on a different value) can
+// still fire every frame and stays reported.
 const isGuardedSetOnceLatch = (
   callNode: EsTreeNode,
   setterName: string,
   boundary: EsTreeNode,
 ): boolean => {
   const stateName = setterToStateName(setterName);
+  const latchRefName = `${stateName}Ref`;
   let ancestor: EsTreeNode | null | undefined = callNode.parent;
   while (ancestor && ancestor !== boundary) {
     if (
       (isNodeOfType(ancestor, "IfStatement") || isNodeOfType(ancestor, "ConditionalExpression")) &&
-      testReadsName(ancestor.test, stateName)
+      (testReadsName(ancestor.test, stateName) || testReadsName(ancestor.test, latchRefName))
     ) {
       return true;
     }

@@ -34,4 +34,22 @@ describe("security/auth-token-in-web-storage — regressions", () => {
     );
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  // FP wave 4: design tokens / tokenizer / syntax-highlighting configs are
+  // styling data, not credentials, even though the key contains `token`.
+  it("stays silent on design tokens and tokenizer config", () => {
+    const { diagnostics } = runRule(
+      authTokenInWebStorage,
+      `localStorage.setItem("designTokens", JSON.stringify(theme));\nlocalStorage.setItem("tokenizerConfig", JSON.stringify(opts));`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a real auth token alongside design tokens", () => {
+    const { diagnostics } = runRule(
+      authTokenInWebStorage,
+      `localStorage.setItem("designTokens", JSON.stringify(theme));\nlocalStorage.setItem("authToken", t);`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
 });

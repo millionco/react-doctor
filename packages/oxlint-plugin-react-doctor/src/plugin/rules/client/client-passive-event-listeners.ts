@@ -17,7 +17,8 @@ const handlerCallsPreventDefault = (handler: EsTreeNode | undefined): boolean =>
   if (
     !handler ||
     (!isNodeOfType(handler, "ArrowFunctionExpression") &&
-      !isNodeOfType(handler, "FunctionExpression"))
+      !isNodeOfType(handler, "FunctionExpression") &&
+      !isNodeOfType(handler, "FunctionDeclaration"))
   ) {
     return false;
   }
@@ -36,6 +37,68 @@ const handlerCallsPreventDefault = (handler: EsTreeNode | undefined): boolean =>
   return didFindPreventDefault;
 };
 
+const asHandlerFunction = (value: EsTreeNode | null | undefined): EsTreeNode | undefined => {
+  if (!value) return undefined;
+  if (isNodeOfType(value, "FunctionExpression") || isNodeOfType(value, "ArrowFunctionExpression")) {
+    return value;
+  }
+  return undefined;
+};
+
+// Resolve a member-expression handler (`this.handleMove`, `obj.onMove`) to the
+// function it points at: a class method/field for `this.x`, or an object
+// method/field for a locally-declared `obj`. Returns undefined when the target
+// can't be traced in this file.
+const resolveMemberHandlerFunction = (
+  handler: EsTreeNodeOfType<"MemberExpression">,
+): EsTreeNode | undefined => {
+  const property = handler.property;
+  if (!isNodeOfType(property, "Identifier")) return undefined;
+  const propertyName = property.name;
+  const objectNode = handler.object;
+
+  if (isNodeOfType(objectNode, "ThisExpression")) {
+    let ancestor: EsTreeNode | null | undefined = handler.parent;
+    while (ancestor) {
+      if (isNodeOfType(ancestor, "ClassBody")) {
+        for (const element of ancestor.body ?? []) {
+          if (
+            (isNodeOfType(element, "MethodDefinition") ||
+              isNodeOfType(element, "PropertyDefinition")) &&
+            isNodeOfType(element.key, "Identifier") &&
+            element.key.name === propertyName
+          ) {
+            const resolved = asHandlerFunction(element.value);
+            if (resolved) return resolved;
+          }
+        }
+        return undefined;
+      }
+      ancestor = ancestor.parent ?? null;
+    }
+    return undefined;
+  }
+
+  if (isNodeOfType(objectNode, "Identifier")) {
+    const binding = findVariableInitializer(objectNode, objectNode.name);
+    const initializer = binding?.initializer;
+    if (initializer && isNodeOfType(initializer, "ObjectExpression")) {
+      for (const objectProperty of initializer.properties ?? []) {
+        if (
+          isNodeOfType(objectProperty, "Property") &&
+          isNodeOfType(objectProperty.key, "Identifier") &&
+          objectProperty.key.name === propertyName
+        ) {
+          const resolved = asHandlerFunction(objectProperty.value);
+          if (resolved) return resolved;
+        }
+      }
+    }
+  }
+
+  return undefined;
+};
+
 // Handlers are usually passed by reference inside an effect (`const onTouchMove
 // = (e) => { e.preventDefault(); … }; el.addEventListener("touchmove",
 // onTouchMove)`) so they can be removed in cleanup. Resolve the binding so the
@@ -45,9 +108,19 @@ const handlerCallsPreventDefault = (handler: EsTreeNode | undefined): boolean =>
 const handlerArgumentCallsPreventDefault = (handler: EsTreeNode | undefined): boolean => {
   if (!handler) return false;
   if (handlerCallsPreventDefault(handler)) return true;
-  if (!isNodeOfType(handler, "Identifier")) return false;
-  const binding = findVariableInitializer(handler, handler.name);
-  return handlerCallsPreventDefault(binding?.initializer ?? undefined);
+  if (isNodeOfType(handler, "Identifier")) {
+    const binding = findVariableInitializer(handler, handler.name);
+    return handlerCallsPreventDefault(binding?.initializer ?? undefined);
+  }
+  if (isNodeOfType(handler, "MemberExpression")) {
+    const resolved = resolveMemberHandlerFunction(handler);
+    // An unresolved member handler (`this.x` / `obj.y` we can't trace) may call
+    // preventDefault — recommending `{ passive: true }` would silently break
+    // it, so suppress conservatively rather than assume it's passive-safe.
+    if (!resolved) return true;
+    return handlerCallsPreventDefault(resolved);
+  }
+  return false;
 };
 
 // An explicit `{ passive: false }` is a deliberate opt-out (the author

@@ -3,8 +3,10 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 const HOOK_NAME_PATTERN = /^use[A-Z]/;
 
@@ -75,20 +77,37 @@ const isDestructuredChildrenParam = (identifier: EsTreeNodeOfType<"Identifier">)
   return false;
 };
 
+// Walks up to the nearest enclosing function and checks it looks like a
+// component/hook. `props.children` / `this.props.children` are only Preact
+// VNode children inside a component; a plain data helper reading a tree
+// node's `children` array (`flattenTree(props)`) is not.
+const isInsideComponentLikeFunction = (node: EsTreeNode): boolean => {
+  let cursor: EsTreeNode | null | undefined = node.parent;
+  while (cursor) {
+    if (isFunctionLike(cursor)) return isComponentLikeFunction(cursor);
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
 // Matches the `children` tail of `props.children`, `this.props.children`,
 // or destructured `{ children }` accessed as `children.<method>`.
-const isChildrenMemberExpression = (node: EsTreeNodeOfType<"MemberExpression">): boolean => {
+const isChildrenMemberExpression = (
+  node: EsTreeNodeOfType<"MemberExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
   const object = node.object;
   if (!isNodeOfType(object, "MemberExpression")) {
     // Direct `children.map(...)` — only when the identifier traces back
     // to a destructured function parameter like `({ children }) => …`.
     // A bare `children` variable from any other source (DOM children,
     // tree children, etc.) is not Preact's `props.children`.
-    return (
-      isNodeOfType(object, "Identifier") &&
-      object.name === "children" &&
-      isDestructuredChildrenParam(object)
-    );
+    if (!isNodeOfType(object, "Identifier") || object.name !== "children") return false;
+    // A nearer local declaration (`const children = getItems()`) shadows the
+    // prop — resolve the binding and bail when it isn't the parameter.
+    const symbol = scopes.symbolFor(object);
+    if (symbol && symbol.kind !== "parameter") return false;
+    return isDestructuredChildrenParam(object);
   }
 
   // `props.children` or `this.props.children`
@@ -97,7 +116,9 @@ const isChildrenMemberExpression = (node: EsTreeNodeOfType<"MemberExpression">):
   }
 
   const propsObject = object.object;
-  if (isNodeOfType(propsObject, "Identifier") && propsObject.name === "props") return true;
+
+  // `this.props.children` only exists in a class component — strong enough
+  // evidence on its own (the `render()` method body need not contain JSX).
   if (
     isNodeOfType(propsObject, "MemberExpression") &&
     isNodeOfType(propsObject.property, "Identifier") &&
@@ -105,6 +126,13 @@ const isChildrenMemberExpression = (node: EsTreeNodeOfType<"MemberExpression">):
     isNodeOfType(propsObject.object, "ThisExpression")
   ) {
     return true;
+  }
+
+  // Plain `props.children` — gate on the enclosing function looking like a
+  // component, mirroring the destructured `{ children }` path. A data helper
+  // (`flattenTree(props)`) reading a tree node's `children` array is not it.
+  if (isNodeOfType(propsObject, "Identifier") && propsObject.name === "props") {
+    return isInsideComponentLikeFunction(node);
   }
 
   return false;
@@ -128,7 +156,7 @@ export const preactNoChildrenLength = defineRule({
       if (node.computed) return;
       if (!isNodeOfType(node.property, "Identifier")) return;
       if (!ARRAY_READ_METHOD_NAMES.has(node.property.name)) return;
-      if (!isChildrenMemberExpression(node)) return;
+      if (!isChildrenMemberExpression(node, context.scopes)) return;
       context.report({ node, message: CHILDREN_ARRAY_MESSAGE });
     },
   }),

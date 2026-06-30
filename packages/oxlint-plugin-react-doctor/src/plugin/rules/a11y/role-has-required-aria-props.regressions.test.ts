@@ -23,4 +23,27 @@ describe("a11y/role-has-required-aria-props regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it('exempts a native `<input type="range" role="slider">` (range supplies aria-valuenow)', () => {
+    const result = runRule(
+      roleHasRequiredAriaProps,
+      `const R = () => <input type="range" role="slider" defaultValue={5} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('still flags a custom `<div role="slider">` missing aria-valuenow', () => {
+    const result = runRule(roleHasRequiredAriaProps, `const R = () => <div role="slider" />;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it('exempts a native `<h1 role="heading">` (the heading level is intrinsic)', () => {
+    const result = runRule(roleHasRequiredAriaProps, `const H = () => <h1 role="heading">Hi</h1>;`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('still flags a custom `<div role="heading">` missing aria-level', () => {
+    const result = runRule(roleHasRequiredAriaProps, `const H = () => <div role="heading" />;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -19,11 +19,28 @@ describe("jotai/jotai-select-atom-in-render-body — regressions", () => {
     expect(diagnostics).toHaveLength(0);
   });
 
+  it("stays silent when selectAtom is wrapped in a namespaced React.useMemo", () => {
+    const { diagnostics } = runRule(
+      jotaiSelectAtomInRenderBody,
+      `import { selectAtom } from "jotai/utils"; function Comp() { const derived = React.useMemo(() => selectAtom(baseAtom, (s) => s.value), []); return null; }`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
   it("still flags selectAtom called directly in the component body", () => {
     const { diagnostics } = runRule(
       jotaiSelectAtomInRenderBody,
       `import { selectAtom } from 'jotai/utils'; const MyComp = () => { const d = selectAtom(baseAtom, (s) => s.value); return useAtomValue(d); };`,
     );
     expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when a handler bound to an idiomatic name is wired via onClick", () => {
+    const { diagnostics } = runRule(
+      jotaiSelectAtomInRenderBody,
+      `import { selectAtom } from "jotai/utils"; function Component() { const pick = () => selectAtom(base, (s) => s.user); return <button onClick={pick}>x</button>; }`,
+      { filename: "c.tsx" },
+    );
+    expect(diagnostics).toHaveLength(0);
   });
 });

@@ -48,4 +48,25 @@ describe("a11y/prefer-tag-over-role regressions", () => {
     const result = runRule(preferTagOverRole, `const B = () => <div role="button" />;`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it('suggests <ul> (not <menu>) for `<div role="list">`', () => {
+    const result = runRule(preferTagOverRole, `const L = () => <div role="list" />;`);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("`<ul>`");
+    expect(result.diagnostics[0].message).not.toContain("`<menu>`");
+  });
+
+  it('does not suggest <hr> for a window-splitter `<div role="separator">` (focusable/valued)', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const S = () => <div role="separator" tabIndex={0} aria-valuenow={50} aria-valuemin={0} aria-valuemax={100} aria-orientation="vertical" />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('still suggests <hr> for a decorative `<div role="separator">`', () => {
+    const result = runRule(preferTagOverRole, `const S = () => <div role="separator" />;`);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("`<hr>`");
+  });
 });

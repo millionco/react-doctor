@@ -29,8 +29,13 @@ export const rnPreferExpoImage = defineRule({
         const source = node.source?.value;
 
         if (source !== "react-native") return;
+        // Type-only imports are erased at build time, so neither the
+        // declaration form (`import type { Image }`) nor the inline specifier
+        // form (`import { type Image }`) instantiates a runtime <Image>.
+        if (node.importKind === "type") return;
         for (const specifier of node.specifiers ?? []) {
           if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
+          if (specifier.importKind === "type") continue;
           const importedName = getImportedName(specifier);
           if (importedName !== "Image" && importedName !== "ImageBackground") continue;
           context.report({

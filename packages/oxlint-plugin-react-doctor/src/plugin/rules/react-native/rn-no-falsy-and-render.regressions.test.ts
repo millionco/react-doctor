@@ -23,4 +23,28 @@ describe("react-native/rn-no-falsy-and-render — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("stays silent on a non-zero numeric literal const", () => {
+    const result = runRule(
+      rnNoFalsyAndRender,
+      `const Comp = () => {
+  const count = 5;
+  return <>{count && <Item />}</>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a useState(0)-derived numeric gate", () => {
+    const result = runRule(
+      rnNoFalsyAndRender,
+      `const C = () => {
+  const [count, setCount] = useState(0);
+  return <View>{count && <Item />}</View>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

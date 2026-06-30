@@ -146,6 +146,16 @@ export const noSideTabBorder = defineRule({
         );
       if (hasNeutralBorderColor) return;
 
+      // An arbitrary border color (`border-[#e5e7eb]`) written as a hex /
+      // rgb / hsl value renders identically to a named neutral palette,
+      // so run it through the same chroma check the inline-style path uses
+      // and skip when achromatic.
+      const arbitraryBorderColorMatch = classStr.match(/\bborder-\[([^\]]+)\]/);
+      if (arbitraryBorderColorMatch) {
+        const parsed = parseColorToRgb(arbitraryBorderColorMatch[1]);
+        if (parsed && !hasColorChroma(parsed)) return;
+      }
+
       const width = parseInt(sideMatch[1], 10);
       const hasRounded =
         /\brounded(?:-(?!none\b)\w+)?\b/.test(classStr) && !/\brounded-none\b/.test(classStr);

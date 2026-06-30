@@ -53,6 +53,18 @@ export const nextjsNoClientSideRedirect = defineRule({
         if (!callback) return;
 
         walkAst(callback, (child: EsTreeNode) => {
+          // Stop at nested function boundaries: a navigation inside an event
+          // handler or callback registered in the effect runs on a later user
+          // interaction, not synchronously on mount, so it must not be flagged.
+          if (
+            child !== callback &&
+            (isNodeOfType(child, "ArrowFunctionExpression") ||
+              isNodeOfType(child, "FunctionExpression") ||
+              isNodeOfType(child, "FunctionDeclaration"))
+          ) {
+            return false;
+          }
+
           const navigationDescription = describeClientSideNavigation(child);
           if (navigationDescription) {
             context.report({

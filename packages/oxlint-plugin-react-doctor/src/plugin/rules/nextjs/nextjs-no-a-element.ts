@@ -16,7 +16,21 @@ export const nextjsNoAElement = defineRule({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "a") return;
 
-      const hrefAttribute = findJsxAttribute(node.attributes ?? [], "href");
+      const attributes = node.attributes ?? [];
+
+      // `next/link` has no equivalent for a file download or a new-tab link, so
+      // a plain anchor is the correct element in those cases.
+      if (findJsxAttribute(attributes, "download")) return;
+      const targetAttribute = findJsxAttribute(attributes, "target");
+      if (
+        targetAttribute?.value &&
+        isNodeOfType(targetAttribute.value, "Literal") &&
+        targetAttribute.value.value === "_blank"
+      ) {
+        return;
+      }
+
+      const hrefAttribute = findJsxAttribute(attributes, "href");
       if (!hrefAttribute?.value) return;
 
       let hrefValue = null;
@@ -29,7 +43,11 @@ export const nextjsNoAElement = defineRule({
         hrefValue = hrefAttribute.value.expression.value;
       }
 
-      if (typeof hrefValue === "string" && hrefValue.startsWith("/")) {
+      if (
+        typeof hrefValue === "string" &&
+        hrefValue.startsWith("/") &&
+        !hrefValue.startsWith("//")
+      ) {
         context.report({
           node,
           message:

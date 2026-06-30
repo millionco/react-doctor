@@ -26,6 +26,9 @@ export const noDocumentStartViewTransition = defineRule({
         callee.property.name !== "startViewTransition"
       )
         return;
+      // A locally-bound `document` (e.g. a function parameter) shadows the
+      // global, so its `startViewTransition` is unrelated to the DOM API.
+      if (context.scopes.symbolFor(callee.object) !== null) return;
       context.report({
         node,
         message:

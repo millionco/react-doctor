@@ -124,6 +124,12 @@ export const noPreventDefault = defineRule({
         // we don't recommend a server-action story the project can't use.
         if (elementName === "form" && isClientOnlyFramework) return;
 
+        // A `<form action=…>` already has a native no-JS submit path: with
+        // JS off the onSubmit handler never runs, so preventDefault() never
+        // fires and the browser performs the native action. The "won't work
+        // without JS" advice is false here — only flag action-less forms.
+        if (elementName === "form" && findJsxAttribute(node.attributes ?? [], "action")) return;
+
         for (const targetEventProp of targetEventProps) {
           const eventAttribute = findJsxAttribute(node.attributes ?? [], targetEventProp);
           if (

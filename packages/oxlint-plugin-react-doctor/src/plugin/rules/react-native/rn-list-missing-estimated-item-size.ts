@@ -1,7 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { getReactDoctorNumberSetting } from "../../utils/get-react-doctor-setting.js";
-import { FLASH_LIST_V2_MAJOR } from "../../constants/react-native.js";
+import { FLASH_LIST_V2_MAJOR, RECYCLABLE_LIST_PACKAGES } from "../../constants/react-native.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -17,15 +17,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // producing the "blank flash on fast scroll" artifact. LegendList
 // accepts `estimatedItemSize` OR `estimatedListSize` (the latter is
 // a richer per-list hint), so either silences the rule.
-
-// Source-of-truth packages: only fire when the JSX element name resolves
-// to one of these via a real ES module import. A homegrown component
-// named `FlashList` in a different package (or imported from a wrapper)
-// shouldn't pretend to be the Shopify/Legend recycler.
-const RECYCLABLE_LIST_PACKAGES: Record<string, ReadonlyArray<string>> = {
-  FlashList: ["@shopify/flash-list"],
-  LegendList: ["@legendapp/list"],
-};
 
 const SIZING_HINT_ATTRIBUTE_NAMES = new Set(["estimatedItemSize", "estimatedListSize"]);
 

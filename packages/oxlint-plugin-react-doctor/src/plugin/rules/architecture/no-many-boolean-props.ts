@@ -11,6 +11,33 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
+// Prop names whose value is invoked (`showMenu()`) or wired up as an
+// event handler (`onClick={showMenu}`) are imperative callbacks, not
+// on/off flags — the boolean-prefix heuristic misreads `show`/`hide`/
+// `enable`/`disable` callbacks as booleans, so drop them from the count.
+const EVENT_HANDLER_ATTRIBUTE_PATTERN = /^on[A-Z]/;
+
+const collectCallbackUsedNames = (componentBody: EsTreeNode | undefined): Set<string> => {
+  const callbackNames = new Set<string>();
+  if (!componentBody) return callbackNames;
+  walkAst(componentBody, (child: EsTreeNode) => {
+    if (isNodeOfType(child, "CallExpression") && isNodeOfType(child.callee, "Identifier")) {
+      callbackNames.add(child.callee.name);
+      return;
+    }
+    if (
+      isNodeOfType(child, "JSXAttribute") &&
+      isNodeOfType(child.name, "JSXIdentifier") &&
+      EVENT_HANDLER_ATTRIBUTE_PATTERN.test(child.name.name) &&
+      isNodeOfType(child.value, "JSXExpressionContainer") &&
+      isNodeOfType(child.value.expression, "Identifier")
+    ) {
+      callbackNames.add(child.value.expression.name);
+    }
+  });
+  return callbackNames;
+};
+
 const collectBooleanLikePropsFromBody = (
   componentBody: EsTreeNode | undefined,
   propsParamName: string,
@@ -72,11 +99,13 @@ export const noManyBooleanProps = defineRule({
       // actual render output before treating the param as component props.
       if (!functionContainsReactRenderOutput(functionNode, context.scopes)) return;
       if (isNodeOfType(param, "ObjectPattern")) {
+        const callbackUsedNames = collectCallbackUsedNames(body);
         const booleanLikePropNames: string[] = [];
         for (const property of param.properties ?? []) {
           if (!isNodeOfType(property, "Property")) continue;
           const keyName = isNodeOfType(property.key, "Identifier") ? property.key.name : null;
           if (!keyName) continue;
+          if (callbackUsedNames.has(keyName)) continue;
           if (isBooleanPrefixedPropName(keyName)) {
             booleanLikePropNames.push(keyName);
           }

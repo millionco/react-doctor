@@ -28,6 +28,7 @@ const STRING_RETURNING_METHODS: ReadonlySet<string> = new Set([
   "substring",
   "substr",
   "charAt",
+  "join",
   "toFixed",
   "toExponential",
   "toPrecision",

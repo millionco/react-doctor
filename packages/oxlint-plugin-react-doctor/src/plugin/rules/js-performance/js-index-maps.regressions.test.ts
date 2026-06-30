@@ -26,4 +26,16 @@ describe("js-performance/js-index-maps — regressions", () => {
       `function g(scores,bands){ const out=[]; for(const sc of scores){ const b=bands.find((b)=> sc>=b.min && sc<=b.max); out.push(b);} return out; }`,
     );
   });
+
+  it("flags a loop-invariant receiver `.find()` inside a loop", () => {
+    expectFail(
+      `function f(rows, users){ for (const row of rows){ const u = users.find((u)=> u.id === row.userId); use(u); } }`,
+    );
+  });
+
+  it("does not flag when the `.find()` receiver varies per loop iteration", () => {
+    expectPass(
+      `function f(rows, targetId){ for (const row of rows){ const cell = row.cells.find((c)=> c.id === targetId); use(cell); } }`,
+    );
+  });
 });

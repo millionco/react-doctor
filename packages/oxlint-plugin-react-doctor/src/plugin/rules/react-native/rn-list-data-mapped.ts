@@ -1,10 +1,38 @@
-import { REACT_NATIVE_LIST_COMPONENTS } from "../../constants/react-native.js";
+import {
+  REACT_NATIVE_LIST_COMPONENTS,
+  RECYCLABLE_LIST_PACKAGES,
+} from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
+import {
+  getImportedNameFromModule,
+  getImportSourceForName,
+} from "../../utils/find-import-source-for-name.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+const REACT_NATIVE_MODULE_SOURCE = "react-native";
+
+// True when the local JSX name genuinely refers to a virtualized list, not a
+// same-named local component. Recyclers (FlashList/LegendList) must be imported
+// from their owning package; the built-in RN lists fire for a `react-native`
+// import or an ambient/global reference, but not when the name is rebound to a
+// local declaration (`const FlatList = MyTable`) or a different package.
+const isVirtualizedList = (node: EsTreeNode, elementName: string): boolean => {
+  const recyclerPackages = RECYCLABLE_LIST_PACKAGES[elementName];
+  if (recyclerPackages) {
+    return recyclerPackages.some(
+      (packageSource) =>
+        getImportedNameFromModule(node, elementName, packageSource) === elementName,
+    );
+  }
+  const importSource = getImportSourceForName(node, elementName);
+  if (importSource !== null) return importSource === REACT_NATIVE_MODULE_SOURCE;
+  return findVariableInitializer(node, elementName) === null;
+};
 
 const FRESH_ARRAY_METHODS = new Set([
   "map",
@@ -72,6 +100,7 @@ export const rnListDataMapped = defineRule({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
       if (!elementName || !REACT_NATIVE_LIST_COMPONENTS.has(elementName)) return;
+      if (!isVirtualizedList(node, elementName)) return;
 
       for (const attr of node.attributes ?? []) {
         if (!isNodeOfType(attr, "JSXAttribute")) continue;

@@ -1,9 +1,12 @@
+import { LOOP_TYPES } from "../../constants/js.js";
 import { createLoopAwareVisitors } from "../../utils/create-loop-aware-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 // Only a predicate that tests a SINGLE equality on one field
 // (`item.id === target` / `item === target`) can be replaced by a `Map`
@@ -59,6 +62,46 @@ const isSingleFieldEqualityPredicate = (node: EsTreeNodeOfType<"CallExpression">
   );
 };
 
+// Names that change every iteration of an enclosing loop: the
+// for…of / for…in binding plus anything (re)assigned or declared
+// inside the loop body. When the `.find()` receiver roots at one of
+// these, the receiver is a different array each pass, so a single
+// pre-loop Map can't replace it — flagging it would be a false
+// positive.
+const collectLoopBoundNames = (loop: EsTreeNode, names: Set<string>): void => {
+  if ((isNodeOfType(loop, "ForOfStatement") || isNodeOfType(loop, "ForInStatement")) && loop.left) {
+    walkAst(loop.left, (child: EsTreeNode) => {
+      if (isNodeOfType(child, "Identifier")) names.add(child.name);
+    });
+  }
+  walkAst(loop, (child: EsTreeNode) => {
+    if (isNodeOfType(child, "VariableDeclarator") && child.id) {
+      walkAst(child.id, (idNode: EsTreeNode) => {
+        if (isNodeOfType(idNode, "Identifier")) names.add(idNode.name);
+      });
+      return;
+    }
+    if (isNodeOfType(child, "AssignmentExpression")) {
+      const targetRoot = getRootIdentifierName(child.left);
+      if (targetRoot) names.add(targetRoot);
+    }
+  });
+};
+
+const isLoopVariantReceiver = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
+  if (!isNodeOfType(node.callee, "MemberExpression")) return false;
+  const receiverRoot = getRootIdentifierName(node.callee.object);
+  if (!receiverRoot) return false;
+
+  const loopBoundNames = new Set<string>();
+  let ancestor: EsTreeNode | null | undefined = node.parent;
+  while (ancestor) {
+    if (LOOP_TYPES.includes(ancestor.type)) collectLoopBoundNames(ancestor, loopBoundNames);
+    ancestor = ancestor.parent;
+  }
+  return loopBoundNames.has(receiverRoot);
+};
+
 export const jsIndexMaps = defineRule({
   id: "js-index-maps",
   title: "array.find() inside a loop",
@@ -77,6 +120,7 @@ export const jsIndexMaps = defineRule({
         const methodName = node.callee.property.name;
         if (methodName !== "find" && methodName !== "findIndex") return;
         if (!isSingleFieldEqualityPredicate(node)) return;
+        if (isLoopVariantReceiver(node)) return;
         context.report({
           node,
           message: `This gets slow as your list grows because array.${methodName}() runs inside a loop, so build a Map once before the loop for instant lookups`,

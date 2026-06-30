@@ -1,6 +1,7 @@
 import { TANSTACK_QUERY_HOOKS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { isTanstackQuerySource } from "../../utils/is-tanstack-query-source.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -37,15 +38,6 @@ const isForwardedBinding = (
   });
   return forwarded;
 };
-
-// TanStack Query packages (`@tanstack/react-query`, `@tanstack/vue-query`,
-// `@tanstack/query-core`, the Angular `*-query-experimental`, …) plus the
-// legacy `react-query`. A `useQuery` imported from anything else — notably
-// Convex's `convex/react`, whose `useQuery` returns the data directly — must
-// not be treated as a TanStack result object.
-const TANSTACK_QUERY_PACKAGE_PATTERN = /^@tanstack\/[\w-]*query[\w-]*$/;
-const isTanstackQuerySource = (source: string): boolean =>
-  TANSTACK_QUERY_PACKAGE_PATTERN.test(source) || source === "react-query";
 
 export const queryDestructureResult = defineRule({
   id: "query-destructure-result",

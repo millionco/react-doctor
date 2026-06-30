@@ -26,6 +26,36 @@ const DEFAULT_NON_REDUNDANT_ROLES: Readonly<Record<string, ReadonlyArray<string>
   ol: ["list"],
 };
 
+// Tags whose implicit role depends on an attribute the static table can't
+// see: a bare `<a>`/`<area>`/`<link>` (no `href`) has NO implicit role, so
+// `role="link"` on it is a correct addition, not redundant. Resolve these
+// through the attribute-aware `getImplicitRole` (as `input` already is)
+// instead of the context-free static table.
+const ATTRIBUTE_DEPENDENT_IMPLICIT_ROLE_TAGS: ReadonlySet<string> = new Set([
+  "input",
+  "a",
+  "area",
+  "link",
+]);
+
+// `<td>`/`<th>` each carry several implicit roles in the static table
+// (`td` → cell + gridcell; `th` → columnheader + rowheader + gridcell),
+// but only ONE is the element's effective default in plain document
+// markup: `<td>` is `cell`, and `<th>` is `rowheader` when scoped to a
+// row, otherwise `columnheader`. The W3C grid-pattern roles (`gridcell`,
+// and the non-default header role) are a deliberate clarification inside
+// an ARIA grid, not redundant noise, so only the primary default is
+// treated as redundant here.
+const getTableCellPrimaryRole = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  tag: string,
+): string => {
+  if (tag === "td") return "cell";
+  const scopeAttribute = hasJsxPropIgnoreCase(node.attributes, "scope");
+  const scope = scopeAttribute ? getJsxPropStringValue(scopeAttribute)?.toLowerCase() : null;
+  return scope === "row" || scope === "rowgroup" ? "rowheader" : "columnheader";
+};
+
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
 ): Required<NoRedundantRolesSettings> => {
@@ -56,15 +86,18 @@ export const noRedundantRoles = defineRule({
         const role = getJsxPropStringValue(roleAttr);
         if (role === null) return;
         const tag = getElementType(node, context.settings);
-        // `<input>` maps to a whole set of implicit roles in the static
-        // table, but any concrete input has exactly ONE effective role
-        // (resolved from `type`/`list`). Treating the full set as redundant
-        // mislabels e.g. `<input type="text" role="combobox">` (textbox →
-        // combobox is an upgrade, not a duplicate).
+        // The static table lists every role a tag *can* take, but
+        // attribute-dependent tags have exactly ONE effective role given
+        // their attributes (e.g. `<input type="text">` → textbox, bare
+        // `<a>` → none). Treating the full set as redundant mislabels
+        // `<input type="text" role="combobox">` (an upgrade) and
+        // `<a role="link">` without `href` (no implicit role at all).
         const implicitRoles =
-          tag === "input"
-            ? [getImplicitRole(node, tag)].filter((role): role is string => role !== null)
-            : getElementImplicitRoles(tag);
+          tag === "td" || tag === "th"
+            ? [getTableCellPrimaryRole(node, tag)]
+            : ATTRIBUTE_DEPENDENT_IMPLICIT_ROLE_TAGS.has(tag)
+              ? [getImplicitRole(node, tag)].filter((role): role is string => role !== null)
+              : getElementImplicitRoles(tag);
         const allowedHere = [
           ...(DEFAULT_NON_REDUNDANT_ROLES[tag] ?? []),
           ...(settings.exceptions[tag] ?? []),

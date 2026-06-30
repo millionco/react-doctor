@@ -17,10 +17,13 @@ const SENSITIVE_KEY_PATTERN =
 
 // `token` over-matches names that aren't auth/session credentials. CSRF/XSRF
 // double-submit tokens are *intentionally* JS-readable (the sibling
-// `insecure-session-cookie` rule carves them out too), and FCM/APNs/push
-// device tokens are routing identifiers. Exempt those unless the key ALSO
-// carries a strong auth signal (so `deviceAccessToken` still fires).
-const NON_AUTH_TOKEN_PATTERN = /csrf|xsrf|device|fcm|apns|push/i;
+// `insecure-session-cookie` rule carves them out too), FCM/APNs/push device
+// tokens are routing identifiers, and design-tokens / tokenizer / syntax
+// configs (`designTokens`, `tokenizerConfig`, `tokenColors`, `syntaxTokens`)
+// are styling data, not credentials. Exempt those unless the key ALSO carries
+// a strong auth signal (so `deviceAccessToken` still fires).
+const NON_AUTH_TOKEN_PATTERN =
+  /csrf|xsrf|device|fcm|apns|push|design|tokeniz|syntax|css|theme|color/i;
 const STRONG_AUTH_KEY_PATTERN =
   /jwt|secret|password|passwd|credential|private[-_]?key|api[-_]?key|bearer|access[-_]?token|refresh[-_]?token|auth[-_]?token|id[-_]?token|session/i;
 

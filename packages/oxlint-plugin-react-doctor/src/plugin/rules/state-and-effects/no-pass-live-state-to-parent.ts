@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
+import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { DATA_SINK_METHOD_NAMES } from "../../constants/data-sink-method-names.js";
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -59,6 +60,10 @@ export const noPassLiveStateToParent = defineRule({
         if (!isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn)) continue;
         const callExpr = getCallExpr(ref);
         if (!callExpr) continue;
+        // Only a discarded `onSync(state)` hands state up to the parent. When
+        // the prop call's result flows somewhere (`setDisplay(format(amount))`)
+        // the prop is a pure transform consumed locally, not a parent push.
+        if (!isResultDiscardedCall(callExpr)) continue;
 
         // Skip JS prototype / observer / promise methods — see
         // `no-pass-data-to-parent` for the full rationale.

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Head from "next/head";
+import { redirect } from "next/navigation";
 
 const useSearchParams = () => new URLSearchParams();
 
@@ -24,7 +25,10 @@ const Page = () => {
       <script src="https://cdn.example.com/analytics.js" />
       <Script>{`console.log("inline")`}</Script>
       <Script src="https://cdn.polyfill.io/v3/polyfill.min.js" />
-      <link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet" />
+      <link
+        href="https://fonts.googleapis.com/css2?family=Inter"
+        rel="stylesheet"
+      />
       <link rel="stylesheet" href="/styles/main.css" />
     </div>
   );
@@ -45,7 +49,6 @@ const RedirectInTryCatchComponent = () => {
 };
 
 const router = { push: (_path: string) => {} };
-const redirect = (_path: string) => {};
 const Image = (props: any) => <img {...props} />;
 const Script = (props: any) => <script {...props} />;
 

@@ -1,6 +1,4 @@
-import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
 import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -79,35 +77,14 @@ const isInsideDeferredCallback = (node: EsTreeNode): boolean => {
       ) {
         calleeName = callee.property.name;
       }
-      if (calleeName && DEFERRED_EXECUTION_CALLEE_NAMES.has(calleeName)) return true;
+      if (calleeName && DEFERRED_EXECUTION_CALLEE_NAMES.has(calleeName))
+        return true;
       // Keep walking — we might be inside a nested fn whose own enclosing
       // call IS deferred.
     }
     current = parent;
   }
   return false;
-};
-
-// Dep identifiers of the nearest enclosing useEffect / useLayoutEffect, or
-// null when there is no such effect (or its second argument isn't a literal
-// deps array). When the read state is among these, the effect re-runs — and
-// its closure refreshes — every time that state changes, so the deferred
-// setter never reads a stale value.
-const getEnclosingEffectDependencyNames = (node: EsTreeNode): Set<string> | null => {
-  let current: EsTreeNode | null | undefined = node.parent;
-  while (current) {
-    if (isNodeOfType(current, "CallExpression") && isHookCall(current, EFFECT_HOOK_NAMES)) {
-      const dependencyArray = current.arguments?.[1];
-      if (!isNodeOfType(dependencyArray, "ArrayExpression")) return null;
-      const dependencyNames = new Set<string>();
-      for (const element of dependencyArray.elements ?? []) {
-        if (isNodeOfType(element, "Identifier")) dependencyNames.add(element.name);
-      }
-      return dependencyNames;
-    }
-    current = current.parent;
-  }
-  return null;
 };
 
 export const rerenderFunctionalSetstate = defineRule({
@@ -139,27 +116,20 @@ export const rerenderFunctionalSetstate = defineRule({
       // reported one-shot handlers without it.
       if (!isInsideDeferredCallback(node)) return;
 
-      // The read state is a dependency of the enclosing effect, so the effect
-      // re-runs and rebuilds the closure on every change — the timer/handler
-      // always reads the latest value and cannot lose an update.
-      if (expectedStateName) {
-        const effectDependencyNames = getEnclosingEffectDependencyNames(node);
-        if (effectDependencyNames?.has(expectedStateName)) return;
-      }
-
       if (
         isNodeOfType(argument, "BinaryExpression") &&
         STATE_ARITHMETIC_OPERATORS.has(argument.operator) &&
         expectedStateName
       ) {
         const matchesExpected = (operand: EsTreeNode | undefined): boolean =>
-          isNodeOfType(operand, "Identifier") && operand.name === expectedStateName;
+          isNodeOfType(operand, "Identifier") &&
+          operand.name === expectedStateName;
 
         const stateIdentifier = matchesExpected(argument.left)
           ? argument.left
           : matchesExpected(argument.right)
-            ? argument.right
-            : null;
+          ? argument.right
+          : null;
 
         if (isNodeOfType(stateIdentifier, "Identifier")) {
           context.report({
@@ -202,7 +172,7 @@ export const rerenderFunctionalSetstate = defineRule({
           (element: EsTreeNode | null) =>
             isNodeOfType(element, "SpreadElement") &&
             isNodeOfType(element.argument, "Identifier") &&
-            element.argument.name === expectedStateName,
+            element.argument.name === expectedStateName
         );
         if (spreadsState) {
           context.report({
@@ -218,7 +188,7 @@ export const rerenderFunctionalSetstate = defineRule({
           (property: EsTreeNode | null) =>
             isNodeOfType(property, "SpreadElement") &&
             isNodeOfType(property.argument, "Identifier") &&
-            property.argument.name === expectedStateName,
+            property.argument.name === expectedStateName
         );
         if (spreadsState) {
           context.report({

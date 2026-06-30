@@ -8,28 +8,9 @@ import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-
-// Number of times `setterName` is invoked as a bare `setterName(...)` call
-// anywhere in the component. The pure prop mirror calls the setter only from
-// the effect (1 site); a controlled/uncontrolled draft mirror also writes it
-// from an event handler (>1 site).
-const countSetterCallSites = (componentBody: EsTreeNode, setterName: string): number => {
-  let callSiteCount = 0;
-  walkAst(componentBody, (child: EsTreeNode) => {
-    if (
-      isNodeOfType(child, "CallExpression") &&
-      isNodeOfType(child.callee, "Identifier") &&
-      child.callee.name === setterName
-    ) {
-      callSiteCount += 1;
-    }
-  });
-  return callSiteCount;
-};
 
 // HACK: §1 of "You Might Not Need an Effect" — mirroring a prop into
 // local state with a useEffect that re-syncs it. The combined shape
@@ -58,9 +39,11 @@ const countSetterCallSites = (componentBody: EsTreeNode, setterName: string): nu
 // `setX(value.toLowerCase())`.
 const getPropRootName = (
   expression: EsTreeNode | null | undefined,
-  propNames: Set<string>,
+  propNames: Set<string>
 ): string | null => {
-  const rootName = getRootIdentifierName(expression, { followCallChains: true });
+  const rootName = getRootIdentifierName(expression, {
+    followCallChains: true,
+  });
   return rootName !== null && propNames.has(rootName) ? rootName : null;
 };
 
@@ -80,7 +63,8 @@ export const noMirrorPropEffect = defineRule({
     "Delete both the `useState` and the `useEffect` and read the prop directly while rendering. Copying a prop into state shows the old value on the first render before the effect catches up.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
-      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
+      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement"))
+        return;
       const propNames = propStackTracker.getCurrentPropNames();
       if (propNames.size === 0) return;
 
@@ -139,7 +123,8 @@ export const noMirrorPropEffect = defineRule({
         // unused inside the body is a separate (exhaustive-deps) concern.
         const depIdentifierNames = new Set<string>();
         for (const element of depsNode.elements ?? []) {
-          if (isNodeOfType(element, "Identifier")) depIdentifierNames.add(element.name);
+          if (isNodeOfType(element, "Identifier"))
+            depIdentifierNames.add(element.name);
         }
         if (depIdentifierNames.size === 0) continue;
 
@@ -162,23 +147,9 @@ export const noMirrorPropEffect = defineRule({
           (binding) =>
             binding.setterName === calleeName &&
             depIdentifierNames.has(binding.propRootName) &&
-            areExpressionsStructurallyEqual(binding.initializer, setterArgument),
+            areExpressionsStructurallyEqual(binding.initializer, setterArgument)
         );
         if (!matchedBinding) continue;
-        // Controlled/uncontrolled draft mirror: when the setter argument is
-        // the bare prop AND the same setter is also written from an event
-        // handler (>1 call site), the state holds the user's live edits and
-        // merely re-syncs to the controlled prop. Deleting it would drop the
-        // edits, so this is not a pure mirror. Matches the sibling
-        // `isControlledPropMirror` guard in `no-derived-state`.
-        const isSetterArgumentBareProp =
-          isNodeOfType(setterArgument, "Identifier") && propNames.has(setterArgument.name);
-        if (
-          isSetterArgumentBareProp &&
-          countSetterCallSites(componentBody, matchedBinding.setterName) > 1
-        ) {
-          continue;
-        }
         // Initial-only / seed prop names (`initialCount`, `defaultX`,
         // `seedY`) are the documented "re-seed when the caller passes a
         // new initial value" idiom — the sibling rules

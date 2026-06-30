@@ -10,7 +10,7 @@ describe("react-native/rn-no-scroll-state — regressions", () => {
   const [hasScrolled, setHasScrolled] = useState(false);
   const onScroll = () => { if (!hasScrolled) setHasScrolled(true); };
   return <ScrollView onScroll={onScroll} />;
-};`
+};`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
@@ -23,7 +23,7 @@ describe("react-native/rn-no-scroll-state — regressions", () => {
   const [y, setY] = useState(0);
   const onScroll = (e) => { setY(e.nativeEvent.contentOffset.y); };
   return <ScrollView onScroll={onScroll} />;
-};`
+};`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);

@@ -9,8 +9,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const isNumericLiteralNode = (node: EsTreeNode | null | undefined): boolean => {
   if (!node) return false;
-  if (isNodeOfType(node, "Literal") && typeof node.value === "number")
-    return true;
+  if (isNodeOfType(node, "Literal") && typeof node.value === "number") return true;
   // `-16` parses as a unary minus over a numeric literal.
   return (
     isNodeOfType(node, "UnaryExpression") &&
@@ -49,16 +48,12 @@ export const rnScrollviewDynamicPadding = defineRule({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
       if (!elementName) return;
-      if (!SCROLLVIEW_NAMES.has(elementName) && elementName !== "FlashList")
-        return;
+      if (!SCROLLVIEW_NAMES.has(elementName) && elementName !== "FlashList") return;
       if (elementName === "KeyboardAwareScrollView") return;
 
       for (const attr of node.attributes ?? []) {
         if (!isNodeOfType(attr, "JSXAttribute")) continue;
-        if (
-          !isNodeOfType(attr.name, "JSXIdentifier") ||
-          attr.name.name !== "contentContainerStyle"
-        )
+        if (!isNodeOfType(attr.name, "JSXIdentifier") || attr.name.name !== "contentContainerStyle")
           continue;
         if (!isNodeOfType(attr.value, "JSXExpressionContainer")) continue;
         const expression = attr.value.expression;

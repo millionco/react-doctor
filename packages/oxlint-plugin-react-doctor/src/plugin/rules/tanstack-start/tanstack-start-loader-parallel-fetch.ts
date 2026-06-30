@@ -1,4 +1,6 @@
 import { SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER } from "../../constants/tanstack.js";
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
+import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -7,26 +9,48 @@ import { getPropertyKeyName } from "./utils/get-property-key-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const hasTopLevelAwait = (statement: EsTreeNode): boolean => {
+interface AwaitedStatementInfo {
+  awaitedExpressions: EsTreeNode[];
+  boundNames: string[];
+}
+
+// The awaited expression(s) of a top-level statement plus the names the
+// statement binds. Returns null when the statement has no top-level `await`.
+const getAwaitedStatementInfo = (statement: EsTreeNode): AwaitedStatementInfo | null => {
+  const awaitedExpressions: EsTreeNode[] = [];
+  const boundNames = new Set<string>();
+
   if (isNodeOfType(statement, "VariableDeclaration")) {
-    return statement.declarations?.some((declarator) =>
-      isNodeOfType(declarator.init, "AwaitExpression"),
-    );
+    for (const declarator of statement.declarations ?? []) {
+      if (!isNodeOfType(declarator.init, "AwaitExpression")) continue;
+      if (declarator.init.argument) awaitedExpressions.push(declarator.init.argument);
+      collectPatternNames(declarator.id, boundNames);
+    }
+  } else if (isNodeOfType(statement, "ExpressionStatement")) {
+    const expression = statement.expression;
+    if (isNodeOfType(expression, "AwaitExpression")) {
+      if (expression.argument) awaitedExpressions.push(expression.argument);
+    } else if (
+      isNodeOfType(expression, "AssignmentExpression") &&
+      isNodeOfType(expression.right, "AwaitExpression")
+    ) {
+      if (expression.right.argument) awaitedExpressions.push(expression.right.argument);
+      if (isNodeOfType(expression.left, "Identifier")) boundNames.add(expression.left.name);
+    }
+  } else if (isNodeOfType(statement, "ReturnStatement")) {
+    if (isNodeOfType(statement.argument, "AwaitExpression") && statement.argument.argument) {
+      awaitedExpressions.push(statement.argument.argument);
+    }
+  } else if (isNodeOfType(statement, "ForOfStatement") && statement.await) {
+    if (statement.right) awaitedExpressions.push(statement.right);
+    const loopBinding = isNodeOfType(statement.left, "VariableDeclaration")
+      ? (statement.left.declarations?.[0]?.id ?? null)
+      : statement.left;
+    collectPatternNames(loopBinding, boundNames);
   }
-  if (isNodeOfType(statement, "ExpressionStatement")) {
-    return (
-      isNodeOfType(statement.expression, "AwaitExpression") ||
-      (isNodeOfType(statement.expression, "AssignmentExpression") &&
-        isNodeOfType(statement.expression.right, "AwaitExpression"))
-    );
-  }
-  if (isNodeOfType(statement, "ReturnStatement")) {
-    return isNodeOfType(statement.argument, "AwaitExpression");
-  }
-  if (isNodeOfType(statement, "ForOfStatement") && statement.await) {
-    return true;
-  }
-  return false;
+
+  if (awaitedExpressions.length === 0) return null;
+  return { awaitedExpressions, boundNames: [...boundNames] };
 };
 
 export const tanstackStartLoaderParallelFetch = defineRule({
@@ -60,20 +84,37 @@ export const tanstackStartLoaderParallelFetch = defineRule({
         const functionBody = loaderValue.body;
         if (!functionBody || !isNodeOfType(functionBody, "BlockStatement")) continue;
 
-        let sequentialAwaitCount = 0;
+        // Only count awaits that are mutually INDEPENDENT — a dependent chain
+        // (`const posts = await getPosts(user.id)` consuming an earlier
+        // `await getUser()`) genuinely cannot be parallelized with
+        // `Promise.all`, so flagging it would suggest a broken fix.
+        let independentAwaitCount = 0;
+        const boundByEarlierAwaits = new Set<string>();
         for (const statement of functionBody.body ?? []) {
-          if (hasTopLevelAwait(statement)) {
-            sequentialAwaitCount++;
+          const awaitedInfo = getAwaitedStatementInfo(statement);
+          if (!awaitedInfo) continue;
+
+          const referencedNames = new Set<string>();
+          for (const awaitedExpression of awaitedInfo.awaitedExpressions) {
+            collectReferenceIdentifierNames(awaitedExpression, referencedNames);
+          }
+          const dependsOnEarlierAwait = [...referencedNames].some((name) =>
+            boundByEarlierAwaits.has(name),
+          );
+
+          if (!dependsOnEarlierAwait) {
+            independentAwaitCount++;
+            if (independentAwaitCount >= SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER) {
+              context.report({
+                node: property,
+                message:
+                  "Sequential awaits in this loader create a request waterfall that slows the route.",
+              });
+              break;
+            }
           }
 
-          if (sequentialAwaitCount >= SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER) {
-            context.report({
-              node: property,
-              message:
-                "Sequential awaits in this loader create a request waterfall that slows the route.",
-            });
-            break;
-          }
+          for (const name of awaitedInfo.boundNames) boundByEarlierAwaits.add(name);
         }
       }
     },

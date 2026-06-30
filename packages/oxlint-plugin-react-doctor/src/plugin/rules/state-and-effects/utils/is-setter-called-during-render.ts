@@ -12,10 +12,7 @@ import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 // where state is intentionally re-synced during render rather than in an
 // effect. That value is neither write-only nor a stale prop copy, so rules
 // that assume otherwise must bail.
-export const isSetterCalledDuringRender = (
-  root: EsTreeNode,
-  setterName: string
-): boolean => {
+export const isSetterCalledDuringRender = (root: EsTreeNode, setterName: string): boolean => {
   let found = false;
   walkAst(root, (child: EsTreeNode): boolean | void => {
     if (found) return false;

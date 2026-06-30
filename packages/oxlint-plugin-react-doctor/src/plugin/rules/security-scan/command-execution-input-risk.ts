@@ -7,8 +7,18 @@ import { scanByPattern } from "./utils/scan-by-pattern.js";
 // from triggering; known process modules are allowed explicitly. `[^)]`
 // keeps the taint window inside the call's own argument list — `[\s\S]`
 // bled into neighboring statements (logging f-strings after the call).
+//
+// Two branches. The shell-exec family (`exec`/`execSync`/`system`/`shell_exec`/
+// `os.system`/`subprocess.*`/`child_process.exec*`) runs a single command
+// string through a shell, so ANY request taint (or `shell: true`) in the call
+// is dangerous. The spawn family (`spawn`/`spawnSync`/`child_process.spawn*`)
+// defaults to `shell: false` and takes an argv array — a tainted value sitting
+// in a discrete argv element (`spawn("git", ["log", req.query.branch])`) is a
+// single opaque argument that CANNOT shell-inject. So the spawn branch only
+// fires when a shell is explicitly enabled (`shell: true`) or the command
+// itself (the first argument) is tainted (`spawn(req.query.cmd, …)`).
 const COMMAND_EXECUTION_INPUT_RISK_PATTERN =
-  /(?:(?<![.\w$])(?:exec(?:Sync)?|spawn(?:Sync)?|system|passthru|proc_open|shell_exec)|\b(?:os\.system|subprocess\.(?:run|Popen|call)|(?:child_process|childProcess|cp)\.(?:exec|spawn)\w*))\s*\([^)]{0,220}(?:req\.|request\.|params\.|query\.|body\.|searchParams|\$_(?:GET|POST|REQUEST)|shell\s*=\s*true|f['"`][^'"`]*\{)/i;
+  /(?:(?:(?<![.\w$])(?:exec(?:Sync)?|system|passthru|proc_open|shell_exec)|\b(?:os\.system|subprocess\.(?:run|Popen|call)|(?:child_process|childProcess|cp)\.exec\w*))\s*\([^)]{0,220}(?:req\.|request\.|params\.|query\.|body\.|searchParams|\$_(?:GET|POST|REQUEST)|shell\s*[:=]\s*true|f['"`][^'"`]*\{))|(?:(?:(?<![.\w$])spawn(?:Sync)?|\b(?:child_process|childProcess|cp)\.spawn\w*)\s*\((?:\s*(?:req\.|request\.|params\.|query\.|body\.|searchParams|\$_(?:GET|POST|REQUEST))|[^)]{0,220}shell\s*[:=]\s*true))/i;
 
 export const commandExecutionInputRisk = defineRule({
   id: "command-execution-input-risk",

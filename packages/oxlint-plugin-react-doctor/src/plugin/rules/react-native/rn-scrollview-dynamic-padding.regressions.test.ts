@@ -7,7 +7,7 @@ describe("react-native/rn-scrollview-dynamic-padding — regressions", () => {
     const result = runRule(
       rnScrollviewDynamicPadding,
       `const TAB_BAR_HEIGHT = 56;
-const C = () => <ScrollView contentContainerStyle={{ paddingBottom: TAB_BAR_HEIGHT }} />;`
+const C = () => <ScrollView contentContainerStyle={{ paddingBottom: TAB_BAR_HEIGHT }} />;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
@@ -16,7 +16,7 @@ const C = () => <ScrollView contentContainerStyle={{ paddingBottom: TAB_BAR_HEIG
   it("still flags a dynamic state/hook value", () => {
     const result = runRule(
       rnScrollviewDynamicPadding,
-      `const C = ({ keyboardHeight }) => <ScrollView contentContainerStyle={{ paddingBottom: keyboardHeight }} />;`
+      `const C = ({ keyboardHeight }) => <ScrollView contentContainerStyle={{ paddingBottom: keyboardHeight }} />;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);

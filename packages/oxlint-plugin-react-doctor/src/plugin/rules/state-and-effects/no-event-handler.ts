@@ -4,11 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { readsPostMountValue } from "../../utils/reads-post-mount-value.js";
-import {
-  findDownstreamNodes,
-  getDownstreamRefs,
-  getUpstreamRefs,
-} from "./utils/effect/ast.js";
+import { findDownstreamNodes, getDownstreamRefs, getUpstreamRefs } from "./utils/effect/ast.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
@@ -79,13 +75,9 @@ const containsRefGuard = (testNode: EsTreeNode): boolean => {
       isNodeOfType(node.object, "Identifier")
     ) {
       const name = node.object.name;
-      if (name === "ref" || name.endsWith("Ref") || name.endsWith("ref"))
-        return true;
+      if (name === "ref" || name.endsWith("Ref") || name.endsWith("ref")) return true;
     }
-    if (
-      isNodeOfType(node, "LogicalExpression") ||
-      isNodeOfType(node, "BinaryExpression")
-    ) {
+    if (isNodeOfType(node, "LogicalExpression") || isNodeOfType(node, "BinaryExpression")) {
       stack.push(node.left as EsTreeNode, node.right as EsTreeNode);
     } else if (isNodeOfType(node, "UnaryExpression")) {
       stack.push(node.argument as EsTreeNode);
@@ -93,7 +85,7 @@ const containsRefGuard = (testNode: EsTreeNode): boolean => {
       stack.push(
         node.test as EsTreeNode,
         node.consequent as EsTreeNode,
-        node.alternate as EsTreeNode
+        node.alternate as EsTreeNode,
       );
     } else if (isNodeOfType(node, "MemberExpression")) {
       stack.push(node.object as EsTreeNode);
@@ -115,8 +107,7 @@ const isSideEffectFreeExit = (statement: EsTreeNode): boolean => {
   if (!argument) return true;
   if (isNodeOfType(argument, "Literal")) return true;
   if (isNodeOfType(argument, "Identifier")) return true;
-  if (isNodeOfType(argument, "UnaryExpression") && argument.operator === "void")
-    return true;
+  if (isNodeOfType(argument, "UnaryExpression") && argument.operator === "void") return true;
   return false;
 };
 
@@ -134,9 +125,7 @@ const isStateSyncConsequent = (consequent: EsTreeNode): boolean => {
   if (isNodeOfType(consequent, "BlockStatement")) {
     const body = consequent.body ?? [];
     if (body.length === 0) return false;
-    return body.every((statement) =>
-      isSetterCallExpressionStatement(statement as EsTreeNode)
-    );
+    return body.every((statement) => isSetterCallExpressionStatement(statement as EsTreeNode));
   }
   return false;
 };
@@ -193,31 +182,24 @@ export const noEventHandler = defineRule({
       const effectFn = getEffectFn(analysis, node);
       if (effectFn && readsPostMountValue(effectFn)) return;
 
-      const ifStatementsNoElse = findDownstreamNodes(
-        node,
-        "IfStatement"
-      ).filter(
+      const ifStatementsNoElse = findDownstreamNodes(node, "IfStatement").filter(
         (ifNode) =>
           isNodeOfType(ifNode, "IfStatement") &&
           !ifNode.alternate &&
           !isPureEarlyExitConsequent(ifNode.consequent as EsTreeNode) &&
           !isStateSyncConsequent(ifNode.consequent as EsTreeNode) &&
-          !containsRefGuard(ifNode.test as EsTreeNode)
+          !containsRefGuard(ifNode.test as EsTreeNode),
       );
       const ifTestRefs = ifStatementsNoElse.flatMap((ifNode) => {
         if (!isNodeOfType(ifNode, "IfStatement")) return [];
-        const directTestRefs = getDownstreamRefs(
-          analysis,
-          ifNode.test as EsTreeNode
-        );
+        const directTestRefs = getDownstreamRefs(analysis, ifNode.test as EsTreeNode);
         // The condition tests externally-driven state (set by a timer /
         // listener / observer / subscription). The whole guard is reacting to
         // an imperative browser event, so neither the state nor the props that
         // merely seed it should be flagged as a faked event handler.
         if (
           directTestRefs.some(
-            (ref) =>
-              isState(analysis, ref) && isExternallyDrivenState(analysis, ref)
+            (ref) => isState(analysis, ref) && isExternallyDrivenState(analysis, ref),
           )
         ) {
           return [];

@@ -4,7 +4,10 @@ import { anchorHasContent } from "./anchor-has-content.js";
 
 describe("a11y/anchor-has-content regressions", () => {
   it("exempts an `<a>` named via `aria-labelledby`", () => {
-    const result = runRule(anchorHasContent, `const A = () => <a href="/p" aria-labelledby="lbl" />;`);
+    const result = runRule(
+      anchorHasContent,
+      `const A = () => <a href="/p" aria-labelledby="lbl" />;`,
+    );
     expect(result.diagnostics).toEqual([]);
   });
 

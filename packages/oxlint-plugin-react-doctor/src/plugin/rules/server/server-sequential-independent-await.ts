@@ -40,10 +40,7 @@ const declarationStartsWithAwait = (declaration: EsTreeNode): boolean => {
 // b()` after `const { data } = await a()`) is a re-bind evaluated after
 // the await resolves, not a read of the first result — counting it would
 // miss the waterfall.
-const declarationReadsAnyName = (
-  declaration: EsTreeNode,
-  names: Set<string>
-): boolean => {
+const declarationReadsAnyName = (declaration: EsTreeNode, names: Set<string>): boolean => {
   if (names.size === 0) return false;
   if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
   let didRead = false;
@@ -51,8 +48,7 @@ const declarationReadsAnyName = (
     if (!declarator.init) continue;
     walkAst(declarator.init, (child: EsTreeNode) => {
       if (didRead) return;
-      if (isNodeOfType(child, "Identifier") && names.has(child.name))
-        didRead = true;
+      if (isNodeOfType(child, "Identifier") && names.has(child.name)) didRead = true;
     });
   }
   return didRead;
@@ -86,10 +82,7 @@ const calleeNameOf = (callExpression: EsTreeNode): string | null => {
   if (!isNodeOfType(callExpression, "CallExpression")) return null;
   const callee = callExpression.callee;
   if (isNodeOfType(callee, "Identifier")) return callee.name;
-  if (
-    isNodeOfType(callee, "MemberExpression") &&
-    isNodeOfType(callee.property, "Identifier")
-  ) {
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
     return callee.property.name;
   }
   return null;
@@ -120,11 +113,7 @@ export const serverSequentialIndependentAwait = defineRule({
     "These two awaits don't depend on each other. Wrap them in `Promise.all([...])` so they run at the same time.",
   create: (context: RuleContext) => {
     const inspectStatements = (statements: EsTreeNode[]): void => {
-      for (
-        let statementIndex = 0;
-        statementIndex < statements.length - 1;
-        statementIndex++
-      ) {
+      for (let statementIndex = 0; statementIndex < statements.length - 1; statementIndex++) {
         const currentStatement = statements[statementIndex];
         if (!isNodeOfType(currentStatement, "VariableDeclaration")) continue;
         if (!declarationStartsWithAwait(currentStatement)) continue;

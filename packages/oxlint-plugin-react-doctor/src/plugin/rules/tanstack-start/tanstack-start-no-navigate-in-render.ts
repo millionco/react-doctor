@@ -5,6 +5,7 @@ import {
   UPPERCASE_PATTERN,
 } from "../../constants/react.js";
 import { TANSTACK_ROUTE_FILE_PATTERN } from "../../constants/tanstack.js";
+import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -12,6 +13,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const tanstackStartNoNavigateInRender = defineRule({
@@ -72,6 +74,72 @@ export const tanstackStartNoNavigateInRender = defineRule({
       typeof node.id.name === "string" &&
       HANDLER_FUNCTION_NAME_PATTERN.test(node.id.name);
 
+    // Names referenced by any JSX `onXxx` attribute value or `onXxx` object
+    // property — i.e. functions wired up as event handlers. Computed lazily
+    // once per file and cached; `navigate()` calls are rare so the walk is cheap.
+    let handlerReferencedNames: Set<string> | null = null;
+    const getHandlerReferencedNames = (startNode: EsTreeNode): Set<string> => {
+      if (handlerReferencedNames) return handlerReferencedNames;
+      let root: EsTreeNode = startNode;
+      while (root.parent) root = root.parent;
+      const names = new Set<string>();
+      walkAst(root, (inner: EsTreeNode) => {
+        if (isEventHandlerAttribute(inner) && isNodeOfType(inner, "JSXAttribute") && inner.value) {
+          collectReferenceIdentifierNames(inner.value, names);
+          return;
+        }
+        if (
+          isNodeOfType(inner, "Property") &&
+          ((isNodeOfType(inner.key, "Identifier") &&
+            REACT_HANDLER_PROP_PATTERN.test(inner.key.name)) ||
+            (isNodeOfType(inner.key, "Literal") &&
+              typeof inner.key.value === "string" &&
+              REACT_HANDLER_PROP_PATTERN.test(inner.key.value)))
+        ) {
+          collectReferenceIdentifierNames(inner.value, names);
+        }
+      });
+      handlerReferencedNames = names;
+      return names;
+    };
+
+    // True when `navigate()` lives in a local function whose binding is wired
+    // to an event handler (`const goHome = () => navigate(...)` +
+    // `onClick={goHome}`). The depth counters only catch `handle*`/`on*`-named
+    // bindings; this covers idiomatic names like `goHome`/`logout` by usage.
+    const isNavigateBindingUsedAsHandler = (callNode: EsTreeNode): boolean => {
+      let cursor: EsTreeNode | null | undefined = callNode.parent;
+      let enclosingFunction: EsTreeNode | null = null;
+      while (cursor) {
+        if (isFunctionLike(cursor)) {
+          enclosingFunction = cursor;
+          break;
+        }
+        cursor = cursor.parent ?? null;
+      }
+      if (!enclosingFunction) return false;
+
+      let bindingName: string | null = null;
+      if (isNodeOfType(enclosingFunction, "FunctionDeclaration") && enclosingFunction.id) {
+        bindingName = enclosingFunction.id.name;
+      } else {
+        const fnParent = enclosingFunction.parent;
+        if (
+          isNodeOfType(fnParent, "VariableDeclarator") &&
+          isNodeOfType(fnParent.id, "Identifier")
+        ) {
+          bindingName = fnParent.id.name;
+        } else if (
+          isNodeOfType(fnParent, "AssignmentExpression") &&
+          isNodeOfType(fnParent.left, "Identifier")
+        ) {
+          bindingName = fnParent.left.name;
+        }
+      }
+      if (!bindingName) return false;
+      return getHandlerReferencedNames(callNode).has(bindingName);
+    };
+
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const filename = normalizeFilename(context.filename ?? "");
@@ -86,6 +154,7 @@ export const tanstackStartNoNavigateInRender = defineRule({
           node.callee.name === "navigate" &&
           (node.arguments?.length ?? 0) > 0
         ) {
+          if (isNavigateBindingUsedAsHandler(node)) return;
           context.report({
             node,
             message:

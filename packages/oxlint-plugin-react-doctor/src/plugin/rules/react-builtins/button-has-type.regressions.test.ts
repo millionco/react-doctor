@@ -21,7 +21,10 @@ describe("react-builtins/button-has-type — regressions", () => {
   });
 
   it("still flags an explicit invalid literal type alongside a spread", () => {
-    const result = runRule(buttonHasType, `const Button = (props) => <button {...props} type="foo" />;`);
+    const result = runRule(
+      buttonHasType,
+      `const Button = (props) => <button {...props} type="foo" />;`,
+    );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });

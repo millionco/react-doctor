@@ -6,7 +6,10 @@ describe("react-builtins/iframe-missing-sandbox — regressions", () => {
   // A spread can forward `sandbox` at runtime, so an iframe with only a
   // spread and no explicit `sandbox` must not be flagged as missing.
   it("stays silent on <iframe {...props} /> (sandbox may come via spread)", () => {
-    const result = runRule(iframeMissingSandbox, `const SafeFrame = (props) => <iframe {...props} />;`);
+    const result = runRule(
+      iframeMissingSandbox,
+      `const SafeFrame = (props) => <iframe {...props} />;`,
+    );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });

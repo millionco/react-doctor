@@ -10,7 +10,7 @@ describe("server-no-mutable-module-state — regressions", () => {
 const ALLOWED_ROLES = ["admin", "user", "guest"];
 export async function setRole(id, role) {
   if (!ALLOWED_ROLES.includes(role)) throw new Error("bad");
-}`
+}`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
@@ -23,7 +23,7 @@ export async function setRole(id, role) {
 const cache = new Map();
 export async function remember(id, value) {
   cache.set(id, value);
-}`
+}`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
@@ -34,7 +34,7 @@ export async function remember(id, value) {
       serverNoMutableModuleState,
       `"use server";
 let counter = 0;
-export async function bump() { counter = counter + 1; }`
+export async function bump() { counter = counter + 1; }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);

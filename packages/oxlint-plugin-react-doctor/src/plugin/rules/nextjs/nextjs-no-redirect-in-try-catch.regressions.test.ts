@@ -13,7 +13,7 @@ export default async function Page() {
   } catch (e) {
     redirect("/login");
   }
-}`
+}`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
@@ -29,7 +29,7 @@ export default async function Page() {
   } catch (e) {
     log(e);
   }
-}`
+}`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);

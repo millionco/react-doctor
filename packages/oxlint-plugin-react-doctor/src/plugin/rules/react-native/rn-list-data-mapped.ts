@@ -71,16 +71,11 @@ export const rnListDataMapped = defineRule({
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const elementName = resolveJsxElementName(node);
-      if (!elementName || !REACT_NATIVE_LIST_COMPONENTS.has(elementName))
-        return;
+      if (!elementName || !REACT_NATIVE_LIST_COMPONENTS.has(elementName)) return;
 
       for (const attr of node.attributes ?? []) {
         if (!isNodeOfType(attr, "JSXAttribute")) continue;
-        if (
-          !isNodeOfType(attr.name, "JSXIdentifier") ||
-          attr.name.name !== "data"
-        )
-          continue;
+        if (!isNodeOfType(attr.name, "JSXIdentifier") || attr.name.name !== "data") continue;
         if (!isNodeOfType(attr.value, "JSXExpressionContainer")) continue;
         const expression = attr.value.expression;
 

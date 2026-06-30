@@ -107,7 +107,8 @@ const isValidAutofillValue = (value: string): boolean => {
   if (tokens[index]?.startsWith(SECTION_TOKEN_PREFIX)) index += 1;
   if (index < tokens.length && AUTOFILL_ADDRESS_TYPES.has(tokens[index])) index += 1;
 
-  const isContactQualified = index < tokens.length && AUTOFILL_CONTACT_QUALIFIERS.has(tokens[index]);
+  const isContactQualified =
+    index < tokens.length && AUTOFILL_CONTACT_QUALIFIERS.has(tokens[index]);
   if (isContactQualified) index += 1;
 
   const fieldToken = tokens[index];

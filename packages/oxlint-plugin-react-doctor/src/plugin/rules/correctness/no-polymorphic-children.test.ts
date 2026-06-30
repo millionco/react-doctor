@@ -3,7 +3,7 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noPolymorphicChildren } from "./no-polymorphic-children.js";
 
 describe("no-polymorphic-children", () => {
-  it("flags `typeof children === \"string\"` on a destructured prop", () => {
+  it('flags `typeof children === "string"` on a destructured prop', () => {
     const result = runRule(
       noPolymorphicChildren,
       `const Button = ({ children }) =>
@@ -13,7 +13,7 @@ describe("no-polymorphic-children", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags `typeof props.children === \"string\"`", () => {
+  it('flags `typeof props.children === "string"`', () => {
     const result = runRule(
       noPolymorphicChildren,
       `const Button = (props) =>

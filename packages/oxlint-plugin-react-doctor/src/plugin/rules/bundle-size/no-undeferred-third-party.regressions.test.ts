@@ -19,7 +19,7 @@ describe("bundle-size/no-undeferred-third-party — regressions", () => {
     expectFail(`const W = () => <script src="https://cdn.example.com/w.js" />;`);
   });
 
-  it("does not flag a `type=\"module\"` script (deferred by default)", () => {
+  it('does not flag a `type="module"` script (deferred by default)', () => {
     expectPass(`const W = () => <script type="module" src="https://cdn.example.com/w.js" />;`);
   });
 });

@@ -6,11 +6,7 @@ import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js"
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { readsPostMountValue } from "../../utils/reads-post-mount-value.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import {
-  getArgsUpstreamRefs,
-  getCallExpr,
-  getUpstreamRefs,
-} from "./utils/effect/ast.js";
+import { getArgsUpstreamRefs, getCallExpr, getUpstreamRefs } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getEffectDepsRefs,
@@ -35,19 +31,14 @@ const countSetterCallSites = (ref: Reference): number => {
   if (!ref.resolved) return 0;
   let count = 0;
   for (const reference of ref.resolved.references) {
-    const parent = (
-      reference.identifier as unknown as { parent?: EsTreeNode | null }
-    ).parent;
+    const parent = (reference.identifier as unknown as { parent?: EsTreeNode | null }).parent;
     if (parent && isNodeOfType(parent, "CallExpression")) count += 1;
   }
   return count;
 };
 
-const getStateNameForUseStateDecl = (
-  useStateNode: EsTreeNode | null
-): string | null => {
-  if (!useStateNode || !isNodeOfType(useStateNode, "VariableDeclarator"))
-    return null;
+const getStateNameForUseStateDecl = (useStateNode: EsTreeNode | null): string | null => {
+  if (!useStateNode || !isNodeOfType(useStateNode, "VariableDeclarator")) return null;
   if (!isNodeOfType(useStateNode.id, "ArrayPattern")) return null;
   const elements = useStateNode.id.elements ?? [];
   const candidate = elements[0] ?? elements[1];
@@ -84,12 +75,11 @@ export const noDerivedState = defineRule({
         // is a deferred measurement, not a derived value copied into state.
         if (readsPostMountValue(callExpr)) continue;
         const useStateNode = getUseStateDecl(analysis, ref);
-        const stateName =
-          getStateNameForUseStateDecl(useStateNode) ?? "<state>";
+        const stateName = getStateNameForUseStateDecl(useStateNode) ?? "<state>";
 
         const argsUpstreamRefs = getArgsUpstreamRefs(analysis, ref);
         const depsUpstreamRefs: Reference[] = depsRefs.flatMap((depRef) =>
-          getUpstreamRefs(analysis, depRef)
+          getUpstreamRefs(analysis, depRef),
         );
 
         // Initial-only / default / seed prop pattern. When the
@@ -112,22 +102,18 @@ export const noDerivedState = defineRule({
         // bare-prop argument with more than one setter call site (the
         // upstream "derived" corpus never mirrors a bare prop AND writes the
         // same state from elsewhere).
-        if (isControlledPropMirror(analysis, ref, callExpr, effectFnRefs))
-          continue;
+        if (isControlledPropMirror(analysis, ref, callExpr, effectFnRefs)) continue;
 
         const isSomeArgsInternal = argsUpstreamRefs.some(
-          (argRef) => isState(analysis, argRef) || isProp(analysis, argRef)
+          (argRef) => isState(analysis, argRef) || isProp(analysis, argRef),
         );
 
         const isAllArgsInDeps =
           argsUpstreamRefs.length > 0 &&
           argsUpstreamRefs.every((argRef) =>
-            depsUpstreamRefs.some(
-              (depRef) => argRef.resolved === depRef.resolved
-            )
+            depsUpstreamRefs.some((depRef) => argRef.resolved === depRef.resolved),
           );
-        const isValueAlwaysInSync =
-          isAllArgsInDeps && countSetterCallSites(ref) === 1;
+        const isValueAlwaysInSync = isAllArgsInDeps && countSetterCallSites(ref) === 1;
 
         if (isSomeArgsInternal) {
           context.report({
@@ -154,7 +140,7 @@ const isControlledPropMirror = (
   analysis: ReturnType<typeof getProgramAnalysis>,
   setterRef: Reference,
   callExpr: EsTreeNode,
-  effectFnRefs: readonly Reference[]
+  effectFnRefs: readonly Reference[],
 ): boolean => {
   if (!analysis) return false;
   if (countSetterCallSites(setterRef) <= 1) return false;
@@ -164,7 +150,7 @@ const isControlledPropMirror = (
   const arg = args[0] as EsTreeNode;
   if (!isNodeOfType(arg, "Identifier")) return false;
   const argRef = effectFnRefs.find(
-    (reference) => (reference.identifier as unknown as EsTreeNode) === arg
+    (reference) => (reference.identifier as unknown as EsTreeNode) === arg,
   );
   return Boolean(argRef && isProp(analysis, argRef));
 };

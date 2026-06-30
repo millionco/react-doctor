@@ -1,0 +1,25 @@
+import { describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../../test-utils/run-rule.js";
+import { tanstackStartLoaderParallelFetch } from "./tanstack-start-loader-parallel-fetch.js";
+
+const ROUTE = { filename: "src/routes/index.tsx" };
+
+describe("tanstack-start/tanstack-start-loader-parallel-fetch — regressions", () => {
+  it("stays silent on a dependent await chain (cannot be parallelized)", () => {
+    const { diagnostics } = runRule(
+      tanstackStartLoaderParallelFetch,
+      `createFileRoute('/x')({ loader: async () => { const user = await getUser(); const posts = await getPosts(user.id); return { user, posts }; } });`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags two independent awaits (a real waterfall)", () => {
+    const { diagnostics } = runRule(
+      tanstackStartLoaderParallelFetch,
+      `createFileRoute('/x')({ loader: async () => { const a = await fetchA(); const b = await fetchB(); return { a, b }; } });`,
+      ROUTE,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+});

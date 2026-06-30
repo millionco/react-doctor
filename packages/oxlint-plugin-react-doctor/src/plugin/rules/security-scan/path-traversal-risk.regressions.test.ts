@@ -26,4 +26,20 @@ describe("security-scan/path-traversal-risk — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent when request input is sanitized through path.basename()", () => {
+    const findings = runScanRule(pathTraversalRisk, {
+      relativePath: "src/server/files.ts",
+      content: `const p = path.join(UPLOAD_DIR, path.basename(req.params.file));\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags request input joined without a sanitizer", () => {
+    const findings = runScanRule(pathTraversalRisk, {
+      relativePath: "src/server/files.ts",
+      content: `const p = path.join(UPLOAD_DIR, req.params.file);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

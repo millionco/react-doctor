@@ -6,12 +6,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const MUTABLE_CONTAINER_CONSTRUCTORS = new Set([
-  "Map",
-  "Set",
-  "WeakMap",
-  "WeakSet",
-]);
+const MUTABLE_CONTAINER_CONSTRUCTORS = new Set(["Map", "Set", "WeakMap", "WeakSet"]);
 
 const MUTATING_METHODS = new Set([
   "push",
@@ -36,9 +31,7 @@ const OBJECT_MUTATING_METHODS = new Set([
   "setPrototypeOf",
 ]);
 
-const isMutableConstInitializer = (
-  init: EsTreeNode | null | undefined
-): string | null => {
+const isMutableConstInitializer = (init: EsTreeNode | null | undefined): string | null => {
   if (!init) return null;
   if (isNodeOfType(init, "ArrayExpression")) return "[]";
   if (isNodeOfType(init, "ObjectExpression")) return "{}";
@@ -52,10 +45,7 @@ const isMutableConstInitializer = (
   return null;
 };
 
-const targetsBinding = (
-  object: EsTreeNode | null | undefined,
-  name: string
-): boolean =>
+const targetsBinding = (object: EsTreeNode | null | undefined, name: string): boolean =>
   Boolean(object && isNodeOfType(object, "Identifier") && object.name === name);
 
 // True when `name`'s contents are written anywhere in the module: a member
@@ -92,16 +82,10 @@ const isContainerMutated = (programNode: EsTreeNode, name: string): boolean => {
       didMutate = true;
       return;
     }
-    if (
-      isNodeOfType(child, "CallExpression") &&
-      isNodeOfType(child.callee, "MemberExpression")
-    ) {
+    if (isNodeOfType(child, "CallExpression") && isNodeOfType(child.callee, "MemberExpression")) {
       const callee = child.callee;
       if (!isNodeOfType(callee.property, "Identifier")) return;
-      if (
-        targetsBinding(callee.object, name) &&
-        MUTATING_METHODS.has(callee.property.name)
-      ) {
+      if (targetsBinding(callee.object, name) && MUTATING_METHODS.has(callee.property.name)) {
         didMutate = true;
         return;
       }

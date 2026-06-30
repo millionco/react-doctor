@@ -21,11 +21,7 @@
  */
 
 import { describe, expect, it } from "vite-plus/test";
-import {
-  createScopedTempRoot,
-  collectRuleHits,
-  setupReactProject,
-} from "./_helpers.js";
+import { createScopedTempRoot, collectRuleHits, setupReactProject } from "./_helpers.js";
 
 const tempRoot = createScopedTempRoot("controlled-sync");
 

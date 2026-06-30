@@ -13,9 +13,7 @@ export const rnNoSingleElementStyleArray = defineRule({
     "Use `style={value}` instead of `style={[value]}`. A one-item array just adds extra work for nothing.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-      const propName = isNodeOfType(node.name, "JSXIdentifier")
-        ? node.name.name
-        : null;
+      const propName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : null;
       if (!propName) return;
       if (propName !== "style" && !propName.endsWith("Style")) return;
       if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;

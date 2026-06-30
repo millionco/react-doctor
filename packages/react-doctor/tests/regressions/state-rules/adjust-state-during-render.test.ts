@@ -25,9 +25,7 @@ import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import { collectRuleHits, setupReactProject } from "../_helpers.js";
 
-const tempRoot = fs.mkdtempSync(
-  path.join(os.tmpdir(), "rd-adjust-during-render-")
-);
+const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-adjust-during-render-"));
 
 afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -53,10 +51,7 @@ describe("adjust state during render — no false positives", () => {
     const projectDir = setupReactProject(tempRoot, "rerender-prev-value", {
       files: { "src/radio-group.tsx": ADJUST_DURING_RENDER_SOURCE },
     });
-    const hits = await collectRuleHits(
-      projectDir,
-      "rerender-state-only-in-handlers"
-    );
+    const hits = await collectRuleHits(projectDir, "rerender-state-only-in-handlers");
     expect(hits).toHaveLength(0);
   });
 
@@ -107,10 +102,7 @@ export const Tracker = () => {
 `,
       },
     });
-    const hits = await collectRuleHits(
-      projectDir,
-      "rerender-state-only-in-handlers"
-    );
+    const hits = await collectRuleHits(projectDir, "rerender-state-only-in-handlers");
     expect(hits.length).toBeGreaterThan(0);
   });
 });

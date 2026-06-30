@@ -14,16 +14,12 @@ const setterToStateName = (setterName: string): string => {
   return withoutPrefix.charAt(0).toLowerCase() + withoutPrefix.slice(1);
 };
 
-const testReadsName = (
-  test: EsTreeNode | null | undefined,
-  name: string
-): boolean => {
+const testReadsName = (test: EsTreeNode | null | undefined, name: string): boolean => {
   if (!test) return false;
   let didRead = false;
   walkAst(test, (child: EsTreeNode) => {
     if (didRead) return;
-    if (isNodeOfType(child, "Identifier") && child.name === name)
-      didRead = true;
+    if (isNodeOfType(child, "Identifier") && child.name === name) didRead = true;
   });
   return didRead;
 };
@@ -36,14 +32,13 @@ const testReadsName = (
 const isGuardedSetOnceLatch = (
   callNode: EsTreeNode,
   setterName: string,
-  boundary: EsTreeNode
+  boundary: EsTreeNode,
 ): boolean => {
   const stateName = setterToStateName(setterName);
   let ancestor: EsTreeNode | null | undefined = callNode.parent;
   while (ancestor && ancestor !== boundary) {
     if (
-      (isNodeOfType(ancestor, "IfStatement") ||
-        isNodeOfType(ancestor, "ConditionalExpression")) &&
+      (isNodeOfType(ancestor, "IfStatement") || isNodeOfType(ancestor, "ConditionalExpression")) &&
       testReadsName(ancestor.test, stateName)
     ) {
       return true;

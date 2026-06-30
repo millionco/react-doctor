@@ -10,7 +10,7 @@ describe("nextjs/nextjs-no-side-effect-in-get-handler — regressions", () => {
   const policy = await getCancellationPolicy();
   return Response.json(policy);
 }`,
-      { filename: "app/account/cancel/route.ts" }
+      { filename: "app/account/cancel/route.ts" },
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
@@ -24,7 +24,7 @@ export async function GET() {
   cookies().delete("session");
   return Response.redirect("/");
 }`,
-      { filename: "app/logout/route.ts" }
+      { filename: "app/logout/route.ts" },
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);

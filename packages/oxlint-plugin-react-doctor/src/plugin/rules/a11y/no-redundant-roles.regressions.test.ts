@@ -18,7 +18,7 @@ describe("a11y/no-redundant-roles regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("exempts a text `<input role=\"combobox\">` (its implicit role is textbox)", () => {
+  it('exempts a text `<input role="combobox">` (its implicit role is textbox)', () => {
     const result = runRule(
       noRedundantRoles,
       `const F = () => <input type="text" role="combobox" aria-expanded aria-controls="lb" />;`,
@@ -27,7 +27,10 @@ describe("a11y/no-redundant-roles regressions", () => {
   });
 
   it("still flags an input whose role matches its single implicit role", () => {
-    const result = runRule(noRedundantRoles, `const F = () => <input type="checkbox" role="checkbox" />;`);
+    const result = runRule(
+      noRedundantRoles,
+      `const F = () => <input type="checkbox" role="checkbox" />;`,
+    );
     expect(result.diagnostics).toHaveLength(1);
   });
 });

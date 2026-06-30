@@ -40,6 +40,17 @@ export const queryNoUseQueryForMutation = defineRule({
         if (!isNodeOfType(child, "CallExpression")) return;
         if (!isNodeOfType(child.callee, "Identifier") || child.callee.name !== "fetch") return;
 
+        // GraphQL is queried over HTTP POST by spec — a `POST` to a `/graphql`
+        // endpoint inside a `useQuery` is a legitimate read, not a mutation.
+        const urlArgument = child.arguments?.[0];
+        if (
+          isNodeOfType(urlArgument, "Literal") &&
+          typeof urlArgument.value === "string" &&
+          /graphql/i.test(urlArgument.value)
+        ) {
+          return;
+        }
+
         const optionsArg = child.arguments?.[1];
         if (!optionsArg || !isNodeOfType(optionsArg, "ObjectExpression")) return;
 

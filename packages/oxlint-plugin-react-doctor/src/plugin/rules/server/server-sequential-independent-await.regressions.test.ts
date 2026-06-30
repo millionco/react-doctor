@@ -10,7 +10,7 @@ describe("server-sequential-independent-await — regressions", () => {
   const session = await requireSession();
   const orders = await getOrders();
   return orders;
-}`
+}`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
@@ -23,7 +23,7 @@ describe("server-sequential-independent-await — regressions", () => {
   const conn = await connectDatabase();
   const rows = await fetchRows();
   return rows;
-}`
+}`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
@@ -36,7 +36,7 @@ describe("server-sequential-independent-await — regressions", () => {
   const user = await fetchUser();
   const posts = await fetchPosts();
   return null;
-}`
+}`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);

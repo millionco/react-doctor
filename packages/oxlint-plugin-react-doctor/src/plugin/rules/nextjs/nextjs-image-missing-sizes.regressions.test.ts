@@ -6,7 +6,7 @@ describe("nextjs/nextjs-image-missing-sizes — regressions", () => {
   it("stays silent when sizes can be forwarded via spread", () => {
     const result = runRule(
       nextjsImageMissingSizes,
-      `function Cover(rest) { return <Image fill {...rest} />; }`
+      `function Cover(rest) { return <Image fill {...rest} />; }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
@@ -15,7 +15,7 @@ describe("nextjs/nextjs-image-missing-sizes — regressions", () => {
   it("still flags fill without sizes when attributes are explicit", () => {
     const result = runRule(
       nextjsImageMissingSizes,
-      `const C = () => <Image fill src="/a.png" alt="a" />;`
+      `const C = () => <Image fill src="/a.png" alt="a" />;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);

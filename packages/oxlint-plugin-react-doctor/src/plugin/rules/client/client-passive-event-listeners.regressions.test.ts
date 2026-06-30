@@ -9,7 +9,7 @@ describe("client/client-passive-event-listeners — regressions", () => {
       `function setup(el) {
   const onTouchMove = (event) => { event.preventDefault(); doSomething(); };
   el.addEventListener("touchmove", onTouchMove);
-}`
+}`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
@@ -21,7 +21,7 @@ describe("client/client-passive-event-listeners — regressions", () => {
       `function setup(el) {
   const onScroll = () => { trackPosition(); };
   el.addEventListener("scroll", onScroll);
-}`
+}`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);

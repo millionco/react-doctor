@@ -7,41 +7,24 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const COMPARISON_OPERATORS = new Set([
-  "===",
-  "!==",
-  "==",
-  "!=",
-  "<",
-  "<=",
-  ">",
-  ">=",
-]);
+const COMPARISON_OPERATORS = new Set(["===", "!==", "==", "!=", "<", "<=", ">", ">="]);
 
 // An expression that always evaluates to a boolean — never the numeric `0`
 // that crashes when rendered bare. `{flag && <X/>}` on such a value is safe.
 const isBooleanExpression = (node: EsTreeNode | null | undefined): boolean => {
   if (!node) return false;
-  if (isNodeOfType(node, "Literal") && typeof node.value === "boolean")
+  if (isNodeOfType(node, "Literal") && typeof node.value === "boolean") return true;
+  if (isNodeOfType(node, "UnaryExpression") && node.operator === "!") return true;
+  if (isNodeOfType(node, "BinaryExpression") && COMPARISON_OPERATORS.has(node.operator))
     return true;
-  if (isNodeOfType(node, "UnaryExpression") && node.operator === "!")
-    return true;
-  if (
-    isNodeOfType(node, "BinaryExpression") &&
-    COMPARISON_OPERATORS.has(node.operator)
-  )
-    return true;
-  if (
-    isNodeOfType(node, "CallExpression") &&
-    isNodeOfType(node.callee, "Identifier")
-  ) {
+  if (isNodeOfType(node, "CallExpression") && isNodeOfType(node.callee, "Identifier")) {
     return node.callee.name === "Boolean";
   }
   return false;
 };
 
 const isUseStateCall = (
-  node: EsTreeNode | null | undefined
+  node: EsTreeNode | null | undefined,
 ): node is EsTreeNodeOfType<"CallExpression"> => {
   if (!node || !isNodeOfType(node, "CallExpression")) return false;
   const callee = node.callee;
@@ -72,10 +55,7 @@ const findEnclosingScope = (node: EsTreeNode): EsTreeNode | null => {
 // `const [open, setOpen] = useState(false)` — array-destructured state isn't
 // reachable through findVariableInitializer, so scan the enclosing scope for a
 // `useState(<boolean>)` whose first destructured binding is `name`.
-const isBooleanUseStateName = (
-  referenceNode: EsTreeNode,
-  name: string
-): boolean => {
+const isBooleanUseStateName = (referenceNode: EsTreeNode, name: string): boolean => {
   const scope = findEnclosingScope(referenceNode);
   if (!scope) return false;
   let isBooleanState = false;
@@ -84,17 +64,10 @@ const isBooleanUseStateName = (
     if (!isNodeOfType(child, "VariableDeclarator")) return;
     if (!isNodeOfType(child.id, "ArrayPattern")) return;
     const firstBinding = child.id.elements?.[0];
-    if (
-      !firstBinding ||
-      !isNodeOfType(firstBinding, "Identifier") ||
-      firstBinding.name !== name
-    ) {
+    if (!firstBinding || !isNodeOfType(firstBinding, "Identifier") || firstBinding.name !== name) {
       return;
     }
-    if (
-      isUseStateCall(child.init) &&
-      isBooleanExpression(child.init.arguments?.[0])
-    ) {
+    if (isUseStateCall(child.init) && isBooleanExpression(child.init.arguments?.[0])) {
       isBooleanState = true;
     }
   });
@@ -103,9 +76,7 @@ const isBooleanUseStateName = (
 
 // True when `identifier` provably holds a boolean (so it can never render a
 // bare `0`): a boolean initializer, or boolean `useState`.
-const isProvablyBooleanIdentifier = (
-  identifier: EsTreeNodeOfType<"Identifier">
-): boolean => {
+const isProvablyBooleanIdentifier = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
   const binding = findVariableInitializer(identifier, identifier.name);
   if (isBooleanExpression(binding?.initializer)) return true;
   return isBooleanUseStateName(identifier, identifier.name);
@@ -230,15 +201,13 @@ export const rnNoFalsyAndRender = defineRule({
         if (node.operator !== "&&") return;
 
         const isRightJsx =
-          isNodeOfType(node.right, "JSXElement") ||
-          isNodeOfType(node.right, "JSXFragment");
+          isNodeOfType(node.right, "JSXElement") || isNodeOfType(node.right, "JSXFragment");
         if (!isRightJsx) return;
 
         const parent = node.parent;
         const isInsideJsx =
           isNodeOfType(parent, "JSXExpressionContainer") ||
-          (isNodeOfType(parent, "LogicalExpression") &&
-            parent.operator === "&&");
+          (isNodeOfType(parent, "LogicalExpression") && parent.operator === "&&");
         if (!isInsideJsx) return;
 
         const left = node.left;
@@ -248,16 +217,11 @@ export const rnNoFalsyAndRender = defineRule({
         // A numeric-sounding name that provably holds a boolean (e.g.
         // `const [progress, setProgress] = useState(false)`) never renders a
         // bare `0`, so the crash warning would be a false positive.
-        if (
-          isNodeOfType(left, "Identifier") &&
-          isProvablyBooleanIdentifier(left)
-        )
-          return;
+        if (isNodeOfType(left, "Identifier") && isProvablyBooleanIdentifier(left)) return;
 
         context.report({
           node: left,
-          message:
-            "Your users hit a crash when this value is 0 & renders a bare `0` as text.",
+          message: "Your users hit a crash when this value is 0 & renders a bare `0` as text.",
         });
       },
     };

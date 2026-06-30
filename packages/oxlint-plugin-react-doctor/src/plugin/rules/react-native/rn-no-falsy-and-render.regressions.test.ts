@@ -9,7 +9,7 @@ describe("react-native/rn-no-falsy-and-render — regressions", () => {
       `const C = () => {
   const [progress, setProgress] = useState(false);
   return <View>{progress && <Spinner />}</View>;
-};`
+};`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
@@ -18,7 +18,7 @@ describe("react-native/rn-no-falsy-and-render — regressions", () => {
   it("still flags a numeric .length gate", () => {
     const result = runRule(
       rnNoFalsyAndRender,
-      `const C = ({ items }) => <View>{items.length && <List />}</View>;`
+      `const C = ({ items }) => <View>{items.length && <List />}</View>;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);

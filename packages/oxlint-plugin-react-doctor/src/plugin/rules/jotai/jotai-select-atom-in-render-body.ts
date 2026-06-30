@@ -1,4 +1,10 @@
-import { MEMOIZING_HOOK_NAMES } from "../../constants/react.js";
+import {
+  EFFECT_HOOK_NAMES,
+  HANDLER_FUNCTION_NAME_PATTERN,
+  MEMOIZING_HOOK_NAMES,
+  REACT_HANDLER_PROP_PATTERN,
+  UPPERCASE_PATTERN,
+} from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import {
   isImportedFromModule,
@@ -38,15 +44,71 @@ const isImportedSelectAtom = (callExpression: EsTreeNodeOfType<"CallExpression">
   return false;
 };
 
-const isCallbackOfMemoizingHook = (functionNode: EsTreeNode): boolean => {
-  const callParent = functionNode.parent;
-  if (!isNodeOfType(callParent, "CallExpression")) return false;
-  if (!isNodeOfType(callParent.callee, "Identifier")) return false;
-  if (!MEMOIZING_HOOK_NAMES.has(callParent.callee.name)) return false;
-  // The function must be the FIRST argument to count as the
-  // memoizing callback — `useMemo(..., [arg, selectAtomFn])` is not
-  // the same thing.
-  return callParent.arguments?.[0] === functionNode;
+// A function scope where `selectAtom(...)` does NOT run on every render:
+// a useMemo/useCallback callback (cached), a useEffect/useLayoutEffect
+// callback (post-commit), or an event handler (fires on interaction) — the
+// latter recognized as a `handle*`/`on*`-named binding, an inline JSX `onX`
+// attribute value, or an `onX` object property. Such a `selectAtom` call
+// makes its atom once / on demand, not the per-render re-subscribe loop the
+// rule targets.
+const isDeferredCallback = (functionNode: EsTreeNode): boolean => {
+  const parent = functionNode.parent;
+
+  if (
+    isNodeOfType(parent, "CallExpression") &&
+    isNodeOfType(parent.callee, "Identifier") &&
+    (MEMOIZING_HOOK_NAMES.has(parent.callee.name) || EFFECT_HOOK_NAMES.has(parent.callee.name)) &&
+    // First argument only — `useMemo(..., [selectAtomFn])` is not the callback.
+    parent.arguments?.[0] === functionNode
+  ) {
+    return true;
+  }
+
+  if (
+    isNodeOfType(parent, "VariableDeclarator") &&
+    isNodeOfType(parent.id, "Identifier") &&
+    HANDLER_FUNCTION_NAME_PATTERN.test(parent.id.name)
+  ) {
+    return true;
+  }
+
+  if (
+    isNodeOfType(functionNode, "FunctionDeclaration") &&
+    functionNode.id &&
+    HANDLER_FUNCTION_NAME_PATTERN.test(functionNode.id.name)
+  ) {
+    return true;
+  }
+
+  if (isNodeOfType(parent, "JSXExpressionContainer")) {
+    const attribute = parent.parent;
+    if (
+      isNodeOfType(attribute, "JSXAttribute") &&
+      isNodeOfType(attribute.name, "JSXIdentifier") &&
+      attribute.name.name.startsWith("on") &&
+      UPPERCASE_PATTERN.test(attribute.name.name.charAt(2))
+    ) {
+      return true;
+    }
+  }
+
+  if (isNodeOfType(parent, "Property")) {
+    if (
+      isNodeOfType(parent.key, "Identifier") &&
+      REACT_HANDLER_PROP_PATTERN.test(parent.key.name)
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(parent.key, "Literal") &&
+      typeof parent.key.value === "string" &&
+      REACT_HANDLER_PROP_PATTERN.test(parent.key.value)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 const containingFunctionIsComponentOrHook = (functionNode: EsTreeNode): boolean => {
@@ -91,7 +153,7 @@ export const jotaiSelectAtomInRenderBody = defineRule({
         cursor = cursor.parent ?? null;
       }
       if (!nearestFunctionLike) return;
-      if (isCallbackOfMemoizingHook(nearestFunctionLike)) return;
+      if (isDeferredCallback(nearestFunctionLike)) return;
 
       // Now walk up again from the nearest function looking for any
       // enclosing component or hook. Helpers nested inside a

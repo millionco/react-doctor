@@ -13,9 +13,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 // `{ passive: true }` here is exactly backwards (the rule's own
 // recommendation says so), so an inline handler that calls
 // preventDefault suppresses the report.
-const handlerCallsPreventDefault = (
-  handler: EsTreeNode | undefined
-): boolean => {
+const handlerCallsPreventDefault = (handler: EsTreeNode | undefined): boolean => {
   if (
     !handler ||
     (!isNodeOfType(handler, "ArrowFunctionExpression") &&
@@ -44,9 +42,7 @@ const handlerCallsPreventDefault = (
 // preventDefault escape hatch also covers the referenced form — otherwise the
 // rule would recommend `{ passive: true }`, which silently breaks
 // preventDefault().
-const handlerArgumentCallsPreventDefault = (
-  handler: EsTreeNode | undefined
-): boolean => {
+const handlerArgumentCallsPreventDefault = (handler: EsTreeNode | undefined): boolean => {
   if (!handler) return false;
   if (handlerCallsPreventDefault(handler)) return true;
   if (!isNodeOfType(handler, "Identifier")) return false;
@@ -59,7 +55,7 @@ const handlerArgumentCallsPreventDefault = (
 // purposes of this rule: not a forgotten passive flag.
 const hasExplicitPassiveValue = (
   optionsArgument: EsTreeNodeOfType<"ObjectExpression">,
-  expected: boolean
+  expected: boolean,
 ): boolean =>
   Boolean(
     optionsArgument.properties?.some(
@@ -68,8 +64,8 @@ const hasExplicitPassiveValue = (
         isNodeOfType(property.key, "Identifier") &&
         property.key.name === "passive" &&
         isNodeOfType(property.value, "Literal") &&
-        property.value.value === expected
-    )
+        property.value.value === expected,
+    ),
   );
 
 export const clientPassiveEventListeners = defineRule({
@@ -96,12 +92,7 @@ export const clientPassiveEventListeners = defineRule({
 
       // A handler that needs preventDefault() can't be passive — skip it
       // regardless of how (or whether) options are passed.
-      if (
-        handlerArgumentCallsPreventDefault(
-          node.arguments[1] as EsTreeNode | undefined
-        )
-      )
-        return;
+      if (handlerArgumentCallsPreventDefault(node.arguments[1] as EsTreeNode | undefined)) return;
 
       const optionsArgument = node.arguments[2];
 

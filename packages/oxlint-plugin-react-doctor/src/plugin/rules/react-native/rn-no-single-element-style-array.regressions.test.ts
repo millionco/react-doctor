@@ -6,7 +6,7 @@ describe("react-native/rn-no-single-element-style-array — regressions", () => 
   it("stays silent on a single spread element (clones an array of styles)", () => {
     const result = runRule(
       rnNoSingleElementStyleArray,
-      `const C = () => <View style={[...baseStyles]} />;`
+      `const C = () => <View style={[...baseStyles]} />;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
@@ -15,7 +15,7 @@ describe("react-native/rn-no-single-element-style-array — regressions", () => 
   it("still flags a real single-value wrapper", () => {
     const result = runRule(
       rnNoSingleElementStyleArray,
-      `const C = () => <View style={[styles.box]} />;`
+      `const C = () => <View style={[styles.box]} />;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);

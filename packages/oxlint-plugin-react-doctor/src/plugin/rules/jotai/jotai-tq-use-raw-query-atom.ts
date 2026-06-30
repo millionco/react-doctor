@@ -29,18 +29,6 @@ const QUERY_ATOM_FACTORY_IMPORTED_NAMES = new Set([
 
 const SUBSCRIBING_HOOK_NAMES = new Set(["useAtomValue", "useAtom"]);
 
-// Bindings imported from another file follow a strong naming convention
-// in jotai-tanstack-query codebases (the library's own README + every
-// real OSS example uses this shape). When we see an imported binding
-// with one of these suffixes used with `useAtomValue` / `useAtom`,
-// treat it as a query atom even though we can't see the source-of-
-// truth `atomWithQuery(...)` call. False-positive risk is low: a
-// non-tq atom that happens to be named `*QueryAtom` is an unusual
-// naming clash. False-negative risk for the file-local case is zero
-// (those still resolve via the binding tracker below).
-const QUERY_ATOM_NAMING_CONVENTION =
-  /(SuspenseInfiniteQuery|SuspenseQuery|InfiniteQuery|Query)Atom$/;
-
 export const jotaiTqUseRawQueryAtom = defineRule({
   id: "jotai-tq-use-raw-query-atom",
   title: "Subscribing to raw query atom",
@@ -54,27 +42,18 @@ export const jotaiTqUseRawQueryAtom = defineRule({
     return {
       ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
         const source = node.source?.value;
+        // Only trust factories actually imported from `jotai-tanstack-query`.
+        // A cross-file naming heuristic (`*QueryAtom`) collides with mainstream
+        // plain atoms like `searchQueryAtom` / `userQueryAtom` that hold a
+        // search-query string, so it is not used. File-local atoms created by
+        // `atomWithQuery(...)` still resolve via the binding tracker below.
+        if (source !== "jotai-tanstack-query") return;
         for (const specifier of node.specifiers ?? []) {
           if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
           if (!isNodeOfType(specifier.local, "Identifier")) continue;
-          const localName = specifier.local.name;
-          if (source === "jotai-tanstack-query") {
-            const importedName = getImportedName(specifier);
-            if (importedName && QUERY_ATOM_FACTORY_IMPORTED_NAMES.has(importedName)) {
-              queryAtomFactoryLocalNames.add(localName);
-            }
-            continue;
-          }
-          // Cross-file: trust the naming convention for bindings imported
-          // from another file. Library imports (`jotai`, `react`, etc.)
-          // wouldn't normally have a `*QueryAtom`-shaped binding name,
-          // but skip them to be safe.
-          if (typeof source !== "string") continue;
-          if (source.startsWith("jotai") || source === "react" || source.startsWith("react/")) {
-            continue;
-          }
-          if (QUERY_ATOM_NAMING_CONVENTION.test(localName)) {
-            queryAtomBindingNames.add(localName);
+          const importedName = getImportedName(specifier);
+          if (importedName && QUERY_ATOM_FACTORY_IMPORTED_NAMES.has(importedName)) {
+            queryAtomFactoryLocalNames.add(specifier.local.name);
           }
         }
       },

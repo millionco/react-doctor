@@ -6,31 +6,30 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const REDIRECT_CONTROL_FLOW_GUARDS = new Set(["isRedirect", "isNotFound"]);
-
-// A catch clause that re-throws the caught binding (bare `throw error`)
-// or guards on `isRedirect`/`isNotFound` is forwarding the router's
-// control-flow error, not swallowing it — the documented safe pattern.
-// A catch that only logs/returns genuinely swallows the redirect and
-// must still be flagged.
+// A catch clause forwards the router's control-flow error only when it
+// re-throws the CAUGHT binding (`throw error`, e.g. the documented
+// `if (isRedirect(error)) throw error`). A bare `isRedirect(error)` check that
+// is NOT followed by a rethrow — or a catch that only logs/returns — still
+// swallows the redirect and must be flagged. Nested functions are pruned so a
+// `throw` inside a callback (which runs later) doesn't count as a rethrow.
 const catchClauseForwardsRedirect = (handler: EsTreeNodeOfType<"CatchClause">): boolean => {
   const caughtBindingName = isNodeOfType(handler.param, "Identifier") ? handler.param.name : null;
+  if (!caughtBindingName) return false;
   let forwards = false;
   walkAst(handler.body, (child: EsTreeNode) => {
     if (forwards) return false;
     if (
-      caughtBindingName &&
-      isNodeOfType(child, "ThrowStatement") &&
-      isNodeOfType(child.argument, "Identifier") &&
-      child.argument.name === caughtBindingName
+      child !== handler.body &&
+      (isNodeOfType(child, "ArrowFunctionExpression") ||
+        isNodeOfType(child, "FunctionExpression") ||
+        isNodeOfType(child, "FunctionDeclaration"))
     ) {
-      forwards = true;
       return false;
     }
     if (
-      isNodeOfType(child, "CallExpression") &&
-      isNodeOfType(child.callee, "Identifier") &&
-      REDIRECT_CONTROL_FLOW_GUARDS.has(child.callee.name)
+      isNodeOfType(child, "ThrowStatement") &&
+      isNodeOfType(child.argument, "Identifier") &&
+      child.argument.name === caughtBindingName
     ) {
       forwards = true;
       return false;

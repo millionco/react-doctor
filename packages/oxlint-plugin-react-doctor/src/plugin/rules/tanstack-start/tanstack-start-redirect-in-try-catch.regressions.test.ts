@@ -40,4 +40,15 @@ describe("tanstack-start/tanstack-start-redirect-in-try-catch — regressions", 
     );
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  // Bugbot: an isRedirect() guard with NO rethrow still swallows the redirect —
+  // only an actual `throw error` forwards it.
+  it("still flags a catch that checks isRedirect but only logs (no rethrow)", () => {
+    const { diagnostics } = runRule(
+      tanstackStartRedirectInTryCatch,
+      `async function load() { try { throw redirect({ to: '/login' }); } catch (error) { if (isRedirect(error)) { console.error('redirecting'); } return null; } }`,
+      ROUTE,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
 });

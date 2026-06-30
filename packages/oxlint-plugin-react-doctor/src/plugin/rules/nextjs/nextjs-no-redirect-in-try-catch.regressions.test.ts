@@ -70,6 +70,26 @@ export default async function Page() {
     expect(result.diagnostics).toEqual([]);
   });
 
+  // Bugbot: a catch that throws a FRESH error still swallows the redirect's
+  // control-flow error — only re-throwing the caught binding forwards it.
+  it("still flags a catch that throws a new error instead of re-throwing", () => {
+    const result = runRule(
+      nextjsNoRedirectInTryCatch,
+      `import { redirect } from "next/navigation";
+export default async function Page() {
+  try {
+    await save();
+    redirect("/done");
+  } catch (e) {
+    console.error(e);
+    throw new Error("save failed");
+  }
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("stays silent on a local redirect function that shadows next/navigation", () => {
     const result = runRule(
       nextjsNoRedirectInTryCatch,

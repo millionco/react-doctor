@@ -38,11 +38,14 @@ const findGuardingTryStatement = (node: EsTreeNode): EsTreeNodeOfType<"TryStatem
   return null;
 };
 
-// A catch clause that re-throws (any `throw` in its body, pruning nested
+// A catch clause that re-throws the CAUGHT binding (`throw e`, pruning nested
 // functions) forwards the redirect's control-flow error instead of swallowing
-// it — the documented safe pattern (`if (isRedirectError(e)) throw e`). A
-// catch that only logs/returns genuinely swallows the redirect.
+// it — the documented safe pattern (`if (isRedirectError(e)) throw e`). A catch
+// that only logs/returns, or throws a FRESH error (`throw new Error(...)`),
+// genuinely swallows the redirect's control-flow error and must still flag.
 const catchClauseRethrows = (handler: EsTreeNodeOfType<"CatchClause">): boolean => {
+  const caughtBindingName = isNodeOfType(handler.param, "Identifier") ? handler.param.name : null;
+  if (!caughtBindingName) return false;
   let didRethrow = false;
   walkAst(handler.body, (child: EsTreeNode) => {
     if (didRethrow) return false;
@@ -54,7 +57,11 @@ const catchClauseRethrows = (handler: EsTreeNodeOfType<"CatchClause">): boolean 
     ) {
       return false;
     }
-    if (isNodeOfType(child, "ThrowStatement")) {
+    if (
+      isNodeOfType(child, "ThrowStatement") &&
+      isNodeOfType(child.argument, "Identifier") &&
+      child.argument.name === caughtBindingName
+    ) {
       didRethrow = true;
       return false;
     }

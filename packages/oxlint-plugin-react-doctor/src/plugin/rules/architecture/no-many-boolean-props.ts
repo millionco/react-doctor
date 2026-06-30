@@ -51,10 +51,21 @@ const collectBooleanLikePropsFromBody = (
     if (child.object.name !== propsParamName) return;
     if (!isNodeOfType(child.property, "Identifier")) return;
     if (!isBooleanPrefixedPropName(child.property.name)) return;
-    // `props.showMenu()` is a callback invocation, not a boolean prop — mirror
-    // the destructured-param callback exclusion for the `props` object shape.
+    // `props.showMenu()` (invoked) and `onClick={props.showMenu}` (wired as an
+    // event handler) are imperative callbacks, not boolean props — mirror the
+    // destructured-param callback exclusion for the `props` object shape.
     const parent = child.parent;
     if (isNodeOfType(parent, "CallExpression") && parent.callee === child) return;
+    if (isNodeOfType(parent, "JSXExpressionContainer")) {
+      const attribute = parent.parent;
+      if (
+        isNodeOfType(attribute, "JSXAttribute") &&
+        isNodeOfType(attribute.name, "JSXIdentifier") &&
+        EVENT_HANDLER_ATTRIBUTE_PATTERN.test(attribute.name.name)
+      ) {
+        return;
+      }
+    }
     found.add(child.property.name);
   });
   return found;

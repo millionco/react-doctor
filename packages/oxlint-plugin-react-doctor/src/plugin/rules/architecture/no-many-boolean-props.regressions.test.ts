@@ -28,6 +28,13 @@ describe("architecture/no-many-boolean-props — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not count `props.show*` wired as JSX event handlers", () => {
+    const result = run(
+      `function Toolbar(props){ return <div onClick={props.showMenu} onMouseDown={props.hideMenu} onKeyDown={props.enableSave} onFocus={props.disableSave} />; }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags four genuine boolean props read off the props object", () => {
     const result = run(
       `function C(props){ return <div data-a={props.isPrimary} data-b={props.hasIcon} data-c={props.showHeader} data-d={props.canEdit} />; }`,

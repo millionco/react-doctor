@@ -13,7 +13,7 @@ describe("no-mutable-in-deps", () => {
         }, [location.href]);
         return null;
       }
-    `,
+    `
     );
 
     expect(result.diagnostics).toHaveLength(1);
@@ -30,9 +30,50 @@ describe("no-mutable-in-deps", () => {
         }, [location.pathname]);
         return null;
       }
-    `,
+    `
     );
 
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a top-level `const location = useLocation()` rebinding", () => {
+    const result = runRule(
+      noMutableInDeps,
+      `
+      function Page() {
+        const location = useLocation();
+        useEffect(() => {
+          track(location.pathname);
+        }, [location.pathname]);
+        return null;
+      }
+    `
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // Bugbot wave 4: a `const location` buried in a nested callback is a
+  // different binding — it must NOT mask the browser global read in the
+  // component's own dependency array.
+  it("still flags a mutable global even when a nested scope reuses the name", () => {
+    const result = runRule(
+      noMutableInDeps,
+      `
+      function Page() {
+        const onClick = () => {
+          const location = computeLocation();
+          return location.state;
+        };
+        useEffect(() => {
+          track(location.href);
+        }, [location.href]);
+        return null;
+      }
+    `
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("location");
   });
 });

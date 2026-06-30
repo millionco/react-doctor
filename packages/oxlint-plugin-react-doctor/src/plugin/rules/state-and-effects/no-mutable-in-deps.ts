@@ -54,6 +54,17 @@ const collectUseRefBindingNames = (componentBody: EsTreeNode): Set<string> => {
 const collectLocalBindingNames = (componentBody: EsTreeNode): Set<string> => {
   const localBindingNames = new Set<string>();
   walkAst(componentBody, (child: EsTreeNode) => {
+    // Don't descend into nested function scopes: a `const location = …`
+    // inside a callback or nested component must not mask a browser global
+    // (`location.pathname`) read in THIS component's own dependency array.
+    if (
+      child !== componentBody &&
+      (isNodeOfType(child, "FunctionDeclaration") ||
+        isNodeOfType(child, "FunctionExpression") ||
+        isNodeOfType(child, "ArrowFunctionExpression"))
+    ) {
+      return false;
+    }
     if (isNodeOfType(child, "VariableDeclarator")) {
       collectPatternNames(child.id, localBindingNames);
     }
@@ -64,7 +75,7 @@ const collectLocalBindingNames = (componentBody: EsTreeNode): Set<string> => {
 const findMutableDepIssue = (
   depElement: EsTreeNode,
   useRefBindingNames: Set<string>,
-  localBindingNames: Set<string>,
+  localBindingNames: Set<string>
 ): { kind: "global" | "ref-current"; rootName: string } | null => {
   if (!isNodeOfType(depElement, "MemberExpression")) return null;
 
@@ -79,7 +90,11 @@ const findMutableDepIssue = (
   }
 
   const rootName = getRootIdentifierName(depElement);
-  if (rootName !== null && MUTABLE_GLOBAL_ROOTS.has(rootName) && !localBindingNames.has(rootName)) {
+  if (
+    rootName !== null &&
+    MUTABLE_GLOBAL_ROOTS.has(rootName) &&
+    !localBindingNames.has(rootName)
+  ) {
     return { kind: "global", rootName };
   }
   return null;
@@ -94,12 +109,14 @@ export const noMutableInDeps = defineRule({
   create: (context: RuleContext) => {
     const checkComponent = (
       componentBody: EsTreeNode | null | undefined,
-      componentParams: ReadonlyArray<EsTreeNode> = [],
+      componentParams: ReadonlyArray<EsTreeNode> = []
     ): void => {
-      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
+      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement"))
+        return;
       const useRefBindingNames = collectUseRefBindingNames(componentBody);
       const localBindingNames = collectLocalBindingNames(componentBody);
-      for (const param of componentParams) collectPatternNames(param, localBindingNames);
+      for (const param of componentParams)
+        collectPatternNames(param, localBindingNames);
 
       walkAst(componentBody, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "CallExpression")) return;
@@ -110,7 +127,11 @@ export const noMutableInDeps = defineRule({
 
         for (const element of depsNode.elements ?? []) {
           if (!element) continue;
-          const issue = findMutableDepIssue(element, useRefBindingNames, localBindingNames);
+          const issue = findMutableDepIssue(
+            element,
+            useRefBindingNames,
+            localBindingNames
+          );
           if (!issue) continue;
           if (issue.kind === "ref-current") {
             context.report({

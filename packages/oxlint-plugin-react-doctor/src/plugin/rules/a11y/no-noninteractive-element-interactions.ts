@@ -9,23 +9,47 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { NON_INTERACTIVE_ELEMENTS } from "../../constants/html-tags.js";
 import { INTERACTIVE_ROLES } from "../../constants/aria-roles.js";
 
-// Collect every string-literal branch a `role={…}` expression can
-// produce. A `cond ? "checkbox" : "radio"` ternary (or `a && "button"`)
-// yields a concrete interactive role at runtime even though it isn't a
-// plain Literal — the static `getJsxPropStringValue` reads it as null.
-const collectRoleStringBranches = (expression: EsTreeNode, out: string[]): void => {
-  if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
-    out.push(expression.value);
+interface RoleExpressionBranches {
+  stringValues: string[];
+  // A runtime value that is provably NOT an interactive role can escape:
+  // a nullish / `false` literal (`role={show ? "button" : null}`) or the
+  // falsy short-circuit of `&&` (`role={enabled && "button"}` is `false`
+  // when the guard is falsy). When set, we can't claim the element always
+  // carries an interactive role, so suppression is unsafe.
+  hasNonRoleBranch: boolean;
+}
+
+// Collect every string-literal branch a `role={…}` expression can produce.
+// A `cond ? "checkbox" : "radio"` ternary yields a concrete interactive role
+// at runtime even though it isn't a plain Literal — the static
+// `getJsxPropStringValue` reads it as null. Branches that can resolve to a
+// non-role value flip `hasNonRoleBranch` so the caller stops trusting the
+// string branches alone.
+const collectRoleBranches = (
+  expression: EsTreeNode,
+  out: RoleExpressionBranches
+): void => {
+  if (isNodeOfType(expression, "Literal")) {
+    if (typeof expression.value === "string") {
+      out.stringValues.push(expression.value);
+    } else {
+      out.hasNonRoleBranch = true;
+    }
     return;
   }
   if (isNodeOfType(expression, "ConditionalExpression")) {
-    collectRoleStringBranches(expression.consequent as EsTreeNode, out);
-    collectRoleStringBranches(expression.alternate as EsTreeNode, out);
+    collectRoleBranches(expression.consequent as EsTreeNode, out);
+    collectRoleBranches(expression.alternate as EsTreeNode, out);
     return;
   }
   if (isNodeOfType(expression, "LogicalExpression")) {
-    collectRoleStringBranches(expression.left as EsTreeNode, out);
-    collectRoleStringBranches(expression.right as EsTreeNode, out);
+    if (expression.operator === "&&") {
+      out.hasNonRoleBranch = true;
+      collectRoleBranches(expression.right as EsTreeNode, out);
+      return;
+    }
+    collectRoleBranches(expression.left as EsTreeNode, out);
+    collectRoleBranches(expression.right as EsTreeNode, out);
   }
 };
 
@@ -50,14 +74,15 @@ export const noNoninteractiveElementInteractions = defineRule({
   title: "Handler on non-interactive element",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation: "Put interactions on a button or link, or add an interactive role.",
+  recommendation:
+    "Put interactions on a button or link, or add an interactive role.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const tag = getElementType(node, context.settings);
       if (!NON_INTERACTIVE_ELEMENTS.has(tag)) return;
       const hasHandler = INTERACTIVE_HANDLERS.some((handler) =>
-        hasJsxPropIgnoreCase(node.attributes, handler),
+        hasJsxPropIgnoreCase(node.attributes, handler)
       );
       if (!hasHandler) return;
       if (isHiddenFromScreenReader(node, context.settings)) return;
@@ -67,18 +92,29 @@ export const noNoninteractiveElementInteractions = defineRule({
         if (role && INTERACTIVE_ROLES.has(role)) return;
 
         // Non-static role (`role={cond ? "checkbox" : "radio"}`): if every
-        // string branch is an interactive role, the element always has
-        // one. More generally, when a role is present but its value can't
-        // be read statically, we can't prove it is non-interactive, so we
-        // don't report (the SolidJS-port idiom keeps roles as ternaries).
+        // string branch is an interactive role AND no branch can resolve to
+        // a non-role value, the element always has one. When a role is
+        // present but fully opaque (`role={x}`), we can't prove it is
+        // non-interactive, so we stay quiet (the SolidJS-port idiom keeps
+        // roles as ternaries). But a provable escape to `null`/`false` (or
+        // the `&&` short-circuit) means the element is sometimes role-less,
+        // so we still report.
         const roleValue = roleAttr.value as EsTreeNode | null;
         if (roleValue && isNodeOfType(roleValue, "JSXExpressionContainer")) {
-          const branches: string[] = [];
-          collectRoleStringBranches(roleValue.expression as EsTreeNode, branches);
-          if (branches.length > 0 && branches.every((branch) => INTERACTIVE_ROLES.has(branch))) {
+          const branches: RoleExpressionBranches = {
+            stringValues: [],
+            hasNonRoleBranch: false,
+          };
+          collectRoleBranches(roleValue.expression as EsTreeNode, branches);
+          const everyBranchIsInteractiveRole =
+            branches.stringValues.length > 0 &&
+            !branches.hasNonRoleBranch &&
+            branches.stringValues.every((branch) =>
+              INTERACTIVE_ROLES.has(branch)
+            );
+          if (everyBranchIsInteractiveRole) return;
+          if (branches.stringValues.length === 0 && !branches.hasNonRoleBranch)
             return;
-          }
-          if (branches.length === 0) return;
         }
       }
       context.report({ node: node.name, message: buildMessage(tag) });

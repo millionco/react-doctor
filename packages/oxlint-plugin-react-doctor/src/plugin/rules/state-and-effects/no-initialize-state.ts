@@ -1,6 +1,8 @@
+import { containsNonDeterministicSource } from "../../utils/contains-non-deterministic-source.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { readsPostMountValue } from "../../utils/reads-post-mount-value.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getCallExpr } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
@@ -44,10 +46,23 @@ export const noInitializeState = defineRule({
         depsRefs.filter((ref) => !isStateSetter(analysis, ref)).length === 0;
       if (!isEffectRunOnlyOnMount) return;
 
+      if (readsPostMountValue(effectFn)) return;
+
       for (const ref of effectFnRefs) {
         if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
         const callExpr = getCallExpr(ref);
         if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
+        // A non-deterministic source (`crypto.randomUUID()`, `Math.random()`,
+        // `Date.now()`, an id generator, …) can't be a deterministic
+        // `useState(initial)` argument and is SSR-unsafe, so deferring it to a
+        // mount effect is the correct pattern, not an init smell.
+        if (
+          callExpr.arguments?.some(
+            (argument) => Boolean(argument) && containsNonDeterministicSource(argument),
+          )
+        ) {
+          continue;
+        }
         const useStateDecl = getUseStateDecl(analysis, ref);
         if (!useStateDecl || !isNodeOfType(useStateDecl, "VariableDeclarator")) continue;
         if (!isNodeOfType(useStateDecl.id, "ArrayPattern")) continue;

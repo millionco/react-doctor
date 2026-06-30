@@ -3,6 +3,7 @@ import { CASCADING_SET_STATE_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
@@ -29,6 +30,46 @@ const isAsyncFunctionLike = (node: EsTreeNode): boolean => {
   return false;
 };
 
+// Array iteration methods that invoke their callback SYNCHRONOUSLY, so
+// setters inside the callback still compound on the effect's dispatch.
+const SYNCHRONOUS_ITERATION_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "forEach",
+  "map",
+  "filter",
+  "reduce",
+  "reduceRight",
+  "flatMap",
+  "some",
+  "every",
+  "find",
+  "findIndex",
+  "findLast",
+  "findLastIndex",
+  "sort",
+]);
+
+// A nested function whose body runs on the SAME synchronous dispatch as the
+// effect: an IIFE (`(() => { … })()`) or the callback of a synchronous array
+// iteration (`items.forEach(() => { setA(); setB() })`). Its setters DO
+// compound and must still be counted — unlike a deferred callback (timer /
+// listener / observer / promise / subscription, or a handler stored in a
+// variable and registered later), which runs on its own dispatch.
+const runsSynchronouslyInline = (fn: EsTreeNode): boolean => {
+  const parent = (fn as unknown as { parent?: EsTreeNode | null }).parent;
+  if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
+  if ((parent.callee as unknown) === (fn as unknown)) return true;
+  const isCallbackArgument = (parent.arguments ?? []).some(
+    (argument) => (argument as unknown) === (fn as unknown),
+  );
+  if (!isCallbackArgument) return false;
+  const callee = parent.callee;
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier") &&
+    SYNCHRONOUS_ITERATION_METHOD_NAMES.has(callee.property.name)
+  );
+};
+
 // `break` / `return` / `throw` / `continue` end a switch-case run; the
 // absence of any of these means the next case label falls through and
 // its setters execute on the same dispatch.
@@ -38,12 +79,59 @@ const isTerminatingStatement = (statement: EsTreeNode): boolean =>
   isNodeOfType(statement, "ThrowStatement") ||
   isNodeOfType(statement, "ContinueStatement");
 
+// An `if (cond) { …; return }` (no `else`) whose consequent ends the
+// control-flow path: the branch is mutually exclusive with everything
+// AFTER it in the block, so its setters must NOT be summed with the
+// post-guard body — only one path runs.
+const isGuardWithTerminatingBranch = (statement: EsTreeNode): EsTreeNode | null => {
+  if (!isNodeOfType(statement, "IfStatement")) return null;
+  if (statement.alternate) return null;
+  const consequent = statement.consequent as EsTreeNode;
+  if (isTerminatingStatement(consequent)) return consequent;
+  if (
+    isNodeOfType(consequent, "BlockStatement") &&
+    (consequent.body ?? []).some((inner) => isTerminatingStatement(inner as EsTreeNode))
+  ) {
+    return consequent;
+  }
+  return null;
+};
+
+// Count setters along a single execution path through a statement list,
+// modeling block-level control flow: setters before an early-returning
+// guard always run (they accumulate), the guard branch is a separate
+// mutually-exclusive path (tracked as a max), and statements after an
+// unconditional `return`/`throw` are unreachable.
+const countStatementSequenceSetStateCalls = (statements: ReadonlyArray<EsTreeNode>): number => {
+  let fallThroughCount = 0;
+  let maxTerminatingPathCount = 0;
+  for (const statement of statements) {
+    const guardBranch = isGuardWithTerminatingBranch(statement);
+    if (guardBranch) {
+      maxTerminatingPathCount = Math.max(
+        maxTerminatingPathCount,
+        fallThroughCount + countMaxPathSetStateCalls(guardBranch),
+      );
+      continue;
+    }
+    if (isTerminatingStatement(statement)) break;
+    fallThroughCount += countMaxPathSetStateCalls(statement);
+  }
+  return Math.max(maxTerminatingPathCount, fallThroughCount);
+};
+
 const countMaxPathSetStateCalls = (node: EsTreeNode): number => {
   if (!node || typeof node !== "object") return 0;
   // Async function bodies — see comment above. Sync function bodies
   // (callbacks for `.then(...)`, `setTimeout(...)`, etc.) are still
   // walked because their setStates DO compound when fired together.
   if (isAsyncFunctionLike(node)) return 0;
+  // Statement lists: walk with block-level control flow so setters in an
+  // early-returning guard branch are mutually exclusive with the
+  // post-guard body (max), not summed.
+  if (isNodeOfType(node, "BlockStatement") || isNodeOfType(node, "Program")) {
+    return countStatementSequenceSetStateCalls((node.body ?? []) as EsTreeNode[]);
+  }
   // If/else: max of branches (only one fires).
   if (isNodeOfType(node, "IfStatement")) {
     const thenCount = countMaxPathSetStateCalls(node.consequent as EsTreeNode);
@@ -109,7 +197,15 @@ const countMaxPathSetStateCalls = (node: EsTreeNode): number => {
     }
     return 1 + nestedSettersInArgs;
   }
-  // Walk children, summing — sequential statements compound.
+  // Walk children, summing — sequential statements compound. A DEFERRED
+  // callback child (handed to `addEventListener` / `setTimeout` / an observer
+  // / `.then(...)`, or stored in a variable and registered later) runs on its
+  // own dispatch, so its setters don't compound and are skipped. A function
+  // that runs synchronously inline (an IIFE or a `forEach`/`map`/… callback)
+  // IS walked. (A `setX(prev => { setY() })` functional updater is counted via
+  // the setter-call arguments branch above, not here.)
+  const shouldWalkChild = (child: EsTreeNode): boolean =>
+    !isFunctionLike(child) || runsSynchronouslyInline(child);
   let total = 0;
   const nodeRecord = node as unknown as Record<string, unknown>;
   for (const key of Object.keys(nodeRecord)) {
@@ -117,11 +213,21 @@ const countMaxPathSetStateCalls = (node: EsTreeNode): number => {
     const child = nodeRecord[key];
     if (Array.isArray(child)) {
       for (const item of child) {
-        if (item && typeof item === "object" && "type" in item) {
+        if (
+          item &&
+          typeof item === "object" &&
+          "type" in item &&
+          shouldWalkChild(item as EsTreeNode)
+        ) {
           total += countMaxPathSetStateCalls(item as EsTreeNode);
         }
       }
-    } else if (child && typeof child === "object" && "type" in child) {
+    } else if (
+      child &&
+      typeof child === "object" &&
+      "type" in child &&
+      shouldWalkChild(child as EsTreeNode)
+    ) {
       total += countMaxPathSetStateCalls(child as EsTreeNode);
     }
   }

@@ -3,9 +3,18 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { readsPostMountValue } from "../../utils/reads-post-mount-value.js";
 import { findDownstreamNodes, getDownstreamRefs, getUpstreamRefs } from "./utils/effect/ast.js";
+import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
-import { getEffectFnRefs, hasCleanup, isProp, isState, isUseEffect } from "./utils/effect/react.js";
+import {
+  getEffectFn,
+  getEffectFnRefs,
+  hasCleanup,
+  isProp,
+  isState,
+  isUseEffect,
+} from "./utils/effect/react.js";
 
 const SETTER_NAME_PATTERN = /^set[A-Z]/;
 
@@ -102,6 +111,25 @@ const isSideEffectFreeExit = (statement: EsTreeNode): boolean => {
   return false;
 };
 
+// An `if` whose consequent does ONLY state-setter / ref-bookkeeping work
+// (`setValue(valueProp)`, `xRef.current = …`) is state SYNCHRONISATION —
+// the controlled/uncontrolled mirror
+// (`if (valueProp !== undefined) setValue(valueProp)`) or an
+// adjust-state-on-prop-change. There is no event-handler-appropriate side
+// effect to fold into a handler — every true positive in the upstream
+// corpus calls an external function / prop callback in the consequent
+// (`submitData(...)`, `showNotification(...)`). Setter-only sync belongs to
+// the dedicated state-sync rules, not here, so skip it.
+const isStateSyncConsequent = (consequent: EsTreeNode): boolean => {
+  if (isSetterCallExpressionStatement(consequent)) return true;
+  if (isNodeOfType(consequent, "BlockStatement")) {
+    const body = consequent.body ?? [];
+    if (body.length === 0) return false;
+    return body.every((statement) => isSetterCallExpressionStatement(statement as EsTreeNode));
+  }
+  return false;
+};
+
 const isPureEarlyExitConsequent = (consequent: EsTreeNode): boolean => {
   if (
     isNodeOfType(consequent, "ReturnStatement") ||
@@ -147,18 +175,36 @@ export const noEventHandler = defineRule({
       const effectFnRefs = getEffectFnRefs(analysis, node);
       if (!effectFnRefs) return;
 
+      // The effect computes its values from a DOM measurement / browser
+      // global (`ref.current`, `window`, `matchMedia`, …). Those can't be
+      // produced at render time and there is no React event to fold the work
+      // into, so this is not the event-handler-in-an-effect smell.
+      const effectFn = getEffectFn(analysis, node);
+      if (effectFn && readsPostMountValue(effectFn)) return;
+
       const ifStatementsNoElse = findDownstreamNodes(node, "IfStatement").filter(
         (ifNode) =>
           isNodeOfType(ifNode, "IfStatement") &&
           !ifNode.alternate &&
           !isPureEarlyExitConsequent(ifNode.consequent as EsTreeNode) &&
+          !isStateSyncConsequent(ifNode.consequent as EsTreeNode) &&
           !containsRefGuard(ifNode.test as EsTreeNode),
       );
       const ifTestRefs = ifStatementsNoElse.flatMap((ifNode) => {
         if (!isNodeOfType(ifNode, "IfStatement")) return [];
-        return getDownstreamRefs(analysis, ifNode.test as EsTreeNode).flatMap((ref) =>
-          getUpstreamRefs(analysis, ref),
-        );
+        const directTestRefs = getDownstreamRefs(analysis, ifNode.test as EsTreeNode);
+        // The condition tests externally-driven state (set by a timer /
+        // listener / observer / subscription). The whole guard is reacting to
+        // an imperative browser event, so neither the state nor the props that
+        // merely seed it should be flagged as a faked event handler.
+        if (
+          directTestRefs.some(
+            (ref) => isState(analysis, ref) && isExternallyDrivenState(analysis, ref),
+          )
+        ) {
+          return [];
+        }
+        return directTestRefs.flatMap((ref) => getUpstreamRefs(analysis, ref));
       });
 
       // Dedupe by resolved binding (not identifier identity) so a
@@ -179,6 +225,10 @@ export const noEventHandler = defineRule({
 
       for (const ref of dedupedRefs) {
         if (isState(analysis, ref)) {
+          // State written from a timer / listener / observer / promise /
+          // subscription changes in response to an imperative browser event,
+          // not a React event handler, so there is no handler to fold into.
+          if (isExternallyDrivenState(analysis, ref)) continue;
           context.report({
             node: ref.identifier as unknown as EsTreeNode,
             message:

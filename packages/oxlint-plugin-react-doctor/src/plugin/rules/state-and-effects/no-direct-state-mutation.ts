@@ -93,6 +93,27 @@ export const noDirectStateMutation = defineRule({
         bindings.map((binding) => [binding.valueName, binding.setterName] as const),
       );
 
+      // A `x.y = ...` assignment or a `x.push(...)` mutating-method call
+      // is only React-owned-state mutation when the state plausibly holds
+      // React-managed data — a plain object / array literal initializer.
+      // When the initializer is `null`, a call/`new`, or another binding,
+      // the state is an opaque third-party instance (a Monaco/CodeMirror/
+      // chart/map editor or a `new TrackQueue()`), whose fields and
+      // methods are its imperative API, not render state.
+      const plainObjectStateValueNames = new Set<string>();
+      for (const binding of bindings) {
+        const initializer = isNodeOfType(binding.declarator.init, "CallExpression")
+          ? binding.declarator.init.arguments?.[0]
+          : undefined;
+        if (
+          initializer &&
+          (isNodeOfType(initializer, "ObjectExpression") ||
+            isNodeOfType(initializer, "ArrayExpression"))
+        ) {
+          plainObjectStateValueNames.add(binding.valueName);
+        }
+      }
+
       walkComponentRespectingShadows(
         componentBody,
         new Set(),
@@ -101,6 +122,7 @@ export const noDirectStateMutation = defineRule({
             if (!isNodeOfType(child.left, "MemberExpression")) return;
             const rootName = getRootIdentifierName(child.left);
             if (!rootName || !stateValueToSetter.has(rootName)) return;
+            if (!plainObjectStateValueNames.has(rootName)) return;
             if (currentlyShadowed.has(rootName)) return;
             context.report({
               node: child,
@@ -117,6 +139,7 @@ export const noDirectStateMutation = defineRule({
             if (!MUTATING_ARRAY_METHODS.has(methodName)) return;
             const rootName = getRootIdentifierName(callee.object);
             if (!rootName || !stateValueToSetter.has(rootName)) return;
+            if (!plainObjectStateValueNames.has(rootName)) return;
             if (currentlyShadowed.has(rootName)) return;
             context.report({
               node: child,

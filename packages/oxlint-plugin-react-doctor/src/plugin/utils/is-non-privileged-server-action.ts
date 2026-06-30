@@ -47,19 +47,46 @@ const unwrapExpression = (node: EsTreeNode | null | undefined): EsTreeNode | nul
   return null;
 };
 
-// `return someValue` / `return obj.prop` hands a value back to the (possibly
-// unauthenticated) caller — i.e. potential data exposure, the read half of
-// the threat. A returned call is already covered by `isPrivilegedEffect`
-// (and `return redirect(...)` stays exempt); only direct identifier / member
-// reads need flagging here. Literals and object/array literals carry no
-// reference on their own, so they don't disqualify.
+// An expression built purely from literals — `true`, `"ok"`, `{ revalidated:
+// true }`, `[1, 2]`, a template with only literal interpolations. It carries
+// no reference to a binding, so returning it leaks nothing.
+const isLiteralOnlyExpression = (node: EsTreeNode | null | undefined): boolean => {
+  if (!node) return false;
+  if (isNodeOfType(node, "Literal")) return true;
+  if (isNodeOfType(node, "TemplateLiteral")) {
+    return (node.expressions ?? []).every(isLiteralOnlyExpression);
+  }
+  if (isNodeOfType(node, "UnaryExpression")) return isLiteralOnlyExpression(node.argument);
+  if (isNodeOfType(node, "ArrayExpression")) {
+    return (node.elements ?? []).every(
+      (element) =>
+        element === null ||
+        (!isNodeOfType(element, "SpreadElement") && isLiteralOnlyExpression(element)),
+    );
+  }
+  if (isNodeOfType(node, "ObjectExpression")) {
+    return (node.properties ?? []).every(
+      (property) =>
+        isNodeOfType(property, "Property") &&
+        (!property.computed || isLiteralOnlyExpression(property.key)) &&
+        isLiteralOnlyExpression(property.value),
+    );
+  }
+  return false;
+};
+
+// `return <value>` hands a value back to the (possibly unauthenticated) caller
+// — i.e. potential data exposure, the read half of the threat. Only a purely
+// literal value (or a `return redirect(...)` navigation) is safe; anything
+// that references a binding — an identifier, member access, await, call,
+// conditional, or a non-literal nested inside an object/array — could carry
+// protected data, so it disqualifies the exemption.
 const isDataExposingReturn = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "ReturnStatement") || !node.argument) return false;
   const returned = unwrapExpression(node.argument);
-  return Boolean(
-    returned &&
-    (isNodeOfType(returned, "Identifier") || isNodeOfType(returned, "MemberExpression")),
-  );
+  if (!returned) return false;
+  if (isCacheOrNavigationCall(returned)) return false;
+  return !isLiteralOnlyExpression(returned);
 };
 
 // Any node that can reach state beyond the action's own locals: a non-cache/

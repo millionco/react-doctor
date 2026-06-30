@@ -681,6 +681,63 @@ export async function refresh() {
     await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
+  it("still flags an action that revalidates then returns an awaited value", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-awaited-return", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+import { sessionPromise } from "@/lib/session";
+
+export async function refresh() {
+  revalidateTag("posts");
+  return await sessionPromise;
+}`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("refresh");
+  });
+
+  it("still flags an action that revalidates then returns data nested in an object", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-nested-return", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+import { serverConfig } from "@/lib/config";
+
+export async function refresh() {
+  revalidateTag("posts");
+  return { token: serverConfig.apiSecret };
+}`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("refresh");
+  });
+
+  it("still flags an action that revalidates then returns a conditional referencing data", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-conditional-return", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+import { currentUser } from "@/lib/user";
+
+export async function refresh(flag: boolean) {
+  revalidateTag("posts");
+  return flag ? currentUser.email : null;
+}`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("refresh");
+  });
+
   it("still flags a `delete` mutation next to a revalidation", async () => {
     const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-delete", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },

@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { readsPostMountValue } from "../../utils/reads-post-mount-value.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getArgsUpstreamRefs, getCallExpr, getUpstreamRefs } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
@@ -73,6 +74,11 @@ export const noAdjustStateOnPropChange = defineRule({
         if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
         const callExpr = getCallExpr(ref);
         if (!callExpr) continue;
+        // The new value is measured from the DOM / a ref / a browser global
+        // (`setMobile(ref.current.offsetWidth < 600)`), which can't be
+        // computed during render — so the "adjust inline during render"
+        // advice doesn't apply; the prop is just the re-measure trigger.
+        if (readsPostMountValue(callExpr)) continue;
         if (
           hasAsyncStateSetter &&
           isNodeOfType(callExpr, "CallExpression") &&

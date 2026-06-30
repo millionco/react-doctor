@@ -19,6 +19,15 @@ const isRenderPropReceiver = (object: EsTreeNode): boolean => {
   );
 };
 
+// `this.renderX(...)` is a class-component render-helper method. It has a
+// stable identity (declared on the class, not rebuilt in render) and
+// returns JSX that React inlines in place, so it remounts nothing — the
+// canonical "split render() into methods" pattern the recommendation is
+// itself nudging toward. Only locally-declared inline helpers carry the
+// smell this rule targets, never `this.method` calls.
+const isStableMethodReceiver = (object: EsTreeNode): boolean =>
+  isNodeOfType(object, "ThisExpression");
+
 export const noRenderInRender = defineRule({
   id: "no-render-in-render",
   title: "Component rendered by inline function call",
@@ -39,6 +48,7 @@ export const noRenderInRender = defineRule({
         isNodeOfType(expression.callee.property, "Identifier")
       ) {
         if (isRenderPropReceiver(expression.callee.object)) return;
+        if (isStableMethodReceiver(expression.callee.object)) return;
         calleeName = expression.callee.property.name;
       }
 

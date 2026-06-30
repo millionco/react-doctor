@@ -7,6 +7,7 @@ import { DATA_SINK_METHOD_NAMES } from "../../constants/data-sink-method-names.j
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getArgsUpstreamRefs, getCallExpr, isSynchronous } from "./utils/effect/ast.js";
+import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getEffectFn,
@@ -66,10 +67,14 @@ export const noPassLiveStateToParent = defineRule({
         if (methodName && DATA_SINK_METHOD_NAMES.has(methodName)) continue;
         if (calleeNode && isNamespacedApiCallee(calleeNode)) continue;
 
-        const isStateInArgs = getArgsUpstreamRefs(analysis, ref).some((argRef) =>
+        const stateArgRefs = getArgsUpstreamRefs(analysis, ref).filter((argRef) =>
           isState(analysis, argRef),
         );
-        if (!isStateInArgs) continue;
+        if (stateArgRefs.length === 0) continue;
+        // The state handed to the parent is driven by a timer / listener /
+        // observer / subscription — the child genuinely owns this
+        // externally-sourced value, so "lift it to the parent" doesn't apply.
+        if (stateArgRefs.every((argRef) => isExternallyDrivenState(analysis, argRef))) continue;
 
         context.report({
           node: callExpr,

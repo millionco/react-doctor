@@ -4,8 +4,13 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { readsPostMountValue } from "../../utils/reads-post-mount-value.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { getArgsUpstreamRefs, getCallExpr, getUpstreamRefs } from "./utils/effect/ast.js";
+import {
+  getArgsUpstreamRefs,
+  getCallExpr,
+  getUpstreamRefs,
+} from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getEffectDepsRefs,
@@ -30,14 +35,19 @@ const countSetterCallSites = (ref: Reference): number => {
   if (!ref.resolved) return 0;
   let count = 0;
   for (const reference of ref.resolved.references) {
-    const parent = (reference.identifier as unknown as { parent?: EsTreeNode | null }).parent;
+    const parent = (
+      reference.identifier as unknown as { parent?: EsTreeNode | null }
+    ).parent;
     if (parent && isNodeOfType(parent, "CallExpression")) count += 1;
   }
   return count;
 };
 
-const getStateNameForUseStateDecl = (useStateNode: EsTreeNode | null): string | null => {
-  if (!useStateNode || !isNodeOfType(useStateNode, "VariableDeclarator")) return null;
+const getStateNameForUseStateDecl = (
+  useStateNode: EsTreeNode | null
+): string | null => {
+  if (!useStateNode || !isNodeOfType(useStateNode, "VariableDeclarator"))
+    return null;
   if (!isNodeOfType(useStateNode.id, "ArrayPattern")) return null;
   const elements = useStateNode.id.elements ?? [];
   const candidate = elements[0] ?? elements[1];
@@ -69,12 +79,17 @@ export const noDerivedState = defineRule({
 
         const callExpr = getCallExpr(ref);
         if (!callExpr) continue;
+        // A value measured from the DOM / a ref / a browser global can't be
+        // "worked out while rendering" — the element isn't mounted yet. This
+        // is a deferred measurement, not a derived value copied into state.
+        if (readsPostMountValue(callExpr)) continue;
         const useStateNode = getUseStateDecl(analysis, ref);
-        const stateName = getStateNameForUseStateDecl(useStateNode) ?? "<state>";
+        const stateName =
+          getStateNameForUseStateDecl(useStateNode) ?? "<state>";
 
         const argsUpstreamRefs = getArgsUpstreamRefs(analysis, ref);
         const depsUpstreamRefs: Reference[] = depsRefs.flatMap((depRef) =>
-          getUpstreamRefs(analysis, depRef),
+          getUpstreamRefs(analysis, depRef)
         );
 
         // Initial-only / default / seed prop pattern. When the
@@ -87,16 +102,32 @@ export const noDerivedState = defineRule({
         // `.every([]) === true` and AST-shape false-positives.
         if (isInitialOnlySetterCall(callExpr)) continue;
 
+        // Controlled/uncontrolled value mirror: `useState(value)` +
+        // `useEffect(() => { if (value !== undefined) setInput(value); }, [value])`
+        // where `setInput` is ALSO called from an event handler
+        // (`setInput(e.target.value)` / `setUncontrolledOpen(nextOpen)`).
+        // The state holds the user's live edits and merely re-syncs to the
+        // controlled prop — it is NOT a value derivable while rendering, so a
+        // `useMemo` would erase the user's input. The signature is unique: a
+        // bare-prop argument with more than one setter call site (the
+        // upstream "derived" corpus never mirrors a bare prop AND writes the
+        // same state from elsewhere).
+        if (isControlledPropMirror(analysis, ref, callExpr, effectFnRefs))
+          continue;
+
         const isSomeArgsInternal = argsUpstreamRefs.some(
-          (argRef) => isState(analysis, argRef) || isProp(analysis, argRef),
+          (argRef) => isState(analysis, argRef) || isProp(analysis, argRef)
         );
 
         const isAllArgsInDeps =
           argsUpstreamRefs.length > 0 &&
           argsUpstreamRefs.every((argRef) =>
-            depsUpstreamRefs.some((depRef) => argRef.resolved === depRef.resolved),
+            depsUpstreamRefs.some(
+              (depRef) => argRef.resolved === depRef.resolved
+            )
           );
-        const isValueAlwaysInSync = isAllArgsInDeps && countSetterCallSites(ref) === 1;
+        const isValueAlwaysInSync =
+          isAllArgsInDeps && countSetterCallSites(ref) === 1;
 
         if (isSomeArgsInternal) {
           context.report({
@@ -113,6 +144,30 @@ export const noDerivedState = defineRule({
     },
   }),
 });
+
+// True for the controlled/uncontrolled value mirror: the setter's sole
+// argument is a bare PROP identifier AND the same setter is invoked from
+// more than one site (so the state is independently user-editable, not a
+// pure projection of the prop). Such state cannot be replaced by a render-
+// time derivation without dropping the user's edits.
+const isControlledPropMirror = (
+  analysis: ReturnType<typeof getProgramAnalysis>,
+  setterRef: Reference,
+  callExpr: EsTreeNode,
+  effectFnRefs: readonly Reference[]
+): boolean => {
+  if (!analysis) return false;
+  if (countSetterCallSites(setterRef) <= 1) return false;
+  if (!isNodeOfType(callExpr, "CallExpression")) return false;
+  const args = callExpr.arguments ?? [];
+  if (args.length !== 1) return false;
+  const arg = args[0] as EsTreeNode;
+  if (!isNodeOfType(arg, "Identifier")) return false;
+  const argRef = effectFnRefs.find(
+    (reference) => (reference.identifier as unknown as EsTreeNode) === arg
+  );
+  return Boolean(argRef && isProp(analysis, argRef));
+};
 
 // `setX(initialValue)` — sole argument is a bare identifier whose name
 // signals the consumer's controlled-init / reset intent.

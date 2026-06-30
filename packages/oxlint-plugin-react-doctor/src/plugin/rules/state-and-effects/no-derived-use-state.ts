@@ -5,6 +5,7 @@ import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
+import { isSetterCalledDuringRender } from "./utils/is-setter-called-during-render.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -13,7 +14,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 type IsPropNameFn = (name: string, referenceNode?: EsTreeNode) => boolean;
 
-const getStateSetterName = (useStateCall: EsTreeNodeOfType<"CallExpression">): string | null => {
+const getStateSetterName = (
+  useStateCall: EsTreeNodeOfType<"CallExpression">
+): string | null => {
   const declarator = useStateCall.parent;
   if (!isNodeOfType(declarator, "VariableDeclarator")) return null;
   if (!isNodeOfType(declarator.id, "ArrayPattern")) return null;
@@ -33,13 +36,16 @@ const getEnclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
 
 const isPropDerivedArgument = (
   argument: EsTreeNode | null | undefined,
-  isPropName: IsPropNameFn,
+  isPropName: IsPropNameFn
 ): boolean => {
   if (!argument) return false;
-  if (isNodeOfType(argument, "Identifier")) return isPropName(argument.name, argument);
+  if (isNodeOfType(argument, "Identifier"))
+    return isPropName(argument.name, argument);
   if (isNodeOfType(argument, "MemberExpression")) {
     const rootIdentifierName = getRootIdentifierName(argument);
-    return rootIdentifierName !== null && isPropName(rootIdentifierName, argument);
+    return (
+      rootIdentifierName !== null && isPropName(rootIdentifierName, argument)
+    );
   }
   return false;
 };
@@ -54,7 +60,7 @@ const isPropDerivedArgument = (
 // subtree is skipped and render-body setter calls are ignored.
 const isReseededDraftBuffer = (
   useStateCall: EsTreeNodeOfType<"CallExpression">,
-  isPropName: IsPropNameFn,
+  isPropName: IsPropNameFn
 ): boolean => {
   const setterName = getStateSetterName(useStateCall);
   if (!setterName) return false;
@@ -79,6 +85,21 @@ const isReseededDraftBuffer = (
   return isReseeded;
 };
 
+// The "store information from previous renders" pattern seeds `useState`
+// from a prop and re-syncs it during render (`if (prop !== prev)
+// setPrev(prop)`), so the value is never stale — it tracks the prop every
+// render. React endorses this over a mirroring effect, so it must not be
+// reported as a stale copy.
+const isAdjustedDuringRender = (
+  useStateCall: EsTreeNodeOfType<"CallExpression">
+): boolean => {
+  const setterName = getStateSetterName(useStateCall);
+  if (!setterName) return false;
+  const componentFunction = getEnclosingFunction(useStateCall);
+  if (!componentFunction) return false;
+  return isSetterCalledDuringRender(componentFunction, setterName);
+};
+
 export const noDerivedUseState = defineRule({
   id: "no-derived-useState",
   title: "Prop derived into useState",
@@ -101,6 +122,7 @@ export const noDerivedUseState = defineRule({
         ) {
           if (isInitialOnlyPropName(initializer.name)) return;
           if (isReseededDraftBuffer(node, propStackTracker.isPropName)) return;
+          if (isAdjustedDuringRender(node)) return;
           context.report({
             node,
             message: `Your users see a stale value when prop "${initializer.name}" changes because useState copies it once.`,
@@ -108,9 +130,15 @@ export const noDerivedUseState = defineRule({
           return;
         }
 
-        if (isNodeOfType(initializer, "MemberExpression") && !initializer.computed) {
+        if (
+          isNodeOfType(initializer, "MemberExpression") &&
+          !initializer.computed
+        ) {
           const rootIdentifierName = getRootIdentifierName(initializer);
-          if (rootIdentifierName && propStackTracker.isPropName(rootIdentifierName)) {
+          if (
+            rootIdentifierName &&
+            propStackTracker.isPropName(rootIdentifierName)
+          ) {
             // Last property name in `props.initialValue` style chains
             // — if that's an initial-only name, skip too.
             if (
@@ -119,7 +147,9 @@ export const noDerivedUseState = defineRule({
             ) {
               return;
             }
-            if (isReseededDraftBuffer(node, propStackTracker.isPropName)) return;
+            if (isReseededDraftBuffer(node, propStackTracker.isPropName))
+              return;
+            if (isAdjustedDuringRender(node)) return;
             context.report({
               node,
               message: `Your users see a stale value when prop "${rootIdentifierName}" changes because useState copies it once.`,

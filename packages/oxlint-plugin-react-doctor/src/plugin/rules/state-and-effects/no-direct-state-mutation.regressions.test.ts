@@ -29,4 +29,34 @@ describe("no-direct-state-mutation — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("items");
   });
+
+  // Bugbot: a lazy initializer returning an object/array literal is the same
+  // render-owned state as the direct form, so its mutations must still flag.
+  it("flags mutation of state from a lazy array initializer", () => {
+    const result = runRule(
+      noDirectStateMutation,
+      `function List() {
+        const [items, setItems] = useState(() => []);
+        const add = (x) => { items.push(x); };
+        return <button onClick={() => add(1)}>{items.length}</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("items");
+  });
+
+  it("flags mutation of state from a lazy object initializer with a block body", () => {
+    const result = runRule(
+      noDirectStateMutation,
+      `function Form() {
+        const [draft, setDraft] = useState(() => { return {}; });
+        const touch = () => { draft.dirty = true; };
+        return <button onClick={touch}>save</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("draft");
+  });
 });

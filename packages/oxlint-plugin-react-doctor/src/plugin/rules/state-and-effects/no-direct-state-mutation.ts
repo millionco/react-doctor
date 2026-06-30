@@ -19,6 +19,36 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // analysis (would need eslint-utils' ScopeManager) — just lexical
 // param + top-level binding collection per function, which covers the
 // >99% of real-world shadowing cases without false positives.
+// True when a `useState(...)` initializer argument resolves to a plain object
+// or array literal — either directly (`useState({})`, `useState([])`) or via a
+// lazy initializer that returns one (`useState(() => ({}))`,
+// `useState(() => { return [] })`). A lazy initializer is just a deferred
+// version of the same render state, so it must be treated identically.
+const initializerProducesObjectOrArray = (initializer: EsTreeNode): boolean => {
+  if (isNodeOfType(initializer, "ObjectExpression") || isNodeOfType(initializer, "ArrayExpression")) {
+    return true;
+  }
+  if (
+    !isNodeOfType(initializer, "ArrowFunctionExpression") &&
+    !isNodeOfType(initializer, "FunctionExpression")
+  ) {
+    return false;
+  }
+  const body = initializer.body;
+  if (isNodeOfType(body, "ObjectExpression") || isNodeOfType(body, "ArrayExpression")) {
+    return true;
+  }
+  if (!isNodeOfType(body, "BlockStatement")) return false;
+  // Top-level `return {…}` / `return […]` only — a return nested inside another
+  // function belongs to that inner scope, not this initializer.
+  return (body.body ?? []).some(
+    (statement) =>
+      isNodeOfType(statement, "ReturnStatement") &&
+      (isNodeOfType(statement.argument, "ObjectExpression") ||
+        isNodeOfType(statement.argument, "ArrayExpression")),
+  );
+};
+
 const collectFunctionLocalBindings = (functionNode: EsTreeNode): Set<string> => {
   const localBindings = new Set<string>();
   if (
@@ -105,11 +135,7 @@ export const noDirectStateMutation = defineRule({
         const initializer = isNodeOfType(binding.declarator.init, "CallExpression")
           ? binding.declarator.init.arguments?.[0]
           : undefined;
-        if (
-          initializer &&
-          (isNodeOfType(initializer, "ObjectExpression") ||
-            isNodeOfType(initializer, "ArrayExpression"))
-        ) {
+        if (initializer && initializerProducesObjectOrArray(initializer)) {
           plainObjectStateValueNames.add(binding.valueName);
         }
       }

@@ -30,4 +30,14 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     reason:
       "ignoreNonDOM defaults to true (jsx-a11y convention); `<Foo autoFocus />` is the consumer site, not the focus-call site.",
   },
+  // no-redundant-roles: `<ol role="list">` (failCases[21]) and
+  // `<ul role="list">` (failCases[22]) are the deliberate Safari/VoiceOver
+  // list-semantics workaround (`list-style: none` drops list semantics in
+  // WebKit), so we exempt them by default — an intentional a11y idiom, not
+  // redundant noise.
+  "no-redundant-roles": {
+    failSkips: [21, 22],
+    reason:
+      '`<ul|ol role="list">` is the Safari/VoiceOver list-semantics-preservation idiom, exempt by default.',
+  },
 };

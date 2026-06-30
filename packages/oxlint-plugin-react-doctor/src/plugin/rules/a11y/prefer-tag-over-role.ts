@@ -8,6 +8,61 @@ import { getTagsForRole } from "../../constants/aria-element-roles.js";
 const buildMessage = (role: string, tag: string): string =>
   `Screen reader users get more reliable semantics from \`<${tag}>\` than \`role="${role}"\`, so use \`<${tag}>\` instead.`;
 
+// Composite-widget roles whose first "matching tag" is NOT a drop-in
+// standalone replacement: `role="listbox"` reverse-maps to `<datalist>`
+// / `<select>`, but `<datalist>` only works as an `<input list>`
+// autocomplete source and `<select>` is a native form control — neither
+// substitutes for a custom navigable results widget (wired via
+// aria-controls / aria-activedescendant). Same for `combobox`. `option`
+// is the child role of those widgets: a native `<option>` only renders
+// inside `<select>`/`<datalist>`/`<optgroup>` and accepts text only, so a
+// `<div role="option">` holding arbitrary JSX in a custom listbox cannot
+// become one. Suggesting the tag here is semantically wrong, so we don't
+// flag these roles.
+const COMPOSITE_WIDGET_ROLES: ReadonlySet<string> = new Set(["listbox", "combobox", "option"]);
+
+// Roles whose first reverse-mapped tag is wrong, semantically loaded, or
+// otherwise NOT a safe drop-in for a generic `div`/`span` container:
+//   - `group`   → `<address>` (contact-info element — nonsensical; the only
+//                 real `group` element is the form-specific `<fieldset>`).
+//   - `region`  → `<section>`, which only exposes the `region` role when it
+//                 carries an accessible name.
+//   - `img`     → `<img>`, a void element that cannot contain children; a
+//                 `<div|span role="img">` is the compose-an-image-from-non-img
+//                 -content idiom (icon font / inline SVG / spinner) with no src.
+//   - `dialog`  → `<dialog>`, which has top-layer/`.showModal()` behavior that
+//                 a portal+aria custom dialog can't adopt without a rewrite.
+//   - `status`  → `<output>`, a form-association element for calculation
+//                 results — not a drop-in for a generic live-region status.
+// Suggesting any of these would mislead, so skip the roles.
+const STRUCTURAL_ROLES_WITHOUT_CLEAN_TAG: ReadonlySet<string> = new Set([
+  "group",
+  "region",
+  "img",
+  "dialog",
+  "status",
+]);
+
+// Roles whose first reverse-mapped tag isn't the idiomatic choice:
+// `getTagsForRole("list")` returns `<menu>` first, but the conventional
+// list element is `<ul>`.
+const PREFERRED_TAG_OVERRIDES: Readonly<Record<string, string>> = {
+  list: "ul",
+};
+
+// Attributes that turn a `role="separator"` into a focusable, valued
+// window-splitter widget (the ARIA splitter pattern). A native `<hr>`
+// can't take focus or carry a value, so suggesting it would break the
+// widget — only a decorative (non-focusable, valueless) separator maps
+// cleanly to `<hr>`.
+const SPLITTER_SIGNAL_ATTRIBUTES: ReadonlyArray<string> = [
+  "tabindex",
+  "aria-valuenow",
+  "aria-valuemin",
+  "aria-valuemax",
+  "aria-orientation",
+];
+
 // Port of `oxc_linter::rules::jsx_a11y::prefer_tag_over_role`. When a
 // generic element (`div`/`span`) uses `role` to emulate a built-in
 // element's semantics, suggest using the built-in directly.
@@ -27,9 +82,18 @@ export const preferTagOverRole = defineRule({
       if (!roleAttr) return;
       const role = getJsxPropStringValue(roleAttr);
       if (!role) return;
+      if (COMPOSITE_WIDGET_ROLES.has(role) || STRUCTURAL_ROLES_WITHOUT_CLEAN_TAG.has(role)) return;
+      if (
+        role === "separator" &&
+        SPLITTER_SIGNAL_ATTRIBUTES.some((attribute) =>
+          hasJsxPropIgnoreCase(node.attributes, attribute),
+        )
+      ) {
+        return;
+      }
       const matchingTags = getTagsForRole(role);
       if (matchingTags.length === 0) return;
-      const preferred = matchingTags[0]!;
+      const preferred = PREFERRED_TAG_OVERRIDES[role] ?? matchingTags[0]!;
       context.report({ node: roleAttr, message: buildMessage(role, preferred) });
     },
   }),

@@ -23,7 +23,7 @@ export const anchorHasContent = defineRule({
       if (tag !== "a") return;
       if (isHiddenFromScreenReader(opening, context.settings)) return;
       if (objectHasAccessibleChild(node, context.settings)) return;
-      for (const attribute of ["title", "aria-label"]) {
+      for (const attribute of ["title", "aria-label", "aria-labelledby"]) {
         if (hasJsxPropIgnoreCase(opening.attributes, attribute)) return;
       }
       context.report({ node: opening.name, message: MESSAGE });

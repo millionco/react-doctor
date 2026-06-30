@@ -74,7 +74,13 @@ const getAccessibleText = (
       if (inner !== null) parts.push(inner);
     }
   }
-  return parts.join(" ");
+  // Concatenate adjacent child parts with no separator: real whitespace
+  // between elements arrives as its own JSXText child (preserved here),
+  // so joining with a space would invent a word break — turning the DOM
+  // accessible name "learnmore" of `<span>learn</span><span>more</span>`
+  // into the ambiguous "learn more". `normalizeText` collapses the genuine
+  // whitespace runs afterwards.
+  return parts.join("");
 };
 
 // Port of `oxc_linter::rules::jsx_a11y::anchor_ambiguous_text`.

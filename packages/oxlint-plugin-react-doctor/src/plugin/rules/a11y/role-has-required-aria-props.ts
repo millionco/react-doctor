@@ -1,10 +1,13 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 
 const buildMessage = (role: string, missingProps: ReadonlyArray<string>): string =>
-  `Screen reader users can't tell the state of this \`${role}\` without its required ARIA props, so add \`${missingProps.join("`, `")}\`.`;
+  `Screen reader users can't tell the state of this \`${role}\` without its required ARIA props, so add \`${missingProps.join(
+    "`, `",
+  )}\`.`;
 
 // Mirrors OXC's `ROLE_TO_REQUIRED_ARIA_PROPS`.
 const ROLE_REQUIRED_PROPS: ReadonlyMap<string, ReadonlyArray<string>> = new Map([
@@ -20,6 +23,45 @@ const ROLE_REQUIRED_PROPS: ReadonlyMap<string, ReadonlyArray<string>> = new Map(
   ["slider", ["aria-valuenow"]],
   ["switch", ["aria-checked"]],
 ]);
+
+// Value props a native `<input type="range">` (→ slider) maps into the
+// accessibility tree from its DOM value, min, and max intrinsically.
+const NATIVE_VALUE_PROPS: ReadonlySet<string> = new Set([
+  "aria-valuenow",
+  "aria-valuemin",
+  "aria-valuemax",
+]);
+
+// A native input maps certain DOM state into the accessibility tree
+// intrinsically, so an overriding role doesn't also need the explicit
+// `aria-*` mirror: `<input type="checkbox|radio">` with a bound
+// `checked`/`defaultChecked` supplies `aria-checked`; `<input type="range">`
+// supplies the slider value props. A custom `<div role="...">` has no such
+// intrinsic state, so it still must declare the prop.
+const NATIVE_HEADING_TAGS: ReadonlySet<string> = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
+
+const suppliesNativeAriaProp = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  settings: Readonly<Record<string, unknown>> | undefined,
+  property: string,
+): boolean => {
+  const elementType = getElementType(node, settings);
+  // A native `<h1>`–`<h6>` carries an intrinsic heading level, so an
+  // explicit `role="heading"` doesn't also need `aria-level` spelled out.
+  if (property === "aria-level" && NATIVE_HEADING_TAGS.has(elementType)) return true;
+  if (elementType !== "input") return false;
+  const typeAttribute = hasJsxPropIgnoreCase(node.attributes, "type");
+  const inputType = typeAttribute ? getJsxPropStringValue(typeAttribute) : null;
+  if (property === "aria-checked") {
+    if (inputType !== "checkbox" && inputType !== "radio") return false;
+    return (
+      Boolean(hasJsxPropIgnoreCase(node.attributes, "checked")) ||
+      Boolean(hasJsxPropIgnoreCase(node.attributes, "defaultChecked"))
+    );
+  }
+  if (NATIVE_VALUE_PROPS.has(property)) return inputType === "range";
+  return false;
+};
 
 // Port of `oxc_linter::rules::jsx_a11y::role_has_required_aria_props`.
 export const roleHasRequiredAriaProps = defineRule({
@@ -40,11 +82,15 @@ export const roleHasRequiredAriaProps = defineRule({
       for (const role of roles) {
         const required = ROLE_REQUIRED_PROPS.get(role);
         if (!required) continue;
-        const missing = required.filter(
-          (property) => !hasJsxPropIgnoreCase(node.attributes, property),
-        );
+        const missing = required.filter((property) => {
+          if (suppliesNativeAriaProp(node, context.settings, property)) return false;
+          return !hasJsxPropIgnoreCase(node.attributes, property);
+        });
         if (missing.length > 0) {
-          context.report({ node: roleAttribute, message: buildMessage(role, missing) });
+          context.report({
+            node: roleAttribute,
+            message: buildMessage(role, missing),
+          });
         }
       }
     },

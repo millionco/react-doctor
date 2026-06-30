@@ -18,7 +18,7 @@ const buildMessageImplicit = (role: string, propName: string, elementType: strin
 
 // Port of `get_implicit_role` from OXC. Returns the implicit ARIA
 // role for an HTML element, or null if there isn't one.
-const getImplicitRole = (
+export const getImplicitRole = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
   elementType: string,
 ): string | null => {
@@ -83,7 +83,18 @@ const getImplicitRole = (
     }
     case "input": {
       const inputType = propStringValue("type");
-      if (inputType === null) implicit = "textbox";
+      // ARIA 1.2: a text input that controls a popup listbox (carries
+      // aria-controls + aria-autocomplete/aria-activedescendant, or
+      // aria-haspopup="listbox") has the effective role `combobox`, whose
+      // support set — unlike `textbox` — includes aria-expanded.
+      const textInputRole =
+        (Boolean(hasJsxPropIgnoreCase(node.attributes, "aria-controls")) &&
+          (Boolean(hasJsxPropIgnoreCase(node.attributes, "aria-autocomplete")) ||
+            Boolean(hasJsxPropIgnoreCase(node.attributes, "aria-activedescendant")))) ||
+        (propStringValue("aria-haspopup") ?? "").toLowerCase() === "listbox"
+          ? "combobox"
+          : "textbox";
+      if (inputType === null) implicit = textInputRole;
       else if (
         inputType === "button" ||
         inputType === "image" ||
@@ -94,7 +105,7 @@ const getImplicitRole = (
       else if (inputType === "checkbox") implicit = "checkbox";
       else if (inputType === "radio") implicit = "radio";
       else if (inputType === "range") implicit = "slider";
-      else implicit = "textbox";
+      else implicit = textInputRole;
       break;
     }
     case "li":

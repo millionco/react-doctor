@@ -29,8 +29,13 @@ export const rnPreferPressable = defineRule({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
       if (typeof source !== "string" || !TOUCHABLE_SOURCES.has(source)) return;
+      // Type-only imports are erased at build time, so `import type { ... }`
+      // (and the inline `import { type TouchableOpacity }`) render no runtime
+      // Touchable component — the Pressable advice doesn't apply.
+      if (node.importKind === "type") return;
       for (const specifier of node.specifiers ?? []) {
         if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
+        if (specifier.importKind === "type") continue;
         const importedName = getImportedName(specifier);
         if (!importedName || !TOUCHABLE_COMPONENTS.has(importedName)) continue;
         context.report({

@@ -62,6 +62,16 @@ export const rnNoInlineObjectInListItem = defineRule({
         const isInlineObject = isNodeOfType(expression, "ObjectExpression");
         const isInlineArray = isNodeOfType(expression, "ArrayExpression");
         if (!isInlineObject && !isInlineArray) return;
+        // A style ARRAY of StyleSheet refs (`[styles.row, styles.active]`)
+        // allocates the outer array but no fresh per-row objects — RN dedupes
+        // style refs, so memo() rows don't break on it. Only a genuinely fresh
+        // object literal inside the array (`[styles.row, { mt: 8 }]`) is a leak.
+        if (
+          isInlineArray &&
+          !expression.elements.some((element) => isNodeOfType(element, "ObjectExpression"))
+        ) {
+          return;
+        }
         const literalKind = isInlineArray ? "array" : "object";
         context.report({
           node,

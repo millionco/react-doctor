@@ -17,9 +17,14 @@ export const rnPreferReanimated = defineRule({
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "react-native") return;
+      // Type-only imports are erased at build time, so `import type { ... }`
+      // (and the inline `import { type Animated }`) run no JS-thread animation
+      // API — the Reanimated perf advice doesn't apply.
+      if (node.importKind === "type") return;
 
       for (const specifier of node.specifiers ?? []) {
         if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
+        if (specifier.importKind === "type") continue;
         const importedName = getImportedName(specifier);
         if (!importedName || !JS_THREAD_ANIMATION_IMPORTS.has(importedName)) continue;
 

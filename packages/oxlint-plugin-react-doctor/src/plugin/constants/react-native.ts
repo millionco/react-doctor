@@ -109,6 +109,16 @@ export const REACT_NATIVE_LIST_COMPONENTS = new Set([
   "LegendList",
 ]);
 
+// Recycling lists, keyed by their canonical exported name, mapped to the
+// package(s) that actually own them. Rules resolve a local JSX name back to one
+// of these via a real ES module import (handling renames), so a homegrown
+// component named `FlashList` from a different package doesn't masquerade as the
+// Shopify/Legend recycler.
+export const RECYCLABLE_LIST_PACKAGES: Record<string, ReadonlyArray<string>> = {
+  FlashList: ["@shopify/flash-list"],
+  LegendList: ["@legendapp/list"],
+};
+
 export const RENDER_ITEM_PROP_NAMES = new Set([
   "renderItem",
   "renderSectionHeader",

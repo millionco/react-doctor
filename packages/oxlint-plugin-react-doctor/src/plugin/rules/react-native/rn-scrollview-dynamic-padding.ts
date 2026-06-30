@@ -1,9 +1,40 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { SCROLLVIEW_NAMES } from "./utils/scrollview_names.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+const isNumericLiteralNode = (node: EsTreeNode | null | undefined): boolean => {
+  if (!node) return false;
+  if (isNodeOfType(node, "Literal") && typeof node.value === "number") return true;
+  // `-16` parses as a unary minus over a numeric literal.
+  return (
+    isNodeOfType(node, "UnaryExpression") &&
+    node.operator === "-" &&
+    isNodeOfType(node.argument, "Literal") &&
+    typeof node.argument.value === "number"
+  );
+};
+
+const STATIC_ARITHMETIC_OPERATORS = new Set(["+", "-", "*", "/"]);
+
+// A value is "static" when it can't change between renders: a numeric literal,
+// an identifier that resolves to a module/const numeric constant
+// (`const TAB_BAR_HEIGHT = 56`), or arithmetic over static numeric values
+// (`BASE + 8`). State / hook / prop values (keyboardHeight, insets.bottom)
+// don't resolve to a numeric literal, so they still fire.
+const isStaticNumericValue = (value: EsTreeNode): boolean => {
+  if (isNumericLiteralNode(value)) return true;
+  if (isNodeOfType(value, "BinaryExpression") && STATIC_ARITHMETIC_OPERATORS.has(value.operator)) {
+    return isStaticNumericValue(value.left) && isStaticNumericValue(value.right);
+  }
+  if (!isNodeOfType(value, "Identifier")) return false;
+  const binding = findVariableInitializer(value, value.name);
+  return isNumericLiteralNode(binding?.initializer);
+};
 
 // HACK: dynamic `paddingBottom`/`paddingTop` on `contentContainerStyle`
 // (e.g. `paddingBottom: keyboardHeight`) reflows the entire scroll
@@ -43,7 +74,7 @@ export const rnScrollviewDynamicPadding = defineRule({
           // member expressions that change between renders.
           const value = property.value;
           if (!value) continue;
-          if (isNodeOfType(value, "Literal")) continue;
+          if (isStaticNumericValue(value)) continue;
 
           context.report({
             node: property,

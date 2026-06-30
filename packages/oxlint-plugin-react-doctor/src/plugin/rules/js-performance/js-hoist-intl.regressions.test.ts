@@ -20,4 +20,15 @@ describe("js-performance/js-hoist-intl — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // Bugbot: pushing a new Intl into an array is unkeyed accumulation, not a
+  // memo — it must still be flagged.
+  it("still flags a new Intl pushed into an array (not a keyed memo)", () => {
+    const result = runRule(
+      jsHoistIntl,
+      `function build(locales) { const formatters = []; for (const locale of locales) { formatters.push(new Intl.NumberFormat(locale)); } return formatters; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

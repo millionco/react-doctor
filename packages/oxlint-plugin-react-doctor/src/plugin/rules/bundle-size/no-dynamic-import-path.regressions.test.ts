@@ -62,4 +62,25 @@ describe("bundle-size/no-dynamic-import-path — regressions", () => {
     );
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  // Bugbot: a relative prefix with NO static directory segment before the first
+  // hole (`./${pkg}/index.js`) scopes the context to the whole directory, so it
+  // is not meaningfully code-split and must still be flagged.
+  it("still flags a relative import whose hole immediately follows ./", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      "const load = (pkg) => import(`./${pkg}/index.js`);",
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // …but a real static directory segment (`./locales/${lang}.js`) IS scoped and
+  // stays silent.
+  it("stays silent on a relative import with a static directory segment", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      "const load = (lang) => import(`./locales/${lang}.js`);",
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
 });

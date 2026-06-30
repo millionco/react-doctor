@@ -29,7 +29,9 @@ const INTL_CLASSES = new Set([
 // assigned through a memo-assignment or guarded by a cache-membership
 // check between it and its enclosing function.
 const CACHE_LOOKUP_METHOD_NAMES = new Set(["has", "get", "includes"]);
-const CACHE_WRITE_METHOD_NAMES = new Set(["set", "push"]);
+// A keyed memo writes via `cache.set(key, new Intl…)`. `array.push(new Intl…)`
+// just accumulates allocations — it is NOT keyed reuse, so it does not exempt.
+const CACHE_WRITE_METHOD_NAMES = new Set(["set"]);
 const MEMO_ASSIGNMENT_OPERATORS = new Set(["??=", "||="]);
 
 const testReferencesCacheLookup = (test: EsTreeNode | null | undefined): boolean => {

@@ -5,17 +5,23 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // True when a template-literal import path opens with a static RELATIVE
 // directory prefix (`./locales/${lang}.js`, `../widgets/${id}.js`). Vite/webpack
-// build a context module from that relative prefix and DO code-split it, so it
+// scope a context module to that static directory and DO code-split it, so it
 // must not be flagged. The glob trick is relative-specifier only: a protocol or
 // absolute prefix (`https://cdn/${v}/lib.js`, `/assets/${v}.js`) is not
-// bundler-analyzable, and a path that starts with the interpolation
-// (`${dir}/x.js`) has no static prefix — both stay flagged.
+// bundler-analyzable, a path that starts with the interpolation
+// (`${dir}/x.js`) has no static prefix, AND a relative prefix with no static
+// directory segment before the first hole (`./${pkg}/index.js`) scopes the
+// context to the WHOLE directory — all stay flagged. We require a real static
+// segment: a `/` after the leading `./`/`../` markers.
+const RELATIVE_PREFIX_PATTERN = /^(?:\.\.?\/)+/;
 const hasStaticDirectoryPrefix = (template: EsTreeNodeOfType<"TemplateLiteral">): boolean => {
   const firstQuasi = template.quasis?.[0];
   if (!firstQuasi || !isNodeOfType(firstQuasi, "TemplateElement")) return false;
   const text = firstQuasi.value?.cooked ?? firstQuasi.value?.raw;
   if (typeof text !== "string") return false;
-  return text.startsWith("./") || text.startsWith("../");
+  const relativePrefix = text.match(RELATIVE_PREFIX_PATTERN);
+  if (!relativePrefix) return false;
+  return text.slice(relativePrefix[0].length).includes("/");
 };
 
 // HACK: bundlers can only tree-shake / split when the import target is a

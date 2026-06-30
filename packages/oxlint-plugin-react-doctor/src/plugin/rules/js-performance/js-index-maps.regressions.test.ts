@@ -38,4 +38,14 @@ describe("js-performance/js-index-maps — regressions", () => {
       `function f(rows, targetId){ for (const row of rows){ const cell = row.cells.find((c)=> c.id === targetId); use(cell); } }`,
     );
   });
+
+  // Bugbot: a binding declared inside a nested callback in the loop body must
+  // not shadow-mark a loop-invariant receiver of the same name as loop-variant.
+  // `users` is loop-invariant here; the nested forEach's local `users` binding
+  // must not suppress the finding.
+  it("still flags a loop-invariant receiver when a nested callback rebinds the same name", () => {
+    expectFail(
+      `function f(rows, users){ for (const row of rows){ row.tags.forEach((t)=>{ const users = t.x; void users; }); const u = users.find((u)=> u.id === row.userId); use(u); } }`,
+    );
+  });
 });

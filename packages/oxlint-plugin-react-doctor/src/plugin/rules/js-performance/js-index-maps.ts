@@ -75,6 +75,18 @@ const collectLoopBoundNames = (loop: EsTreeNode, names: Set<string>): void => {
     });
   }
   walkAst(loop, (child: EsTreeNode) => {
+    // A binding declared inside a nested function (a callback, a nested
+    // component) belongs to that scope, not the loop iteration, so it does
+    // not make the outer `.find()` receiver loop-varying. Don't descend into
+    // nested function scopes.
+    if (
+      child !== loop &&
+      (isNodeOfType(child, "FunctionDeclaration") ||
+        isNodeOfType(child, "FunctionExpression") ||
+        isNodeOfType(child, "ArrowFunctionExpression"))
+    ) {
+      return false;
+    }
     if (isNodeOfType(child, "VariableDeclarator") && child.id) {
       walkAst(child.id, (idNode: EsTreeNode) => {
         if (isNodeOfType(idNode, "Identifier")) names.add(idNode.name);

@@ -30,6 +30,9 @@ const isCacheOrNavigationCall = (node: EsTreeNode): boolean =>
   isNodeOfType(node.callee, "Identifier") &&
   NON_DATA_EFFECT_FUNCTION_NAMES.has(node.callee.name);
 
+// Reduce an expression to the value it actually yields: strip TS / optional-
+// chain wrappers, and collapse a comma sequence to its last operand (the value
+// a `(revalidateTag(x), secret)` body returns).
 const unwrapExpression = (node: EsTreeNode | null | undefined): EsTreeNode | null => {
   let current: EsTreeNode | null | undefined = node;
   while (current) {
@@ -42,9 +45,23 @@ const unwrapExpression = (node: EsTreeNode | null | undefined): EsTreeNode | nul
       current = current.expression;
       continue;
     }
+    if (isNodeOfType(current, "SequenceExpression")) {
+      current = current.expressions?.[current.expressions.length - 1];
+      continue;
+    }
     return current;
   }
   return null;
+};
+
+// A value-yielding expression hands data back to the (possibly unauthenticated)
+// caller. Only a purely literal value (or a cache/navigation call, whose result
+// is void) is safe; anything referencing a binding could carry protected data.
+const isDataExposingValue = (node: EsTreeNode | null | undefined): boolean => {
+  const value = unwrapExpression(node);
+  if (!value) return false;
+  if (isCacheOrNavigationCall(value)) return false;
+  return !isLiteralOnlyExpression(value);
 };
 
 // An expression built purely from literals — `true`, `"ok"`, `{ revalidated:
@@ -83,19 +100,12 @@ const getReturnedOrThrownArgument = (node: EsTreeNode): EsTreeNode | null => {
 
 // `return <value>` / `throw <value>` hands a value back to the (possibly
 // unauthenticated) caller — i.e. potential data exposure, the read half of the
-// threat (a thrown binding reaches the client via the error path). Only a
-// purely literal value (or a `return redirect(...)` navigation) is safe;
-// anything that references a binding — an identifier, member access, await,
-// call, conditional, or a non-literal nested inside an object/array — could
-// carry protected data, so it disqualifies the exemption.
-const isDataExposingReturnOrThrow = (node: EsTreeNode): boolean => {
-  const argument = getReturnedOrThrownArgument(node);
-  if (!argument) return false;
-  const value = unwrapExpression(argument);
-  if (!value) return false;
-  if (isCacheOrNavigationCall(value)) return false;
-  return !isLiteralOnlyExpression(value);
-};
+// threat (a thrown binding reaches the client via the error path). A returned
+// identifier, member access, await, call, conditional, or a non-literal nested
+// inside an object/array could carry protected data, so it disqualifies the
+// exemption.
+const isDataExposingReturnOrThrow = (node: EsTreeNode): boolean =>
+  isDataExposingValue(getReturnedOrThrownArgument(node));
 
 // Any node that can reach state beyond the action's own locals: a non-cache/
 // non-navigation call (DB query, `fetch`, cookie mutation, an imported
@@ -124,6 +134,14 @@ const isPrivilegedEffect = (node: EsTreeNode): boolean =>
 export const isNonPrivilegedServerAction = (functionNode: FunctionLikeNode): boolean => {
   const functionBody = functionNode.body;
   if (!functionBody) return false;
+
+  // A concise-body arrow (`async () => expr`) implicitly returns its body, with
+  // no `ReturnStatement` for the walk to catch. Treat that implicit return as a
+  // data exposure check; the walk below still flags any privileged effect in
+  // the expression itself (e.g. an earlier operand of a comma sequence).
+  if (!isNodeOfType(functionBody, "BlockStatement") && isDataExposingValue(functionBody)) {
+    return false;
+  }
 
   let hasNonDataEffectCall = false;
   let hasPrivilegedEffect = false;

@@ -776,6 +776,35 @@ export async function refresh() {
     expect(issues[0].message).toContain("refresh");
   });
 
+  it("accepts a concise-arrow action whose body is a single revalidation", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "concise-arrow-revalidate", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+
+export const refresh = async () => revalidateTag("posts");`),
+      },
+    });
+
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("still flags a concise-arrow action that revalidates then yields data via a sequence", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "concise-arrow-sequence-leak", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+import { serverConfig } from "@/lib/config";
+
+export const refresh = async () => (revalidateTag("posts"), serverConfig.apiSecret);`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("refresh");
+  });
+
   it("does not treat a same-named method call (obj.redirect()) as a safe navigation", async () => {
     const projectDirectory = setupReactProject(tempRoot, "member-named-redirect", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },

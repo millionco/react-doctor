@@ -64,8 +64,9 @@ const isInsideSnapshotHelper = (node: EsTreeNode): boolean => {
         boundName = parent.key.name;
       }
       if (boundName && SNAPSHOT_FUNCTION_NAME_PATTERN.test(boundName)) return true;
-      // Only the *nearest* enclosing function's name matters.
-      return false;
+      // Keep walking outward: a clone inside a nested helper within a
+      // `snapshot*` function is still part of producing that snapshot, so any
+      // enclosing snapshot helper exempts it — not just the innermost function.
     }
     current = current.parent ?? null;
   }

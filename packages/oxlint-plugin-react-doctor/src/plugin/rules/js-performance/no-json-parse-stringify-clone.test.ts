@@ -45,4 +45,30 @@ describe("no-json-parse-stringify-clone", () => {
     const result = runRule(noJsonParseStringifyClone, `const fn = JSON.parse(JSON.stringify);`);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag a clone directly inside a snapshot* helper (persistence exemption)", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `function snapshotState(state) { return JSON.parse(JSON.stringify(state)); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  // Bugbot: a clone inside a nested helper within a snapshot* function is still
+  // part of producing that snapshot, so the exemption must reach it too.
+  it("does not flag a clone inside a nested helper within a snapshot* function", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `function takeSnapshot(state) { const clone = () => JSON.parse(JSON.stringify(state)); return clone(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a clone inside a nested helper within a NON-snapshot function", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `function build(state) { const clone = () => JSON.parse(JSON.stringify(state)); return clone(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

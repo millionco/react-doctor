@@ -16,7 +16,7 @@ describe("rerender-functional-setstate — regressions", () => {
           return subscribe((received) => setMessages([...messages, received]));
         }, [messages]);
         return null;
-      }`
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
@@ -32,7 +32,7 @@ describe("rerender-functional-setstate — regressions", () => {
           return () => clearInterval(id);
         }, []);
         return null;
-      }`
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);

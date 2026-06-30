@@ -13,7 +13,7 @@ describe("no-mutable-in-deps", () => {
         }, [location.href]);
         return null;
       }
-    `
+    `,
     );
 
     expect(result.diagnostics).toHaveLength(1);
@@ -30,7 +30,7 @@ describe("no-mutable-in-deps", () => {
         }, [location.pathname]);
         return null;
       }
-    `
+    `,
     );
 
     expect(result.diagnostics).toEqual([]);
@@ -47,7 +47,7 @@ describe("no-mutable-in-deps", () => {
         }, [location.pathname]);
         return null;
       }
-    `
+    `,
     );
 
     expect(result.diagnostics).toEqual([]);
@@ -70,7 +70,7 @@ describe("no-mutable-in-deps", () => {
         }, [location.href]);
         return null;
       }
-    `
+    `,
     );
 
     expect(result.diagnostics).toHaveLength(1);

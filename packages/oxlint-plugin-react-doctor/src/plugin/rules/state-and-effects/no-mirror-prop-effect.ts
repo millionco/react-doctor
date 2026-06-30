@@ -39,7 +39,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 // `setX(value.toLowerCase())`.
 const getPropRootName = (
   expression: EsTreeNode | null | undefined,
-  propNames: Set<string>
+  propNames: Set<string>,
 ): string | null => {
   const rootName = getRootIdentifierName(expression, {
     followCallChains: true,
@@ -63,8 +63,7 @@ export const noMirrorPropEffect = defineRule({
     "Delete both the `useState` and the `useEffect` and read the prop directly while rendering. Copying a prop into state shows the old value on the first render before the effect catches up.",
   create: (context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | undefined): void => {
-      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement"))
-        return;
+      if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
       const propNames = propStackTracker.getCurrentPropNames();
       if (propNames.size === 0) return;
 
@@ -123,8 +122,7 @@ export const noMirrorPropEffect = defineRule({
         // unused inside the body is a separate (exhaustive-deps) concern.
         const depIdentifierNames = new Set<string>();
         for (const element of depsNode.elements ?? []) {
-          if (isNodeOfType(element, "Identifier"))
-            depIdentifierNames.add(element.name);
+          if (isNodeOfType(element, "Identifier")) depIdentifierNames.add(element.name);
         }
         if (depIdentifierNames.size === 0) continue;
 
@@ -147,7 +145,7 @@ export const noMirrorPropEffect = defineRule({
           (binding) =>
             binding.setterName === calleeName &&
             depIdentifierNames.has(binding.propRootName) &&
-            areExpressionsStructurallyEqual(binding.initializer, setterArgument)
+            areExpressionsStructurallyEqual(binding.initializer, setterArgument),
         );
         if (!matchedBinding) continue;
         // Initial-only / seed prop names (`initialCount`, `defaultX`,

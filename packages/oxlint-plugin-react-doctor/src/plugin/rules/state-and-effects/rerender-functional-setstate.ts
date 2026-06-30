@@ -77,8 +77,7 @@ const isInsideDeferredCallback = (node: EsTreeNode): boolean => {
       ) {
         calleeName = callee.property.name;
       }
-      if (calleeName && DEFERRED_EXECUTION_CALLEE_NAMES.has(calleeName))
-        return true;
+      if (calleeName && DEFERRED_EXECUTION_CALLEE_NAMES.has(calleeName)) return true;
       // Keep walking — we might be inside a nested fn whose own enclosing
       // call IS deferred.
     }
@@ -122,14 +121,13 @@ export const rerenderFunctionalSetstate = defineRule({
         expectedStateName
       ) {
         const matchesExpected = (operand: EsTreeNode | undefined): boolean =>
-          isNodeOfType(operand, "Identifier") &&
-          operand.name === expectedStateName;
+          isNodeOfType(operand, "Identifier") && operand.name === expectedStateName;
 
         const stateIdentifier = matchesExpected(argument.left)
           ? argument.left
           : matchesExpected(argument.right)
-          ? argument.right
-          : null;
+            ? argument.right
+            : null;
 
         if (isNodeOfType(stateIdentifier, "Identifier")) {
           context.report({
@@ -172,7 +170,7 @@ export const rerenderFunctionalSetstate = defineRule({
           (element: EsTreeNode | null) =>
             isNodeOfType(element, "SpreadElement") &&
             isNodeOfType(element.argument, "Identifier") &&
-            element.argument.name === expectedStateName
+            element.argument.name === expectedStateName,
         );
         if (spreadsState) {
           context.report({
@@ -188,7 +186,7 @@ export const rerenderFunctionalSetstate = defineRule({
           (property: EsTreeNode | null) =>
             isNodeOfType(property, "SpreadElement") &&
             isNodeOfType(property.argument, "Identifier") &&
-            property.argument.name === expectedStateName
+            property.argument.name === expectedStateName,
         );
         if (spreadsState) {
           context.report({

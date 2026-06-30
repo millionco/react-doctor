@@ -10,7 +10,7 @@ describe("no-mirror-prop-effect — regressions", () => {
         const [count, setCount] = useState(initialCount);
         useEffect(() => { setCount(initialCount); }, [initialCount]);
         return <button onClick={() => setCount(count + 1)}>{count}</button>;
-      }`
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
@@ -27,7 +27,7 @@ describe("no-mirror-prop-effect — regressions", () => {
         const [draft, setDraft] = useState(value);
         useEffect(() => { setDraft(value); }, [value]);
         return <input value={draft} onChange={(e) => setDraft(e.target.value)} />;
-      }`
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -40,7 +40,7 @@ describe("no-mirror-prop-effect — regressions", () => {
         const [draft, setDraft] = useState(value);
         useEffect(() => { setDraft(value); }, [value]);
         return <span>{draft}</span>;
-      }`
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

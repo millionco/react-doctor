@@ -4,10 +4,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import type {
-  ScopeAnalysis,
-  SymbolDescriptor,
-} from "../../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 
 // `props.renderX(...)` / `this.props.renderX(...)` is a render-prop
 // invocation: a function received FROM the parent, so its identity is
@@ -41,7 +38,7 @@ const isStableMethodReceiver = (object: EsTreeNode): boolean =>
 // source isn't a parameter) still carries the smell and stays flagged.
 const tracesToPropOrParameter = (
   symbol: SymbolDescriptor | null,
-  scopes: ScopeAnalysis
+  scopes: ScopeAnalysis,
 ): boolean => {
   if (!symbol) return false;
   if (symbol.kind === "parameter") return true;
@@ -103,12 +100,7 @@ export const noRenderInRender = defineRule({
 
       let calleeName: string | null = null;
       if (isNodeOfType(expression.callee, "Identifier")) {
-        if (
-          tracesToPropOrParameter(
-            context.scopes.symbolFor(expression.callee),
-            context.scopes
-          )
-        ) {
+        if (tracesToPropOrParameter(context.scopes.symbolFor(expression.callee), context.scopes)) {
           return;
         }
         calleeName = expression.callee.name;

@@ -25,10 +25,7 @@ interface RoleExpressionBranches {
 // `getJsxPropStringValue` reads it as null. Branches that can resolve to a
 // non-role value flip `hasNonRoleBranch` so the caller stops trusting the
 // string branches alone.
-const collectRoleBranches = (
-  expression: EsTreeNode,
-  out: RoleExpressionBranches
-): void => {
+const collectRoleBranches = (expression: EsTreeNode, out: RoleExpressionBranches): void => {
   if (isNodeOfType(expression, "Literal")) {
     if (typeof expression.value === "string") {
       out.stringValues.push(expression.value);
@@ -74,15 +71,14 @@ export const noNoninteractiveElementInteractions = defineRule({
   title: "Handler on non-interactive element",
   tags: ["react-jsx-only"],
   severity: "warn",
-  recommendation:
-    "Put interactions on a button or link, or add an interactive role.",
+  recommendation: "Put interactions on a button or link, or add an interactive role.",
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       const tag = getElementType(node, context.settings);
       if (!NON_INTERACTIVE_ELEMENTS.has(tag)) return;
       const hasHandler = INTERACTIVE_HANDLERS.some((handler) =>
-        hasJsxPropIgnoreCase(node.attributes, handler)
+        hasJsxPropIgnoreCase(node.attributes, handler),
       );
       if (!hasHandler) return;
       if (isHiddenFromScreenReader(node, context.settings)) return;
@@ -109,12 +105,9 @@ export const noNoninteractiveElementInteractions = defineRule({
           const everyBranchIsInteractiveRole =
             branches.stringValues.length > 0 &&
             !branches.hasNonRoleBranch &&
-            branches.stringValues.every((branch) =>
-              INTERACTIVE_ROLES.has(branch)
-            );
+            branches.stringValues.every((branch) => INTERACTIVE_ROLES.has(branch));
           if (everyBranchIsInteractiveRole) return;
-          if (branches.stringValues.length === 0 && !branches.hasNonRoleBranch)
-            return;
+          if (branches.stringValues.length === 0 && !branches.hasNonRoleBranch) return;
         }
       }
       context.report({ node: node.name, message: buildMessage(tag) });

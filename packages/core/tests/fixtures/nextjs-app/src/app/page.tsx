@@ -25,10 +25,7 @@ const Page = () => {
       <script src="https://cdn.example.com/analytics.js" />
       <Script>{`console.log("inline")`}</Script>
       <Script src="https://cdn.polyfill.io/v3/polyfill.min.js" />
-      <link
-        href="https://fonts.googleapis.com/css2?family=Inter"
-        rel="stylesheet"
-      />
+      <link href="https://fonts.googleapis.com/css2?family=Inter" rel="stylesheet" />
       <link rel="stylesheet" href="/styles/main.css" />
     </div>
   );

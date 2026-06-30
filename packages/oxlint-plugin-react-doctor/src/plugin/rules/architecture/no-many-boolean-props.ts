@@ -1,5 +1,6 @@
 import { BOOLEAN_PROP_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { isBooleanPrefixedPropName } from "../../utils/is-boolean-prefixed-prop-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isComponentDeclaration } from "../../utils/is-component-declaration.js";
@@ -9,6 +10,33 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+// Prop names whose value is invoked (`showMenu()`) or wired up as an
+// event handler (`onClick={showMenu}`) are imperative callbacks, not
+// on/off flags — the boolean-prefix heuristic misreads `show`/`hide`/
+// `enable`/`disable` callbacks as booleans, so drop them from the count.
+const EVENT_HANDLER_ATTRIBUTE_PATTERN = /^on[A-Z]/;
+
+const collectCallbackUsedNames = (componentBody: EsTreeNode | undefined): Set<string> => {
+  const callbackNames = new Set<string>();
+  if (!componentBody) return callbackNames;
+  walkAst(componentBody, (child: EsTreeNode) => {
+    if (isNodeOfType(child, "CallExpression") && isNodeOfType(child.callee, "Identifier")) {
+      callbackNames.add(child.callee.name);
+      return;
+    }
+    if (
+      isNodeOfType(child, "JSXAttribute") &&
+      isNodeOfType(child.name, "JSXIdentifier") &&
+      EVENT_HANDLER_ATTRIBUTE_PATTERN.test(child.name.name) &&
+      isNodeOfType(child.value, "JSXExpressionContainer") &&
+      isNodeOfType(child.value.expression, "Identifier")
+    ) {
+      callbackNames.add(child.value.expression.name);
+    }
+  });
+  return callbackNames;
+};
 
 const collectBooleanLikePropsFromBody = (
   componentBody: EsTreeNode | undefined,
@@ -23,6 +51,10 @@ const collectBooleanLikePropsFromBody = (
     if (child.object.name !== propsParamName) return;
     if (!isNodeOfType(child.property, "Identifier")) return;
     if (!isBooleanPrefixedPropName(child.property.name)) return;
+    // `props.showMenu()` is a callback invocation, not a boolean prop — mirror
+    // the destructured-param callback exclusion for the `props` object shape.
+    const parent = child.parent;
+    if (isNodeOfType(parent, "CallExpression") && parent.callee === child) return;
     found.add(child.property.name);
   });
   return found;
@@ -58,18 +90,26 @@ export const noManyBooleanProps = defineRule({
     };
 
     const checkComponent = (
+      functionNode: EsTreeNode,
       param: EsTreeNode | undefined,
       body: EsTreeNode | undefined,
       componentName: string,
       reportNode: EsTreeNode,
     ): void => {
       if (!param) return;
+      // The component gates (uppercase name) also match non-component
+      // factories like `function CreateValidator(options) { … }`, whose
+      // `options.isStrict` accesses look like boolean props. Require
+      // actual render output before treating the param as component props.
+      if (!functionContainsReactRenderOutput(functionNode, context.scopes)) return;
       if (isNodeOfType(param, "ObjectPattern")) {
+        const callbackUsedNames = collectCallbackUsedNames(body);
         const booleanLikePropNames: string[] = [];
         for (const property of param.properties ?? []) {
           if (!isNodeOfType(property, "Property")) continue;
           const keyName = isNodeOfType(property.key, "Identifier") ? property.key.name : null;
           if (!keyName) continue;
+          if (callbackUsedNames.has(keyName)) continue;
           if (isBooleanPrefixedPropName(keyName)) {
             booleanLikePropNames.push(keyName);
           }
@@ -86,13 +126,13 @@ export const noManyBooleanProps = defineRule({
     return {
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!isComponentDeclaration(node) || !node.id) return;
-        checkComponent(node.params?.[0], node.body, node.id.name, node.id);
+        checkComponent(node, node.params?.[0], node.body, node.id.name, node.id);
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
         if (!isNodeOfType(node.id, "Identifier")) return;
         if (!isInlineFunctionExpression(node.init)) return;
-        checkComponent(node.init.params?.[0], node.init.body, node.id.name, node.id);
+        checkComponent(node.init, node.init.params?.[0], node.init.body, node.id.name, node.id);
       },
     };
   },

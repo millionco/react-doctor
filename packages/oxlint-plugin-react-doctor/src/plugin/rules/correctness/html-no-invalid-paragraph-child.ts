@@ -81,6 +81,10 @@ const findEnclosingParagraph = (openingElement: EsTreeNode): EsTreeNode | null =
   if (!owningElement) return null;
   let ancestor: EsTreeNode | null | undefined = owningElement.parent;
   while (ancestor) {
+    // An element passed as a PROP (`<Tooltip overlay={<ul/>} />`) is not
+    // a DOM child of any enclosing `<p>`, so stop at the attribute
+    // boundary before mistaking the host element's `<p>` for an ancestor.
+    if (isNodeOfType(ancestor, "JSXAttribute")) return null;
     if (isParagraphElement(ancestor)) return ancestor;
     ancestor = ancestor.parent ?? null;
   }

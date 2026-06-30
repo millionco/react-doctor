@@ -103,4 +103,15 @@ describe("html-no-invalid-paragraph-child", () => {
 
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  // A block element passed as a PROP is not a DOM child of the `<p>` —
+  // the prop boundary stops the ancestor walk.
+  it("does not flag a block element passed as a prop on a child of `<p>`", () => {
+    const result = runRule(
+      htmlNoInvalidParagraphChild,
+      `const N = () => <p>See <Tooltip overlay={<ul><li>One</li></ul>}>list</Tooltip>.</p>;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

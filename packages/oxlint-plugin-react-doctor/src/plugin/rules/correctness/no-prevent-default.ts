@@ -64,6 +64,37 @@ const containsPreventDefaultCall = (node: EsTreeNode): boolean => {
   return didFindPreventDefault;
 };
 
+// Event-object methods that only suppress the browser default — they
+// never navigate. A handler whose ONLY calls are these is the harmful
+// "dead link" the rule targets. Any OTHER call (a router push, a
+// `platform.openLink(href)`, `props.onNavigate()`, …) means the handler
+// performs its own navigation/side-effect, so `preventDefault()` is
+// intentional and the link is not dead.
+const NON_NAVIGATING_EVENT_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "preventDefault",
+  "stopPropagation",
+  "stopImmediatePropagation",
+  "persist",
+]);
+
+const containsNavigationOrSideEffectCall = (node: EsTreeNode): boolean => {
+  let didFindSideEffectCall = false;
+  walkAst(node, (child) => {
+    if (didFindSideEffectCall) return;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = child.callee;
+    if (
+      isNodeOfType(callee, "MemberExpression") &&
+      isNodeOfType(callee.property, "Identifier") &&
+      NON_NAVIGATING_EVENT_METHOD_NAMES.has(callee.property.name)
+    ) {
+      return;
+    }
+    didFindSideEffectCall = true;
+  });
+  return didFindSideEffectCall;
+};
+
 const selectFormMessage = (framework: string | undefined): string =>
   framework !== undefined && SERVER_CAPABLE_FRAMEWORKS.has(framework)
     ? FORM_MESSAGE_SERVER_CAPABLE
@@ -93,6 +124,12 @@ export const noPreventDefault = defineRule({
         // we don't recommend a server-action story the project can't use.
         if (elementName === "form" && isClientOnlyFramework) return;
 
+        // A `<form action=…>` already has a native no-JS submit path: with
+        // JS off the onSubmit handler never runs, so preventDefault() never
+        // fires and the browser performs the native action. The "won't work
+        // without JS" advice is false here — only flag action-less forms.
+        if (elementName === "form" && findJsxAttribute(node.attributes ?? [], "action")) return;
+
         for (const targetEventProp of targetEventProps) {
           const eventAttribute = findJsxAttribute(node.attributes ?? [], targetEventProp);
           if (
@@ -105,6 +142,12 @@ export const noPreventDefault = defineRule({
           if (!isInlineFunctionExpression(expression)) continue;
 
           if (!containsPreventDefaultCall(expression)) continue;
+
+          // An anchor whose handler also navigates / side-effects after
+          // preventDefault() is custom SPA / desktop navigation, not a
+          // dead link — the ANCHOR_MESSAGE ("nothing navigates") would
+          // be false. The <form> variant keeps its existing behavior.
+          if (elementName === "a" && containsNavigationOrSideEffectCall(expression)) continue;
 
           context.report({
             node,

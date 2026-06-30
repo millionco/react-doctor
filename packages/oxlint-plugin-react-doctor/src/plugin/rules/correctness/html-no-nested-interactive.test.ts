@@ -79,4 +79,15 @@ describe("html-no-nested-interactive", () => {
 
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  // An interactive element passed as a PROP isn't nested inside the host
+  // element — the prop boundary stops the ancestor walk.
+  it("does not flag a `<button>` passed as a prop on an outer `<button>`", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      `const R = () => <button onClick={s}>Go<Tooltip trigger={<button aria-label="i">i</button>} /></button>;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

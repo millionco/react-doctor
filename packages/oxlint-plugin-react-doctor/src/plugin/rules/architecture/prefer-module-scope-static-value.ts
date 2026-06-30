@@ -160,6 +160,62 @@ const isHoistableValueExpression = (expression: EsTreeNode): boolean => {
   return isNodeOfType(stripped, "ArrayExpression") || isNodeOfType(stripped, "ObjectExpression");
 };
 
+// Known-impure global namespaces whose calls produce a fresh value every
+// render (`Date.now()`, `Math.random()`, `performance.now()`,
+// `crypto.randomUUID()`, …). Hoisting an initializer that calls one of
+// these to module scope freezes it to a single module-load evaluation,
+// changing observable behavior — so such initializers are NOT hoistable.
+const IMPURE_MEMBER_RECEIVERS = new Map<string, ReadonlySet<string>>([
+  ["Math", new Set(["random"])],
+  ["Date", new Set(["now"])],
+  ["performance", new Set(["now"])],
+  ["crypto", new Set(["randomUUID", "getRandomValues", "randomBytes"])],
+]);
+
+// Bare-function ID / random generators (`nanoid()`, `uuid()`, `v4()`,
+// `randomUUID()`). Like the member-call generators above, each produces a
+// fresh value every render, so hoisting freezes/shares it — abstain.
+const IMPURE_BARE_CALL_NAMES = new Set([
+  "nanoid",
+  "uuid",
+  "v4",
+  "cuid",
+  "ulid",
+  "createId",
+  "randomUUID",
+  "generateId",
+  "random",
+]);
+
+const isImpureCall = (node: EsTreeNode): boolean => {
+  if (isNodeOfType(node, "NewExpression")) {
+    return isNodeOfType(node.callee, "Identifier") && node.callee.name === "Date";
+  }
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = node.callee;
+  if (isNodeOfType(callee, "Identifier")) return IMPURE_BARE_CALL_NAMES.has(callee.name);
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
+  if (!isNodeOfType(callee.object, "Identifier")) return false;
+  if (!isNodeOfType(callee.property, "Identifier")) return false;
+  return Boolean(IMPURE_MEMBER_RECEIVERS.get(callee.object.name)?.has(callee.property.name));
+};
+
+// True when the initializer contains a call to a known-impure global.
+// Such values legitimately differ per render, so hoisting them would
+// freeze the value and change behavior — the rule must abstain.
+const containsImpureExpression = (expression: EsTreeNode): boolean => {
+  let foundImpure = false;
+  walkAst(expression, (node) => {
+    if (foundImpure) return false;
+    if (isImpureCall(node)) {
+      foundImpure = true;
+      return false;
+    }
+    return undefined;
+  });
+  return foundImpure;
+};
+
 // Detects array / object literals defined inside a component or hook
 // whose contents reference NO local state. Such allocations are
 // per-render waste and (more importantly) break referential equality
@@ -213,6 +269,10 @@ export const preferModuleScopeStaticValue = defineRule({
       if (hasComponentLocalReferences(initializer, component.bodyScope, context.scopes)) {
         return;
       }
+      // Impure initializers (`Date.now()`, `Math.random()`, …) are meant
+      // to recompute each render; hoisting would freeze them to a single
+      // module-load value and change observable behavior.
+      if (containsImpureExpression(initializer)) return;
       // Hoisting a mutated binding to module scope would either
       // silently lose the per-render reinitialisation OR turn the
       // const into a shared mutable singleton. Either way the rule's

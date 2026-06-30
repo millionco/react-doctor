@@ -71,6 +71,54 @@ export const Outer = ({ value }: { value: string }) => {
   });
 });
 
+describe("no-derived-useState — re-seeded draft buffer", () => {
+  it("does NOT flag a draft re-seeded from the prop inside an event handler", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-derived-usestate-draft-buffer", {
+      files: {
+        "src/RenameTab.tsx": `import { useState } from "react";
+
+export const RenameTab = (props: { terminal: { title: string; update: (next: string) => void } }) => {
+  const [title, setTitle] = useState(props.terminal.title);
+  const edit = () => {
+    setTitle(props.terminal.title);
+  };
+  const commit = () => props.terminal.update(title);
+  return (
+    <div>
+      <span>{props.terminal.title}</span>
+      <input value={title} onChange={(event) => setTitle(event.target.value)} onBlur={commit} onFocus={edit} />
+    </div>
+  );
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-derived-useState");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("STILL flags a genuine prop mirror that only re-syncs inside an effect", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-derived-usestate-effect-mirror", {
+      files: {
+        "src/Mirror.tsx": `import { useEffect, useState } from "react";
+
+export const Mirror = ({ value }: { value: string }) => {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+  return <input value={draft} onChange={(event) => setDraft(event.target.value)} />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-derived-useState");
+    expect(hits).toHaveLength(1);
+  });
+});
+
 describe("no-prop-callback-in-effect — empty-frame barrier", () => {
   it("flags the canonical `useEffect(() => onChange(state), [state, onChange])` shape", async () => {
     const projectDir = setupReactProject(tempRoot, "no-prop-callback-real-prop", {

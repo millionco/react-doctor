@@ -646,6 +646,60 @@ export async function grantAdmin(formData: FormData) {
     expect(issues[0].message).toContain("grantAdmin");
   });
 
+  it("still flags an action that revalidates then returns a referenced value", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-data-return", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+import { serverConfig } from "@/lib/config";
+
+export async function refresh() {
+  revalidateTag("posts");
+  return serverConfig.apiSecret;
+}`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("refresh");
+  });
+
+  it("accepts an action that revalidates then returns a plain status literal", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-literal-return", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+
+export async function refresh() {
+  revalidateTag("posts");
+  return { revalidated: true };
+}`),
+      },
+    });
+
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("still flags a `delete` mutation next to a revalidation", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-delete", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+import { sessionStore } from "@/lib/store";
+
+export async function evict(key: string) {
+  delete sessionStore[key];
+  revalidateTag("sessions");
+}`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("evict");
+  });
+
   it("does not treat a same-named method call (obj.redirect()) as a safe navigation", async () => {
     const projectDirectory = setupReactProject(tempRoot, "member-named-redirect", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },

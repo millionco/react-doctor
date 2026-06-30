@@ -30,16 +30,49 @@ const isCacheOrNavigationCall = (node: EsTreeNode): boolean =>
   isNodeOfType(node.callee, "Identifier") &&
   NON_DATA_EFFECT_FUNCTION_NAMES.has(node.callee.name);
 
+const unwrapExpression = (node: EsTreeNode | null | undefined): EsTreeNode | null => {
+  let current: EsTreeNode | null | undefined = node;
+  while (current) {
+    if (
+      isNodeOfType(current, "TSAsExpression") ||
+      isNodeOfType(current, "TSNonNullExpression") ||
+      isNodeOfType(current, "TSSatisfiesExpression") ||
+      isNodeOfType(current, "ChainExpression")
+    ) {
+      current = current.expression;
+      continue;
+    }
+    return current;
+  }
+  return null;
+};
+
+// `return someValue` / `return obj.prop` hands a value back to the (possibly
+// unauthenticated) caller — i.e. potential data exposure, the read half of
+// the threat. A returned call is already covered by `isPrivilegedEffect`
+// (and `return redirect(...)` stays exempt); only direct identifier / member
+// reads need flagging here. Literals and object/array literals carry no
+// reference on their own, so they don't disqualify.
+const isDataExposingReturn = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "ReturnStatement") || !node.argument) return false;
+  const returned = unwrapExpression(node.argument);
+  return Boolean(
+    returned && (isNodeOfType(returned, "Identifier") || isNodeOfType(returned, "MemberExpression")),
+  );
+};
+
 // Any node that can reach state beyond the action's own locals: a non-cache/
 // non-navigation call (DB query, `fetch`, cookie mutation, an imported
 // helper), a tagged template (raw-SQL clients like `sql\`DELETE …\``), a
-// constructor, or an assignment.
+// constructor, an assignment, a `delete`, or a return that exposes data.
 const isPrivilegedEffect = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "CallExpression") ||
   isNodeOfType(node, "TaggedTemplateExpression") ||
   isNodeOfType(node, "NewExpression") ||
   isNodeOfType(node, "AssignmentExpression") ||
-  isNodeOfType(node, "UpdateExpression");
+  isNodeOfType(node, "UpdateExpression") ||
+  (isNodeOfType(node, "UnaryExpression") && node.operator === "delete") ||
+  isDataExposingReturn(node);
 
 // A server action is "non-privileged" when nothing it does can read or mutate
 // protected data: its body busts the cache and/or navigates, and contains no
@@ -48,9 +81,9 @@ const isPrivilegedEffect = (node: EsTreeNode): boolean =>
 //
 // The check is conservative: the body must contain at least one cache- or
 // navigation call AND no other privileged effect. Anything else — a DB write,
-// a `fetch`, an imported helper, a raw-SQL tagged template, a constructor —
-// disqualifies the exemption, so a genuinely sensitive action is never
-// silently allowed through.
+// a `fetch`, an imported helper, a raw-SQL tagged template, a constructor, or
+// returning a value to the caller — disqualifies the exemption, so a genuinely
+// sensitive action is never silently allowed through.
 export const isNonPrivilegedServerAction = (functionNode: FunctionLikeNode): boolean => {
   const functionBody = functionNode.body;
   if (!functionBody) return false;

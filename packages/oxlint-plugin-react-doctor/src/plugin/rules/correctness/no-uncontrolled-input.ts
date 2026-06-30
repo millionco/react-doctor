@@ -20,7 +20,10 @@ const UNCONTROLLED_INPUT_TAGS = new Set(["input", "textarea", "select"]);
 // rules.
 const VALUE_BYPASS_INPUT_TYPES = new Set(["hidden", "checkbox", "radio"]);
 
-const VALUE_PARTNER_ATTRIBUTES = ["onChange", "readOnly"];
+// `onInput` fires on every value change in React's DOM model exactly
+// like `onChange`, so a `value`-bound input wired to `onInput` is just
+// as controlled (the SolidJS-port idiom keeps `onInput`).
+const VALUE_PARTNER_ATTRIBUTES = ["onChange", "onInput", "readOnly"];
 
 const getInputTypeLiteral = (attributes: EsTreeNode[]): string | null => {
   const typeAttribute = findJsxAttribute(attributes, "type");

@@ -119,6 +119,37 @@ const hasLoopCarriedDependency = (block: EsTreeNode): boolean => {
   return false;
 };
 
+const NESTED_LOOP_OR_SWITCH_TYPES: ReadonlySet<string> = new Set([
+  "ForStatement",
+  "ForInStatement",
+  "ForOfStatement",
+  "WhileStatement",
+  "DoWhileStatement",
+  "SwitchStatement",
+]);
+
+// A `return` / `break` at this loop's own level means iterations are
+// NOT independent: the loop short-circuits on the first hit (ordered
+// fallback / first-success search), so the awaits must run in sequence
+// — you can't decide whether to try iteration N+1 until N resolves.
+// Such a loop is order-dependent, not parallelizable, so we don't flag
+// it. Nested functions / loops / switches are pruned so their own
+// `break`s don't count as this loop's early exit.
+const loopBodyHasEarlyExit = (block: EsTreeNode): boolean => {
+  let didFindEarlyExit = false;
+  walkAst(block, (child: EsTreeNode): boolean | void => {
+    if (didFindEarlyExit) return false;
+    if (child !== block && (isFunctionLike(child) || NESTED_LOOP_OR_SWITCH_TYPES.has(child.type))) {
+      return false;
+    }
+    if (isNodeOfType(child, "ReturnStatement") || isNodeOfType(child, "BreakStatement")) {
+      didFindEarlyExit = true;
+      return false;
+    }
+  });
+  return didFindEarlyExit;
+};
+
 const loopBodyHasOnlySleepLikeAwaits = (block: EsTreeNode): boolean => {
   let allAreSleepLike = true;
   let foundAny = false;
@@ -178,6 +209,7 @@ export const asyncAwaitInLoop = defineRule({
       if (!loopBody) return;
       if (loopBodyHasOnlySleepLikeAwaits(loopBody)) return;
       if (hasLoopCarriedDependency(loopBody)) return;
+      if (loopBodyHasEarlyExit(loopBody)) return;
       const firstAwait = findFirstAwaitOutsideNestedFunctions(loopBody);
       if (firstAwait) {
         context.report({

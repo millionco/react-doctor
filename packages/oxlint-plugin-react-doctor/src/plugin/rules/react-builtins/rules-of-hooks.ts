@@ -8,6 +8,7 @@ import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { REACT_HOC_NAMES } from "../../constants/react.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { Rule } from "../../utils/rule.js";
 
 // Port of `oxc_linter::rules::react::rules_of_hooks`. Enforces React's
@@ -423,6 +424,28 @@ const inferFunctionName = (functionNode: EsTreeNode): string | null => {
   return null;
 };
 
+// Number of recognized hook calls living DIRECTLY in `functionNode`'s
+// own scope (nested functions pruned). A function whose body issues
+// several hook calls is — structurally — a render scope (a custom
+// hook / context-factory body), even when its name doesn't follow the
+// `useXxx` / PascalCase convention. The Solid→React port names these
+// `init` / `create*`, which the name gate alone misclassifies.
+const countOwnScopeHookCalls = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+  settings: Required<RulesOfHooksSettings>,
+): number => {
+  let count = 0;
+  walkAst(functionNode, (child) => {
+    if (child === functionNode) return;
+    if (isFunctionLike(child)) return false;
+    if (isHookCall(child, scopes, settings)) count += 1;
+  });
+  return count;
+};
+
+const MIN_HOOK_CALLS_FOR_RENDER_SCOPE = 2;
+
 const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
@@ -694,7 +717,19 @@ export const rulesOfHooks = defineRule({
           return;
         }
 
-        if (!enclosing.isComponentOrHook) {
+        // Structural render-scope escape: a named function whose own
+        // scope issues several hook calls is treated as a custom hook /
+        // factory body even when its name violates the `useXxx` /
+        // PascalCase convention (the Solid→React port names these
+        // `init` / `create*`). It still runs the conditional / loop /
+        // try checks below, so misplaced hooks inside it are caught.
+        const isLikelyRenderScope =
+          !enclosing.isComponentOrHook &&
+          enclosing.hasResolvedName &&
+          countOwnScopeHookCalls(enclosing.node, context.scopes, settings) >=
+            MIN_HOOK_CALLS_FOR_RENDER_SCOPE;
+
+        if (!enclosing.isComponentOrHook && !isLikelyRenderScope) {
           // For anonymous callbacks, look outward: if any enclosing
           // function IS a component / custom hook, this nested anonymous
           // callback can't legally call a hook (Rule of Hooks forbids

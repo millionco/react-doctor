@@ -34,6 +34,46 @@ interface ControlHasAssociatedLabelSettings {
 // canvases, etc.). Users who genuinely need labels on canvases (rare)
 // set `aria-label` and the labelling-prop check passes; users who want
 // to enforce regardless can override via `ignoreElements: []`.
+// Common visual-hide utility class tokens (Tailwind `hidden`,
+// Bootstrap/HTML5-boilerplate `sr-only`/`visually-hidden`). A file input
+// carrying one of these is the canonical "hidden file picker opened by a
+// separate labeled trigger button via a ref" — the input itself never
+// surfaces its own accessible name to the user.
+const VISUAL_HIDE_CLASS_TOKENS: ReadonlySet<string> = new Set([
+  "hidden",
+  "sr-only",
+  "visually-hidden",
+  "visuallyhidden",
+  "screen-reader-only",
+  "screenreader-only",
+]);
+
+const hasVisualHideClass = (opening: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  const classAttribute =
+    hasJsxPropIgnoreCase(opening.attributes, "className") ??
+    hasJsxPropIgnoreCase(opening.attributes, "class");
+  if (!classAttribute) return false;
+  const value = getJsxPropStringValue(classAttribute);
+  if (!value) return false;
+  return value.split(/\s+/).some((token) => VISUAL_HIDE_CLASS_TOKENS.has(token.toLowerCase()));
+};
+
+// A `<input type="file">` that is both visually hidden AND wired to a ref
+// is opened programmatically (`fileInputRef.current?.click()`) from a
+// separate, already-labeled button. Requiring it to carry its own label
+// is a false positive — the accessible name lives on the trigger.
+const isProgrammaticHiddenFileInput = (
+  tagName: string,
+  opening: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean => {
+  if (tagName.toLowerCase() !== "input") return false;
+  const typeAttribute = hasJsxPropIgnoreCase(opening.attributes, "type");
+  const typeValue = typeAttribute ? getJsxPropStringValue(typeAttribute) : null;
+  if (!typeValue || typeValue.toLowerCase() !== "file") return false;
+  if (!hasVisualHideClass(opening)) return false;
+  return Boolean(hasJsxPropIgnoreCase(opening.attributes, "ref"));
+};
+
 const DEFAULT_IGNORE_ELEMENTS: ReadonlyArray<string> = ["link", "canvas"];
 const DEFAULT_LABELLING_PROPS: ReadonlyArray<string> = ["alt", "aria-label", "aria-labelledby"];
 const ID_ATTRIBUTE = "id";
@@ -306,6 +346,7 @@ export const controlHasAssociatedLabel = defineRule({
         const role = roleAttribute ? getJsxPropStringValue(roleAttribute) : null;
         if (role && settings.ignoreRoles.includes(role)) return;
         if (isHiddenFromScreenReader(opening, context.settings)) return;
+        if (isProgrammaticHiddenFileInput(tagName, opening)) return;
 
         const isDomElement = HTML_TAGS.has(tagName);
         const isInteractiveEl = isInteractiveElement(tagName, opening);

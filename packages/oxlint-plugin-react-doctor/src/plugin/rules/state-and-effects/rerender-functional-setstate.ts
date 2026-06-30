@@ -105,6 +105,16 @@ export const rerenderFunctionalSetstate = defineRule({
       const argument = node.arguments[0];
       const expectedStateName = deriveStateVariableName(calleeName);
 
+      // GATE (all shapes): a stale read can only lose an update when the
+      // setter runs AFTER a later render — i.e. from a deferred callback
+      // (setTimeout / .then() / addEventListener / useEffect / …). A
+      // synchronous render-path handler (`onClick={() => setIndex(index +
+      // 1)}`) closes over the current render's fresh state and fires once
+      // per event, so it cannot lose its own update. This used to gate
+      // only the spread shapes; the arithmetic / update shapes over-
+      // reported one-shot handlers without it.
+      if (!isInsideDeferredCallback(node)) return;
+
       if (
         isNodeOfType(argument, "BinaryExpression") &&
         STATE_ARITHMETIC_OPERATORS.has(argument.operator) &&
@@ -155,13 +165,6 @@ export const rerenderFunctionalSetstate = defineRule({
       // Detect when one of the spread sources structurally references
       // the derived state variable: `setX([...x, ...])` or
       // `setX({ ...x, key: value })`.
-      //
-      // GATE: only flag when the call site is inside a deferred-execution
-      // context (setTimeout, .then(), addEventListener, useEffect, …).
-      // Synchronous render-path handlers (`onClick`, `onChange`) close
-      // over fresh state every render — no stale-closure risk there.
-      const spreadIsInDeferredContext = isInsideDeferredCallback(node);
-      if (!spreadIsInDeferredContext) return;
       if (expectedStateName && isNodeOfType(argument, "ArrayExpression")) {
         const spreadsState = (argument.elements ?? []).some(
           (element: EsTreeNode | null) =>

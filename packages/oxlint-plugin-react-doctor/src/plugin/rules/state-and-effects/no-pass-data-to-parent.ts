@@ -113,6 +113,14 @@ export const noPassDataToParent = defineRule({
           if (isUseRefIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
           if (isRefCurrent(argRef)) return false;
           if (isConstant(argRef)) return false;
+          // `props.onReset(undefined)` is an imperative clear, not data
+          // lifted to a parent. `undefined` is a global identifier with no
+          // resolved def, so `isConstant` (which only inspects an init
+          // expression) misses it — recognize it explicitly.
+          const argIdentifier = argRef.identifier as unknown as EsTreeNode;
+          if (isNodeOfType(argIdentifier, "Identifier") && argIdentifier.name === "undefined") {
+            return false;
+          }
           return true;
         });
         if (!isSomeArgsData) continue;

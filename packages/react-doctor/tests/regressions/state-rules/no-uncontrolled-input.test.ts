@@ -60,6 +60,23 @@ export const Form = () => {
     expect(hits[0].message).toContain("uncontrolled");
   });
 
+  it("does not flag `value` paired with onInput (controlled via onInput)", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-uncontrolled-input-oninput", {
+      files: {
+        "src/Form.tsx": `import { useState } from "react";
+
+export const Form = () => {
+  const [name, setName] = useState("");
+  return <input value={name} onInput={(event) => setName(event.currentTarget.value)} />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-uncontrolled-input");
+    expect(hits).toHaveLength(0);
+  });
+
   it("does not flag <input type='checkbox' value='cat'> (value is a form token)", async () => {
     const projectDir = setupReactProject(tempRoot, "no-uncontrolled-input-checkbox", {
       files: {

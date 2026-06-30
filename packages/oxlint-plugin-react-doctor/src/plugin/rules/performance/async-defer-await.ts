@@ -113,15 +113,29 @@ const CANCELLATION_GUARD_NAMES: ReadonlySet<string> = new Set([
   "abortController",
 ]);
 
+// A name reads as a cancellation / staleness flag when it is one of the
+// known words, OR is a ref handle (`aliveRef`, `disposedRef`,
+// `inputRef`) whose `.current` is the live disposable, OR is the
+// `current` property read itself. The Solid→React port turned Solid
+// disposables into refs named `*Ref`, so `if (!aliveRef.current) return`
+// is the same post-await staleness check as `if (cancelled) return`.
+const isCancellationGuardName = (name: string): boolean => {
+  if (CANCELLATION_GUARD_NAMES.has(name)) return true;
+  if (name === "current") return true;
+  if (name.endsWith("Ref") && name.length > "Ref".length) return true;
+  return false;
+};
+
 const isCancellationGuardTest = (test: EsTreeNode | null): boolean => {
   if (!test) return false;
   const referenced = new Set<string>();
   collectReferenceIdentifierNames(test, referenced);
   if (referenced.size === 0) return false;
-  // Match either a bare identifier reference (`cancelled`, `!cancelled`)
-  // or a property access on one (`controller.signal.aborted`).
+  // Match either a bare identifier reference (`cancelled`, `!cancelled`),
+  // a property access on one (`controller.signal.aborted`), or a
+  // ref-staleness read (`aliveRef.current`, `inputRef.current.foo()`).
   for (const name of referenced) {
-    if (CANCELLATION_GUARD_NAMES.has(name)) return true;
+    if (isCancellationGuardName(name)) return true;
   }
   return false;
 };

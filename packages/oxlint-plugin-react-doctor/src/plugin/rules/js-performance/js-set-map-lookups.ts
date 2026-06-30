@@ -166,6 +166,10 @@ const STRING_TYPED_IDENTIFIER_NAMES: ReadonlySet<string> = new Set([
   "search",
   "haystack",
   "needle",
+  // A destructured `for (const [key] of Object.entries(...))` key is a
+  // string; `key.includes(sep)` is a substring search (a numeric Map key
+  // wouldn't have `.includes` at all), so the Set-rewrite never applies.
+  "key",
   // Common string-typed naming conventions in addition to the above
   "suffix",
   "prefix",

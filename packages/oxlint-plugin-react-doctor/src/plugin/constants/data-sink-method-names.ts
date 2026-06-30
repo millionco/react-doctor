@@ -48,6 +48,21 @@ export const DATA_SINK_METHOD_NAMES: ReadonlySet<string> = new Set([
   "fire",
   "broadcast",
   "send",
+  // Pure string / comparison reads — `props.text.startsWith(prev)`,
+  // `props.path.includes(sep)`, `props.label.indexOf(x)` read FROM the
+  // prop and return a primitive; they never hand the child's data back
+  // to a parent callback, so they're not the anti-pattern this rule
+  // targets (a built-in prototype method name is never a parent callback).
+  "startsWith",
+  "endsWith",
+  "includes",
+  "indexOf",
+  "lastIndexOf",
+  "match",
+  "matchAll",
+  "search",
+  "localeCompare",
+  "test",
   // Promise
   "then",
   "catch",

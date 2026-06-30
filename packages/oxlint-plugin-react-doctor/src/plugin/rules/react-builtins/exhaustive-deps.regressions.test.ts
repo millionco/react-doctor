@@ -21,6 +21,38 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     expect(messages).not.toContain("SOME_MODULE_CONST");
   });
 
+  // A Solid-style accessor call listed in deps (`[language.intl()]`)
+  // declares the same member chain the capture side keys (`language.intl`),
+  // so it must NOT be reported as a missing dep / complex dep.
+  it("does not flag a member accessor call listed in deps", () => {
+    const code = `
+      function MyComponent({ language }) {
+        useEffect(() => {
+          console.log(language.intl());
+        }, [language.intl()]);
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).not.toContain("language");
+    expect(messages).not.toContain("complex");
+  });
+
+  it("does not flag a bare accessor call listed in deps", () => {
+    const code = `
+      function MyComponent({ activeFileTab }) {
+        useEffect(() => {
+          console.log(activeFileTab());
+        }, [activeFileTab()]);
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).not.toContain("activeFileTab");
+  });
+
   // Regression guard for the other direction: a genuine component-scope
   // value used as a parameter default is still reported when omitted from
   // the dependency array (the fix must not silence real findings).

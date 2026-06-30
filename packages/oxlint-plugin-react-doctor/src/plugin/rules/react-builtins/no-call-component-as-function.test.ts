@@ -93,6 +93,32 @@ describe("no-call-component-as-function", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a nested render-helper only ever called inline (never rendered as JSX)", () => {
+    const result = runRule(
+      noCallComponentAsFunction,
+      `
+      const Settings = () => {
+        const GeneralSection = () => <div>general</div>;
+        return <div>{GeneralSection()}</div>;
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a nested render-helper that is ALSO rendered as JSX", () => {
+    const result = runRule(
+      noCallComponentAsFunction,
+      `
+      const Settings = () => {
+        const GeneralSection = () => <div>general</div>;
+        return <div>{GeneralSection()}<GeneralSection /></div>;
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a member-expression call (`obj.Method()`)", () => {
     const result = runRule(
       noCallComponentAsFunction,

@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -117,7 +118,13 @@ export const renderingHydrationMismatchTime = defineRule({
       }
 
       // Method-chained on a Date / Math / etc. — e.g. new Date().toLocaleString().
-      walkAst(node.expression, (child: EsTreeNode) => {
+      walkAst(node.expression, (child: EsTreeNode): boolean | void => {
+        // Don't descend into nested function bodies — an arrow / function
+        // passed as an event-handler or render-prop value (`onClose={(x) =>
+        // { … Date.now() … }}`) runs on the user event, not during the
+        // server/client render pass, so a time/random call inside it is
+        // not a hydration mismatch.
+        if (isFunctionLike(child)) return false;
         for (const pattern of NONDETERMINISTIC_RENDER_PATTERNS) {
           if (pattern.matches(child)) {
             const openingElement = findOpeningElementOfChild(node);

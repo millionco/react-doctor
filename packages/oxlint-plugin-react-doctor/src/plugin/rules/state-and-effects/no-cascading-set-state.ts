@@ -38,12 +38,59 @@ const isTerminatingStatement = (statement: EsTreeNode): boolean =>
   isNodeOfType(statement, "ThrowStatement") ||
   isNodeOfType(statement, "ContinueStatement");
 
+// An `if (cond) { …; return }` (no `else`) whose consequent ends the
+// control-flow path: the branch is mutually exclusive with everything
+// AFTER it in the block, so its setters must NOT be summed with the
+// post-guard body — only one path runs.
+const isGuardWithTerminatingBranch = (statement: EsTreeNode): EsTreeNode | null => {
+  if (!isNodeOfType(statement, "IfStatement")) return null;
+  if (statement.alternate) return null;
+  const consequent = statement.consequent as EsTreeNode;
+  if (isTerminatingStatement(consequent)) return consequent;
+  if (
+    isNodeOfType(consequent, "BlockStatement") &&
+    (consequent.body ?? []).some((inner) => isTerminatingStatement(inner as EsTreeNode))
+  ) {
+    return consequent;
+  }
+  return null;
+};
+
+// Count setters along a single execution path through a statement list,
+// modeling block-level control flow: setters before an early-returning
+// guard always run (they accumulate), the guard branch is a separate
+// mutually-exclusive path (tracked as a max), and statements after an
+// unconditional `return`/`throw` are unreachable.
+const countStatementSequenceSetStateCalls = (statements: ReadonlyArray<EsTreeNode>): number => {
+  let fallThroughCount = 0;
+  let maxTerminatingPathCount = 0;
+  for (const statement of statements) {
+    const guardBranch = isGuardWithTerminatingBranch(statement);
+    if (guardBranch) {
+      maxTerminatingPathCount = Math.max(
+        maxTerminatingPathCount,
+        fallThroughCount + countMaxPathSetStateCalls(guardBranch),
+      );
+      continue;
+    }
+    if (isTerminatingStatement(statement)) break;
+    fallThroughCount += countMaxPathSetStateCalls(statement);
+  }
+  return Math.max(maxTerminatingPathCount, fallThroughCount);
+};
+
 const countMaxPathSetStateCalls = (node: EsTreeNode): number => {
   if (!node || typeof node !== "object") return 0;
   // Async function bodies — see comment above. Sync function bodies
   // (callbacks for `.then(...)`, `setTimeout(...)`, etc.) are still
   // walked because their setStates DO compound when fired together.
   if (isAsyncFunctionLike(node)) return 0;
+  // Statement lists: walk with block-level control flow so setters in an
+  // early-returning guard branch are mutually exclusive with the
+  // post-guard body (max), not summed.
+  if (isNodeOfType(node, "BlockStatement") || isNodeOfType(node, "Program")) {
+    return countStatementSequenceSetStateCalls((node.body ?? []) as EsTreeNode[]);
+  }
   // If/else: max of branches (only one fires).
   if (isNodeOfType(node, "IfStatement")) {
     const thenCount = countMaxPathSetStateCalls(node.consequent as EsTreeNode);

@@ -15,6 +15,16 @@ interface NoRedundantRolesSettings {
 const buildMessage = (tag: string, role: string): string =>
   `Screen reader users gain nothing from this \`role\` because \`<${tag}>\` already acts as a \`${role}\`, so remove it.`;
 
+// `<ul role="list">` / `<ol role="list">` is the deliberate Safari +
+// VoiceOver workaround: `list-style: none` makes WebKit silently drop list
+// semantics, and the explicit role restores them. It is an intentional
+// a11y-preserving idiom, not redundant noise, so it is exempt by default
+// (users can still narrow further via the `exceptions` setting).
+const DEFAULT_NON_REDUNDANT_ROLES: Readonly<Record<string, ReadonlyArray<string>>> = {
+  ul: ["list"],
+  ol: ["list"],
+};
+
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
 ): Required<NoRedundantRolesSettings> => {
@@ -46,7 +56,10 @@ export const noRedundantRoles = defineRule({
         if (role === null) return;
         const tag = getElementType(node, context.settings);
         const implicitRoles = getElementImplicitRoles(tag);
-        const allowedHere = settings.exceptions[tag] ?? [];
+        const allowedHere = [
+          ...(DEFAULT_NON_REDUNDANT_ROLES[tag] ?? []),
+          ...(settings.exceptions[tag] ?? []),
+        ];
         if (implicitRoles.includes(role) && !allowedHere.includes(role)) {
           context.report({ node: roleAttr, message: buildMessage(tag, role) });
         }

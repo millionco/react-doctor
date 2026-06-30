@@ -1,8 +1,23 @@
 import { RENDER_FUNCTION_PATTERN } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+// `props.renderX(...)` / `this.props.renderX(...)` is a render-prop
+// invocation: a function received FROM the parent, so its identity is
+// owned by the parent and calling it inline remounts nothing. This is
+// the idiomatic React render-prop pattern, not inline component
+// construction.
+const isRenderPropReceiver = (object: EsTreeNode): boolean => {
+  if (isNodeOfType(object, "Identifier")) return object.name === "props";
+  return (
+    isNodeOfType(object, "MemberExpression") &&
+    isNodeOfType(object.property, "Identifier") &&
+    object.property.name === "props"
+  );
+};
 
 export const noRenderInRender = defineRule({
   id: "no-render-in-render",
@@ -23,6 +38,7 @@ export const noRenderInRender = defineRule({
         isNodeOfType(expression.callee, "MemberExpression") &&
         isNodeOfType(expression.callee.property, "Identifier")
       ) {
+        if (isRenderPropReceiver(expression.callee.object)) return;
         calleeName = expression.callee.property.name;
       }
 

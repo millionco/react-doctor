@@ -5,6 +5,53 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
+
+// A handler that calls `event.preventDefault()` MUST run non-passively —
+// passive listeners silently ignore preventDefault(). Recommending
+// `{ passive: true }` here is exactly backwards (the rule's own
+// recommendation says so), so an inline handler that calls
+// preventDefault suppresses the report.
+const handlerCallsPreventDefault = (handler: EsTreeNode | undefined): boolean => {
+  if (
+    !handler ||
+    (!isNodeOfType(handler, "ArrowFunctionExpression") &&
+      !isNodeOfType(handler, "FunctionExpression"))
+  ) {
+    return false;
+  }
+  let didFindPreventDefault = false;
+  walkAst(handler, (child) => {
+    if (didFindPreventDefault) return;
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "MemberExpression") &&
+      isNodeOfType(child.callee.property, "Identifier") &&
+      child.callee.property.name === "preventDefault"
+    ) {
+      didFindPreventDefault = true;
+    }
+  });
+  return didFindPreventDefault;
+};
+
+// An explicit `{ passive: false }` is a deliberate opt-out (the author
+// needs preventDefault to work). Treat it like `passive: true` for the
+// purposes of this rule: not a forgotten passive flag.
+const hasExplicitPassiveValue = (
+  optionsArgument: EsTreeNodeOfType<"ObjectExpression">,
+  expected: boolean,
+): boolean =>
+  Boolean(
+    optionsArgument.properties?.some(
+      (property: EsTreeNode) =>
+        isNodeOfType(property, "Property") &&
+        isNodeOfType(property.key, "Identifier") &&
+        property.key.name === "passive" &&
+        isNodeOfType(property.value, "Literal") &&
+        property.value.value === expected,
+    ),
+  );
 
 export const clientPassiveEventListeners = defineRule({
   id: "client-passive-event-listeners",
@@ -27,6 +74,11 @@ export const clientPassiveEventListeners = defineRule({
         return;
 
       const eventName = eventNameNode.value;
+
+      // A handler that needs preventDefault() can't be passive — skip it
+      // regardless of how (or whether) options are passed.
+      if (handlerCallsPreventDefault(node.arguments[1] as EsTreeNode | undefined)) return;
+
       const optionsArgument = node.arguments[2];
 
       if (!optionsArgument) {
@@ -39,14 +91,11 @@ export const clientPassiveEventListeners = defineRule({
 
       if (!isNodeOfType(optionsArgument, "ObjectExpression")) return;
 
-      const hasPassiveTrue = optionsArgument.properties?.some(
-        (property: EsTreeNode) =>
-          isNodeOfType(property, "Property") &&
-          isNodeOfType(property.key, "Identifier") &&
-          property.key.name === "passive" &&
-          isNodeOfType(property.value, "Literal") &&
-          property.value.value === true,
-      );
+      // Explicit `{ passive: false }` is an intentional opt-out, not a
+      // forgotten flag.
+      if (hasExplicitPassiveValue(optionsArgument, false)) return;
+
+      const hasPassiveTrue = hasExplicitPassiveValue(optionsArgument, true);
 
       if (!hasPassiveTrue) {
         context.report({

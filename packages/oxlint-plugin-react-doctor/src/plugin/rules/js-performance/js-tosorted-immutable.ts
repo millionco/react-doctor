@@ -26,6 +26,10 @@ const FRESH_ARRAY_PRODUCING_METHOD_NAMES: ReadonlySet<string> = new Set([
 const isFreshOrIteratorAllocation = (node: EsTreeNode | null | undefined): boolean => {
   if (!node) return false;
   if (isNodeOfType(node, "ArrayExpression")) return true;
+  // `[...new Set(x)].sort()` / `[...new Map(...).values()]` — spreading a
+  // freshly constructed iterable allocates a private throwaway array, not a
+  // copy of a shared binding, and many iterables have no `toSorted()` at all.
+  if (isNodeOfType(node, "NewExpression")) return true;
   if (!isNodeOfType(node, "CallExpression")) return false;
   const callee = node.callee;
   return (

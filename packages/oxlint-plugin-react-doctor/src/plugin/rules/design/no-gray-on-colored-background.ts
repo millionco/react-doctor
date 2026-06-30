@@ -18,7 +18,7 @@ export const noGrayOnColoredBackground = defineRule({
 
       const grayTextMatch = classStr.match(/\btext-(?:gray|slate|zinc|neutral|stone)-\d+\b/);
       const coloredBgMatch = classStr.match(
-        /\bbg-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+\b/,
+        /\bbg-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:[5-9]00|950)\b/,
       );
 
       if (grayTextMatch && coloredBgMatch) {

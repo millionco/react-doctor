@@ -18,7 +18,7 @@ const buildMessageImplicit = (role: string, propName: string, elementType: strin
 
 // Port of `get_implicit_role` from OXC. Returns the implicit ARIA
 // role for an HTML element, or null if there isn't one.
-const getImplicitRole = (
+export const getImplicitRole = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
   elementType: string,
 ): string | null => {

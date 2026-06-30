@@ -4,6 +4,7 @@ import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { getElementImplicitRoles } from "../../constants/aria-element-roles.js";
+import { getImplicitRole } from "./role-supports-aria-props.js";
 
 interface NoRedundantRolesSettings {
   // Per-element overrides: a tag can specify additional non-redundant
@@ -55,7 +56,15 @@ export const noRedundantRoles = defineRule({
         const role = getJsxPropStringValue(roleAttr);
         if (role === null) return;
         const tag = getElementType(node, context.settings);
-        const implicitRoles = getElementImplicitRoles(tag);
+        // `<input>` maps to a whole set of implicit roles in the static
+        // table, but any concrete input has exactly ONE effective role
+        // (resolved from `type`/`list`). Treating the full set as redundant
+        // mislabels e.g. `<input type="text" role="combobox">` (textbox →
+        // combobox is an upgrade, not a duplicate).
+        const implicitRoles =
+          tag === "input"
+            ? [getImplicitRole(node, tag)].filter((role): role is string => role !== null)
+            : getElementImplicitRoles(tag);
         const allowedHere = [
           ...(DEFAULT_NON_REDUNDANT_ROLES[tag] ?? []),
           ...(settings.exceptions[tag] ?? []),

@@ -1,5 +1,6 @@
 import { BOOLEAN_PROP_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { isBooleanPrefixedPropName } from "../../utils/is-boolean-prefixed-prop-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isComponentDeclaration } from "../../utils/is-component-declaration.js";
@@ -58,12 +59,18 @@ export const noManyBooleanProps = defineRule({
     };
 
     const checkComponent = (
+      functionNode: EsTreeNode,
       param: EsTreeNode | undefined,
       body: EsTreeNode | undefined,
       componentName: string,
       reportNode: EsTreeNode,
     ): void => {
       if (!param) return;
+      // The component gates (uppercase name) also match non-component
+      // factories like `function CreateValidator(options) { … }`, whose
+      // `options.isStrict` accesses look like boolean props. Require
+      // actual render output before treating the param as component props.
+      if (!functionContainsReactRenderOutput(functionNode, context.scopes)) return;
       if (isNodeOfType(param, "ObjectPattern")) {
         const booleanLikePropNames: string[] = [];
         for (const property of param.properties ?? []) {
@@ -86,13 +93,13 @@ export const noManyBooleanProps = defineRule({
     return {
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!isComponentDeclaration(node) || !node.id) return;
-        checkComponent(node.params?.[0], node.body, node.id.name, node.id);
+        checkComponent(node, node.params?.[0], node.body, node.id.name, node.id);
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
         if (!isNodeOfType(node.id, "Identifier")) return;
         if (!isInlineFunctionExpression(node.init)) return;
-        checkComponent(node.init.params?.[0], node.init.body, node.id.name, node.id);
+        checkComponent(node.init, node.init.params?.[0], node.init.body, node.id.name, node.id);
       },
     };
   },

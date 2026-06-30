@@ -1,11 +1,25 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { parseJsxValue } from "../../utils/parse-jsx-value.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStylePropertyNumberValue } from "./utils/get-style-property-number-value.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+// An element with a negative `tabIndex` is removed from the tab order,
+// so keyboard users never focus it — dropping its focus ring is fine.
+const isNotKeyboardFocusable = (styleAttribute: EsTreeNode): boolean => {
+  const openingElement = styleAttribute.parent;
+  if (!openingElement || !isNodeOfType(openingElement, "JSXOpeningElement")) return false;
+  const tabIndexAttribute = findJsxAttribute(openingElement.attributes, "tabIndex");
+  if (!tabIndexAttribute) return false;
+  const tabIndexValue = parseJsxValue(tabIndexAttribute.value);
+  return tabIndexValue !== null && tabIndexValue < 0;
+};
 
 export const noOutlineNone = defineRule({
   id: "no-outline-none",
@@ -19,6 +33,8 @@ export const noOutlineNone = defineRule({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
+
+      if (isNotKeyboardFocusable(node)) return;
 
       let hasOutlineNone = false;
       let outlineProperty: EsTreeNode | null = null;

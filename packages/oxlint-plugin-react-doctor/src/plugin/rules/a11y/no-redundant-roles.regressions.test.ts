@@ -17,4 +17,17 @@ describe("a11y/no-redundant-roles regressions", () => {
     const result = runRule(noRedundantRoles, `const Nav = () => <nav role="navigation" />;`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("exempts a text `<input role=\"combobox\">` (its implicit role is textbox)", () => {
+    const result = runRule(
+      noRedundantRoles,
+      `const F = () => <input type="text" role="combobox" aria-expanded aria-controls="lb" />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an input whose role matches its single implicit role", () => {
+    const result = runRule(noRedundantRoles, `const F = () => <input type="checkbox" role="checkbox" />;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -68,6 +68,16 @@ export const noInlinePropOnMemoComponent = defineRule({
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
+        // `ref` and `key` are reserved props that React strips before the
+        // memo comparison, so an inline `ref`/`key` callback never defeats
+        // memoization.
+        if (
+          isNodeOfType(node.name, "JSXIdentifier") &&
+          (node.name.name === "ref" || node.name.name === "key")
+        ) {
+          return;
+        }
+
         const openingElement = node.parent;
         if (!openingElement || !isNodeOfType(openingElement, "JSXOpeningElement")) return;
 

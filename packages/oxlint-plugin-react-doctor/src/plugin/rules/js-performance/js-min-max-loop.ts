@@ -7,10 +7,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // `Math.min` / `Math.max` can only express the scalar extremum of an
 // array's own values. `arr.sort(cmp)[0]` is equivalent ONLY when the
-// comparator is the default sort (no argument) or the canonical numeric
-// identity comparator `(a, b) => a - b` / `(a, b) => b - a`. A comparator
-// that orders by a derived key, breaks ties, or returns the element
-// object cannot be rewritten as `Math.min/max`, so we must not report it.
+// comparator is the canonical numeric identity comparator
+// `(a, b) => a - b` / `(a, b) => b - a`. A comparator-less `.sort()` is
+// lexicographic, so `Math.min/max` would return NaN for strings — that
+// case is excluded. A comparator that orders by a derived key, breaks
+// ties, or returns the element object also cannot be rewritten as
+// `Math.min/max`, so we must not report it.
 const isCanonicalNumericComparator = (comparator: EsTreeNode | undefined): boolean => {
   if (
     !comparator ||
@@ -72,9 +74,7 @@ export const jsMinMaxLoop = defineRule({
         return;
 
       const comparator = object.arguments?.[0] as EsTreeNode | undefined;
-      const sortsByScalarExtremum =
-        (object.arguments?.length ?? 0) === 0 || isCanonicalNumericComparator(comparator);
-      if (!sortsByScalarExtremum) return;
+      if (!isCanonicalNumericComparator(comparator)) return;
 
       const isFirstElement = isNodeOfType(node.property, "Literal") && node.property.value === 0;
       const isLastElement =

@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
@@ -76,6 +77,9 @@ export const iframeMissingSandbox = defineRule({
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "iframe") return;
       const sandboxAttr = hasJsxPropIgnoreCase(node.attributes, "sandbox");
       if (!sandboxAttr) {
+        // A spread (`<iframe {...props} />`) can forward `sandbox` at
+        // runtime, so its absence here isn't proof of a missing attribute.
+        if (hasJsxSpreadAttribute(node.attributes)) return;
         context.report({ node: node.name, message: MISSING_MESSAGE });
         return;
       }

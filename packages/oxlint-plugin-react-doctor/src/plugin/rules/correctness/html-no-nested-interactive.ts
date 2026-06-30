@@ -34,6 +34,10 @@ const findEnclosingSameTag = (openingElement: EsTreeNode, tagName: string): EsTr
   if (!owningElement) return null;
   let ancestor: EsTreeNode | null | undefined = owningElement.parent;
   while (ancestor) {
+    // An interactive element passed as a PROP (`<button trigger={<button/>} />`)
+    // isn't nested inside the host element, so stop at the attribute
+    // boundary before treating the host's same-tag element as an ancestor.
+    if (isNodeOfType(ancestor, "JSXAttribute")) return null;
     if (isJsxElementWithTagName(ancestor, tagName)) return ancestor;
     ancestor = ancestor.parent ?? null;
   }

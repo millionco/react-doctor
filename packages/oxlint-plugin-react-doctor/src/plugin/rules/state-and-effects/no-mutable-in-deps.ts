@@ -92,10 +92,14 @@ export const noMutableInDeps = defineRule({
   recommendation:
     "Read mutable values like `location.pathname` or `ref.current` inside the effect body, or subscribe with `useSyncExternalStore`. Changing them doesn't redraw the screen, so listing them in deps won't make the effect run again.",
   create: (context: RuleContext) => {
-    const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
+    const checkComponent = (
+      componentBody: EsTreeNode | null | undefined,
+      componentParams: ReadonlyArray<EsTreeNode> = [],
+    ): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
       const useRefBindingNames = collectUseRefBindingNames(componentBody);
       const localBindingNames = collectLocalBindingNames(componentBody);
+      for (const param of componentParams) collectPatternNames(param, localBindingNames);
 
       walkAst(componentBody, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "CallExpression")) return;
@@ -126,7 +130,7 @@ export const noMutableInDeps = defineRule({
     return {
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
-        checkComponent(node.body);
+        checkComponent(node.body, node.params);
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
@@ -135,7 +139,7 @@ export const noMutableInDeps = defineRule({
           !isNodeOfType(node.init, "FunctionExpression")
         )
           return;
-        checkComponent(node.init.body);
+        checkComponent(node.init.body, node.init.params);
       },
     };
   },

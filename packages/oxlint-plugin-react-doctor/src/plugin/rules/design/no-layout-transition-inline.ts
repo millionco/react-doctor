@@ -29,7 +29,7 @@ export const noLayoutTransitionInline = defineRule({
         if (/\ball\b/.test(lower)) continue;
 
         const layoutMatch = lower.match(
-          /\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding(?:-(?:top|right|bottom|left))?\b|\bmargin(?:-(?:top|right|bottom|left))?\b/,
+          /(?<![\w-])(?:max-|min-)?(?:width|height)\b|\bpadding(?:-(?:top|right|bottom|left))?\b|\bmargin(?:-(?:top|right|bottom|left))?\b/,
         );
         if (layoutMatch) {
           context.report({

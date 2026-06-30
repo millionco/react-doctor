@@ -4,6 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 const MESSAGE =
   'Deaf and hard-of-hearing users need captions for this media. Add a `<track kind="captions">` inside the `<audio>` or `<video>`.';
@@ -51,6 +52,42 @@ const evaluateMuted = (attribute: EsTreeNodeOfType<"JSXAttribute"> | undefined):
   return false;
 };
 
+// A `{tracks.map(...)}` / `{cond && <track/>}` / `{cond ? <track/> : null}`
+// child can render `<track>` elements the static scan can't see into. When
+// such a dynamic source produces any track, treat captions as possibly
+// present and stay silent rather than emit a false positive.
+const childMayRenderTrack = (
+  child: EsTreeNode,
+  trackTags: ReadonlyArray<string>,
+  settings: Readonly<Record<string, unknown>> | undefined,
+): boolean => {
+  if (!isNodeOfType(child, "JSXExpressionContainer")) return false;
+  const expression = child.expression;
+  const isMapCall =
+    isNodeOfType(expression, "CallExpression") &&
+    isNodeOfType(expression.callee, "MemberExpression") &&
+    isNodeOfType(expression.callee.property, "Identifier") &&
+    expression.callee.property.name === "map";
+  const isDynamicTrackSource =
+    isMapCall ||
+    isNodeOfType(expression, "LogicalExpression") ||
+    isNodeOfType(expression, "ConditionalExpression");
+  if (!isDynamicTrackSource) return false;
+
+  let rendersTrack = false;
+  walkAst(expression, (inner) => {
+    if (rendersTrack) return false;
+    if (
+      isNodeOfType(inner, "JSXElement") &&
+      trackTags.includes(getElementType(inner.openingElement, settings))
+    ) {
+      rendersTrack = true;
+      return false;
+    }
+  });
+  return rendersTrack;
+};
+
 // Port of `oxc_linter::rules::jsx_a11y::media_has_caption`.
 export const mediaHasCaption = defineRule({
   id: "media-has-caption",
@@ -74,6 +111,10 @@ export const mediaHasCaption = defineRule({
           context.report({ node: node.name, message: MESSAGE });
           return;
         }
+        const hasDynamicTrackSource = parent.children.some((child) =>
+          childMayRenderTrack(child as EsTreeNode, settings.track, context.settings),
+        );
+        if (hasDynamicTrackSource) return;
         const hasCaption = parent.children.some((child) => {
           if (!isNodeOfType(child as EsTreeNode, "JSXElement")) return false;
           const opening = (child as EsTreeNodeOfType<"JSXElement">).openingElement;

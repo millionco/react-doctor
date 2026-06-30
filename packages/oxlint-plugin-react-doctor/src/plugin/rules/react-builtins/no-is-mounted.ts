@@ -1,13 +1,14 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { getParentComponent } from "../../utils/get-parent-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// Port of `oxc_linter::rules::react::no_is_mounted`. Mirrors the Rust
-// rule's behavior: flags a `this.isMounted()` call only when it sits
-// inside a method (class `MethodDefinition`) or an object property
-// callback (TSESTree `Property` value), since those are the React
-// component shapes the rule cares about. A bare `this.isMounted()` at
-// module scope is left alone.
+// Port of `oxc_linter::rules::react::no_is_mounted`. Flags a
+// `this.isMounted()` call only when it sits inside an actual React
+// component (an es5 `createReactClass` factory or an es6 `class extends
+// Component`). A plain class that happens to expose an `isMounted`
+// method — e.g. a connection pool — is not a React component and is
+// left alone.
 export const noIsMounted = defineRule({
   id: "no-is-mounted",
   title: "isMounted lets async callbacks update after unmount",
@@ -24,19 +25,12 @@ export const noIsMounted = defineRule({
       ) {
         return;
       }
-
-      let ancestor = node.parent;
-      while (ancestor) {
-        if (ancestor.type === "MethodDefinition" || ancestor.type === "Property") {
-          context.report({
-            node,
-            message:
-              "`isMounted` is unreliable in modern React, so async callbacks can update state after unmount.",
-          });
-          return;
-        }
-        ancestor = ancestor.parent ?? null;
-      }
+      if (!getParentComponent(node)) return;
+      context.report({
+        node,
+        message:
+          "`isMounted` is unreliable in modern React, so async callbacks can update state after unmount.",
+      });
     },
   }),
 });

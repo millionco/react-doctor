@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
@@ -124,6 +125,9 @@ export const buttonHasType = defineRule({
         if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "button") return;
         const typeAttr = hasJsxPropIgnoreCase(node.attributes, "type");
         if (!typeAttr) {
+          // A spread (`<button {...props} />`) can forward `type` at
+          // runtime, so the absence of an explicit attribute isn't proof.
+          if (hasJsxSpreadAttribute(node.attributes)) return;
           context.report({ node: node.name, message: MISSING_MESSAGE });
           return;
         }

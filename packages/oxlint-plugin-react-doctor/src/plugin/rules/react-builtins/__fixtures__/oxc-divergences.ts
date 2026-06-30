@@ -16,6 +16,18 @@ export interface OxcDivergence {
 }
 
 export const DIVERGENCES: Record<string, OxcDivergence> = {
+  "no-find-dom-node": {
+    // OXC flags a bare `findDOMNode(...)` purely by name. A locally
+    // defined `function findDOMNode(...)` (or any same-name helper) is
+    // a common false positive, so React Doctor only fires the bare form
+    // when the binding was imported from `react-dom`. fail[3] and
+    // fail[4] call bare `findDOMNode(this)` without importing it, so
+    // they no longer match. The `<NS>.findDOMNode` member forms
+    // (fail[0-2]) and the imported bare form still fire — see
+    // `no-find-dom-node.regressions.test.ts`.
+    failSkips: [3, 4],
+    reason: "Intentional: bare findDOMNode must be imported from react-dom (locals are FPs).",
+  },
   // (Merged into the comprehensive `jsx-no-new-object-as-prop`
   // entry below, which combines the `style` / `dangerouslySetInnerHTML`
   // skip with the config-shape prop-name skip.)

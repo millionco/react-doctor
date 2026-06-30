@@ -99,7 +99,16 @@ export const SUBSCRIPTION_METHOD_NAMES = new Set([
   "sub",
 ]);
 
-export const CLEANUP_RETURNING_SUBSCRIPTION_METHOD_NAMES = new Set(["subscribe", "sub"]);
+// Subscribe-like methods that return their own disposer. `listen` /
+// `watch` follow the same `const stop = x.listen(cb); return stop`
+// contract as `subscribe` (the disposer IS the return value), so
+// returning that handle counts as cleanup.
+export const CLEANUP_RETURNING_SUBSCRIPTION_METHOD_NAMES = new Set([
+  "subscribe",
+  "sub",
+  "listen",
+  "watch",
+]);
 
 export const GLOBAL_RELEASE_METHOD_NAMES = new Set([
   "unsubscribe",

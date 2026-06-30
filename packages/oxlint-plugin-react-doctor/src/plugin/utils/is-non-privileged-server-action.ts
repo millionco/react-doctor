@@ -75,24 +75,33 @@ const isLiteralOnlyExpression = (node: EsTreeNode | null | undefined): boolean =
   return false;
 };
 
-// `return <value>` hands a value back to the (possibly unauthenticated) caller
-// — i.e. potential data exposure, the read half of the threat. Only a purely
-// literal value (or a `return redirect(...)` navigation) is safe; anything
-// that references a binding — an identifier, member access, await, call,
-// conditional, or a non-literal nested inside an object/array — could carry
-// protected data, so it disqualifies the exemption.
-const isDataExposingReturn = (node: EsTreeNode): boolean => {
-  if (!isNodeOfType(node, "ReturnStatement") || !node.argument) return false;
-  const returned = unwrapExpression(node.argument);
-  if (!returned) return false;
-  if (isCacheOrNavigationCall(returned)) return false;
-  return !isLiteralOnlyExpression(returned);
+const getReturnedOrThrownArgument = (node: EsTreeNode): EsTreeNode | null => {
+  if (isNodeOfType(node, "ReturnStatement")) return node.argument ?? null;
+  if (isNodeOfType(node, "ThrowStatement")) return node.argument ?? null;
+  return null;
+};
+
+// `return <value>` / `throw <value>` hands a value back to the (possibly
+// unauthenticated) caller — i.e. potential data exposure, the read half of the
+// threat (a thrown binding reaches the client via the error path). Only a
+// purely literal value (or a `return redirect(...)` navigation) is safe;
+// anything that references a binding — an identifier, member access, await,
+// call, conditional, or a non-literal nested inside an object/array — could
+// carry protected data, so it disqualifies the exemption.
+const isDataExposingReturnOrThrow = (node: EsTreeNode): boolean => {
+  const argument = getReturnedOrThrownArgument(node);
+  if (!argument) return false;
+  const value = unwrapExpression(argument);
+  if (!value) return false;
+  if (isCacheOrNavigationCall(value)) return false;
+  return !isLiteralOnlyExpression(value);
 };
 
 // Any node that can reach state beyond the action's own locals: a non-cache/
 // non-navigation call (DB query, `fetch`, cookie mutation, an imported
 // helper), a tagged template (raw-SQL clients like `sql\`DELETE …\``), a
-// constructor, an assignment, a `delete`, or a return that exposes data.
+// constructor, an assignment, a `delete`, or a `return`/`throw` that exposes
+// data.
 const isPrivilegedEffect = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "CallExpression") ||
   isNodeOfType(node, "TaggedTemplateExpression") ||
@@ -100,7 +109,7 @@ const isPrivilegedEffect = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "AssignmentExpression") ||
   isNodeOfType(node, "UpdateExpression") ||
   (isNodeOfType(node, "UnaryExpression") && node.operator === "delete") ||
-  isDataExposingReturn(node);
+  isDataExposingReturnOrThrow(node);
 
 // A server action is "non-privileged" when nothing it does can read or mutate
 // protected data: its body busts the cache and/or navigates, and contains no

@@ -757,6 +757,25 @@ export async function evict(key: string) {
     expect(issues[0].message).toContain("evict");
   });
 
+  it("still flags an action that revalidates then throws a referenced value", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-data-throw", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidateTag } from "next/cache";
+import { serverConfig } from "@/lib/config";
+
+export async function refresh() {
+  revalidateTag("posts");
+  throw serverConfig.apiSecret;
+}`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("refresh");
+  });
+
   it("does not treat a same-named method call (obj.redirect()) as a safe navigation", async () => {
     const projectDirectory = setupReactProject(tempRoot, "member-named-redirect", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },

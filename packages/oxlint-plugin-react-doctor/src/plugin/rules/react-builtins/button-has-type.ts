@@ -131,6 +131,17 @@ const isConsumerPropForward = (expression: EsTreeNode): boolean => {
   return false;
 };
 
+// A props argument that is provably nullish (`null`, `undefined`, `void 0`)
+// carries no `type` — unlike an opaque bag, which may forward one at runtime.
+const isNullishPropsArgument = (propsArgument: EsTreeNode): boolean => {
+  if (isNodeOfType(propsArgument, "Literal") && propsArgument.value === null) return true;
+  if (isNodeOfType(propsArgument, "Identifier") && propsArgument.name === "undefined") return true;
+  if (isNodeOfType(propsArgument, "UnaryExpression") && propsArgument.operator === "void") {
+    return true;
+  }
+  return false;
+};
+
 const reportInvalid = (context: Parameters<Rule["create"]>[0], reportNode: EsTreeNode): void => {
   context.report({ node: reportNode, message: INVALID_MESSAGE });
 };
@@ -199,12 +210,8 @@ export const buttonHasType = defineRule({
         }
         const propsArgument = node.arguments[1];
         // No props (`createElement("button")`) or explicitly nullish props
-        // (`…, null)`) genuinely carries no `type` → missing.
-        if (!propsArgument) {
-          context.report({ node, message: MISSING_MESSAGE });
-          return;
-        }
-        if (isNodeOfType(propsArgument, "Literal") && propsArgument.value === null) {
+        // (`…, null)`, `…, undefined)`, `…, void 0)`) carry no `type` → missing.
+        if (!propsArgument || isNullishPropsArgument(propsArgument)) {
           context.report({ node, message: MISSING_MESSAGE });
           return;
         }

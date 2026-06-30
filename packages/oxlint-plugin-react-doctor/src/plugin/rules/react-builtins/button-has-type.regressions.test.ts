@@ -116,4 +116,18 @@ describe("react-builtins/button-has-type — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // Bugbot: nullish props (undefined / void 0) carry no type, like an explicit
+  // null — they must still report missing, not be treated as an opaque bag.
+  it("still flags createElement('button', undefined)", () => {
+    const result = runRule(buttonHasType, `React.createElement("button", undefined);`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags createElement('button', void 0)", () => {
+    const result = runRule(buttonHasType, `React.createElement("button", void 0);`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

@@ -25,17 +25,27 @@ const testReadsName = (test: EsTreeNode | null | undefined, name: string): boole
 };
 
 // A set-once latch (`if (!hasScrolled) setHasScrolled(true)`) runs the setter
-// at most once — after the first scroll the guard is false forever, so there
-// is no per-frame re-render storm. Only exempt when the guard reads the SAME
-// state the setter writes, or the ref that latches it
-// (`if (!hasScrolledRef.current) { hasScrolledRef.current = true; setHasScrolled(true) }`);
-// `if (offset > 100) setShowShadow(true)` (guard on a different value) can
-// still fire every frame and stays reported.
+// at most once — after the first scroll the guard flips the state to a fixed
+// CONSTANT and the guard is false forever, so there is no per-frame re-render
+// storm. Two conditions must hold: the guard reads the SAME state the setter
+// writes (or the ref that latches it,
+// `if (!hasScrolledRef.current) { hasScrolledRef.current = true; setHasScrolled(true) }`),
+// AND the setter writes a literal constant (`true`/`false`/a number). A guard
+// on a different value (`if (offset > 100) setShowShadow(true)`) or a setter
+// that writes a CHANGING value (`if (offset !== last) setLast(offset)`) can
+// still fire every frame, so it stays reported.
+const isLiteralFlipValue = (callNode: EsTreeNode): boolean => {
+  if (!isNodeOfType(callNode, "CallExpression")) return false;
+  const firstArgument = callNode.arguments?.[0];
+  return Boolean(firstArgument && isNodeOfType(firstArgument, "Literal"));
+};
+
 const isGuardedSetOnceLatch = (
   callNode: EsTreeNode,
   setterName: string,
   boundary: EsTreeNode,
 ): boolean => {
+  if (!isLiteralFlipValue(callNode)) return false;
   const stateName = setterToStateName(setterName);
   const latchRefName = `${stateName}Ref`;
   let ancestor: EsTreeNode | null | undefined = callNode.parent;

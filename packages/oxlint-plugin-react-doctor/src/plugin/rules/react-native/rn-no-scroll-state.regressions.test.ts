@@ -60,4 +60,20 @@ describe("react-native/rn-no-scroll-state — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // Bugbot: a guard that reads the same state but writes a CHANGING value is a
+  // per-frame sync, not a set-once latch — the literal-flip requirement keeps
+  // it reported.
+  it("still flags a same-state guard that writes a changing value every frame", () => {
+    const result = runRule(
+      rnNoScrollState,
+      `const C = () => {
+  const [lastOffset, setLastOffset] = useState(0);
+  const onScroll = (offset) => { if (offset !== lastOffset) setLastOffset(offset); };
+  return <ScrollView onScroll={onScroll} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

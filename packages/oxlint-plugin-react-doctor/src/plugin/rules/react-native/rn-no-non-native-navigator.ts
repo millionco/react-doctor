@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -31,8 +32,9 @@ export const rnNoNonNativeNavigator = defineRule({
       const source = node.source?.value;
       if (typeof source !== "string") return;
       // Type-only imports are erased at build time, so `import type {
-      // StackNavigationProp }` instantiates no navigator at runtime.
-      if (node.importKind === "type") return;
+      // StackNavigationProp }` (and the inline `import { type … }` form)
+      // instantiates no navigator at runtime.
+      if (isTypeOnlyImport(node)) return;
       const replacement = NON_NATIVE_NAVIGATOR_PACKAGES.get(source);
       if (!replacement) return;
       context.report({

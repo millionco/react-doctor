@@ -20,4 +20,25 @@ describe("react-native/rn-no-legacy-expo-packages — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // Bugbot: a fully inline-type import (`import { type Foo }`) is erased too, so
+  // it pulls in no runtime code and must not be flagged.
+  it("stays silent on a fully inline-type import", () => {
+    const result = runRule(
+      rnNoLegacyExpoPackages,
+      `import { type Foo, type Bar } from "${legacyPackageName}";`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // …but a MIXED import still pulls a runtime binding, so it stays flagged.
+  it("still flags a mixed inline-type + value import", () => {
+    const result = runRule(
+      rnNoLegacyExpoPackages,
+      `import { type Foo, bar } from "${legacyPackageName}";`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

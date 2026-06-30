@@ -57,7 +57,8 @@ const isDataExposingReturn = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "ReturnStatement") || !node.argument) return false;
   const returned = unwrapExpression(node.argument);
   return Boolean(
-    returned && (isNodeOfType(returned, "Identifier") || isNodeOfType(returned, "MemberExpression")),
+    returned &&
+    (isNodeOfType(returned, "Identifier") || isNodeOfType(returned, "MemberExpression")),
   );
 };
 

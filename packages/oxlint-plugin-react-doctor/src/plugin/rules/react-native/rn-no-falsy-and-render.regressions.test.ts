@@ -47,4 +47,22 @@ describe("react-native/rn-no-falsy-and-render — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // Bugbot: a nested component's boolean useState of the same name must not mask
+  // the outer numeric `useState(0)` gate — that would hide a real bare-0 crash.
+  it("still flags an outer numeric gate when a nested component reuses the name as boolean", () => {
+    const result = runRule(
+      rnNoFalsyAndRender,
+      `const C = () => {
+  const [progress, setProgress] = useState(0);
+  const Inner = () => {
+    const [progress, setProgress] = useState(false);
+    return <View>{progress && <Dot />}</View>;
+  };
+  return <View>{progress && <Bar />}</View>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

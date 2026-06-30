@@ -61,6 +61,17 @@ const isBooleanUseStateName = (referenceNode: EsTreeNode, name: string): boolean
   let isBooleanState = false;
   walkAst(scope, (child: EsTreeNode) => {
     if (isBooleanState) return;
+    // A `useState` declared inside a NESTED function belongs to that scope, not
+    // the reference's — don't let an inner `useState(false)` of the same name
+    // mask an outer `useState(0)`. Don't descend into nested function scopes.
+    if (
+      child !== scope &&
+      (isNodeOfType(child, "FunctionDeclaration") ||
+        isNodeOfType(child, "FunctionExpression") ||
+        isNodeOfType(child, "ArrowFunctionExpression"))
+    ) {
+      return false;
+    }
     if (!isNodeOfType(child, "VariableDeclarator")) return;
     if (!isNodeOfType(child.id, "ArrayPattern")) return;
     const firstBinding = child.id.elements?.[0];

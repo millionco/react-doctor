@@ -278,6 +278,7 @@ import { preferHtmlDialog } from "./rules/a11y/prefer-html-dialog.js";
 import { preferModuleScopePureFunction } from "./rules/architecture/prefer-module-scope-pure-function.js";
 import { preferModuleScopeStaticValue } from "./rules/architecture/prefer-module-scope-static-value.js";
 import { preferStableEmptyFallback } from "./rules/performance/prefer-stable-empty-fallback.js";
+import { preferStandardHook } from "./rules/architecture/prefer-standard-hook.js";
 import { preferTagOverRole } from "./rules/a11y/prefer-tag-over-role.js";
 import { preferUseEffectEvent } from "./rules/state-and-effects/prefer-use-effect-event.js";
 import { preferUseSyncExternalStore } from "./rules/state-and-effects/prefer-use-sync-external-store.js";
@@ -3546,6 +3547,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       requires: [...new Set(["react", ...(preferStableEmptyFallback.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/prefer-standard-hook",
+    id: "prefer-standard-hook",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...preferStandardHook,
+      framework: "global",
+      category: "Architecture",
     },
   },
   {

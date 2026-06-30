@@ -47,4 +47,32 @@ describe("a11y/media-has-caption regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  // Bugbot wave 4: a dynamic `.map` with a dynamic `kind` could resolve to
+  // captions at runtime, so it stays exempt (avoids a false positive)…
+  it("exempts a `.map(...)` track source whose kind is dynamic", () => {
+    const result = runRule(
+      mediaHasCaption,
+      `const V = ({ tracks }) => <video src={s}>{tracks.map((t) => <track key={t.l} kind={t.kind} src={t.s} />)}</video>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // …but a dynamic source that only ever renders a provably non-caption track
+  // (static `kind="subtitles"`) does NOT satisfy the captions requirement.
+  it("still flags a dynamic track source that only renders a static non-captions track", () => {
+    const result = runRule(
+      mediaHasCaption,
+      `const V = ({ tracks }) => <video src={s}>{tracks.map((t) => <track key={t.l} kind="subtitles" src={t.s} />)}</video>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a conditional track source that only renders a static non-captions track", () => {
+    const result = runRule(
+      mediaHasCaption,
+      `const V = () => <video src={s}>{hasTrack && <track kind="descriptions" />}</video>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

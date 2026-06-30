@@ -51,6 +51,10 @@ const collectBooleanLikePropsFromBody = (
     if (child.object.name !== propsParamName) return;
     if (!isNodeOfType(child.property, "Identifier")) return;
     if (!isBooleanPrefixedPropName(child.property.name)) return;
+    // `props.showMenu()` is a callback invocation, not a boolean prop — mirror
+    // the destructured-param callback exclusion for the `props` object shape.
+    const parent = child.parent;
+    if (isNodeOfType(parent, "CallExpression") && parent.callee === child) return;
     found.add(child.property.name);
   });
   return found;

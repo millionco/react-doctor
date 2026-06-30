@@ -56,10 +56,31 @@ const evaluateMuted = (attribute: EsTreeNodeOfType<"JSXAttribute"> | undefined):
   return false;
 };
 
+// A track whose `kind` we cannot statically rule out as captions: a dynamic
+// kind (`kind={t.kind}`), a static `kind="captions"`. A static non-caption
+// kind (`kind="subtitles"`) or an absent kind (HTML defaults to subtitles)
+// is provably NOT a caption track.
+const trackKindMightBeCaptions = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean => {
+  const kindAttribute = hasJsxPropIgnoreCase(openingElement.attributes, "kind");
+  if (!kindAttribute) return false;
+  let kindValue = kindAttribute.value as EsTreeNode | null;
+  if (kindValue && isNodeOfType(kindValue, "JSXExpressionContainer")) {
+    kindValue = kindValue.expression as EsTreeNode;
+  }
+  if (!kindValue || !isNodeOfType(kindValue, "Literal") || typeof kindValue.value !== "string") {
+    return true;
+  }
+  return kindValue.value.toLowerCase() === "captions";
+};
+
 // A `{tracks.map(...)}` / `{cond && <track/>}` / `{cond ? <track/> : null}`
 // child can render `<track>` elements the static scan can't see into. When
-// such a dynamic source produces any track, treat captions as possibly
-// present and stay silent rather than emit a false positive.
+// such a dynamic source produces a track that MIGHT be a caption track, treat
+// captions as possibly present and stay silent rather than emit a false
+// positive. A dynamic source that only ever renders provably-non-caption
+// tracks (e.g. a static `kind="subtitles"`) does not satisfy the requirement.
 const childMayRenderTrack = (
   child: EsTreeNode,
   trackTags: ReadonlyArray<string>,
@@ -78,18 +99,19 @@ const childMayRenderTrack = (
     isNodeOfType(expression, "ConditionalExpression");
   if (!isDynamicTrackSource) return false;
 
-  let rendersTrack = false;
+  let rendersCaptionTrack = false;
   walkAst(expression, (inner) => {
-    if (rendersTrack) return false;
+    if (rendersCaptionTrack) return false;
     if (
       isNodeOfType(inner, "JSXElement") &&
-      trackTags.includes(getElementType(inner.openingElement, settings))
+      trackTags.includes(getElementType(inner.openingElement, settings)) &&
+      trackKindMightBeCaptions(inner.openingElement)
     ) {
-      rendersTrack = true;
+      rendersCaptionTrack = true;
       return false;
     }
   });
-  return rendersTrack;
+  return rendersCaptionTrack;
 };
 
 // Port of `oxc_linter::rules::jsx_a11y::media_has_caption`.

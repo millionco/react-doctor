@@ -1,9 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
-import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { skipNonProductionFiles } from "../../utils/skip-non-production-files.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
 const MESSAGE =
   "Storing an auth token in `localStorage`/`sessionStorage` exposes it to any XSS on the page: JavaScript can read web storage and exfiltrate the token. Keep tokens in an `HttpOnly`, `Secure`, `SameSite` cookie instead.";
@@ -53,39 +52,33 @@ export const authTokenInWebStorage = defineRule({
   severity: "warn",
   recommendation:
     "Don't persist auth tokens (JWTs, access/refresh tokens, secrets) in `localStorage`/`sessionStorage`; they're readable by any XSS. Use an `HttpOnly` cookie set by the server.",
-  create: (context): RuleVisitors => {
-    // A token persisted to web storage only leaks to XSS in code that runs
-    // in a real browser. Test, fixture, story, and script files use throwaway
-    // tokens and never ship, so the finding is unactionable there — skip them.
-    if (isTestlikeFilename(context.filename)) return {};
-    return {
-      // `localStorage.setItem("authToken", t)`
-      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        const callee = node.callee;
-        if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return;
-        if (!isNodeOfType(callee.property, "Identifier") || callee.property.name !== "setItem")
-          return;
-        if (!isWebStorageObject(callee.object)) return;
-        const keyArgument = node.arguments?.[0];
-        if (
-          !keyArgument ||
-          !isNodeOfType(keyArgument, "Literal") ||
-          typeof keyArgument.value !== "string"
-        ) {
-          return;
-        }
-        if (!SENSITIVE_KEY_PATTERN.test(keyArgument.value)) return;
-        context.report({ node, message: MESSAGE });
-      },
-      // `localStorage.authToken = t` / `localStorage["jwt"] = t`
-      AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
-        const target = node.left;
-        if (!isNodeOfType(target, "MemberExpression")) return;
-        if (!isWebStorageObject(target.object)) return;
-        const propertyName = staticMemberName(target);
-        if (!propertyName || !SENSITIVE_KEY_PATTERN.test(propertyName)) return;
-        context.report({ node: target, message: MESSAGE });
-      },
-    };
-  },
+  create: skipNonProductionFiles((context) => ({
+    // `localStorage.setItem("authToken", t)`
+    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+      const callee = node.callee;
+      if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return;
+      if (!isNodeOfType(callee.property, "Identifier") || callee.property.name !== "setItem")
+        return;
+      if (!isWebStorageObject(callee.object)) return;
+      const keyArgument = node.arguments?.[0];
+      if (
+        !keyArgument ||
+        !isNodeOfType(keyArgument, "Literal") ||
+        typeof keyArgument.value !== "string"
+      ) {
+        return;
+      }
+      if (!SENSITIVE_KEY_PATTERN.test(keyArgument.value)) return;
+      context.report({ node, message: MESSAGE });
+    },
+    // `localStorage.authToken = t` / `localStorage["jwt"] = t`
+    AssignmentExpression(node: EsTreeNodeOfType<"AssignmentExpression">) {
+      const target = node.left;
+      if (!isNodeOfType(target, "MemberExpression")) return;
+      if (!isWebStorageObject(target.object)) return;
+      const propertyName = staticMemberName(target);
+      if (!propertyName || !SENSITIVE_KEY_PATTERN.test(propertyName)) return;
+      context.report({ node: target, message: MESSAGE });
+    },
+  })),
 });

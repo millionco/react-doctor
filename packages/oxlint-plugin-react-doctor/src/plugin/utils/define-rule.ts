@@ -1,9 +1,9 @@
 import type { FileScan } from "./file-scan.js";
-import { isTestlikeFilename } from "./is-testlike-filename.js";
 import {
   fileImportsNonReactJsxDialect,
   jsxAttributeIsNonReactDialectMarker,
 } from "./non-react-jsx-dialect.js";
+import { skipNonProductionFiles } from "./skip-non-production-files.js";
 import type { Rule } from "./rule.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 
@@ -14,21 +14,6 @@ import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 // inert visitor factory injected for host compatibility. Metadata,
 // registration, tags, and severity flow identically either way.
 export type RuleDefinition = Rule | (Omit<Rule, "create"> & { scan: FileScan });
-
-// Rules tagged `"test-noise"` are by-design noisy in tests / stories /
-// playgrounds — design-system style preferences, deprecated-API hints,
-// auto-parallelizable awaits, etc. None of these apply to files that
-// don't ship to users. We wrap `create()` once here so every such rule
-// auto-skips testlike files without each one re-implementing the check.
-const wrapCreateForTestNoise = <
-  CreateFn extends (context: { filename?: string }) => Record<string, unknown>,
->(
-  create: CreateFn,
-): CreateFn =>
-  ((context) => {
-    if (isTestlikeFilename(context.filename)) return {};
-    return create(context);
-  }) as CreateFn;
 
 // Rules tagged `"react-jsx-only"` apply React-flavoured semantics
 // (a11y semantics tuned for React's synthetic-event listener naming,
@@ -101,13 +86,15 @@ export const defineRule = (rule: RuleDefinition): Rule => {
   }
   const tags = rule.tags;
   let wrappedCreate = rule.create;
-  // `migration-hint` wins over `test-noise` — deprecated API usage in
-  // test code is the very surface that needs migration (`react-dom/test-utils`
-  // imports, legacy lifecycle methods in test class fixtures, etc.).
-  // Skip the test-noise wrapper when the rule has both tags.
+  // Rules tagged `"test-noise"` are by-design noisy in non-production files
+  // (design-system style preferences, deprecated-API hints, auto-parallelizable
+  // awaits, …), so we auto-skip testlike files for them. `migration-hint` wins:
+  // deprecated API usage in test code is the very surface that needs migration
+  // (`react-dom/test-utils` imports, legacy lifecycle methods in test fixtures),
+  // so a rule carrying both tags keeps firing there.
   const honorsTestNoise = tags?.includes("test-noise") && !tags?.includes("migration-hint");
   if (honorsTestNoise) {
-    wrappedCreate = wrapCreateForTestNoise(wrappedCreate as never) as never;
+    wrappedCreate = skipNonProductionFiles(wrappedCreate);
   }
   if (tags?.includes("react-jsx-only")) {
     wrappedCreate = wrapCreateForReactJsxOnly(wrappedCreate as never) as never;

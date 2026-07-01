@@ -101,12 +101,13 @@ export const EXPO_UI_MODULE_SOURCES = new Set([
   "@expo/ui/jetpack-compose",
 ]);
 
-export const REACT_NATIVE_LIST_COMPONENTS = new Set([
+// Built-in RN virtualized lists. Unlike recyclers these have no owning package
+// to resolve against, so rules match them by name and require the binding to
+// resolve to `react-native` (or an ambient/global reference).
+export const REACT_NATIVE_BUILTIN_LIST_COMPONENTS = new Set([
   "FlatList",
   "SectionList",
   "VirtualizedList",
-  "FlashList",
-  "LegendList",
 ]);
 
 // Recycling lists, keyed by their canonical exported name, mapped to the
@@ -118,6 +119,13 @@ export const RECYCLABLE_LIST_PACKAGES: Record<string, ReadonlyArray<string>> = {
   FlashList: ["@shopify/flash-list"],
   LegendList: ["@legendapp/list"],
 };
+
+// Every list-like element name: built-in RN lists plus the recycler exports.
+// A name-only set for the cheap first filter — provenance lives in the rules.
+export const REACT_NATIVE_LIST_COMPONENTS = new Set([
+  ...REACT_NATIVE_BUILTIN_LIST_COMPONENTS,
+  ...Object.keys(RECYCLABLE_LIST_PACKAGES),
+]);
 
 export const RENDER_ITEM_PROP_NAMES = new Set([
   "renderItem",

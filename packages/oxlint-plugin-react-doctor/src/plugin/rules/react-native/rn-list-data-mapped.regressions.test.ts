@@ -40,4 +40,24 @@ const C = ({ items }) => (<FlatList data={items.map((x) => x.v)} renderItem={r} 
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("flags an aliased recycler import from its owning package", () => {
+    const result = runRule(
+      rnListDataMapped,
+      `import { FlashList as FL } from "@shopify/flash-list";
+const C = ({ items }) => (<FL data={items.map((x) => x.v)} renderItem={r} />);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on an aliased local that is not the recycler", () => {
+    const result = runRule(
+      rnListDataMapped,
+      `import { FlashList as FL } from "./my-flash-list";
+const C = ({ items }) => (<FL data={items.map((x) => x.v)} renderItem={r} />);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

@@ -1,19 +1,53 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isComponentParameterSymbol } from "../../utils/is-component-parameter-symbol.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
+// `const { children } = props` / `const { children } = this.props`: a body
+// alias of the component's children prop is the same smell as the
+// destructured-parameter form. Only a destructure whose SOURCE is the
+// component's props counts — `const { children } = node` (a non-prop object,
+// e.g. a recursive tree walker's parameter) stays quiet.
+const isChildrenDestructuredFromProps = (
+  symbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const declaration = symbol.declarationNode;
+  if (
+    !isNodeOfType(declaration, "VariableDeclarator") ||
+    !isNodeOfType(declaration.id, "ObjectPattern")
+  ) {
+    return false;
+  }
+  const source = symbol.initializer;
+  if (!source) return false;
+  if (isNodeOfType(source, "Identifier")) {
+    return isComponentParameterSymbol(scopes.symbolFor(source));
+  }
+  return (
+    isNodeOfType(source, "MemberExpression") &&
+    !source.computed &&
+    isNodeOfType(source.property, "Identifier") &&
+    source.property.name === "props" &&
+    isNodeOfType(source.object, "ThisExpression")
+  );
+};
+
 // True only when the `children` operand resolves to the enclosing
 // component's `props.children` — a destructured prop binding
-// (`({ children }) => …`, a `parameter` symbol) or a `props.children`
-// member access where `props` is the component's parameter. A local
-// variable or data field that happens to be named `children`
-// (`const { children } = node`) is not a polymorphic-children smell.
+// (`({ children }) => …`), a body alias of the props
+// (`const { children } = props`), or a `props.children` member access where
+// `props` is the component's parameter. A local variable or data field that
+// happens to be named `children` (`const { children } = node`) is not a
+// polymorphic-children smell.
 const resolvesToPropsChildren = (operand: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   if (isNodeOfType(operand, "Identifier") && operand.name === "children") {
-    return scopes.symbolFor(operand)?.kind === "parameter";
+    const symbol = scopes.symbolFor(operand);
+    if (isComponentParameterSymbol(symbol)) return true;
+    return symbol !== null && isChildrenDestructuredFromProps(symbol, scopes);
   }
   if (
     isNodeOfType(operand, "MemberExpression") &&
@@ -22,7 +56,7 @@ const resolvesToPropsChildren = (operand: EsTreeNode, scopes: ScopeAnalysis): bo
     operand.property.name === "children" &&
     isNodeOfType(operand.object, "Identifier")
   ) {
-    return scopes.symbolFor(operand.object)?.kind === "parameter";
+    return isComponentParameterSymbol(scopes.symbolFor(operand.object));
   }
   return false;
 };

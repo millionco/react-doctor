@@ -49,6 +49,16 @@ describe("architecture/no-render-in-render — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  // Bugbot: the `props` carve-out must be scope-aware. A LOCAL object named
+  // `props` is not the component's props bag, so an inline render* call on it
+  // still remounts and stays flagged.
+  it("still flags a render* call on a local object named props", () => {
+    const result = run(
+      `const Foo = () => { const props = { renderRow: (x) => <li>{x}</li> }; return <ul>{props.renderRow(1)}</ul>; };`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   // Bugbot wave 4: a render prop destructured from a nested prop bag
   // (`props.slots`) still roots in the parent-owned props, so it's exempt —
   // the comment documented this but the code only matched `this.props`.

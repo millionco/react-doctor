@@ -35,4 +35,17 @@ describe("no-polymorphic-children", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  // Bugbot: a body alias of the props (`const { children } = props`) is the
+  // same smell as the `({ children })` parameter form and must be flagged.
+  it("flags `typeof children` when children is aliased from props in the body", () => {
+    const result = runRule(
+      noPolymorphicChildren,
+      `const Card = (props) => {
+        const { children } = props;
+        return typeof children === "string" ? <span>{children}</span> : <div>{children}</div>;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

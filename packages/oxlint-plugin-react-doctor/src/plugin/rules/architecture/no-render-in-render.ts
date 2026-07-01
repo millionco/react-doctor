@@ -1,22 +1,11 @@
 import { RENDER_FUNCTION_PATTERN } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { isComponentFunction } from "../../utils/is-component-function.js";
+import { isComponentParameterSymbol } from "../../utils/is-component-parameter-symbol.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
-
-// A render prop is a parameter of a COMPONENT — the props object, or a
-// render callback destructured from it. Its identity is the parent's, so
-// calling it inline remounts nothing. A parameter of an ordinary nested
-// helper (`function runRow(renderRow) { … }`) is just a local: its identity
-// is rebuilt on each call, so an inline `renderRow()` still carries the
-// smell and stays flagged.
-const isComponentParameterSymbol = (symbol: SymbolDescriptor | null): boolean => {
-  if (!symbol || symbol.kind !== "parameter") return false;
-  return isComponentFunction(symbol.scope.node);
-};
 
 // `this.renderX(...)` is a class-component render-helper method. It has a
 // stable identity (declared on the class, not rebuilt in render) and
@@ -51,7 +40,6 @@ const tracesToPropOrParameter = (
   const source = symbol.initializer;
   if (!source) return false;
   if (isNodeOfType(source, "Identifier")) {
-    if (source.name === "props") return true;
     return isComponentParameterSymbol(scopes.symbolFor(source));
   }
   // `const { renderItem } = this.props` / `const { renderItem } = props.slots`
@@ -60,12 +48,13 @@ const tracesToPropOrParameter = (
   return rootsInProps(source, scopes);
 };
 
-// True when a member-expression chain bottoms out in the `props` parameter
-// (`props.slots.header`), a `this.props` access (`this.props.slots`), or any
-// other COMPONENT parameter used as a prop bag (`slots.header` where `slots`
-// is a component parameter). Also gates the inline member-call receiver, so
-// `props.slots.renderItem()` is exempt for the same reason its destructured
-// form (`const { renderItem } = props.slots`) already is.
+// True when a member-expression chain bottoms out in a COMPONENT parameter
+// (`props.slots.header`, or `slots.header` where `slots` is a component
+// parameter) or a `this.props` access (`this.props.slots`). The root is
+// resolved through scope, so a local variable named `props` is NOT treated
+// as the component's props bag. Also gates the inline member-call receiver,
+// so `props.slots.renderItem()` is exempt for the same reason its
+// destructured form (`const { renderItem } = props.slots`) already is.
 const rootsInProps = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   let current: EsTreeNode = node;
   while (isNodeOfType(current, "MemberExpression")) {
@@ -79,7 +68,6 @@ const rootsInProps = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
     current = current.object;
   }
   if (isNodeOfType(current, "Identifier")) {
-    if (current.name === "props") return true;
     return isComponentParameterSymbol(scopes.symbolFor(current));
   }
   return false;

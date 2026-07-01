@@ -4,6 +4,7 @@ import { functionContainsReactRenderOutput } from "../../utils/function-contains
 import { isBooleanPrefixedPropName } from "../../utils/is-boolean-prefixed-prop-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isComponentDeclaration } from "../../utils/is-component-declaration.js";
+import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -15,8 +16,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // event handler (`onClick={showMenu}`) are imperative callbacks, not
 // on/off flags — the boolean-prefix heuristic misreads `show`/`hide`/
 // `enable`/`disable` callbacks as booleans, so drop them from the count.
-const EVENT_HANDLER_ATTRIBUTE_PATTERN = /^on[A-Z]/;
-
 const collectCallbackUsedNames = (componentBody: EsTreeNode | undefined): Set<string> => {
   const callbackNames = new Set<string>();
   if (!componentBody) return callbackNames;
@@ -26,9 +25,7 @@ const collectCallbackUsedNames = (componentBody: EsTreeNode | undefined): Set<st
       return;
     }
     if (
-      isNodeOfType(child, "JSXAttribute") &&
-      isNodeOfType(child.name, "JSXIdentifier") &&
-      EVENT_HANDLER_ATTRIBUTE_PATTERN.test(child.name.name) &&
+      isEventHandlerAttribute(child) &&
       isNodeOfType(child.value, "JSXExpressionContainer") &&
       isNodeOfType(child.value.expression, "Identifier")
     ) {
@@ -56,15 +53,8 @@ const collectBooleanLikePropsFromBody = (
     // destructured-param callback exclusion for the `props` object shape.
     const parent = child.parent;
     if (isNodeOfType(parent, "CallExpression") && parent.callee === child) return;
-    if (isNodeOfType(parent, "JSXExpressionContainer")) {
-      const attribute = parent.parent;
-      if (
-        isNodeOfType(attribute, "JSXAttribute") &&
-        isNodeOfType(attribute.name, "JSXIdentifier") &&
-        EVENT_HANDLER_ATTRIBUTE_PATTERN.test(attribute.name.name)
-      ) {
-        return;
-      }
+    if (isNodeOfType(parent, "JSXExpressionContainer") && isEventHandlerAttribute(parent.parent)) {
+      return;
     }
     found.add(child.property.name);
   });

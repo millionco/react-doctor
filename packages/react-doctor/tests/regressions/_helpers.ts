@@ -111,14 +111,14 @@ export interface CollectRuleHitsOptions {
    */
   framework?: "unknown" | "react-native" | "expo";
   hasReactCompiler?: boolean;
-  hasTanStackQuery?: boolean;
+  tanstackQueryVersion?: string | null;
 }
 
 export interface BuildTestProjectOptions {
   rootDirectory: string;
   framework?: ProjectInfo["framework"];
   hasReactCompiler?: boolean;
-  hasTanStackQuery?: boolean;
+  tanstackQueryVersion?: string | null;
   hasReanimated?: boolean;
   reactMajorVersion?: number | null;
   hasTypeScript?: boolean;
@@ -160,7 +160,9 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     framework,
     hasTypeScript: options.hasTypeScript ?? true,
     hasReactCompiler: options.hasReactCompiler ?? false,
-    hasTanStackQuery: options.hasTanStackQuery ?? false,
+    tanstackQueryVersion: options.tanstackQueryVersion ?? null,
+    mobxVersion: null,
+    styledComponentsVersion: null,
     nextjsVersion,
     nextjsMajorVersion,
     hasReactNativeWorkspace: framework === "expo" || framework === "react-native",

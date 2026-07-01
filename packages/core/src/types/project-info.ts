@@ -22,7 +22,32 @@ export interface ProjectInfo {
   framework: Framework;
   hasTypeScript: boolean;
   hasReactCompiler: boolean;
-  hasTanStackQuery: boolean;
+  /**
+   * The declared TanStack Query version spec (`@tanstack/react-query`,
+   * `@tanstack/query-core`, or the legacy `react-query`), or `null` when
+   * absent. Drives the `tanstack-query` capability in `buildCapabilities`,
+   * which gates every `query-*` rule. Modeled as a version string (like
+   * `reactVersion`) so future version-gated query rules have the spec in
+   * hand rather than a lossy boolean.
+   */
+  tanstackQueryVersion: string | null;
+  /**
+   * The declared MobX version spec (`mobx`, `mobx-react`, `mobx-react-lite`,
+   * or `mobx-state-tree`), or `null` when absent. Drives the `mobx`
+   * capability in `buildCapabilities`, which gates every MobX-specific rule
+   * (`reaction`/`autorun` disposer leaks, `makeObservable` init order) so
+   * they stay off on projects that don't use MobX — where a method named
+   * `reaction` or a `disposer` variable is just ordinary code.
+   */
+  mobxVersion: string | null;
+  /**
+   * The declared `styled-components` version spec, or `null` when absent.
+   * Drives the `styled-components` capability in `buildCapabilities`, which
+   * gates the styled-components rules (transient-prop leaks onto intrinsic
+   * elements, duplicate CSS properties in a template block) so they stay
+   * off on projects that don't use the library.
+   */
+  styledComponentsVersion: string | null;
   /**
    * The declared `preact` version spec, or `null` when Preact isn't a
    * dependency. Parallels `reactVersion` so a React-compatible runtime is

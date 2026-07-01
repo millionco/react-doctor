@@ -19,7 +19,9 @@ import {
 import { resolveCatalogBackedDependencyVersion } from "./resolve-catalog-backed-dependency-version.js";
 import { findNextjsVersion } from "./find-nextjs-version.js";
 import { getPreactVersion } from "./get-preact-version.js";
-import { hasTanStackQuery } from "./has-tanstack-query.js";
+import { getTanStackQueryVersion } from "./get-tanstack-query-version.js";
+import { getMobxVersion } from "./get-mobx-version.js";
+import { getStyledComponentsVersion } from "./get-styled-components-version.js";
 import { someWorkspacePackageJson } from "./some-workspace-package-json.js";
 import { isPackageJsonReanimatedAware } from "./utils/is-package-json-reanimated-aware.js";
 import { readPackageJson } from "./read-package-json.js";
@@ -94,7 +96,9 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     framework: "unknown",
     hasTypeScript: hasOwnTsConfig,
     hasReactCompiler: false,
-    hasTanStackQuery: false,
+    tanstackQueryVersion: null,
+    mobxVersion: null,
+    styledComponentsVersion: null,
     preactVersion: null,
     preactMajorVersion: null,
     hasReactNativeWorkspace: false,
@@ -311,7 +315,9 @@ export const discoverProject = (directory: string): ProjectInfo => {
     framework,
     hasTypeScript,
     hasReactCompiler: detectReactCompiler(directory, packageJson),
-    hasTanStackQuery: hasTanStackQuery(packageJson),
+    tanstackQueryVersion: getTanStackQueryVersion(packageJson),
+    mobxVersion: getMobxVersion(packageJson),
+    styledComponentsVersion: getStyledComponentsVersion(packageJson),
     preactVersion,
     preactMajorVersion: parseReactMajor(preactVersion),
     hasReactNativeWorkspace,

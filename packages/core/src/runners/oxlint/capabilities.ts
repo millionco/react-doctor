@@ -12,6 +12,18 @@ import {
   parseTailwindMajorMinor,
 } from "../../project-info/index.js";
 
+// Frameworks that evaluate application modules outside the browser — a
+// server render (Next.js / Remix / TanStack Start) or a static build
+// (Gatsby). Vite/CRA/Preact are deliberately excluded: their dominant
+// shape is a client-only SPA where module-scope browser-global reads and
+// per-load nondeterminism are correct, not bugs.
+const SSR_FRAMEWORKS: ReadonlySet<string> = new Set([
+  "nextjs",
+  "remix",
+  "gatsby",
+  "tanstack-start",
+]);
+
 export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => {
   const capabilities = new Set<string>();
 
@@ -52,6 +64,17 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
 
   if (project.nextjsMajorVersion !== null && project.nextjsMajorVersion >= 15) {
     capabilities.add("nextjs:15");
+  }
+
+  // `ssr` marks projects whose modules are evaluated in a non-browser
+  // environment (a server render / build step), so a module-scope browser
+  // global read (`window`/`localStorage`) genuinely crashes and a
+  // module-scope nondeterministic value (`Math.random()`, `Date.now()`) is
+  // frozen for the whole server process instead of recomputed per request.
+  // Gated rules stay off on client-only SPAs (Vite / CRA / Preact-on-Vite),
+  // where those same patterns run once in the browser and never crash.
+  if (SSR_FRAMEWORKS.has(project.framework)) {
+    capabilities.add("ssr");
   }
 
   const reactMajor = project.reactMajorVersion;
@@ -98,7 +121,9 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
   if (project.isPreES2023Target) capabilities.add("pre-es2023");
 
   if (project.hasReactCompiler) capabilities.add("react-compiler");
-  if (project.hasTanStackQuery) capabilities.add("tanstack-query");
+  if (project.tanstackQueryVersion !== null) capabilities.add("tanstack-query");
+  if (project.mobxVersion !== null) capabilities.add("mobx");
+  if (project.styledComponentsVersion !== null) capabilities.add("styled-components");
   if (project.hasTypeScript) capabilities.add("typescript");
   // Keyed off `preactVersion`, not `framework === "preact"`, so the
   // dominant Preact-on-Vite setup (which classifies as `vite` for

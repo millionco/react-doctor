@@ -100,7 +100,18 @@ describe("GitHub Action contract", () => {
     // fallback, which only runs when the base wasn't reachable for a local diff.
     expect(baseStep).toContain('git -C "$INPUT_DIRECTORY" diff --name-only --diff-filter=AMR');
     expect(baseStep).toContain("scripts/normalize-changed-files.mjs");
-    expect(prFilesStep).toContain("INPUT_DIRECTORY: ${{ inputs.directory }}");
+    // The strip prefix comes from git (`rev-parse --show-prefix`), not the raw
+    // `directory` input — the input only matches repo-root-relative diff paths
+    // in the default layout (an absolute `directory` or a checkout `path:`
+    // would silently drop every changed file). The API fallback reuses the
+    // derived prefix, keeping the raw input only as a last resort.
+    expect(baseStep).toContain("rev-parse --show-prefix");
+    expect(baseStep).toContain(
+      'node "$GITHUB_ACTION_PATH/scripts/normalize-changed-files.mjs" "$SCAN_PREFIX"',
+    );
+    expect(prFilesStep).toContain(
+      "INPUT_DIRECTORY: ${{ steps.base.outputs.prefix || inputs.directory }}",
+    );
     expect(prFilesStep).toContain("scripts/normalize-changed-files.mjs");
     expect(prFilesStep).toContain("normalizeChangedFiles(");
     expect(prFilesStep).toContain("steps.base.outputs.path == ''");

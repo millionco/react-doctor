@@ -25,4 +25,23 @@ describe("architecture/no-nested-component-definition — regressions", () => {
     `);
     expect(result.diagnostics).toEqual([]);
   });
+
+  // Devin: rendered-JSX membership must be scoped to the candidate's own
+  // enclosing component. A sibling rendering `<Inner/>` must not make a
+  // same-named call-only helper in another parent a false positive.
+  it("does not leak a sibling's <Inner/> onto a same-named call-only helper", () => {
+    const result = run(`
+      const Parent1 = () => {
+        const Inner = () => <span>call-only</span>;
+        return <div>{Inner()}</div>;
+      };
+      const Parent2 = () => {
+        const Inner = () => <span>rendered</span>;
+        return <Inner />;
+      };
+    `);
+    // Only Parent2's rendered Inner is a genuine nested component; Parent1's
+    // is inlined via a plain call and must stay quiet.
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

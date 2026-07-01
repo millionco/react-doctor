@@ -14,7 +14,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // A focus-variant ring/outline/shadow utility (`focus-visible:ring-2`,
 // `focus:shadow-outline`) IS the replacement focus indicator, so
 // `outline: none` alongside one is intentional, not an accessibility bug.
-const FOCUS_RING_CLASS_PATTERN = /\b(?:focus|focus-visible)[:-][^"'\s]*\b(?:ring|outline|shadow)/;
+// The trailing `(?!-(?:none|0)\b)` excludes the REMOVAL utilities
+// (`focus:outline-none`, `focus:shadow-none`, `focus:ring-0`), which strip
+// focus styling rather than add a ring — treating them as a replacement
+// would hide a genuinely invisible keyboard focus.
+const FOCUS_RING_CLASS_PATTERN =
+  /\b(?:focus|focus-visible)[:-][^"'\s]*\b(?:ring|outline|shadow)(?!-(?:none|0)\b)/;
 
 // An element with a negative `tabIndex` is removed from the tab order,
 // so keyboard users never focus it — dropping its focus ring is fine.

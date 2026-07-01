@@ -32,6 +32,23 @@ describe("architecture/no-render-in-render — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  // Bugbot: the parameter carve-out is for COMPONENT props. A render* param
+  // of an ordinary nested helper is a plain local, so an inline call still
+  // remounts and must stay flagged.
+  it("still flags a render* param of a nested non-component helper", () => {
+    const result = run(
+      `const Foo = () => { const runRow = (renderRow) => <li>{renderRow()}</li>; return <ul>{runRow((x) => x)}</ul>; };`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // Bugbot: a render prop invoked directly on a nested prop bag roots in the
+  // parent-owned props, so it's exempt — matching its destructured form.
+  it("does not flag a render prop invoked on a nested prop bag (props.slots.renderItem())", () => {
+    const result = run(`const Foo = (props) => <div>{props.slots.renderItem(1)}</div>;`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   // Bugbot wave 4: a render prop destructured from a nested prop bag
   // (`props.slots`) still roots in the parent-owned props, so it's exempt —
   // the comment documented this but the code only matched `this.props`.

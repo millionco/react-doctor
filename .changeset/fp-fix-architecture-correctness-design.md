@@ -9,8 +9,8 @@ Hardens ~15 rules so they stop firing on valid code, without weakening the real 
 Architecture:
 
 - `no-many-boolean-props` requires actual render output before treating a parameter as component props (so non-component factories like `CreateValidator(options)` are skipped), and no longer counts props that are invoked or wired as event handlers (`onClick={showMenu}`) as boolean flags.
-- `no-nested-component-definition` only flags a nested definition that is actually rendered as JSX (`<Inner/>`), not a capitalized helper that is merely called (`Inner()`).
-- `no-render-in-render` exempts render-prop invocations (`props.renderX()`, `this.props.renderX()`, and render props destructured from params) and stable class-method calls (`this.renderX()`).
+- `no-nested-component-definition` only flags a nested definition that is actually rendered as JSX (`<Inner/>`) inside its own enclosing component, not a capitalized helper that is merely called (`Inner()`) — and no longer leaks a sibling component's `<Inner/>` onto a same-named call-only helper.
+- `no-render-in-render` exempts render-prop invocations (`props.renderX()`, `this.props.renderX()`, `props.slots.renderX()` on a nested prop bag, and render props destructured from props or a component parameter) and stable class-method calls (`this.renderX()`), while still flagging a `render*` parameter of an ordinary nested helper.
 - `no-render-prop-children` ignores `render*Props` config bags and literal `render*` mode/flag values, which are not render slots.
 - `prefer-module-scope-static-value` no longer hoists initializers that call impure globals (`Date.now()`, `Math.random()`, `crypto.randomUUID()`, `nanoid()`, …), which are meant to recompute per render.
 - `react-compiler-destructure-method` drops `useSearchParams` (its methods are unbound and throw when destructured).

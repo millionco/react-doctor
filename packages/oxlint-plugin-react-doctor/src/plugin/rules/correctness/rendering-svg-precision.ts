@@ -1,3 +1,4 @@
+import { MIN_DISTINCT_OVERPRECISE_SVG_TOKENS } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -7,13 +8,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 const SVG_PATH_HIGH_PRECISION_PATTERN = /\d+\.\d{4,}/g;
 
 const SVG_PATH_ATTRIBUTES = new Set(["d", "points", "transform"]);
-
-// Materiality gate: a single over-precise coordinate (even repeated) in a
-// one-off hand-written glyph saves only a handful of bytes once — not a
-// download cost worth a diagnostic. Real machine-exported / wasteful paths
-// carry many DISTINCT over-precise coordinates. Require at least this many
-// distinct over-precise tokens before reporting.
-const MIN_DISTINCT_OVERPRECISE_TOKENS = 2;
 
 const countDistinctHighPrecisionTokens = (value: string): number => {
   const matches = value.match(SVG_PATH_HIGH_PRECISION_PATTERN);
@@ -73,7 +67,7 @@ export const renderingSvgPrecision = defineRule({
         if (!isNodeOfType(node.value, "Literal")) return;
         const value = node.value.value;
         if (typeof value !== "string") return;
-        if (countDistinctHighPrecisionTokens(value) < MIN_DISTINCT_OVERPRECISE_TOKENS) return;
+        if (countDistinctHighPrecisionTokens(value) < MIN_DISTINCT_OVERPRECISE_SVG_TOKENS) return;
 
         context.report({
           node,

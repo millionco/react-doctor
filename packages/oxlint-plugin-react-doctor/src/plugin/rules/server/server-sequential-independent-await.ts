@@ -1,5 +1,6 @@
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
 import { isAuthGuardName } from "../../utils/is-auth-guard-name.js";
 import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -123,16 +124,6 @@ const declarationAwaitsStartedPromise = (
   return false;
 };
 
-const calleeNameOf = (callExpression: EsTreeNode): string | null => {
-  if (!isNodeOfType(callExpression, "CallExpression")) return null;
-  const callee = callExpression.callee;
-  if (isNodeOfType(callee, "Identifier")) return callee.name;
-  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
-    return callee.property.name;
-  }
-  return null;
-};
-
 // True when the first declaration awaits a guard / side-effect gate, so its
 // ordering before the next await is intentional (`await requireSession()`,
 // `await db.connect()`, `await beginTransaction()`).
@@ -140,7 +131,12 @@ const declarationAwaitsGate = (declaration: EsTreeNode): boolean => {
   if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
   for (const declarator of declaration.declarations ?? []) {
     if (!isNodeOfType(declarator.init, "AwaitExpression")) continue;
-    const calleeName = calleeNameOf(declarator.init.argument);
+    // Only a function call is a gate — an awaited constructor (`await new X()`)
+    // must not suppress, so keep this CallExpression-only (getCalleeName also
+    // resolves NewExpression, which would over-suppress here).
+    const argument = declarator.init.argument;
+    if (!isNodeOfType(argument, "CallExpression")) continue;
+    const calleeName = getCalleeName(argument);
     if (!calleeName) continue;
     if (isAuthGuardName(calleeName)) return true;
     const [leadingToken] = tokenizeIdentifierWords(calleeName);

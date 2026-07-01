@@ -5,6 +5,7 @@ import { isMemberProperty } from "../../utils/is-member-property.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
@@ -14,14 +15,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 // recommendation says so), so an inline handler that calls
 // preventDefault suppresses the report.
 const handlerCallsPreventDefault = (handler: EsTreeNode | undefined): boolean => {
-  if (
-    !handler ||
-    (!isNodeOfType(handler, "ArrowFunctionExpression") &&
-      !isNodeOfType(handler, "FunctionExpression") &&
-      !isNodeOfType(handler, "FunctionDeclaration"))
-  ) {
-    return false;
-  }
+  if (!isFunctionLike(handler)) return false;
   let didFindPreventDefault = false;
   walkAst(handler, (child) => {
     if (didFindPreventDefault) return;

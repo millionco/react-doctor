@@ -1,22 +1,22 @@
 import {
   EFFECT_HOOK_NAMES,
   HANDLER_FUNCTION_NAME_PATTERN,
+  HOOK_NAME_PATTERN,
   REACT_HANDLER_PROP_PATTERN,
-  UPPERCASE_PATTERN,
 } from "../../constants/react.js";
 import { TANSTACK_ROUTE_FILE_PATTERN } from "../../constants/tanstack.js";
-import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
+import { collectHandlerReferencedNames } from "../../utils/collect-handler-referenced-names.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getFunctionBindingName } from "../../utils/get-function-binding-name.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const HOOK_NAME_PATTERN = /^use[A-Z]/;
 const PROMISE_CONTINUATION_METHODS = new Set(["then", "catch", "finally"]);
 
 export const tanstackStartNoNavigateInRender = defineRule({
@@ -54,15 +54,7 @@ export const tanstackStartNoNavigateInRender = defineRule({
     // (`arr.forEach(x => navigate(x))`) are NOT deferred — they run during
     // render — so only hook-first-arg and promise-chain callbacks qualify.
     const isDeferredEnclosingCallback = (callNode: EsTreeNode): boolean => {
-      let cursor: EsTreeNode | null | undefined = callNode.parent;
-      let enclosingFunction: EsTreeNode | null = null;
-      while (cursor) {
-        if (isFunctionLike(cursor)) {
-          enclosingFunction = cursor;
-          break;
-        }
-        cursor = cursor.parent ?? null;
-      }
+      const enclosingFunction = findEnclosingFunction(callNode);
       if (!enclosingFunction) return false;
 
       const callParent = enclosingFunction.parent;
@@ -88,9 +80,7 @@ export const tanstackStartNoNavigateInRender = defineRule({
     const isEventHandlerAttribute = (node: EsTreeNode): boolean =>
       isNodeOfType(node, "JSXAttribute") &&
       isNodeOfType(node.name, "JSXIdentifier") &&
-      typeof node.name.name === "string" &&
-      node.name.name.startsWith("on") &&
-      UPPERCASE_PATTERN.test(node.name.name.charAt(2));
+      REACT_HANDLER_PROP_PATTERN.test(node.name.name);
 
     const isEventHandlerProperty = (node: EsTreeNode): boolean =>
       isNodeOfType(node, "Property") &&
@@ -123,25 +113,8 @@ export const tanstackStartNoNavigateInRender = defineRule({
       if (handlerReferencedNames) return handlerReferencedNames;
       let root: EsTreeNode = startNode;
       while (root.parent) root = root.parent;
-      const names = new Set<string>();
-      walkAst(root, (inner: EsTreeNode) => {
-        if (isEventHandlerAttribute(inner) && isNodeOfType(inner, "JSXAttribute") && inner.value) {
-          collectReferenceIdentifierNames(inner.value, names);
-          return;
-        }
-        if (
-          isNodeOfType(inner, "Property") &&
-          ((isNodeOfType(inner.key, "Identifier") &&
-            REACT_HANDLER_PROP_PATTERN.test(inner.key.name)) ||
-            (isNodeOfType(inner.key, "Literal") &&
-              typeof inner.key.value === "string" &&
-              REACT_HANDLER_PROP_PATTERN.test(inner.key.value)))
-        ) {
-          collectReferenceIdentifierNames(inner.value, names);
-        }
-      });
-      handlerReferencedNames = names;
-      return names;
+      handlerReferencedNames = collectHandlerReferencedNames(root);
+      return handlerReferencedNames;
     };
 
     // True when `navigate()` lives in a local function whose binding is wired
@@ -149,34 +122,10 @@ export const tanstackStartNoNavigateInRender = defineRule({
     // `onClick={goHome}`). The depth counters only catch `handle*`/`on*`-named
     // bindings; this covers idiomatic names like `goHome`/`logout` by usage.
     const isNavigateBindingUsedAsHandler = (callNode: EsTreeNode): boolean => {
-      let cursor: EsTreeNode | null | undefined = callNode.parent;
-      let enclosingFunction: EsTreeNode | null = null;
-      while (cursor) {
-        if (isFunctionLike(cursor)) {
-          enclosingFunction = cursor;
-          break;
-        }
-        cursor = cursor.parent ?? null;
-      }
+      const enclosingFunction = findEnclosingFunction(callNode);
       if (!enclosingFunction) return false;
 
-      let bindingName: string | null = null;
-      if (isNodeOfType(enclosingFunction, "FunctionDeclaration") && enclosingFunction.id) {
-        bindingName = enclosingFunction.id.name;
-      } else {
-        const fnParent = enclosingFunction.parent;
-        if (
-          isNodeOfType(fnParent, "VariableDeclarator") &&
-          isNodeOfType(fnParent.id, "Identifier")
-        ) {
-          bindingName = fnParent.id.name;
-        } else if (
-          isNodeOfType(fnParent, "AssignmentExpression") &&
-          isNodeOfType(fnParent.left, "Identifier")
-        ) {
-          bindingName = fnParent.left.name;
-        }
-      }
+      const bindingName = getFunctionBindingName(enclosingFunction);
       if (!bindingName) return false;
       return getHandlerReferencedNames(callNode).has(bindingName);
     };
@@ -186,42 +135,14 @@ export const tanstackStartNoNavigateInRender = defineRule({
     // The returned function is the caller's deferred handler, not render-time
     // code, so it must not be flagged.
     const isReturnedFromCustomHook = (callNode: EsTreeNode): boolean => {
-      let cursor: EsTreeNode | null | undefined = callNode.parent;
-      let enclosingFunction: EsTreeNode | null = null;
-      while (cursor) {
-        if (isFunctionLike(cursor)) {
-          enclosingFunction = cursor;
-          break;
-        }
-        cursor = cursor.parent ?? null;
-      }
+      const enclosingFunction = findEnclosingFunction(callNode);
       if (!enclosingFunction) return false;
       if (!isNodeOfType(enclosingFunction.parent, "ReturnStatement")) return false;
 
-      let outer: EsTreeNode | null | undefined = enclosingFunction.parent.parent;
-      while (outer) {
-        if (isFunctionLike(outer)) break;
-        outer = outer.parent ?? null;
-      }
+      const outer = findEnclosingFunction(enclosingFunction.parent);
       if (!outer) return false;
 
-      let hookName: string | null = null;
-      if (isNodeOfType(outer, "FunctionDeclaration") && outer.id) {
-        hookName = outer.id.name;
-      } else {
-        const outerParent = outer.parent;
-        if (
-          isNodeOfType(outerParent, "VariableDeclarator") &&
-          isNodeOfType(outerParent.id, "Identifier")
-        ) {
-          hookName = outerParent.id.name;
-        } else if (
-          isNodeOfType(outerParent, "AssignmentExpression") &&
-          isNodeOfType(outerParent.left, "Identifier")
-        ) {
-          hookName = outerParent.left.name;
-        }
-      }
+      const hookName = getFunctionBindingName(outer);
       return Boolean(hookName && HOOK_NAME_PATTERN.test(hookName));
     };
 

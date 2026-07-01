@@ -8,6 +8,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: jotai propagates derived-atom values with `Object.is`. There
@@ -33,7 +34,9 @@ const isAtomFromJotai = (callExpression: EsTreeNodeOfType<"CallExpression">): bo
   return getImportedNameFromModule(callExpression, localName, "jotai") === "atom";
 };
 
-const isFunctionLike = (node: EsTreeNode | null | undefined): node is FunctionExpressionLike =>
+const isFunctionExpressionLike = (
+  node: EsTreeNode | null | undefined,
+): node is FunctionExpressionLike =>
   Boolean(
     node &&
     (isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression")),
@@ -165,15 +168,9 @@ const collectTopLevelReturnExpressions = (
 ): Array<EsTreeNode | null | undefined> => {
   const returns: Array<EsTreeNode | null | undefined> = [];
   walkAst(block, (child) => {
-    if (
-      isNodeOfType(child, "FunctionDeclaration") ||
-      isNodeOfType(child, "FunctionExpression") ||
-      isNodeOfType(child, "ArrowFunctionExpression")
-    ) {
-      // Don't descend into nested functions — their returns belong to
-      // their own control-flow scope.
-      return false;
-    }
+    // Don't descend into nested functions — their returns belong to
+    // their own control-flow scope.
+    if (isFunctionLike(child)) return false;
     if (isNodeOfType(child, "ReturnStatement")) returns.push(child.argument);
   });
   return returns;
@@ -213,13 +210,7 @@ const functionBodyReferencesGetParameter = (
     // Don't descend into nested functions — their `get(...)` calls
     // belong to their own closure and don't prove the outer atom
     // reads from upstream.
-    if (
-      isNodeOfType(child, "FunctionDeclaration") ||
-      isNodeOfType(child, "FunctionExpression") ||
-      isNodeOfType(child, "ArrowFunctionExpression")
-    ) {
-      if (child !== fn) return false;
-    }
+    if (isFunctionLike(child) && child !== fn) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isNodeOfType(child.callee, "Identifier")) return;
     if (child.callee.name === getParameterName) {
@@ -242,7 +233,7 @@ export const jotaiDerivedAtomReturnsFreshObject = defineRule({
       const args = node.arguments ?? [];
       if (args.length === 0) return;
       const reader = args[0];
-      if (!isFunctionLike(reader)) return;
+      if (!isFunctionExpressionLike(reader)) return;
       // Write-only / read-write atoms have a second `set` parameter
       // and produce a different propagation shape. Out of v1 scope.
       const getParameterName = getFirstParameterName(reader);

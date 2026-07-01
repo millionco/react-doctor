@@ -1,6 +1,7 @@
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -56,12 +57,7 @@ export const nextjsNoClientSideRedirect = defineRule({
           // Stop at nested function boundaries: a navigation inside an event
           // handler or callback registered in the effect runs on a later user
           // interaction, not synchronously on mount, so it must not be flagged.
-          if (
-            child !== callback &&
-            (isNodeOfType(child, "ArrowFunctionExpression") ||
-              isNodeOfType(child, "FunctionExpression") ||
-              isNodeOfType(child, "FunctionDeclaration"))
-          ) {
+          if (child !== callback && isFunctionLike(child)) {
             return false;
           }
 

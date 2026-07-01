@@ -6,6 +6,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const STATIC_IO_FUNCTIONS = new Set([
@@ -86,17 +87,18 @@ const inspectHandlerBody = (
     if (callReadsHandlerArgs(staticCall, handlerParamNames)) return;
     if (!isNodeOfType(staticCall, "CallExpression")) return;
 
-    const calleeText =
+    let calleeText = "io";
+    if (
       isNodeOfType(staticCall.callee, "MemberExpression") &&
       isNodeOfType(staticCall.callee.property, "Identifier")
-        ? `${
-            isNodeOfType(staticCall.callee.object, "Identifier")
-              ? staticCall.callee.object.name
-              : "?"
-          }.${staticCall.callee.property.name}`
-        : isNodeOfType(staticCall.callee, "Identifier")
-          ? staticCall.callee.name
-          : "io";
+    ) {
+      const objectName = isNodeOfType(staticCall.callee.object, "Identifier")
+        ? staticCall.callee.object.name
+        : "?";
+      calleeText = `${objectName}.${staticCall.callee.property.name}`;
+    } else if (isNodeOfType(staticCall.callee, "Identifier")) {
+      calleeText = staticCall.callee.name;
+    }
     context.report({
       node: staticCall,
       message: `${calleeText}() runs on every request in ${handlerLabel}, re-reading the same file each time.`,
@@ -145,14 +147,7 @@ export const serverHoistStaticIo = defineRule({
       const filename = normalizeFilename(context.filename ?? "");
       if (!PAGES_ROUTER_API_PATH_PATTERN.test(filename)) return;
       const declaration = node.declaration;
-      if (
-        !declaration ||
-        (!isNodeOfType(declaration, "FunctionDeclaration") &&
-          !isNodeOfType(declaration, "FunctionExpression") &&
-          !isNodeOfType(declaration, "ArrowFunctionExpression"))
-      ) {
-        return;
-      }
+      if (!isFunctionLike(declaration)) return;
       if (!declaration.async) return;
       const body = declaration.body;
       if (!isNodeOfType(body, "BlockStatement")) return;

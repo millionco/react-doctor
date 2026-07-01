@@ -1,20 +1,23 @@
 import {
   EFFECT_HOOK_NAMES,
   HANDLER_FUNCTION_NAME_PATTERN,
+  HOOK_NAME_PATTERN,
   MEMOIZING_HOOK_NAMES,
   REACT_HANDLER_PROP_PATTERN,
-  UPPERCASE_PATTERN,
 } from "../../constants/react.js";
-import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
+import { collectHandlerReferencedNames } from "../../utils/collect-handler-referenced-names.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import {
   isImportedFromModule,
   getImportedNameFromModule,
 } from "../../utils/find-import-source-for-name.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getFunctionBindingName } from "../../utils/get-function-binding-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: `selectAtom(base, selector)` returns a NEW atom on every call.
@@ -28,12 +31,6 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 const JOTAI_SELECT_ATOM_SOURCES = ["jotai/utils", "jotai"];
 
 const COMPONENT_NAME_PATTERN = /^[A-Z]/;
-const HOOK_NAME_PATTERN = /^use[A-Z]/;
-
-const isFunctionLikeNode = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "FunctionDeclaration") ||
-  isNodeOfType(node, "FunctionExpression") ||
-  isNodeOfType(node, "ArrowFunctionExpression");
 
 const isImportedSelectAtom = (callExpression: EsTreeNodeOfType<"CallExpression">): boolean => {
   if (!isNodeOfType(callExpression.callee, "Identifier")) return false;
@@ -63,12 +60,7 @@ const isDeferredCallback = (functionNode: EsTreeNode): boolean => {
   ) {
     // Bare callee (`useMemo(...)`) or namespaced (`React.useMemo(...)`) — read
     // the hook name from the Identifier or the MemberExpression property.
-    const hookName = isNodeOfType(parent.callee, "Identifier")
-      ? parent.callee.name
-      : isNodeOfType(parent.callee, "MemberExpression") &&
-          isNodeOfType(parent.callee.property, "Identifier")
-        ? parent.callee.property.name
-        : null;
+    const hookName = getCalleeName(parent);
     if (hookName && (MEMOIZING_HOOK_NAMES.has(hookName) || EFFECT_HOOK_NAMES.has(hookName))) {
       return true;
     }
@@ -95,8 +87,7 @@ const isDeferredCallback = (functionNode: EsTreeNode): boolean => {
     if (
       isNodeOfType(attribute, "JSXAttribute") &&
       isNodeOfType(attribute.name, "JSXIdentifier") &&
-      attribute.name.name.startsWith("on") &&
-      UPPERCASE_PATTERN.test(attribute.name.name.charAt(2))
+      REACT_HANDLER_PROP_PATTERN.test(attribute.name.name)
     ) {
       return true;
     }
@@ -119,51 +110,6 @@ const isDeferredCallback = (functionNode: EsTreeNode): boolean => {
   }
 
   return false;
-};
-
-const getFunctionBindingName = (functionNode: EsTreeNode): string | null => {
-  if (isNodeOfType(functionNode, "FunctionDeclaration") && functionNode.id) {
-    return functionNode.id.name;
-  }
-  const parent = functionNode.parent;
-  if (isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")) {
-    return parent.id.name;
-  }
-  if (isNodeOfType(parent, "AssignmentExpression") && isNodeOfType(parent.left, "Identifier")) {
-    return parent.left.name;
-  }
-  return null;
-};
-
-// Names referenced by any JSX `onXxx` attribute value or `onXxx` object
-// property — functions wired up as event handlers. Ported from the
-// sibling `tanstack-start-no-navigate-in-render` rule so an idiomatically
-// named handler (`pick`, `select`, `toggle`) wired via `onClick={pick}` is
-// recognized by usage, not just by a `handle*`/`on*` name.
-const collectHandlerReferencedNames = (root: EsTreeNode): Set<string> => {
-  const names = new Set<string>();
-  walkAst(root, (inner: EsTreeNode) => {
-    if (
-      isNodeOfType(inner, "JSXAttribute") &&
-      isNodeOfType(inner.name, "JSXIdentifier") &&
-      inner.name.name.startsWith("on") &&
-      UPPERCASE_PATTERN.test(inner.name.name.charAt(2)) &&
-      inner.value
-    ) {
-      collectReferenceIdentifierNames(inner.value, names);
-      return;
-    }
-    if (
-      isNodeOfType(inner, "Property") &&
-      ((isNodeOfType(inner.key, "Identifier") && REACT_HANDLER_PROP_PATTERN.test(inner.key.name)) ||
-        (isNodeOfType(inner.key, "Literal") &&
-          typeof inner.key.value === "string" &&
-          REACT_HANDLER_PROP_PATTERN.test(inner.key.value)))
-    ) {
-      collectReferenceIdentifierNames(inner.value, names);
-    }
-  });
-  return names;
 };
 
 const containingFunctionIsComponentOrHook = (functionNode: EsTreeNode): boolean => {
@@ -211,15 +157,7 @@ export const jotaiSelectAtomInRenderBody = defineRule({
         // Walk up to find the nearest enclosing function. If that
         // function itself is the callback of useMemo / useCallback,
         // the selectAtom call is memoized — fine.
-        let cursor: EsTreeNode | null | undefined = node.parent ?? null;
-        let nearestFunctionLike: EsTreeNode | null = null;
-        while (cursor) {
-          if (isFunctionLikeNode(cursor)) {
-            nearestFunctionLike = cursor;
-            break;
-          }
-          cursor = cursor.parent ?? null;
-        }
+        const nearestFunctionLike = findEnclosingFunction(node);
         if (!nearestFunctionLike) return;
         if (isDeferredCallback(nearestFunctionLike)) return;
         if (isBindingUsedAsHandler(nearestFunctionLike)) return;
@@ -229,7 +167,7 @@ export const jotaiSelectAtomInRenderBody = defineRule({
         // component are still "render-time" execution paths.
         let outerCursor: EsTreeNode | null = nearestFunctionLike;
         while (outerCursor) {
-          if (isFunctionLikeNode(outerCursor) && containingFunctionIsComponentOrHook(outerCursor)) {
+          if (isFunctionLike(outerCursor) && containingFunctionIsComponentOrHook(outerCursor)) {
             context.report({
               node,
               message:

@@ -1,7 +1,8 @@
 import { UPPERCASE_PATTERN } from "../../constants/react.js";
 import { TANSTACK_QUERY_CLIENT_CLASS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { isFunctionLike } from "../../utils/is-function-like.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getFunctionBindingName } from "../../utils/get-function-binding-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -13,17 +14,8 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // initializer — runs LATER / once, not per render, so a `new QueryClient()`
 // there is stable and must not be flagged.
 const isComponentFunction = (functionNode: EsTreeNode): boolean => {
-  if (isNodeOfType(functionNode, "FunctionDeclaration")) {
-    return Boolean(functionNode.id?.name && UPPERCASE_PATTERN.test(functionNode.id.name));
-  }
-  const parent = functionNode.parent;
-  if (isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")) {
-    return UPPERCASE_PATTERN.test(parent.id.name);
-  }
-  if (isNodeOfType(parent, "AssignmentExpression") && isNodeOfType(parent.left, "Identifier")) {
-    return UPPERCASE_PATTERN.test(parent.left.name);
-  }
-  return false;
+  const name = getFunctionBindingName(functionNode);
+  return name ? UPPERCASE_PATTERN.test(name) : false;
 };
 
 export const queryStableQueryClient = defineRule({
@@ -45,18 +37,13 @@ export const queryStableQueryClient = defineRule({
       // Only fire when the nearest enclosing function is the component itself
       // — i.e. the construction runs in the render body. A nested closure
       // (event handler, stable-hook initializer) defers it, so it's stable.
-      let cursor: EsTreeNode | null | undefined = node.parent;
-      while (cursor) {
-        if (isFunctionLike(cursor)) {
-          if (!isComponentFunction(cursor)) return;
-          context.report({
-            node,
-            message: "new QueryClient() inside a component wipes your cache on every render.",
-          });
-          return;
-        }
-        cursor = cursor.parent ?? null;
-      }
+      const enclosingFunction = findEnclosingFunction(node);
+      if (!enclosingFunction) return;
+      if (!isComponentFunction(enclosingFunction)) return;
+      context.report({
+        node,
+        message: "new QueryClient() inside a component wipes your cache on every render.",
+      });
     },
   }),
 });

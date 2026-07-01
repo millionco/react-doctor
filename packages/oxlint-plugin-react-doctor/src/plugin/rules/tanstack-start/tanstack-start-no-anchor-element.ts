@@ -4,15 +4,8 @@ import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-
-const findNamedAttribute = (attributes: EsTreeNode[], name: string): EsTreeNode | undefined =>
-  attributes.find(
-    (attribute) =>
-      isNodeOfType(attribute, "JSXAttribute") &&
-      isNodeOfType(attribute.name, "JSXIdentifier") &&
-      attribute.name.name === name,
-  );
 
 const getAttributeStringValue = (attribute: EsTreeNode | undefined): string | null => {
   if (!attribute || !isNodeOfType(attribute, "JSXAttribute") || !attribute.value) return null;
@@ -46,15 +39,8 @@ export const tanstackStartNoAnchorElement = defineRule({
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "a") return;
 
       const attributes = node.attributes ?? [];
-      const hrefAttribute = attributes.find(
-        (attribute) =>
-          isNodeOfType(attribute, "JSXAttribute") &&
-          isNodeOfType(attribute.name, "JSXIdentifier") &&
-          attribute.name.name === "href",
-      );
-
-      if (!hrefAttribute || !isNodeOfType(hrefAttribute, "JSXAttribute")) return;
-      if (!hrefAttribute.value) return;
+      const hrefAttribute = findJsxAttribute(attributes, "href");
+      if (!hrefAttribute?.value) return;
 
       let hrefValue: string | number | bigint | boolean | RegExp | null = null;
       if (isNodeOfType(hrefAttribute.value, "Literal")) {
@@ -80,8 +66,8 @@ export const tanstackStartNoAnchorElement = defineRule({
 
       // A `download` link or a new-tab link must stay a real <a>; a Link
       // can't trigger a browser download or open in a new tab the same way.
-      if (findNamedAttribute(attributes, "download")) return;
-      if (getAttributeStringValue(findNamedAttribute(attributes, "target")) === "_blank") return;
+      if (findJsxAttribute(attributes, "download")) return;
+      if (getAttributeStringValue(findJsxAttribute(attributes, "target")) === "_blank") return;
 
       context.report({
         node,

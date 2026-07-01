@@ -52,6 +52,10 @@ export const UPPERCASE_PATTERN = /^[A-Z]/;
 // destructured.
 export const REACT_HANDLER_PROP_PATTERN = /^on[A-Z]/;
 
+// React's Rules-of-Hooks naming convention — an identifier is a hook when it
+// starts with `use` followed by an uppercase letter (`useState`, `useMemo`).
+export const HOOK_NAME_PATTERN = /^use[A-Z]/;
+
 // Naming convention for locally declared event-handler functions —
 // `handleSubmit`, `onLogin`, etc. Functions named this way are wired
 // to events and invoked later, not during render.

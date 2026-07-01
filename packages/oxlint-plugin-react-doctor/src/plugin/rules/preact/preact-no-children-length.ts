@@ -1,14 +1,13 @@
+import { HOOK_NAME_PATTERN } from "../../constants/react.js";
 import { containsJsxElement } from "../../utils/contains-jsx-element.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
-import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
-
-const HOOK_NAME_PATTERN = /^use[A-Z]/;
 
 // A function destructuring `{ children }` is only a Preact/React component
 // (where `children` is VNode children) when there's corroborating evidence:
@@ -82,12 +81,8 @@ const isDestructuredChildrenParam = (identifier: EsTreeNodeOfType<"Identifier">)
 // VNode children inside a component; a plain data helper reading a tree
 // node's `children` array (`flattenTree(props)`) is not.
 const isInsideComponentLikeFunction = (node: EsTreeNode): boolean => {
-  let cursor: EsTreeNode | null | undefined = node.parent;
-  while (cursor) {
-    if (isFunctionLike(cursor)) return isComponentLikeFunction(cursor);
-    cursor = cursor.parent ?? null;
-  }
-  return false;
+  const enclosing = findEnclosingFunction(node);
+  return enclosing ? isComponentLikeFunction(enclosing) : false;
 };
 
 // Matches the `children` tail of `props.children`, `this.props.children`,

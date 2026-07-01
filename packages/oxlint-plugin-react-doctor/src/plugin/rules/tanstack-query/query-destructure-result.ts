@@ -2,7 +2,7 @@ import { TANSTACK_QUERY_HOOKS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { isTanstackQuerySource } from "../../utils/is-tanstack-query-source.js";
-import { isFunctionLike } from "../../utils/is-function-like.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -20,11 +20,7 @@ const isForwardedBinding = (
   declarator: EsTreeNodeOfType<"VariableDeclarator">,
   bindingName: string,
 ): boolean => {
-  let enclosingScope: EsTreeNode | null | undefined = declarator.parent;
-  while (enclosingScope && !isFunctionLike(enclosingScope)) {
-    enclosingScope = enclosingScope.parent ?? null;
-  }
-  const scope = enclosingScope ?? declarator.parent;
+  const scope = findEnclosingFunction(declarator) ?? declarator.parent;
   if (!scope) return false;
 
   let forwarded = false;

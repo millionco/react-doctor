@@ -21,8 +21,7 @@ describe("react-native/rn-no-legacy-expo-packages — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  // Bugbot: a fully inline-type import (`import { type Foo }`) is erased too, so
-  // it pulls in no runtime code and must not be flagged.
+  // Bugbot: a fully inline-type import is erased, so it pulls in no runtime code.
   it("stays silent on a fully inline-type import", () => {
     const result = runRule(
       rnNoLegacyExpoPackages,

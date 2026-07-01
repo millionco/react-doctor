@@ -1,5 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -25,20 +25,7 @@ export const rnBottomSheetPreferNative = defineRule({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
       if (typeof source !== "string" || !JS_BOTTOM_SHEET_PACKAGES.has(source)) return;
-      // Type-only imports are erased at build time, so `import type {
-      // ActionSheetRef }` instantiates no JS bottom sheet at runtime. The
-      // inline form (`import { type ActionSheetRef }`) erases too when every
-      // specifier is type-only.
-      if (node.importKind === "type") return;
-      const specifiers = node.specifiers ?? [];
-      if (
-        specifiers.length > 0 &&
-        specifiers.every(
-          (specifier) =>
-            isNodeOfType(specifier, "ImportSpecifier") && specifier.importKind === "type",
-        )
-      )
-        return;
+      if (isTypeOnlyImport(node)) return;
       context.report({
         node,
         message: `Users get JS-driven sheet gestures and presentation with ${source}, instead of the platform-native formSheet behavior.`,

@@ -21,8 +21,7 @@ describe("react-native/rn-no-non-native-navigator — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  // Bugbot: a fully inline-type import is erased, so it instantiates no
-  // navigator at runtime and must not be flagged.
+  // Bugbot: a fully inline-type import is erased, so it instantiates no navigator at runtime.
   it("stays silent on a fully inline-type navigator import", () => {
     const result = runRule(
       rnNoNonNativeNavigator,

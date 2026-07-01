@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -29,10 +30,7 @@ export const rnPreferExpoImage = defineRule({
         const source = node.source?.value;
 
         if (source !== "react-native") return;
-        // Type-only imports are erased at build time, so neither the
-        // declaration form (`import type { Image }`) nor the inline specifier
-        // form (`import { type Image }`) instantiates a runtime <Image>.
-        if (node.importKind === "type") return;
+        if (isTypeOnlyImport(node)) return;
         for (const specifier of node.specifiers ?? []) {
           if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
           if (specifier.importKind === "type") continue;

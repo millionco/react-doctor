@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { hasDirective } from "../../utils/has-directive.js";
+import { isHookCall } from "../../utils/is-hook-call.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -25,16 +26,8 @@ const isBooleanExpression = (node: EsTreeNode | null | undefined): boolean => {
 
 const isUseStateCall = (
   node: EsTreeNode | null | undefined,
-): node is EsTreeNodeOfType<"CallExpression"> => {
-  if (!node || !isNodeOfType(node, "CallExpression")) return false;
-  const callee = node.callee;
-  if (isNodeOfType(callee, "Identifier")) return callee.name === "useState";
-  return (
-    isNodeOfType(callee, "MemberExpression") &&
-    isNodeOfType(callee.property, "Identifier") &&
-    callee.property.name === "useState"
-  );
-};
+): node is EsTreeNodeOfType<"CallExpression"> =>
+  isNodeOfType(node, "CallExpression") && isHookCall(node, "useState");
 
 const findEnclosingScope = (node: EsTreeNode): EsTreeNode | null => {
   let ancestor: EsTreeNode | null | undefined = node.parent;
@@ -236,9 +229,8 @@ export const rnNoFalsyAndRender = defineRule({
         if (!left) return;
 
         if (!isLikelyNumericExpression(left)) return;
-        // A numeric-sounding name that provably holds a boolean (e.g.
-        // `const [progress, setProgress] = useState(false)`) never renders a
-        // bare `0`, so the crash warning would be a false positive.
+        // A numeric-sounding name that provably holds a boolean never renders a
+        // bare `0`, so flagging it would be a false positive.
         if (isNodeOfType(left, "Identifier") && isProvablyBooleanIdentifier(left)) return;
 
         context.report({

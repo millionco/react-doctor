@@ -16,9 +16,6 @@ export const rnNoLegacyExpoPackages = defineRule({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
       if (typeof source !== "string") return;
-      // Type-only imports are erased at build time, so `import type { ... }`
-      // and a fully inline-type `import { type ... }` pull in no runtime code
-      // from the legacy package.
       if (isTypeOnlyImport(node)) return;
 
       for (const [packageName] of LEGACY_EXPO_PACKAGE_REPLACEMENTS) {

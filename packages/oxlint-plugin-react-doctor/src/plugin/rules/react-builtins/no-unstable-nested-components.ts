@@ -336,7 +336,6 @@ export const noUnstableNestedComponents = defineRule({
 
     const enqueueCandidate = (
       candidateNode: EsTreeNode,
-      reportNode: EsTreeNode,
       requiredInstantiationName: string | null,
     ): void => {
       if (isFirstArgumentOfHocCall(candidateNode)) return;
@@ -350,7 +349,7 @@ export const noUnstableNestedComponents = defineRule({
       const enclosing = findEnclosingComponent(candidateNode);
       if (!enclosing) return;
       queuedReports.push({
-        reportNode,
+        reportNode: candidateNode,
         message: buildMessage(enclosing.name),
         // A prop / object-callback candidate is instantiated by its
         // consumer, so don't gate it on local instantiation.
@@ -374,7 +373,7 @@ export const noUnstableNestedComponents = defineRule({
       if (!isCandidate) return;
       const requiredInstantiationName =
         isNameCandidate && propInfo === null && !isObjectCallback ? inferredName : null;
-      enqueueCandidate(node as EsTreeNode, node as EsTreeNode, requiredInstantiationName);
+      enqueueCandidate(node as EsTreeNode, requiredInstantiationName);
     };
 
     return {
@@ -395,13 +394,13 @@ export const noUnstableNestedComponents = defineRule({
         // tldraw, `class Tool extends BaseTool`, etc.) as a nested React
         // component candidate.
         if (!isReactClassComponent(node as EsTreeNode)) return;
-        enqueueCandidate(node as EsTreeNode, node as EsTreeNode, null);
+        enqueueCandidate(node as EsTreeNode, null);
       },
       ClassExpression(node: EsTreeNodeOfType<"ClassExpression">) {
         const inferredName = node.id?.name ?? inferFunctionLikeName(node as EsTreeNode);
         if (!inferredName || !isReactComponentName(inferredName)) return;
         if (!isReactClassComponent(node as EsTreeNode)) return;
-        enqueueCandidate(node as EsTreeNode, node as EsTreeNode, null);
+        enqueueCandidate(node as EsTreeNode, null);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (isCreateElementCall(node)) {
@@ -412,7 +411,7 @@ export const noUnstableNestedComponents = defineRule({
         }
         if (!isHocCallee(node)) return;
         if (!hocCallContainsComponent(node)) return;
-        enqueueCandidate(node as EsTreeNode, node as EsTreeNode, null);
+        enqueueCandidate(node as EsTreeNode, null);
       },
       "Program:exit"() {
         for (const report of queuedReports) {

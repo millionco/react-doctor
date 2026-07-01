@@ -4,7 +4,6 @@ import { isImportedFromModule } from "../../utils/find-import-source-for-name.js
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const ALLOWED_NAMESPACES = new Set(["React", "ReactDOM", "ReactDom"]);
-const REACT_DOM_MODULE = "react-dom";
 const MESSAGE = "`findDOMNode` crashes your app in React 19 because it was removed.";
 
 // Port of `oxc_linter::rules::react::no_find_dom_node`. Flags
@@ -21,7 +20,7 @@ export const noFindDomNode = defineRule({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callee = node.callee;
       if (isNodeOfType(callee, "Identifier") && callee.name === "findDOMNode") {
-        if (isImportedFromModule(node, callee.name, REACT_DOM_MODULE)) {
+        if (isImportedFromModule(node, callee.name, "react-dom")) {
           context.report({ node: callee, message: MESSAGE });
         }
         return;

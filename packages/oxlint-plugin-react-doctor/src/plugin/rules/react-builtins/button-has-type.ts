@@ -7,6 +7,7 @@ import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { Rule } from "../../utils/rule.js";
 
@@ -85,11 +86,6 @@ const isProvenValidExpression = (
   return false;
 };
 
-// `<button type={type}>` (or `<button type={props.type}>`) is a
-// wrapper component forwarding the consumer's chosen type — the rule
-// should fire at the CONSUMER's call site (where the literal value
-// lives), not at the trampoline. Without this every styled-button
-// wrapper that exposes `type` to its caller eats a diagnostic.
 // True when the identifier binds to a destructured `type` prop, renamed
 // or not (`({ type }) => …` / `({ type: kind }) => …`). The binding
 // identifier's parent Property carries the original key `type`, so the
@@ -107,6 +103,11 @@ const bindsToDestructuredTypeProp = (expression: EsTreeNodeOfType<"Identifier">)
   return false;
 };
 
+// `<button type={type}>` (or `<button type={props.type}>`) is a
+// wrapper component forwarding the consumer's chosen type — the rule
+// should fire at the CONSUMER's call site (where the literal value
+// lives), not at the trampoline. Without this every styled-button
+// wrapper that exposes `type` to its caller eats a diagnostic.
 const isConsumerPropForward = (expression: EsTreeNode): boolean => {
   if (isNodeOfType(expression, "Identifier")) {
     if (expression.name === "type") return true;
@@ -133,14 +134,9 @@ const isConsumerPropForward = (expression: EsTreeNode): boolean => {
 
 // A props argument that is provably nullish (`null`, `undefined`, `void 0`)
 // carries no `type` — unlike an opaque bag, which may forward one at runtime.
-const isNullishPropsArgument = (propsArgument: EsTreeNode): boolean => {
-  if (isNodeOfType(propsArgument, "Literal") && propsArgument.value === null) return true;
-  if (isNodeOfType(propsArgument, "Identifier") && propsArgument.name === "undefined") return true;
-  if (isNodeOfType(propsArgument, "UnaryExpression") && propsArgument.operator === "void") {
-    return true;
-  }
-  return false;
-};
+const isNullishPropsArgument = (propsArgument: EsTreeNode): boolean =>
+  isNullishExpression(propsArgument) ||
+  (isNodeOfType(propsArgument, "UnaryExpression") && propsArgument.operator === "void");
 
 const reportInvalid = (context: Parameters<Rule["create"]>[0], reportNode: EsTreeNode): void => {
   context.report({ node: reportNode, message: INVALID_MESSAGE });

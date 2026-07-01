@@ -1,5 +1,6 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isNullishExpression } from "./is-nullish-expression.js";
 
 // True when a JSX child renders actual content. The JSX transform drops
 // whitespace-with-newline text (the auto-formatted line break between
@@ -15,8 +16,7 @@ export const isMeaningfulJsxChild = (child: EsTreeNode): boolean => {
   if (isNodeOfType(child, "JSXExpressionContainer")) {
     const expression = child.expression;
     if (!expression || isNodeOfType(expression, "JSXEmptyExpression")) return false;
-    if (isNodeOfType(expression, "Identifier") && expression.name === "undefined") return false;
-    if (isNodeOfType(expression, "Literal") && expression.value === null) return false;
+    if (isNullishExpression(expression)) return false;
     return true;
   }
   return true;

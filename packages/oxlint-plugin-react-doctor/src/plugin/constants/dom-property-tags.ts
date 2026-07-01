@@ -118,8 +118,7 @@ export const DOM_PROPERTY_TO_ALLOWED_TAGS: ReadonlyMap<string, ReadonlySet<strin
   ["shadowrootserializable", new Set(["template"])],
   [
     // A presentation/CSS attribute valid on every transformable SVG
-    // element, not just `<rect>`. React forwards hyphenated SVG
-    // attributes unchanged, so these all render correctly.
+    // element, not just `<rect>`.
     "transform-origin",
     new Set([
       "circle",

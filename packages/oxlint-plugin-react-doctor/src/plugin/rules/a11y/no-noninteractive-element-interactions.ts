@@ -34,6 +34,14 @@ const collectRoleBranches = (expression: EsTreeNode, out: RoleExpressionBranches
     }
     return;
   }
+  // `undefined` is an Identifier, not a Literal, but resolves to no role just
+  // like a `null`/`false` literal — so a branch that yields it leaves the
+  // element sometimes role-less. A different identifier (`role={dynamicRole}`)
+  // stays opaque, so it does not flip the flag.
+  if (isNodeOfType(expression, "Identifier") && expression.name === "undefined") {
+    out.hasNonRoleBranch = true;
+    return;
+  }
   if (isNodeOfType(expression, "ConditionalExpression")) {
     collectRoleBranches(expression.consequent as EsTreeNode, out);
     collectRoleBranches(expression.alternate as EsTreeNode, out);
@@ -92,8 +100,8 @@ export const noNoninteractiveElementInteractions = defineRule({
         // a non-role value, the element always has one. When a role is
         // present but fully opaque (`role={x}`), we can't prove it is
         // non-interactive, so we stay quiet (the SolidJS-port idiom keeps
-        // roles as ternaries). But a provable escape to `null`/`false` (or
-        // the `&&` short-circuit) means the element is sometimes role-less,
+        // roles as ternaries). But a provable escape to `null`/`false`/
+        // `undefined` (or the `&&` short-circuit) means it is sometimes role-less,
         // so we still report.
         const roleValue = roleAttr.value as EsTreeNode | null;
         if (roleValue && isNodeOfType(roleValue, "JSXExpressionContainer")) {

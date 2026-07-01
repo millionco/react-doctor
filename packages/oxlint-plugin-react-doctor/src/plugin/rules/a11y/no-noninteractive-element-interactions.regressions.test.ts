@@ -42,4 +42,32 @@ describe("a11y/no-noninteractive-element-interactions regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  // `undefined` is an Identifier, not a Literal, so a bare `role={undefined}`
+  // resolves to no role — the element is role-less and must still be flagged.
+  it("flags a bare `role={undefined}`", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<li role={undefined} onClick={() => {}}>x</li>`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a ternary role whose branch resolves to `undefined`", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<li role={show ? "button" : undefined} onClick={() => {}}>x</li>`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // A genuinely opaque variable role stays silent — we can't prove it's
+  // non-interactive, so it must NOT be flagged (guards against over-fixing).
+  it("stays silent for an opaque variable role", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<li role={dynamicRole} onClick={() => {}}>x</li>`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { detectPreES2023Target } from "../src/project-info/detectors.js";
 import { discoverProject } from "../src/project-info/discover-project.js";
-import { buildCapabilities } from "../src/runners/oxlint/capabilities.js";
+import { buildCapabilities } from "../src/project-info/capabilities.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-detect-es2023-target-"));
 

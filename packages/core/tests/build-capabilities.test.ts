@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { ProjectInfo } from "../src/types/index.js";
-import { buildCapabilities, shouldEnableRule } from "../src/runners/oxlint/capabilities.js";
+import {
+  buildCapabilities,
+  getCapabilities,
+  shouldEnableRule,
+} from "../src/project-info/capabilities.js";
 
 const baseProject: ProjectInfo = {
   rootDirectory: "/tmp/project",
@@ -287,6 +291,30 @@ describe("buildCapabilities", () => {
     const serverNext = buildCapabilities({ ...baseProject, framework: "nextjs" });
     expect(serverNext.has("nextjs:static-export")).toBe(false);
     expect(serverNext.has("server-actions")).toBe(true);
+  });
+
+  it("emits `client-only` for SPA / mobile frameworks only", () => {
+    for (const framework of ["vite", "cra", "gatsby", "react-native", "expo"] as const) {
+      expect(buildCapabilities({ ...baseProject, framework }).has("client-only")).toBe(true);
+    }
+    for (const framework of ["nextjs", "remix", "tanstack-start", "preact", "unknown"] as const) {
+      expect(buildCapabilities({ ...baseProject, framework }).has("client-only")).toBe(false);
+    }
+  });
+
+  it("does not treat a statically-exported Next.js app as `client-only`", () => {
+    const staticExport = buildCapabilities({
+      ...baseProject,
+      framework: "nextjs",
+      isStaticExport: true,
+    });
+    expect(staticExport.has("client-only")).toBe(false);
+  });
+
+  it("returns one memoized set per ProjectInfo identity via getCapabilities", () => {
+    const first = getCapabilities(baseProject);
+    expect(getCapabilities(baseProject)).toBe(first);
+    expect(getCapabilities({ ...baseProject })).not.toBe(first);
   });
 
   it("emits `pre-es2023` when the project target predates ES2023", () => {

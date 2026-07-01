@@ -103,6 +103,6 @@ export * from "./utils/resolve-scan-concurrency.js";
 export * from "./utils/sort-diagnostics-stable.js";
 export * from "./utils/to-relative-path.js";
 export * from "./utils/warn-config-issue.js";
-export * from "./runners/oxlint/capabilities.js";
+export * from "./project-info/capabilities.js";
 export * from "./runners/oxlint/config.js";
 export * from "./runners/oxlint/plugin-resolution.js";

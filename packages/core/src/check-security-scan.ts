@@ -1,10 +1,10 @@
 import { REACT_DOCTOR_RULES } from "oxlint-plugin-react-doctor";
-import type { FileScan, ScannedFile } from "oxlint-plugin-react-doctor";
+import type { Capability, FileScan, ScannedFile } from "oxlint-plugin-react-doctor";
 import { buildSecurityScanDiagnostic } from "./checks/security-scan/build-security-scan-diagnostic.js";
 import type { SecurityScanRuleEntry } from "./checks/security-scan/build-security-scan-diagnostic.js";
 import { collectSecurityScanFiles } from "./checks/security-scan/collect-security-scan-files.js";
 import { SECURITY_SCAN_YIELD_FILE_INTERVAL } from "./checks/security-scan/constants.js";
-import { buildCapabilities, shouldEnableRule } from "./runners/oxlint/capabilities.js";
+import { getCapabilities, shouldEnableRule } from "./project-info/capabilities.js";
 import type { Diagnostic, ProjectInfo } from "./types/index.js";
 import { isPathGitIgnored } from "./utils/is-path-git-ignored.js";
 import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
@@ -35,7 +35,7 @@ const createSecurityScanSession = (
   rootDirectory: string,
   options: CheckSecurityScanOptions,
 ): SecurityScanSession | null => {
-  const capabilities = options.project ? buildCapabilities(options.project) : new Set<string>();
+  const capabilities = options.project ? getCapabilities(options.project) : new Set<Capability>();
   const ignoredTags = options.ignoredTags ?? new Set<string>();
 
   const enabledScanRules: EnabledScanRule[] = REACT_DOCTOR_RULES.flatMap((entry) => {

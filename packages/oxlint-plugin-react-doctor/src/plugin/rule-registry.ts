@@ -332,7 +332,6 @@ import { noUnguardedThrowingParseCall } from "./rules/correctness/no-unguarded-t
 import { noUnknownProperty } from "./rules/react-builtins/no-unknown-property.js";
 import { noUnsafe } from "./rules/react-builtins/no-unsafe.js";
 import { noUnsafeJsonParse } from "./rules/correctness/no-unsafe-json-parse.js";
-import { noUnsafeJsonParseImmediateMemberAccess } from "./rules/correctness/no-unsafe-json-parse-immediate-member-access.js";
 import { noUnstableNestedComponents } from "./rules/react-builtins/no-unstable-nested-components.js";
 import { noUsememoSimpleExpression } from "./rules/performance/no-usememo-simple-expression.js";
 import { noWholeObjectDefaultLosingPerKeyDefaults } from "./rules/correctness/no-whole-object-default-losing-per-key-defaults.js";
@@ -4264,17 +4263,6 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...noUnsafeJsonParse,
-      framework: "global",
-      category: "Bugs",
-    },
-  },
-  {
-    key: "react-doctor/no-unsafe-json-parse-immediate-member-access",
-    id: "no-unsafe-json-parse-immediate-member-access",
-    source: "react-doctor",
-    originallyExternal: false,
-    rule: {
-      ...noUnsafeJsonParseImmediateMemberAccess,
       framework: "global",
       category: "Bugs",
     },

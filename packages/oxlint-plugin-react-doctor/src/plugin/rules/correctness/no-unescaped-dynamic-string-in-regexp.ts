@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { isInsideTryStatement } from "../../utils/is-inside-try-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -68,19 +69,6 @@ const expressionAppliesEscapeHelper = (argument: EsTreeNode): boolean => {
   return escaped;
 };
 
-// Intentional regex-input UIs validate user-authored patterns inside a
-// try/catch; that is a feature, not the escaping bug this rule targets.
-const isInsideTryBlock = (node: EsTreeNode): boolean => {
-  let cursor: EsTreeNode | null | undefined = node;
-  while (cursor?.parent) {
-    const ancestor: EsTreeNode = cursor.parent;
-    if (isNodeOfType(ancestor, "TryStatement") && ancestor.block === cursor)
-      return true;
-    cursor = ancestor;
-  }
-  return false;
-};
-
 export const noUnescapedDynamicStringInRegexp = defineRule({
   id: "no-unescaped-dynamic-string-in-regexp",
   title: "Unescaped dynamic string in RegExp constructor",
@@ -101,7 +89,7 @@ export const noUnescapedDynamicStringInRegexp = defineRule({
       if (isFullyLiteralPattern(firstArgument)) return;
       if (!argumentHasSearchTermSignal(firstArgument)) return;
       if (expressionAppliesEscapeHelper(firstArgument)) return;
-      if (isInsideTryBlock(node)) return;
+      if (isInsideTryStatement(node, { region: "block" })) return;
       context.report({
         node,
         message:

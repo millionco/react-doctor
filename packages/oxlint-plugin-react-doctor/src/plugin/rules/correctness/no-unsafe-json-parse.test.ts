@@ -75,6 +75,35 @@ describe("no-unsafe-json-parse", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it('does not flag a `?? "{}"` fallback argument', () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `const value = JSON.parse(input ?? "{}").value;`
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it('does not flag a `|| "[]"` fallback argument', () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `const length = JSON.parse(input || "[]").length;`
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when JSON is shadowed by a local binding", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `
+      function read(raw) {
+        const JSON = { parse: () => ({ value: 1 }) };
+        return JSON.parse(raw).value;
+      }
+      `
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a parse dereference inside a test file", () => {
     const result = runRule(
       noUnsafeJsonParse,

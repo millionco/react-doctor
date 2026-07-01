@@ -4,9 +4,9 @@
 "@react-doctor/core": patch
 ---
 
-feat(rules): add 90 new lint rules with package-version guarding, SSR gating, and corpus-hardened detectors
+feat(rules): add 89 new lint rules with package-version guarding, SSR gating, and corpus-hardened detectors
 
-Adds 90 new AST-only rules (correctness, state-and-effects, performance, security, a11y, bundle-size, architecture, tanstack-query, nextjs, design, react-builtins) authored from the `faire` and `react-bench` suggested-rule specs. Each new rule was validated against an 81-repo OSS corpus and hardened for false positives.
+Adds 89 new AST-only rules (correctness, state-and-effects, performance, security, a11y, bundle-size, architecture, tanstack-query, nextjs, design, react-builtins) authored from the `faire` and `react-bench` suggested-rule specs. Each new rule was validated against an 81-repo OSS corpus and hardened for false positives.
 
 Highlights:
 

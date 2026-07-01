@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { isInsideTryStatement } from "../../utils/is-inside-try-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -103,18 +104,6 @@ const isStringLiteralSelector = (argument: EsTreeNode): boolean => {
   );
 };
 
-const isInsideTryBlock = (node: EsTreeNode): boolean => {
-  let child: EsTreeNode = node;
-  let ancestor: EsTreeNode | null | undefined = node.parent;
-  while (ancestor) {
-    if (isNodeOfType(ancestor, "TryStatement") && child === ancestor.block)
-      return true;
-    child = ancestor;
-    ancestor = ancestor.parent ?? null;
-  }
-  return false;
-};
-
 // Flags `document.querySelector(x)` / `querySelectorAll` / `Element.matches` /
 // `closest` when the selector argument taints to an anchor href/hash value and
 // the call is not inside try/catch. The query throws a `DOMException` on an
@@ -141,7 +130,7 @@ export const noNonLiteralSelectorQueryWithoutTryCatch = defineRule({
         return;
       if (isStringLiteralSelector(selectorArgument)) return;
       if (!selectorArgumentTaintsToHref(selectorArgument)) return;
-      if (isInsideTryBlock(node as EsTreeNode)) return;
+      if (isInsideTryStatement(node as EsTreeNode, { region: "block" })) return;
       context.report({ node, message: MESSAGE });
     },
   }),

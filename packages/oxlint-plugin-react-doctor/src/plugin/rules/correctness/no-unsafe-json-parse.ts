@@ -1,8 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isInsideTryStatement } from "../../utils/is-inside-try-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isObjectOfMemberAccess } from "../../utils/is-object-of-member-access.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
@@ -25,6 +27,12 @@ const isJsonMethodCall = (node: EsTreeNode, method: string): boolean =>
 // plain string to walk past it.
 const PARENTHESIZED_EXPRESSION_TYPE: string = "ParenthesizedExpression";
 
+// A `??` / `||` fallback (`JSON.parse(input ?? "{}")`) supplies valid JSON when
+// the source is missing, so the parse is guarded by construction.
+const hasFallbackArgument = (argument: EsTreeNode): boolean =>
+  isNodeOfType(argument, "LogicalExpression") &&
+  (argument.operator === "??" || argument.operator === "||");
+
 // True when a property is read directly off the call result:
 // `JSON.parse(x).foo`, tolerating `(JSON.parse(x)).foo` parens. A `TSAsExpression`
 // / `TSSatisfiesExpression` parent means the author annotated the result and
@@ -37,12 +45,7 @@ const isImmediatelyMemberAccessed = (call: EsTreeNode): boolean => {
   ) {
     current = current.parent;
   }
-  const parent = current.parent;
-  return Boolean(
-    parent &&
-      isNodeOfType(parent, "MemberExpression") &&
-      parent.object === current
-  );
+  return isObjectOfMemberAccess(current);
 };
 
 export const noUnsafeJsonParse = defineRule({
@@ -56,12 +59,22 @@ export const noUnsafeJsonParse = defineRule({
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isJsonMethodCall(node as EsTreeNode, "parse")) return;
-      const firstArgument = node.arguments?.[0];
+      // A same-file binding named `JSON` shadows the global — bail out.
+      const callee = node.callee;
       if (
-        firstArgument &&
-        isJsonMethodCall(stripParenExpression(firstArgument), "stringify")
+        isNodeOfType(callee, "MemberExpression") &&
+        isNodeOfType(callee.object, "Identifier") &&
+        findVariableInitializer(callee.object, "JSON")
       )
         return;
+      const firstArgument = node.arguments?.[0];
+      if (firstArgument) {
+        const unwrappedArgument = stripParenExpression(firstArgument);
+        // `JSON.parse(JSON.stringify(x))` is the deep-clone idiom; stringify
+        // output is always valid JSON.
+        if (isJsonMethodCall(unwrappedArgument, "stringify")) return;
+        if (hasFallbackArgument(unwrappedArgument)) return;
+      }
       if (!isImmediatelyMemberAccessed(node as EsTreeNode)) return;
       if (isInsideTryStatement(node as EsTreeNode, { region: "block" })) return;
       context.report({ node, message: MESSAGE });

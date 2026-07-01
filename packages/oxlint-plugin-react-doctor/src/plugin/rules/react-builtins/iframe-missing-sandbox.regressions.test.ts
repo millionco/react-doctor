@@ -22,4 +22,36 @@ describe("react-builtins/iframe-missing-sandbox — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // The `createElement` path must mirror the JSX spread bailout: an opaque
+  // props bag or a `{ ...props }` spread can forward `sandbox` at runtime.
+  it("stays silent on createElement('iframe', props) with an opaque props bag", () => {
+    const result = runRule(
+      iframeMissingSandbox,
+      `const Frame = (props) => React.createElement("iframe", props);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on createElement('iframe', { ...props }) (sandbox may come via spread)", () => {
+    const result = runRule(
+      iframeMissingSandbox,
+      `const Frame = (props) => React.createElement("iframe", { ...props });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags createElement('iframe', null) (no props carry no sandbox)", () => {
+    const result = runRule(iframeMissingSandbox, `React.createElement("iframe", null);`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags createElement('iframe', { title }) with no sandbox and no spread", () => {
+    const result = runRule(iframeMissingSandbox, `React.createElement("iframe", { title: "x" });`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

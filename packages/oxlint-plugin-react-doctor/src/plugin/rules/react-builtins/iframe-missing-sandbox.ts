@@ -6,6 +6,7 @@ import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import type { Rule } from "../../utils/rule.js";
 
 const ALLOWED_SANDBOX_VALUES = new Set([
@@ -93,12 +94,26 @@ export const iframeMissingSandbox = defineRule({
       if (!firstArgument) return;
       if (!isNodeOfType(firstArgument, "Literal") || firstArgument.value !== "iframe") return;
       const propsArgument = node.arguments[1];
-      if (!propsArgument || !isNodeOfType(propsArgument, "ObjectExpression")) {
+      // No props or explicitly nullish props (`null`/`undefined`/`void 0`)
+      // carry no `sandbox` → missing.
+      if (
+        !propsArgument ||
+        isNullishExpression(propsArgument) ||
+        (isNodeOfType(propsArgument, "UnaryExpression") && propsArgument.operator === "void")
+      ) {
         context.report({ node, message: MISSING_MESSAGE });
         return;
       }
+      // An opaque props bag (`createElement("iframe", props)`) may forward
+      // `sandbox` at runtime — mirror the JSX spread bailout above.
+      if (!isNodeOfType(propsArgument, "ObjectExpression")) return;
       let sandboxValueNode: EsTreeNode | null = null;
+      let hasSpread = false;
       for (const property of propsArgument.properties) {
+        if (isNodeOfType(property, "SpreadElement")) {
+          hasSpread = true;
+          continue;
+        }
         if (!isNodeOfType(property, "Property")) continue;
         const propertyKey = property.key;
         const matches =
@@ -110,6 +125,8 @@ export const iframeMissingSandbox = defineRule({
         }
       }
       if (!sandboxValueNode) {
+        // `{ ...props }` may supply `sandbox` at runtime, like a JSX spread.
+        if (hasSpread) return;
         context.report({ node: propsArgument, message: MISSING_MESSAGE });
         return;
       }

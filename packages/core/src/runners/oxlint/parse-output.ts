@@ -11,7 +11,7 @@ import { ERROR_PREVIEW_LENGTH_CHARS } from "../../constants.js";
 import { isLintableSourceFile } from "../../utils/is-lintable-source-file.js";
 import { isMinifiedSource } from "../../utils/is-minified-source.js";
 import { OxlintOutputUnparseable, ReactDoctorError } from "../../errors.js";
-import { buildNoSecretsRecommendation } from "../../utils/build-no-secrets-recommendation.js";
+import { getCapabilities } from "../../project-info/capabilities.js";
 import { appendReanimatedSharedValueHint } from "../../utils/append-reanimated-shared-value-hint.js";
 import { redactSensitiveText } from "../../utils/redact-sensitive-text.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
@@ -87,24 +87,21 @@ const PLUGIN_CATEGORY_MAP: Record<string, string> = {
 const lookupOwnString = (record: Record<string, string>, key: string): string | undefined =>
   Object.hasOwn(record, key) ? record[key] : undefined;
 
-// Under `output: "export"` there is no request-time server, so the rule's
-// default "use middleware / getServerSideProps" advice is impossible. Keep the
-// still-valid client-side + render-time fixes and drop the server-only clause.
-const STATIC_EXPORT_REDIRECT_RECOMMENDATION =
-  'Avoid redirects inside useEffect — they flash the wrong page first. Use an event handler (e.g. onClick), or call redirect() from next/navigation during render (it prerenders a client-side redirect under output: "export"). Middleware and getServerSideProps redirects aren\'t available in a static export.';
-
+// A rule with a `recommendationFor` picks its own prose from the project's
+// capability set (e.g. the static-export redirect advice, the per-framework
+// public-env prefix); everything else renders the static `recommendation`.
+// Core carries no rule-specific prose or rule-name matches here.
 const getRuleRecommendation = (ruleName: string, project: ProjectInfo): string | undefined => {
-  if (ruleName === "no-secrets-in-client-code") {
-    return buildNoSecretsRecommendation(
-      project,
-      reactDoctorPlugin.rules["no-secrets-in-client-code"]?.recommendation ??
-        "Move secrets to server-only code",
+  const rule = reactDoctorPlugin.rules[ruleName];
+  if (!rule) return undefined;
+  if (rule.recommendationFor) {
+    const capabilities = getCapabilities(project);
+    const conditionalRecommendation = rule.recommendationFor((capability) =>
+      capabilities.has(capability),
     );
+    if (conditionalRecommendation !== undefined) return conditionalRecommendation;
   }
-  if (ruleName === "nextjs-no-client-side-redirect" && project.isStaticExport) {
-    return STATIC_EXPORT_REDIRECT_RECOMMENDATION;
-  }
-  return reactDoctorPlugin.rules[ruleName]?.recommendation;
+  return rule.recommendation;
 };
 
 // Same shape as `getRuleRecommendation`, but for the diagnostic category

@@ -2,10 +2,7 @@ import { NAVIGATION_RECEIVER_NAMES } from "../../constants/react.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
-import {
-  getReactDoctorStringSetting,
-  hasCapability,
-} from "../../utils/get-react-doctor-setting.js";
+import { hasCapability } from "../../utils/get-react-doctor-setting.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
@@ -29,12 +26,6 @@ const PREVENT_DEFAULT_ELEMENTS = new Map<string, string[]>([
   ["form", ["onSubmit"]],
   ["a", ["onClick"]],
 ]);
-
-// SPA / mobile frameworks where calling `preventDefault()` inside an
-// onSubmit IS the canonical pattern. The framework has no server-side
-// form handler to fall back to, so the "use a server action" advice
-// would be actively misleading. Suppress the form variant entirely.
-const CLIENT_ONLY_FRAMEWORKS = new Set<string>(["vite", "cra", "gatsby", "react-native", "expo"]);
 
 const FORM_MESSAGE_SERVER_CAPABLE =
   "Your users can't submit this <form> without JavaScript because onSubmit calls preventDefault(), so use a server action like `<form action={serverAction}>` to make it work either way.";
@@ -179,8 +170,10 @@ export const noPreventDefault = defineRule({
   recommendation:
     "Use `<form action>` where your framework supports it (it works without JS), or use a `<button>` instead of an `<a>` with preventDefault.",
   create: (context: RuleContext) => {
-    const framework = getReactDoctorStringSetting(context.settings, "framework");
-    const isClientOnlyFramework = framework !== undefined && CLIENT_ONLY_FRAMEWORKS.has(framework);
+    // SPA / mobile frameworks where calling `preventDefault()` inside an
+    // onSubmit IS the canonical pattern (no server-side form handler to
+    // fall back to). The framework list lives in core's `buildCapabilities`.
+    const isClientOnlyFramework = hasCapability(context.settings, "client-only");
     // Server-capable projects (Next.js / TanStack / Remix, but not a statically
     // exported Next.js app) get the progressive-enhancement "server action"
     // advice; everything else gets the framework-neutral message.

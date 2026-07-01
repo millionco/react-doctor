@@ -14,6 +14,13 @@ const expectPass = (code: string): void => {
   expect(result.diagnostics).toHaveLength(0);
 };
 
+const expectSuggests = (code: string, mathFn: "min" | "max"): void => {
+  const result = runRule(jsMinMaxLoop, code);
+  expect(result.parseErrors).toEqual([]);
+  expect(result.diagnostics).toHaveLength(1);
+  expect(result.diagnostics[0].message).toContain(`Math.${mathFn}(...array)`);
+};
+
 describe("js-performance/js-min-max-loop — regressions", () => {
   it("flags `.sort((a, b) => a - b)[0]` with the canonical numeric comparator", () => {
     expectFail(`const smallest = nums.sort((a, b) => a - b)[0];`);
@@ -21,5 +28,17 @@ describe("js-performance/js-min-max-loop — regressions", () => {
 
   it("does not flag a comparator-less lexicographic `.sort()[0]`", () => {
     expectPass(`const first = [...names].sort()[0];`);
+  });
+
+  // Bugbot: the rewrite hint has to follow the sort direction. Ascending puts
+  // the min at [0]; descending puts the max there.
+  it("suggests Math.min for ascending `[0]` and Math.max for ascending `[length-1]`", () => {
+    expectSuggests(`const smallest = nums.sort((a, b) => a - b)[0];`, "min");
+    expectSuggests(`const largest = nums.sort((a, b) => a - b)[nums.length - 1];`, "max");
+  });
+
+  it("suggests Math.max for descending `[0]` and Math.min for descending `[length-1]`", () => {
+    expectSuggests(`const largest = nums.sort((a, b) => b - a)[0];`, "max");
+    expectSuggests(`const smallest = nums.sort((a, b) => b - a)[nums.length - 1];`, "min");
   });
 });

@@ -7,25 +7,29 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // `Math.min` / `Math.max` can only express the scalar extremum of an
 // array's own values. `arr.sort(cmp)[0]` is equivalent ONLY when the
-// comparator is the canonical numeric identity comparator
-// `(a, b) => a - b` / `(a, b) => b - a`. A comparator-less `.sort()` is
-// lexicographic, so `Math.min/max` would return NaN for strings — that
+// comparator is the canonical numeric identity comparator: `(a, b) => a - b`
+// (ascending) or `(a, b) => b - a` (descending). A comparator-less `.sort()`
+// is lexicographic, so `Math.min/max` would return NaN for strings — that
 // case is excluded. A comparator that orders by a derived key, breaks
 // ties, or returns the element object also cannot be rewritten as
-// `Math.min/max`, so we must not report it.
-const isCanonicalNumericComparator = (comparator: EsTreeNode | undefined): boolean => {
+// `Math.min/max`, so we must not report it. The direction matters for the
+// rewrite hint: ascending puts the min at `[0]`, descending puts the max
+// there.
+const numericComparatorDirection = (
+  comparator: EsTreeNode | undefined,
+): "ascending" | "descending" | null => {
   if (
     !comparator ||
     (!isNodeOfType(comparator, "ArrowFunctionExpression") &&
       !isNodeOfType(comparator, "FunctionExpression"))
   ) {
-    return false;
+    return null;
   }
   const parameters = comparator.params ?? [];
-  if (parameters.length !== 2) return false;
+  if (parameters.length !== 2) return null;
   const [firstParameter, secondParameter] = parameters;
   if (!isNodeOfType(firstParameter, "Identifier") || !isNodeOfType(secondParameter, "Identifier")) {
-    return false;
+    return null;
   }
 
   let comparisonExpression: EsTreeNode | null = null;
@@ -34,9 +38,9 @@ const isCanonicalNumericComparator = (comparator: EsTreeNode | undefined): boole
     comparisonExpression = body;
   } else if (isNodeOfType(body, "BlockStatement")) {
     const statements = body.body ?? [];
-    if (statements.length !== 1) return false;
+    if (statements.length !== 1) return null;
     const onlyStatement = statements[0];
-    if (!isNodeOfType(onlyStatement, "ReturnStatement") || !onlyStatement.argument) return false;
+    if (!isNodeOfType(onlyStatement, "ReturnStatement") || !onlyStatement.argument) return null;
     comparisonExpression = onlyStatement.argument as EsTreeNode;
   }
 
@@ -47,15 +51,14 @@ const isCanonicalNumericComparator = (comparator: EsTreeNode | undefined): boole
     !isNodeOfType(comparisonExpression.left, "Identifier") ||
     !isNodeOfType(comparisonExpression.right, "Identifier")
   ) {
-    return false;
+    return null;
   }
 
   const leftName = comparisonExpression.left.name;
   const rightName = comparisonExpression.right.name;
-  return (
-    (leftName === firstParameter.name && rightName === secondParameter.name) ||
-    (leftName === secondParameter.name && rightName === firstParameter.name)
-  );
+  if (leftName === firstParameter.name && rightName === secondParameter.name) return "ascending";
+  if (leftName === secondParameter.name && rightName === firstParameter.name) return "descending";
+  return null;
 };
 
 export const jsMinMaxLoop = defineRule({
@@ -74,7 +77,8 @@ export const jsMinMaxLoop = defineRule({
         return;
 
       const comparator = object.arguments?.[0] as EsTreeNode | undefined;
-      if (!isCanonicalNumericComparator(comparator)) return;
+      const direction = numericComparatorDirection(comparator);
+      if (!direction) return;
 
       const isFirstElement = isNodeOfType(node.property, "Literal") && node.property.value === 0;
       const isLastElement =
@@ -84,7 +88,10 @@ export const jsMinMaxLoop = defineRule({
         node.property.right.value === 1;
 
       if (isFirstElement || isLastElement) {
-        const targetFunction = isFirstElement ? "min" : "max";
+        // Ascending puts the min at [0] and max at [length-1]; descending
+        // reverses both, so the rewrite hint has to follow the direction.
+        const readsMinimum = direction === "ascending" ? isFirstElement : isLastElement;
+        const targetFunction = readsMinimum ? "min" : "max";
         context.report({
           node,
           message: `This is slow because array.sort()[${isFirstElement ? "0" : "length-1"}] sorts the whole list just to grab the smallest or largest, so use Math.${targetFunction}(...array) instead`,

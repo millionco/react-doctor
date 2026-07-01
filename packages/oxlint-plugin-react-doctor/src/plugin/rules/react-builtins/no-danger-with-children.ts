@@ -6,6 +6,7 @@ import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isMeaningfulJsxChild } from "../../utils/is-meaningful-jsx-child.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 
 const MESSAGE = "React throws an error when you set both children & `dangerouslySetInnerHTML`.";
 
@@ -115,8 +116,11 @@ export const noDangerWithChildren = defineRule({
       if (!propsShape.hasDangerously) return;
 
       // 3+ args means createElement(tag, props, ...children) — children
-      // are passed positionally.
-      const hasPositionalChildren = node.arguments.length >= 3;
+      // are passed positionally. A nullish positional child (`…, null)`)
+      // renders nothing, mirroring the JSX path's isMeaningfulJsxChild.
+      const hasPositionalChildren = node.arguments
+        .slice(2)
+        .some((argument) => !isNullishExpression(argument));
       if (hasPositionalChildren || propsShape.hasChildren) {
         context.report({ node, message: MESSAGE });
       }

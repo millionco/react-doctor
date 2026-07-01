@@ -76,11 +76,7 @@ export const voidDomElementsNoChildren = defineRule({
       // path's isMeaningfulJsxChild, which doesn't count nullish children.
       const childrenArguments = node.arguments
         .slice(2)
-        .filter(
-          (argument) =>
-            !isNullishExpression(argument) &&
-            !(isNodeOfType(argument, "UnaryExpression") && argument.operator === "void"),
-        );
+        .filter((argument) => !isNullishExpression(argument));
       let hasChildrenLikeProp = false;
       if (propsArgument && isNodeOfType(propsArgument, "ObjectExpression")) {
         for (const property of propsArgument.properties) {

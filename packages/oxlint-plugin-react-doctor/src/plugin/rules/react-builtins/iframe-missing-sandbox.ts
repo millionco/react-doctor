@@ -96,11 +96,7 @@ export const iframeMissingSandbox = defineRule({
       const propsArgument = node.arguments[1];
       // No props or explicitly nullish props (`null`/`undefined`/`void 0`)
       // carry no `sandbox` → missing.
-      if (
-        !propsArgument ||
-        isNullishExpression(propsArgument) ||
-        (isNodeOfType(propsArgument, "UnaryExpression") && propsArgument.operator === "void")
-      ) {
+      if (!propsArgument || isNullishExpression(propsArgument)) {
         context.report({ node, message: MISSING_MESSAGE });
         return;
       }

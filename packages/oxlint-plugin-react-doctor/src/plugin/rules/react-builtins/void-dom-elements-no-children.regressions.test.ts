@@ -24,6 +24,14 @@ describe("react-builtins/void-dom-elements-no-children — regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  // `void 0` is `undefined` — React renders it as nothing, same as
+  // `{undefined}` (pins the isNullishExpression void case for JSX children).
+  it("does not flag a void element with a void-expression child", () => {
+    const result = runRule(voidDomElementsNoChildren, `const a = <br>{void 0}</br>;`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("still flags a void element with real text children", () => {
     const result = runRule(voidDomElementsNoChildren, `const a = <img>hi</img>;`);
     expect(result.parseErrors).toEqual([]);

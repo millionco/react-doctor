@@ -152,3 +152,30 @@ describe("react-builtins/rules-of-hooks — regressions: HoC callbacks under non
     );
   });
 });
+
+describe("react-builtins/rules-of-hooks — regressions: use() under the render-scope escape", () => {
+  // The multi-hook render-scope escape must cover the React 19 `use()`
+  // branch too: a `create*` factory that issues several hook calls is a
+  // render scope for `use(...)` just like for conventional hooks.
+  it("does not flag use() in a multi-hook factory function", () => {
+    const result = runTsx(`
+      import { use, useRef } from "react";
+      function createEditorState(promise) {
+        const stateRef = useRef(null);
+        const data = use(promise);
+        return { stateRef, data };
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags use() in a plain single-hook named function", () => {
+    const result = runTsx(`
+      import { use } from "react";
+      function readValue(promise) {
+        return use(promise);
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

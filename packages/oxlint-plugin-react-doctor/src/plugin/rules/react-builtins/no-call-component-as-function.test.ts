@@ -129,4 +129,38 @@ describe("no-call-component-as-function", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  // The rendered set is keyed by SYMBOL, not name: `<Item/>` of an
+  // imported binding must not count as instantiation of a same-named
+  // nested render helper.
+  it("does not flag a nested helper shadowing an imported name rendered elsewhere", () => {
+    const result = runRule(
+      noCallComponentAsFunction,
+      `
+      import { Item } from "./item";
+      const List = () => <ul><Item /></ul>;
+      const Parent = () => {
+        const Item = () => <li>local</li>;
+        return <ol>{Item()}</ol>;
+      };
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a nested render-helper that is ALSO mounted via createElement", () => {
+    const result = runRule(
+      noCallComponentAsFunction,
+      `
+      import { createElement } from "react";
+      const Settings = () => {
+        const GeneralSection = () => <div>general</div>;
+        return <div>{GeneralSection()}{createElement(GeneralSection, null)}</div>;
+      };
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -317,20 +317,60 @@ export const noUnstableNestedComponents = defineRule({
     const settings = resolveSettings(context.settings);
     const renderPropRegex = compileGlob(settings.propNamePattern);
 
-    // Names actually INSTANTIATED as React elements (`<Name/>` or
+    // Bindings actually INSTANTIATED as React elements (`<Name/>` or
     // `createElement(Name)`). A capitalized nested helper that is only
     // ever invoked as `Name()` is inlined into the parent's render —
     // no child fiber, no state to lose — so requiring instantiation
     // before reporting drops the inline-render-helper false positives.
+    // Keyed by the BINDING IDENTIFIER node the usage resolves to, so a
+    // same-named JSX usage of a DIFFERENT binding doesn't count; the
+    // name set only backs candidates without a binding (object-property
+    // components). The binding node (not the symbol id) is the key
+    // because scope analysis can register a hoisted declaration under
+    // two symbol records that share one binding identifier.
     // Only enforced for candidates that qualify SOLELY by their
     // PascalCase name; prop / object-callback / HoC candidates are
     // instantiated by their consumer and keep firing as before.
     const instantiatedComponentNames = new Set<string>();
+    const instantiatedBindingIdentifiers = new Set<EsTreeNode>();
+
+    const recordInstantiation = (identifier: EsTreeNode, name: string): void => {
+      instantiatedComponentNames.add(name);
+      const symbol = context.scopes.symbolFor(identifier);
+      if (symbol) instantiatedBindingIdentifiers.add(symbol.bindingIdentifier);
+    };
+
+    // The identifier that BINDS the candidate function's name (`function
+    // Name()` / `const Name = () => …`). The VariableDeclarator id wins
+    // over a named FunctionExpression's own `.id` — for `const X =
+    // function Y() {}` outside references resolve to `X`, while `Y` only
+    // binds inside the function body. Property keys and member
+    // assignments aren't bindings, so those shapes return null and the
+    // instantiation gate falls back to name matching.
+    const findFunctionBindingIdentifier = (functionLike: EsTreeNode): EsTreeNode | null => {
+      const parent = functionLike.parent;
+      if (
+        parent &&
+        isNodeOfType(parent, "VariableDeclarator") &&
+        isNodeOfType(parent.id, "Identifier")
+      ) {
+        return parent.id;
+      }
+      if (
+        (isNodeOfType(functionLike, "FunctionDeclaration") ||
+          isNodeOfType(functionLike, "FunctionExpression")) &&
+        functionLike.id
+      ) {
+        return functionLike.id;
+      }
+      return null;
+    };
 
     interface QueuedReport {
       reportNode: EsTreeNode;
       message: string;
       requiredInstantiationName: string | null;
+      requiredInstantiationBinding: EsTreeNode | null;
     }
     const queuedReports: QueuedReport[] = [];
 
@@ -348,12 +388,15 @@ export const noUnstableNestedComponents = defineRule({
       }
       const enclosing = findEnclosingComponent(candidateNode);
       if (!enclosing) return;
+      // A prop / object-callback candidate is instantiated by its
+      // consumer, so don't gate it on local instantiation.
+      const gatedName = propInfo ? null : requiredInstantiationName;
       queuedReports.push({
         reportNode: candidateNode,
         message: buildMessage(enclosing.name),
-        // A prop / object-callback candidate is instantiated by its
-        // consumer, so don't gate it on local instantiation.
-        requiredInstantiationName: propInfo ? null : requiredInstantiationName,
+        requiredInstantiationName: gatedName,
+        requiredInstantiationBinding:
+          gatedName !== null ? findFunctionBindingIdentifier(candidateNode) : null,
       });
     };
 
@@ -379,7 +422,7 @@ export const noUnstableNestedComponents = defineRule({
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (isNodeOfType(node.name, "JSXIdentifier") && isUppercaseName(node.name.name)) {
-          instantiatedComponentNames.add(node.name.name);
+          recordInstantiation(node.name as EsTreeNode, node.name.name);
         }
       },
       FunctionDeclaration: checkFunctionLike,
@@ -406,7 +449,7 @@ export const noUnstableNestedComponents = defineRule({
         if (isCreateElementCall(node)) {
           const firstArgument = node.arguments[0] as EsTreeNode | undefined;
           if (firstArgument && isNodeOfType(firstArgument, "Identifier")) {
-            instantiatedComponentNames.add(firstArgument.name);
+            recordInstantiation(firstArgument, firstArgument.name);
           }
         }
         if (!isHocCallee(node)) return;
@@ -415,11 +458,12 @@ export const noUnstableNestedComponents = defineRule({
       },
       "Program:exit"() {
         for (const report of queuedReports) {
-          if (
-            report.requiredInstantiationName !== null &&
-            !instantiatedComponentNames.has(report.requiredInstantiationName)
-          ) {
-            continue;
+          if (report.requiredInstantiationName !== null) {
+            const isInstantiated =
+              report.requiredInstantiationBinding !== null
+                ? instantiatedBindingIdentifiers.has(report.requiredInstantiationBinding)
+                : instantiatedComponentNames.has(report.requiredInstantiationName);
+            if (!isInstantiated) continue;
           }
           context.report({ node: report.reportNode, message: report.message });
         }

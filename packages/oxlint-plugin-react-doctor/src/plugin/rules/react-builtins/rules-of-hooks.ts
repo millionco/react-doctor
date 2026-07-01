@@ -691,13 +691,26 @@ export const rulesOfHooks = defineRule({
           return;
         }
 
+        // Structural render-scope escape: a named function whose own
+        // scope issues several hook calls is treated as a custom hook /
+        // factory body even when its name violates the `useXxx` /
+        // PascalCase convention (the Solid→React port names these
+        // `init` / `create*`). It still runs the conditional / loop /
+        // try checks below, so misplaced hooks inside it are caught.
+        const isLikelyRenderScope =
+          !enclosing.isComponentOrHook &&
+          enclosing.hasResolvedName &&
+          countOwnScopeHookCalls(enclosing.node, context.scopes, settings) >=
+            MIN_HOOK_CALLS_FOR_RENDER_SCOPE;
+
         // The React 19 `use(...)` hook RELAXES the conditional / loop /
         // early-return checks (it's intentionally callable in
         // conditionals) BUT still must be inside a component / custom
-        // hook scope and NOT inside try / catch / finally.
+        // hook scope — the render-scope escape counts as one — and NOT
+        // inside try / catch / finally.
         if (isReactUseHook(hookName)) {
           let outerWalker: EsTreeNode | null = enclosing.node;
-          let isInsideComponentOrHook = enclosing.isComponentOrHook;
+          let isInsideComponentOrHook = enclosing.isComponentOrHook || isLikelyRenderScope;
           while (!isInsideComponentOrHook && outerWalker) {
             const parentInfo = findEnclosingFunctionInfo(outerWalker);
             if (!parentInfo) break;
@@ -716,18 +729,6 @@ export const rulesOfHooks = defineRule({
           }
           return;
         }
-
-        // Structural render-scope escape: a named function whose own
-        // scope issues several hook calls is treated as a custom hook /
-        // factory body even when its name violates the `useXxx` /
-        // PascalCase convention (the Solid→React port names these
-        // `init` / `create*`). It still runs the conditional / loop /
-        // try checks below, so misplaced hooks inside it are caught.
-        const isLikelyRenderScope =
-          !enclosing.isComponentOrHook &&
-          enclosing.hasResolvedName &&
-          countOwnScopeHookCalls(enclosing.node, context.scopes, settings) >=
-            MIN_HOOK_CALLS_FOR_RENDER_SCOPE;
 
         if (!enclosing.isComponentOrHook && !isLikelyRenderScope) {
           // For anonymous callbacks, look outward: if any enclosing

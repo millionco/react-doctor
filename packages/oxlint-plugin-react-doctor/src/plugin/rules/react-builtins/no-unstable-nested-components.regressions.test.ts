@@ -35,4 +35,32 @@ describe("react-builtins/no-unstable-nested-components — regressions", () => {
     `);
     expect(result.diagnostics).toEqual([]);
   });
+
+  // The instantiation gate is keyed by SYMBOL: a same-named JSX usage of
+  // a DIFFERENT binding (an import rendered elsewhere in the file) must
+  // not count as instantiation of the nested inline helper.
+  it("does not flag a nested inline helper whose name collides with a rendered import", () => {
+    const result = run(`
+      import { Item } from "./item";
+      const List = () => <ul><Item /></ul>;
+      const Parent = () => {
+        const Item = () => <li>local</li>;
+        return <ol>{Item()}</ol>;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // A named FunctionExpression binds the OUTER name via its declarator
+  // (`const X = function Y() {}` — references resolve to X, Y only binds
+  // inside the body), so the gate must key off the declarator id.
+  it("flags a nested named-function-expression component instantiated via its variable", () => {
+    const result = run(`
+      const Parent = () => {
+        const Child = function Child() { return <div>x</div>; };
+        return <div><Child /></div>;
+      };
+    `);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

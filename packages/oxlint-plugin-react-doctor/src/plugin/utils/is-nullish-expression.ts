@@ -1,11 +1,11 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
-// True for the two statically-nullish expression shapes: the `null`
-// literal and the bare `undefined` identifier. Intentionally does NOT
-// include `void 0` — callers that also treat a `void` UnaryExpression as
-// nullish (button-has-type's `createElement` props arg) add that case
-// themselves, so JSX-child callers keep `{void 0}` as a rendered child.
+// True for the statically-nullish expression shapes: the `null` literal,
+// the bare `undefined` identifier, and a `void …` UnaryExpression (which
+// always evaluates to `undefined`). React renders all three as nothing,
+// and none can carry a prop value.
 export const isNullishExpression = (expression: EsTreeNode): boolean =>
   (isNodeOfType(expression, "Literal") && expression.value === null) ||
-  (isNodeOfType(expression, "Identifier") && expression.name === "undefined");
+  (isNodeOfType(expression, "Identifier") && expression.name === "undefined") ||
+  (isNodeOfType(expression, "UnaryExpression") && expression.operator === "void");

@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isComponentDeclaration } from "../../utils/is-component-declaration.js";
+import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
@@ -60,16 +61,34 @@ export const noCallComponentAsFunction = defineRule({
   recommendation:
     "Render components as JSX (`<Component />`), never call them like functions (`Component(props)`). A direct call runs the component outside React and breaks hooks, state, and memoization.",
   create: (context: RuleContext) => {
-    const renderedJsxNames = new Set<string>();
+    // Keyed by the BINDING IDENTIFIER node, not name: a rendered `<Item/>`
+    // of one binding must not count as instantiation of a same-named
+    // different binding (an inline render helper shadowing an import, or
+    // two components in one file sharing a name). The binding node (not
+    // the symbol id) is the key because scope analysis can register a
+    // hoisted declaration under two symbol records sharing one binding.
+    const renderedComponentBindings = new Set<EsTreeNode>();
     const candidateCalls: Array<{ node: EsTreeNode; callee: EsTreeNode; name: string }> = [];
+
+    const recordRenderedComponent = (identifier: EsTreeNode): void => {
+      const symbol = context.scopes.symbolFor(identifier);
+      if (symbol) renderedComponentBindings.add(symbol.bindingIdentifier);
+    };
 
     const visitors: RuleVisitors = {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (isNodeOfType(node.name, "JSXIdentifier") && isUppercaseName(node.name.name)) {
-          renderedJsxNames.add(node.name.name);
+          recordRenderedComponent(node.name as EsTreeNode);
         }
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        // `createElement(Name, …)` is a real instantiation, same as `<Name/>`.
+        if (isCreateElementCall(node)) {
+          const firstArgument = node.arguments[0];
+          if (firstArgument && isNodeOfType(firstArgument, "Identifier")) {
+            recordRenderedComponent(firstArgument);
+          }
+        }
         if (isNodeOfType(node.callee, "Identifier") && isUppercaseName(node.callee.name)) {
           candidateCalls.push({ node, callee: node.callee, name: node.callee.name });
         }
@@ -78,12 +97,11 @@ export const noCallComponentAsFunction = defineRule({
         for (const candidate of candidateCalls) {
           const symbol = context.scopes.symbolFor(candidate.callee);
           if (!symbol) continue;
+          const isRendered = renderedComponentBindings.has(symbol.bindingIdentifier);
           const isLocalComponent =
             symbolIsLocalComponent(symbol, context) &&
-            (isModuleScopeDeclaration(symbol.declarationNode) ||
-              renderedJsxNames.has(candidate.name));
-          const isComponent =
-            isLocalComponent || (symbol.kind === "import" && renderedJsxNames.has(candidate.name));
+            (isModuleScopeDeclaration(symbol.declarationNode) || isRendered);
+          const isComponent = isLocalComponent || (symbol.kind === "import" && isRendered);
           if (isComponent) {
             context.report({ node: candidate.node, message: message(candidate.name) });
           }

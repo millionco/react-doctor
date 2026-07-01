@@ -10,13 +10,8 @@ const NAVIGATING_TARGETS = new Set(["_self", "_top", "_parent"]);
 // `Identifier` callee) and `foo.postMessage`/`webview.open` are not the
 // window global and never match.
 const isWindowOpenCallee = (callee: EsTreeNode): boolean => {
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed)
-    return false;
-  if (
-    !isNodeOfType(callee.property, "Identifier") ||
-    callee.property.name !== "open"
-  )
-    return false;
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
+  if (!isNodeOfType(callee.property, "Identifier") || callee.property.name !== "open") return false;
   const object = callee.object;
   if (isNodeOfType(object, "Identifier")) return object.name === "window";
   if (isNodeOfType(object, "MemberExpression") && !object.computed) {
@@ -31,20 +26,16 @@ const isWindowOpenCallee = (callee: EsTreeNode): boolean => {
 };
 
 const isStringLiteral = (
-  node: EsTreeNode | null | undefined
+  node: EsTreeNode | null | undefined,
 ): node is EsTreeNodeOfType<"Literal"> & { value: string } =>
-  node != null &&
-  isNodeOfType(node, "Literal") &&
-  typeof node.value === "string";
+  node != null && isNodeOfType(node, "Literal") && typeof node.value === "string";
 
 // `mailto:`/`tel:`/`sms:` hand the URL to an OS protocol handler and never
 // open a navigable browsing context, so no `window.opener` is exposed and
 // there is nothing to reverse-tabnab — flagging them is a false positive.
 const NON_BROWSING_URL_SCHEMES = ["mailto:", "tel:", "sms:"];
 
-const getStaticUrlText = (
-  node: EsTreeNode | null | undefined
-): string | null => {
+const getStaticUrlText = (node: EsTreeNode | null | undefined): string | null => {
   if (isStringLiteral(node)) return node.value;
   if (node != null && isNodeOfType(node, "TemplateLiteral")) {
     return node.quasis?.[0]?.value?.raw ?? null;
@@ -52,9 +43,7 @@ const getStaticUrlText = (
   return null;
 };
 
-const opensProtocolHandlerOnly = (
-  urlArgument: EsTreeNode | null | undefined
-): boolean => {
+const opensProtocolHandlerOnly = (urlArgument: EsTreeNode | null | undefined): boolean => {
   const urlText = getStaticUrlText(urlArgument)?.trimStart().toLowerCase();
   if (urlText == null) return false;
   return NON_BROWSING_URL_SCHEMES.some((scheme) => urlText.startsWith(scheme));
@@ -86,10 +75,7 @@ const isDiscardedWindowHandle = (callNode: EsTreeNode): boolean => {
   const parent = callNode.parent;
   if (!parent) return false;
   if (isNodeOfType(parent, "ExpressionStatement")) return true;
-  if (
-    isNodeOfType(parent, "ArrowFunctionExpression") &&
-    parent.body === callNode
-  ) {
+  if (isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === callNode) {
     return isArrowReturnDiscarded(parent);
   }
   return false;
@@ -108,17 +94,12 @@ export const windowOpenWithoutNoopener = defineRule({
       if (opensProtocolHandlerOnly(node.arguments?.[0])) return;
 
       const targetArgument = node.arguments?.[1];
-      if (
-        isStringLiteral(targetArgument) &&
-        NAVIGATING_TARGETS.has(targetArgument.value)
-      )
-        return;
+      if (isStringLiteral(targetArgument) && NAVIGATING_TARGETS.has(targetArgument.value)) return;
 
       const featuresArgument = node.arguments?.[2];
       if (isStringLiteral(featuresArgument)) {
         const features = featuresArgument.value.toLowerCase();
-        if (features.includes("noopener") || features.includes("noreferrer"))
-          return;
+        if (features.includes("noopener") || features.includes("noreferrer")) return;
       }
 
       context.report({

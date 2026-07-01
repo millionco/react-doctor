@@ -13,19 +13,11 @@ const MESSAGE =
 
 // Listener-registration methods that hand back a resource which must be
 // explicitly removed on unmount. Sound: each has a matching removal API.
-const LISTENER_REGISTRATION_METHODS = new Set([
-  "on",
-  "once",
-  "subscribe",
-  "addEventListener",
-]);
+const LISTENER_REGISTRATION_METHODS = new Set(["on", "once", "subscribe", "addEventListener"]);
 
 // Walks a function body without descending into nested functions, so a
 // hazard belongs to the mount body itself (not an event-driven callback).
-const walkMountBody = (
-  functionBody: EsTreeNode,
-  visit: (node: EsTreeNode) => void
-): void => {
+const walkMountBody = (functionBody: EsTreeNode, visit: (node: EsTreeNode) => void): void => {
   walkAst(functionBody, (child: EsTreeNode) => {
     if (child !== functionBody && isFunctionLike(child)) return false;
     visit(child);
@@ -77,10 +69,7 @@ const isMountHazard = (node: EsTreeNode): boolean => {
 };
 
 const getMemberFunctionBody = (member: EsTreeNode): EsTreeNode | null => {
-  if (
-    !isNodeOfType(member, "MethodDefinition") &&
-    !isNodeOfType(member, "PropertyDefinition")
-  ) {
+  if (!isNodeOfType(member, "MethodDefinition") && !isNodeOfType(member, "PropertyDefinition")) {
     return null;
   }
   const value = member.value;
@@ -89,16 +78,10 @@ const getMemberFunctionBody = (member: EsTreeNode): EsTreeNode | null => {
 };
 
 const getClassMemberName = (member: EsTreeNode): string | null => {
-  if (
-    isNodeOfType(member, "MethodDefinition") &&
-    member.kind === "constructor"
-  ) {
+  if (isNodeOfType(member, "MethodDefinition") && member.kind === "constructor") {
     return "constructor";
   }
-  if (
-    !isNodeOfType(member, "MethodDefinition") &&
-    !isNodeOfType(member, "PropertyDefinition")
-  ) {
+  if (!isNodeOfType(member, "MethodDefinition") && !isNodeOfType(member, "PropertyDefinition")) {
     return null;
   }
   return isNodeOfType(member.key, "Identifier") ? member.key.name : null;
@@ -110,10 +93,7 @@ const classUsesDisposeOnUnmount = (classNode: EsTreeNode): boolean => {
   let found = false;
   walkAst(classNode, (child: EsTreeNode) => {
     if (found) return false;
-    if (
-      isNodeOfType(child, "Identifier") &&
-      child.name === "disposeOnUnmount"
-    ) {
+    if (isNodeOfType(child, "Identifier") && child.name === "disposeOnUnmount") {
       found = true;
       return false;
     }
@@ -136,15 +116,14 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
 
       const members = node.body ?? [];
       const hasComponentWillUnmount = members.some(
-        (member) => getClassMemberName(member) === "componentWillUnmount"
+        (member) => getClassMemberName(member) === "componentWillUnmount",
       );
       if (hasComponentWillUnmount) return;
       if (classUsesDisposeOnUnmount(classNode)) return;
 
       for (const member of members) {
         const memberName = getClassMemberName(member);
-        if (memberName !== "constructor" && memberName !== "componentDidMount")
-          continue;
+        if (memberName !== "constructor" && memberName !== "componentDidMount") continue;
         const body = getMemberFunctionBody(member);
         if (!body) continue;
 

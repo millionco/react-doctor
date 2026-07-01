@@ -25,13 +25,8 @@ export const mobxReactionDisposerDiscarded = defineRule({
       // Only a bare Identifier callee — this excludes Yup's `schema.when(...)`
       // and `observer.observe(...)`, which are MemberExpression callees.
       if (!isNodeOfType(node.callee, "Identifier")) return;
-      const importedName = getImportedNameFromModule(
-        node,
-        node.callee.name,
-        "mobx"
-      );
-      if (!importedName || !LEAKING_MOBX_SUBSCRIPTIONS.has(importedName))
-        return;
+      const importedName = getImportedNameFromModule(node, node.callee.name, "mobx");
+      if (!importedName || !LEAKING_MOBX_SUBSCRIPTIONS.has(importedName)) return;
 
       // The disposer is discarded only when the call is a standalone statement.
       // `const d = reaction(...)`, `this.x = reaction(...)`, and

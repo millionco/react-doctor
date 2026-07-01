@@ -8,7 +8,7 @@ describe("no-division-or-modulo-by-unguarded-denominator", () => {
       noDivisionOrModuloByUnguardedDenominator,
       `const Bar = ({ homeShots, totalShots }) => (
         <div style={{ width: \`\${(homeShots / totalShots) * 100}%\` }} />
-      );`
+      );`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -20,7 +20,7 @@ describe("no-division-or-modulo-by-unguarded-denominator", () => {
       `const Progress = ({ synced, pending }) => {
         const progress = Math.round((synced / pending) * 100);
         return <span>{progress}</span>;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -29,7 +29,7 @@ describe("no-division-or-modulo-by-unguarded-denominator", () => {
     const result = runRule(
       noDivisionOrModuloByUnguardedDenominator,
       `const pct = (completed / target) * 100;
-       render(<div>{pct}</div>);`
+       render(<div>{pct}</div>);`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -40,7 +40,7 @@ describe("no-division-or-modulo-by-unguarded-denominator", () => {
       `const Viewer = ({ matches }) => {
         const next = (prev + 1) % matches.length;
         return <span>{next}</span>;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -49,7 +49,7 @@ describe("no-division-or-modulo-by-unguarded-denominator", () => {
     const result = runRule(
       noDivisionOrModuloByUnguardedDenominator,
       `const pct = total === 0 ? 0 : (done / total) * 100;
-       render(<div>{pct}</div>);`
+       render(<div>{pct}</div>);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -60,7 +60,7 @@ describe("no-division-or-modulo-by-unguarded-denominator", () => {
       `function ratio(made, attempted) {
         if (attempted <= 0) return 0;
         return (made / attempted) * 100;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -69,7 +69,7 @@ describe("no-division-or-modulo-by-unguarded-denominator", () => {
     const result = runRule(
       noDivisionOrModuloByUnguardedDenominator,
       `const FACTS = ["a", "b", "c"];
-       const Card = ({ index }) => <p>{FACTS[index % FACTS.length]}</p>;`
+       const Card = ({ index }) => <p>{FACTS[index % FACTS.length]}</p>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -78,7 +78,7 @@ describe("no-division-or-modulo-by-unguarded-denominator", () => {
     const result = runRule(
       noDivisionOrModuloByUnguardedDenominator,
       `const PALETTE = ["#111", "#222"];
-       const color = PALETTE[i % PALETTE.length];`
+       const color = PALETTE[i % PALETTE.length];`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -89,7 +89,7 @@ describe("no-division-or-modulo-by-unguarded-denominator", () => {
       `function report(sum, n) {
         const avg = sum / n;
         logger.debug(avg);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -97,7 +97,7 @@ describe("no-division-or-modulo-by-unguarded-denominator", () => {
   it("does not match printf-style percent in a string literal", () => {
     const result = runRule(
       noDivisionOrModuloByUnguardedDenominator,
-      `const msg = "loaded %s of %d items";`
+      `const msg = "loaded %s of %d items";`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -106,7 +106,7 @@ describe("no-division-or-modulo-by-unguarded-denominator", () => {
     const result = runRule(
       noDivisionOrModuloByUnguardedDenominator,
       `const half = value / 2;
-       render(<div>{half}</div>);`
+       render(<div>{half}</div>);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -115,7 +115,7 @@ describe("no-division-or-modulo-by-unguarded-denominator", () => {
     const result = runRule(
       noDivisionOrModuloByUnguardedDenominator,
       `const pct = (done / (total || 1)) * 100;
-       render(<div>{pct}</div>);`
+       render(<div>{pct}</div>);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

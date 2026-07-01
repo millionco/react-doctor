@@ -11,18 +11,8 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 const MESSAGE =
   "This async handler awaits a mutating request and only flips state after the await, so a fast double-click or double Enter fires the request twice. Add a leading `if (busy) return` guard (or set a flag before the await and disable the control) to close the re-entry window.";
 
-const REENTRY_GUARDED_EVENT_HANDLER_NAMES = new Set([
-  "onClick",
-  "onSubmit",
-  "onPress",
-]);
-const MUTATING_REQUEST_METHOD_NAMES = new Set([
-  "post",
-  "put",
-  "patch",
-  "delete",
-  "mutate",
-]);
+const REENTRY_GUARDED_EVENT_HANDLER_NAMES = new Set(["onClick", "onSubmit", "onPress"]);
+const MUTATING_REQUEST_METHOD_NAMES = new Set(["post", "put", "patch", "delete", "mutate"]);
 const MUTATING_FETCH_HTTP_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const STATE_SETTER_NAME_PATTERN = /^set[A-Z]/;
 
@@ -35,7 +25,7 @@ const isStateSetterCall = (node: EsTreeNode): boolean =>
 // pruning nested function bodies (a nested arrow does not run synchronously).
 const walkStatementPruningNestedFunctions = (
   root: EsTreeNode,
-  visitor: (node: EsTreeNode) => void
+  visitor: (node: EsTreeNode) => void,
 ): void => {
   const visit = (node: EsTreeNode): void => {
     if (node !== root && isFunctionLike(node)) return;
@@ -46,8 +36,7 @@ const walkStatementPruningNestedFunctions = (
       const child = record[key];
       if (Array.isArray(child)) {
         for (const item of child) {
-          if (item && typeof item === "object" && "type" in item)
-            visit(item as EsTreeNode);
+          if (item && typeof item === "object" && "type" in item) visit(item as EsTreeNode);
         }
       } else if (child && typeof child === "object" && "type" in child) {
         visit(child as EsTreeNode);
@@ -57,9 +46,7 @@ const walkStatementPruningNestedFunctions = (
   visit(root);
 };
 
-const findFirstAwaitInStatement = (
-  statement: EsTreeNode
-): EsTreeNode | null => {
+const findFirstAwaitInStatement = (statement: EsTreeNode): EsTreeNode | null => {
   let awaitNode: EsTreeNode | null = null;
   walkStatementPruningNestedFunctions(statement, (node) => {
     if (!awaitNode && isNodeOfType(node, "AwaitExpression")) awaitNode = node;
@@ -76,22 +63,18 @@ const statementContainsStateSetterCall = (statement: EsTreeNode): boolean => {
 };
 
 // `fetch(url, { method: "POST" | "PUT" | "PATCH" | "DELETE" })`.
-const isMutatingFetchCall = (
-  node: EsTreeNodeOfType<"CallExpression">
-): boolean => {
-  if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "fetch")
-    return false;
+const isMutatingFetchCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
+  if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "fetch") return false;
   const optionsArgument = node.arguments?.[1];
-  if (!optionsArgument || !isNodeOfType(optionsArgument, "ObjectExpression"))
-    return false;
+  if (!optionsArgument || !isNodeOfType(optionsArgument, "ObjectExpression")) return false;
   return optionsArgument.properties.some((property) => {
     if (!isNodeOfType(property, "Property") || property.computed) return false;
     const key = property.key;
     const keyName = isNodeOfType(key, "Identifier")
       ? key.name
       : isNodeOfType(key, "Literal")
-      ? String(key.value)
-      : null;
+        ? String(key.value)
+        : null;
     if (keyName !== "method") return false;
     const value = property.value;
     return (
@@ -106,7 +89,7 @@ const isMutatingFetchCall = (
 // `.delete`/`.mutate` call. Chained calls (`fetch(...).then(...)`) unwrap to
 // their base receiver so a trailing `.then`/`.json` doesn't hide the verb.
 const awaitedExpressionIsMutatingNetworkOp = (
-  expression: EsTreeNode | null | undefined
+  expression: EsTreeNode | null | undefined,
 ): boolean => {
   if (!expression) return false;
   const stripped = stripParenExpression(expression);
@@ -140,9 +123,7 @@ const isLeadingReentryGuard = (statement: EsTreeNode): boolean => {
     if (isNodeOfType(consequent, "ReturnStatement")) return true;
     if (
       isNodeOfType(consequent, "BlockStatement") &&
-      consequent.body.some((inner) =>
-        isNodeOfType(inner as EsTreeNode, "ReturnStatement")
-      )
+      consequent.body.some((inner) => isNodeOfType(inner as EsTreeNode, "ReturnStatement"))
     ) {
       return true;
     }
@@ -154,8 +135,7 @@ const resolveHandlerFunction = (value: EsTreeNode): EsTreeNode | null => {
   if (isInlineFunctionExpression(value)) return value;
   if (isNodeOfType(value, "Identifier")) {
     const binding = findVariableInitializer(value, value.name);
-    if (binding?.initializer && isFunctionLike(binding.initializer))
-      return binding.initializer;
+    if (binding?.initializer && isFunctionLike(binding.initializer)) return binding.initializer;
   }
   return null;
 };
@@ -163,10 +143,7 @@ const resolveHandlerFunction = (value: EsTreeNode): EsTreeNode | null => {
 // Reports when an async handler runs a mutating network op at its first await
 // and only flips state afterward, with no leading re-entry guard closing the
 // double-click / double-Enter window.
-const analyzeAsyncHandler = (
-  context: RuleContext,
-  functionNode: EsTreeNode
-): void => {
+const analyzeAsyncHandler = (context: RuleContext, functionNode: EsTreeNode): void => {
   if (!isFunctionLike(functionNode)) return;
   if (!(functionNode as { async?: boolean }).async) return;
   if (!isNodeOfType(functionNode.body, "BlockStatement")) return;
@@ -183,9 +160,7 @@ const analyzeAsyncHandler = (
       if (firstAwait) {
         sawFirstAwait = true;
         if (
-          !awaitedExpressionIsMutatingNetworkOp(
-            (firstAwait as { argument?: EsTreeNode }).argument
-          )
+          !awaitedExpressionIsMutatingNetworkOp((firstAwait as { argument?: EsTreeNode }).argument)
         ) {
           return;
         }
@@ -193,8 +168,7 @@ const analyzeAsyncHandler = (
       }
       continue;
     }
-    if (statementContainsStateSetterCall(currentStatement))
-      hasPostAwaitStateSetter = true;
+    if (statementContainsStateSetterCall(currentStatement)) hasPostAwaitStateSetter = true;
   }
 
   if (!sawFirstAwait || !mutatingAwaitNode || !hasPostAwaitStateSetter) return;
@@ -215,9 +189,7 @@ export const noAsyncEventHandlerWithoutReentryGuard = defineRule({
         if (!REENTRY_GUARDED_EVENT_HANDLER_NAMES.has(node.name.name)) return;
         const value = node.value;
         if (!value || !isNodeOfType(value, "JSXExpressionContainer")) return;
-        const handlerFunction = resolveHandlerFunction(
-          value.expression as EsTreeNode
-        );
+        const handlerFunction = resolveHandlerFunction(value.expression as EsTreeNode);
         if (!handlerFunction || analyzedFunctions.has(handlerFunction)) return;
         analyzedFunctions.add(handlerFunction);
         analyzeAsyncHandler(context, handlerFunction);

@@ -18,7 +18,7 @@ describe("no-set-state-after-await-in-effect", () => {
         }, [id]);
         return null;
       };
-      `
+      `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -37,7 +37,7 @@ describe("no-set-state-after-await-in-effect", () => {
           })();
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -56,7 +56,7 @@ describe("no-set-state-after-await-in-effect", () => {
           run();
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -72,7 +72,7 @@ describe("no-set-state-after-await-in-effect", () => {
           setUser(u);
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -93,7 +93,7 @@ describe("no-set-state-after-await-in-effect", () => {
           return () => { cancelled = true; };
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -113,7 +113,7 @@ describe("no-set-state-after-await-in-effect", () => {
           run();
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -132,7 +132,7 @@ describe("no-set-state-after-await-in-effect", () => {
           run();
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -149,7 +149,7 @@ describe("no-set-state-after-await-in-effect", () => {
         };
         return <button onClick={onClick} />;
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -170,7 +170,7 @@ describe("no-set-state-after-await-in-effect", () => {
           run();
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -189,7 +189,7 @@ describe("no-set-state-after-await-in-effect", () => {
           run();
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -211,7 +211,7 @@ describe("no-set-state-after-await-in-effect", () => {
           })();
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -231,7 +231,7 @@ describe("no-set-state-after-await-in-effect", () => {
           run();
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -244,7 +244,7 @@ describe("no-set-state-after-await-in-effect", () => {
         const [title, setTitle] = useState("");
         useEffect(() => { setTitle(document.title); }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -23,12 +23,7 @@ const WINDOW_SIZE_PROPS = new Set([
   "pageXOffset",
   "pageYOffset",
 ]);
-const SCREEN_SIZE_PROPS = new Set([
-  "width",
-  "height",
-  "availWidth",
-  "availHeight",
-]);
+const SCREEN_SIZE_PROPS = new Set(["width", "height", "availWidth", "availHeight"]);
 
 // Array-iteration callbacks whose bodies run on the render path (they
 // build the JSX), so a viewport read inside them is just as unsafe as
@@ -43,26 +38,18 @@ const RENDER_ITERATION_METHODS = new Set([
   "reduceRight",
 ]);
 
-const isWindowGlobalIdentifier = (
-  node: EsTreeNode
-): node is EsTreeNodeOfType<"Identifier"> =>
-  isNodeOfType(node, "Identifier") &&
-  (node.name === "window" || node.name === "globalThis");
+const isWindowGlobalIdentifier = (node: EsTreeNode): node is EsTreeNodeOfType<"Identifier"> =>
+  isNodeOfType(node, "Identifier") && (node.name === "window" || node.name === "globalThis");
 
 // The `window` / `globalThis` identifier that roots a viewport read, or
 // null when `node` isn't one of the in-scope size reads. Requires the
 // explicit `window.`/`globalThis.` member form (bare-global reads were
 // dropped from v1 for precision).
-const windowSizeReadRoot = (
-  node: EsTreeNode
-): EsTreeNodeOfType<"Identifier"> | null => {
+const windowSizeReadRoot = (node: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
   if (!isNodeOfType(node, "MemberExpression") || node.computed) return null;
   if (!isNodeOfType(node.property, "Identifier")) return null;
 
-  if (
-    WINDOW_SIZE_PROPS.has(node.property.name) &&
-    isWindowGlobalIdentifier(node.object)
-  ) {
+  if (WINDOW_SIZE_PROPS.has(node.property.name) && isWindowGlobalIdentifier(node.object)) {
     return node.object;
   }
   if (
@@ -81,11 +68,9 @@ const windowSizeReadRoot = (
 const isRenderIterationCallback = (functionNode: EsTreeNode): boolean => {
   const parent = functionNode.parent;
   if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
-  if (!parent.arguments?.some((argument) => argument === functionNode))
-    return false;
+  if (!parent.arguments?.some((argument) => argument === functionNode)) return false;
   const callee = parent.callee;
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed)
-    return false;
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
   if (!isNodeOfType(callee.property, "Identifier")) return false;
   return RENDER_ITERATION_METHODS.has(callee.property.name);
 };

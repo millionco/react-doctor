@@ -32,8 +32,7 @@ export const intlTolocalestringNoLocaleArg = defineRule({
         if (skipTestlikeFile) return;
         if ((node.arguments?.length ?? 0) !== 0) return;
         const callee = node.callee as EsTreeNode;
-        if (!isNodeOfType(callee, "MemberExpression") || callee.computed)
-          return;
+        if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return;
         if (!isNodeOfType(callee.property, "Identifier")) return;
         if (!LOCALE_FORMAT_METHODS.has(callee.property.name)) return;
         context.report({ node, message: messageFor(callee.property.name) });

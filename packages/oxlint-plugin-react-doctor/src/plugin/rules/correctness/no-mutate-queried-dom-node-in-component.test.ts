@@ -11,7 +11,7 @@ describe("no-mutate-queried-dom-node-in-component", () => {
           document.querySelector('.panel').classList.add('open');
         }, []);
         return <div className="panel" />;
-      }`
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -24,7 +24,7 @@ describe("no-mutate-queried-dom-node-in-component", () => {
         const el = document.getElementById('main-content');
         el.style.filter = 'blur(3px)';
         return <section id="main-content" />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -36,7 +36,7 @@ describe("no-mutate-queried-dom-node-in-component", () => {
         const container = document.querySelector('#right');
         container.classList.remove('noscroll');
         return <aside id="right" className="noscroll" />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -47,7 +47,7 @@ describe("no-mutate-queried-dom-node-in-component", () => {
       `function Row() {
         document.getElementById('row-1').style.zIndex = '1';
         return <div id="row-1" />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -59,7 +59,7 @@ describe("no-mutate-queried-dom-node-in-component", () => {
         const a = document.createElement('a');
         a.style.display = 'none';
         return <div className="panel" />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -70,7 +70,7 @@ describe("no-mutate-queried-dom-node-in-component", () => {
       `function Panel() {
         document.querySelector('.panel').setAttribute('data-x', '1');
         return <div className="panel" />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -81,7 +81,7 @@ describe("no-mutate-queried-dom-node-in-component", () => {
       `function Panel() {
         document.getElementById('panel').scrollIntoView();
         return <div id="panel" />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -92,7 +92,7 @@ describe("no-mutate-queried-dom-node-in-component", () => {
       `function Panel() {
         document.body.style.overflow = 'hidden';
         return <div className="panel" />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -104,7 +104,7 @@ describe("no-mutate-queried-dom-node-in-component", () => {
         const ref = useRef(null);
         ref.current.style.color = 'red';
         return <div ref={ref} className="panel" />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -115,7 +115,7 @@ describe("no-mutate-queried-dom-node-in-component", () => {
       `function Panel() {
         document.querySelector('.external-widget').classList.add('open');
         return <div className="panel" />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -127,7 +127,7 @@ describe("no-mutate-queried-dom-node-in-component", () => {
         const el = document.getElementById('x');
         el.innerHTML = html;
         return <div id="x" />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -138,7 +138,7 @@ describe("no-mutate-queried-dom-node-in-component", () => {
       `function Row({ rowId }) {
         document.getElementById(rowId).style.zIndex = '1';
         return <div id="row-1" />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -149,7 +149,7 @@ describe("no-mutate-queried-dom-node-in-component", () => {
       `function setup() {
         document.querySelector('.panel').classList.add('open');
       }
-      const markup = <div className="panel" />;`
+      const markup = <div className="panel" />;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -160,7 +160,7 @@ describe("no-mutate-queried-dom-node-in-component", () => {
       `function App() {
         document.getElementById('root').style.overflow = 'hidden';
         return <div id="root" />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

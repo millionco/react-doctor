@@ -24,9 +24,7 @@ const GROUPING_EXPRESSION_TYPES = new Set<string>(["ParenthesizedExpression"]);
 // argument, a hydrated row result) and from enzyme/RTL `wrapper.find(Component)`
 // component-selector queries (a PascalCase identifier argument, a wrapper
 // result), whose `.instance()`/`.first()`/`.props()` chains must stay quiet.
-const hasArrayCallbackFirstArgument = (
-  node: EsTreeNodeOfType<"CallExpression">
-): boolean => {
+const hasArrayCallbackFirstArgument = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   const firstArgument = node.arguments?.[0];
   if (!firstArgument) return false;
   if (
@@ -46,17 +44,13 @@ const hasArrayCallbackFirstArgument = (
 
 const isArrayFindCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   const callee = node.callee;
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed)
-    return false;
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
   if (!isNodeOfType(callee.property, "Identifier")) return false;
   if (!FIND_METHOD_NAMES.has(callee.property.name)) return false;
   // `User.find(...)` / `Model.find(...)`: a capitalized receiver is a
   // class/model static method, not an array instance method.
   const receiver = stripParenExpression(callee.object as EsTreeNode);
-  if (
-    isNodeOfType(receiver, "Identifier") &&
-    PASCAL_CASE_IDENTIFIER_PATTERN.test(receiver.name)
-  ) {
+  if (isNodeOfType(receiver, "Identifier") && PASCAL_CASE_IDENTIFIER_PATTERN.test(receiver.name)) {
     return false;
   }
   return hasArrayCallbackFirstArgument(node);

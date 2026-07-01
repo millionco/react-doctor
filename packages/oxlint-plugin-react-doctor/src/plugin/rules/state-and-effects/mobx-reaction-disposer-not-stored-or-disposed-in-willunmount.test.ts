@@ -15,7 +15,7 @@ describe("mobx-reaction-disposer-not-stored-or-disposed-in-willunmount", () => {
         }
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -30,7 +30,7 @@ describe("mobx-reaction-disposer-not-stored-or-disposed-in-willunmount", () => {
         disposer = autorun(() => this.render());
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -44,7 +44,7 @@ describe("mobx-reaction-disposer-not-stored-or-disposed-in-willunmount", () => {
         disposer = when(() => this.ready, () => this.load());
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -63,7 +63,7 @@ describe("mobx-reaction-disposer-not-stored-or-disposed-in-willunmount", () => {
         }
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -78,7 +78,7 @@ describe("mobx-reaction-disposer-not-stored-or-disposed-in-willunmount", () => {
         disposer = disposeOnUnmount(this, reaction(() => this.props.value, () => {}));
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -91,7 +91,7 @@ describe("mobx-reaction-disposer-not-stored-or-disposed-in-willunmount", () => {
       class UserStore {
         disposer = reaction(() => this.value, () => {});
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -108,7 +108,7 @@ describe("mobx-reaction-disposer-not-stored-or-disposed-in-willunmount", () => {
         }, []);
         return null;
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -122,7 +122,7 @@ describe("mobx-reaction-disposer-not-stored-or-disposed-in-willunmount", () => {
         disposer = reaction(() => this.props.value, () => {});
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

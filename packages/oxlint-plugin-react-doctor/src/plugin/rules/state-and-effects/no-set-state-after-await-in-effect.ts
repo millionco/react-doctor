@@ -28,9 +28,7 @@ const getNodeStart = (node: EsTreeNode): number | null => {
   return typeof start === "number" ? start : null;
 };
 
-const isStateDispatcherCall = (
-  callExpression: EsTreeNodeOfType<"CallExpression">
-): boolean => {
+const isStateDispatcherCall = (callExpression: EsTreeNodeOfType<"CallExpression">): boolean => {
   if (!isNodeOfType(callExpression.callee, "Identifier")) return false;
   return isHookBindingInScope(callExpression, {
     bindingName: callExpression.callee.name,
@@ -43,10 +41,7 @@ const referencesCancellationGuard = (asyncFunction: EsTreeNode): boolean => {
   let found = false;
   walkAst(asyncFunction, (child: EsTreeNode) => {
     if (found) return false;
-    if (
-      isNodeOfType(child, "Identifier") &&
-      CANCELLATION_GUARD_PATTERN.test(child.name)
-    ) {
+    if (isNodeOfType(child, "Identifier") && CANCELLATION_GUARD_PATTERN.test(child.name)) {
       found = true;
       return false;
     }
@@ -71,8 +66,7 @@ const hasPostAwaitStateSetter = (asyncFunction: EsTreeNode): boolean => {
     if (!isNodeOfType(node, "AwaitExpression")) return;
     const start = getNodeStart(node);
     if (start === null) return;
-    if (earliestAwaitStart === null || start < earliestAwaitStart)
-      earliestAwaitStart = start;
+    if (earliestAwaitStart === null || start < earliestAwaitStart) earliestAwaitStart = start;
   });
   if (earliestAwaitStart === null) return false;
   const firstAwaitStart = earliestAwaitStart;

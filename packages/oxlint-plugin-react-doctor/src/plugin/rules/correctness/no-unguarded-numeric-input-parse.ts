@@ -9,22 +9,14 @@ import type { RuleContext } from "../../utils/rule-context.js";
 const MESSAGE =
   "Coercing an input's value with this parse stores `0` for a cleared field and `NaN` for partial input, which then flows into state or a request body; guard the empty and NaN cases (for example `value ? Number(value) : undefined`) before using it.";
 
-const EVENT_VALUE_PROPERTIES: ReadonlySet<string> = new Set([
-  "value",
-  "valueAsNumber",
-]);
-const EVENT_TARGET_PROPERTIES: ReadonlySet<string> = new Set([
-  "target",
-  "currentTarget",
-]);
+const EVENT_VALUE_PROPERTIES: ReadonlySet<string> = new Set(["value", "valueAsNumber"]);
+const EVENT_TARGET_PROPERTIES: ReadonlySet<string> = new Set(["target", "currentTarget"]);
 const HANDLER_ATTRIBUTE_PATTERN = /^on[A-Z]/;
 
 const isNumericParseCallee = (callee: EsTreeNode): boolean => {
   if (
     isNodeOfType(callee, "Identifier") &&
-    (callee.name === "Number" ||
-      callee.name === "parseInt" ||
-      callee.name === "parseFloat")
+    (callee.name === "Number" || callee.name === "parseInt" || callee.name === "parseFloat")
   ) {
     return true;
   }
@@ -34,8 +26,7 @@ const isNumericParseCallee = (callee: EsTreeNode): boolean => {
     isNodeOfType(callee.object, "Identifier") &&
     callee.object.name === "Number" &&
     isNodeOfType(callee.property, "Identifier") &&
-    (callee.property.name === "parseInt" ||
-      callee.property.name === "parseFloat")
+    (callee.property.name === "parseInt" || callee.property.name === "parseFloat")
   );
 };
 
@@ -44,14 +35,8 @@ const isNumericParseCallee = (callee: EsTreeNode): boolean => {
 // argument), so reporting it here too would double-warn the same call.
 // Defer to that rule and keep this rule's niche: `Number(...)`,
 // `parseFloat(...)`, and radix-carrying `parseInt(x, 10)`.
-const isRadixlessParseInt = (
-  callee: EsTreeNode,
-  argumentList: readonly EsTreeNode[]
-): boolean => {
-  if (
-    argumentList.length !== 1 ||
-    isNodeOfType(argumentList[0] as EsTreeNode, "SpreadElement")
-  ) {
+const isRadixlessParseInt = (callee: EsTreeNode, argumentList: readonly EsTreeNode[]): boolean => {
+  if (argumentList.length !== 1 || isNodeOfType(argumentList[0] as EsTreeNode, "SpreadElement")) {
     return false;
   }
   if (isNodeOfType(callee, "Identifier")) return callee.name === "parseInt";
@@ -117,8 +102,7 @@ const findEnclosingHandlerAndGuard = (call: EsTreeNode): HandlerLookup => {
 };
 
 const firstParameterName = (handler: EsTreeNode): string | null => {
-  const params =
-    (handler as EsTreeNodeOfType<"ArrowFunctionExpression">).params ?? [];
+  const params = (handler as EsTreeNodeOfType<"ArrowFunctionExpression">).params ?? [];
   const first = params[0];
   return first && isNodeOfType(first, "Identifier") ? first.name : null;
 };
@@ -129,8 +113,7 @@ const firstParameterName = (handler: EsTreeNode): string | null => {
 // input, so we bail — a false negative over a false positive.
 const isInputElementHandler = (handler: EsTreeNode): boolean => {
   const container = handler.parent;
-  if (!container || !isNodeOfType(container, "JSXExpressionContainer"))
-    return false;
+  if (!container || !isNodeOfType(container, "JSXExpressionContainer")) return false;
   const attribute = container.parent;
   if (!attribute || !isNodeOfType(attribute, "JSXAttribute")) return false;
   if (
@@ -140,12 +123,8 @@ const isInputElementHandler = (handler: EsTreeNode): boolean => {
     return false;
   }
   const openingElement = attribute.parent;
-  if (!openingElement || !isNodeOfType(openingElement, "JSXOpeningElement"))
-    return false;
-  return (
-    isNodeOfType(openingElement.name, "JSXIdentifier") &&
-    openingElement.name.name === "input"
-  );
+  if (!openingElement || !isNodeOfType(openingElement, "JSXOpeningElement")) return false;
+  return isNodeOfType(openingElement.name, "JSXIdentifier") && openingElement.name.name === "input";
 };
 
 export const noUnguardedNumericInputParse = defineRule({
@@ -165,9 +144,7 @@ export const noUnguardedNumericInputParse = defineRule({
       const rootName = getEventValueRootName(firstArgument);
       if (!rootName) return;
 
-      const { handler, isGuarded } = findEnclosingHandlerAndGuard(
-        node as EsTreeNode
-      );
+      const { handler, isGuarded } = findEnclosingHandlerAndGuard(node as EsTreeNode);
       if (isGuarded || !handler) return;
       if (firstParameterName(handler) !== rootName) return;
       if (!isInputElementHandler(handler)) return;

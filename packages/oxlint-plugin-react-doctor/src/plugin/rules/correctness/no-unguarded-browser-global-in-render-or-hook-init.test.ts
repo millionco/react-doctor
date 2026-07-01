@@ -9,7 +9,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       `export const useOnlineChange = () => {
         const [online, setOnline] = useState(navigator.onLine);
         return online;
-      };`
+      };`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -21,7 +21,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       `const useIsDocumentHidden = () => {
         const [hidden, setHidden] = useState(() => document.hidden);
         return hidden;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -32,7 +32,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       `function App() {
         const width = window.innerWidth;
         return <div style={{ width }} />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -43,7 +43,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       `const useToken = () => {
         const [token] = useState(() => localStorage.getItem('token'));
         return token;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -55,7 +55,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
         const location = useLocation();
         const pathname = location.pathname;
         return pathname;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -69,7 +69,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
           setOnline(navigator.onLine);
         }, []);
         return online;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -83,7 +83,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
           return width;
         };
         return <button onClick={handleClick} />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -94,7 +94,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       `function App() {
         const width = typeof window !== 'undefined' ? window.innerWidth : 0;
         return <div style={{ width }} />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -105,7 +105,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       `function App() {
         const host = typeof window === 'undefined' ? '' : window.location.hostname;
         return <div>{host}</div>;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -116,7 +116,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       `function App() {
         const width = canUseDOM ? window.innerWidth : 0;
         return <div style={{ width }} />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -128,7 +128,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
         const navigator = getFakeAgent();
         const [online] = useState(navigator.onLine);
         return online;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -139,7 +139,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       `const useWidth = () => {
         const width = useMemo(() => window.innerWidth, []);
         return width;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -149,7 +149,7 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       noUnguardedBrowserGlobalInRenderOrHookInit,
       `const readWidth = () => {
         return window.innerWidth;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -12,7 +12,7 @@ describe("debounce-no-cleanup", () => {
       function Search() {
         const search = useMemo(() => debounce(setQuery, 500), [setQuery]);
         return null;
-      }`
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -25,7 +25,7 @@ describe("debounce-no-cleanup", () => {
       function Input() {
         const debounced = useRef(debounce(() => onChange(), 200));
         return null;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -37,7 +37,7 @@ describe("debounce-no-cleanup", () => {
       function Scroller() {
         const onScroll = useMemo(() => throttle(handle, 100), [handle]);
         return null;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -49,7 +49,7 @@ describe("debounce-no-cleanup", () => {
       function Search() {
         const search = useMemo(() => _.debounce(setQuery, 500), []);
         return null;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -62,7 +62,7 @@ describe("debounce-no-cleanup", () => {
         const search = useMemo(() => debounce(setQuery, 500), [setQuery]);
         useEffect(() => () => search.cancel(), [search]);
         return null;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -75,7 +75,7 @@ describe("debounce-no-cleanup", () => {
         const debounced = useRef(debounce(() => onChange(), 200));
         useEffect(() => () => debounced.current.cancel(), []);
         return null;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -87,7 +87,7 @@ describe("debounce-no-cleanup", () => {
       function Search() {
         const search = useMemo(() => debounce(setQuery, 500, { trailing: false }), []);
         return null;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -99,7 +99,7 @@ describe("debounce-no-cleanup", () => {
       function Search() {
         const search = useMemo(() => debounce(setQuery, 500), []);
         return null;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -108,7 +108,7 @@ describe("debounce-no-cleanup", () => {
     const result = runRule(
       debounceNoCleanup,
       `${LODASH_DEBOUNCE_IMPORT}
-      const search = debounce(setQuery, 500);`
+      const search = debounce(setQuery, 500);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -120,7 +120,7 @@ describe("debounce-no-cleanup", () => {
       function Search() {
         useMemo(() => debounce(setQuery, 500), []);
         return null;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -10,15 +10,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 const MESSAGE =
   "This observable field initializer reads `this.props`/`this.state`, which runs before the constructor reaches `makeObservable`, so it captures a non-reactive early value; declare the field type-only and assign it in the constructor after `makeObservable(this)`.";
 
-const OBSERVABLE_SETUP_CALLEES = new Set([
-  "makeObservable",
-  "makeAutoObservable",
-  "decorate",
-]);
-const ANNOTATION_ARGUMENT_CALLEES = new Set([
-  "makeObservable",
-  "makeAutoObservable",
-]);
+const OBSERVABLE_SETUP_CALLEES = new Set(["makeObservable", "makeAutoObservable", "decorate"]);
+const ANNOTATION_ARGUMENT_CALLEES = new Set(["makeObservable", "makeAutoObservable"]);
 const OBSERVABLE_DECORATOR_NAMES = new Set(["observable", "computed"]);
 
 // True when the expression eagerly reads `this.props` / `this.state`. Nested
@@ -45,7 +38,7 @@ const eagerlyReadsThisPropsOrState = (initializer: EsTreeNode): boolean => {
 };
 
 const getDecoratorRootName = (
-  decoratorExpression: EsTreeNode | null | undefined
+  decoratorExpression: EsTreeNode | null | undefined,
 ): string | null => {
   let current: EsTreeNode | null | undefined = decoratorExpression;
   while (current) {
@@ -63,19 +56,14 @@ const getDecoratorRootName = (
   return null;
 };
 
-const isDecoratedObservable = (
-  member: EsTreeNodeOfType<"PropertyDefinition">
-): boolean =>
+const isDecoratedObservable = (member: EsTreeNodeOfType<"PropertyDefinition">): boolean =>
   (member.decorators ?? []).some((decorator) =>
-    OBSERVABLE_DECORATOR_NAMES.has(
-      getDecoratorRootName(decorator.expression) ?? ""
-    )
+    OBSERVABLE_DECORATOR_NAMES.has(getDecoratorRootName(decorator.expression) ?? ""),
   );
 
 const getPropertyKeyName = (key: EsTreeNode): string | null => {
   if (isNodeOfType(key, "Identifier")) return key.name;
-  if (isNodeOfType(key, "Literal") && typeof key.value === "string")
-    return key.value;
+  if (isNodeOfType(key, "Literal") && typeof key.value === "string") return key.value;
   return null;
 };
 
@@ -118,8 +106,7 @@ export const mobxPropertyInitializerReadsThisBeforeMakeobservable = defineRule({
       const classNode = node.parent;
       if (!classNode || !isEs6Component(classNode)) return;
 
-      const { hasSetupCall, annotationKeys } =
-        collectObservableSetup(classNode);
+      const { hasSetupCall, annotationKeys } = collectObservableSetup(classNode);
       if (!hasSetupCall) return;
 
       for (const member of node.body ?? []) {
@@ -129,8 +116,7 @@ export const mobxPropertyInitializerReadsThisBeforeMakeobservable = defineRule({
 
         const keyName = getPropertyKeyName(member.key);
         const isObservableField =
-          isDecoratedObservable(member) ||
-          (keyName !== null && annotationKeys.has(keyName));
+          isDecoratedObservable(member) || (keyName !== null && annotationKeys.has(keyName));
         if (!isObservableField) continue;
 
         context.report({ node: member, message: MESSAGE });

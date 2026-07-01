@@ -58,9 +58,7 @@ const typeAnnotationHasOptionalMember = (typeNode: EsTreeNode): boolean => {
   // fully visible: only flag when it actually has a `?` member.
   if (isNodeOfType(typeNode, "TSTypeReference")) return true;
   if (isNodeOfType(typeNode, "TSTypeLiteral")) {
-    return typeNode.members.some((member) =>
-      Boolean((member as { optional?: boolean }).optional)
-    );
+    return typeNode.members.some((member) => Boolean((member as { optional?: boolean }).optional));
   }
   return false;
 };
@@ -70,17 +68,13 @@ const typeAnnotationHasOptionalMember = (typeNode: EsTreeNode): boolean => {
 // optional (`?`) members. Fully-required inline types and object-literal
 // bindings cannot, so they stay quiet.
 const laterOperandCanCarryExplicitUndefined = (
-  identifier: EsTreeNodeOfType<"Identifier">
+  identifier: EsTreeNodeOfType<"Identifier">,
 ): boolean => {
   if (identifier.name === "props") return true;
-  const binding = findVariableInitializer(
-    identifier as EsTreeNode,
-    identifier.name
-  );
+  const binding = findVariableInitializer(identifier as EsTreeNode, identifier.name);
   const bindingIdentifier = binding?.bindingIdentifier;
   if (!bindingIdentifier) return false;
-  const typeAnnotation = (bindingIdentifier as { typeAnnotation?: EsTreeNode })
-    .typeAnnotation;
+  const typeAnnotation = (bindingIdentifier as { typeAnnotation?: EsTreeNode }).typeAnnotation;
   const annotatedType = typeAnnotation
     ? (typeAnnotation as { typeAnnotation?: EsTreeNode }).typeAnnotation
     : null;
@@ -88,9 +82,7 @@ const laterOperandCanCarryExplicitUndefined = (
   return typeAnnotationHasOptionalMember(annotatedType);
 };
 
-const spreadArgumentIdentifier = (
-  spread: EsTreeNode
-): EsTreeNodeOfType<"Identifier"> | null => {
+const spreadArgumentIdentifier = (spread: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
   const argument = (spread as { argument?: EsTreeNode }).argument;
   return argument && isNodeOfType(argument, "Identifier") ? argument : null;
 };
@@ -111,20 +103,16 @@ export const noSpreadPropsOverDefaultsClobbersWithUndefined = defineRule({
     let fileIsComponentOrHook = false;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        fileIsComponentOrHook = fileIsComponentOrHookContext(
-          node as EsTreeNode
-        );
+        fileIsComponentOrHook = fileIsComponentOrHookContext(node as EsTreeNode);
       },
       ObjectExpression(node: EsTreeNodeOfType<"ObjectExpression">) {
         if (!fileIsComponentOrHook) return;
         const spreads = node.properties.filter((property) =>
-          isNodeOfType(property as EsTreeNode, "SpreadElement")
+          isNodeOfType(property as EsTreeNode, "SpreadElement"),
         );
         if (spreads.length < 2) return;
 
-        const firstSpreadIdentifier = spreadArgumentIdentifier(
-          spreads[0] as EsTreeNode
-        );
+        const firstSpreadIdentifier = spreadArgumentIdentifier(spreads[0] as EsTreeNode);
         if (
           !firstSpreadIdentifier ||
           !DEFAULTS_IDENTIFIER_PATTERN.test(firstSpreadIdentifier.name)
@@ -132,11 +120,10 @@ export const noSpreadPropsOverDefaultsClobbersWithUndefined = defineRule({
           return;
         }
         const lastSpreadIdentifier = spreadArgumentIdentifier(
-          spreads[spreads.length - 1] as EsTreeNode
+          spreads[spreads.length - 1] as EsTreeNode,
         );
         if (!lastSpreadIdentifier) return;
-        if (!laterOperandCanCarryExplicitUndefined(lastSpreadIdentifier))
-          return;
+        if (!laterOperandCanCarryExplicitUndefined(lastSpreadIdentifier)) return;
 
         context.report({ node, message: MESSAGE });
       },

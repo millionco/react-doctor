@@ -24,7 +24,7 @@ const getNodeStart = (node: EsTreeNode): number | null => {
 // The boolean argument of a `setX(true)` / `setX(false)` call, or null when
 // the call is not a bare-identifier setter with a boolean-literal first arg.
 const getSetterBooleanValue = (
-  node: EsTreeNodeOfType<"CallExpression">
+  node: EsTreeNodeOfType<"CallExpression">,
 ): { setterName: string; value: boolean } | null => {
   if (!isNodeOfType(node.callee, "Identifier")) return null;
   const firstArgument = node.arguments[0];
@@ -38,14 +38,13 @@ const getSetterBooleanValue = (
 // ("plain" — a trailing success-path statement or a bare try body).
 const classifyResetContext = (
   callNode: EsTreeNode,
-  functionNode: EsTreeNode
+  functionNode: EsTreeNode,
 ): "finally" | "catch" | "plain" => {
   let child: EsTreeNode = callNode;
   let cursor: EsTreeNode | null | undefined = callNode.parent;
   while (cursor && cursor !== functionNode) {
     if (isNodeOfType(cursor, "CatchClause")) return "catch";
-    if (isNodeOfType(cursor, "TryStatement") && cursor.finalizer === child)
-      return "finally";
+    if (isNodeOfType(cursor, "TryStatement") && cursor.finalizer === child) return "finally";
     child = cursor;
     cursor = cursor.parent ?? null;
   }
@@ -54,10 +53,7 @@ const classifyResetContext = (
 
 // Walks the function's own body, never descending into a nested function, so
 // awaits/setters belong to THIS async scope, not a deeper closure.
-const walkOwnScope = (
-  functionNode: EsTreeNode,
-  visit: (node: EsTreeNode) => void
-): void => {
+const walkOwnScope = (functionNode: EsTreeNode, visit: (node: EsTreeNode) => void): void => {
   if (!isFunctionLike(functionNode)) return;
   const body = functionNode.body;
   if (!body) return;
@@ -74,20 +70,14 @@ interface SetterCall {
   node: EsTreeNode;
 }
 
-const analyzeFunction = (
-  functionNode: EsTreeNode,
-  context: RuleContext
-): void => {
+const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void => {
   let firstAwaitStart: number | null = null;
   const settersByName = new Map<string, SetterCall[]>();
 
   walkOwnScope(functionNode, (node) => {
     if (isNodeOfType(node, "AwaitExpression")) {
       const start = getNodeStart(node);
-      if (
-        start !== null &&
-        (firstAwaitStart === null || start < firstAwaitStart)
-      ) {
+      if (start !== null && (firstAwaitStart === null || start < firstAwaitStart)) {
         firstAwaitStart = start;
       }
       return;
@@ -112,9 +102,7 @@ const analyzeFunction = (
   const awaitStart = firstAwaitStart;
 
   for (const calls of settersByName.values()) {
-    const setsTruthyBeforeAwait = calls.some(
-      (call) => call.value && call.start < awaitStart
-    );
+    const setsTruthyBeforeAwait = calls.some((call) => call.value && call.start < awaitStart);
     if (!setsTruthyBeforeAwait) continue;
 
     const resets = calls.filter((call) => !call.value);
@@ -123,15 +111,10 @@ const analyzeFunction = (
     // A reset in `finally` always runs; a reset in `catch` mirrors the reset
     // on the rejection path. Either discharges the clear-obligation, so the
     // flag is not stuck.
-    if (
-      resets.some(
-        (reset) => reset.context === "finally" || reset.context === "catch"
-      )
-    )
-      continue;
+    if (resets.some((reset) => reset.context === "finally" || reset.context === "catch")) continue;
 
     const successPathReset = resets.find(
-      (reset) => reset.context === "plain" && reset.start > awaitStart
+      (reset) => reset.context === "plain" && reset.start > awaitStart,
     );
     if (successPathReset) {
       context.report({ node: successPathReset.node, message: MESSAGE });

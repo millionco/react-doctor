@@ -18,21 +18,10 @@ const URL_MESSAGE =
   "This builds a `URL` from a single runtime argument, which throws `TypeError` on a malformed string and crashes render. Pass a base-URL second argument, or wrap the call in a try/catch.";
 
 const DECODE_CALLEE_NAMES = new Set(["decodeURIComponent", "decodeURI"]);
-const COLOR_CALLEE_NAMES = new Set([
-  "readableColor",
-  "parseToRgb",
-  "chroma",
-  "tinycolor",
-]);
+const COLOR_CALLEE_NAMES = new Set(["readableColor", "parseToRgb", "chroma", "tinycolor"]);
 
 // A prop/param named after a URL/route field, or a well-known route source.
-const URL_ROUTE_FIELD_NAMES = new Set([
-  "url",
-  "path",
-  "ref",
-  "branch",
-  "query",
-]);
+const URL_ROUTE_FIELD_NAMES = new Set(["url", "path", "ref", "branch", "query"]);
 const URL_ROUTE_SOURCE_ROOTS = new Set(["searchParams", "params", "location"]);
 
 // Non-render/library plumbing and controlled-input files where the throw is
@@ -43,16 +32,10 @@ const EXCLUDED_FILE_PATTERN =
 const nameOfFunction = (fn: EsTreeNode): string | null => {
   if (isNodeOfType(fn, "FunctionDeclaration") && fn.id) return fn.id.name;
   const parent = fn.parent;
-  if (
-    isNodeOfType(parent, "VariableDeclarator") &&
-    isNodeOfType(parent.id, "Identifier")
-  ) {
+  if (isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")) {
     return parent.id.name;
   }
-  if (
-    isNodeOfType(parent, "Property") &&
-    isNodeOfType(parent.key, "Identifier")
-  ) {
+  if (isNodeOfType(parent, "Property") && isNodeOfType(parent.key, "Identifier")) {
     return parent.key.name;
   }
   return null;
@@ -80,11 +63,10 @@ const hasEnclosingFunction = (node: EsTreeNode): boolean => {
 };
 
 const isProcessEnvMember = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "MemberExpression") &&
-  getRootIdentifierName(node) === "process";
+  isNodeOfType(node, "MemberExpression") && getRootIdentifierName(node) === "process";
 
 const findEnclosingDeclarator = (
-  bindingIdentifier: EsTreeNode
+  bindingIdentifier: EsTreeNode,
 ): EsTreeNodeOfType<"VariableDeclarator"> | null => {
   let cursor: EsTreeNode | null | undefined = bindingIdentifier.parent;
   while (cursor) {
@@ -101,25 +83,18 @@ const findEnclosingDeclarator = (
 const isCompileTimeOrModuleConst = (argument: EsTreeNode): boolean => {
   const inner = stripParenExpression(argument);
   if (isNodeOfType(inner, "Literal")) return true;
-  if (isNodeOfType(inner, "TemplateLiteral") && inner.expressions.length === 0)
-    return true;
+  if (isNodeOfType(inner, "TemplateLiteral") && inner.expressions.length === 0) return true;
   if (isProcessEnvMember(inner)) return true;
   if (isNodeOfType(inner, "Identifier")) {
     const binding = findVariableInitializer(inner, inner.name);
     if (!binding) return false;
     const declarator = findEnclosingDeclarator(binding.bindingIdentifier);
-    if (!declarator || declarator.id !== binding.bindingIdentifier)
-      return false;
+    if (!declarator || declarator.id !== binding.bindingIdentifier) return false;
     const declaration = declarator.parent;
-    if (
-      !isNodeOfType(declaration, "VariableDeclaration") ||
-      declaration.kind !== "const"
-    ) {
+    if (!isNodeOfType(declaration, "VariableDeclaration") || declaration.kind !== "const") {
       return false;
     }
-    const init = declarator.init
-      ? stripParenExpression(declarator.init as EsTreeNode)
-      : null;
+    const init = declarator.init ? stripParenExpression(declarator.init as EsTreeNode) : null;
     if (!init) return false;
     return isNodeOfType(init, "Literal") || isProcessEnvMember(init);
   }
@@ -130,11 +105,7 @@ const argumentTracesToUrlRouteSource = (argument: EsTreeNode): boolean => {
   const inner = stripParenExpression(argument);
   const rootName = getRootIdentifierName(inner);
   if (rootName && URL_ROUTE_SOURCE_ROOTS.has(rootName)) return true;
-  if (
-    isNodeOfType(inner, "Identifier") &&
-    URL_ROUTE_FIELD_NAMES.has(inner.name)
-  )
-    return true;
+  if (isNodeOfType(inner, "Identifier") && URL_ROUTE_FIELD_NAMES.has(inner.name)) return true;
   if (
     isNodeOfType(inner, "MemberExpression") &&
     isNodeOfType(inner.property, "Identifier") &&
@@ -142,13 +113,10 @@ const argumentTracesToUrlRouteSource = (argument: EsTreeNode): boolean => {
   ) {
     return true;
   }
-  if (subtreeReferencesIdentifierName(inner, URL_ROUTE_SOURCE_ROOTS))
-    return true;
+  if (subtreeReferencesIdentifierName(inner, URL_ROUTE_SOURCE_ROOTS)) return true;
   if (isNodeOfType(inner, "Identifier")) {
     const binding = findVariableInitializer(inner, inner.name);
-    const declarator = binding
-      ? findEnclosingDeclarator(binding.bindingIdentifier)
-      : null;
+    const declarator = binding ? findEnclosingDeclarator(binding.bindingIdentifier) : null;
     if (declarator && declarator.init) {
       return argumentTracesToUrlRouteSource(declarator.init as EsTreeNode);
     }
@@ -158,9 +126,7 @@ const argumentTracesToUrlRouteSource = (argument: EsTreeNode): boolean => {
 
 const isRuntimeColorArgument = (argument: EsTreeNode): boolean => {
   const inner = stripParenExpression(argument);
-  return (
-    isNodeOfType(inner, "Identifier") || isNodeOfType(inner, "MemberExpression")
-  );
+  return isNodeOfType(inner, "Identifier") || isNodeOfType(inner, "MemberExpression");
 };
 
 // Request objects whose `.url` is a framework-guaranteed valid absolute URL.
@@ -224,11 +190,7 @@ export const noUnguardedThrowingParseCall = defineRule({
     return {
       NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
         if (fileIsExcluded) return;
-        if (
-          !isNodeOfType(node.callee, "Identifier") ||
-          node.callee.name !== "URL"
-        )
-          return;
+        if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "URL") return;
         if (node.arguments.length !== 1) return;
         const argument = node.arguments[0];
         if (!argument) return;

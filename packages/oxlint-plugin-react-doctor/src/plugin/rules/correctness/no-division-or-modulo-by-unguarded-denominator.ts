@@ -34,10 +34,7 @@ const containsReturnOrThrow = (node: EsTreeNode): boolean => {
   walkAst(node, (child: EsTreeNode) => {
     if (found) return false;
     if (child !== node && isFunctionLike(child)) return false;
-    if (
-      isNodeOfType(child, "ReturnStatement") ||
-      isNodeOfType(child, "ThrowStatement")
-    ) {
+    if (isNodeOfType(child, "ReturnStatement") || isNodeOfType(child, "ThrowStatement")) {
       found = true;
       return false;
     }
@@ -46,7 +43,7 @@ const containsReturnOrThrow = (node: EsTreeNode): boolean => {
 };
 
 const findEnclosingDeclarator = (
-  bindingIdentifier: EsTreeNode
+  bindingIdentifier: EsTreeNode,
 ): EsTreeNodeOfType<"VariableDeclarator"> | null => {
   let cursor: EsTreeNode | null | undefined = bindingIdentifier.parent;
   while (cursor) {
@@ -60,26 +57,17 @@ const findEnclosingDeclarator = (
 // True when `identifier` is provably bound to a `const` numeric literal —
 // a denominator that can never be zero-at-runtime in a way the rule cares
 // about (a literal `0` divisor would be a different, always-broken bug).
-const isConstNumericBinding = (
-  identifier: EsTreeNodeOfType<"Identifier">
-): boolean => {
+const isConstNumericBinding = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
   const binding = findVariableInitializer(identifier, identifier.name);
   if (!binding) return false;
   const declarator = findEnclosingDeclarator(binding.bindingIdentifier);
   if (!declarator || declarator.id !== binding.bindingIdentifier) return false;
   const declaration = declarator.parent;
-  if (
-    !isNodeOfType(declaration, "VariableDeclaration") ||
-    declaration.kind !== "const"
-  ) {
+  if (!isNodeOfType(declaration, "VariableDeclaration") || declaration.kind !== "const") {
     return false;
   }
-  const init = declarator.init
-    ? stripParenExpression(declarator.init as EsTreeNode)
-    : null;
-  return Boolean(
-    init && isNodeOfType(init, "Literal") && typeof init.value === "number"
-  );
+  const init = declarator.init ? stripParenExpression(declarator.init as EsTreeNode) : null;
+  return Boolean(init && isNodeOfType(init, "Literal") && typeof init.value === "number");
 };
 
 // True when `arrayObject` is provably bound to a non-empty array literal via a
@@ -91,23 +79,14 @@ const isConstNonEmptyArrayBinding = (arrayObject: EsTreeNode): boolean => {
   const declarator = findEnclosingDeclarator(binding.bindingIdentifier);
   if (!declarator || declarator.id !== binding.bindingIdentifier) return false;
   const declaration = declarator.parent;
-  if (
-    !isNodeOfType(declaration, "VariableDeclaration") ||
-    declaration.kind !== "const"
-  ) {
+  if (!isNodeOfType(declaration, "VariableDeclaration") || declaration.kind !== "const") {
     return false;
   }
-  const init = declarator.init
-    ? stripParenExpression(declarator.init as EsTreeNode)
-    : null;
-  return Boolean(
-    init && isNodeOfType(init, "ArrayExpression") && init.elements.length > 0
-  );
+  const init = declarator.init ? stripParenExpression(declarator.init as EsTreeNode) : null;
+  return Boolean(init && isNodeOfType(init, "ArrayExpression") && init.elements.length > 0);
 };
 
-const isLengthMember = (
-  node: EsTreeNode
-): node is EsTreeNodeOfType<"MemberExpression"> =>
+const isLengthMember = (node: EsTreeNode): node is EsTreeNodeOfType<"MemberExpression"> =>
   isNodeOfType(node, "MemberExpression") &&
   !node.computed &&
   isNodeOfType(node.property, "Identifier") &&
@@ -145,10 +124,7 @@ const findProgramLike = (node: EsTreeNode): EsTreeNode | null => {
 
 // A dominating zero-guard on the divisor: an enclosing ternary/if whose test
 // mentions the denominator, or a preceding early-return guard clause on it.
-const hasDominatingZeroGuard = (
-  binaryNode: EsTreeNode,
-  divisorRootName: string
-): boolean => {
+const hasDominatingZeroGuard = (binaryNode: EsTreeNode, divisorRootName: string): boolean => {
   let child: EsTreeNode = binaryNode;
   let cursor: EsTreeNode | null | undefined = binaryNode.parent;
   let enclosingFunction: EsTreeNode | null = null;
@@ -186,8 +162,7 @@ const hasDominatingZeroGuard = (
     if (!isNodeOfType(node, "IfStatement")) return;
     const start = getNodeStart(node);
     if (start === null || start >= divisionStart) return;
-    if (!subtreeReferencesName(node.test as EsTreeNode, divisorRootName))
-      return;
+    if (!subtreeReferencesName(node.test as EsTreeNode, divisorRootName)) return;
     if (containsReturnOrThrow(node.consequent as EsTreeNode)) guardFound = true;
   });
   return guardFound;

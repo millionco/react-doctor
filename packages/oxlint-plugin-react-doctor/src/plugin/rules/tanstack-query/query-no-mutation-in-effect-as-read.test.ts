@@ -10,7 +10,7 @@ describe("query-no-mutation-in-effect-as-read", () => {
          const { mutateAsync, data } = useGetMarkedAsSpamRetailers();
          useEffect(() => { mutateAsync(ids); }, [ids]);
          return <div>{data.retailers}</div>;
-       }`
+       }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -28,7 +28,7 @@ describe("query-no-mutation-in-effect-as-read", () => {
            })();
          }, [id]);
          return null;
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -42,7 +42,7 @@ describe("query-no-mutation-in-effect-as-read", () => {
          useEffect(() => { mutate(payload); }, [dep]);
          const options = useMemo(() => (data ? data.available_locales : []), [data]);
          return options;
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -54,7 +54,7 @@ describe("query-no-mutation-in-effect-as-read", () => {
          const { mutate } = useMutation(opts);
          useEffect(() => { mutate(progress); }, [progress]);
          return null;
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -66,7 +66,7 @@ describe("query-no-mutation-in-effect-as-read", () => {
          const { mutate, data } = useUploadEvent(opts);
          useEffect(() => { mutate(buildEvent()); }, [id]);
          return data?.success ? <Done /> : <Pending />;
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -78,7 +78,7 @@ describe("query-no-mutation-in-effect-as-read", () => {
          const { mutate, data } = useMutation(opts);
          const onClick = () => mutate(x);
          return <button onClick={onClick}>{data.value}</button>;
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -89,7 +89,7 @@ describe("query-no-mutation-in-effect-as-read", () => {
       `function C() {
          const { mutate, data } = useMutation(opts);
          return <div>{data.value}</div>;
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -103,7 +103,7 @@ describe("query-no-mutation-in-effect-as-read", () => {
            (async () => { await mutateAsync(params); })();
          }, [id]);
          return null;
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

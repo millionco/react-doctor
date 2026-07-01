@@ -11,16 +11,7 @@ const MESSAGE =
   "Multiplying or dividing an optional-chained value yields NaN when the chain short-circuits to undefined, and NaN spreads silently into formatting and comparisons. Add a `?? fallback` or guard the value before the math.";
 
 const MULTIPLICATIVE_OPERATORS = new Set(["*", "/", "%"]);
-const COMPARISON_OPERATORS = new Set([
-  "<",
-  ">",
-  "<=",
-  ">=",
-  "==",
-  "!=",
-  "===",
-  "!==",
-]);
+const COMPARISON_OPERATORS = new Set(["<", ">", "<=", ">=", "==", "!=", "===", "!=="]);
 const NUMERIC_FORMAT_METHOD_NAMES = new Set([
   "toFixed",
   "toString",
@@ -58,7 +49,7 @@ const stripKeepingChain = (node: EsTreeNode): EsTreeNode => {
 // (non-computed). Call forms (`a?.()`) and computed forms (`a?.[k]`) are
 // intentionally excluded so the chained value is the direct arithmetic operand.
 const asDirectOptionalChainMember = (
-  node: EsTreeNode
+  node: EsTreeNode,
 ): EsTreeNodeOfType<"MemberExpression"> | null => {
   const stripped = stripKeepingChain(node);
   if (!isNodeOfType(stripped, "ChainExpression")) return null;
@@ -94,9 +85,7 @@ const optionalChainRootName = (memberExpression: EsTreeNode): string | null => {
 // bound to one (`const size = a?.b; size * n`). A `??`/`||` fallback on the
 // binding makes its initializer a LogicalExpression, so it naturally fails the
 // chain check and is not treated as unguarded.
-const resolveOptionalChainOperandRoot = (
-  operand: EsTreeNode
-): string | null => {
+const resolveOptionalChainOperandRoot = (operand: EsTreeNode): string | null => {
   const direct = asDirectOptionalChainMember(operand);
   if (direct) return optionalChainRootName(direct);
 
@@ -108,9 +97,7 @@ const resolveOptionalChainOperandRoot = (
   return initializerMember ? optionalChainRootName(initializerMember) : null;
 };
 
-const unwrapUpwards = (
-  node: EsTreeNode
-): { consumed: EsTreeNode; consumer: EsTreeNode | null } => {
+const unwrapUpwards = (node: EsTreeNode): { consumed: EsTreeNode; consumer: EsTreeNode | null } => {
   let consumed = node;
   let consumer = node.parent ?? null;
   while (consumer && TRANSPARENT_WRAPPER_TYPES.has(consumer.type)) {
@@ -156,8 +143,7 @@ const isDirectNumericConsumer = (valueNode: EsTreeNode): boolean => {
 const findScopeOwner = (node: EsTreeNode): EsTreeNode | null => {
   let ancestor: EsTreeNode | null | undefined = node.parent;
   while (ancestor) {
-    if (isFunctionLike(ancestor) || isNodeOfType(ancestor, "Program"))
-      return ancestor;
+    if (isFunctionLike(ancestor) || isNodeOfType(ancestor, "Program")) return ancestor;
     ancestor = ancestor.parent ?? null;
   }
   return null;
@@ -165,9 +151,7 @@ const findScopeOwner = (node: EsTreeNode): EsTreeNode | null => {
 
 // A numeric consumer reached through an intermediate binding:
 // `const share = a?.b / total; share.toFixed(2)`.
-const flowsIntoNumericConsumerViaBinding = (
-  binaryNode: EsTreeNode
-): boolean => {
+const flowsIntoNumericConsumerViaBinding = (binaryNode: EsTreeNode): boolean => {
   const { consumed, consumer } = unwrapUpwards(binaryNode);
   if (
     !consumer ||
@@ -197,13 +181,9 @@ const flowsIntoNumericConsumerViaBinding = (
 };
 
 const isNumericConsumerContext = (binaryNode: EsTreeNode): boolean =>
-  isDirectNumericConsumer(binaryNode) ||
-  flowsIntoNumericConsumerViaBinding(binaryNode);
+  isDirectNumericConsumer(binaryNode) || flowsIntoNumericConsumerViaBinding(binaryNode);
 
-const subtreeReferencesName = (
-  node: EsTreeNode | null | undefined,
-  name: string
-): boolean => {
+const subtreeReferencesName = (node: EsTreeNode | null | undefined, name: string): boolean => {
   if (!node) return false;
   let found = false;
   walkAst(node, (child: EsTreeNode) => {
@@ -231,10 +211,7 @@ const subtreeReferencesName = (
 // test or `&&`-guard already narrowed the same root. The arithmetic must sit
 // in the guarded BRANCH, not in the test itself (otherwise the test of
 // `if (a?.b * n < x)` would suppress its own finding).
-const rootIsGuardedByEnclosingTest = (
-  binaryNode: EsTreeNode,
-  rootName: string
-): boolean => {
+const rootIsGuardedByEnclosingTest = (binaryNode: EsTreeNode, rootName: string): boolean => {
   let child: EsTreeNode = binaryNode;
   let ancestor: EsTreeNode | null | undefined = binaryNode.parent;
   while (ancestor) {
@@ -280,15 +257,11 @@ export const noArithmeticOnOptionalChainedOperand = defineRule({
   create: (context: RuleContext) => ({
     BinaryExpression(node: EsTreeNodeOfType<"BinaryExpression">) {
       if (!MULTIPLICATIVE_OPERATORS.has(node.operator)) return;
-      const operands: EsTreeNode[] = [
-        node.left as EsTreeNode,
-        node.right as EsTreeNode,
-      ];
+      const operands: EsTreeNode[] = [node.left as EsTreeNode, node.right as EsTreeNode];
       for (const operand of operands) {
         const rootName = resolveOptionalChainOperandRoot(operand);
         if (!rootName) continue;
-        if (rootIsGuardedByEnclosingTest(node as EsTreeNode, rootName))
-          continue;
+        if (rootIsGuardedByEnclosingTest(node as EsTreeNode, rootName)) continue;
         if (!isNumericConsumerContext(node as EsTreeNode)) continue;
         context.report({ node, message: MESSAGE });
         return;

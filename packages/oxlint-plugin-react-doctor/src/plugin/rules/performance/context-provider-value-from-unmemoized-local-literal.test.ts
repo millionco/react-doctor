@@ -13,7 +13,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
         const value = { theme };
         return <ThemeContext.Provider value={value}><Child /></ThemeContext.Provider>;
       }
-    `
+    `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -29,7 +29,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
         const value = [...items];
         return <ListContext.Provider value={value} />;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -44,7 +44,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
         const value = () => {};
         return <CbContext.Provider value={value} />;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -59,7 +59,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
         const value = { theme };
         return <ThemeContext value={value}><Child /></ThemeContext>;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -74,7 +74,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
         const value = useMemo(() => ({ theme }), [theme]);
         return <ThemeContext.Provider value={value} />;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -89,7 +89,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
         const value = useCallback(() => {}, []);
         return <CbContext.Provider value={value} />;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -103,7 +103,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
       function App({ value }) {
         return <ThemeContext.Provider value={value} />;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -118,7 +118,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
         const value = section?.edges;
         return <ThemeContext.Provider value={value} />;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -133,7 +133,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
       function App() {
         return <ThemeContext.Provider value={value} />;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -147,7 +147,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
       function App({ theme }) {
         return <ThemeContext.Provider value={{ theme }} />;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -160,7 +160,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
       const ThemeContext = createContext(null);
       const value = { theme: "dark" };
       const element = <ThemeContext.Provider value={value} />;
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -176,7 +176,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
         return <DatabaseContext.Provider value={contextValue}>{children}</DatabaseContext.Provider>;
       }
     `,
-      { filename: "src/__tests__/useGroup.test.tsx" }
+      { filename: "src/__tests__/useGroup.test.tsx" },
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -190,7 +190,7 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
         const value = { a: 1 };
         return <Wrapper value={value} />;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

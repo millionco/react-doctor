@@ -37,15 +37,9 @@ const chainRootName = (node: EsTreeNode): string | null => {
 // The `current` property and any identifier ending in `Ref` are the React
 // ref idiom the author knows is populated.
 const isRefLikeBase = (base: EsTreeNodeOfType<"MemberExpression">): boolean => {
-  if (
-    isNodeOfType(base.property, "Identifier") &&
-    base.property.name === "current"
-  )
-    return true;
+  if (isNodeOfType(base.property, "Identifier") && base.property.name === "current") return true;
   const object = stripParenExpression(base.object);
-  return Boolean(
-    isNodeOfType(object, "Identifier") && object.name.endsWith("Ref")
-  );
+  return Boolean(isNodeOfType(object, "Identifier") && object.name.endsWith("Ref"));
 };
 
 export const noNonNullAssertionOnMemberAccess = defineRule({
@@ -68,10 +62,7 @@ export const noNonNullAssertionOnMemberAccess = defineRule({
         // Read `base.object` raw — `stripParenExpression` peels
         // `TSNonNullExpression` too, which would hide the very chained
         // assertion (`a!.b!`) this arm is looking for.
-        const isChainedAssertion = isNodeOfType(
-          base.object,
-          "TSNonNullExpression"
-        );
+        const isChainedAssertion = isNodeOfType(base.object, "TSNonNullExpression");
         const isSnakeCaseField =
           isNodeOfType(base.property, "Identifier") &&
           SNAKE_CASE_PROPERTY_PATTERN.test(base.property.name);
@@ -84,8 +75,7 @@ export const noNonNullAssertionOnMemberAccess = defineRule({
           const rootName = chainRootName(base);
           if (
             rootName &&
-            (SCREAMING_SNAKE_ROOT_PATTERN.test(rootName) ||
-              rootName.endsWith("Ref"))
+            (SCREAMING_SNAKE_ROOT_PATTERN.test(rootName) || rootName.endsWith("Ref"))
           ) {
             return;
           }

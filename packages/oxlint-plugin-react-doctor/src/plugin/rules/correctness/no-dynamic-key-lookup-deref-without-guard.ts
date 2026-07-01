@@ -23,18 +23,14 @@ const keyIntroducedByCast = (keyNode: EsTreeNode): boolean => {
     if (NUMERIC_INDEX_NAMES.has(key.name)) return false;
     const binding = findVariableInitializer(key, key.name);
     if (!binding || !binding.initializer) return false;
-    return isNodeOfType(
-      stripGroupingParens(binding.initializer),
-      "TSAsExpression"
-    );
+    return isNodeOfType(stripGroupingParens(binding.initializer), "TSAsExpression");
   }
   return false;
 };
 
 const isNumericKey = (keyNode: EsTreeNode): boolean => {
   const key = stripGroupingParens(keyNode);
-  if (isNodeOfType(key, "Literal") && typeof key.value === "number")
-    return true;
+  if (isNodeOfType(key, "Literal") && typeof key.value === "number") return true;
   if (isNodeOfType(key, "Identifier")) return NUMERIC_INDEX_NAMES.has(key.name);
   if (isNodeOfType(key, "TSAsExpression")) {
     const target = key.typeAnnotation as EsTreeNode | undefined;
@@ -46,19 +42,15 @@ const isNumericKey = (keyNode: EsTreeNode): boolean => {
 
 // A computed lookup `base[key]` whose result is immediately consumed.
 const asComputedLookup = (
-  node: EsTreeNode | null | undefined
+  node: EsTreeNode | null | undefined,
 ): EsTreeNodeOfType<"MemberExpression"> | null => {
   if (!node) return null;
   const stripped = stripParenExpression(node);
-  if (isNodeOfType(stripped, "MemberExpression") && stripped.computed)
-    return stripped;
+  if (isNodeOfType(stripped, "MemberExpression") && stripped.computed) return stripped;
   return null;
 };
 
-const referencesKeyName = (
-  node: EsTreeNode | null | undefined,
-  keyName: string
-): boolean => {
+const referencesKeyName = (node: EsTreeNode | null | undefined, keyName: string): boolean => {
   if (!node) return false;
   let found = false;
   const walk = (current: EsTreeNode): void => {
@@ -73,8 +65,7 @@ const referencesKeyName = (
       const child = record[propertyKey];
       if (Array.isArray(child)) {
         for (const item of child) {
-          if (item && typeof item === "object" && "type" in item)
-            walk(item as EsTreeNode);
+          if (item && typeof item === "object" && "type" in item) walk(item as EsTreeNode);
         }
       } else if (child && typeof child === "object" && "type" in child) {
         walk(child as EsTreeNode);
@@ -87,10 +78,7 @@ const referencesKeyName = (
 
 // A preceding/enclosing presence check on the key (`if (map[key])`,
 // `key in map`, `map[key] && ...`) makes the lookup provably present.
-const isLookupGuarded = (
-  derefNode: EsTreeNode,
-  keyName: string | null
-): boolean => {
+const isLookupGuarded = (derefNode: EsTreeNode, keyName: string | null): boolean => {
   if (!keyName) return false;
   let child: EsTreeNode = derefNode;
   let ancestor: EsTreeNode | null = derefNode.parent ?? null;
@@ -162,7 +150,7 @@ export const noDynamicKeyLookupDerefWithoutGuard = defineRule({
   create: (context: RuleContext) => {
     const reportForLookup = (
       derefNode: EsTreeNode,
-      lookup: EsTreeNodeOfType<"MemberExpression">
+      lookup: EsTreeNodeOfType<"MemberExpression">,
     ): void => {
       // `base?.[key]` guards the base being nullish, not a missing key,
       // but a following non-optional deref still throws — so it stays
@@ -192,10 +180,7 @@ export const noDynamicKeyLookupDerefWithoutGuard = defineRule({
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         // `const { field } = record[key]` — destructuring off the lookup.
         if (!node.init) return;
-        if (
-          !isNodeOfType(node.id, "ObjectPattern") &&
-          !isNodeOfType(node.id, "ArrayPattern")
-        )
+        if (!isNodeOfType(node.id, "ObjectPattern") && !isNodeOfType(node.id, "ArrayPattern"))
           return;
         const lookup = asComputedLookup(node.init as EsTreeNode);
         if (!lookup) return;

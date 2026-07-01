@@ -37,9 +37,7 @@ const getTagRootName = (tag: EsTreeNode): string | null => {
 // A `${props => cond ? a : b}` (or a concise/return-body ternary): the shape
 // that signals the author expected this to be the effective value, so
 // silently losing it to a later same-property declaration is the bug.
-const isTernaryInterpolation = (
-  expression: EsTreeNode | undefined
-): boolean => {
+const isTernaryInterpolation = (expression: EsTreeNode | undefined): boolean => {
   if (!expression) return false;
   const stripped = stripParenExpression(expression);
   if (isNodeOfType(stripped, "ConditionalExpression")) return true;
@@ -56,8 +54,8 @@ const isTernaryInterpolation = (
           Boolean(statement.argument) &&
           isNodeOfType(
             stripParenExpression(statement.argument as EsTreeNode),
-            "ConditionalExpression"
-          )
+            "ConditionalExpression",
+          ),
       );
     }
   }
@@ -67,17 +65,12 @@ const isTernaryInterpolation = (
 const finalizeDeclaration = (
   text: string,
   hasTernary: boolean,
-  declarations: CssDeclaration[]
+  declarations: CssDeclaration[],
 ): void => {
   const colonIndex = text.indexOf(":");
   if (colonIndex === -1) return;
   const property = text.slice(0, colonIndex).trim().toLowerCase();
-  if (
-    !property ||
-    property.startsWith("--") ||
-    !CSS_PROPERTY_PATTERN.test(property)
-  )
-    return;
+  if (!property || property.startsWith("--") || !CSS_PROPERTY_PATTERN.test(property)) return;
   declarations.push({ property, isConditional: hasTernary });
 };
 
@@ -86,7 +79,7 @@ const finalizeDeclaration = (
 // selectors, pseudo-classes, and @media/@supports blocks live at depth > 0
 // and are intentionally skipped — that cascade is deliberate.
 const collectTopLevelDeclarations = (
-  template: EsTreeNodeOfType<"TemplateLiteral">
+  template: EsTreeNodeOfType<"TemplateLiteral">,
 ): CssDeclaration[] => {
   const declarations: CssDeclaration[] = [];
   let braceDepth = 0;
@@ -107,8 +100,7 @@ const collectTopLevelDeclarations = (
         braceDepth = Math.max(0, braceDepth - 1);
         resetSegment();
       } else if (character === ";") {
-        if (braceDepth === 0)
-          finalizeDeclaration(currentText, currentHasTernary, declarations);
+        if (braceDepth === 0) finalizeDeclaration(currentText, currentHasTernary, declarations);
         resetSegment();
       } else {
         currentText += character;
@@ -131,9 +123,7 @@ export const styledComponentsDuplicateCssPropertyInBlock = defineRule({
   recommendation:
     "Merge repeated declarations of the same CSS property in a styled block into one, so a later conditional value doesn't silently override an earlier one.",
   create: (context) => ({
-    TaggedTemplateExpression(
-      node: EsTreeNodeOfType<"TaggedTemplateExpression">
-    ) {
+    TaggedTemplateExpression(node: EsTreeNodeOfType<"TaggedTemplateExpression">) {
       const rootName = getTagRootName(node.tag);
       if (rootName !== "styled" && rootName !== "css") return;
 
@@ -147,8 +137,7 @@ export const styledComponentsDuplicateCssPropertyInBlock = defineRule({
 
       for (const [property, occurrences] of occurrencesByProperty) {
         if (occurrences.length < 2) continue;
-        if (!occurrences.every((occurrence) => occurrence.isConditional))
-          continue;
+        if (!occurrences.every((occurrence) => occurrence.isConditional)) continue;
         context.report({
           node,
           message: `The CSS property \`${property}\` is declared ${occurrences.length} times at the same level here, so the last conditional value always wins and the earlier ones never apply — merge them into a single declaration.`,

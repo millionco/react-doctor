@@ -10,7 +10,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
       function buildParams(params?: any) {
         return Object.entries(params);
       }
-      `
+      `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -23,7 +23,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
       function f(options?: Record<string, unknown>) {
         return Object.keys(options);
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -33,7 +33,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
       noObjectKeysValuesEntriesOnMaybeUndefined,
       `
       const f = (data?: any) => Object.values(data);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -41,7 +41,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
   it("flags Object.keys on an optional-chained member argument", () => {
     const result = runRule(
       noObjectKeysValuesEntriesOnMaybeUndefined,
-      `const list = Object.keys(response?.data);`
+      `const list = Object.keys(response?.data);`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -53,7 +53,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
       function f(params?: any) {
         return Object.keys(params ?? {});
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -61,7 +61,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
   it("does not flag an optional-chained member with a `?? {}` fallback", () => {
     const result = runRule(
       noObjectKeysValuesEntriesOnMaybeUndefined,
-      `const list = Object.keys(response?.data ?? {});`
+      `const list = Object.keys(response?.data ?? {});`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -73,7 +73,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
       function f(params: Record<string, any>) {
         return Object.keys(params);
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -85,7 +85,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
       function f(params = {}) {
         return Object.keys(params);
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -100,7 +100,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
         }
         return [];
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -113,7 +113,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
         if (!params) return [];
         return Object.entries(params);
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -125,7 +125,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
       function f(params?: any) {
         return params && Object.keys(params);
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -137,7 +137,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
       function f(params?: any) {
         return params ? Object.keys(params) : [];
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -150,7 +150,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
         const data = { a: 1 };
         return Object.keys(data);
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -163,7 +163,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
         const Object = { keys: () => [] };
         return Object.keys(params);
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -178,7 +178,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
         }
         return false;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -187,7 +187,7 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
     const result = runRule(
       noObjectKeysValuesEntriesOnMaybeUndefined,
       `const list = Object.keys(response?.data);`,
-      { filename: "keys.test.ts" }
+      { filename: "keys.test.ts" },
     );
     expect(result.diagnostics).toHaveLength(0);
   });

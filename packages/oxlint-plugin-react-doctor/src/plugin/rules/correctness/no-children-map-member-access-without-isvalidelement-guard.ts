@@ -39,9 +39,7 @@ const isChildrenIterationCall = (node: EsTreeNode): boolean => {
 // The callback whose param is a `React.Children`-iterated node: the second
 // argument of `Children.map/forEach(...)`, or the first argument of a
 // `.map`/`.filter`/`.forEach` chained onto a `Children.toArray(...)` result.
-const getIteratedChildCallback = (
-  node: EsTreeNodeOfType<"CallExpression">
-): EsTreeNode | null => {
+const getIteratedChildCallback = (node: EsTreeNodeOfType<"CallExpression">): EsTreeNode | null => {
   const callee = stripParenExpression(node.callee as EsTreeNode);
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
   if (!isNodeOfType(callee.property, "Identifier")) return null;
@@ -86,15 +84,12 @@ const callbackHasGuard = (callback: EsTreeNode, paramName: string): boolean => {
       const callee = child.callee;
       const calleeName = isNodeOfType(callee, "Identifier")
         ? callee.name
-        : isNodeOfType(callee, "MemberExpression") &&
-          isNodeOfType(callee.property, "Identifier")
-        ? callee.property.name
-        : null;
+        : isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")
+          ? callee.property.name
+          : null;
       if (
         (calleeName === "isValidElement" || calleeName === "get") &&
-        child.arguments.some((argument) =>
-          referencesParam(argument as EsTreeNode, paramName)
-        )
+        child.arguments.some((argument) => referencesParam(argument as EsTreeNode, paramName))
       ) {
         guarded = true;
       }
@@ -112,15 +107,9 @@ const callbackHasGuard = (callback: EsTreeNode, paramName: string): boolean => {
     if (
       isNodeOfType(child, "MemberExpression") &&
       child.optional &&
-      isNodeOfType(
-        stripParenExpression(child.object as EsTreeNode),
-        "Identifier"
-      ) &&
-      (
-        stripParenExpression(
-          child.object as EsTreeNode
-        ) as EsTreeNodeOfType<"Identifier">
-      ).name === paramName
+      isNodeOfType(stripParenExpression(child.object as EsTreeNode), "Identifier") &&
+      (stripParenExpression(child.object as EsTreeNode) as EsTreeNodeOfType<"Identifier">).name ===
+        paramName
     ) {
       guarded = true;
     }
@@ -130,28 +119,16 @@ const callbackHasGuard = (callback: EsTreeNode, paramName: string): boolean => {
 
 // A `child.props.X` / `child.type.X` double member read with no optional
 // chaining — the shape that throws on a string/number child.
-const findUnguardedDoubleAccess = (
-  callback: EsTreeNode,
-  paramName: string
-): EsTreeNode | null => {
+const findUnguardedDoubleAccess = (callback: EsTreeNode, paramName: string): EsTreeNode | null => {
   let offending: EsTreeNode | null = null;
   walkAst(callback, (child: EsTreeNode) => {
     if (offending) return false;
     if (!isNodeOfType(child, "MemberExpression") || child.optional) return;
     const base = child.object;
-    if (
-      !isNodeOfType(base, "MemberExpression") ||
-      base.optional ||
-      base.computed
-    )
-      return;
+    if (!isNodeOfType(base, "MemberExpression") || base.optional || base.computed) return;
     if (!isNodeOfType(base.property, "Identifier")) return;
     if (!ELEMENT_ONLY_BASE_PROPERTIES.has(base.property.name)) return;
-    if (
-      !isNodeOfType(base.object, "Identifier") ||
-      base.object.name !== paramName
-    )
-      return;
+    if (!isNodeOfType(base.object, "Identifier") || base.object.name !== paramName) return;
     offending = child;
     return false;
   });
@@ -171,8 +148,7 @@ export const noChildrenMapMemberAccessWithoutIsvalidelementGuard = defineRule({
       const callback = getIteratedChildCallback(node);
       if (!callback || !isFunctionLike(callback)) return;
       const firstParam = callback.params[0];
-      if (!firstParam || !isNodeOfType(firstParam as EsTreeNode, "Identifier"))
-        return;
+      if (!firstParam || !isNodeOfType(firstParam as EsTreeNode, "Identifier")) return;
       const paramName = (firstParam as EsTreeNodeOfType<"Identifier">).name;
 
       const body = callback.body as EsTreeNode;

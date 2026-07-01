@@ -56,10 +56,7 @@ const collectSharedLiteralKind = (rawNode: EsTreeNode): LiteralKind | null => {
   return classifyCollapsibleLiteral(node);
 };
 
-const isConsumedByStringSearchCall = (
-  chainOrWrapper: EsTreeNode,
-  parent: EsTreeNode
-): boolean => {
+const isConsumedByStringSearchCall = (chainOrWrapper: EsTreeNode, parent: EsTreeNode): boolean => {
   if (!isNodeOfType(parent, "CallExpression")) return false;
   const callee = parent.callee;
   if (
@@ -73,10 +70,7 @@ const isConsumedByStringSearchCall = (
   return parent.arguments.some((argument) => argument === chainOrWrapper);
 };
 
-const isConsumedByEqualityComparison = (
-  chainOrWrapper: EsTreeNode,
-  parent: EsTreeNode
-): boolean =>
+const isConsumedByEqualityComparison = (chainOrWrapper: EsTreeNode, parent: EsTreeNode): boolean =>
   isNodeOfType(parent, "BinaryExpression") &&
   EQUALITY_OPERATORS.has(parent.operator) &&
   (parent.left === chainOrWrapper || parent.right === chainOrWrapper);

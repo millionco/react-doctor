@@ -15,7 +15,7 @@ describe("no-effect-wrapper-discards-callback-cleanup-return", () => {
             fn();
           }
         }, deps);
-      };`
+      };`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -33,7 +33,7 @@ describe("no-effect-wrapper-discards-callback-cleanup-return", () => {
           }
           effect();
         }, deps);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -50,7 +50,7 @@ describe("no-effect-wrapper-discards-callback-cleanup-return", () => {
             mounted.current = true;
           }
         }, deps);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -62,7 +62,7 @@ describe("no-effect-wrapper-discards-callback-cleanup-return", () => {
         useEffect(() => {
           effect();
         }, deps);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -76,7 +76,7 @@ describe("no-effect-wrapper-discards-callback-cleanup-return", () => {
           if (mounted.current) return effect();
           mounted.current = true;
         }, deps);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -88,7 +88,7 @@ describe("no-effect-wrapper-discards-callback-cleanup-return", () => {
         useEffect(() => {
           scrollTo(0, 0);
         }, []);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -98,7 +98,7 @@ describe("no-effect-wrapper-discards-callback-cleanup-return", () => {
       noEffectWrapperDiscardsCallbackCleanupReturn,
       `const useUpdateEffect = (effect: EffectCallback, deps?: DependencyList) => {
         useEffect(effect, deps);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -110,7 +110,7 @@ describe("no-effect-wrapper-discards-callback-cleanup-return", () => {
         useEffect(() => {
           fn();
         }, deps);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -122,7 +122,7 @@ describe("no-effect-wrapper-discards-callback-cleanup-return", () => {
         useEffect(() => {
           fn();
         }, deps);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

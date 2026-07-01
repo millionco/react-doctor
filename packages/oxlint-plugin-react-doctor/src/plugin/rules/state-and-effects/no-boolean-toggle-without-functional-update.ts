@@ -58,8 +58,7 @@ const isInsideDeferredCallback = (node: EsTreeNode): boolean => {
       ) {
         calleeName = callee.property.name;
       }
-      if (calleeName && DEFERRED_EXECUTION_CALLEE_NAMES.has(calleeName))
-        return true;
+      if (calleeName && DEFERRED_EXECUTION_CALLEE_NAMES.has(calleeName)) return true;
     }
     current = parent;
   }
@@ -81,11 +80,7 @@ export const noBooleanToggleWithoutFunctionalUpdate = defineRule({
       if (!isUseStateSetterInScope(node, node.callee.name)) return;
 
       const argument = node.arguments[0];
-      if (
-        !isNodeOfType(argument, "UnaryExpression") ||
-        argument.operator !== "!"
-      )
-        return;
+      if (!isNodeOfType(argument, "UnaryExpression") || argument.operator !== "!") return;
 
       // A bare Identifier only — `!field.value` / `!this.flag` (MemberExpression)
       // and `!isValid()` (CallExpression) are out of scope.

@@ -15,11 +15,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 // Effect-shaped hooks incl. the common userland `useMount`; named distinctly so
 // it does not shadow the canonical two-member `EFFECT_HOOK_NAMES`.
-const EFFECT_LIKE_HOOK_NAMES = new Set([
-  "useEffect",
-  "useLayoutEffect",
-  "useMount",
-]);
+const EFFECT_LIKE_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect", "useMount"]);
 const PROMISE_METHOD_NAMES = new Set(["then", "catch", "finally"]);
 
 // Call names that denote a real async source whose promise can reject
@@ -60,9 +56,7 @@ interface ChainAnalysis {
 }
 
 const unwrapChain = (node: EsTreeNode): EsTreeNode =>
-  isNodeOfType(node, "ChainExpression")
-    ? (node.expression as EsTreeNode)
-    : node;
+  isNodeOfType(node, "ChainExpression") ? (node.expression as EsTreeNode) : node;
 
 // Walks a `.then`/`.catch`/`.finally` member-call chain down to its
 // initiator, collecting which settlement methods appear and the
@@ -144,11 +138,7 @@ const initiatorIsRealAsyncSource = (initiator: EsTreeNode): boolean => {
   ) {
     // `Promise.resolve()/reject()/all()` never model a real rejectable
     // source — a microtask-defer idiom.
-    if (
-      isNodeOfType(callee.object, "Identifier") &&
-      callee.object.name === "Promise"
-    )
-      return false;
+    if (isNodeOfType(callee.object, "Identifier") && callee.object.name === "Promise") return false;
     if (isRefHeldCacheRead(callee)) return false;
     const methodName = callee.property.name;
     if (PREDICATE_NAME_PATTERN.test(methodName)) return false;
@@ -193,10 +183,7 @@ const collectFloatingChains = (callback: EsTreeNode): EsTreeNode[] => {
   walkOwnFunctionScope(callback, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "ExpressionStatement")) return;
     let expression = child.expression as EsTreeNode;
-    if (
-      isNodeOfType(expression, "UnaryExpression") &&
-      expression.operator === "void"
-    ) {
+    if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "void") {
       expression = expression.argument as EsTreeNode;
     }
     chains.push(stripParenExpression(expression));
@@ -226,12 +213,9 @@ export const noPromiseThenSideEffectInEffectWithoutCatch = defineRule({
         const analysis = analyzeChain(chainExpression);
         if (!analysis) continue;
         if (analysis.hasCatch || analysis.hasRejectionHandlerArgument) continue;
-        if (!analysis.sideEffectThenCallbacks.some(callbackHasStateSideEffect))
-          continue;
-        if (!initiatorIsRealAsyncSource(resolveInitiator(analysis.root)))
-          continue;
-        if (isInsideTryStatement(chainExpression, { boundary: callback }))
-          continue;
+        if (!analysis.sideEffectThenCallbacks.some(callbackHasStateSideEffect)) continue;
+        if (!initiatorIsRealAsyncSource(resolveInitiator(analysis.root))) continue;
+        if (isInsideTryStatement(chainExpression, { boundary: callback })) continue;
         context.report({ node: chainExpression, message: MESSAGE });
       }
     },

@@ -39,12 +39,7 @@ const NON_TEXT_INPUT_TYPES = new Set([
   "image",
   "hidden",
 ]);
-const MODIFIER_PROPERTIES = new Set([
-  "metaKey",
-  "ctrlKey",
-  "shiftKey",
-  "altKey",
-]);
+const MODIFIER_PROPERTIES = new Set(["metaKey", "ctrlKey", "shiftKey", "altKey"]);
 const COMPOSITION_TEXT_PATTERN = /compos/i;
 const IME_COMPOSITION_KEYCODE = 229;
 const ENTER_KEYCODE = 13;
@@ -55,26 +50,21 @@ const MESSAGE =
 
 const getStringAttr = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
-  name: string
+  name: string,
 ): string | null => {
   const attribute = hasJsxPropIgnoreCase(node.attributes, name);
   return attribute ? getJsxPropStringValue(attribute) : null;
 };
 
-const isTextEntryElement = (
-  node: EsTreeNodeOfType<"JSXOpeningElement">
-): boolean => {
+const isTextEntryElement = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
   const role = getStringAttr(node, "role");
   if (role && NON_TEXT_ENTRY_ROLES.has(role)) return false;
 
-  const tag = isNodeOfType(node.name, "JSXIdentifier")
-    ? node.name.name.toLowerCase()
-    : "";
+  const tag = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name.toLowerCase() : "";
   if (tag === "textarea") return true;
   if (tag === "input") {
     const inputType = getStringAttr(node, "type");
-    if (inputType && NON_TEXT_INPUT_TYPES.has(inputType.toLowerCase()))
-      return false;
+    if (inputType && NON_TEXT_INPUT_TYPES.has(inputType.toLowerCase())) return false;
     return true;
   }
   if (hasJsxPropIgnoreCase(node.attributes, "contentEditable")) return true;
@@ -104,9 +94,7 @@ const isEnterKeyTest = (node: EsTreeNode): boolean => {
       return isNodeOfType(valueSide, "Literal") && valueSide.value === "Enter";
     }
     if (property === "keyCode" || property === "which") {
-      return (
-        isNodeOfType(valueSide, "Literal") && valueSide.value === ENTER_KEYCODE
-      );
+      return isNodeOfType(valueSide, "Literal") && valueSide.value === ENTER_KEYCODE;
     }
     return false;
   };
@@ -167,10 +155,7 @@ const testUsesModifierOrSpace = (testExpr: EsTreeNode): boolean => {
     ) {
       const left = stripGroupingParens(child.left as EsTreeNode);
       const right = stripGroupingParens(child.right as EsTreeNode);
-      const checkSpace = (
-        memberSide: EsTreeNode,
-        valueSide: EsTreeNode
-      ): boolean => {
+      const checkSpace = (memberSide: EsTreeNode, valueSide: EsTreeNode): boolean => {
         const memberProperty = memberPropertyName(memberSide);
         if (memberProperty === "key") {
           return (
@@ -179,10 +164,7 @@ const testUsesModifierOrSpace = (testExpr: EsTreeNode): boolean => {
           );
         }
         if (memberProperty === "keyCode" || memberProperty === "which") {
-          return (
-            isNodeOfType(valueSide, "Literal") &&
-            valueSide.value === SPACE_KEYCODE
-          );
+          return isNodeOfType(valueSide, "Literal") && valueSide.value === SPACE_KEYCODE;
         }
         return false;
       };
@@ -212,17 +194,13 @@ const componentHasCompositionGuard = (scope: EsTreeNode): boolean => {
   walkAst(scope, (child) => {
     if (found) return false;
     if (
-      (isNodeOfType(child, "Identifier") ||
-        isNodeOfType(child, "JSXIdentifier")) &&
+      (isNodeOfType(child, "Identifier") || isNodeOfType(child, "JSXIdentifier")) &&
       COMPOSITION_TEXT_PATTERN.test(child.name)
     ) {
       found = true;
       return false;
     }
-    if (
-      isNodeOfType(child, "Literal") &&
-      child.value === IME_COMPOSITION_KEYCODE
-    ) {
+    if (isNodeOfType(child, "Literal") && child.value === IME_COMPOSITION_KEYCODE) {
       found = true;
       return false;
     }
@@ -230,16 +208,12 @@ const componentHasCompositionGuard = (scope: EsTreeNode): boolean => {
   return found;
 };
 
-const getHandlerFunction = (
-  node: EsTreeNodeOfType<"JSXOpeningElement">
-): EsTreeNode | null => {
+const getHandlerFunction = (node: EsTreeNodeOfType<"JSXOpeningElement">): EsTreeNode | null => {
   for (const attributeName of KEY_HANDLER_ATTRS) {
     const attribute = hasJsxPropIgnoreCase(node.attributes, attributeName);
     if (!attribute || !attribute.value) continue;
     if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) continue;
-    const expression = stripGroupingParens(
-      attribute.value.expression as EsTreeNode
-    );
+    const expression = stripGroupingParens(attribute.value.expression as EsTreeNode);
     if (isFunctionLike(expression)) return expression;
   }
   return null;

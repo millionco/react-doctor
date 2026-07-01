@@ -27,38 +27,28 @@ const isNullLiteral = (node: EsTreeNode): boolean =>
 // The identifier compared against `undefined` in `x === undefined` / the
 // reverse-operand form, when the other operand is exactly `undefined`.
 const undefinedGuardOperand = (
-  node: EsTreeNodeOfType<"BinaryExpression">
+  node: EsTreeNodeOfType<"BinaryExpression">,
 ): EsTreeNodeOfType<"Identifier"> | null => {
   if (node.operator !== "===" && node.operator !== "!==") return null;
   const left = node.left as EsTreeNode;
   const right = node.right as EsTreeNode;
-  if (isNodeOfType(left, "Identifier") && isUndefinedIdentifier(right))
-    return left;
-  if (isNodeOfType(right, "Identifier") && isUndefinedIdentifier(left))
-    return right;
+  if (isNodeOfType(left, "Identifier") && isUndefinedIdentifier(right)) return left;
+  if (isNodeOfType(right, "Identifier") && isUndefinedIdentifier(left)) return right;
   return null;
 };
 
 // Local syntactic evidence (AST-only, no type checker) that the operand can be
 // `null`: its declaration carries an explicit `T | null` union annotation in
 // this file.
-const declaredTypeIncludesNull = (
-  referenceNode: EsTreeNode,
-  name: string
-): boolean => {
+const declaredTypeIncludesNull = (referenceNode: EsTreeNode, name: string): boolean => {
   const binding = findVariableInitializer(referenceNode, name);
   const bindingIdentifier = binding?.bindingIdentifier;
   if (!bindingIdentifier) return false;
-  const typeAnnotation = (bindingIdentifier as { typeAnnotation?: EsTreeNode })
-    .typeAnnotation;
+  const typeAnnotation = (bindingIdentifier as { typeAnnotation?: EsTreeNode }).typeAnnotation;
   if (!typeAnnotation) return false;
-  const annotatedType = (typeAnnotation as { typeAnnotation?: EsTreeNode })
-    .typeAnnotation;
-  if (!annotatedType || !isNodeOfType(annotatedType, "TSUnionType"))
-    return false;
-  return annotatedType.types.some((member) =>
-    isNodeOfType(member as EsTreeNode, "TSNullKeyword")
-  );
+  const annotatedType = (typeAnnotation as { typeAnnotation?: EsTreeNode }).typeAnnotation;
+  if (!annotatedType || !isNodeOfType(annotatedType, "TSUnionType")) return false;
+  return annotatedType.types.some((member) => isNodeOfType(member as EsTreeNode, "TSNullKeyword"));
 };
 
 const findEnclosingStatement = (node: EsTreeNode): EsTreeNode | null => {
@@ -72,10 +62,7 @@ const findEnclosingStatement = (node: EsTreeNode): EsTreeNode | null => {
 
 // A sibling `=== null` / `!== null` test on the same operand marks a deliberate
 // null-vs-undefined split, so the guard is intentional.
-const enclosingStatementTestsAgainstNull = (
-  guardNode: EsTreeNode,
-  name: string
-): boolean => {
+const enclosingStatementTestsAgainstNull = (guardNode: EsTreeNode, name: string): boolean => {
   const statement = findEnclosingStatement(guardNode);
   if (!statement) return false;
   let found = false;
@@ -88,12 +75,8 @@ const enclosingStatementTestsAgainstNull = (
       const left = node.left as EsTreeNode;
       const right = node.right as EsTreeNode;
       const comparesName =
-        (isNodeOfType(left, "Identifier") &&
-          left.name === name &&
-          isNullLiteral(right)) ||
-        (isNodeOfType(right, "Identifier") &&
-          right.name === name &&
-          isNullLiteral(left));
+        (isNodeOfType(left, "Identifier") && left.name === name && isNullLiteral(right)) ||
+        (isNodeOfType(right, "Identifier") && right.name === name && isNullLiteral(left));
       if (comparesName) {
         found = true;
         return;
@@ -105,8 +88,7 @@ const enclosingStatementTestsAgainstNull = (
       const child = record[key];
       if (Array.isArray(child)) {
         for (const item of child)
-          if (item && typeof item === "object" && "type" in item)
-            visit(item as EsTreeNode);
+          if (item && typeof item === "object" && "type" in item) visit(item as EsTreeNode);
       } else if (child && typeof child === "object" && "type" in child) {
         visit(child as EsTreeNode);
       }
@@ -124,10 +106,7 @@ interface BranchDereferenceScan {
 // Whether the "present" branch dereferences the operand in a way that throws on
 // `null` (member read, call, index) and whether it re-guards it (optional
 // chain, null comparison, truthiness test) first.
-const scanBranchForDereference = (
-  branch: EsTreeNode,
-  name: string
-): BranchDereferenceScan => {
+const scanBranchForDereference = (branch: EsTreeNode, name: string): BranchDereferenceScan => {
   const scan: BranchDereferenceScan = {
     hasThrowingDereference: false,
     hasNullGuard: false,
@@ -138,10 +117,7 @@ const scanBranchForDereference = (
   const visit = (node: EsTreeNode): void => {
     if (node !== branch && isFunctionLike(node)) return;
 
-    if (
-      isNodeOfType(node, "MemberExpression") &&
-      isNamedIdentifier(node.object as EsTreeNode)
-    ) {
+    if (isNodeOfType(node, "MemberExpression") && isNamedIdentifier(node.object as EsTreeNode)) {
       if (node.optional) {
         scan.hasNullGuard = true;
       } else {
@@ -165,15 +141,12 @@ const scanBranchForDereference = (
       const left = node.left as EsTreeNode;
       const right = node.right as EsTreeNode;
       const comparesNullish =
-        (isNamedIdentifier(left) &&
-          (isNullLiteral(right) || isUndefinedIdentifier(right))) ||
-        (isNamedIdentifier(right) &&
-          (isNullLiteral(left) || isUndefinedIdentifier(left)));
+        (isNamedIdentifier(left) && (isNullLiteral(right) || isUndefinedIdentifier(right))) ||
+        (isNamedIdentifier(right) && (isNullLiteral(left) || isUndefinedIdentifier(left)));
       if (comparesNullish) scan.hasNullGuard = true;
     }
     if (
-      (isNodeOfType(node, "IfStatement") ||
-        isNodeOfType(node, "ConditionalExpression")) &&
+      (isNodeOfType(node, "IfStatement") || isNodeOfType(node, "ConditionalExpression")) &&
       subtreeReferencesName(node.test as EsTreeNode, name)
     ) {
       scan.hasNullGuard = true;
@@ -185,8 +158,7 @@ const scanBranchForDereference = (
       const child = record[key];
       if (Array.isArray(child)) {
         for (const item of child)
-          if (item && typeof item === "object" && "type" in item)
-            visit(item as EsTreeNode);
+          if (item && typeof item === "object" && "type" in item) visit(item as EsTreeNode);
       } else if (child && typeof child === "object" && "type" in child) {
         visit(child as EsTreeNode);
       }
@@ -196,10 +168,7 @@ const scanBranchForDereference = (
   return scan;
 };
 
-const subtreeReferencesName = (
-  node: EsTreeNode | null | undefined,
-  name: string
-): boolean => {
+const subtreeReferencesName = (node: EsTreeNode | null | undefined, name: string): boolean => {
   if (!node) return false;
   let found = false;
   const visit = (current: EsTreeNode): void => {
@@ -214,8 +183,7 @@ const subtreeReferencesName = (
       const child = record[key];
       if (Array.isArray(child)) {
         for (const item of child)
-          if (item && typeof item === "object" && "type" in item)
-            visit(item as EsTreeNode);
+          if (item && typeof item === "object" && "type" in item) visit(item as EsTreeNode);
       } else if (child && typeof child === "object" && "type" in child) {
         visit(child as EsTreeNode);
       }
@@ -228,22 +196,16 @@ const subtreeReferencesName = (
 // The branch reached when the undefined-only guard treats the operand as
 // present, or `null` when this guard shape is not analyzable.
 const presentBranchForGuard = (
-  guardNode: EsTreeNodeOfType<"BinaryExpression">
+  guardNode: EsTreeNodeOfType<"BinaryExpression">,
 ): EsTreeNode | null => {
   const parent = guardNode.parent;
   if (!parent) return null;
   const treatsUndefinedAsAbsent = guardNode.operator === "===";
-  if (
-    isNodeOfType(parent, "ConditionalExpression") &&
-    parent.test === guardNode
-  ) {
-    return (
-      treatsUndefinedAsAbsent ? parent.alternate : parent.consequent
-    ) as EsTreeNode;
+  if (isNodeOfType(parent, "ConditionalExpression") && parent.test === guardNode) {
+    return (treatsUndefinedAsAbsent ? parent.alternate : parent.consequent) as EsTreeNode;
   }
   if (isNodeOfType(parent, "IfStatement") && parent.test === guardNode) {
-    if (treatsUndefinedAsAbsent)
-      return (parent.alternate as EsTreeNode | null) ?? null;
+    if (treatsUndefinedAsAbsent) return (parent.alternate as EsTreeNode | null) ?? null;
     return parent.consequent as EsTreeNode;
   }
   return null;
@@ -265,10 +227,8 @@ export const noUndefinedOnlyGuardOnNullBearingValue = defineRule({
     BinaryExpression(node: EsTreeNodeOfType<"BinaryExpression">) {
       const operand = undefinedGuardOperand(node);
       if (!operand) return;
-      if (!declaredTypeIncludesNull(operand as EsTreeNode, operand.name))
-        return;
-      if (enclosingStatementTestsAgainstNull(node as EsTreeNode, operand.name))
-        return;
+      if (!declaredTypeIncludesNull(operand as EsTreeNode, operand.name)) return;
+      if (enclosingStatementTestsAgainstNull(node as EsTreeNode, operand.name)) return;
       const presentBranch = presentBranchForGuard(node);
       if (!presentBranch) return;
       const scan = scanBranchForDereference(presentBranch, operand.name);

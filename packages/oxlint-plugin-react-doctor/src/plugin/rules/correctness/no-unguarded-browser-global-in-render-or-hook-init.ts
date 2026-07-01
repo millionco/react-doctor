@@ -29,11 +29,7 @@ const BROWSER_GLOBAL_NAMES = new Set([
 // read inside their lazy initializer is unsafe under SSR). `useMemo`
 // / `useEffect` are deliberately absent — the definition scopes the
 // render-time path to these three initializers plus bare body reads.
-const RENDER_TIME_INITIALIZER_HOOKS = new Set([
-  "useState",
-  "useReducer",
-  "useRef",
-]);
+const RENDER_TIME_INITIALIZER_HOOKS = new Set(["useState", "useReducer", "useRef"]);
 
 // Identifiers that, when present in a dominating condition, mark the
 // read as SSR-guarded (mounted-state / can-use-DOM feature checks).
@@ -46,25 +42,21 @@ const DOM_GUARD_IDENTIFIER_NAMES = new Set([
   "hasWindow",
 ]);
 
-const isBrowserGlobalIdentifier = (
-  node: EsTreeNode
-): node is EsTreeNodeOfType<"Identifier"> =>
+const isBrowserGlobalIdentifier = (node: EsTreeNode): node is EsTreeNodeOfType<"Identifier"> =>
   isNodeOfType(node, "Identifier") && BROWSER_GLOBAL_NAMES.has(node.name);
 
 // True when `identifier` is the real browser global and not a same-file
 // local binding of the same name (e.g. `const navigator = useAgent()`
 // or `location` from react-router's `useLocation()`).
-const isTrueBrowserGlobal = (
-  identifier: EsTreeNodeOfType<"Identifier">
-): boolean => findVariableInitializer(identifier, identifier.name) === null;
+const isTrueBrowserGlobal = (identifier: EsTreeNodeOfType<"Identifier">): boolean =>
+  findVariableInitializer(identifier, identifier.name) === null;
 
 // A function passed as the lazy-initializer argument of
 // `useState` / `useReducer` / `useRef`.
 const isRenderTimeInitializerCallback = (functionNode: EsTreeNode): boolean => {
   const parent = functionNode.parent;
   if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
-  if (!parent.arguments?.some((argument) => argument === functionNode))
-    return false;
+  if (!parent.arguments?.some((argument) => argument === functionNode)) return false;
   const calleeName = getCalleeName(parent);
   return Boolean(calleeName && RENDER_TIME_INITIALIZER_HOOKS.has(calleeName));
 };
@@ -79,9 +71,7 @@ const isOnRenderTimePath = (node: EsTreeNode): boolean => {
   if (componentOrHookDisplayNameForFunction(enclosingFunction)) return true;
   if (isRenderTimeInitializerCallback(enclosingFunction)) {
     const outerFunction = nearestEnclosingFunction(enclosingFunction);
-    return Boolean(
-      outerFunction && componentOrHookDisplayNameForFunction(outerFunction)
-    );
+    return Boolean(outerFunction && componentOrHookDisplayNameForFunction(outerFunction));
   }
   return false;
 };
@@ -92,18 +82,12 @@ const conditionContainsDomGuard = (condition: EsTreeNode): boolean => {
     if (guarded) return false;
     if (isNodeOfType(child, "UnaryExpression") && child.operator === "typeof") {
       const argument = stripParenExpression(child.argument);
-      if (
-        isNodeOfType(argument, "Identifier") &&
-        BROWSER_GLOBAL_NAMES.has(argument.name)
-      ) {
+      if (isNodeOfType(argument, "Identifier") && BROWSER_GLOBAL_NAMES.has(argument.name)) {
         guarded = true;
         return false;
       }
     }
-    if (
-      isNodeOfType(child, "Identifier") &&
-      DOM_GUARD_IDENTIFIER_NAMES.has(child.name)
-    ) {
+    if (isNodeOfType(child, "Identifier") && DOM_GUARD_IDENTIFIER_NAMES.has(child.name)) {
       guarded = true;
       return false;
     }
@@ -117,10 +101,7 @@ const conditionContainsDomGuard = (condition: EsTreeNode): boolean => {
 const isDominatedByDomGuard = (node: EsTreeNode): boolean => {
   let ancestor = node.parent;
   while (ancestor) {
-    if (
-      isNodeOfType(ancestor, "IfStatement") &&
-      conditionContainsDomGuard(ancestor.test)
-    ) {
+    if (isNodeOfType(ancestor, "IfStatement") && conditionContainsDomGuard(ancestor.test)) {
       return true;
     }
     if (
@@ -129,10 +110,7 @@ const isDominatedByDomGuard = (node: EsTreeNode): boolean => {
     ) {
       return true;
     }
-    if (
-      isNodeOfType(ancestor, "LogicalExpression") &&
-      conditionContainsDomGuard(ancestor.left)
-    ) {
+    if (isNodeOfType(ancestor, "LogicalExpression") && conditionContainsDomGuard(ancestor.left)) {
       return true;
     }
     ancestor = ancestor.parent ?? null;
@@ -161,16 +139,14 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
     return {
       MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
         const object = stripParenExpression(node.object);
-        if (!isBrowserGlobalIdentifier(object) || !isTrueBrowserGlobal(object))
-          return;
+        if (!isBrowserGlobalIdentifier(object) || !isTrueBrowserGlobal(object)) return;
         reportRead(node, object.name);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         // Bare `matchMedia(...)` — the member form `window.matchMedia`
         // is already covered by the MemberExpression visitor.
         const callee = stripParenExpression(node.callee);
-        if (!isBrowserGlobalIdentifier(callee) || !isTrueBrowserGlobal(callee))
-          return;
+        if (!isBrowserGlobalIdentifier(callee) || !isTrueBrowserGlobal(callee)) return;
         reportRead(callee, callee.name);
       },
     };

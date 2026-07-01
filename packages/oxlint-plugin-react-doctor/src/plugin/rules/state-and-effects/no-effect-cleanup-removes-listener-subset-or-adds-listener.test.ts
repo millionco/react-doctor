@@ -14,7 +14,7 @@ describe("no-effect-cleanup-removes-listener-subset-or-adds-listener", () => {
         return () => {
           api.off("select", onSelect);
         };
-      }, [api, onSelect]);`
+      }, [api, onSelect]);`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -28,7 +28,7 @@ describe("no-effect-cleanup-removes-listener-subset-or-adds-listener", () => {
         return () => {
           window.addEventListener('resize', handler);
         };
-      }, []);`
+      }, []);`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -42,7 +42,7 @@ describe("no-effect-cleanup-removes-listener-subset-or-adds-listener", () => {
         return () => {
           socket.off();
         };
-      }, []);`
+      }, []);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -56,7 +56,7 @@ describe("no-effect-cleanup-removes-listener-subset-or-adds-listener", () => {
         return () => {
           api.removeAllListeners();
         };
-      }, [api]);`
+      }, [api]);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -69,7 +69,7 @@ describe("no-effect-cleanup-removes-listener-subset-or-adds-listener", () => {
         return () => {
           map.on('idle', onIdle);
         };
-      }, []);`
+      }, []);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -84,7 +84,7 @@ describe("no-effect-cleanup-removes-listener-subset-or-adds-listener", () => {
           api.off("reInit", onSelect);
           api.off("select", onSelect);
         };
-      }, [api, onSelect]);`
+      }, [api, onSelect]);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -98,7 +98,7 @@ describe("no-effect-cleanup-removes-listener-subset-or-adds-listener", () => {
         return () => {
           api.off(onSelect);
         };
-      }, [api, onSelect]);`
+      }, [api, onSelect]);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -107,7 +107,7 @@ describe("no-effect-cleanup-removes-listener-subset-or-adds-listener", () => {
     const result = runRule(
       noEffectCleanupRemovesListenerSubsetOrAddsListener,
       `emitter.on('data', a);
-       emitter.on('end', b);`
+       emitter.on('end', b);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -30,10 +30,7 @@ const GUARD_TRANSPARENT_WRAPPER_TYPES = new Set<string>([
 // its right.
 const outermostGuardTransparentWrapper = (node: EsTreeNode): EsTreeNode => {
   let current = node;
-  while (
-    current.parent &&
-    GUARD_TRANSPARENT_WRAPPER_TYPES.has(current.parent.type)
-  ) {
+  while (current.parent && GUARD_TRANSPARENT_WRAPPER_TYPES.has(current.parent.type)) {
     current = current.parent;
   }
   return current;
@@ -42,17 +39,10 @@ const outermostGuardTransparentWrapper = (node: EsTreeNode): EsTreeNode => {
 const MESSAGE =
   "`Object.keys/values/entries` throws `Cannot convert undefined or null to object` when this value is missing — add a `?? {}` fallback or a null check so the call always receives an object.";
 
-const isObjectIterationCall = (
-  node: EsTreeNodeOfType<"CallExpression">
-): boolean => {
+const isObjectIterationCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   const callee = node.callee;
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed)
-    return false;
-  if (
-    !isNodeOfType(callee.object, "Identifier") ||
-    callee.object.name !== "Object"
-  )
-    return false;
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
+  if (!isNodeOfType(callee.object, "Identifier") || callee.object.name !== "Object") return false;
   if (!isNodeOfType(callee.property, "Identifier")) return false;
   if (!OBJECT_ITERATION_METHODS.has(callee.property.name)) return false;
   // A same-file binding named `Object` shadows the global — bail out.
@@ -63,10 +53,7 @@ const isObjectIterationCall = (
 // True when a truthiness guard on `name` short-circuits, encloses, or
 // precedes the call — matching the `x && Object.keys(x)`, `if (x) { … }`,
 // and `if (!x) return; …` shapes that make the value provably present.
-const isIdentifierGuardedBeforeCall = (
-  callNode: EsTreeNode,
-  name: string
-): boolean => {
+const isIdentifierGuardedBeforeCall = (callNode: EsTreeNode, name: string): boolean => {
   const guardEntry = outermostGuardTransparentWrapper(callNode);
   for (const operand of collectEarlierAndGuardOperands(guardEntry)) {
     if (subtreeReferencesIdentifierName(operand, name)) return true;
@@ -108,9 +95,7 @@ const isIdentifierGuardedBeforeCall = (
   return false;
 };
 
-const isOptionalParameterBinding = (
-  identifierNode: EsTreeNodeOfType<"Identifier">
-): boolean => {
+const isOptionalParameterBinding = (identifierNode: EsTreeNodeOfType<"Identifier">): boolean => {
   const binding = findVariableInitializer(identifierNode, identifierNode.name);
   if (!binding) return false;
   // Optional params (`params?: T`) carry `optional: true` and no default

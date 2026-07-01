@@ -13,7 +13,7 @@ describe("no-async-event-handler-without-reentry-guard", () => {
           setSubmitted(true);
         }
         return <form onSubmit={handleSubmit} />;
-      }`
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -28,7 +28,7 @@ describe("no-async-event-handler-without-reentry-guard", () => {
           setJoined(true);
         };
         return <button onClick={onSubscribe}>Subscribe</button>;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -41,7 +41,7 @@ describe("no-async-event-handler-without-reentry-guard", () => {
           await fetch('/api/reset', { method: 'PATCH', body });
           setDone(true);
         }} />
-      );`
+      );`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -55,7 +55,7 @@ describe("no-async-event-handler-without-reentry-guard", () => {
           setCopied(true);
         };
         return <button onClick={handleCopy} />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -73,7 +73,7 @@ describe("no-async-event-handler-without-reentry-guard", () => {
           }
         }
         return <button disabled={loading} onClick={onSubmit}>Save</button>;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -89,7 +89,7 @@ describe("no-async-event-handler-without-reentry-guard", () => {
           setDone(true);
         }
         return <button onClick={submit} />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -103,7 +103,7 @@ describe("no-async-event-handler-without-reentry-guard", () => {
           setItems(rows);
         }
         return <button onClick={loadMore} />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -117,7 +117,7 @@ describe("no-async-event-handler-without-reentry-guard", () => {
           setJoined(true);
         };
         return <button onClick={onSubscribe} />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -130,7 +130,7 @@ describe("no-async-event-handler-without-reentry-guard", () => {
           await fetch('/api/x', { method: 'POST' });
         }
         return <button onClick={submit} />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -144,7 +144,7 @@ describe("no-async-event-handler-without-reentry-guard", () => {
           setValue(true);
         }
         return <input onChange={onChangeHandler} />;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

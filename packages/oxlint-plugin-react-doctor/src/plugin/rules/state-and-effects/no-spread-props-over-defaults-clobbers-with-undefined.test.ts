@@ -9,7 +9,7 @@ describe("no-spread-props-over-defaults-clobbers-with-undefined", () => {
       `const VictoryContainer = (props: VictoryContainerProps) => {
         const merged = { ...defaultProps, ...props };
         return <svg width={merged.width} />;
-      };`
+      };`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -21,7 +21,7 @@ describe("no-spread-props-over-defaults-clobbers-with-undefined", () => {
       `function Lightbox({ ...props }: LightboxProps) {
         const settings = { ...defaultLightboxProps, ...props };
         return settings;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -32,7 +32,7 @@ describe("no-spread-props-over-defaults-clobbers-with-undefined", () => {
       `const ReactSearchAutocomplete = (props: Props) => {
         const { showIcon, ...rest } = { ...defaultTheme, ...props };
         return rest;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -41,7 +41,7 @@ describe("no-spread-props-over-defaults-clobbers-with-undefined", () => {
     const result = runRule(
       noSpreadPropsOverDefaultsClobbersWithUndefined,
       `export const trashPagination = (opts: RequestOpts) =>
-        request({ ...defaultRequestConfig, ...opts });`
+        request({ ...defaultRequestConfig, ...opts });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -53,7 +53,7 @@ describe("no-spread-props-over-defaults-clobbers-with-undefined", () => {
         const merged = { ...defaultProps, ...props };
         return <div {...merged} />;
       };`,
-      { filename: "file-token-group.test.tsx" }
+      { filename: "file-token-group.test.tsx" },
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -64,7 +64,7 @@ describe("no-spread-props-over-defaults-clobbers-with-undefined", () => {
       `const Box = () => {
         const merged = { ...defaults, width: 100, height: 50 };
         return <div style={merged} />;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -75,7 +75,7 @@ describe("no-spread-props-over-defaults-clobbers-with-undefined", () => {
       `function useMerge(requiredConfig: { a: number; b: number }) {
         const merged = { ...defaults, ...requiredConfig };
         return merged;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -86,7 +86,7 @@ describe("no-spread-props-over-defaults-clobbers-with-undefined", () => {
       `const Panel = (props: Props) => {
         const merged = { ...base, ...props };
         return <div {...merged} />;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -97,7 +97,7 @@ describe("no-spread-props-over-defaults-clobbers-with-undefined", () => {
       `const Panel = (props: Props) => {
         const merged = { ...defaults, ...{ width: 1 } };
         return <div {...merged} />;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -108,7 +108,7 @@ describe("no-spread-props-over-defaults-clobbers-with-undefined", () => {
       `const Widget = (incoming: WidgetProps) => {
         const merged = { ...defaultProps, ...incoming };
         return <div {...merged} />;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

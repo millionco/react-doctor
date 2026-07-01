@@ -15,7 +15,7 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
           return;
         }
       }
-      `
+      `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -30,7 +30,7 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
       if (isReady) {
         start();
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -41,7 +41,7 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
       `
       function hasAccess() { return true; }
       const label = hasAccess ? "yes" : "no";
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -54,7 +54,7 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
       while (shouldContinue) {
         step();
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -69,7 +69,7 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
           edit();
         }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -82,7 +82,7 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
       if (isReady()) {
         start();
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -98,7 +98,7 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
         }
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -111,7 +111,7 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
       if (isActive) {
         run();
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -122,7 +122,7 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
       `
       const isEven = (n) => n % 2 === 0;
       const evens = numbers.filter(isEven);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -136,7 +136,7 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
       if (check) {
         run();
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -147,7 +147,7 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
       `
       function isReady() { return true; }
       const chosen = isReady || fallback;
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -160,7 +160,7 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
       if (isMobile) {
         renderMobile();
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -174,7 +174,7 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
       if (check) {
         check();
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

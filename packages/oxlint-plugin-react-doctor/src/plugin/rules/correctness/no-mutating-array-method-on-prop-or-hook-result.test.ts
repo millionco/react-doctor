@@ -11,7 +11,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         customExperiment.tags.sort();
         return null;
       }
-      `
+      `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -25,7 +25,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         memberships.reverse();
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -38,7 +38,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         items.splice(0, 1);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -52,7 +52,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         data.sort();
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -66,7 +66,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         rows.reverse();
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -79,7 +79,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         const sorted = [...items].sort();
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -92,7 +92,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         const sorted = items.slice().sort();
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -106,7 +106,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         const b = items.toReversed();
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -120,7 +120,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         local.sort();
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -133,7 +133,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         arr.sort();
         return arr;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -148,7 +148,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         });
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -163,7 +163,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         });
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -177,7 +177,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         mutableItems.sort();
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -191,7 +191,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         stackRef.current.splice(index, 1);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -205,7 +205,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         mapRef.current[collection].splice(index, 1);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -219,7 +219,7 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
         copy.sort();
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -39,10 +39,7 @@ const hasFallbackArgument = (argument: EsTreeNode): boolean =>
 // is intentionally out of scope, so it is NOT treated as an unsafe deref.
 const isImmediatelyMemberAccessed = (call: EsTreeNode): boolean => {
   let current = call;
-  while (
-    current.parent &&
-    current.parent.type === PARENTHESIZED_EXPRESSION_TYPE
-  ) {
+  while (current.parent && current.parent.type === PARENTHESIZED_EXPRESSION_TYPE) {
     current = current.parent;
   }
   return isObjectOfMemberAccess(current);

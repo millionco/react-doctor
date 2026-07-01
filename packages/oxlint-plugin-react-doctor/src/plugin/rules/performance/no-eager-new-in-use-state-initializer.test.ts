@@ -11,7 +11,7 @@ describe("no-eager-new-in-use-state-initializer", () => {
       function Component() {
         const [seen] = useState(new Set<string>());
       }
-    `
+    `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -26,7 +26,7 @@ describe("no-eager-new-in-use-state-initializer", () => {
       function Component() {
         const [cache] = useState(new Map());
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -39,7 +39,7 @@ describe("no-eager-new-in-use-state-initializer", () => {
       function Component() {
         const [now] = useState(new Date());
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -52,12 +52,10 @@ describe("no-eager-new-in-use-state-initializer", () => {
       function Component() {
         const [observer] = useState(new IntersectionObserver((e) => {}));
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain(
-      "new IntersectionObserver()"
-    );
+    expect(result.diagnostics[0].message).toContain("new IntersectionObserver()");
   });
 
   it("flags useState(new AbortController())", () => {
@@ -68,7 +66,7 @@ describe("no-eager-new-in-use-state-initializer", () => {
       function Component() {
         const [controller] = useState(new AbortController());
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -81,7 +79,7 @@ describe("no-eager-new-in-use-state-initializer", () => {
       function Component() {
         const [m] = React.useState<Map<string, number>>(new Map());
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -94,7 +92,7 @@ describe("no-eager-new-in-use-state-initializer", () => {
       function Component() {
         const [seen] = useState(() => new Set());
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -107,7 +105,7 @@ describe("no-eager-new-in-use-state-initializer", () => {
       function Component() {
         const [thing] = useState(makeThing());
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -121,7 +119,7 @@ describe("no-eager-new-in-use-state-initializer", () => {
         const initial = new Set();
         const [seen] = useState(initial);
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -135,7 +133,7 @@ describe("no-eager-new-in-use-state-initializer", () => {
         const [seen, setSeen] = useState(() => new Set());
         const add = (x) => setSeen((prev) => new Set(prev).add(x));
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -148,7 +146,7 @@ describe("no-eager-new-in-use-state-initializer", () => {
       function Component() {
         const ref = useRef(new Map());
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -162,7 +160,7 @@ describe("no-eager-new-in-use-state-initializer", () => {
         const [a] = useState(new Array());
         const [o] = useState(new Object());
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -175,7 +173,7 @@ describe("no-eager-new-in-use-state-initializer", () => {
       function Component() {
         const [x] = useState();
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -188,7 +186,7 @@ describe("no-eager-new-in-use-state-initializer", () => {
       function Component({ enabled }) {
         const [c] = useState(enabled ? new AbortController() : null);
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

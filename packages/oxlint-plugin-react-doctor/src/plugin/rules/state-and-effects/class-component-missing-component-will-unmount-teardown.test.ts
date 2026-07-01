@@ -14,7 +14,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
         }
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -30,7 +30,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
         }
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -45,7 +45,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
         }
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -60,7 +60,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
         }
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -77,7 +77,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
         }
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -92,7 +92,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
         }
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -107,7 +107,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
         }
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -125,7 +125,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
         }
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -141,7 +141,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
         }
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -156,7 +156,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
         }
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -171,7 +171,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
         }
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -185,7 +185,7 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
           this.emitter.on("change", this.handle);
         }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

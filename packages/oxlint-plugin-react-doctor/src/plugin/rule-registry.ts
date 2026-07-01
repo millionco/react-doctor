@@ -783,7 +783,10 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [
-        ...new Set(["react", ...(classComponentMissingComponentWillUnmountTeardown.requires ?? [])]),
+        ...new Set([
+          "react",
+          ...(classComponentMissingComponentWillUnmountTeardown.requires ?? []),
+        ]),
       ],
     },
   },
@@ -1942,7 +1945,10 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [
-        ...new Set(["react", ...(mobxPropertyInitializerReadsThisBeforeMakeobservable.requires ?? [])]),
+        ...new Set([
+          "react",
+          ...(mobxPropertyInitializerReadsThisBeforeMakeobservable.requires ?? []),
+        ]),
       ],
     },
   },
@@ -1968,7 +1974,10 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [
-        ...new Set(["react", ...(mobxReactionDisposerNotStoredOrDisposedInWillunmount.requires ?? [])]),
+        ...new Set([
+          "react",
+          ...(mobxReactionDisposerNotStoredOrDisposedInWillunmount.requires ?? []),
+        ]),
       ],
     },
   },
@@ -2851,7 +2860,10 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [
-        ...new Set(["react", ...(noEffectCleanupRemovesListenerSubsetOrAddsListener.requires ?? [])]),
+        ...new Set([
+          "react",
+          ...(noEffectCleanupRemovesListenerSubsetOrAddsListener.requires ?? []),
+        ]),
       ],
     },
   },

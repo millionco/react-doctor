@@ -9,7 +9,7 @@ describe("no-undefined-only-guard-on-null-bearing-value", () => {
       `function render(value: string | null | undefined) {
         const displayValue = value === undefined ? '' : value.toString();
         return displayValue;
-      }`
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -23,7 +23,7 @@ describe("no-undefined-only-guard-on-null-bearing-value", () => {
           return user.name;
         }
         return 'anon';
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -37,7 +37,7 @@ describe("no-undefined-only-guard-on-null-bearing-value", () => {
         } else {
           return list.count();
         }
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -47,7 +47,7 @@ describe("no-undefined-only-guard-on-null-bearing-value", () => {
       noUndefinedOnlyGuardOnNullBearingValue,
       `function apply(region: string | null | undefined, body: any) {
         if (region !== undefined) body.region = region;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -58,7 +58,7 @@ describe("no-undefined-only-guard-on-null-bearing-value", () => {
       `function resolve(anchorElement: Element | null | undefined, anchorRef: any) {
         const anchor = anchorElement === undefined ? anchorRef?.current : anchorElement;
         return anchor;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -71,7 +71,7 @@ describe("no-undefined-only-guard-on-null-bearing-value", () => {
           return value.toString();
         }
         return '';
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -81,7 +81,7 @@ describe("no-undefined-only-guard-on-null-bearing-value", () => {
       noUndefinedOnlyGuardOnNullBearingValue,
       `function handle(value: string | null | undefined) {
         return value === null ? sendNull() : value === undefined ? omit() : setField(value);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -94,7 +94,7 @@ describe("no-undefined-only-guard-on-null-bearing-value", () => {
           return value?.name;
         }
         return null;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -104,7 +104,7 @@ describe("no-undefined-only-guard-on-null-bearing-value", () => {
       noUndefinedOnlyGuardOnNullBearingValue,
       `function render(value) {
         return value === undefined ? '' : value.toString();
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -117,7 +117,7 @@ describe("no-undefined-only-guard-on-null-bearing-value", () => {
           return ref.current.toString();
         }
         return '';
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

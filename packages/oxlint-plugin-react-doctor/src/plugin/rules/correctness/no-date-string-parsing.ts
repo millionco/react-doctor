@@ -40,10 +40,7 @@ const resolveStaticStringValue = (expression: EsTreeNode): string | null => {
     const binding = findVariableInitializer(stripped, stripped.name);
     const initializer = binding?.initializer;
     if (!initializer) return null;
-    if (
-      isNodeOfType(initializer, "Literal") &&
-      typeof initializer.value === "string"
-    ) {
+    if (isNodeOfType(initializer, "Literal") && typeof initializer.value === "string") {
       return initializer.value;
     }
     if (isNodeOfType(initializer, "TemplateLiteral")) {
@@ -70,11 +67,7 @@ export const noDateStringParsing = defineRule({
     "Construct dates from explicit numeric parts (`new Date(year, monthIndex, day)`) or an epoch-ms number, or parse a known format with date-fns `parse`/`parseISO` instead of `new Date(str)` / `Date.parse(str)`.",
   create: (context: RuleContext) => ({
     NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
-      if (
-        !isNodeOfType(node.callee, "Identifier") ||
-        node.callee.name !== "Date"
-      )
-        return;
+      if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "Date") return;
       const args = node.arguments ?? [];
       if (args.length !== 1) return;
       const value = resolveStaticStringValue(args[0] as EsTreeNode);
@@ -93,8 +86,7 @@ export const noDateStringParsing = defineRule({
       const args = node.arguments ?? [];
       if (args.length === 1) {
         const value = resolveStaticStringValue(args[0] as EsTreeNode);
-        if (value !== null && SPEC_DETERMINISTIC_ISO_PATTERN.test(value))
-          return;
+        if (value !== null && SPEC_DETERMINISTIC_ISO_PATTERN.test(value)) return;
       }
       context.report({ node, message: DATE_PARSE_MESSAGE });
     },

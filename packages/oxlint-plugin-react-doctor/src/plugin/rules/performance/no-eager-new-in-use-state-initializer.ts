@@ -23,15 +23,11 @@ const findEagerNewExpression = (argument: EsTreeNode): EsTreeNode | null => {
   // a branch that is directly a `new` expression still constructs eagerly.
   if (isNodeOfType(stripped, "ConditionalExpression")) {
     return (
-      findEagerNewExpression(stripped.consequent) ??
-      findEagerNewExpression(stripped.alternate)
+      findEagerNewExpression(stripped.consequent) ?? findEagerNewExpression(stripped.alternate)
     );
   }
   if (isNodeOfType(stripped, "LogicalExpression")) {
-    return (
-      findEagerNewExpression(stripped.left) ??
-      findEagerNewExpression(stripped.right)
-    );
+    return findEagerNewExpression(stripped.left) ?? findEagerNewExpression(stripped.right);
   }
   return null;
 };
@@ -40,10 +36,7 @@ const constructorName = (newExpression: EsTreeNode): string => {
   if (!isNodeOfType(newExpression, "NewExpression")) return "fn";
   const callee = newExpression.callee;
   if (isNodeOfType(callee, "Identifier")) return callee.name;
-  if (
-    isNodeOfType(callee, "MemberExpression") &&
-    isNodeOfType(callee.property, "Identifier")
-  ) {
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
     return callee.property.name;
   }
   return "fn";

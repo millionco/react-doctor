@@ -15,8 +15,7 @@ const REQUEST_ANIMATION_FRAME_NAME = "requestAnimationFrame";
 const CANCEL_ANIMATION_FRAME_NAME = "cancelAnimationFrame";
 
 const isRequestAnimationFrameCall = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "CallExpression") &&
-  getCalleeName(node) === REQUEST_ANIMATION_FRAME_NAME;
+  isNodeOfType(node, "CallExpression") && getCalleeName(node) === REQUEST_ANIMATION_FRAME_NAME;
 
 const subtreeContainsRequestAnimationFrame = (root: EsTreeNode): boolean => {
   let didFind = false;
@@ -30,9 +29,7 @@ const subtreeContainsRequestAnimationFrame = (root: EsTreeNode): boolean => {
   return didFind;
 };
 
-const resolveScheduledFunction = (
-  argument: EsTreeNode | null | undefined
-): EsTreeNode | null => {
+const resolveScheduledFunction = (argument: EsTreeNode | null | undefined): EsTreeNode | null => {
   if (!argument) return null;
   const stripped = stripParenExpression(argument);
   if (
@@ -87,9 +84,7 @@ const collectRafHandleNames = (effectCallback: EsTreeNode): Set<string> => {
   return handleNames;
 };
 
-const findCleanupReturnFunction = (
-  effectCallback: EsTreeNode
-): EsTreeNode | null => {
+const findCleanupReturnFunction = (effectCallback: EsTreeNode): EsTreeNode | null => {
   if (
     !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
     !isNodeOfType(effectCallback, "FunctionExpression")
@@ -117,10 +112,7 @@ const findCleanupReturnFunction = (
   return null;
 };
 
-const subtreeReferencesAnyName = (
-  root: EsTreeNode,
-  names: Set<string>
-): boolean => {
+const subtreeReferencesAnyName = (root: EsTreeNode, names: Set<string>): boolean => {
   if (names.size === 0) return false;
   let didReference = false;
   walkAst(root, (child: EsTreeNode) => {
@@ -148,22 +140,13 @@ const findEnclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
   return null;
 };
 
-const findSelfReschedulingRafCall = (
-  effectCallback: EsTreeNode
-): EsTreeNode | null => {
+const findSelfReschedulingRafCall = (effectCallback: EsTreeNode): EsTreeNode | null => {
   let selfReschedulingCall: EsTreeNode | null = null;
   walkAst(effectCallback, (child: EsTreeNode) => {
     if (selfReschedulingCall) return false;
-    if (
-      !isRequestAnimationFrameCall(child) ||
-      !isNodeOfType(child, "CallExpression")
-    )
-      return;
+    if (!isRequestAnimationFrameCall(child) || !isNodeOfType(child, "CallExpression")) return;
     const scheduledFunction = resolveScheduledFunction(child.arguments?.[0]);
-    if (
-      scheduledFunction &&
-      subtreeContainsRequestAnimationFrame(scheduledFunction)
-    ) {
+    if (scheduledFunction && subtreeContainsRequestAnimationFrame(scheduledFunction)) {
       selfReschedulingCall = child;
       return false;
     }
@@ -205,8 +188,7 @@ export const effectRafLoopNeedsCancel = defineRule({
       const cleanupReturnFunction = findCleanupReturnFunction(callback);
       if (cleanupReturnFunction) {
         const handleNames = collectRafHandleNames(callback);
-        if (subtreeReferencesAnyName(cleanupReturnFunction, handleNames))
-          return;
+        if (subtreeReferencesAnyName(cleanupReturnFunction, handleNames)) return;
       }
 
       context.report({

@@ -11,10 +11,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 const OBSERVER_RELEASE_METHOD_NAMES = new Set(["disconnect", "unobserve"]);
 
-const isMemberCallWithProperty = (
-  node: EsTreeNode,
-  propertyNames: Set<string>
-): boolean =>
+const isMemberCallWithProperty = (node: EsTreeNode, propertyNames: Set<string>): boolean =>
   isNodeOfType(node, "CallExpression") &&
   isNodeOfType(node.callee, "MemberExpression") &&
   !node.callee.computed &&

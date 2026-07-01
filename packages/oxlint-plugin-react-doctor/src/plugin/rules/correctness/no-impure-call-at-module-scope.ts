@@ -56,41 +56,29 @@ interface ModuleScopeBinding {
 // module load — either in a top-level variable initializer or a static
 // class-field initializer — returning the bound name, or null when a
 // function boundary or non-module scope is crossed first.
-const resolveModuleScopeBinding = (
-  impureNode: EsTreeNode
-): ModuleScopeBinding | null => {
+const resolveModuleScopeBinding = (impureNode: EsTreeNode): ModuleScopeBinding | null => {
   let child: EsTreeNode = impureNode;
   let cursor: EsTreeNode | null = impureNode.parent ?? null;
   while (cursor) {
-    if (isFunctionLike(cursor) || isNodeOfType(cursor, "MethodDefinition"))
-      return null;
+    if (isFunctionLike(cursor) || isNodeOfType(cursor, "MethodDefinition")) return null;
 
     if (isNodeOfType(cursor, "PropertyDefinition")) {
       if (cursor.static !== true || cursor.key === child) return null;
       return {
-        bindingName: isNodeOfType(cursor.key, "Identifier")
-          ? cursor.key.name
-          : null,
+        bindingName: isNodeOfType(cursor.key, "Identifier") ? cursor.key.name : null,
       };
     }
 
     if (isNodeOfType(cursor, "VariableDeclarator")) {
       const declaration = cursor.parent;
-      if (!declaration || !isNodeOfType(declaration, "VariableDeclaration"))
-        return null;
+      if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) return null;
       let declarationParent = declaration.parent ?? null;
-      if (
-        declarationParent &&
-        isNodeOfType(declarationParent, "ExportNamedDeclaration")
-      ) {
+      if (declarationParent && isNodeOfType(declarationParent, "ExportNamedDeclaration")) {
         declarationParent = declarationParent.parent ?? null;
       }
-      if (!declarationParent || !isNodeOfType(declarationParent, "Program"))
-        return null;
+      if (!declarationParent || !isNodeOfType(declarationParent, "Program")) return null;
       return {
-        bindingName: isNodeOfType(cursor.id, "Identifier")
-          ? cursor.id.name
-          : null,
+        bindingName: isNodeOfType(cursor.id, "Identifier") ? cursor.id.name : null,
       };
     }
 
@@ -114,11 +102,7 @@ export const noImpureCallAtModuleScope = defineRule({
       if (!label) return;
       const binding = resolveModuleScopeBinding(node);
       if (!binding) return;
-      if (
-        binding.bindingName &&
-        PER_PROCESS_BINDING_NAME_PATTERN.test(binding.bindingName)
-      )
-        return;
+      if (binding.bindingName && PER_PROCESS_BINDING_NAME_PATTERN.test(binding.bindingName)) return;
       context.report({
         node,
         message: `\`${label}\` runs once when this module loads, so the value is frozen for the whole server process and every SSR request reuses it — move it into a function or component so it evaluates per request.`,

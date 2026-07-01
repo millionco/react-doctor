@@ -8,17 +8,8 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
-const DOM_QUERY_METHODS = new Set([
-  "getElementById",
-  "querySelector",
-  "querySelectorAll",
-]);
-const CLASS_LIST_MUTATION_METHODS = new Set([
-  "add",
-  "remove",
-  "toggle",
-  "replace",
-]);
+const DOM_QUERY_METHODS = new Set(["getElementById", "querySelector", "querySelectorAll"]);
+const CLASS_LIST_MUTATION_METHODS = new Set(["add", "remove", "toggle", "replace"]);
 // App-shell / third-party roots are never a component's own reconciled subtree.
 const EXCLUDED_QUERY_TOKENS = new Set(["root", "__next"]);
 
@@ -34,17 +25,13 @@ interface QueryTarget {
 }
 
 const literalStringFromJsxAttributeValue = (
-  value: EsTreeNode | null | undefined
+  value: EsTreeNode | null | undefined,
 ): string | null => {
   if (!value) return null;
-  if (isNodeOfType(value, "Literal") && typeof value.value === "string")
-    return value.value;
+  if (isNodeOfType(value, "Literal") && typeof value.value === "string") return value.value;
   if (isNodeOfType(value, "JSXExpressionContainer")) {
     const expression = value.expression;
-    if (
-      isNodeOfType(expression, "Literal") &&
-      typeof expression.value === "string"
-    ) {
+    if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
       return expression.value;
     }
   }
@@ -98,11 +85,7 @@ const queryCallTarget = (node: EsTreeNode): QueryTarget | null => {
   if (!isNodeOfType(stripped, "CallExpression")) return null;
   const callee = stripped.callee;
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
-  if (
-    !isNodeOfType(callee.object, "Identifier") ||
-    callee.object.name !== "document"
-  )
-    return null;
+  if (!isNodeOfType(callee.object, "Identifier") || callee.object.name !== "document") return null;
   if (
     !isNodeOfType(callee.property, "Identifier") ||
     !DOM_QUERY_METHODS.has(callee.property.name)
@@ -110,17 +93,12 @@ const queryCallTarget = (node: EsTreeNode): QueryTarget | null => {
     return null;
   }
   const argument = stripped.arguments?.[0];
-  if (!isNodeOfType(argument, "Literal") || typeof argument.value !== "string")
-    return null;
-  if (callee.property.name === "getElementById")
-    return { kind: "id", value: argument.value };
+  if (!isNodeOfType(argument, "Literal") || typeof argument.value !== "string") return null;
+  if (callee.property.name === "getElementById") return { kind: "id", value: argument.value };
   return parseSelectorTarget(argument.value);
 };
 
-const isOwnedQueryTarget = (
-  target: QueryTarget | null,
-  owned: OwnedTokens
-): boolean => {
+const isOwnedQueryTarget = (target: QueryTarget | null, owned: OwnedTokens): boolean => {
   if (!target || EXCLUDED_QUERY_TOKENS.has(target.value)) return false;
   if (target.kind === "id") return owned.ids.has(target.value);
   if (target.kind === "class") return owned.classNames.has(target.value);
@@ -128,9 +106,7 @@ const isOwnedQueryTarget = (
 };
 
 // `X.style.<prop>` / `X.style.cssText` → the mutated node `X`, else null.
-const styleAssignmentReceiver = (
-  assignmentTarget: EsTreeNode
-): EsTreeNode | null => {
+const styleAssignmentReceiver = (assignmentTarget: EsTreeNode): EsTreeNode | null => {
   if (!isNodeOfType(assignmentTarget, "MemberExpression")) return null;
   const object = assignmentTarget.object;
   if (
@@ -175,21 +151,17 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
     const receiverIsOwnedQuery = (
       receiver: EsTreeNode,
       ownedQueryVariables: Set<string>,
-      owned: OwnedTokens
+      owned: OwnedTokens,
     ): boolean => {
       const stripped = stripParenExpression(receiver);
-      if (isNodeOfType(stripped, "Identifier"))
-        return ownedQueryVariables.has(stripped.name);
+      if (isNodeOfType(stripped, "Identifier")) return ownedQueryVariables.has(stripped.name);
       if (isNodeOfType(stripped, "CallExpression")) {
         return isOwnedQueryTarget(queryCallTarget(stripped), owned);
       }
       return false;
     };
 
-    const analyzeComponent = (
-      functionNode: EsTreeNode,
-      owned: OwnedTokens
-    ): void => {
+    const analyzeComponent = (functionNode: EsTreeNode, owned: OwnedTokens): void => {
       const ownedQueryVariables = new Set<string>();
       walkAst(functionNode, (node: EsTreeNode) => {
         if (!isNodeOfType(node, "VariableDeclarator")) return;
@@ -202,10 +174,7 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
       walkAst(functionNode, (node: EsTreeNode) => {
         if (isNodeOfType(node, "AssignmentExpression")) {
           const receiver = styleAssignmentReceiver(node.left);
-          if (
-            receiver &&
-            receiverIsOwnedQuery(receiver, ownedQueryVariables, owned)
-          ) {
+          if (receiver && receiverIsOwnedQuery(receiver, ownedQueryVariables, owned)) {
             if (reported.has(node)) return;
             reported.add(node);
             context.report({
@@ -218,10 +187,7 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
         }
         if (isNodeOfType(node, "CallExpression")) {
           const receiver = classListMutationReceiver(node.callee);
-          if (
-            receiver &&
-            receiverIsOwnedQuery(receiver, ownedQueryVariables, owned)
-          ) {
+          if (receiver && receiverIsOwnedQuery(receiver, ownedQueryVariables, owned)) {
             if (reported.has(node)) return;
             reported.add(node);
             context.report({
@@ -250,9 +216,7 @@ export const noMutateQueriedDomNodeInComponent = defineRule({
       FunctionExpression(node: EsTreeNodeOfType<"FunctionExpression">) {
         visitFunction(node);
       },
-      ArrowFunctionExpression(
-        node: EsTreeNodeOfType<"ArrowFunctionExpression">
-      ) {
+      ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
         visitFunction(node);
       },
     };

@@ -44,14 +44,12 @@ export const effectRemoveListenerInlineHandler = defineRule({
       const callee = node.callee;
       if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return;
       if (!isNodeOfType(callee.property, "Identifier")) return;
-      if (!REFERENCE_EQUALITY_REMOVAL_METHOD_NAMES.has(callee.property.name))
-        return;
+      if (!REFERENCE_EQUALITY_REMOVAL_METHOD_NAMES.has(callee.property.name)) return;
 
       const args = node.arguments ?? [];
       if (args.length < 2) return;
       const handlerArgument = args[1];
-      if (!handlerArgument || !isFreshFunctionReference(handlerArgument))
-        return;
+      if (!handlerArgument || !isFreshFunctionReference(handlerArgument)) return;
 
       context.report({
         node: handlerArgument,

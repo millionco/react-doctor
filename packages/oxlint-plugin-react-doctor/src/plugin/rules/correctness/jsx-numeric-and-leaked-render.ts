@@ -8,11 +8,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 const NUMERIC_MEMBER_PROPERTY_NAMES = new Set(["length", "size"]);
 const ARITHMETIC_BINARY_OPERATORS = new Set(["-", "+", "*", "/", "%"]);
-const NUMERIC_COERCION_CALLEE_NAMES = new Set([
-  "Number",
-  "parseInt",
-  "parseFloat",
-]);
+const NUMERIC_COERCION_CALLEE_NAMES = new Set(["Number", "parseInt", "parseFloat"]);
 
 const isJsxNode = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "JSXElement") || isNodeOfType(node, "JSXFragment");
@@ -49,8 +45,7 @@ const isSyntacticallyNumeric = (node: EsTreeNode): boolean => {
     return true;
   }
 
-  if (isNodeOfType(stripped, "Literal") && typeof stripped.value === "number")
-    return true;
+  if (isNodeOfType(stripped, "Literal") && typeof stripped.value === "number") return true;
 
   return false;
 };
@@ -68,8 +63,7 @@ export const jsxNumericAndLeakedRender = defineRule({
       // Only handle the outermost `&&` of a chain; inner ones are folded in
       // via `flattenLogicalAndChain` below.
       const parent = node.parent;
-      if (isNodeOfType(parent, "LogicalExpression") && parent.operator === "&&")
-        return;
+      if (isNodeOfType(parent, "LogicalExpression") && parent.operator === "&&") return;
 
       // Must render as a JSX child (`{expr && <X/>}`), not as an attribute
       // value — an attribute never renders a stray text node.
@@ -90,8 +84,7 @@ export const jsxNumericAndLeakedRender = defineRule({
       if (!lastOperand || !isJsxNode(stripParenExpression(lastOperand))) return;
 
       const jsxAdjacentOperand = operands[operands.length - 2];
-      if (!jsxAdjacentOperand || !isSyntacticallyNumeric(jsxAdjacentOperand))
-        return;
+      if (!jsxAdjacentOperand || !isSyntacticallyNumeric(jsxAdjacentOperand)) return;
 
       context.report({
         node: jsxAdjacentOperand,

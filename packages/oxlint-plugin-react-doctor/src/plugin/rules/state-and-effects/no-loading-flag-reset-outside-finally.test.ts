@@ -11,7 +11,7 @@ describe("no-loading-flag-reset-outside-finally", () => {
         const result = await getTrashPaginated(page, perPage);
         setItems(result.items);
         setIsLoading(false);
-      };`
+      };`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -29,7 +29,7 @@ describe("no-loading-flag-reset-outside-finally", () => {
           setError(e);
         }
         setLoading(false);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -42,7 +42,7 @@ describe("no-loading-flag-reset-outside-finally", () => {
         await savePlugin(values);
         onClose();
         setSubmitting(false);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -60,7 +60,7 @@ describe("no-loading-flag-reset-outside-finally", () => {
           setLoading(false);
           reportError(e);
         }
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -75,7 +75,7 @@ describe("no-loading-flag-reset-outside-finally", () => {
         } finally {
           setSubmitting(false);
         }
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -87,7 +87,7 @@ describe("no-loading-flag-reset-outside-finally", () => {
         setOpen(true);
         await animate();
         setOpen(false);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -99,7 +99,7 @@ describe("no-loading-flag-reset-outside-finally", () => {
         setLoading(true);
         doWork();
         setLoading(false);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -113,7 +113,7 @@ describe("no-loading-flag-reset-outside-finally", () => {
         subscribe(() => {
           setLoading(false);
         });
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -125,7 +125,7 @@ describe("no-loading-flag-reset-outside-finally", () => {
         setLoading(true);
         setLoading(false);
         await fetchThings();
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

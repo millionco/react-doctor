@@ -25,9 +25,7 @@ const isHookCallee = (callee: EsTreeNode, hookName: string): boolean => {
   );
 };
 
-const firstArgumentLiteralKind = (
-  call: EsTreeNodeOfType<"CallExpression">
-): LiteralKind | null => {
+const firstArgumentLiteralKind = (call: EsTreeNodeOfType<"CallExpression">): LiteralKind | null => {
   const firstArgument = call.arguments[0];
   if (!firstArgument) return null;
   return objectOrArrayKind(stripParenExpression(firstArgument as EsTreeNode));
@@ -37,7 +35,7 @@ const firstArgumentLiteralKind = (
 // the binding is a function parameter (skipped — a parameter typed as an
 // object/array may have a meaningful `toString()`, per the revision).
 const findEnclosingDeclarator = (
-  bindingIdentifier: EsTreeNode
+  bindingIdentifier: EsTreeNode,
 ): EsTreeNodeOfType<"VariableDeclarator"> | null => {
   let cursor: EsTreeNode | null | undefined = bindingIdentifier.parent;
   while (cursor) {
@@ -53,27 +51,20 @@ const findEnclosingDeclarator = (
 // ref object is interpolated bare, or the state of a
 // `const [x] = useState({…})`. Returns null for anything not provably a
 // literal in scope (imports, params, reassigned/unknown values).
-const resolveInterpolatedLiteralKind = (
-  identifier: EsTreeNode
-): LiteralKind | null => {
+const resolveInterpolatedLiteralKind = (identifier: EsTreeNode): LiteralKind | null => {
   if (!isNodeOfType(identifier, "Identifier")) return null;
   const binding = findVariableInitializer(identifier, identifier.name);
   if (!binding) return null;
 
   const declarator = findEnclosingDeclarator(binding.bindingIdentifier);
   if (!declarator) return null;
-  const init = declarator.init
-    ? stripParenExpression(declarator.init as EsTreeNode)
-    : null;
+  const init = declarator.init ? stripParenExpression(declarator.init as EsTreeNode) : null;
   if (!init) return null;
 
   if (declarator.id === binding.bindingIdentifier) {
     const directKind = objectOrArrayKind(init);
     if (directKind) return directKind;
-    if (
-      isNodeOfType(init, "CallExpression") &&
-      isHookCallee(init.callee as EsTreeNode, "useRef")
-    ) {
+    if (isNodeOfType(init, "CallExpression") && isHookCallee(init.callee as EsTreeNode, "useRef")) {
       return firstArgumentLiteralKind(init);
     }
     return null;

@@ -34,8 +34,7 @@ const WHITELISTED_CALLEE_NAMES = new Set([
 // whitelisted `forwardRef` / `memo` / `styled`), rather than wrapping a
 // pre-existing component. Match them structurally by name so the whitelist
 // doesn't have to grow one framework helper at a time.
-const isComponentFactoryName = (calleeName: string): boolean =>
-  /factory$/i.test(calleeName);
+const isComponentFactoryName = (calleeName: string): boolean => /factory$/i.test(calleeName);
 
 // Resolves the wrapper name of the CallExpression the inline function is
 // handed to. A bare `hoc(fn)` callee is the Identifier name; a curried
@@ -44,10 +43,7 @@ const isComponentFactoryName = (calleeName: string): boolean =>
 // so the rule stays quiet — matching the narrow shape Faire's rule matched.
 const resolveInlineHocCalleeName = (callee: EsTreeNode): string | null => {
   if (isNodeOfType(callee, "Identifier")) return callee.name;
-  if (
-    isNodeOfType(callee, "CallExpression") &&
-    isNodeOfType(callee.callee, "Identifier")
-  ) {
+  if (isNodeOfType(callee, "CallExpression") && isNodeOfType(callee.callee, "Identifier")) {
     return callee.callee.name;
   }
   return null;
@@ -83,9 +79,9 @@ const isAssignedToComponentBinding = (wrappingCall: EsTreeNode): boolean => {
   const declarator = wrappingCall.parent;
   return Boolean(
     declarator &&
-      isNodeOfType(declarator, "VariableDeclarator") &&
-      isNodeOfType(declarator.id, "Identifier") &&
-      isUppercaseName(declarator.id.name)
+    isNodeOfType(declarator, "VariableDeclarator") &&
+    isNodeOfType(declarator.id, "Identifier") &&
+    isUppercaseName(declarator.id.name),
   );
 };
 
@@ -100,8 +96,7 @@ export const noInlineHocOnComponent = defineRule({
   create: (context: RuleContext) => {
     const checkInlineFunction = (functionNode: EsTreeNode): void => {
       const wrappingCall = functionNode.parent;
-      if (!wrappingCall || !isNodeOfType(wrappingCall, "CallExpression"))
-        return;
+      if (!wrappingCall || !isNodeOfType(wrappingCall, "CallExpression")) return;
       if (wrappingCall.arguments?.[0] !== functionNode) return;
 
       const calleeName = resolveInlineHocCalleeName(wrappingCall.callee);
@@ -123,9 +118,7 @@ export const noInlineHocOnComponent = defineRule({
     };
 
     return {
-      ArrowFunctionExpression(
-        node: EsTreeNodeOfType<"ArrowFunctionExpression">
-      ) {
+      ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
         checkInlineFunction(node);
       },
       FunctionExpression(node: EsTreeNodeOfType<"FunctionExpression">) {

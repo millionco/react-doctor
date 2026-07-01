@@ -59,7 +59,7 @@ const receiverReachesThroughRefCurrent = (receiver: EsTreeNode): boolean => {
 const isRootDeclaredWithinCallback = (
   rootIdentifier: EsTreeNode,
   rootName: string,
-  callbackFunction: EsTreeNode
+  callbackFunction: EsTreeNode,
 ): boolean => {
   const binding = findVariableInitializer(rootIdentifier, rootName);
   if (!binding) return false;
@@ -105,10 +105,7 @@ export const noInPlaceArrayMutationInUseMemo = defineRule({
       }
       if (!isNodeOfType(rootIdentifier, "Identifier")) return;
 
-      if (
-        isRootDeclaredWithinCallback(rootIdentifier, rootName, callbackFunction)
-      )
-        return;
+      if (isRootDeclaredWithinCallback(rootIdentifier, rootName, callbackFunction)) return;
 
       context.report({
         node,

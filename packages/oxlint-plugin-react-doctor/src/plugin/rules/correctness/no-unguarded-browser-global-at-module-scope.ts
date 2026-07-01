@@ -47,10 +47,7 @@ const subtreeHasTypeofBrowserGlobal = (subtree: EsTreeNode): boolean => {
     if (found) return false;
     if (isNodeOfType(child, "UnaryExpression") && child.operator === "typeof") {
       const argument = stripParenExpression(child.argument);
-      if (
-        isNodeOfType(argument, "Identifier") &&
-        BROWSER_GLOBAL_NAMES.has(argument.name)
-      ) {
+      if (isNodeOfType(argument, "Identifier") && BROWSER_GLOBAL_NAMES.has(argument.name)) {
         found = true;
         return false;
       }
@@ -66,10 +63,7 @@ const subtreeHasTypeofBrowserGlobal = (subtree: EsTreeNode): boolean => {
 const isTypeofGuarded = (node: EsTreeNode): boolean => {
   let ancestor = node.parent;
   while (ancestor) {
-    if (
-      isNodeOfType(ancestor, "IfStatement") &&
-      subtreeHasTypeofBrowserGlobal(ancestor.test)
-    ) {
+    if (isNodeOfType(ancestor, "IfStatement") && subtreeHasTypeofBrowserGlobal(ancestor.test)) {
       return true;
     }
     if (
@@ -89,9 +83,7 @@ const isTypeofGuarded = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const collectModuleScopeBindingNames = (
-  program: EsTreeNodeOfType<"Program">
-): Set<string> => {
+const collectModuleScopeBindingNames = (program: EsTreeNodeOfType<"Program">): Set<string> => {
   const names = new Set<string>();
   const record = (declaration: EsTreeNode | null | undefined): void => {
     if (!declaration) return;
@@ -155,26 +147,18 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
         const shadowed = collectModuleScopeBindingNames(node);
         if ([...BROWSER_GLOBAL_NAMES].some((name) => shadowed.has(name))) {
           activeGlobalNames = new Set(
-            [...BROWSER_GLOBAL_NAMES].filter((name) => !shadowed.has(name))
+            [...BROWSER_GLOBAL_NAMES].filter((name) => !shadowed.has(name)),
           );
         }
       },
       MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
         const object = stripParenExpression(node.object);
-        if (
-          !isNodeOfType(object, "Identifier") ||
-          !activeGlobalNames.has(object.name)
-        )
-          return;
+        if (!isNodeOfType(object, "Identifier") || !activeGlobalNames.has(object.name)) return;
         reportRead(object, object.name);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         const callee = stripParenExpression(node.callee);
-        if (
-          !isNodeOfType(callee, "Identifier") ||
-          !activeGlobalNames.has(callee.name)
-        )
-          return;
+        if (!isNodeOfType(callee, "Identifier") || !activeGlobalNames.has(callee.name)) return;
         reportRead(callee, callee.name);
       },
     };

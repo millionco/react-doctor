@@ -14,7 +14,7 @@ describe("styled-static-zero-arg-arrow-interpolation", () => {
         color: red;
         \${() => css\`width: 100px;\`}
       \`;
-    `
+    `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -28,7 +28,7 @@ describe("styled-static-zero-arg-arrow-interpolation", () => {
       const Box = styled.div\`
         display: \${() => 'flex'};
       \`;
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -42,7 +42,7 @@ describe("styled-static-zero-arg-arrow-interpolation", () => {
       const Cart = styled.div\`
         \${() => css\`width: \${BRAND_CART_WIDTH_WIDE.large};\`}
       \`;
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -54,14 +54,14 @@ describe("styled-static-zero-arg-arrow-interpolation", () => {
       ${STYLED_IMPORT}
       import { Base } from './base';
       const Box = styled(Base)\`opacity: \${() => 0.5};\`;
-    `
+    `,
     );
     const keyframesTag = runRule(
       styledStaticZeroArgArrowInterpolation,
       `
       ${STYLED_IMPORT}
       const spin = keyframes\`from { top: \${() => '0px'}; }\`;
-    `
+    `,
     );
     expect(styledComponent.diagnostics).toHaveLength(1);
     expect(keyframesTag.diagnostics).toHaveLength(1);
@@ -75,7 +75,7 @@ describe("styled-static-zero-arg-arrow-interpolation", () => {
       const Box = styled.div\`
         \${({ $size }) => css\`width: \${$size}px;\`}
       \`;
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -88,7 +88,7 @@ describe("styled-static-zero-arg-arrow-interpolation", () => {
       const Box = styled.div\`
         margin: \${() => getSpacing(2)};
       \`;
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -101,7 +101,7 @@ describe("styled-static-zero-arg-arrow-interpolation", () => {
       const Box = styled.div\`
         color: \${() => (isLoggedInRetailer() ? 'blue' : 'gray')};
       \`;
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -115,7 +115,7 @@ describe("styled-static-zero-arg-arrow-interpolation", () => {
       const Card = styled.div\`
         \${() => baseCardStyles}
       \`;
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -126,7 +126,7 @@ describe("styled-static-zero-arg-arrow-interpolation", () => {
       `
       import { gql } from '@apollo/client';
       const query = gql\`query { \${() => 'field'} }\`;
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -137,7 +137,7 @@ describe("styled-static-zero-arg-arrow-interpolation", () => {
       `
       const styled = { div: (s) => s };
       const Box = styled.div\`color: \${() => 'red'};\`;
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

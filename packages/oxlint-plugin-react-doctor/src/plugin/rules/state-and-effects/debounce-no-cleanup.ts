@@ -8,20 +8,13 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-const DEBOUNCE_WRAPPER_HOOK_NAMES = new Set([
-  "useMemo",
-  "useCallback",
-  "useRef",
-]);
+const DEBOUNCE_WRAPPER_HOOK_NAMES = new Set(["useMemo", "useCallback", "useRef"]);
 const DEBOUNCE_FACTORY_NAMES = new Set(["debounce", "throttle"]);
 const DEBOUNCE_RELEASE_METHOD_NAMES = new Set(["cancel", "flush"]);
 
 const isLodashModuleSource = (source: string | null): boolean =>
   Boolean(
-    source &&
-      (source === "lodash" ||
-        source.startsWith("lodash/") ||
-        source === "lodash-es")
+    source && (source === "lodash" || source.startsWith("lodash/") || source === "lodash-es"),
   );
 
 const isLodashDebounceCall = (callExpression: EsTreeNode): boolean => {
@@ -38,18 +31,13 @@ const isLodashDebounceCall = (callExpression: EsTreeNode): boolean => {
     DEBOUNCE_FACTORY_NAMES.has(callee.property.name) &&
     isNodeOfType(callee.object, "Identifier")
   ) {
-    const receiverSource = getImportSourceForName(
-      callee.object,
-      callee.object.name
-    );
+    const receiverSource = getImportSourceForName(callee.object, callee.object.name);
     return isLodashModuleSource(receiverSource);
   }
   return false;
 };
 
-const findDebounceCallInHookInitializer = (
-  hookCall: EsTreeNode
-): EsTreeNode | null => {
+const findDebounceCallInHookInitializer = (hookCall: EsTreeNode): EsTreeNode | null => {
   if (!isNodeOfType(hookCall, "CallExpression")) return null;
   const firstArgument = hookCall.arguments?.[0];
   if (!firstArgument) return null;
@@ -77,8 +65,7 @@ const findDebounceCallInHookInitializer = (
 const hasTrailingFalseOption = (debounceCall: EsTreeNode): boolean => {
   if (!isNodeOfType(debounceCall, "CallExpression")) return false;
   const optionsArgument = debounceCall.arguments?.[2];
-  if (!optionsArgument || !isNodeOfType(optionsArgument, "ObjectExpression"))
-    return false;
+  if (!optionsArgument || !isNodeOfType(optionsArgument, "ObjectExpression")) return false;
   return (optionsArgument.properties ?? []).some(
     (property) =>
       isNodeOfType(property, "Property") &&
@@ -86,14 +73,11 @@ const hasTrailingFalseOption = (debounceCall: EsTreeNode): boolean => {
       isNodeOfType(property.key, "Identifier") &&
       property.key.name === "trailing" &&
       isNodeOfType(property.value, "Literal") &&
-      property.value.value === false
+      property.value.value === false,
   );
 };
 
-const subtreeReferencesName = (
-  node: EsTreeNode,
-  bindingName: string
-): boolean => {
+const subtreeReferencesName = (node: EsTreeNode, bindingName: string): boolean => {
   let didReference = false;
   walkAst(node, (child: EsTreeNode) => {
     if (didReference) return false;
@@ -120,10 +104,7 @@ const findEnclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
   return null;
 };
 
-const hasReleaseCallForBinding = (
-  searchRoot: EsTreeNode,
-  bindingName: string
-): boolean => {
+const hasReleaseCallForBinding = (searchRoot: EsTreeNode, bindingName: string): boolean => {
   let didRelease = false;
   walkAst(searchRoot, (child: EsTreeNode) => {
     if (didRelease) return false;
@@ -164,8 +145,7 @@ export const debounceNoCleanup = defineRule({
       const bindingName = declarator.id.name;
 
       const searchRoot = findEnclosingFunction(node);
-      if (searchRoot && hasReleaseCallForBinding(searchRoot, bindingName))
-        return;
+      if (searchRoot && hasReleaseCallForBinding(searchRoot, bindingName)) return;
 
       context.report({
         node: debounceCall,

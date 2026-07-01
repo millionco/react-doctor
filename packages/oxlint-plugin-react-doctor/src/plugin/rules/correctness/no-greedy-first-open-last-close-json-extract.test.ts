@@ -10,7 +10,7 @@ describe("no-greedy-first-open-last-close-json-extract", () => {
         const firstOpen = response.indexOf('{');
         const lastClose = response.lastIndexOf('}');
         return JSON.parse(response.substring(firstOpen, lastClose + 1));
-      }`
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -24,7 +24,7 @@ describe("no-greedy-first-open-last-close-json-extract", () => {
         const end = response.lastIndexOf(']');
         const parsed = JSON.parse(response.slice(start, end + 1));
         return parsed;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -39,7 +39,7 @@ describe("no-greedy-first-open-last-close-json-extract", () => {
           const cleaned = completion.substring(completion.indexOf('{'), completion.lastIndexOf('}') + 1);
           return JSON.parse(cleaned);
         }
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -51,7 +51,7 @@ describe("no-greedy-first-open-last-close-json-extract", () => {
         const fenced = str.match(/\`\`\`(?:json)?/);
         const body = str.substring(str.indexOf('{'), str.lastIndexOf('}') + 1);
         return JSON.parse(body);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -62,7 +62,7 @@ describe("no-greedy-first-open-last-close-json-extract", () => {
       `function read(configBlob) {
         const body = configBlob.substring(configBlob.indexOf('{'), configBlob.lastIndexOf('}') + 1);
         return JSON.parse(body);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -73,7 +73,7 @@ describe("no-greedy-first-open-last-close-json-extract", () => {
       `function label(response, element) {
         const text = response.substring(response.indexOf('{'), response.lastIndexOf('}') + 1);
         element.textContent = text;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -83,7 +83,7 @@ describe("no-greedy-first-open-last-close-json-extract", () => {
       noGreedyFirstOpenLastCloseJsonExtract,
       `function odd(response) {
         return JSON.parse(response.substring(response.indexOf('{'), response.lastIndexOf(']') + 1));
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -93,7 +93,7 @@ describe("no-greedy-first-open-last-close-json-extract", () => {
       noGreedyFirstOpenLastCloseJsonExtract,
       `function fixed(response) {
         return JSON.parse(response.substring(0, response.length));
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

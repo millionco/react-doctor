@@ -12,9 +12,7 @@ const GLOBAL_TIMER_RECEIVERS = new Set(["window", "globalThis", "global"]);
 const MESSAGE =
   "This `setTimeout` fires a state setter after a delay, but its id is never captured and no `clearTimeout` cancels it, so the pending timer runs against a torn-down component after unmount. Capture the id and clear it in an effect cleanup / unmount teardown.";
 
-const isSetTimeoutCall = (
-  node: EsTreeNodeOfType<"CallExpression">
-): boolean => {
+const isSetTimeoutCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   const callee = node.callee;
   if (isNodeOfType(callee, "Identifier")) return callee.name === "setTimeout";
   if (
@@ -56,9 +54,8 @@ const callbackCallsStateSetter = (callback: EsTreeNode): boolean => {
 // `ref.current = setTimeout`, `return setTimeout`, an argument, etc.) —
 // meaning something can clear it. A bare expression statement is the
 // genuinely uncaptured, fire-and-forget shape.
-const timerIdIsUncaptured = (
-  node: EsTreeNodeOfType<"CallExpression">
-): boolean => isNodeOfType(node.parent, "ExpressionStatement");
+const timerIdIsUncaptured = (node: EsTreeNodeOfType<"CallExpression">): boolean =>
+  isNodeOfType(node.parent, "ExpressionStatement");
 
 const findEnclosingComponentScope = (node: EsTreeNode): EsTreeNode | null => {
   let scope: EsTreeNode | null = null;

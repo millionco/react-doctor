@@ -11,7 +11,7 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
         if (value) {
           setSequence(sequence.add(index));
         }
-      };`
+      };`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -26,7 +26,7 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
           prev.delete(id);
           return prev;
         });
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -38,7 +38,7 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
         const [rows, setRows] = useState(data);
         rows.sort(byName);
         setRows(rows);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -49,7 +49,7 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
       `const Picker = () => {
         const [selected, setSelected] = useState(new Set());
         setSelected((prev) => prev.add(id));
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -63,7 +63,7 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
           oldPack.splice(index, 1, newEmote);
           return oldPack;
         });
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -76,7 +76,7 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
         const newQuestions = Array.from(questions);
         newQuestions.splice(index, 1, updated);
         setQuestions(newQuestions);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -89,7 +89,7 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
         const next = [...files];
         next.splice(i, 1);
         setFiles(next);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -102,7 +102,7 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
         const clonedSet = new Set(sequence);
         clonedSet.delete(index);
         setSequence(clonedSet);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -116,7 +116,7 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
           prev.delete("plan");
           return prev;
         });
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -127,7 +127,7 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
       `const useGrouped = (messages) => {
         const groupAllMessages = groupBy(messages).reverse();
         return groupAllMessages;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -138,7 +138,7 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
       `const List = () => {
         const [items, setItems] = useState([]);
         setItems(items.concat(next));
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -152,7 +152,7 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
           rows.sort(byName);
         };
         setRows(rows);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

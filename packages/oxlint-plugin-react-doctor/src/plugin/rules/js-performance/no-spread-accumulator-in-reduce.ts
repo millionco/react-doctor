@@ -15,20 +15,13 @@ const REDUCE_METHOD_NAMES = new Set(["reduce", "reduceRight"]);
 // nested function boundaries so an inner callback's return isn't
 // mistaken for the reducer's own.
 const collectReturnedLiterals = (
-  callback:
-    | EsTreeNodeOfType<"ArrowFunctionExpression">
-    | EsTreeNodeOfType<"FunctionExpression">
+  callback: EsTreeNodeOfType<"ArrowFunctionExpression"> | EsTreeNodeOfType<"FunctionExpression">,
 ): EsTreeNode[] => {
   const literals: EsTreeNode[] = [];
-  const collectIfLiteral = (
-    expression: EsTreeNode | null | undefined
-  ): void => {
+  const collectIfLiteral = (expression: EsTreeNode | null | undefined): void => {
     if (!expression) return;
     const stripped = stripParenExpression(expression);
-    if (
-      isNodeOfType(stripped, "ObjectExpression") ||
-      isNodeOfType(stripped, "ArrayExpression")
-    ) {
+    if (isNodeOfType(stripped, "ObjectExpression") || isNodeOfType(stripped, "ArrayExpression")) {
       literals.push(stripped);
     }
   };
@@ -51,8 +44,7 @@ const collectReturnedLiterals = (
       const child = nodeRecord[key];
       if (Array.isArray(child)) {
         for (const item of child) {
-          if (isAstNode(item) && !FUNCTION_LIKE_TYPES.has(item.type))
-            visit(item);
+          if (isAstNode(item) && !FUNCTION_LIKE_TYPES.has(item.type)) visit(item);
         }
       } else if (isAstNode(child) && !FUNCTION_LIKE_TYPES.has(child.type)) {
         visit(child);
@@ -70,8 +62,8 @@ const firstSpreadArgument = (literal: EsTreeNode): EsTreeNode | null => {
   const members = isNodeOfType(literal, "ObjectExpression")
     ? literal.properties
     : isNodeOfType(literal, "ArrayExpression")
-    ? literal.elements
-    : null;
+      ? literal.elements
+      : null;
   if (!members) return null;
   for (const member of members) {
     if (!member) continue;
@@ -115,10 +107,7 @@ export const noSpreadAccumulatorInReduce = defineRule({
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const callee = node.callee;
-      if (
-        !isMemberProperty(callee, "reduce") &&
-        !isMemberProperty(callee, "reduceRight")
-      ) {
+      if (!isMemberProperty(callee, "reduce") && !isMemberProperty(callee, "reduceRight")) {
         return;
       }
       if (!isNodeOfType(callee, "MemberExpression")) return;
@@ -134,8 +123,7 @@ export const noSpreadAccumulatorInReduce = defineRule({
         return;
       }
       const accumulatorParam = callback.params?.[0];
-      if (!accumulatorParam || !isNodeOfType(accumulatorParam, "Identifier"))
-        return;
+      if (!accumulatorParam || !isNodeOfType(accumulatorParam, "Identifier")) return;
       const accumulatorName = accumulatorParam.name;
 
       for (const literal of collectReturnedLiterals(callback)) {

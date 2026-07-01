@@ -38,8 +38,7 @@ export const hookImportRenameLosesUsePrefix = defineRule({
 
       const localName = node.local.name;
       // No rename (or the alias keeps a valid hook name) — still linted.
-      if (localName === importedName || HOOK_NAME_PATTERN.test(localName))
-        return;
+      if (localName === importedName || HOOK_NAME_PATTERN.test(localName)) return;
 
       context.report({
         node,

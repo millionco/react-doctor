@@ -24,9 +24,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 // exhaustive-deps rule blesses. Flagging it would both contradict
 // exhaustive-deps and assert a false "fresh object every render" premise, so
 // scoping to the whole-props identifier keeps the detector sound.
-const collectPropsObjectNames = (
-  componentFunction: EsTreeNode
-): Set<string> => {
+const collectPropsObjectNames = (componentFunction: EsTreeNode): Set<string> => {
   const propsNames = new Set<string>();
   if (!isFunctionLike(componentFunction)) return propsNames;
   const firstParam = componentFunction.params?.[0];
@@ -47,12 +45,11 @@ interface DependencyUsage {
 // use, spread, argument, return, dynamic index — disqualifies the finding.
 const analyzeDependencyUsage = (
   callbackBody: EsTreeNode,
-  dependencyName: string
+  dependencyName: string,
 ): DependencyUsage => {
   const usage: DependencyUsage = { memberReadCount: 0, hasBareUse: false };
   walkAst(callbackBody, (child: EsTreeNode) => {
-    if (!isNodeOfType(child, "Identifier") || child.name !== dependencyName)
-      return;
+    if (!isNodeOfType(child, "Identifier") || child.name !== dependencyName) return;
     const parent = child.parent;
     if (parent && isNodeOfType(parent, "MemberExpression")) {
       // `something.X` — X is the property name of another object, not a use.
@@ -89,14 +86,10 @@ const analyzeDependencyUsage = (
 
 // Bindings the callback rebinds itself (its params) shadow the outer prop, so
 // references inside no longer point at the component prop.
-const callbackShadowsName = (
-  callbackFunction: EsTreeNode,
-  name: string
-): boolean => {
+const callbackShadowsName = (callbackFunction: EsTreeNode, name: string): boolean => {
   if (!isFunctionLike(callbackFunction)) return false;
   const shadowed = new Set<string>();
-  for (const param of callbackFunction.params ?? [])
-    collectPatternNames(param, shadowed);
+  for (const param of callbackFunction.params ?? []) collectPatternNames(param, shadowed);
   return shadowed.has(name);
 };
 
@@ -124,8 +117,7 @@ export const noWholeObjectDepWithMemberReads = defineRule({
         componentFunction = componentFunction.parent;
       }
       if (!componentFunction) return;
-      const displayName =
-        componentOrHookDisplayNameForFunction(componentFunction);
+      const displayName = componentOrHookDisplayNameForFunction(componentFunction);
       // Restrict to components — props semantics (fresh object per render)
       // only hold for a PascalCase component's first parameter.
       if (!displayName || !isUppercaseName(displayName)) return;

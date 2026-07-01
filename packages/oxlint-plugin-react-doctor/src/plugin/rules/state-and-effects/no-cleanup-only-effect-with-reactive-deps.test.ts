@@ -16,7 +16,7 @@ describe("no-cleanup-only-effect-with-reactive-deps", () => {
         }, [status, props]);
         return null;
       }
-      `
+      `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -33,7 +33,7 @@ describe("no-cleanup-only-effect-with-reactive-deps", () => {
         }, [id, onClose]);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(2);
   });
@@ -49,7 +49,7 @@ describe("no-cleanup-only-effect-with-reactive-deps", () => {
         }, [config]);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -64,7 +64,7 @@ describe("no-cleanup-only-effect-with-reactive-deps", () => {
         }, [props]);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -77,7 +77,7 @@ describe("no-cleanup-only-effect-with-reactive-deps", () => {
         useEffect(() => () => props.flush(), [props]);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -92,7 +92,7 @@ describe("no-cleanup-only-effect-with-reactive-deps", () => {
         }, [props.id]);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -107,7 +107,7 @@ describe("no-cleanup-only-effect-with-reactive-deps", () => {
         }, []);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -123,7 +123,7 @@ describe("no-cleanup-only-effect-with-reactive-deps", () => {
         }, [ms, onTick]);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -139,7 +139,7 @@ describe("no-cleanup-only-effect-with-reactive-deps", () => {
         }, [page]);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -154,7 +154,7 @@ describe("no-cleanup-only-effect-with-reactive-deps", () => {
         });
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -170,7 +170,7 @@ describe("no-cleanup-only-effect-with-reactive-deps", () => {
         }, [mark]);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

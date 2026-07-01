@@ -10,7 +10,7 @@ import { walkAst } from "./walk-ast.js";
 // closure is a separate scope and is never entered.
 export const walkOwnFunctionScope = (
   functionNode: EsTreeNode,
-  visitor: (child: EsTreeNode) => boolean | void
+  visitor: (child: EsTreeNode) => boolean | void,
 ): void => {
   if (!isFunctionLike(functionNode)) return;
   const body = functionNode.body;

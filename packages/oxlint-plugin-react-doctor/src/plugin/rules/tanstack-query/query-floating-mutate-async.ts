@@ -38,8 +38,7 @@ const isDiscardedArrowReturn = (arrow: EsTreeNode): boolean => {
   if (isNodeOfType(parent, "ExpressionStatement")) return true;
   if (isNodeOfType(parent, "JSXExpressionContainer")) return true;
   if (isNodeOfType(parent, "CallExpression")) {
-    const isArgument =
-      parent.arguments?.some((argument) => argument === arrow) ?? false;
+    const isArgument = parent.arguments?.some((argument) => argument === arrow) ?? false;
     if (!isArgument) return false;
     const hostName = getCalleeName(parent);
     return hostName !== null && FLOATING_CALLBACK_HOST_NAMES.has(hostName);

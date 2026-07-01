@@ -9,9 +9,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 // Static property name of a member access (`a.b` / `a["b"]`), or null for a
 // dynamic computed access (`a[key]`).
-const getStaticMemberPropertyName = (
-  node: EsTreeNode | null | undefined
-): string | null => {
+const getStaticMemberPropertyName = (node: EsTreeNode | null | undefined): string | null => {
   if (!node) return null;
   const unwrapped = stripParenExpression(node);
   if (!isNodeOfType(unwrapped, "MemberExpression")) return null;
@@ -51,8 +49,8 @@ const isHrefGetAttributeCall = (node: EsTreeNode): boolean => {
   const firstArgument = node.arguments?.[0];
   return Boolean(
     firstArgument &&
-      isNodeOfType(firstArgument, "Literal") &&
-      isHrefOrHashAttributeName(firstArgument.value)
+    isNodeOfType(firstArgument, "Literal") &&
+    isHrefOrHashAttributeName(firstArgument.value),
   );
 };
 
@@ -67,8 +65,7 @@ const isHrefHashMemberAccess = (node: EsTreeNode): boolean => {
 const isHrefHashNamedCall = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
   const callee = node.callee;
-  if (isNodeOfType(callee, "Identifier"))
-    return HREF_HASH_FUNCTION_PATTERN.test(callee.name);
+  if (isNodeOfType(callee, "Identifier")) return HREF_HASH_FUNCTION_PATTERN.test(callee.name);
   const propertyName = getStaticMemberPropertyName(callee);
   return Boolean(propertyName && HREF_HASH_FUNCTION_PATTERN.test(propertyName));
 };
@@ -89,19 +86,13 @@ const selectorArgumentTaintsToHref = (argument: EsTreeNode): boolean => {
   const stripped = stripParenExpression(argument);
   if (!isNodeOfType(stripped, "Identifier")) return false;
   const binding = findVariableInitializer(stripped, stripped.name);
-  return Boolean(
-    binding?.initializer && isHrefHashDerivedExpression(binding.initializer)
-  );
+  return Boolean(binding?.initializer && isHrefHashDerivedExpression(binding.initializer));
 };
 
 const isStringLiteralSelector = (argument: EsTreeNode): boolean => {
   const stripped = stripParenExpression(argument);
-  if (isNodeOfType(stripped, "Literal"))
-    return typeof stripped.value === "string";
-  return (
-    isNodeOfType(stripped, "TemplateLiteral") &&
-    stripped.expressions.length === 0
-  );
+  if (isNodeOfType(stripped, "Literal")) return typeof stripped.value === "string";
+  return isNodeOfType(stripped, "TemplateLiteral") && stripped.expressions.length === 0;
 };
 
 // Flags `document.querySelector(x)` / `querySelectorAll` / `Element.matches` /
@@ -126,8 +117,7 @@ export const noNonLiteralSelectorQueryWithoutTryCatch = defineRule({
       const methodName = getStaticMemberPropertyName(callee);
       if (!methodName || !SELECTOR_QUERY_METHOD_NAMES.has(methodName)) return;
       const selectorArgument = node.arguments?.[0];
-      if (!selectorArgument || isNodeOfType(selectorArgument, "SpreadElement"))
-        return;
+      if (!selectorArgument || isNodeOfType(selectorArgument, "SpreadElement")) return;
       if (isStringLiteralSelector(selectorArgument)) return;
       if (!selectorArgumentTaintsToHref(selectorArgument)) return;
       if (isInsideTryStatement(node as EsTreeNode, { region: "block" })) return;

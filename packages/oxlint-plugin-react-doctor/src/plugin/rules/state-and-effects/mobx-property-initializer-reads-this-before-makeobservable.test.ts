@@ -15,7 +15,7 @@ describe("mobx-property-initializer-reads-this-before-makeobservable", () => {
           makeObservable(this);
         }
       }
-      `
+      `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -33,7 +33,7 @@ describe("mobx-property-initializer-reads-this-before-makeobservable", () => {
           makeObservable(this);
         }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -50,7 +50,7 @@ describe("mobx-property-initializer-reads-this-before-makeobservable", () => {
           makeObservable(this, { items: observable });
         }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -68,7 +68,7 @@ describe("mobx-property-initializer-reads-this-before-makeobservable", () => {
           makeObservable(this);
         }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -85,7 +85,7 @@ describe("mobx-property-initializer-reads-this-before-makeobservable", () => {
           makeObservable(this);
         }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -103,7 +103,7 @@ describe("mobx-property-initializer-reads-this-before-makeobservable", () => {
           this.tokensViewState = new ViewState(parse(this.props.location.search));
         }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -116,7 +116,7 @@ describe("mobx-property-initializer-reads-this-before-makeobservable", () => {
         items = this.props.items;
         render() { return null; }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -133,7 +133,7 @@ describe("mobx-property-initializer-reads-this-before-makeobservable", () => {
           makeObservable(this);
         }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -149,7 +149,7 @@ describe("mobx-property-initializer-reads-this-before-makeobservable", () => {
           makeObservable(this);
         }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

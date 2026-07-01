@@ -44,9 +44,7 @@ const chainHasCatchOrFinally = (node: EsTreeNode): boolean => {
 // single-argument `.then`-ended chain with no `.catch`/`.finally`, else
 // null. Keyed purely off the literal `.then(` shape — no inference about
 // whether a bare call returns a promise.
-const floatingThenCall = (
-  expression: EsTreeNode
-): EsTreeNodeOfType<"CallExpression"> | null => {
+const floatingThenCall = (expression: EsTreeNode): EsTreeNodeOfType<"CallExpression"> | null => {
   const stripped = stripParenExpression(expression);
   if (!isNodeOfType(stripped, "CallExpression")) return null;
   const callee = stripped.callee;
@@ -69,24 +67,20 @@ const floatingThenCall = (
 // ExpressionStatements. Nested functions are intentionally NOT descended
 // into — their `.then` chains don't run when the handler fires.
 const collectDirectFloatingThenCalls = (
-  handler:
-    | EsTreeNodeOfType<"ArrowFunctionExpression">
-    | EsTreeNodeOfType<"FunctionExpression">
+  handler: EsTreeNodeOfType<"ArrowFunctionExpression"> | EsTreeNodeOfType<"FunctionExpression">,
 ): EsTreeNodeOfType<"CallExpression">[] => {
   const body = handler.body as EsTreeNode;
   if (!isNodeOfType(body, "BlockStatement")) {
     // Concise arrow body — a bare fire-and-forget expression. `void expr`
     // is an explicit discard and is excluded.
-    if (isNodeOfType(body, "UnaryExpression") && body.operator === "void")
-      return [];
+    if (isNodeOfType(body, "UnaryExpression") && body.operator === "void") return [];
     const floating = floatingThenCall(body);
     return floating ? [floating] : [];
   }
   const found: EsTreeNodeOfType<"CallExpression">[] = [];
   for (const statement of body.body) {
     if (!isNodeOfType(statement as EsTreeNode, "ExpressionStatement")) continue;
-    const expression = (statement as EsTreeNodeOfType<"ExpressionStatement">)
-      .expression;
+    const expression = (statement as EsTreeNodeOfType<"ExpressionStatement">).expression;
     if (isNodeOfType(expression as EsTreeNode, "UnaryExpression")) continue;
     const floating = floatingThenCall(expression as EsTreeNode);
     if (floating) found.push(floating);
@@ -105,8 +99,7 @@ export const noFloatingThenInJsxHandler = defineRule({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const name = getJsxAttributeName(node.name as EsTreeNode);
       if (!name || !HANDLER_PROP_PATTERN.test(name)) return;
-      if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer"))
-        return;
+      if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
       const handler = stripParenExpression(node.value.expression as EsTreeNode);
       if (

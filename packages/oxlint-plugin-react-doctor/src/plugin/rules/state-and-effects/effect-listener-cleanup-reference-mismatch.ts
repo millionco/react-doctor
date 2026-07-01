@@ -96,8 +96,7 @@ const serializeReceiver = (node: EsTreeNode): string | null => {
   if (isNodeOfType(node, "ThisExpression")) return "this";
   if (isNodeOfType(node, "MemberExpression") && !node.computed) {
     const object = serializeReceiver(node.object);
-    if (object === null || !isNodeOfType(node.property, "Identifier"))
-      return null;
+    if (object === null || !isNodeOfType(node.property, "Identifier")) return null;
     return `${object}.${node.property.name}`;
   }
   return null;
@@ -118,9 +117,7 @@ const readMemberCallMethod = (node: EsTreeNode): string | null => {
   return callee.property.name;
 };
 
-const getEventLiteralValue = (
-  node: EsTreeNode | null | undefined
-): string | null => {
+const getEventLiteralValue = (node: EsTreeNode | null | undefined): string | null => {
   if (!node) return null;
   const stripped = stripParenExpression(node);
   if (isNodeOfType(stripped, "Literal") && typeof stripped.value === "string") {
@@ -171,8 +168,7 @@ export const effectListenerCleanupReferenceMismatch = defineRule({
 
         for (const [, candidatePairing] of RELEASE_METHOD_PAIRINGS) {
           if (candidatePairing.registerMethod !== method) continue;
-          const handlerNode =
-            child.arguments?.[candidatePairing.handlerArgumentIndex];
+          const handlerNode = child.arguments?.[candidatePairing.handlerArgumentIndex];
           if (!isFunctionLiteral(handlerNode)) return;
           registerUsages.push({
             method,
@@ -191,8 +187,7 @@ export const effectListenerCleanupReferenceMismatch = defineRule({
         if (!pairing) continue;
         const hasMatchingRegister = registerUsages.some((registerUsage) => {
           if (registerUsage.method !== pairing.registerMethod) return false;
-          if (registerUsage.receiverKey !== releaseUsage.receiverKey)
-            return false;
+          if (registerUsage.receiverKey !== releaseUsage.receiverKey) return false;
           if (!pairing.requiresEventLiteral) return true;
           return (
             registerUsage.eventLiteralValue !== null &&

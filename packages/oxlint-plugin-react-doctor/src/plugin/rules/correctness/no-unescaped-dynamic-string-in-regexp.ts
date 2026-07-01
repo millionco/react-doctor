@@ -22,20 +22,15 @@ const isRegExpConstruction = (node: EsTreeNode): boolean => {
   const callee = isNodeOfType(node, "CallExpression")
     ? node.callee
     : isNodeOfType(node, "NewExpression")
-    ? node.callee
-    : null;
-  return Boolean(
-    callee && isNodeOfType(callee, "Identifier") && callee.name === "RegExp"
-  );
+      ? node.callee
+      : null;
+  return Boolean(callee && isNodeOfType(callee, "Identifier") && callee.name === "RegExp");
 };
 
 const isFullyLiteralPattern = (argument: EsTreeNode): boolean => {
   const stripped = stripParenExpression(argument);
   if (isNodeOfType(stripped, "Literal")) return true;
-  if (
-    isNodeOfType(stripped, "TemplateLiteral") &&
-    (stripped.expressions?.length ?? 0) === 0
-  ) {
+  if (isNodeOfType(stripped, "TemplateLiteral") && (stripped.expressions?.length ?? 0) === 0) {
     return true;
   }
   return false;
@@ -44,10 +39,7 @@ const isFullyLiteralPattern = (argument: EsTreeNode): boolean => {
 const argumentHasSearchTermSignal = (argument: EsTreeNode): boolean => {
   let hasSignal = false;
   walkAst(argument, (child: EsTreeNode) => {
-    if (
-      isNodeOfType(child, "Identifier") &&
-      SEARCH_TERM_NAME_PATTERN.test(child.name)
-    ) {
+    if (isNodeOfType(child, "Identifier") && SEARCH_TERM_NAME_PATTERN.test(child.name)) {
       hasSignal = true;
     }
   });
@@ -59,10 +51,7 @@ const expressionAppliesEscapeHelper = (argument: EsTreeNode): boolean => {
   walkAst(argument, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "CallExpression")) return;
     const calleeName = getCalleeName(child);
-    if (
-      calleeName &&
-      (ESCAPE_HELPER_NAME_PATTERN.test(calleeName) || calleeName === "replace")
-    ) {
+    if (calleeName && (ESCAPE_HELPER_NAME_PATTERN.test(calleeName) || calleeName === "replace")) {
       escaped = true;
     }
   });
@@ -78,14 +67,11 @@ export const noUnescapedDynamicStringInRegexp = defineRule({
     "A search/filter/highlight term dropped straight into `new RegExp(...)` lets its regex metacharacters act as operators, so a user typing `.` or `(` over-matches or throws. Escape the value with an `escapeRegExp` helper before constructing the pattern.",
   create: (context: RuleContext) => {
     const reportUnescapedConstruction = (
-      node:
-        | EsTreeNodeOfType<"CallExpression">
-        | EsTreeNodeOfType<"NewExpression">
+      node: EsTreeNodeOfType<"CallExpression"> | EsTreeNodeOfType<"NewExpression">,
     ): void => {
       if (!isRegExpConstruction(node)) return;
       const firstArgument = node.arguments?.[0];
-      if (!firstArgument || isNodeOfType(firstArgument, "SpreadElement"))
-        return;
+      if (!firstArgument || isNodeOfType(firstArgument, "SpreadElement")) return;
       if (isFullyLiteralPattern(firstArgument)) return;
       if (!argumentHasSearchTermSignal(firstArgument)) return;
       if (expressionAppliesEscapeHelper(firstArgument)) return;

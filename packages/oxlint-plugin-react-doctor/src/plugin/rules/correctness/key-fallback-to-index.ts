@@ -35,9 +35,7 @@ const extractFallbackIdentifierName = (node: EsTreeNode): string | null => {
 
 // The fallback identifier name reachable from a key expression, including
 // inside a template literal (`` `order-${token ?? index}` ``).
-const findFallbackIdentifierNameInKey = (
-  keyExpression: EsTreeNode
-): string | null => {
+const findFallbackIdentifierNameInKey = (keyExpression: EsTreeNode): string | null => {
   const stripped = stripParenExpression(keyExpression);
   if (isNodeOfType(stripped, "TemplateLiteral")) {
     for (const expression of stripped.expressions ?? []) {
@@ -65,11 +63,8 @@ const findIteratorIndexParameterName = (node: EsTreeNode): string | null => {
         isNodeOfType(parent.callee.property, "Identifier") &&
         ITERATOR_METHOD_NAMES.has(parent.callee.property.name);
       if (!isIteratorCallback) return null;
-      const indexParameter = (
-        current as EsTreeNodeOfType<"ArrowFunctionExpression">
-      ).params?.[1];
-      if (indexParameter && isNodeOfType(indexParameter, "Identifier"))
-        return indexParameter.name;
+      const indexParameter = (current as EsTreeNodeOfType<"ArrowFunctionExpression">).params?.[1];
+      if (indexParameter && isNodeOfType(indexParameter, "Identifier")) return indexParameter.name;
       return null;
     }
     current = current.parent;
@@ -85,14 +80,10 @@ export const keyFallbackToIndex = defineRule({
     "A `key={item.id ?? index}` silently becomes the positional index exactly when the id is missing, so give each item its own stable unique id instead of falling back to the array index.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key")
-        return;
-      if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer"))
-        return;
+      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key") return;
+      if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
-      const fallbackName = findFallbackIdentifierNameInKey(
-        node.value.expression
-      );
+      const fallbackName = findFallbackIdentifierNameInKey(node.value.expression);
       if (!fallbackName || !INDEX_PARAMETER_NAMES.has(fallbackName)) return;
 
       const indexParameterName = findIteratorIndexParameterName(node);

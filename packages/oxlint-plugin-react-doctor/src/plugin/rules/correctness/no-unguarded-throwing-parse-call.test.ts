@@ -9,7 +9,7 @@ describe("no-unguarded-throwing-parse-call", () => {
       `function RawFileViewer(params) {
         const path = decodeURIComponent(params.path);
         return path;
-      }`
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -21,7 +21,7 @@ describe("no-unguarded-throwing-parse-call", () => {
       `function Page() {
         const target = decodeURIComponent(searchParams.get("redirect"));
         return target;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -32,7 +32,7 @@ describe("no-unguarded-throwing-parse-call", () => {
       `function useGetContrastTextColor(actualColorForReadable) {
         const contrast = readableColor(actualColorForReadable);
         return contrast;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -42,7 +42,7 @@ describe("no-unguarded-throwing-parse-call", () => {
       noUnguardedThrowingParseCall,
       `function open(userInput) {
         return new URL(userInput);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -52,7 +52,7 @@ describe("no-unguarded-throwing-parse-call", () => {
       noUnguardedThrowingParseCall,
       `function middleware(request, path) {
         return NextResponse.redirect(new URL(path, request.url));
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -62,7 +62,7 @@ describe("no-unguarded-throwing-parse-call", () => {
       noUnguardedThrowingParseCall,
       `function readParams() {
         return new URL(window.location.href);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -73,7 +73,7 @@ describe("no-unguarded-throwing-parse-call", () => {
       `function handler(request) {
         const { searchParams } = new URL(request.url);
         return searchParams;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -83,7 +83,7 @@ describe("no-unguarded-throwing-parse-call", () => {
       noUnguardedThrowingParseCall,
       `function origin(page) {
         return new URL(page.url()).origin;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -93,7 +93,7 @@ describe("no-unguarded-throwing-parse-call", () => {
       noUnguardedThrowingParseCall,
       `function readParams() {
         return new URL(location.pathname);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -103,7 +103,7 @@ describe("no-unguarded-throwing-parse-call", () => {
       noUnguardedThrowingParseCall,
       `function handler(request) {
         return new URL(request.body.url);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -111,7 +111,7 @@ describe("no-unguarded-throwing-parse-call", () => {
   it("stays quiet for new URL of a module constant / env base", () => {
     const result = runRule(
       noUnguardedThrowingParseCall,
-      `const endpoint = new URL("/api/users", process.env.PUBLIC_URL);`
+      `const endpoint = new URL("/api/users", process.env.PUBLIC_URL);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -125,7 +125,7 @@ describe("no-unguarded-throwing-parse-call", () => {
         } catch {
           return null;
         }
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -135,7 +135,7 @@ describe("no-unguarded-throwing-parse-call", () => {
       noUnguardedThrowingParseCall,
       `function safeReadableColor(color) {
         return readableColor(color);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -146,7 +146,7 @@ describe("no-unguarded-throwing-parse-call", () => {
       `function mix(paletteHex) {
         return chroma(paletteHex).mix("red");
       }`,
-      { filename: "scripts/mixColorPalettes.ts" }
+      { filename: "scripts/mixColorPalettes.ts" },
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -154,7 +154,7 @@ describe("no-unguarded-throwing-parse-call", () => {
   it("stays quiet for decodeURIComponent of a string literal", () => {
     const result = runRule(
       noUnguardedThrowingParseCall,
-      `const value = decodeURIComponent("%20fixed%20");`
+      `const value = decodeURIComponent("%20fixed%20");`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -164,7 +164,7 @@ describe("no-unguarded-throwing-parse-call", () => {
       noUnguardedThrowingParseCall,
       `function run(token) {
         return decodeURIComponent(token);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

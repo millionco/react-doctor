@@ -11,7 +11,7 @@ describe("no-deprecated-keyboard-event-keycode-which", () => {
            case 37: slidePrev(); break;
            case 39: slideNext(); break;
          }
-       };`
+       };`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -22,7 +22,7 @@ describe("no-deprecated-keyboard-event-keycode-which", () => {
       noDeprecatedKeyboardEventKeycodeWhich,
       `const onKeyDown = (e: React.KeyboardEvent) => {
          if (e.keyCode === 27) close();
-       };`
+       };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -34,7 +34,7 @@ describe("no-deprecated-keyboard-event-keycode-which", () => {
          if (e.keyCode === ArrowKeys.Left) {
            slide(SlideDirection.Left);
          }
-       };`
+       };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -42,7 +42,7 @@ describe("no-deprecated-keyboard-event-keycode-which", () => {
   it("flags an untyped inline JSX onKeyDown handler", () => {
     const result = runRule(
       noDeprecatedKeyboardEventKeycodeWhich,
-      `const Row = () => <div onKeyDown={(e) => { if (e.keyCode === 13) submit(); }} />;`
+      `const Row = () => <div onKeyDown={(e) => { if (e.keyCode === 13) submit(); }} />;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -53,7 +53,7 @@ describe("no-deprecated-keyboard-event-keycode-which", () => {
       `const onMouseDown = (e: MouseEvent) => {
          if (e.which === 3) return;
          if (e.which === 2) openInNewTab();
-       };`
+       };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -64,7 +64,7 @@ describe("no-deprecated-keyboard-event-keycode-which", () => {
       `const onKeyDown = (e: KeyboardEvent) => {
          if (e.keyCode === 229) return;
          act();
-       };`
+       };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -77,7 +77,7 @@ describe("no-deprecated-keyboard-event-keycode-which", () => {
            case 'Escape': close(); break;
            case 'ArrowLeft': slidePrev(); break;
          }
-       };`
+       };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -85,7 +85,7 @@ describe("no-deprecated-keyboard-event-keycode-which", () => {
   it("stays quiet on object-literal keyCode event synthesis", () => {
     const result = runRule(
       noDeprecatedKeyboardEventKeycodeWhich,
-      `fireEvent.keyDown(el, { keyCode: 13 });`
+      `fireEvent.keyDown(el, { keyCode: 13 });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -93,7 +93,7 @@ describe("no-deprecated-keyboard-event-keycode-which", () => {
   it("stays quiet on an untyped receiver with no keyboard-handler context", () => {
     const result = runRule(
       noDeprecatedKeyboardEventKeycodeWhich,
-      `const handler = (e) => { if (e.keyCode === 27) close(); };`
+      `const handler = (e) => { if (e.keyCode === 27) close(); };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -104,7 +104,7 @@ describe("no-deprecated-keyboard-event-keycode-which", () => {
       `const onKeyDown = (e: KeyboardEvent) => {
          const prop = 'keyCode';
          if (e[prop] === 27) close();
-       };`
+       };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -115,7 +115,7 @@ describe("no-deprecated-keyboard-event-keycode-which", () => {
       `const onPointer = (e: KeyboardEvent) => {
          if (e.button === 0) return;
          if (e.which === 3) contextMenu();
-       };`
+       };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

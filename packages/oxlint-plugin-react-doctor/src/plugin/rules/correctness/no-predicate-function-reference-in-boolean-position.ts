@@ -20,8 +20,7 @@ const GROUPING_EXPRESSION_TYPES = new Set<string>(["ParenthesizedExpression"]);
 const isInBooleanContext = (node: EsTreeNode): boolean => {
   const parent = node.parent;
   if (!parent) return false;
-  if (GROUPING_EXPRESSION_TYPES.has(parent.type))
-    return isInBooleanContext(parent);
+  if (GROUPING_EXPRESSION_TYPES.has(parent.type)) return isInBooleanContext(parent);
   if (isNodeOfType(parent, "UnaryExpression")) {
     return parent.operator === "!" && parent.argument === node;
   }
@@ -46,9 +45,7 @@ const isInBooleanContext = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const resolvesToZeroArgumentFunction = (
-  identifier: EsTreeNodeOfType<"Identifier">
-): boolean => {
+const resolvesToZeroArgumentFunction = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
   const binding = findVariableInitializer(identifier, identifier.name);
   const initializer = binding?.initializer;
   if (!initializer) return false;

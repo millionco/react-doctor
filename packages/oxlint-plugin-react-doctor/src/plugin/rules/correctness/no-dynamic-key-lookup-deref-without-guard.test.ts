@@ -6,24 +6,21 @@ describe("no-dynamic-key-lookup-deref-without-guard", () => {
   it("flags a member deref off a cast-keyed lookup", () => {
     const result = runRule(
       noDynamicKeyLookupDerefWithoutGuard,
-      `const home = ROLE_HOME_URL[role as Role].path;`
+      `const home = ROLE_HOME_URL[role as Role].path;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags a call chained onto a cast-keyed lookup", () => {
-    const result = runRule(
-      noDynamicKeyLookupDerefWithoutGuard,
-      `dict[view as View]();`
-    );
+    const result = runRule(noDynamicKeyLookupDerefWithoutGuard, `dict[view as View]();`);
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags a destructure off a cast-keyed lookup", () => {
     const result = runRule(
       noDynamicKeyLookupDerefWithoutGuard,
-      `const { field } = record[id as string];`
+      `const { field } = record[id as string];`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -31,7 +28,7 @@ describe("no-dynamic-key-lookup-deref-without-guard", () => {
   it("flags a lookup whose key binding is initialized by a cast", () => {
     const result = runRule(
       noDynamicKeyLookupDerefWithoutGuard,
-      `const role = token.role as Role; const home = ROLE_HOME_URL[role].path;`
+      `const role = token.role as Role; const home = ROLE_HOME_URL[role].path;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -39,7 +36,7 @@ describe("no-dynamic-key-lookup-deref-without-guard", () => {
   it("does not flag an array index deref", () => {
     const result = runRule(
       noDynamicKeyLookupDerefWithoutGuard,
-      `const next = items[nextIndex].id;`
+      `const next = items[nextIndex].id;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -47,23 +44,20 @@ describe("no-dynamic-key-lookup-deref-without-guard", () => {
   it("does not flag a key drawn by iterating the same object", () => {
     const result = runRule(
       noDynamicKeyLookupDerefWithoutGuard,
-      `Object.keys(windows).forEach((k) => windows[k].close());`
+      `Object.keys(windows).forEach((k) => windows[k].close());`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag an accumulator target lookup", () => {
-    const result = runRule(
-      noDynamicKeyLookupDerefWithoutGuard,
-      `acc[groupKey].push(row);`
-    );
+    const result = runRule(noDynamicKeyLookupDerefWithoutGuard, `acc[groupKey].push(row);`);
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag a plain typed Record lookup", () => {
     const result = runRule(
       noDynamicKeyLookupDerefWithoutGuard,
-      `const color = REQUEST_TYPES[type].color; const label = THEME_MODES[mode].label;`
+      `const color = REQUEST_TYPES[type].color; const label = THEME_MODES[mode].label;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -71,7 +65,7 @@ describe("no-dynamic-key-lookup-deref-without-guard", () => {
   it("does not flag a lookup with a dominating presence check", () => {
     const result = runRule(
       noDynamicKeyLookupDerefWithoutGuard,
-      `if (buckets[age]) buckets[age].push(item);`
+      `if (buckets[age]) buckets[age].push(item);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -79,7 +73,7 @@ describe("no-dynamic-key-lookup-deref-without-guard", () => {
   it("does not flag a cast-keyed lookup guarded by a key-in-map check", () => {
     const result = runRule(
       noDynamicKeyLookupDerefWithoutGuard,
-      `if (role in ROLE_HOME_URL) { const h = ROLE_HOME_URL[role as Role].path; }`
+      `if (role in ROLE_HOME_URL) { const h = ROLE_HOME_URL[role as Role].path; }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -87,7 +81,7 @@ describe("no-dynamic-key-lookup-deref-without-guard", () => {
   it("does not flag a cast-keyed lookup optional-chained at the deref boundary", () => {
     const result = runRule(
       noDynamicKeyLookupDerefWithoutGuard,
-      `const home = ROLE_HOME_URL[role as Role]?.path;`
+      `const home = ROLE_HOME_URL[role as Role]?.path;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -95,7 +89,7 @@ describe("no-dynamic-key-lookup-deref-without-guard", () => {
   it("does not flag a numeric-index cast", () => {
     const result = runRule(
       noDynamicKeyLookupDerefWithoutGuard,
-      `const v = items[i as number].value;`
+      `const v = items[i as number].value;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -104,7 +98,7 @@ describe("no-dynamic-key-lookup-deref-without-guard", () => {
     const result = runRule(
       noDynamicKeyLookupDerefWithoutGuard,
       `const value = tokens[name as string].$value;`,
-      { filename: "/repo/scripts/system-token/convert-tokens.cjs" }
+      { filename: "/repo/scripts/system-token/convert-tokens.cjs" },
     );
     expect(result.diagnostics).toHaveLength(0);
   });

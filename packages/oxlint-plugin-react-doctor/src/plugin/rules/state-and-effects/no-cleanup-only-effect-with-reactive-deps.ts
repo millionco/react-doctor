@@ -10,15 +10,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const isFunctionLiteral = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "ArrowFunctionExpression") ||
-  isNodeOfType(node, "FunctionExpression");
+  isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression");
 
 // A cleanup-only effect body returns a teardown function and does
 // nothing else: either a concise arrow body that IS a function, or a
 // block whose single statement returns a function.
-const getCleanupOnlyReturn = (
-  effectCallback: EsTreeNode
-): EsTreeNode | null => {
+const getCleanupOnlyReturn = (effectCallback: EsTreeNode): EsTreeNode | null => {
   if (
     !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
     !isNodeOfType(effectCallback, "FunctionExpression")
@@ -33,18 +30,12 @@ const getCleanupOnlyReturn = (
   const statements = body.body ?? [];
   if (statements.length !== 1) return null;
   const [onlyStatement] = statements;
-  if (
-    !isNodeOfType(onlyStatement, "ReturnStatement") ||
-    !onlyStatement.argument
-  )
-    return null;
+  if (!isNodeOfType(onlyStatement, "ReturnStatement") || !onlyStatement.argument) return null;
   const returned = stripParenExpression(onlyStatement.argument);
   return isFunctionLiteral(returned) ? returned : null;
 };
 
-const findEnclosingComponentFunction = (
-  node: EsTreeNode
-): EsTreeNode | null => {
+const findEnclosingComponentFunction = (node: EsTreeNode): EsTreeNode | null => {
   let cursor: EsTreeNode | null = node.parent ?? null;
   while (cursor) {
     if (
@@ -137,18 +128,14 @@ export const noCleanupOnlyEffectWithReactiveDeps = defineRule({
       const depElements = depsNode.elements ?? [];
       if (depElements.length === 0) return;
 
-      const { wholePropsParamName, destructuredPropNames } =
-        getEnclosingPropNames(node);
+      const { wholePropsParamName, destructuredPropNames } = getEnclosingPropNames(node);
 
       for (const depElement of depElements) {
         if (!depElement || isNodeOfType(depElement, "SpreadElement")) continue;
         const stripped = stripParenExpression(depElement);
 
         if (isNodeOfType(stripped, "Identifier")) {
-          if (
-            wholePropsParamName !== null &&
-            stripped.name === wholePropsParamName
-          ) {
+          if (wholePropsParamName !== null && stripped.name === wholePropsParamName) {
             context.report({
               node: depElement,
               message: `This cleanup-only effect depends on the whole \`${stripped.name}\` object, whose identity changes every render, so the teardown runs on every render instead of only on unmount; use \`[]\` or move the cleanup into useEffectEvent.`,
@@ -180,9 +167,7 @@ export const noCleanupOnlyEffectWithReactiveDeps = defineRule({
           context.report({
             node: depElement,
             message: `This cleanup-only effect depends on the reactive prop \`${wholePropsParamName}.${
-              isNodeOfType(stripped.property, "Identifier")
-                ? stripped.property.name
-                : "value"
+              isNodeOfType(stripped.property, "Identifier") ? stripped.property.name : "value"
             }\`, so the teardown runs on every change instead of only on unmount; use \`[]\` or useEffectEvent.`,
           });
         }

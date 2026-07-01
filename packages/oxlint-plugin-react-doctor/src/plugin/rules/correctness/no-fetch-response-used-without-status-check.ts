@@ -11,13 +11,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // oxc-parser surfaces `(...)` as a node kind outside the TSESTree union,
 // so it is matched via a `string`-typed constant.
 const PARENTHESIZED_EXPRESSION: string = "ParenthesizedExpression";
-const BODY_CONSUMER_METHODS = new Set([
-  "json",
-  "text",
-  "blob",
-  "arrayBuffer",
-  "formData",
-]);
+const BODY_CONSUMER_METHODS = new Set(["json", "text", "blob", "arrayBuffer", "formData"]);
 const STATUS_CHECK_PROPERTIES = new Set(["ok", "status"]);
 
 const MESSAGE =
@@ -25,17 +19,13 @@ const MESSAGE =
 
 const meaningfulParent = (node: EsTreeNode): EsTreeNode | null => {
   let parent = node.parent ?? null;
-  while (parent && parent.type === PARENTHESIZED_EXPRESSION)
-    parent = parent.parent ?? null;
+  while (parent && parent.type === PARENTHESIZED_EXPRESSION) parent = parent.parent ?? null;
   return parent;
 };
 
-const isGlobalFetchCall = (
-  node: EsTreeNodeOfType<"CallExpression">
-): boolean => {
+const isGlobalFetchCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   const callee = node.callee;
-  if (!isNodeOfType(callee, "Identifier") || callee.name !== "fetch")
-    return false;
+  if (!isNodeOfType(callee, "Identifier") || callee.name !== "fetch") return false;
   // An imported / aliased / locally-bound `fetch` is a wrapper whose
   // status check the detector can't see; only root at the DOM global.
   if (findVariableInitializer(callee, "fetch")) return false;
@@ -70,17 +60,11 @@ const isTruthinessTest = (node: EsTreeNode, responseName: string): boolean =>
   isNodeOfType(node.argument, "Identifier") &&
   node.argument.name === responseName;
 
-const scopeConsumesResponse = (
-  scope: EsTreeNode,
-  responseName: string
-): boolean => {
+const scopeConsumesResponse = (scope: EsTreeNode, responseName: string): boolean => {
   let found = false;
   walkAst(scope, (child) => {
     if (found) return false;
-    if (
-      isBodyConsumeCall(child, responseName) ||
-      isTruthinessTest(child, responseName)
-    ) {
+    if (isBodyConsumeCall(child, responseName) || isTruthinessTest(child, responseName)) {
       found = true;
       return false;
     }
@@ -88,10 +72,7 @@ const scopeConsumesResponse = (
   return found;
 };
 
-const scopeChecksStatus = (
-  scope: EsTreeNode,
-  responseName: string
-): boolean => {
+const scopeChecksStatus = (scope: EsTreeNode, responseName: string): boolean => {
   let found = false;
   walkAst(scope, (child) => {
     if (found) return false;
@@ -114,21 +95,18 @@ const isConsumingReceiver = (identifier: EsTreeNode): boolean => {
   const parent = identifier.parent;
   return Boolean(
     parent &&
-      isNodeOfType(parent, "MemberExpression") &&
-      parent.object === identifier &&
-      !parent.computed &&
-      isNodeOfType(parent.property, "Identifier") &&
-      (BODY_CONSUMER_METHODS.has(parent.property.name) ||
-        STATUS_CHECK_PROPERTIES.has(parent.property.name))
+    isNodeOfType(parent, "MemberExpression") &&
+    parent.object === identifier &&
+    !parent.computed &&
+    isNodeOfType(parent.property, "Identifier") &&
+    (BODY_CONSUMER_METHODS.has(parent.property.name) ||
+      STATUS_CHECK_PROPERTIES.has(parent.property.name)),
   );
 };
 
 // The Response escapes to a caller (`return response` / `return { response }`),
 // so its status check is legitimately deferred downstream.
-const scopeReturnsResponse = (
-  scope: EsTreeNode,
-  responseName: string
-): boolean => {
+const scopeReturnsResponse = (scope: EsTreeNode, responseName: string): boolean => {
   let found = false;
   walkAst(scope, (child) => {
     if (found) return false;
@@ -152,7 +130,7 @@ const reportUnguarded = (
   context: RuleContext,
   reportNode: EsTreeNode,
   scope: EsTreeNode,
-  responseName: string
+  responseName: string,
 ): void => {
   if (!scopeConsumesResponse(scope, responseName)) return;
   if (scopeChecksStatus(scope, responseName)) return;
@@ -194,16 +172,12 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
           : null;
         if (!callback || !isFunctionLike(callback)) return;
         const firstParam = callback.params?.[0];
-        if (
-          !firstParam ||
-          !isNodeOfType(firstParam as EsTreeNode, "Identifier")
-        )
-          return;
+        if (!firstParam || !isNodeOfType(firstParam as EsTreeNode, "Identifier")) return;
         reportUnguarded(
           context,
           node as EsTreeNode,
           callback,
-          (firstParam as EsTreeNodeOfType<"Identifier">).name
+          (firstParam as EsTreeNodeOfType<"Identifier">).name,
         );
         return;
       }

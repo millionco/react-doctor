@@ -6,7 +6,7 @@ describe("no-spread-accumulator-in-reduce", () => {
   it("flags object spread of the accumulator", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
-      `const out = keys.reduce((acc, key) => ({ ...acc, [key]: value }), {});`
+      `const out = keys.reduce((acc, key) => ({ ...acc, [key]: value }), {});`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -15,7 +15,7 @@ describe("no-spread-accumulator-in-reduce", () => {
   it("flags array spread of the accumulator", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
-      `const out = items.reduce((acc, x) => [...acc, x], []);`
+      `const out = items.reduce((acc, x) => [...acc, x], []);`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -31,7 +31,7 @@ describe("no-spread-accumulator-in-reduce", () => {
         }),
         {},
       );
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -39,7 +39,7 @@ describe("no-spread-accumulator-in-reduce", () => {
   it("flags reduceRight too", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
-      `const out = items.reduceRight((acc, x) => ({ ...acc, [x]: 1 }), {});`
+      `const out = items.reduceRight((acc, x) => ({ ...acc, [x]: 1 }), {});`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -51,7 +51,7 @@ describe("no-spread-accumulator-in-reduce", () => {
       const out = keys.reduce((acc, key) => {
         return { ...acc, [key]: 1 };
       }, {});
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -59,7 +59,7 @@ describe("no-spread-accumulator-in-reduce", () => {
   it("does not flag a single static-key merge (bounded shape, O(n))", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
-      `const merged = items.reduce((acc, item) => ({ ...acc, label: item.name }), {});`
+      `const merged = items.reduce((acc, item) => ({ ...acc, label: item.name }), {});`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -73,7 +73,7 @@ describe("no-spread-accumulator-in-reduce", () => {
         if (component.types.includes("region")) return { ...acc, state: component };
         return { ...acc, country: component };
       }, {});
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -81,7 +81,7 @@ describe("no-spread-accumulator-in-reduce", () => {
   it("flags a second spread merged into the accumulator (unbounded keys)", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
-      `const out = values.reduce((acc, value) => ({ ...acc, ...getBoxMod(value) }), {});`
+      `const out = values.reduce((acc, value) => ({ ...acc, ...getBoxMod(value) }), {});`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -94,7 +94,7 @@ describe("no-spread-accumulator-in-reduce", () => {
         acc[line.key] = line.value;
         return acc;
       }, {});
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -102,7 +102,7 @@ describe("no-spread-accumulator-in-reduce", () => {
   it("does not flag spreading the current item (O(1) per step)", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
-      `const out = items.reduce((acc, x) => ({ ...x, foo: acc.foo }), {});`
+      `const out = items.reduce((acc, x) => ({ ...x, foo: acc.foo }), {});`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -114,7 +114,7 @@ describe("no-spread-accumulator-in-reduce", () => {
       const out = items.reduce((acc, x) => {
         return Object.assign(acc, { [x]: 1 });
       }, {});
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -122,7 +122,7 @@ describe("no-spread-accumulator-in-reduce", () => {
   it("does not flag a member/call spread root (...acc.items)", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
-      `const out = items.reduce((acc, x) => ({ ...acc.items, [x]: 1 }), {});`
+      `const out = items.reduce((acc, x) => ({ ...acc.items, [x]: 1 }), {});`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -130,7 +130,7 @@ describe("no-spread-accumulator-in-reduce", () => {
   it("does not flag other reduce shapes with a numeric accumulator", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
-      `const total = items.reduce((sum, x) => sum + x, 0);`
+      `const total = items.reduce((sum, x) => sum + x, 0);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -138,7 +138,7 @@ describe("no-spread-accumulator-in-reduce", () => {
   it("does not fire on a non-reduce method named similarly", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,
-      `const out = items.map((acc, x) => ({ ...acc, [x]: 1 }));`
+      `const out = items.map((acc, x) => ({ ...acc, [x]: 1 }));`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -152,7 +152,7 @@ describe("no-spread-accumulator-in-reduce", () => {
         acc[x.id] = mapped;
         return acc;
       }, {});
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

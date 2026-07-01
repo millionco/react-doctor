@@ -54,10 +54,7 @@ const chainContainsFilterCall = (node: EsTreeNode): boolean => {
 // True when a guard test references either an `.length` read or the same
 // base identifier as the spread array — `arr.length > 0`, `arr && ...`,
 // `arr?.length`.
-const testMentionsLengthOrName = (
-  test: EsTreeNode,
-  baseName: string | null
-): boolean => {
+const testMentionsLengthOrName = (test: EsTreeNode, baseName: string | null): boolean => {
   const stack: EsTreeNode[] = [test];
   let budget = GUARD_TEST_SCAN_BUDGET;
   while (stack.length > 0 && budget-- > 0) {
@@ -70,16 +67,14 @@ const testMentionsLengthOrName = (
     ) {
       return true;
     }
-    if (baseName && isNodeOfType(node, "Identifier") && node.name === baseName)
-      return true;
+    if (baseName && isNodeOfType(node, "Identifier") && node.name === baseName) return true;
     const record = node as unknown as Record<string, unknown>;
     for (const key of Object.keys(record)) {
       if (key === "parent") continue;
       const child = record[key];
       if (Array.isArray(child)) {
         for (const item of child) {
-          if (item && typeof item === "object" && "type" in item)
-            stack.push(item as EsTreeNode);
+          if (item && typeof item === "object" && "type" in item) stack.push(item as EsTreeNode);
         }
       } else if (child && typeof child === "object" && "type" in child) {
         stack.push(child as EsTreeNode);
@@ -89,19 +84,13 @@ const testMentionsLengthOrName = (
   return false;
 };
 
-const isLengthGuarded = (
-  mathCall: EsTreeNode,
-  baseName: string | null
-): boolean => {
+const isLengthGuarded = (mathCall: EsTreeNode, baseName: string | null): boolean => {
   let child: EsTreeNode = mathCall;
   let parent = mathCall.parent ?? null;
   let steps = GUARD_ANCESTOR_BUDGET;
   while (parent && steps-- > 0) {
     if (isFunctionLike(parent)) break;
-    if (
-      isNodeOfType(parent, "ConditionalExpression") ||
-      isNodeOfType(parent, "IfStatement")
-    ) {
+    if (isNodeOfType(parent, "ConditionalExpression") || isNodeOfType(parent, "IfStatement")) {
       if (
         (child === parent.consequent || child === parent.alternate) &&
         testMentionsLengthOrName(parent.test as EsTreeNode, baseName)
@@ -109,10 +98,7 @@ const isLengthGuarded = (
         return true;
       }
     } else if (isNodeOfType(parent, "LogicalExpression")) {
-      if (
-        child === parent.right &&
-        testMentionsLengthOrName(parent.left as EsTreeNode, baseName)
-      ) {
+      if (child === parent.right && testMentionsLengthOrName(parent.left as EsTreeNode, baseName)) {
         return true;
       }
     }
@@ -140,9 +126,7 @@ export const mathMaxMinSpreadUnguardedArray = defineRule({
       const onlyArgument = node.arguments[0] as EsTreeNode;
       if (!isNodeOfType(onlyArgument, "SpreadElement")) return;
 
-      const spreadValue = stripParenExpression(
-        onlyArgument.argument as EsTreeNode
-      );
+      const spreadValue = stripParenExpression(onlyArgument.argument as EsTreeNode);
       // A literal array (`Math.max(...[1, 2, 3])`) has a known extent.
       if (isNodeOfType(spreadValue, "ArrayExpression")) return;
       if (chainContainsFilterCall(spreadValue)) return;

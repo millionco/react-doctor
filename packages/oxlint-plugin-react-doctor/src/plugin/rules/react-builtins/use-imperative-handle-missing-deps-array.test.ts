@@ -12,7 +12,7 @@ describe("use-imperative-handle-missing-deps-array", () => {
            submit: () => props.onSubmit(),
          }));
          return null;
-       });`
+       });`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -27,7 +27,7 @@ describe("use-imperative-handle-missing-deps-array", () => {
            return { getValue: () => value };
          });
          return null;
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -40,7 +40,7 @@ describe("use-imperative-handle-missing-deps-array", () => {
          const createHandle = () => ({ submit: () => props.onSubmit() });
          useImperativeHandle(ref, createHandle);
          return null;
-       });`
+       });`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -52,7 +52,7 @@ describe("use-imperative-handle-missing-deps-array", () => {
        const Field = forwardRef((props, ref) => {
          useImperativeHandle(ref, () => ({ submit: () => props.onSubmit() }), [props.onSubmit]);
          return null;
-       });`
+       });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -64,7 +64,7 @@ describe("use-imperative-handle-missing-deps-array", () => {
        const Field = forwardRef((props, ref) => {
          useImperativeHandle(ref, () => ({ submit: () => props.onSubmit() }), []);
          return null;
-       });`
+       });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -79,7 +79,7 @@ describe("use-imperative-handle-missing-deps-array", () => {
            focus: () => inputRef.current.focus(),
          }));
          return null;
-       });`
+       });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -93,7 +93,7 @@ describe("use-imperative-handle-missing-deps-array", () => {
        function Field(props) {
          useImperativeHandle(ref, () => ({ submit: () => props.onSubmit() }));
          return null;
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -105,7 +105,7 @@ describe("use-imperative-handle-missing-deps-array", () => {
        const Field = forwardRef((props, ref) => {
          useImperativeHandle(ref);
          return null;
-       });`
+       });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -117,7 +117,7 @@ describe("use-imperative-handle-missing-deps-array", () => {
        const Field = forwardRef((props, ref) => {
          useImperativeHandle(ref, handleObject);
          return null;
-       });`
+       });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

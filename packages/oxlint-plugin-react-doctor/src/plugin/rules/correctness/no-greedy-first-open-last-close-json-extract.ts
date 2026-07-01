@@ -17,12 +17,9 @@ const CLOSE_BRACKET_FOR_OPEN = new Map([
 
 // The source-variable names that mark free-form / LLM / CLI output, where
 // the first-open/last-close invariant does not hold.
-const FREE_FORM_SOURCE_NAME_PATTERN =
-  /raw|output|text|response|completion|content/i;
+const FREE_FORM_SOURCE_NAME_PATTERN = /raw|output|text|response|completion|content/i;
 
-const getStringLiteralValue = (
-  node: EsTreeNode | null | undefined
-): string | null => {
+const getStringLiteralValue = (node: EsTreeNode | null | undefined): string | null => {
   if (!node) return null;
   const stripped = stripParenExpression(node);
   return isNodeOfType(stripped, "Literal") && typeof stripped.value === "string"
@@ -41,27 +38,18 @@ const resolveOneBindingLevel = (node: EsTreeNode): EsTreeNode => {
   return stripped;
 };
 
-const getMemberCallSearchChar = (
-  node: EsTreeNode,
-  methodName: string
-): string | null => {
+const getMemberCallSearchChar = (node: EsTreeNode, methodName: string): string | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
   const callee = node.callee;
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
-  if (
-    !isNodeOfType(callee.property, "Identifier") ||
-    callee.property.name !== methodName
-  ) {
+  if (!isNodeOfType(callee.property, "Identifier") || callee.property.name !== methodName) {
     return null;
   }
   return getStringLiteralValue(node.arguments?.[0]);
 };
 
 const getFirstOpenBracket = (startNode: EsTreeNode): string | null => {
-  const char = getMemberCallSearchChar(
-    resolveOneBindingLevel(startNode),
-    "indexOf"
-  );
+  const char = getMemberCallSearchChar(resolveOneBindingLevel(startNode), "indexOf");
   return char && OPEN_BRACKETS.has(char) ? char : null;
 };
 
@@ -71,10 +59,7 @@ const getLastCloseBracket = (endNode: EsTreeNode): string | null => {
   if (isNodeOfType(target, "BinaryExpression") && target.operator === "+") {
     target = target.left as EsTreeNode;
   }
-  const char = getMemberCallSearchChar(
-    resolveOneBindingLevel(target),
-    "lastIndexOf"
-  );
+  const char = getMemberCallSearchChar(resolveOneBindingLevel(target), "lastIndexOf");
   return char === "}" || char === "]" ? char : null;
 };
 
@@ -102,16 +87,11 @@ const getEnclosingSearchRoot = (node: EsTreeNode): EsTreeNode => {
   return topmost;
 };
 
-const sliceIsFedToJsonParse = (
-  sliceCall: EsTreeNode,
-  searchRoot: EsTreeNode
-): boolean => {
+const sliceIsFedToJsonParse = (sliceCall: EsTreeNode, searchRoot: EsTreeNode): boolean => {
   const parent = sliceCall.parent;
   if (!parent) return false;
-  if (isNodeOfType(parent, "CallExpression") && isJsonParseCall(parent))
-    return true;
-  if (isNodeOfType(parent, "ReturnStatement") && parent.argument === sliceCall)
-    return true;
+  if (isNodeOfType(parent, "CallExpression") && isJsonParseCall(parent)) return true;
+  if (isNodeOfType(parent, "ReturnStatement") && parent.argument === sliceCall) return true;
   if (
     isNodeOfType(parent, "VariableDeclarator") &&
     parent.init === sliceCall &&
@@ -120,14 +100,9 @@ const sliceIsFedToJsonParse = (
     const variableName = parent.id.name;
     let feeds = false;
     walkAst(searchRoot, (child: EsTreeNode) => {
-      if (!isJsonParseCall(child) || !isNodeOfType(child, "CallExpression"))
-        return;
+      if (!isJsonParseCall(child) || !isNodeOfType(child, "CallExpression")) return;
       const argument = child.arguments?.[0];
-      if (
-        argument &&
-        isNodeOfType(argument, "Identifier") &&
-        argument.name === variableName
-      ) {
+      if (argument && isNodeOfType(argument, "Identifier") && argument.name === variableName) {
         feeds = true;
       }
     });
@@ -143,9 +118,7 @@ const literalMentionsCodeFence = (node: EsTreeNode): boolean => {
     return typeof node.value === "string" && node.value.includes("```");
   }
   if (isNodeOfType(node, "TemplateElement")) {
-    return (
-      typeof node.value?.raw === "string" && node.value.raw.includes("```")
-    );
+    return typeof node.value?.raw === "string" && node.value.raw.includes("```");
   }
   return false;
 };
@@ -153,7 +126,7 @@ const literalMentionsCodeFence = (node: EsTreeNode): boolean => {
 const hasFreeFormSignal = (
   sliceCall: EsTreeNode,
   searchRoot: EsTreeNode,
-  sourceName: string | null
+  sourceName: string | null,
 ): boolean => {
   if (sourceName && FREE_FORM_SOURCE_NAME_PATTERN.test(sourceName)) return true;
   let signal = false;
@@ -191,18 +164,12 @@ export const noGreedyFirstOpenLastCloseJsonExtract = defineRule({
       const openBracket = getFirstOpenBracket(args[0]);
       if (!openBracket) return;
       const closeBracket = getLastCloseBracket(args[1]);
-      if (
-        !closeBracket ||
-        CLOSE_BRACKET_FOR_OPEN.get(openBracket) !== closeBracket
-      )
-        return;
+      if (!closeBracket || CLOSE_BRACKET_FOR_OPEN.get(openBracket) !== closeBracket) return;
 
       const searchRoot = getEnclosingSearchRoot(node);
       if (!sliceIsFedToJsonParse(node, searchRoot)) return;
 
-      const sourceName = isNodeOfType(callee.object, "Identifier")
-        ? callee.object.name
-        : null;
+      const sourceName = isNodeOfType(callee.object, "Identifier") ? callee.object.name : null;
       if (!hasFreeFormSignal(node, searchRoot, sourceName)) return;
 
       context.report({

@@ -10,7 +10,7 @@ describe("no-create-object-url-without-revoke", () => {
          a.href = URL.createObjectURL(blob);
          a.download = 'README.md';
          a.click();
-       };`
+       };`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -22,7 +22,7 @@ describe("no-create-object-url-without-revoke", () => {
       `const useImage = (data) => {
          const imageObjectUrl = data && URL.createObjectURL(data);
          setImgObjectUrl(imageObjectUrl);
-       };`
+       };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -30,7 +30,7 @@ describe("no-create-object-url-without-revoke", () => {
   it("flags an inline per-render src object URL", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
-      `const Preview = ({ file }) => <img src={URL.createObjectURL(file)} />;`
+      `const Preview = ({ file }) => <img src={URL.createObjectURL(file)} />;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -38,7 +38,7 @@ describe("no-create-object-url-without-revoke", () => {
   it("flags a direct state setter argument", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
-      `const onDrop = (blob) => { setUrl(URL.createObjectURL(blob)); };`
+      `const onDrop = (blob) => { setUrl(URL.createObjectURL(blob)); };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -46,7 +46,7 @@ describe("no-create-object-url-without-revoke", () => {
   it("flags a returned object URL", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
-      `function make(blob) { return URL.createObjectURL(blob); }`
+      `function make(blob) { return URL.createObjectURL(blob); }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -56,7 +56,7 @@ describe("no-create-object-url-without-revoke", () => {
       noCreateObjectUrlWithoutRevoke,
       `const url = URL.createObjectURL(blob);
        img.src = url;
-       URL.revokeObjectURL(url);`
+       URL.revokeObjectURL(url);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -64,7 +64,7 @@ describe("no-create-object-url-without-revoke", () => {
   it("stays quiet for a page-lifetime worker src global", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
-      `GlobalWorkerOptions.workerSrc = URL.createObjectURL(workerBlob);`
+      `GlobalWorkerOptions.workerSrc = URL.createObjectURL(workerBlob);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -75,7 +75,7 @@ describe("no-create-object-url-without-revoke", () => {
       `const onSelect = (file) => {
          const preview = URL.createObjectURL(file);
          setAvatar(preview);
-       };`
+       };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -84,7 +84,7 @@ describe("no-create-object-url-without-revoke", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
       `export default () => <a href={URL.createObjectURL(blob)}>download</a>;`,
-      { filename: "/src/demos/index.tsx" }
+      { filename: "/src/demos/index.tsx" },
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -93,7 +93,7 @@ describe("no-create-object-url-without-revoke", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
       `const URL = getPolyfill();
-       a.href = URL.createObjectURL(blob);`
+       a.href = URL.createObjectURL(blob);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -101,7 +101,7 @@ describe("no-create-object-url-without-revoke", () => {
   it("stays quiet on a bare discarded createObjectURL expression", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
-      `const warmup = (blob) => { URL.createObjectURL(blob); };`
+      `const warmup = (blob) => { URL.createObjectURL(blob); };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

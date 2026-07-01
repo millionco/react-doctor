@@ -16,11 +16,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // Impure id generators (bare-identifier forms). A local same-file
 // binding of the same name shadows the library import, so those are
 // resolved away before matching.
-const IMPURE_GENERATOR_IDENTIFIER_NAMES = new Set([
-  "uniqueId",
-  "nanoid",
-  "shortid",
-]);
+const IMPURE_GENERATOR_IDENTIFIER_NAMES = new Set(["uniqueId", "nanoid", "shortid"]);
 
 // JSX attributes whose value is an *identity reference*: another element
 // or an aria/SVG relationship points at this id. When the id changes
@@ -38,18 +34,16 @@ const IDENTITY_SINK_ATTRIBUTE_NAMES = new Set([
 const isImportSpecifierNode = (node: EsTreeNode | null | undefined): boolean =>
   Boolean(
     node &&
-      (isNodeOfType(node, "ImportSpecifier") ||
-        isNodeOfType(node, "ImportDefaultSpecifier") ||
-        isNodeOfType(node, "ImportNamespaceSpecifier"))
+    (isNodeOfType(node, "ImportSpecifier") ||
+      isNodeOfType(node, "ImportDefaultSpecifier") ||
+      isNodeOfType(node, "ImportNamespaceSpecifier")),
   );
 
 // True when `identifier` refers to the real library generator, not a
 // same-file local binding that shadows it. Unresolved names (global /
 // auto-imported) and names bound to an import specifier both qualify;
 // a local function / variable of the same name does not.
-const isUnshadowedLibraryReference = (
-  identifier: EsTreeNodeOfType<"Identifier">
-): boolean => {
+const isUnshadowedLibraryReference = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
   const binding = findVariableInitializer(identifier, identifier.name);
   if (!binding) return true;
   return isImportSpecifierNode(binding.initializer);
@@ -70,8 +64,7 @@ const isImpureIdGeneratorCall = (node: EsTreeNode): boolean => {
     return isUnshadowedLibraryReference(callee);
   }
 
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed)
-    return false;
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
   if (!isNodeOfType(callee.property, "Identifier")) return false;
   const propertyName = callee.property.name;
 
@@ -87,10 +80,7 @@ const isImpureIdGeneratorCall = (node: EsTreeNode): boolean => {
   if (propertyName === "uniqueId") return true;
   // `shortid.generate()`
   if (propertyName === "generate") {
-    return (
-      isNodeOfType(callee.object, "Identifier") &&
-      callee.object.name === "shortid"
-    );
+    return isNodeOfType(callee.object, "Identifier") && callee.object.name === "shortid";
   }
   return false;
 };
@@ -103,7 +93,7 @@ const soleReturnedExpression = (callback: EsTreeNode): EsTreeNode | null => {
   if (!isNodeOfType(body, "BlockStatement")) return body;
   const statements = body.body ?? [];
   const returnStatement = statements.find((statement) =>
-    isNodeOfType(statement, "ReturnStatement")
+    isNodeOfType(statement, "ReturnStatement"),
   );
   if (returnStatement && isNodeOfType(returnStatement, "ReturnStatement")) {
     return (returnStatement.argument as EsTreeNode | null) ?? null;
@@ -120,8 +110,7 @@ const isUseMemoOneShotImpureGenerator = (node: EsTreeNode): boolean => {
   const callback = unwrapped.arguments?.[0];
   const dependencies = unwrapped.arguments?.[1];
   if (!callback || !isFunctionLike(callback)) return false;
-  if (!dependencies || !isNodeOfType(dependencies, "ArrayExpression"))
-    return false;
+  if (!dependencies || !isNodeOfType(dependencies, "ArrayExpression")) return false;
   if ((dependencies.elements ?? []).length !== 0) return false;
   const returned = soleReturnedExpression(callback);
   return Boolean(returned && isImpureIdGeneratorCall(returned));
@@ -148,22 +137,16 @@ const subtreeReferencesName = (subtree: EsTreeNode, name: string): boolean => {
 // True when `name` is threaded into an identity-reference JSX attribute
 // (`id` / `htmlFor` / `aria-*` / an SVG `clip-path` / `url(#...)` paint)
 // anywhere inside the component/hook body.
-const bindingFlowsIntoIdentityReferenceSink = (
-  functionNode: EsTreeNode,
-  name: string
-): boolean => {
+const bindingFlowsIntoIdentityReferenceSink = (functionNode: EsTreeNode, name: string): boolean => {
   let flows = false;
   walkAst(functionNode, (child) => {
     if (flows) return false;
     const attributeName = jsxAttributeName(child);
     if (!attributeName) return;
     const isSink =
-      IDENTITY_SINK_ATTRIBUTE_NAMES.has(attributeName) ||
-      attributeName.startsWith("aria-");
+      IDENTITY_SINK_ATTRIBUTE_NAMES.has(attributeName) || attributeName.startsWith("aria-");
     if (!isSink) return;
-    const value = isNodeOfType(child, "JSXAttribute")
-      ? (child.value as EsTreeNode | null)
-      : null;
+    const value = isNodeOfType(child, "JSXAttribute") ? (child.value as EsTreeNode | null) : null;
     if (value && subtreeReferencesName(value, name)) {
       flows = true;
       return false;
@@ -190,11 +173,7 @@ export const noNondeterministicIdValueInRenderBody = defineRule({
     VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!isNodeOfType(node.id, "Identifier") || !node.init) return;
       const enclosingFunction = nearestEnclosingFunction(node);
-      if (
-        !enclosingFunction ||
-        !componentOrHookDisplayNameForFunction(enclosingFunction)
-      )
-        return;
+      if (!enclosingFunction || !componentOrHookDisplayNameForFunction(enclosingFunction)) return;
 
       const initializer = stripParenExpression(node.init);
       if (isUseMemoOneShotImpureGenerator(initializer)) {
@@ -202,10 +181,7 @@ export const noNondeterministicIdValueInRenderBody = defineRule({
         return;
       }
       if (!isImpureIdGeneratorCall(initializer)) return;
-      if (
-        !bindingFlowsIntoIdentityReferenceSink(enclosingFunction, node.id.name)
-      )
-        return;
+      if (!bindingFlowsIntoIdentityReferenceSink(enclosingFunction, node.id.name)) return;
       context.report({ node: node.init, message: GENERATOR_MESSAGE });
     },
   }),

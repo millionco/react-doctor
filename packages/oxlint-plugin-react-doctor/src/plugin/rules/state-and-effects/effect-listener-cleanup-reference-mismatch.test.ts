@@ -13,7 +13,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
           window.removeEventListener('beforeunload', () => save(token));
         };
       }, [token]);
-      `
+      `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -27,7 +27,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
         el.addEventListener('scroll', function () { onScroll(); });
         return () => el.removeEventListener('scroll', function () { onScroll(); });
       }, []);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -40,7 +40,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
         emitter.on('update', (d) => setData(d));
         return () => emitter.off('update', (d) => setData(d));
       }, []);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -53,7 +53,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
         appEvent.subscribe((e) => handle(e));
         return () => appEvent.unsubscribe((e) => handle(e));
       }, []);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -66,7 +66,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
         return () => document.removeEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
       }, [close]);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -80,7 +80,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
         window.addEventListener('beforeunload', onUnload);
         return () => window.removeEventListener('beforeunload', onUnload);
       }, [token]);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -94,7 +94,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
         el.addEventListener('scroll', handler);
         return () => el.removeEventListener('scroll', handler);
       }, []);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -108,7 +108,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
         el.addEventListener('resize', () => onResize(), { signal: controller.signal });
         return () => controller.abort();
       }, []);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -121,7 +121,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
         window.addEventListener('online', () => sync());
         return () => {};
       }, []);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -134,7 +134,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
         window.addEventListener('resize', () => onResize());
         return () => window.removeEventListener('online', () => sync());
       }, []);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -147,7 +147,7 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
         a.addEventListener('x', () => f());
         return () => b.removeEventListener('x', () => f());
       }, []);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

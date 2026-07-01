@@ -15,14 +15,10 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 const HOOK_NAME = "useImperativeHandle";
 
-const isReactImportSpecifierFor = (
-  node: EsTreeNode,
-  hookName: string
-): boolean => {
+const isReactImportSpecifierFor = (node: EsTreeNode, hookName: string): boolean => {
   if (!isNodeOfType(node, "ImportSpecifier")) return false;
   const declaration = node.parent;
-  if (!declaration || !isNodeOfType(declaration, "ImportDeclaration"))
-    return false;
+  if (!declaration || !isNodeOfType(declaration, "ImportDeclaration")) return false;
   if (declaration.source.value !== "react") return false;
   return getImportedName(node) === hookName;
 };
@@ -31,9 +27,7 @@ const isReactImportSpecifierFor = (
 // whose binding is an import (or an aliased import), or a `<obj>.useImperativeHandle`
 // member call. A locally-shadowed function of the same name (non-import
 // binding) is skipped.
-const isReactUseImperativeHandleCall = (
-  node: EsTreeNodeOfType<"CallExpression">
-): boolean => {
+const isReactUseImperativeHandleCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   const callee = node.callee;
   if (isNodeOfType(callee, "MemberExpression")) {
     return (
@@ -44,10 +38,7 @@ const isReactUseImperativeHandleCall = (
   }
   if (!isNodeOfType(callee, "Identifier")) return false;
   const binding = findVariableInitializer(callee, callee.name);
-  if (
-    binding?.initializer &&
-    isReactImportSpecifierFor(binding.initializer, HOOK_NAME)
-  ) {
+  if (binding?.initializer && isReactImportSpecifierFor(binding.initializer, HOOK_NAME)) {
     return true;
   }
   // No binding at all (bare `useImperativeHandle(...)` with the import elided)
@@ -77,18 +68,14 @@ const collectReactiveNames = (componentFunction: EsTreeNode): Set<string> => {
         if (!isHookCall(declarator.init, "useState")) continue;
         if (!isNodeOfType(declarator.id, "ArrayPattern")) continue;
         const valueElement = declarator.id.elements?.[0];
-        if (isNodeOfType(valueElement, "Identifier"))
-          reactiveNames.add(valueElement.name);
+        if (isNodeOfType(valueElement, "Identifier")) reactiveNames.add(valueElement.name);
       }
     }
   }
   return reactiveNames;
 };
 
-const functionReferencesAnyName = (
-  functionNode: EsTreeNode,
-  names: Set<string>
-): boolean => {
+const functionReferencesAnyName = (functionNode: EsTreeNode, names: Set<string>): boolean => {
   let found = false;
   const visit = (node: EsTreeNode): void => {
     if (found || !node || typeof node !== "object") return;
@@ -112,8 +99,7 @@ const functionReferencesAnyName = (
       const child = record[key];
       if (Array.isArray(child)) {
         for (const item of child) {
-          if (item && typeof item === "object" && "type" in item)
-            visit(item as EsTreeNode);
+          if (item && typeof item === "object" && "type" in item) visit(item as EsTreeNode);
         }
       } else if (child && typeof child === "object" && "type" in child) {
         visit(child as EsTreeNode);
@@ -127,9 +113,7 @@ const functionReferencesAnyName = (
 // Resolves the createHandle argument to an inspectable function body: an inline
 // arrow / function expression, or a local named function the identifier binds
 // to. Returns null when the callback can't be resolved to a local function.
-const resolveCreateHandleFunction = (
-  createHandle: EsTreeNode
-): EsTreeNode | null => {
+const resolveCreateHandleFunction = (createHandle: EsTreeNode): EsTreeNode | null => {
   if (isFunctionLike(createHandle)) return createHandle;
   if (!isNodeOfType(createHandle, "Identifier")) return null;
   const binding = findVariableInitializer(createHandle, createHandle.name);
@@ -158,8 +142,7 @@ export const useImperativeHandleMissingDepsArray = defineRule({
 
       const componentFunction = nearestEnclosingFunction(node);
       if (!componentFunction) return;
-      const displayName =
-        componentOrHookDisplayNameForFunction(componentFunction);
+      const displayName = componentOrHookDisplayNameForFunction(componentFunction);
       if (!displayName) return;
 
       // Only fire when the handle captures at least one reactive value. If it
@@ -167,8 +150,7 @@ export const useImperativeHandleMissingDepsArray = defineRule({
       // is harmless and must not be flagged.
       const reactiveNames = collectReactiveNames(componentFunction);
       if (reactiveNames.size === 0) return;
-      if (!functionReferencesAnyName(createHandleFunction, reactiveNames))
-        return;
+      if (!functionReferencesAnyName(createHandleFunction, reactiveNames)) return;
 
       context.report({
         node,

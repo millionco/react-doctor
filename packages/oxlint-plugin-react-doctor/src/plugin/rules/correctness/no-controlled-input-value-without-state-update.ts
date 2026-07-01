@@ -20,9 +20,7 @@ const READONLY_ATTRIBUTES = ["readOnly", "disabled"];
 // `value="x"` or `value={123}`. Identifier references (state, props, consts)
 // are deliberately excluded: telling them apart needs scope analysis, and the
 // applied revision keeps this detector syntax-only to avoid the prop FP.
-const isLiteralValueAttribute = (
-  valueAttribute: EsTreeNodeOfType<"JSXAttribute">
-): boolean => {
+const isLiteralValueAttribute = (valueAttribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   const value = valueAttribute.value;
   if (!value) return false;
   if (isNodeOfType(value, "Literal")) {
@@ -32,8 +30,7 @@ const isLiteralValueAttribute = (
     const expression: EsTreeNode = stripParenExpression(value.expression);
     return (
       isNodeOfType(expression, "Literal") &&
-      (typeof expression.value === "string" ||
-        typeof expression.value === "number")
+      (typeof expression.value === "string" || typeof expression.value === "number")
     );
   }
   return false;
@@ -58,18 +55,12 @@ export const noControlledInputValueWithoutStateUpdate = defineRule({
       if (!valueAttribute || !isLiteralValueAttribute(valueAttribute)) return;
 
       if (!findJsxAttribute(attributes, "onChange")) return;
-      if (
-        READONLY_ATTRIBUTES.some((name) => findJsxAttribute(attributes, name))
-      )
-        return;
+      if (READONLY_ATTRIBUTES.some((name) => findJsxAttribute(attributes, name))) return;
 
       if (tagName === "input") {
         const typeAttribute = findJsxAttribute(attributes, "type");
-        const inputType = typeAttribute
-          ? getJsxPropStringValue(typeAttribute)
-          : null;
-        if (inputType !== null && VALUE_BYPASS_INPUT_TYPES.has(inputType))
-          return;
+        const inputType = typeAttribute ? getJsxPropStringValue(typeAttribute) : null;
+        if (inputType !== null && VALUE_BYPASS_INPUT_TYPES.has(inputType)) return;
       }
 
       context.report({

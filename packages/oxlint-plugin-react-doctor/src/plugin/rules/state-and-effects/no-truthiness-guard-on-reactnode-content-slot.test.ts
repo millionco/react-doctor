@@ -10,7 +10,7 @@ describe("no-truthiness-guard-on-reactnode-content-slot", () => {
        const Result = ({ extra }: ResultProps) => {
          if (!extra) return null;
          return <div className="ant-result-extra">{extra}</div>;
-       };`
+       };`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -21,7 +21,7 @@ describe("no-truthiness-guard-on-reactnode-content-slot", () => {
       noTruthinessGuardOnReactnodeContentSlot,
       `const ProgressInnerText = ({ text }: { text?: React.ReactNode }) => (
          <>{text && <span className="inner">{text}</span>}</>
-       );`
+       );`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -30,7 +30,7 @@ describe("no-truthiness-guard-on-reactnode-content-slot", () => {
     const result = runRule(
       noTruthinessGuardOnReactnodeContentSlot,
       `const Slot = ({ content }: { content?: ReactNode }) =>
-         content ? <div>{content}</div> : null;`
+         content ? <div>{content}</div> : null;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -41,7 +41,7 @@ describe("no-truthiness-guard-on-reactnode-content-slot", () => {
       `const Slot = ({ label }: { label: React.ReactNode | null }) => {
          if (!label) return null;
          return <span>{label}</span>;
-       };`
+       };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -49,7 +49,7 @@ describe("no-truthiness-guard-on-reactnode-content-slot", () => {
   it("flags a typed parameter of ReactNode", () => {
     const result = runRule(
       noTruthinessGuardOnReactnodeContentSlot,
-      `const render = (extra: React.ReactNode) => (extra ? <div>{extra}</div> : null);`
+      `const render = (extra: React.ReactNode) => (extra ? <div>{extra}</div> : null);`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -58,7 +58,7 @@ describe("no-truthiness-guard-on-reactnode-content-slot", () => {
     const result = runRule(
       noTruthinessGuardOnReactnodeContentSlot,
       `const TreeFile = ({ extra }: { extra?: string }) =>
-         extra ? <span>{extra}</span> : null;`
+         extra ? <span>{extra}</span> : null;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -68,7 +68,7 @@ describe("no-truthiness-guard-on-reactnode-content-slot", () => {
       noTruthinessGuardOnReactnodeContentSlot,
       `const Card = ({ title }: { title?: string }) => (
          <div>{title && <h3>{title}</h3>}</div>
-       );`
+       );`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -77,7 +77,7 @@ describe("no-truthiness-guard-on-reactnode-content-slot", () => {
     const result = runRule(
       noTruthinessGuardOnReactnodeContentSlot,
       `const Tooltip = ({ content }: { content?: React.ReactElement }) =>
-         content ? <div>{content}</div> : null;`
+         content ? <div>{content}</div> : null;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -89,7 +89,7 @@ describe("no-truthiness-guard-on-reactnode-content-slot", () => {
          const propValue = getRenderPropValue(title);
          if (!propValue) return null;
          return <span>{propValue}</span>;
-       };`
+       };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -97,7 +97,7 @@ describe("no-truthiness-guard-on-reactnode-content-slot", () => {
   it("stays quiet on a numeric && leak (count is number-typed)", () => {
     const result = runRule(
       noTruthinessGuardOnReactnodeContentSlot,
-      `const Badge = ({ count }: { count?: number }) => <>{count && <span>{count}</span>}</>;`
+      `const Badge = ({ count }: { count?: number }) => <>{count && <span>{count}</span>}</>;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -106,7 +106,7 @@ describe("no-truthiness-guard-on-reactnode-content-slot", () => {
     const result = runRule(
       noTruthinessGuardOnReactnodeContentSlot,
       `const extra = compute();
-       const view = extra ? <div>{extra}</div> : null;`
+       const view = extra ? <div>{extra}</div> : null;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

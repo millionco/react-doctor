@@ -8,7 +8,7 @@ describe("no-inline-hoc-on-component", () => {
       noInlineHocOnComponent,
       `const Header = observer((props) => {
         return <h1>{props.store.title}</h1>;
-      });`
+      });`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -19,7 +19,7 @@ describe("no-inline-hoc-on-component", () => {
       noInlineHocOnComponent,
       `const Page = withRouter(function (props) {
         return <div>{props.location.pathname}</div>;
-      });`
+      });`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -29,7 +29,7 @@ describe("no-inline-hoc-on-component", () => {
       noInlineHocOnComponent,
       `export const Card = connect(mapState)((props) => (
         <article>{props.title}</article>
-      ));`
+      ));`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -39,7 +39,7 @@ describe("no-inline-hoc-on-component", () => {
       noInlineHocOnComponent,
       `export const AreaChart = factory<AreaChartFactory>((_props) => {
         return <div>{_props.title}</div>;
-      });`
+      });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -47,7 +47,7 @@ describe("no-inline-hoc-on-component", () => {
   it("does not flag Mantine's polymorphicFactory component primitive", () => {
     const result = runRule(
       noInlineHocOnComponent,
-      `export const Badge = polymorphicFactory<BadgeFactory>((_props) => <span>{_props.label}</span>);`
+      `export const Badge = polymorphicFactory<BadgeFactory>((_props) => <span>{_props.label}</span>);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -57,7 +57,7 @@ describe("no-inline-hoc-on-component", () => {
       noInlineHocOnComponent,
       `export const Container = createRefetchContainer((props) => {
         return <section>{props.children}</section>;
-      });`
+      });`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -66,7 +66,7 @@ describe("no-inline-hoc-on-component", () => {
     const result = runRule(
       noInlineHocOnComponent,
       `const ComponentBase = (props) => <div>{props.content}</div>;
-       const Component = hoc(ComponentBase);`
+       const Component = hoc(ComponentBase);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -74,16 +74,13 @@ describe("no-inline-hoc-on-component", () => {
   it("does not flag a useCallback render callback", () => {
     const result = runRule(
       noInlineHocOnComponent,
-      `const renderRow = useCallback(() => <Row />, []);`
+      `const renderRow = useCallback(() => <Row />, []);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag a useMemo render callback", () => {
-    const result = runRule(
-      noInlineHocOnComponent,
-      `const RenderRow = useMemo(() => <Row />, []);`
-    );
+    const result = runRule(noInlineHocOnComponent, `const RenderRow = useMemo(() => <Row />, []);`);
     expect(result.diagnostics).toHaveLength(0);
   });
 
@@ -92,7 +89,7 @@ describe("no-inline-hoc-on-component", () => {
       noInlineHocOnComponent,
       `export const Squared = forwardRef((props, ref) => (
         <div ref={ref} {...props} />
-      ));`
+      ));`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -100,7 +97,7 @@ describe("no-inline-hoc-on-component", () => {
   it("does not flag memo", () => {
     const result = runRule(
       noInlineHocOnComponent,
-      `const Card = memo((props) => <article>{props.title}</article>);`
+      `const Card = memo((props) => <article>{props.title}</article>);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -108,7 +105,7 @@ describe("no-inline-hoc-on-component", () => {
   it("does not flag styled factory calls", () => {
     const result = runRule(
       noInlineHocOnComponent,
-      `export const Img = styled((props) => <img alt="" {...props} />)\`\`;`
+      `export const Img = styled((props) => <img alt="" {...props} />)\`\`;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -116,7 +113,7 @@ describe("no-inline-hoc-on-component", () => {
   it("does not flag a map iteration callback", () => {
     const result = runRule(
       noInlineHocOnComponent,
-      `const list = items.map((it) => <Row key={it.id} item={it} />);`
+      `const list = items.map((it) => <Row key={it.id} item={it} />);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -124,7 +121,7 @@ describe("no-inline-hoc-on-component", () => {
   it("does not flag a member-callee helper handed an inline JSX function", () => {
     const result = runRule(
       noInlineHocOnComponent,
-      `const Rendered = lib.render((props) => <div {...props} />);`
+      `const Rendered = lib.render((props) => <div {...props} />);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -136,23 +133,20 @@ describe("no-inline-hoc-on-component", () => {
         render() {
           return <Test />;
         }
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag a wrapper whose inline function has no JSX", () => {
-    const result = runRule(
-      noInlineHocOnComponent,
-      `const sum = wrap((a, b) => a + b);`
-    );
+    const result = runRule(noInlineHocOnComponent, `const sum = wrap((a, b) => a + b);`);
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag an HOC result assigned to a lowercase binding", () => {
     const result = runRule(
       noInlineHocOnComponent,
-      `const rendered = act((props) => <div {...props} />);`
+      `const rendered = act((props) => <div {...props} />);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -163,7 +157,7 @@ describe("no-inline-hoc-on-component", () => {
       `const Wrapped = wrapData((rows) => {
         rows.forEach((row) => <Cell value={row} />);
         return rows.length;
-      });`
+      });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

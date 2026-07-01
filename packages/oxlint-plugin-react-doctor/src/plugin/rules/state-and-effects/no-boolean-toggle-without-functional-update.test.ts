@@ -13,7 +13,7 @@ describe("no-boolean-toggle-without-functional-update", () => {
           setTimeout(() => setIsOpen(!isOpen), 100);
         }, []);
       };
-      `
+      `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -30,7 +30,7 @@ describe("no-boolean-toggle-without-functional-update", () => {
           return () => sub.unsubscribe();
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -45,7 +45,7 @@ describe("no-boolean-toggle-without-functional-update", () => {
           load().then(() => setAllowChatSupport(!allowChatSupport));
         };
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -58,7 +58,7 @@ describe("no-boolean-toggle-without-functional-update", () => {
         const [isOpen, setIsOpen] = useState(false);
         return <button onClick={() => setIsOpen(!isOpen)} />;
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -73,7 +73,7 @@ describe("no-boolean-toggle-without-functional-update", () => {
           setTimeout(() => setSideMenuOpen(!open), 100);
         }, [open]);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -88,7 +88,7 @@ describe("no-boolean-toggle-without-functional-update", () => {
           setTimeout(() => setValue(!field.value), 100);
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -103,7 +103,7 @@ describe("no-boolean-toggle-without-functional-update", () => {
           setTimeout(() => setIsOpen((prev) => !prev), 100);
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -118,7 +118,7 @@ describe("no-boolean-toggle-without-functional-update", () => {
           setTimeout(() => setOpen(!open), 100);
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -133,7 +133,7 @@ describe("no-boolean-toggle-without-functional-update", () => {
           setTimeout(() => setCount(-count), 100);
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -148,7 +148,7 @@ describe("no-boolean-toggle-without-functional-update", () => {
           setTimeout(() => setOpen(!open), 100);
         }, []);
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

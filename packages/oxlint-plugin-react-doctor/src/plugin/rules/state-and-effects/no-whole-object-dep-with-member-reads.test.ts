@@ -10,7 +10,7 @@ describe("no-whole-object-dep-with-member-reads", () => {
         useEffect(() => {
           props.onEmailThreadFetched();
         }, [emailThreadFetchingStatus, props]);
-      }`
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -22,7 +22,7 @@ describe("no-whole-object-dep-with-member-reads", () => {
       `function FullName(props) {
         const fullName = useMemo(() => \`\${props.first} \${props.last}\`, [props]);
         return fullName;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -33,7 +33,7 @@ describe("no-whole-object-dep-with-member-reads", () => {
       `function Card({ user }) {
         const label = useMemo(() => \`\${user.first} \${user.last}\`, [user]);
         return label;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -44,7 +44,7 @@ describe("no-whole-object-dep-with-member-reads", () => {
       `function Panel(props) {
         const merged = useMemo(() => ({ ...props }), [props]);
         return merged;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -56,7 +56,7 @@ describe("no-whole-object-dep-with-member-reads", () => {
         useEffect(() => {
           save(props);
         }, [props]);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -68,7 +68,7 @@ describe("no-whole-object-dep-with-member-reads", () => {
         useEffect(() => {
           use(props.requisition);
         }, [props.requisition]);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -80,7 +80,7 @@ describe("no-whole-object-dep-with-member-reads", () => {
         const cart = useContext(CartContext);
         const total = useMemo(() => cart.state, [cart]);
         return total;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -92,7 +92,7 @@ describe("no-whole-object-dep-with-member-reads", () => {
         useEffect(() => {
           read(props[key]);
         }, [props]);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -104,7 +104,7 @@ describe("no-whole-object-dep-with-member-reads", () => {
         useEffect((props) => {
           props.onChange();
         }, [props]);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -116,7 +116,7 @@ describe("no-whole-object-dep-with-member-reads", () => {
         useEffect(() => {
           props.onChange();
         }, [props]);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -129,7 +129,7 @@ describe("no-whole-object-dep-with-member-reads", () => {
           if (props === prev) return;
           read(props.value);
         }, [props]);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

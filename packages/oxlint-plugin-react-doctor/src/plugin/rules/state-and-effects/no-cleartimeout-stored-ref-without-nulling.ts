@@ -12,26 +12,15 @@ import type { RuleContext } from "../../utils/rule-context.js";
 const MESSAGE =
   "`clearTimeout` cancels the timer but leaves the stale, now-invalid id in this ref, and another guard reads the ref's truthiness to decide whether a timer is still pending, so scheduling silently desyncs. Set the ref's `.current` back to `null` right after clearing.";
 
-const CLEAR_CALLEE_NAMES = new Set([
-  "clearTimeout",
-  "clearInterval",
-  "cancelAnimationFrame",
-]);
-const SCHEDULER_CALLEE_NAMES = new Set([
-  "setTimeout",
-  "setInterval",
-  "requestAnimationFrame",
-]);
+const CLEAR_CALLEE_NAMES = new Set(["clearTimeout", "clearInterval", "cancelAnimationFrame"]);
+const SCHEDULER_CALLEE_NAMES = new Set(["setTimeout", "setInterval", "requestAnimationFrame"]);
 
 // The ref field `X.current` that a call reads as its only argument, or null.
 const getCurrentFieldRefName = (node: EsTreeNode): string | null => {
   const member = stripParenExpression(node);
   if (!isNodeOfType(member, "MemberExpression")) return null;
   if (member.computed) return null;
-  if (
-    !isNodeOfType(member.property, "Identifier") ||
-    member.property.name !== "current"
-  ) {
+  if (!isNodeOfType(member.property, "Identifier") || member.property.name !== "current") {
     return null;
   }
   const object = stripParenExpression(member.object as EsTreeNode);
@@ -53,8 +42,7 @@ const containsNullAssignment = (root: EsTreeNode, refName: string): boolean => {
     if (!isNodeOfType(child, "AssignmentExpression")) return;
     if (child.operator !== "=") return;
     if (!isCurrentMemberOf(child.left as EsTreeNode, refName)) return;
-    if (isNullLiteral(stripParenExpression(child.right as EsTreeNode)))
-      found = true;
+    if (isNullLiteral(stripParenExpression(child.right as EsTreeNode))) found = true;
   });
   return found;
 };
@@ -70,8 +58,7 @@ const clearsOrReassignsRef = (root: EsTreeNode, refName: string): boolean => {
       const name = getCalleeName(child);
       if (name && CLEAR_CALLEE_NAMES.has(name)) {
         const argument = child.arguments[0];
-        if (argument && isCurrentMemberOf(argument as EsTreeNode, refName))
-          found = true;
+        if (argument && isCurrentMemberOf(argument as EsTreeNode, refName)) found = true;
       }
       return;
     }
@@ -89,10 +76,7 @@ const testReadsRefCurrent = (test: EsTreeNode, refName: string): boolean => {
   let found = false;
   walkAst(test, (child: EsTreeNode) => {
     if (found) return false;
-    if (
-      isNodeOfType(child, "MemberExpression") &&
-      isCurrentMemberOf(child, refName)
-    ) {
+    if (isNodeOfType(child, "MemberExpression") && isCurrentMemberOf(child, refName)) {
       found = true;
       return false;
     }
@@ -103,10 +87,7 @@ const testReadsRefCurrent = (test: EsTreeNode, refName: string): boolean => {
 // A standalone pending-state guard: `if (X.current) { skip }` whose body does
 // NOT clear or reassign the ref (so the truthiness decides skip-vs-schedule
 // across event boundaries, not merely a redundant clear in the debounce idiom).
-const hasStandalonePendingGuard = (
-  searchRoot: EsTreeNode,
-  refName: string
-): boolean => {
+const hasStandalonePendingGuard = (searchRoot: EsTreeNode, refName: string): boolean => {
   let found = false;
   walkAst(searchRoot, (child: EsTreeNode) => {
     if (found) return false;
@@ -122,15 +103,11 @@ const hasStandalonePendingGuard = (
 // True when a `X.current = setTimeout(cb, …)` scheduler reassignment exists
 // whose callback body never nulls the ref — so a fired timer leaves the field
 // permanently truthy.
-const hasSchedulerReassignThatNeverNulls = (
-  searchRoot: EsTreeNode,
-  refName: string
-): boolean => {
+const hasSchedulerReassignThatNeverNulls = (searchRoot: EsTreeNode, refName: string): boolean => {
   let found = false;
   walkAst(searchRoot, (child: EsTreeNode) => {
     if (found) return false;
-    if (!isNodeOfType(child, "AssignmentExpression") || child.operator !== "=")
-      return;
+    if (!isNodeOfType(child, "AssignmentExpression") || child.operator !== "=") return;
     if (!isCurrentMemberOf(child.left as EsTreeNode, refName)) return;
     const right = stripParenExpression(child.right as EsTreeNode);
     if (!isNodeOfType(right, "CallExpression")) return;
@@ -155,17 +132,12 @@ const nearestBlock = (node: EsTreeNode): EsTreeNode | null => {
   return null;
 };
 
-const isUseRefInitializer = (
-  refName: string,
-  referenceNode: EsTreeNode
-): EsTreeNode | null => {
+const isUseRefInitializer = (refName: string, referenceNode: EsTreeNode): EsTreeNode | null => {
   const binding = findVariableInitializer(referenceNode, refName);
   if (!binding) return null;
   const declarator = binding.bindingIdentifier.parent;
   if (!isNodeOfType(declarator, "VariableDeclarator")) return null;
-  const init = declarator.init
-    ? stripParenExpression(declarator.init as EsTreeNode)
-    : null;
+  const init = declarator.init ? stripParenExpression(declarator.init as EsTreeNode) : null;
   if (!init || !isNodeOfType(init, "CallExpression")) return null;
   const calleeName = getCalleeName(init);
   if (calleeName !== "useRef") return null;

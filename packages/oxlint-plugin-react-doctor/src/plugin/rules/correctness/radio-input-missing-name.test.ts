@@ -8,10 +8,7 @@ const withRadioComponents = {
 
 describe("radio-input-missing-name", () => {
   it("flags a native radio input with no name", () => {
-    const result = runRule(
-      radioInputMissingName,
-      `<input type="radio" value="yes" />;`
-    );
+    const result = runRule(radioInputMissingName, `<input type="radio" value="yes" />;`);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -19,7 +16,7 @@ describe("radio-input-missing-name", () => {
   it("flags a radio with checked/onChange but still no name", () => {
     const result = runRule(
       radioInputMissingName,
-      `<input type="radio" value="no" checked onChange={handleChange} />;`
+      `<input type="radio" value="no" checked onChange={handleChange} />;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -35,7 +32,7 @@ describe("radio-input-missing-name", () => {
             <input type="radio" value="b" />
           </fieldset>
         );
-      }`
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(2);
@@ -45,7 +42,7 @@ describe("radio-input-missing-name", () => {
     const result = runRule(
       radioInputMissingName,
       `<Radio value="a" align="flex-start" onClick={onSelect} active={selected} />;`,
-      { settings: withRadioComponents }
+      { settings: withRadioComponents },
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -54,7 +51,7 @@ describe("radio-input-missing-name", () => {
   it("does not flag a radio that has a name", () => {
     const result = runRule(
       radioInputMissingName,
-      `<input type="radio" name="answer" value="yes" />;`
+      `<input type="radio" name="answer" value="yes" />;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -63,7 +60,7 @@ describe("radio-input-missing-name", () => {
   it("does not flag a radio with a dynamic name expression", () => {
     const result = runRule(
       radioInputMissingName,
-      `<input type="radio" name={fieldName} value="yes" />;`
+      `<input type="radio" name={fieldName} value="yes" />;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -72,26 +69,20 @@ describe("radio-input-missing-name", () => {
   it("does not flag a radio with a spread attribute", () => {
     const result = runRule(
       radioInputMissingName,
-      `<input type="radio" {...register('answer')} />;`
+      `<input type="radio" {...register('answer')} />;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag a radio with a generic spread", () => {
-    const result = runRule(
-      radioInputMissingName,
-      `<input type="radio" {...props} value="yes" />;`
-    );
+    const result = runRule(radioInputMissingName, `<input type="radio" {...props} value="yes" />;`);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag a checkbox", () => {
-    const result = runRule(
-      radioInputMissingName,
-      `<input type="checkbox" value="yes" />;`
-    );
+    const result = runRule(radioInputMissingName, `<input type="checkbox" value="yes" />;`);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -103,10 +94,7 @@ describe("radio-input-missing-name", () => {
   });
 
   it("does not flag an input with a dynamic type", () => {
-    const result = runRule(
-      radioInputMissingName,
-      `<input type={dynamicType} value="yes" />;`
-    );
+    const result = runRule(radioInputMissingName, `<input type={dynamicType} value="yes" />;`);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });

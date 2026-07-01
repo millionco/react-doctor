@@ -40,9 +40,7 @@ const receiverReachesThroughRefCurrent = (receiver: EsTreeNode): boolean => {
   return false;
 };
 
-const rootIdentifierNode = (
-  node: EsTreeNode
-): EsTreeNodeOfType<"Identifier"> | null => {
+const rootIdentifierNode = (node: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
   let cursor: EsTreeNode | null | undefined = node;
   while (cursor) {
     if (isNodeOfType(cursor, "Identifier")) return cursor;
@@ -78,19 +76,12 @@ const nearestVariableDeclaratorInit = (node: EsTreeNode): EsTreeNode | null => {
 };
 
 const isDerivedFromHookCall = (binding: BindingInfo): boolean => {
-  if (
-    binding.initializer &&
-    isHookCallExpression(stripParenExpression(binding.initializer))
-  ) {
+  if (binding.initializer && isHookCallExpression(stripParenExpression(binding.initializer))) {
     return true;
   }
   // Destructured hook result: `const { data } = useQuery()`.
-  const declaratorInit = nearestVariableDeclaratorInit(
-    binding.bindingIdentifier
-  );
-  return Boolean(
-    declaratorInit && isHookCallExpression(stripParenExpression(declaratorInit))
-  );
+  const declaratorInit = nearestVariableDeclaratorInit(binding.bindingIdentifier);
+  return Boolean(declaratorInit && isHookCallExpression(stripParenExpression(declaratorInit)));
 };
 
 // True when the binding is a parameter of its scope-owning function
@@ -110,7 +101,7 @@ const isParameterBinding = (binding: BindingInfo): boolean => {
 type SharedArraySource = "prop" | "hook-result";
 
 const resolveSharedArraySource = (
-  rootIdentifier: EsTreeNodeOfType<"Identifier">
+  rootIdentifier: EsTreeNodeOfType<"Identifier">,
 ): SharedArraySource | null => {
   const binding = findVariableInitializer(rootIdentifier, rootIdentifier.name);
   if (!binding) return null;
@@ -119,10 +110,7 @@ const resolveSharedArraySource = (
   // the parent across renders. Plain-function/utility params and the
   // draft/mutation params of `produce`/`useMutation` callbacks are not
   // components, so they never reach this branch.
-  if (
-    isParameterBinding(binding) &&
-    componentOrHookDisplayNameForFunction(binding.scopeOwner)
-  ) {
+  if (isParameterBinding(binding) && componentOrHookDisplayNameForFunction(binding.scopeOwner)) {
     return "prop";
   }
   return null;

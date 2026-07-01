@@ -9,7 +9,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
       `export const cancelIdleCallback = window.cancelIdleCallback ?? clearTimeout;`,
-      prod
+      prod,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -19,7 +19,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
       `const observeResizes = window.ResizeObserver ? a : b;`,
-      prod
+      prod,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -29,7 +29,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
       `const lang = navigator.language;`,
-      prod
+      prod,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -39,7 +39,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
       `const stored = localStorage.getItem('k');`,
-      prod
+      prod,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -49,7 +49,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
       `const mq = matchMedia('(min-width: 600px)');`,
-      prod
+      prod,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -59,7 +59,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
       `const sw = navigator.serviceWorker.controller;`,
-      prod
+      prod,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -69,7 +69,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
       `const tagClicked = () => window.alert('x');`,
-      prod
+      prod,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -79,7 +79,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
       `class Widget { WINDOW_WIDTH = window.innerWidth; }`,
-      prod
+      prod,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -90,7 +90,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
       noUnguardedBrowserGlobalAtModuleScope,
       `let mode;
        if (typeof window !== 'undefined') { mode = window.foo; }`,
-      prod
+      prod,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -100,7 +100,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
       `const ok = typeof window !== 'undefined' && window.matchMedia;`,
-      prod
+      prod,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -110,7 +110,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
       `const isBrowser = typeof window === 'undefined' ? false : true;`,
-      prod
+      prod,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -120,7 +120,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
       `const s = globalThis.localStorage;`,
-      prod
+      prod,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -130,7 +130,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
       `const root = document.getElementById('root');`,
-      prod
+      prod,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -141,7 +141,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
       noUnguardedBrowserGlobalAtModuleScope,
       `import { window } from './mocks';
        const w = window.innerWidth;`,
-      prod
+      prod,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
@@ -151,7 +151,7 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,
       `const lang = navigator.language;`,
-      { filename: "src/setupTests.ts" }
+      { filename: "src/setupTests.ts" },
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);

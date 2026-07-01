@@ -20,17 +20,14 @@ interface IsInsideTryStatementOptions {
 // rather than three near-identical helpers that silently diverge.
 export const isInsideTryStatement = (
   node: EsTreeNode,
-  options?: IsInsideTryStatementOptions
+  options?: IsInsideTryStatementOptions,
 ): boolean => {
   const region = options?.region ?? "any";
   const boundary = options?.boundary ?? null;
   let child: EsTreeNode = node;
   let ancestor: EsTreeNode | null | undefined = node.parent;
   while (ancestor && ancestor !== boundary) {
-    if (
-      isNodeOfType(ancestor, "TryStatement") &&
-      (region === "any" || ancestor.block === child)
-    ) {
+    if (isNodeOfType(ancestor, "TryStatement") && (region === "any" || ancestor.block === child)) {
       return true;
     }
     child = ancestor;

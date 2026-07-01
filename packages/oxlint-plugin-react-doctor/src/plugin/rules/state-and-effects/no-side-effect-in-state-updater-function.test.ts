@@ -13,7 +13,7 @@ describe("no-side-effect-in-state-updater-function", () => {
           onEventUpdate?.(newEvent);
           return newEvent;
         }),
-      );`
+      );`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -26,7 +26,7 @@ describe("no-side-effect-in-state-updater-function", () => {
         const next = toggleRow(prev, rowId);
         trackAnalytics('row_selected', { rowId });
         return next;
-      });`
+      });`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -38,7 +38,7 @@ describe("no-side-effect-in-state-updater-function", () => {
         const updated = prev.filter((s) => s.id !== sessionId);
         onSessionsChange(updated);
         return updated;
-      });`
+      });`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -50,7 +50,7 @@ describe("no-side-effect-in-state-updater-function", () => {
         const next = { ...prev, open: true };
         logEvent('opened');
         return next;
-      });`
+      });`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -63,7 +63,7 @@ describe("no-side-effect-in-state-updater-function", () => {
         next.delete(rowId);
         next.add(newId);
         return next;
-      });`
+      });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -74,7 +74,7 @@ describe("no-side-effect-in-state-updater-function", () => {
       `setItems((prev) => {
         const next = prev.map((item) => ({ ...item, dirty: false }));
         return next;
-      });`
+      });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -85,7 +85,7 @@ describe("no-side-effect-in-state-updater-function", () => {
       `setState((prev) => {
         const match = prev.find((entry) => entry.id === id);
         return match ? applyChange(prev, match) : prev;
-      });`
+      });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -97,7 +97,7 @@ describe("no-side-effect-in-state-updater-function", () => {
         const next = { ...prev };
         setOther(next);
         return next;
-      });`
+      });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -109,16 +109,13 @@ describe("no-side-effect-in-state-updater-function", () => {
         setCountdown((prev) => prev - 1);
         onClose();
         return;
-      }, 1000);`
+      }, 1000);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag a concise-body updater with no interleaved statement", () => {
-    const result = runRule(
-      noSideEffectInStateUpdaterFunction,
-      `setCount((prev) => prev + 1);`
-    );
+    const result = runRule(noSideEffectInStateUpdaterFunction, `setCount((prev) => prev + 1);`);
     expect(result.diagnostics).toHaveLength(0);
   });
 
@@ -131,7 +128,7 @@ describe("no-side-effect-in-state-updater-function", () => {
           const next = compute(prev, value);
           return next;
         });
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -142,7 +139,7 @@ describe("no-side-effect-in-state-updater-function", () => {
       `items.reduce((prev, item) => {
         onChange(item);
         return prev.concat(item);
-      }, []);`
+      }, []);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

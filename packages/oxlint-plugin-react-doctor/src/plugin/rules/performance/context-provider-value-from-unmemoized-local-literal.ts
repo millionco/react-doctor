@@ -37,8 +37,7 @@ const isCreateContextCall = (expression: EsTreeNode): boolean => {
   if (isNodeOfType(callee, "Identifier")) {
     return CONTEXT_MODULES.some(
       (moduleName) =>
-        getImportedNameFromModule(callee, callee.name, moduleName) ===
-        "createContext"
+        getImportedNameFromModule(callee, callee.name, moduleName) === "createContext",
     );
   }
   if (isNodeOfType(callee, "MemberExpression") && !callee.computed) {
@@ -49,11 +48,8 @@ const isCreateContextCall = (expression: EsTreeNode): boolean => {
     if (isCanonicalReactNamespaceName(namespaceIdentifier.name)) return true;
     return CONTEXT_MODULES.some(
       (moduleName) =>
-        getImportedNameFromModule(
-          namespaceIdentifier,
-          namespaceIdentifier.name,
-          moduleName
-        ) !== null
+        getImportedNameFromModule(namespaceIdentifier, namespaceIdentifier.name, moduleName) !==
+        null,
     );
   }
   return false;
@@ -66,14 +62,10 @@ const collectContextBindings = (programRoot: EsTreeNode): Set<string> => {
   if (!isNodeOfType(programRoot, "Program")) return bindings;
   for (const topLevel of programRoot.body ?? []) {
     let declaration: EsTreeNode | null = topLevel;
-    if (
-      isNodeOfType(topLevel, "ExportNamedDeclaration") &&
-      topLevel.declaration
-    ) {
+    if (isNodeOfType(topLevel, "ExportNamedDeclaration") && topLevel.declaration) {
       declaration = topLevel.declaration;
     }
-    if (!declaration || !isNodeOfType(declaration, "VariableDeclaration"))
-      continue;
+    if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) continue;
     for (const declarator of declaration.declarations ?? []) {
       if (!isNodeOfType(declarator, "VariableDeclarator")) continue;
       if (!isNodeOfType(declarator.id, "Identifier")) continue;
@@ -92,7 +84,7 @@ const isLegacyProviderName = (node: EsTreeNode): boolean =>
 
 const isContextShorthandName = (
   node: EsTreeNode,
-  contextBindings: ReadonlySet<string>
+  contextBindings: ReadonlySet<string>,
 ): boolean => {
   if (!isNodeOfType(node, "JSXIdentifier")) return false;
   if (!contextBindings.has(node.name)) return false;
@@ -121,10 +113,7 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         const nameNode = node.name;
-        if (
-          !isLegacyProviderName(nameNode) &&
-          !isContextShorthandName(nameNode, contextBindings)
-        ) {
+        if (!isLegacyProviderName(nameNode) && !isContextShorthandName(nameNode, contextBindings)) {
           return;
         }
         if (!isInsideFunctionScope(node)) return;
@@ -134,11 +123,7 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
           if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;
           if (attribute.name.name !== "value") continue;
           const attributeValue = attribute.value;
-          if (
-            !attributeValue ||
-            !isNodeOfType(attributeValue, "JSXExpressionContainer")
-          )
-            return;
+          if (!attributeValue || !isNodeOfType(attributeValue, "JSXExpressionContainer")) return;
           const inner = stripParenExpression(attributeValue.expression);
           if (!isNodeOfType(inner, "Identifier")) return;
 

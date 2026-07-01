@@ -10,11 +10,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-const REGISTER_EVENT_METHOD_NAMES = new Set([
-  "on",
-  "addEventListener",
-  "addListener",
-]);
+const REGISTER_EVENT_METHOD_NAMES = new Set(["on", "addEventListener", "addListener"]);
 const CLEANUP_ADD_METHOD_NAMES = new Set(["addEventListener", "observe"]);
 const NAMED_REMOVAL_METHOD_NAMES = new Set([
   "off",
@@ -47,16 +43,13 @@ const serializeNode = (node: EsTreeNode | null | undefined): string | null => {
   if (isNodeOfType(node, "ThisExpression")) return "this";
   if (isNodeOfType(node, "MemberExpression") && !node.computed) {
     const object = serializeNode(node.object);
-    if (object === null || !isNodeOfType(node.property, "Identifier"))
-      return null;
+    if (object === null || !isNodeOfType(node.property, "Identifier")) return null;
     return `${object}.${node.property.name}`;
   }
   return null;
 };
 
-const getStringLiteralValue = (
-  node: EsTreeNode | null | undefined
-): string | null => {
+const getStringLiteralValue = (node: EsTreeNode | null | undefined): string | null => {
   if (!node) return null;
   const stripped = stripParenExpression(node);
   return isNodeOfType(stripped, "Literal") && typeof stripped.value === "string"
@@ -90,10 +83,7 @@ const readListenerCall = (node: EsTreeNode): ListenerCall | null => {
 };
 
 const findCleanupFunction = (effectCallback: EsTreeNode): EsTreeNode | null => {
-  if (
-    isFunctionLike(effectCallback) &&
-    !isNodeOfType(effectCallback.body, "BlockStatement")
-  ) {
+  if (isFunctionLike(effectCallback) && !isNodeOfType(effectCallback.body, "BlockStatement")) {
     const concise = stripParenExpression(effectCallback.body);
     return isFunctionLike(concise) ? concise : null;
   }
@@ -109,10 +99,7 @@ const findCleanupFunction = (effectCallback: EsTreeNode): EsTreeNode | null => {
   return cleanup;
 };
 
-const removalCoversRegistration = (
-  removal: ListenerCall,
-  registration: ListenerCall
-): boolean => {
+const removalCoversRegistration = (removal: ListenerCall, registration: ListenerCall): boolean => {
   if (removal.receiverKey !== registration.receiverKey) return false;
   if (
     removal.event !== null &&
@@ -191,15 +178,15 @@ export const noEffectCleanupRemovesListenerSubsetOrAddsListener = defineRule({
       // registered event on the same emitter has no matching removal.
       if (namedRemovals.length > 0 && !hasBulkRemoval) {
         const registrations = setupCalls.filter((call) =>
-          REGISTER_EVENT_METHOD_NAMES.has(call.method)
+          REGISTER_EVENT_METHOD_NAMES.has(call.method),
         );
         const uncovered = registrations.find((registration) => {
           const removalsOnReceiver = namedRemovals.filter(
-            (removal) => removal.receiverKey === registration.receiverKey
+            (removal) => removal.receiverKey === registration.receiverKey,
           );
           if (removalsOnReceiver.length === 0) return false;
           return !removalsOnReceiver.some((removal) =>
-            removalCoversRegistration(removal, registration)
+            removalCoversRegistration(removal, registration),
           );
         });
         if (uncovered) {
@@ -221,7 +208,7 @@ export const noEffectCleanupRemovesListenerSubsetOrAddsListener = defineRule({
             setupCall.method === add.method &&
             setupCall.receiverKey === add.receiverKey &&
             setupCall.event === add.event &&
-            setupCall.handlerKey === add.handlerKey
+            setupCall.handlerKey === add.handlerKey,
         );
         if (!mirrorsSetup) return false;
         const hasRemoval = namedRemovals.some(
@@ -229,7 +216,7 @@ export const noEffectCleanupRemovesListenerSubsetOrAddsListener = defineRule({
             removal.receiverKey === add.receiverKey &&
             (removal.event === add.event ||
               removal.event === null ||
-              removal.handlerKey === add.handlerKey)
+              removal.handlerKey === add.handlerKey),
         );
         return !hasRemoval;
       });

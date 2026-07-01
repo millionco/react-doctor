@@ -11,7 +11,7 @@ describe("effect-observer-needs-disconnect", () => {
         const observer = new ResizeObserver(() => measure());
         observer.observe(el);
       }, []);
-      `
+      `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -25,7 +25,7 @@ describe("effect-observer-needs-disconnect", () => {
         const io = new IntersectionObserver((entries) => onIntersect(entries));
         io.observe(node);
       }, [node]);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -38,7 +38,7 @@ describe("effect-observer-needs-disconnect", () => {
         const mo = new MutationObserver(cb);
         mo.observe(target, { childList: true });
       }, []);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -52,7 +52,7 @@ describe("effect-observer-needs-disconnect", () => {
         observer.observe(el);
         return () => observer.disconnect();
       }, []);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -66,7 +66,7 @@ describe("effect-observer-needs-disconnect", () => {
         resizeObserver.observe(element);
         return () => resizeObserver.unobserve(element);
       }, []);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -84,7 +84,7 @@ describe("effect-observer-needs-disconnect", () => {
         });
         io.observe(node);
       }, []);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -92,7 +92,7 @@ describe("effect-observer-needs-disconnect", () => {
   it("does not flag an observer created at module scope", () => {
     const result = runRule(
       effectObserverNeedsDisconnect,
-      `const observer = new ResizeObserver(() => measure()); observer.observe(el);`
+      `const observer = new ResizeObserver(() => measure()); observer.observe(el);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -104,7 +104,7 @@ describe("effect-observer-needs-disconnect", () => {
       useEffect(() => {
         const observer = new ResizeObserver(() => measure());
       }, []);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -117,7 +117,7 @@ describe("effect-observer-needs-disconnect", () => {
         const thing = new Telescope(cb);
         thing.observe(star);
       }, []);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

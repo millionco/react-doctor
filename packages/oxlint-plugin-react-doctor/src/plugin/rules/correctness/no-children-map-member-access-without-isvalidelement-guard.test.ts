@@ -8,7 +8,7 @@ describe("no-children-map-member-access-without-isvalidelement-guard", () => {
       noChildrenMapMemberAccessWithoutIsvalidelementGuard,
       `React.Children.map(children, (child) => (
         <div className={child.props.className}>{child}</div>
-      ));`
+      ));`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -20,7 +20,7 @@ describe("no-children-map-member-access-without-isvalidelement-guard", () => {
       `React.Children.forEach(children, (child) => {
         const role = child.type.role;
         register(role);
-      });`
+      });`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -30,7 +30,7 @@ describe("no-children-map-member-access-without-isvalidelement-guard", () => {
       noChildrenMapMemberAccessWithoutIsvalidelementGuard,
       `React.Children.toArray(children).map((child) =>
         cloneElement(child, { active: child.props.value === selected })
-      );`
+      );`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -42,7 +42,7 @@ describe("no-children-map-member-access-without-isvalidelement-guard", () => {
         isValidElement(child)
           ? cloneElement(child, { className: child.props.className })
           : child
-      );`
+      );`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -53,7 +53,7 @@ describe("no-children-map-member-access-without-isvalidelement-guard", () => {
       `Children.map(children, (child) => {
         if (typeof child === "string" || typeof child === "number") return child;
         return child.props.className;
-      });`
+      });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -63,7 +63,7 @@ describe("no-children-map-member-access-without-isvalidelement-guard", () => {
       noChildrenMapMemberAccessWithoutIsvalidelementGuard,
       `Children.forEach(children, (child) => {
         if (child.type === Tab) count++;
-      });`
+      });`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -73,7 +73,7 @@ describe("no-children-map-member-access-without-isvalidelement-guard", () => {
       noChildrenMapMemberAccessWithoutIsvalidelementGuard,
       `React.Children.map(children, (child) =>
         isValidElement(child) ? cloneElement(child, { onSelect }) : child
-      );`
+      );`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -81,7 +81,7 @@ describe("no-children-map-member-access-without-isvalidelement-guard", () => {
   it("stays quiet for a bare single-level props read", () => {
     const result = runRule(
       noChildrenMapMemberAccessWithoutIsvalidelementGuard,
-      `Children.map(children, (child) => child.props);`
+      `Children.map(children, (child) => child.props);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -89,7 +89,7 @@ describe("no-children-map-member-access-without-isvalidelement-guard", () => {
   it("stays quiet when the double access uses optional chaining", () => {
     const result = runRule(
       noChildrenMapMemberAccessWithoutIsvalidelementGuard,
-      `React.Children.map(children, (child) => child.props?.className);`
+      `React.Children.map(children, (child) => child.props?.className);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -97,7 +97,7 @@ describe("no-children-map-member-access-without-isvalidelement-guard", () => {
   it("stays quiet for an ordinary array map that is not a Children iteration", () => {
     const result = runRule(
       noChildrenMapMemberAccessWithoutIsvalidelementGuard,
-      `items.map((child) => child.props.className);`
+      `items.map((child) => child.props.className);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

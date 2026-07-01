@@ -18,10 +18,7 @@ const extractKeyIdentifierName = (node: EsTreeNode): string | null => {
 
   if (isNodeOfType(node, "TemplateLiteral")) {
     const expressions = node.expressions ?? [];
-    if (
-      expressions.length === 1 &&
-      isNodeOfType(expressions[0], "Identifier")
-    ) {
+    if (expressions.length === 1 && isNodeOfType(expressions[0], "Identifier")) {
       return expressions[0].name;
     }
     return null;
@@ -51,12 +48,9 @@ const extractKeyIdentifierName = (node: EsTreeNode): string | null => {
 
 // `Array(n)` or `new Array(n)` — returns the length argument node so the
 // caller can suppress the harmless single-element case (`Array(1)`).
-const getArrayConstructorLengthArgument = (
-  node: EsTreeNode
-): EsTreeNode | null => {
+const getArrayConstructorLengthArgument = (node: EsTreeNode): EsTreeNode | null => {
   const isArrayConstructor =
-    (isNodeOfType(node, "CallExpression") ||
-      isNodeOfType(node, "NewExpression")) &&
+    (isNodeOfType(node, "CallExpression") || isNodeOfType(node, "NewExpression")) &&
     isNodeOfType(node.callee, "Identifier") &&
     node.callee.name === "Array";
   if (!isArrayConstructor) return null;
@@ -65,9 +59,7 @@ const getArrayConstructorLengthArgument = (
 
 // Length argument of the `Array(n).fill(...)` / `new Array(n).fill(...)`
 // receiver, or null when the receiver is not that shape.
-const getFillReceiverLengthArgument = (
-  receiver: EsTreeNode
-): EsTreeNode | null => {
+const getFillReceiverLengthArgument = (receiver: EsTreeNode): EsTreeNode | null => {
   if (!isNodeOfType(receiver, "CallExpression")) return null;
   const callee = receiver.callee;
   if (
@@ -84,7 +76,7 @@ const getFillReceiverLengthArgument = (
 // in that callback (not behind an intervening nested function), plus the
 // receiver the `.map` was called on.
 const findEnclosingMapCall = (
-  node: EsTreeNode
+  node: EsTreeNode,
 ): { callback: EsTreeNode; receiver: EsTreeNode } | null => {
   let current = node;
   while (current.parent) {
@@ -114,10 +106,8 @@ export const noFillMapElementAsKey = defineRule({
     "After `.fill(value)` every element is identical, so a lone `.map((index) => …)` binds `index` to that value and gives every child the same key. Add the index as the second parameter: `.map((_, index) => …)`.",
   create: (context: RuleContext) => ({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key")
-        return;
-      if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer"))
-        return;
+      if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key") return;
+      if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
       const keyName = extractKeyIdentifierName(node.value.expression);
       if (!keyName || !INDEX_PARAMETER_NAMES.has(keyName)) return;
@@ -125,23 +115,15 @@ export const noFillMapElementAsKey = defineRule({
       const enclosingMap = findEnclosingMapCall(node);
       if (!enclosingMap) return;
 
-      const parameters = (
-        enclosingMap.callback as EsTreeNodeOfType<"ArrowFunctionExpression">
-      ).params;
+      const parameters = (enclosingMap.callback as EsTreeNodeOfType<"ArrowFunctionExpression">)
+        .params;
       if (parameters.length !== 1) return;
       const soleParameter = parameters[0];
-      if (
-        !isNodeOfType(soleParameter, "Identifier") ||
-        soleParameter.name !== keyName
-      )
-        return;
+      if (!isNodeOfType(soleParameter, "Identifier") || soleParameter.name !== keyName) return;
 
-      const lengthArgument = getFillReceiverLengthArgument(
-        enclosingMap.receiver
-      );
+      const lengthArgument = getFillReceiverLengthArgument(enclosingMap.receiver);
       if (!lengthArgument) return;
-      if (isNodeOfType(lengthArgument, "Literal") && lengthArgument.value === 1)
-        return;
+      if (isNodeOfType(lengthArgument, "Literal") && lengthArgument.value === 1) return;
 
       context.report({
         node,

@@ -13,7 +13,7 @@ describe("mobx-reaction-disposer-discarded", () => {
           reaction(() => this.value, (value) => Storage.local.set("v", value));
         }
       }
-      `
+      `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -29,7 +29,7 @@ describe("mobx-reaction-disposer-discarded", () => {
           autorun(this.loadImages);
         }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -40,7 +40,7 @@ describe("mobx-reaction-disposer-discarded", () => {
       `
       import { reaction as react } from "mobx";
       react(() => this.value, () => {});
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -56,7 +56,7 @@ describe("mobx-reaction-disposer-discarded", () => {
           disposeOnUnmount(this, reaction(() => this.value, () => {}));
         }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -67,7 +67,7 @@ describe("mobx-reaction-disposer-discarded", () => {
       `
       import { reaction } from "mobx";
       const dispose = reaction(() => this.value, () => {});
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -82,7 +82,7 @@ describe("mobx-reaction-disposer-discarded", () => {
           this.disposer = autorun(() => this.value);
         }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -97,7 +97,7 @@ describe("mobx-reaction-disposer-discarded", () => {
           when(() => this.ready, () => this.run());
         }
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -109,7 +109,7 @@ describe("mobx-reaction-disposer-discarded", () => {
       import * as yup from "yup";
       const schema = yup.object({ a: yup.string() });
       schema.when("b", { is: true, then: (s) => s.required() });
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -120,7 +120,7 @@ describe("mobx-reaction-disposer-discarded", () => {
       `
       const io = new IntersectionObserver(cb);
       io.observe(element);
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -131,7 +131,7 @@ describe("mobx-reaction-disposer-discarded", () => {
       `
       const reaction = (fn, effect) => {};
       reaction(() => 1, () => {});
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -142,7 +142,7 @@ describe("mobx-reaction-disposer-discarded", () => {
       `
       import { reaction } from "@storybook/test";
       reaction(() => 1, () => {});
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

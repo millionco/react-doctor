@@ -15,7 +15,7 @@ describe("no-unguarded-ref-current-member-access", () => {
           document.addEventListener('mousedown', onClick);
           return () => document.removeEventListener('mousedown', onClick);
         }, []);
-      }`
+      }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -28,7 +28,7 @@ describe("no-unguarded-ref-current-member-access", () => {
         const inputRef = useRef<HTMLInputElement>(null);
         const handler = () => inputRef.current.focus();
         return handler;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -41,7 +41,7 @@ describe("no-unguarded-ref-current-member-access", () => {
         const content = contentRef.current;
         const isOverflowing = content.scrollHeight > content.clientHeight;
         return isOverflowing;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -53,7 +53,7 @@ describe("no-unguarded-ref-current-member-access", () => {
         const simRef = useRef(new Map());
         simRef.current.clear();
         simRef.current.set(id, node);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -65,7 +65,7 @@ describe("no-unguarded-ref-current-member-access", () => {
         const countRef = useRef(0);
         countRef.current += 1;
         return countRef.current.toFixed(0);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -80,7 +80,7 @@ describe("no-unguarded-ref-current-member-access", () => {
           if (ref.current.contains(event.target)) return;
         };
         return onDown;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -96,7 +96,7 @@ describe("no-unguarded-ref-current-member-access", () => {
           }
         }
         return run;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -110,7 +110,7 @@ describe("no-unguarded-ref-current-member-access", () => {
           if (!ref.current?.contains(event.target)) close();
         };
         return onClick;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -124,7 +124,7 @@ describe("no-unguarded-ref-current-member-access", () => {
           ref?.current && ref.current.focus();
         };
         return setFocus;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -134,7 +134,7 @@ describe("no-unguarded-ref-current-member-access", () => {
       noUnguardedRefCurrentMemberAccess,
       `function C() {
         externalRef.current.focus();
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -146,7 +146,7 @@ describe("no-unguarded-ref-current-member-access", () => {
         const stateRef = useRef(null);
         const total = stateRef.current.count;
         return total;
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -157,7 +157,7 @@ describe("no-unguarded-ref-current-member-access", () => {
       `function C() {
         const timerRef = useRef(null);
         clearTimeout(timerRef.current);
-      }`
+      }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

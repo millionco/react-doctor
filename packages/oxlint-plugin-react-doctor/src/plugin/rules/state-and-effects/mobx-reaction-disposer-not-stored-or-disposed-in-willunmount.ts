@@ -38,11 +38,7 @@ export const mobxReactionDisposerNotStoredOrDisposedInWillunmount = defineRule({
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "Identifier")) return;
-      const importedName = getImportedNameFromModule(
-        node,
-        node.callee.name,
-        "mobx"
-      );
+      const importedName = getImportedNameFromModule(node, node.callee.name, "mobx");
       if (!importedName || !REACTIVE_SUBSCRIPTIONS.has(importedName)) return;
 
       if (!isFieldInitializer(node)) return;

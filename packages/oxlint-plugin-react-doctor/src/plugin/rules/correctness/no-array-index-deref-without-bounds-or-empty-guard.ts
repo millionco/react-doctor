@@ -28,20 +28,14 @@ const isNumericLiteral = (node: EsTreeNode): boolean =>
 // provably-numeric array index (`i - 1`, `n * cols`, `x % len`) — never an
 // object/Record string key. `+` is excluded because it is also string
 // concatenation (`obj[prefix + suffix]`), which is an object-key access.
-const NUMERIC_INDEX_OPERATORS: ReadonlySet<string> = new Set([
-  "-",
-  "*",
-  "/",
-  "%",
-]);
+const NUMERIC_INDEX_OPERATORS: ReadonlySet<string> = new Set(["-", "*", "/", "%"]);
 
 // A computed index that is provably numeric: an arithmetic expression whose
 // top operator coerces to number. This is the only AST-only signal (no type
 // checker) that separates a real array index from a dynamic object-key read
 // (`acc[category]`, `styles[breakpoint]`), which is a different concern.
 const isArithmeticNumericIndex = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "BinaryExpression") &&
-  NUMERIC_INDEX_OPERATORS.has(node.operator);
+  isNodeOfType(node, "BinaryExpression") && NUMERIC_INDEX_OPERATORS.has(node.operator);
 
 // A call whose method is `.exec(...)` / `.match(...)` — the result is
 // `null` on no match and each capture group can be undefined.
@@ -96,11 +90,8 @@ const isInsideTouchEndHandler = (node: EsTreeNode): boolean => {
     return (
       Boolean(eventNameArgument) &&
       isNodeOfType(eventNameArgument as EsTreeNode, "Literal") &&
-      typeof (eventNameArgument as EsTreeNodeOfType<"Literal">).value ===
-        "string" &&
-      TOUCH_END_EVENT_NAMES.has(
-        String((eventNameArgument as EsTreeNodeOfType<"Literal">).value)
-      )
+      typeof (eventNameArgument as EsTreeNodeOfType<"Literal">).value === "string" &&
+      TOUCH_END_EVENT_NAMES.has(String((eventNameArgument as EsTreeNodeOfType<"Literal">).value))
     );
   }
 
@@ -111,16 +102,11 @@ const isInsideTouchEndHandler = (node: EsTreeNode): boolean => {
     const attributeName = parent.parent.name;
     return (
       isNodeOfType(attributeName as EsTreeNode, "JSXIdentifier") &&
-      TOUCH_END_HANDLER_PROP_PATTERN.test(
-        (attributeName as EsTreeNodeOfType<"JSXIdentifier">).name
-      )
+      TOUCH_END_HANDLER_PROP_PATTERN.test((attributeName as EsTreeNodeOfType<"JSXIdentifier">).name)
     );
   }
 
-  if (
-    isNodeOfType(parent, "Property") &&
-    isNodeOfType(parent.key, "Identifier")
-  ) {
+  if (isNodeOfType(parent, "Property") && isNodeOfType(parent.key, "Identifier")) {
     return TOUCH_END_HANDLER_PROP_PATTERN.test(parent.key.name);
   }
 
@@ -139,10 +125,7 @@ const isFunctionParameter = (bindingIdentifier: EsTreeNode): boolean => {
   let cursor: EsTreeNode = bindingIdentifier;
   let parent = cursor.parent;
   while (parent) {
-    if (
-      isNodeOfType(parent, "VariableDeclarator") ||
-      isNodeOfType(parent, "ImportSpecifier")
-    ) {
+    if (isNodeOfType(parent, "VariableDeclarator") || isNodeOfType(parent, "ImportSpecifier")) {
       return false;
     }
     if (
@@ -169,10 +152,7 @@ const baseIsRuntimeSourceParameter = (base: EsTreeNode): boolean => {
 
 // Any length/`Array.isArray`/optional-chain reference to `baseName`
 // inside the enclosing function counts as a dominating guard.
-const enclosingFunctionGuardsBase = (
-  node: EsTreeNode,
-  baseName: string
-): boolean => {
+const enclosingFunctionGuardsBase = (node: EsTreeNode, baseName: string): boolean => {
   const enclosingFunction = findNearestFunction(node);
   if (!enclosingFunction) return false;
   let guarded = false;
@@ -187,10 +167,7 @@ const enclosingFunctionGuardsBase = (
         guarded = true;
         return false;
       }
-      if (
-        isNodeOfType(child.property, "Identifier") &&
-        child.property.name === "length"
-      ) {
+      if (isNodeOfType(child.property, "Identifier") && child.property.name === "length") {
         guarded = true;
         return false;
       }
@@ -233,8 +210,7 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
     "An array index read is typed `T` but is `T | undefined` at runtime, so dereferencing it on an empty list, a non-matching regex, or a short split throws. Add a length/emptiness check or optional chaining before the access.",
   create: (context: RuleContext): RuleVisitors => {
     const filename = context.filename ?? "";
-    if (NON_SOURCE_FILENAME_MARKERS.some((marker) => filename.includes(marker)))
-      return {};
+    if (NON_SOURCE_FILENAME_MARKERS.some((marker) => filename.includes(marker))) return {};
 
     return {
       MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
@@ -242,8 +218,7 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
         if (node.optional) return;
 
         const indexRead = stripParenExpression(node.object as EsTreeNode);
-        if (!isNodeOfType(indexRead, "MemberExpression") || !indexRead.computed)
-          return;
+        if (!isNodeOfType(indexRead, "MemberExpression") || !indexRead.computed) return;
         // `base?.[i]` guards the base being nullish already.
         if (indexRead.optional) return;
 
@@ -278,10 +253,7 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
         // (`obj[key]`, `acc[category]`) is indistinguishable from a dynamic
         // object-key read without a type checker, and empirically those are
         // overwhelmingly Record accesses, not array indexing.
-        if (
-          isArithmeticNumericIndex(index) &&
-          baseIsRuntimeSourceParameter(base)
-        ) {
+        if (isArithmeticNumericIndex(index) && baseIsRuntimeSourceParameter(base)) {
           const baseName = (base as EsTreeNodeOfType<"Identifier">).name;
           if (!enclosingFunctionGuardsBase(node, baseName)) {
             context.report({ node, message: MESSAGE });

@@ -20,7 +20,7 @@ describe("no-cleartimeout-stored-ref-without-nulling", () => {
           timeout.current = setTimeout(() => { setShow(true); }, delay);
         };
         return null;
-      };`
+      };`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -39,7 +39,7 @@ describe("no-cleartimeout-stored-ref-without-nulling", () => {
           openTimerRef.current = setTimeout(open, delay);
         };
         return null;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -57,7 +57,7 @@ describe("no-cleartimeout-stored-ref-without-nulling", () => {
           timer.current = window.setTimeout(() => setIdle(true), timeout);
         };
         return null;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -72,7 +72,7 @@ describe("no-cleartimeout-stored-ref-without-nulling", () => {
           timeoutRef.current = setTimeout(() => fn(...args), wait);
         };
         return debounced;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -86,7 +86,7 @@ describe("no-cleartimeout-stored-ref-without-nulling", () => {
           clearTimeout(timeoutRef.current);
         };
         return cleanup;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -107,7 +107,7 @@ describe("no-cleartimeout-stored-ref-without-nulling", () => {
           t.current = setTimeout(() => setShow(true), 100);
         };
         return null;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -123,7 +123,7 @@ describe("no-cleartimeout-stored-ref-without-nulling", () => {
           t.current = setTimeout(() => { setShow(true); t.current = null; }, 100);
         };
         return null;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -133,7 +133,7 @@ describe("no-cleartimeout-stored-ref-without-nulling", () => {
       noCleartimeoutStoredRefWithoutNulling,
       `const hide = () => {
         clearTimeout(timer);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -148,7 +148,7 @@ describe("no-cleartimeout-stored-ref-without-nulling", () => {
           if (timeout.current) return;
           timeout.current = setTimeout(() => setShow(true), 100);
         };
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -18,7 +18,7 @@ describe("effect-raf-loop-needs-cancel", () => {
         }, []);
         return null;
       }
-      `
+      `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -37,7 +37,7 @@ describe("effect-raf-loop-needs-cancel", () => {
         }, []);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -58,7 +58,7 @@ describe("effect-raf-loop-needs-cancel", () => {
         }, []);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -73,7 +73,7 @@ describe("effect-raf-loop-needs-cancel", () => {
         }, []);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -95,7 +95,7 @@ describe("effect-raf-loop-needs-cancel", () => {
         }, []);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -121,7 +121,7 @@ describe("effect-raf-loop-needs-cancel", () => {
         }, []);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -137,7 +137,7 @@ describe("effect-raf-loop-needs-cancel", () => {
         }, []);
         return null;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

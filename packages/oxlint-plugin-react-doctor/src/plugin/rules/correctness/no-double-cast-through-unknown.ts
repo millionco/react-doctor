@@ -11,10 +11,7 @@ const isCastNode = (node: EsTreeNode): boolean =>
 // The value being asserted, when `node` is a cast. Both `as` and the
 // `<T>` assertion forms carry `.expression`.
 const getCastExpression = (node: EsTreeNode): EsTreeNode | null => {
-  if (
-    isNodeOfType(node, "TSAsExpression") ||
-    isNodeOfType(node, "TSTypeAssertion")
-  ) {
+  if (isNodeOfType(node, "TSAsExpression") || isNodeOfType(node, "TSTypeAssertion")) {
     return node.expression as EsTreeNode;
   }
   return null;
@@ -23,17 +20,11 @@ const getCastExpression = (node: EsTreeNode): EsTreeNode | null => {
 // The launder-target types: casting THROUGH `unknown`/`any` erases the
 // source type so any following `as T` compiles unchecked.
 const castTargetIsUnknownOrAny = (node: EsTreeNode): boolean => {
-  if (
-    !isNodeOfType(node, "TSAsExpression") &&
-    !isNodeOfType(node, "TSTypeAssertion")
-  ) {
+  if (!isNodeOfType(node, "TSAsExpression") && !isNodeOfType(node, "TSTypeAssertion")) {
     return false;
   }
   const target = node.typeAnnotation as EsTreeNode | undefined;
-  return Boolean(
-    target &&
-      (target.type === "TSUnknownKeyword" || target.type === "TSAnyKeyword")
-  );
+  return Boolean(target && (target.type === "TSUnknownKeyword" || target.type === "TSAnyKeyword"));
 };
 
 // Flags a double type assertion `expr as unknown as T` / `expr as any as T`

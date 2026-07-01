@@ -11,34 +11,21 @@ import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 // mutation signature, so their presence identifies a mutation result even
 // through custom hooks (`useUploadEvent`, `useListAvailableLocales`) and
 // `useMutation as useGetXxx` aliases.
-const isMutateKey = (name: string): boolean =>
-  name === "mutate" || name === "mutateAsync";
+const isMutateKey = (name: string): boolean => name === "mutate" || name === "mutateAsync";
 
 // Reading only an acknowledgement field off the response (a genuine write
 // confirming its result) is NOT a read-shaped query, so these never count
 // as consuming the response body.
-const ACK_FIELD_NAMES = new Set([
-  "success",
-  "error",
-  "errors",
-  "ok",
-  "message",
-  "status",
-  "code",
-]);
+const ACK_FIELD_NAMES = new Set(["success", "error", "errors", "ok", "message", "status", "code"]);
 
 const findPatternPropertyBinding = (
   pattern: EsTreeNode,
-  keyPredicate: (name: string) => boolean
+  keyPredicate: (name: string) => boolean,
 ): EsTreeNode | null => {
   if (!isNodeOfType(pattern, "ObjectPattern")) return null;
   for (const property of pattern.properties) {
     if (!isNodeOfType(property, "Property") || property.computed) continue;
-    if (
-      !isNodeOfType(property.key, "Identifier") ||
-      !keyPredicate(property.key.name)
-    )
-      continue;
+    if (!isNodeOfType(property.key, "Identifier") || !keyPredicate(property.key.name)) continue;
     if (isNodeOfType(property.value, "Identifier")) return property.value;
   }
   return null;
@@ -50,10 +37,7 @@ const findPatternPropertyBinding = (
 const isDestructureBindingPosition = (identifier: EsTreeNode): boolean => {
   const parent = identifier.parent;
   if (!parent || !isNodeOfType(parent, "Property")) return false;
-  return (
-    Boolean(parent.parent) &&
-    isNodeOfType(parent.parent as EsTreeNode, "ObjectPattern")
-  );
+  return Boolean(parent.parent) && isNodeOfType(parent.parent as EsTreeNode, "ObjectPattern");
 };
 
 const isAckMemberRead = (identifier: EsTreeNode): boolean => {
@@ -63,15 +47,10 @@ const isAckMemberRead = (identifier: EsTreeNode): boolean => {
     isNodeOfType(parent as EsTreeNode, "MemberExpression") &&
     (parent as EsTreeNodeOfType<"MemberExpression">).object === identifier &&
     !(parent as EsTreeNodeOfType<"MemberExpression">).computed &&
-    isNodeOfType(
-      (parent as EsTreeNodeOfType<"MemberExpression">).property,
-      "Identifier"
-    ) &&
+    isNodeOfType((parent as EsTreeNodeOfType<"MemberExpression">).property, "Identifier") &&
     ACK_FIELD_NAMES.has(
-      (
-        (parent as EsTreeNodeOfType<"MemberExpression">)
-          .property as EsTreeNodeOfType<"Identifier">
-      ).name
+      ((parent as EsTreeNodeOfType<"MemberExpression">).property as EsTreeNodeOfType<"Identifier">)
+        .name,
     )
   );
 };
@@ -84,7 +63,7 @@ const symbolHasConsumerRead = (symbol: SymbolDescriptor): boolean =>
     (reference) =>
       reference.flag !== "write" &&
       !isDestructureBindingPosition(reference.identifier) &&
-      !isAckMemberRead(reference.identifier)
+      !isAckMemberRead(reference.identifier),
   );
 
 const isInsideEffectCallback = (node: EsTreeNode): boolean => {
@@ -127,11 +106,7 @@ export const queryNoMutationInEffectAsRead = defineRule({
         mutateCalledInEffect = true;
 
         const awaitExpression = callNode.parent;
-        if (
-          !awaitExpression ||
-          !isNodeOfType(awaitExpression, "AwaitExpression")
-        )
-          continue;
+        if (!awaitExpression || !isNodeOfType(awaitExpression, "AwaitExpression")) continue;
         const declarator = awaitExpression.parent;
         if (
           declarator &&
@@ -139,22 +114,14 @@ export const queryNoMutationInEffectAsRead = defineRule({
           isNodeOfType(declarator.id, "Identifier")
         ) {
           const resultSymbol = context.scopes.symbolFor(declarator.id);
-          if (resultSymbol && symbolHasConsumerRead(resultSymbol))
-            awaitedResultConsumed = true;
+          if (resultSymbol && symbolHasConsumerRead(resultSymbol)) awaitedResultConsumed = true;
         }
       }
       if (!mutateCalledInEffect) return;
 
-      const dataBinding = findPatternPropertyBinding(
-        node.id,
-        (name) => name === "data"
-      );
-      const dataSymbol = dataBinding
-        ? context.scopes.symbolFor(dataBinding)
-        : null;
-      const dataConsumed = Boolean(
-        dataSymbol && symbolHasConsumerRead(dataSymbol)
-      );
+      const dataBinding = findPatternPropertyBinding(node.id, (name) => name === "data");
+      const dataSymbol = dataBinding ? context.scopes.symbolFor(dataBinding) : null;
+      const dataConsumed = Boolean(dataSymbol && symbolHasConsumerRead(dataSymbol));
 
       if (!dataConsumed && !awaitedResultConsumed) return;
 

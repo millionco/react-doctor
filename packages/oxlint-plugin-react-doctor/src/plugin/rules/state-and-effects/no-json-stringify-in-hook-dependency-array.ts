@@ -19,8 +19,7 @@ const DEPENDENCY_ARRAY_HOOK_NAMES = new Set([
 const isJsonStringifyCall = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
   const callee = node.callee;
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed)
-    return false;
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
   return (
     isNodeOfType(callee.object, "Identifier") &&
     callee.object.name === "JSON" &&

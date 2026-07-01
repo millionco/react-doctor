@@ -26,8 +26,7 @@ export const noIconBarrelNamedImport = defineRule({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.importKind === "type") return;
       const source = node.source?.value;
-      if (typeof source !== "string" || !ICON_BARREL_PACKAGES.has(source))
-        return;
+      if (typeof source !== "string" || !ICON_BARREL_PACKAGES.has(source)) return;
 
       const runtimeNamedIcons: string[] = [];
       let hasNamespaceImport = false;
@@ -41,10 +40,7 @@ export const noIconBarrelNamedImport = defineRule({
         const imported = specifier.imported;
         if (isNodeOfType(imported, "Identifier")) {
           runtimeNamedIcons.push(imported.name);
-        } else if (
-          isNodeOfType(imported, "Literal") &&
-          typeof imported.value === "string"
-        ) {
+        } else if (isNodeOfType(imported, "Literal") && typeof imported.value === "string") {
           runtimeNamedIcons.push(imported.value);
         }
       }

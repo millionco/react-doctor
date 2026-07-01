@@ -42,15 +42,11 @@ const unwrapParenthesizedType = (typeNode: EsTreeNode): EsTreeNode => {
 const functionTypeCanReturnCleanup = (typeNode: EsTreeNode): boolean => {
   if (!isNodeOfType(typeNode, "TSFunctionType")) return false;
   const returnAnnotation = typeNode.returnType;
-  if (!returnAnnotation || !isNodeOfType(returnAnnotation, "TSTypeAnnotation"))
-    return false;
+  if (!returnAnnotation || !isNodeOfType(returnAnnotation, "TSTypeAnnotation")) return false;
   const returnType = returnAnnotation.typeAnnotation as EsTreeNode;
   if (!isNodeOfType(returnType, "TSUnionType")) return false;
   return (returnType.types ?? []).some((member) =>
-    isNodeOfType(
-      unwrapParenthesizedType(member as EsTreeNode),
-      "TSFunctionType"
-    )
+    isNodeOfType(unwrapParenthesizedType(member as EsTreeNode), "TSFunctionType"),
   );
 };
 
@@ -70,29 +66,20 @@ const parameterIsEffectCallback = (parameter: EsTreeNode): boolean => {
 
 // True when the wrapper binding is annotated `typeof useEffect` /
 // `typeof useLayoutEffect`, so its first parameter is the EffectCallback.
-const wrapperBindingIsTypedAsEffectHook = (
-  hookFunction: EsTreeNode
-): boolean => {
+const wrapperBindingIsTypedAsEffectHook = (hookFunction: EsTreeNode): boolean => {
   const declarator = hookFunction.parent;
-  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator"))
-    return false;
+  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
   if (!isNodeOfType(declarator.id, "Identifier")) return false;
   const annotation = declarator.id.typeAnnotation;
-  if (!annotation || !isNodeOfType(annotation, "TSTypeAnnotation"))
-    return false;
+  if (!annotation || !isNodeOfType(annotation, "TSTypeAnnotation")) return false;
   const query = annotation.typeAnnotation as EsTreeNode;
   if (!isNodeOfType(query, "TSTypeQuery")) return false;
-  return (
-    isNodeOfType(query.exprName, "Identifier") &&
-    EFFECT_HOOK_NAMES.has(query.exprName.name)
-  );
+  return isNodeOfType(query.exprName, "Identifier") && EFFECT_HOOK_NAMES.has(query.exprName.name);
 };
 
 // The name of the forwarded EffectCallback parameter of a custom hook,
 // or null when no parameter is a resolvable EffectCallback.
-const forwardedEffectCallbackParameterName = (
-  hookFunction: EsTreeNode
-): string | null => {
+const forwardedEffectCallbackParameterName = (hookFunction: EsTreeNode): string | null => {
   if (!isFunctionLike(hookFunction)) return null;
   const params = hookFunction.params ?? [];
   if (wrapperBindingIsTypedAsEffectHook(hookFunction)) {
@@ -112,10 +99,7 @@ const forwardedEffectCallbackParameterName = (
 // The bare `fn()` expression statement inside `effectBody` that invokes
 // `callbackName` without returning it, or null. Nested functions are
 // pruned; `return fn()` is a ReturnStatement and never matches.
-const findBareForwardedCall = (
-  effectBody: EsTreeNode,
-  callbackName: string
-): EsTreeNode | null => {
+const findBareForwardedCall = (effectBody: EsTreeNode, callbackName: string): EsTreeNode | null => {
   let bareCall: EsTreeNode | null = null;
   walkAst(effectBody, (child) => {
     if (bareCall) return false;

@@ -6,7 +6,7 @@ describe("no-impure-call-at-module-scope", () => {
   it("flags Math.random() sampling at module scope (retailer-visitor shape)", () => {
     const result = runRule(
       noImpureCallAtModuleScope,
-      `const SHOULD_TRACK = Math.random() * 100 < SAMPLE_RATE;`
+      `const SHOULD_TRACK = Math.random() * 100 < SAMPLE_RATE;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -16,33 +16,24 @@ describe("no-impure-call-at-module-scope", () => {
   it("flags new Date().getTimezoneOffset() date math at module scope", () => {
     const result = runRule(
       noImpureCallAtModuleScope,
-      `const USER_TIMEZONE_OFFSET_IN_MILLIS = new Date().getTimezoneOffset() * 60000;`
+      `const USER_TIMEZONE_OFFSET_IN_MILLIS = new Date().getTimezoneOffset() * 60000;`,
     );
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("new Date()");
   });
 
   it("flags a bare new Date() constant at module scope", () => {
-    const result = runRule(
-      noImpureCallAtModuleScope,
-      `const CURRENT_TIMESTAMP = new Date();`
-    );
+    const result = runRule(noImpureCallAtModuleScope, `const CURRENT_TIMESTAMP = new Date();`);
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags Date.now() at module scope", () => {
-    const result = runRule(
-      noImpureCallAtModuleScope,
-      `const RENDERED = Date.now();`
-    );
+    const result = runRule(noImpureCallAtModuleScope, `const RENDERED = Date.now();`);
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags performance.now() at module scope", () => {
-    const result = runRule(
-      noImpureCallAtModuleScope,
-      `const MARK = performance.now();`
-    );
+    const result = runRule(noImpureCallAtModuleScope, `const MARK = performance.now();`);
     expect(result.diagnostics).toHaveLength(1);
   });
 
@@ -53,16 +44,13 @@ describe("no-impure-call-at-module-scope", () => {
       class Sampler {
         static sample = Math.random();
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags an exported module-scope constant", () => {
-    const result = runRule(
-      noImpureCallAtModuleScope,
-      `export const RATE = Math.random();`
-    );
+    const result = runRule(noImpureCallAtModuleScope, `export const RATE = Math.random();`);
     expect(result.diagnostics).toHaveLength(1);
   });
 
@@ -74,7 +62,7 @@ describe("no-impure-call-at-module-scope", () => {
         const value = Math.random();
         return value;
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -87,32 +75,23 @@ describe("no-impure-call-at-module-scope", () => {
         const now = Date.now();
         return null;
       };
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag a lazy getter arrow", () => {
-    const result = runRule(
-      noImpureCallAtModuleScope,
-      `const getNow = () => Date.now();`
-    );
+    const result = runRule(noImpureCallAtModuleScope, `const getNow = () => Date.now();`);
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag new Date(timestamp) with an argument", () => {
-    const result = runRule(
-      noImpureCallAtModuleScope,
-      `const AT = new Date(1700000000000);`
-    );
+    const result = runRule(noImpureCallAtModuleScope, `const AT = new Date(1700000000000);`);
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag crypto.randomUUID() (dropped per revision)", () => {
-    const result = runRule(
-      noImpureCallAtModuleScope,
-      `const INSTANCE = crypto.randomUUID();`
-    );
+    const result = runRule(noImpureCallAtModuleScope, `const INSTANCE = crypto.randomUUID();`);
     expect(result.diagnostics).toHaveLength(0);
   });
 
@@ -123,16 +102,13 @@ describe("no-impure-call-at-module-scope", () => {
       class Sampler {
         sample = Math.random();
       }
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag a per-process-named binding (uptime/instance id)", () => {
-    const result = runRule(
-      noImpureCallAtModuleScope,
-      `const bootTime = Date.now();`
-    );
+    const result = runRule(noImpureCallAtModuleScope, `const bootTime = Date.now();`);
     expect(result.diagnostics).toHaveLength(0);
   });
 
@@ -142,19 +118,15 @@ describe("no-impure-call-at-module-scope", () => {
       `
       const Date = FakeDate;
       const NOW = new Date();
-      `
+      `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag inside test/story files (test-noise)", () => {
-    const result = runRule(
-      noImpureCallAtModuleScope,
-      `const NOW = Date.now();`,
-      {
-        filename: "src/widget.stories.tsx",
-      }
-    );
+    const result = runRule(noImpureCallAtModuleScope, `const NOW = Date.now();`, {
+      filename: "src/widget.stories.tsx",
+    });
     expect(result.diagnostics).toHaveLength(0);
   });
 });

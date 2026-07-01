@@ -11,7 +11,7 @@ describe("no-window-size-in-render", () => {
         const width = window.innerWidth - 32;
         return <img width={width} />;
       };
-    `
+    `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -25,7 +25,7 @@ describe("no-window-size-in-render", () => {
         const tall = window.innerHeight > 800;
         return tall ? <Big /> : <Small />;
       };
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -38,7 +38,7 @@ describe("no-window-size-in-render", () => {
         const cols = window.innerWidth > 1024 ? 3 : 1;
         return cols;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -51,7 +51,7 @@ describe("no-window-size-in-render", () => {
         const w = window.screen.width;
         return <div data-w={w} />;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -63,7 +63,7 @@ describe("no-window-size-in-render", () => {
       const Grid = ({ items }) => (
         <Row>{items.map((i) => <Cell key={i.id} w={window.innerWidth / 2} />)}</Row>
       );
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -76,7 +76,7 @@ describe("no-window-size-in-render", () => {
         const w = globalThis.innerWidth;
         return <img width={w} />;
       };
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -95,7 +95,7 @@ describe("no-window-size-in-render", () => {
         }, []);
         return <div style={{ width: w }} />;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -108,7 +108,7 @@ describe("no-window-size-in-render", () => {
         const onClick = () => console.log(window.innerWidth);
         return <button onClick={onClick} />;
       };
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -123,7 +123,7 @@ describe("no-window-size-in-render", () => {
         const measure = useCallback(() => window.innerHeight, []);
         return <div ref={ref} onScroll={measure} />;
       };
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -134,7 +134,7 @@ describe("no-window-size-in-render", () => {
       `
       const INITIAL = typeof window !== 'undefined' ? window.innerWidth : 0;
       const Comp = () => <div data-w={INITIAL} />;
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -146,7 +146,7 @@ describe("no-window-size-in-render", () => {
       function calc() {
         return window.innerWidth;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -160,7 +160,7 @@ describe("no-window-size-in-render", () => {
         const w = window.innerWidth;
         return <div data-w={w} />;
       };
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -174,7 +174,7 @@ describe("no-window-size-in-render", () => {
         const { width } = useViewport();
         return <div data-w={width} />;
       };
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -187,7 +187,7 @@ describe("no-window-size-in-render", () => {
         const w = props.width ?? 100;
         return <div style={{ width: w }} />;
       };
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

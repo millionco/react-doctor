@@ -7,20 +7,13 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
-const STYLED_TAG_ROOT_NAMES = new Set([
-  "styled",
-  "css",
-  "keyframes",
-  "createGlobalStyle",
-]);
+const STYLED_TAG_ROOT_NAMES = new Set(["styled", "css", "keyframes", "createGlobalStyle"]);
 const STYLED_SOURCE_PATTERN = /styled|emotion/i;
 
 // Peels `styled.div`, `styled(Component)`, `styled.div.attrs({})`, `css`,
 // etc. down to the leading identifier so we can confirm it is the
 // styled-components/emotion API and not a same-named local.
-const tagRootIdentifier = (
-  tag: EsTreeNode
-): EsTreeNodeOfType<"Identifier"> | null => {
+const tagRootIdentifier = (tag: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
   let current: EsTreeNode = tag;
   for (;;) {
     if (isNodeOfType(current, "Identifier")) return current;
@@ -45,9 +38,7 @@ const isStyledTag = (tag: EsTreeNode): boolean => {
 
 // Identifier references that are not member-property names or object
 // keys — i.e. the actual value references the arrow body reads.
-const collectReferenceIdentifiers = (
-  body: EsTreeNode
-): EsTreeNodeOfType<"Identifier">[] => {
+const collectReferenceIdentifiers = (body: EsTreeNode): EsTreeNodeOfType<"Identifier">[] => {
   const references: EsTreeNodeOfType<"Identifier">[] = [];
   walkAst(body, (child) => {
     if (!isNodeOfType(child, "Identifier")) return;
@@ -60,12 +51,7 @@ const collectReferenceIdentifiers = (
     ) {
       return;
     }
-    if (
-      parent &&
-      isNodeOfType(parent, "Property") &&
-      parent.key === child &&
-      !parent.computed
-    ) {
+    if (parent && isNodeOfType(parent, "Property") && parent.key === child && !parent.computed) {
       return;
     }
     references.push(child);
@@ -77,15 +63,10 @@ const collectReferenceIdentifiers = (
 // and import-bound (or unresolved/global) bindings — never a same-file
 // module const/let, which is the lazy/TDZ/circular-import deferral idiom
 // that must NOT be inlined.
-const isStaticInlinableBody = (
-  arrow: EsTreeNodeOfType<"ArrowFunctionExpression">
-): boolean => {
+const isStaticInlinableBody = (arrow: EsTreeNodeOfType<"ArrowFunctionExpression">): boolean => {
   let containsCall = false;
   walkAst(arrow.body, (child) => {
-    if (
-      isNodeOfType(child, "CallExpression") ||
-      isNodeOfType(child, "NewExpression")
-    ) {
+    if (isNodeOfType(child, "CallExpression") || isNodeOfType(child, "NewExpression")) {
       containsCall = true;
       return false;
     }
@@ -97,8 +78,7 @@ const isStaticInlinableBody = (
     // at module-init time in the styled block regardless).
     if (getImportSourceForName(reference, reference.name) !== null) continue;
     // A same-file variable declaration is the deferral case — keep quiet.
-    if (findVariableInitializer(reference, reference.name) !== null)
-      return false;
+    if (findVariableInitializer(reference, reference.name) !== null) return false;
   }
   return true;
 };
@@ -117,9 +97,7 @@ export const styledStaticZeroArgArrowInterpolation = defineRule({
   recommendation:
     "Inline the static value instead of wrapping it in a `() => …` arrow so styled-components does not re-run and re-inject it on every render.",
   create: (context: RuleContext) => ({
-    TaggedTemplateExpression(
-      node: EsTreeNodeOfType<"TaggedTemplateExpression">
-    ) {
+    TaggedTemplateExpression(node: EsTreeNodeOfType<"TaggedTemplateExpression">) {
       if (!isStyledTag(node.tag)) return;
       for (const expression of node.quasi.expressions ?? []) {
         if (!isNodeOfType(expression, "ArrowFunctionExpression")) continue;

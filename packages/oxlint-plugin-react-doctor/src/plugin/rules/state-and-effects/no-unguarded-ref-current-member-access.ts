@@ -41,9 +41,7 @@ const HAZARD_MEMBER_NAMES = new Set([
   "setSelectionRange",
 ]);
 
-const isNullOrUndefinedLiteral = (
-  node: EsTreeNode | null | undefined
-): boolean => {
+const isNullOrUndefinedLiteral = (node: EsTreeNode | null | undefined): boolean => {
   if (!node) return false;
   if (isNodeOfType(node, "Literal") && node.value === null) return true;
   return isNodeOfType(node, "Identifier") && node.name === "undefined";
@@ -52,21 +50,16 @@ const isNullOrUndefinedLiteral = (
 // The ref binding is null-or-absent-initialized: `useRef(null)`,
 // `useRef()`, `useRef<T>(null)`, or `createRef()`. A non-null initializer
 // (`useRef(new Map())`, `useRef(0)`) is provably never null and is skipped.
-const isNullOrAbsentRefBinding = (
-  referenceNode: EsTreeNode,
-  name: string
-): boolean => {
+const isNullOrAbsentRefBinding = (referenceNode: EsTreeNode, name: string): boolean => {
   const binding = findVariableInitializer(referenceNode, name);
   const initializer = binding?.initializer;
-  if (!initializer || !isNodeOfType(initializer, "CallExpression"))
-    return false;
+  if (!initializer || !isNodeOfType(initializer, "CallExpression")) return false;
   const callee = initializer.callee;
   const calleeName = isNodeOfType(callee, "Identifier")
     ? callee.name
-    : isNodeOfType(callee, "MemberExpression") &&
-      isNodeOfType(callee.property, "Identifier")
-    ? callee.property.name
-    : null;
+    : isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")
+      ? callee.property.name
+      : null;
   if (calleeName === "createRef") return true;
   if (calleeName !== "useRef") return false;
   const firstArgument = initializer.arguments?.[0];
@@ -84,12 +77,9 @@ const isCurrentMemberOf = (node: EsTreeNode, refName: string): boolean =>
 // An optional member (`ref?.current`) is wrapped in a ChainExpression, so
 // its immediate parent is the chain node, not the enclosing guard. Skip
 // past chain wrappers to reach the operator that actually consumes it.
-const getEffectiveParent = (
-  target: EsTreeNode
-): EsTreeNode | null | undefined => {
+const getEffectiveParent = (target: EsTreeNode): EsTreeNode | null | undefined => {
   let parent = target.parent;
-  while (parent && isNodeOfType(parent, "ChainExpression"))
-    parent = parent.parent;
+  while (parent && isNodeOfType(parent, "ChainExpression")) parent = parent.parent;
   return parent;
 };
 
@@ -99,8 +89,7 @@ const getEffectiveParent = (
 const isGuardedUse = (target: EsTreeNode): boolean => {
   const parent = getEffectiveParent(target);
   if (!parent) return false;
-  if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!")
-    return true;
+  if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!") return true;
   if (isNodeOfType(parent, "LogicalExpression")) return true;
   if (
     (isNodeOfType(parent, "IfStatement") ||
@@ -118,11 +107,7 @@ const isGuardedUse = (target: EsTreeNode): boolean => {
       if (isNullOrUndefinedLiteral(other as EsTreeNode)) return true;
     }
   }
-  if (
-    isNodeOfType(parent, "MemberExpression") &&
-    parent.object === target &&
-    parent.optional
-  ) {
+  if (isNodeOfType(parent, "MemberExpression") && parent.object === target && parent.optional) {
     return true;
   }
   return false;
@@ -141,7 +126,7 @@ const getGuardScanRoot = (node: EsTreeNode): EsTreeNode => {
 
 const scanRootGuardsTarget = (
   scanRoot: EsTreeNode,
-  matchesTarget: (node: EsTreeNode) => boolean
+  matchesTarget: (node: EsTreeNode) => boolean,
 ): boolean => {
   let guarded = false;
   walkAst(scanRoot, (child: EsTreeNode) => {
@@ -160,15 +145,11 @@ const isHazardousMemberOrCall = (accessObject: EsTreeNode): boolean => {
   ) {
     return true;
   }
-  if (
-    isNodeOfType(parent, "MemberExpression") &&
-    parent.object === accessObject
-  ) {
+  if (isNodeOfType(parent, "MemberExpression") && parent.object === accessObject) {
     if (parent.optional) return false;
     if (parent.computed) return true;
     return (
-      isNodeOfType(parent.property, "Identifier") &&
-      HAZARD_MEMBER_NAMES.has(parent.property.name)
+      isNodeOfType(parent.property, "Identifier") && HAZARD_MEMBER_NAMES.has(parent.property.name)
     );
   }
   return false;
@@ -184,21 +165,12 @@ export const noUnguardedRefCurrentMemberAccess = defineRule({
   create: (context: RuleContext) => ({
     MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
       if (node.computed || !isNodeOfType(node.property, "Identifier")) return;
-      if (
-        node.property.name !== "current" ||
-        !isNodeOfType(node.object, "Identifier")
-      )
-        return;
+      if (node.property.name !== "current" || !isNodeOfType(node.object, "Identifier")) return;
       const refName = node.object.name;
       if (!isHazardousMemberOrCall(node)) return;
       if (!isNullOrAbsentRefBinding(node.object, refName)) return;
       const scanRoot = getGuardScanRoot(node);
-      if (
-        scanRootGuardsTarget(scanRoot, (child) =>
-          isCurrentMemberOf(child, refName)
-        )
-      )
-        return;
+      if (scanRootGuardsTarget(scanRoot, (child) => isCurrentMemberOf(child, refName))) return;
       context.report({
         node,
         message:
@@ -215,19 +187,13 @@ export const noUnguardedRefCurrentMemberAccess = defineRule({
       if (!isNullOrAbsentRefBinding(init.object, refName)) return;
 
       const scanRoot = getGuardScanRoot(node);
-      if (
-        scanRootGuardsTarget(scanRoot, (child) =>
-          isCurrentMemberOf(child, refName)
-        )
-      )
-        return;
+      if (scanRootGuardsTarget(scanRoot, (child) => isCurrentMemberOf(child, refName))) return;
 
       const aliasName = node.id.name;
       if (
         scanRootGuardsTarget(
           scanRoot,
-          (child) =>
-            isNodeOfType(child, "Identifier") && child.name === aliasName
+          (child) => isNodeOfType(child, "Identifier") && child.name === aliasName,
         )
       ) {
         return;

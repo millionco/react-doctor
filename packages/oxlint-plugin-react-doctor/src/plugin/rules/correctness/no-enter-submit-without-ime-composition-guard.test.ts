@@ -12,7 +12,7 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
              if (e.key === 'Enter') onSave();
            }}
          />
-       );`
+       );`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -32,7 +32,7 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
              }
            }}
          />
-       );`
+       );`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -46,7 +46,7 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
              if (e.keyCode === 13) submitDialog();
            }}
          />
-       );`
+       );`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -56,7 +56,7 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
       noEnterSubmitWithoutImeCompositionGuard,
       `const Field = () => (
          <input onKeyDown={(e) => { e.key === 'Enter' && onSave(); }} />
-       );`
+       );`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -66,7 +66,7 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
       noEnterSubmitWithoutImeCompositionGuard,
       `const Rating = ({ rating }) => (
          <div role="radio" onKeyDown={(e) => { if (e.key === 'Enter') selectValue(rating); }} />
-       );`
+       );`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -76,7 +76,7 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
       noEnterSubmitWithoutImeCompositionGuard,
       `const Btn = () => (
          <div role="button" onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') onActivate(); }} />
-       );`
+       );`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -86,7 +86,7 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
       noEnterSubmitWithoutImeCompositionGuard,
       `const Composer = () => (
          <textarea onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendMessage(); }} />
-       );`
+       );`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -102,7 +102,7 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
              if (e.key === 'Enter' && !isComposing) onSave();
            }}
          />
-       );`
+       );`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -115,7 +115,7 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
            if (e.nativeEvent.isComposing) return;
            if (e.key === 'Enter') onSave();
          }} />
-       );`
+       );`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -125,7 +125,7 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
       noEnterSubmitWithoutImeCompositionGuard,
       `const Check = () => (
          <input type="checkbox" onKeyDown={(e) => { if (e.key === 'Enter') toggle(); }} />
-       );`
+       );`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -135,7 +135,7 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
       noEnterSubmitWithoutImeCompositionGuard,
       `const Box = () => (
          <textarea onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') activate(); }} />
-       );`
+       );`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

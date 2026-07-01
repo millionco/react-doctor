@@ -45,9 +45,7 @@ export const noEmptyAriaLabel = defineRule({
       if (!name || !ACCESSIBLE_NAME_ATTRIBUTES.has(name.toLowerCase())) return;
       const value = node.value;
       if (!value) return;
-      const target = isNodeOfType(value, "JSXExpressionContainer")
-        ? value.expression
-        : value;
+      const target = isNodeOfType(value, "JSXExpressionContainer") ? value.expression : value;
       if (!target || !resolvesToEmptyAccessibleName(target)) return;
       context.report({
         node,

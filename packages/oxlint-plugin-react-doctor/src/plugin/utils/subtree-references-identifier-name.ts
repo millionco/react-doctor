@@ -7,7 +7,7 @@ import { walkAst } from "./walk-ast.js";
 // `parent` back-references are skipped and the whole subtree is covered.
 export const subtreeReferencesIdentifierName = (
   node: EsTreeNode | null | undefined,
-  names: string | ReadonlySet<string>
+  names: string | ReadonlySet<string>,
 ): boolean => {
   if (!node) return false;
   const isMatch =

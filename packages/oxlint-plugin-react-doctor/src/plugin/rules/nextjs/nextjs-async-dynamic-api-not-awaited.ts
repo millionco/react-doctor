@@ -16,23 +16,14 @@ const PROMISE_SETTLE_METHODS = new Set(["then", "catch", "finally"]);
 // the actual `next/headers` import in this file (renamed imports resolve to
 // their canonical name; same-named locals or other modules do not match).
 const isNextHeadersDynamicCall = (node: EsTreeNode): boolean => {
-  if (
-    !isNodeOfType(node, "CallExpression") ||
-    !isNodeOfType(node.callee, "Identifier")
-  ) {
+  if (!isNodeOfType(node, "CallExpression") || !isNodeOfType(node.callee, "Identifier")) {
     return false;
   }
-  const importedName = getImportedNameFromModule(
-    node,
-    node.callee.name,
-    "next/headers"
-  );
+  const importedName = getImportedNameFromModule(node, node.callee.name, "next/headers");
   return importedName !== null && DYNAMIC_API_NAMES.has(importedName);
 };
 
-const isPromiseSettleAccess = (
-  member: EsTreeNodeOfType<"MemberExpression">
-): boolean =>
+const isPromiseSettleAccess = (member: EsTreeNodeOfType<"MemberExpression">): boolean =>
   !member.computed &&
   isNodeOfType(member.property, "Identifier") &&
   PROMISE_SETTLE_METHODS.has(member.property.name);

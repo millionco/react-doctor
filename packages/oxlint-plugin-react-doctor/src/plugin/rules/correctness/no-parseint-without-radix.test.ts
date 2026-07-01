@@ -10,58 +10,40 @@ describe("no-parseint-without-radix", () => {
   });
 
   it("flags Number.parseInt with a single argument", () => {
-    const result = runRule(
-      noParseintWithoutRadix,
-      `const n = Number.parseInt(str);`
-    );
+    const result = runRule(noParseintWithoutRadix, `const n = Number.parseInt(str);`);
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags parseInt with a nullish-coalescing argument", () => {
-    const result = runRule(
-      noParseintWithoutRadix,
-      `const n = parseInt(value ?? "");`
-    );
+    const result = runRule(noParseintWithoutRadix, `const n = parseInt(value ?? "");`);
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags parseInt inside a map callback", () => {
-    const result = runRule(
-      noParseintWithoutRadix,
-      `const parts = arr.map((p) => parseInt(p));`
-    );
+    const result = runRule(noParseintWithoutRadix, `const parts = arr.map((p) => parseInt(p));`);
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags parseInt on an env value with a fallback", () => {
     const result = runRule(
       noParseintWithoutRadix,
-      `const port = parseInt(process.env.PORT || "3000");`
+      `const port = parseInt(process.env.PORT || "3000");`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag parseInt with an explicit numeric radix", () => {
-    const result = runRule(
-      noParseintWithoutRadix,
-      `const n = parseInt(str, 10);`
-    );
+    const result = runRule(noParseintWithoutRadix, `const n = parseInt(str, 10);`);
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag parseInt with an identifier radix", () => {
-    const result = runRule(
-      noParseintWithoutRadix,
-      `const n = parseInt(str, base);`
-    );
+    const result = runRule(noParseintWithoutRadix, `const n = parseInt(str, base);`);
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag parseFloat", () => {
-    const result = runRule(
-      noParseintWithoutRadix,
-      `const n = parseFloat(str);`
-    );
+    const result = runRule(noParseintWithoutRadix, `const n = parseFloat(str);`);
     expect(result.diagnostics).toHaveLength(0);
   });
 
@@ -71,17 +53,14 @@ describe("no-parseint-without-radix", () => {
   });
 
   it("does not flag parseInt on a non-Number receiver", () => {
-    const result = runRule(
-      noParseintWithoutRadix,
-      `const n = obj.parseInt(str);`
-    );
+    const result = runRule(noParseintWithoutRadix, `const n = obj.parseInt(str);`);
     expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag a locally shadowed parseInt helper", () => {
     const result = runRule(
       noParseintWithoutRadix,
-      `function parseInt(x) { return x; } const n = parseInt(str);`
+      `function parseInt(x) { return x; } const n = parseInt(str);`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -90,7 +69,7 @@ describe("no-parseint-without-radix", () => {
     const result = runRule(
       noParseintWithoutRadix,
       `expect(parseInt(bar.getAttribute("tabindex"))).toEqual(1);`,
-      { filename: "src/victory-bar.test.tsx" }
+      { filename: "src/victory-bar.test.tsx" },
     );
     expect(result.diagnostics).toHaveLength(0);
   });

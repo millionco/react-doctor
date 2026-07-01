@@ -60,9 +60,7 @@ const isStateSetterBinding = (node: EsTreeNode, name: string): boolean =>
   });
 
 // The root identifier of a member chain (`rows.a.b` -> `rows`), or null.
-const memberChainRootIdentifier = (
-  node: EsTreeNode
-): EsTreeNodeOfType<"Identifier"> | null => {
+const memberChainRootIdentifier = (node: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
   let current: EsTreeNode = stripParenExpression(node);
   while (isNodeOfType(current, "MemberExpression")) {
     current = stripParenExpression(current.object);
@@ -72,10 +70,7 @@ const memberChainRootIdentifier = (
 
 // True when `node` is `<name>.<selfReturningMutator>(...)` — a call that
 // mutates `name` and returns the same reference.
-const isSelfReturningMutatorCallOn = (
-  node: EsTreeNode,
-  name: string
-): boolean => {
+const isSelfReturningMutatorCallOn = (node: EsTreeNode, name: string): boolean => {
   const unwrapped = stripParenExpression(node);
   if (!isNodeOfType(unwrapped, "CallExpression")) return false;
   if (!isNodeOfType(unwrapped.callee, "MemberExpression")) return false;
@@ -95,10 +90,7 @@ const containsInPlaceMutationOf = (root: EsTreeNode, name: string): boolean => {
     if (mutated) return false;
     if (child !== root && isFunctionLike(child)) return false;
 
-    if (
-      isNodeOfType(child, "CallExpression") &&
-      isNodeOfType(child.callee, "MemberExpression")
-    ) {
+    if (isNodeOfType(child, "CallExpression") && isNodeOfType(child.callee, "MemberExpression")) {
       const method = getStaticMemberPropertyName(child.callee);
       const receiver = stripParenExpression(child.callee.object);
       if (
@@ -112,10 +104,7 @@ const containsInPlaceMutationOf = (root: EsTreeNode, name: string): boolean => {
       }
     }
 
-    if (
-      isNodeOfType(child, "AssignmentExpression") ||
-      isNodeOfType(child, "UpdateExpression")
-    ) {
+    if (isNodeOfType(child, "AssignmentExpression") || isNodeOfType(child, "UpdateExpression")) {
       const target = isNodeOfType(child, "AssignmentExpression")
         ? (child.left as EsTreeNode)
         : (child.argument as EsTreeNode);
@@ -132,10 +121,7 @@ const containsInPlaceMutationOf = (root: EsTreeNode, name: string): boolean => {
   return mutated;
 };
 
-const blockReturnsSameReference = (
-  blockBody: EsTreeNode,
-  name: string
-): boolean => {
+const blockReturnsSameReference = (blockBody: EsTreeNode, name: string): boolean => {
   let returnsSame = false;
   walkAst(blockBody, (child) => {
     if (returnsSame) return false;
@@ -170,10 +156,7 @@ const isMutateThenReturnSameUpdater = (updater: EsTreeNode): boolean => {
   if (!isNodeOfType(body, "BlockStatement")) {
     return isSelfReturningMutatorCallOn(body, prevName);
   }
-  return (
-    containsInPlaceMutationOf(body, prevName) &&
-    blockReturnsSameReference(body, prevName)
-  );
+  return containsInPlaceMutationOf(body, prevName) && blockReturnsSameReference(body, prevName);
 };
 
 export const noMutateThenSetOrReturnSameReference = defineRule({
@@ -214,10 +197,7 @@ export const noMutateThenSetOrReturnSameReference = defineRule({
 
       // Shape B: mutate state in place, then setX(state) with the same
       // identity.
-      if (
-        isNodeOfType(argument, "Identifier") &&
-        isStateValueBinding(argument, argument.name)
-      ) {
+      if (isNodeOfType(argument, "Identifier") && isStateValueBinding(argument, argument.name)) {
         const enclosingFunction = node.parent;
         let scope: EsTreeNode | null = node;
         let cursor: EsTreeNode | null | undefined = enclosingFunction;

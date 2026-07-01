@@ -10,7 +10,7 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
       const Toggle = ({ label, onChange }) => {
         const id = uniqueId();
         return (<><label htmlFor={id}>{label}</label><input id={id} onChange={onChange} /></>);
-      };`
+      };`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -22,7 +22,7 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
       `const TextInput = ({ error }) => {
         const describedById = crypto.randomUUID();
         return (<><input aria-describedby={describedById} /><span id={describedById}>{error}</span></>);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -34,7 +34,7 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
       const RadioInput = () => {
         const clipId = nanoid();
         return (<svg><clipPath id={clipId} /><rect clipPath={\`url(#\${clipId})\`} /></svg>);
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -46,7 +46,7 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
       const useBundleChartData = () => {
         const chartId = useMemo(() => uniqueId(), []);
         return { chartId };
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -60,7 +60,7 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
           addComment({ id: commentId });
         };
         return <button onClick={submit}>Send</button>;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -75,7 +75,7 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
           setAlerts((prev) => [...prev, { id, message }]);
         };
         return <AlertContext.Provider value={{ addAlert }}>{children}</AlertContext.Provider>;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -87,7 +87,7 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
         const traceId = crypto.randomUUID();
         logger.debug('render', traceId);
         return <CodeDiff />;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -99,7 +99,7 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
       const VictoryPortal = () => {
         const [id] = useState(uniqueId());
         return <div id={id} />;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -111,7 +111,7 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
       const List = ({ items }) => {
         const id = uniqueId();
         return <ul>{items.map((item) => <li key={id}>{item}</li>)}</ul>;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -123,7 +123,7 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
       const Toggle = () => {
         const id = uniqueId();
         return <input id={id} />;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -135,7 +135,7 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
       const makeThing = () => {
         const id = nanoid();
         return { id };
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -146,7 +146,7 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
       `const Widget = () => {
         const id = Date.now().toString();
         return <div id={id} />;
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -158,7 +158,7 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
       const useThing = (seed) => {
         const chartId = useMemo(() => uniqueId(), [seed]);
         return { chartId };
-      };`
+      };`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

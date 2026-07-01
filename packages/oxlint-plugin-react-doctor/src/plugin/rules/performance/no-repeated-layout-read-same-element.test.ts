@@ -12,7 +12,7 @@ describe("no-repeated-layout-read-same-element", () => {
         const bottom = el.getBoundingClientRect().bottom;
         return top + bottom;
       }
-    `
+    `,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -28,7 +28,7 @@ describe("no-repeated-layout-read-same-element", () => {
           collaboratorRef.current.getBoundingClientRect().height / 2
         );
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -42,7 +42,7 @@ describe("no-repeated-layout-read-same-element", () => {
         const b = getComputedStyle(el).height;
         return [a, b];
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -55,7 +55,7 @@ describe("no-repeated-layout-read-same-element", () => {
         const a = window.getComputedStyle(el).width;
         const b = window.getComputedStyle(el).height;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -69,7 +69,7 @@ describe("no-repeated-layout-read-same-element", () => {
         const b = el.getBoundingClientRect().left;
         const c = el.getBoundingClientRect().right;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -82,7 +82,7 @@ describe("no-repeated-layout-read-same-element", () => {
         const a = tooltipEl.getBoundingClientRect().top;
         const b = parentEl.getBoundingClientRect().bottom;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -97,7 +97,7 @@ describe("no-repeated-layout-read-same-element", () => {
       function second(el) {
         return el.getBoundingClientRect().bottom;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -110,7 +110,7 @@ describe("no-repeated-layout-read-same-element", () => {
         const { width, height } = el.getBoundingClientRect();
         return width + height;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -125,7 +125,7 @@ describe("no-repeated-layout-read-same-element", () => {
         const after = el.getBoundingClientRect();
         return after.height - before.height;
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -139,7 +139,7 @@ describe("no-repeated-layout-read-same-element", () => {
         el.scrollIntoView();
         const after = el.getBoundingClientRect();
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -155,7 +155,7 @@ describe("no-repeated-layout-read-same-element", () => {
           return el.getBoundingClientRect().bottom;
         }
       }
-    `
+    `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -6,9 +6,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-const getMemoReturnedExpression = (
-  memoCallback: EsTreeNode
-): EsTreeNode | null => {
+const getMemoReturnedExpression = (memoCallback: EsTreeNode): EsTreeNode | null => {
   if (
     !isNodeOfType(memoCallback, "ArrowFunctionExpression") &&
     !isNodeOfType(memoCallback, "FunctionExpression")
@@ -28,8 +26,7 @@ const getMemoReturnedExpression = (
 };
 
 const isAsyncFunctionExpression = (node: EsTreeNode): boolean =>
-  (isNodeOfType(node, "ArrowFunctionExpression") ||
-    isNodeOfType(node, "FunctionExpression")) &&
+  (isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression")) &&
   Boolean(node.async);
 
 export const noAsyncFunctionReturnedFromUsememo = defineRule({

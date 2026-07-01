@@ -6,7 +6,5 @@ import { isNodeOfType } from "./is-node-of-type.js";
 // dereferenced" (e.g. a `!` assertion whose result is read straight through).
 export const isObjectOfMemberAccess = (node: EsTreeNode): boolean => {
   const parent = node.parent;
-  return Boolean(
-    parent && isNodeOfType(parent, "MemberExpression") && parent.object === node
-  );
+  return Boolean(parent && isNodeOfType(parent, "MemberExpression") && parent.object === node);
 };

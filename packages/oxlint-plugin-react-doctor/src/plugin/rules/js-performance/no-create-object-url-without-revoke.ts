@@ -18,21 +18,14 @@ const MESSAGE =
 
 const meaningfulParent = (node: EsTreeNode): EsTreeNode | null => {
   let parent = node.parent ?? null;
-  while (parent && parent.type === PARENTHESIZED_EXPRESSION)
-    parent = parent.parent ?? null;
+  while (parent && parent.type === PARENTHESIZED_EXPRESSION) parent = parent.parent ?? null;
   return parent;
 };
 
-const isCreateObjectUrlCall = (
-  node: EsTreeNodeOfType<"CallExpression">
-): boolean => {
+const isCreateObjectUrlCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   const callee = node.callee;
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed)
-    return false;
-  if (
-    !isNodeOfType(callee.property, "Identifier") ||
-    callee.property.name !== "createObjectURL"
-  ) {
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
+  if (!isNodeOfType(callee.property, "Identifier") || callee.property.name !== "createObjectURL") {
     return false;
   }
   const object = callee.object;
@@ -58,10 +51,7 @@ const moduleReferencesRevoke = (programRoot: EsTreeNode): boolean => {
   walkAst(programRoot, (child) => {
     if (found) return false;
     if (isNodeOfType(child, "MemberExpression") && !child.computed) {
-      if (
-        isNodeOfType(child.property, "Identifier") &&
-        child.property.name === "revokeObjectURL"
-      ) {
+      if (isNodeOfType(child.property, "Identifier") && child.property.name === "revokeObjectURL") {
         found = true;
         return false;
       }
@@ -157,10 +147,7 @@ const escapeIsLeaky = (context: EscapeContext): boolean => {
   }
 
   // Passed directly to a state setter (`setImageUrl(URL.createObjectURL(...))`).
-  if (
-    isNodeOfType(parent, "CallExpression") &&
-    isStateSetterCallee(parent.callee)
-  ) {
+  if (isNodeOfType(parent, "CallExpression") && isStateSetterCallee(parent.callee)) {
     return true;
   }
 

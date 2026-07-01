@@ -66,10 +66,7 @@ const findOutermostScope = (node: EsTreeNode): EsTreeNode | null => {
 // scope, so abstain there — a false negative is preferable to a false
 // positive. Matches `this.updateCallbacks`-style member receivers too, not
 // just bare identifiers.
-const scopeProvesKeyPresence = (
-  assertion: EsTreeNode,
-  receiverKey: string
-): boolean => {
+const scopeProvesKeyPresence = (assertion: EsTreeNode, receiverKey: string): boolean => {
   const scope = findOutermostScope(assertion);
   if (!scope) return false;
   let proven = false;
@@ -94,8 +91,7 @@ const scopeProvesKeyPresence = (
 const isPredicateArgument = (node: EsTreeNode | null | undefined): boolean =>
   Boolean(
     node &&
-      (isNodeOfType(node, "ArrowFunctionExpression") ||
-        isNodeOfType(node, "FunctionExpression"))
+    (isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression")),
   );
 
 export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
@@ -114,8 +110,7 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
         const inner = stripParenExpression(node.expression as EsTreeNode);
         if (!isNodeOfType(inner, "CallExpression")) return;
         const callee = inner.callee;
-        if (!isNodeOfType(callee, "MemberExpression") || callee.computed)
-          return;
+        if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return;
         if (!isNodeOfType(callee.property, "Identifier")) return;
         const methodName = callee.property.name;
         const message = NO_MATCH_MESSAGES[methodName];
@@ -123,10 +118,7 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
 
         const args = inner.arguments ?? [];
         if (methodName === "find" || methodName === "findLast") {
-          if (
-            !isPredicateArgument(args[0] ? stripParenExpression(args[0]) : null)
-          )
-            return;
+          if (!isPredicateArgument(args[0] ? stripParenExpression(args[0]) : null)) return;
         }
         if (methodName === "get") {
           const key = args[0] ? stripParenExpression(args[0]) : null;
@@ -134,10 +126,7 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
           // carry real miss risk.
           if (!key || isNodeOfType(key, "Literal")) return;
           const receiverKey = receiverPathKey(callee.object as EsTreeNode);
-          if (
-            receiverKey &&
-            scopeProvesKeyPresence(node as EsTreeNode, receiverKey)
-          ) {
+          if (receiverKey && scopeProvesKeyPresence(node as EsTreeNode, receiverKey)) {
             return;
           }
         }

@@ -19,18 +19,14 @@ const PARENTHESIZED_EXPRESSION_TYPE: string = "ParenthesizedExpression";
 // `as const` — none of which widen a nullable value away unsoundly.
 const targetIsExcluded = (target: EsTreeNode | undefined): boolean => {
   if (!target) return true;
-  if (target.type === "TSUnknownKeyword" || target.type === "TSAnyKeyword")
-    return true;
+  if (target.type === "TSUnknownKeyword" || target.type === "TSAnyKeyword") return true;
   if (NULLISH_KEYWORD_TYPES.has(target.type)) return true;
-  if (
-    isNodeOfType(target, "TSTypeReference") &&
-    isNodeOfType(target.typeName, "Identifier")
-  ) {
+  if (isNodeOfType(target, "TSTypeReference") && isNodeOfType(target.typeName, "Identifier")) {
     if (target.typeName.name === "const") return true;
   }
   if (isNodeOfType(target, "TSUnionType")) {
     return (target.types ?? []).some((member) =>
-      NULLISH_KEYWORD_TYPES.has((member as EsTreeNode).type)
+      NULLISH_KEYWORD_TYPES.has((member as EsTreeNode).type),
     );
   }
   return false;
@@ -41,8 +37,7 @@ const targetIsExcluded = (target: EsTreeNode | undefined): boolean => {
 const operandHasOptionalChaining = (operand: EsTreeNode): boolean => {
   if (isNodeOfType(operand, "ChainExpression")) return true;
   if (
-    (isNodeOfType(operand, "MemberExpression") ||
-      isNodeOfType(operand, "CallExpression")) &&
+    (isNodeOfType(operand, "MemberExpression") || isNodeOfType(operand, "CallExpression")) &&
     operand.optional
   ) {
     return true;
@@ -55,16 +50,13 @@ const operandHasOptionalChaining = (operand: EsTreeNode): boolean => {
 const identifierHasNullableAnnotation = (operand: EsTreeNode): boolean => {
   if (!isNodeOfType(operand, "Identifier")) return false;
   const binding = findVariableInitializer(operand, operand.name);
-  if (!binding || !isNodeOfType(binding.bindingIdentifier, "Identifier"))
-    return false;
+  if (!binding || !isNodeOfType(binding.bindingIdentifier, "Identifier")) return false;
   const annotation = binding.bindingIdentifier.typeAnnotation;
   if (!annotation) return false;
-  const annotatedType = (annotation as { typeAnnotation?: EsTreeNode })
-    .typeAnnotation;
-  if (!annotatedType || !isNodeOfType(annotatedType, "TSUnionType"))
-    return false;
+  const annotatedType = (annotation as { typeAnnotation?: EsTreeNode }).typeAnnotation;
+  if (!annotatedType || !isNodeOfType(annotatedType, "TSUnionType")) return false;
   return (annotatedType.types ?? []).some((member) =>
-    NULLISH_KEYWORD_TYPES.has((member as EsTreeNode).type)
+    NULLISH_KEYWORD_TYPES.has((member as EsTreeNode).type),
   );
 };
 
@@ -72,7 +64,7 @@ const identifierHasNullableAnnotation = (operand: EsTreeNode): boolean => {
 // consumes, so `(x?.y as T)?.z` and `(x?.y as T) ?? z` are seen
 // through the parens.
 const getConsumingContext = (
-  node: EsTreeNode
+  node: EsTreeNode,
 ): { parent: EsTreeNode | null; child: EsTreeNode } => {
   let child: EsTreeNode = node;
   let parent = node.parent ?? null;
@@ -103,21 +95,13 @@ export const noTypeAssertionWideningAwayNullOrUndefined = defineRule({
       if (targetIsExcluded(node.typeAnnotation as EsTreeNode)) return;
 
       const operand = stripGroupingParens(node.expression as EsTreeNode);
-      if (
-        !operandHasOptionalChaining(operand) &&
-        !identifierHasNullableAnnotation(operand)
-      )
-        return;
+      if (!operandHasOptionalChaining(operand) && !identifierHasNullableAnnotation(operand)) return;
 
       const { parent, child } = getConsumingContext(node as EsTreeNode);
       if (!parent) return;
 
       // Re-guarded by a trailing `?.` or recovered by a following `??`.
-      if (
-        isNodeOfType(parent, "MemberExpression") &&
-        parent.object === child &&
-        parent.optional
-      )
+      if (isNodeOfType(parent, "MemberExpression") && parent.object === child && parent.optional)
         return;
       if (
         isNodeOfType(parent, "LogicalExpression") &&
@@ -132,9 +116,7 @@ export const noTypeAssertionWideningAwayNullOrUndefined = defineRule({
         isNodeOfType(parent, "JSXExpressionContainer") &&
         isNodeOfType(parent.parent, "JSXAttribute");
       const isDereference =
-        isNodeOfType(parent, "MemberExpression") &&
-        parent.object === child &&
-        !parent.optional;
+        isNodeOfType(parent, "MemberExpression") && parent.object === child && !parent.optional;
 
       if (isTemplateInterpolation || isJsxProp || isDereference) {
         context.report({ node: node as EsTreeNode, message: MESSAGE });

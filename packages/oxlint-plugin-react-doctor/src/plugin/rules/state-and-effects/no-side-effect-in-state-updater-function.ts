@@ -14,17 +14,12 @@ const CONSUMER_CALLBACK_NAME_PATTERN = /^on[A-Z]/;
 const CALLBACK_NAME_PATTERN = /callback/i;
 // Analytics / logging / persistence verbs that denote a fire-and-forget
 // external side effect, not a pure state transform.
-const SIDE_EFFECT_VERB_PATTERN =
-  /^(?:track|log|capture|analytics|persist|emit|notify)/i;
+const SIDE_EFFECT_VERB_PATTERN = /^(?:track|log|capture|analytics|persist|emit|notify)/i;
 
 // Timer setters syntactically match `/^set[A-Z]/` but are NOT React
 // state setters; excluding them stops a nested consumer callback inside a
 // `setInterval(() => ...)` lambda from being misattributed to the timer.
-const TIMER_SETTER_NAMES = new Set([
-  "setTimeout",
-  "setInterval",
-  "setImmediate",
-]);
+const TIMER_SETTER_NAMES = new Set(["setTimeout", "setInterval", "setImmediate"]);
 
 // Pure array/set/map builders are exactly what a legitimate immutable
 // updater is made of; never treat them as an impure side effect.
@@ -43,9 +38,7 @@ const PURE_BUILTIN_METHOD_NAMES = new Set([
   "includes",
 ]);
 
-const isReactStateUpdaterCall = (
-  node: EsTreeNodeOfType<"CallExpression">
-): boolean => {
+const isReactStateUpdaterCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   if (!isNodeOfType(node.callee, "Identifier")) return false;
   const name = node.callee.name;
   if (TIMER_SETTER_NAMES.has(name)) return false;
@@ -56,9 +49,7 @@ const isReactStateUpdaterCall = (
 // `on*` / `*Callback` / `callback` named call, or an analytics/persistence
 // verb. Never a React setter (a nested setter is a different concern) and
 // never a pure array/set/map builtin.
-const isImpureSideEffectCall = (
-  call: EsTreeNodeOfType<"CallExpression">
-): boolean => {
+const isImpureSideEffectCall = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
   const calleeName = getCalleeName(call);
   if (calleeName) {
     if (PURE_BUILTIN_METHOD_NAMES.has(calleeName)) return false;
@@ -82,23 +73,19 @@ const isImmediateStateUpdaterCall = (node: EsTreeNode): boolean =>
 // next-state is returned. Nested functions are pruned so only this
 // function's own returns count.
 const blockBodyReturnsValue = (functionNode: EsTreeNode): boolean => {
-  if (
-    !isFunctionLike(functionNode) ||
-    !isNodeOfType(functionNode.body, "BlockStatement")
-  ) {
+  if (!isFunctionLike(functionNode) || !isNodeOfType(functionNode.body, "BlockStatement")) {
     return false;
   }
   let returnsValue = false;
   walkOwnFunctionScope(functionNode, (child: EsTreeNode) => {
-    if (isNodeOfType(child, "ReturnStatement") && child.argument)
-      returnsValue = true;
+    if (isNodeOfType(child, "ReturnStatement") && child.argument) returnsValue = true;
   });
   return returnsValue;
 };
 
 const findNearestEnclosingFunction = (
   node: EsTreeNode,
-  boundary: EsTreeNode
+  boundary: EsTreeNode,
 ): EsTreeNode | null => {
   let cursor: EsTreeNode | null | undefined = node.parent;
   while (cursor) {
@@ -109,9 +96,7 @@ const findNearestEnclosingFunction = (
   return null;
 };
 
-const unwrapStatementCall = (
-  expression: EsTreeNode
-): EsTreeNodeOfType<"CallExpression"> | null => {
+const unwrapStatementCall = (expression: EsTreeNode): EsTreeNodeOfType<"CallExpression"> | null => {
   let current = expression;
   if (isNodeOfType(current, "AwaitExpression") && current.argument) {
     current = current.argument;
@@ -139,8 +124,7 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
       // to their own setter, not this one.
       const valueReturningFunctions = new Set<EsTreeNode>();
       walkAst(updater, (child: EsTreeNode) => {
-        if (child !== updater && isImmediateStateUpdaterCall(child))
-          return false;
+        if (child !== updater && isImmediateStateUpdaterCall(child)) return false;
         if (isFunctionLike(child) && blockBodyReturnsValue(child)) {
           valueReturningFunctions.add(child);
         }
@@ -148,15 +132,11 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
       if (valueReturningFunctions.size === 0) return;
 
       walkAst(updater, (child: EsTreeNode) => {
-        if (child !== updater && isImmediateStateUpdaterCall(child))
-          return false;
+        if (child !== updater && isImmediateStateUpdaterCall(child)) return false;
         if (!isNodeOfType(child, "ExpressionStatement")) return;
         const call = unwrapStatementCall(child.expression);
         if (!call || !isImpureSideEffectCall(call)) return;
-        const owner = findNearestEnclosingFunction(
-          child,
-          updater.parent ?? updater
-        );
+        const owner = findNearestEnclosingFunction(child, updater.parent ?? updater);
         if (!owner || !valueReturningFunctions.has(owner)) return;
         context.report({
           node: call,

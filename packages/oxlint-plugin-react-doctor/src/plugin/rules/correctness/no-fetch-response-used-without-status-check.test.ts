@@ -8,7 +8,7 @@ describe("no-fetch-response-used-without-status-check", () => {
       noFetchResponseUsedWithoutStatusCheck,
       `fetch(url, { signal }).then(async (response) => ({
          emojis: await response.json(),
-       }));`
+       }));`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
@@ -21,7 +21,7 @@ describe("no-fetch-response-used-without-status-check", () => {
          const response = await fetch(endpoint);
          const data = await response.json();
          return data;
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -32,7 +32,7 @@ describe("no-fetch-response-used-without-status-check", () => {
       `async function load() {
          const data = await (await fetch(url)).json();
          return data;
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -44,7 +44,7 @@ describe("no-fetch-response-used-without-status-check", () => {
          const shouldReload = await fetch(url);
          if (!shouldReload) return;
          const json = await shouldReload.json();
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -56,7 +56,7 @@ describe("no-fetch-response-used-without-status-check", () => {
          const response = await fetch(url, options);
          const json = await response.json();
          return { response, json };
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -68,7 +68,7 @@ describe("no-fetch-response-used-without-status-check", () => {
          const response = await fetch(endpoint);
          if (!response.ok) throw new Error(response.statusText);
          return response.json();
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -80,7 +80,7 @@ describe("no-fetch-response-used-without-status-check", () => {
          const shouldReload = await fetch(url);
          if (shouldReload.status !== 200) return;
          const json = await shouldReload.json();
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -93,7 +93,7 @@ describe("no-fetch-response-used-without-status-check", () => {
          const response = await fetch(endpoint);
          const data = await response.json();
          return data;
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -105,7 +105,7 @@ describe("no-fetch-response-used-without-status-check", () => {
          const response = await api.fetch(endpoint);
          const data = await response.json();
          return data;
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -114,7 +114,7 @@ describe("no-fetch-response-used-without-status-check", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,
       `// fetch(url).then((r) => r.json())
-       const value = 1;`
+       const value = 1;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -125,7 +125,7 @@ describe("no-fetch-response-used-without-status-check", () => {
       `async function raw(url) {
          const response = await fetch(url);
          return response;
-       }`
+       }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -24,9 +24,7 @@ import type { RuleVisitors } from "../../utils/rule-visitors.js";
 // True when the parameter's ObjectPattern has at least one binding that
 // carries no `= default` of its own — the bindings whose fallback the
 // whole-object default silently drops on a partial-argument call.
-const hasBindingWithoutOwnDefault = (
-  objectPattern: EsTreeNodeOfType<"ObjectPattern">
-): boolean => {
+const hasBindingWithoutOwnDefault = (objectPattern: EsTreeNodeOfType<"ObjectPattern">): boolean => {
   for (const property of objectPattern.properties ?? []) {
     // A rest element (`{ ...rest }`) collects the remaining keys; it is
     // not a per-key default that can be lost, so it doesn't count.
@@ -35,8 +33,7 @@ const hasBindingWithoutOwnDefault = (
     // A binding carries its own default only when its value node is an
     // AssignmentPattern (`{ a = 1 }`). Anything else (a bare Identifier,
     // a nested pattern with no default) lacks one.
-    if (!isNodeOfType(property.value as EsTreeNode, "AssignmentPattern"))
-      return true;
+    if (!isNodeOfType(property.value as EsTreeNode, "AssignmentPattern")) return true;
   }
   return false;
 };
@@ -45,11 +42,9 @@ const hasBindingWithoutOwnDefault = (
 // `key: value` fallback. A spread-only or empty object supplies no
 // per-key default, so there is nothing to lose.
 const objectDefaultSuppliesPerKeyValue = (
-  objectExpression: EsTreeNodeOfType<"ObjectExpression">
+  objectExpression: EsTreeNodeOfType<"ObjectExpression">,
 ): boolean =>
-  (objectExpression.properties ?? []).some((property) =>
-    isNodeOfType(property, "Property")
-  );
+  (objectExpression.properties ?? []).some((property) => isNodeOfType(property, "Property"));
 
 // True when the AssignmentPattern is a direct parameter of a function
 // (not a nested destructuring default inside another pattern).
@@ -57,8 +52,8 @@ const isFunctionParameter = (assignmentPattern: EsTreeNode): boolean => {
   const parent = assignmentPattern.parent;
   return Boolean(
     parent &&
-      isFunctionLike(parent) &&
-      parent.params?.some((parameter) => parameter === assignmentPattern)
+    isFunctionLike(parent) &&
+    parent.params?.some((parameter) => parameter === assignmentPattern),
   );
 };
 

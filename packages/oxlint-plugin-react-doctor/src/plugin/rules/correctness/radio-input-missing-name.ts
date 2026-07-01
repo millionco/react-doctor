@@ -19,10 +19,7 @@ export const radioInputMissingName = defineRule({
     'Give every radio in the same group the same `name` prop (e.g. `<input type="radio" name="shippingSpeed" />`). The browser groups radios and enables arrow-key navigation only when they share a `name`.',
   create: (context: RuleContext) => {
     const radioComponents = new Set(
-      getReactDoctorStringArraySetting(
-        context.settings,
-        RADIO_COMPONENTS_SETTING
-      )
+      getReactDoctorStringArraySetting(context.settings, RADIO_COMPONENTS_SETTING),
     );
 
     return {
@@ -41,11 +38,7 @@ export const radioInputMissingName = defineRule({
         if (!isAllowlistedRadioComponent) {
           if (elementType !== "input") return;
           const typeAttribute = findJsxAttribute(attributes, "type");
-          if (
-            !typeAttribute ||
-            getJsxPropStringValue(typeAttribute) !== "radio"
-          )
-            return;
+          if (!typeAttribute || getJsxPropStringValue(typeAttribute) !== "radio") return;
         }
 
         if (findJsxAttribute(attributes, "name")) return;

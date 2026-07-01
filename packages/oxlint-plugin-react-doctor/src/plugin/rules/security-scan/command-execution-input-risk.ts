@@ -17,8 +17,10 @@ import { scanByPattern } from "./utils/scan-by-pattern.js";
 // single opaque argument that CANNOT shell-inject. So the spawn branch only
 // fires when a shell is explicitly enabled (`shell: true`) or the command
 // itself (the first argument) is tainted (`spawn(req.query.cmd, …)`).
-const COMMAND_EXECUTION_INPUT_RISK_PATTERN =
-  /(?:(?:(?<![.\w$])(?:exec(?:Sync)?|system|passthru|proc_open|shell_exec)|\b(?:os\.system|subprocess\.(?:run|Popen|call)|(?:child_process|childProcess|cp)\.exec\w*))\s*\([^)]{0,220}(?:req\.|request\.|params\.|query\.|body\.|searchParams|\$_(?:GET|POST|REQUEST)|shell\s*[:=]\s*true|f['"`][^'"`]*\{))|(?:(?:(?<![.\w$])spawn(?:Sync)?|\b(?:child_process|childProcess|cp)\.spawn\w*)\s*\((?:\s*(?:req\.|request\.|params\.|query\.|body\.|searchParams|\$_(?:GET|POST|REQUEST))|[^)]{0,220}shell\s*[:=]\s*true))/i;
+const COMMAND_EXECUTION_INPUT_RISK_PATTERNS = [
+  /(?:(?<![.\w$])(?:exec(?:Sync)?|system|passthru|proc_open|shell_exec)|\b(?:os\.system|subprocess\.(?:run|Popen|call)|(?:child_process|childProcess|cp)\.exec\w*))\s*\([^)]{0,220}(?:req\.|request\.|params\.|query\.|body\.|searchParams|\$_(?:GET|POST|REQUEST)|shell\s*[:=]\s*true|f['"`][^'"`]*\{)/i,
+  /(?:(?<![.\w$])spawn(?:Sync)?|\b(?:child_process|childProcess|cp)\.spawn\w*)\s*\((?:\s*(?:req\.|request\.|params\.|query\.|body\.|searchParams|\$_(?:GET|POST|REQUEST))|[^)]{0,220}shell\s*[:=]\s*true)/i,
+] as const;
 
 export const commandExecutionInputRisk = defineRule({
   id: "command-execution-input-risk",
@@ -29,7 +31,7 @@ export const commandExecutionInputRisk = defineRule({
   scan: scanByPattern({
     shouldScan: (file) =>
       isProductionScriptSourcePath(file.relativePath) && !isDevToolingPath(file.relativePath),
-    pattern: COMMAND_EXECUTION_INPUT_RISK_PATTERN,
+    pattern: COMMAND_EXECUTION_INPUT_RISK_PATTERNS,
     message:
       "Command execution appears to include request, query, body, or shell-interpolated input.",
   }),

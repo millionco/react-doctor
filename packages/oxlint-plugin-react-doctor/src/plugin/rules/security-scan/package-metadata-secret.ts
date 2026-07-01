@@ -9,7 +9,7 @@ import { getMatchLocation } from "./utils/get-match-location.js";
 // both caught by their own high-entropy value patterns, so dropping the bare
 // keyword from package-metadata scanning loses no real-secret coverage.
 const PACKAGE_METADATA_VALUE_PATTERNS = SECRET_VALUE_PATTERNS.filter(
-  (pattern) => pattern.source !== "\\bservice_role\\b",
+  (pattern) => !pattern.test("service_role"),
 );
 
 export const packageMetadataSecret = defineRule({

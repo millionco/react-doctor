@@ -93,8 +93,7 @@ export const postmessageOriginRisk = defineRule({
         // When the data is bound to a local first, the guard protects the
         // later use regardless of textual order (read-then-guard-then-use).
         // When the data is used directly, the guard must precede that use.
-        const beforeData = nodeText.slice(0, messageDataIndex);
-        if (MESSAGE_DATA_BINDING_PATTERN.test(beforeData)) return;
+        if (MESSAGE_DATA_BINDING_PATTERN.test(nodeText.slice(0, messageDataIndex))) return;
         if (originCheckIndex < messageDataIndex) return;
       }
 

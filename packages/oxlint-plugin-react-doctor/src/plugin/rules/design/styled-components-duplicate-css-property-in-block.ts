@@ -127,6 +127,7 @@ export const styledComponentsDuplicateCssPropertyInBlock = defineRule({
   id: "styled-components-duplicate-css-property-in-block",
   title: "Duplicate CSS property in styled block",
   severity: "warn",
+  requires: ["styled-components"],
   recommendation:
     "Merge repeated declarations of the same CSS property in a styled block into one, so a later conditional value doesn't silently override an earlier one.",
   create: (context) => ({

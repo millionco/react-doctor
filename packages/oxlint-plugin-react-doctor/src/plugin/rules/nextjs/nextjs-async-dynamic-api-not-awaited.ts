@@ -43,7 +43,7 @@ const buildMessage = (): string =>
 export const nextjsAsyncDynamicApiNotAwaited = defineRule({
   id: "nextjs-async-dynamic-api-not-awaited",
   title: "Un-awaited async next/headers API",
-  requires: ["nextjs"],
+  requires: ["nextjs:15"],
   severity: "error",
   recommendation:
     "Await `cookies()`, `headers()`, and `draftMode()` from `next/headers` before reading their properties. They became async in Next.js 15.",

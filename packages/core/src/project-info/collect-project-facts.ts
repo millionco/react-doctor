@@ -5,7 +5,9 @@ import {
   extractDependencyInfo,
   getDependencyDeclaration,
   getDependencySpec,
+  REACT_SECTIONS,
   resolveCatalogVersion,
+  TAILWIND_ZOD_SECTIONS,
 } from "./dependencies.js";
 import { isFile } from "./fs-utils.js";
 import { findMonorepoRoot } from "./monorepo-root.js";
@@ -46,9 +48,6 @@ export interface WorkspaceFacts {
 }
 
 export const SHOPIFY_FLASH_LIST_PACKAGE_NAME = "@shopify/flash-list";
-
-const REACT_SECTIONS = ["dependencies", "peerDependencies", "devDependencies"] as const;
-const TAILWIND_ZOD_SECTIONS = ["dependencies", "devDependencies", "peerDependencies"] as const;
 
 interface ResolveWorkspaceDependencyVersionOptions {
   concreteVersion: string | null;

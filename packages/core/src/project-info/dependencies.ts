@@ -218,6 +218,17 @@ export const resolveCatalogVersion = (
   return null;
 };
 
+// Per-dependency section probe order (which manifest section wins when a
+// package is declared in several). React prefers `peerDependencies` over
+// `devDependencies` (library manifests declare their supported range there);
+// tailwind/zod prefer `devDependencies`.
+export const REACT_SECTIONS = ["dependencies", "peerDependencies", "devDependencies"] as const;
+export const TAILWIND_ZOD_SECTIONS = [
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+] as const;
+
 export const EMPTY_DEPENDENCY_INFO: DependencyInfo = {
   reactVersion: null,
   tailwindVersion: null,

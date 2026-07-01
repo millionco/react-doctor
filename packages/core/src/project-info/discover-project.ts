@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { PackageJsonNotFoundError } from "./errors.js";
-import type { ProjectInfo } from "../types/index.js";
+import type { PackageJson, ProjectInfo } from "../types/index.js";
 import { isFile } from "./fs-utils.js";
 import { countSourceFiles } from "./count-source-files.js";
 import {
@@ -15,8 +15,10 @@ import {
   getPreactVersion,
   hasTanStackQuery,
   isCatalogReference,
+  REACT_SECTIONS,
   resolveCatalogBackedDependencyVersion,
   resolveCatalogVersion,
+  TAILWIND_ZOD_SECTIONS,
 } from "./dependencies.js";
 import { findMonorepoRoot, isMonorepoRoot } from "./monorepo-root.js";
 import {
@@ -123,84 +125,48 @@ export const discoverProject = (directory: string): ProjectInfo => {
   }
 
   const packageJson = readPackageJson(packageJsonPath);
-  let { reactVersion, tailwindVersion, zodVersion, framework } = extractDependencyInfo(packageJson);
+  const rootInfo = extractDependencyInfo(packageJson);
+  let framework = rootInfo.framework;
 
-  const reactDeclaration = getDependencyDeclaration({
-    packageJson,
-    packageName: "react",
-    sections: ["dependencies", "peerDependencies", "devDependencies"],
-  });
-  const tailwindDeclaration = getDependencyDeclaration({
-    packageJson,
-    packageName: "tailwindcss",
-    sections: ["dependencies", "devDependencies", "peerDependencies"],
-  });
-  const zodDeclaration = getDependencyDeclaration({
-    packageJson,
-    packageName: "zod",
-    sections: ["dependencies", "devDependencies", "peerDependencies"],
-  });
+  // One resolution ladder, written once for all three root-tracked
+  // dependencies: root concrete spec → root catalogs → monorepo-root
+  // catalogs → workspace walk (stage gate below) → enclosing-monorepo
+  // fallback → raw declared spec.
+  const tracked = {
+    react: { version: rootInfo.reactVersion, sections: REACT_SECTIONS },
+    tailwindcss: { version: rootInfo.tailwindVersion, sections: TAILWIND_ZOD_SECTIONS },
+    zod: { version: rootInfo.zodVersion, sections: TAILWIND_ZOD_SECTIONS },
+  };
+  const declarations = Object.fromEntries(
+    Object.entries(tracked).map(([packageName, entry]) => [
+      packageName,
+      getDependencyDeclaration({ packageJson, packageName, sections: entry.sections }),
+    ]),
+  );
+  const fillFromCatalogs = (source: PackageJson, sourceDirectory: string): void => {
+    for (const [packageName, entry] of Object.entries(tracked)) {
+      if (!entry.version && declarations[packageName].hasDeclaration) {
+        entry.version = resolveCatalogVersion(
+          source,
+          packageName,
+          sourceDirectory,
+          declarations[packageName].catalogReference,
+        );
+      }
+    }
+  };
 
-  if (!reactVersion && reactDeclaration.hasDeclaration) {
-    reactVersion = resolveCatalogVersion(
-      packageJson,
-      "react",
-      directory,
-      reactDeclaration.catalogReference,
-    );
-  }
-
-  if (!tailwindVersion && tailwindDeclaration.hasDeclaration) {
-    tailwindVersion = resolveCatalogVersion(
-      packageJson,
-      "tailwindcss",
-      directory,
-      tailwindDeclaration.catalogReference,
-    );
-  }
-
-  if (!zodVersion && zodDeclaration.hasDeclaration) {
-    zodVersion = resolveCatalogVersion(
-      packageJson,
-      "zod",
-      directory,
-      zodDeclaration.catalogReference,
-    );
-  }
+  fillFromCatalogs(packageJson, directory);
 
   // HACK: keep the monorepo-root catalog read cheap (one package.json plus
   // pnpm-workspace catalogs). The expensive workspace walks below still key
   // off React/framework misses; if we walk anyway, they can fill Zod too.
-  if (!reactVersion || !tailwindVersion || !zodVersion) {
+  if (!tracked.react.version || !tracked.tailwindcss.version || !tracked.zod.version) {
     const monorepoRoot = findMonorepoRoot(directory);
     if (monorepoRoot) {
       const monorepoPackageJsonPath = path.join(monorepoRoot, "package.json");
       if (isFile(monorepoPackageJsonPath)) {
-        const rootPackageJson = readPackageJson(monorepoPackageJsonPath);
-        if (!reactVersion && reactDeclaration.hasDeclaration) {
-          reactVersion = resolveCatalogVersion(
-            rootPackageJson,
-            "react",
-            monorepoRoot,
-            reactDeclaration.catalogReference,
-          );
-        }
-        if (!tailwindVersion && tailwindDeclaration.hasDeclaration) {
-          tailwindVersion = resolveCatalogVersion(
-            rootPackageJson,
-            "tailwindcss",
-            monorepoRoot,
-            tailwindDeclaration.catalogReference,
-          );
-        }
-        if (!zodVersion && zodDeclaration.hasDeclaration) {
-          zodVersion = resolveCatalogVersion(
-            rootPackageJson,
-            "zod",
-            monorepoRoot,
-            zodDeclaration.catalogReference,
-          );
-        }
+        fillFromCatalogs(readPackageJson(monorepoPackageJsonPath), monorepoRoot);
       }
     }
   }
@@ -208,55 +174,40 @@ export const discoverProject = (directory: string): ProjectInfo => {
   // The one workspace traversal: every workspace-derived fact (the react
   // group, RN/reanimated awareness, expo / flash-list / next specs) comes
   // out of this single pass; the gates below decide which apply.
-  const shouldCollectReactGroup = !reactVersion || framework === "unknown";
+  const shouldCollectReactGroup = !tracked.react.version || framework === "unknown";
   const workspaceFacts = collectWorkspaceFacts(directory, packageJson, {
     collectReactGroup: shouldCollectReactGroup,
   });
 
   if (shouldCollectReactGroup) {
-    if (!reactVersion && workspaceFacts.reactVersion) {
-      reactVersion = workspaceFacts.reactVersion;
-    }
-    if (!tailwindVersion && workspaceFacts.tailwindVersion) {
-      tailwindVersion = workspaceFacts.tailwindVersion;
-    }
-    if (!zodVersion && workspaceFacts.zodVersion) {
-      zodVersion = workspaceFacts.zodVersion;
-    }
+    tracked.react.version ||= workspaceFacts.reactVersion;
+    tracked.tailwindcss.version ||= workspaceFacts.tailwindVersion;
+    tracked.zod.version ||= workspaceFacts.zodVersion;
     if (framework === "unknown" && workspaceFacts.framework !== "unknown") {
       framework = workspaceFacts.framework;
     }
   }
 
-  if ((!reactVersion || framework === "unknown") && !isMonorepoRoot(directory)) {
+  if ((!tracked.react.version || framework === "unknown") && !isMonorepoRoot(directory)) {
     const monorepoInfo = findDependencyInfoFromMonorepoRoot(directory);
-    if (!reactVersion) {
-      reactVersion = monorepoInfo.reactVersion;
-    }
-    if (!tailwindVersion) {
-      tailwindVersion = monorepoInfo.tailwindVersion;
-    }
-    if (!zodVersion) {
-      zodVersion = monorepoInfo.zodVersion;
-    }
+    tracked.react.version ||= monorepoInfo.reactVersion;
+    tracked.tailwindcss.version ||= monorepoInfo.tailwindVersion;
+    tracked.zod.version ||= monorepoInfo.zodVersion;
     if (framework === "unknown") {
       framework = monorepoInfo.framework;
     }
   }
 
-  if (!reactVersion && reactDeclaration.version && !isCatalogReference(reactDeclaration.version)) {
-    reactVersion = reactDeclaration.version;
+  for (const [packageName, entry] of Object.entries(tracked)) {
+    const declaredVersion = declarations[packageName].version;
+    if (!entry.version && declaredVersion && !isCatalogReference(declaredVersion)) {
+      entry.version = declaredVersion;
+    }
   }
-  if (
-    !tailwindVersion &&
-    tailwindDeclaration.version &&
-    !isCatalogReference(tailwindDeclaration.version)
-  ) {
-    tailwindVersion = tailwindDeclaration.version;
-  }
-  if (!zodVersion && zodDeclaration.version && !isCatalogReference(zodDeclaration.version)) {
-    zodVersion = zodDeclaration.version;
-  }
+  const { react, tailwindcss, zod } = tracked;
+  const reactVersion = react.version;
+  const tailwindVersion = tailwindcss.version;
+  const zodVersion = zod.version;
 
   const projectName = packageJson.name ?? path.basename(directory);
   const hasTypeScript = fs.existsSync(path.join(directory, "tsconfig.json"));

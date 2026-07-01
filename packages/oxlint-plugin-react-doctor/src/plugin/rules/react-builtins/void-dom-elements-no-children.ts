@@ -3,6 +3,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isMeaningfulJsxChild } from "../../utils/is-meaningful-jsx-child.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 
 const VOID_DOM_ELEMENTS = new Set([
   "area",
@@ -70,7 +71,16 @@ export const voidDomElementsNoChildren = defineRule({
       if (!VOID_DOM_ELEMENTS.has(tagName)) return;
 
       const propsArgument = node.arguments[1];
-      const childrenArguments = node.arguments.slice(2);
+      // A nullish positional child (`createElement("img", props, null)`,
+      // `…, undefined)`, `…, void 0)`) renders nothing — mirror the JSX
+      // path's isMeaningfulJsxChild, which doesn't count nullish children.
+      const childrenArguments = node.arguments
+        .slice(2)
+        .filter(
+          (argument) =>
+            !isNullishExpression(argument) &&
+            !(isNodeOfType(argument, "UnaryExpression") && argument.operator === "void"),
+        );
       let hasChildrenLikeProp = false;
       if (propsArgument && isNodeOfType(propsArgument, "ObjectExpression")) {
         for (const property of propsArgument.properties) {

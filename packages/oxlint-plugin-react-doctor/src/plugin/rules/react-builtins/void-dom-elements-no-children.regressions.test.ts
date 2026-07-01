@@ -35,4 +35,34 @@ describe("react-builtins/void-dom-elements-no-children — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // The createElement path must mirror the JSX path: a nullish positional
+  // child renders nothing (RDE: `createElement("img", attr, null)` is the
+  // idiomatic "no children" form and was falsely flagged).
+  it("does not flag createElement('img', props, null)", () => {
+    const result = runRule(
+      voidDomElementsNoChildren,
+      `const a = React.createElement("img", { alt: "x" }, null);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag createElement('br', null, undefined, void 0)", () => {
+    const result = runRule(
+      voidDomElementsNoChildren,
+      `const a = React.createElement("br", null, undefined, void 0);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags createElement('img', props, child) with a real positional child", () => {
+    const result = runRule(
+      voidDomElementsNoChildren,
+      `const a = React.createElement("img", { alt: "x" }, "hi");`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

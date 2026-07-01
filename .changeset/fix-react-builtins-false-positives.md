@@ -15,5 +15,5 @@ Harden the react-builtins rules against false positives on real-world code:
 - `jsx-no-script-url`: the `javascript:` match is anchored to the URL start, so an ordinary `https:` link that merely contains `JavaScript:` deeper in its path is not flagged.
 - `jsx-no-comment-textnodes`: an interpolated `//` separator glyph (`{used} // {total} GB`) is no longer mistaken for a `// comment`.
 - `no-string-false-on-boolean-attribute`: custom elements (hyphenated tag names) own their attribute semantics and are skipped.
-- `void-dom-elements-no-children`, `no-danger-with-children`: whitespace-with-newline text, `{/* comment */}`, and `{undefined}` / `{null}` no longer count as meaningful children.
+- `void-dom-elements-no-children`, `no-danger-with-children`: whitespace-with-newline text, `{/* comment */}`, and `{undefined}` / `{null}` no longer count as meaningful children; `void-dom-elements-no-children` also ignores nullish positional children in `createElement` (`createElement("img", props, null)`).
 - `no-unknown-property`: `transform-origin` is allowed on every transformable SVG element, not just `<rect>`.

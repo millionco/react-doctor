@@ -32,12 +32,7 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 
-import {
-  discoverProject,
-  runOxlint,
-  type Diagnostic,
-  type PackageJson,
-} from "@react-doctor/core";
+import { discoverProject, runOxlint, type Diagnostic, type PackageJson } from "@react-doctor/core";
 import { buildTestProject, setupReactProject, writeFile, writeJson } from "./_helpers.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-rn-scope-"));

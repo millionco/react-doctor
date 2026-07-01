@@ -20,18 +20,10 @@ import {
 } from "./dependencies.js";
 import { findMonorepoRoot, isMonorepoRoot } from "./monorepo-root.js";
 import {
+  collectWorkspaceFacts,
   findDependencyInfoFromMonorepoRoot,
-  findReactInWorkspaces,
-  hasReactNativeWorkspaceAnywhere,
-  someWorkspacePackageJson,
-} from "./workspaces.js";
-import {
-  findExpoVersion,
-  findNextjsVersion,
-  findShopifyFlashListVersion,
   SHOPIFY_FLASH_LIST_PACKAGE_NAME,
-} from "./per-dependency-version.js";
-import { isPackageJsonReanimatedAware } from "./rn-metadata.js";
+} from "./collect-project-facts.js";
 import { readPackageJson } from "./package-json.js";
 import {
   getLowestDependencyMajor,
@@ -213,19 +205,26 @@ export const discoverProject = (directory: string): ProjectInfo => {
     }
   }
 
-  if (!reactVersion || framework === "unknown") {
-    const workspaceInfo = findReactInWorkspaces(directory, packageJson);
-    if (!reactVersion && workspaceInfo.reactVersion) {
-      reactVersion = workspaceInfo.reactVersion;
+  // The one workspace traversal: every workspace-derived fact (the react
+  // group, RN/reanimated awareness, expo / flash-list / next specs) comes
+  // out of this single pass; the gates below decide which apply.
+  const shouldCollectReactGroup = !reactVersion || framework === "unknown";
+  const workspaceFacts = collectWorkspaceFacts(directory, packageJson, {
+    collectReactGroup: shouldCollectReactGroup,
+  });
+
+  if (shouldCollectReactGroup) {
+    if (!reactVersion && workspaceFacts.reactVersion) {
+      reactVersion = workspaceFacts.reactVersion;
     }
-    if (!tailwindVersion && workspaceInfo.tailwindVersion) {
-      tailwindVersion = workspaceInfo.tailwindVersion;
+    if (!tailwindVersion && workspaceFacts.tailwindVersion) {
+      tailwindVersion = workspaceFacts.tailwindVersion;
     }
-    if (!zodVersion && workspaceInfo.zodVersion) {
-      zodVersion = workspaceInfo.zodVersion;
+    if (!zodVersion && workspaceFacts.zodVersion) {
+      zodVersion = workspaceFacts.zodVersion;
     }
-    if (framework === "unknown" && workspaceInfo.framework !== "unknown") {
-      framework = workspaceInfo.framework;
+    if (framework === "unknown" && workspaceFacts.framework !== "unknown") {
+      framework = workspaceFacts.framework;
     }
   }
 
@@ -263,22 +262,24 @@ export const discoverProject = (directory: string): ProjectInfo => {
   const hasTypeScript = fs.existsSync(path.join(directory, "tsconfig.json"));
   const sourceFileCount = countSourceFiles(directory);
 
-  // The capability gate in `buildCapabilities` keys off this bit so
-  // `rn-*` rules also load on web-rooted monorepos (a `next` root
-  // with an `apps/mobile` Expo workspace, etc.). Skip the workspace
-  // walk when the root itself already classifies as RN — the bit is
-  // trivially true in that case.
+  // The gates below are semantic, not perf: `expoVersion` / `nextjsVersion`
+  // etc. must stay `null` unless the project actually classifies for them,
+  // or capabilities like `expo` / `nextjs:15` would light up on projects
+  // that merely have a stray dependency somewhere in the tree. The
+  // capability gate in `buildCapabilities` keys off `hasReactNativeWorkspace`
+  // so `rn-*` rules also load on web-rooted monorepos (a `next` root with an
+  // `apps/mobile` Expo workspace, etc.).
   const hasReactNativeWorkspace =
     framework === "expo" ||
     framework === "react-native" ||
-    hasReactNativeWorkspaceAnywhere(directory, packageJson);
+    workspaceFacts.hasReactNativeAwarePackage;
 
   const expoVersion = hasReactNativeWorkspace
     ? resolveCatalogBackedDependencyVersion({
         rootDirectory: directory,
         rootPackageJson: packageJson,
         packageName: "expo",
-        version: findExpoVersion(directory, packageJson),
+        version: workspaceFacts.expo.version,
       })
     : null;
 
@@ -287,16 +288,13 @@ export const discoverProject = (directory: string): ProjectInfo => {
         rootDirectory: directory,
         rootPackageJson: packageJson,
         packageName: SHOPIFY_FLASH_LIST_PACKAGE_NAME,
-        version: findShopifyFlashListVersion(directory, packageJson),
+        version: workspaceFacts.shopifyFlashList.version,
       })
     : null;
 
-  // Only walk for reanimated once we already know it's an RN project —
-  // reanimated implies React Native, so a web project can never declare
-  // it, and this skips the workspace walk entirely for web monorepos.
-  const hasReanimated =
-    hasReactNativeWorkspace &&
-    someWorkspacePackageJson(directory, packageJson, isPackageJsonReanimatedAware);
+  // Reanimated implies React Native, so the fact only applies once the
+  // project already classifies as RN.
+  const hasReanimated = hasReactNativeWorkspace && workspaceFacts.hasReanimatedAwarePackage;
 
   const nextjsVersion =
     framework === "nextjs"
@@ -304,7 +302,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
           rootDirectory: directory,
           rootPackageJson: packageJson,
           packageName: "next",
-          version: findNextjsVersion(directory, packageJson),
+          version: workspaceFacts.next.version,
         })
       : null;
   const preactVersion = getPreactVersion(packageJson);

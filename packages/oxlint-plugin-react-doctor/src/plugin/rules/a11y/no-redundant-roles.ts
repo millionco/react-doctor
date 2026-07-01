@@ -4,7 +4,7 @@ import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { getElementImplicitRoles } from "../../constants/aria-element-roles.js";
-import { getImplicitRole } from "./role-supports-aria-props.js";
+import { getImplicitRole } from "../../utils/get-implicit-role.js";
 
 interface NoRedundantRolesSettings {
   // Per-element overrides: a tag can specify additional non-redundant
@@ -92,12 +92,16 @@ export const noRedundantRoles = defineRule({
         // `<a>` → none). Treating the full set as redundant mislabels
         // `<input type="text" role="combobox">` (an upgrade) and
         // `<a role="link">` without `href` (no implicit role at all).
-        const implicitRoles =
-          tag === "td" || tag === "th"
-            ? [getTableCellPrimaryRole(node, tag)]
-            : ATTRIBUTE_DEPENDENT_IMPLICIT_ROLE_TAGS.has(tag)
-              ? [getImplicitRole(node, tag)].filter((role): role is string => role !== null)
-              : getElementImplicitRoles(tag);
+        let implicitRoles: ReadonlyArray<string>;
+        if (tag === "td" || tag === "th") {
+          implicitRoles = [getTableCellPrimaryRole(node, tag)];
+        } else if (ATTRIBUTE_DEPENDENT_IMPLICIT_ROLE_TAGS.has(tag)) {
+          implicitRoles = [getImplicitRole(node, tag)].filter(
+            (resolvedRole): resolvedRole is string => resolvedRole !== null,
+          );
+        } else {
+          implicitRoles = getElementImplicitRoles(tag);
+        }
         const allowedHere = [
           ...(DEFAULT_NON_REDUNDANT_ROLES[tag] ?? []),
           ...(settings.exceptions[tag] ?? []),

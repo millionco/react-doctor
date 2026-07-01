@@ -5,11 +5,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isDisabledElement } from "../../utils/is-disabled-element.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isInteractiveElement } from "../../utils/is-interactive-element.js";
 import { isInteractiveRole } from "../../utils/is-interactive-role.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNonInteractiveElement } from "../../utils/is-non-interactive-element.js";
 import { isNonInteractiveRole } from "../../utils/is-non-interactive-role.js";
 import { isPresentationRole } from "../../utils/is-presentation-role.js";
@@ -59,11 +59,8 @@ export const interactiveSupportsFocus = defineRule({
     const tabbableSet = new Set(settings.tabbable);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        // A spread (`{...props}`) can carry `tabIndex`, so focus support is
-        // indeterminate — bail rather than flag a focusable element as not.
-        if (node.attributes.some((attribute) => isNodeOfType(attribute, "JSXSpreadAttribute"))) {
-          return;
-        }
+        // A spread (`{...props}`) can carry `tabIndex`, so focus support is indeterminate.
+        if (hasJsxSpreadAttribute(node.attributes)) return;
         const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
         const role = roleAttribute ? getJsxPropStringValue(roleAttribute) : null;
         const elementType = getElementType(node, context.settings);

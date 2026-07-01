@@ -34,11 +34,9 @@ interface ControlHasAssociatedLabelSettings {
 // canvases, etc.). Users who genuinely need labels on canvases (rare)
 // set `aria-label` and the labelling-prop check passes; users who want
 // to enforce regardless can override via `ignoreElements: []`.
+
 // Common visual-hide utility class tokens (Tailwind `hidden`,
-// Bootstrap/HTML5-boilerplate `sr-only`/`visually-hidden`). A file input
-// carrying one of these is the canonical "hidden file picker opened by a
-// separate labeled trigger button via a ref" — the input itself never
-// surfaces its own accessible name to the user.
+// Bootstrap/HTML5-boilerplate `sr-only`/`visually-hidden`).
 const VISUAL_HIDE_CLASS_TOKENS: ReadonlySet<string> = new Set([
   "hidden",
   "sr-only",

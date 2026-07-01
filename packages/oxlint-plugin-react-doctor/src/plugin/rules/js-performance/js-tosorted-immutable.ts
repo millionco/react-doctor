@@ -1,3 +1,4 @@
+import { ITERATOR_PRODUCING_METHOD_NAMES } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -12,9 +13,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // `toSorted()` at all, so the suggested rewrite wouldn't even run, and a
 // freshly produced array (`map`/`filter`/…) is private throwaway data.
 const FRESH_ARRAY_PRODUCING_METHOD_NAMES: ReadonlySet<string> = new Set([
-  "values",
-  "keys",
-  "entries",
+  ...ITERATOR_PRODUCING_METHOD_NAMES,
   "map",
   "filter",
   "flatMap",

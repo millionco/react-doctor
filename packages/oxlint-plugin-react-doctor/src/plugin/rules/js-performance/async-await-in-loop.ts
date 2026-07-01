@@ -1,4 +1,4 @@
-import { INTENTIONAL_SEQUENCING_CALLEE_NAMES } from "../../constants/js.js";
+import { INTENTIONAL_SEQUENCING_CALLEE_NAMES, LOOP_TYPES } from "../../constants/js.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -116,8 +116,7 @@ const ARRAY_MUTATION_METHOD_NAMES = new Set(["push", "unshift", "splice"]);
 const collectMutatedArrayNames = (block: EsTreeNode): Set<string> => {
   const mutated = new Set<string>();
   walkAst(block, (child: EsTreeNode): boolean | void => {
-    if (isInlineFunctionExpression(child) || isNodeOfType(child, "FunctionDeclaration"))
-      return false;
+    if (child !== block && isFunctionLike(child)) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
     const callee = child.callee;
     if (
@@ -133,7 +132,7 @@ const collectMutatedArrayNames = (block: EsTreeNode): Set<string> => {
   return mutated;
 };
 
-// Variables initialized by reading any of `sourceNames` (e.g.
+// Variables initialized by reading any of `names` (e.g.
 // `const prev = results[results.length - 1]`) carry the mutated array's
 // state forward, so awaiting on them is also order-dependent. Iterated to
 // a fixpoint to follow multi-step derivations.
@@ -142,8 +141,7 @@ const addDerivedBindings = (block: EsTreeNode, names: Set<string>): void => {
   while (didGrow) {
     didGrow = false;
     walkAst(block, (child: EsTreeNode): boolean | void => {
-      if (isInlineFunctionExpression(child) || isNodeOfType(child, "FunctionDeclaration"))
-        return false;
+      if (child !== block && isFunctionLike(child)) return false;
       if (!isNodeOfType(child, "VariableDeclarator") || !child.init) return;
       if (!isNodeOfType(child.id, "Identifier") || names.has(child.id.name)) return;
       const initReferences = new Set<string>();
@@ -178,11 +176,7 @@ const hasLoopCarriedDependency = (block: EsTreeNode): boolean => {
 };
 
 const NESTED_LOOP_OR_SWITCH_TYPES: ReadonlySet<string> = new Set([
-  "ForStatement",
-  "ForInStatement",
-  "ForOfStatement",
-  "WhileStatement",
-  "DoWhileStatement",
+  ...LOOP_TYPES,
   "SwitchStatement",
 ]);
 

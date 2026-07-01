@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const MESSAGE =
@@ -42,11 +43,7 @@ const getName = (candidate: EsTreeNode | null | undefined): string | null => {
 const isInsideSnapshotHelper = (node: EsTreeNode): boolean => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
-    if (
-      isNodeOfType(current, "FunctionDeclaration") ||
-      isNodeOfType(current, "FunctionExpression") ||
-      isNodeOfType(current, "ArrowFunctionExpression")
-    ) {
+    if (isFunctionLike(current)) {
       const directName = isNodeOfType(current, "ArrowFunctionExpression")
         ? null
         : getName(current.id);
@@ -84,6 +81,11 @@ export const noJsonParseStringifyClone = defineRule({
       if (!isJsonMethodCall(node, "parse")) return;
       const firstArgument = node.arguments?.[0];
       if (!firstArgument || !isJsonMethodCall(firstArgument, "stringify")) return;
+      // A function or array replacer (`JSON.stringify(x, (k, v) => …)`,
+      // `JSON.stringify(x, ["a", "b"])`) transforms/filters the output, which
+      // `structuredClone` cannot reproduce — so this is not a plain clone.
+      const replacer = firstArgument.arguments?.[1];
+      if (isFunctionLike(replacer) || isNodeOfType(replacer, "ArrayExpression")) return;
       if (isInsideSnapshotHelper(node)) return;
       context.report({ node, message: MESSAGE });
     },

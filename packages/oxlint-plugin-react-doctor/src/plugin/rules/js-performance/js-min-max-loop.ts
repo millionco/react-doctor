@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -18,13 +19,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 const numericComparatorDirection = (
   comparator: EsTreeNode | undefined,
 ): "ascending" | "descending" | null => {
-  if (
-    !comparator ||
-    (!isNodeOfType(comparator, "ArrowFunctionExpression") &&
-      !isNodeOfType(comparator, "FunctionExpression"))
-  ) {
-    return null;
-  }
+  if (!isInlineFunctionExpression(comparator)) return null;
   const parameters = comparator.params ?? [];
   if (parameters.length !== 2) return null;
   const [firstParameter, secondParameter] = parameters;

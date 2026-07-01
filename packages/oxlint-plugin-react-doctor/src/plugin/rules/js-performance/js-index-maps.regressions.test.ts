@@ -48,4 +48,20 @@ describe("js-performance/js-index-maps — regressions", () => {
       `function f(rows, users){ for (const row of rows){ row.tags.forEach((t)=>{ const users = t.x; void users; }); const u = users.find((u)=> u.id === row.userId); use(u); } }`,
     );
   });
+
+  // RDE (linkwarden, chartdb): a TS cast on the receiver must not hide a
+  // loop-VARIANT root from `isLoopVariantReceiver` — `(links as any[]).find`
+  // where `links` is the for-of binding is a different array each pass, so a
+  // single pre-loop Map can't replace it.
+  it("does not flag a `.find()` on a cast of the loop variable", () => {
+    expectPass(
+      `function f(groups, targetId){ for (const links of groups){ const m = (links as any[]).find((i)=> i.id === targetId); use(m); } }`,
+    );
+  });
+
+  it("still flags a loop-invariant receiver even when it is cast", () => {
+    expectFail(
+      `function f(rows, users){ for (const row of rows){ const u = (users as U[]).find((u)=> u.id === row.userId); use(u); } }`,
+    );
+  });
 });

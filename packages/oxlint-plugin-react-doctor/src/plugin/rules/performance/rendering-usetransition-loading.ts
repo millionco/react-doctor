@@ -111,7 +111,7 @@ const setterIsCalledInPromiseChain = (
     }
     for (const argument of child.arguments ?? []) {
       if (!isFunctionLike(argument)) continue;
-      if (callsIdentifier((argument as { body: EsTreeNode | null }).body, setterName)) {
+      if (callsIdentifier(argument.body, setterName)) {
         found = true;
         return;
       }

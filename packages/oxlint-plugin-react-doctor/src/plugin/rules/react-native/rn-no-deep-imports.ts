@@ -1,8 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isEverySpecifierInlineType, isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 
 const DEEP_IMPORT_PREFIX = "react-native/Libraries/";
 
@@ -110,26 +110,6 @@ const classifyDeepImport = (source: unknown): DeepImportFinding | null => {
 // re-exported from the `react-native` root (so the fix is a safe one-line
 // change) plus the relocated `NewAppScreen`. Type-only imports are skipped
 // because many RN internal types are not exported from the root.
-// True when every specifier on the declaration is an inline type-only
-// specifier (`import { type A, type B } from "..."`) — i.e. the whole import
-// is type-only even though `node.importKind` is `"value"`. A default/namespace
-// specifier, a value specifier, or no specifiers at all (a bare side-effect
-// import) make this false. Mirrors the declaration-level `import type` skip so
-// the two forms behave identically. `kindField` is `importKind` for imports
-// and `exportKind` for named re-exports.
-const isEverySpecifierInlineType = (
-  specifiers: ReadonlyArray<EsTreeNode> | undefined,
-  specifierType: "ImportSpecifier" | "ExportSpecifier",
-  kindField: "importKind" | "exportKind",
-): boolean => {
-  if (!specifiers || specifiers.length === 0) return false;
-  return specifiers.every(
-    (specifier) =>
-      isNodeOfType(specifier, specifierType) &&
-      (specifier as { [key: string]: unknown })[kindField] === "type",
-  );
-};
-
 export const rnNoDeepImports = defineRule({
   id: "rn-no-deep-imports",
   title: "Deep import into react-native internals",
@@ -150,8 +130,7 @@ export const rnNoDeepImports = defineRule({
         // are not re-exported from the root, so "import from react-native"
         // would be wrong advice. A mixed `import { Value, type T }` still has a
         // value specifier, so it is NOT skipped.
-        if (node.importKind === "type") return;
-        if (isEverySpecifierInlineType(node.specifiers, "ImportSpecifier", "importKind")) return;
+        if (isTypeOnlyImport(node)) return;
         reportFinding(node, node.source?.value);
       },
       ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {

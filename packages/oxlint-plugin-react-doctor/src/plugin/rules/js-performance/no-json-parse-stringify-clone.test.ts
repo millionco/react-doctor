@@ -13,12 +13,30 @@ describe("no-json-parse-stringify-clone", () => {
     expect(result.diagnostics[0].message).toContain("structuredClone");
   });
 
-  it("flags the clone even when a replacer/reviver is passed", () => {
+  it("flags the clone even when a replacer/reviver reference is passed", () => {
     const result = runRule(
       noJsonParseStringifyClone,
       `const copy = JSON.parse(JSON.stringify(state, replacer), reviver);`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // RDE (AFFiNE `cleanObject`): an inline function replacer transforms/filters
+  // the output, so `structuredClone` is not an equivalent rewrite — don't flag.
+  it("does not flag when a function replacer transforms the output", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `const clean = JSON.parse(JSON.stringify(obj, (k, v) => (keep(k) ? v : undefined)));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when an array (allowlist) replacer is passed", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `const picked = JSON.parse(JSON.stringify(obj, ["id", "name"]));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag `JSON.stringify(JSON.parse(str))` (normalization, not a clone)", () => {

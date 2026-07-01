@@ -4,6 +4,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -28,13 +30,7 @@ const referencesParameter = (
 
 const isSingleFieldEqualityPredicate = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   const callback = node.arguments?.[0] as EsTreeNode | undefined;
-  if (
-    !callback ||
-    (!isNodeOfType(callback, "ArrowFunctionExpression") &&
-      !isNodeOfType(callback, "FunctionExpression"))
-  ) {
-    return false;
-  }
+  if (!isInlineFunctionExpression(callback)) return false;
   const firstParameter = callback.params?.[0];
   if (!firstParameter || !isNodeOfType(firstParameter, "Identifier")) return false;
 
@@ -79,14 +75,7 @@ const collectLoopBoundNames = (loop: EsTreeNode, names: Set<string>): void => {
     // component) belongs to that scope, not the loop iteration, so it does
     // not make the outer `.find()` receiver loop-varying. Don't descend into
     // nested function scopes.
-    if (
-      child !== loop &&
-      (isNodeOfType(child, "FunctionDeclaration") ||
-        isNodeOfType(child, "FunctionExpression") ||
-        isNodeOfType(child, "ArrowFunctionExpression"))
-    ) {
-      return false;
-    }
+    if (child !== loop && isFunctionLike(child)) return false;
     if (isNodeOfType(child, "VariableDeclarator") && child.id) {
       walkAst(child.id, (idNode: EsTreeNode) => {
         if (isNodeOfType(idNode, "Identifier")) names.add(idNode.name);

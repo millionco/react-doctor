@@ -3,16 +3,11 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// True when a template-literal import path opens with a static RELATIVE
-// directory prefix (`./locales/${lang}.js`, `../widgets/${id}.js`). Vite/webpack
-// scope a context module to that static directory and DO code-split it, so it
-// must not be flagged. The glob trick is relative-specifier only: a protocol or
-// absolute prefix (`https://cdn/${v}/lib.js`, `/assets/${v}.js`) is not
-// bundler-analyzable, a path that starts with the interpolation
-// (`${dir}/x.js`) has no static prefix, AND a relative prefix with no static
-// directory segment before the first hole (`./${pkg}/index.js`) scopes the
-// context to the WHOLE directory — all stay flagged. We require a real static
-// segment: a `/` after the leading `./`/`../` markers.
+// A relative template path with a static directory segment before the first
+// hole (`./locales/${lang}.js`) resolves to a bundler context module that DOES
+// code-split, so it must not be flagged — unlike a protocol/absolute prefix or a
+// path that leads with the interpolation, which have no analyzable static prefix.
+// We require a real static segment: a `/` after the leading `./`/`../` markers.
 const RELATIVE_PREFIX_PATTERN = /^(?:\.\.?\/)+/;
 const hasStaticDirectoryPrefix = (template: EsTreeNodeOfType<"TemplateLiteral">): boolean => {
   const firstQuasi = template.quasis?.[0];

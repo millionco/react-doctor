@@ -70,4 +70,7 @@ export const QUERY_CACHE_UPDATE_METHODS = new Set([
   "removeQueries",
   "cancelQueries",
   "clear",
+  // tRPC's react-query integration invalidates through its own proxy
+  // (`utils.posts.invalidate()`), which wraps queryClient.invalidateQueries.
+  "invalidate",
 ]);

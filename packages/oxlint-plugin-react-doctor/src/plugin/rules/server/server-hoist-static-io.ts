@@ -1,5 +1,6 @@
 import { ROUTE_HANDLER_HTTP_METHODS } from "../../constants/nextjs.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
+import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -64,6 +65,31 @@ const callReadsHandlerArgs = (call: EsTreeNode, handlerParamNames: Set<string>):
   return referencesArg;
 };
 
+// Taint every binding derived from a handler param, transitively:
+// `const { path: pathArray } = await params; const filePath = pathArray.join("/");
+// const fullPath = path.join(cwd, filePath);` makes `fullPath` request-dependent,
+// so `readFile(fullPath)` varies per request and must NOT be hoisted. Declarations
+// are visited in document order, which covers const/let use-after-declare.
+const collectRequestTaintedNames = (
+  handlerBody: EsTreeNode,
+  handlerParamNames: Set<string>,
+): Set<string> => {
+  const taintedNames = new Set(handlerParamNames);
+  if (taintedNames.size === 0) return taintedNames;
+  walkAst(handlerBody, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "VariableDeclaration")) return;
+    for (const declarator of child.declarations ?? []) {
+      if (!declarator.init) continue;
+      const referencedNames = new Set<string>();
+      collectReferenceIdentifierNames(declarator.init, referencedNames);
+      if ([...referencedNames].some((name) => taintedNames.has(name))) {
+        collectPatternNames(declarator.id, taintedNames);
+      }
+    }
+  });
+  return taintedNames;
+};
+
 const PAGES_ROUTER_API_PATH_PATTERN = /\/pages\/api\//;
 
 const inspectHandlerBody = (
@@ -72,6 +98,7 @@ const inspectHandlerBody = (
   handlerLabel: string,
   handlerParamNames: Set<string>,
 ): void => {
+  const requestTaintedNames = collectRequestTaintedNames(handlerBody, handlerParamNames);
   walkAst(handlerBody, (child: EsTreeNode) => {
     let staticCall: EsTreeNode | null = null;
     if (isStaticIoCall(child)) staticCall = child;
@@ -84,7 +111,7 @@ const inspectHandlerBody = (
       staticCall = child.argument;
     }
     if (!staticCall) return;
-    if (callReadsHandlerArgs(staticCall, handlerParamNames)) return;
+    if (callReadsHandlerArgs(staticCall, requestTaintedNames)) return;
     if (!isNodeOfType(staticCall, "CallExpression")) return;
 
     let calleeText = "io";

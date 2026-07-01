@@ -22,4 +22,34 @@ describe("server/server-hoist-static-io — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("does not flag a read whose path derives from a param through intermediate bindings", () => {
+    const result = runRule(
+      serverHoistStaticIo,
+      `export async function GET(request, { params }) {
+        const { path: pathArray } = await params;
+        const filePath = pathArray.join("/");
+        const fullPath = path.join(process.cwd(), "openapi", filePath);
+        const fileContent = await readFile(fullPath, "utf8");
+        return Response.json(fileContent);
+      }`,
+      { filename: "app/openapi/[...path]/route.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a read through an intermediate binding that never touches a param", () => {
+    const result = runRule(
+      serverHoistStaticIo,
+      `export async function GET(request) {
+        const fontPath = path.join(process.cwd(), "fonts", "Inter.ttf");
+        const data = await readFile(fontPath);
+        return new Response(data);
+      }`,
+      { filename: "app/og/route.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

@@ -176,6 +176,100 @@ describe("class-component-missing-component-will-unmount-teardown", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags window.setInterval in componentDidMount (TS number-timer-id idiom)", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      class Clock extends React.Component {
+        componentDidMount() {
+          this.timer = window.setInterval(() => this.tick(), 1000);
+        }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags addListener on a module-scope emitter (React Native Keyboard idiom)", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      class C extends React.Component {
+        componentDidMount() {
+          this.subscription = Keyboard.addListener("keyboardDidShow", this.onShow);
+        }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a listener on a local emitter that escapes onto this", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      class Legend extends React.Component {
+        componentDidMount() {
+          const network = new Network(this.container, data, options);
+          network.on("beforeDrawing", (ctx) => this.draw(ctx));
+          this.network = network;
+        }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a listener on an emitter constructed locally in the mount body (Algolia places idiom)", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      class C extends React.Component {
+        componentDidMount() {
+          const autocomplete = places({ container: this.input });
+          autocomplete.on("change", (event) => this.props.onChange(event.suggestion));
+        }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag the lodash _.once function-factory idiom in a constructor", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      class C extends React.Component {
+        constructor(props) {
+          super(props);
+          this.trackFirstOpen = _.once(() => trackEvent("open"));
+        }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a self-removing addEventListener with { once: true }", () => {
+    const result = runRule(
+      classComponentMissingComponentWillUnmountTeardown,
+      `
+      class C extends React.Component {
+        componentDidMount() {
+          window.addEventListener("load", this.onLoad, { once: true });
+        }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a plain (non-React) class that registers a listener", () => {
     const result = runRule(
       classComponentMissingComponentWillUnmountTeardown,

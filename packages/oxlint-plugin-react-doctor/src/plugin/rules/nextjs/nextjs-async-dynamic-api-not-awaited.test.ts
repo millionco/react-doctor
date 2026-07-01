@@ -110,4 +110,80 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag a local const that shadows the import (test-stub factory idiom)", () => {
+    const result = runRule(
+      nextjsAsyncDynamicApiNotAwaited,
+      `import { cookies } from 'next/headers';
+       async function outer() { return (await cookies()).get('a'); }
+       function testHelper() {
+         const cookies = () => ({ get: () => 'stub' });
+         return cookies().get('t');
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a parameter that shadows the import (dependency-injection idiom)", () => {
+    const result = runRule(
+      nextjsAsyncDynamicApiNotAwaited,
+      `import { headers } from 'next/headers';
+       function readRequestId(headers) { return headers().get('x-request-id'); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags destructuring off draftMode()", () => {
+    const result = runRule(
+      nextjsAsyncDynamicApiNotAwaited,
+      `import { draftMode } from 'next/headers';
+       function f() { const { isEnabled } = draftMode(); return isEnabled; }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags destructuring off an un-awaited binding", () => {
+    const result = runRule(
+      nextjsAsyncDynamicApiNotAwaited,
+      `import { cookies } from 'next/headers';
+       function f() { const c = cookies(); const { get } = c; return get('t'); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag destructuring off an awaited call", () => {
+    const result = runRule(
+      nextjsAsyncDynamicApiNotAwaited,
+      `import { draftMode } from 'next/headers';
+       async function f() { const { isEnabled } = await draftMode(); return isEnabled; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a namespace-import member call", () => {
+    const result = runRule(
+      nextjsAsyncDynamicApiNotAwaited,
+      `import * as nextHeaders from 'next/headers';
+       function f() { return nextHeaders.headers().get('x'); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an awaited namespace-import member call", () => {
+    const result = runRule(
+      nextjsAsyncDynamicApiNotAwaited,
+      `import * as nextHeaders from 'next/headers';
+       async function f() { return (await nextHeaders.headers()).get('x'); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a same-named namespace object not from next/headers", () => {
+    const result = runRule(
+      nextjsAsyncDynamicApiNotAwaited,
+      `import * as nextHeaders from './local-headers';
+       function f() { return nextHeaders.headers().get('x'); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

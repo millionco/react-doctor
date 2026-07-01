@@ -13,7 +13,15 @@ const MESSAGE =
 
 // Listener-registration methods that hand back a resource which must be
 // explicitly removed on unmount. Sound: each has a matching removal API.
-const LISTENER_REGISTRATION_METHODS = new Set(["on", "once", "subscribe", "addEventListener"]);
+const LISTENER_REGISTRATION_METHODS = new Set([
+  "on",
+  "once",
+  "subscribe",
+  "addEventListener",
+  "addListener",
+]);
+
+const GLOBAL_OBJECT_NAMES = new Set(["window", "globalThis", "global", "self"]);
 
 // Walks a function body without descending into nested functions, so a
 // hazard belongs to the mount body itself (not an event-driven callback).
@@ -27,6 +35,22 @@ const walkMountBody = (functionBody: EsTreeNode, visit: (node: EsTreeNode) => vo
 const getBareCalleeName = (node: EsTreeNode): string | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
   return isNodeOfType(node.callee, "Identifier") ? node.callee.name : null;
+};
+
+// Timers are registered either bare (`setInterval(...)`) or via the global
+// object (`window.setInterval(...)`, the TS idiom for a `number` timer id).
+const getTimerCalleeName = (node: EsTreeNode): string | null => {
+  if (!isNodeOfType(node, "CallExpression")) return null;
+  const bareName = getBareCalleeName(node);
+  if (bareName) return bareName;
+  if (
+    isNodeOfType(node.callee, "MemberExpression") &&
+    isNodeOfType(node.callee.object, "Identifier") &&
+    GLOBAL_OBJECT_NAMES.has(node.callee.object.name)
+  ) {
+    return getCallMethodName(node.callee);
+  }
+  return null;
 };
 
 // A `setTimeout` is a hazard only when its callback actually mutates the
@@ -55,14 +79,71 @@ const timeoutCallbackMutatesComponent = (callback: EsTreeNode): boolean => {
   return mutates;
 };
 
-const isMountHazard = (node: EsTreeNode): boolean => {
+const getMemberChainBase = (node: EsTreeNode): EsTreeNode => {
+  let base = node;
+  while (isNodeOfType(base, "MemberExpression")) base = base.object;
+  return base;
+};
+
+// `addEventListener(..., { once: true })` self-removes after firing, so there
+// is usually nothing left to release on unmount.
+const isOneShotListenerOptions = (optionsArgument: EsTreeNode | undefined): boolean => {
+  if (!optionsArgument || !isNodeOfType(optionsArgument, "ObjectExpression")) return false;
+  return (optionsArgument.properties ?? []).some(
+    (property: EsTreeNode) =>
+      isNodeOfType(property, "Property") &&
+      !property.computed &&
+      isNodeOfType(property.key, "Identifier") &&
+      property.key.name === "once" &&
+      isNodeOfType(property.value, "Literal") &&
+      property.value.value === true,
+  );
+};
+
+// Variables declared inside the mount body whose values never escape it
+// (never assigned onto `this` or another object): a listener registered on
+// such a locally constructed emitter dies with the component, so it needs
+// no teardown.
+const collectMountLocalReceiverNames = (mountBody: EsTreeNode): Set<string> => {
+  const declaredNames = new Set<string>();
+  const escapedNames = new Set<string>();
+  walkMountBody(mountBody, (node) => {
+    if (isNodeOfType(node, "VariableDeclarator") && isNodeOfType(node.id, "Identifier")) {
+      declaredNames.add(node.id.name);
+    }
+    if (
+      isNodeOfType(node, "AssignmentExpression") &&
+      isNodeOfType(node.left, "MemberExpression") &&
+      isNodeOfType(node.right, "Identifier")
+    ) {
+      escapedNames.add(node.right.name);
+    }
+  });
+  for (const escapedName of escapedNames) declaredNames.delete(escapedName);
+  return declaredNames;
+};
+
+const isMountHazard = (node: EsTreeNode, localReceiverNames: Set<string>): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
   const methodName = getCallMethodName(node.callee);
-  if (methodName && LISTENER_REGISTRATION_METHODS.has(methodName)) return true;
+  if (
+    methodName &&
+    LISTENER_REGISTRATION_METHODS.has(methodName) &&
+    isNodeOfType(node.callee, "MemberExpression")
+  ) {
+    const callArguments = node.arguments ?? [];
+    const isFunctionFactoryOnce = methodName === "once" && callArguments.length < 2;
+    const receiverBase = getMemberChainBase(node.callee.object);
+    const isLocalReceiver =
+      isNodeOfType(receiverBase, "Identifier") && localReceiverNames.has(receiverBase.name);
+    const isSelfRemovingListener =
+      methodName === "addEventListener" && isOneShotListenerOptions(callArguments[2]);
+    return !isFunctionFactoryOnce && !isLocalReceiver && !isSelfRemovingListener;
+  }
 
-  const bareCallee = getBareCalleeName(node);
-  if (bareCallee === "setInterval") return true;
-  if (bareCallee === "setTimeout" && node.arguments?.[0]) {
+  const timerCalleeName = getTimerCalleeName(node);
+  if (timerCalleeName === "setInterval") return true;
+  if (timerCalleeName === "setTimeout" && node.arguments?.[0]) {
     return timeoutCallbackMutatesComponent(node.arguments[0]);
   }
   return false;
@@ -127,10 +208,11 @@ export const classComponentMissingComponentWillUnmountTeardown = defineRule({
         const body = getMemberFunctionBody(member);
         if (!body) continue;
 
+        const localReceiverNames = collectMountLocalReceiverNames(body);
         let hazardNode: EsTreeNode | null = null;
         walkMountBody(body, (candidate) => {
           if (hazardNode) return;
-          if (isMountHazard(candidate)) hazardNode = candidate;
+          if (isMountHazard(candidate, localReceiverNames)) hazardNode = candidate;
         });
         if (hazardNode) {
           context.report({ node: hazardNode, message: MESSAGE });

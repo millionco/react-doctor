@@ -14,24 +14,17 @@ import type { RuleContext } from "../../utils/rule-context.js";
 const REQUEST_ANIMATION_FRAME_NAME = "requestAnimationFrame";
 const CANCEL_ANIMATION_FRAME_NAME = "cancelAnimationFrame";
 
+interface SelfReschedulingRafLoop {
+  rafCall: EsTreeNodeOfType<"CallExpression">;
+  scheduledFunction: EsTreeNode;
+}
+
 const isRequestAnimationFrameCall = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "CallExpression") && getCalleeName(node) === REQUEST_ANIMATION_FRAME_NAME;
 
-const subtreeContainsRequestAnimationFrame = (root: EsTreeNode): boolean => {
-  let didFind = false;
-  walkAst(root, (child: EsTreeNode) => {
-    if (didFind) return false;
-    if (isRequestAnimationFrameCall(child)) {
-      didFind = true;
-      return false;
-    }
-  });
-  return didFind;
-};
-
-const resolveScheduledFunction = (argument: EsTreeNode | null | undefined): EsTreeNode | null => {
-  if (!argument) return null;
-  const stripped = stripParenExpression(argument);
+const resolveFunctionNode = (expression: EsTreeNode | null | undefined): EsTreeNode | null => {
+  if (!expression) return null;
+  const stripped = stripParenExpression(expression);
   if (
     isNodeOfType(stripped, "ArrowFunctionExpression") ||
     isNodeOfType(stripped, "FunctionExpression")
@@ -53,9 +46,66 @@ const resolveScheduledFunction = (argument: EsTreeNode | null | undefined): EsTr
   return null;
 };
 
-const collectRafHandleNames = (effectCallback: EsTreeNode): Set<string> => {
-  const handleNames = new Set<string>();
+const collectScheduledSelfNames = (
+  scheduledArgument: EsTreeNode,
+  scheduledFunction: EsTreeNode,
+): Set<string> => {
+  const selfNames = new Set<string>();
+  const strippedArgument = stripParenExpression(scheduledArgument);
+  if (isNodeOfType(strippedArgument, "Identifier")) {
+    selfNames.add(strippedArgument.name);
+  }
+  if (
+    (isNodeOfType(scheduledFunction, "FunctionExpression") ||
+      isNodeOfType(scheduledFunction, "FunctionDeclaration")) &&
+    scheduledFunction.id &&
+    isNodeOfType(scheduledFunction.id, "Identifier")
+  ) {
+    selfNames.add(scheduledFunction.id.name);
+  }
+  return selfNames;
+};
+
+const doesSubtreeRescheduleAnyName = (root: EsTreeNode, selfNames: Set<string>): boolean => {
+  if (selfNames.size === 0) return false;
+  let didReschedule = false;
+  walkAst(root, (child: EsTreeNode) => {
+    if (didReschedule) return false;
+    if (!isRequestAnimationFrameCall(child) || !isNodeOfType(child, "CallExpression")) return;
+    const innerArgument = child.arguments?.[0];
+    if (!innerArgument) return;
+    const strippedInner = stripParenExpression(innerArgument);
+    if (isNodeOfType(strippedInner, "Identifier") && selfNames.has(strippedInner.name)) {
+      didReschedule = true;
+      return false;
+    }
+  });
+  return didReschedule;
+};
+
+const findSelfReschedulingRafLoop = (
+  effectCallback: EsTreeNode,
+): SelfReschedulingRafLoop | null => {
+  let foundLoop: SelfReschedulingRafLoop | null = null;
   walkAst(effectCallback, (child: EsTreeNode) => {
+    if (foundLoop) return false;
+    if (!isRequestAnimationFrameCall(child) || !isNodeOfType(child, "CallExpression")) return;
+    const scheduledArgument = child.arguments?.[0];
+    if (!scheduledArgument) return;
+    const scheduledFunction = resolveFunctionNode(scheduledArgument);
+    if (!scheduledFunction) return;
+    const selfNames = collectScheduledSelfNames(scheduledArgument, scheduledFunction);
+    if (doesSubtreeRescheduleAnyName(scheduledFunction, selfNames)) {
+      foundLoop = { rafCall: child, scheduledFunction };
+      return false;
+    }
+  });
+  return foundLoop;
+};
+
+const collectRafHandleNames = (root: EsTreeNode): Set<string> => {
+  const handleNames = new Set<string>();
+  walkAst(root, (child: EsTreeNode) => {
     if (!isRequestAnimationFrameCall(child)) return;
     const parent = child.parent;
     if (
@@ -92,21 +142,12 @@ const findCleanupReturnFunction = (effectCallback: EsTreeNode): EsTreeNode | nul
     return null;
   }
   if (!isNodeOfType(effectCallback.body, "BlockStatement")) {
-    const concise = stripParenExpression(effectCallback.body);
-    return isNodeOfType(concise, "ArrowFunctionExpression") ||
-      isNodeOfType(concise, "FunctionExpression")
-      ? concise
-      : null;
+    return resolveFunctionNode(effectCallback.body);
   }
   for (const statement of effectCallback.body.body ?? []) {
     if (isNodeOfType(statement, "ReturnStatement") && statement.argument) {
-      const returned = stripParenExpression(statement.argument);
-      if (
-        isNodeOfType(returned, "ArrowFunctionExpression") ||
-        isNodeOfType(returned, "FunctionExpression")
-      ) {
-        return returned;
-      }
+      const returnedFunction = resolveFunctionNode(statement.argument);
+      if (returnedFunction) return returnedFunction;
     }
   }
   return null;
@@ -125,6 +166,70 @@ const subtreeReferencesAnyName = (root: EsTreeNode, names: Set<string>): boolean
   return didReference;
 };
 
+const didCancelAnyStoredHandle = (searchRoot: EsTreeNode, handleNames: Set<string>): boolean => {
+  if (handleNames.size === 0) return false;
+  let didCancel = false;
+  walkAst(searchRoot, (child: EsTreeNode) => {
+    if (didCancel) return false;
+    if (
+      !isNodeOfType(child, "CallExpression") ||
+      getCalleeName(child) !== CANCEL_ANIMATION_FRAME_NAME
+    ) {
+      return;
+    }
+    for (const cancelArgument of child.arguments ?? []) {
+      if (subtreeReferencesAnyName(cancelArgument, handleNames)) {
+        didCancel = true;
+        return false;
+      }
+    }
+  });
+  return didCancel;
+};
+
+const collectCleanupWrittenNames = (cleanupFunction: EsTreeNode): Set<string> => {
+  const writtenNames = new Set<string>();
+  const addWriteTarget = (target: EsTreeNode | null | undefined): void => {
+    if (!target) return;
+    if (isNodeOfType(target, "Identifier")) {
+      writtenNames.add(target.name);
+      return;
+    }
+    if (isNodeOfType(target, "MemberExpression") && isNodeOfType(target.object, "Identifier")) {
+      writtenNames.add(target.object.name);
+    }
+  };
+  walkAst(cleanupFunction, (child: EsTreeNode) => {
+    if (isNodeOfType(child, "AssignmentExpression")) addWriteTarget(child.left);
+    if (isNodeOfType(child, "UpdateExpression")) addWriteTarget(child.argument);
+  });
+  return writtenNames;
+};
+
+const doesLoopGuardOnAnyName = (loopFunction: EsTreeNode, guardNames: Set<string>): boolean => {
+  if (guardNames.size === 0) return false;
+  let didFindGuard = false;
+  walkAst(loopFunction, (child: EsTreeNode) => {
+    if (didFindGuard) return false;
+    let guardTest: EsTreeNode | null = null;
+    if (
+      isNodeOfType(child, "IfStatement") ||
+      isNodeOfType(child, "ConditionalExpression") ||
+      isNodeOfType(child, "WhileStatement") ||
+      isNodeOfType(child, "DoWhileStatement")
+    ) {
+      guardTest = child.test;
+    } else if (isNodeOfType(child, "LogicalExpression")) {
+      guardTest = child.left;
+    }
+    if (guardTest && subtreeReferencesAnyName(guardTest, guardNames)) {
+      didFindGuard = true;
+      return false;
+    }
+  });
+  return didFindGuard;
+};
+
 const findEnclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
   let cursor: EsTreeNode | null = node.parent ?? null;
   while (cursor) {
@@ -140,20 +245,6 @@ const findEnclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
   return null;
 };
 
-const findSelfReschedulingRafCall = (effectCallback: EsTreeNode): EsTreeNode | null => {
-  let selfReschedulingCall: EsTreeNode | null = null;
-  walkAst(effectCallback, (child: EsTreeNode) => {
-    if (selfReschedulingCall) return false;
-    if (!isRequestAnimationFrameCall(child) || !isNodeOfType(child, "CallExpression")) return;
-    const scheduledFunction = resolveScheduledFunction(child.arguments?.[0]);
-    if (scheduledFunction && subtreeContainsRequestAnimationFrame(scheduledFunction)) {
-      selfReschedulingCall = child;
-      return false;
-    }
-  });
-  return selfReschedulingCall;
-};
-
 export const effectRafLoopNeedsCancel = defineRule({
   id: "effect-raf-loop-needs-cancel",
   title: "requestAnimationFrame loop never cancelled",
@@ -167,32 +258,27 @@ export const effectRafLoopNeedsCancel = defineRule({
       const callback = getEffectCallback(node);
       if (!callback) return;
 
-      const selfReschedulingCall = findSelfReschedulingRafCall(callback);
-      if (!selfReschedulingCall) return;
+      const rafLoop = findSelfReschedulingRafLoop(callback);
+      if (!rafLoop) return;
+
+      const handleNames = collectRafHandleNames(callback);
+      for (const handleName of collectRafHandleNames(rafLoop.scheduledFunction)) {
+        handleNames.add(handleName);
+      }
 
       const enclosingComponent = findEnclosingFunction(node);
       const cancelSearchRoot = enclosingComponent ?? callback;
-      let didCancelAnywhere = false;
-      walkAst(cancelSearchRoot, (child: EsTreeNode) => {
-        if (didCancelAnywhere) return false;
-        if (
-          isNodeOfType(child, "CallExpression") &&
-          getCalleeName(child) === CANCEL_ANIMATION_FRAME_NAME
-        ) {
-          didCancelAnywhere = true;
-          return false;
-        }
-      });
-      if (didCancelAnywhere) return;
+      if (didCancelAnyStoredHandle(cancelSearchRoot, handleNames)) return;
 
       const cleanupReturnFunction = findCleanupReturnFunction(callback);
       if (cleanupReturnFunction) {
-        const handleNames = collectRafHandleNames(callback);
         if (subtreeReferencesAnyName(cleanupReturnFunction, handleNames)) return;
+        const cleanupWrittenNames = collectCleanupWrittenNames(cleanupReturnFunction);
+        if (doesLoopGuardOnAnyName(rafLoop.scheduledFunction, cleanupWrittenNames)) return;
       }
 
       context.report({
-        node: selfReschedulingCall,
+        node: rafLoop.rafCall,
         message:
           "This requestAnimationFrame loop reschedules itself every frame but is never cancelled, so it keeps running after unmount; store the frame id and return `() => cancelAnimationFrame(id)` from the effect.",
       });

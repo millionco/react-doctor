@@ -1,7 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -23,19 +22,6 @@ const MESSAGE =
 
 const isNumericLiteral = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "Literal") && typeof node.value === "number";
-
-// Operators that always coerce both operands to a number, so the result is a
-// provably-numeric array index (`i - 1`, `n * cols`, `x % len`) — never an
-// object/Record string key. `+` is excluded because it is also string
-// concatenation (`obj[prefix + suffix]`), which is an object-key access.
-const NUMERIC_INDEX_OPERATORS: ReadonlySet<string> = new Set(["-", "*", "/", "%"]);
-
-// A computed index that is provably numeric: an arithmetic expression whose
-// top operator coerces to number. This is the only AST-only signal (no type
-// checker) that separates a real array index from a dynamic object-key read
-// (`acc[category]`, `styles[breakpoint]`), which is a different concern.
-const isArithmeticNumericIndex = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "BinaryExpression") && NUMERIC_INDEX_OPERATORS.has(node.operator);
 
 // A call whose method is `.exec(...)` / `.match(...)` — the result is
 // `null` on no match and each capture group can be undefined.
@@ -121,85 +107,134 @@ const isInsideTouchEndHandler = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const isFunctionParameter = (bindingIdentifier: EsTreeNode): boolean => {
-  let cursor: EsTreeNode = bindingIdentifier;
-  let parent = cursor.parent;
-  while (parent) {
-    if (isNodeOfType(parent, "VariableDeclarator") || isNodeOfType(parent, "ImportSpecifier")) {
-      return false;
-    }
-    if (
-      isFunctionLike(parent) &&
-      Array.isArray(parent.params) &&
-      parent.params.some((param) => (param as EsTreeNode) === cursor)
-    ) {
-      return true;
-    }
-    cursor = parent;
-    parent = parent.parent ?? null;
+// Structural equality for guard-shaped expressions (identifier / literal /
+// member / call), with regex literals compared by raw source so
+// `str.match(/x/) ? str.match(/x/)[1] : ...` recognizes both calls as the
+// same read. Local (not the shared util) because the shared helper compares
+// regex literals by RegExp object identity, which is never equal.
+const areGuardExpressionsEqual = (
+  first: EsTreeNode | null | undefined,
+  second: EsTreeNode | null | undefined,
+): boolean => {
+  if (!first || !second) return false;
+  if (first.type !== second.type) return false;
+  if (isNodeOfType(first, "Identifier") && isNodeOfType(second, "Identifier")) {
+    return first.name === second.name;
+  }
+  if (isNodeOfType(first, "Literal") && isNodeOfType(second, "Literal")) {
+    if ("regex" in first || "regex" in second) return first.raw === second.raw;
+    return first.value === second.value;
+  }
+  if (isNodeOfType(first, "MemberExpression") && isNodeOfType(second, "MemberExpression")) {
+    return (
+      first.computed === second.computed &&
+      areGuardExpressionsEqual(first.object, second.object) &&
+      areGuardExpressionsEqual(first.property, second.property)
+    );
+  }
+  if (isNodeOfType(first, "CallExpression") && isNodeOfType(second, "CallExpression")) {
+    if (!areGuardExpressionsEqual(first.callee, second.callee)) return false;
+    if (first.arguments.length !== second.arguments.length) return false;
+    return first.arguments.every((argument, argumentIndex) =>
+      areGuardExpressionsEqual(argument, second.arguments[argumentIndex]),
+    );
   }
   return false;
 };
 
-// A base identifier that resolves to a function parameter is a
-// variable-length runtime source (the caller controls its length).
-const baseIsRuntimeSourceParameter = (base: EsTreeNode): boolean => {
-  if (!isNodeOfType(base, "Identifier")) return false;
-  const binding = findVariableInitializer(base, base.name);
-  if (!binding || binding.initializer !== null) return false;
-  return isFunctionParameter(binding.bindingIdentifier);
+// Conditions that dominate the deref within the nearest enclosing function:
+// tests of if/ternary consequents the deref sits in, and left operands of
+// `&&` chains it sits on the right of.
+const collectDominatingConditionTests = (node: EsTreeNode): EsTreeNode[] => {
+  const dominatingTests: EsTreeNode[] = [];
+  let cursor: EsTreeNode = node;
+  let parent = cursor.parent ?? null;
+  while (parent && !isFunctionLike(parent)) {
+    if (isNodeOfType(parent, "IfStatement") && parent.consequent === cursor) {
+      dominatingTests.push(parent.test);
+    }
+    if (isNodeOfType(parent, "ConditionalExpression") && parent.consequent === cursor) {
+      dominatingTests.push(parent.test);
+    }
+    if (
+      isNodeOfType(parent, "LogicalExpression") &&
+      parent.operator === "&&" &&
+      parent.right === cursor
+    ) {
+      dominatingTests.push(parent.left);
+    }
+    cursor = parent;
+    parent = parent.parent ?? null;
+  }
+  return dominatingTests;
 };
 
-// Any length/`Array.isArray`/optional-chain reference to `baseName`
-// inside the enclosing function counts as a dominating guard.
-const enclosingFunctionGuardsBase = (node: EsTreeNode, baseName: string): boolean => {
-  const enclosingFunction = findNearestFunction(node);
-  if (!enclosingFunction) return false;
-  let guarded = false;
-  walkAst(enclosingFunction, (child: EsTreeNode) => {
-    if (guarded) return false;
-    if (
-      isNodeOfType(child, "MemberExpression") &&
-      isNodeOfType(child.object, "Identifier") &&
-      child.object.name === baseName
-    ) {
-      if (child.optional) {
-        guarded = true;
+const someDominatingTestHasCall = (
+  node: EsTreeNode,
+  isGuardCall: (call: EsTreeNodeOfType<"CallExpression">) => boolean,
+): boolean =>
+  collectDominatingConditionTests(node).some((test) => {
+    let didFindGuardCall = false;
+    walkAst(test, (child: EsTreeNode) => {
+      if (didFindGuardCall) return false;
+      if (isNodeOfType(child, "CallExpression") && isGuardCall(child)) {
+        didFindGuardCall = true;
         return false;
       }
-      if (isNodeOfType(child.property, "Identifier") && child.property.name === "length") {
-        guarded = true;
-        return false;
-      }
-    }
-    if (
-      isNodeOfType(child, "CallExpression") &&
-      isNodeOfType(child.callee, "MemberExpression") &&
-      isNodeOfType(child.callee.object, "Identifier") &&
-      child.callee.object.name === "Array" &&
-      isNodeOfType(child.callee.property, "Identifier") &&
-      child.callee.property.name === "isArray"
-    ) {
-      const argument = child.arguments[0];
-      if (
-        argument &&
-        isNodeOfType(argument as EsTreeNode, "Identifier") &&
-        (argument as EsTreeNodeOfType<"Identifier">).name === baseName
-      ) {
-        guarded = true;
-        return false;
-      }
-    }
+    });
+    return didFindGuardCall;
   });
-  return guarded;
+
+// The double-read idiom `str.match(re) ? str.match(re)[1].trim() : ''` —
+// a dominating condition repeats the same exec/match call, so the indexed
+// read is proven non-null on this branch.
+const isRegexResultDerefGuarded = (node: EsTreeNode, regexResultCall: EsTreeNode): boolean =>
+  someDominatingTestHasCall(node, (call) => areGuardExpressionsEqual(call, regexResultCall));
+
+// `"1.2.3".split(".")[1]` — splitting a string literal by a string-literal
+// delimiter has a statically known part count.
+const isStaticallyPresentSplitPart = (splitCall: EsTreeNode, partIndex: number): boolean => {
+  if (!isNodeOfType(splitCall, "CallExpression")) return false;
+  if (!isNodeOfType(splitCall.callee, "MemberExpression")) return false;
+  const receiver = stripParenExpression(splitCall.callee.object);
+  const delimiter = splitCall.arguments[0];
+  if (!isNodeOfType(receiver, "Literal") || typeof receiver.value !== "string") return false;
+  if (!delimiter || !isNodeOfType(delimiter, "Literal") || typeof delimiter.value !== "string") {
+    return false;
+  }
+  return receiver.value.split(delimiter.value).length > partIndex;
+};
+
+// A dominating condition that guarantees the delimiter exists before the
+// split is read: `receiver.includes(delimiter)` on the same receiver and
+// delimiter, or a regex precondition via `.test(...)` (the delimiter's
+// presence is asserted by the pattern).
+const isSplitPartDerefGuarded = (node: EsTreeNode, splitCall: EsTreeNode): boolean => {
+  if (!isNodeOfType(splitCall, "CallExpression")) return false;
+  if (!isNodeOfType(splitCall.callee, "MemberExpression")) return false;
+  const splitReceiver = stripParenExpression(splitCall.callee.object);
+  const splitDelimiter = splitCall.arguments[0] ?? null;
+  return someDominatingTestHasCall(node, (call) => {
+    if (!isNodeOfType(call.callee, "MemberExpression") || call.callee.computed) return false;
+    if (!isNodeOfType(call.callee.property, "Identifier")) return false;
+    const guardMethodName = call.callee.property.name;
+    if (guardMethodName === "test") return true;
+    if (guardMethodName !== "includes") return false;
+    const guardArgument = call.arguments[0] ?? null;
+    return (
+      areGuardExpressionsEqual(stripParenExpression(call.callee.object), splitReceiver) &&
+      areGuardExpressionsEqual(guardArgument, splitDelimiter)
+    );
+  });
 };
 
 // Flags an immediate deref (`.foo`, `.foo()`, further `[k]`) on the
 // result of an empty-prone numeric bracket read with no dominating
 // guard: (a) regex `.exec/.match` results, (b) `touches[0]` in
-// touchend/touchcancel handlers, (c) `.split(delim)[k]` for k>=1, and
-// (d) a provably-numeric arithmetic index into a runtime-sized parameter
-// array (underflow/overflow crash) — dynamic object-key reads are excluded.
+// touchend/touchcancel handlers, and (c) `.split(delim)[k]` for k>=1.
+// Arithmetic indexing into parameter arrays is deliberately out of scope:
+// caller-side index/length invariants (virtualized-grid cell renderers,
+// reduce accumulators) make that pattern overwhelmingly safe in practice.
 export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
   id: "no-array-index-deref-without-bounds-or-empty-guard",
   title: "Array index result dereferenced without a guard",
@@ -227,6 +262,7 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
 
         // (a) regex exec/match result indexed then dereferenced.
         if (isRegexResultCall(base)) {
+          if (isRegexResultDerefGuarded(node, base)) return;
           context.report({ node, message: MESSAGE });
           return;
         }
@@ -237,6 +273,9 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
           isNumericLiteral(index) &&
           Number((index as EsTreeNodeOfType<"Literal">).value) >= 1
         ) {
+          const partIndex = Number((index as EsTreeNodeOfType<"Literal">).value);
+          if (isStaticallyPresentSplitPart(base, partIndex)) return;
+          if (isSplitPartDerefGuarded(node, base)) return;
           context.report({ node, message: MESSAGE });
           return;
         }
@@ -244,20 +283,6 @@ export const noArrayIndexDerefWithoutBoundsOrEmptyGuard = defineRule({
         // (b) `touches[0]` / `targetTouches[0]` inside touchend/touchcancel.
         if (isTouchListAccess(base) && isInsideTouchEndHandler(node)) {
           context.report({ node, message: MESSAGE });
-          return;
-        }
-
-        // (d) arithmetic (provably-numeric) index into a runtime-sized
-        // parameter array with no dominating length/existence guard. Restricted
-        // to arithmetic indices because a bare-identifier or member index
-        // (`obj[key]`, `acc[category]`) is indistinguishable from a dynamic
-        // object-key read without a type checker, and empirically those are
-        // overwhelmingly Record accesses, not array indexing.
-        if (isArithmeticNumericIndex(index) && baseIsRuntimeSourceParameter(base)) {
-          const baseName = (base as EsTreeNodeOfType<"Identifier">).name;
-          if (!enclosingFunctionGuardsBase(node, baseName)) {
-            context.report({ node, message: MESSAGE });
-          }
         }
       },
     };

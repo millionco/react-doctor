@@ -181,6 +181,119 @@ describe("context-provider-value-from-unmemoized-local-literal", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a hoisted local function declaration passed as the value", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `
+      import { createContext } from "react";
+      const DispatchContext = createContext(null);
+      function App({ children }) {
+        function dispatch(action) { console.log(action); }
+        return <DispatchContext.Provider value={dispatch}>{children}</DispatchContext.Provider>;
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a memo-wrapped component's render-local literal", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `
+      import { createContext, memo } from "react";
+      const ThemeContext = createContext(null);
+      const App = memo(({ theme, children }) => {
+        const value = { theme };
+        return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+      });
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a destructured-prop parameter default (lobe-ui `{ config = {} }` idiom)", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `
+      import { createContext } from "react";
+      const ConfigContext = createContext(null);
+      function App({ config = {}, children }) {
+        return <ConfigContext.Provider value={config}>{children}</ConfigContext.Provider>;
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a per-item value inside a .map() render-loop callback (SegmentedControl idiom)", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `
+      import { createContext } from "react";
+      const ItemContext = createContext(null);
+      function List({ items }) {
+        return items.map((item) => {
+          const itemValue = { item, select: () => {} };
+          return <ItemContext.Provider value={itemValue} key={item.id}>{item.label}</ItemContext.Provider>;
+        });
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a value allocated once in an outer factory/HOC closure (createStore idiom)", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `
+      import { createContext } from "react";
+      const StoreContext = createContext(null);
+      const createStoreProvider = (initialState) => {
+        const store = { state: initialState, listeners: [] };
+        const Provider = ({ children }) =>
+          <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;
+        return Provider;
+      };
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a value built inside a useMemo callback that returns the Provider element", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `
+      import { createContext, useMemo } from "react";
+      const ThemeContext = createContext(null);
+      function App({ theme, children }) {
+        return useMemo(() => {
+          const value = { theme };
+          return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+        }, [theme, children]);
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a block-scoped literal declared inside the component's own if-block", () => {
+    const result = runRule(
+      contextProviderValueFromUnmemoizedLocalLiteral,
+      `
+      import { createContext } from "react";
+      const ThemeContext = createContext(null);
+      function App({ theme, children }) {
+        if (theme) {
+          const value = { theme };
+          return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+        }
+        return children;
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag the shorthand when the name is a local shadow, not a context", () => {
     const result = runRule(
       contextProviderValueFromUnmemoizedLocalLiteral,

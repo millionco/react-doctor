@@ -44,12 +44,35 @@ describe("no-array-index-deref-without-bounds-or-empty-guard", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags an arithmetic (underflow) index into a runtime-sized parameter array", () => {
+  it("does not flag an arithmetic index into a parameter array (caller invariants dominate on real code)", () => {
     const result = runRule(
       noArrayIndexDerefWithoutBoundsOrEmptyGuard,
       `function goTo(views, activeViewIndex) { return views[activeViewIndex - 1].id; }`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag the previous-item map idiom guarded by an index > 0 check", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `function List({ items }) {
+        return items.map((item, index) => (
+          <Row key={item.id} previous={index > 0 ? items[index - 1].label : null} />
+        ));
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a delta computed in a map callback under an outer length early return", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `function Chart(points) {
+        if (points.length < 2) return null;
+        return points.map((p, i) => (i === 0 ? 0 : p.y - points[i - 1].y));
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag .split(delim)[0]", () => {
@@ -58,6 +81,70 @@ describe("no-array-index-deref-without-bounds-or-empty-guard", () => {
       `const host = url.split('://')[0].toLowerCase();`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an includes()-guarded split (delimiter presence guarantees the part)", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `if (line.includes(':')) { const value = line.split(':')[1].trim(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a split under a RegExp .test() precondition (rsuite delimiter guard)", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `if (/^\\d+:\\d+$/.test(value)) { const minutes = value.split(':')[1].padStart(2, '0'); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a split on a string literal with a statically guaranteed part count", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `const minor = "1.2.3".split(".")[1].padStart(2, "0");`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a string-literal split whose static part count is too short", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `const missing = "no-dots".split(".")[1].trim();`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag the ternary double-match idiom (test repeats the same match call)", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `const v = str.match(/#(\\w+)/) ? str.match(/#(\\w+)/)[1].trim() : '';`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an &&-guarded repeated exec read", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `const version = /v(\\d+)/.exec(input) && /v(\\d+)/.exec(input)[1].trim();`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a match deref guarded by a DIFFERENT match call", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `const v = str.match(/a/) ? str.match(/#(\\w+)/)[1].trim() : '';`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an includes()-guarded split when the delimiter differs", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `if (line.includes(';')) { const value = line.split(':')[1].trim(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not flag touches[0] inside a touchstart handler", () => {

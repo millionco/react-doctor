@@ -68,6 +68,76 @@ describe("mobx-reaction-disposer-not-stored-or-disposed-in-willunmount", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a namespace-imported field-initializer reaction (import * as mobx)", () => {
+    const result = runRule(
+      mobxReactionDisposerNotStoredOrDisposedInWillunmount,
+      `
+      import * as mobx from "mobx";
+      class C extends React.Component {
+        disposer = mobx.reaction(() => this.props.value, () => {});
+        componentWillUnmount() { this.disposer(); }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag the mobx-react README decorator idiom @disposeOnUnmount on the field", () => {
+    const result = runRule(
+      mobxReactionDisposerNotStoredOrDisposedInWillunmount,
+      `
+      import { reaction } from "mobx";
+      import { disposeOnUnmount } from "mobx-react";
+      class C extends React.Component {
+        @disposeOnUnmount
+        disposer = reaction(() => this.props.value, () => {});
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a plain MobX store class declared inside a component method", () => {
+    const result = runRule(
+      mobxReactionDisposerNotStoredOrDisposedInWillunmount,
+      `
+      import { reaction } from "mobx";
+      class C extends React.Component {
+        componentDidMount() {
+          class LocalStore {
+            disposer = reaction(() => globalStore.value, () => {});
+          }
+          this.store = new LocalStore();
+        }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an inline class-expression store field inside a component", () => {
+    const result = runRule(
+      mobxReactionDisposerNotStoredOrDisposedInWillunmount,
+      `
+      import { reaction } from "mobx";
+      class C extends React.Component {
+        store = new (class {
+          disposer = reaction(() => globalStore.value, () => {});
+        })();
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a field-initializer wrapped in disposeOnUnmount", () => {
     const result = runRule(
       mobxReactionDisposerNotStoredOrDisposedInWillunmount,

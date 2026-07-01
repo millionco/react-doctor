@@ -218,6 +218,22 @@ export const detectFramework = (dependencies: Record<string, string>): Framework
   return "unknown";
 };
 
+const MOBILE_FRAMEWORKS: ReadonlySet<Framework> = new Set(["expo", "react-native"]);
+
+// The cross-workspace merge tier: a monorepo whose `apps/mobile` is Expo and
+// `apps/web` is Next.js classifies by the WEB framework no matter which
+// workspace the walk visits first — the same web-over-mobile priority
+// `detectFramework` applies within one manifest. Web wins because it's
+// coverage-maximizing: `rn-*` / Expo rules still load via
+// `hasReactNativeWorkspace` / `expoVersion`, while the web framework's rules
+// gate on this classification alone. Within a tier (two web apps, or two
+// mobile apps) the first workspace in walk order keeps the slot; `unknown`
+// never displaces anything.
+export const frameworkMergeRank = (framework: Framework): number => {
+  if (framework === "unknown") return 3;
+  return MOBILE_FRAMEWORKS.has(framework) ? 2 : 1;
+};
+
 const REACT_COMPILER_PACKAGES = new Set([
   "babel-plugin-react-compiler",
   "react-compiler-runtime",

@@ -1803,6 +1803,39 @@ describe("discoverProject — Next.js static export", () => {
     expect(projectInfo.isStaticExport).toBe(false);
   });
 
+  it("classifies a web+mobile monorepo by the web framework regardless of walk order", () => {
+    // apps/a-mobile sorts before apps/web, but the cross-workspace merge is
+    // priority-ranked (web over mobile, mirroring detectFramework), so the
+    // Expo workspace must not claim the framework slot.
+    const monorepoRoot = path.join(tempDirectory, "web-mobile-priority");
+    const mobileDirectory = path.join(monorepoRoot, "apps", "a-mobile");
+    const webDirectory = path.join(monorepoRoot, "apps", "web");
+    fs.mkdirSync(mobileDirectory, { recursive: true });
+    fs.mkdirSync(webDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({ name: "root", private: true, workspaces: ["apps/*"] }),
+    );
+    fs.writeFileSync(
+      path.join(mobileDirectory, "package.json"),
+      JSON.stringify({
+        name: "a-mobile",
+        dependencies: { expo: "~52.0.0", react: "18.3.1", "react-native": "0.76.0" },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(webDirectory, "package.json"),
+      JSON.stringify({ name: "web", dependencies: { next: "^15.3.0", react: "^19.0.0" } }),
+    );
+
+    const projectInfo = discoverProject(monorepoRoot);
+    expect(projectInfo.framework).toBe("nextjs");
+    expect(projectInfo.nextjsMajorVersion).toBe(15);
+    // The mobile workspace still surfaces through the RN/Expo facts.
+    expect(projectInfo.hasReactNativeWorkspace).toBe(true);
+    expect(projectInfo.expoVersion).toBe("~52.0.0");
+  });
+
   it("stays false when no next.config sets output: export anywhere", () => {
     const monorepoRoot = path.join(tempDirectory, "static-export-none");
     const webDirectory = path.join(monorepoRoot, "apps", "web");

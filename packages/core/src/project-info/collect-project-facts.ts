@@ -10,6 +10,7 @@ import {
 import { isFile } from "./fs-utils.js";
 import { findMonorepoRoot } from "./monorepo-root.js";
 import { readPackageJson } from "./package-json.js";
+import { frameworkMergeRank } from "./detectors.js";
 import { isPackageJsonReactNativeAware, isPackageJsonReanimatedAware } from "./rn-metadata.js";
 import { getWorkspacePatterns, resolveWorkspaceDirectories } from "./workspaces.js";
 import { parseReactMajor } from "./version.js";
@@ -180,8 +181,18 @@ export const collectWorkspaceFacts = (
 
       evaluateManifestFacts(facts, workspacePackageJson, workspaceDirectory);
 
-      if (isReactGroupSettled) continue;
       const info = extractDependencyInfo(workspacePackageJson);
+      // Priority merge, not first-hit: a web framework outranks a mobile one
+      // across workspaces (see `frameworkMergeRank`), with walk order only
+      // breaking ties between equal ranks.
+      if (
+        info.framework !== "unknown" &&
+        frameworkMergeRank(info.framework) < frameworkMergeRank(facts.framework)
+      ) {
+        facts.framework = info.framework;
+      }
+
+      if (isReactGroupSettled) continue;
       const reactVersion = resolveWorkspaceDependencyVersion({
         concreteVersion: info.reactVersion,
         packageName: "react",
@@ -218,9 +229,6 @@ export const collectWorkspaceFacts = (
       }
       if (zodVersion && !facts.zodVersion) {
         facts.zodVersion = zodVersion;
-      }
-      if (info.framework !== "unknown" && facts.framework === "unknown") {
-        facts.framework = info.framework;
       }
 
       const settledReactMajor = parseReactMajor(facts.reactVersion);

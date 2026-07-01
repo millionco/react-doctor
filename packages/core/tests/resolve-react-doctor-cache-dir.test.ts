@@ -1,11 +1,15 @@
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterAll, afterEach, describe, expect, it } from "vite-plus/test";
 import { resolveReactDoctorCacheDir } from "../src/utils/resolve-react-doctor-cache-dir.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-cache-dir-"));
 const originalCacheDirEnv = process.env["REACT_DOCTOR_CACHE_DIR"];
+
+afterAll(() => {
+  fs.rmSync(tempRoot, { recursive: true, force: true });
+});
 
 afterEach(() => {
   if (originalCacheDirEnv === undefined) delete process.env["REACT_DOCTOR_CACHE_DIR"];

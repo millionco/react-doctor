@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { describe, expect, it } from "vite-plus/test";
+import { beforeAll, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic } from "@react-doctor/core";
 import { runOxlint } from "@react-doctor/core";
 import { buildTestProject } from "./regressions/_helpers.js";
@@ -26,7 +26,7 @@ const findDiagnosticsInFile = (
 let diagnostics: Diagnostic[];
 
 describe("namespace hook detection (React.useEffect, React.useState, etc.)", () => {
-  it("loads diagnostics from namespace-hooks fixture", async () => {
+  beforeAll(async () => {
     diagnostics = await runOxlint({
       rootDirectory: BASIC_REACT_DIRECTORY,
       project: buildTestProject({
@@ -34,10 +34,10 @@ describe("namespace hook detection (React.useEffect, React.useState, etc.)", () 
         hasTanStackQuery: true,
       }),
     });
-    expect(diagnostics.length).toBeGreaterThan(0);
   });
 
   it("detects no-derived-state-effect with React.useEffect", () => {
+    expect(diagnostics.length).toBeGreaterThan(0);
     const issues = findDiagnosticsInFile(diagnostics, "no-derived-state-effect", "namespace-hooks");
     expect(issues.length).toBeGreaterThan(0);
     expect(issues[0].message).toContain("derive from other values");

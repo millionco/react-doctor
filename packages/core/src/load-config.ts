@@ -161,7 +161,7 @@ const loadPackageJsonConfig = (directory: string): LoadedReactDoctorConfig | nul
   const embeddedConfig = readEmbeddedPackageJsonConfig(directory);
   if (!embeddedConfig) return null;
   return {
-    config: validateConfigTypes(embeddedConfig as ReactDoctorConfig),
+    config: validateConfigTypes(embeddedConfig),
     sourceDirectory: directory,
     configFilePath: path.join(directory, PACKAGE_JSON_FILENAME),
     format: "package-json",
@@ -188,7 +188,7 @@ const loadLegacyConfig = (directory: string): DirectoryConfigResult => {
       return {
         status: "found",
         loaded: {
-          config: validateConfigTypes(parsed as ReactDoctorConfig),
+          config: validateConfigTypes(parsed),
           sourceDirectory: directory,
           configFilePath: legacyFilePath,
           format: "json",
@@ -214,7 +214,7 @@ const loadConfigFromDirectory = async (directory: string): Promise<DirectoryConf
         return {
           status: "found",
           loaded: {
-            config: validateConfigTypes(parsed as ReactDoctorConfig),
+            config: validateConfigTypes(parsed),
             sourceDirectory: directory,
             configFilePath: filePath,
             format: isDataFile ? "json" : "module",

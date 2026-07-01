@@ -359,8 +359,8 @@ pnpm smoke:json-report   # validates the built CLI's JSON output against the sch
 
 The composite GitHub Action is **versioned independently from the npm packages**. "The action"
 is `action.yml` (repo root) plus the scripts it shells out to (`scripts/ensure-json-report.mjs`,
-`scripts/render-github-action-comment.mjs`). Treat a change to any of those files as an action
-release.
+`scripts/normalize-changed-files.mjs`, `scripts/render-github-action-comment.mjs`,
+`scripts/resolve-package-spec.mjs`). Treat a change to any of those files as an action release.
 
 - Two tag namespaces coexist — never conflate them:
   - npm packages — `react-doctor@X.Y.Z`, `eslint-plugin-react-doctor@X.Y.Z`,

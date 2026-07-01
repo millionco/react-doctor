@@ -6,6 +6,7 @@ import type {
 } from "./types/index.js";
 import { DIAGNOSTIC_SURFACES, isDiagnosticSurface } from "./diagnostic-surface.js";
 import { DIAGNOSTIC_CATEGORY_BUCKETS } from "./constants.js";
+import { isPlainObject } from "./project-info/utils/is-plain-object.js";
 import { warnConfigIssue } from "./utils/warn-config-issue.js";
 
 const VALID_RULE_SEVERITIES: ReadonlyArray<RuleSeverityOverride> = ["error", "warn", "off"];
@@ -70,9 +71,6 @@ const SURFACE_CONTROL_FIELD_NAMES = [
 const SEVERITY_FIELD_NAMES = ["rules", "categories"] as const satisfies ReadonlyArray<
   keyof ReactDoctorConfig
 >;
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const formatType = (value: unknown): string =>
   typeof value === "string" ? `"${value}"` : typeof value;
@@ -230,7 +228,13 @@ const applyFieldValidator = <Key extends keyof ReactDoctorConfig>(
 // mistakes (string "true"/"false") and other invalid types stripped.
 // Non-validated fields pass through untouched — consumers still do their
 // own runtime checks for those.
-export const validateConfigTypes = (config: ReactDoctorConfig): ReactDoctorConfig => {
+export const validateConfigTypes = (config: unknown): ReactDoctorConfig => {
+  if (!isPlainObject(config)) {
+    warnConfigIssue(
+      `React Doctor config must be an object (got ${typeof config}); ignoring the config.`,
+    );
+    return {};
+  }
   const validated: ReactDoctorConfig = { ...config };
   for (const fieldName of BOOLEAN_FIELD_NAMES) {
     applyFieldValidator(config, validated, fieldName, (value) =>

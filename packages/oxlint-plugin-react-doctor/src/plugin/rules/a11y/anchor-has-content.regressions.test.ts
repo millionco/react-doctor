@@ -15,4 +15,11 @@ describe("a11y/anchor-has-content regressions", () => {
     const result = runRule(anchorHasContent, `const A = () => <a href="/p" />;`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  // An `<a {...props} />` can receive its children at runtime, so it can't
+  // be proven empty and must not be flagged.
+  it("exempts an `<a>` that spreads props", () => {
+    const result = runRule(anchorHasContent, `const A = (props) => <a href="/p" {...props} />;`);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

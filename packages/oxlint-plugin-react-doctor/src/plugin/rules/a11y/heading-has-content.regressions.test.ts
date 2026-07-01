@@ -17,4 +17,12 @@ describe("a11y/heading-has-content regressions", () => {
     const result = runRule(headingHasContent, `const H = () => <h1 />;`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  // A heading that spreads props (`<h5 {...props} />` — forwardRef card
+  // titles, markdown component overrides) can receive its children at
+  // runtime, so it can't be proven empty and must not be flagged.
+  it("exempts a heading that spreads props", () => {
+    const result = runRule(headingHasContent, `const H = (props) => <h1 {...props} />;`);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

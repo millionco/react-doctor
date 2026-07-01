@@ -301,11 +301,18 @@ const formatRequiresLine = (entry) => {
   // prettier would otherwise rewrite it into (a few rules have long enough
   // identifiers — e.g. `noNoninteractiveElementToInteractiveRole` — to spill
   // past the limit).
-  const singleLine = `      requires: [...new Set(["react", ...(${entry.identifier}.requires ?? [])])],`;
+  const singleLine = `      requires: [...new Set<Capability>(["react", ...(${entry.identifier}.requires ?? [])])],`;
   if (singleLine.length <= 100) return `${singleLine}\n`;
+  const wrappedSetLine = `        ...new Set<Capability>(["react", ...(${entry.identifier}.requires ?? [])]),`;
+  if (wrappedSetLine.length <= 100) {
+    return `      requires: [\n${wrappedSetLine}\n      ],\n`;
+  }
   return (
     `      requires: [\n` +
-    `        ...new Set(["react", ...(${entry.identifier}.requires ?? [])]),\n` +
+    `        ...new Set<Capability>([\n` +
+    `          "react",\n` +
+    `          ...(${entry.identifier}.requires ?? []),\n` +
+    `        ]),\n` +
     `      ],\n`
   );
 };
@@ -345,6 +352,7 @@ const generatedSource = `// GENERATED FILE — do not edit by hand. Run \`pnpm g
 // \`category\` when needed. Adding a rule is a single-file operation:
 // create the rule file, set its \`id\`, re-run codegen.
 
+import type { Capability } from "./utils/capability.js";
 import type { Rule } from "./utils/rule.js";
 
 ${importLines}

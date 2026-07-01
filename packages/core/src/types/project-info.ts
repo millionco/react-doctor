@@ -1,14 +1,8 @@
-export type Framework =
-  | "nextjs"
-  | "vite"
-  | "cra"
-  | "remix"
-  | "gatsby"
-  | "expo"
-  | "react-native"
-  | "tanstack-start"
-  | "preact"
-  | "unknown";
+import type { FrameworkToken } from "oxlint-plugin-react-doctor";
+
+// Aliased to the plugin's capability vocabulary: `buildCapabilities` emits
+// `project.framework` as a capability token, so the two unions must be one.
+export type Framework = FrameworkToken;
 
 export interface ProjectInfo {
   rootDirectory: string;

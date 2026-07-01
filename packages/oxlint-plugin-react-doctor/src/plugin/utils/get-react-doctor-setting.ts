@@ -1,3 +1,4 @@
+import type { Capability } from "./capability.js";
 import type { RuleContext } from "./rule-context.js";
 
 // Extracted helpers for reading typed entries out of the `react-doctor`
@@ -69,5 +70,5 @@ export const getReactDoctorStringArraySetting = (
 //   runtime: `hasCapability(...)` lets a rule that stays on pick its wording.
 // Returns false on a missing/malformed bag (the safe default: behave as if the
 // project lacks the capability).
-export const hasCapability = (settings: RuleContext["settings"], capability: string): boolean =>
+export const hasCapability = (settings: RuleContext["settings"], capability: Capability): boolean =>
   getReactDoctorStringArraySetting(settings, "capabilities").includes(capability);

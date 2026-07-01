@@ -1,3 +1,4 @@
+import type { Capability, CapabilityQuery } from "./capability.js";
 import type { FileScan } from "./file-scan.js";
 import type { RuleContext } from "./rule-context.js";
 import type { RuleVisitors } from "./rule-visitors.js";
@@ -48,13 +49,13 @@ export interface Rule {
   // `"react:19"`, `"nextjs"`, `"tailwind:3.4"`) that ALL must be satisfied
   // for the rule to be enabled. Omit for rules that always apply once
   // their framework gate is met.
-  requires?: ReadonlyArray<string>;
+  requires?: ReadonlyArray<Capability>;
   // Inverse of `requires`: list of capability tokens whose presence
   // DISABLES the rule. Used for rules that become irrelevant when a
   // project ships with React Compiler (auto-memoization makes the four
   // `jsx-no-new-*-as-prop` perf rules unnecessary, for example). If
   // ANY listed capability is present the rule is skipped.
-  disabledWhen?: ReadonlyArray<string>;
+  disabledWhen?: ReadonlyArray<Capability>;
   // Behavioral tags (e.g. `"test-noise"`, `"design"`) consumed by
   // `--ignore-tag` / `shouldEnableRule` to opt families of rules in
   // or out of a scan independently of the framework gate.
@@ -81,5 +82,11 @@ export interface Rule {
   // this without coupling the host to specific rule ids.
   committedFilesOnly?: boolean;
   recommendation?: string;
+  // Capability-conditioned override of `recommendation`, evaluated by
+  // @react-doctor/core's diagnostic pipeline where the scanned project's
+  // capability set is known. Return `undefined` to fall back to the static
+  // `recommendation` (which stays the project-agnostic prose that docs,
+  // the rule catalog, and LSP hover render).
+  recommendationFor?: (hasCapability: CapabilityQuery) => string | undefined;
   create: (context: RuleContext) => RuleVisitors;
 }

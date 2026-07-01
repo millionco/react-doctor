@@ -34,6 +34,8 @@ export {
 } from "./react-native-dependency-names.js";
 
 export type { OxlintRuleSeverity } from "./types.js";
+export { FRAMEWORK_TOKENS } from "./plugin/utils/capability.js";
+export type { Capability, CapabilityQuery, FrameworkToken } from "./plugin/utils/capability.js";
 export type { EsTreeNode } from "./plugin/utils/es-tree-node.js";
 export type { ScanFinding, FileScan, ScannedFile } from "./plugin/utils/file-scan.js";
 export type { Rule, RuleFramework, RuleSeverity } from "./plugin/utils/rule.js";

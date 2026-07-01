@@ -9,6 +9,39 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
+// A reference position that actually hands the whole object onward:
+// returned from a custom hook (incl. an arrow's implicit return and a
+// returned tuple/object literal), passed as a call argument, wired into JSX,
+// spread, or re-bound (`const q = query` / `const { data } = query`). A mere
+// mention — e.g. an effect dependency array `[query]` — is NOT forwarding,
+// so it must not silence the rule for a component that reads `query.data`
+// field-by-field in render.
+const isForwardingReference = (identifier: EsTreeNode): boolean => {
+  const parent = identifier.parent;
+  if (isNodeOfType(parent, "ReturnStatement")) return true;
+  if (isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === identifier) return true;
+  if (
+    (isNodeOfType(parent, "CallExpression") || isNodeOfType(parent, "NewExpression")) &&
+    Boolean(parent.arguments?.some((argument: EsTreeNode) => argument === identifier))
+  ) {
+    return true;
+  }
+  if (isNodeOfType(parent, "SpreadElement") || isNodeOfType(parent, "JSXSpreadAttribute")) {
+    return true;
+  }
+  if (isNodeOfType(parent, "JSXExpressionContainer")) return true;
+  if (isNodeOfType(parent, "Property") && parent.value === identifier) return true;
+  if (isNodeOfType(parent, "VariableDeclarator") && parent.init === identifier) return true;
+  if (isNodeOfType(parent, "ArrayExpression")) {
+    const grandparent = parent.parent;
+    if (isNodeOfType(grandparent, "ReturnStatement")) return true;
+    if (isNodeOfType(grandparent, "ArrowFunctionExpression") && grandparent.body === parent) {
+      return true;
+    }
+  }
+  return false;
+};
+
 // True when the whole-query binding is FORWARDED rather than consumed
 // field-by-field in this scope: returned from a custom hook, passed as a JSX
 // attribute / call argument, or spread. Those are the documented
@@ -30,7 +63,7 @@ const isForwardedBinding = (
     if (node === declarator.id) return;
     const parent = node.parent;
     if (isNodeOfType(parent, "MemberExpression") && parent.object === node) return;
-    forwarded = true;
+    if (isForwardingReference(node)) forwarded = true;
   });
   return forwarded;
 };

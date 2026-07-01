@@ -229,33 +229,40 @@ const promptForGate = async (
   };
 };
 
+interface CiPullRequestOutcome {
+  readonly mode: "pr" | "tree";
+  readonly status: OpenWorkflowPullRequestResult["status"];
+}
+
 // Opens a pull request for an already-written file and reports the outcome on a
 // spinner, falling back to staging the file when a PR can't be opened (no `gh`,
-// not authenticated, dirty tree, …). Returns the mode for telemetry.
+// not authenticated, dirty tree, …). Returns the mode for telemetry plus the
+// raw status, so callers whose edit is NOT covered by an already-open setup PR
+// (`ci upgrade`) can react to `pr-exists` instead of claiming success.
 const openCiPullRequest = async (params: {
   workflowPath: string;
   baseBranch: string;
   commitMessage?: string;
   prTitle?: string;
   prBody?: string;
-}): Promise<"pr" | "tree"> => {
+}): Promise<CiPullRequestOutcome> => {
   const pullRequestSpinner = spinner("Opening a pull request for review...").start();
   const result: OpenWorkflowPullRequestResult = await openWorkflowPullRequest(params);
   if (result.status === "pr-opened") {
     pullRequestSpinner.succeed(`Opened pull request for review: ${highlighter.info(result.url)}`);
-    return "pr";
+    return { mode: "pr", status: result.status };
   }
   if (result.status === "pr-exists") {
     pullRequestSpinner.succeed(
       `A React Doctor pull request is already open: ${highlighter.info(result.url)}`,
     );
-    return "pr";
+    return { mode: "pr", status: result.status };
   }
   if (result.status === "branch-pushed") {
     pullRequestSpinner.warn(
       `Pushed ${highlighter.bold(result.branch)} but couldn't open a PR. Open one with: gh pr create --head ${result.branch}`,
     );
-    return "pr";
+    return { mode: "pr", status: result.status };
   }
   pullRequestSpinner.stop();
   const didStage = await stageWorkflowFile({ workflowPath: params.workflowPath });
@@ -264,7 +271,7 @@ const openCiPullRequest = async (params: {
       ? "  Staged the change. Commit it to apply."
       : "  Review and commit the change to apply it.",
   );
-  return "tree";
+  return { mode: "tree", status: result.status };
 };
 
 export const runCiInstall = async (options: CiCommandOptions = {}): Promise<void> => {
@@ -327,7 +334,7 @@ export const runCiInstall = async (options: CiCommandOptions = {}): Promise<void
 
   let mode: "pr" | "tree" = "tree";
   if (provider.supportsPullRequest && options.pr) {
-    mode = await openCiPullRequest({ workflowPath: result.path, baseBranch: defaultBranch });
+    mode = (await openCiPullRequest({ workflowPath: result.path, baseBranch: defaultBranch })).mode;
   } else {
     logger.dim("  Review and commit it to start scanning every pull request.");
   }
@@ -393,11 +400,28 @@ export const runCiUpgrade = async (options: CiCommandOptions = {}): Promise<void
       process.exitCode = 1;
       return;
     }
-    mode = await openCiPullRequest({
+    const outcome = await openCiPullRequest({
       workflowPath: workflow.path,
       baseBranch: (await detectDefaultBranch(projectRoot, run)) ?? "main",
       ...upgradeCopy,
     });
+    if (outcome.status === "pr-exists") {
+      // The open PR predates this edit (it carries the initial setup scaffold,
+      // still on the old major), so the upgrade shipped nowhere — restore the
+      // on-disk file instead of leaving an unexplained local modification, and
+      // don't record a `ciUpgraded` metric for an upgrade that didn't land.
+      try {
+        fs.writeFileSync(workflow.path, workflow.content);
+      } catch {
+        logger.dim("  The upgrade edit is still in your working tree — review and commit it.");
+        return;
+      }
+      logger.dim(
+        `  That PR doesn't include this upgrade — merge it first, then re-run ${highlighter.info("react-doctor ci upgrade")}.`,
+      );
+      return;
+    }
+    mode = outcome.mode;
   } else {
     const upgradeSpinner = spinner("Upgrading workflow to @v2...").start();
     try {

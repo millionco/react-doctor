@@ -6,6 +6,7 @@ import {
   formatErrorChain,
   formatReactDoctorError,
   highlighter,
+  isErrnoException,
   isReactDoctorError,
 } from "@react-doctor/core";
 import type { HandleErrorOptions } from "@react-doctor/core";
@@ -163,7 +164,7 @@ export const handleUserError = (error: unknown, options: { shouldExit?: boolean 
     // visible. `recordCount` no-ops unless Sentry is initialized, and its
     // `withRunAttributes` already tags the command — only the code is passed.
     recordCount(METRIC.cliEnvironmentError, 1, {
-      code: (error as NodeJS.ErrnoException).code ?? "unknown",
+      code: (isErrnoException(error) ? error.code : undefined) ?? "unknown",
     });
   }
   const message = isEnvError ? formatEnvironmentError(error) : formatErrorForReport(error);

@@ -156,6 +156,75 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     expect(hookContent).toContain("react-doctor --verbose --scope changed --blocking warning");
   });
 
+  it("replaces a legacy .sh Claude hook instead of stacking a second entry", () => {
+    const settingsPath = path.join(fixture.projectRoot, ".claude/settings.json");
+    const legacyScriptPath = path.join(fixture.projectRoot, ".claude/hooks/react-doctor.sh");
+    fs.mkdirSync(path.dirname(legacyScriptPath), { recursive: true });
+    fs.writeFileSync(legacyScriptPath, "#!/bin/sh\nexit 0\n");
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        hooks: {
+          PostToolBatch: [
+            {
+              hooks: [
+                {
+                  type: "command",
+                  command: 'sh "$CLAUDE_PROJECT_DIR/.claude/hooks/react-doctor.sh"',
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    installReactDoctorAgentHooks({
+      projectRoot: fixture.projectRoot,
+      agents: ["claude-code"],
+    });
+
+    const settings = readJson<{
+      hooks: { PostToolBatch: Array<{ hooks: Array<{ command: string }> }> };
+    }>(settingsPath);
+    const hookCommands = settings.hooks.PostToolBatch.flatMap((group) =>
+      group.hooks.map((hook) => hook.command),
+    );
+
+    expect(hookCommands).toHaveLength(1);
+    expect(hookCommands[0]).toContain("react-doctor.mjs");
+    expect(fs.existsSync(legacyScriptPath)).toBe(false);
+  });
+
+  it("replaces a legacy .sh Cursor hook instead of stacking a second entry", () => {
+    const configPath = path.join(fixture.projectRoot, ".cursor/hooks.json");
+    const legacyScriptPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.sh");
+    fs.mkdirSync(path.dirname(legacyScriptPath), { recursive: true });
+    fs.writeFileSync(legacyScriptPath, "#!/bin/sh\nexit 0\n");
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        version: 1,
+        hooks: {
+          postToolUse: [{ command: ".cursor/hooks/react-doctor.sh", matcher: "Write" }],
+        },
+      }),
+    );
+
+    installReactDoctorAgentHooks({
+      projectRoot: fixture.projectRoot,
+      agents: ["cursor"],
+    });
+
+    const config = readJson<{
+      hooks: { postToolUse: Array<{ command: string }> };
+    }>(configPath);
+
+    expect(config.hooks.postToolUse).toHaveLength(1);
+    expect(config.hooks.postToolUse[0].command).toContain("react-doctor.mjs");
+    expect(fs.existsSync(legacyScriptPath)).toBe(false);
+  });
+
   it("installs a Cursor postToolUse hook and preserves existing hook config", () => {
     const configPath = path.join(fixture.projectRoot, ".cursor/hooks.json");
     const hookPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.mjs");

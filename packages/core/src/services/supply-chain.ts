@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import type { Diagnostic, ReactDoctorConfig } from "../types/index.js";
 import { checkSupplyChain } from "../check-supply-chain.js";
+import { SupplyChainOverlapTimeoutMs } from "../refs.js";
 
 interface SupplyChainInput {
   readonly rootDirectory: string;
@@ -40,7 +41,14 @@ export class SupplyChain extends Context.Service<
     SupplyChain.of({
       run: (input) =>
         Stream.unwrap(
-          checkSupplyChain(input).pipe(
+          // Thread the configured overlap budget into the check's own
+          // wall-clock cap, so `REACT_DOCTOR_SUPPLY_CHAIN_TIMEOUT_MS` raising
+          // the fork-level budget also raises the inner one — otherwise the
+          // inner cap stays pinned at the constant and the env var can only
+          // ever lower the effective budget.
+          Effect.flatMap(SupplyChainOverlapTimeoutMs, (totalTimeoutMs) =>
+            checkSupplyChain({ ...input, totalTimeoutMs }),
+          ).pipe(
             Effect.map((diagnostics) => Stream.fromIterable(diagnostics)),
             // Surface the whole check as one named span (parent of the
             // per-package `Effect.tryPromise` fetches), matching how the

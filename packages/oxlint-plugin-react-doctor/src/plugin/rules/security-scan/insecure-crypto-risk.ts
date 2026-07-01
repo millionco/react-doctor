@@ -2,6 +2,7 @@ import { DEMO_CONTEXT_PATTERN } from "../../constants/security-scan.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
 import { getLocationAtIndex } from "./utils/get-location-at-index.js";
+import { getScannableContent } from "./utils/scan-by-pattern.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 
 const WEAK_HASH_PATTERN = /createHash\s*\(\s*["'](?:md5|sha1)["']|\bmd5\s*\(/gi;
@@ -120,23 +121,28 @@ export const insecureCryptoRisk = defineRule({
     // not within the 250-char window around the hash call.
     if (PROTOCOL_MANDATED_HASH_CONTEXT_PATTERN.test(file.relativePath)) return [];
 
+    // Match against comment-stripped content (positions preserved) — migration
+    // notes and doc comments are exactly where `md5` / `DES` prose concentrates,
+    // and a `// TODO: stop hashing the password with md5(value)` must not fire.
+    const content = getScannableContent(file);
+
     let matchIndex = findMatchIndexNearContext(
-      file.content,
+      content,
       WEAK_HASH_PATTERN,
       SECURITY_CONTEXT_PATTERN,
       PROTOCOL_MANDATED_HASH_CONTEXT_PATTERN,
     );
-    if (matchIndex < 0) matchIndex = file.content.search(WEAK_CIPHER_ALGORITHM_PATTERN);
-    if (matchIndex < 0) matchIndex = file.content.search(DEPRECATED_CIPHER_API_PATTERN);
-    if (matchIndex < 0 && CIPHER_CONTEXT_PATTERN.test(file.content)) {
-      matchIndex = file.content.search(WEAK_CIPHER_NAME_PATTERN);
+    if (matchIndex < 0) matchIndex = content.search(WEAK_CIPHER_ALGORITHM_PATTERN);
+    if (matchIndex < 0) matchIndex = content.search(DEPRECATED_CIPHER_API_PATTERN);
+    if (matchIndex < 0 && CIPHER_CONTEXT_PATTERN.test(content)) {
+      matchIndex = content.search(WEAK_CIPHER_NAME_PATTERN);
     }
     if (
       matchIndex < 0 &&
-      !TIMING_SAFE_COMPARISON_PATTERN.test(file.content) &&
+      !TIMING_SAFE_COMPARISON_PATTERN.test(content) &&
       !CLIENT_COMPONENT_FILE_PATTERN.test(file.relativePath)
     ) {
-      const comparisonMatch = UNSAFE_SIGNATURE_COMPARISON_PATTERN.exec(file.content);
+      const comparisonMatch = UNSAFE_SIGNATURE_COMPARISON_PATTERN.exec(content);
       if (
         comparisonMatch !== null &&
         !ENUM_MEMBER_COMPARAND_PATTERN.test(comparisonMatch[0]) &&
@@ -148,7 +154,7 @@ export const insecureCryptoRisk = defineRule({
     }
     if (matchIndex < 0) {
       matchIndex = findRandomCallIndexWithSameLineContext(
-        file.content,
+        content,
         MATH_RANDOM_CALL_PATTERN,
         SECURITY_RANDOM_CONTEXT_PATTERN,
         UI_NONCE_CONTEXT_PATTERN,
@@ -156,7 +162,7 @@ export const insecureCryptoRisk = defineRule({
     }
     if (matchIndex < 0) return [];
 
-    const location = getLocationAtIndex(file.content, matchIndex);
+    const location = getLocationAtIndex(content, matchIndex);
     const finding: ScanFinding = {
       message:
         "Code uses weak hashes, deprecated ciphers, timing-unsafe comparisons, or Math.random in a security-shaped context.",

@@ -26,10 +26,14 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
-    # Fold the Node version into turbo's `test` task hash (turbo.json) so a
-    # cached result from one matrix leg is never replayed for another.
+    # Fold the Node version AND the OS into turbo's `test` task hash
+    # (turbo.json) so a cached result from one matrix leg is never replayed for
+    # another — turbo does not hash the platform by default, so without the OS
+    # dimension the Windows/macOS legs (same Node as an ubuntu leg) would hit
+    # the remote cache and replay ubuntu's test logs instead of running.
     env:
       MATRIX_NODE_VERSION: ${{ matrix.node-version }}
+      MATRIX_OS: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:

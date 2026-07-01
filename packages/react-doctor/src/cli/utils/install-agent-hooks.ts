@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import type { SkillAgentType } from "agent-install";
+import { isErrnoException } from "@react-doctor/core";
 import { AGENT_HOOK_TIMEOUT_SECONDS } from "./constants.js";
 import * as fs from "node:fs";
 import { CliInputError } from "./cli-input-error.js";
@@ -53,6 +54,21 @@ const CURSOR_HOOK_COMMAND = "node .cursor/hooks/react-doctor.mjs";
 const CURSOR_HOOK_MATCHER = "Write|Edit|MultiEdit|ApplyPatch";
 const CURSOR_HOOKS_SCHEMA_VERSION = 1;
 const JSON_INDENT_SPACES = 2;
+// Releases up to 0.5.8 installed a `react-doctor.sh` shell hook; re-installs
+// must replace those entries (and the orphaned script) instead of stacking a
+// second hook that scans every edit twice.
+const LEGACY_HOOK_SCRIPT_MARKER = "hooks/react-doctor.sh";
+
+const isLegacyHookCommand = (command: string): boolean =>
+  command.includes(LEGACY_HOOK_SCRIPT_MARKER);
+
+const removeLegacyHookScript = (hookPath: string): void => {
+  try {
+    fs.rmSync(hookPath.replace(/\.mjs$/, ".sh"), { force: true });
+  } catch {
+    // Best-effort: a stale script that can't be deleted only wastes disk.
+  }
+};
 
 const isSupportedAgent = (agent: SkillAgentType): boolean =>
   agent === CLAUDE_AGENT || agent === CURSOR_AGENT;
@@ -77,7 +93,7 @@ const ensureDirectoryExists = (directoryPath: string): void => {
   try {
     fs.mkdirSync(directoryPath, { recursive: true });
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
+    const code = isErrnoException(error) ? error.code : undefined;
     if (code === "EACCES" || code === "EPERM") {
       throw new CliInputError(
         `Could not create directory ${directoryPath}: permission denied. Ensure you have write permissions for this location and re-run the install command.`,
@@ -115,7 +131,12 @@ const installClaudeHook = (projectRoot: string): readonly string[] => {
   const hookPath = path.join(projectRoot, CLAUDE_HOOK_RELATIVE_PATH);
   const settings = readJsonFile<ClaudeSettings>(settingsPath, {});
   const hooks = { ...(settings.hooks ?? {}) };
-  const postToolBatchHooks = [...(hooks.PostToolBatch ?? [])];
+  const postToolBatchHooks = [...(hooks.PostToolBatch ?? [])]
+    .map((group) => ({
+      ...group,
+      hooks: (group.hooks ?? []).filter((hook) => !isLegacyHookCommand(hook.command)),
+    }))
+    .filter((group) => group.hooks.length > 0);
 
   if (!hasClaudeHookCommand(postToolBatchHooks)) {
     postToolBatchHooks.push({
@@ -131,6 +152,7 @@ const installClaudeHook = (projectRoot: string): readonly string[] => {
   hooks.PostToolBatch = postToolBatchHooks;
   writeJsonFileWithDirectoryCheck(settingsPath, { ...settings, hooks });
   writeHookScript(hookPath);
+  removeLegacyHookScript(hookPath);
 
   return [settingsPath, hookPath];
 };
@@ -143,7 +165,9 @@ const installCursorHook = (projectRoot: string): readonly string[] => {
   const hookPath = path.join(projectRoot, CURSOR_HOOK_RELATIVE_PATH);
   const config = readJsonFile<CursorHooksConfig>(configPath, {});
   const hooks = { ...(config.hooks ?? {}) };
-  const postToolUseHooks = [...(hooks.postToolUse ?? [])];
+  const postToolUseHooks = [...(hooks.postToolUse ?? [])].filter(
+    (handler) => !isLegacyHookCommand(handler.command),
+  );
 
   if (!hasCursorHookCommand(postToolUseHooks)) {
     postToolUseHooks.push({
@@ -160,13 +184,14 @@ const installCursorHook = (projectRoot: string): readonly string[] => {
     hooks,
   });
   writeHookScript(hookPath);
+  removeLegacyHookScript(hookPath);
 
   return [configPath, hookPath];
 };
 
 const buildAgentHookScript = (): string =>
   [
-    "import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';",
+    "import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';",
     "import { tmpdir } from 'node:os';",
     "import { join, dirname } from 'node:path';",
     "import { fileURLToPath } from 'node:url';",
@@ -174,6 +199,10 @@ const buildAgentHookScript = (): string =>
     "",
     "const __filename = fileURLToPath(import.meta.url);",
     "const __dirname = dirname(__filename);",
+    "",
+    "const IS_WINDOWS = process.platform === 'win32';",
+    "// --verbose scans on large diffs can exceed spawnSync's 1 MiB default.",
+    "const SPAWN_MAX_BUFFER_BYTES = 16 * 1024 * 1024;",
     "",
     "const EDIT_TOOL_NAMES = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'ApplyPatch']);",
     "",
@@ -199,18 +228,31 @@ const buildAgentHookScript = (): string =>
     "  // Each candidate is a single shell command string (not an args array):",
     "  // `shell: true` is required to run the Windows `.cmd` shims, and an args",
     "  // array with `shell: true` trips Node's DEP0190. A missing command exits",
-    "  // 127 via the shell (no ENOENT error), so fall through on that. With no",
-    "  // runner found, exit 0 silently — stdout is parsed as the hook's JSON.",
+    "  // 127 via a POSIX shell (no ENOENT error) and 9009 via cmd.exe, so fall",
+    "  // through on those. The local bin is probed with existsSync (its `./`",
+    "  // prefix form is not runnable by cmd.exe at all). With no runner found,",
+    "  // exit 0 silently — stdout is parsed as the hook's JSON.",
+    "  const localBin = IS_WINDOWS",
+    "    ? 'node_modules\\\\.bin\\\\react-doctor.cmd'",
+    "    : './node_modules/.bin/react-doctor';",
     "  const commands = [",
-    "    './node_modules/.bin/react-doctor --verbose --scope changed --blocking warning --no-score',",
+    "    ...(existsSync(localBin)",
+    "      ? [localBin + ' --verbose --scope changed --blocking warning --no-score']",
+    "      : []),",
     "    'react-doctor --verbose --scope changed --blocking warning --no-score',",
     "    'pnpm dlx react-doctor@latest --verbose --scope changed --blocking warning --no-score',",
     "    'npx --yes react-doctor@latest --verbose --scope changed --blocking warning --no-score',",
     "  ];",
     "",
     "  for (const command of commands) {",
-    "    const result = spawnSync(command, { encoding: 'utf8', shell: true });",
-    "    if (result.error?.code === 'ENOENT' || result.status === 127) continue;",
+    "    const result = spawnSync(command, {",
+    "      encoding: 'utf8',",
+    "      shell: true,",
+    "      maxBuffer: SPAWN_MAX_BUFFER_BYTES,",
+    "    });",
+    "    if (result.error?.code === 'ENOENT' || result.status === 127 || result.status === 9009) {",
+    "      continue;",
+    "    }",
     "    try {",
     "      writeFileSync(outputPath, (result.stdout || '') + (result.stderr || ''));",
     "    } catch {}",
@@ -254,7 +296,12 @@ const buildAgentHookScript = (): string =>
     "    process.exit(0);",
     "  }",
     "",
-    "  const scanOutput = readFileSync(outputPath, 'utf8').trim();",
+    "  // The write above is best-effort (unwritable tmpdir), so the read must",
+    "  // be too — a hook must never crash the agent loop with a stack trace.",
+    "  let scanOutput = '';",
+    "  try {",
+    "    scanOutput = readFileSync(outputPath, 'utf8').trim();",
+    "  } catch {}",
     "  cleanup(outputPath);",
     "",
     "  if (!scanOutput) {",

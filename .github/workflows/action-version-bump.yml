@@ -15,6 +15,13 @@ on:
 permissions:
   contents: read
 
+# Serialize auto-bump runs: two quick merges that both touch action files
+# would otherwise compute the same next tag from their own checkout's tags and
+# the loser's push would fail red. Never cancel — every merge must be judged.
+concurrency:
+  group: action-version-bump-${{ github.event_name }}-${{ github.event.pull_request.number || 'main' }}
+  cancel-in-progress: false
+
 jobs:
   recommend:
     name: Recommend bump on PR
@@ -38,8 +45,12 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           ACTION_COMMIT_SUBJECT: ${{ github.event.pull_request.title }}
         run: |
-          export ACTION_CHANGED_FILES="$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}")"
-          export ACTION_ALL_TAGS="$(git tag --list 'v*')"
+          # Assign separately from `export` so errexit sees a failing git diff
+          # instead of silently treating it as "no files changed".
+          changed_files="$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}")"
+          all_tags="$(git tag --list 'v*')"
+          export ACTION_CHANGED_FILES="${changed_files}"
+          export ACTION_ALL_TAGS="${all_tags}"
           node scripts/recommend-action-version-bump.mjs "${RUNNER_TEMP}/action-version-comment.md"
 
       - name: Upsert recommendation comment
@@ -59,18 +70,25 @@ jobs:
               issue_number: issueNumber,
             });
             const existing = comments.find((comment) => comment.body?.includes(marker));
-            if (process.env.ACTION_CHANGED !== "true") {
-              // The PR no longer touches the action surface — clear a stale recommendation.
-              if (existing) {
-                await github.rest.issues.deleteComment({ owner, repo, comment_id: existing.id });
+            // Comment writes are best-effort: on a fork PR the GITHUB_TOKEN is
+            // read-only regardless of the declared permissions, and a 403 here
+            // must not red the check for an external contributor.
+            try {
+              if (process.env.ACTION_CHANGED !== "true") {
+                // The PR no longer touches the action surface — clear a stale recommendation.
+                if (existing) {
+                  await github.rest.issues.deleteComment({ owner, repo, comment_id: existing.id });
+                }
+                return;
               }
-              return;
-            }
-            const body = fs.readFileSync(process.env.COMMENT_FILE, "utf8");
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+              const body = fs.readFileSync(process.env.COMMENT_FILE, "utf8");
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+              }
+            } catch (error) {
+              core.warning(`Could not upsert the action-version comment: ${error.message}`);
             }
 
   bump:
@@ -113,8 +131,13 @@ jobs:
           else
             export ACTION_COMMIT_SUBJECT="$(printf '%s' "${HEAD_COMMIT_MESSAGE}" | head -n1)"
           fi
-          export ACTION_CHANGED_FILES="$(git diff --name-only "${base}" "${GITHUB_SHA}")"
-          export ACTION_ALL_TAGS="$(git tag --list 'v*')"
+          # Assign separately from `export` so errexit sees a failing git diff
+          # (e.g. an unreachable `github.event.before` after a force-push)
+          # instead of silently treating it as "no files changed".
+          changed_files="$(git diff --name-only "${base}" "${GITHUB_SHA}")"
+          all_tags="$(git tag --list 'v*')"
+          export ACTION_CHANGED_FILES="${changed_files}"
+          export ACTION_ALL_TAGS="${all_tags}"
           node scripts/recommend-action-version-bump.mjs
 
       - name: Create and push action release tags

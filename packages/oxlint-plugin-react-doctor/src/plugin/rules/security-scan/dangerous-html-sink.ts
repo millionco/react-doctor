@@ -28,8 +28,11 @@ const HTML_TAINT_PATTERN =
 // literal/constant exemptions: without tolerating it the value never matches,
 // the scan window bleeds into the next statement, and the taint check fires on
 // unrelated tokens there (e.g. a following `content` variable).
+// Escape-aware bodies (`"It\"s"`, `'a "b"'`) so a quote of the other kind — or
+// an escaped one — inside the literal doesn't end the match early and drop the
+// exemption.
 const STRING_LITERAL_VALUE_PATTERN =
-  /^(?:["'][^"']*["']|`[^`$]*`)\s*(?:\/\/[^\n]*)?\s*(?:[;,})\n]|$)/;
+  /^(?:"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`[^`$]*`)\s*(?:\/\/[^\n]*)?\s*(?:[;,})\n]|$)/;
 
 const MODULE_CONSTANT_VALUE_PATTERN = /^[A-Z][A-Z0-9_]*\s*(?:\/\/[^\n]*)?\s*(?:[;,})\n]|$)/;
 

@@ -11,6 +11,22 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     expect(findings).toHaveLength(0);
   });
 
+  it("stays silent on a string literal containing an escaped quote", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/notice.ts",
+      content: `const showNotice = () => {\n  noticeElement.innerHTML = "It\\"s static content";\n};\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on a single-quoted literal containing a double quote", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/notice.ts",
+      content: `const showNotice = () => {\n  noticeElement.innerHTML = '<span class="static">content</span>';\n};\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
   it("stays silent when the value is sanitized at the sink", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/components/rich-text.tsx",

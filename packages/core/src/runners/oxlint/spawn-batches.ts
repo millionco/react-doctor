@@ -147,7 +147,11 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     // Cumulative deadline shared across every binary-split retry of this
     // pass, so one pathological file can't re-wait a full `spawnTimeoutMs`
     // at each of ~log2(batch) levels before landing in `droppedFiles`.
-    const splitDeadlineMs = Date.now() + splitTotalBudgetMs;
+    // Anchored lazily at the FIRST splittable failure — anchoring at pass
+    // start would let healthy lint time consume the budget, so a batch that
+    // first fails late in a long pass would be dropped whole without a
+    // single split attempt.
+    let splitDeadlineMs: number | null = null;
 
     const spawnLintBatch = async (batch: string[], depth: number): Promise<Diagnostic[]> => {
       const batchArgs = [...baseArgs, ...batch];
@@ -163,6 +167,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
         return parseOxlintOutput(stdout, project, rootDirectory);
       } catch (error) {
         if (!isSplittableReactDoctorError(error)) throw error;
+        splitDeadlineMs ??= Date.now() + splitTotalBudgetMs;
         const splitBudgetExhausted = Date.now() >= splitDeadlineMs || depth >= splitMaxDepth;
         if (batch.length <= 1 || splitBudgetExhausted) {
           // Either the smallest splittable batch (a single file) still failed,

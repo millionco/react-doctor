@@ -73,13 +73,8 @@ export class ScanDeadlineMs extends Context.Reference<number>("react-doctor/Scan
 export class SupplyChainOverlapTimeoutMs extends Context.Reference<number>(
   "react-doctor/SupplyChainOverlapTimeoutMs",
   {
-    defaultValue: () => {
-      const raw = process.env["REACT_DOCTOR_SUPPLY_CHAIN_TIMEOUT_MS"];
-      if (raw === undefined) return SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS;
-      const parsed = Number(raw);
-      if (!Number.isFinite(parsed) || parsed <= 0) return SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS;
-      return parsed;
-    },
+    defaultValue: () =>
+      readPositiveEnvMs("REACT_DOCTOR_SUPPLY_CHAIN_TIMEOUT_MS", SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS),
   },
 ) {}
 

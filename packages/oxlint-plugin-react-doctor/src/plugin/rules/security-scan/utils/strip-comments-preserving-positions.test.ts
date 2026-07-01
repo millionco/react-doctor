@@ -34,6 +34,34 @@ describe("security-scan/utils/strip-comments-preserving-positions", () => {
     expect(stripCommentsPreservingPositions(source)).toBe(source);
   });
 
+  it("does not lex a regex literal's \\/\\/ as a line comment", () => {
+    const source = "const urlPattern = /https:\\/\\//; const dangerous = eval(userInput);";
+    const stripped = stripCommentsPreservingPositions(source);
+    expect(stripped).toHaveLength(source.length);
+    expect(stripped).toContain("eval(userInput)");
+  });
+
+  it("does not let a quote inside a regex literal open string mode", () => {
+    const source = 'const q = /"/; exec(cmd); // comment mentioning exec(evil)';
+    const stripped = stripCommentsPreservingPositions(source);
+    expect(stripped).toContain("exec(cmd)");
+    expect(stripped).not.toContain("exec(evil)");
+  });
+
+  it("still treats a slash after a value as division", () => {
+    const source = "const ratio = total / count / 2; // note";
+    const stripped = stripCommentsPreservingPositions(source);
+    expect(stripped).toContain("total / count / 2");
+    expect(stripped).not.toContain("note");
+  });
+
+  it("closes an unbalanced quote at the line end instead of swallowing the file", () => {
+    const source = "const x = <p>Don't worry</p>;\nexec(command); // trailing exec(evil)";
+    const stripped = stripCommentsPreservingPositions(source);
+    expect(stripped).toContain("exec(command)");
+    expect(stripped).not.toContain("exec(evil)");
+  });
+
   describe("stripCommentsAndStringLiteralsPreservingPositions", () => {
     it("blanks keywords that appear only inside string literals", () => {
       const source = `const description = "ALWAYS fetch the numbers first";`;
@@ -112,6 +140,21 @@ describe("security-scan/utils/strip-comments-preserving-positions", () => {
       const source = `const a = "ab\\`;
       const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
       expect(stripped).toHaveLength(source.length);
+    });
+
+    it("keeps code after a JSX apostrophe visible to the scan", () => {
+      const source = "const x = <p>Don't worry</p>;\nexec(command); const y = 'z';";
+      const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+      expect(stripped).toHaveLength(source.length);
+      expect(stripped).toContain("exec(command)");
+    });
+
+    it("keeps code after a regex literal visible while blanking the regex body", () => {
+      const source = "const urlPattern = /https:\\/\\//; const dangerous = eval(userInput);";
+      const stripped = stripCommentsAndStringLiteralsPreservingPositions(source);
+      expect(stripped).toHaveLength(source.length);
+      expect(stripped).toContain("eval(userInput)");
+      expect(stripped).not.toContain("https");
     });
   });
 });

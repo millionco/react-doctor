@@ -21,7 +21,7 @@ Correctness:
 - `html-no-invalid-paragraph-child` and `html-no-nested-interactive` stop at JSX attribute boundaries, so an element passed as a prop is no longer treated as a DOM child / nested element.
 - `no-polymorphic-children` only flags `typeof children` when `children` resolves to the component's props, not a local variable or field that happens to be named `children`.
 - `no-prevent-default` skips `<form action=…>` (which has a native no-JS submit path) and anchors whose handler also navigates or side-effects after `preventDefault()`.
-- `no-uncontrolled-input` treats `onInput` as controlling, like `onChange`.
+- `no-uncontrolled-input` treats `onInput` as controlling like `onChange`, and no longer flags `disabled` inputs (React suppresses its missing-`onChange` warning for `disabled` fields, just like `readOnly`).
 - `rendering-svg-precision` requires at least two distinct over-precise coordinates before reporting.
 
 Design:

@@ -22,8 +22,11 @@ const VALUE_BYPASS_INPUT_TYPES = new Set(["hidden", "checkbox", "radio"]);
 
 // `onInput` fires on every value change in React's DOM model exactly
 // like `onChange`, so a `value`-bound input wired to `onInput` is just
-// as controlled (the SolidJS-port idiom keeps `onInput`).
-const VALUE_PARTNER_ATTRIBUTES = ["onChange", "onInput", "readOnly"];
+// as controlled (the SolidJS-port idiom keeps `onInput`). `disabled`
+// (like `readOnly`) suppresses React's own missing-`onChange` warning —
+// the user can't type into a disabled/read-only field, so a static
+// `value` needs no handler and must not be flagged.
+const VALUE_PARTNER_ATTRIBUTES = ["onChange", "onInput", "readOnly", "disabled"];
 
 const getInputTypeLiteral = (attributes: EsTreeNode[]): string | null => {
   const typeAttribute = findJsxAttribute(attributes, "type");

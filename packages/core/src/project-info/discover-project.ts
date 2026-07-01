@@ -331,7 +331,15 @@ export const discoverProject = (directory: string): ProjectInfo => {
       shopifyFlashListVersion === null ? null : getLowestDependencyMajor(shopifyFlashListVersion),
     hasReanimated,
     isPreES2023Target,
-    isStaticExport: framework === "nextjs" && detectNextjsStaticExport(directory),
+    // The static-export probe reads `next.config.*` next to the manifest
+    // that supplied the `next` dependency signal — the scan root when it
+    // declares `next` itself, otherwise the first workspace (in walk order)
+    // that does. With several Next workspaces, that first one decides,
+    // matching how `nextjsVersion` is attributed. Falls back to the scan
+    // root when the signal came from an enclosing monorepo instead (#976).
+    isStaticExport:
+      framework === "nextjs" &&
+      detectNextjsStaticExport(workspaceFacts.next.sourceDirectory ?? directory),
     sourceFileCount,
   };
   cachedProjectInfos.set(directory, projectInfo);

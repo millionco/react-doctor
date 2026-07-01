@@ -14,7 +14,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
-import { runOxlint } from "@react-doctor/core";
+import { discoverProject, runOxlint } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
 import { buildTestProject } from "./_helpers.js";
 
@@ -89,5 +89,37 @@ describe("Next.js static export (#976)", () => {
 
     const server = await scanRule(projectDir, false, "no-prevent-default");
     expect(server?.message ?? "").toContain("server action");
+  });
+
+  it("softens the advice end-to-end when the static export lives in a workspace", async () => {
+    // No ProjectInfo override: discovery itself must see the workspace-level
+    // `output: "export"` on a monorepo-root scan (the Bugbot gap on #976).
+    const monorepoRoot = path.join(tempRoot, "workspace-static-export");
+    const webDirectory = path.join(monorepoRoot, "apps", "web");
+    fs.mkdirSync(path.join(webDirectory, "src"), { recursive: true });
+    fs.writeFileSync(
+      path.join(monorepoRoot, "package.json"),
+      JSON.stringify({ name: "root", private: true, workspaces: ["apps/*"] }),
+    );
+    fs.writeFileSync(
+      path.join(webDirectory, "package.json"),
+      JSON.stringify({ name: "web", dependencies: { next: "^15.3.0", react: "^19.0.0" } }),
+    );
+    fs.writeFileSync(
+      path.join(webDirectory, "next.config.mjs"),
+      'export default { output: "export" };\n',
+    );
+    fs.writeFileSync(path.join(webDirectory, "src", "gate.tsx"), CLIENT_REDIRECT_SOURCE, "utf-8");
+
+    const project = discoverProject(monorepoRoot);
+    expect(project.isStaticExport).toBe(true);
+
+    const diagnostics = await runOxlint({ rootDirectory: monorepoRoot, project });
+    const redirect = diagnostics.find(
+      (diagnostic) => diagnostic.rule === "nextjs-no-client-side-redirect",
+    );
+    expect(redirect, "rule still fires under a workspace static export").toBeDefined();
+    expect(redirect?.help ?? "").toContain("static export");
+    expect(redirect?.help ?? "").not.toContain("server-side redirect");
   });
 });

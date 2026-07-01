@@ -51,4 +51,33 @@ describe("tanstack-start/tanstack-start-redirect-in-try-catch — regressions", 
     );
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  // Bugbot: a bare try/finally has no catch, so nothing swallows the redirect —
+  // the finalizer runs and the router error propagates.
+  it("stays silent for a throw inside try/finally with no catch", () => {
+    const { diagnostics } = runRule(
+      tanstackStartRedirectInTryCatch,
+      `async function load() { try { throw redirect({ to: '/login' }); } finally { cleanup(); } }`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent for a throw inside a finally clause", () => {
+    const { diagnostics } = runRule(
+      tanstackStartRedirectInTryCatch,
+      `async function load() { try { await work(); } catch (error) { console.error(error); } finally { throw redirect({ to: '/login' }); } }`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a try/finally nested inside an outer swallowing try/catch", () => {
+    const { diagnostics } = runRule(
+      tanstackStartRedirectInTryCatch,
+      `async function load() { try { try { throw redirect({ to: '/login' }); } finally { cleanup(); } } catch (error) { console.error(error); } }`,
+      ROUTE,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
 });

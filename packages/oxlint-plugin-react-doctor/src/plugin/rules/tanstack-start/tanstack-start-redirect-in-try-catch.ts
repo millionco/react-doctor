@@ -1,28 +1,10 @@
 import { TANSTACK_REDIRECT_FUNCTIONS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { catchClauseRethrowsCaught } from "../../utils/catch-clause-rethrows-caught.js";
-import { isFunctionLike } from "../../utils/is-function-like.js";
+import { findGuardingTryStatement } from "../../utils/find-guarding-try-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-
-// Walks up from a `throw redirect()` to the nearest enclosing TryStatement
-// whose try block contains it. Returns null when the throw lives inside a
-// catch clause (already past the swallowing boundary) or outside any try.
-const findEnclosingTryForThrow = (node: EsTreeNode): EsTreeNodeOfType<"TryStatement"> | null => {
-  let cursor: EsTreeNode | null | undefined = node.parent;
-  while (cursor) {
-    if (isNodeOfType(cursor, "CatchClause")) return null;
-    // Stop at a function boundary: a `throw` inside a `setTimeout(() => …)` or
-    // any other nested callback runs LATER, so the surrounding synchronous
-    // try/catch can never catch it — not the swallowing pattern this flags.
-    if (isFunctionLike(cursor)) return null;
-    if (isNodeOfType(cursor, "TryStatement")) return cursor;
-    cursor = cursor.parent ?? null;
-  }
-  return null;
-};
 
 export const tanstackStartRedirectInTryCatch = defineRule({
   id: "tanstack-start-redirect-in-try-catch",
@@ -39,9 +21,13 @@ export const tanstackStartRedirectInTryCatch = defineRule({
       if (!isNodeOfType(argument.callee, "Identifier")) return;
       if (!TANSTACK_REDIRECT_FUNCTIONS.has(argument.callee.name)) return;
 
-      const enclosingTry = findEnclosingTryForThrow(node);
-      if (!enclosingTry) return;
-      if (enclosingTry.handler && catchClauseRethrowsCaught(enclosingTry.handler)) return;
+      // Only a try whose BLOCK contains the throw and that HAS a catch can
+      // swallow the router's control-flow error: a bare try/finally re-throws
+      // after the finalizer, and a throw inside catch/finally propagates past
+      // that try (an outer swallowing try/catch is still found by the walk).
+      const guardingTry = findGuardingTryStatement(node);
+      if (!guardingTry?.handler) return;
+      if (catchClauseRethrowsCaught(guardingTry.handler)) return;
 
       context.report({
         node,

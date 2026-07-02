@@ -24,4 +24,19 @@ describe("design/no-layout-transition-inline — regressions", () => {
     const result = run(`const C = () => <div style={{ transition: "padding-top 0.3s" }} />;`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a transition on `border-width`", () => {
+    const result = run(`const C = () => <div style={{ transition: "border-width 0.3s" }} />;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a transition on `line-height`", () => {
+    const result = run(`const C = () => <div style={{ transition: "line-height 0.3s" }} />;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a transition on `column-width`", () => {
+    const result = run(`const C = () => <div style={{ transition: "column-width 0.2s" }} />;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

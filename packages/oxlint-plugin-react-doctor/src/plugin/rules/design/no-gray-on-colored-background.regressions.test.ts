@@ -41,4 +41,33 @@ describe("design/no-gray-on-colored-background — regressions", () => {
     const result = run(`const C = () => <div className="dark:bg-blue-600 dark:text-gray-500" />;`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags base gray text under a variant colored bg with no text override", () => {
+    const result = run(`const C = () => <div className="text-gray-500 dark:bg-blue-600">Hi</div>;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a base colored bg with a variant-only gray text override", () => {
+    const result = run(
+      `const C = () => <div className="bg-blue-600 text-white dark:text-gray-500">Hi</div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags the important modifier !text-gray-500 on bg-blue-600", () => {
+    const result = run(`const C = () => <div className="bg-blue-600 !text-gray-500">Hi</div>;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags reordered variant stacks as the same scope (md:hover == hover:md)", () => {
+    const result = run(
+      `const C = () => <div className="md:hover:text-gray-500 hover:md:bg-blue-600">Hi</div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags near-black text-gray-950 on a dark colored background", () => {
+    const result = run(`const C = () => <div className="bg-emerald-900 text-gray-950">Hi</div>;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -34,4 +34,50 @@ describe("design/no-outline-none — regressions", () => {
     const result = run(`<button style={{ outline: "none" }} className="focus:shadow-outline" />`);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("flags the all-removal combo focus:outline-none focus:ring-0 focus:ring-offset-0", () => {
+    const result = run(
+      `<button style={{ outline: "none" }} className="focus:outline-none focus:ring-0 focus:ring-offset-0" />`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags focus:ring-offset-0 alone (an offset knob adds no ring)", () => {
+    const result = run(`<button style={{ outline: "none" }} className="focus:ring-offset-0" />`);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags the tailwind v4 removal utility focus:outline-hidden", () => {
+    const result = run(`<button style={{ outline: "none" }} className="focus:outline-hidden" />`);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags focus:ring-transparent (an invisible ring)", () => {
+    const result = run(`<button style={{ outline: "none" }} className="focus:ring-transparent" />`);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags group-focus:ring-2 (styles the group's focus, not this element's)", () => {
+    const result = run(`<button style={{ outline: "none" }} className="group-focus:ring-2" />`);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("does not flag a stacked-variant own-focus ring like dark:focus:ring-2", () => {
+    const result = run(`<button style={{ outline: "none" }} className="dark:focus:ring-2" />`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a conditional tabIndex that is focusable in one branch", () => {
+    const result = run(
+      `const T = ({ open }) => <div tabIndex={open ? -1 : 0} style={{ outline: "none" }} />;`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("does not flag a conditional tabIndex that is negative in both branches", () => {
+    const result = run(
+      `const T = ({ open }) => <div tabIndex={open ? -1 : -2} style={{ outline: "none" }} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

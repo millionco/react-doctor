@@ -1,6 +1,7 @@
 import { LONG_TRANSITION_DURATION_THRESHOLD_MS } from "../../constants/design.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
@@ -8,11 +9,8 @@ import { getStylePropertyStringValue } from "./utils/get-style-property-string-v
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const INFINITE_ITERATION_KEYWORD = /\binfinite\b/;
-
-// A looping animation (the `infinite` keyword in the `animation`
-// shorthand, or a sibling `animationIterationCount` of `infinite` /
-// `Infinity`) is a background loop, not a one-shot transition the user
+// A looping animation (a sibling `animationIterationCount` of `infinite`
+// / `Infinity`) is a background loop, not a one-shot transition the user
 // waits through — so the long-duration threshold doesn't apply.
 const hasInfiniteIterationCount = (properties: ReadonlyArray<EsTreeNode>): boolean =>
   properties.some((property) => {
@@ -24,6 +22,11 @@ const hasInfiniteIterationCount = (properties: ReadonlyArray<EsTreeNode>): boole
       property.value.name === "Infinity"
     );
   });
+
+// `infinite` must be a standalone token of the shorthand segment —
+// hyphenated animation NAMES like `infinite-scroll` are still one-shot.
+const isInfiniteAnimationSegment = (segment: string): boolean =>
+  segment.trim().split(/\s+/).includes("infinite");
 
 export const noLongTransitionDuration = defineRule({
   id: "no-long-transition-duration",
@@ -37,6 +40,17 @@ export const noLongTransitionDuration = defineRule({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
+
+      // An aria-hidden element is decorative — its slow drift is ambient
+      // scenery, not a state change the user waits through.
+      const openingElement = node.parent;
+      if (
+        openingElement &&
+        isNodeOfType(openingElement, "JSXOpeningElement") &&
+        isHiddenFromScreenReader(openingElement, context.settings)
+      ) {
+        return;
+      }
 
       const properties = expression.properties ?? [];
       const isLoopingAnimation = hasInfiniteIterationCount(properties);
@@ -72,8 +86,8 @@ export const noLongTransitionDuration = defineRule({
 
         if (key === "transition" || key === "animation") {
           let longestDurationMs = 0;
-          const segments = value.split(",");
-          for (const segment of segments) {
+          for (const segment of value.split(",")) {
+            if (key === "animation" && isInfiniteAnimationSegment(segment)) continue;
             const firstTimeMatch = segment.match(/(?<![a-zA-Z\d])([\d.]+)(m?s)(?![a-zA-Z\d-])/);
             if (!firstTimeMatch) continue;
             const segmentDurationMs =
@@ -86,9 +100,7 @@ export const noLongTransitionDuration = defineRule({
         }
 
         const isAnimationProperty = key === "animation" || key === "animationDuration";
-        if (isAnimationProperty && (isLoopingAnimation || INFINITE_ITERATION_KEYWORD.test(value))) {
-          continue;
-        }
+        if (isAnimationProperty && isLoopingAnimation) continue;
 
         if (durationMs !== null && durationMs > LONG_TRANSITION_DURATION_THRESHOLD_MS) {
           context.report({

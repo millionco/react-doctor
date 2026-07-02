@@ -3,20 +3,26 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const GRAY_TEXT_PATTERN = /^text-(?:gray|slate|zinc|neutral|stone)-[4-9]00\b/;
+const GRAY_TEXT_PATTERN = /^text-(?:gray|slate|zinc|neutral|stone)-(?:[4-9]00|950)\b/;
 const COLORED_BG_PATTERN =
   /^bg-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-(?:[5-9]00|950)\b/;
 
-// The variant prefix of a Tailwind token is everything before the final
-// `:` (`dark:hover:text-gray-500` → `dark:hover`); the utility itself is
-// the remainder. A gray-text token and a colored-bg token only render
-// simultaneously when they share the same variant scope — `bg-white
-// text-gray-500 dark:bg-blue-600 dark:text-white` never shows gray text
-// on the colored background, so it must not fire.
+const TEXT_COLOR_PATTERN =
+  /^text-(?:white|black|transparent|current|inherit|\[|(?:gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-)/;
+const BG_COLOR_PATTERN =
+  /^bg-(?:white|black|transparent|current|inherit|\[|(?:gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-)/;
+
+// The variant scope of a Tailwind token is every segment before the
+// utility (`dark:hover:text-gray-500` → `dark:hover`), sorted so
+// reordered stacks (`md:hover` vs `hover:md`) share one key. A leading
+// `!` (the important modifier) is not part of the utility name.
 const splitVariantScope = (token: string): { scope: string; utility: string } => {
-  const lastColonIndex = token.lastIndexOf(":");
-  if (lastColonIndex === -1) return { scope: "", utility: token };
-  return { scope: token.slice(0, lastColonIndex), utility: token.slice(lastColonIndex + 1) };
+  const segments = token.split(":");
+  const rawUtility = segments[segments.length - 1];
+  return {
+    scope: segments.slice(0, -1).sort().join(":"),
+    utility: rawUtility.startsWith("!") ? rawUtility.slice(1) : rawUtility,
+  };
 };
 
 export const noGrayOnColoredBackground = defineRule({
@@ -34,9 +40,13 @@ export const noGrayOnColoredBackground = defineRule({
 
       const grayTextByScope = new Map<string, string>();
       const coloredBgByScope = new Map<string, string>();
+      const textColorScopes = new Set<string>();
+      const bgColorScopes = new Set<string>();
       for (const token of classStr.split(/\s+/)) {
         if (!token) continue;
         const { scope, utility } = splitVariantScope(token);
+        if (TEXT_COLOR_PATTERN.test(utility)) textColorScopes.add(scope);
+        if (BG_COLOR_PATTERN.test(utility)) bgColorScopes.add(scope);
         const grayMatch = utility.match(GRAY_TEXT_PATTERN);
         if (grayMatch && !grayTextByScope.has(scope)) grayTextByScope.set(scope, grayMatch[0]);
         const coloredMatch = utility.match(COLORED_BG_PATTERN);
@@ -44,14 +54,39 @@ export const noGrayOnColoredBackground = defineRule({
           coloredBgByScope.set(scope, coloredMatch[0]);
       }
 
-      for (const [scope, grayUtility] of grayTextByScope) {
-        const coloredUtility = coloredBgByScope.get(scope);
-        if (!coloredUtility) continue;
+      const reportPair = (grayUtility: string, coloredUtility: string): void => {
         context.report({
           node,
           message: `Your users see washed-out gray text (${grayUtility}) on a colored background (${coloredUtility}), so use white or a darker shade of the background color.`,
         });
+      };
+
+      for (const [scope, grayUtility] of grayTextByScope) {
+        const coloredUtility = coloredBgByScope.get(scope);
+        if (!coloredUtility) continue;
+        reportPair(grayUtility, coloredUtility);
         return;
+      }
+
+      // Variants are additive: a base-scope utility still applies under a
+      // variant unless that scope overrides the same property, so base
+      // gray text pairs with `dark:bg-blue-600` when there is no
+      // `dark:text-*`, and vice versa.
+      const baseGrayText = grayTextByScope.get("");
+      if (baseGrayText) {
+        for (const [scope, coloredUtility] of coloredBgByScope) {
+          if (scope === "" || textColorScopes.has(scope)) continue;
+          reportPair(baseGrayText, coloredUtility);
+          return;
+        }
+      }
+      const baseColoredBg = coloredBgByScope.get("");
+      if (baseColoredBg) {
+        for (const [scope, grayUtility] of grayTextByScope) {
+          if (scope === "" || bgColorScopes.has(scope)) continue;
+          reportPair(grayUtility, baseColoredBg);
+          return;
+        }
       }
     },
   }),

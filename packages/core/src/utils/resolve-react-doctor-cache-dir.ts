@@ -38,8 +38,11 @@ export const resolveReactDoctorCacheDir = (projectDirectory: string): string => 
   if (fs.existsSync(nodeModulesDirectory)) {
     return path.join(nodeModulesDirectory, ".cache", "react-doctor");
   }
-  const userScopedCacheName = `react-doctor-cache-${resolveUserCacheScope()}`;
-  return path.join(os.tmpdir(), userScopedCacheName, projectCacheSubdir(projectDirectory));
+  return path.join(
+    os.tmpdir(),
+    `react-doctor-cache-${resolveUserCacheScope()}`,
+    projectCacheSubdir(projectDirectory),
+  );
 };
 
 // `os.userInfo()` can throw on systems with no passwd entry for the uid;

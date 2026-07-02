@@ -213,6 +213,14 @@ export interface InspectOutput {
    */
   readonly supplyChainOverlapTimedOut: boolean;
   /**
+   * `true` when the forked security scan failed (a non-ignorable fs error
+   * escaping the cooperative walk) and failed open to no diagnostics —
+   * surfaced for telemetry so a failed pass is distinguishable from a clean
+   * one with zero findings. `false` on the healthy path and when the pass
+   * was skipped (diff/staged scans).
+   */
+  readonly securityScanFailed: boolean;
+  /**
    * Per-file lint cache outcome for the lint pass: files served from cache and
    * total files considered. Both `null` when the cache was disabled or bypassed
    * (audit mode, adopted `extends`, user plugins) so the run never split. Fed
@@ -465,6 +473,7 @@ export const runInspect = <HooksR = never>(
     // subprocess I/O or concurrently-scanning sibling projects. Skipped in
     // diff/staged mode like the env checks. The final stable sort makes the
     // concat order irrelevant, so output stays byte-identical to the serial path.
+    const securityScanFailedRef = yield* Ref.make(false);
     const securityScanFiber = yield* Effect.forkChild(
       Stream.runCollect(
         applyPerElementPipeline(
@@ -475,7 +484,9 @@ export const runInspect = <HooksR = never>(
                 // error escaping the cooperative walk (fd exhaustion under
                 // concurrent oxlint workers, EIO) must skip the pass, not
                 // defect through the unconditional `Fiber.join` and sink an
-                // otherwise-successful scan.
+                // otherwise-successful scan. The skip is recorded on
+                // `securityScanFailed` so telemetry can tell a failed pass
+                // from a clean one — mirroring `supplyChainOverlapTimedOut`.
                 Effect.tryPromise(() =>
                   checkSecurityScanCooperative(scanDirectory, {
                     project,
@@ -483,7 +494,11 @@ export const runInspect = <HooksR = never>(
                   }),
                 ).pipe(
                   Effect.map((diagnostics) => Stream.fromIterable(diagnostics)),
-                  Effect.orElseSucceed(() => Stream.empty as Stream.Stream<Diagnostic, never>),
+                  Effect.catch(() =>
+                    Ref.set(securityScanFailedRef, true).pipe(
+                      Effect.as(Stream.empty as Stream.Stream<Diagnostic, never>),
+                    ),
+                  ),
                 ),
               ),
         ),
@@ -896,6 +911,7 @@ export const runInspect = <HooksR = never>(
           metadata: scoreMetadata,
         });
     const lintPartialFailures = yield* Ref.get(partialFailuresRef);
+    const securityScanFailed = yield* Ref.get(securityScanFailedRef);
 
     return {
       project,
@@ -917,6 +933,7 @@ export const runInspect = <HooksR = never>(
       scanElapsedMilliseconds,
       scanConcurrency,
       supplyChainOverlapTimedOut: supplyChainResult.timedOut,
+      securityScanFailed,
       lintCacheHitFileCount,
       lintCacheTotalFileCount,
     };

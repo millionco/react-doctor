@@ -490,9 +490,9 @@ const ALERT_SEVERITY_RANK: Record<string, number> = {
   low: 1,
 };
 
-// `Object.hasOwn` guards, not bare index access: `severity` / `type` come off
-// the wire, so a value like `"constructor"` would otherwise read an inherited
-// `Object.prototype` member — the same class of bug as #920's rule-key crash.
+// `Object.hasOwn`, not bare index access: `severity` / `type` come off the
+// wire, so `"constructor"` would read an inherited `Object.prototype` member
+// (#920's rule-key crash class).
 const severityRank = (severity: string): number => {
   const normalized = severity.toLowerCase();
   return Object.hasOwn(ALERT_SEVERITY_RANK, normalized) ? ALERT_SEVERITY_RANK[normalized] : 0;

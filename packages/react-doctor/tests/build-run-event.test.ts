@@ -275,6 +275,25 @@ describe("buildRunEventAttributes", () => {
     ).toBeUndefined();
   });
 
+  it("records the security-scan fail-open outcome and drops it when absent", () => {
+    // Same contract as `supplyChain.overlapTimedOut`: `true` only when the
+    // forked pass failed open to no diagnostics; omitted fields (pre-field
+    // cached payloads / the failure path) are dropped, not coerced.
+    expect(
+      buildRunEventAttributes(baseInput({ result: buildResult(), securityScanFailed: true }))[
+        "securityScan.failed"
+      ],
+    ).toBe(true);
+    expect(
+      buildRunEventAttributes(baseInput({ result: buildResult(), securityScanFailed: false }))[
+        "securityScan.failed"
+      ],
+    ).toBe(false);
+    expect(
+      buildRunEventAttributes(baseInput({ result: buildResult() }))["securityScan.failed"],
+    ).toBeUndefined();
+  });
+
   it("emits the baseline delta on a computed baseline run", () => {
     const result = buildResult({
       diagnostics: [buildDiagnostic(), buildDiagnostic({ filePath: "src/B.tsx" })],

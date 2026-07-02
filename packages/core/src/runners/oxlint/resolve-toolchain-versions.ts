@@ -1,9 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
+import { NODE_VERSION_PROBE_TIMEOUT_MS } from "../../constants.js";
 
 const bundledRequire = createRequire(import.meta.url);
-
-const NODE_VERSION_PROBE_TIMEOUT_MS = 5_000;
 
 const childNodeVersionByBinaryPath = new Map<string, string>();
 

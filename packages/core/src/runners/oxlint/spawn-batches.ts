@@ -178,11 +178,12 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
           // remaining files, record why, and let the scan continue.
           droppedFiles.push(...batch);
           if (firstDropReason === null) {
-            const limitHint = isDepthCapReached
-              ? ` (split depth cap of ${splitMaxDepth} levels reached)`
-              : isBudgetElapsed
-                ? ` (split budget of ${splitTotalBudgetMs / MILLISECONDS_PER_SECOND}s exhausted at depth ${depth})`
-                : "";
+            let limitHint = "";
+            if (isDepthCapReached) {
+              limitHint = ` (split depth cap of ${splitMaxDepth} levels reached)`;
+            } else if (isBudgetElapsed) {
+              limitHint = ` (split budget of ${splitTotalBudgetMs / MILLISECONDS_PER_SECOND}s exhausted at depth ${depth})`;
+            }
             firstDropReason = batch.length > 1 ? `${error.message}${limitHint}` : error.message;
           }
           return [];

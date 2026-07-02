@@ -81,4 +81,22 @@ describe("issue #924: a synchronous git spawn failure degrades instead of crashi
     );
     expect(ranges).toBeNull();
   });
+
+  it("changedLineRanges returns null when the pathspecs overflow even the largest platform argv cap", async () => {
+    // The previous case (~130 KB of argv) only trips the 24k Windows cap now
+    // that the guard is platform-sized; ~24k paths ≈ 1.8 MB exceed every cap
+    // (Windows 24k chars, darwin 800k, POSIX 1.5M), so the pre-flight guard —
+    // not a real spawn — fires on every platform.
+    const manyFiles = Array.from(
+      { length: 24_000 },
+      (_, index) => `src/${"deeply/nested/".repeat(4)}file-${index}.tsx`,
+    );
+    const ranges = await runNode(
+      Effect.gen(function* () {
+        const git = yield* Git;
+        return yield* git.changedLineRanges({ directory: fileAsDirectory.root, files: manyFiles });
+      }),
+    );
+    expect(ranges).toBeNull();
+  });
 });

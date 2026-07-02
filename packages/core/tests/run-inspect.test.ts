@@ -955,6 +955,7 @@ describe("runInspect — supply-chain lint overlap", () => {
       "unused-file",
     ]);
     expect(output.supplyChainOverlapTimedOut).toBe(false);
+    expect(output.securityScanFailed).toBe(false);
   });
 
   it("keeps the score unchanged on the healthy overlap path", async () => {

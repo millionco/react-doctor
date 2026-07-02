@@ -709,6 +709,7 @@ const runInspectWithRuntime = async (
       ? "native-binding-missing"
       : output.lintFailureReasonKind,
     supplyChainOverlapTimedOut: output.supplyChainOverlapTimedOut,
+    securityScanFailed: output.securityScanFailed,
   };
   if (cacheKey !== null && scanResultCache !== null && shouldStoreScanPayload(payload)) {
     scanResultCache.store(cacheKey, payload);
@@ -861,6 +862,7 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     lintDroppedFileCount: countDroppedLintFiles(input.payload.lintPartialFailures),
     didDeadCodeFail: input.payload.didDeadCodeFail,
     supplyChainOverlapTimedOut: input.payload.supplyChainOverlapTimedOut,
+    securityScanFailed: input.payload.securityScanFailed,
     deadCodeOverlapped: input.payload.deadCodeOverlapped,
   });
   return result;

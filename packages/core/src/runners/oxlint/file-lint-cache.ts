@@ -131,13 +131,12 @@ export const createFileLintCache = (cacheDirectory: string, rulesetHash: string)
       // A corrupt sibling bucket (e.g. a hand-edited or truncated file where a
       // bucket is `null` or missing `updatedAtMs`) must not crash the LRU sort
       // — persist fails open like every other operation here, so drop it.
-      const keptHashes = Object.entries(rulesets)
-        .filter(([, bucket]) => isRecord(bucket) && typeof bucket.updatedAtMs === "number")
-        .sort(([, first], [, second]) => second.updatedAtMs - first.updatedAtMs)
-        .slice(0, FILE_LINT_CACHE_MAX_RULESET_COUNT)
-        .map(([hash]) => hash);
-      const prunedRulesets: Record<string, PersistedRuleset> = {};
-      for (const hash of keptHashes) prunedRulesets[hash] = rulesets[hash];
+      const prunedRulesets: Record<string, PersistedRuleset> = Object.fromEntries(
+        Object.entries(rulesets)
+          .filter(([, bucket]) => isRecord(bucket) && typeof bucket.updatedAtMs === "number")
+          .sort(([, first], [, second]) => second.updatedAtMs - first.updatedAtMs)
+          .slice(0, FILE_LINT_CACHE_MAX_RULESET_COUNT),
+      );
 
       atomicWriteJson(cacheFilePath, {
         version: FILE_LINT_CACHE_SCHEMA_VERSION,

@@ -47,6 +47,13 @@ export interface CachedScanPayload {
    */
   readonly scanConcurrency?: number;
   readonly supplyChainOverlapTimedOut: boolean;
+  /**
+   * `InspectOutput["securityScanFailed"]`, surfaced for telemetry. Optional so
+   * cache entries persisted before this field existed still load; a failed
+   * pass is never cached (`shouldStoreScanPayload`), so a stale hit's
+   * `undefined` reads as the healthy `false`.
+   */
+  readonly securityScanFailed?: boolean;
 }
 
 interface PersistedScanResultCacheEntry {
@@ -306,4 +313,7 @@ export const shouldStoreScanPayload = (payload: CachedScanPayload): boolean =>
   // clean: a stored payload therefore always carries
   // `supplyChainOverlapTimedOut: false`, so a cache hit never replays a stale
   // `true`.
-  !payload.supplyChainOverlapTimedOut;
+  !payload.supplyChainOverlapTimedOut &&
+  // Same reasoning for a failed (fail-open) security scan: its diagnostics
+  // are missing the whole pass, so the result must not be replayed.
+  payload.securityScanFailed !== true;

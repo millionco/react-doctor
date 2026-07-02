@@ -131,8 +131,16 @@ runs:
         # for an absolute `directory`, an `actions/checkout` `path:` layout, and
         # a nested-git-repo scan alike — the raw input only matches repo paths
         # in the default layout, and a wrong prefix silently drops EVERY changed
-        # file (the scan then reads "Skipped — no React files changed").
-        SCAN_PREFIX="$(git -C "$INPUT_DIRECTORY" rev-parse --show-prefix 2>/dev/null)" || SCAN_PREFIX="$INPUT_DIRECTORY"
+        # file (the scan then reads "Skipped — no React files changed"). A
+        # resolved-to-root prefix is emitted as the `.` sentinel: `--show-prefix`
+        # legitimately returns "" at the repo root, and GHA's `||` fallback in
+        # the pr-files step would treat that empty output as "unresolved" and
+        # substitute the raw input again.
+        if SCAN_PREFIX="$(git -C "$INPUT_DIRECTORY" rev-parse --show-prefix 2>/dev/null)"; then
+          SCAN_PREFIX="${SCAN_PREFIX:-.}"
+        else
+          SCAN_PREFIX="$INPUT_DIRECTORY"
+        fi
         echo "prefix=$SCAN_PREFIX" >> "$GITHUB_OUTPUT"
 
         # Derive the changed set locally. Three-dot (merge-base) + AMR
@@ -144,6 +152,20 @@ runs:
         # regression vs the previous API-only behavior.
         RAW_CHANGED="${RUNNER_TEMP:-/tmp}/react-doctor-raw-changed.txt"
         if [ -n "$BASE_SHA" ] && git -C "$INPUT_DIRECTORY" diff --name-only --diff-filter=AMR "$BASE_SHA...HEAD" > "$RAW_CHANGED" 2>/dev/null; then
+          node "$GITHUB_ACTION_PATH/scripts/normalize-changed-files.mjs" "$SCAN_PREFIX" "$CHANGED_FILES_FILE" < "$RAW_CHANGED"
+          echo "path=$CHANGED_FILES_FILE" >> "$GITHUB_OUTPUT"
+        # The three-dot diff needs a merge base, which a default `fetch-depth: 1`
+        # checkout never has (both commits are shallow grafts) — so on the most
+        # common consumer setup the branch above always failed and every PR run
+        # paid the API fallback plus a spurious warning. On the standard PR
+        # merge-ref checkout, HEAD is a merge commit whose FIRST parent is the
+        # base tip, and there a plain two-dot diff against the fetched base is
+        # equivalent (the merge tree is exactly base + the PR's changes). Only
+        # that provably-safe shape takes the two-dot path; anything else still
+        # falls back to the API.
+        elif [ -n "$BASE_SHA" ] \
+          && [ "$(git -C "$INPUT_DIRECTORY" rev-parse --quiet --verify HEAD^1 2>/dev/null)" = "$BASE_SHA" ] \
+          && git -C "$INPUT_DIRECTORY" diff --name-only --diff-filter=AMR "$BASE_SHA" HEAD > "$RAW_CHANGED" 2>/dev/null; then
           node "$GITHUB_ACTION_PATH/scripts/normalize-changed-files.mjs" "$SCAN_PREFIX" "$CHANGED_FILES_FILE" < "$RAW_CHANGED"
           echo "path=$CHANGED_FILES_FILE" >> "$GITHUB_OUTPUT"
         else

@@ -24,13 +24,16 @@ const REGEX_PRECEDING_KEYWORDS = new Set([
 // rather than operator position (division). Looks at the last significant
 // character before it in the already-blanked output, so blanked comments don't
 // count as preceding tokens. A value-ending token — identifier, number, `)`,
-// `]`, or a closing quote — means division; anything else (or nothing) means
-// a regex can start here.
+// `]`, a closing quote, a JSX `}`/`>`, a postfix `++`/`--`, or a TS non-null
+// `!` — means division; anything else (or nothing) means a regex can start
+// here. Misclassifying toward "division" is the safe direction: the slash is
+// then lexed as plain code, which is exactly the pre-regex-support behavior.
 const isRegexLiteralStart = (characters: string[], slashIndex: number): boolean => {
   let cursor = slashIndex - 1;
   while (cursor >= 0 && WHITESPACE_PATTERN.test(characters[cursor])) cursor -= 1;
   if (cursor < 0) return true;
   const previousCharacter = characters[cursor];
+  const characterBefore = cursor > 0 ? characters[cursor - 1] : "";
   if (IDENTIFIER_CHARACTER_PATTERN.test(previousCharacter)) {
     let wordStartIndex = cursor;
     while (
@@ -39,11 +42,32 @@ const isRegexLiteralStart = (characters: string[], slashIndex: number): boolean 
     ) {
       wordStartIndex -= 1;
     }
+    // `obj.return / 2` is a property access, not the keyword.
+    if (wordStartIndex > 0 && characters[wordStartIndex - 1] === ".") return false;
     return REGEX_PRECEDING_KEYWORDS.has(characters.slice(wordStartIndex, cursor + 1).join(""));
+  }
+  // `</` opens a JSX closing tag, never a regex.
+  if (previousCharacter === "<") return false;
+  // `=> /regex/` (arrow body) is expression position; any other `>` ends a
+  // value-ish token (a sibling JSX `/>`, a generic close, a comparison).
+  if (previousCharacter === ">") return characterBefore === "=";
+  // Postfix `++` / `--` ends a value (`count++ / total`); a single binary
+  // `+` / `-` keeps expression position.
+  if (previousCharacter === "+" || previousCharacter === "-") {
+    return characterBefore !== previousCharacter;
+  }
+  // A TS non-null assertion (`value!`) ends a value; a prefix `!` doesn't.
+  if (previousCharacter === "!") {
+    return !(
+      IDENTIFIER_CHARACTER_PATTERN.test(characterBefore) ||
+      characterBefore === ")" ||
+      characterBefore === "]"
+    );
   }
   return !(
     previousCharacter === ")" ||
     previousCharacter === "]" ||
+    previousCharacter === "}" ||
     previousCharacter === '"' ||
     previousCharacter === "'" ||
     previousCharacter === "`"
@@ -53,7 +77,10 @@ const isRegexLiteralStart = (characters: string[], slashIndex: number): boolean 
 // Index just past a regex literal's closing `/`, honoring escapes and `[...]`
 // character classes (where `/` is not a terminator). Returns null when no
 // closing slash exists on the line — regex literals cannot span a raw newline,
-// so the opening slash was division after all.
+// so the opening slash was division after all. A candidate terminator whose
+// next character is also `/` is rejected too: the scan collided with the
+// first slash of a real `//` comment, so treating the span as a regex would
+// un-strip the comment.
 const findRegexLiteralEnd = (content: string, slashIndex: number): number | null => {
   let cursor = slashIndex + 1;
   let isInsideCharacterClass = false;
@@ -69,6 +96,7 @@ const findRegexLiteralEnd = (content: string, slashIndex: number): number | null
     } else if (character === "]") {
       isInsideCharacterClass = false;
     } else if (character === "/" && !isInsideCharacterClass) {
+      if (content[cursor + 1] === "/") return null;
       return cursor + 1;
     }
     cursor += 1;

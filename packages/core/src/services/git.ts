@@ -13,6 +13,7 @@ import {
   DEFAULT_BRANCH_CANDIDATES,
   GITHUB_VIEWER_PERMISSION_TIMEOUT_MS,
   SPAWN_ARGS_MAX_LENGTH_CHARS,
+  SPAWN_ARGS_MAX_LENGTH_CHARS_POSIX,
 } from "../constants.js";
 import {
   GitBaseBranchInvalid,
@@ -358,9 +359,17 @@ export class Git extends Context.Service<
               input.command.length +
               1 +
               input.args.reduce((total, arg) => total + arg.length + 1, 0);
-            if (argvLengthChars > SPAWN_ARGS_MAX_LENGTH_CHARS) {
+            // The Windows cap would reject legitimately long `--scope lines`
+            // diffs (`git diff -- <hundreds of files>`) that POSIX handles
+            // fine, silently degrading the scope — so the guard is
+            // platform-sized.
+            const spawnArgsMaxLengthChars =
+              process.platform === "win32"
+                ? SPAWN_ARGS_MAX_LENGTH_CHARS
+                : SPAWN_ARGS_MAX_LENGTH_CHARS_POSIX;
+            if (argvLengthChars > spawnArgsMaxLengthChars) {
               return yield* foldSpawnFailure(
-                `spawn ENAMETOOLONG (${argvLengthChars} argv chars exceed ${SPAWN_ARGS_MAX_LENGTH_CHARS})`,
+                `spawn ENAMETOOLONG (${argvLengthChars} argv chars exceed ${spawnArgsMaxLengthChars})`,
               );
             }
             const handle = yield* spawner.spawn(
@@ -677,6 +686,13 @@ export class Git extends Context.Service<
 
             const baseBranch = explicitBaseBranch ?? (yield* defaultBranch(directory));
             if (baseBranch === null) return null;
+            // An explicit base was validated above, but the auto-detected
+            // default branch derives from repo-controlled data (the
+            // `origin/HEAD` symref) — validate it the same way before it
+            // reaches git argv, degrading to "no diff" like the other
+            // unresolvable-base paths instead of passing an option-shaped
+            // token to `git merge-base`.
+            if (!isSafeGitRevision(baseBranch)) return null;
 
             if (explicitBaseBranch !== undefined) {
               const exists = yield* branchExists(directory, explicitBaseBranch);

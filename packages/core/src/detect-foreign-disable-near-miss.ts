@@ -27,8 +27,12 @@ const FOREIGN_INLINE_DISABLE_PATTERN =
 const FOREIGN_BLOCK_DISABLE_PATTERN = /\/\*[ \t]*(eslint|oxlint)-disable(?![\w-])([^*\r\n]*)/;
 const FOREIGN_BLOCK_ENABLE_PATTERN = /\/\*[ \t]*(?:eslint|oxlint)-enable(?![\w-])([^*\r\n]*)/;
 
+// "add" (not "change it to"): the misnamed token is often a REAL rule in the
+// user's other linter (`no-eval` is ESLint core; `react/jsx-key` is
+// eslint-plugin-react), so replacing it would un-suppress that tool's rule in
+// a dual-linter setup — appending the qualified id keeps both silenced.
 const buildHint = (tool: string, token: string, ruleId: string): string =>
-  `oxlint matches plugin rules only by their full name, so \`${token}\` in your ${tool}-disable comment does not silence \`${ruleId}\` — change it to \`${ruleId}\`.`;
+  `oxlint matches plugin rules only by their full name, so \`${token}\` in your ${tool}-disable comment does not silence \`${ruleId}\` — add \`${ruleId}\` to the comment (e.g. \`${token}, ${ruleId}\`).`;
 
 // A token names this rule but in a form oxlint can't bind to the plugin
 // rule: a bare short id (`no-eval`) or a legacy plugin-prefixed alias

@@ -143,10 +143,15 @@ const foldLegacyDecisions = (
 };
 
 // Upgrades a state object read from disk to `CLI_STATE_SCHEMA_VERSION`. Pure
-// and idempotent: a current-version object is returned untouched, and the fold
-// preserves every recorded answer so the upgrade never re-nags or re-runs.
+// and idempotent: a current-or-NEWER-version object is returned untouched —
+// an older binary running beside a newer one (`npx` vs a global install) must
+// treat a future schema as read-only rather than "migrating" it back down and
+// clobbering fields it doesn't know about. The fold preserves every recorded
+// answer so the upgrade never re-nags or re-runs.
 export const migrateCliState = (state: CliState): CliState => {
-  if (state.schemaVersion === CLI_STATE_SCHEMA_VERSION) return state;
+  if (typeof state.schemaVersion === "number" && state.schemaVersion >= CLI_STATE_SCHEMA_VERSION) {
+    return state;
+  }
 
   const projects: Record<string, ProjectScopeState> = {};
 

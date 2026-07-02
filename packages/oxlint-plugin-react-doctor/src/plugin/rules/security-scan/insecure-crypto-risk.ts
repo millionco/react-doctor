@@ -23,8 +23,12 @@ const WEAK_CIPHER_NAME_PATTERN = /\b(?:DES|RC4|Blowfish)\b/;
 
 const CIPHER_CONTEXT_PATTERN = /\b(?:cipher|decipher|encrypt|decrypt|crypto)\b/i;
 
+// `{0,100}` (not `*`) before the `signature` literal: the unbounded run is
+// O(n²) over any long identifier-shaped blob (a hex constant, a low-entropy
+// data URI), which measurably hangs the scan on large generated files —
+// real identifiers never approach 100 chars.
 const UNSAFE_SIGNATURE_COMPARISON_PATTERN =
-  /[A-Za-z_$][\w$.]*signature[\w$]*(?:\([^)]*\))?\s*(?:===?|!==?)\s*[A-Za-z_$][\w$.]*(?:\([^)]*\))?|[A-Za-z_$][\w$.]*(?:\([^)]*\))?\s*(?:===?|!==?)\s*[A-Za-z_$][\w$.]*signature[\w$]*(?:\([^)]*\))?/i;
+  /[A-Za-z_$][\w$.]{0,100}signature[\w$]*(?:\([^)]*\))?\s*(?:===?|!==?)\s*[A-Za-z_$][\w$.]*(?:\([^)]*\))?|[A-Za-z_$][\w$.]{0,100}(?:\([^)]*\))?\s*(?:===?|!==?)\s*[A-Za-z_$][\w$.]{0,100}signature[\w$]*(?:\([^)]*\))?/i;
 
 // `signature !== PluginSignatureStatus.valid` compares enum/status members and
 // `signatureMethod === SIGNATURE_METHOD_RSA_SHA1` compares against a module

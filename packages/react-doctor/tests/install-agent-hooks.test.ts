@@ -154,6 +154,11 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     expect(hookCommands.filter((command) => command.includes("react-doctor.mjs"))).toHaveLength(1);
     expect(hookContent).toContain("CLAUDE_PROJECT_DIR");
     expect(hookContent).toContain("react-doctor --verbose --scope changed --blocking warning");
+    // cmd.exe signals a missing command with exit 9009 (not the POSIX 127) —
+    // the generated runner loop must fall through on it or every Windows edit
+    // reports shell noise as scan findings.
+    expect(hookContent).toContain("9009");
+    expect(hookContent).toContain("maxBuffer");
   });
 
   it("replaces a legacy .sh Claude hook instead of stacking a second entry", () => {
@@ -194,6 +199,30 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     expect(hookCommands).toHaveLength(1);
     expect(hookCommands[0]).toContain("react-doctor.mjs");
     expect(fs.existsSync(legacyScriptPath)).toBe(false);
+  });
+
+  it("tolerates a parseable hook entry that lacks a command", () => {
+    const configPath = path.join(fixture.projectRoot, ".cursor/hooks.json");
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        version: 1,
+        hooks: { postToolUse: [{ matcher: "Write" }] },
+      }),
+    );
+
+    expect(() => {
+      installReactDoctorAgentHooks({
+        projectRoot: fixture.projectRoot,
+        agents: ["cursor"],
+      });
+    }).not.toThrow();
+
+    const config = readJson<{ hooks: { postToolUse: Array<{ command?: string }> } }>(configPath);
+    expect(
+      config.hooks.postToolUse.some((handler) => handler.command?.includes("react-doctor.mjs")),
+    ).toBe(true);
   });
 
   it("replaces a legacy .sh Cursor hook instead of stacking a second entry", () => {

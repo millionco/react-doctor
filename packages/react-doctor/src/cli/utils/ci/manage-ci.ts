@@ -47,6 +47,7 @@ export interface CiCommandOptions {
   // Injectable for tests; production callers leave these unset.
   prompt?: typeof prompts;
   run?: CommandRunner;
+  checkCommandAvailable?: (command: string) => boolean;
 }
 
 const resolveProjectRoot = (options: CiCommandOptions): string => {
@@ -245,6 +246,10 @@ const openCiPullRequest = async (params: {
   commitMessage?: string;
   prTitle?: string;
   prBody?: string;
+  // Threaded from `CiCommandOptions` so tests drive the git/gh flow without
+  // spawning real processes; production callers leave both unset.
+  run?: CommandRunner;
+  checkCommandAvailable?: (command: string) => boolean;
 }): Promise<CiPullRequestOutcome> => {
   const pullRequestSpinner = spinner("Opening a pull request for review...").start();
   const result: OpenWorkflowPullRequestResult = await openWorkflowPullRequest(params);
@@ -334,7 +339,14 @@ export const runCiInstall = async (options: CiCommandOptions = {}): Promise<void
 
   let mode: "pr" | "tree" = "tree";
   if (provider.supportsPullRequest && options.pr) {
-    mode = (await openCiPullRequest({ workflowPath: result.path, baseBranch: defaultBranch })).mode;
+    mode = (
+      await openCiPullRequest({
+        workflowPath: result.path,
+        baseBranch: defaultBranch,
+        run: options.run,
+        checkCommandAvailable: options.checkCommandAvailable,
+      })
+    ).mode;
   } else {
     logger.dim("  Review and commit it to start scanning every pull request.");
   }
@@ -404,6 +416,8 @@ export const runCiUpgrade = async (options: CiCommandOptions = {}): Promise<void
       workflowPath: workflow.path,
       baseBranch: (await detectDefaultBranch(projectRoot, run)) ?? "main",
       ...upgradeCopy,
+      run: options.run,
+      checkCommandAvailable: options.checkCommandAvailable,
     });
     if (outcome.status === "pr-exists") {
       // The open PR predates this edit (it carries the initial setup scaffold,

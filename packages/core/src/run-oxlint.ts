@@ -422,7 +422,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     if (useFileLintCache) {
       const rulesetHash = computeRulesetHash({
         config: buildConfig({ extendsPaths: [], ruleSelection: "cacheable" }),
-        toolchainVersions: resolveOxlintToolchainVersions(),
+        toolchainVersions: resolveOxlintToolchainVersions(nodeBinaryPath),
         ignorePatterns: combinedPatterns,
         tsconfigContent,
       });
@@ -439,7 +439,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           missFiles.push(candidateFile);
           continue;
         }
-        const cacheKey = `${candidateFile.replaceAll("\\", "/")} ${contentHash}`;
+        const cacheKey = `${candidateFile.replaceAll("\\", "/")}\u0000${contentHash}`;
         cacheKeyByFile.set(candidateFile, cacheKey);
         const cachedDiagnostics = cache.lookup(cacheKey);
         if (cachedDiagnostics === null) missFiles.push(candidateFile);

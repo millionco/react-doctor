@@ -42,7 +42,11 @@ export const resolveCliInspectOptions = (
     respectInlineDisables: flags.respectInlineDisables === false ? false : undefined,
     warnings: wantsWarningGate ? true : flags.warnings,
     scoreOnly: flags.score === true,
-    noScore: flags.score === false || flags.telemetry === false || (userConfig?.noScore ?? false),
+    // Flag-only: an explicit opt-out wins; otherwise leave it undefined so
+    // `inspect()`'s merge layer inherits `userConfig.noScore` from the
+    // per-project (module-merged) config — eagerly collapsing it here from the
+    // ROOT config silently overrode a workspace module's own `noScore: true`.
+    noScore: flags.score === false || flags.telemetry === false ? true : undefined,
     isCi: isCiEnvironment(),
     silent: Boolean(flags.json),
     concurrency: resolveParallelFlag(flags.parallel),

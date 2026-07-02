@@ -15,19 +15,16 @@ on:
 permissions:
   contents: read
 
-# Serialize auto-bump runs: two quick merges that both touch action files
-# would otherwise compute the same next tag from their own checkout's tags and
-# the loser's push would fail red. Never cancel — every merge must be judged.
-concurrency:
-  group: action-version-bump-${{ github.event_name }}-${{ github.event.pull_request.number || 'main' }}
-  cancel-in-progress: false
-
 jobs:
   recommend:
     name: Recommend bump on PR
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # A newer push to the same PR obsoletes the in-flight recommendation.
+    concurrency:
+      group: action-version-bump-recommend-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     permissions:
       contents: read
       pull-requests: write
@@ -99,6 +96,14 @@ jobs:
     if: ${{ github.event_name == 'push' && vars.AUTO_BUMP_ACTION_TAG == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Serialize bump runs so two quick merges never race on the same next tag,
+    # and `queue: max` so a superseded PENDING run is queued rather than
+    # canceled (the default single-slot queue would silently skip judging that
+    # merge — an untagged action release). `queue: max` requires
+    # cancel-in-progress to be false/absent.
+    concurrency:
+      group: action-version-bump-main
+      queue: max
     permissions:
       contents: write
     steps:

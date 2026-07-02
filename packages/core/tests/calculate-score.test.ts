@@ -109,6 +109,31 @@ describe("calculateScore", () => {
     });
   });
 
+  it("strips every locally-derived field from the request payload", async () => {
+    let capturedBody: BodyInit | null | undefined;
+    stubFetch(async (_url, init) => {
+      capturedBody = init?.body;
+      return new Response(JSON.stringify(apiScoreResponse), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const localFieldsDiagnostic: Diagnostic = {
+      ...sampleDiagnostics[0],
+      fileContext: "test",
+      fixGroupId: "abcdef1234",
+    };
+    await calculateScore([localFieldsDiagnostic]);
+
+    const parsedBody: { diagnostics: Array<Record<string, unknown>> } = JSON.parse(
+      gunzipSync(capturedBody as Uint8Array).toString("utf8"),
+    );
+    expect(parsedBody.diagnostics[0]).not.toHaveProperty("filePath");
+    expect(parsedBody.diagnostics[0]).not.toHaveProperty("fileContext");
+    expect(parsedBody.diagnostics[0]).not.toHaveProperty("fixGroupId");
+  });
+
   it("issue #302: tags the score request with ?ci=1 when isCi is true", async () => {
     let capturedUrl: string | URL | Request | undefined;
     stubFetch(async (url) => {

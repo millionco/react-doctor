@@ -48,6 +48,6 @@ export const computeRulesetHash = (input: RulesetHashInput): string =>
     .update([...input.toolchainVersions].join("\u0000"))
     .update("\u0000")
     .update([...input.ignorePatterns].join("\n"))
-    .update(" ")
+    .update("\u0000")
     .update(input.tsconfigContent ?? "")
     .digest("hex");

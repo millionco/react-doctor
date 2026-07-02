@@ -471,12 +471,20 @@ export const runInspect = <HooksR = never>(
           isDiffMode
             ? (Stream.empty as Stream.Stream<Diagnostic, never>)
             : Stream.unwrap(
-                Effect.promise(() =>
+                // Fail-open like every other analyzer: a non-ignorable fs
+                // error escaping the cooperative walk (fd exhaustion under
+                // concurrent oxlint workers, EIO) must skip the pass, not
+                // defect through the unconditional `Fiber.join` and sink an
+                // otherwise-successful scan.
+                Effect.tryPromise(() =>
                   checkSecurityScanCooperative(scanDirectory, {
                     project,
                     ignoredTags: input.ignoredTags,
                   }),
-                ).pipe(Effect.map((diagnostics) => Stream.fromIterable(diagnostics))),
+                ).pipe(
+                  Effect.map((diagnostics) => Stream.fromIterable(diagnostics)),
+                  Effect.orElseSucceed(() => Stream.empty as Stream.Stream<Diagnostic, never>),
+                ),
               ),
         ),
       ).pipe(Effect.withSpan("SecurityScan.run")),
@@ -622,7 +630,6 @@ export const runInspect = <HooksR = never>(
           deadCodeService
             .run({
               rootDirectory: scanDirectory,
-              userConfig: resolvedConfig.config,
               parseConcurrency: deadCodeParseConcurrency,
               workerTimeoutMs: deadCodeTimeout.workerTimeoutMs,
             })

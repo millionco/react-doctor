@@ -189,6 +189,16 @@ describe("githubActionsProvider gate parsing", () => {
     expect(githubActionsProvider.applyGate(other, ERROR_GATE)).toBeNull();
   });
 
+  it("refuses (null) instead of throwing on a workflow with a YAML syntax error", () => {
+    // `YAML.parseDocument` records the problem on `doc.errors` and still
+    // returns a partial AST containing the React Doctor step, but
+    // `doc.toString()` on such a document THROWS — the gate must bail to the
+    // apply-by-hand snippet, not crash with an internal error.
+    const broken = `${buildWorkflowContent("main")}\nbad:\n  - [unclosed\n`;
+    expect(() => githubActionsProvider.applyGate(broken, ERROR_GATE)).not.toThrow();
+    expect(githubActionsProvider.applyGate(broken, ERROR_GATE)).toBeNull();
+  });
+
   it("reports whether a workflow wires up React Doctor", () => {
     expect(githubActionsProvider.containsReactDoctor(buildWorkflowContent("main"))).toBe(true);
     const noStep = ["jobs:", "  ci:", "    steps:", "      - uses: actions/checkout@v5", ""].join(

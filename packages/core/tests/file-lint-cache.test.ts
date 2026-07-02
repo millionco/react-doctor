@@ -51,6 +51,28 @@ describe("createFileLintCache", () => {
     expect(reader.lookup("src/never-seen.tsx hashZ")).toBeNull();
   });
 
+  it("persists without crashing when a sibling ruleset bucket is corrupt", () => {
+    const cacheDir = makeCacheDir();
+    // A truncated / hand-edited cache file where one bucket is `null` must
+    // fail open: persist() drops the corrupt bucket instead of throwing on the
+    // LRU sort — the old crash left the corrupt file in place, failing every
+    // subsequent scan until the cache was deleted by hand.
+    fs.writeFileSync(
+      path.join(cacheDir, FILE_LINT_CACHE_FILENAME),
+      JSON.stringify({
+        version: FILE_LINT_CACHE_SCHEMA_VERSION,
+        rulesets: { deadbeef: null },
+      }),
+    );
+
+    const cache = createFileLintCache(cacheDir, "ruleset-1");
+    cache.store("src/a.tsx hashA", [diagnostic()]);
+    expect(() => cache.persist()).not.toThrow();
+
+    const reader = createFileLintCache(cacheDir, "ruleset-1");
+    expect(reader.lookup("src/a.tsx hashA")).toHaveLength(1);
+  });
+
   it("isolates entries by ruleset hash (a toolchain/config change is a clean miss)", () => {
     const cacheDir = makeCacheDir();
     const writer = createFileLintCache(cacheDir, "ruleset-old");

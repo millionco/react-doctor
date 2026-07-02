@@ -55,6 +55,48 @@ describe("security-scan/utils/strip-comments-preserving-positions", () => {
     expect(stripped).not.toContain("note");
   });
 
+  it("still strips a comment after a self-closing JSX tag", () => {
+    const source = "const el = <Foo bar={x} />; // md5(password)";
+    const stripped = stripCommentsPreservingPositions(source);
+    expect(stripped).toHaveLength(source.length);
+    expect(stripped).toContain("<Foo bar={x} />;");
+    expect(stripped).not.toContain("md5(password)");
+  });
+
+  it("still strips a comment after a postfix increment division", () => {
+    const source = "count++ / total; // md5(password)";
+    const stripped = stripCommentsPreservingPositions(source);
+    expect(stripped).toContain("count++ / total;");
+    expect(stripped).not.toContain("md5(password)");
+  });
+
+  it("still strips a comment after a non-null-assertion division", () => {
+    const source = "const half = value! / 2; // md5(password)";
+    const stripped = stripCommentsPreservingPositions(source);
+    expect(stripped).toContain("value! / 2;");
+    expect(stripped).not.toContain("md5(password)");
+  });
+
+  it("still strips a comment after a keyword-named property division", () => {
+    const source = "const r = obj.return / 2; // md5(password)";
+    const stripped = stripCommentsPreservingPositions(source);
+    expect(stripped).toContain("obj.return / 2;");
+    expect(stripped).not.toContain("md5(password)");
+  });
+
+  it("does not erase code between two self-closing JSX siblings", () => {
+    const source = "const el = <div>{a ? <X p={1} /> : <Y p={2} />}</div>;";
+    expect(stripCommentsPreservingPositions(source)).toBe(source);
+  });
+
+  it("recognizes a regex literal in an arrow body and after prefix negation", () => {
+    const source =
+      "const test = (s) => /https:\\/\\//.test(s); if (!/x\\/y/.test(s)) exec(cmd); // note";
+    const stripped = stripCommentsPreservingPositions(source);
+    expect(stripped).toContain("exec(cmd);");
+    expect(stripped).not.toContain("note");
+  });
+
   it("closes an unbalanced quote at the line end instead of swallowing the file", () => {
     const source = "const x = <p>Don't worry</p>;\nexec(command); // trailing exec(evil)";
     const stripped = stripCommentsPreservingPositions(source);

@@ -144,16 +144,22 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     // is enough to diagnose.
     let firstDropReason: string | null = null;
 
-    // Cumulative deadline shared across every binary-split retry of this
-    // pass, so one pathological file can't re-wait a full `spawnTimeoutMs`
+    // Per-top-level-batch cumulative deadline across that batch's binary-split
+    // retries, so one pathological file can't re-wait a full `spawnTimeoutMs`
     // at each of ~log2(batch) levels before landing in `droppedFiles`.
-    // Anchored lazily at the FIRST splittable failure — anchoring at pass
-    // start would let healthy lint time consume the budget, so a batch that
-    // first fails late in a long pass would be dropped whole without a
-    // single split attempt.
-    let splitDeadlineMs: number | null = null;
+    // Anchored lazily at the batch's FIRST splittable failure — anchoring at
+    // pass start would let healthy lint time consume the budget — and scoped
+    // per batch so one bad batch exhausting its budget can't starve a later
+    // batch of its own split attempts.
+    interface SplitBudgetState {
+      deadlineMs: number | null;
+    }
 
-    const spawnLintBatch = async (batch: string[], depth: number): Promise<Diagnostic[]> => {
+    const spawnLintBatch = async (
+      batch: string[],
+      depth: number,
+      splitBudget: SplitBudgetState,
+    ): Promise<Diagnostic[]> => {
       const batchArgs = [...baseArgs, ...batch];
       try {
         const stdout = await spawnOxlint(
@@ -167,25 +173,28 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
         return parseOxlintOutput(stdout, project, rootDirectory);
       } catch (error) {
         if (!isSplittableReactDoctorError(error)) throw error;
-        splitDeadlineMs ??= Date.now() + splitTotalBudgetMs;
-        const splitBudgetExhausted = Date.now() >= splitDeadlineMs || depth >= splitMaxDepth;
-        if (batch.length <= 1 || splitBudgetExhausted) {
+        splitBudget.deadlineMs ??= Date.now() + splitTotalBudgetMs;
+        const isBudgetElapsed = Date.now() >= splitBudget.deadlineMs;
+        const isDepthCapReached = depth >= splitMaxDepth;
+        if (batch.length <= 1 || isBudgetElapsed || isDepthCapReached) {
           // Either the smallest splittable batch (a single file) still failed,
           // or the cumulative split budget / depth cap is exhausted — drop the
           // remaining files, record why, and let the scan continue.
           droppedFiles.push(...batch);
           if (firstDropReason === null) {
-            firstDropReason =
-              splitBudgetExhausted && batch.length > 1
-                ? `${error.message} (split budget exhausted after ${splitMaxDepth} levels / ${splitTotalBudgetMs / MILLISECONDS_PER_SECOND}s)`
-                : error.message;
+            const limitHint = isDepthCapReached
+              ? ` (split depth cap of ${splitMaxDepth} levels reached)`
+              : isBudgetElapsed
+                ? ` (split budget of ${splitTotalBudgetMs / MILLISECONDS_PER_SECOND}s exhausted at depth ${depth})`
+                : "";
+            firstDropReason = batch.length > 1 ? `${error.message}${limitHint}` : error.message;
           }
           return [];
         }
         const splitIndex = Math.ceil(batch.length / 2);
         return [
-          ...(await spawnLintBatch(batch.slice(0, splitIndex), depth + 1)),
-          ...(await spawnLintBatch(batch.slice(splitIndex), depth + 1)),
+          ...(await spawnLintBatch(batch.slice(0, splitIndex), depth + 1, splitBudget)),
+          ...(await spawnLintBatch(batch.slice(splitIndex), depth + 1, splitBudget)),
         ];
       }
     };
@@ -213,7 +222,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     try {
       const batchResults = await mapWithConcurrency(fileBatches, concurrency, async (batch) => {
         startedFileCount += batch.length;
-        const batchDiagnostics = await spawnLintBatch(batch, 0);
+        const batchDiagnostics = await spawnLintBatch(batch, 0, { deadlineMs: null });
         scannedFileCount += batch.length;
         if (onFileProgress) {
           displayedFileCount = Math.min(

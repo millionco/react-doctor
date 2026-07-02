@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { Diagnostic, ReactDoctorConfig } from "./types/index.js";
+import type { Diagnostic } from "./types/index.js";
 import {
   collectDeadCodeEntryPatterns,
   collectDeadCodeIgnorePatterns,
@@ -37,8 +37,6 @@ const REACT_DOCTOR_TOOLCHAIN_PACKAGES: ReadonlySet<string> = new Set([
 
 interface CheckDeadCodeOptions {
   readonly rootDirectory: string;
-  /** Loaded react-doctor config — `ignore.files` is forwarded to deslop. */
-  readonly userConfig?: ReactDoctorConfig | null;
   readonly deslopJsModuleSpecifier?: string;
   readonly createWorker?: DeadCodeWorkerFactory;
   readonly workerTimeoutMs?: number;

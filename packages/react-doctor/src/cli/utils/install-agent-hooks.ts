@@ -59,8 +59,10 @@ const JSON_INDENT_SPACES = 2;
 // second hook that scans every edit twice.
 const LEGACY_HOOK_SCRIPT_MARKER = "hooks/react-doctor.sh";
 
-const isLegacyHookCommand = (command: string): boolean =>
-  command.includes(LEGACY_HOOK_SCRIPT_MARKER);
+// `command` is typed required but comes from a user-edited JSON file, so a
+// parseable entry can still lack it — never crash the install on one.
+const isLegacyHookCommand = (command: string | undefined): boolean =>
+  typeof command === "string" && command.includes(LEGACY_HOOK_SCRIPT_MARKER);
 
 const removeLegacyHookScript = (hookPath: string): void => {
   try {

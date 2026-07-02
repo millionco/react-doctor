@@ -372,6 +372,11 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
           ...scanOptions,
           includePaths: snapshot.stagedFiles,
           configOverride: userConfig,
+          // Resolve `config.plugins` from the real config directory — the
+          // staged temp snapshot has no node_modules or plugin files, so
+          // anchoring resolution there silently drops every custom plugin
+          // from pre-commit scans.
+          configSourceDirectory: scanTarget.configSourceDirectory ?? undefined,
           changedLineRanges: stagedLineRanges ?? undefined,
         });
 
@@ -625,8 +630,12 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     }
 
     if (!isQuiet && isMultiProject && completedScans.length > 0) {
+      // `scanOptions.noScore` is flag-only (undefined when no flag was
+      // passed), so fall back to the root config the same way `inspect()`'s
+      // merge layer does.
+      const effectiveNoScore = scanOptions.noScore ?? userConfig?.noScore ?? false;
       const shouldShowShareLink =
-        !scanOptions.noScore && (userConfig?.share ?? true) && !scanOptions.isCi;
+        !effectiveNoScore && (userConfig?.share ?? true) && !scanOptions.isCi;
       await Effect.runPromise(
         printMultiProjectSummary({
           completedScans,

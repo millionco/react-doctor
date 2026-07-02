@@ -8,6 +8,7 @@ import { inspect, type ResolvedInspectOptions } from "../src/inspect.js";
 import {
   buildScanResultCacheKey,
   createScanResultCache,
+  shouldStoreScanPayload,
   type CachedScanPayload,
 } from "../src/cli/utils/scan-result-cache.js";
 import { VERSION } from "../src/cli/utils/version.js";
@@ -68,6 +69,53 @@ const diagnostic = (projectDirectory: string): Diagnostic => ({
   category: "Correctness",
 });
 
+const basePayload = (
+  projectDirectory: string,
+  overrides: Partial<CachedScanPayload> = {},
+): CachedScanPayload => ({
+  diagnostics: [diagnostic(projectDirectory)],
+  score: null,
+  project: {
+    rootDirectory: projectDirectory,
+    projectName: "hit",
+    reactVersion: "^19.0.0",
+    reactMajorVersion: 19,
+    tailwindVersion: null,
+    zodVersion: null,
+    zodMajorVersion: null,
+    framework: "unknown",
+    hasTypeScript: true,
+    hasReactCompiler: false,
+    hasTanStackQuery: false,
+    nextjsVersion: null,
+    nextjsMajorVersion: null,
+    hasReactNativeWorkspace: false,
+    expoVersion: null,
+    shopifyFlashListVersion: null,
+    shopifyFlashListMajorVersion: null,
+    hasReanimated: false,
+    isPreES2023Target: false,
+    preactVersion: null,
+    preactMajorVersion: null,
+    sourceFileCount: 1,
+  },
+  userConfig: null,
+  didLintFail: false,
+  lintFailureReason: null,
+  lintPartialFailures: [],
+  didDeadCodeFail: false,
+  deadCodeFailureReason: null,
+  deadCodeOverlapped: false,
+  directory: projectDirectory,
+  scannedFileCount: 1,
+  scannedFilePaths: [],
+  scanElapsedMilliseconds: 1,
+  baselineDelta: undefined,
+  lintFailureReasonKind: null,
+  supplyChainOverlapTimedOut: false,
+  ...overrides,
+});
+
 beforeEach(() => {
   tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-scan-cache-"));
   clearConfigCache();
@@ -90,52 +138,29 @@ describe("scan result cache", () => {
     expect(key).not.toBeNull();
     if (key === null) return;
 
-    const payload: CachedScanPayload = {
-      diagnostics: [diagnostic(projectDirectory)],
-      score: null,
-      project: {
-        rootDirectory: projectDirectory,
-        projectName: "hit",
-        reactVersion: "^19.0.0",
-        reactMajorVersion: 19,
-        tailwindVersion: null,
-        zodVersion: null,
-        zodMajorVersion: null,
-        framework: "unknown",
-        hasTypeScript: true,
-        hasReactCompiler: false,
-        hasTanStackQuery: false,
-        nextjsVersion: null,
-        nextjsMajorVersion: null,
-        hasReactNativeWorkspace: false,
-        expoVersion: null,
-        shopifyFlashListVersion: null,
-        shopifyFlashListMajorVersion: null,
-        hasReanimated: false,
-        isPreES2023Target: false,
-        preactVersion: null,
-        preactMajorVersion: null,
-        sourceFileCount: 1,
-      },
-      userConfig: null,
-      didLintFail: false,
-      lintFailureReason: null,
-      lintPartialFailures: [],
-      didDeadCodeFail: false,
-      deadCodeFailureReason: null,
-      deadCodeOverlapped: false,
-      directory: projectDirectory,
-      scannedFileCount: 1,
-      scannedFilePaths: [],
-      scanElapsedMilliseconds: 1,
-      baselineDelta: undefined,
-      lintFailureReasonKind: null,
-      supplyChainOverlapTimedOut: false,
-    };
     const cache = createScanResultCache(projectDirectory);
-    cache.store(key, payload);
+    cache.store(key, basePayload(projectDirectory));
 
     expect(cache.lookup(key)?.diagnostics).toEqual([diagnostic(projectDirectory)]);
+  });
+
+  // The cache is deliberately NOT keyed on `--max-duration`: it's safe to serve
+  // a stored payload to a budgeted run because only COMPLETE scans are ever
+  // stored. A budget-truncated run (lint partial or dead-code skipped) must be
+  // barred here, so a `--max-duration` cache hit can only ever be a complete
+  // result — honoring the max budget without replaying a stale partial.
+  it("never stores a budget-truncated (or otherwise incomplete) scan", () => {
+    const directory = tempDirectory;
+    expect(shouldStoreScanPayload(basePayload(directory))).toBe(true);
+    expect(
+      shouldStoreScanPayload(
+        basePayload(directory, {
+          lintPartialFailures: ["12 file(s) skipped — max scan duration reached (a.tsx, +11 more)"],
+        }),
+      ),
+    ).toBe(false);
+    expect(shouldStoreScanPayload(basePayload(directory, { didDeadCodeFail: true }))).toBe(false);
+    expect(shouldStoreScanPayload(basePayload(directory, { didLintFail: true }))).toBe(false);
   });
 
   it("misses when commit, config, version, or selected files change", () => {

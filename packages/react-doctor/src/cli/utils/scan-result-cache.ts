@@ -280,6 +280,14 @@ export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string 
       isCi: input.options.isCi,
       suppressRendering: input.options.suppressRendering,
       supplyChainManifestChanged: input.options.supplyChainManifestChanged,
+      // `maxDurationMs` is deliberately NOT keyed. It only changes the RESULT
+      // when the budget is hit, and every such truncated run (lint partial or
+      // dead-code skipped) is barred from the cache by `shouldStoreScanPayload`
+      // below. So a stored payload is always COMPLETE, and serving it to a
+      // `--max-duration` lookup honors the budget (a cache hit finishes well
+      // under any ceiling) with the best possible result. Keying on it would
+      // only force needless misses that could downgrade a complete cached
+      // result to a freshly-truncated partial one.
     },
   });
   return cacheKeyJson === null ? null : hashString(cacheKeyJson);

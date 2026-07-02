@@ -367,6 +367,7 @@ import { serverNoMutableModuleState } from "./rules/server/server-no-mutable-mod
 import { serverSequentialIndependentAwait } from "./rules/server/server-sequential-independent-await.js";
 import { stateInConstructor } from "./rules/react-builtins/state-in-constructor.js";
 import { stylePropObject } from "./rules/react-builtins/style-prop-object.js";
+import { styledComponentsDuplicateCssPropertyInBlock } from "./rules/design/styled-components-duplicate-css-property-in-block.js";
 import { supabaseClientOwnedAuthzField } from "./rules/security-scan/supabase-client-owned-authz-field.js";
 import { supabaseRlsPolicyRisk } from "./rules/security-scan/supabase-rls-policy-risk.js";
 import { supabaseTableMissingRls } from "./rules/security-scan/supabase-table-missing-rls.js";
@@ -4604,6 +4605,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set(["react", ...(stylePropObject.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/styled-components-duplicate-css-property-in-block",
+    id: "styled-components-duplicate-css-property-in-block",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...styledComponentsDuplicateCssPropertyInBlock,
+      framework: "global",
+      category: "Maintainability",
     },
   },
   {

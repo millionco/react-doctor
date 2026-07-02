@@ -585,6 +585,21 @@ export async function refreshDashboard() {
     await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
+  it("accepts a revalidation-only action importing revalidatePath from a re-export barrel", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-barrel-import", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidatePath } from "@/lib/cache";
+
+export async function refreshDashboard() {
+  revalidatePath("/dashboard");
+}`),
+      },
+    });
+
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
   it("still flags a revalidation action that also reads data from a non-parameter source", async () => {
     const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-db-read", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },

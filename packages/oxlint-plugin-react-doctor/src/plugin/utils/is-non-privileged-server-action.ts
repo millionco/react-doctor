@@ -23,30 +23,19 @@ const NON_DATA_EFFECT_FUNCTION_NAMES: ReadonlySet<string> = new Set([
   ...NEXTJS_NAVIGATION_FUNCTIONS,
 ]);
 
-// The modules Next.js exports the exempt functions from. These functions are
-// not globals, so real usage always imports them — a same-named binding from
-// anywhere else (a module-local `const revalidatePath = …` doing privileged
-// work, an import from an unrelated package) must not satisfy the exemption.
-const NON_DATA_EFFECT_MODULE_SOURCES: ReadonlySet<string> = new Set([
-  "next/cache",
-  "next/navigation",
-]);
-
-// Matched only as a BARE identifier callee whose binding is imported from
-// `next/cache` / `next/navigation`. A member call (`obj.redirect()`,
-// `db.revalidateTag()`) shares the name but not the import, and could touch
-// data on an arbitrary receiver, so it must not satisfy the exemption either.
-const isCacheOrNavigationCall = (node: EsTreeNode): boolean => {
-  if (
-    !isNodeOfType(node, "CallExpression") ||
-    !isNodeOfType(node.callee, "Identifier") ||
-    !NON_DATA_EFFECT_FUNCTION_NAMES.has(node.callee.name)
-  ) {
-    return false;
-  }
-  const importSource = getImportSourceForName(node, node.callee.name);
-  return importSource !== null && NON_DATA_EFFECT_MODULE_SOURCES.has(importSource);
-};
+// Matched only as a BARE identifier callee whose binding is IMPORTED. A member
+// call (`obj.redirect()`, `db.revalidateTag()`) shares the name but not the
+// import, and a module-local `const revalidatePath = …` doing privileged work
+// defines the name locally rather than importing it — both must not satisfy the
+// exemption. Requiring an import (rather than a specific `next/*` source) keeps
+// the local-shadow out while still exempting the common re-export barrel
+// (`import { revalidatePath } from "@/lib/cache"`), which the real Next.js
+// symbol is routinely funneled through and which we cannot resolve in-file.
+const isCacheOrNavigationCall = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "CallExpression") &&
+  isNodeOfType(node.callee, "Identifier") &&
+  NON_DATA_EFFECT_FUNCTION_NAMES.has(node.callee.name) &&
+  getImportSourceForName(node, node.callee.name) !== null;
 
 // Reduce an expression to the value it actually yields: strip TS / optional-
 // chain wrappers, and collapse a comma sequence to its last operand (the value

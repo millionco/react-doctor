@@ -55,6 +55,20 @@ describe("security-scan/utils/strip-comments-preserving-positions", () => {
     expect(stripped).not.toContain("note");
   });
 
+  it("treats a slash after a non-ASCII identifier as division, not a regex start", () => {
+    const source = "const ratio = café / total; exec(cmd); const rest = a / b;";
+    const stripped = stripCommentsPreservingPositions(source);
+    expect(stripped).toHaveLength(source.length);
+    expect(stripped).toContain("exec(cmd)");
+  });
+
+  it("does not let a misclassified division swallow a following block comment", () => {
+    const source = "const ratio = café / total; /* eval(evil) */ const rest = a / b;";
+    const stripped = stripCommentsPreservingPositions(source);
+    expect(stripped).toHaveLength(source.length);
+    expect(stripped).not.toContain("eval(evil)");
+  });
+
   it("still strips a comment after a self-closing JSX tag", () => {
     const source = "const el = <Foo bar={x} />; // md5(password)";
     const stripped = stripCommentsPreservingPositions(source);

@@ -141,6 +141,33 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
 
+    // Named `<Fragment>` / `<React.Fragment>` are render-transparent like the
+    // shorthand `<>`, so forwarding children through one into a host still
+    // crashes (fires) and forwarding into a Text still suppresses.
+    it("fires on a wrapper forwarding children into a View through a named Fragment", () => {
+      expectFail(`
+        const Chip = ({ children }) => (
+          <View>
+            <Fragment>{children}</Fragment>
+          </View>
+        );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
+    it("suppresses a wrapper forwarding children into a Text through a React.Fragment", () => {
+      expectPass(`
+        const Chip = ({ children }) => (
+          <View>
+            <React.Fragment>
+              <Text>{children}</Text>
+            </React.Fragment>
+          </View>
+        );
+        const App = () => <Chip>Test Chip</Chip>;
+      `);
+    });
+
     it("suppresses a wrapper with renamed destructured children", () => {
       expectPass(`
         const Chip = ({ children: content }) => (

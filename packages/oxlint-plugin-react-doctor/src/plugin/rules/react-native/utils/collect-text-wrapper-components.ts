@@ -1,5 +1,6 @@
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
+import { isJsxFragmentElement } from "../../../utils/is-jsx-fragment-element.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../../utils/is-react-component-name.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
@@ -203,6 +204,18 @@ const isChildrenForwardingJsxChild = (child: EsTreeNode, bindings: ChildrenBindi
   isNodeOfType(child, "JSXExpressionContainer") &&
   isChildrenValueExpression(child.expression, bindings);
 
+// A fragment's children render directly inside its parent, whether the fragment
+// is shorthand (`<>…</>`, a JSXFragment) or named (`<Fragment>` /
+// `<React.Fragment>`, a JSXElement). Returns those children when `child` is
+// either form, else null.
+const fragmentChildrenOrNull = (child: EsTreeNode): readonly EsTreeNode[] | null => {
+  if (isNodeOfType(child, "JSXFragment")) return child.children ?? [];
+  if (isNodeOfType(child, "JSXElement") && isJsxFragmentElement(child.openingElement)) {
+    return child.children ?? [];
+  }
+  return null;
+};
+
 // Fragments are render-transparent: `<View><>{children}</></View>` places the
 // children directly inside the View at runtime, so the forwarding check must
 // see through fragment wrappers when scanning a host's children. Only
@@ -212,8 +225,9 @@ const isChildrenForwardingJsxChildThroughFragments = (
   bindings: ChildrenBindings,
 ): boolean => {
   if (isChildrenForwardingJsxChild(child, bindings)) return true;
-  if (!isNodeOfType(child, "JSXFragment")) return false;
-  return (child.children ?? []).some((innerChild) =>
+  const fragmentChildren = fragmentChildrenOrNull(child);
+  if (fragmentChildren === null) return false;
+  return fragmentChildren.some((innerChild) =>
     isChildrenForwardingJsxChildThroughFragments(innerChild, bindings),
   );
 };

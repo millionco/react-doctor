@@ -1,5 +1,10 @@
 const WHITESPACE_PATTERN = /\s/;
-const IDENTIFIER_CHARACTER_PATTERN = /[A-Za-z0-9_$]/;
+// Unicode-aware: a division after an identifier ending in a non-ASCII letter
+// (`café / total`, `合計 / 個数`) must still read as division. An ASCII-only
+// class classified those as regex starts and blanked the code up to the next
+// slash — the exact opposite of the "misclassify toward division is safe"
+// invariant this file relies on.
+const IDENTIFIER_CHARACTER_PATTERN = /[\p{ID_Continue}$]/u;
 
 // These keywords put a following `/` in expression position (`return /x/`)
 // even though they end with an identifier character.
@@ -78,9 +83,9 @@ const isRegexLiteralStart = (characters: string[], slashIndex: number): boolean 
 // character classes (where `/` is not a terminator). Returns null when no
 // closing slash exists on the line — regex literals cannot span a raw newline,
 // so the opening slash was division after all. A candidate terminator whose
-// next character is also `/` is rejected too: the scan collided with the
-// first slash of a real `//` comment, so treating the span as a regex would
-// un-strip the comment.
+// next character is also `/` or `*` is rejected too: the scan collided with the
+// first slash of a real `//` or `/*` comment, so treating the span as a regex
+// would un-strip the comment.
 const findRegexLiteralEnd = (content: string, slashIndex: number): number | null => {
   let cursor = slashIndex + 1;
   let isInsideCharacterClass = false;
@@ -96,7 +101,7 @@ const findRegexLiteralEnd = (content: string, slashIndex: number): number | null
     } else if (character === "]") {
       isInsideCharacterClass = false;
     } else if (character === "/" && !isInsideCharacterClass) {
-      if (content[cursor + 1] === "/") return null;
+      if (content[cursor + 1] === "/" || content[cursor + 1] === "*") return null;
       return cursor + 1;
     }
     cursor += 1;

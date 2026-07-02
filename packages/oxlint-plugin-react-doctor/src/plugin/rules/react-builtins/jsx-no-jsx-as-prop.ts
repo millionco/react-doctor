@@ -13,7 +13,15 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
-const MESSAGE = "This child redraws every render because the prop gets brand new JSX each time.";
+// Two message strengths: the harm — a defeated `React.memo` bailout —
+// is only PROVEN when the receiving component is visibly memoised in
+// this file. For imported components (unresolvable in oxlint's
+// single-file model) the claim must stay conditional; a plain function
+// child redraws with its parent no matter what the prop holds.
+const MESSAGE_MEMOISED =
+  "This child redraws every render because the prop gets brand new JSX each time.";
+const MESSAGE_UNKNOWN =
+  "If this child is memoized, it still redraws every render because the prop gets brand new JSX each time.";
 
 // Prop names that conventionally receive single JSX elements (icons,
 // slot content, fallbacks, render props). For these the inline JSX
@@ -343,7 +351,8 @@ export const jsxNoJsxAsProp = defineRule({
           parentJsxOpening && isNodeOfType(parentJsxOpening, "JSXOpeningElement")
             ? (parentJsxOpening.name as EsTreeNode)
             : null;
-        if (memoStatusForJsxOpeningName(memoRegistry, openingName) === "not-memoised") return;
+        const memoStatus = memoStatusForJsxOpeningName(memoRegistry, openingName);
+        if (memoStatus === "not-memoised") return;
         // Known slot prop names (icon, tooltip, fallback, header, etc.)
         // and slot suffixes (*Button, *Icon, *Component, *Element, ...)
         // are designed to receive JSX. Flagging them is unactionable.
@@ -362,7 +371,10 @@ export const jsxNoJsxAsProp = defineRule({
         ) {
           return;
         }
-        context.report({ node, message: MESSAGE });
+        context.report({
+          node,
+          message: memoStatus === "memoised" ? MESSAGE_MEMOISED : MESSAGE_UNKNOWN,
+        });
       },
     };
   },

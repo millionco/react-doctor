@@ -1,6 +1,7 @@
 import { SOURCE_FILE_PATTERN } from "../../../constants/security-scan.js";
 import type { FileScan, ScannedFile } from "../../../utils/file-scan.js";
 import { getMatchLocation } from "./get-match-location.js";
+import { isFirebaseRulesPath } from "./is-firebase-rules-path.js";
 import {
   stripCommentsAndStringLiteralsPreservingPositions,
   stripCommentsPreservingPositions,
@@ -32,7 +33,13 @@ const stringStrippedContentCache = new WeakMap<ScannedFile, string>();
 // `new Function(...)`"); blank them for JS/TS files before pattern matching.
 // Stripping preserves offsets, so reported lines/columns stay correct.
 export const getScannableContent = (file: ScannedFile, ignoreStringLiterals = false): string => {
-  if (!SOURCE_FILE_PATTERN.test(file.relativePath)) return file.content;
+  // Firebase/CEL `.rules` files use `//` and `/* */` comments too, so a
+  // cautionary commented-out `allow … if true` must be blanked before scanning
+  // (the comment stripper is regex-literal-agnostic, so `match /users/{uid}`
+  // survives intact).
+  if (!SOURCE_FILE_PATTERN.test(file.relativePath) && !isFirebaseRulesPath(file.relativePath)) {
+    return file.content;
+  }
   const cache = ignoreStringLiterals ? stringStrippedContentCache : strippedContentCache;
   const cachedContent = cache.get(file);
   if (cachedContent !== undefined) return cachedContent;

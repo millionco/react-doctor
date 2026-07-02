@@ -26,4 +26,39 @@ describe("security-scan/path-traversal-risk — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent when request input is sanitized through path.basename()", () => {
+    const findings = runScanRule(pathTraversalRisk, {
+      relativePath: "src/server/files.ts",
+      content: `const p = path.join(UPLOAD_DIR, path.basename(req.params.file));\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags request input joined without a sanitizer", () => {
+    const findings = runScanRule(pathTraversalRisk, {
+      relativePath: "src/server/files.ts",
+      content: `const p = path.join(UPLOAD_DIR, req.params.file);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  // FP wave 4: a static literal path segment whose filename happens to be
+  // spelled like a taint accessor (`public/body.html`, `${dir}/query.sql`)
+  // is preceded by `/` or a backtick — never a real request read.
+  it("stays silent on a static path segment after a slash", () => {
+    const findings = runScanRule(pathTraversalRisk, {
+      relativePath: "src/server/handler.ts",
+      content: `fs.readFileSync(path.join(__dirname, "public/body.html"));\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on a template literal suffix after a slash", () => {
+    const findings = runScanRule(pathTraversalRisk, {
+      relativePath: "src/server/handler.ts",
+      content: "readFile(`${dir}/query.sql`);\n",
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

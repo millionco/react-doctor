@@ -16,6 +16,13 @@ const POSTMESSAGE_ORIGIN_CHECK_PATTERN = /origin(?!al)|\.source\s*[!=]==?/i;
 
 const MESSAGE_DATA_READ_PATTERN = /\b(?:event|e|evt|msg|message)\.data\b/;
 
+// True when the text immediately before the first `event.data` is a
+// `const`/`let`/`var` declaration's initializer — i.e. the data is being READ
+// INTO A LOCAL (`const data = event.data`) rather than used directly. The
+// local isn't consumed until later, so an origin guard placed anywhere after
+// the binding (the read-then-guard-then-use idiom) still protects the use.
+const MESSAGE_DATA_BINDING_PATTERN = /\b(?:const|let|var)\s+[^;=]*=\s*$/;
+
 // MessagePort/Worker/BroadcastChannel/EventSource/WebSocket message events
 // are same-application or server-stream channels; window-origin checks
 // neither exist nor apply there. `self.onmessage` is the worker-global
@@ -82,7 +89,13 @@ export const postmessageOriginRisk = defineRule({
       const messageDataIndex = nodeText.search(MESSAGE_DATA_READ_PATTERN);
       if (messageDataIndex < 0) return;
       const originCheckIndex = nodeText.search(POSTMESSAGE_ORIGIN_CHECK_PATTERN);
-      if (originCheckIndex >= 0 && originCheckIndex < messageDataIndex) return;
+      if (originCheckIndex >= 0) {
+        // When the data is bound to a local first, the guard protects the
+        // later use regardless of textual order (read-then-guard-then-use).
+        // When the data is used directly, the guard must precede that use.
+        if (MESSAGE_DATA_BINDING_PATTERN.test(nodeText.slice(0, messageDataIndex))) return;
+        if (originCheckIndex < messageDataIndex) return;
+      }
 
       const location = getLocationAtIndex(file.content, getNodeStartIndex(node));
       findings.push({

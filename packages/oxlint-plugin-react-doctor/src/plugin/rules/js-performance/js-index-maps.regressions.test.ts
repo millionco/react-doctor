@@ -64,4 +64,22 @@ describe("js-performance/js-index-maps — regressions", () => {
       `function f(rows, users){ for (const row of rows){ const u = (users as U[]).find((u)=> u.id === row.userId); use(u); } }`,
     );
   });
+
+  it("does not flag a receiver indexed by the loop counter (`groups[i].links.find`)", () => {
+    expectPass(
+      `function f(groups, targetId){ for (let i = 0; i < groups.length; i++){ const m = groups[i].links.find((l)=> l.id === targetId); use(m); } }`,
+    );
+  });
+
+  it("does not flag a call-expression receiver (`getLinks(row).find`)", () => {
+    expectPass(
+      `function f(rows, targetId){ for (const row of rows){ const m = getLinks(row).find((l)=> l.id === targetId); use(m); } }`,
+    );
+  });
+
+  it("still flags a receiver indexed by a loop-invariant constant", () => {
+    expectFail(
+      `function f(rows, groups){ for (const row of rows){ const m = groups[0].links.find((l)=> l.id === row.linkId); use(m); } }`,
+    );
+  });
 });

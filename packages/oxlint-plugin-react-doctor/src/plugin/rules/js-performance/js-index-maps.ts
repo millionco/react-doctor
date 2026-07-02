@@ -8,6 +8,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
 // Only a predicate that tests a SINGLE equality on one field
@@ -89,10 +90,38 @@ const collectLoopBoundNames = (loop: EsTreeNode, names: Set<string>): void => {
   });
 };
 
+// `groups[i].links.find(...)` — the chain roots at an invariant name,
+// but the computed index (`i`) varies per iteration, so the receiver is
+// a different array each pass.
+const hasLoopBoundComputedIndex = (
+  receiver: EsTreeNode | null | undefined,
+  loopBoundNames: ReadonlySet<string>,
+): boolean => {
+  let cursor: EsTreeNode | null | undefined = receiver;
+  while (cursor) {
+    cursor = stripParenExpression(cursor);
+    if (!isNodeOfType(cursor, "MemberExpression")) break;
+    if (cursor.computed && cursor.property) {
+      let doesIndexReferenceLoopBoundName = false;
+      walkAst(cursor.property as EsTreeNode, (child: EsTreeNode) => {
+        if (isNodeOfType(child, "Identifier") && loopBoundNames.has(child.name)) {
+          doesIndexReferenceLoopBoundName = true;
+        }
+      });
+      if (doesIndexReferenceLoopBoundName) return true;
+    }
+    cursor = cursor.object;
+  }
+  return false;
+};
+
 const isLoopVariantReceiver = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   if (!isNodeOfType(node.callee, "MemberExpression")) return false;
-  const receiverRoot = getRootIdentifierName(node.callee.object);
-  if (!receiverRoot) return false;
+  const receiver = node.callee.object;
+  // A receiver that isn't rooted at a plain identifier (`getLinks(row).find`,
+  // `this.rows.find`) may be recomputed every pass — bail rather than report.
+  const receiverRoot = getRootIdentifierName(receiver);
+  if (!receiverRoot) return true;
 
   const loopBoundNames = new Set<string>();
   let ancestor: EsTreeNode | null | undefined = node.parent;
@@ -100,7 +129,8 @@ const isLoopVariantReceiver = (node: EsTreeNodeOfType<"CallExpression">): boolea
     if (LOOP_TYPES.includes(ancestor.type)) collectLoopBoundNames(ancestor, loopBoundNames);
     ancestor = ancestor.parent;
   }
-  return loopBoundNames.has(receiverRoot);
+  if (loopBoundNames.has(receiverRoot)) return true;
+  return hasLoopBoundComputedIndex(receiver, loopBoundNames);
 };
 
 export const jsIndexMaps = defineRule({

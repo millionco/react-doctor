@@ -5,6 +5,7 @@ import { isMemberProperty } from "../../utils/is-member-property.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 // `Math.min` / `Math.max` can only express the scalar extremum of an
 // array's own values. `arr.sort(cmp)[0]` is equivalent ONLY when the
@@ -28,15 +29,15 @@ const numericComparatorDirection = (
   }
 
   let comparisonExpression: EsTreeNode | null = null;
-  const body = comparator.body;
-  if (isNodeOfType(body, "BinaryExpression")) {
-    comparisonExpression = body;
-  } else if (isNodeOfType(body, "BlockStatement")) {
-    const statements = body.body ?? [];
+  const comparatorBody = stripParenExpression(comparator.body);
+  if (isNodeOfType(comparatorBody, "BinaryExpression")) {
+    comparisonExpression = comparatorBody;
+  } else if (isNodeOfType(comparatorBody, "BlockStatement")) {
+    const statements = comparatorBody.body ?? [];
     if (statements.length !== 1) return null;
     const onlyStatement = statements[0];
     if (!isNodeOfType(onlyStatement, "ReturnStatement") || !onlyStatement.argument) return null;
-    comparisonExpression = onlyStatement.argument as EsTreeNode;
+    comparisonExpression = stripParenExpression(onlyStatement.argument as EsTreeNode);
   }
 
   if (

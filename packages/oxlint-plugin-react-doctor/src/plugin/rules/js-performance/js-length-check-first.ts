@@ -1,6 +1,10 @@
 import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { collectEarlierAndGuardOperands } from "../../utils/collect-earlier-and-guard-operands.js";
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { flattenLogicalAndChain } from "../../utils/flatten-logical-and-chain.js";
+import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -32,7 +36,10 @@ const unwrapChainExpression = (node: EsTreeNode): EsTreeNode =>
   isNodeOfType(node, "ChainExpression") ? node.expression : node;
 
 const LENGTH_EQUALITY_OPERATORS: ReadonlySet<string> = new Set(["===", "=="]);
-const LENGTH_MISMATCH_OPERATORS: ReadonlySet<string> = new Set(["!==", "!="]);
+// Inequality AND relational operators: a deliberate `a.length > b.length`
+// guard (partial-input validation) proves the author already thought about
+// diverging lengths, so the "check length first" advice is noise there.
+const LENGTH_MISMATCH_OPERATORS: ReadonlySet<string> = new Set(["!==", "!=", ">", "<", ">=", "<="]);
 
 // `<a>.length <op> <b>.length` (in either operand order) comparing the
 // two arrays under test, for the given operator set.
@@ -85,49 +92,106 @@ const doesStatementTerminate = (statement: EsTreeNode | null | undefined): boole
   return false;
 };
 
-// Find the statement-level ancestor of `node` (the node whose parent is a
-// BlockStatement / Program) so we can inspect its preceding siblings.
-const findEnclosingStatement = (
-  node: EsTreeNode,
-): { block: EsTreeNode; statement: EsTreeNode } | null => {
-  let current: EsTreeNode | null | undefined = node;
-  while (current?.parent) {
-    const parent: EsTreeNode = current.parent;
-    if (isNodeOfType(parent, "BlockStatement") || isNodeOfType(parent, "Program")) {
-      return { block: parent, statement: current };
-    }
-    current = parent;
+// Falling through `if (x || y || …) return` means EVERY operand was falsy,
+// so a length-mismatch operand among them guarantees the lengths matched.
+const flattenLogicalOrChain = (node: EsTreeNode): EsTreeNode[] => {
+  if (isNodeOfType(node, "LogicalExpression") && node.operator === "||") {
+    return [...flattenLogicalOrChain(node.left), ...flattenLogicalOrChain(node.right)];
   }
-  return null;
+  return [node];
+};
+
+// A write to either compared array between the guard and the comparison
+// makes the guard stale — the lengths it checked no longer describe the
+// values being compared.
+const isEitherArrayReassignedIn = (
+  statements: EsTreeNode[],
+  fromIndex: number,
+  toIndex: number,
+  receiverArray: EsTreeNode,
+  indexedArray: EsTreeNode,
+): boolean => {
+  for (let index = fromIndex; index < toIndex; index += 1) {
+    let didFindReassignment = false;
+    walkAst(statements[index], (child: EsTreeNode) => {
+      if (didFindReassignment) return false;
+      const writeTarget = isNodeOfType(child, "AssignmentExpression")
+        ? child.left
+        : isNodeOfType(child, "UpdateExpression")
+          ? child.argument
+          : null;
+      if (!writeTarget) return;
+      if (
+        areExpressionsStructurallyEqual(writeTarget, receiverArray) ||
+        areExpressionsStructurallyEqual(writeTarget, indexedArray)
+      ) {
+        didFindReassignment = true;
+      }
+    });
+    if (didFindReassignment) return true;
+  }
+  return false;
 };
 
 // `if (a.length !== b.length) return false;` written as an early-return
-// guard in a PRECEDING statement (not an `&&` operand in the same
-// expression) already short-circuits the comparison — recognize it.
-const hasPrecedingLengthMismatchGuard = (
+// guard in a PRECEDING statement (in this block or any enclosing block),
+// or an ENCLOSING `if (a.length === b.length) { … }` equality gate,
+// already short-circuits the comparison — recognize both. The guard is
+// invalidated when either array is reassigned between guard and
+// comparison, or when a nested function's parameter shadows a compared
+// array name (the guarded binding is not the one being compared).
+const hasDominatingLengthGuard = (
   callNode: EsTreeNode,
   receiverArray: EsTreeNode,
   indexedArray: EsTreeNode,
 ): boolean => {
-  const enclosing = findEnclosingStatement(callNode);
-  if (!enclosing) return false;
-  const statements = (enclosing.block as { body?: EsTreeNode[] }).body ?? [];
-  const statementIndex = statements.indexOf(enclosing.statement);
-  if (statementIndex <= 0) return false;
-  for (let index = 0; index < statementIndex; index += 1) {
-    const statement = statements[index];
-    if (!isNodeOfType(statement, "IfStatement")) continue;
-    if (
-      isLengthComparison(
-        statement.test as EsTreeNode,
-        receiverArray,
-        indexedArray,
-        LENGTH_MISMATCH_OPERATORS,
-      ) &&
-      doesStatementTerminate(statement.consequent as EsTreeNode)
-    ) {
-      return true;
+  const comparedRootNames = [
+    getRootIdentifierName(receiverArray),
+    getRootIdentifierName(indexedArray),
+  ].filter((rootName): rootName is string => Boolean(rootName));
+  let child: EsTreeNode = callNode;
+  let ancestor: EsTreeNode | null | undefined = callNode.parent;
+  while (ancestor) {
+    if (isFunctionLike(ancestor)) {
+      const parameterNames = new Set<string>();
+      for (const parameter of ancestor.params ?? []) {
+        collectPatternNames(parameter, parameterNames);
+      }
+      if (comparedRootNames.some((rootName) => parameterNames.has(rootName))) return false;
     }
+    if (isNodeOfType(ancestor, "IfStatement") && ancestor.consequent === child) {
+      const equalityGateHolds = flattenLogicalAndChain(ancestor.test).some((guardOperand) =>
+        isLengthComparison(guardOperand, receiverArray, indexedArray, LENGTH_EQUALITY_OPERATORS),
+      );
+      if (equalityGateHolds) return true;
+    }
+    if (isNodeOfType(ancestor, "BlockStatement") || isNodeOfType(ancestor, "Program")) {
+      const statements: EsTreeNode[] = ancestor.body ?? [];
+      const statementIndex = statements.indexOf(child);
+      for (let guardIndex = 0; guardIndex < statementIndex; guardIndex += 1) {
+        const statement = statements[guardIndex];
+        if (!isNodeOfType(statement, "IfStatement")) continue;
+        const mismatchGuardHolds = flattenLogicalOrChain(statement.test).some((guardOperand) =>
+          isLengthComparison(guardOperand, receiverArray, indexedArray, LENGTH_MISMATCH_OPERATORS),
+        );
+        if (!mismatchGuardHolds) continue;
+        if (!doesStatementTerminate(statement.consequent as EsTreeNode)) continue;
+        if (
+          isEitherArrayReassignedIn(
+            statements,
+            guardIndex + 1,
+            statementIndex,
+            receiverArray,
+            indexedArray,
+          )
+        ) {
+          continue;
+        }
+        return true;
+      }
+    }
+    child = ancestor;
+    ancestor = ancestor.parent ?? null;
   }
   return false;
 };
@@ -167,7 +231,7 @@ export const jsLengthCheckFirst = defineRule({
         isMatchingLengthEqualityGuard(guardOperand, receiverArrayObject, indexedArrayObject),
       );
       if (isAlreadyLengthGuarded) return;
-      if (hasPrecedingLengthMismatchGuard(node, receiverArrayObject, indexedArrayObject)) return;
+      if (hasDominatingLengthGuard(node, receiverArrayObject, indexedArrayObject)) return;
 
       context.report({
         node,

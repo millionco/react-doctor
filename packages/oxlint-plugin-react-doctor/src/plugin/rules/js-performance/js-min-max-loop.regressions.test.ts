@@ -41,4 +41,28 @@ describe("js-performance/js-min-max-loop — regressions", () => {
     expectSuggests(`const largest = nums.sort((a, b) => b - a)[0];`, "max");
     expectSuggests(`const smallest = nums.sort((a, b) => b - a)[nums.length - 1];`, "min");
   });
+
+  // fp-review PR #994: oxc-parser wraps `(a - b)` in a ParenthesizedExpression,
+  // which must be peeled before matching the canonical comparator.
+  it("flags the parenthesized concise-body comparator `(a, b) => (a - b)`", () => {
+    expectSuggests(`const smallest = nums.sort((a, b) => (a - b))[0];`, "min");
+  });
+
+  it("flags the parenthesized block-body comparator `{ return (a - b); }`", () => {
+    expectSuggests(`const smallest = nums.sort((a, b) => { return (a - b); })[0];`, "min");
+  });
+
+  it("flags the parenthesized descending comparator `(a, b) => (b - a)`", () => {
+    expectSuggests(`const largest = nums.sort((a, b) => (b - a))[0];`, "max");
+  });
+
+  it("does not flag a derived-key comparator on objects", () => {
+    expectPass(`const firstMatch = distance.sort((a, b) => a.dist - b.dist)[0];`);
+  });
+
+  it("does not flag a conditional-expression comparator", () => {
+    expectPass(
+      `const link = blogList.sort((a, b) => (a.frontmatter?.date > b.frontmatter?.date ? -1 : 1))[0].link;`,
+    );
+  });
 });

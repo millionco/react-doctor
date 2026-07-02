@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
+import { CROSS_FILE_RULE_IDS } from "oxlint-plugin-react-doctor";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "./types/index.js";
 import { batchIncludePaths } from "./batch-include-paths.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
@@ -450,26 +451,40 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       }
       const cacheHitFileCount = candidateFiles.length - missFiles.length;
 
-      // Cacheable rules re-run only on changed files; the cross-file sidecar
-      // always runs fresh on EVERY file so a dependency change can never serve
-      // a stale cross-file verdict for an unchanged file.
-      const cacheableResult = await runConfigOverFiles(
+      // Miss files run the FULL config in one pass — cacheable and cross-file
+      // rules together — and the always-fresh cross-file sidecar covers only
+      // the cache HITS. The previous shape (cacheable pass over misses, then
+      // sidecar over every file) parsed and spawned over each miss twice,
+      // doubling the lint cost of a cold-cache scan — every CI run. The fresh
+      // output is partitioned by rule id below so only cacheable-rule
+      // diagnostics are stored; cache contents and reported diagnostics are
+      // unchanged, and a stale cross-file verdict still can't be served (hits
+      // get the sidecar, misses ran the cross-file rules in the full pass).
+      const fullResult = await runConfigOverFiles(
         (overrides) =>
           buildConfig({
             extendsPaths: [],
-            ruleSelection: "cacheable",
             disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
           }),
-        "oxlintrc.cacheable.json",
+        "oxlintrc.full.json",
         missFiles,
-        undefined,
+        options.onFileProgress &&
+          ((scannedFileCount) => options.onFileProgress?.(scannedFileCount, candidateFiles.length)),
       );
+      const missFileSet = new Set(missFiles);
+      const hitFiles = candidateFiles.filter((candidateFile) => !missFileSet.has(candidateFile));
       const sidecarResult = await runConfigOverFiles(
         () => buildConfig({ extendsPaths: [], ruleSelection: "sidecar" }),
         "oxlintrc.sidecar.json",
-        candidateFiles,
-        options.onFileProgress,
+        hitFiles,
+        options.onFileProgress &&
+          ((scannedFileCount) =>
+            options.onFileProgress?.(missFiles.length + scannedFileCount, candidateFiles.length)),
       );
+      const freshCacheableDiagnostics: Diagnostic[] = [];
+      for (const diagnostic of fullResult.diagnostics) {
+        if (!CROSS_FILE_RULE_IDS.has(diagnostic.rule)) freshCacheableDiagnostics.push(diagnostic);
+      }
 
       // Reported only after both passes succeed — if lint throws, the run fails
       // and no cache-hit ratio is attached to a failed scan's telemetry.
@@ -485,7 +500,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       }
       const freshDiagnosticsByFile = new Map<string, Diagnostic[]>();
       let isAttributionSound = true;
-      for (const diagnostic of cacheableResult.diagnostics) {
+      for (const diagnostic of freshCacheableDiagnostics) {
         const missFile = missFileByNormalizedPath.get(diagnostic.filePath);
         if (missFile === undefined) {
           isAttributionSound = false;
@@ -504,8 +519,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       //     empty output would mask the failure as a clean hit next scan;
       //   - the diagnostics couldn't be attributed back to their miss file.
       if (
-        !cacheableResult.didDropReactHooksJsPlugin &&
-        !cacheableResult.hadPartialFailure &&
+        !fullResult.didDropReactHooksJsPlugin &&
+        !fullResult.hadPartialFailure &&
         isAttributionSound
       ) {
         for (const missFile of missFiles) {
@@ -523,7 +538,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       // output stays equal to a cache-off scan of the same inputs.
       return dedupeDiagnostics([
         ...replayedDiagnostics,
-        ...cacheableResult.diagnostics,
+        ...fullResult.diagnostics,
         ...sidecarResult.diagnostics,
       ]);
     }

@@ -3,15 +3,21 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { MOTION_LIBRARY_PACKAGES } from "oxlint-plugin-react-doctor";
 import type { Diagnostic } from "./types/index.js";
-import { IGNORED_DIRECTORIES } from "./constants.js";
 import { hasIgnoredPathSegment } from "./utils/has-ignored-path-segment.js";
-import { isFile, readDirectoryEntries, readPackageJson } from "./project-info/index.js";
+import { walkSourceTreeFiles } from "./utils/walk-source-tree-files.js";
+import { isFile, readPackageJson } from "./project-info/index.js";
 
-const REDUCED_MOTION_PATTERN = /prefers-reduced-motion|useReducedMotion|MotionConfig|reducedMotion/;
+// Single source for both search paths: `git grep -E` takes the string form,
+// the filesystem fallback compiles it — so the two can never test different
+// patterns on one tree. Same for the extensions: the git file globs are
+// derived from the fallback's extension set.
 const REDUCED_MOTION_GREP_PATTERN =
   "prefers-reduced-motion|useReducedMotion|MotionConfig|reducedMotion";
-const REDUCED_MOTION_FILE_GLOBS = ["*.ts", "*.tsx", "*.js", "*.jsx", "*.css", "*.scss"];
+const REDUCED_MOTION_PATTERN = new RegExp(REDUCED_MOTION_GREP_PATTERN);
 const REDUCED_MOTION_FILE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".css", ".scss"]);
+const REDUCED_MOTION_FILE_GLOBS = [...REDUCED_MOTION_FILE_EXTENSIONS].map(
+  (extension) => `*${extension}`,
+);
 
 const GIT_GREP_NO_MATCH_STATUS = 1;
 
@@ -32,26 +38,15 @@ const MISSING_REDUCED_MOTION_DIAGNOSTIC: Diagnostic = {
 // repository). Mirrors the git path's file globs and must reach the same
 // verdict so scans of one tree don't diverge on git availability.
 const hasReducedMotionHandlingViaFilesystem = (rootDirectory: string): boolean => {
-  const stack = [rootDirectory];
-  while (stack.length > 0) {
-    const currentDirectory = stack.pop();
-    if (currentDirectory === undefined) continue;
-    for (const entry of readDirectoryEntries(currentDirectory)) {
-      if (entry.isDirectory()) {
-        if (IGNORED_DIRECTORIES.has(entry.name)) continue;
-        stack.push(path.join(currentDirectory, entry.name));
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      if (!REDUCED_MOTION_FILE_EXTENSIONS.has(path.extname(entry.name))) continue;
-      let content: string;
-      try {
-        content = fs.readFileSync(path.join(currentDirectory, entry.name), "utf-8");
-      } catch {
-        continue;
-      }
-      if (REDUCED_MOTION_PATTERN.test(content)) return true;
+  for (const { absolutePath, name } of walkSourceTreeFiles(rootDirectory)) {
+    if (!REDUCED_MOTION_FILE_EXTENSIONS.has(path.extname(name))) continue;
+    let content: string;
+    try {
+      content = fs.readFileSync(absolutePath, "utf-8");
+    } catch {
+      continue;
     }
+    if (REDUCED_MOTION_PATTERN.test(content)) return true;
   }
   return false;
 };

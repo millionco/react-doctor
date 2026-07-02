@@ -50,6 +50,7 @@ import {
   ScanDeadlineMs,
   SupplyChainOverlapTimeoutMs,
 } from "./refs.js";
+import { remainingDeadlineBudgetMs } from "./utils/remaining-deadline-budget-ms.js";
 import { resolveDeadCodeTimeout } from "./utils/resolve-dead-code-timeout.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
@@ -618,7 +619,7 @@ export const runInspect = <HooksR = never>(
     const capToDeadline = (phaseTimeoutMs: number): number =>
       input.deadlineEpochMs === undefined
         ? phaseTimeoutMs
-        : Math.min(phaseTimeoutMs, Math.max(input.deadlineEpochMs - Date.now(), 0));
+        : Math.min(phaseTimeoutMs, remainingDeadlineBudgetMs(input.deadlineEpochMs));
 
     // ── Dead-code plan ────────────────────────────────────────────────
     // Dead-code (deslop reachability) emits only `"warning"`-severity
@@ -838,7 +839,8 @@ export const runInspect = <HooksR = never>(
       if (deadCodeFiber !== null) yield* Fiber.interrupt(deadCodeFiber);
     } else if (shouldRunDeadCode) {
       const isDeadlineSpent =
-        input.deadlineEpochMs !== undefined && Date.now() >= input.deadlineEpochMs;
+        input.deadlineEpochMs !== undefined &&
+        remainingDeadlineBudgetMs(input.deadlineEpochMs) === 0;
       if (isDeadlineSpent) {
         // Max-duration budget spent on lint — skip dead-code so a truncated
         // run nulls the score consistently whether the pass would have run

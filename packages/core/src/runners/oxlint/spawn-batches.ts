@@ -10,6 +10,7 @@ import type { Diagnostic, ProjectInfo } from "../../types/index.js";
 import { isSplittableReactDoctorError, ReactDoctorError } from "../../errors.js";
 import { dedupeDiagnostics } from "../../utils/dedupe-diagnostics.js";
 import { mapWithConcurrency } from "../../utils/map-with-concurrency.js";
+import { remainingDeadlineBudgetMs } from "../../utils/remaining-deadline-budget-ms.js";
 import { resolveScanConcurrency } from "../../utils/resolve-scan-concurrency.js";
 import { parseOxlintOutput } from "./parse-output.js";
 import { spawnOxlint } from "./spawn-oxlint.js";
@@ -150,7 +151,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     // apart from `droppedFiles` (budget exhaustion, not pathological files).
     const deadlineSkippedFiles: string[] = [];
     const isPastDeadline = (): boolean =>
-      deadlineEpochMs !== undefined && Date.now() >= deadlineEpochMs;
+      deadlineEpochMs !== undefined && remainingDeadlineBudgetMs(deadlineEpochMs) === 0;
     // HACK: keep the first splittable error message we saw so
     // `onPartialFailure` can report WHY each batch failed instead of
     // misleadingly always blaming the per-batch budget. Same root cause

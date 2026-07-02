@@ -1,3 +1,5 @@
+import { sumFileCountsMatching } from "./sum-file-counts-matching.js";
+
 // Total source files the lint pass dropped, summed from the partial-failure
 // strings on `InspectResult.lintPartialFailures`. Each dropped-files event
 // emits exactly one message of the shape `"N file(s) failed to lint and were
@@ -12,7 +14,4 @@
 const DROPPED_FILES_MESSAGE_PATTERN = /^(\d+) file\(s\) failed to lint and were skipped/;
 
 export const countDroppedLintFiles = (lintPartialFailures: ReadonlyArray<string>): number =>
-  lintPartialFailures.reduce((total, message) => {
-    const match = DROPPED_FILES_MESSAGE_PATTERN.exec(message);
-    return match ? total + Number(match[1]) : total;
-  }, 0);
+  sumFileCountsMatching(lintPartialFailures, DROPPED_FILES_MESSAGE_PATTERN);

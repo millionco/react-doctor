@@ -1,11 +1,11 @@
 import { spawnSync } from "node:child_process";
 import * as path from "node:path";
 import type { SourceFileEntry } from "../types/index.js";
-import { readDirectoryEntries } from "../project-info/utils/read-directory-entries.js";
-import { GIT_LS_FILES_MAX_BUFFER_BYTES, IGNORED_DIRECTORIES } from "../constants.js";
+import { GIT_LS_FILES_MAX_BUFFER_BYTES } from "../constants.js";
 import { hasIgnoredPathSegment } from "./has-ignored-path-segment.js";
 import { isLintableSourceFile } from "./is-lintable-source-file.js";
 import { isLargeMinifiedFile, statSourceFileSize } from "./is-large-minified-file.js";
+import { walkSourceTreeFiles } from "./walk-source-tree-files.js";
 
 // Stats each candidate once (the same stat the minified gate already paid),
 // drops files that sniff as large minified bundles, and keeps the size so the
@@ -58,31 +58,11 @@ const listSourceFilesViaGit = (rootDirectory: string): string[] | null => {
 
 const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
   const filePaths: string[] = [];
-  const stack = [rootDirectory];
-
-  while (stack.length > 0) {
-    const currentDirectory = stack.pop()!;
-    const entries = readDirectoryEntries(currentDirectory);
-
-    for (const entry of entries) {
-      const absolutePath = path.join(currentDirectory, entry.name);
-
-      if (entry.isDirectory()) {
-        // Descend into non-ignored dot-directories (`.dumi`, `.storybook`) —
-        // `git ls-files` lists their tracked sources, so the walk fallback
-        // must enumerate the same set.
-        if (!IGNORED_DIRECTORIES.has(entry.name)) {
-          stack.push(absolutePath);
-        }
-        continue;
-      }
-
-      if (entry.isFile() && isLintableSourceFile(entry.name)) {
-        filePaths.push(path.relative(rootDirectory, absolutePath).replace(/\\/g, "/"));
-      }
+  for (const { absolutePath, name } of walkSourceTreeFiles(rootDirectory)) {
+    if (isLintableSourceFile(name)) {
+      filePaths.push(path.relative(rootDirectory, absolutePath).replace(/\\/g, "/"));
     }
   }
-
   return filePaths;
 };
 

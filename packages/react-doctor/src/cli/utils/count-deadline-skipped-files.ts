@@ -1,3 +1,5 @@
+import { sumFileCountsMatching } from "./sum-file-counts-matching.js";
+
 // Total source files skipped because the `--max-duration` budget ran out,
 // summed from the partial-failure strings on `InspectResult.lintPartialFailures`
 // (message built in core's `spawn-batches.ts`). Rides the wide event as
@@ -9,7 +11,4 @@
 const DEADLINE_SKIPPED_MESSAGE_PATTERN = /^(\d+) file\(s\) skipped — max scan duration reached/;
 
 export const countDeadlineSkippedFiles = (lintPartialFailures: ReadonlyArray<string>): number =>
-  lintPartialFailures.reduce((total, message) => {
-    const match = DEADLINE_SKIPPED_MESSAGE_PATTERN.exec(message);
-    return match ? total + Number(match[1]) : total;
-  }, 0);
+  sumFileCountsMatching(lintPartialFailures, DEADLINE_SKIPPED_MESSAGE_PATTERN);

@@ -1,11 +1,10 @@
 import * as Effect from "effect/Effect";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { readDirectoryEntries } from "./project-info/index.js";
-import { IGNORED_DIRECTORIES } from "./constants.js";
 import { hasIgnoredPathSegment } from "./utils/has-ignored-path-segment.js";
 import { isLintableSourceFile } from "./utils/is-lintable-source-file.js";
 import { messageFromUnknown } from "./utils/message-from-unknown.js";
+import { walkSourceTreeFiles } from "./utils/walk-source-tree-files.js";
 import { Git } from "./services/git.js";
 
 const DISABLE_DIRECTIVE_PATTERN = /(eslint|oxlint)-disable/;
@@ -72,24 +71,8 @@ const findFilesWithDisableDirectivesViaFilesystem = (
     return matches;
   }
 
-  const stack = [rootDirectory];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (current === undefined) continue;
-    const entries = readDirectoryEntries(current);
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        // Same descent rule as `listSourceFilesViaFilesystem`: non-ignored
-        // dot-directories hold scanned sources.
-        if (IGNORED_DIRECTORIES.has(entry.name)) continue;
-        stack.push(path.join(current, entry.name));
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      const absolute = path.join(current, entry.name);
-      const relative = path.relative(rootDirectory, absolute);
-      checkFile(relative);
-    }
+  for (const { absolutePath } of walkSourceTreeFiles(rootDirectory)) {
+    checkFile(path.relative(rootDirectory, absolutePath));
   }
   return matches;
 };

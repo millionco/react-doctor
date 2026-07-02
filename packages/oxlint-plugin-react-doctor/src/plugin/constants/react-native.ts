@@ -101,12 +101,39 @@ export const EXPO_UI_MODULE_SOURCES = new Set([
   "@expo/ui/jetpack-compose",
 ]);
 
-export const REACT_NATIVE_LIST_COMPONENTS = new Set([
+// Modules whose FlatList/SectionList exports are the real react-native
+// virtualized lists — gesture-handler re-exports them with gesture support.
+// Mirrors rn-prefer-pressable's TOUCHABLE_SOURCES.
+export const REACT_NATIVE_LIST_MODULE_SOURCES = new Set([
+  "react-native",
+  "react-native-gesture-handler",
+]);
+
+// Built-in RN virtualized lists. Unlike recyclers these have no owning package
+// to resolve against, so rules match them by name and require the binding to
+// resolve to a REACT_NATIVE_LIST_MODULE_SOURCES module (or an ambient/global
+// reference).
+export const REACT_NATIVE_BUILTIN_LIST_COMPONENTS = new Set([
   "FlatList",
   "SectionList",
   "VirtualizedList",
-  "FlashList",
-  "LegendList",
+]);
+
+// Recycling lists, keyed by their canonical exported name, mapped to the
+// package(s) that actually own them. Rules resolve a local JSX name back to one
+// of these via a real ES module import (handling renames), so a homegrown
+// component named `FlashList` from a different package doesn't masquerade as the
+// Shopify/Legend recycler.
+export const RECYCLABLE_LIST_PACKAGES: Record<string, ReadonlyArray<string>> = {
+  FlashList: ["@shopify/flash-list"],
+  LegendList: ["@legendapp/list"],
+};
+
+// Every list-like element name: built-in RN lists plus the recycler exports.
+// A name-only set for the cheap first filter — provenance lives in the rules.
+export const REACT_NATIVE_LIST_COMPONENTS = new Set([
+  ...REACT_NATIVE_BUILTIN_LIST_COMPONENTS,
+  ...Object.keys(RECYCLABLE_LIST_PACKAGES),
 ]);
 
 export const RENDER_ITEM_PROP_NAMES = new Set([

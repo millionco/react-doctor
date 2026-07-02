@@ -301,6 +301,22 @@ export const isProp = (analysis: ProgramAnalysis, ref: Reference): boolean =>
     }),
   );
 
+// True when the reference binds the WHOLE props object (`(props) =>`)
+// rather than a destructured prop value (`({ text }) =>`). Calling a
+// method directly on the props object (`props.search(results)`) calls
+// a parent-supplied callback prop, even when the method name collides
+// with a string-prototype read — whereas `text.startsWith(x)` reads
+// from a prop value.
+export const isWholePropsObjectReference = (analysis: ProgramAnalysis, ref: Reference): boolean =>
+  isProp(analysis, ref) &&
+  Boolean(
+    ref.resolved?.defs.some((def) => {
+      if (def.type !== "Parameter") return false;
+      const bindingParent = (def.name as unknown as { parent?: EsTreeNode | null }).parent;
+      return isFunctionLike(bindingParent);
+    }),
+  );
+
 const isIdentifierOrMemberExpression = (node: EsTreeNode | null | undefined): boolean =>
   isNodeOfType(node, "Identifier") || isNodeOfType(node, "MemberExpression");
 

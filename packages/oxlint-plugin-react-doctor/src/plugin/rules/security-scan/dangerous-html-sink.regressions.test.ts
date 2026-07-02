@@ -590,6 +590,14 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it("stays silent when every concat operand re-serializes existing DOM (cast-wrapped outerHTML)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/compose-node.ts",
+      content: `container.innerHTML = (icon as SVGElement).outerHTML + (label as HTMLSpanElement).outerHTML;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
   it("stays silent on mermaid-rendered SVG assigned from mermaid.render (tldraw shape)", () => {
     const findings = runScanRule(dangerousHtmlSink, {
       relativePath: "src/createMermaidDiagram.ts",

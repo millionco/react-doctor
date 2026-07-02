@@ -1,5 +1,10 @@
-import { getDiagnosticRuleIdentity } from "@react-doctor/core";
-import type { Diagnostic, InspectResult } from "@react-doctor/core";
+import { canonicalizeUserRuleKey, getDiagnosticRuleIdentity } from "@react-doctor/core";
+import type {
+  Diagnostic,
+  InspectResult,
+  ReactDoctorConfig,
+  SuppressedRuleCount,
+} from "@react-doctor/core";
 import { METRIC } from "./constants.js";
 import { recordCount, recordDistribution } from "./record-metric.js";
 
@@ -43,6 +48,36 @@ export const summarizeRuleFirings = (diagnostics: ReadonlyArray<Diagnostic>): Ru
   return [...firings.values()];
 };
 
+export interface DisabledRule {
+  readonly rule: string;
+  readonly source: "rules" | "ignore";
+}
+
+/**
+ * Enumerates the rules a config turns off entirely — `rules: { x: "off" }`
+ * entries and the `ignore.rules` list — with keys canonicalized so every
+ * spelling of one rule (legacy alias, bare short id) groups under one
+ * `rule` attribute in Sentry. Deliberately scan-independent: an `"off"`
+ * lint rule is removed from the generated oxlint config and never fires,
+ * so the per-diagnostic `rule.suppressed` counter can't see it.
+ */
+export const summarizeDisabledRules = (userConfig: ReactDoctorConfig | null): DisabledRule[] => {
+  const disabledRules = new Map<string, DisabledRule>();
+  const record = (configuredRuleKey: string, source: DisabledRule["source"]): void => {
+    const rule = canonicalizeUserRuleKey(configuredRuleKey);
+    disabledRules.set(`${rule}\u0000${source}`, { rule, source });
+  };
+  for (const [ruleKey, severity] of Object.entries(userConfig?.rules ?? {})) {
+    if (severity === "off") record(ruleKey, "rules");
+  }
+  if (Array.isArray(userConfig?.ignore?.rules)) {
+    for (const ruleKey of userConfig.ignore.rules) {
+      if (typeof ruleKey === "string") record(ruleKey, "ignore");
+    }
+  }
+  return [...disabledRules.values()];
+};
+
 export interface ScanMetricsInput {
   readonly result: InspectResult;
   /** `"diff"` (changed/staged files) or `"full"` (whole project). */
@@ -65,6 +100,10 @@ export interface ScanMetricsInput {
   readonly didDeadCodeFail: boolean;
   /** A baseline run that couldn't compute a delta and fell back to a plain diff. */
   readonly baselineDegraded: boolean;
+  /** Feeds the scan-level `rule.disabled` counter (see `summarizeDisabledRules`). */
+  readonly userConfig: ReactDoctorConfig | null;
+  /** `CachedScanPayload["suppressedRuleCounts"]` — present on fresh and cache-hit paths. */
+  readonly suppressedRuleCounts: ReadonlyArray<SuppressedRuleCount>;
 }
 
 /**
@@ -115,6 +154,15 @@ export const recordScanMetrics = (input: ScanMetricsInput): void => {
       plugin: firing.plugin,
       category: firing.category,
       severity: firing.severity,
+    });
+  }
+  for (const disabled of summarizeDisabledRules(input.userConfig)) {
+    recordCount(METRIC.ruleDisabled, 1, { rule: disabled.rule, source: disabled.source });
+  }
+  for (const suppression of input.suppressedRuleCounts) {
+    recordCount(METRIC.ruleSuppressed, suppression.count, {
+      rule: suppression.rule,
+      source: suppression.source,
     });
   }
   // "Clean" means the scan actually completed and found nothing — not that a

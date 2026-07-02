@@ -1,12 +1,19 @@
+import { MIN_OVERPRECISE_SVG_TOKEN_OCCURRENCES } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const SVG_PATH_HIGH_PRECISION_PATTERN = /\d+\.\d{4,}/;
+const SVG_PATH_HIGH_PRECISION_PATTERN = /\d+\.\d{4,}/g;
 
 const SVG_PATH_ATTRIBUTES = new Set(["d", "points", "transform"]);
+
+const countHighPrecisionTokenOccurrences = (value: string): number => {
+  const matches = value.match(SVG_PATH_HIGH_PRECISION_PATTERN);
+  if (matches === null) return 0;
+  return matches.length;
+};
 
 // Directory segments that EXPLICITLY signal machine-generated output
 // — codegen sinks, design-tool export folders. The high-precision
@@ -45,6 +52,7 @@ export const renderingSvgPrecision = defineRule({
   title: "Overly precise SVG path values",
   severity: "warn",
   category: "Performance",
+  tags: ["test-noise"],
   recommendation:
     "Round path, points, and transform decimals to 1 or 2 digits. The extra precision adds bytes with no visible difference.",
   create: (context: RuleContext) => {
@@ -60,7 +68,8 @@ export const renderingSvgPrecision = defineRule({
         if (!isNodeOfType(node.value, "Literal")) return;
         const value = node.value.value;
         if (typeof value !== "string") return;
-        if (!SVG_PATH_HIGH_PRECISION_PATTERN.test(value)) return;
+        if (countHighPrecisionTokenOccurrences(value) < MIN_OVERPRECISE_SVG_TOKEN_OCCURRENCES)
+          return;
 
         context.report({
           node,

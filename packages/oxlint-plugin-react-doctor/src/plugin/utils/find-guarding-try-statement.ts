@@ -1,0 +1,53 @@
+import { catchClauseRethrowsCaught } from "./catch-clause-rethrows-caught.js";
+import type { EsTreeNode } from "./es-tree-node.js";
+import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { isFunctionLike } from "./is-function-like.js";
+import { isNodeOfType } from "./is-node-of-type.js";
+import { stripParenExpression } from "./strip-paren-expression.js";
+
+const isImmediatelyInvokedFunctionCallee = (functionNode: EsTreeNode): boolean => {
+  let wrappedCallee: EsTreeNode = functionNode;
+  let enclosing: EsTreeNode | null | undefined = functionNode.parent;
+  while (enclosing && stripParenExpression(enclosing) === functionNode) {
+    wrappedCallee = enclosing;
+    enclosing = enclosing.parent ?? null;
+  }
+  return Boolean(
+    enclosing && isNodeOfType(enclosing, "CallExpression") && enclosing.callee === wrappedCallee,
+  );
+};
+
+// The enclosing TryStatement that SWALLOWS a control-flow error (a thrown
+// redirect()/notFound()) raised at `node`: its `try` BLOCK contains `node`,
+// it has a catch handler, and that handler does not re-throw the caught
+// binding. A try whose catch re-throws is transparent — the forwarded error
+// escapes it, so the walk keeps climbing and an OUTER swallowing try/catch
+// around a re-throwing inner one is still found. A throw inside a `catch` or
+// `finally` clause propagates past its own try, and a bare try/finally
+// swallows nothing, so the walk climbs past both. A throw inside a nested
+// function runs later, outside the try's synchronous scope, so the walk
+// stops at the first function boundary — unless the function is the callee
+// of an immediately-invoked call (IIFE), which executes synchronously
+// inside the try.
+export const findGuardingTryStatement = (
+  node: EsTreeNode,
+): EsTreeNodeOfType<"TryStatement"> | null => {
+  let child: EsTreeNode = node;
+  let ancestor: EsTreeNode | null | undefined = node.parent;
+  while (ancestor) {
+    if (isFunctionLike(ancestor) && !isImmediatelyInvokedFunctionCallee(ancestor)) {
+      return null;
+    }
+    if (
+      isNodeOfType(ancestor, "TryStatement") &&
+      ancestor.block === child &&
+      ancestor.handler &&
+      !catchClauseRethrowsCaught(ancestor.handler)
+    ) {
+      return ancestor;
+    }
+    child = ancestor;
+    ancestor = ancestor.parent ?? null;
+  }
+  return null;
+};

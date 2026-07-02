@@ -50,4 +50,40 @@ describe("security-scan/clickjacking-redirect-risk — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  // FP wave 4: the ARIA `role` attribute on an iframe is not a redirect
+  // query param. `role=` only matters in a URL-query position (`?role=`).
+  it("stays silent on an ARIA role attribute on an iframe", () => {
+    const findings = runScanRule(clickjackingRedirectRisk, {
+      relativePath: "src/app.tsx",
+      content: `export const F = ({ url }) => <iframe role="presentation" src={url} title="x" />;`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags a role= query param in an iframe src", () => {
+    const findings = runScanRule(clickjackingRedirectRisk, {
+      relativePath: "src/app.tsx",
+      content: `export const F = () => <iframe src="/embed?role=admin" />;`,
+    });
+    expect(findings.length).toBeGreaterThan(0);
+  });
+
+  // FN wave 5: the `\b` before `[?&]role=` demanded a word char before the
+  // `?`, so concat-built role URLs (quote precedes `?`) were missed.
+  it("flags a concat-built ?role= iframe src", () => {
+    const findings = runScanRule(clickjackingRedirectRisk, {
+      relativePath: "src/app.tsx",
+      content: `export const F = ({ base, r }) => <iframe src={base + "?role=" + r} />;`,
+    });
+    expect(findings.length).toBeGreaterThan(0);
+  });
+
+  it("flags an entity-encoded &amp;role= in an HTML-string iframe src", () => {
+    const findings = runScanRule(clickjackingRedirectRisk, {
+      relativePath: "src/app.tsx",
+      content: `export const html = '<iframe src="/embed?tab=1&amp;role=admin"></iframe>';`,
+    });
+    expect(findings.length).toBeGreaterThan(0);
+  });
 });

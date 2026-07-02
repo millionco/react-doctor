@@ -13,12 +13,40 @@ const MESSAGE =
 // is a guaranteed false positive.
 const LITERAL_TEXT_TAGS: ReadonlySet<string> = new Set(["code", "pre", "kbd", "samp", "tt"]);
 
-const hasCommentLikePattern = (text: string): boolean => {
-  for (const rawLine of text.split("\n")) {
+const hasCommentLikePattern = (text: string, followsExpressionContainer: boolean): boolean => {
+  for (const [lineIndex, rawLine] of text.split("\n").entries()) {
     const trimmed = rawLine.trim();
-    if (trimmed.startsWith("//") || trimmed.startsWith("/*")) return true;
+    if (trimmed.startsWith("/*")) return true;
+    if (!trimmed.startsWith("//")) continue;
+    // A line that trims to just `//` (or `// `) is an interpolated
+    // separator glyph (`{used} // {total} GB`), not a `// comment` —
+    // require some comment body after the slashes before flagging.
+    if (trimmed.slice(2).trim().length === 0) continue;
+    // The same separator idiom with a literal numeric right side
+    // (`{used} // 512 GB`) — a first line that continues a preceding
+    // `{expression}` with a digit-leading value is deliberate rendered
+    // text, not a stray comment. Prose after the slashes
+    // (`{value} // visible to users`) is still a comment; later lines
+    // start fresh and are still checked.
+    if (lineIndex === 0 && followsExpressionContainer && /^\d/.test(trimmed.slice(2).trimStart()))
+      continue;
+    return true;
   }
   return false;
+};
+
+const followsExpressionContainerSibling = (node: EsTreeNodeOfType<"JSXText">): boolean => {
+  const parent = node.parent;
+  if (!parent || (!isNodeOfType(parent, "JSXElement") && !isNodeOfType(parent, "JSXFragment"))) {
+    return false;
+  }
+  const siblingIndex = parent.children.findIndex((child) => child === node);
+  if (siblingIndex <= 0) return false;
+  const previousSibling = parent.children[siblingIndex - 1];
+  return (
+    isNodeOfType(previousSibling, "JSXExpressionContainer") &&
+    !isNodeOfType(previousSibling.expression, "JSXEmptyExpression")
+  );
 };
 
 const isInsideLiteralTextTag = (node: EsTreeNode): boolean => {
@@ -48,7 +76,7 @@ export const jsxNoCommentTextnodes = defineRule({
     "Wrap JSX comments in `{/* … */}` so users do not see comment text rendered as children.",
   create: (context) => ({
     JSXText(node: EsTreeNodeOfType<"JSXText">) {
-      if (!hasCommentLikePattern(node.value)) return;
+      if (!hasCommentLikePattern(node.value, followsExpressionContainerSibling(node))) return;
       if (isInsideLiteralTextTag(node)) return;
       context.report({ node, message: MESSAGE });
     },

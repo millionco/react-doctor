@@ -71,3 +71,13 @@ export const QUERY_CACHE_UPDATE_METHODS = new Set([
   "cancelQueries",
   "clear",
 ]);
+
+// tRPC's react-query integration invalidates through its own proxy
+// (`utils.posts.invalidate()`), which wraps queryClient.invalidateQueries.
+// `invalidate` is a far more generic verb than the queryClient method names
+// above (`session.invalidate()` is a stale-cache true positive), so it only
+// counts when the receiver chain is rooted in a binding created by one of
+// these hooks.
+export const TRPC_UTILS_INVALIDATE_METHOD = "invalidate";
+export const TRPC_UTILS_HOOK_PATTERN = /^use\w*Utils$/;
+export const QUERY_CLIENT_HOOK_NAME = "useQueryClient";

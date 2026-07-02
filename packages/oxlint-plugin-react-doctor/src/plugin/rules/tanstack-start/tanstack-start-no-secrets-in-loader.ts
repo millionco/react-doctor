@@ -4,8 +4,19 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getRouteOptionsObject } from "./utils/get-route-options-object.js";
 import { getPropertyKeyName } from "./utils/get-property-key-name.js";
+import { walkServerFnChain } from "./utils/walk-server-fn-chain.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+// True for a `createServerFn(...).handler(...)` call. Env access inside such a
+// handler is server-only (it's the rule's own recommended fix), so the loader
+// walk prunes the whole subtree instead of flagging the secret it reads.
+const isServerFnHandlerCall = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "CallExpression") &&
+  isNodeOfType(node.callee, "MemberExpression") &&
+  isNodeOfType(node.callee.property, "Identifier") &&
+  node.callee.property.name === "handler" &&
+  walkServerFnChain(node).isServerFnChain;
 
 const SAFE_BUILD_ENV_VARS = new Set(["NODE_ENV", "MODE", "DEV", "PROD"]);
 
@@ -41,6 +52,9 @@ export const tanstackStartNoSecretsInLoader = defineRule({
 
         const loaderValue = isNodeOfType(property, "Property") ? property.value : property;
         walkAst(loaderValue, (child: EsTreeNode) => {
+          // Don't descend into an inline `createServerFn().handler(...)` —
+          // env access there runs server-only, the documented safe pattern.
+          if (isServerFnHandlerCall(child)) return false;
           if (!isNodeOfType(child, "MemberExpression")) return;
           const isProcessEnvAccess =
             isNodeOfType(child.object, "MemberExpression") &&

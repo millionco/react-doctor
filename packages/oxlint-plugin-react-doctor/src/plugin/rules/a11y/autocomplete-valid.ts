@@ -66,6 +66,63 @@ const AUTOFILL_TOKENS: ReadonlySet<string> = new Set([
   "photo",
 ]);
 
+// Contact-info fields that may carry a `home`/`work`/… qualifier
+// (WHATWG "autofill field name" → "contact" category).
+const AUTOFILL_CONTACT_TOKENS: ReadonlySet<string> = new Set([
+  "tel",
+  "tel-country-code",
+  "tel-national",
+  "tel-area-code",
+  "tel-local",
+  "tel-extension",
+  "email",
+  "impp",
+]);
+
+const AUTOFILL_ADDRESS_TYPES: ReadonlySet<string> = new Set(["shipping", "billing"]);
+
+const AUTOFILL_CONTACT_QUALIFIERS: ReadonlySet<string> = new Set([
+  "home",
+  "work",
+  "mobile",
+  "fax",
+  "pager",
+]);
+
+const SECTION_TOKEN_PREFIX = "section-";
+const WEBAUTHN_TOKEN = "webauthn";
+
+// Validate a value against the WHATWG autofill grammar:
+//   [section-*] [shipping|billing] [home|work|mobile|fax|pager] field [webauthn]
+// A contact qualifier restricts the field to the contact category, so
+// `home url` stays invalid while `home tel` and `shipping postal-code` pass.
+const isValidAutofillValue = (value: string): boolean => {
+  const tokens = value
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((token) => token.length > 0);
+  if (tokens.length === 0) return true;
+
+  let index = 0;
+  if (tokens[index]?.startsWith(SECTION_TOKEN_PREFIX)) index += 1;
+  if (index < tokens.length && AUTOFILL_ADDRESS_TYPES.has(tokens[index])) index += 1;
+
+  const isContactQualified =
+    index < tokens.length && AUTOFILL_CONTACT_QUALIFIERS.has(tokens[index]);
+  if (isContactQualified) index += 1;
+
+  const fieldToken = tokens[index];
+  if (!fieldToken) return false;
+  const fieldIsValid = isContactQualified
+    ? AUTOFILL_CONTACT_TOKENS.has(fieldToken)
+    : AUTOFILL_TOKENS.has(fieldToken);
+  if (!fieldIsValid) return false;
+  index += 1;
+
+  if (index < tokens.length && tokens[index] === WEBAUTHN_TOKEN) index += 1;
+  return index === tokens.length;
+};
+
 const FORM_CONTROL_TAGS: ReadonlySet<string> = new Set(["input", "textarea", "select", "form"]);
 
 interface AutocompleteValidSettings {
@@ -103,19 +160,8 @@ export const autocompleteValid = defineRule({
         if (!attribute) return;
         const value = getJsxPropStringValue(attribute);
         if (!value) return;
-        // Multiple tokens separated by spaces.
-        const tokens = value
-          .toLowerCase()
-          .split(/\s+/)
-          .filter((token) => token.length > 0);
-        for (const token of tokens) {
-          // Strip section-name prefix `section-foo`.
-          const normalized = token.startsWith("section-") ? "section-" : token;
-          if (normalized === "section-") continue;
-          if (!AUTOFILL_TOKENS.has(token)) {
-            context.report({ node: attribute, message: buildMessage(value) });
-            return;
-          }
+        if (!isValidAutofillValue(value)) {
+          context.report({ node: attribute, message: buildMessage(value) });
         }
       },
     };

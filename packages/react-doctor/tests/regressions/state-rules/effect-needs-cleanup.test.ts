@@ -345,6 +345,30 @@ export const Emitter = () => {
     expect(hits).toHaveLength(0);
   });
 
+  it("does not flag a `.listen()` subscription whose returned disposer is captured", async () => {
+    const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-listen-disposer", {
+      files: {
+        "src/Events.tsx": `import { useEffect } from "react";
+
+declare const sdk: () => { event: { listen: (handler: (evt: unknown) => void) => () => void } };
+
+export const Events = () => {
+  useEffect(() => {
+    const stop = sdk().event.listen((evt) => {
+      void evt;
+    });
+    return stop;
+  }, []);
+  return <span />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
+    expect(hits).toHaveLength(0);
+  });
+
   it("does not flag listeners cleaned up inside an iteration callback", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-for-each-cleanup", {
       files: {

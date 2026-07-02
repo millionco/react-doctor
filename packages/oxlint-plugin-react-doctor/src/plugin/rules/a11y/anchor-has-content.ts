@@ -3,6 +3,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
+import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { objectHasAccessibleChild } from "../../utils/object-has-accessible-child.js";
 
 const MESSAGE =
@@ -16,17 +17,21 @@ export const anchorHasContent = defineRule({
   severity: "warn",
   recommendation: "Put readable text inside every `<a>`.",
   category: "Accessibility",
-  create: (context) => ({
-    JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
-      const opening = node.openingElement;
-      const tag = getElementType(opening, context.settings);
-      if (tag !== "a") return;
-      if (isHiddenFromScreenReader(opening, context.settings)) return;
-      if (objectHasAccessibleChild(node, context.settings)) return;
-      for (const attribute of ["title", "aria-label"]) {
-        if (hasJsxPropIgnoreCase(opening.attributes, attribute)) return;
-      }
-      context.report({ node: opening.name, message: MESSAGE });
-    },
-  }),
+  create: (context) => {
+    const isTestlikeFile = isTestlikeFilename(context.filename);
+    return {
+      JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
+        if (isTestlikeFile) return;
+        const opening = node.openingElement;
+        const tag = getElementType(opening, context.settings);
+        if (tag !== "a") return;
+        if (isHiddenFromScreenReader(opening, context.settings)) return;
+        if (objectHasAccessibleChild(node, context.settings)) return;
+        for (const attribute of ["title", "aria-label", "aria-labelledby"]) {
+          if (hasJsxPropIgnoreCase(opening.attributes, attribute)) return;
+        }
+        context.report({ node: opening.name, message: MESSAGE });
+      },
+    };
+  },
 });

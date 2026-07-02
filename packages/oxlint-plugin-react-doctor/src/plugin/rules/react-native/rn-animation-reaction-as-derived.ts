@@ -1,8 +1,11 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+const REANIMATED_MODULE_SOURCE = "react-native-reanimated";
 
 // HACK: useAnimatedReaction with a body that does nothing but assign to
 // another shared value (`sv2.value = current`) is essentially what
@@ -22,6 +25,10 @@ export const rnAnimationReactionAsDerived = defineRule({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNodeOfType(node.callee, "Identifier") || node.callee.name !== "useAnimatedReaction")
         return;
+      // Only the real Reanimated hook has the derived-value semantics this rule
+      // recommends. A locally-defined or third-party `useAnimatedReaction`
+      // isn't interchangeable with `useDerivedValue`.
+      if (getImportSourceForName(node, node.callee.name) !== REANIMATED_MODULE_SOURCE) return;
       const reactionFn = node.arguments?.[1];
       if (!reactionFn) return;
       if (
@@ -52,9 +59,14 @@ export const rnAnimationReactionAsDerived = defineRule({
       }
       if (!singleAssignment) return;
 
+      // Only a bare `sharedValue.value = …` is a shared-value copy that
+      // `useDerivedValue` can replace. A deeper chain like
+      // `ref.current.value = …` writes through a plain ref, which
+      // useDerivedValue can't express.
       const isValueAssignment =
         isNodeOfType(singleAssignment, "AssignmentExpression") &&
         isNodeOfType(singleAssignment.left, "MemberExpression") &&
+        isNodeOfType(singleAssignment.left.object, "Identifier") &&
         isNodeOfType(singleAssignment.left.property, "Identifier") &&
         singleAssignment.left.property.name === "value";
 

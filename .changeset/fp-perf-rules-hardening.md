@@ -19,7 +19,8 @@ harness (react-doctor caching disabled).
   receivers behind a TS cast — and nested-scope bindings), property-access and
   `localStorage` caching, `filter(Boolean)` chains, `Intl`/`RegExp` memo and
   hoist patterns, direction-aware `Math.min`/`Math.max` hints, small literal
-  `includes`, and `[...x].sort()` when `x` is a fresh array or iterator.
+  `includes`, and `[...x].sort()` when `x` is a fresh, otherwise-unreferenced
+  array or iterator.
 - **`no-json-parse-stringify-clone`** — exempts clones inside `snapshot*`
   helpers, and no longer flags `JSON.parse(JSON.stringify(x, replacer))` when
   the replacer is an inline function or array (it transforms the output, so

@@ -104,6 +104,14 @@ describe("window-open-without-noopener", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a mailto: template behind a const binding like the inline form", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      "const mailtoUrl = `mailto:${email}?subject=hi`;\nwindow.open(mailtoUrl, '_blank');",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a hardcoded literal destination (Star-on-GitHub button idiom)", () => {
     const result = runRule(
       windowOpenWithoutNoopener,
@@ -181,6 +189,22 @@ describe("window-open-without-noopener", () => {
     const result = runRule(
       windowOpenWithoutNoopener,
       `const url = useMirror ? mirrorUrl : 'https://example.com/download';\nwindow.open(url, '_blank');`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a const && URL whose left operand is statically nullish", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const url = null && dynamicUrl;\nwindow.open(url, '_blank');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a const && URL with a dynamic right operand", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const url = useMirror && mirrorUrl;\nwindow.open(url, '_blank');`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

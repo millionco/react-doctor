@@ -256,6 +256,20 @@ const computeDeclaredDepKey = (entry: EsTreeNode): string | null => {
   if (isNodeOfType(stripped, "MemberExpression")) {
     return stringifyMemberChain(stripped);
   }
+  // Solid-style accessor call in deps: key a zero-arg `foo()` / `foo.bar()`
+  // off its callee, matching how `computeDepKey` keys the captured accessor
+  // (by callee, not the CallExpression), so a listed accessor call matches
+  // the capture instead of being dropped as a complex dep. A computed
+  // member anywhere in the callee (`items[index]()`) is a dynamic
+  // per-render lookup — `stringifyMemberChain` would collapse it to the
+  // root name and silently satisfy that capture, so it stays a complex dep.
+  if (isNodeOfType(stripped, "CallExpression") && (stripped.arguments?.length ?? 0) === 0) {
+    const callee = unwrapExpression(stripped.callee);
+    if (isNodeOfType(callee, "Identifier")) return callee.name;
+    if (isNodeOfType(callee, "MemberExpression") && !hasComputedMemberExpression(callee)) {
+      return stringifyMemberChain(callee);
+    }
+  }
   return null;
 };
 
@@ -382,6 +396,18 @@ const isExtraEffectDepAllowed = (node: EsTreeNode, scopes: ScopeAnalysis): boole
 const getRootSymbol = (node: EsTreeNode, scopes: ScopeAnalysis): SymbolDescriptor | null => {
   const rootIdentifier = getMemberRootIdentifier(node);
   return rootIdentifier ? scopes.symbolFor(rootIdentifier) : null;
+};
+
+// A declared dep written as a zero-arg accessor call (`getConfig()`) is
+// keyed by its callee, so symbol lookups for that dep must also resolve
+// through the callee — `getMemberRootIdentifier` returns null on a
+// CallExpression node.
+const getDeclaredDepSymbolSource = (node: EsTreeNode): EsTreeNode => {
+  const stripped = unwrapExpression(node);
+  if (isNodeOfType(stripped, "CallExpression") && (stripped.arguments?.length ?? 0) === 0) {
+    return stripped.callee;
+  }
+  return node;
 };
 
 const isRegExpLiteral = (node: EsTreeNode): boolean => {
@@ -989,7 +1015,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
         for (const declaredKey of declaredKeys) {
           if (declaredKey.includes(".")) continue;
           const reportNode = declaredKeyToReportNode.get(declaredKey) ?? depsArgument;
-          const rootSymbol = getRootSymbol(reportNode, context.scopes);
+          const rootSymbol = getRootSymbol(getDeclaredDepSymbolSource(reportNode), context.scopes);
           if (
             !rootSymbol ||
             !isFunctionValueSymbol(rootSymbol) ||
@@ -1109,6 +1135,14 @@ If the missing value is recreated every render, move it inside the hook or stabi
             missingCaptureKeys.length > 0 &&
             isRecursiveInitializerCapture(rootSymbol, callbackToAnalyze ?? callbackArgument)
           ) {
+            continue;
+          }
+          // An UNUSED zero-arg call dep (`Date.now()`) re-runs the hook
+          // because the call RESULT changes, not the callee binding —
+          // the callee-keyed unnecessary-dep message would be factually
+          // wrong, so report it as a complex expression instead.
+          if (isNodeOfType(unwrapExpression(reportNode), "CallExpression")) {
+            context.report({ node: reportNode, message: buildComplexDepMessage(hookName) });
             continue;
           }
           unnecessaryDeclaredKeys.push(declaredKey);

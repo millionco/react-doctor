@@ -1,6 +1,6 @@
 import { collectPatternNames } from "../../../utils/collect-pattern-names.js";
-import { nearestEnclosingFunction } from "../../../utils/component-or-hook-display-name.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
 import { getJsxAttributeName } from "../../../utils/get-jsx-attribute-name.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
@@ -127,7 +127,7 @@ export const isControlledPropMirror = (effectNode: EsTreeNode, setterCall: EsTre
   const mirroredArgument = setterArguments[0];
   if (!isNodeOfType(mirroredArgument, "Identifier")) return false;
 
-  const componentFunction = nearestEnclosingFunction(effectNode);
+  const componentFunction = findEnclosingFunction(effectNode);
   if (!componentFunction) return false;
 
   if (!collectComponentPropNames(componentFunction).has(mirroredArgument.name)) return false;

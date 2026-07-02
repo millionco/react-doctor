@@ -3,6 +3,7 @@ import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -68,16 +69,48 @@ const containsPreventDefaultCall = (node: EsTreeNode): boolean => {
 };
 
 // A dead-link anchor stays flagged unless the handler carries POSITIVE
-// navigation evidence: a member call whose property is a navigation verb
-// (`router.push`, `location.assign`, `history.go`), a member call on a
-// navigation-shaped receiver (`router.*`, `window.*`, …), an identifier
-// call whose name reads like navigation (`navigate(...)`, `redirectTo(...)`,
-// `openLink(...)`), or delegation to a component prop / enclosing parameter
-// (`onNavigate()`). Non-navigating side effects (`analytics.track(...)`,
-// `console.log(...)`) do NOT count — the link is still dead for the user.
-const NAVIGATION_METHOD_NAME_PATTERN = /^(?:push|replace|navigate|open|assign|go|back|reload)$/;
+// navigation evidence: a navigation verb called on a navigation-shaped
+// receiver (`router.push`, `history.replace`, `window.open`,
+// `location.assign`), an unambiguous navigation callee regardless of
+// receiver (`platform.openLink`, `Linking.openURL`, `redirectTo(...)`,
+// `navigate(...)`), a `location` assignment (`location.href = ...`), or
+// delegation to an enclosing parameter (`onNavigate()`). Ambiguous verbs
+// on other receivers (`items.push`, `text.replace`, `Object.assign`) and
+// non-navigating side effects (`analytics.track`, `console.log`) do NOT
+// count — the link is still dead for the user.
+const NAVIGATION_METHOD_NAME_PATTERN = /^(?:push|replace|assign|open|go|back|forward|reload)$/;
+
+const UNAMBIGUOUS_NAVIGATION_CALLEE_NAME_PATTERN = /^(?:navigate|redirect|openLink|openURL)/i;
 
 const NAVIGATION_FUNCTION_NAME_PATTERN = /^(?:navigate|redirect|open)/i;
+
+const GLOBAL_LOCATION_RECEIVER_NAMES: ReadonlySet<string> = new Set([
+  "window",
+  "document",
+  "globalThis",
+  "self",
+  "top",
+]);
+
+const isLocationAssignmentTarget = (target: EsTreeNode): boolean => {
+  if (!isNodeOfType(target, "MemberExpression") || !isNodeOfType(target.property, "Identifier"))
+    return false;
+  if (target.property.name === "location") {
+    return (
+      isNodeOfType(target.object, "Identifier") &&
+      GLOBAL_LOCATION_RECEIVER_NAMES.has(target.object.name)
+    );
+  }
+  if (target.property.name !== "href") return false;
+  if (isNodeOfType(target.object, "Identifier")) return target.object.name === "location";
+  return (
+    isNodeOfType(target.object, "MemberExpression") &&
+    isNodeOfType(target.object.property, "Identifier") &&
+    target.object.property.name === "location" &&
+    isNodeOfType(target.object.object, "Identifier") &&
+    GLOBAL_LOCATION_RECEIVER_NAMES.has(target.object.object.name)
+  );
+};
 
 const isNavigationReceiverName = (receiverName: string): boolean =>
   NAVIGATION_RECEIVER_NAMES.has(receiverName) || receiverName === "window";
@@ -109,19 +142,24 @@ const collectEnclosingParameterNames = (handlerExpression: EsTreeNode): Set<stri
   return parameterNames;
 };
 
-const containsNavigationEvidenceCall = (handlerExpression: EsTreeNode): boolean => {
+const containsNavigationEffect = (handlerExpression: EsTreeNode): boolean => {
   const enclosingParameterNames = collectEnclosingParameterNames(handlerExpression);
-  let didFindNavigationCall = false;
+  let didFindNavigation = false;
   walkAst(handlerExpression, (child) => {
-    if (didFindNavigationCall) return;
+    if (didFindNavigation) return;
+    if (isNodeOfType(child, "AssignmentExpression") && isLocationAssignmentTarget(child.left)) {
+      didFindNavigation = true;
+      return;
+    }
     if (!isNodeOfType(child, "CallExpression")) return;
     const callee = child.callee;
     if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
       if (
-        NAVIGATION_METHOD_NAME_PATTERN.test(callee.property.name) ||
-        isNavigationReceiver(callee.object)
+        UNAMBIGUOUS_NAVIGATION_CALLEE_NAME_PATTERN.test(callee.property.name) ||
+        (NAVIGATION_METHOD_NAME_PATTERN.test(callee.property.name) &&
+          isNavigationReceiver(callee.object))
       ) {
-        didFindNavigationCall = true;
+        didFindNavigation = true;
       }
       return;
     }
@@ -130,11 +168,11 @@ const containsNavigationEvidenceCall = (handlerExpression: EsTreeNode): boolean 
         NAVIGATION_FUNCTION_NAME_PATTERN.test(callee.name) ||
         enclosingParameterNames.has(callee.name)
       ) {
-        didFindNavigationCall = true;
+        didFindNavigation = true;
       }
     }
   });
-  return didFindNavigationCall;
+  return didFindNavigation;
 };
 
 const selectFormMessage = (framework: string | undefined): string =>
@@ -167,6 +205,19 @@ export const noPreventDefault = defineRule({
         // we don't recommend a server-action story the project can't use.
         if (elementName === "form" && isClientOnlyFramework) return;
 
+        // An `<a>` without href never navigates on click (anchor-as-button,
+        // e.g. an ant-design Dropdown trigger), so "nothing navigates
+        // because onClick calls preventDefault()" would be false — the
+        // preventDefault() is defensive, not a dead link. A spread
+        // (`{...props}`) can forward a real href at runtime, so the
+        // href-less bailout only applies when absence is provable.
+        if (
+          elementName === "a" &&
+          !findJsxAttribute(node.attributes ?? [], "href") &&
+          !hasJsxSpreadAttribute(node.attributes ?? [])
+        )
+          return;
+
         // A `<form action=…>` already has a native no-JS submit path: with
         // JS off the onSubmit handler never runs, so preventDefault() never
         // fires and the browser performs the native action. The "won't work
@@ -187,10 +238,11 @@ export const noPreventDefault = defineRule({
           if (!containsPreventDefaultCall(expression)) continue;
 
           // An anchor whose handler performs its own navigation after
-          // preventDefault() is custom SPA / desktop navigation, not a
-          // dead link — the ANCHOR_MESSAGE ("nothing navigates") would
-          // be false. The <form> variant keeps its existing behavior.
-          if (elementName === "a" && containsNavigationEvidenceCall(expression)) continue;
+          // preventDefault() (router push, `platform.openLink(href)`,
+          // a `location.href` assignment) is custom SPA / desktop
+          // navigation, not a dead link. The <form> variant keeps its
+          // existing behavior.
+          if (elementName === "a" && containsNavigationEffect(expression)) continue;
 
           context.report({
             node,

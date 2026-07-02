@@ -217,8 +217,12 @@ export const isTestlikeFilename = (rawFilename: string | undefined): boolean => 
   for (const suffix of NON_PRODUCTION_FILENAME_SUFFIXES) {
     if (basename.includes(suffix)) return true;
   }
+  // HACK: root a relative path so a filename that STARTS with a
+  // dot-directory (`.dumi/pages/index.tsx`) still matches the
+  // slash-prefixed `/.dumi/` segment.
+  const rootedFilename = filename.startsWith("/") ? filename : `/${filename}`;
   for (const dotDirectorySegment of DOT_PREFIXED_NON_PRODUCTION_PATH_SEGMENTS) {
-    if (filename.includes(dotDirectorySegment)) return true;
+    if (rootedFilename.includes(dotDirectorySegment)) return true;
   }
   // The PATH-segment check scopes itself to "below the source root":
   // for `tests/fixtures/proj/src/app/state-issues.tsx`, it only sees

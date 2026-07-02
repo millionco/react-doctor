@@ -16,6 +16,32 @@ export interface OxcDivergence {
 }
 
 export const DIVERGENCES: Record<string, OxcDivergence> = {
+  "no-find-dom-node": {
+    // OXC flags a bare `findDOMNode(...)` purely by name. A locally
+    // defined `function findDOMNode(...)` (or any same-name helper) is
+    // a common false positive, so React Doctor only fires the bare form
+    // when the binding was imported from `react-dom`. fail[3] and
+    // fail[4] call bare `findDOMNode(this)` without importing it, so
+    // they no longer match. The `<NS>.findDOMNode` member forms
+    // (fail[0-2]) and the imported bare form still fire — see
+    // `no-find-dom-node.regressions.test.ts`.
+    failSkips: [3, 4],
+    reason: "Intentional: bare findDOMNode must be imported from react-dom (locals are FPs).",
+  },
+  "no-this-in-sfc": {
+    // OXC decides "is an SFC" from the PascalCase name alone, so a plain
+    // ES5 constructor (`function Stack() { this.items = []; }`) or a
+    // PascalCase factory eats a false positive. React Doctor additionally
+    // requires the function to actually render (JSX / createElement) via
+    // `functionContainsReactRenderOutput`. fail[6] (`function Foo(props) {
+    // if (this.props.foo) {…} return null; }`) reads `this.props` but
+    // returns null and never renders, so the render gate no longer fires
+    // on it — an accepted false-negative on a rare shape in exchange for
+    // killing the common constructor-function FP. Every JSX-returning
+    // fail fixture still fires; see `no-this-in-sfc.regressions.test.ts`.
+    failSkips: [6],
+    reason: "Intentional: require real render output (kills constructor-function FPs).",
+  },
   // (Merged into the comprehensive `jsx-no-new-object-as-prop`
   // entry below, which combines the `style` / `dangerouslySetInnerHTML`
   // skip with the config-shape prop-name skip.)

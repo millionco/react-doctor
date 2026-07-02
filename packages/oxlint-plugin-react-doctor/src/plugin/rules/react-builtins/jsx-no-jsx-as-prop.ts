@@ -38,6 +38,10 @@ const KNOWN_SLOT_PROP_NAMES: ReadonlySet<string> = new Set([
   // Generic content slots
   "prefix",
   "suffix",
+  "separator",
+  "divider",
+  "indicator",
+  "decoration",
   "before",
   "after",
   "header",
@@ -256,6 +260,9 @@ const SLOT_PROP_SUFFIXES: ReadonlyArray<string> = [
   "Details",
   "Preview",
   "Info",
+  // `checkedChildren` / `unCheckedChildren` (antd Switch) and friends —
+  // any `*Children` prop is a slot by convention.
+  "Children",
 ];
 
 const isSlotPropName = (propName: string): boolean => {

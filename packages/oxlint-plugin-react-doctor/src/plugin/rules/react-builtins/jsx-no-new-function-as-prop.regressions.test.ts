@@ -63,4 +63,10 @@ describe("react-builtins/jsx-no-new-function-as-prop — regressions", () => {
   it("does not flag the same inline function on a non-memoised consumer", () => {
     expectPass(`const Item = () => null;\nconst Foo = () => <Item prop={() => true} />;`);
   });
+
+  it("does not flag an inline function on a lazy-wrapped consumer (lazy is not memo)", () => {
+    expectPass(
+      `import { lazy } from "react";\nconst Item = lazy(() => import("./Item"));\nconst Foo = () => <Item prop={() => true} />;`,
+    );
+  });
 });

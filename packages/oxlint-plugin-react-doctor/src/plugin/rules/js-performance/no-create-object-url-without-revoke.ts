@@ -2,15 +2,17 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
-import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
+import {
+  PARENTHESIZED_EXPRESSION_TYPE,
+  stripGroupingParens,
+} from "../../utils/strip-grouping-parens.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-// oxc-parser surfaces `(...)` as a node kind outside the TSESTree union,
-// so it is matched via a `string`-typed constant.
-const PARENTHESIZED_EXPRESSION: string = "ParenthesizedExpression";
 const ESCAPE_ASSIGNMENT_TARGET_PROPERTIES = new Set(["href", "src", "current"]);
 
 const MESSAGE =
@@ -18,16 +20,13 @@ const MESSAGE =
 
 const meaningfulParent = (node: EsTreeNode): EsTreeNode | null => {
   let parent = node.parent ?? null;
-  while (parent && parent.type === PARENTHESIZED_EXPRESSION) parent = parent.parent ?? null;
+  while (parent && parent.type === PARENTHESIZED_EXPRESSION_TYPE) parent = parent.parent ?? null;
   return parent;
 };
 
 const isCreateObjectUrlCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   const callee = node.callee;
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
-  if (!isNodeOfType(callee.property, "Identifier") || callee.property.name !== "createObjectURL") {
-    return false;
-  }
+  if (!isMemberProperty(callee, "createObjectURL") || callee.computed) return false;
   const object = callee.object;
   if (isNodeOfType(object, "Identifier")) {
     if (object.name !== "URL") return false;
@@ -50,57 +49,20 @@ const moduleReferencesRevoke = (programRoot: EsTreeNode): boolean => {
   let found = false;
   walkAst(programRoot, (child) => {
     if (found) return false;
-    if (isNodeOfType(child, "MemberExpression") && !child.computed) {
-      if (isNodeOfType(child.property, "Identifier") && child.property.name === "revokeObjectURL") {
-        found = true;
-        return false;
-      }
-    }
-    if (isNodeOfType(child, "Identifier") && child.name === "revokeObjectURL") {
-      found = true;
-      return false;
-    }
+    if (isNodeOfType(child, "Identifier") && child.name === "revokeObjectURL") found = true;
   });
   return found;
 };
 
-interface EscapeContext {
-  guarded: boolean;
-  topNode: EsTreeNode;
-  parent: EsTreeNode | null;
-}
-
-const resolveEscapeContext = (callNode: EsTreeNode): EscapeContext => {
-  let node = callNode;
-  let guarded = false;
-  while (true) {
-    const parent = meaningfulParent(node);
-    if (!parent) break;
-    if (
-      isNodeOfType(parent, "LogicalExpression") &&
-      (stripGroupingParens(parent.left as EsTreeNode) === node ||
-        stripGroupingParens(parent.right as EsTreeNode) === node)
-    ) {
-      guarded = true;
-      node = parent;
-      continue;
-    }
-    if (
-      isNodeOfType(parent, "ConditionalExpression") &&
-      (stripGroupingParens(parent.consequent as EsTreeNode) === node ||
-        stripGroupingParens(parent.alternate as EsTreeNode) === node)
-    ) {
-      guarded = true;
-      node = parent;
-      continue;
-    }
-    break;
-  }
-  return { guarded, topNode: node, parent: meaningfulParent(node) };
-};
+const isGuardBranchOf = (parent: EsTreeNode, node: EsTreeNode): boolean =>
+  (isNodeOfType(parent, "LogicalExpression") &&
+    (stripGroupingParens(parent.left) === node || stripGroupingParens(parent.right) === node)) ||
+  (isNodeOfType(parent, "ConditionalExpression") &&
+    (stripGroupingParens(parent.consequent) === node ||
+      stripGroupingParens(parent.alternate) === node));
 
 const isStateSetterCallee = (callee: EsTreeNode): boolean =>
-  isNodeOfType(callee, "Identifier") && /^set[A-Z]/.test(callee.name);
+  isNodeOfType(callee, "Identifier") && isSetterIdentifier(callee.name);
 
 const SET_ATTRIBUTE_URL_NAMES = new Set(["href", "src"]);
 
@@ -109,10 +71,7 @@ const isUrlSetAttributeCall = (
   urlArgument: EsTreeNode,
 ): boolean => {
   const callee = call.callee;
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
-  if (!isNodeOfType(callee.property, "Identifier") || callee.property.name !== "setAttribute") {
-    return false;
-  }
+  if (!isMemberProperty(callee, "setAttribute") || callee.computed) return false;
   const [attributeName, attributeValue] = call.arguments;
   if (!attributeName || !attributeValue) return false;
   if (!isNodeOfType(attributeName, "Literal") || typeof attributeName.value !== "string") {
@@ -130,13 +89,20 @@ const isDirectIfBranchStatement = (assignment: EsTreeNode): boolean => {
   return container !== null && isNodeOfType(container, "IfStatement");
 };
 
-const escapeIsLeaky = (context: EscapeContext): boolean => {
-  const { guarded, topNode, parent } = context;
+const escapeIsLeaky = (callNode: EsTreeNode): boolean => {
+  let topNode = callNode;
+  let guarded = false;
+  let parent = meaningfulParent(topNode);
+  while (parent && isGuardBranchOf(parent, topNode)) {
+    guarded = true;
+    topNode = parent;
+    parent = meaningfulParent(topNode);
+  }
   if (!parent) return false;
 
   if (
     isNodeOfType(parent, "AssignmentExpression") &&
-    stripGroupingParens(parent.right as EsTreeNode) === topNode
+    stripGroupingParens(parent.right) === topNode
   ) {
     const target = parent.left;
     if (
@@ -159,7 +125,7 @@ const escapeIsLeaky = (context: EscapeContext): boolean => {
 
   if (
     isNodeOfType(parent, "ArrowFunctionExpression") &&
-    stripGroupingParens(parent.body as EsTreeNode) === topNode
+    stripGroupingParens(parent.body) === topNode
   ) {
     return true;
   }
@@ -174,7 +140,8 @@ const escapeIsLeaky = (context: EscapeContext): boolean => {
   // avatar/preview case the spec keeps quiet.
   if (
     isNodeOfType(parent, "VariableDeclarator") &&
-    stripGroupingParens((parent.init as EsTreeNode) ?? topNode) === topNode
+    parent.init &&
+    stripGroupingParens(parent.init) === topNode
   ) {
     return guarded;
   }
@@ -203,18 +170,17 @@ export const noCreateObjectUrlWithoutRevoke = defineRule({
   recommendation:
     "Call `URL.revokeObjectURL(url)` once the object URL is no longer needed (after the download, in a `useEffect` cleanup, or on unmount). An object URL keeps its Blob/File alive for the document lifetime until it is revoked.",
   create: (context: RuleContext) => {
-    const skipFile = isTestlikeFilename(context.filename);
+    const isTestlikeFile = isTestlikeFilename(context.filename);
     let moduleHasRevoke = false;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        if (skipFile) return;
-        moduleHasRevoke = moduleReferencesRevoke(node as EsTreeNode);
+        if (isTestlikeFile) return;
+        moduleHasRevoke = moduleReferencesRevoke(node);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (skipFile || moduleHasRevoke) return;
+        if (isTestlikeFile || moduleHasRevoke) return;
         if (!isCreateObjectUrlCall(node)) return;
-        const escape = resolveEscapeContext(node as EsTreeNode);
-        if (!escapeIsLeaky(escape)) return;
+        if (!escapeIsLeaky(node)) return;
         context.report({ node, message: MESSAGE });
       },
     };

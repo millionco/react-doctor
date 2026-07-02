@@ -9,24 +9,19 @@ import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
-
-const REDUCE_METHOD_NAMES = new Set(["reduce", "reduceRight"]);
+import { walkAst } from "../../utils/walk-ast.js";
 
 const OBJECT_ENUMERATION_METHOD_NAMES = new Set(["keys", "entries", "values"]);
 
 const isSpreadFreeArrayLiteral = (node: EsTreeNode, mustHaveElements: boolean): boolean => {
   if (!isNodeOfType(node, "ArrayExpression")) return false;
   if (mustHaveElements && node.elements.length === 0) return false;
-  return node.elements.every(
-    (element) => !element || !isNodeOfType(element as EsTreeNode, "SpreadElement"),
-  );
+  return node.elements.every((element) => !isNodeOfType(element, "SpreadElement"));
 };
 
 const isSpreadFreeObjectLiteral = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "ObjectExpression") &&
-  node.properties.every(
-    (property) => !property || !isNodeOfType(property as EsTreeNode, "SpreadElement"),
-  );
+  node.properties.every((property) => !isNodeOfType(property, "SpreadElement"));
 
 const isConstDeclaredBinding = (bindingIdentifier: EsTreeNode): boolean => {
   const declarator = bindingIdentifier.parent;
@@ -98,12 +93,8 @@ const isStaticallyBoundedReduceSource = (source: EsTreeNode): boolean => {
   }
   if (!isNodeOfType(enumerationCallee.property, "Identifier")) return false;
   if (!OBJECT_ENUMERATION_METHOD_NAMES.has(enumerationCallee.property.name)) return false;
-  const enumeratedObject = stripped.arguments?.[0];
-  return Boolean(
-    enumeratedObject &&
-    isAstNode(enumeratedObject) &&
-    isLocallyConstructedBoundedObject(enumeratedObject),
-  );
+  const enumeratedObject = stripped.arguments[0];
+  return isAstNode(enumeratedObject) && isLocallyConstructedBoundedObject(enumeratedObject);
 };
 
 interface ReducerReturnAnalysis {
@@ -148,32 +139,20 @@ const analyzeReducerReturns = (
     return analysis;
   }
 
-  const visit = (node: EsTreeNode): void => {
-    if (isNodeOfType(node, "ReturnStatement")) {
-      recordReturnedExpression(node.argument);
-      return;
+  walkAst(body, (child) => {
+    if (FUNCTION_LIKE_TYPES.has(child.type)) return false;
+    if (isNodeOfType(child, "ReturnStatement")) {
+      recordReturnedExpression(child.argument);
+      return false;
     }
-    if (isNodeOfType(node, "VariableDeclarator")) {
+    if (isNodeOfType(child, "VariableDeclarator")) {
       const declaredNames = new Set<string>();
-      collectPatternNames(node.id, declaredNames);
+      collectPatternNames(child.id, declaredNames);
       if (declaredNames.has(accumulatorName)) {
         analysis.isAccumulatorNameShadowed = true;
       }
     }
-    const nodeRecord = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(nodeRecord)) {
-      if (key === "parent") continue;
-      const child = nodeRecord[key];
-      if (Array.isArray(child)) {
-        for (const item of child) {
-          if (isAstNode(item) && !FUNCTION_LIKE_TYPES.has(item.type)) visit(item);
-        }
-      } else if (isAstNode(child) && !FUNCTION_LIKE_TYPES.has(child.type)) {
-        visit(child);
-      }
-    }
-  };
-  visit(body);
+  });
   return analysis;
 };
 
@@ -187,16 +166,11 @@ const literalSpreadsAccumulator = (literal: EsTreeNode, accumulatorName: string)
       ? literal.elements
       : null;
   if (!members) return false;
-  for (const member of members) {
-    if (!member || !isNodeOfType(member as EsTreeNode, "SpreadElement")) continue;
-    const spreadArgument = stripParenExpression(
-      (member as EsTreeNodeOfType<"SpreadElement">).argument,
-    );
-    if (isNodeOfType(spreadArgument, "Identifier") && spreadArgument.name === accumulatorName) {
-      return true;
-    }
-  }
-  return false;
+  return members.some((member) => {
+    if (!isNodeOfType(member, "SpreadElement")) return false;
+    const spreadArgument = stripParenExpression(member.argument);
+    return isNodeOfType(spreadArgument, "Identifier") && spreadArgument.name === accumulatorName;
+  });
 };
 
 // Only unambiguous growth shapes are worth reporting. An array literal always
@@ -207,15 +181,9 @@ const literalSpreadsAccumulator = (literal: EsTreeNode, accumulatorName: string)
 const literalGrowsAccumulatorPerIteration = (literal: EsTreeNode): boolean => {
   if (isNodeOfType(literal, "ArrayExpression")) return true;
   if (!isNodeOfType(literal, "ObjectExpression")) return false;
-  let spreadCount = 0;
-  for (const property of literal.properties) {
-    if (!property) continue;
-    if (isNodeOfType(property as EsTreeNode, "SpreadElement")) {
-      spreadCount += 1;
-      if (spreadCount >= 2) return true;
-    }
-  }
-  return false;
+  return (
+    literal.properties.filter((property) => isNodeOfType(property, "SpreadElement")).length >= 2
+  );
 };
 
 export const noSpreadAccumulatorInReduce = defineRule({
@@ -232,12 +200,9 @@ export const noSpreadAccumulatorInReduce = defineRule({
       if (!isMemberProperty(callee, "reduce") && !isMemberProperty(callee, "reduceRight")) {
         return;
       }
-      if (!isNodeOfType(callee, "MemberExpression")) return;
-      if (!isNodeOfType(callee.property, "Identifier")) return;
-      if (!REDUCE_METHOD_NAMES.has(callee.property.name)) return;
       if (isStaticallyBoundedReduceSource(callee.object)) return;
 
-      const callback = node.arguments?.[0];
+      const callback = node.arguments[0];
       if (
         !callback ||
         (!isNodeOfType(callback, "ArrowFunctionExpression") &&
@@ -245,7 +210,7 @@ export const noSpreadAccumulatorInReduce = defineRule({
       ) {
         return;
       }
-      const accumulatorParam = callback.params?.[0];
+      const accumulatorParam = callback.params[0];
       if (!accumulatorParam || !isNodeOfType(accumulatorParam, "Identifier")) return;
       const accumulatorName = accumulatorParam.name;
 

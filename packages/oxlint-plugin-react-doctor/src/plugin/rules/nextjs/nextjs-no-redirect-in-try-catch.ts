@@ -1,5 +1,4 @@
 import { NEXTJS_NAVIGATION_FUNCTIONS } from "../../constants/nextjs.js";
-import { catchClauseRethrowsCaught } from "../../utils/catch-clause-rethrows-caught.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findGuardingTryStatement } from "../../utils/find-guarding-try-statement.js";
 import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
@@ -23,9 +22,11 @@ export const nextjsNoRedirectInTryCatch = defineRule({
       const importedName = getImportedNameFromModule(node, node.callee.name, "next/navigation");
       if (!importedName || !NEXTJS_NAVIGATION_FUNCTIONS.has(importedName)) return;
 
+      // findGuardingTryStatement resolves the try/catch that actually
+      // swallows the thrown control-flow error, climbing past re-throwing
+      // catches, bare try/finally, and IIFE boundaries.
       const guardingTry = findGuardingTryStatement(node);
-      if (!guardingTry?.handler) return;
-      if (catchClauseRethrowsCaught(guardingTry.handler)) return;
+      if (!guardingTry) return;
 
       context.report({
         node,

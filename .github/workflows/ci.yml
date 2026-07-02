@@ -45,7 +45,7 @@ jobs:
         os: [ubuntu-latest]
         node-version: ["20.19.0", "22.18.0", "24", "25", "26"]
         include:
-          - os: windows-latest
+          - os: blacksmith-4vcpu-windows-2025
             node-version: "22.18.0"
           - os: macos-latest
             node-version: "22.18.0"

@@ -19,7 +19,7 @@ jobs:
   recommend:
     name: Recommend bump on PR
     if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     # A newer push to the same PR obsoletes the in-flight recommendation.
     concurrency:
@@ -98,7 +98,7 @@ jobs:
     # Otherwise this is a no-op and the maintainer cuts the GPG-signed tag by
     # hand using the commands from the PR recommendation.
     if: ${{ github.event_name == 'push' && vars.AUTO_BUMP_ACTION_TAG == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     # Serialize bump runs, with `queue: max` so a superseded PENDING run stays
     # queued instead of canceled — under the default single pending slot, the

@@ -53,7 +53,10 @@ const findFilesWithDisableDirectivesViaFilesystem = (
 ): string[] => {
   const matches: string[] = [];
   const checkFile = (relativePath: string): void => {
-    if (!isLintableSourceFile(relativePath)) return;
+    // Same exclusions as the git path above, so which discovery ran (and
+    // whether `includePaths` carried a build-output path) never changes
+    // which files get neutralized.
+    if (!isLintableSourceFile(relativePath) || hasIgnoredPathSegment(relativePath)) return;
     const absolutePath = path.join(rootDirectory, relativePath);
     let content: string;
     try {

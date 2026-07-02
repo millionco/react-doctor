@@ -240,6 +240,30 @@ describe("spawnLintBatches — max-duration deadline", () => {
     expect(partialFailures[0]).toContain("src/a.tsx");
   });
 
+  it("stops binary-split retries once the deadline passes mid-batch", async () => {
+    const partialFailures: string[] = [];
+
+    // One splittable-failing batch (spawn timeout) whose FIRST spawn starts
+    // inside the budget: the timeout can't fire before the deadline does at
+    // any split level after that, so every file must end deadline-skipped —
+    // never endlessly re-split — regardless of machine speed.
+    const diagnostics = await spawnLintBatches({
+      baseArgs: ["-e", "setTimeout(() => {}, 10_000);"],
+      fileBatches: [["src/a.tsx", "src/b.tsx", "src/c.tsx", "src/d.tsx"]],
+      rootDirectory: process.cwd(),
+      nodeBinaryPath: process.execPath,
+      project,
+      spawnTimeoutMs: 300,
+      deadlineEpochMs: Date.now() + 450,
+      onPartialFailure: (reason) => partialFailures.push(reason),
+    });
+
+    expect(diagnostics).toEqual([]);
+    expect(partialFailures).toHaveLength(1);
+    expect(partialFailures[0]).toContain("4 file(s) skipped");
+    expect(partialFailures[0]).toContain("max scan duration reached");
+  });
+
   it("lints every batch when the deadline has not passed", async () => {
     const { diagnostics, partialFailures } = lintFileBatchesWithDeadline(
       [["src/a.tsx"], ["src/b.tsx"]],

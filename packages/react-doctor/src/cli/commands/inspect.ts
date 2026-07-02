@@ -376,6 +376,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       try {
         const scanResult = await inspect(snapshot.tempDirectory, {
           ...scanOptions,
+          maxDurationMs: remainingScanBudgetMs(scanDeadlineEpochMs),
           includePaths: snapshot.stagedFiles,
           configOverride: userConfig,
           changedLineRanges: stagedLineRanges ?? undefined,

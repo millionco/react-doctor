@@ -663,7 +663,13 @@ const runInspectWithRuntime = async (
   // blaming the PR for pre-existing ones.
   let inspectDiagnostics: ReadonlyArray<Diagnostic> = output.diagnostics;
   let baselineDelta: InspectResult["baselineDelta"];
-  if (options.baseline && isDiffMode && !didLintFail) {
+  // A head lint that dropped or deadline-skipped files is incomplete, so the
+  // delta would silently miss findings in the unlinted files — degrade to a
+  // plain diff exactly like a failed head lint.
+  const headLintSkippedFileCount =
+    countDroppedLintFiles(output.lintPartialFailures) +
+    countDeadlineSkippedFiles(output.lintPartialFailures);
+  if (options.baseline && isDiffMode && !didLintFail && headLintSkippedFileCount === 0) {
     const comparison = await runBaselineComparison({
       directory,
       options,

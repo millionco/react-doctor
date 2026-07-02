@@ -71,7 +71,8 @@ export interface SpawnLintBatchesInput {
    * caller's `--max-duration` budget). Once it passes, batches that haven't
    * started yet are skipped — recorded and surfaced via `onPartialFailure` —
    * instead of spawned, so the scan degrades to partial results rather than
-   * running past the budget. In-flight batches finish normally.
+   * running past the budget. In-flight batches finish normally, but their
+   * binary-split retries re-check the deadline before re-spawning.
    */
   readonly deadlineEpochMs?: number;
   /**
@@ -148,6 +149,8 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     // Batches that never spawned because `deadlineEpochMs` passed — reported
     // apart from `droppedFiles` (budget exhaustion, not pathological files).
     const deadlineSkippedFiles: string[] = [];
+    const isPastDeadline = (): boolean =>
+      deadlineEpochMs !== undefined && Date.now() >= deadlineEpochMs;
     // HACK: keep the first splittable error message we saw so
     // `onPartialFailure` can report WHY each batch failed instead of
     // misleadingly always blaming the per-batch budget. Same root cause
@@ -162,6 +165,10 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     const splitDeadlineMs = Date.now() + splitTotalBudgetMs;
 
     const spawnLintBatch = async (batch: string[], depth: number): Promise<Diagnostic[]> => {
+      if (isPastDeadline()) {
+        deadlineSkippedFiles.push(...batch);
+        return [];
+      }
       const batchArgs = [...baseArgs, ...batch];
       try {
         const stdout = await spawnOxlint(
@@ -219,7 +226,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
 
     try {
       const batchResults = await mapWithConcurrency(fileBatches, concurrency, async (batch) => {
-        if (deadlineEpochMs !== undefined && Date.now() >= deadlineEpochMs) {
+        if (isPastDeadline()) {
           deadlineSkippedFiles.push(...batch);
           return [];
         }

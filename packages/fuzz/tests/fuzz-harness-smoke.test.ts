@@ -1,6 +1,9 @@
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { fuzzRule } from "../src/fuzz-rule.js";
 import { generateStructuredFuzzProgram } from "../src/generate-fuzz-program.js";
+import { loadFuzzCorpus } from "../src/load-fuzz-corpus.js";
 import { createSeededRandom } from "../src/seeded-random.js";
 import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
 import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
@@ -29,6 +32,21 @@ describe("fuzz harness oracles", () => {
       checkedCount += 1;
     }
     expect(checkedCount).toBeGreaterThan(0);
+  });
+
+  // The regression corpus holds confirmed false positives — valid programs
+  // by definition, so every seed must parse (a broken seed would silently
+  // stop exercising its weakness class).
+  it("loads a regression corpus whose every seed parses cleanly", () => {
+    const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const corpus = loadFuzzCorpus(path.join(packageRoot, "corpus"));
+    expect(corpus.length).toBeGreaterThan(0);
+    const unparseable = corpus.filter(
+      (entry) =>
+        runRule(NOOP_RULE, entry.code, { filename: entry.relativePath, forceJsx: true }).parseErrors
+          .length > 0,
+    );
+    expect(unparseable.map((entry) => entry.relativePath)).toEqual([]);
   });
 
   it("catches a rule that crashes on JSX", () => {

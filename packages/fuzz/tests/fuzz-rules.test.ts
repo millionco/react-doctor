@@ -15,11 +15,18 @@ const shouldCheckInvariants = isStrict || process.env.FUZZ_INVARIANTS === "1";
 const ruleFilter = process.env.FUZZ_RULE;
 const iterations = Number(process.env.FUZZ_ITERATIONS ?? DEFAULT_FUZZ_ITERATIONS);
 const seed = Number(process.env.FUZZ_SEED ?? DEFAULT_FUZZ_SEED);
-const corpusDirectory = process.env.FUZZ_CORPUS_DIR;
-const corpus: FuzzCorpusEntry[] =
-  isFuzzEnabled && corpusDirectory ? loadFuzzCorpus(corpusDirectory) : [];
-
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+// The built-in regression corpus (confirmed historical false positives —
+// see corpus/README.md) is always fuzzed; FUZZ_CORPUS_DIR adds external
+// real-world files on top.
+const corpusDirectory = process.env.FUZZ_CORPUS_DIR;
+const corpus: FuzzCorpusEntry[] = isFuzzEnabled
+  ? [
+      ...loadFuzzCorpus(path.join(packageRoot, "corpus")),
+      ...(corpusDirectory ? loadFuzzCorpus(corpusDirectory) : []),
+    ]
+  : [];
 const findingsDirectory = path.join(packageRoot, "tmp", "fuzz-findings");
 
 let reproducerSequence = 0;

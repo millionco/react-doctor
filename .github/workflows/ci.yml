@@ -42,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [blacksmith-4vcpu-ubuntu-2404]
         node-version: ["20.19.0", "22.18.0", "24", "25", "26"]
         include:
           - os: blacksmith-4vcpu-windows-2025
@@ -68,12 +68,12 @@ jobs:
       # deslop-js/-cli assert on POSIX-separator paths, so their suites are
       # build-only on Windows (mirrors the deslop upstream matrix).
       - run: pnpm test:deslop
-        if: ${{ matrix.os != 'windows-latest' }}
+        if: ${{ matrix.os != 'blacksmith-4vcpu-windows-2025' }}
 
       # lint + typecheck run as dedicated jobs in code-quality.yml; don't pay for
       # them again here.
       - name: Check formatting
-        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
+        if: ${{ matrix.os == 'blacksmith-4vcpu-ubuntu-2404' && matrix.node-version == '22.18.0' }}
         shell: bash
         run: |
           format_output_file="$(mktemp)"
@@ -104,7 +104,7 @@ jobs:
           exit "$format_status"
 
       - name: Smoke test built CLI
-        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
+        if: ${{ matrix.os == 'blacksmith-4vcpu-ubuntu-2404' && matrix.node-version == '22.18.0' }}
         run: |
           cd packages/react-doctor
           pnpm build
@@ -116,7 +116,7 @@ jobs:
           fi
 
       - name: Smoke test JSON report shape
-        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
+        if: ${{ matrix.os == 'blacksmith-4vcpu-ubuntu-2404' && matrix.node-version == '22.18.0' }}
         run: pnpm smoke:json-report
 
       # Regression guard for #629: a published package's built output must not
@@ -124,13 +124,13 @@ jobs:
       # only resolve when a sibling dependency happens to supply them, and crash
       # consumers on strict installs). Builds every package, then audits dist.
       - name: Check published packages declare their runtime dependencies
-        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
+        if: ${{ matrix.os == 'blacksmith-4vcpu-ubuntu-2404' && matrix.node-version == '22.18.0' }}
         run: |
           pnpm build
           pnpm check:published-deps
 
       - name: Smoke test packed CLI install
-        if: ${{ matrix.node-version == '22.18.0' && (matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest') }}
+        if: ${{ matrix.node-version == '22.18.0' && (matrix.os == 'blacksmith-4vcpu-ubuntu-2404' || matrix.os == 'blacksmith-4vcpu-windows-2025') }}
         run: |
           pnpm build
           pnpm smoke:packed-cli-install
@@ -140,5 +140,5 @@ jobs:
       # process stays alive waiting for input instead of exiting by itself
       # (regression guard for #576: unref'd stdin killed interactive prompts).
       - name: Smoke test interactive TTY prompt
-        if: ${{ matrix.os == 'ubuntu-latest' && matrix.node-version == '22.18.0' }}
+        if: ${{ matrix.os == 'blacksmith-4vcpu-ubuntu-2404' && matrix.node-version == '22.18.0' }}
         run: pnpm smoke:tty-prompt

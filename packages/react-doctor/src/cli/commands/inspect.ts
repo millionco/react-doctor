@@ -225,9 +225,9 @@ const maybeMigrateLegacyConfig = async (
     !isQuiet && !isStaged && process.stdout.isTTY === true && !isCiOrCodingAgentEnvironment();
   if (!isInteractiveHumanRun) return;
 
-  // Runs every pending per-repo migration (currently the config-file rename);
-  // each is tracked so it applies at most once. The migrations themselves print
-  // their own user-facing summary.
+  // Runs every pending per-repo migration (see PROJECT_MIGRATIONS); each is
+  // tracked so it applies at most once. The migrations themselves print their
+  // own user-facing summary.
   await runProjectMigrations(requestedDirectory);
 };
 

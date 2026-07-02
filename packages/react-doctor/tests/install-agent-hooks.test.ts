@@ -2,7 +2,10 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { installReactDoctorAgentHooks } from "../src/cli/utils/install-agent-hooks.js";
+import {
+  findAgentsWithLegacyShellHooks,
+  installReactDoctorAgentHooks,
+} from "../src/cli/utils/install-agent-hooks.js";
 import * as fs from "node:fs";
 
 interface AgentHooksFixture {
@@ -283,6 +286,44 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
         hook.command.includes("react-doctor.mjs"),
       ),
     ).toBe(true);
+  });
+
+  it("detects legacy shell hooks per agent and tolerates invalid settings JSON", () => {
+    expect(findAgentsWithLegacyShellHooks(fixture.projectRoot)).toEqual([]);
+
+    const settingsPath = path.join(fixture.projectRoot, ".claude/settings.json");
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        hooks: {
+          PostToolBatch: [
+            {
+              hooks: [
+                {
+                  type: "command",
+                  command: 'sh "$CLAUDE_PROJECT_DIR/.claude/hooks/react-doctor.sh"',
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    const configPath = path.join(fixture.projectRoot, ".cursor/hooks.json");
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        version: 1,
+        hooks: { postToolUse: [{ command: ".cursor/hooks/react-doctor.sh", matcher: "Write" }] },
+      }),
+    );
+    expect(findAgentsWithLegacyShellHooks(fixture.projectRoot)).toEqual(["claude-code", "cursor"]);
+
+    // A probe must never crash a scan on a user-mangled file.
+    fs.writeFileSync(settingsPath, "{ not json");
+    expect(findAgentsWithLegacyShellHooks(fixture.projectRoot)).toEqual(["cursor"]);
   });
 
   it("leaves a user's own wrapper referencing a react-doctor.sh outside our install paths", () => {

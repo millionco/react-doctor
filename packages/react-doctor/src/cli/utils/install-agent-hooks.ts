@@ -89,6 +89,42 @@ const readJsonFile = <Value>(filePath: string, fallback: Value): Value => {
   }
 };
 
+// Probe-only read for migration detection: a scan-time probe must never crash
+// on a user-mangled settings file — unreadable JSON means "no hooks found".
+const readJsonFileSafely = <Value>(filePath: string, fallback: Value): Value => {
+  try {
+    return readJsonFile(filePath, fallback);
+  } catch {
+    return fallback;
+  }
+};
+
+// Detection half of the `agent-hooks-sh-to-mjs` migration (cli-migrations.ts):
+// which supported agents still have a ≤0.5.8 shell hook registered. Checks
+// exactly the event keys the installers strip (Claude `PostToolBatch`, Cursor
+// `postToolUse`) so one install pass always clears the detection.
+export const findAgentsWithLegacyShellHooks = (projectRoot: string): SkillAgentType[] => {
+  const agents: SkillAgentType[] = [];
+  const settings = readJsonFileSafely<ClaudeSettings>(
+    path.join(projectRoot, CLAUDE_SETTINGS_RELATIVE_PATH),
+    {},
+  );
+  const hasLegacyClaudeHook = (settings.hooks?.PostToolBatch ?? []).some((group) =>
+    (group.hooks ?? []).some((hook) => isLegacyHookCommand(hook.command)),
+  );
+  if (hasLegacyClaudeHook) agents.push(CLAUDE_AGENT);
+
+  const config = readJsonFileSafely<CursorHooksConfig>(
+    path.join(projectRoot, CURSOR_HOOKS_RELATIVE_PATH),
+    {},
+  );
+  const hasLegacyCursorHook = (config.hooks?.postToolUse ?? []).some((handler) =>
+    isLegacyHookCommand(handler.command),
+  );
+  if (hasLegacyCursorHook) agents.push(CURSOR_AGENT);
+  return agents;
+};
+
 const ensureDirectoryExists = (directoryPath: string): void => {
   try {
     fs.mkdirSync(directoryPath, { recursive: true });

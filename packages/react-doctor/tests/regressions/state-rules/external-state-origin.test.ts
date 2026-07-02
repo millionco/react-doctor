@@ -95,31 +95,6 @@ export const Viewport = ({ onResize }: { onResize?: (w: number) => void }) => {
     expect(await collectRuleHits(projectDir, "no-event-handler")).toHaveLength(0);
   });
 
-  it("no-pass-live-state-to-parent: skips IntersectionObserver-driven state", async () => {
-    const projectDir = setupReactProject(tempRoot, "pass-live-io", {
-      files: {
-        "src/Lazy.tsx": `import { useEffect, useRef, useState } from "react";
-export const Lazy = ({ onShow }: { onShow?: (v: boolean) => void }) => {
-  const ref = useRef<HTMLDivElement>(null);
-  const [seen, setSeen] = useState(false);
-  useEffect(() => {
-    const io = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting) setSeen(true);
-    });
-    if (ref.current) io.observe(ref.current);
-    return () => io.disconnect();
-  }, []);
-  useEffect(() => {
-    if (seen) onShow?.(seen);
-  }, [seen]);
-  return <div ref={ref} />;
-};
-`,
-      },
-    });
-    expect(await collectRuleHits(projectDir, "no-pass-live-state-to-parent")).toHaveLength(0);
-  });
-
   it("no-prop-callback-in-effect: skips a parent sync of WebSocket-driven state", async () => {
     const projectDir = setupReactProject(tempRoot, "prop-callback-ws", {
       files: {
@@ -164,22 +139,21 @@ export const Clock = () => {
     expect(await collectRuleHits(projectDir, "no-chain-state-updates")).toHaveLength(0);
   });
 
-  it("no-cascading-set-state: does not sum setters inside a deferred listener callback", async () => {
+  it("no-cascading-set-state: does not sum setters inside a deferred inline subscription callback", async () => {
     const projectDir = setupReactProject(tempRoot, "cascade-listener", {
       files: {
         "src/Multi.tsx": `import { useEffect, useState } from "react";
+declare const store: { subscribe: (listener: () => void) => () => void };
 export const Multi = () => {
   const [a, setA] = useState(0);
   const [b, setB] = useState(0);
   const [c, setC] = useState(0);
   useEffect(() => {
-    const onResize = () => {
+    return store.subscribe(() => {
       setA(1);
       setB(2);
       setC(3);
-    };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    });
   });
   return <div>{a}{b}{c}</div>;
 };
@@ -191,6 +165,33 @@ export const Multi = () => {
 });
 
 describe("effect-family rules: genuine smells still fire", () => {
+  it("no-pass-live-state-to-parent: flags observer-driven state handed to the parent", async () => {
+    const projectDir = setupReactProject(tempRoot, "pass-live-io", {
+      files: {
+        "src/Lazy.tsx": `import { useEffect, useRef, useState } from "react";
+export const Lazy = ({ onShow }: { onShow?: (v: boolean) => void }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    const io = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) setSeen(true);
+    });
+    if (ref.current) io.observe(ref.current);
+    return () => io.disconnect();
+  }, []);
+  useEffect(() => {
+    if (seen) onShow?.(seen);
+  }, [seen]);
+  return <div ref={ref} />;
+};
+`,
+      },
+    });
+    expect(
+      (await collectRuleHits(projectDir, "no-pass-live-state-to-parent")).length,
+    ).toBeGreaterThan(0);
+  });
+
   it("no-derived-state: still flags a value derived purely from props", async () => {
     const projectDir = setupReactProject(tempRoot, "tp-derived-props", {
       files: {
@@ -240,6 +241,31 @@ export const Sync = ({ items }: { items: number[] }) => {
       setC(3);
     });
   }, [items]);
+  return <div>{a}{b}{c}</div>;
+};
+`,
+      },
+    });
+    expect((await collectRuleHits(projectDir, "no-cascading-set-state")).length).toBeGreaterThan(0);
+  });
+
+  it("no-cascading-set-state: flags a stored listener handler that fans out over 3 setters", async () => {
+    const projectDir = setupReactProject(tempRoot, "tp-cascade-stored-listener", {
+      files: {
+        "src/Multi.tsx": `import { useEffect, useState } from "react";
+export const Multi = () => {
+  const [a, setA] = useState(0);
+  const [b, setB] = useState(0);
+  const [c, setC] = useState(0);
+  useEffect(() => {
+    const onResize = () => {
+      setA(1);
+      setB(2);
+      setC(3);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  });
   return <div>{a}{b}{c}</div>;
 };
 `,

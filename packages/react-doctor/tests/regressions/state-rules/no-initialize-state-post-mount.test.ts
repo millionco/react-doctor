@@ -4,13 +4,13 @@ import { collectRuleHits, createScopedTempRoot, setupReactProject } from "./_hel
 
 const tempRoot = createScopedTempRoot("no-initialize-state-post-mount");
 
-// A mount effect that reads an external / post-mount source (localStorage,
-// matchMedia, a ref's `.current`, a DOM measurement) — directly OR through a
-// local variable / wrapper function — produces a value that is not
-// render-time-knowable. Hoisting it into the useState() initializer would
-// hydrate-mismatch under SSR, so the rule must stay silent. Mirrors the
-// opencode-port false positives (scroll-view / theme-context / app-icon /
-// tooltip), where the read sits in a local var or wrapper, not the setter arg.
+// A mount effect whose setter argument derives from a DOM/layout measurement
+// (matchMedia, a ref's `.current`) — directly OR through a local variable —
+// produces a value that is not render-time-knowable, so the rule must stay
+// silent. Storage reads (localStorage/sessionStorage) are NOT exempt: the
+// react-bench-2 must-detect oracles (digitalocean sea-notes Theme) require the
+// rule to flag storage-seeded mount inits, and the read is synchronous and
+// cheap enough to belong in the useState initializer.
 describe("no-initialize-state — post-mount reads in the effect body", () => {
   it("does not flag a setter fed from a ref.current DOM measurement", async () => {
     const projectDir = setupReactProject(tempRoot, "ref-current-measurement", {
@@ -33,7 +33,7 @@ export const ScrollView = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("does not flag a setter fed from a localStorage read via a local variable", async () => {
+  it("flags a setter fed from a localStorage read via a local variable", async () => {
     const projectDir = setupReactProject(tempRoot, "localStorage-local-var", {
       files: {
         "src/Theme.tsx": `import { useEffect, useState } from "react";
@@ -51,7 +51,7 @@ export const Theme = () => {
     });
 
     const hits = await collectRuleHits(projectDir, "no-initialize-state");
-    expect(hits).toHaveLength(0);
+    expect(hits).toHaveLength(1);
   });
 
   it("does not flag an effect that wires a matchMedia listener on mount", async () => {

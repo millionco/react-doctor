@@ -59,9 +59,11 @@ const COPY = {
   // shallow CI checkout with no merge base — so it fell back to listing every
   // issue in the changed files, not only the PR-introduced ones. Names the
   // workflow file and shows the exact checkout diff so the reader can find + fix.
+  // The filename uses a `<code>` tag, not a markdown backtick span: GitHub does
+  // not parse inline markdown inside a `<summary>`, so backticks render literally.
   baselineDegradedSummary: (workflowFile) =>
     workflowFile
-      ? `⚠️ Warning: \`${workflowFile}\` is configured incorrectly. See below to fix.`
+      ? `⚠️ Warning: <code>${workflowFile}</code> is configured incorrectly. See below to fix.`
       : "⚠️ Warning: this workflow is configured incorrectly. See below to fix.",
   baselineDegradedBody: (baseBranch, workflowFile) => [
     `React Doctor compares against \`${baseBranch}\` to report only the issues this pull request introduces. This run couldn't complete that comparison (usually a **shallow CI checkout** with no merge base), so it listed **every** issue in the changed files, including ones that already existed on \`${baseBranch}\`.`,

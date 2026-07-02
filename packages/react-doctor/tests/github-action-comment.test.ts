@@ -209,8 +209,10 @@ describe("render-github-action-comment", () => {
     const { comment } = runRenderer(buildReport({ baselineDegraded: true }), {
       GITHUB_WORKFLOW_REF: "millionco/same/.github/workflows/react-doctor.yml@refs/heads/main",
     });
+    // The filename uses a `<code>` tag, not a backtick span — GitHub doesn't
+    // render inline markdown inside a `<summary>`.
     expect(comment).toContain(
-      "<details><summary>⚠️ Warning: `.github/workflows/react-doctor.yml` is configured incorrectly. See below to fix.</summary>",
+      "<details><summary>⚠️ Warning: <code>.github/workflows/react-doctor.yml</code> is configured incorrectly. See below to fix.</summary>",
     );
     expect(comment).toContain("in `.github/workflows/react-doctor.yml` so the checkout");
   });

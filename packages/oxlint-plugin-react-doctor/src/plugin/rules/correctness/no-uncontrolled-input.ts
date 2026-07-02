@@ -4,6 +4,7 @@ import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
+import { skipNonProductionFiles } from "../../utils/skip-non-production-files.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -20,7 +21,13 @@ const UNCONTROLLED_INPUT_TAGS = new Set(["input", "textarea", "select"]);
 // rules.
 const VALUE_BYPASS_INPUT_TYPES = new Set(["hidden", "checkbox", "radio"]);
 
-const VALUE_PARTNER_ATTRIBUTES = ["onChange", "readOnly"];
+// `onInput` fires on every value change in React's DOM model exactly
+// like `onChange`, so a `value`-bound input wired to `onInput` is just
+// as controlled (the SolidJS-port idiom keeps `onInput`). `disabled`
+// (like `readOnly`) suppresses React's own missing-`onChange` warning —
+// the user can't type into a disabled/read-only field, so a static
+// `value` needs no handler and must not be flagged.
+const VALUE_PARTNER_ATTRIBUTES = ["onChange", "onInput", "readOnly", "disabled"];
 
 const getInputTypeLiteral = (attributes: EsTreeNode[]): string | null => {
   const typeAttribute = findJsxAttribute(attributes, "type");
@@ -72,13 +79,18 @@ const hasJsxSpreadAttribute = (attributes: EsTreeNode[]): boolean =>
 // `register()`, Headless UI, Radix, etc. routinely supply `onChange` /
 // `defaultValue` via spread, and we can't see through it without scope
 // analysis. False-negative > false-positive on a heavily used pattern.
+//
+// Skips test-like files entirely (`skipNonProductionFiles`): jest/vitest
+// suites routinely render deliberately static `<input value={x} />`
+// presentational stubs, where the missing handler is intentional, never
+// user-facing (ant-design's form __tests__ was a mined bench FP).
 export const noUncontrolledInput = defineRule({
   id: "no-uncontrolled-input",
   title: "Uncontrolled input value",
   severity: "warn",
   recommendation:
     'Give `useState` a starting value (e.g. `useState("")` instead of `useState()`), add `onChange` (or `readOnly`) whenever you set `value`, and drop `defaultValue` on controlled inputs since React ignores it.',
-  create: (context: RuleContext) => {
+  create: skipNonProductionFiles((context: RuleContext) => {
     const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
       if (!componentBody) return;
       // Concise arrow bodies (`() => <input ... />`) skip the BlockStatement
@@ -154,5 +166,5 @@ export const noUncontrolledInput = defineRule({
         checkComponent(node.init.body);
       },
     };
-  },
+  }),
 });

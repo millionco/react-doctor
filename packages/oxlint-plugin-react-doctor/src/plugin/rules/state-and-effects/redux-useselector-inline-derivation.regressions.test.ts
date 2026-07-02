@@ -3,30 +3,43 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { reduxUseselectorInlineDerivation } from "./redux-useselector-inline-derivation.js";
 
 describe("redux-useselector-inline-derivation — regressions", () => {
-  it("stays silent on a String.slice receiver", () => {
+  it("flags array pagination via .slice(0, 10)", () => {
     const result = runRule(
       reduxUseselectorInlineDerivation,
       `import { useSelector } from "react-redux";
-      function Name() {
-        const short = useSelector((state) => state.user.name.slice(0, 20));
-        return <span>{short}</span>;
+      function List() {
+        const page = useSelector((state) => state.items.slice(0, 10));
+        return <span>{page.length}</span>;
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays silent on a String.concat receiver", () => {
+  it("flags a zero-arg .slice() array copy", () => {
     const result = runRule(
       reduxUseselectorInlineDerivation,
       `import { useSelector } from "react-redux";
-      function Name() {
-        const full = useSelector((state) => state.firstName.concat(state.lastName));
-        return <span>{full}</span>;
+      function List() {
+        const copy = useSelector((state) => state.items.slice());
+        return <span>{copy.length}</span>;
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an array merge via .concat", () => {
+    const result = runRule(
+      reduxUseselectorInlineDerivation,
+      `import { useSelector } from "react-redux";
+      function Merged() {
+        const all = useSelector((state) => state.activeUsers.concat(state.invitedUsers));
+        return <span>{all.length}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still flags an array-only deriving method", () => {

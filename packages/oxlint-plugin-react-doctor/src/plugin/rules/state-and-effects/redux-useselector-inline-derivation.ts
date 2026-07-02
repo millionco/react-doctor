@@ -19,18 +19,12 @@ import { inlineUseSelectorFunction } from "./utils/inline-use-selector-function.
 // false positives. The cases where reduce does build a new array
 // (`reduce((acc, x) => [...acc, x], [])`) are typically intentional
 // derivations the user has decided to colocate with the selector.
-//
-// NOTE: `slice` and `concat` are deliberately NOT included either.
-// Both exist on `String.prototype` AND `Array.prototype`, and the
-// detector keys on the method name without a receiver type, so a
-// string `state.name.slice(0, 20)` / `state.first.concat(state.last)`
-// returns a primitive that passes the default `===` check — flagging
-// it is a false positive. Only the unambiguous array-only methods
-// (no `String` counterpart) stay in the set.
 const ALLOCATING_ARRAY_METHODS = new Set([
   "filter",
   "map",
   "flatMap",
+  "slice",
+  "concat",
   "toSorted",
   "toReversed",
   "toSpliced",
@@ -142,8 +136,8 @@ const findReturnedAllocatingCall = (expression: EsTreeNode): AllocatingCallSiteW
 //     usually carries `shallowEqual` or a custom equality fn).
 //   - Recursion stops at nested functions inside the selector — those
 //     run lazily and don't allocate on each store update.
-//   - Covers `.filter / .map / .flatMap / .toSorted / .toReversed /
-//     .toSpliced / .with` and
+//   - Covers `.filter / .map / .flatMap / .slice / .concat /
+//     .toSorted / .toReversed / .toSpliced / .with` and
 //     `Object.{keys,values,entries,fromEntries,assign}` /
 //     `Array.{from,of}` namespace calls. `reduce` / `reduceRight`
 //     are excluded because they can return any type (often a

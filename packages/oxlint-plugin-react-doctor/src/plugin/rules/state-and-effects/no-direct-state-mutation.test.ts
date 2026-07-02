@@ -39,7 +39,7 @@ describe("no-direct-state-mutation", () => {
     expect(result.diagnostics[0].message).toContain("items");
   });
 
-  it("does not flag member assignment on an opaque third-party instance", () => {
+  it("flags member assignment on null-initialized state (instance arrives via setter)", () => {
     const result = runRule(
       noDirectStateMutation,
       `
@@ -49,6 +49,24 @@ describe("no-direct-state-mutation", () => {
           if (editor) editor.options.readOnly = readOnly;
         }, [editor, readOnly]);
         return <div ref={(el) => { if (el && !editor) setEditor(createEditor(el)); }} />;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("editor");
+  });
+
+  it("does not flag member assignment on a directly-constructed instance", () => {
+    const result = runRule(
+      noDirectStateMutation,
+      `
+      function CodeBox({ readOnly }) {
+        const [editor, setEditor] = useState(new EditorEngine());
+        useEffect(() => {
+          editor.options.readOnly = readOnly;
+        }, [editor, readOnly]);
+        return <div />;
       }
     `,
     );

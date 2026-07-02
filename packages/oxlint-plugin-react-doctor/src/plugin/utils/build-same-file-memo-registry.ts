@@ -11,8 +11,10 @@ import { isNodeOfType } from "./is-node-of-type.js";
 export type MemoStatus = "memoised" | "not-memoised" | "unknown";
 
 // HOC wrappers that genuinely memoize props. `forwardRef` /
-// `React.forwardRef` are deliberately excluded — they forward the ref
-// but don't skip re-renders when props haven't changed.
+// `React.forwardRef` and `lazy` / `React.lazy` are deliberately
+// excluded — they forward props but don't skip re-renders when props
+// haven't changed (`lazy` only defers loading; the wrapped component
+// stays unresolvable, so its memo status is "unknown").
 // `memo(forwardRef(fn))` is still detected because the outermost call
 // is `memo`. `lazy` / `React.lazy` are also excluded — `lazy` only
 // code-splits; the resulting component re-renders on every parent

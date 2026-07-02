@@ -58,6 +58,19 @@ builds one lazily per `Program` with `eslint-scope` in
   emit pre-substituted strings. Most substituted text matches upstream
   byte-for-byte; `no-initialize-state` uses a bounded AST stringifier
   where oxlint does not expose original source text.
+- **`no-derived-state` accumulator exemption** — upstream reports a
+  functional updater that computes the new value from its own parameter
+  (`setTotal((prev) => prev + count)`). We deliberately stay quiet
+  there: state grown from its previous value is an accumulator over
+  time (selection history, mark-as-read sets, running totals) and is by
+  definition not derivable from the current props/state — the rule's
+  premise. The spread-only object merge
+  (`setForm((prev) => ({ ...prev, field: <derived> }))`) still reports,
+  because the previous value is only carried through the spread while
+  every piece of new information derives from props/state. The two
+  upstream invalid cases this flips ("From props via callback setter"
+  in `no-derived-state.json`, "Value-less useState" in `syntax.json`)
+  are marked `todo: true` in the parity fixtures.
 - **`no-adjust-state-on-prop-change` severity + message** — upstream
   ships this rule as `type: "suggestion"` with softened "Avoid …
   Instead …" copy. We promote it to `severity: "error"` (the pattern

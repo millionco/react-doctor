@@ -87,3 +87,97 @@ describe("react-builtins/jsx-no-jsx-as-prop regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 });
+
+const INK_STATUS_BAR_USAGE = `
+  const keyHints = isMenuOpen ? (
+    <>
+      <Text dimColor>{"up/down select · "}</Text>
+      <Text color="cyan">enter</Text>
+      <Text dimColor>{" run · esc close"}</Text>
+    </>
+  ) : (
+    <>
+      <Text dimColor>{"up/down move · "}</Text>
+      <Text color="cyan">enter</Text>
+      <Text dimColor>{" fix this"}</Text>
+    </>
+  );
+  return (
+    <Box marginTop={1}>
+      <StatusBar total={12} unreadCount={3} keyHints={keyHints} exitHint="q quit" />
+    </Box>
+  );
+`;
+
+describe("jsx-no-jsx-as-prop regressions", () => {
+  it("does not flag JSX passed to a same-file component that is provably not memoized (ink TUI regression)", () => {
+    const code = `
+import { Box, Text } from "ink";
+const StatusBar = ({ total, unreadCount, keyHints, exitHint }) => (
+  <Text>
+    {total} issues, {unreadCount} unread {keyHints} {exitHint}
+  </Text>
+);
+const DiagnosticList = ({ isMenuOpen }) => {
+${INK_STATUS_BAR_USAGE}
+};
+`;
+    const result = runRule(jsxNoJsxAsProp, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("keeps the assertive message when the same-file receiver is wrapped in memo()", () => {
+    const code = `
+import { memo } from "react";
+import { Box, Text } from "ink";
+const StatusBar = memo(({ total, unreadCount, keyHints, exitHint }) => (
+  <Text>
+    {total} issues, {unreadCount} unread {keyHints} {exitHint}
+  </Text>
+));
+const DiagnosticList = ({ isMenuOpen }) => {
+${INK_STATUS_BAR_USAGE}
+};
+`;
+    const result = runRule(jsxNoJsxAsProp, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toBe(
+      "This child redraws every render because the prop gets brand new JSX each time.",
+    );
+  });
+
+  it("keeps conditional wording when the same-file receiver is lazy() — lazy does not memoize (chartdb regression)", () => {
+    const code = `
+import { lazy } from "react";
+import { Box, Text } from "ink";
+const StatusBar = lazy(() => import("./status-bar.js"));
+const DiagnosticList = ({ isMenuOpen }) => {
+${INK_STATUS_BAR_USAGE}
+};
+`;
+    const result = runRule(jsxNoJsxAsProp, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toBe(
+      "If this child is memoized, it still redraws every render because the prop gets brand new JSX each time.",
+    );
+  });
+
+  it("softens the message to conditional wording when the receiver is imported", () => {
+    const code = `
+import { Box, Text } from "ink";
+import { StatusBar } from "./status-bar.js";
+const DiagnosticList = ({ isMenuOpen }) => {
+${INK_STATUS_BAR_USAGE}
+};
+`;
+    const result = runRule(jsxNoJsxAsProp, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toBe(
+      "If this child is memoized, it still redraws every render because the prop gets brand new JSX each time.",
+    );
+  });
+});

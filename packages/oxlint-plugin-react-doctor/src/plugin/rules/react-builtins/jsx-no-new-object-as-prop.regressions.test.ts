@@ -58,4 +58,10 @@ describe("react-builtins/jsx-no-new-object-as-prop — regressions", () => {
   it("does not flag the same object on a non-memoised consumer", () => {
     expectPass(`const Item = () => null;\nconst Foo = () => <Item foo={{ a: 1 }} />;`);
   });
+
+  it("does not flag on a lazy() consumer — lazy defers loading but does not memoize", () => {
+    expectPass(
+      `import { lazy } from "react";\nconst Item = lazy(() => import("./item.js"));\nconst Foo = () => <Item foo={{ a: 1 }} />;`,
+    );
+  });
 });

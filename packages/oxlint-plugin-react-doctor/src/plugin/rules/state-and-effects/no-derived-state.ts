@@ -2,12 +2,18 @@ import type { Reference } from "eslint-scope";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { readsPostMountValue } from "../../utils/reads-post-mount-value.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { getArgsUpstreamRefs, getCallExpr, getUpstreamRefs } from "./utils/effect/ast.js";
-import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import {
+  getArgsUpstreamRefs,
+  getCallExpr,
+  getDownstreamRefs,
+  getUpstreamRefs,
+} from "./utils/effect/ast.js";
+import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { isControlledPropMirror } from "./utils/is-controlled-prop-mirror.js";
 import {
   getEffectDepsRefs,
@@ -36,6 +42,59 @@ const countSetterCallSites = (ref: Reference): number => {
     if (parent && isNodeOfType(parent, "CallExpression")) count += 1;
   }
   return count;
+};
+
+// Reads of the updater function's own parameter inside its body —
+// `previous` in `setKeys((previous) => new Set(previous).add(key))`.
+// Resolved through eslint-scope so a shadowing inner binding named the
+// same does not count.
+const collectUpdaterParameterReads = (
+  analysis: ProgramAnalysis,
+  updaterFn:
+    | EsTreeNodeOfType<"ArrowFunctionExpression">
+    | EsTreeNodeOfType<"FunctionExpression">
+    | EsTreeNodeOfType<"FunctionDeclaration">,
+): EsTreeNode[] => {
+  const reads: EsTreeNode[] = [];
+  for (const ref of getDownstreamRefs(analysis, updaterFn.body)) {
+    const resolvesToOwnParameter = ref.resolved?.defs.some(
+      (def) => def.type === "Parameter" && (def.node as unknown as EsTreeNode) === updaterFn,
+    );
+    if (resolvesToOwnParameter) reads.push(ref.identifier as unknown as EsTreeNode);
+  }
+  return reads;
+};
+
+// `(prev) => ({ ...prev, field: <derived> })` — the previous value is
+// only carried through an object spread while every piece of NEW
+// information comes from props/state, so the overwritten field is
+// still derivable and the report stands (upstream invalid case
+// "Partially update complex state from props via callback setter").
+const readsParameterOnlyViaObjectSpread = (parameterReads: ReadonlyArray<EsTreeNode>): boolean =>
+  parameterReads.every((read) => {
+    const spread = read.parent;
+    if (!spread || !isNodeOfType(spread, "SpreadElement")) return false;
+    const container = spread.parent;
+    return Boolean(container && isNodeOfType(container, "ObjectExpression"));
+  });
+
+// A functional updater whose new value is computed FROM the previous
+// value (`setKeys((previous) => new Set(previous).add(key))`,
+// `setTotal((prev) => prev + delta)`, `setItems((prev) => [...prev, item])`)
+// accumulates state across renders. An accumulator is by definition not
+// derivable from the CURRENT props/state — the rule's entire premise —
+// so it must stay quiet. The spread-only object merge is the one
+// param-reading shape that is still derived state, so it stays reported.
+const isAccumulatingFunctionalUpdater = (
+  analysis: ProgramAnalysis,
+  callExpr: EsTreeNode,
+): boolean => {
+  if (!isNodeOfType(callExpr, "CallExpression")) return false;
+  const firstArgument: EsTreeNode | undefined = callExpr.arguments?.[0];
+  if (!firstArgument || !isFunctionLike(firstArgument)) return false;
+  const parameterReads = collectUpdaterParameterReads(analysis, firstArgument);
+  if (parameterReads.length === 0) return false;
+  return !readsParameterOnlyViaObjectSpread(parameterReads);
 };
 
 const getStateNameForUseStateDecl = (useStateNode: EsTreeNode | null): string | null => {
@@ -98,6 +157,8 @@ export const noDerivedState = defineRule({
         // (`onChange={setValue}` / `onChange={(e) => setValue(e.target.value)}`).
         // See `is-controlled-prop-mirror.ts` for the full discriminator.
         if (isControlledPropMirror(node, callExpr)) continue;
+
+        if (isAccumulatingFunctionalUpdater(analysis, callExpr)) continue;
 
         const isSomeArgsInternal = argsUpstreamRefs.some(
           (argRef) => isState(analysis, argRef) || isProp(analysis, argRef),

@@ -113,17 +113,40 @@ const CANCELLATION_GUARD_NAMES: ReadonlySet<string> = new Set([
   "abortController",
 ]);
 
+// Ref handles (`aliveRef`, `disposedRef`, `inputRef`) hold the live
+// disposable in `.current` — the Solid→React port turned Solid disposables
+// into refs named `*Ref`, so `if (!aliveRef.current) return` is the same
+// post-await staleness check as `if (cancelled) return`. Only an actual
+// `.current` read counts: a bare `if (!tableRef) return` checks the handle
+// itself, which can't change during the suspension, so the await should
+// still be deferred below it.
+const testReadsRefCurrent = (test: EsTreeNode): boolean => {
+  let didFindRefCurrentRead = false;
+  walkAst(test, (child: EsTreeNode): boolean | void => {
+    if (didFindRefCurrentRead) return false;
+    if (!isNodeOfType(child, "MemberExpression") || child.computed) return;
+    if (!isNodeOfType(child.property, "Identifier") || child.property.name !== "current") return;
+    if (!isNodeOfType(child.object, "Identifier")) return;
+    const refCandidateName = child.object.name;
+    if (refCandidateName.endsWith("Ref") && refCandidateName.length > "Ref".length) {
+      didFindRefCurrentRead = true;
+      return false;
+    }
+  });
+  return didFindRefCurrentRead;
+};
+
 const isCancellationGuardTest = (test: EsTreeNode | null): boolean => {
   if (!test) return false;
   const referenced = new Set<string>();
   collectReferenceIdentifierNames(test, referenced);
-  if (referenced.size === 0) return false;
-  // Match either a bare identifier reference (`cancelled`, `!cancelled`)
-  // or a property access on one (`controller.signal.aborted`).
+  // Match either a bare identifier reference (`cancelled`, `!cancelled`),
+  // a property access on one (`controller.signal.aborted`), or a
+  // ref-staleness read (`aliveRef.current`, `inputRef.current.foo()`).
   for (const name of referenced) {
     if (CANCELLATION_GUARD_NAMES.has(name)) return true;
   }
-  return false;
+  return testReadsRefCurrent(test);
 };
 
 // Walks forward from `startIndex` collecting an "await preamble" — the
@@ -156,7 +179,11 @@ const collectAwaitWindow = (statements: EsTreeNode[], startIndex: number): Await
     cursor++;
   }
 
-  return { firstAwaitStatement: firstStatement, awaitedBindingNames, guardCandidateIndex: cursor };
+  return {
+    firstAwaitStatement: firstStatement,
+    awaitedBindingNames,
+    guardCandidateIndex: cursor,
+  };
 };
 
 // HACK: `const x = await something(); if (skip) return defaultValue;` —

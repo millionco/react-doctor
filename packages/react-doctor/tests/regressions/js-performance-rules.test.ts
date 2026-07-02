@@ -134,6 +134,30 @@ describe("async-await-in-loop", () => {
     const hits = await collectRuleHits(projectDir, "async-await-in-loop");
     expect(hits).toHaveLength(0);
   });
+
+  it("does not flag a first-hit loop that returns early (order-dependent)", async () => {
+    const projectDir = setupReactProject(tempRoot, "async-await-loop-early-return", {
+      files: {
+        "src/migrate.ts": `
+          declare const current: { setItem: (key: string, value: string) => Promise<void> };
+
+          export const migrate = async (stores: Array<{ getItem: (key: string) => Promise<string | null>; removeItem: (key: string) => Promise<void> }>, key: string) => {
+            for (const store of stores) {
+              const raw = await store.getItem(key);
+              if (!raw) continue;
+              await current.setItem(key, raw);
+              await store.removeItem(key);
+              return raw;
+            }
+            return null;
+          };
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "async-await-in-loop");
+    expect(hits).toHaveLength(0);
+  });
 });
 
 describe("async-defer-await", () => {
@@ -286,6 +310,39 @@ describe("async-defer-await", () => {
 
     const hits = await collectRuleHits(projectDir, "async-defer-await");
     expect(hits).toHaveLength(4);
+  });
+
+  it("does not flag ref-staleness guards after await (`!aliveRef.current`)", async () => {
+    const projectDir = setupReactProject(tempRoot, "async-defer-await-ref-current-guard", {
+      files: {
+        "src/load.ts": `
+          declare const serverSDK: () => Promise<void>;
+          declare const loadGhostty: () => Promise<void>;
+          declare const aliveRef: { current: boolean };
+          declare const disposedRef: { current: boolean };
+          declare const inputRef: { current: { sessionID: () => string; loadMore: (id: string) => Promise<void> } };
+
+          export const connect = async () => {
+            await serverSDK();
+            if (!aliveRef.current) return;
+          };
+
+          export const boot = async () => {
+            const loaded = await loadGhostty();
+            if (disposedRef.current) return;
+            return loaded;
+          };
+
+          export const restore = async (id: string) => {
+            await inputRef.current.loadMore(id);
+            if (inputRef.current.sessionID() !== id) return;
+          };
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "async-defer-await");
+    expect(hits).toHaveLength(0);
   });
 
   it("does not flag derived guards regardless of declarator order", async () => {
@@ -1413,6 +1470,36 @@ describe("issue #543: js-tosorted-immutable is gated off for React Native / Expo
     const hits = await collectRuleHits(projectDir, "js-tosorted-immutable", {
       framework: "react-native",
     });
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag [...map.values()].sort() (iterator has no toSorted)", async () => {
+    const projectDir = setupReactProject(tempRoot, "tosorted-iterator-spread", {
+      files: {
+        "src/list-entries.ts": `
+          export const listEntries = (map: Map<string, { id: string }>) =>
+            [...map.values()].sort((first, second) => first.id.localeCompare(second.id));
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-tosorted-immutable");
+    expect(hits).toHaveLength(0);
+  });
+
+  it("does not flag [...freshlyFiltered].sort() where the spread target is a fresh array", async () => {
+    const projectDir = setupReactProject(tempRoot, "tosorted-fresh-array-spread", {
+      files: {
+        "src/sort-shown.ts": `
+          export const sortShown = (items: Array<{ id: string; hidden: boolean }>) => {
+            const shown = items.filter((item) => !item.hidden);
+            return [...shown].sort((first, second) => first.id.localeCompare(second.id));
+          };
+        `,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "js-tosorted-immutable");
     expect(hits).toHaveLength(0);
   });
 });

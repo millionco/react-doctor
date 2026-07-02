@@ -1,6 +1,7 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { hasJsxPropIgnoreCase } from "./has-jsx-prop-ignore-case.js";
+import { hasJsxSpreadAttribute } from "./has-jsx-spread-attribute.js";
 import { isHiddenFromScreenReader } from "./is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
@@ -32,5 +33,9 @@ export const objectHasAccessibleChild = (
   if (hasJsxPropIgnoreCase(jsxElement.openingElement.attributes, "dangerouslySetInnerHTML"))
     return true;
   if (hasJsxPropIgnoreCase(jsxElement.openingElement.attributes, "children")) return true;
+  // A spread (`{...props}`) can carry `children` at runtime, so the element
+  // can't be proven empty — treat it as having accessible content rather
+  // than emit a content-absence false positive (`<h1 {...props} />`).
+  if (hasJsxSpreadAttribute(jsxElement.openingElement.attributes)) return true;
   return false;
 };

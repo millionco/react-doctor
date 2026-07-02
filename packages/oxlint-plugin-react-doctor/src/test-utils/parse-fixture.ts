@@ -35,15 +35,17 @@ const resolveLang = (filename: string): "ts" | "tsx" | "js" | "jsx" => {
 // Parses a code fixture using oxc-parser (the same engine oxlint uses at
 // runtime) with `astType: "ts"` so the returned AST is TSESTree-shaped —
 // matching the type universe our `@typescript-eslint/types`-typed rule
-// visitors operate on. The default filename ends in `.tsx` so JSX always
-// parses; pass an explicit filename to test `.ts` / `.js` paths.
+// visitors operate on — and `preserveParens: false` so `(a ? b : c)` never
+// carries the ParenthesizedExpression wrapper production oxlint never
+// emits. The default filename ends in `.tsx` so JSX always parses; pass an
+// explicit filename to test `.ts` / `.js` paths.
 export const parseFixture = (
   code: string,
   options: ParseFixtureOptions = {},
 ): ParseFixtureResult => {
   const filename = options.filename ?? "fixture.tsx";
   const lang = options.forceJsx ? "tsx" : resolveLang(filename);
-  const result = parseSync(filename, code, { astType: "ts", lang });
+  const result = parseSync(filename, code, { astType: "ts", lang, preserveParens: false });
   return {
     program: result.program as unknown as EsTreeNode,
     errors: result.errors.map((parseError) => ({ message: parseError.message })),

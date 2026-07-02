@@ -96,9 +96,9 @@ export const cloned = _.cloneDeep({ a: 1 });
     const projectDir = setupTypeScriptProject("nested-component-with-react", {
       "src/app.tsx": `export function Outer() {
   function Inner() {
-    return 1;
+    return <div>inner</div>;
   }
-  return Inner();
+  return <Inner />;
 }
 `,
     });

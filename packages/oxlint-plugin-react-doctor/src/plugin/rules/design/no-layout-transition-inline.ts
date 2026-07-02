@@ -5,6 +5,35 @@ import { getStylePropertyStringValue } from "./utils/get-style-property-string-v
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
+// Exact property names that trigger reflow when animated. Matching whole
+// tokens (not substrings) keeps non-layout lookalikes like `stroke-width`
+// (SVG paint) and `scroll-margin` (scroll-snap offset) silent.
+const LAYOUT_TRANSITION_PROPERTIES = new Set([
+  "width",
+  "height",
+  "min-width",
+  "min-height",
+  "max-width",
+  "max-height",
+  "padding",
+  "padding-top",
+  "padding-right",
+  "padding-bottom",
+  "padding-left",
+  "margin",
+  "margin-top",
+  "margin-right",
+  "margin-bottom",
+  "margin-left",
+  "border-width",
+  "border-top-width",
+  "border-right-width",
+  "border-bottom-width",
+  "border-left-width",
+  "line-height",
+  "column-width",
+]);
+
 export const noLayoutTransitionInline = defineRule({
   id: "no-layout-transition-inline",
   title: "Animating layout properties",
@@ -25,16 +54,16 @@ export const noLayoutTransitionInline = defineRule({
         const value = getStylePropertyStringValue(property);
         if (!value) continue;
 
-        const lower = value.toLowerCase();
-        if (/\ball\b/.test(lower)) continue;
+        const valueTokens = value.toLowerCase().split(/[\s,]+/);
+        if (valueTokens.includes("all")) continue;
 
-        const layoutMatch = lower.match(
-          /\b(?:(?:max|min)-)?(?:width|height)\b|\bpadding(?:-(?:top|right|bottom|left))?\b|\bmargin(?:-(?:top|right|bottom|left))?\b/,
+        const layoutProperty = valueTokens.find((valueToken) =>
+          LAYOUT_TRANSITION_PROPERTIES.has(valueToken),
         );
-        if (layoutMatch) {
+        if (layoutProperty) {
           context.report({
             node: property,
-            message: `Your users see janky, stuttering animation because "${layoutMatch[0]}" relayouts the page every frame, so animate transform & opacity instead.`,
+            message: `Your users see janky, stuttering animation because "${layoutProperty}" relayouts the page every frame, so animate transform & opacity instead.`,
           });
         }
       }

@@ -59,6 +59,9 @@ export const mouseEventsHaveKeyEvents = defineRule({
           const handlerAttribute = hasJsxProp(node.attributes, handler);
           if (!handlerAttribute) continue;
           if (!handlerAttribute.value) continue; // bare attr → no handler bound, skip
+          // `onMouseOver={undefined}` binds no handler, so there's nothing
+          // for a keyboard user to miss.
+          if (isExplicitUndefinedExpression(handlerAttribute.value as EsTreeNode)) continue;
           const focusAttribute = hasJsxProp(node.attributes, "onFocus");
           if (!focusAttribute) {
             context.report({ node: handlerAttribute, message: buildMissingFocusMessage(handler) });
@@ -75,6 +78,7 @@ export const mouseEventsHaveKeyEvents = defineRule({
           const handlerAttribute = hasJsxProp(node.attributes, handler);
           if (!handlerAttribute) continue;
           if (!handlerAttribute.value) continue;
+          if (isExplicitUndefinedExpression(handlerAttribute.value as EsTreeNode)) continue;
           const blurAttribute = hasJsxProp(node.attributes, "onBlur");
           if (!blurAttribute) {
             context.report({ node: handlerAttribute, message: buildMissingBlurMessage(handler) });

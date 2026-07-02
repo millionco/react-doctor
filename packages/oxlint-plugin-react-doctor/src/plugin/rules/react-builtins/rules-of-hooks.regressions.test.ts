@@ -179,3 +179,100 @@ describe("react-builtins/rules-of-hooks — regressions: use() under the render-
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("react-builtins/rules-of-hooks — regressions: render-scope escape stays factory-shaped", () => {
+  it("flags both hooks in a module-level named event-handler helper", () => {
+    const result = runTsx(`
+      import { useState, useEffect } from "react";
+      function handleClick() {
+        const [value, setValue] = useState(0);
+        useEffect(() => {}, []);
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(2);
+    expect(result.diagnostics[0]?.message).toBe(
+      "`useState` runs inside `handleClick`, which is not a component or Hook, so React cannot attach Hook state to a render.",
+    );
+    expect(result.diagnostics[1]?.message).toBe(
+      "`useEffect` runs inside `handleClick`, which is not a component or Hook, so React cannot attach Hook state to a render.",
+    );
+  });
+
+  it("flags useRef and use() in a non-factory helper that mixes both", () => {
+    const result = runTsx(`
+      import { use, useRef } from "react";
+      function fetchData(promise) {
+        const ref = useRef(null);
+        return use(promise);
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("flags both hooks in a named handler nested inside a component", () => {
+    const result = runTsx(`
+      import { useState, useEffect } from "react";
+      function MyComponent() {
+        function handleClick() {
+          const [value, setValue] = useState(0);
+          useEffect(() => {}, []);
+        }
+        return <button onClick={handleClick} />;
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("denies the escape to a create*-named factory nested inside a component", () => {
+    const result = runTsx(`
+      import { useState, useEffect } from "react";
+      function MyComponent() {
+        function createHandlers() {
+          const [value, setValue] = useState(0);
+          useEffect(() => {}, []);
+        }
+        return <button onClick={createHandlers} />;
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+});
+
+describe("react-builtins/rules-of-hooks — regressions: local non-hook use* callees", () => {
+  it("does not flag a local useKeyword codegen helper called from named helpers (ajv shape)", () => {
+    const result = runTsx(`
+      function useKeyword(gen, keyword, result) {
+        return gen.scopeValue("keyword", { ref: keyword, result });
+      }
+      function macroKeywordCode(cxt, def) {
+        const { gen, keyword, schema, parentSchema, it } = cxt;
+        const macroSchema = def.macro.call(it.self, schema, parentSchema, it);
+        const schemaRef = useKeyword(gen, keyword, macroSchema);
+        return schemaRef;
+      }
+      function funcKeywordCode(cxt, def) {
+        const { gen, keyword } = cxt;
+        const validateRef = useKeyword(gen, keyword, def.validate);
+        return validateRef;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a local custom hook whose body calls hooks when used from a helper", () => {
+    const result = runTsx(`
+      import { useState } from "react";
+      function useCounter() {
+        const [count] = useState(0);
+        return count;
+      }
+      function calculateTotal() {
+        return useCounter();
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toBe(
+      "`useCounter` runs inside `calculateTotal`, which is not a component or Hook, so React cannot attach Hook state to a render.",
+    );
+  });
+});

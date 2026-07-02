@@ -446,6 +446,34 @@ const countOwnScopeHookCalls = (
 
 const MIN_HOOK_CALLS_FOR_RENDER_SCOPE = 2;
 
+// Factory-shaped names the render-scope escape is allowed to cover:
+// `init` (exact or `initFileContext`-style prefix), `create*`, `make*`,
+// `build*`, optionally underscore-prefixed. An arbitrary helper name
+// (`handleClick`, `fetchData`) must NOT qualify — otherwise any
+// module function with two copy-pasted hooks becomes exempt.
+const RENDER_SCOPE_FACTORY_NAME_PATTERN = /^_?(?:init|create|make|build)(?:[A-Z0-9_]|$)/;
+
+// A use-prefixed callee that scope analysis resolves to a LOCAL
+// function whose own body issues zero hook calls is not a React hook
+// (e.g. ajv's `useKeyword` codegen helper) — reporting its caller as
+// a broken render scope is noise. Only consulted on the
+// non-component report paths; conditional / loop checks are
+// unaffected.
+const isLocalNonHookFunctionCallee = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+  settings: Required<RulesOfHooksSettings>,
+): boolean => {
+  const callee = call.callee;
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const symbol = scopes.symbolFor(callee);
+  if (!symbol) return false;
+  const localFunction =
+    symbol.initializer && isFunctionLike(symbol.initializer) ? symbol.initializer : null;
+  if (!localFunction) return false;
+  return countOwnScopeHookCalls(localFunction, scopes, settings) === 0;
+};
+
 const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
@@ -691,15 +719,20 @@ export const rulesOfHooks = defineRule({
           return;
         }
 
-        // Structural render-scope escape: a named function whose own
-        // scope issues several hook calls is treated as a custom hook /
-        // factory body even when its name violates the `useXxx` /
-        // PascalCase convention (the Solid→React port names these
-        // `init` / `create*`). It still runs the conditional / loop /
-        // try checks below, so misplaced hooks inside it are caught.
+        // Structural render-scope escape: a factory-named function
+        // (`init` / `create*` / `make*` / `build*` — the Solid→React
+        // port shapes) whose own scope issues several hook calls is
+        // treated as a custom hook / factory body even though its name
+        // violates the `useXxx` / PascalCase convention. It must NOT
+        // sit inside a component / hook (hooks in a function nested
+        // inside a component are never legal), and it still runs the
+        // conditional / loop / try checks below, so misplaced hooks
+        // inside it are caught.
         const isLikelyRenderScope =
           !enclosing.isComponentOrHook &&
           enclosing.hasResolvedName &&
+          RENDER_SCOPE_FACTORY_NAME_PATTERN.test(enclosing.name) &&
+          findEnclosingComponentOrHookFunction(enclosing.node) === null &&
           countOwnScopeHookCalls(enclosing.node, context.scopes, settings) >=
             MIN_HOOK_CALLS_FOR_RENDER_SCOPE;
 
@@ -718,6 +751,7 @@ export const rulesOfHooks = defineRule({
             if (parentInfo.isComponentOrHook) isInsideComponentOrHook = true;
           }
           if (!isInsideComponentOrHook) {
+            if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
             context.report({
               node: node.callee,
               message: buildNonComponentMessage(hookName, enclosing.name),
@@ -756,6 +790,7 @@ export const rulesOfHooks = defineRule({
             return;
           }
 
+          if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
           context.report({
             node: node.callee,
             message: buildNonComponentMessage(hookName, enclosing.name),

@@ -461,6 +461,7 @@ import { urlPrefilledPrivilegedAction } from "./rules/security-scan/url-prefille
 import { useLazyMotion } from "./rules/bundle-size/use-lazy-motion.js";
 import { voidDomElementsNoChildren } from "./rules/react-builtins/void-dom-elements-no-children.js";
 import { webhookSignatureRisk } from "./rules/security-scan/webhook-signature-risk.js";
+import { windowOpenWithoutNoopener } from "./rules/security/window-open-without-noopener.js";
 import { zodV4NoDeprecatedErrorApis } from "./rules/zod/zod-v4-no-deprecated-error-apis.js";
 import { zodV4NoDeprecatedErrorCustomization } from "./rules/zod/zod-v4-no-deprecated-error-customization.js";
 import { zodV4NoDeprecatedSchemaApis } from "./rules/zod/zod-v4-no-deprecated-schema-apis.js";
@@ -5867,6 +5868,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       tags: [...new Set(["security-scan", ...(webhookSignatureRisk.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/window-open-without-noopener",
+    id: "window-open-without-noopener",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...windowOpenWithoutNoopener,
+      framework: "global",
+      category: "Security",
     },
   },
   {

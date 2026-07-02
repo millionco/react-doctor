@@ -114,4 +114,24 @@ describe("html-no-invalid-paragraph-child", () => {
 
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  // The explicit `children` prop IS a real DOM child — React renders
+  // `<p children={<ul/>} />` exactly like `<p><ul/></p>`.
+  it("flags a block element passed via the explicit `children` prop of `<p>`", () => {
+    const result = runRule(
+      htmlNoInvalidParagraphChild,
+      `const N = () => <p children={<ul><li>a</li></ul>} />;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a block element in a non-children prop inside a `children` prop value", () => {
+    const result = runRule(
+      htmlNoInvalidParagraphChild,
+      `const N = () => <p children={<Tooltip overlay={<ul><li>a</li></ul>}>hint</Tooltip>} />;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

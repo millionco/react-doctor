@@ -20,13 +20,14 @@ export const GET_HANDLER_BINDING_RESOLUTION_DEPTH = 3;
 // ceremony at this scale.
 export const SMALL_LITERAL_ARRAY_MAX_ELEMENTS = 8;
 
-// Materiality gate for `rendering-svg-precision`: a single over-precise
-// coordinate (even repeated) in a one-off hand-written glyph saves only a
+// Materiality gate for `rendering-svg-precision`: a single stray
+// over-precise coordinate in a one-off hand-written glyph saves only a
 // handful of bytes once — not a download cost worth a diagnostic. Real
-// machine-exported / wasteful paths carry many DISTINCT over-precise
-// coordinates. Require at least this many distinct over-precise tokens
-// before reporting.
-export const MIN_DISTINCT_OVERPRECISE_SVG_TOKENS = 2;
+// machine-exported / wasteful attributes carry the over-precise tokens
+// repeatedly (Inkscape's uniform-scale matrix repeats ONE factor twice;
+// exported paths carry many). Require at least this many over-precise
+// token occurrences before reporting.
+export const MIN_OVERPRECISE_SVG_TOKEN_OCCURRENCES = 2;
 
 // Cross-file resolution bounds for the reducer / cross-file rules.
 // `CROSS_FILE_PARSE_MAX_BYTES` skips parsing generated / vendored files

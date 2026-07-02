@@ -90,4 +90,24 @@ describe("html-no-nested-interactive", () => {
 
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  // The explicit `children` prop IS a real DOM child — React renders
+  // `<button children={<button/>} />` exactly like `<button><button/></button>`.
+  it("flags a `<button>` passed via the explicit `children` prop of a `<button>`", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      `const R = () => <button children={<button>x</button>} />;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a `<button>` in a non-children prop inside a `children` prop value", () => {
+    const result = runRule(
+      htmlNoNestedInteractive,
+      `const R = () => <button children={<Tooltip trigger={<button>x</button>}>hint</Tooltip>} />;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

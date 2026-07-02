@@ -37,4 +37,14 @@ describe("security-scan/firebase-client-owned-authz-field — regressions", () =
     });
     expect(findings.length).toBeGreaterThan(0);
   });
+
+  // FN wave 5: a `;` inside a string literal within the write's own args must
+  // not truncate the statement window before the authz field.
+  it("flags a role field after a semicolon inside a string in the write's own args", () => {
+    const findings = runScanRule(firebaseClientOwnedAuthzField, {
+      relativePath: "src/components/profile.tsx",
+      content: `import { setDoc, doc } from "firebase/firestore";\nexport const save = (uid) => setDoc(doc(db, "users", uid), { note: "a;b", role: "admin" });\n`,
+    });
+    expect(findings.length).toBeGreaterThan(0);
+  });
 });

@@ -68,4 +68,22 @@ describe("security-scan/clickjacking-redirect-risk — regressions", () => {
     });
     expect(findings.length).toBeGreaterThan(0);
   });
+
+  // FN wave 5: the `\b` before `[?&]role=` demanded a word char before the
+  // `?`, so concat-built role URLs (quote precedes `?`) were missed.
+  it("flags a concat-built ?role= iframe src", () => {
+    const findings = runScanRule(clickjackingRedirectRisk, {
+      relativePath: "src/app.tsx",
+      content: `export const F = ({ base, r }) => <iframe src={base + "?role=" + r} />;`,
+    });
+    expect(findings.length).toBeGreaterThan(0);
+  });
+
+  it("flags an entity-encoded &amp;role= in an HTML-string iframe src", () => {
+    const findings = runScanRule(clickjackingRedirectRisk, {
+      relativePath: "src/app.tsx",
+      content: `export const html = '<iframe src="/embed?tab=1&amp;role=admin"></iframe>';`,
+    });
+    expect(findings.length).toBeGreaterThan(0);
+  });
 });

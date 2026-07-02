@@ -115,6 +115,31 @@ describe("react-builtins/no-unstable-nested-components — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  // A PascalCase read passed to a NON-RENDERING call whose result is
+  // discarded (analytics / logging) is not instantiation evidence — the
+  // inline-only helper must stay silent.
+  it("does not flag an inline-called helper that is also passed to an analytics call", () => {
+    const result = run(`
+      const Parent = () => {
+        const Inner = () => <div>x</div>;
+        track(Inner);
+        return <div>{Inner()}</div>;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag an inline-called helper that is also passed to console.log", () => {
+    const result = run(`
+      const Parent = () => {
+        const Inner = () => <div>x</div>;
+        console.log(Inner);
+        return <div>{Inner()}</div>;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   // A member-expression WRITE (`Helper.displayName = …`) is not escape
   // evidence — the inline-called helper must stay silent.
   it("does not flag an inline-called helper that only receives a displayName assignment", () => {

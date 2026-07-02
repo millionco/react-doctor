@@ -305,48 +305,89 @@ const isReturnOfMapCallback = (node: EsTreeNode): boolean => {
   return false;
 };
 
-// An identifier READ that lets a component escape its declaration site
-// — a call argument (`withAnalytics(Inner)`), a JSX expression value
-// (`component={Inner}`), an object property value, an array element, a
-// return value, or an assignment value. A DIRECT call (`Inner()`)
-// inlines into the parent's render — no child fiber — so the callee
-// position is NOT escape evidence. Binding positions, member accesses
-// (`Inner.displayName = …`), import/export specifiers, and TS type
-// positions are not value reads at all.
-const isEscapingReadReference = (identifier: EsTreeNode): boolean => {
-  const parent = identifier.parent;
-  if (!parent) return false;
-  if (parent.type.startsWith("TS")) return false;
-  if (parent.type.startsWith("Import") || parent.type.startsWith("Export")) return false;
-  switch (parent.type) {
-    case "CallExpression":
-    case "NewExpression":
-      return parent.callee !== identifier;
-    case "VariableDeclarator":
-      return parent.init === identifier;
-    case "AssignmentExpression":
-    case "AssignmentPattern":
-      return parent.right === identifier;
-    case "Property":
-      return parent.value === identifier && parent.parent?.type === "ObjectExpression";
-    case "PropertyDefinition":
-      return parent.value === identifier;
-    case "ArrowFunctionExpression":
-      return parent.body === identifier;
-    case "MemberExpression":
-    case "MethodDefinition":
-    case "CatchClause":
-    case "FunctionDeclaration":
-    case "FunctionExpression":
-    case "ClassDeclaration":
-    case "ClassExpression":
-    case "ArrayPattern":
-    case "ObjectPattern":
-    case "RestElement":
-      return false;
-    default:
-      return true;
+const isCloneElementCall = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = node.callee;
+  if (isNodeOfType(callee, "Identifier")) return callee.name === "cloneElement";
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === "cloneElement"
+  );
+};
+
+// TS expression wrappers that forward their inner value unchanged.
+const TS_VALUE_PASSTHROUGH_TYPES: ReadonlySet<string> = new Set([
+  "TSAsExpression",
+  "TSNonNullExpression",
+  "TSSatisfiesExpression",
+  "TSTypeAssertion",
+]);
+
+// A PascalCase identifier READ counts as instantiation evidence only
+// when its value flows into a render-shaped sink: a JSX expression
+// container (`component={Inner}`, `<div>{Inner}</div>`), a
+// createElement / cloneElement argument, a return value, or a
+// component-shaped (PascalCase) binding a consumer can render
+// (`const Enhanced = withAnalytics(Inner)`). Arbitrary call arguments
+// whose result is discarded (`track(Inner)`, `console.log(Inner)`) are
+// side-effect reads, not renders. A DIRECT call (`Inner()`) inlines
+// into the parent's render — no child fiber — so the callee position
+// is not instantiation evidence either.
+const isRenderFlowingReadReference = (identifier: EsTreeNode): boolean => {
+  let valueNode: EsTreeNode = identifier;
+  let parent: EsTreeNode | null | undefined = valueNode.parent;
+  while (parent) {
+    if (TS_VALUE_PASSTHROUGH_TYPES.has(parent.type)) {
+      valueNode = parent;
+      parent = parent.parent;
+      continue;
+    }
+    switch (parent.type) {
+      case "JSXExpressionContainer":
+      case "ReturnStatement":
+        return true;
+      case "ArrowFunctionExpression":
+        return parent.body === valueNode;
+      case "CallExpression": {
+        if (parent.callee === valueNode) return false;
+        if (isCreateElementCall(parent) || isCloneElementCall(parent)) return true;
+        valueNode = parent;
+        parent = parent.parent;
+        continue;
+      }
+      case "VariableDeclarator":
+        return (
+          parent.init === valueNode &&
+          isNodeOfType(parent.id, "Identifier") &&
+          isUppercaseName(parent.id.name)
+        );
+      case "AssignmentExpression": {
+        const assignmentTarget = parent.left as EsTreeNode;
+        return (
+          parent.right === valueNode &&
+          isNodeOfType(assignmentTarget, "Identifier") &&
+          isUppercaseName(assignmentTarget.name)
+        );
+      }
+      case "Property": {
+        if (parent.value !== valueNode) return false;
+        valueNode = parent;
+        parent = parent.parent;
+        continue;
+      }
+      case "ObjectExpression":
+      case "ArrayExpression":
+      case "ConditionalExpression":
+      case "LogicalExpression":
+        valueNode = parent;
+        parent = parent.parent;
+        continue;
+      default:
+        return false;
+    }
   }
+  return false;
 };
 
 // Flattens `<Thing.Panel/>` / `createElement(sections.General)` into
@@ -510,7 +551,7 @@ export const noUnstableNestedComponents = defineRule({
       },
       Identifier(node: EsTreeNodeOfType<"Identifier">) {
         if (!isUppercaseName(node.name)) return;
-        if (!isEscapingReadReference(node as EsTreeNode)) return;
+        if (!isRenderFlowingReadReference(node as EsTreeNode)) return;
         recordInstantiation(node as EsTreeNode, node.name);
       },
       FunctionDeclaration: checkFunctionLike,

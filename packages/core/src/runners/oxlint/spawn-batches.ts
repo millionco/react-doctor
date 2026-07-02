@@ -151,14 +151,10 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     // pass start would let healthy lint time consume the budget — and scoped
     // per batch so one bad batch exhausting its budget can't starve a later
     // batch of its own split attempts.
-    interface SplitBudgetState {
-      deadlineMs: number | null;
-    }
-
     const spawnLintBatch = async (
       batch: string[],
       depth: number,
-      splitBudget: SplitBudgetState,
+      splitBudget: { deadlineMs: number | null },
     ): Promise<Diagnostic[]> => {
       const batchArgs = [...baseArgs, ...batch];
       try {

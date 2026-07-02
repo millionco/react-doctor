@@ -196,7 +196,7 @@ describe("no-pass-live-state-to-parent — bench must-detect regressions", () =>
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("stays silent when the handed-up state is set only by an IntersectionObserver callback", () => {
+  it("flags observer-driven state handed to the parent (notify-parent-in-effect)", () => {
     const result = runRule(
       noPassLiveStateToParent,
       `const Lazy = ({ onShow }) => {
@@ -216,7 +216,7 @@ describe("no-pass-live-state-to-parent — bench must-detect regressions", () =>
       };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
   it("stays silent for functions returned by a state-owning custom hook", () => {

@@ -12,7 +12,6 @@ import {
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getArgsUpstreamRefs, getCallExpr, isSynchronous } from "./utils/effect/ast.js";
-import { isExternallyDrivenFlagState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getEffectFn,
@@ -132,15 +131,6 @@ export const noPassLiveStateToParent = defineRule({
           isState(analysis, argRef),
         );
         if (stateArgRefs.length === 0) continue;
-
-        // A flag set exclusively from literals inside deferred callbacks
-        // (`setSeen(true)` in an IntersectionObserver) is the child's own
-        // observation signal — there is no external payload the parent could
-        // own by lifting the subscription, so handing the flag up is not the
-        // live-state push this rule targets.
-        if (stateArgRefs.every((argRef) => isExternallyDrivenFlagState(analysis, argRef))) {
-          continue;
-        }
 
         context.report({
           node: callExpr,

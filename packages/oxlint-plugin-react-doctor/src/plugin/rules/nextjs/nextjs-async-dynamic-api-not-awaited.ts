@@ -61,6 +61,7 @@ const isDestructureOfReference = (parent: EsTreeNode, referenceIdentifier: EsTre
 export const nextjsAsyncDynamicApiNotAwaited = defineRule({
   id: "nextjs-async-dynamic-api-not-awaited",
   title: "Un-awaited async next/headers API",
+  tags: ["test-noise"],
   requires: ["nextjs:15"],
   severity: "error",
   recommendation:

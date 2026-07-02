@@ -29,4 +29,61 @@ describe("react-builtins/jsx-no-jsx-as-prop regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  // Mined ant-design FP (.dumi/pages/index/index.tsx:92):
+  // `<Group decoration={<img .../>}>` — a background-decoration slot.
+  it("does not flag a `decoration` slot receiving inline JSX", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import Group from './components/Group';
+      const Homepage = () => (
+        <Group
+          title={locale.designTitle}
+          decoration={<img draggable={false} src="https://example.com/bg.svg" alt="bg" />}
+        >
+          <Content />
+        </Group>
+      );
+      `,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // Mined ant-design FP (.dumi/pages/index/components/PreviewPane/Simple.tsx:206):
+  // antd Switch's `checkedChildren` / `unCheckedChildren` — the `*Children`
+  // suffix marks a slot by convention.
+  it("does not flag `checkedChildren`/`unCheckedChildren` slots on antd Switch", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import { Switch } from 'antd';
+      import { CheckOutlined, CloseOutlined } from '@ant-design/icons';
+      const Demo = () => (
+        <Switch
+          defaultChecked
+          checkedChildren={<CheckOutlined />}
+          unCheckedChildren={<CloseOutlined />}
+          style={{ width: 48 }}
+        />
+      );
+      `,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // Mined ant-design FP (.dumi/pages/index/components/PreviewPane/Components.tsx:376):
+  // antd Spin's lowercase `indicator` — the case-sensitive `Indicator` suffix
+  // never matched it, so it needs the explicit slot-name entry.
+  it("does not flag an `indicator` slot on antd Spin", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import { Spin } from 'antd';
+      import { LoadingOutlined } from '@ant-design/icons';
+      const Demo = () => <Spin indicator={<LoadingOutlined spin />} size="middle" />;
+      `,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

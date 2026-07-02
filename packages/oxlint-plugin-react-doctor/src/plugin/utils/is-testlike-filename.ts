@@ -186,6 +186,13 @@ const SOURCE_ROOT_SEGMENTS: ReadonlyArray<string> = [
   "/client/",
 ];
 
+// Path segments that mark a docs/demo tree and must be checked against the
+// FULL path, BEFORE the source-root slice below: dumi doc trees nest
+// source-root-looking segments (`/.dumi/pages/...`, `/.dumi/theme/...` with
+// inner `/components/`) BELOW the marker, so slicing at the last source root
+// would cut the path above `.dumi` and hide it from the segment check.
+const FULL_PATH_NON_PRODUCTION_SEGMENTS: ReadonlyArray<string> = ["/.dumi/"];
+
 const sliceBelowSourceRoot = (filename: string): string => {
   let cutAt = -1;
   for (const segment of SOURCE_ROOT_SEGMENTS) {
@@ -207,6 +214,10 @@ export const isTestlikeFilename = (rawFilename: string | undefined): boolean => 
   // path context.
   for (const suffix of NON_PRODUCTION_FILENAME_SUFFIXES) {
     if (basename.includes(suffix)) return true;
+  }
+  const rootedFilename = filename.startsWith("/") ? filename : `/${filename}`;
+  for (const segment of FULL_PATH_NON_PRODUCTION_SEGMENTS) {
+    if (rootedFilename.includes(segment)) return true;
   }
   // The PATH-segment check scopes itself to "below the source root":
   // for `tests/fixtures/proj/src/app/state-issues.tsx`, it only sees

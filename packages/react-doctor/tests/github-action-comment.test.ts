@@ -222,6 +222,39 @@ describe("render-github-action-comment", () => {
     expect(comment).not.toContain("configured incorrectly");
   });
 
+  const emptySummary = {
+    errorCount: 0,
+    warningCount: 0,
+    affectedFileCount: 0,
+    totalDiagnosticCount: 0,
+    score: null,
+    scoreLabel: null,
+  };
+
+  it("keeps the degraded warning when the compare run scanned no files", () => {
+    const { comment, outputs } = runRenderer(
+      buildReport({
+        baselineDegraded: true,
+        diagnostics: [],
+        projects: [buildProjectEntry([], { scannedFileCount: 0 })],
+        summary: emptySummary,
+      }),
+    );
+    // A zero-finding degraded run isn't a clean skip: it must still warn, and
+    // must not be marked skipped (so the action posts the comment).
+    expect(comment).toContain("configured incorrectly");
+    expect(comment).not.toContain("skipped this pull request");
+    expect(outputs).toContain("skipped=false");
+  });
+
+  it("keeps the degraded warning even when no projects were scanned", () => {
+    const { comment } = runRenderer(
+      buildReport({ baselineDegraded: true, diagnostics: [], projects: [], summary: emptySummary }),
+    );
+    expect(comment).toContain("configured incorrectly");
+    expect(comment).not.toContain("No React Doctor issues found");
+  });
+
   it("renders a baseline report with the new-issue count, fixed count, and commit footer", () => {
     const diagnostics = buildDiagnostics();
     const { comment } = runRenderer(

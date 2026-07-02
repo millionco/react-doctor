@@ -11,6 +11,14 @@ describe("hasIgnoredPathSegment", () => {
     expect(hasIgnoredPathSegment("node_modules/react/index.js")).toBe(true);
   });
 
+  // The disable-directive filesystem walk feeds raw `path.relative` output,
+  // which is backslash-separated on Windows — so build output must still be
+  // excluded there, not just on the forward-slash git paths.
+  it("flags build-output directories in backslash-separated paths", () => {
+    expect(hasIgnoredPathSegment("ai\\dist\\mcp-server.js")).toBe(true);
+    expect(hasIgnoredPathSegment("src\\components\\app.tsx")).toBe(false);
+  });
+
   it("ignores the filename segment", () => {
     expect(hasIgnoredPathSegment("src/dist")).toBe(false);
     expect(hasIgnoredPathSegment("build")).toBe(false);

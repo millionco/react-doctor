@@ -2,14 +2,14 @@ import {
   componentOrHookDisplayNameForFunction,
   nearestEnclosingFunction,
 } from "../../utils/component-or-hook-display-name.js";
+import { collectContextBindings } from "../../utils/collect-context-bindings.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
-import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
-import { isAstNode } from "../../utils/is-ast-node.js";
-import { isCanonicalReactNamespaceName } from "../../utils/is-canonical-react-namespace-name.js";
+import { isContextProviderJsxName } from "../../utils/is-context-provider-jsx-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -17,9 +17,6 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const MESSAGE =
   "Every consumer of this context redraws on each render because its `value` is a fresh object/array/function rebuilt each render — wrap it in useMemo/useCallback (or move it out of the component).";
-
-// Modules whose `createContext` has React's identity semantics.
-const CONTEXT_MODULES = ["react", "use-context-selector", "react-tracked"];
 
 // Fresh per-render allocations — the literal shapes the revision
 // restricts this rule to. A useMemo/useCallback/useRef/useState call
@@ -65,68 +62,6 @@ const owningFunctionOfBinding = (binding: BindingInfo): EsTreeNode | null =>
     ? binding.scopeOwner
     : nearestEnclosingFunction(binding.scopeOwner);
 
-const isCreateContextCall = (expression: EsTreeNode): boolean => {
-  const stripped = stripParenExpression(expression);
-  if (!isNodeOfType(stripped, "CallExpression")) return false;
-  const callee = stripped.callee;
-  if (isNodeOfType(callee, "Identifier")) {
-    return CONTEXT_MODULES.some(
-      (moduleName) =>
-        getImportedNameFromModule(callee, callee.name, moduleName) === "createContext",
-    );
-  }
-  if (isNodeOfType(callee, "MemberExpression") && !callee.computed) {
-    const namespaceIdentifier = callee.object;
-    if (!isNodeOfType(namespaceIdentifier, "Identifier")) return false;
-    if (!isNodeOfType(callee.property, "Identifier")) return false;
-    if (callee.property.name !== "createContext") return false;
-    if (isCanonicalReactNamespaceName(namespaceIdentifier.name)) return true;
-    return CONTEXT_MODULES.some(
-      (moduleName) =>
-        getImportedNameFromModule(namespaceIdentifier, namespaceIdentifier.name, moduleName) !==
-        null,
-    );
-  }
-  return false;
-};
-
-// Top-level `const X = createContext(...)` binding names, used to detect
-// the React 19 `<X value={…}>` provider shorthand.
-const collectContextBindings = (programRoot: EsTreeNode): Set<string> => {
-  const bindings = new Set<string>();
-  if (!isNodeOfType(programRoot, "Program")) return bindings;
-  for (const topLevel of programRoot.body ?? []) {
-    let declaration: EsTreeNode | null = topLevel;
-    if (isNodeOfType(topLevel, "ExportNamedDeclaration") && topLevel.declaration) {
-      declaration = topLevel.declaration;
-    }
-    if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) continue;
-    for (const declarator of declaration.declarations ?? []) {
-      if (!isNodeOfType(declarator, "VariableDeclarator")) continue;
-      if (!isNodeOfType(declarator.id, "Identifier")) continue;
-      if (!declarator.init || !isAstNode(declarator.init)) continue;
-      if (!isCreateContextCall(declarator.init)) continue;
-      bindings.add(declarator.id.name);
-    }
-  }
-  return bindings;
-};
-
-const isLegacyProviderName = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "JSXMemberExpression") &&
-  isNodeOfType(node.property, "JSXIdentifier") &&
-  node.property.name === "Provider";
-
-const isContextShorthandName = (
-  node: EsTreeNode,
-  contextBindings: ReadonlySet<string>,
-): boolean => {
-  if (!isNodeOfType(node, "JSXIdentifier")) return false;
-  if (!contextBindings.has(node.name)) return false;
-  const binding = findVariableInitializer(node, node.name);
-  return binding?.scopeOwner.type === "Program";
-};
-
 // Complements `jsx-no-constructed-context-values` (which fires only when
 // the `value` attribute is ITSELF a literal). This rule resolves a
 // one-hop identifier bound in the SAME render scope to a fresh
@@ -147,10 +82,7 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
         contextBindings = collectContextBindings(node);
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        const nameNode = node.name;
-        if (!isLegacyProviderName(nameNode) && !isContextShorthandName(nameNode, contextBindings)) {
-          return;
-        }
+        if (!isContextProviderJsxName(node.name, contextBindings)) return;
         // Only a component/hook body re-runs per render AND can host a
         // useMemo. An inline callback (a `.map()` render loop, a
         // `useMemo` factory) is neither: hooks cannot be called there,
@@ -159,29 +91,25 @@ export const contextProviderValueFromUnmemoizedLocalLiteral = defineRule({
         if (!renderFunction) return;
         if (componentOrHookDisplayNameForFunction(renderFunction) === null) return;
 
-        for (const attribute of node.attributes) {
-          if (!isNodeOfType(attribute, "JSXAttribute")) continue;
-          if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;
-          if (attribute.name.name !== "value") continue;
-          const attributeValue = attribute.value;
-          if (!attributeValue || !isNodeOfType(attributeValue, "JSXExpressionContainer")) return;
-          const inner = stripParenExpression(attributeValue.expression);
-          if (!isNodeOfType(inner, "Identifier")) return;
+        const attribute = findJsxAttribute(node.attributes, "value");
+        if (!attribute) return;
+        const attributeValue = attribute.value;
+        if (!attributeValue || !isNodeOfType(attributeValue, "JSXExpressionContainer")) return;
+        const inner = stripParenExpression(attributeValue.expression);
+        if (!isNodeOfType(inner, "Identifier")) return;
 
-          const binding = findVariableInitializer(inner, inner.name);
-          if (!binding || !binding.initializer) return;
-          // Module-scope literals are stable; only render-local
-          // declarations are rebuilt each render.
-          if (binding.scopeOwner.type === "Program") return;
-          if (!isDirectDeclarationInitializer(binding)) return;
-          // A binding owned by an outer factory/HOC closure is
-          // allocated once, not per render of this component.
-          if (owningFunctionOfBinding(binding) !== renderFunction) return;
-          if (!isFreshLiteralInitializer(binding.initializer)) return;
+        const binding = findVariableInitializer(inner, inner.name);
+        if (!binding || !binding.initializer) return;
+        // Module-scope literals are stable; only render-local
+        // declarations are rebuilt each render.
+        if (binding.scopeOwner.type === "Program") return;
+        if (!isDirectDeclarationInitializer(binding)) return;
+        // A binding owned by an outer factory/HOC closure is
+        // allocated once, not per render of this component.
+        if (owningFunctionOfBinding(binding) !== renderFunction) return;
+        if (!isFreshLiteralInitializer(binding.initializer)) return;
 
-          context.report({ node: attribute, message: MESSAGE });
-          return;
-        }
+        context.report({ node: attribute, message: MESSAGE });
       },
     };
   },

@@ -58,11 +58,11 @@ const isConstantConstructorArgument = (argumentNode: EsTreeNode): boolean => {
   }
   if (isNodeOfType(stripped, "ArrayExpression")) {
     return stripped.elements.every(
-      (element: EsTreeNode | null) => element === null || isConstantConstructorArgument(element),
+      (element) => element === null || isConstantConstructorArgument(element),
     );
   }
   if (isNodeOfType(stripped, "ObjectExpression")) {
-    return stripped.properties.every((property: EsTreeNode) => {
+    return stripped.properties.every((property) => {
       if (isNodeOfType(property, "SpreadElement")) {
         return isConstantConstructorArgument(property.argument);
       }
@@ -70,6 +70,15 @@ const isConstantConstructorArgument = (argumentNode: EsTreeNode): boolean => {
     });
   }
   return false;
+};
+
+const constructorName = (newExpression: EsTreeNodeOfType<"NewExpression">): string => {
+  const callee = newExpression.callee;
+  if (isNodeOfType(callee, "Identifier")) return callee.name;
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    return callee.property.name;
+  }
+  return "fn";
 };
 
 const isExemptNewExpression = (newExpression: EsTreeNodeOfType<"NewExpression">): boolean => {
@@ -81,7 +90,9 @@ const isExemptNewExpression = (newExpression: EsTreeNodeOfType<"NewExpression">)
   );
 };
 
-const findReportableNewExpression = (argument: EsTreeNode): EsTreeNode | null => {
+const findReportableNewExpression = (
+  argument: EsTreeNode,
+): EsTreeNodeOfType<"NewExpression"> | null => {
   const stripped = stripParenExpression(argument);
   if (isNodeOfType(stripped, "NewExpression")) {
     return isExemptNewExpression(stripped) ? null : stripped;
@@ -100,16 +111,6 @@ const findReportableNewExpression = (argument: EsTreeNode): EsTreeNode | null =>
     );
   }
   return null;
-};
-
-const constructorName = (newExpression: EsTreeNode): string => {
-  if (!isNodeOfType(newExpression, "NewExpression")) return "fn";
-  const callee = newExpression.callee;
-  if (isNodeOfType(callee, "Identifier")) return callee.name;
-  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
-    return callee.property.name;
-  }
-  return "fn";
 };
 
 export const noEagerNewInUseStateInitializer = defineRule({

@@ -1,10 +1,11 @@
-import { FUNCTION_LIKE_TYPES } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { isAstNode } from "../../utils/is-ast-node.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { walkAst } from "../../utils/walk-ast.js";
+import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 
 // Method-call layout reads that each force a synchronous style/layout
 // flush. Bare property forms (scrollTop/offsetWidth/…) are deliberately
@@ -50,50 +51,53 @@ interface ReceiverMutation {
   end: number;
 }
 
-// The layout-read receiver, or null when the call is not a recognized
-// forced-layout read. For `el.getBoundingClientRect()` the receiver is
-// `el`; for `getComputedStyle(el)` it is the first argument.
-const layoutReadReceiver = (call: EsTreeNodeOfType<"CallExpression">): EsTreeNode | null => {
-  const callee = call.callee;
-  if (isNodeOfType(callee, "MemberExpression") && !callee.computed) {
-    if (!isNodeOfType(callee.property, "Identifier")) return null;
-    if (callee.property.name === "getBoundingClientRect") return callee.object;
-    // `window.getComputedStyle(el)` — the element is the argument.
-    if (callee.property.name === "getComputedStyle") return call.arguments?.[0] ?? null;
-    return null;
-  }
-  if (isNodeOfType(callee, "Identifier") && callee.name === "getComputedStyle") {
-    return call.arguments?.[0] ?? null;
-  }
-  return null;
-};
+interface LayoutReadCall {
+  methodName: string;
+  readSignature: string | null;
+  receiver: EsTreeNode | null;
+}
 
-const layoutReadMethodName = (call: EsTreeNodeOfType<"CallExpression">): string | null => {
-  const callee = call.callee;
-  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
-    return LAYOUT_READ_METHOD_NAMES.has(callee.property.name) ? callee.property.name : null;
-  }
-  if (isNodeOfType(callee, "Identifier") && callee.name === "getComputedStyle") {
-    return "getComputedStyle";
-  }
-  return null;
-};
-
-// Distinguishes getComputedStyle(el) from getComputedStyle(el, "::before"):
-// only calls with the same pseudo-element selector return the same
-// declaration, so only those can pair. A dynamic selector is
-// incomparable, so the call is skipped entirely (null).
-const layoutReadSignature = (
+// Classifies a call as a forced-layout read, or null when it is not one
+// (the caller then treats it as a potential mutation). For
+// `el.getBoundingClientRect()` the receiver is `el`; for
+// `getComputedStyle(el)` it is the first argument. The readSignature
+// distinguishes `getComputedStyle(el)` from `getComputedStyle(el,
+// "::before")`: only calls with the same pseudo-element selector return
+// the same declaration, so only those can pair. A null readSignature
+// (dynamic selector) or null receiver (computed callee) marks the read
+// incomparable — skipped entirely, but still never a mutation.
+const classifyLayoutReadCall = (
   call: EsTreeNodeOfType<"CallExpression">,
-  methodName: string,
-): string | null => {
-  if (methodName !== "getComputedStyle") return methodName;
-  const pseudoElementArgument = call.arguments?.[1];
-  if (!pseudoElementArgument) return methodName;
-  if (isNodeOfType(pseudoElementArgument, "Literal")) {
-    return `${methodName}(${String(pseudoElementArgument.value)})`;
+): LayoutReadCall | null => {
+  const callee = call.callee;
+  let methodName: string | null = null;
+  let receiver: EsTreeNode | null = null;
+  if (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier") &&
+    LAYOUT_READ_METHOD_NAMES.has(callee.property.name)
+  ) {
+    methodName = callee.property.name;
+    if (!callee.computed) {
+      receiver =
+        methodName === "getBoundingClientRect" ? callee.object : (call.arguments?.[0] ?? null);
+    }
+  } else if (isNodeOfType(callee, "Identifier") && callee.name === "getComputedStyle") {
+    methodName = "getComputedStyle";
+    receiver = call.arguments?.[0] ?? null;
   }
-  return null;
+  if (!methodName) return null;
+
+  let readSignature: string | null = methodName;
+  if (methodName === "getComputedStyle") {
+    const pseudoElementArgument = call.arguments?.[1];
+    if (pseudoElementArgument) {
+      readSignature = isNodeOfType(pseudoElementArgument, "Literal")
+        ? `${methodName}(${String(pseudoElementArgument.value)})`
+        : null;
+    }
+  }
+  return { methodName, readSignature, receiver };
 };
 
 // Nearest enclosing block, branch arm, or the scope root — two reads
@@ -122,17 +126,13 @@ const enclosingRegion = (node: EsTreeNode, scopeRoot: EsTreeNode): EsTreeNode =>
 // null. Covers `el.scrollTop = 0`, `el.scrollTop++`, and any other
 // method call on the receiver (`el.focus()`, `el.scrollIntoView()`).
 const mutatedReceiverKey = (node: EsTreeNode): string | null => {
+  let target: EsTreeNode | null = null;
   if (isNodeOfType(node, "AssignmentExpression")) {
-    const left = node.left;
-    if (isNodeOfType(left, "MemberExpression")) return serializeReceiver(left.object);
-    return serializeReceiver(left);
+    target = isNodeOfType(node.left, "MemberExpression") ? node.left.object : node.left;
+  } else if (isNodeOfType(node, "UpdateExpression")) {
+    target = isNodeOfType(node.argument, "MemberExpression") ? node.argument.object : node.argument;
   }
-  if (isNodeOfType(node, "UpdateExpression")) {
-    const argument = node.argument;
-    if (isNodeOfType(argument, "MemberExpression")) return serializeReceiver(argument.object);
-    return serializeReceiver(argument);
-  }
-  return null;
+  return serializeReceiver(target);
 };
 
 export const noRepeatedLayoutReadSameElement = defineRule({
@@ -149,36 +149,30 @@ export const noRepeatedLayoutReadSameElement = defineRule({
       const mutations: ReceiverMutation[] = [];
       const barrierEnds: number[] = [];
 
-      const visit = (node: EsTreeNode): void => {
+      const recordNode = (node: EsTreeNode): void => {
         if (isNodeOfType(node, "AwaitExpression")) {
           // Any layout can change across an await, so a re-read after it
           // is a legitimate re-measurement, not a duplicate.
           barrierEnds.push(rangeEnd(node));
         }
         if (isNodeOfType(node, "CallExpression")) {
-          const methodName = layoutReadMethodName(node);
-          const readSignature = methodName ? layoutReadSignature(node, methodName) : null;
-          if (methodName && readSignature) {
-            const receiver = layoutReadReceiver(node);
-            const receiverKey = serializeReceiver(receiver);
-            if (receiverKey) {
+          const layoutRead = classifyLayoutReadCall(node);
+          if (layoutRead) {
+            const receiverKey = serializeReceiver(layoutRead.receiver);
+            if (layoutRead.readSignature && receiverKey) {
               reads.push({
-                methodName,
-                readSignature,
+                methodName: layoutRead.methodName,
+                readSignature: layoutRead.readSignature,
                 receiverKey,
                 regionNode: enclosingRegion(node, scopeRoot),
                 callNode: node,
               });
             }
-          } else if (!methodName) {
+          } else {
             if (isNodeOfType(node.callee, "MemberExpression")) {
               // A non-read method call on a receiver invalidates its layout.
               const mutatedKey = serializeReceiver(node.callee.object);
-              if (mutatedKey)
-                mutations.push({
-                  receiverKey: mutatedKey,
-                  end: rangeEnd(node),
-                });
+              if (mutatedKey) mutations.push({ receiverKey: mutatedKey, end: rangeEnd(node) });
             }
             // A call receiving the element (or a sub-object like
             // `el.style`) may mutate it — `Object.assign(el.style, …)`,
@@ -191,27 +185,11 @@ export const noRepeatedLayoutReadSameElement = defineRule({
         }
         const mutatedKey = mutatedReceiverKey(node);
         if (mutatedKey) mutations.push({ receiverKey: mutatedKey, end: rangeEnd(node) });
-
-        const nodeRecord = node as unknown as Record<string, unknown>;
-        for (const key of Object.keys(nodeRecord)) {
-          if (key === "parent") continue;
-          const child = nodeRecord[key];
-          if (Array.isArray(child)) {
-            for (const item of child) {
-              if (isAstNode(item) && !FUNCTION_LIKE_TYPES.has(item.type)) visit(item);
-            }
-          } else if (isAstNode(child) && !FUNCTION_LIKE_TYPES.has(child.type)) {
-            visit(child);
-          }
-        }
       };
-      const body = (scopeRoot as unknown as { body?: EsTreeNode | EsTreeNode[] | null }).body;
-      if (Array.isArray(body)) {
-        for (const statement of body) {
-          if (isAstNode(statement) && !FUNCTION_LIKE_TYPES.has(statement.type)) visit(statement);
-        }
-      } else if (isAstNode(body) && !FUNCTION_LIKE_TYPES.has(body.type)) {
-        visit(body);
+      if (isFunctionLike(scopeRoot)) {
+        walkOwnFunctionScope(scopeRoot, recordNode);
+      } else {
+        walkAst(scopeRoot, (node) => (isFunctionLike(node) ? false : recordNode(node)));
       }
 
       const reportedGroups = new Set<string>();
@@ -259,12 +237,11 @@ export const noRepeatedLayoutReadSameElement = defineRule({
       }
     };
 
-    const handleScope = (node: EsTreeNode): void => inspectScope(node);
     return {
-      Program: handleScope,
-      FunctionDeclaration: handleScope,
-      FunctionExpression: handleScope,
-      ArrowFunctionExpression: handleScope,
+      Program: inspectScope,
+      FunctionDeclaration: inspectScope,
+      FunctionExpression: inspectScope,
+      ArrowFunctionExpression: inspectScope,
     };
   },
 });

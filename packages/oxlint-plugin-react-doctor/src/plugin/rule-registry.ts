@@ -37,6 +37,7 @@ import { clickjackingRedirectRisk } from "./rules/security-scan/clickjacking-red
 import { clientLocalstorageNoVersion } from "./rules/client/client-localstorage-no-version.js";
 import { clientPassiveEventListeners } from "./rules/client/client-passive-event-listeners.js";
 import { commandExecutionInputRisk } from "./rules/security-scan/command-execution-input-risk.js";
+import { contextProviderValueFromUnmemoizedLocalLiteral } from "./rules/performance/context-provider-value-from-unmemoized-local-literal.js";
 import { controlHasAssociatedLabel } from "./rules/a11y/control-has-associated-label.js";
 import { corsCookieTrustRisk } from "./rules/security-scan/cors-cookie-trust-risk.js";
 import { dangerousHtmlSink } from "./rules/security-scan/dangerous-html-sink.js";
@@ -175,6 +176,7 @@ import { noDistractingElements } from "./rules/a11y/no-distracting-elements.js";
 import { noDocumentStartViewTransition } from "./rules/view-transitions/no-document-start-view-transition.js";
 import { noDocumentWrite } from "./rules/js-performance/no-document-write.js";
 import { noDynamicImportPath } from "./rules/bundle-size/no-dynamic-import-path.js";
+import { noEagerNewInUseStateInitializer } from "./rules/performance/no-eager-new-in-use-state-initializer.js";
 import { noEffectChain } from "./rules/state-and-effects/no-effect-chain.js";
 import { noEffectEventHandler } from "./rules/state-and-effects/no-effect-event-handler.js";
 import { noEffectEventInDeps } from "./rules/state-and-effects/no-effect-event-in-deps.js";
@@ -237,6 +239,7 @@ import { noRedundantShouldComponentUpdate } from "./rules/react-builtins/no-redu
 import { noRenderInRender } from "./rules/architecture/no-render-in-render.js";
 import { noRenderPropChildren } from "./rules/architecture/no-render-prop-children.js";
 import { noRenderReturnValue } from "./rules/react-builtins/no-render-return-value.js";
+import { noRepeatedLayoutReadSameElement } from "./rules/performance/no-repeated-layout-read-same-element.js";
 import { noResetAllStateOnPropChange } from "./rules/state-and-effects/no-reset-all-state-on-prop-change.js";
 import { noScaleFromZero } from "./rules/performance/no-scale-from-zero.js";
 import { noSecretsInClientCode } from "./rules/security/no-secrets-in-client-code.js";
@@ -746,6 +749,20 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       tags: [...new Set(["security-scan", ...(commandExecutionInputRisk.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/context-provider-value-from-unmemoized-local-literal",
+    id: "context-provider-value-from-unmemoized-local-literal",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...contextProviderValueFromUnmemoizedLocalLiteral,
+      framework: "global",
+      category: "Performance",
+      requires: [
+        ...new Set(["react", ...(contextProviderValueFromUnmemoizedLocalLiteral.requires ?? [])]),
+      ],
     },
   },
   {
@@ -2357,6 +2374,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-eager-new-in-use-state-initializer",
+    id: "no-eager-new-in-use-state-initializer",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noEagerNewInUseStateInitializer,
+      framework: "global",
+      category: "Performance",
+      requires: [...new Set(["react", ...(noEagerNewInUseStateInitializer.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-effect-chain",
     id: "no-effect-chain",
     source: "react-doctor",
@@ -3073,6 +3102,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set(["react", ...(noRenderReturnValue.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-repeated-layout-read-same-element",
+    id: "no-repeated-layout-read-same-element",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noRepeatedLayoutReadSameElement,
+      framework: "global",
+      category: "Performance",
+      requires: [...new Set(["react", ...(noRepeatedLayoutReadSameElement.requires ?? [])])],
     },
   },
   {

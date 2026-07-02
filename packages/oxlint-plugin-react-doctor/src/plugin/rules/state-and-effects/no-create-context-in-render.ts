@@ -1,54 +1,11 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
-import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import {
-  getImportedNameFromModule,
-  isImportedFromModule,
-} from "../../utils/find-import-source-for-name.js";
-import { isCanonicalReactNamespaceName } from "../../utils/is-canonical-react-namespace-name.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isCreateContextCallee } from "../../utils/is-create-context-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const MESSAGE =
   "createContext() builds a new context every render, so every consumer gets cut off & resets.";
-
-// Context-providing modules whose `createContext` export has the same
-// identity-stability semantics as React's. Calling any of these inside
-// a render function disconnects every Provider/Consumer pair on the
-// next render. Add new entries here as they appear in the ecosystem.
-const CONTEXT_MODULES: ReadonlyArray<string> = ["react", "use-context-selector", "react-tracked"];
-
-const isCreateContextCallee = (callee: EsTreeNode): boolean => {
-  if (isNodeOfType(callee, "Identifier")) {
-    // Resolve through any renamed import — `getImportedNameFromModule`
-    // returns the originally-exported symbol name, so we catch both
-    // `import { createContext } from "react"` and
-    // `import { createContext as makeCtx } from "react"`. We accept
-    // any module in `CONTEXT_MODULES`.
-    for (const moduleName of CONTEXT_MODULES) {
-      const canonicalName = getImportedNameFromModule(callee, callee.name, moduleName);
-      if (canonicalName === "createContext") return true;
-    }
-    return false;
-  }
-
-  if (isNodeOfType(callee, "MemberExpression") && !callee.computed) {
-    const namespaceIdentifier = callee.object;
-    const propertyIdentifier = callee.property;
-    if (!isNodeOfType(namespaceIdentifier, "Identifier")) return false;
-    if (!isNodeOfType(propertyIdentifier, "Identifier")) return false;
-    if (propertyIdentifier.name !== "createContext") return false;
-    const namespaceName = namespaceIdentifier.name;
-    if (isCanonicalReactNamespaceName(namespaceName)) return true;
-    for (const moduleName of CONTEXT_MODULES) {
-      if (isImportedFromModule(namespaceIdentifier, namespaceName, moduleName)) return true;
-    }
-    return false;
-  }
-
-  return false;
-};
 
 // `createContext()` is identity-keyed: Provider/Consumer pairs match by
 // the exact Context object they were given. Calling it inside a render

@@ -31,6 +31,7 @@ import type { InspectFlags } from "../utils/inspect-flags.js";
 import { filterDiagnosticsByCategories } from "../utils/filter-diagnostics-by-categories.js";
 import { handleError, handleUserError } from "../utils/handle-error.js";
 import { isDebugFlagEnabled } from "../utils/is-debug-flag.js";
+import { isShareOptedOut } from "../utils/is-share-opted-out.js";
 import { isExpectedUserError } from "../utils/is-expected-user-error.js";
 import { handoffToAgent } from "../utils/handoff-to-agent.js";
 import { runProjectMigrations } from "../utils/cli-migrations.js";
@@ -630,14 +631,8 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     }
 
     if (!isQuiet && isMultiProject && completedScans.length > 0) {
-      // The aggregate summary covers every scanned project, so ANY project's
-      // opt-out suppresses the online share prompt. `scanOptions.noScore` is
-      // flag-only (undefined when no flag was passed), so each scan falls back
-      // to its own merged (root + module) `noScore` / `share`.
-      const shareOptedOut =
-        Boolean(scanOptions.noScore) ||
-        completedScans.some((scan) => scan.config?.noScore || scan.config?.share === false);
-      const shouldShowShareLink = !shareOptedOut && !scanOptions.isCi;
+      const shouldShowShareLink =
+        !isShareOptedOut(completedScans, scanOptions.noScore) && !scanOptions.isCi;
       await Effect.runPromise(
         printMultiProjectSummary({
           completedScans,

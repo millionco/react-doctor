@@ -2,7 +2,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 
 // oxc-parser surfaces `(...)` as a `ParenthesizedExpression`, a node kind
 // outside the TSESTree union, so it is matched by string here.
-const PARENTHESIZED_EXPRESSION_TYPE: string = "ParenthesizedExpression";
+export const PARENTHESIZED_EXPRESSION_TYPE: string = "ParenthesizedExpression";
 
 // Peels ONLY grouping parentheses, leaving TS assertion (`as` / `satisfies`
 // / `!`) and optional-chaining wrappers intact — unlike

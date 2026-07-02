@@ -160,20 +160,6 @@ runs:
         if [ -n "$BASE_SHA" ] && git -C "$INPUT_DIRECTORY" diff --name-only --diff-filter=AMR "$BASE_SHA...HEAD" > "$RAW_CHANGED" 2>/dev/null; then
           node "$GITHUB_ACTION_PATH/scripts/normalize-changed-files.mjs" "$SCAN_PREFIX" "$CHANGED_FILES_FILE" < "$RAW_CHANGED"
           echo "path=$CHANGED_FILES_FILE" >> "$GITHUB_OUTPUT"
-        # The three-dot diff needs a merge base, which the default
-        # `fetch-depth: 1` merge-ref checkout never has — the merge commit is a
-        # shallow graft, so traversal (rev-parse/log) can't even see its
-        # parents. Reading the raw commit object with `cat-file` bypasses the
-        # graft: when its FIRST parent is the base tip (the standard PR
-        # merge-ref shape), the merge tree is exactly base + the PR's changes
-        # and a plain two-dot diff against the fetched base is equivalent.
-        # Anything else — stale event base SHA, a head-ref checkout — still
-        # falls back to the API.
-        elif [ -n "$BASE_SHA" ] \
-          && [ "$(git -C "$INPUT_DIRECTORY" cat-file commit HEAD 2>/dev/null | awk '/^$/ { exit } $1 == "parent" { print $2; exit }')" = "$BASE_SHA" ] \
-          && git -C "$INPUT_DIRECTORY" diff --name-only --diff-filter=AMR "$BASE_SHA" HEAD > "$RAW_CHANGED" 2>/dev/null; then
-          node "$GITHUB_ACTION_PATH/scripts/normalize-changed-files.mjs" "$SCAN_PREFIX" "$CHANGED_FILES_FILE" < "$RAW_CHANGED"
-          echo "path=$CHANGED_FILES_FILE" >> "$GITHUB_OUTPUT"
         else
           echo "::warning::React Doctor could not derive the PR's changed files from git (the base commit isn't reachable — set \`fetch-depth: 0\` on actions/checkout for deep histories). Falling back to the GitHub API."
         fi

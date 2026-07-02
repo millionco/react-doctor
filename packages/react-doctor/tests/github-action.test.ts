@@ -155,12 +155,6 @@ describe("GitHub Action contract", () => {
     expect(baseStep).toContain(
       'node "$GITHUB_ACTION_PATH/scripts/normalize-changed-files.mjs" "$SCAN_PREFIX"',
     );
-    // The two-dot fallback's guard must read parentage via `cat-file` — the
-    // shallow graft on a `fetch-depth: 1` merge-ref checkout hides HEAD's
-    // parents from rev-parse/log, so a traversal-based guard never matches
-    // (the execution test below proves the branch actually fires).
-    expect(baseStep).toContain("cat-file commit HEAD");
-    expect(baseStep).toContain('--diff-filter=AMR "$BASE_SHA" HEAD');
     expect(prFilesStep).toContain(
       "INPUT_DIRECTORY: ${{ steps.base.outputs.prefix || inputs.directory }}",
     );
@@ -177,13 +171,16 @@ describe("GitHub Action contract", () => {
 
   // Executes the REAL base-step shell against a fixture mimicking
   // actions/checkout's default `fetch-depth: 1` pull_request checkout: a
-  // shallow-grafted merge-ref HEAD, where the three-dot diff has no merge base
-  // and traversal (rev-parse/log) can't even see HEAD's parents. Locks the
-  // two-dot fallback end to end — deleting the branch or regressing its
-  // cat-file guard to a traversal-based one makes this test fail on the
-  // ::warning + unwritten changed-files path.
+  // shallow-grafted merge-ref HEAD, where the three-dot diff has no merge
+  // base. Locks the shallow-checkout contract end to end: the git-derived
+  // prefix is still emitted (the API fallback consumes it), the changed-files
+  // file stays unwritten, and the ::warning points consumers at
+  // `fetch-depth: 0` — the scaffolded setup, which the baseline compare needs
+  // anyway. There is deliberately NO local-diff fast path for shallow
+  // checkouts (a two-dot variant was dropped in favor of scaffolding
+  // `fetch-depth: 0`).
   itOnPosix(
-    "derives PR changed files locally on a fetch-depth:1 merge-ref checkout",
+    "defers to the API fallback on a fetch-depth:1 merge-ref checkout while still emitting the prefix",
     () => {
       const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-action-base-"));
       try {
@@ -275,11 +272,14 @@ describe("GitHub Action contract", () => {
           },
         );
 
-        expect(scriptOutput).not.toContain("::warning::");
-        expect(fs.readFileSync(changedFilesFile, "utf8").trim()).toBe("src/feature.tsx");
+        expect(scriptOutput).toContain(
+          "::warning::React Doctor could not derive the PR's changed files from git",
+        );
+        expect(scriptOutput).toContain("fetch-depth: 0");
+        expect(fs.existsSync(changedFilesFile)).toBe(false);
         const githubOutput = fs.readFileSync(githubOutputFile, "utf8");
         expect(githubOutput).toContain("prefix=.");
-        expect(githubOutput).toContain(`path=${changedFilesFile}`);
+        expect(githubOutput).not.toContain("path=");
       } finally {
         fs.rmSync(fixtureRoot, { recursive: true, force: true });
       }

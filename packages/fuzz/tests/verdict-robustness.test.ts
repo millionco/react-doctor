@@ -30,6 +30,7 @@ const AUDITED_RULE_IDS = [
   "no-derived-state-effect",
   "no-effect-chain",
   "no-impure-state-updater",
+  "no-inline-hoc-on-component",
   "no-jsx-element-type",
   "no-locale-format-in-render",
   "no-mutating-reducer-state",

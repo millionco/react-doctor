@@ -672,6 +672,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-inline-prop-on-memo-component": {
     code: "const Row = memo(Inner); function List() { return <Row id={1} onClick={() => doThing()} />; }",
   },
+  "no-inline-hoc-on-component": {
+    code: "const Card = withTheme((props) => <div>{useColor(props.theme)}</div>) as React.FC;",
+  },
   "no-interactive-element-to-noninteractive-role": {
     code: '<a href="http://x.y.z" role="img" />',
     forceJsx: true,

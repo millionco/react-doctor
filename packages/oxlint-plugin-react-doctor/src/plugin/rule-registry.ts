@@ -200,6 +200,7 @@ import { noIndeterminateAttribute } from "./rules/correctness/no-indeterminate-a
 import { noInitializeState } from "./rules/state-and-effects/no-initialize-state.js";
 import { noInlineBounceEasing } from "./rules/design/no-inline-bounce-easing.js";
 import { noInlineExhaustiveStyle } from "./rules/design/no-inline-exhaustive-style.js";
+import { noInlineHocOnComponent } from "./rules/architecture/no-inline-hoc-on-component.js";
 import { noInlinePropOnMemoComponent } from "./rules/performance/no-inline-prop-on-memo-component.js";
 import { noInteractiveElementToNoninteractiveRole } from "./rules/a11y/no-interactive-element-to-noninteractive-role.js";
 import { noIsMounted } from "./rules/react-builtins/no-is-mounted.js";
@@ -2669,6 +2670,17 @@ export const reactDoctorRules = [
     originallyExternal: false,
     rule: {
       ...noInlineExhaustiveStyle,
+      framework: "global",
+      category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-inline-hoc-on-component",
+    id: "no-inline-hoc-on-component",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noInlineHocOnComponent,
       framework: "global",
       category: "Maintainability",
     },

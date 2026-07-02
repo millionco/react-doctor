@@ -5,11 +5,42 @@ import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+// True when a `useState(...)` initializer argument provably constructs a
+// class instance — `useState(new TrackQueue())` — either directly or via a
+// lazy initializer that returns one (`useState(() => new TrackQueue())`,
+// `useState(() => { return new TrackQueue() })`). Such state is an opaque
+// imperative object whose fields and methods are its API, not render data,
+// so in-place writes to it are not React-state mutations. Anything less
+// certain (object/array literals, `null`, props, call results) stays
+// tracked: `useState<Editor | null>(null)` later mutated in place is a real
+// lost-update bug.
+const initializerConstructsInstance = (initializer: EsTreeNode): boolean => {
+  const initializerValue = stripParenExpression(initializer);
+  if (isNodeOfType(initializerValue, "NewExpression")) return true;
+  if (
+    !isNodeOfType(initializerValue, "ArrowFunctionExpression") &&
+    !isNodeOfType(initializerValue, "FunctionExpression")
+  ) {
+    return false;
+  }
+  const lazyInitializerBody = initializerValue.body;
+  if (!isNodeOfType(lazyInitializerBody, "BlockStatement")) {
+    return isNodeOfType(stripParenExpression(lazyInitializerBody), "NewExpression");
+  }
+  return (lazyInitializerBody.body ?? []).some(
+    (statement) =>
+      isNodeOfType(statement, "ReturnStatement") &&
+      statement.argument != null &&
+      isNodeOfType(stripParenExpression(statement.argument), "NewExpression"),
+  );
+};
 
 // HACK: walks the component AST while tracking which state names are
 // SHADOWED in the current scope by a nested function's params or
@@ -93,6 +124,16 @@ export const noDirectStateMutation = defineRule({
         bindings.map((binding) => [binding.valueName, binding.setterName] as const),
       );
 
+      const opaqueInstanceStateValueNames = new Set<string>();
+      for (const binding of bindings) {
+        const initializerArgument = isNodeOfType(binding.declarator.init, "CallExpression")
+          ? binding.declarator.init.arguments?.[0]
+          : undefined;
+        if (initializerArgument && initializerConstructsInstance(initializerArgument)) {
+          opaqueInstanceStateValueNames.add(binding.valueName);
+        }
+      }
+
       walkComponentRespectingShadows(
         componentBody,
         new Set(),
@@ -101,6 +142,7 @@ export const noDirectStateMutation = defineRule({
             if (!isNodeOfType(child.left, "MemberExpression")) return;
             const rootName = getRootIdentifierName(child.left);
             if (!rootName || !stateValueToSetter.has(rootName)) return;
+            if (opaqueInstanceStateValueNames.has(rootName)) return;
             if (currentlyShadowed.has(rootName)) return;
             context.report({
               node: child,
@@ -117,6 +159,7 @@ export const noDirectStateMutation = defineRule({
             if (!MUTATING_ARRAY_METHODS.has(methodName)) return;
             const rootName = getRootIdentifierName(callee.object);
             if (!rootName || !stateValueToSetter.has(rootName)) return;
+            if (opaqueInstanceStateValueNames.has(rootName)) return;
             if (currentlyShadowed.has(rootName)) return;
             context.report({
               node: child,

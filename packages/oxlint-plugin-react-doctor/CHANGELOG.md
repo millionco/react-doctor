@@ -1,5 +1,40 @@
 # oxlint-plugin-react-doctor
 
+## 0.6.1
+
+### Patch Changes
+
+- [#1027](https://github.com/millionco/react-doctor/pull/1027) [`5f60bef`](https://github.com/millionco/react-doctor/commit/5f60befa8f954d3daf6e790670be8a170683e708) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - fix(rules): path-based framework-directory detection no longer misreads a
+  filesystem mount point as a framework directory. Rules now check `app/`,
+  `pages/`, `pages/api/`, and `routes/` against the path relative to the
+  detected project root (`settings["react-doctor"].rootDirectory`), falling
+  back to ignoring the leading segment of an absolute path when no root is
+  available. A pages-router repo checked out at `/app` (the most common
+  container convention) no longer triggers `nextjs-no-head-import`,
+  `nextjs-error-boundary-missing-use-client`,
+  `nextjs-global-error-missing-html-body`,
+  `nextjs-no-default-export-in-route-handler`, or
+  `server-fetch-without-revalidate`; the same class of false positive is
+  fixed for `nextjs-no-client-fetch-for-server-data` (`/pages` mounts),
+  `server-hoist-static-io` (`/pages` mounts), and the `tanstack-start-*`
+  route-file rules (`/routes` mounts).
+
+- [#1025](https://github.com/millionco/react-doctor/pull/1025) [`6885698`](https://github.com/millionco/react-doctor/commit/6885698cda0bc35446a13a1af7327f62c9c68025) Thanks [@aidenybai](https://github.com/aidenybai)! - fix(rules): three false-positive fixes found by the fuzz FP oracle
+
+  - `role-supports-aria-props`: the ported role→props table was missing
+    spec-supported properties (aria-query parity) — `aria-multiselectable`
+    on listbox/grid/tablist/tree/treegrid, `aria-readonly` on 15 widget
+    roles, `aria-errormessage` on treegrid — so valid ARIA markup was
+    flagged (upstream report: oxc-project/oxc#20855).
+  - `rendering-hydration-no-flicker`: no longer flags `useLayoutEffect` —
+    it runs synchronously before paint, so the canonical DOM-measurement
+    pattern (`useLayoutEffect(() => setHeight(ref.current...), [])`) never
+    flashes (upstream report: facebook/react#34858).
+  - `no-derived-state`: the async-intermediate suppression now sees through
+    `const f = useCallback(async () => ...)` — a setter reached after an
+    await is async sequencing state, not a render-derivable value
+    (upstream report: facebook/react#34905).
+
 ## 0.6.0
 
 ### Patch Changes

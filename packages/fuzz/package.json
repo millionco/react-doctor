@@ -1,6 +1,6 @@
 {
   "name": "@react-doctor/fuzz",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Adversarial fuzzing harness for React Doctor rules.",
   "license": "SEE LICENSE IN LICENSE",

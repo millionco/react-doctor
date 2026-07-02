@@ -210,6 +210,99 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a mutate fired via a local helper the effect calls synchronously", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `function C() {
+         const { mutate, data } = useMutation(opts);
+         useEffect(() => {
+           const run = () => { mutate(ids); };
+           run();
+         }, [ids]);
+         return <div>{data.items}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a mutate fired via a function-declaration helper outside the effect", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `function C() {
+         const { mutate, data } = useMutation(opts);
+         function load() { mutate(id); }
+         useEffect(() => { load(); }, [id]);
+         return <div>{data.items}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a mutate inside a handler returned by a factory called in the effect", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `function C() {
+         const { mutate, data } = useMutation(opts);
+         const createHandler = () => () => mutate(event);
+         useEffect(() => {
+           socket.addEventListener('message', createHandler());
+         }, []);
+         return data ? <div>{data.value}</div> : null;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a useSWR-named alias of a useMutation import", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `import { useMutation as useSWRLocales } from '@tanstack/react-query';
+       function C() {
+         const { mutate, data } = useSWRLocales(opts);
+         useEffect(() => { mutate(payload); }, [dep]);
+         return <div>{data.available_locales}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a local useSWR-prefixed wrapper that exposes mutateAsync", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `function C() {
+         const { mutateAsync, data } = useSWRLocales();
+         useEffect(() => { mutateAsync(payload); }, [dep]);
+         return <div>{data.available_locales}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag useSWR re-exported through a local barrel", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `import { useSWR } from '~/lib/swr';
+       function C() {
+         const { data, mutate } = useSWR('/api/user', fetcher);
+         useEffect(() => { mutate(); }, [focusCount]);
+         return <div>{data.name}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a mutate-only local useSWR-prefixed wrapper", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `function C() {
+         const { mutate, data } = useSWRUser();
+         useEffect(() => { mutate(); }, [focusCount]);
+         return <div>{data.name}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag an awaited result that is never read", () => {
     const result = runRule(
       queryNoMutationInEffectAsRead,

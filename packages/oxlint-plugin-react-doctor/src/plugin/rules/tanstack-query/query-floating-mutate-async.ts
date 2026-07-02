@@ -21,17 +21,21 @@ const FLOATING_CALLBACK_HOST_NAMES = new Set([
   "queueMicrotask",
 ]);
 
-// Wrappers that forward the promise unchanged while walking up from the
-// call: optional-chain containers, parens, and TS assertion nodes (oxc's
-// ESTree surfaces parens as `ParenthesizedExpression`, which is not part
-// of the TSESTree union — hence the string set, mirroring
-// `stripParenExpression`).
-const TRANSPARENT_PROMISE_WRAPPER_TYPES = new Set<string>([
+// Parents that keep the rejection unreachable while walking up from the
+// call: wrappers that forward the promise unchanged (optional-chain
+// containers, parens, and TS assertion nodes — oxc's ESTree surfaces parens
+// as `ParenthesizedExpression`, which is not part of the TSESTree union,
+// hence the string set, mirroring `stripParenExpression`), plus ternary and
+// `&&`/`||`/`??` containers, where the promise either flows through as the
+// expression value or is discarded as a bare truthiness test.
+const FLOATING_PROMISE_PARENT_TYPES = new Set<string>([
   "ChainExpression",
   "ParenthesizedExpression",
   "TSAsExpression",
   "TSSatisfiesExpression",
   "TSNonNullExpression",
+  "ConditionalExpression",
+  "LogicalExpression",
 ]);
 
 const isMutateAsyncMemberCall = (node: EsTreeNode): boolean =>
@@ -67,16 +71,8 @@ const isDiscardedArrowReturn = (arrow: EsTreeNode): boolean => {
   return false;
 };
 
-// Parents that keep the promise floating: the transparent wrappers above,
-// ternary branches, and `&&`/`||` right operands.
-const isTransparentPromiseParent = (parent: EsTreeNode, current: EsTreeNode): boolean =>
-  TRANSPARENT_PROMISE_WRAPPER_TYPES.has(parent.type) ||
-  (isNodeOfType(parent, "ConditionalExpression") &&
-    (parent.consequent === current || parent.alternate === current)) ||
-  (isNodeOfType(parent, "LogicalExpression") && parent.right === current);
-
 // True when the mutateAsync call's promise is discarded with no rejection
-// handler. Walks upward through the transparent parents and
+// handler. Walks upward through the floating parents and
 // `.then(onFulfilled)` / `.finally(...)` steps that never handle rejection,
 // then requires the outermost expression to be a bare ExpressionStatement or
 // the concise body of a discarded-return arrow. A `.catch(...)`, two-argument
@@ -86,7 +82,7 @@ const isFloatingMutateAsync = (node: EsTreeNode): boolean => {
   let current: EsTreeNode = node;
   let parent: EsTreeNode | null = current.parent ?? null;
   while (parent) {
-    if (isTransparentPromiseParent(parent, current)) {
+    if (FLOATING_PROMISE_PARENT_TYPES.has(parent.type)) {
       current = parent;
       parent = current.parent ?? null;
       continue;

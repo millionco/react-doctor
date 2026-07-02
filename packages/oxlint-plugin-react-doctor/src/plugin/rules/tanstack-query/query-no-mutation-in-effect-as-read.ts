@@ -10,7 +10,7 @@ import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
-import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import type { ScopeDescriptor, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 
 // The `mutate`/`mutateAsync` destructure keys are the near-unique TanStack
 // mutation signature, so their presence identifies a mutation result even
@@ -44,12 +44,17 @@ const findPatternPropertyBinding = (
   return null;
 };
 
+// A definitive module source wins over the name heuristic: an `swr` import
+// is exempt whatever it's called, and a `useMutation as useSWRFoo` TanStack
+// alias stays flagged. The name pattern covers what imports can't decide —
+// local SWR wrapper hooks and barrel re-exports.
 const isSwrHookResult = (init: EsTreeNodeOfType<"CallExpression">): boolean => {
   const calleeName = getCalleeName(init);
   if (!calleeName) return false;
-  if (SWR_HOOK_NAME_PATTERN.test(calleeName)) return true;
   const importSource = getImportSourceForName(init, calleeName);
-  return Boolean(importSource && SWR_MODULE_SOURCE_PATTERN.test(importSource));
+  if (importSource && SWR_MODULE_SOURCE_PATTERN.test(importSource)) return true;
+  if (importSource?.startsWith("@tanstack/")) return false;
+  return SWR_HOOK_NAME_PATTERN.test(calleeName);
 };
 
 // The destructure binding itself (`{ data }` / `{ data: rows }`) is recorded
@@ -136,16 +141,36 @@ const skipGroupingParensUpward = (node: EsTreeNode): EsTreeNode | null | undefin
   return current;
 };
 
+const getFunctionBindingIdentifier = (
+  functionNode: EsTreeNode,
+): EsTreeNodeOfType<"Identifier"> | null => {
+  if (isNodeOfType(functionNode, "FunctionDeclaration") && functionNode.id) return functionNode.id;
+  const parent = functionNode.parent;
+  if (isNodeOfType(parent, "VariableDeclarator") && isNodeOfType(parent.id, "Identifier")) {
+    return parent.id;
+  }
+  return null;
+};
+
 // Only calls on the effect callback's own execution path count as "fired from
-// useEffect" — crossing an immediately-invoked wrapper is fine, but a handler
-// merely *registered* in the effect (socket listener, interval, observer)
-// fires per external event, not on dependency changes.
-const isInvokedFromEffectBody = (node: EsTreeNode): boolean => {
+// useEffect" — crossing an immediately-invoked wrapper or a local helper the
+// effect calls synchronously is fine, but a handler merely *registered* in
+// the effect (socket listener, interval, observer) fires per external event,
+// not on dependency changes.
+const isInvokedFromEffectBody = (
+  node: EsTreeNode,
+  context: RuleContext,
+  visitedFunctions: Set<EsTreeNode> = new Set(),
+): boolean => {
   let current = node.parent;
   while (current) {
     if (isFunctionLike(current)) {
+      if (visitedFunctions.has(current)) return false;
+      visitedFunctions.add(current);
       const enclosingCall = skipGroupingParensUpward(current);
-      if (!enclosingCall || !isNodeOfType(enclosingCall, "CallExpression")) return false;
+      if (!isNodeOfType(enclosingCall, "CallExpression")) {
+        return isHelperCalledFromEffectBody(current, context, visitedFunctions);
+      }
       if (isHookCall(enclosingCall, EFFECT_HOOK_NAMES)) {
         const effectCallback = enclosingCall.arguments[0];
         return Boolean(effectCallback) && stripGroupingParens(effectCallback) === current;
@@ -153,6 +178,40 @@ const isInvokedFromEffectBody = (node: EsTreeNode): boolean => {
       if (stripGroupingParens(enclosingCall.callee) !== current) return false;
     }
     current = current.parent;
+  }
+  return false;
+};
+
+// A helper that isn't invoked where it's defined still counts as effect-fired
+// when the effect body synchronously calls its local binding — but only
+// call-position references qualify, so a handler passed by name into a
+// registration API (`socket.addEventListener('message', onMessage)`) does not.
+// A hoisted `function` name carries two symbol records (enclosing scope +
+// own scope for recursion) and external calls land on the enclosing-scope
+// record, so resolve by walking the scope chain and matching the binding
+// identifier's node identity instead of using `symbolFor`, which returns
+// the inner record.
+const isHelperCalledFromEffectBody = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+  visitedFunctions: Set<EsTreeNode>,
+): boolean => {
+  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
+  if (!bindingIdentifier) return false;
+  let scope: ScopeDescriptor | null = context.scopes.scopeFor(functionNode);
+  while (scope) {
+    const helperSymbol = scope.symbolsByName.get(bindingIdentifier.name);
+    if (helperSymbol?.bindingIdentifier === bindingIdentifier) {
+      return helperSymbol.references.some((reference) => {
+        const callSite = reference.identifier.parent;
+        return (
+          isNodeOfType(callSite, "CallExpression") &&
+          callSite.callee === reference.identifier &&
+          isInvokedFromEffectBody(callSite, context, visitedFunctions)
+        );
+      });
+    }
+    scope = scope.parent;
   }
   return false;
 };
@@ -211,7 +270,10 @@ export const queryNoMutationInEffectAsRead = defineRule({
       if (!node.init || !isNodeOfType(node.init, "CallExpression")) return;
       const mutateBinding = findPatternPropertyBinding(node.id, isMutateKey);
       if (!mutateBinding) return;
-      if (isSwrHookResult(node.init)) return;
+      const hasMutateAsyncKey = Boolean(
+        findPatternPropertyBinding(node.id, (name) => name === "mutateAsync"),
+      );
+      if (!hasMutateAsyncKey && isSwrHookResult(node.init)) return;
       const mutateSymbol = context.scopes.symbolFor(mutateBinding);
       if (!mutateSymbol) return;
 
@@ -226,7 +288,7 @@ export const queryNoMutationInEffectAsRead = defineRule({
         ) {
           continue;
         }
-        if (!isInvokedFromEffectBody(callNode)) continue;
+        if (!isInvokedFromEffectBody(callNode, context)) continue;
         mutateCalledInEffect = true;
         if (
           awaitedResultConsumesResponse(callNode, context) ||

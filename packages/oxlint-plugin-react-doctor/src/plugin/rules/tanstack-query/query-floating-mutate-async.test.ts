@@ -206,4 +206,25 @@ describe("query-floating-mutate-async", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags a logical left-operand mutateAsync statement", () => {
+    const result = runRule(queryFloatingMutateAsync, `mutation.mutateAsync(payload) && refetch();`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags mutateAsync discarded as a bare ternary test", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `mutation.mutateAsync(payload) ? onDone() : onFail();`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a logical left-operand assigned to a variable", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `const didStart = mutation.mutateAsync(payload) && true;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

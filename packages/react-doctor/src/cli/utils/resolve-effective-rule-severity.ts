@@ -38,6 +38,11 @@ export const resolveEffectiveRuleSeverity = (
     if (override !== undefined) return { value: override, source: "rule" };
   }
 
+  // Category and bucket bumps re-stamp the severity of already-enabled
+  // rules; they never flip a `defaultEnabled: false` rule on (mirrors
+  // `createOxlintConfig`).
+  if (!entry.defaultEnabled) return { value: "off", source: "default" };
+
   const categoryOverride = config?.categories?.[entry.category];
   if (categoryOverride !== undefined) return { value: categoryOverride, source: "category" };
 

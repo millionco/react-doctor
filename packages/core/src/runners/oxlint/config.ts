@@ -159,15 +159,21 @@ export const createOxlintConfig = ({
     if (rule.framework !== "global" && !rule.requires) continue;
     if (!shouldEnableRule(rule.requires, rule.tags, capabilities, ignoredTags, rule.disabledBy))
       continue;
+    // `defaultEnabled: false` opts a rule out of the default config —
+    // it ships in the plugin but only activates when the user pins the
+    // rule itself (or an alias) to `"warn"` / `"error"` in `rules`. A
+    // broad `categories` bump re-stamps the severity of already-enabled
+    // rules and is not a deliberate opt-in (same principle as the
+    // app-only gate in build-diagnostic-pipeline).
+    const explicitRuleOverride = resolveRuleSeverityOverride(
+      { ruleKey: registryEntry.key },
+      severityControls,
+    );
+    if (rule.defaultEnabled === false && explicitRuleOverride === undefined) continue;
     const explicitSeverity = resolveRuleSeverityOverride(
       { ruleKey: registryEntry.key, category: rule.category },
       severityControls,
     );
-    // `defaultEnabled: false` opts a rule out of the default config —
-    // it ships in the plugin but only activates when a user explicitly
-    // turns it on via `severityControls`. Users can still get the rule
-    // by setting its severity to `"warn"` or `"error"` in config.
-    if (rule.defaultEnabled === false && explicitSeverity === undefined) continue;
     const severity =
       explicitSeverity ??
       resolveCompilerCleanupBucketSeverity(registryEntry.key, severityControls) ??

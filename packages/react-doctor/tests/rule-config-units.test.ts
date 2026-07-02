@@ -116,7 +116,12 @@ describe("resolveEffectiveRuleSeverity", () => {
   });
 
   it("uses a category override when no rule override exists", () => {
-    const result = resolveEffectiveRuleSeverity({ categories: { [entry.category]: "off" } }, entry);
+    const defaultOnEntry = catalog.find((candidate) => candidate.defaultEnabled);
+    if (!defaultOnEntry) throw new Error("Expected at least one default-enabled rule");
+    const result = resolveEffectiveRuleSeverity(
+      { categories: { [defaultOnEntry.category]: "off" } },
+      defaultOnEntry,
+    );
     expect(result).toEqual({ value: "off", source: "category" });
   });
 
@@ -142,6 +147,26 @@ describe("resolveEffectiveRuleSeverity", () => {
     if (!optInEntry) throw new Error("Expected at least one default-disabled rule");
     const result = resolveEffectiveRuleSeverity(null, optInEntry);
     expect(result).toEqual({ value: "off", source: "default" });
+  });
+
+  it("keeps an opt-out rule off when only a category severity matches (never a silent opt-in)", () => {
+    const optInEntry = catalog.find((candidate) => !candidate.defaultEnabled);
+    if (!optInEntry) throw new Error("Expected at least one default-disabled rule");
+    const result = resolveEffectiveRuleSeverity(
+      { categories: { [optInEntry.category]: "warn" } },
+      optInEntry,
+    );
+    expect(result).toEqual({ value: "off", source: "default" });
+  });
+
+  it("lets a rule-level severity opt an opt-out rule in", () => {
+    const optInEntry = catalog.find((candidate) => !candidate.defaultEnabled);
+    if (!optInEntry) throw new Error("Expected at least one default-disabled rule");
+    const result = resolveEffectiveRuleSeverity(
+      { rules: { [optInEntry.key]: "warn" } },
+      optInEntry,
+    );
+    expect(result).toEqual({ value: "warn", source: "rule" });
   });
 
   it("applies a compiler-cleanup bucket override below rules and categories", () => {

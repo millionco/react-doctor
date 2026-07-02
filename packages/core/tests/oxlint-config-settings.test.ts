@@ -28,6 +28,8 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   ...overrides,
 });
 
+const viteWebProject = buildProject({ framework: "vite", hasReactNativeWorkspace: false });
+
 describe("createOxlintConfig settings", () => {
   it("forwards the detected @shopify/flash-list major version", () => {
     const config = createOxlintConfig({
@@ -53,7 +55,7 @@ describe("createOxlintConfig settings", () => {
   it("never registers security scan rules (they run as a core environment check)", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
-      project: buildProject({ framework: "vite", hasReactNativeWorkspace: false }),
+      project: viteWebProject,
     });
 
     expect(config.rules).not.toHaveProperty("react-doctor/artifact-secret-leak");
@@ -63,7 +65,7 @@ describe("createOxlintConfig settings", () => {
   it("excludes security scan rules even when severity controls opt them in", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
-      project: buildProject({ framework: "vite", hasReactNativeWorkspace: false }),
+      project: viteWebProject,
       severityControls: {
         rules: {
           "react-doctor/artifact-secret-leak": "error",
@@ -91,6 +93,55 @@ describe("createOxlintConfig settings", () => {
     expect(Object.keys(config.rules).some((ruleKey) => ruleKey.startsWith("react-hooks-js/"))).toBe(
       true,
     );
+  });
+
+  it("keeps opt-out (defaultEnabled: false) rules off by default", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+    });
+
+    expect(config.rules).not.toHaveProperty("react-doctor/forbid-component-props");
+  });
+
+  it("does not let a category-level severity flip an opt-out rule on", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: { categories: { Maintainability: "warn" } },
+    });
+
+    expect(config.rules).not.toHaveProperty("react-doctor/forbid-component-props");
+  });
+
+  it("category-level severity still re-stamps already-enabled rules", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: { categories: { Maintainability: "error" } },
+    });
+
+    expect(config.rules["react-doctor/no-multi-comp"]).toBe("error");
+  });
+
+  it("a per-rule severity opts an opt-out rule in", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: { rules: { "react-doctor/forbid-component-props": "warn" } },
+    });
+
+    expect(config.rules["react-doctor/forbid-component-props"]).toBe("warn");
+  });
+
+  it("a legacy alias severity opts an opt-out rule in", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: viteWebProject,
+      severityControls: { rules: { "react/forbid-component-props": "warn" } },
+    });
+
+    expect(config.rules["react-doctor/forbid-component-props"]).toBe("warn");
   });
 
   it("drops the react-hooks-js plugin + compiler rules under disableReactHooksJsPlugin (the load-failure fallback)", () => {

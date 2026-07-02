@@ -109,4 +109,72 @@ describe("security-scan/raw-sql-injection-risk — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  it("flags a raw tainted operand after an escaped first operand", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content:
+        'connection.query("SELECT * FROM users WHERE id = " + connection.escape(id) + " AND role = " + req.body.role);\n',
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags concat wrapped in lodash _.escape (HTML escape, not SQL-safe)", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content:
+        'connection.query("SELECT * FROM users WHERE name = \'" + _.escape(req.query.name) + "\'");\n',
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags concat wrapped in validator.escape (HTML escape, not SQL-safe)", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content:
+        'connection.query("SELECT * FROM users WHERE name = \'" + validator.escape(req.query.name) + "\'");\n',
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent when concat output is wrapped in client.escapeLiteral()", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content: 'client.query("SELECT * FROM users WHERE name = " + client.escapeLiteral(name));\n',
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent when concat output is wrapped in client.escapeIdentifier()", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content: 'client.query("SELECT * FROM t ORDER BY " + client.escapeIdentifier(col));\n',
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent with a newline between + and the escaper (multi-line concat)", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content:
+        'connection.query(\n  "SELECT * FROM users WHERE id = " +\n    connection.escape(id)\n);\n',
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent when the escaped operand is parenthesized", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content: 'connection.query("SELECT * FROM users WHERE id = " + (connection.escape(id)));\n',
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("flags escape used as a property access (not a call)", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content: 'connection.query("SELECT * FROM users WHERE id = " + obj.escape);\n',
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

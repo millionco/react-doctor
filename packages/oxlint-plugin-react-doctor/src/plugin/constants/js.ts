@@ -61,6 +61,10 @@ export const MUTATING_COLLECTION_METHODS = new Set(["add", "clear", "delete", "s
 
 export const CHAINABLE_ITERATION_METHODS = new Set(["map", "filter", "forEach", "flatMap"]);
 
+// Calling `.then`/`.catch`/`.finally` on a Promise means it is already being
+// handled — not a missing/forgotten `await`.
+export const PROMISE_SETTLE_METHODS = new Set(["then", "catch", "finally"]);
+
 // Method names that, when invoked on a non-`Object` receiver, yield a
 // lazy iterator instead of an array. `arr.values()`, `map.entries()`,
 // `set.keys()`, `urlSearchParams.values()`, etc. all surface as

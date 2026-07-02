@@ -1,7 +1,6 @@
 import { TANSTACK_REDIRECT_FUNCTIONS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { catchClauseRethrowsCaught } from "../../utils/catch-clause-rethrows-caught.js";
 import { findGuardingTryStatement } from "../../utils/find-guarding-try-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -21,13 +20,11 @@ export const tanstackStartRedirectInTryCatch = defineRule({
       if (!isNodeOfType(argument.callee, "Identifier")) return;
       if (!TANSTACK_REDIRECT_FUNCTIONS.has(argument.callee.name)) return;
 
-      // Only a try whose BLOCK contains the throw and that HAS a catch can
-      // swallow the router's control-flow error: a bare try/finally re-throws
-      // after the finalizer, and a throw inside catch/finally propagates past
-      // that try (an outer swallowing try/catch is still found by the walk).
+      // findGuardingTryStatement resolves the try/catch that actually
+      // swallows the router's control-flow error, climbing past re-throwing
+      // catches, bare try/finally, and IIFE boundaries.
       const guardingTry = findGuardingTryStatement(node);
-      if (!guardingTry?.handler) return;
-      if (catchClauseRethrowsCaught(guardingTry.handler)) return;
+      if (!guardingTry) return;
 
       context.report({
         node,

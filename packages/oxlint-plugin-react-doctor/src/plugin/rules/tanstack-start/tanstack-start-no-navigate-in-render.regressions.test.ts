@@ -58,4 +58,50 @@ describe("tanstack-start/tanstack-start-no-navigate-in-render — regressions", 
     );
     expect(diagnostics).toHaveLength(0);
   });
+
+  it("still flags navigate() in a useState lazy initializer (runs during render)", () => {
+    const { diagnostics } = runRule(
+      tanstackStartNoNavigateInRender,
+      `function RouteComponent() { const navigate = useNavigate(); const [x] = useState(() => { navigate({ to: '/' }); return 0; }); return null; }`,
+      ROUTE,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when startTransition(() => navigate()) sits inside a wired onClick handler", () => {
+    const { diagnostics } = runRule(
+      tanstackStartNoNavigateInRender,
+      `function RouteComponent() { const navigate = useNavigate(); const goHome = () => { startTransition(() => navigate({ to: '/' })); }; return <button onClick={goHome}>Home</button>; }`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when a forEach callback sits inside a wired onClick handler", () => {
+    const { diagnostics } = runRule(
+      tanstackStartNoNavigateInRender,
+      `function RouteComponent() { const navigate = useNavigate(); const openAll = () => { items.forEach((item) => navigate({ to: item.path })); }; return <button onClick={openAll}>All</button>; }`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a render-invoked helper despite an unrelated same-named handler elsewhere", () => {
+    const { diagnostics } = runRule(
+      tanstackStartNoNavigateInRender,
+      `function RouteComponent() { const navigate = useNavigate(); const go = () => navigate({ to: '/x' }); go(); return null; }
+       const Other = ({ go }) => <button onClick={go}>Go</button>;`,
+      ROUTE,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when a custom hook returns the handler via implicit arrow return", () => {
+    const { diagnostics } = runRule(
+      tanstackStartNoNavigateInRender,
+      `export const useLogout = () => () => navigate({ to: '/login' });`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
 });

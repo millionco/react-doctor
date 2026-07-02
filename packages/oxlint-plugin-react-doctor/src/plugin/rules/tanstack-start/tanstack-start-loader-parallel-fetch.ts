@@ -95,13 +95,19 @@ export const tanstackStartLoaderParallelFetch = defineRule({
         const functionBody = loaderValue.body;
         if (!functionBody || !isNodeOfType(functionBody, "BlockStatement")) continue;
 
-        // Only count awaits that are mutually INDEPENDENT — a dependent chain
+        // Only flag awaits that are PAIRWISE independent — a dependent chain
         // (`const posts = await getPosts(user.id)` consuming an earlier
         // `await getUser()`) genuinely cannot be parallelized with
         // `Promise.all`, so flagging it would suggest a broken fix.
-        let independentAwaitCount = 0;
-        const boundByEarlierAwaits = new Set<string>();
+        // Dependence is tracked per-pair, not against the union of all
+        // earlier awaits: in `user → getPosts(user.id) → getComments(user.id)`
+        // both children depend on `user`, but posts and comments are
+        // mutually independent and belong in one `Promise.all`.
+        const taintingAwaitIndicesByName = new Map<string, ReadonlySet<number>>();
+        const seenAwaitDependencySets: ReadonlySet<number>[] = [];
+        let didReportLoader = false;
         for (const statement of functionBody.body ?? []) {
+          if (didReportLoader) break;
           const awaitedInfo = getAwaitedStatementInfo(statement);
           if (!awaitedInfo) {
             // Non-await statement: launder taint through intermediate
@@ -113,9 +119,14 @@ export const tanstackStartLoaderParallelFetch = defineRule({
             if (boundNames.size === 0) continue;
             const referencedNames = new Set<string>();
             collectReferenceIdentifierNames(statement, referencedNames);
-            if ([...referencedNames].some((name) => boundByEarlierAwaits.has(name))) {
-              for (const name of boundNames) boundByEarlierAwaits.add(name);
+            const inheritedTaint = new Set<number>();
+            for (const name of referencedNames) {
+              for (const awaitIndex of taintingAwaitIndicesByName.get(name) ?? []) {
+                inheritedTaint.add(awaitIndex);
+              }
             }
+            if (inheritedTaint.size === 0) continue;
+            for (const name of boundNames) taintingAwaitIndicesByName.set(name, inheritedTaint);
             continue;
           }
 
@@ -123,23 +134,33 @@ export const tanstackStartLoaderParallelFetch = defineRule({
           for (const awaitedExpression of awaitedInfo.awaitedExpressions) {
             collectReferenceIdentifierNames(awaitedExpression, referencedNames);
           }
-          const dependsOnEarlierAwait = [...referencedNames].some((name) =>
-            boundByEarlierAwaits.has(name),
-          );
-
-          if (!dependsOnEarlierAwait) {
-            independentAwaitCount++;
-            if (independentAwaitCount >= SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER) {
-              context.report({
-                node: property,
-                message:
-                  "Sequential awaits in this loader create a request waterfall that slows the route.",
-              });
-              break;
+          const dependsOnAwaitIndices = new Set<number>();
+          for (const name of referencedNames) {
+            for (const awaitIndex of taintingAwaitIndicesByName.get(name) ?? []) {
+              dependsOnAwaitIndices.add(awaitIndex);
             }
           }
 
-          for (const name of awaitedInfo.boundNames) boundByEarlierAwaits.add(name);
+          const independentEarlierAwaitCount = seenAwaitDependencySets.filter(
+            (_, earlierAwaitIndex) => !dependsOnAwaitIndices.has(earlierAwaitIndex),
+          ).length;
+          if (independentEarlierAwaitCount + 1 >= SEQUENTIAL_AWAIT_THRESHOLD_FOR_LOADER) {
+            context.report({
+              node: property,
+              message:
+                "Sequential awaits in this loader create a request waterfall that slows the route.",
+            });
+            didReportLoader = true;
+            continue;
+          }
+
+          const currentAwaitIndex = seenAwaitDependencySets.length;
+          seenAwaitDependencySets.push(dependsOnAwaitIndices);
+          const boundTaint = new Set(dependsOnAwaitIndices);
+          boundTaint.add(currentAwaitIndex);
+          for (const name of awaitedInfo.boundNames) {
+            taintingAwaitIndicesByName.set(name, boundTaint);
+          }
         }
       }
     },

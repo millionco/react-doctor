@@ -72,6 +72,42 @@ describe("tanstack-start/tanstack-start-redirect-in-try-catch — regressions", 
     expect(diagnostics).toHaveLength(0);
   });
 
+  it("still flags a nested try whose inner catch rethrows into an outer swallowing catch", () => {
+    const { diagnostics } = runRule(
+      tanstackStartRedirectInTryCatch,
+      `async function load() { try { try { throw redirect({ to: '/done' }); } catch (e) { throw e; } } catch (outer) { console.error(outer); } }`,
+      ROUTE,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on a nested try when every catch on the path rethrows", () => {
+    const { diagnostics } = runRule(
+      tanstackStartRedirectInTryCatch,
+      `async function load() { try { try { throw redirect({ to: '/done' }); } catch (e) { throw e; } } catch (outer) { throw outer; } }`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a throw redirect inside an IIFE invoked within the try block", () => {
+    const { diagnostics } = runRule(
+      tanstackStartRedirectInTryCatch,
+      `function load() { try { (() => { throw redirect({ to: '/login' }); })(); } catch (e) { console.log(e); } }`,
+      ROUTE,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags when the catch's rethrow is swallowed by a nested try/catch", () => {
+    const { diagnostics } = runRule(
+      tanstackStartRedirectInTryCatch,
+      `async function load() { try { throw redirect({ to: '/done' }); } catch (e) { try { throw e; } catch (inner) { console.error(inner); } } }`,
+      ROUTE,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags a try/finally nested inside an outer swallowing try/catch", () => {
     const { diagnostics } = runRule(
       tanstackStartRedirectInTryCatch,

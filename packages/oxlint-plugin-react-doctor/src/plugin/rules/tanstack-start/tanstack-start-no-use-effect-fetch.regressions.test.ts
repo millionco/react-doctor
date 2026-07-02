@@ -22,4 +22,31 @@ describe("tanstack-start/tanstack-start-no-useeffect-fetch — regressions", () 
     );
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("flags the declared-async-wrapper idiom invoked in the effect body", () => {
+    const { diagnostics } = runRule(
+      tanstackStartNoUseEffectFetch,
+      `function Route() { useEffect(() => { const load = async () => { const res = await fetch('/api/data'); setData(await res.json()); }; load(); }, []); return null; }`,
+      ROUTE,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags the async-IIFE idiom in the effect body", () => {
+    const { diagnostics } = runRule(
+      tanstackStartNoUseEffectFetch,
+      `function Route() { useEffect(() => { (async () => { const res = await fetch('/api/data'); setData(await res.json()); })(); }, []); return null; }`,
+      ROUTE,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when fetch() runs inside a setInterval callback", () => {
+    const { diagnostics } = runRule(
+      tanstackStartNoUseEffectFetch,
+      `function Route() { useEffect(() => { const id = setInterval(() => { fetch('/api/poll'); }, 5000); return () => clearInterval(id); }, []); return null; }`,
+      ROUTE,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
 });

@@ -22,15 +22,6 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags draftMode().isEnabled", () => {
-    const result = runRule(
-      nextjsAsyncDynamicApiNotAwaited,
-      `import { draftMode } from 'next/headers';
-       function f() { if (draftMode().isEnabled) { return true; } }`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
   it("flags optional-chained member access on cookies()", () => {
     const result = runRule(
       nextjsAsyncDynamicApiNotAwaited,

@@ -1,3 +1,4 @@
+import { PROMISE_SETTLE_METHODS } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -11,9 +12,8 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 const DYNAMIC_API_NAMES = new Set(["cookies", "headers", "draftMode"]);
 
-// Accessing `.then`/`.catch`/`.finally` on the returned Promise is
-// correct async handling, not the sync-access bug.
-const PROMISE_SETTLE_METHODS = new Set(["then", "catch", "finally"]);
+const MESSAGE =
+  "This `next/headers` API returns a Promise in Next.js 15, so reading a property off the un-awaited call throws at request time — `await` the call first.";
 
 const resolvesToImportBinding = (context: RuleContext, identifier: EsTreeNode): boolean => {
   const symbol = context.scopes.symbolFor(identifier);
@@ -58,9 +58,6 @@ const isDestructureOfReference = (parent: EsTreeNode, referenceIdentifier: EsTre
   parent.init === referenceIdentifier &&
   isNodeOfType(parent.id, "ObjectPattern");
 
-const buildMessage = (): string =>
-  "This `next/headers` API returns a Promise in Next.js 15, so reading a property off the un-awaited call throws at request time — `await` the call first.";
-
 export const nextjsAsyncDynamicApiNotAwaited = defineRule({
   id: "nextjs-async-dynamic-api-not-awaited",
   title: "Un-awaited async next/headers API",
@@ -74,7 +71,7 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
       const object = stripParenExpression(node.object);
       if (!isNextHeadersDynamicCall(context, object)) return;
       if (isPromiseSettleAccess(node)) return;
-      context.report({ node: object, message: buildMessage() });
+      context.report({ node: object, message: MESSAGE });
     },
     // Await-less assignment then member use (`const c = cookies(); c.get(...)`)
     // or destructuring off the call (`const { isEnabled } = draftMode()`).
@@ -83,7 +80,7 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
       const init = stripParenExpression(node.init);
       if (!isNextHeadersDynamicCall(context, init)) return;
       if (isNodeOfType(node.id, "ObjectPattern")) {
-        context.report({ node: init, message: buildMessage() });
+        context.report({ node: init, message: MESSAGE });
         return;
       }
       if (!isNodeOfType(node.id, "Identifier")) return;
@@ -94,13 +91,13 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
         const parent = referenceIdentifier.parent;
         if (!parent) continue;
         if (isDestructureOfReference(parent, referenceIdentifier)) {
-          context.report({ node: init, message: buildMessage() });
+          context.report({ node: init, message: MESSAGE });
           return;
         }
         if (!isNodeOfType(parent, "MemberExpression")) continue;
         if (parent.object !== referenceIdentifier) continue;
         if (isPromiseSettleAccess(parent)) continue;
-        context.report({ node: init, message: buildMessage() });
+        context.report({ node: init, message: MESSAGE });
         return;
       }
     },

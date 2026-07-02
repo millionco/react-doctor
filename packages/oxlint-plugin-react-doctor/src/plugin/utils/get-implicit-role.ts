@@ -70,18 +70,7 @@ export const getImplicitRole = (
     }
     case "input": {
       const inputType = propStringValue("type");
-      // ARIA 1.2: a text input that controls a popup listbox (carries
-      // aria-controls + aria-autocomplete/aria-activedescendant, or
-      // aria-haspopup="listbox") has the effective role `combobox`, whose
-      // support set — unlike `textbox` — includes aria-expanded.
-      const textInputRole =
-        (Boolean(hasJsxPropIgnoreCase(node.attributes, "aria-controls")) &&
-          (Boolean(hasJsxPropIgnoreCase(node.attributes, "aria-autocomplete")) ||
-            Boolean(hasJsxPropIgnoreCase(node.attributes, "aria-activedescendant")))) ||
-        (propStringValue("aria-haspopup") ?? "").toLowerCase() === "listbox"
-          ? "combobox"
-          : "textbox";
-      if (inputType === null) implicit = textInputRole;
+      if (inputType === null) implicit = "textbox";
       else if (
         inputType === "button" ||
         inputType === "image" ||
@@ -92,7 +81,7 @@ export const getImplicitRole = (
       else if (inputType === "checkbox") implicit = "checkbox";
       else if (inputType === "radio") implicit = "radio";
       else if (inputType === "range") implicit = "slider";
-      else implicit = textInputRole;
+      else implicit = "textbox";
       break;
     }
     case "li":

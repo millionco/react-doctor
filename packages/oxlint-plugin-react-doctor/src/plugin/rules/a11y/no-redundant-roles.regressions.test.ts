@@ -26,6 +26,14 @@ describe("a11y/no-redundant-roles regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("exempts the canonical W3C APG combobox (aria-autocomplete + aria-controls + aria-expanded)", () => {
+    const result = runRule(
+      noRedundantRoles,
+      `const F = ({ open }) => <input type="text" role="combobox" aria-autocomplete="list" aria-controls="lb" aria-expanded={open} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags an input whose role matches its single implicit role", () => {
     const result = runRule(
       noRedundantRoles,

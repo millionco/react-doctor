@@ -2,10 +2,13 @@ import type { Reference } from "eslint-scope";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getArgsUpstreamRefs, getCallExpr, getUpstreamRefs } from "./utils/effect/ast.js";
+import { isEventHandlerName } from "./utils/event-handler-reference.js";
+import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getEffectDepsRefs,
@@ -87,6 +90,20 @@ export const noDerivedState = defineRule({
         // `.every([]) === true` and AST-shape false-positives.
         if (isInitialOnlySetterCall(callExpr)) continue;
 
+        // Controlled-value mirror whose state stays user-editable through a
+        // child: the effect re-syncs state to a bare prop (`setValue(color)`)
+        // AND the same setter is handed to a child as an `on*` JSX callback
+        // (`onChange={setValue}`), so the state buffers the child's live
+        // edits — deriving it while rendering would drop them. Both signals
+        // are required: a prop mirror whose setter is merely also called from
+        // a handler body is the rule's canonical positive and must report.
+        if (
+          isBarePropMirrorCall(analysis, callExpr, argsUpstreamRefs) &&
+          isSetterPassedAsJsxEventHandler(ref)
+        ) {
+          continue;
+        }
+
         const isSomeArgsInternal = argsUpstreamRefs.some(
           (argRef) => isState(analysis, argRef) || isProp(analysis, argRef),
         );
@@ -113,6 +130,38 @@ export const noDerivedState = defineRule({
     },
   }),
 });
+
+// `setX(someProp)` — sole argument is a bare identifier that resolves to a
+// prop (directly or through a destructuring alias).
+const isBarePropMirrorCall = (
+  analysis: ProgramAnalysis,
+  callExpr: EsTreeNode,
+  argsUpstreamRefs: readonly Reference[],
+): boolean => {
+  if (!isNodeOfType(callExpr, "CallExpression")) return false;
+  const args = callExpr.arguments ?? [];
+  if (args.length !== 1) return false;
+  const soleArg = args[0] as EsTreeNode;
+  if (!isNodeOfType(soleArg, "Identifier")) return false;
+  return argsUpstreamRefs.some((argRef) => isProp(analysis, argRef));
+};
+
+// The setter itself is the value of an `on*` JSX attribute
+// (`onChange={setValue}`) — the child gets direct write access to the state.
+const isSetterPassedAsJsxEventHandler = (setterRef: Reference): boolean =>
+  Boolean(
+    setterRef.resolved?.references.some((reference) => {
+      const identifierParent = (reference.identifier as unknown as { parent?: EsTreeNode | null })
+        .parent;
+      if (!identifierParent || !isNodeOfType(identifierParent, "JSXExpressionContainer")) {
+        return false;
+      }
+      const attribute = identifierParent.parent;
+      if (!attribute || !isNodeOfType(attribute, "JSXAttribute")) return false;
+      const attributeName = getJsxAttributeName(attribute.name);
+      return Boolean(attributeName && isEventHandlerName(attributeName));
+    }),
+  );
 
 // `setX(initialValue)` — sole argument is a bare identifier whose name
 // signals the consumer's controlled-init / reset intent.

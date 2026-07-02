@@ -111,6 +111,15 @@ export class JsonReportV1 extends Schema.Class<JsonReportV1>("JsonReportV1")({
   ok: Schema.Boolean,
   directory: Schema.String,
   mode: JsonReportMode,
+  /**
+   * True when a `changed` (compare) run was intended but the base couldn't be
+   * resolved — a shallow CI checkout with no merge base, or a failed base/head
+   * lint. The report then lists every finding in the changed files (mode
+   * downgrades to `diff`, the `baseline` block is dropped, the CI gate is
+   * skipped) rather than only the ones the change introduced. Absent on a
+   * successful `baseline` run (`schemaVersion: 2`) and on non-compare scopes.
+   */
+  baselineDegraded: Schema.optional(Schema.Boolean),
   diff: Schema.NullOr(JsonReportDiffInfo),
   projects: Schema.Array(JsonReportProjectEntry),
   diagnostics: Schema.Array(Diagnostic),

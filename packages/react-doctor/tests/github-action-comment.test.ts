@@ -178,6 +178,26 @@ describe("render-github-action-comment", () => {
     expect(outputs).toContain("affected-files=2");
   });
 
+  it("warns when a compare run degraded to listing every changed-file issue", () => {
+    const { comment } = runRenderer(buildReport({ baselineDegraded: true }));
+
+    // The counts now include pre-existing issues, so the comment must flag the
+    // degraded comparison and hand back the one-line `fetch-depth: 0` fix.
+    expect(comment).toContain(
+      "<details><summary>⚠️ Baseline comparison unavailable: showing all issues in the changed files</summary>",
+    );
+    expect(comment).toContain("compares against `main`");
+    expect(comment).toContain("- uses: actions/checkout@v5");
+    expect(comment).toContain("fetch-depth: 0");
+    // The findings themselves still render below the notice.
+    expect(comment).toContain("**Errors**");
+  });
+
+  it("omits the baseline-degraded warning on a healthy run", () => {
+    const { comment } = runRenderer(buildReport());
+    expect(comment).not.toContain("Baseline comparison unavailable");
+  });
+
   it("renders a baseline report with the new-issue count, fixed count, and commit footer", () => {
     const diagnostics = buildDiagnostics();
     const { comment } = runRenderer(

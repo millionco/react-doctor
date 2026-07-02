@@ -59,6 +59,23 @@ describe("buildJsonReport", () => {
     expect(report.schemaVersion).toBe(1);
     expect(report.mode).toBe("diff");
     expect("baseline" in report).toBe(false);
+    expect("baselineDegraded" in report).toBe(false);
+  });
+
+  it("marks a v1 report baselineDegraded when a compare run couldn't diff the base", () => {
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "diff",
+      diff: null,
+      scans: [{ directory: "/repo", result: result() }],
+      totalElapsedMilliseconds: 1200,
+      baselineDegraded: true,
+    });
+    expect(report.schemaVersion).toBe(1);
+    expect(report.mode).toBe("diff");
+    if (report.schemaVersion !== 1) throw new Error("expected a v1 report");
+    expect(report.baselineDegraded).toBe(true);
   });
 
   it("emits a v2 baseline report carrying the new/fixed delta and head score", () => {

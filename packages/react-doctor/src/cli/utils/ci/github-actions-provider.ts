@@ -133,7 +133,10 @@ jobs:
   react-doctor:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 gives React Doctor the full git history it needs to find the merge base with the target branch. Without it a shallow checkout has no merge base, so PR runs can't compare against the base and fall back to reporting every issue in the changed files (pre-existing ones included) instead of only the ones the PR introduced.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: millionco/react-doctor@${actionRef}
 ${WITH_INDENT}with:

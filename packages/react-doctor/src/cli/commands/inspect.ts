@@ -180,6 +180,7 @@ const finalizeScans = (input: FinalizeScansInput): void => {
         scans: jsonCompletedScans,
         totalElapsedMilliseconds: performance.now() - input.startTime,
         baseline,
+        baselineDegraded,
       }),
     );
   }

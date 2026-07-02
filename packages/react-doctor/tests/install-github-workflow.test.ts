@@ -39,4 +39,16 @@ describe("installReactDoctorWorkflow push trigger", () => {
       cleanup();
     }
   });
+
+  it("checks out full git history so PR runs can find the merge base", () => {
+    const { content, cleanup } = installInTempDir();
+    try {
+      // Without fetch-depth: 0 a shallow checkout has no merge base, so the
+      // compare-mode scan degrades to reporting every pre-existing issue.
+      expect(content).toContain("- uses: actions/checkout@v5");
+      expect(content).toContain("fetch-depth: 0");
+    } finally {
+      cleanup();
+    }
+  });
 });

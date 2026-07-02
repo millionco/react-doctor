@@ -44,6 +44,23 @@ const COPY = {
   leadScopeUncommitted: "uncommitted changes",
   leadScopeFull: "full project",
 
+  // Baseline-degraded callout: shown when a compare run couldn't resolve the base
+  // (almost always a shallow CI checkout with no merge base) and fell back to
+  // listing every issue in the changed files, not only the PR-introduced ones.
+  baselineDegradedSummary:
+    "⚠️ Baseline comparison unavailable: showing all issues in the changed files",
+  baselineDegradedBody: (baseBranch) => [
+    `React Doctor compares against \`${baseBranch}\` to report only the issues this pull request introduces. This run couldn't reach the base commit for that comparison (usually a **shallow CI checkout** with no merge base), so it listed **every** issue in the changed files, including ones that already existed on \`${baseBranch}\`.`,
+    "",
+    "Give the checkout the full git history so the comparison works:",
+    "",
+    "```yaml",
+    "      - uses: actions/checkout@v5",
+    "        with:",
+    "          fetch-depth: 0",
+    "```",
+  ],
+
   // Issue lists.
   errorsHeading: "**Errors**",
   warningsMore: (count) => `${count} not shown.`,
@@ -171,6 +188,22 @@ const buildScopeSegment = (report) => {
     return COPY.leadScopeChanged(report.diff.baseBranch || "base");
   }
   return COPY.leadScopeFull;
+};
+
+// Collapsible warning shown above the findings when a compare run degraded to a
+// full changed-files listing (see COPY.baselineDegraded*). Empty string when the
+// baseline was computed normally, so it drops out of the joined body.
+const buildBaselineDegradedNotice = (report) => {
+  if (!report.baselineDegraded) return "";
+  const baseBranch = report.diff?.baseBranch || "the base branch";
+  const lines = [
+    `<details><summary>${COPY.baselineDegradedSummary}</summary>`,
+    "",
+    ...COPY.baselineDegradedBody(baseBranch),
+    "",
+    "</details>",
+  ];
+  return `${lines.join("\n")}\n\n`;
 };
 
 const buildSeveritySegment = (summary) => {
@@ -346,6 +379,7 @@ const buildIssuesBody = (report) => {
     "",
     buildLeadLine(report),
     "",
+    buildBaselineDegradedNotice(report),
     buildErrorsBlock(collected),
     buildWarningsBlock(collected),
     buildSkippedChecksSection(report),

@@ -21,6 +21,13 @@ interface BuildJsonReportInput {
    * delta totals and `mode: "baseline"`.
    */
   baseline?: { baseRef: string; fixedCount: number; baseTotalCount: number };
+  /**
+   * True when a `changed` run was intended but its baseline delta couldn't be
+   * computed (no merge base — usually a shallow CI checkout — or a failed
+   * base/head lint), so `diagnostics` list every finding in the changed files
+   * rather than only the introduced ones. Mutually exclusive with `baseline`.
+   */
+  baselineDegraded?: boolean;
 }
 
 const toJsonDiff = (diff: DiffInfo | null): JsonReportDiffInfo | null => {
@@ -98,5 +105,10 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReport => {
     };
   }
 
-  return { schemaVersion: 1, mode: input.mode, ...shared };
+  return {
+    schemaVersion: 1,
+    mode: input.mode,
+    ...(input.baselineDegraded ? { baselineDegraded: true } : {}),
+    ...shared,
+  };
 };

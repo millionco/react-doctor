@@ -12,25 +12,27 @@ const isFetchCall = (node: EsTreeNode): boolean => {
   return isNodeOfType(node.callee, "Identifier") && node.callee.name === "fetch";
 };
 
-const objectExpressionHasNextRevalidate = (objectExpression: EsTreeNode): boolean => {
-  if (!isNodeOfType(objectExpression, "ObjectExpression")) return false;
-  for (const property of objectExpression.properties ?? []) {
-    if (!isNodeOfType(property, "Property")) continue;
-    if (!isNodeOfType(property.key, "Identifier")) continue;
-    if (property.key.name === "cache") return true;
-    if (property.key.name !== "next") continue;
-    if (!isNodeOfType(property.value, "ObjectExpression")) return true;
-    for (const innerProperty of property.value.properties ?? []) {
-      if (!isNodeOfType(innerProperty, "Property")) continue;
-      if (!isNodeOfType(innerProperty.key, "Identifier")) continue;
-      if (innerProperty.key.name === "revalidate" || innerProperty.key.name === "tags") {
-        return true;
-      }
-    }
-    return true;
+const getPropertyKeyName = (property: EsTreeNode): string | null => {
+  if (!isNodeOfType(property, "Property")) return null;
+  if (!property.computed && isNodeOfType(property.key, "Identifier")) return property.key.name;
+  if (isNodeOfType(property.key, "Literal") && typeof property.key.value === "string") {
+    return property.key.value;
   }
-  return false;
+  return null;
 };
+
+const objectExpressionHasCachingConfig = (
+  objectExpression: EsTreeNodeOfType<"ObjectExpression">,
+): boolean =>
+  (objectExpression.properties ?? []).some((property) => {
+    const keyName = getPropertyKeyName(property);
+    return keyName === "cache" || keyName === "next";
+  });
+
+const objectExpressionHasSpread = (
+  objectExpression: EsTreeNodeOfType<"ObjectExpression">,
+): boolean =>
+  (objectExpression.properties ?? []).some((property) => isNodeOfType(property, "SpreadElement"));
 
 // HACK: in Next.js <15 (App Router), `fetch(url)` inside a Server Component
 // or route handler is cached *forever* by default unless the response
@@ -94,7 +96,19 @@ export const serverFetchWithoutRevalidate = defineRule({
         if (isMutatingFetchCall(node)) return;
 
         const optionsArg = node.arguments?.[1];
-        if (optionsArg && objectExpressionHasNextRevalidate(optionsArg)) return;
+        if (optionsArg) {
+          // Only an inline `{ … }` is transparent enough to prove the
+          // caching config is missing. A non-literal options arg
+          // (`fetch(url, options)`) may carry `next: { revalidate }` we
+          // can't see through, so abstain instead of risking a false
+          // positive. The same goes for a spread inside the object
+          // (`{ ...cacheOptions, headers }`) — the spread source may carry
+          // the config, so abstain unless an explicit `cache`/`next`
+          // property already decides.
+          if (!isNodeOfType(optionsArg, "ObjectExpression")) return;
+          if (objectExpressionHasCachingConfig(optionsArg)) return;
+          if (objectExpressionHasSpread(optionsArg)) return;
+        }
 
         const urlArg = node.arguments?.[0];
         const urlText =

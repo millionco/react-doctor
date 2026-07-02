@@ -207,6 +207,25 @@ describe("jotai-derived-atom-returns-fresh-object", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does NOT flag Object.assign(stableTarget, get(x)) — returns the stable target ref", () => {
+    const code = `
+      import { atom } from "jotai";
+      const target = {};
+      const derived = atom((get) => Object.assign(target, get(base)));
+    `;
+    const result = runRule(jotaiDerivedAtomReturnsFreshObject, code);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags Object.assign({}, get(x)) — fresh literal target allocates a new object", () => {
+    const code = `
+      import { atom } from "jotai";
+      const derived = atom((get) => Object.assign({}, get(base)));
+    `;
+    const result = runRule(jotaiDerivedAtomReturnsFreshObject, code);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does NOT flag atom whose block body has a mix of fresh + stable returns", () => {
     // One branch returns a fresh literal, the other returns a reference-
     // stable upstream value — the cost only hits one path, recommendation

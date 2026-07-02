@@ -1,17 +1,18 @@
 import { FETCH_CALLEE_NAMES, FETCH_MEMBER_OBJECTS } from "../constants/library.js";
+import { collectEffectInvokedFunctions } from "./collect-effect-invoked-functions.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-import { walkAst } from "./walk-ast.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { stripParenExpression } from "./strip-paren-expression.js";
+import { walkAst } from "./walk-ast.js";
 
 interface ContainsFetchCallOptions {
-  // Prune the walk at nested function boundaries so only fetches that run
-  // synchronously in `node`'s own body match — skipping event handlers and
-  // escaping callbacks declared inside it (which run on a later user
-  // interaction), while still descending into nested functions the body
-  // itself invokes (async IIFEs, `async function loadData(){...} loadData()`,
-  // `const loadData = async () => {...}; void loadData()`).
+  // Prune the walk at nested function boundaries so only fetches that run as
+  // part of executing `node` match: its own body plus nested functions the
+  // body invokes (async IIFEs, called local functions like
+  // `async function loadData(){...} loadData()` or
+  // `const loadData = async () => {...}; void loadData()`, and promise-chain
+  // callbacks), skipping handlers registered for a later user interaction and
+  // the returned cleanup function.
   stopAtFunctionBoundary?: boolean;
 }
 
@@ -27,56 +28,23 @@ const isFetchCall = (node: EsTreeNode): boolean => {
   );
 };
 
-const containsSynchronouslyInvokedFetchCall = (rootNode: EsTreeNode): boolean => {
-  const invokedFunctionNodes = new Set<EsTreeNode>();
-  let didInvokedSetGrow = true;
-  while (didInvokedSetGrow) {
-    let didFindFetchCall = false;
-    const namedFunctionNodes = new Map<string, EsTreeNode>();
-    const invokedCalleeNames = new Set<string>();
-    const directCalleeFunctionNodes = new Set<EsTreeNode>();
-    walkAst(rootNode, (child) => {
-      if (child !== rootNode && isFunctionLike(child)) {
-        if (isNodeOfType(child, "FunctionDeclaration") && child.id) {
-          namedFunctionNodes.set(child.id.name, child);
-        }
-        if (!invokedFunctionNodes.has(child)) return false;
-      }
-      if (isNodeOfType(child, "VariableDeclarator") && isNodeOfType(child.id, "Identifier")) {
-        const declaratorInitializer = child.init ? stripParenExpression(child.init) : null;
-        if (isFunctionLike(declaratorInitializer)) {
-          namedFunctionNodes.set(child.id.name, declaratorInitializer);
-        }
-      }
-      if (!isNodeOfType(child, "CallExpression")) return;
-      if (isFetchCall(child)) didFindFetchCall = true;
-      const unwrappedCallee = stripParenExpression(child.callee);
-      if (isFunctionLike(unwrappedCallee)) directCalleeFunctionNodes.add(unwrappedCallee);
-      if (isNodeOfType(unwrappedCallee, "Identifier")) {
-        invokedCalleeNames.add(unwrappedCallee.name);
-      }
-    });
-    if (didFindFetchCall) return true;
-    const previousInvokedCount = invokedFunctionNodes.size;
-    for (const directCalleeFunctionNode of directCalleeFunctionNodes) {
-      invokedFunctionNodes.add(directCalleeFunctionNode);
-    }
-    for (const invokedCalleeName of invokedCalleeNames) {
-      const namedFunctionNode = namedFunctionNodes.get(invokedCalleeName);
-      if (namedFunctionNode) invokedFunctionNodes.add(namedFunctionNode);
-    }
-    didInvokedSetGrow = invokedFunctionNodes.size > previousInvokedCount;
-  }
-  return false;
-};
-
 export const containsFetchCall = (
   node: EsTreeNode,
   options?: ContainsFetchCallOptions,
 ): boolean => {
-  if (options?.stopAtFunctionBoundary) return containsSynchronouslyInvokedFetchCall(node);
+  const effectInvokedFunctions = options?.stopAtFunctionBoundary
+    ? collectEffectInvokedFunctions(node)
+    : null;
   let didFindFetchCall = false;
   walkAst(node, (child) => {
+    if (
+      effectInvokedFunctions &&
+      child !== node &&
+      isFunctionLike(child) &&
+      !effectInvokedFunctions.has(child)
+    ) {
+      return false;
+    }
     if (isFetchCall(child)) didFindFetchCall = true;
   });
   return didFindFetchCall;

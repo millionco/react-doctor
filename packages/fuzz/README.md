@@ -63,18 +63,22 @@ with `bun`) report generator/corpus fire-coverage when tuning snippet pools.
 
 ## Canonical corpora
 
-Ready-made `FUZZ_CORPUS_DIR` targets, best first:
+Ready-made `FUZZ_CORPUS_DIR` targets — each script works on any machine
+(no pre-existing cache required; the RDE repo cache at `~/.cache/rde/repos`
+is used as a symlink fast path when present):
 
-- **RDE repo cache** (`~/.cache/rde/repos`) — repos already cloned by
-  react-doctor-evals runs at pinned SHAs (hundreds of real projects; the
-  loader round-robins across them). The full 8.4k-repo manifest lives in
-  `react-doctor-evals/repos.json` if more need cloning.
+- **Pinned corpus sample** — `bun scripts/sync-fuzz-corpus.ts` materializes
+  `tmp/corpus-repos/` from `scripts/corpus-repos.json`, a deterministic
+  48-repo sample of the react-doctor-evals corpus (blob-filtered clones at
+  pinned refs; incremental re-runs). The full 8.4k-repo manifest lives in
+  `react-doctor-evals/repos.json` if the sample ever needs regenerating.
 - **react-bench RD-health targets** — `bun scripts/build-bench-corpus.ts`
-  (env: `REACT_BENCH`, `RDE_REPO_CACHE`, `CLONE_MISSING=1`) copies the
-  benchmark's target files — each selected for having ≥6 severe React
-  Doctor diagnostics — into `tmp/bench-corpus/`. Densest seeds available:
-  ~60 files fire ~90+ distinct rules.
-- **react-bench task checkouts** — any directory of cloned corpus repos.
+  (env: `REACT_BENCH`, optional `RDE_REPO_CACHE`) copies the benchmark's
+  target files — each selected for having ≥6 severe React Doctor
+  diagnostics — into `tmp/bench-corpus/`, cloning any missing repo at its
+  pinned SHA. Densest seeds available: ~60 files fire ~90+ distinct rules.
+- **Any directory of cloned repos** (e.g. the RDE cache itself when
+  present: 200 of its files fire ~110 distinct rules).
 
 `pnpm test` in this package runs only the always-on harness smoke tests
 (including a generator-health check: 100 seeded programs must parse cleanly);

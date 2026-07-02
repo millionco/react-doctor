@@ -15,12 +15,12 @@ import * as path from "node:path";
 //
 //   REACT_BENCH=~/Developer/react-bench \
 //   RDE_REPO_CACHE=~/.cache/rde/repos \
-//   CLONE_MISSING=1 \
 //   bun scripts/build-bench-corpus.ts
 //
-// CLONE_MISSING=1 shallow-clones (blob-filtered, pinned SHA) any bench repo
-// absent from the RDE cache into tmp/bench-clones/ (kept for reuse).
-// Output: packages/fuzz/tmp/bench-corpus/ (gitignored).
+// The RDE cache is only a fast path: any bench repo absent from it is
+// blob-filter-cloned at the pinned SHA into tmp/bench-clones/ (kept for
+// reuse; CLONE_MISSING=0 opts out). Only the react-bench checkout itself
+// is required. Output: packages/fuzz/tmp/bench-corpus/ (gitignored).
 
 const reactBenchRoot = process.env.REACT_BENCH ?? path.join(os.homedir(), "Developer/react-bench");
 const repoCachePath = process.env.RDE_REPO_CACHE ?? path.join(os.homedir(), ".cache/rde/repos");
@@ -29,10 +29,17 @@ const outputDirectory = path.join(import.meta.dirname, "..", "tmp", "bench-corpu
 const CLONE_PATTERN = /git clone (?:--[^\s]+ )*https:\/\/github\.com\/([\w.-]+\/[\w.-]+)/;
 const CHECKOUT_PATTERN = /git checkout ([0-9a-f]{40})/;
 const TARGET_FILE_PATTERN = /`([\w./@-]+\.(?:tsx|jsx|ts|js))`/;
-const shouldCloneMissing = process.env.CLONE_MISSING === "1";
 const clonesDirectory = path.join(import.meta.dirname, "..", "tmp", "bench-clones");
 
-const cachedRepoNames = fs.readdirSync(repoCachePath);
+// The RDE cache is a fast path, not a requirement — when it's absent,
+// cloning kicks in automatically (CLONE_MISSING=0 opts out).
+let cachedRepoNames: string[] = [];
+try {
+  cachedRepoNames = fs.readdirSync(repoCachePath);
+} catch {
+  cachedRepoNames = [];
+}
+const shouldCloneMissing = process.env.CLONE_MISSING !== "0";
 const findCachedRepo = (repo: string): string | null => {
   const slug = repo.replace("/", "-").toLowerCase();
   const match = cachedRepoNames.find((name) => name.toLowerCase().startsWith(`${slug}-`));

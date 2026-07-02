@@ -49,6 +49,9 @@ jobs:
           blocking: none
           node-version: 22.18.0
           version: ./packages/react-doctor
+          # This repo dogfoods its own action; opt out of the missing-baseline
+          # warning so self-scans don't nag about their own CI setup.
+          silence-missing-baseline-warning: true
 
   # Exercise the NEW cacheable install path (a published `version:` →
   # resolve-version + actions/cache + `npm install --prefix` into the toolchain
@@ -69,3 +72,6 @@ jobs:
           blocking: none
           node-version: 22.18.0
           version: latest
+          # Intentionally-shallow checkout (tests the cacheable-install path), so
+          # the baseline can't resolve; silence the missing-baseline warning.
+          silence-missing-baseline-warning: true

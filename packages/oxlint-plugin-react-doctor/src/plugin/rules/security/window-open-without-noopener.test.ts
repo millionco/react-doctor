@@ -390,6 +390,43 @@ describe("window-open-without-noopener", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a createElement handler under a string-literal onClick key", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `React.createElement('button', { 'onClick': () => window.open(url, '_blank') });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an || URL whose left operand is a truthy trusted literal", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `window.open('https://example.com/download' || dynamicUrl, '_blank');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a const || URL with a truthy trusted literal left and dynamic fallback", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const url = 'https://example.com/download' || mirrorUrl;\nwindow.open(url, '_blank');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags an || URL whose falsy empty-string left falls through to a dynamic operand", () => {
+    const result = runRule(windowOpenWithoutNoopener, `window.open('' || dynamicUrl, '_blank');`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an || URL whose trusted left is behind a reassignable let binding", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `let primaryUrl = 'https://example.com/download';\nprimaryUrl = userInput;\nwindow.open(primaryUrl || fallbackUrl, '_blank');`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag an arrow under a non-handler object property whose handle may be consumed", () => {
     const result = runRule(
       windowOpenWithoutNoopener,

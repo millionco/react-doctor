@@ -2,9 +2,36 @@ import { STORAGE_OBJECTS } from "../../constants/dom.js";
 import { DUPLICATE_STORAGE_READ_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+const ARRAY_ITERATION_CALLBACK_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "forEach",
+  "map",
+  "filter",
+  "reduce",
+  "some",
+  "every",
+]);
+
+// An inline callback passed to an array-iteration member call runs once per
+// element of a single invocation of the ENCLOSING function, so its storage
+// reads multiply the enclosing function's reads rather than starting a new
+// independent tally.
+const isInlineIterationCallback = (functionNode: EsTreeNode): boolean => {
+  const parent = functionNode.parent;
+  if (!isNodeOfType(parent, "CallExpression")) return false;
+  if (parent.arguments?.[0] !== functionNode) return false;
+  const callee = parent.callee;
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    !callee.computed &&
+    isNodeOfType(callee.property, "Identifier") &&
+    ARRAY_ITERATION_CALLBACK_METHOD_NAMES.has(callee.property.name)
+  );
+};
 
 export const jsCacheStorage = defineRule({
   id: "js-cache-storage",
@@ -18,10 +45,12 @@ export const jsCacheStorage = defineRule({
     // unrelated functions aren't summed into a phantom duplicate. The base
     // map covers module-scope reads outside any function.
     const storageReadCountStack: Array<Map<string, number>> = [new Map()];
-    const enterFunctionScope = (): void => {
+    const enterFunctionScope = (node: EsTreeNode): void => {
+      if (isInlineIterationCallback(node)) return;
       storageReadCountStack.push(new Map());
     };
-    const exitFunctionScope = (): void => {
+    const exitFunctionScope = (node: EsTreeNode): void => {
+      if (isInlineIterationCallback(node)) return;
       if (storageReadCountStack.length > 1) storageReadCountStack.pop();
     };
 

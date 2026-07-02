@@ -6,6 +6,7 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 // Method calls whose result is a *brand new* array or an iterator with
 // no `toSorted()`. Spreading either before `.sort()` is not a wasteful
@@ -38,6 +39,41 @@ const isFreshOrIteratorAllocation = (node: EsTreeNode | null | undefined): boole
   );
 };
 
+// A binding is a private throwaway only when it is declared with a fresh
+// allocation as a direct `VariableDeclarator` init (a parameter DEFAULT is
+// only allocated when the caller passes undefined — see the BindingInfo
+// contract in find-variable-initializer) AND the spread is its ONLY other
+// reference. Any additional read, write, or reassignment means the array
+// is shared at the sort site, so the spread copy protects it and
+// `toSorted()` is exactly the right rewrite.
+const isSpreadOfSingleUseFreshBinding = (spreadArgument: EsTreeNode): boolean => {
+  if (!isNodeOfType(spreadArgument, "Identifier")) return false;
+  const binding = findVariableInitializer(spreadArgument, spreadArgument.name);
+  if (!binding?.initializer) return false;
+  if (!isNodeOfType(binding.bindingIdentifier.parent, "VariableDeclarator")) return false;
+  if (!isFreshOrIteratorAllocation(binding.initializer)) return false;
+  let otherReferenceCount = 0;
+  walkAst(binding.scopeOwner, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "Identifier")) return;
+    if (child.name !== spreadArgument.name) return;
+    if (child === spreadArgument || child === binding.bindingIdentifier) return;
+    const parent = child.parent;
+    if (isNodeOfType(parent, "MemberExpression") && parent.property === child && !parent.computed) {
+      return;
+    }
+    if (
+      isNodeOfType(parent, "Property") &&
+      parent.key === child &&
+      parent.value !== child &&
+      !parent.computed
+    ) {
+      return;
+    }
+    otherReferenceCount += 1;
+  });
+  return otherReferenceCount === 0;
+};
+
 export const jsTosortedImmutable = defineRule({
   id: "js-tosorted-immutable",
   title: "Spread copy before sort()",
@@ -65,15 +101,8 @@ export const jsTosortedImmutable = defineRule({
         isNodeOfType(receiver.elements[0], "SpreadElement")
       ) {
         const spreadArgument = receiver.elements[0].argument as EsTreeNode;
-        const resolvedArgument = isNodeOfType(spreadArgument, "Identifier")
-          ? (findVariableInitializer(spreadArgument, spreadArgument.name)?.initializer ?? null)
-          : spreadArgument;
-        if (
-          isFreshOrIteratorAllocation(spreadArgument) ||
-          isFreshOrIteratorAllocation(resolvedArgument)
-        ) {
-          return;
-        }
+        if (isFreshOrIteratorAllocation(spreadArgument)) return;
+        if (isSpreadOfSingleUseFreshBinding(spreadArgument)) return;
         context.report({
           node,
           message:

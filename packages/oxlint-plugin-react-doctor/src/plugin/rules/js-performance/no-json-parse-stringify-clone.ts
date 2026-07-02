@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactComponentName } from "../../utils/is-react-component-name.js";
 
 const MESSAGE =
   "`JSON.parse(JSON.stringify(x))` deep-clones by re-serializing: it is slow on large objects and silently drops `undefined`, functions, `Date`/`Map`/`Set`, and cyclic references. Use `structuredClone(x)`.";
@@ -60,10 +61,15 @@ const isInsideSnapshotHelper = (node: EsTreeNode): boolean => {
       ) {
         boundName = parent.key.name;
       }
-      if (boundName && SNAPSHOT_FUNCTION_NAME_PATTERN.test(boundName)) return true;
-      // Keep walking outward: a clone inside a nested helper within a
-      // `snapshot*` function is still part of producing that snapshot, so any
-      // enclosing snapshot helper exempts it — not just the innermost function.
+      // The NEAREST named function-like ancestor decides: a lowercase
+      // `snapshot*` helper name marks serialization-for-persistence, while
+      // an uppercase-first name is a React component — a plain deep clone
+      // in a component handler is exactly what the rule redirects, no
+      // matter which `Snapshot*`-named ancestor encloses it. Anonymous
+      // wrappers (inline callbacks) are transparent.
+      if (boundName) {
+        return SNAPSHOT_FUNCTION_NAME_PATTERN.test(boundName) && !isReactComponentName(boundName);
+      }
     }
     current = current.parent ?? null;
   }
@@ -86,6 +92,11 @@ export const noJsonParseStringifyClone = defineRule({
       // `structuredClone` cannot reproduce — so this is not a plain clone.
       const replacer = firstArgument.arguments?.[1];
       if (isFunctionLike(replacer) || isNodeOfType(replacer, "ArrayExpression")) return;
+      // Symmetric to the replacer: an inline function reviver
+      // (`JSON.parse(…, (k, v) => …)`) transforms the parsed values, which
+      // `structuredClone` cannot reproduce either.
+      const reviver = node.arguments?.[1];
+      if (isFunctionLike(reviver)) return;
       if (isInsideSnapshotHelper(node)) return;
       context.report({ node, message: MESSAGE });
     },

@@ -72,12 +72,21 @@ describe("no-json-parse-stringify-clone", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  // Bugbot: a clone inside a nested helper within a snapshot* function is still
-  // part of producing that snapshot, so the exemption must reach it too.
-  it("does not flag a clone inside a nested helper within a snapshot* function", () => {
+  // The nearest NAMED enclosing function decides the exemption: a helper
+  // bound to a `clone`-named binding is exactly the deep clone the rule
+  // redirects, even when a snapshot* function encloses it.
+  it("flags a clone-named nested helper even inside a snapshot* function", () => {
     const result = runRule(
       noJsonParseStringifyClone,
       `function takeSnapshot(state) { const clone = () => JSON.parse(JSON.stringify(state)); return clone(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a clone in an ANONYMOUS callback inside a snapshot* helper", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `function snapshotEntries(items) { return items.map((item) => JSON.parse(JSON.stringify(item))); }`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
@@ -88,5 +97,70 @@ describe("no-json-parse-stringify-clone", () => {
       `function build(state) { const clone = () => JSON.parse(JSON.stringify(state)); return clone(); }`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // A `Snapshot*`-named React COMPONENT is not a persistence helper: a plain
+  // deep clone in one of its handlers is a true positive.
+  it("flags a plain deep clone inside a Snapshot*-named component handler", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      function SnapshotList({ items, onDuplicate }) {
+        const handleDuplicate = (item) => {
+          const copy = JSON.parse(JSON.stringify(item));
+          onDuplicate(copy);
+        };
+        return items.map((item) => (
+          <button key={item.id} onClick={() => handleDuplicate(item)}>dup</button>
+        ));
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag when an inline function reviver transforms the parsed values", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      const revived = JSON.parse(
+        JSON.stringify(payload),
+        (key, value) => (typeof value === "string" && ISO_DATE.test(value) ? new Date(value) : value),
+      );
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags when the replacer slot is a null literal (pretty-print clone)", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `const copy = JSON.parse(JSON.stringify(state, null, 2));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // react-bench-2 anchor (fix-react-rdh-sofn-xyz-mailing-settings): both
+  // planted clones inside getServerSideProps props MUST keep firing.
+  it("flags both clones in a getServerSideProps props object (bench anchor)", () => {
+    const result = runRule(
+      noJsonParseStringifyClone,
+      `
+      export const getServerSideProps = withSessionSsr(async ({ req }) => {
+        const apiKeys = await prisma.apiKey.findMany();
+        const lists = await prisma.list.findMany();
+        return {
+          props: {
+            user: req.session.user,
+            apiKeys: JSON.parse(JSON.stringify(apiKeys)),
+            lists: JSON.parse(JSON.stringify(lists)),
+          },
+        };
+      });
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
   });
 });

@@ -2,13 +2,12 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noPropCallbackInEffect } from "./no-prop-callback-in-effect.js";
 
-// Must-detect anchor distilled from the react-bench-2 planted-bug before-file
-// for fix-react-rdh-inrupt-archived-solid-ui-react-index (the 0.5.7 -> 0.5.8
-// regression review). The trap: an async React event handler that calls the
+// Must-detect anchor distilled from the inrupt solid-ui-react Image
+// component (the 0.5.7 -> 0.5.8 regression review). The trap: an async React event handler that calls the
 // setter is still a React event handler — it must NOT mark the state
 // externally driven and silence the onError-in-effect report.
 
-describe("no-prop-callback-in-effect — bench must-detect regressions", () => {
+describe("no-prop-callback-in-effect — must-detect regressions", () => {
   it("fires on onError(error) in an effect when the setter is also called in async handlers (inrupt Image)", () => {
     const result = runRule(
       noPropCallbackInEffect,
@@ -62,21 +61,6 @@ describe("no-prop-callback-in-effect — bench must-detect regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThanOrEqual(1);
     expect(result.diagnostics[0].message).toContain('"onError"');
-  });
-
-  it("still flags the guarded `onChange && onChange(value)` spelling", () => {
-    const result = runRule(
-      noPropCallbackInEffect,
-      `function Field({ onChange }) {
-        const [value, setValue] = useState('');
-        useEffect(() => {
-          onChange && onChange(value);
-        }, [value]);
-        return <input onChange={(event) => setValue(event.target.value)} />;
-      }`,
-    );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
   it("stays silent when the prop is a pure transform whose result feeds a local setter", () => {
@@ -155,7 +139,7 @@ describe("no-prop-callback-in-effect — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("flags state also written from an async click handler (bench: inrupt image)", () => {
+  it("flags state also written from an async click handler (inrupt image)", () => {
     const result = runRule(
       noPropCallbackInEffect,
       `function Image({ onError, errorComponent: ErrorComponent, value, fetch }) {

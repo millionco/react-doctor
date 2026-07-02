@@ -3,7 +3,7 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { clientPassiveEventListeners } from "./client-passive-event-listeners.js";
 
 describe("client/client-passive-event-listeners — regressions", () => {
-  it("still flags the inline rAF-throttled scroll handler (planted-bug anchor)", () => {
+  it("still flags the inline rAF-throttled scroll handler", () => {
     const result = runRule(
       clientPassiveEventListeners,
       `let ticking = false;

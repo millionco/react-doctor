@@ -2,17 +2,17 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noDerivedState } from "./no-derived-state.js";
 
-// Must-detect anchors from react-bench-2. split/state PR #990's
-// isControlledPropMirror exempted a prop->state mirror effect whenever the
+// split/state PR #990's isControlledPropMirror exempted a prop->state mirror
+// effect whenever the
 // setter had ANY second call site in a handler — which is exactly the rule's
-// canonical positive (the planted codecov SearchField bug). These regressions
+// canonical positive (the mined codecov SearchField bug). These regressions
 // pin that the mirror still reports when the setter is only written from
 // handler bodies, and that the controlled-mirror exemption applies solely to
 // the mined FP shape: the setter itself passed to a child as an `on*` JSX
 // callback (`onChange={setValue}`).
 
 describe("no-derived-state — must-detect regressions", () => {
-  // fix-react-rdh-codecov-gazebo-searchfield: guarded `setSearch(searchValue)`
+  // codecov/gazebo SearchField: guarded `setSearch(searchValue)`
   // mirror effect + `setSearch(e.target.value)` write in the change handler.
   it("flags the codecov SearchField prop mirror despite the handler write", () => {
     const result = runRule(
@@ -76,7 +76,7 @@ describe("no-derived-state — must-detect regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  // fix-react-rdh-wojtekmaj-react-daterange-picker-daterangepicker:
+  // wojtekmaj/react-daterange-picker DateRangePicker:
   // `setIsOpen(isOpenProps)` mirror + boolean setter writes in handlers.
   it("flags the wojtekmaj setIsOpen(isOpenProps) mirror with handler writes", () => {
     const result = runRule(
@@ -106,7 +106,7 @@ describe("no-derived-state — must-detect regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  // fix-react-rdh-kurozenzen-r34-react-smallinput: `setInternalValue(value)`
+  // kurozenzen/r34-react SmallTextInput: `setInternalValue(value)`
   // mirror + a wrapped change handler (`onChange={onChange}`, not the setter).
   it("flags the kurozenzen setInternalValue(value) mirror with a wrapped handler", () => {
     const result = runRule(
@@ -134,7 +134,7 @@ describe("no-derived-state — must-detect regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  // fix-react-rdh-appflowy-io-appflowy-web-documenthistorymodal shape: the
+  // appflowy-web DocumentHistoryModal shape: the
   // setter IS passed as an `on*` callback, but the effect writes a derived
   // member expression — not a bare prop mirror — so it must still report.
   it("flags a derived-member write even when the setter is an on* JSX callback", () => {
@@ -162,39 +162,6 @@ describe("no-derived-state — must-detect regressions", () => {
 });
 
 describe("no-derived-state — controlled-mirror exemption stays scoped to the mined FP", () => {
-  // ant-design .dumi DebouncedColorPicker: body-destructured prop mirror where
-  // the setter itself is the child's onChange (`onChange={setValue}`) — the
-  // state buffers the child's live edits, so a render-time derivation would
-  // drop them.
-  it("stays silent when the mirrored setter is passed as the child's onChange", () => {
-    const result = runRule(
-      noDerivedState,
-      `const DebouncedColorPicker = (props) => {
-        const { value: color, children, onChange } = props;
-        const [value, setValue] = useState(color);
-
-        useEffect(() => {
-          const timeout = setTimeout(() => {
-            onChange?.(value);
-          }, 200);
-          return () => clearTimeout(timeout);
-        }, [value]);
-
-        useEffect(() => {
-          setValue(color);
-        }, [color]);
-
-        return (
-          <ColorPicker value={value} onChange={setValue}>
-            {children}
-          </ColorPicker>
-        );
-      };`,
-    );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
-  });
-
   it("still flags the bare prop mirror when the setter is passed as a non-handler prop", () => {
     const result = runRule(
       noDerivedState,

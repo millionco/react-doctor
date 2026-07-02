@@ -11,7 +11,7 @@ const expectFires = (code: string): void => {
 // PR #994 fp-review: production oxlint has no ParenthesizedExpression, so a
 // parenthesized arrow body like `() => (a ? b : c)` is a bare
 // ConditionalExpression at runtime (confirmed end-to-end on the ant-design
-// bench). The harness previously kept the wrapper and reported nothing on
+// repo). The harness previously kept the wrapper and reported nothing on
 // these shapes; parse-fixture now strips parens so the harness matches
 // production and the rule's core-contract ternary shapes stay pinned.
 describe("performance/no-usememo-simple-expression — parenthesized body parity", () => {

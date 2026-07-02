@@ -23,7 +23,7 @@ describe("a11y/anchor-has-content regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  // Mined ant-design FPs (fix-react-rdh-ant-design): bare `<a>` wrapper-trigger
+  // Mined ant-design FPs: bare `<a>` wrapper-trigger
   // children under /demo/ and /__tests__/ paths. The rule skips testlike files
   // entirely (0b64af58 precedent) — production shapes below still fire.
   it("skips a bare `<a>` badge trigger in a /demo/ file", () => {

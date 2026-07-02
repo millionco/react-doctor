@@ -140,7 +140,7 @@ describe("react-builtins/jsx-key — regressions", () => {
     expectFail(`<Menu>{data.length && data.map((d) => <MenuItem v={d} />)}</Menu>;`);
   });
 
-  // Bench anchor (tim-soft/react-spring-lightbox ImagePager): a `{...bind()}`
+  // tim-soft/react-spring-lightbox ImagePager: a `{...bind()}`
   // gesture spread BEFORE the explicit key is safe — the key wins — so the
   // base shape stays silent; moving the key ABOVE the spread (the old oracle
   // "fix") is what lets the spread clobber it, so that order fires.

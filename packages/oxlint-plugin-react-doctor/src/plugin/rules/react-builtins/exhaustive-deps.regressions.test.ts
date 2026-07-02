@@ -241,10 +241,10 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     expect(messages).not.toContain("re-runs whenever `uuid` changes");
   });
 
-  // FN anchors: the react-big-calendar timegutter planted bugs list
+  // FN anchors: the react-big-calendar timegutter mined-bug list
   // zero-arg calls in deps but the callbacks capture the bare objects —
   // the accessor keying must not swallow the missing-dep reports.
-  it("still reports the timegutter planted useMemo bug", () => {
+  it("still reports the timegutter mined useMemo bug", () => {
     const code = `
       import { adjustForDST } from './utils';
       const TimeGutter = ({ min, max, timeslots, step, localizer, components }) => {
@@ -262,7 +262,7 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     expect(messages).toContain("max");
   });
 
-  it("still reports the timegutter planted useEffect bug", () => {
+  it("still reports the timegutter mined useEffect bug", () => {
     const code = `
       import { getSlotMetrics } from './utils';
       const TimeGutter = ({ min, max, timeslots, step, localizer }) => {

@@ -43,13 +43,11 @@ const collectDependencyArrayNames = (componentBody: EsTreeNode): Set<string> => 
 };
 
 const isPureEarlyExitConsequent = (consequent: EsTreeNode): boolean => {
-  if (
-    isNodeOfType(consequent, "ReturnStatement") ||
-    isNodeOfType(consequent, "ContinueStatement")
-  ) {
-    const returnArgument = isNodeOfType(consequent, "ReturnStatement") ? consequent.argument : null;
+  if (isNodeOfType(consequent, "ContinueStatement")) return true;
+  if (isNodeOfType(consequent, "ReturnStatement")) {
     return (
-      !returnArgument || (isNodeOfType(returnArgument, "Literal") && returnArgument.value === null)
+      !consequent.argument ||
+      (isNodeOfType(consequent.argument, "Literal") && consequent.argument.value === null)
     );
   }
   if (isNodeOfType(consequent, "BlockStatement")) {
@@ -59,72 +57,20 @@ const isPureEarlyExitConsequent = (consequent: EsTreeNode): boolean => {
   return false;
 };
 
-// Counts occurrences of each candidate name inside an effect callback,
-// split by whether the occurrence sits in the TEST of an early-exit guard
-// (`if (!dirty) return;`). A name read ONLY in such guards gates the side
-// effect without consuming the value's content — it is a re-run trigger,
-// not a payload read.
-const countOccurrencesByGuardPosition = (
-  node: EsTreeNode,
-  candidateNames: ReadonlySet<string>,
-  insideGuardTest: boolean,
-  totals: Map<string, number>,
-  guardTestCounts: Map<string, number>,
-): void => {
-  if (!node || typeof node !== "object") return;
-  if (isNodeOfType(node, "Identifier") && candidateNames.has(node.name)) {
-    totals.set(node.name, (totals.get(node.name) ?? 0) + 1);
-    if (insideGuardTest) {
-      guardTestCounts.set(node.name, (guardTestCounts.get(node.name) ?? 0) + 1);
+const collectEarlyExitGuardStatements = (
+  effectCallback: EsTreeNode,
+): EsTreeNodeOfType<"IfStatement">[] => {
+  const guardStatements: EsTreeNodeOfType<"IfStatement">[] = [];
+  walkAst(effectCallback, (child: EsTreeNode) => {
+    if (
+      isNodeOfType(child, "IfStatement") &&
+      !child.alternate &&
+      isPureEarlyExitConsequent(child.consequent as EsTreeNode)
+    ) {
+      guardStatements.push(child);
     }
-  }
-  if (
-    isNodeOfType(node, "IfStatement") &&
-    !node.alternate &&
-    isPureEarlyExitConsequent(node.consequent as EsTreeNode)
-  ) {
-    countOccurrencesByGuardPosition(
-      node.test as EsTreeNode,
-      candidateNames,
-      true,
-      totals,
-      guardTestCounts,
-    );
-    countOccurrencesByGuardPosition(
-      node.consequent as EsTreeNode,
-      candidateNames,
-      insideGuardTest,
-      totals,
-      guardTestCounts,
-    );
-    return;
-  }
-  const record = node as unknown as Record<string, unknown>;
-  for (const key of Object.keys(record)) {
-    if (key === "parent") continue;
-    const child = record[key];
-    if (Array.isArray(child)) {
-      for (const item of child) {
-        if (item && typeof item === "object" && "type" in item) {
-          countOccurrencesByGuardPosition(
-            item as EsTreeNode,
-            candidateNames,
-            insideGuardTest,
-            totals,
-            guardTestCounts,
-          );
-        }
-      }
-    } else if (child && typeof child === "object" && "type" in child) {
-      countOccurrencesByGuardPosition(
-        child as EsTreeNode,
-        candidateNames,
-        insideGuardTest,
-        totals,
-        guardTestCounts,
-      );
-    }
-  }
+  });
+  return guardStatements;
 };
 
 // Names whose VALUE is consumed inside an EFFECT hook's callback body (its
@@ -132,7 +78,10 @@ const countOccurrencesByGuardPosition = (
 // that only gate an early exit (`if (!dirty) return;`) do not count: the
 // guard needs the re-run, not the content, so the dep stays a pure trigger
 // (the debounced-save shape). A name read anywhere else in the callback
-// (`getEmojiPickerData(emojiData, …)`) is a payload read.
+// (`getEmojiPickerData(emojiData, …)`) is a payload read. The guard tests
+// are detached while the scope-aware collector runs so payload reads and
+// guard reads resolve through the SAME binding scopes — a local that
+// shadows a state name can neither hide nor fake a read of the outer value.
 const collectEffectCallbackReadNames = (componentBody: EsTreeNode): Set<string> => {
   const readNames = new Set<string>();
   walkAst(componentBody, (child: EsTreeNode) => {
@@ -145,26 +94,27 @@ const collectEffectCallbackReadNames = (componentBody: EsTreeNode): Set<string> 
     ) {
       return;
     }
-    const scopedReferenceNames = collectScopedReferenceNames(
-      effectCallback,
-      createComponentBindingScope(),
-      new Set(),
-    );
-    const totals = new Map<string, number>();
-    const guardTestCounts = new Map<string, number>();
-    countOccurrencesByGuardPosition(
-      effectCallback,
-      scopedReferenceNames,
-      false,
-      totals,
-      guardTestCounts,
-    );
-    for (const referenceName of scopedReferenceNames) {
-      const totalCount = totals.get(referenceName) ?? 0;
-      const guardOnlyCount = guardTestCounts.get(referenceName) ?? 0;
-      if (totalCount > guardOnlyCount || totalCount === 0) {
+    const guardStatements = collectEarlyExitGuardStatements(effectCallback);
+    const detachedGuardTests = guardStatements.map((statement) => statement.test);
+    // HACK: the guard tests are detached in place (and reattached
+    // synchronously below) so the collector never sees them — walking
+    // them separately would need a second, drift-prone scope tracker.
+    for (const statement of guardStatements) {
+      (statement as unknown as { test: EsTreeNode | null }).test = null;
+    }
+    try {
+      for (const referenceName of collectScopedReferenceNames(
+        effectCallback,
+        createComponentBindingScope(),
+        new Set(),
+      )) {
         readNames.add(referenceName);
       }
+    } finally {
+      guardStatements.forEach((statement, index) => {
+        (statement as unknown as { test: EsTreeNode | null }).test =
+          detachedGuardTests[index] ?? null;
+      });
     }
   });
   return readNames;

@@ -85,7 +85,7 @@ describe("architecture/no-render-in-render — regressions", () => {
 
   // fp-review PR 996: an earlier isStableMethodReceiver carve-out exempted
   // every this.renderX() call, voiding the react-datepicker calendar
-  // must-detect oracle. Class fields (`renderX = () => …`) are per-instance,
+  // must-detect check. Class fields (`renderX = () => …`) are per-instance,
   // so `this.` is not a stability signal — these must fire.
   it("flags a this.render* class-component helper method call", () => {
     const result = run(
@@ -97,7 +97,7 @@ describe("architecture/no-render-in-render — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("flags inline this.renderX() class-field calls (calendar.tsx planted shape)", () => {
+  it("flags inline this.renderX() class-field calls (calendar.tsx mined shape)", () => {
     const result = run(
       `class Calendar extends Component {
         renderCurrentMonth = (date = this.state.date) => (

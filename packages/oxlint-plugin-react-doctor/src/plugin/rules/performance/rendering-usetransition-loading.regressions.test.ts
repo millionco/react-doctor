@@ -21,12 +21,12 @@ describe("performance/rendering-usetransition-loading — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  // FN-critical bench anchor (fix-react-rdh-algolia-react-instantsearch-useanswers):
-  // the planted bug clears the flag only INDIRECTLY — the .then handler calls a
+  // FN-critical anchor (algolia/react-instantsearch useAnswers):
+  // the mined bug clears the flag only INDIRECTLY — the .then handler calls a
   // debounced wrapper that in turn calls the setter. The promise-chain guard
   // deliberately inspects only inline .then/.catch/.finally arguments for DIRECT
-  // setter calls; following handler indirection would void the bench task.
-  it("still flags the planted useAnswers shape: setter cleared via a debounce-indirected .then handler", () => {
+  // setter calls; following handler indirection would silence this report.
+  it("still flags the mined useAnswers shape: setter cleared via a debounce-indirected .then handler", () => {
     const result = runRule(
       renderingUsetransitionLoading,
       `

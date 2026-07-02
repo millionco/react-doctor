@@ -62,7 +62,7 @@ describe("rerender-state-only-in-handlers — regressions", () => {
     expect(result.diagnostics[0].message).toContain("logged");
   });
 
-  // Bench anchor fix-react-rdh-bem-yandex-ui-drawer-content: `closing` is
+  // bem-yandex/ui drawer content: `closing` is
   // never rendered — the effect that lists it in deps self-resets it, so the
   // dep mention must not exempt it.
   it("flags handler-set state whose only effect self-resets it (bem-yandex drawer)", () => {
@@ -88,7 +88,7 @@ describe("rerender-state-only-in-handlers — regressions", () => {
     expect(result.diagnostics[0].message).toContain("closing");
   });
 
-  // Bench anchor fix-react-rdh-jumpinjackie-mapguide-react-layout-task-pane:
+  // jumpinjackie/mapguide-react-layout task pane:
   // `invalidated` only feeds an effect that rewrites it from props — echoing
   // it in that effect's deps must not exempt it.
   it("flags never-rendered state rewritten by its own dep-listing effect (mapguide task pane)", () => {
@@ -121,7 +121,7 @@ describe("rerender-state-only-in-handlers — regressions", () => {
     expect(result.diagnostics[0].message).toContain("invalidated");
   });
 
-  // Bench anchor fix-react-rdh-sofn-xyz-mailing-settings: `apiKeys` only
+  // sofn-xyz/mailing settings: `apiKeys` only
   // feeds a derived-state chain effect (`setApiKeyRows`) — the dep mention is
   // chain plumbing, not reactive consumption.
   it("flags state consumed only by a derived-state chain effect (sofn settings)", () => {
@@ -153,7 +153,7 @@ describe("rerender-state-only-in-handlers — regressions", () => {
     expect(result.diagnostics[0].message).toContain("apiKeys");
   });
 
-  // Bench anchor fix-react-rdh-wangeditor-next-wangeditor-next-editor: the
+  // wangeditor-next editor: the
   // creation effect that lists `editor` in deps also writes it, so the
   // side-effect-only effects listing it too must not rescue it.
   it("flags never-rendered state when any dep-listing effect writes it (wangeditor editor)", () => {
@@ -200,50 +200,6 @@ describe("rerender-state-only-in-handlers — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("editor");
   });
-});
-
-describe("rerender-state-only-in-handlers — regressions", () => {
-  it("stays silent when state drives an effect through a one-hop derived local", () => {
-    const result = runRule(
-      rerenderStateOnlyInHandlers,
-      `function Widget() {
-        const [page, setPage] = useState(1);
-        const offset = page * 10;
-        useEffect(() => { fetchItems(offset); }, [offset]);
-        return <button onClick={() => setPage((p) => p + 1)}>Next</button>;
-      }`,
-    );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
-  });
-
-  it("stays silent when state is read during render by a hook call argument", () => {
-    const result = runRule(
-      rerenderStateOnlyInHandlers,
-      `function Chart() {
-        const [scrollY, setScrollY] = useState(0);
-        const onScroll = () => setScrollY(window.scrollY);
-        useChartEngine(scrollY);
-        return <div onScroll={onScroll} />;
-      }`,
-    );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
-  });
-
-  it("still flags write-only state with no effect dependency", () => {
-    const result = runRule(
-      rerenderStateOnlyInHandlers,
-      `function App() {
-        const [logged, setLogged] = useState(false);
-        const onClick = () => setLogged(true);
-        return <button onClick={onClick}>go</button>;
-      }`,
-    );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("logged");
-  });
 
   it("stays silent when state is a pure effect re-run trigger the effect never reads (ant-design AffixTabs)", () => {
     const result = runRule(
@@ -285,11 +241,11 @@ describe("rerender-state-only-in-handlers — regressions", () => {
   });
 });
 
-// react-bench-2 must-detect anchors: write-only state echoed in an effect dep
+// Must-detect anchors: write-only state echoed in an effect dep
 // array AND read by the effect body. The dep entry is exhaustive-deps hygiene
 // for the body read, not proof the value ever reaches the screen, so these
 // must fire.
-describe("rerender-state-only-in-handlers — bench anchors (state read by an effect, never rendered)", () => {
+describe("rerender-state-only-in-handlers — must-detect anchors (state read by an effect, never rendered)", () => {
   it("flags `closing` set in a handler and consumed only by an effect (bem-yandex DrawerContent)", () => {
     const result = runRule(
       rerenderStateOnlyInHandlers,

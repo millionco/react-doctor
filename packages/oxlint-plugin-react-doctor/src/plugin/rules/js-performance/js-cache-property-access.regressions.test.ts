@@ -30,7 +30,7 @@ describe("js-performance/js-cache-property-access — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags a `this.props` chain read three times in a JSX render loop (bench anchor)", () => {
+  it("still flags a `this.props` chain read three times in a JSX render loop", () => {
     const result = runRule(
       jsCachePropertyAccess,
       `

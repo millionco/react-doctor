@@ -2,8 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noEventHandler } from "./no-event-handler.js";
 
-// Must-detect anchors distilled from react-bench-2 planted-bug before-files
-// (the 0.5.7 -> 0.5.8 regression review). Each fixture keeps the surrounding
+// Must-detect anchors distilled from mined real-world bug shapes (the
+// 0.5.7 -> 0.5.8 regression review). Each fixture keeps the surrounding
 // context an overbroad FP guard is most likely to key on — post-mount reads
 // (`window` / `document` / `.current`), setter-only if-consequents, and
 // deferred setter call sites elsewhere in the component — so a whole-scope
@@ -19,7 +19,7 @@ const expectFiresAtLeast = (code: string, minimumDiagnosticCount: number): void 
   }
 };
 
-describe("no-event-handler — bench must-detect regressions", () => {
+describe("no-event-handler — must-detect regressions", () => {
   it("fires on memo-derived state tested in an effect with ref bookkeeping and an async setter elsewhere (appflowy DocumentHistoryModal)", () => {
     expectFiresAtLeast(
       `
@@ -493,7 +493,7 @@ describe("no-event-handler — bench must-detect regressions", () => {
 });
 
 describe("no-event-handler — regressions", () => {
-  it("fires on a mount effect syncing storage into state (bench: digitalocean sea-notes Theme)", () => {
+  it("fires on a mount effect syncing storage into state (digitalocean sea-notes Theme)", () => {
     const result = runRule(
       noEventHandler,
       `function MaterialThemeProvider({ children }) {
@@ -533,7 +533,7 @@ describe("no-event-handler — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("fires on a setter-only consequent doing real event work (bench: sickdyd autocomplete)", () => {
+  it("fires on a setter-only consequent doing real event work (sickdyd autocomplete)", () => {
     const result = runRule(
       noEventHandler,
       `function Search({ items, maxResults, showItemsOnFocus }) {

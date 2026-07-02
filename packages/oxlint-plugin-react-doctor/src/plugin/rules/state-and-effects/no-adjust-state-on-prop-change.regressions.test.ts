@@ -3,7 +3,7 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noAdjustStateOnPropChange } from "./no-adjust-state-on-prop-change.js";
 
 describe("no-adjust-state-on-prop-change — regressions", () => {
-  it("flags constant resets in a transition effect with a setTimeout sibling (bench: lobe-ui FloatingSheet)", () => {
+  it("flags constant resets in a transition effect with a setTimeout sibling (lobe-ui FloatingSheet)", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `function FloatingSheet({ isOpen }) {

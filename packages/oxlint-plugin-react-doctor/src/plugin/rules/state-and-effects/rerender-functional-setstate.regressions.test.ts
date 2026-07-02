@@ -2,14 +2,14 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { rerenderFunctionalSetstate } from "./rerender-functional-setstate.js";
 
-// Must-detect anchors from react-bench-2. A deferral gate hoisted in front of
-// the arithmetic / update shape checks (split/state PR #990) silenced both
-// planted bugs below; these regressions pin that the shape checks stay
+// A deferral gate hoisted in front of the arithmetic / update shape checks
+// (split/state PR #990) silenced both mined bugs below; these regressions
+// pin that the shape checks stay
 // reachable for synchronous handlers and that debounce/throttle wrappers
 // count as deferred execution.
 
 describe("rerender-functional-setstate — must-detect regressions", () => {
-  // fix-react-rdh-innovaccer-design-system-pagination: guarded prev/next
+  // innovaccer/design-system Pagination: guarded prev/next
   // arithmetic in a plain synchronous click handler.
   it("flags setPage(page - 1) arithmetic in a synchronous click handler", () => {
     const result = runRule(
@@ -33,7 +33,7 @@ describe("rerender-functional-setstate — must-detect regressions", () => {
     expect(result.diagnostics).toHaveLength(2);
   });
 
-  // fix-react-rdh-italia-design-react-kit-usenavscroll: the setter closure is
+  // italia/design-react-kit useNavScroll: the setter closure is
   // wrapped in debounce(), so it runs after a delay and reads a stale counter.
   it("flags setCounter(counter + 1) inside useCallback(debounce(...))", () => {
     const result = runRule(
@@ -159,7 +159,7 @@ describe("rerender-functional-setstate — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  // react-bench-2 anchor (fix-react-rdh-innovaccer-design-system-pagination):
+  // innovaccer/design-system Pagination:
   // arithmetic setter reads inside a synchronous click handler must fire —
   // batched events (double-click before the next render) still lose updates,
   // so the functional form is the fix even without a deferred wrapper.
@@ -185,7 +185,7 @@ describe("rerender-functional-setstate — regressions", () => {
     expect(result.diagnostics[0].message).toContain("page");
   });
 
-  // react-bench-2 anchor (fix-react-rdh-italia-design-react-kit-usenavscroll):
+  // italia/design-react-kit useNavScroll:
   // a debounce-wrapped closure runs after later renders, so the captured
   // `counter` goes stale exactly like a setTimeout closure.
   it("flags setCounter(counter + 1) inside a debounce-wrapped useCallback", () => {

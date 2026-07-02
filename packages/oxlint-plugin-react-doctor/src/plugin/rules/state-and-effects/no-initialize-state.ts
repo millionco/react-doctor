@@ -4,8 +4,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import {
+  isMeasurementMemberRead,
   isPostMountGlobalRead,
-  isPostMountMemberRead,
 } from "../../utils/reads-post-mount-value.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -51,16 +51,12 @@ const findEffectLocalInitializer = (effectFn: EsTreeNode, name: string): EsTreeN
 // `useState(() => window.innerWidth)` initializer, so it keeps the
 // init-in-an-effect smell.
 const isMeasurementApiCallReceiver = (identifier: EsTreeNode): boolean => {
-  const parent = identifier.parent;
-  if (!parent || !isNodeOfType(parent, "MemberExpression") || parent.object !== identifier) {
+  const memberParent = identifier.parent;
+  if (!isNodeOfType(memberParent, "MemberExpression") || memberParent.object !== identifier) {
     return false;
   }
-  const grandparent = (parent as unknown as { parent?: EsTreeNode | null }).parent;
-  return Boolean(
-    grandparent &&
-    isNodeOfType(grandparent, "CallExpression") &&
-    (grandparent.callee as unknown) === (parent as unknown),
-  );
+  const callGrandparent = memberParent.parent;
+  return isNodeOfType(callGrandparent, "CallExpression") && callGrandparent.callee === memberParent;
 };
 
 // Does the setter argument derive from a DOM/layout measurement — directly
@@ -77,7 +73,7 @@ const argumentReadsPostMountMeasurement = (
   let found = false;
   walkAst(argument, (child: EsTreeNode): boolean | void => {
     if (found) return false;
-    if (isPostMountMemberRead(child)) {
+    if (isMeasurementMemberRead(child)) {
       found = true;
       return false;
     }

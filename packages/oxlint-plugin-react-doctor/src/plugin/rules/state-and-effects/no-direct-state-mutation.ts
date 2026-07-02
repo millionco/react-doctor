@@ -44,8 +44,6 @@ const producesPlainStateValue = (expression: EsTreeNode): boolean => {
     return true;
   }
   if (isNullOrUndefinedExpression(unwrapped)) return true;
-  // Props are render data by convention (`useState(props.initialItems)`),
-  // so state seeded off the props bag stays tracked for in-place writes.
   if (isNodeOfType(unwrapped, "MemberExpression") && getRootIdentifierName(unwrapped) === "props") {
     return true;
   }
@@ -57,17 +55,19 @@ const producesPlainStateValue = (expression: EsTreeNode): boolean => {
 //   - object / array literals, incl. TS wrappers (`[] as Item[]`, `{} satisfies X`)
 //   - `null` / `undefined` / no argument — the value arrives later through the
 //     setter, and mutating it in place still never redraws (the wangeditor
-//     `const [editor] = useState(null)` + `editor.field = fn` bench bug)
+//     `const [editor] = useState(null)` + `editor.field = fn` bug)
 //   - plain-data producers: `Array(...)`, `Array.from(...)`, `Array.of(...)`,
 //     `structuredClone(...)` and method chains on them
+//   - reads off the `props` bag (`useState(props.initialItems)`) — props are
+//     render data by convention
 //   - lazy initializers whose top-level return produces any of the above — a
 //     return nested inside another function belongs to that inner scope
 // Everything else (`new TrackQueue()`, `createEditor(el)`, another binding)
 // is treated as an opaque instance whose fields and methods are its
 // imperative API, not render state. That exemption also skips plain data
-// flowing in from props or helper calls (`useState(props.initialItems)`,
-// `useState(getDefaultFilters())`) — a deliberate, known false-negative
-// trade-off until receiver typing can separate the two.
+// flowing in from helper calls (`useState(getDefaultFilters())`) — a
+// deliberate, known false-negative trade-off until receiver typing can
+// separate the two.
 const initializerMarksPlainState = (initializerArgument: EsTreeNode | undefined): boolean => {
   if (!initializerArgument) return true;
   const unwrapped = stripParenExpression(initializerArgument);

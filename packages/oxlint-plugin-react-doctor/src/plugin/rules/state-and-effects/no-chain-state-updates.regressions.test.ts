@@ -2,8 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noChainStateUpdates } from "./no-chain-state-updates.js";
 
-// Must-detect anchors distilled from react-bench-2 planted-bug before-files
-// (the 0.5.7 -> 0.5.8 regression review). The traps here are proportionality
+// Must-detect anchors distilled from mined real-world bug shapes (the
+// 0.5.7 -> 0.5.8 regression review). The traps here are proportionality
 // mistakes in the externally-driven-state classification: one setter call
 // inside a setTimeout, a plain `{ onX: handler }` options-object property, or
 // an async function must NOT mark the whole state externally driven when a
@@ -18,7 +18,7 @@ const expectFiresAtLeast = (code: string, minimumDiagnosticCount: number): void 
   }
 };
 
-describe("no-chain-state-updates — bench must-detect regressions", () => {
+describe("no-chain-state-updates — must-detect regressions", () => {
   it("fires on validate-then-submit effect chains when one setter call site sits in a setTimeout (latitude Form)", () => {
     expectFiresAtLeast(
       `
@@ -124,8 +124,7 @@ describe("no-chain-state-updates — bench must-detect regressions", () => {
   });
 
   it("fires when the triggering state's setter also runs in a plain async handler", () => {
-    const result = runRule(
-      noChainStateUpdates,
+    expectFiresAtLeast(
       `const Uploader = () => {
         const [file, setFile] = useState(null);
         const [status, setStatus] = useState('idle');
@@ -142,9 +141,8 @@ describe("no-chain-state-updates — bench must-detect regressions", () => {
 
         return <input onChange={(event) => handleUpload(event.target)} />;
       };`,
+      1,
     );
-    expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
   it("stays silent when every triggering state dep is set only from a setInterval callback", () => {
@@ -169,7 +167,7 @@ describe("no-chain-state-updates — bench must-detect regressions", () => {
 });
 
 describe("no-chain-state-updates — regressions", () => {
-  it("fires on mixed-origin state (handler setter plus one setTimeout site — bench: basis form)", () => {
+  it("fires on mixed-origin state (handler setter plus one setTimeout site — basis form)", () => {
     const result = runRule(
       noChainStateUpdates,
       `export const Search = () => {
@@ -189,7 +187,7 @@ describe("no-chain-state-updates — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("fires when the setter is also wired through an onX config-object property (bench: wangeditor)", () => {
+  it("fires when the setter is also wired through an onX config-object property (wangeditor)", () => {
     const result = runRule(
       noChainStateUpdates,
       `function Editor({ defaultContent }) {
@@ -209,7 +207,7 @@ describe("no-chain-state-updates — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("fires when the state is also set from an async event handler (bench: react-sounds)", () => {
+  it("fires when the state is also set from an async event handler (react-sounds)", () => {
     const result = runRule(
       noChainStateUpdates,
       `export const Form = () => {

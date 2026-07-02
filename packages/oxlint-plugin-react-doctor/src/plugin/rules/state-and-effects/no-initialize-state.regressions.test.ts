@@ -43,7 +43,7 @@ describe("no-initialize-state — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("flags a storage-seeded mount init (bench: digitalocean sea-notes Theme)", () => {
+  it("flags a storage-seeded mount init (digitalocean sea-notes Theme)", () => {
     const result = runRule(
       noInitializeState,
       `function MaterialThemeProvider({ children }) {
@@ -64,7 +64,7 @@ describe("no-initialize-state — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("flags a sessionStorage draft load with deterministic fallbacks (bench: formslab)", () => {
+  it("flags a sessionStorage draft load with deterministic fallbacks (formslab)", () => {
     const result = runRule(
       noInitializeState,
       `function useCreateSurveyManager(initialData) {
@@ -101,7 +101,7 @@ describe("no-initialize-state — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("flags literal flag inits beside interval-ref bookkeeping (bench: bradgarropy use-countdown)", () => {
+  it("flags literal flag inits beside interval-ref bookkeeping (bradgarropy use-countdown)", () => {
     const result = runRule(
       noInitializeState,
       `function useCountdown() {
@@ -232,7 +232,22 @@ describe("no-initialize-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags a mount effect seeding state from scalar window size reads (react-transliterate bench shape)", () => {
+  it("flags state seeded from an uncalled measurement member reference", () => {
+    const result = runRule(
+      noInitializeState,
+      `function Support() {
+        const [hasMatchMedia, setHasMatchMedia] = useState(false);
+        useEffect(() => {
+          setHasMatchMedia(!!window.matchMedia);
+        }, []);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a mount effect seeding state from scalar window size reads (react-transliterate shape)", () => {
     const result = runRule(
       noInitializeState,
       `function Helper() {

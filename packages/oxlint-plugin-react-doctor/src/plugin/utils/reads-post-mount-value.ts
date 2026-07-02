@@ -119,6 +119,21 @@ export const isPostMountMemberRead = (node: EsTreeNode): boolean => {
   return isRefLikeReceiver(node.object as EsTreeNode);
 };
 
+// A member read that yields a live measurement VALUE. Layout members measure
+// as plain property reads (`ref.current.scrollHeight`), but DOM query members
+// are METHODS — they only measure when invoked (`window.matchMedia("...")`).
+// A bare method reference (`!!window.matchMedia`) is render-time-knowable, so
+// it does not justify deferring state init to a mount effect.
+export const isMeasurementMemberRead = (node: EsTreeNode): boolean => {
+  if (!isPostMountMemberRead(node)) return false;
+  if (!isNodeOfType(node, "MemberExpression") || !isNodeOfType(node.property, "Identifier")) {
+    return false;
+  }
+  if (!DOM_QUERY_MEMBER_NAMES.has(node.property.name)) return true;
+  const parent = node.parent;
+  return Boolean(parent && isNodeOfType(parent, "CallExpression") && parent.callee === node);
+};
+
 const isPropertyNamePosition = (identifier: EsTreeNode): boolean => {
   const parent = identifier.parent;
   if (!parent) return false;

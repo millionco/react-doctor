@@ -38,24 +38,6 @@ describe("rerender-state-only-in-handlers", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
-});
-
-describe("rerender-state-only-in-handlers", () => {
-  it("flags state that is only set in a handler and never shown", () => {
-    const result = runRule(
-      rerenderStateOnlyInHandlers,
-      `
-      function App() {
-        const [logged, setLogged] = useState(false);
-        const onClick = () => setLogged(true);
-        return <button onClick={onClick}>go</button>;
-      }
-    `,
-    );
-
-    expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("logged");
-  });
 
   it("does not flag state used only as an effect re-run trigger (in deps, never read by the effect)", () => {
     const result = runRule(
@@ -93,5 +75,62 @@ describe("rerender-state-only-in-handlers", () => {
 
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).toContain("dirty");
+  });
+
+  it("does not flag a guard-only effect dep when a same-named local shadows it elsewhere in the effect", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `
+      function BulkSubmitter({ items }) {
+        const [dirty, setDirty] = useState(false);
+        useEffect(() => {
+          if (!dirty) return;
+          items.forEach((dirty) => submitRow(dirty));
+        }, [dirty, items]);
+        return <button onClick={() => setDirty(true)}>save</button>;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag an effect dep whose only same-named reads resolve to a shadowing local", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `
+      function Tracker() {
+        const [ping, setPing] = useState(0);
+        useEffect(() => {
+          const ping = createBeacon();
+          if (!ping) return;
+          ping.send();
+        }, [ping]);
+        return <button onClick={() => setPing((count) => count + 1)}>ping</button>;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a payload-read effect dep when a nested helper shadows its name", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `
+      function Logger() {
+        const [count, setCount] = useState(0);
+        useEffect(() => {
+          reportCount(count);
+          const normalize = (count) => count + 1;
+          registerNormalizer(normalize);
+        }, [count]);
+        return <button onClick={() => setCount((value) => value + 1)}>+1</button>;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("count");
   });
 });

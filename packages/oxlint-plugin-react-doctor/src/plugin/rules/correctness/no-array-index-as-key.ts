@@ -183,9 +183,9 @@ const findSameFileTypeDeclaration = (
   const programRoot = findProgramRoot(referenceNode);
   if (!programRoot || !isNodeOfType(programRoot, "Program")) return null;
   for (const statement of programRoot.body) {
-    const declaration = isNodeOfType(statement, "ExportNamedDeclaration")
-      ? (statement.declaration as EsTreeNode | null)
-      : (statement as EsTreeNode);
+    const declaration: EsTreeNode | null = isNodeOfType(statement, "ExportNamedDeclaration")
+      ? statement.declaration
+      : statement;
     if (!declaration) continue;
     if (
       (isNodeOfType(declaration, "TSInterfaceDeclaration") ||
@@ -208,22 +208,20 @@ const typeDeclaresStringProperty = (
   depth: number,
 ): boolean => {
   if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return false;
-  const members = isNodeOfType(typeNode, "TSTypeLiteral")
-    ? typeNode.members
-    : isNodeOfType(typeNode, "TSInterfaceDeclaration")
-      ? typeNode.body.body
-      : null;
+  let members: ReadonlyArray<EsTreeNode> | null = null;
+  if (isNodeOfType(typeNode, "TSTypeLiteral")) members = typeNode.members;
+  else if (isNodeOfType(typeNode, "TSInterfaceDeclaration")) members = typeNode.body.body;
   if (members) {
     for (const member of members) {
       if (!isNodeOfType(member, "TSPropertySignature")) continue;
       if (!isNodeOfType(member.key, "Identifier") || member.key.name !== propertyName) continue;
-      return isStringKeywordAnnotation(member.typeAnnotation as EsTreeNode | undefined);
+      return isStringKeywordAnnotation(member.typeAnnotation);
     }
     return false;
   }
   if (isNodeOfType(typeNode, "TSTypeAliasDeclaration")) {
     return typeDeclaresStringProperty(
-      typeNode.typeAnnotation as EsTreeNode,
+      typeNode.typeAnnotation,
       propertyName,
       referenceNode,
       depth + 1,
@@ -250,7 +248,7 @@ const isDestructuredFromStringTypedPattern = (bindingIdentifier: EsTreeNode): bo
   const typeAnnotation = pattern.typeAnnotation;
   if (!typeAnnotation || !isNodeOfType(typeAnnotation, "TSTypeAnnotation")) return false;
   return typeDeclaresStringProperty(
-    typeAnnotation.typeAnnotation as EsTreeNode,
+    typeAnnotation.typeAnnotation,
     property.key.name,
     bindingIdentifier,
     0,
@@ -275,10 +273,12 @@ const isProvablyStringValued = (expression: EsTreeNode, depth: number): boolean 
     const binding = findVariableInitializer(node, node.name);
     if (!binding) return false;
     if (binding.initializer && isProvablyStringValued(binding.initializer, depth + 1)) return true;
-    const identifierAnnotation = (
-      binding.bindingIdentifier as unknown as { typeAnnotation?: EsTreeNode }
-    ).typeAnnotation;
-    if (isStringKeywordAnnotation(identifierAnnotation)) return true;
+    if (
+      isNodeOfType(binding.bindingIdentifier, "Identifier") &&
+      isStringKeywordAnnotation(binding.bindingIdentifier.typeAnnotation)
+    ) {
+      return true;
+    }
     return isDestructuredFromStringTypedPattern(binding.bindingIdentifier);
   }
   return false;
@@ -297,7 +297,7 @@ const isStringDerivedReceiver = (receiver: EsTreeNode): boolean => {
   if (isNodeOfType(node, "ArrayExpression") && node.elements?.length === 1) {
     const only = node.elements[0];
     if (only && isNodeOfType(only, "SpreadElement")) {
-      return isProvablyStringValued(only.argument as EsTreeNode, 0);
+      return isProvablyStringValued(only.argument, 0);
     }
   }
   if (
@@ -310,7 +310,7 @@ const isStringDerivedReceiver = (receiver: EsTreeNode): boolean => {
   }
   if (isArrayFromCall(node) && isNodeOfType(node, "CallExpression")) {
     const source = node.arguments?.[0];
-    if (source && isProvablyStringValued(source as EsTreeNode, 0)) return true;
+    if (source && isProvablyStringValued(source, 0)) return true;
   }
   return false;
 };

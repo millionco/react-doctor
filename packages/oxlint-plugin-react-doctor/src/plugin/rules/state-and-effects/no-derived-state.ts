@@ -50,12 +50,13 @@ const countSetterCallSites = (ref: Reference): number => {
 // same does not count.
 const collectUpdaterParameterReads = (
   analysis: ProgramAnalysis,
-  updaterFn: EsTreeNode,
+  updaterFn:
+    | EsTreeNodeOfType<"ArrowFunctionExpression">
+    | EsTreeNodeOfType<"FunctionExpression">
+    | EsTreeNodeOfType<"FunctionDeclaration">,
 ): EsTreeNode[] => {
-  const body = (updaterFn as unknown as { body?: EsTreeNode }).body;
-  if (!body) return [];
   const reads: EsTreeNode[] = [];
-  for (const ref of getDownstreamRefs(analysis, body)) {
+  for (const ref of getDownstreamRefs(analysis, updaterFn.body)) {
     const resolvesToOwnParameter = ref.resolved?.defs.some(
       (def) => def.type === "Parameter" && (def.node as unknown as EsTreeNode) === updaterFn,
     );
@@ -89,7 +90,7 @@ const isAccumulatingFunctionalUpdater = (
   callExpr: EsTreeNode,
 ): boolean => {
   if (!isNodeOfType(callExpr, "CallExpression")) return false;
-  const firstArgument = callExpr.arguments?.[0] as EsTreeNode | undefined;
+  const firstArgument: EsTreeNode | undefined = callExpr.arguments?.[0];
   if (!firstArgument || !isFunctionLike(firstArgument)) return false;
   const parameterReads = collectUpdaterParameterReads(analysis, firstArgument);
   if (parameterReads.length === 0) return false;

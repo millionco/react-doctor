@@ -15,11 +15,9 @@ const getSetterNameFromStatement = (
   statement: EsTreeNode,
   setterNames: ReadonlySet<string>,
 ): string | null => {
-  const expression = isNodeOfType(statement, "ExpressionStatement")
-    ? statement.expression
-    : isNodeOfType(statement, "ReturnStatement")
-      ? statement.argument
-      : null;
+  let expression: EsTreeNode | null = null;
+  if (isNodeOfType(statement, "ExpressionStatement")) expression = statement.expression;
+  else if (isNodeOfType(statement, "ReturnStatement")) expression = statement.argument;
   if (!expression) return null;
   const call = stripParenExpression(expression);
   if (!isNodeOfType(call, "CallExpression")) return null;
@@ -54,14 +52,14 @@ const findLargestCoUpdatedSetterGroup = (
       const child = record[key];
       if (Array.isArray(child)) {
         for (const item of child) {
-          if (isAstNode(item)) visit(item as EsTreeNode, enteringNestedFunction);
+          if (isAstNode(item)) visit(item, enteringNestedFunction);
         }
       } else if (isAstNode(child)) {
-        visit(child as EsTreeNode, enteringNestedFunction);
+        visit(child, enteringNestedFunction);
       }
     }
   };
-  visit(componentBody as EsTreeNode, false);
+  visit(componentBody, false);
   return largestGroupSize;
 };
 

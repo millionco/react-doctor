@@ -9,7 +9,6 @@ import { REACT_HOC_NAMES } from "../../constants/react.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
 import { walkAst } from "../../utils/walk-ast.js";
-import type { Rule } from "../../utils/rule.js";
 
 // Port of `oxc_linter::rules::react::rules_of_hooks`. Enforces React's
 // Rules of Hooks:

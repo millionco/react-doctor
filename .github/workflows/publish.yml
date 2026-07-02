@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   publish:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write
@@ -55,7 +55,7 @@ jobs:
     name: Publish @dev snapshot
     needs: publish
     if: ${{ !cancelled() && needs.publish.result != 'failure' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read

@@ -22,7 +22,7 @@ env:
 
 jobs:
   lint:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
@@ -47,7 +47,7 @@ jobs:
         run: pnpm lint
 
   typecheck:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:

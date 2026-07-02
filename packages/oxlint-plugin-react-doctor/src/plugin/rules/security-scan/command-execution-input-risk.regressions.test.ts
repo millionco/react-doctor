@@ -58,4 +58,84 @@ describe("security-scan/command-execution-input-risk — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent on spawn with a fixed command and request input in the argv array (no shell)", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "src/server/git.ts",
+      content: `spawn("git", ["log", req.query.branch]);\nspawnSync("ls", ["-la", req.query.dir]);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags spawn when the command itself is request input", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "src/server/run.ts",
+      content: `spawn(req.query.cmd, args);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("still flags spawn when a shell is explicitly enabled with request input in the call", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "src/server/run.ts",
+      content: `spawn("sh", ["-c", command], { shell: true, env: req.body });\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags spawn of a shell binary running request input via -c", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "src/server/run.ts",
+      content: `spawn("sh", ["-c", req.query.cmd]);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags spawnSync of a shell binary running request input via -c", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "src/server/run.ts",
+      content: `spawnSync("bash", ["-c", req.body.script]);\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent on a shell binary running a static -c command", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "src/server/tasks.ts",
+      content: `spawn("sh", ["-c", "git status"]);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on zero-taint spawn with { shell: true } and a static argv", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "src/server/tasks.ts",
+      content: `spawn("ls", ["-la"], { shell: true });\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on zero-taint exec with { shell: true }", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "src/server/tasks.ts",
+      content: `execSync("git status", { shell: true });\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("flags spawn of a template-literal tainted command", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "src/server/run.ts",
+      content: "spawn(`${req.query.cmd}`);\n",
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags spawn of a concatenated tainted command with { shell: true }", () => {
+    const findings = runScanRule(commandExecutionInputRisk, {
+      relativePath: "src/server/run.ts",
+      content: `spawn("tar -xf " + req.query.file, { shell: true });\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

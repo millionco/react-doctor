@@ -113,4 +113,12 @@ describe("security-scan/postmessage-origin-risk — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("stays silent when event.data is bound to a local before the origin guard returns", () => {
+    const findings = runScanRule(postmessageOriginRisk, {
+      relativePath: "src/widget.ts",
+      content: `window.addEventListener("message", (event) => {\n  const data = event.data;\n  if (event.origin !== window.location.origin) return;\n  handleCommand(data);\n});\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

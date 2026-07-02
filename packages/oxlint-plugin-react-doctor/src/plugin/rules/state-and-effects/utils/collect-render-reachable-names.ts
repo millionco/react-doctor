@@ -1,5 +1,7 @@
+import { EFFECT_HOOK_NAMES } from "../../../constants/react.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
+import { isReactHookName } from "../../../utils/is-react-hook-name.js";
 import {
   addPatternBindings,
   collectScopedReferenceNames,
@@ -59,6 +61,26 @@ const collectRenderReachableNamesFromStatement = (
       );
     }
     return true;
+  }
+
+  // A render-phase hook call (`useChartEngine(scrollY)`) reads its arguments
+  // during render, so any state named there IS shown on screen (it shapes what
+  // the hook computes for the render), not "set but never shown". Collect those
+  // argument names even though the call isn't inside the returned JSX. Effect
+  // hooks are explicitly excluded: their callback runs AFTER render and their
+  // deps array is not rendered, so `useEffect(() => …, [trigger])` must NOT
+  // mark `trigger` render-reachable (that would mask event-triggered-state).
+  if (
+    isNodeOfType(statement, "ExpressionStatement") &&
+    isNodeOfType(statement.expression, "CallExpression") &&
+    isNodeOfType(statement.expression.callee, "Identifier") &&
+    isReactHookName(statement.expression.callee.name) &&
+    !EFFECT_HOOK_NAMES.has(statement.expression.callee.name)
+  ) {
+    for (const argument of statement.expression.arguments ?? []) {
+      addNames(names, collectScopedReferenceNames(argument, scope, eventHandlerReferenceNames));
+    }
+    return false;
   }
 
   if (isNodeOfType(statement, "BlockStatement")) {

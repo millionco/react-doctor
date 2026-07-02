@@ -66,6 +66,48 @@ builds one lazily per `Program` with `eslint-scope` in
   the authoritative "what's wrong → why → fix" shape used by the rest
   of the error-level effect rules in this folder. Detector behavior
   is unchanged; only the diagnostic copy and severity diverge.
+- **Externally-driven / non-render-knowable state suppression** — the
+  whole "you might not need an effect" premise assumes a `useState`
+  value is written from a React event handler, so the work can be
+  folded into that handler (or computed during render). That breaks for
+  state sourced imperatively, which upstream still flags as false
+  positives. Two shared discriminators narrow this:
+  - `utils/reads-post-mount-value.ts` — a value read from the DOM /
+    a ref `.current` / a browser global (`window`, `matchMedia`, …)
+    cannot be produced during render, so `no-derived-state`,
+    `no-adjust-state-on-prop-change`, `no-event-handler`, and
+    `no-initialize-state` skip it.
+  - `utils/effect/external-state.ts → isExternallyDrivenState` — when a
+    state's setter is called from a deferred callback (timer / listener
+    / observer / promise / subscription / async fn, inline, named, or
+    `useCallback`-wrapped), there is no React event handler to fold into,
+    so `no-event-handler`, `no-pass-live-state-to-parent`,
+    `no-prop-callback-in-effect`, and `no-chain-state-updates` skip it.
+    `no-cascading-set-state` likewise stops summing setters inside
+    deferred callbacks (it still counts synchronous IIFE / `forEach`-style
+    callbacks and `setX(prev => …)` updaters).
+- **`no-event-handler` setter-only consequent** — the rule reports refs in
+  an `if` test inside a `useEffect`, but every true positive in the upstream
+  corpus runs a NON-setter side effect in the consequent
+  (`submitData(...)`, `showNotification(...)`) — exactly the work the
+  recommendation says to fold into the triggering handler. An `if` whose
+  consequent is ONLY state-setter / ref-bookkeeping statements is state
+  SYNCHRONISATION (the controlled/uncontrolled mirror
+  `if (valueProp !== undefined) setValue(valueProp)`, or an
+  adjust-state-on-prop-change), which the dedicated state-sync rules own.
+  Such ifs are skipped here so the controlled/uncontrolled input pattern
+  (Innovaccer/lobe-ui/Victory) is not flagged as a faked event handler.
+- **`no-derived-state` controlled/uncontrolled value mirror** — when the
+  effect's setter receives a bare PROP identifier AND the same setter is
+  also called from elsewhere (`setInput(event.target.value)`,
+  `setUncontrolledOpen(nextOpen)` in an `onOpenChange` handler), the state
+  holds the user's live edits and only re-syncs to the controlled prop. It
+  is not a value derivable while rendering — a `useMemo` would erase the
+  edits — so it is skipped (`isControlledPropMirror`). The upstream
+  "derived" corpus never mirrors a bare prop while also writing the same
+  state elsewhere, so parity is retained (all 54 invalid cases still fire,
+  including the dead-wrapper double-call-site fixture whose argument is an
+  object literal rather than a bare prop).
 
 ## Upstream `LICENSE` (MIT, retained for attribution)
 

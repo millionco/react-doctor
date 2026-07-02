@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getArgsUpstreamRefs, getCallExpr, getUpstreamRefs } from "./utils/effect/ast.js";
+import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getEffectDepsRefs,
@@ -35,10 +36,14 @@ export const noChainStateUpdates = defineRule({
       const effectFn = getEffectFn(analysis, node);
       if (!effectFn) return;
 
-      const isSomeDepsState = depsRefs
+      const stateDeps = depsRefs
         .flatMap((ref) => getUpstreamRefs(analysis, ref))
-        .some((ref) => isState(analysis, ref));
-      if (!isSomeDepsState) return;
+        .filter((ref) => isState(analysis, ref));
+      if (stateDeps.length === 0) return;
+      // Every triggering state dep is driven by a timer / listener / observer
+      // / subscription — there is no single event handler to set all the
+      // related state together, so the chain is the correct shape here.
+      if (stateDeps.every((ref) => isExternallyDrivenState(analysis, ref))) return;
 
       for (const ref of effectFnRefs) {
         if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;

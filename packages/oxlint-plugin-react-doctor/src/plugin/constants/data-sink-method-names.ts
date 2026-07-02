@@ -1,4 +1,26 @@
 /**
+ * Pure string / comparison reads — `props.text.startsWith(prev)`,
+ * `props.path.includes(sep)`, `props.label.indexOf(x)` read FROM the
+ * prop and return a primitive; they never hand the child's data back
+ * to a parent callback. Split out of DATA_SINK_METHOD_NAMES because
+ * these names CAN collide with a real parent callback when the method
+ * is called directly on the props object (`props.search(results)`) —
+ * `no-pass-data-to-parent` un-exempts exactly that shape.
+ */
+export const STRING_READ_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "startsWith",
+  "endsWith",
+  "includes",
+  "indexOf",
+  "lastIndexOf",
+  "match",
+  "matchAll",
+  "search",
+  "localeCompare",
+  "test",
+]);
+
+/**
  * Method names that conventionally "consume" or "sink" the value
  * passed to them rather than handing it BACK to a parent — used by
  * `no-pass-data-to-parent` and `no-pass-live-state-to-parent` to
@@ -48,6 +70,7 @@ export const DATA_SINK_METHOD_NAMES: ReadonlySet<string> = new Set([
   "fire",
   "broadcast",
   "send",
+  ...STRING_READ_METHOD_NAMES,
   // Promise
   "then",
   "catch",

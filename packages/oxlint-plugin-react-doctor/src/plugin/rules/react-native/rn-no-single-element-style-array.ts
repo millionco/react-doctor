@@ -21,6 +21,11 @@ export const rnNoSingleElementStyleArray = defineRule({
       const expression = node.value.expression;
       if (!isNodeOfType(expression, "ArrayExpression")) return;
       if (expression.elements?.length !== 1) return;
+      // `[...base]` is a single SpreadElement but expands to N styles — it
+      // clones a style array (e.g. to avoid mutating the source), not a
+      // one-item wrapper, and `style={value}` can't replace it.
+      const onlyElement = expression.elements[0];
+      if (!onlyElement || isNodeOfType(onlyElement, "SpreadElement")) return;
 
       context.report({
         node: expression,

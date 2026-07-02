@@ -8,6 +8,7 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // HACK: jotai propagates derived-atom values with `Object.is`. There
@@ -33,7 +34,9 @@ const isAtomFromJotai = (callExpression: EsTreeNodeOfType<"CallExpression">): bo
   return getImportedNameFromModule(callExpression, localName, "jotai") === "atom";
 };
 
-const isFunctionLike = (node: EsTreeNode | null | undefined): node is FunctionExpressionLike =>
+const isFunctionExpressionLike = (
+  node: EsTreeNode | null | undefined,
+): node is FunctionExpressionLike =>
   Boolean(
     node &&
     (isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression")),
@@ -67,9 +70,19 @@ const FRESH_ARRAY_INSTANCE_METHODS = new Set([
   "reverse",
 ]);
 
+// `.sort()` / `.reverse()` mutate AND return the SAME reference. Applied
+// straight to a `get(...)` result (`get(items).sort()`) they hand back the
+// stored array — no fresh allocation, no spurious re-render. They only yield a
+// fresh value when their receiver is itself a fresh-allocating chain
+// (`get(items).slice().sort()`), handled in `freshFromMethodChain`.
+const MUTATING_RETURN_SAME_REFERENCE_METHODS = new Set(["sort", "reverse"]);
+
 // Static methods that allocate a fresh array / object from upstream.
+// `Object.assign` is intentionally absent: it returns its FIRST argument
+// (a stable reference), so it only allocates when that first argument is
+// itself a fresh literal — handled explicitly in `freshFromMethodChain`.
 const FRESH_STATIC_OBJECT_CALLS: Record<string, ReadonlySet<string>> = {
-  Object: new Set(["keys", "values", "entries", "fromEntries", "assign", "create"]),
+  Object: new Set(["keys", "values", "entries", "fromEntries", "create"]),
   Array: new Set(["from", "of"]),
 };
 
@@ -102,7 +115,24 @@ const freshFromMethodChain = (expression: EsTreeNode): FreshReturn | null => {
   if (!isNodeOfType(callee.property, "Identifier")) return null;
   const methodName = callee.property.name;
   if (FRESH_ARRAY_INSTANCE_METHODS.has(methodName)) {
+    if (MUTATING_RETURN_SAME_REFERENCE_METHODS.has(methodName)) {
+      const receiver = stripParenExpression(callee.object);
+      const receiverIsFresh = freshFromObjectLiteral(receiver) ?? freshFromMethodChain(receiver);
+      return receiverIsFresh ? { kind: "array", reportNode: expression } : null;
+    }
     return { kind: "array", reportNode: expression };
+  }
+  // `Object.assign(target, ...)` returns `target`. It's only a fresh
+  // allocation when the target is itself a fresh literal (`Object.assign({}, x)`).
+  if (
+    isNodeOfType(callee.object, "Identifier") &&
+    callee.object.name === "Object" &&
+    methodName === "assign"
+  ) {
+    const target = expression.arguments?.[0];
+    return target && freshFromObjectLiteral(stripParenExpression(target))
+      ? { kind: "object", reportNode: expression }
+      : null;
   }
   // Static-method form: `Object.entries(get(x))`, `Array.from(get(x))`.
   if (isNodeOfType(callee.object, "Identifier")) {
@@ -138,15 +168,9 @@ const collectTopLevelReturnExpressions = (
 ): Array<EsTreeNode | null | undefined> => {
   const returns: Array<EsTreeNode | null | undefined> = [];
   walkAst(block, (child) => {
-    if (
-      isNodeOfType(child, "FunctionDeclaration") ||
-      isNodeOfType(child, "FunctionExpression") ||
-      isNodeOfType(child, "ArrowFunctionExpression")
-    ) {
-      // Don't descend into nested functions — their returns belong to
-      // their own control-flow scope.
-      return false;
-    }
+    // Don't descend into nested functions — their returns belong to
+    // their own control-flow scope.
+    if (isFunctionLike(child)) return false;
     if (isNodeOfType(child, "ReturnStatement")) returns.push(child.argument);
   });
   return returns;
@@ -186,13 +210,7 @@ const functionBodyReferencesGetParameter = (
     // Don't descend into nested functions — their `get(...)` calls
     // belong to their own closure and don't prove the outer atom
     // reads from upstream.
-    if (
-      isNodeOfType(child, "FunctionDeclaration") ||
-      isNodeOfType(child, "FunctionExpression") ||
-      isNodeOfType(child, "ArrowFunctionExpression")
-    ) {
-      if (child !== fn) return false;
-    }
+    if (isFunctionLike(child) && child !== fn) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isNodeOfType(child.callee, "Identifier")) return;
     if (child.callee.name === getParameterName) {
@@ -215,7 +233,7 @@ export const jotaiDerivedAtomReturnsFreshObject = defineRule({
       const args = node.arguments ?? [];
       if (args.length === 0) return;
       const reader = args[0];
-      if (!isFunctionLike(reader)) return;
+      if (!isFunctionExpressionLike(reader)) return;
       // Write-only / read-write atoms have a second `set` parameter
       // and produce a different propagation shape. Out of v1 scope.
       const getParameterName = getFirstParameterName(reader);

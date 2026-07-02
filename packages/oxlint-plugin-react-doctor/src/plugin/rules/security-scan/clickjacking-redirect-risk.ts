@@ -20,7 +20,7 @@ export const clickjackingRedirectRisk = defineRule({
     shouldScan: (file) =>
       isProductionSourcePath(file.relativePath) || isConfigOrCiPath(file.relativePath),
     pattern:
-      /\bredirect\s*\((?!\s*(?:await\s+)?[\w$]*(?:safe|valid|sanitiz|allowlist|whitelist)[\w$]*\s*\()[^)'"`\n]*\b(?:searchParams\.get|nextUrl\.searchParams|returnTo|callbackUrl|continue|next)\b|<iframe\b[\s\S]{0,700}\b(?:next=|continue=|redirect=|redirect_uri|userstoinvite|sharingaction|role=|\.\.)|frame-ancestors\s+(?:\*|'self'\s+\*)|X-Frame-Options["']?\s*:\s*["']?ALLOW/i,
+      /\bredirect\s*\((?!\s*(?:await\s+)?[\w$]*(?:safe|valid|sanitiz|allowlist|whitelist)[\w$]*\s*\()[^)'"`\n]*\b(?:searchParams\.get|nextUrl\.searchParams|returnTo|callbackUrl|continue|next)\b|<iframe\b[\s\S]{0,700}(?:\b(?:next=|continue=|redirect=|redirect_uri|userstoinvite|sharingaction|\.\.)|[?&](?:amp;)?role=)|frame-ancestors\s+(?:\*|'self'\s+\*)|X-Frame-Options["']?\s*:\s*["']?ALLOW/i,
     message:
       "Redirect or framing configuration may let attacker-controlled URLs chain into privileged UI or clickjacking.",
   }),

@@ -1,6 +1,8 @@
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import { collectEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -23,7 +25,15 @@ export const queryNoQueryInEffect = defineRule({
       const callback = getEffectCallback(node);
       if (!callback) return;
 
+      const effectInvokedFunctions = collectEffectInvokedFunctions(callback);
       walkAst(callback, (child: EsTreeNode) => {
+        // Skip calls registered inside nested handlers (addEventListener /
+        // setInterval) — those fire on an external event — but keep walking
+        // into functions the effect body itself invokes (IIFEs, called local
+        // functions, promise-chain callbacks): those run on every effect
+        // execution.
+        if (child !== callback && isFunctionLike(child) && !effectInvokedFunctions.has(child))
+          return false;
         if (!isNodeOfType(child, "CallExpression")) return;
 
         const calleeName = isNodeOfType(child.callee, "Identifier") ? child.callee.name : null;

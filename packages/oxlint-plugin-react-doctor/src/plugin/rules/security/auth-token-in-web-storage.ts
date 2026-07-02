@@ -16,6 +16,24 @@ const STORAGE_GLOBALS = new Set(["window", "globalThis", "self"]);
 const SENSITIVE_KEY_PATTERN =
   /token|jwt|secret|password|passwd|credential|api[-_]?key|bearer|private[-_]?key/i;
 
+// `token` over-matches names that aren't auth/session credentials. CSRF/XSRF
+// double-submit tokens are *intentionally* JS-readable (the sibling
+// `insecure-session-cookie` rule carves them out too), FCM/APNs/push device
+// tokens are routing identifiers, and design-tokens / tokenizer / syntax
+// configs (`designTokens`, `tokenizerConfig`, `tokenColors`, `syntaxTokens`)
+// are styling data, not credentials. Exempt those unless the key ALSO carries
+// a strong auth signal (so `deviceAccessToken` still fires).
+const NON_AUTH_TOKEN_PATTERN =
+  /csrf|xsrf|device|fcm|apns|push|design|tokeniz|syntax|css|theme|color/i;
+const STRONG_AUTH_KEY_PATTERN =
+  /jwt|secret|password|passwd|credential|private[-_]?key|api[-_]?key|bearer|access[-_]?token|refresh[-_]?token|auth[-_]?token|id[-_]?token|session/i;
+
+const isAuthCredentialKey = (key: string): boolean => {
+  if (!SENSITIVE_KEY_PATTERN.test(key)) return false;
+  if (NON_AUTH_TOKEN_PATTERN.test(key) && !STRONG_AUTH_KEY_PATTERN.test(key)) return false;
+  return true;
+};
+
 // `localStorage` / `sessionStorage`, optionally reached through a global
 // (`window.localStorage`, `globalThis.sessionStorage`).
 const isWebStorageObject = (node: EsTreeNode): boolean => {
@@ -68,7 +86,7 @@ export const authTokenInWebStorage = defineRule({
       ) {
         return;
       }
-      if (!SENSITIVE_KEY_PATTERN.test(keyArgument.value)) return;
+      if (!isAuthCredentialKey(keyArgument.value)) return;
       context.report({ node, message: MESSAGE });
     },
     // `localStorage.authToken = t` / `localStorage["jwt"] = t`
@@ -77,7 +95,7 @@ export const authTokenInWebStorage = defineRule({
       if (!isNodeOfType(target, "MemberExpression")) return;
       if (!isWebStorageObject(target.object)) return;
       const propertyName = staticMemberName(target);
-      if (!propertyName || !SENSITIVE_KEY_PATTERN.test(propertyName)) return;
+      if (!propertyName || !isAuthCredentialKey(propertyName)) return;
       context.report({ node: target, message: MESSAGE });
     },
   })),

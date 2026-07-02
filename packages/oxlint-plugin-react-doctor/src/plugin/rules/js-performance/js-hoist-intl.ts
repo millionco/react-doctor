@@ -1,6 +1,6 @@
-import { nearestEnclosingFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
@@ -138,7 +138,7 @@ const isPersistentCacheSetWrite = (
 };
 
 const isInsideCacheMemo = (node: EsTreeNode): boolean => {
-  const enclosingFunction = nearestEnclosingFunction(node);
+  const enclosingFunction = findEnclosingFunction(node);
   let child: EsTreeNode = node;
   let cursor: EsTreeNode | null = node.parent ?? null;
   while (cursor) {

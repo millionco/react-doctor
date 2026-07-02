@@ -93,6 +93,29 @@ export const Stable = () => {
     expect(hits).toHaveLength(0);
   });
 
+  it("does NOT flag a locally-bound `location` from useLocation() (it IS reactive)", async () => {
+    const projectDir = setupReactProject(tempRoot, "no-mutable-in-deps-uselocation", {
+      files: {
+        "src/Layout.tsx": `import { useEffect } from "react";
+
+declare const useLocation: () => { pathname: string; search: string; hash: string };
+declare const sync: (path: string) => void;
+
+export const Layout = () => {
+  const location = useLocation();
+  useEffect(() => {
+    sync(location.pathname);
+  }, [location.pathname, location.search, location.hash]);
+  return <div />;
+};
+`,
+      },
+    });
+
+    const hits = await collectRuleHits(projectDir, "no-mutable-in-deps");
+    expect(hits).toHaveLength(0);
+  });
+
   it("does NOT flag a regular state.field MemberExpression (state IS reactive)", async () => {
     const projectDir = setupReactProject(tempRoot, "no-mutable-in-deps-state-field", {
       files: {

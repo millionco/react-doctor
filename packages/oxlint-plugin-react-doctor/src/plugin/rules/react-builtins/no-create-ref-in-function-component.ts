@@ -1,8 +1,6 @@
-import {
-  componentOrHookDisplayNameForFunction,
-  nearestEnclosingFunction,
-} from "../../utils/component-or-hook-display-name.js";
+import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
@@ -38,7 +36,7 @@ export const noCreateRefInFunctionComponent = defineRule({
         if (symbol && symbol.kind !== "import") return;
       }
 
-      const enclosingFunction = nearestEnclosingFunction(node);
+      const enclosingFunction = findEnclosingFunction(node);
       if (!enclosingFunction) return;
       const displayName = componentOrHookDisplayNameForFunction(enclosingFunction);
       if (!displayName) return;

@@ -160,13 +160,20 @@ const findScopeOwner = (node: EsTreeNode): EsTreeNode | null => {
 
 const NAN_CHECK_CALLEE_NAMES = new Set(["isNaN", "isFinite"]);
 
-// The result binding is reassigned or NaN-checked (`if (Number.isNaN(ratio))
-// ratio = 0;`) — the code already handles the failure the rule warns about,
-// so the binding no longer flows unhandled into the numeric consumer.
+// The result binding is plainly reassigned (a flow break — the consumer no
+// longer reads the arithmetic result) or NaN-checked (`if (Number.isNaN(ratio))
+// ratio = 0;`). Compound assignments (`ratio *= 2`) keep NaN NaN, so only the
+// `=` operator counts as a flow break.
 const isNanHandledReference = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
   const parent = identifier.parent;
   if (!parent) return false;
-  if (isNodeOfType(parent, "AssignmentExpression") && parent.left === identifier) return true;
+  if (
+    isNodeOfType(parent, "AssignmentExpression") &&
+    parent.operator === "=" &&
+    parent.left === identifier
+  ) {
+    return true;
+  }
   if (
     isNodeOfType(parent, "CallExpression") &&
     (parent.arguments ?? []).some((argument) => argument === identifier)
@@ -187,8 +194,30 @@ const isNanHandledReference = (identifier: EsTreeNodeOfType<"Identifier">): bool
   return false;
 };
 
+// oxlint runtime nodes carry `range`; the oxc-parser test AST carries
+// numeric `start` offsets instead — accept either.
+const nodeStartOffset = (node: EsTreeNode): number => {
+  if (node.range) return node.range[0];
+  const nodeWithOffsets = node as { start?: number };
+  return typeof nodeWithOffsets.start === "number"
+    ? nodeWithOffsets.start
+    : Number.MAX_SAFE_INTEGER;
+};
+
+// A same-named inner binding (shadowing parameter or nested declarator) is
+// not a use of the arithmetic result — only identifiers that resolve back to
+// the declarator's own id count.
+const isReferenceToBinding = (
+  referenceIdentifier: EsTreeNodeOfType<"Identifier">,
+  bindingIdentifier: EsTreeNode,
+): boolean =>
+  findVariableInitializer(referenceIdentifier, referenceIdentifier.name)?.bindingIdentifier ===
+  bindingIdentifier;
+
 // A numeric consumer reached through an intermediate binding:
-// `const share = a?.b / total; share.toFixed(2)`.
+// `const share = a?.b / total; share.toFixed(2)`. Order-aware: a NaN check or
+// plain reassignment suppresses only the consumers that come after it — a
+// consumer that reads the binding first already received the NaN.
 const flowsIntoNumericConsumerViaBinding = (binaryNode: EsTreeNode): boolean => {
   const { consumed, consumer } = unwrapUpwards(binaryNode);
   if (
@@ -199,23 +228,36 @@ const flowsIntoNumericConsumerViaBinding = (binaryNode: EsTreeNode): boolean => 
   ) {
     return false;
   }
-  const bindingName = consumer.id.name;
+  const bindingIdentifier = consumer.id;
   const scopeOwner = findScopeOwner(binaryNode);
   if (!scopeOwner) return false;
-  let reachesConsumer = false;
-  let isNanHandled = false;
+  let firstConsumerOffset: number | null = null;
+  let firstNanHandledOffset: number | null = null;
   walkAst(scopeOwner, (child: EsTreeNode) => {
-    if (isNanHandled) return false;
-    if (!isNodeOfType(child, "Identifier") || child.name !== bindingName || child === consumer.id) {
+    if (
+      !isNodeOfType(child, "Identifier") ||
+      child.name !== bindingIdentifier.name ||
+      child === bindingIdentifier ||
+      !isReferenceToBinding(child, bindingIdentifier)
+    ) {
       return;
     }
     if (isNanHandledReference(child)) {
-      isNanHandled = true;
-      return false;
+      const handledOffset = nodeStartOffset(child);
+      if (firstNanHandledOffset === null || handledOffset < firstNanHandledOffset) {
+        firstNanHandledOffset = handledOffset;
+      }
+      return;
     }
-    if (isDirectNumericConsumer(child)) reachesConsumer = true;
+    if (isDirectNumericConsumer(child)) {
+      const consumerOffset = nodeStartOffset(child);
+      if (firstConsumerOffset === null || consumerOffset < firstConsumerOffset) {
+        firstConsumerOffset = consumerOffset;
+      }
+    }
   });
-  return reachesConsumer && !isNanHandled;
+  if (firstConsumerOffset === null) return false;
+  return firstNanHandledOffset === null || firstConsumerOffset < firstNanHandledOffset;
 };
 
 const isNumericConsumerContext = (binaryNode: EsTreeNode): boolean =>

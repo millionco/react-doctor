@@ -247,9 +247,10 @@ const isStaticallyPresentSplitPart = (splitCall: EsTreeNode, partIndex: number):
 
 // A dominating condition that guarantees the delimiter exists before the
 // split is read: `receiver.includes(delimiter)` on the same receiver and
-// delimiter, a regex precondition via `.test(...)` (the delimiter's
-// presence is asserted by the pattern), or an opaque predicate call over
-// the split value (`isNumber(value)` before `value.toString().split('.')[1]`).
+// delimiter, a regex precondition via `.test(...)` over the same receiver
+// or split value (the delimiter's presence is asserted by the pattern), or
+// an opaque predicate call over the split value (`isNumber(value)` before
+// `value.toString().split('.')[1]`).
 const isSplitPartDerefGuarded = (node: EsTreeNode, splitCall: EsTreeNode): boolean => {
   if (!isNodeOfType(splitCall, "CallExpression")) return false;
   if (!isNodeOfType(splitCall.callee, "MemberExpression")) return false;
@@ -261,7 +262,16 @@ const isSplitPartDerefGuarded = (node: EsTreeNode, splitCall: EsTreeNode): boole
     if (!isNodeOfType(call.callee, "MemberExpression") || call.callee.computed) return false;
     if (!isNodeOfType(call.callee.property, "Identifier")) return false;
     const guardMethodName = call.callee.property.name;
-    if (guardMethodName === "test") return true;
+    if (guardMethodName === "test") {
+      const testedValue = call.arguments[0] ? stripParenExpression(call.arguments[0]) : null;
+      if (!testedValue) return false;
+      if (areGuardExpressionsEqual(testedValue, splitReceiver)) return true;
+      const testedValueIdentifier = findValueBaseIdentifier(testedValue);
+      return (
+        testedValueIdentifier !== null &&
+        areGuardExpressionsEqual(testedValueIdentifier, splitValueIdentifier)
+      );
+    }
     if (guardMethodName !== "includes") return false;
     const guardArgument = call.arguments[0] ?? null;
     return (

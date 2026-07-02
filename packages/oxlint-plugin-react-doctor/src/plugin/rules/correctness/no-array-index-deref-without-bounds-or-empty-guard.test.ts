@@ -121,6 +121,22 @@ describe("no-array-index-deref-without-bounds-or-empty-guard", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("still flags a split guarded by a RegExp .test() over an unrelated value", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `if (/^https:/.test(url)) { const token = header.split(':')[1].trim(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a member-receiver split under a RegExp .test() over the same receiver", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `if (/:/.test(line.text)) { const part = line.text.split(':')[1].trim(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a split dominated by a predicate helper call over the same value (rsuite idiom)", () => {
     const result = runRule(
       noArrayIndexDerefWithoutBoundsOrEmptyGuard,

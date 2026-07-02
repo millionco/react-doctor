@@ -153,6 +153,46 @@ describe("no-arithmetic-on-optional-chained-operand", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("still flags when the binding is reassigned only after the numeric consumer", () => {
+    const result = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `let ratio = entry?.points / total;
+      const label = ratio.toFixed(2);
+      ratio = 0;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags when the binding is only compound-assigned before the consumer (NaN survives `*=`)", () => {
+    const result = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `let ratio = entry?.points / total;
+      ratio *= 2;
+      ratio.toFixed(2);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag when only a shadowing inner binding of the same name is consumed", () => {
+    const result = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `function Share({ entry, total, others }) {
+        const share = entry?.points / total;
+        return others.map((share) => share.toFixed(2));
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a consumer inside a nested closure without shadowing", () => {
+    const result = runRule(
+      noArithmeticOnOptionalChainedOperand,
+      `const share = entry?.points / total;
+      const render = () => share.toFixed(2);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags an unguarded alias binding despite an unrelated preceding if", () => {
     const result = runRule(
       noArithmeticOnOptionalChainedOperand,

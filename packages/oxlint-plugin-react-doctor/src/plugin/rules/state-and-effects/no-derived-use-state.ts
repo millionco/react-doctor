@@ -1,6 +1,6 @@
-import { nearestEnclosingFunction } from "../../utils/component-or-hook-display-name.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -77,7 +77,7 @@ const isReseededDraftBuffer = (
 ): boolean => {
   const setterName = getStateSetterName(useStateCall);
   if (!setterName) return false;
-  const componentFunction = nearestEnclosingFunction(useStateCall);
+  const componentFunction = findEnclosingFunction(useStateCall);
   if (!componentFunction) return false;
 
   let isReseeded = false;
@@ -110,7 +110,7 @@ const isAdjustedDuringRender = (
 ): boolean => {
   const setterName = getStateSetterName(useStateCall);
   if (!setterName) return false;
-  const componentFunction = nearestEnclosingFunction(useStateCall);
+  const componentFunction = findEnclosingFunction(useStateCall);
   if (!componentFunction) return false;
   let isAdjusted = false;
   walkAst(componentFunction, (child) => {

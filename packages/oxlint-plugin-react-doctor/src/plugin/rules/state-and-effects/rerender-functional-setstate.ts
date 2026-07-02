@@ -31,8 +31,12 @@ const deriveStateVariableName = (setterName: string): string | null => {
 // Treating them as deferred caused false positives on memoized sync
 // handlers. The actual deferred wrappers (useEffect / useLayoutEffect /
 // useInsertionEffect / setTimeout / .then(...) / addEventListener / …)
-// remain in the list.
+// remain in the list. `debounce` / `throttle` wrappers ARE deferred:
+// the wrapped callback runs after a delay, long after the closure was
+// created, so the closed-over state can be stale by the time it fires.
 const DEFERRED_EXECUTION_CALLEE_NAMES: ReadonlySet<string> = new Set([
+  "debounce",
+  "throttle",
   "setTimeout",
   "setInterval",
   "setImmediate",

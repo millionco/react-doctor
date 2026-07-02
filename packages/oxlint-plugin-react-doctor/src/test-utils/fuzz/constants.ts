@@ -1,0 +1,5 @@
+export const DEFAULT_FUZZ_ITERATIONS = 25;
+export const DEFAULT_FUZZ_SEED = 1;
+export const SLOW_RULE_THRESHOLD_MS = 2_000;
+export const NOISE_MUTATION_PROBABILITY = 0.4;
+export const MAX_NOISE_MUTATIONS = 3;

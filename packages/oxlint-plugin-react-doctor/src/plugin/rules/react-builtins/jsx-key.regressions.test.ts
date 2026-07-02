@@ -139,4 +139,50 @@ describe("react-builtins/jsx-key — regressions", () => {
   it("still flags a logical-wrapped mapped collection in children position", () => {
     expectFail(`<Menu>{data.length && data.map((d) => <MenuItem v={d} />)}</Menu>;`);
   });
+
+  // Bench anchor (tim-soft/react-spring-lightbox ImagePager): a `{...bind()}`
+  // gesture spread BEFORE the explicit key is safe — the key wins — so the
+  // base shape stays silent; moving the key ABOVE the spread (the old oracle
+  // "fix") is what lets the spread clobber it, so that order fires.
+  it("does not flag the tim-soft base shape: gesture spread before key in a map", () => {
+    expectPass(`
+      pagerSprings.map(({ display, x }, i) => (
+        <AnimatedImagePager
+          $inline={inline}
+          {...bind()}
+          className="lightbox-image-pager"
+          key={i}
+          role="presentation"
+        />
+      ));
+    `);
+  });
+
+  it("does not flag the corrected tim-soft fix: stable key kept after the gesture spread", () => {
+    expectPass(`
+      pagerSprings.map(({ display, x }, i) => (
+        <AnimatedImagePager
+          $inline={inline}
+          {...bind()}
+          className="lightbox-image-pager"
+          key={images[i].src}
+          role="presentation"
+        />
+      ));
+    `);
+  });
+
+  it("flags the inverted tim-soft oracle shape: key placed before the gesture spread", () => {
+    expectFail(`
+      pagerSprings.map(({ display, x }, i) => (
+        <AnimatedImagePager
+          key={images[i].src}
+          $inline={inline}
+          {...bind()}
+          className="lightbox-image-pager"
+          role="presentation"
+        />
+      ));
+    `);
+  });
 });

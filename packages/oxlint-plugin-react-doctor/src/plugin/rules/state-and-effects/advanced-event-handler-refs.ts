@@ -1,5 +1,6 @@
 import { EFFECT_HOOK_NAMES, SUBSCRIPTION_METHOD_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -10,15 +11,36 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // Hooks whose return value carries a stable identity across renders, so a
-// handler bound to one never forces the listener to re-subscribe.
-const STABLE_HANDLER_HOOK_NAMES = new Set(["useCallback", "useEffectEvent"]);
+// handler bound to one never forces the listener to re-subscribe. Includes
+// the common userland stable-callback hooks (rc-util/ahooks `useEvent`,
+// MUI `useEventCallback`, ahooks `useMemoizedFn`, `useStableCallback`) —
+// they ARE the ref-based pattern this rule recommends.
+const STABLE_HANDLER_HOOK_NAMES = new Set([
+  "useCallback",
+  "useEffectEvent",
+  "useEvent",
+  "useEventCallback",
+  "useMemoizedFn",
+  "useStableCallback",
+]);
 
-// `const handler = useCallback(...)` / `useEffectEvent(...)` / `someRef.current`
-// (a `useRef(...).current` read) all keep a stable identity, so listing the
-// handler in the deps does NOT cause real re-subscription churn.
+const isEmptyDepsUseMemoCall = (callNode: EsTreeNodeOfType<"CallExpression">): boolean => {
+  if (!isHookCall(callNode, "useMemo")) return false;
+  const memoDepsNode = callNode.arguments?.[1];
+  return (
+    isNodeOfType(memoDepsNode, "ArrayExpression") && (memoDepsNode.elements?.length ?? 0) === 0
+  );
+};
+
+// `const handler = useCallback(...)` / `useEvent(...)` / `useMemo(fn, [])` /
+// `someRef.current` (a `useRef(...).current` read) all keep a stable
+// identity, so listing the handler in the deps does NOT cause real
+// re-subscription churn. `useMemo` with non-empty deps still churns.
 const isStableHandlerInitializer = (initializer: EsTreeNode): boolean => {
   if (isNodeOfType(initializer, "CallExpression")) {
-    return isHookCall(initializer, STABLE_HANDLER_HOOK_NAMES);
+    return (
+      isHookCall(initializer, STABLE_HANDLER_HOOK_NAMES) || isEmptyDepsUseMemoCall(initializer)
+    );
   }
   return (
     isNodeOfType(initializer, "MemberExpression") &&
@@ -27,32 +49,12 @@ const isStableHandlerInitializer = (initializer: EsTreeNode): boolean => {
   );
 };
 
-// Resolve the initializer of `const <bindingName> = <init>` by scanning the
-// enclosing block / program scopes outward from the effect call.
-const findBindingInitializer = (fromNode: EsTreeNode, bindingName: string): EsTreeNode | null => {
-  let current: EsTreeNode | null | undefined = fromNode;
-  while (current) {
-    const statements =
-      isNodeOfType(current, "BlockStatement") || isNodeOfType(current, "Program")
-        ? (current.body ?? [])
-        : null;
-    if (statements) {
-      for (const statement of statements) {
-        if (!isNodeOfType(statement, "VariableDeclaration")) continue;
-        for (const declarator of statement.declarations ?? []) {
-          if (
-            isNodeOfType(declarator.id, "Identifier") &&
-            declarator.id.name === bindingName &&
-            declarator.init
-          ) {
-            return declarator.init;
-          }
-        }
-      }
-    }
-    current = current.parent;
-  }
-  return null;
+// A subscription receiver backed by `useRef(...)` has a stable identity, so
+// its presence in the deps never forces re-subscription on its own — the
+// handler churn is still the only churn.
+const isStableRefReceiverDep = (referenceNode: EsTreeNode, receiverDepName: string): boolean => {
+  const receiverBinding = findVariableInitializer(referenceNode, receiverDepName);
+  return Boolean(receiverBinding?.initializer && isHookCall(receiverBinding.initializer, "useRef"));
 };
 
 // HACK: `useEffect(() => { window.addEventListener(name, handler);
@@ -123,18 +125,27 @@ export const advancedEventHandlerRefs = defineRule({
 
       if (!registeredHandlerName) return;
 
-      // The handler has a stable identity (useCallback / useEffectEvent /
-      // a `ref.current` read), so listing it in the deps never actually
-      // churns the subscription.
-      const handlerInitializer = findBindingInitializer(node, registeredHandlerName);
-      if (handlerInitializer && isStableHandlerInitializer(handlerInitializer)) return;
+      // The handler has a stable identity (useCallback / useEvent /
+      // useMemo with [] deps / a `ref.current` read), so listing it in
+      // the deps never actually churns the subscription. Scope-aware
+      // lookup: a prop param shadowing an outer stable binding resolves
+      // to the (unstable) param, not the outer const.
+      const handlerBinding = findVariableInitializer(node, registeredHandlerName);
+      if (handlerBinding?.initializer && isStableHandlerInitializer(handlerBinding.initializer)) {
+        return;
+      }
 
       // Another dep is itself the subscription target (`socket` in
       // `[onMessage, socket]` driving `socket.on(...)`). The listener must
       // re-subscribe when that target changes regardless of the handler, so
       // moving the handler into a ref wouldn't remove the re-subscription.
+      // A `useRef(...)` receiver is exempt from this bailout: its identity
+      // never changes, so the handler churn is still the only churn.
       const hasNonHandlerDepTarget = [...depIdentifierNames].some(
-        (depName) => depName !== registeredHandlerName && subscriptionReceiverNames.has(depName),
+        (depName) =>
+          depName !== registeredHandlerName &&
+          subscriptionReceiverNames.has(depName) &&
+          !isStableRefReceiverDep(node, depName),
       );
       if (hasNonHandlerDepTarget) return;
 

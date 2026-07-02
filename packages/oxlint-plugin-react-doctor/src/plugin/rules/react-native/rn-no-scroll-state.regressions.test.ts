@@ -61,6 +61,47 @@ describe("react-native/rn-no-scroll-state — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("still flags a both-branch if/else toggle of the same state", () => {
+    const result = runRule(
+      rnNoScrollState,
+      `const C = () => {
+  const [showHeader, setShowHeader] = useState(true);
+  const onScroll = (e) => {
+    if (showHeader) { setShowHeader(false); } else { setShowHeader(true); }
+  };
+  return <ScrollView onScroll={onScroll} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a both-arm ternary toggle of the same state", () => {
+    const result = runRule(
+      rnNoScrollState,
+      `const C = () => {
+  const [showHeader, setShowHeader] = useState(true);
+  const onScroll = () => { showHeader ? setShowHeader(false) : setShowHeader(true); };
+  return <ScrollView onScroll={onScroll} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a toggle written as setX(x ? a : b)", () => {
+    const result = runRule(
+      rnNoScrollState,
+      `const C = () => {
+  const [showHeader, setShowHeader] = useState(true);
+  const onScroll = () => { setShowHeader(showHeader ? false : true); };
+  return <ScrollView onScroll={onScroll} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   // Bugbot: a guard that reads the same state but writes a CHANGING value is a
   // per-frame sync, not a set-once latch — the literal-flip requirement keeps
   // it reported.

@@ -29,10 +29,17 @@ const detectInlineRowHandlers = (renderItemFn: EsTreeNode): EsTreeNode[] => {
     return inlineHandlers;
   }
   walkAst(renderItemFn.body, (child: EsTreeNode) => {
-    // A nested list's `renderItem` is inspected as its own renderItem
-    // function, so descending into it here would report its inline handlers a
-    // second time. Prune the subtree at the nested renderItem container.
-    if (isNodeOfType(child, "JSXExpressionContainer") && isRenderItemJsxAttribute(child.parent)) {
+    // A nested list's direct-function `renderItem` is inspected as its own
+    // renderItem function, so descending into it here would report its inline
+    // handlers a second time. Prune only that shape — a wrapped renderItem
+    // (useCallback, conditional) is never inspected on its own, so this walk
+    // must descend into it.
+    if (
+      isNodeOfType(child, "JSXExpressionContainer") &&
+      isRenderItemJsxAttribute(child.parent) &&
+      (isNodeOfType(child.expression, "ArrowFunctionExpression") ||
+        isNodeOfType(child.expression, "FunctionExpression"))
+    ) {
       return false;
     }
     if (!isNodeOfType(child, "JSXAttribute")) return;

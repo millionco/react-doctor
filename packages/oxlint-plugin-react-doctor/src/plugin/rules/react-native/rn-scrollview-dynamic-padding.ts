@@ -1,5 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
+import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
@@ -7,33 +9,39 @@ import { SCROLLVIEW_NAMES } from "./utils/scrollview_names.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const isNumericLiteralNode = (node: EsTreeNode | null | undefined): boolean => {
-  if (!node) return false;
-  if (isNodeOfType(node, "Literal") && typeof node.value === "number") return true;
-  // `-16` parses as a unary minus over a numeric literal.
-  return (
-    isNodeOfType(node, "UnaryExpression") &&
-    node.operator === "-" &&
-    isNodeOfType(node.argument, "Literal") &&
-    typeof node.argument.value === "number"
-  );
-};
-
 const STATIC_ARITHMETIC_OPERATORS = new Set(["+", "-", "*", "/"]);
 
-// A value is "static" when it can't change between renders: a numeric literal,
-// an identifier that resolves to a module/const numeric constant
-// (`const TAB_BAR_HEIGHT = 56`), or arithmetic over static numeric values
-// (`BASE + 8`). State / hook / prop values (keyboardHeight, insets.bottom)
-// don't resolve to a numeric literal, so they still fire.
-const isStaticNumericValue = (value: EsTreeNode): boolean => {
-  if (isNumericLiteralNode(value)) return true;
+// Caps identifier→initializer resolution so a (malformed) cyclic
+// `const a = b; const b = a;` chain can't recurse forever.
+const STATIC_VALUE_RESOLUTION_MAX_DEPTH = 8;
+
+// A value is "static" when it can't change between renders: any literal
+// (`16`, `"10%"`), an expression-free template literal, unary minus /
+// arithmetic over static values (`BASE + 8`), or an identifier bound by a
+// `const` declaration whose initializer is itself static
+// (`const EXTRA = TAB_BAR_HEIGHT + 8`). `let` / `var` bindings can be
+// reassigned after declaration, and state / hook / prop values
+// (keyboardHeight, insets.bottom) never resolve to a static initializer,
+// so all of those still fire.
+const isStaticStyleValue = (value: EsTreeNode, resolutionDepth = 0): boolean => {
+  if (resolutionDepth > STATIC_VALUE_RESOLUTION_MAX_DEPTH) return false;
+  if (isNodeOfType(value, "Literal")) return true;
+  if (isNodeOfType(value, "TemplateLiteral")) {
+    return getStaticTemplateLiteralValue(value) !== null;
+  }
+  if (isNodeOfType(value, "UnaryExpression") && value.operator === "-") {
+    return isStaticStyleValue(value.argument, resolutionDepth + 1);
+  }
   if (isNodeOfType(value, "BinaryExpression") && STATIC_ARITHMETIC_OPERATORS.has(value.operator)) {
-    return isStaticNumericValue(value.left) && isStaticNumericValue(value.right);
+    return (
+      isStaticStyleValue(value.left, resolutionDepth + 1) &&
+      isStaticStyleValue(value.right, resolutionDepth + 1)
+    );
   }
   if (!isNodeOfType(value, "Identifier")) return false;
   const binding = findVariableInitializer(value, value.name);
-  return isNumericLiteralNode(binding?.initializer);
+  if (!binding?.initializer || !isConstDeclaredBinding(binding)) return false;
+  return isStaticStyleValue(binding.initializer, resolutionDepth + 1);
 };
 
 // HACK: dynamic `paddingBottom`/`paddingTop` on `contentContainerStyle`
@@ -70,11 +78,11 @@ export const rnScrollviewDynamicPadding = defineRule({
           if (!isNodeOfType(property.key, "Identifier")) continue;
           const key = property.key.name;
           if (key !== "paddingBottom" && key !== "paddingTop") continue;
-          // Static numeric value is fine — only flag dynamic identifiers /
+          // Static value is fine — only flag dynamic identifiers /
           // member expressions that change between renders.
           const value = property.value;
           if (!value) continue;
-          if (isStaticNumericValue(value)) continue;
+          if (isStaticStyleValue(value)) continue;
 
           context.report({
             node: property,

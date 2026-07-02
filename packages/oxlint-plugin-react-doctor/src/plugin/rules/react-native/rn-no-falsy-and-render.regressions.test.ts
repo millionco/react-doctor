@@ -48,6 +48,31 @@ describe("react-native/rn-no-falsy-and-render — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("still flags a let literal that can be reassigned to a numeric value", () => {
+    const result = runRule(
+      rnNoFalsyAndRender,
+      `const C = ({ items }) => {
+  let count = 5;
+  count = items.length;
+  return <View>{count && <List />}</View>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on a boolean useState gated inside a nested callback", () => {
+    const result = runRule(
+      rnNoFalsyAndRender,
+      `const C = () => {
+  const [progress, setProgress] = useState(false);
+  return <FlatList data={items} renderItem={() => progress && <Spinner />} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   // Bugbot: a nested component's boolean useState of the same name must not mask
   // the outer numeric `useState(0)` gate — that would hide a real bare-0 crash.
   it("still flags an outer numeric gate when a nested component reuses the name as boolean", () => {

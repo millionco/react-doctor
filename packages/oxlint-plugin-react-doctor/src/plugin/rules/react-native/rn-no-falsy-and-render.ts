@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -89,11 +90,15 @@ const isProvablyTruthyLiteral = (node: EsTreeNode | null | undefined): boolean =
 
 // True when `identifier` provably holds a never-bare-`0` value: a boolean
 // initializer, boolean `useState`, or a constant truthy literal (non-zero
-// number / non-empty string).
+// number / non-empty string). The declaration-time initializer only proves
+// anything for a `const` binding — a `let` / `var` can be reassigned to a
+// bare `0` after declaration (`let count = 5; count = items.length;`).
 const isProvablyBooleanIdentifier = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
   const binding = findVariableInitializer(identifier, identifier.name);
-  if (isBooleanExpression(binding?.initializer)) return true;
-  if (isProvablyTruthyLiteral(binding?.initializer)) return true;
+  if (isConstDeclaredBinding(binding)) {
+    if (isBooleanExpression(binding?.initializer)) return true;
+    if (isProvablyTruthyLiteral(binding?.initializer)) return true;
+  }
   return isBooleanUseStateName(identifier, identifier.name);
 };
 

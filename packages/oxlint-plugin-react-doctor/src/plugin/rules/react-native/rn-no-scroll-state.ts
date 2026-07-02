@@ -33,11 +33,29 @@ const testReadsName = (test: EsTreeNode | null | undefined, name: string): boole
 // AND the setter writes a literal constant (`true`/`false`/a number). A guard
 // on a different value (`if (offset > 100) setShowShadow(true)`) or a setter
 // that writes a CHANGING value (`if (offset !== last) setLast(offset)`) can
-// still fire every frame, so it stays reported.
+// still fire every frame, so it stays reported. A both-branch TOGGLE
+// (`if (showHeader) setShowHeader(false); else setShowHeader(true)`) never
+// converges — some branch writes on every frame — so it also stays reported.
 const isLiteralFlipValue = (callNode: EsTreeNode): boolean => {
   if (!isNodeOfType(callNode, "CallExpression")) return false;
   const firstArgument = callNode.arguments?.[0];
   return Boolean(firstArgument && isNodeOfType(firstArgument, "Literal"));
+};
+
+const branchCallsSetter = (branch: EsTreeNode | null | undefined, setterName: string): boolean => {
+  if (!branch) return false;
+  let didFindSetterCall = false;
+  walkAst(branch, (child: EsTreeNode) => {
+    if (didFindSetterCall) return;
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      child.callee.name === setterName
+    ) {
+      didFindSetterCall = true;
+    }
+  });
+  return didFindSetterCall;
 };
 
 const isGuardedSetOnceLatch = (
@@ -48,14 +66,18 @@ const isGuardedSetOnceLatch = (
   if (!isLiteralFlipValue(callNode)) return false;
   const stateName = setterToStateName(setterName);
   const latchRefName = `${stateName}Ref`;
+  let containingBranch: EsTreeNode = callNode;
   let ancestor: EsTreeNode | null | undefined = callNode.parent;
   while (ancestor && ancestor !== boundary) {
     if (
       (isNodeOfType(ancestor, "IfStatement") || isNodeOfType(ancestor, "ConditionalExpression")) &&
       (testReadsName(ancestor.test, stateName) || testReadsName(ancestor.test, latchRefName))
     ) {
-      return true;
+      const siblingBranch =
+        containingBranch === ancestor.alternate ? ancestor.consequent : ancestor.alternate;
+      return !branchCallsSetter(siblingBranch, setterName);
     }
+    containingBranch = ancestor;
     ancestor = ancestor.parent ?? null;
   }
   return false;

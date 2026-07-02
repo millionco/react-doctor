@@ -83,9 +83,7 @@ const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
     }
   }
 
-  // readdir order is filesystem-dependent; sort so repeated walks (and the
-  // git path, which emits sorted output) enumerate identically.
-  return filePaths.sort();
+  return filePaths;
 };
 
 // Returns every source file under `rootDirectory` paired with its byte size
@@ -97,7 +95,11 @@ const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
 export const listSourceFilesWithSize = (rootDirectory: string): ReadonlyArray<SourceFileEntry> =>
   collectSizedSourceFiles(
     rootDirectory,
-    listSourceFilesViaGit(rootDirectory) ?? listSourceFilesViaFilesystem(rootDirectory),
+    // Sort whichever discovery path ran: the filesystem walk's readdir order is
+    // OS-dependent, and `git ls-files` orders cached vs. untracked entries by
+    // its own rules — sorting here makes both paths enumerate one identical,
+    // repeatable order for the same tree.
+    (listSourceFilesViaGit(rootDirectory) ?? listSourceFilesViaFilesystem(rootDirectory)).sort(),
   );
 
 // Returns every source file under `rootDirectory` (relative paths,

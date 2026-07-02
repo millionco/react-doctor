@@ -4,6 +4,7 @@ import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { getElementImplicitRoles } from "../../constants/aria-element-roles.js";
+import { getImplicitRole } from "../../utils/get-implicit-role.js";
 
 interface NoRedundantRolesSettings {
   // Per-element overrides: a tag can specify additional non-redundant
@@ -14,6 +15,46 @@ interface NoRedundantRolesSettings {
 
 const buildMessage = (tag: string, role: string): string =>
   `Screen reader users gain nothing from this \`role\` because \`<${tag}>\` already acts as a \`${role}\`, so remove it.`;
+
+// `<ul role="list">` / `<ol role="list">` is the deliberate Safari +
+// VoiceOver workaround: `list-style: none` makes WebKit silently drop list
+// semantics, and the explicit role restores them. It is an intentional
+// a11y-preserving idiom, not redundant noise, so it is exempt by default
+// (users can still narrow further via the `exceptions` setting).
+const DEFAULT_NON_REDUNDANT_ROLES: Readonly<Record<string, ReadonlyArray<string>>> = {
+  ul: ["list"],
+  ol: ["list"],
+};
+
+// Tags whose implicit role depends on an attribute the static table can't
+// see: a bare `<a>`/`<area>`/`<link>` (no `href`) has NO implicit role, so
+// `role="link"` on it is a correct addition, not redundant. Resolve these
+// through the attribute-aware `getImplicitRole` (as `input` already is)
+// instead of the context-free static table.
+const ATTRIBUTE_DEPENDENT_IMPLICIT_ROLE_TAGS: ReadonlySet<string> = new Set([
+  "input",
+  "a",
+  "area",
+  "link",
+]);
+
+// `<td>`/`<th>` each carry several implicit roles in the static table
+// (`td` → cell + gridcell; `th` → columnheader + rowheader + gridcell),
+// but only ONE is the element's effective default in plain document
+// markup: `<td>` is `cell`, and `<th>` is `rowheader` when scoped to a
+// row, otherwise `columnheader`. The W3C grid-pattern roles (`gridcell`,
+// and the non-default header role) are a deliberate clarification inside
+// an ARIA grid, not redundant noise, so only the primary default is
+// treated as redundant here.
+const getTableCellPrimaryRole = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  tag: string,
+): string => {
+  if (tag === "td") return "cell";
+  const scopeAttribute = hasJsxPropIgnoreCase(node.attributes, "scope");
+  const scope = scopeAttribute ? getJsxPropStringValue(scopeAttribute)?.toLowerCase() : null;
+  return scope === "row" || scope === "rowgroup" ? "rowheader" : "columnheader";
+};
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
@@ -45,8 +86,26 @@ export const noRedundantRoles = defineRule({
         const role = getJsxPropStringValue(roleAttr);
         if (role === null) return;
         const tag = getElementType(node, context.settings);
-        const implicitRoles = getElementImplicitRoles(tag);
-        const allowedHere = settings.exceptions[tag] ?? [];
+        // The static table lists every role a tag *can* take, but
+        // attribute-dependent tags have exactly ONE effective role given
+        // their attributes (e.g. `<input type="text">` → textbox, bare
+        // `<a>` → none). Treating the full set as redundant mislabels
+        // `<input type="text" role="combobox">` (an upgrade) and
+        // `<a role="link">` without `href` (no implicit role at all).
+        let implicitRoles: ReadonlyArray<string>;
+        if (tag === "td" || tag === "th") {
+          implicitRoles = [getTableCellPrimaryRole(node, tag)];
+        } else if (ATTRIBUTE_DEPENDENT_IMPLICIT_ROLE_TAGS.has(tag)) {
+          implicitRoles = [getImplicitRole(node, tag)].filter(
+            (resolvedRole): resolvedRole is string => resolvedRole !== null,
+          );
+        } else {
+          implicitRoles = getElementImplicitRoles(tag);
+        }
+        const allowedHere = [
+          ...(DEFAULT_NON_REDUNDANT_ROLES[tag] ?? []),
+          ...(settings.exceptions[tag] ?? []),
+        ];
         if (implicitRoles.includes(role) && !allowedHere.includes(role)) {
           context.report({ node: roleAttr, message: buildMessage(tag, role) });
         }

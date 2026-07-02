@@ -117,6 +117,142 @@ describe("a11y/control-has-associated-label regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("accepts a display-none file input wired to a ref (programmatic trigger)", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Demo = ({ fileInputRef, onChange }) => (
+          <div>
+            <input ref={fileInputRef} type="file" className="hidden" onChange={onChange} />
+            <button type="button" onClick={() => fileInputRef.current?.click()}>Upload avatar</button>
+          </div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports a display-none file input without a ref (no programmatic trigger)", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `const Demo = () => <input type="file" className="hidden" />;`,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports an sr-only file input even with a ref (still focusable, so it needs a name)", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Demo = ({ inputRef }) => (
+          <input ref={inputRef} type="file" className="sr-only" />
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a ref-wired file input with an expression-container string className", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Demo = ({ fileInputRef }) => (
+          <input ref={fileInputRef} type="file" className={"hidden"} />
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts a ref-wired file input with a static template-literal className", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Demo = ({ fileInputRef }) => (
+          <input ref={fileInputRef} type="file" className={\`hidden\`} />
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("accepts a ref-wired file input with a multi-quasi template className containing a whitespace-bounded hidden token", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Demo = ({ fileInputRef, extraClasses }) => (
+          <input ref={fileInputRef} type="file" className={\`hidden \${extraClasses}\`} />
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports a ref-wired file input whose template className only partially spells hidden across an expression", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const Demo = ({ fileInputRef, prefix }) => (
+          <input ref={fileInputRef} type="file" className={\`\${prefix}hidden\`} />
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("skips the mined role=tab theme swatch inside a .dumi docs page", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const ThemePreview = ({ selected, styles, onSelect, onKeyDown, title }) => (
+          <Tooltip title={title}>
+            <div
+              role="tab"
+              tabIndex={0}
+              aria-selected={selected}
+              onClick={onSelect}
+              onKeyDown={onKeyDown}
+              className={styles.themeBlock}
+            />
+          </Tooltip>
+        );
+      `,
+      { filename: "/repo/.dumi/pages/index/components/ThemePreview/index.tsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports the unlabeled role=tab swatch in production source", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        const ThemePreview = ({ selected, styles, onSelect, onKeyDown, title }) => (
+          <Tooltip title={title}>
+            <div
+              role="tab"
+              tabIndex={0}
+              aria-selected={selected}
+              onClick={onSelect}
+              onKeyDown={onKeyDown}
+              className={styles.themeBlock}
+            />
+          </Tooltip>
+        );
+      `,
+      { filename: "/repo/src/components/theme-preview.tsx" },
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("accepts htmlFor/id pairs inside ternary expressions", () => {
     const result = runRule(
       controlHasAssociatedLabel,

@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getCallMethodName } from "../../utils/get-call-method-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
@@ -34,11 +35,7 @@ const TRANSPARENT_PROMISE_WRAPPER_TYPES = new Set<string>([
 ]);
 
 const isMutateAsyncMemberCall = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "CallExpression") &&
-  isNodeOfType(node.callee, "MemberExpression") &&
-  !node.callee.computed &&
-  isNodeOfType(node.callee.property, "Identifier") &&
-  node.callee.property.name === "mutateAsync";
+  isNodeOfType(node, "CallExpression") && getCallMethodName(node.callee) === "mutateAsync";
 
 // `const { mutateAsync } = useMutation(...)` followed by a bare
 // `mutateAsync(payload)` — the callee is a plain Identifier, so we
@@ -60,22 +57,27 @@ const isDestructuredMutateAsyncCall = (node: EsTreeNode, context: RuleContext): 
 // or returning it keeps the rejection reachable, so those stay quiet.
 const isDiscardedArrowReturn = (arrow: EsTreeNode): boolean => {
   const parent = arrow.parent;
-  if (!parent) return false;
   if (isNodeOfType(parent, "ExpressionStatement")) return true;
   if (isNodeOfType(parent, "JSXExpressionContainer")) return true;
   if (isNodeOfType(parent, "CallExpression")) {
-    const isArgument = parent.arguments?.some((argument) => argument === arrow) ?? false;
-    if (!isArgument) return false;
+    if (!parent.arguments.some((argument) => argument === arrow)) return false;
     const hostName = getCalleeName(parent);
     return hostName !== null && FLOATING_CALLBACK_HOST_NAMES.has(hostName);
   }
   return false;
 };
 
+// Parents that keep the promise floating: the transparent wrappers above,
+// ternary branches, and `&&`/`||` right operands.
+const isTransparentPromiseParent = (parent: EsTreeNode, current: EsTreeNode): boolean =>
+  TRANSPARENT_PROMISE_WRAPPER_TYPES.has(parent.type) ||
+  (isNodeOfType(parent, "ConditionalExpression") &&
+    (parent.consequent === current || parent.alternate === current)) ||
+  (isNodeOfType(parent, "LogicalExpression") && parent.right === current);
+
 // True when the mutateAsync call's promise is discarded with no rejection
-// handler. Walks upward through wrappers that keep the promise floating —
-// ChainExpression, ternary branches, `&&`/`||` right operands, and
-// `.then(onFulfilled)` / `.finally(...)` steps that never handle rejection —
+// handler. Walks upward through the transparent parents and
+// `.then(onFulfilled)` / `.finally(...)` steps that never handle rejection,
 // then requires the outermost expression to be a bare ExpressionStatement or
 // the concise body of a discarded-return arrow. A `.catch(...)`, two-argument
 // `.then(...)`, await/return/void wrapper, assignment, or `Promise.all([...])`
@@ -84,51 +86,26 @@ const isFloatingMutateAsync = (node: EsTreeNode): boolean => {
   let current: EsTreeNode = node;
   let parent: EsTreeNode | null = current.parent ?? null;
   while (parent) {
-    if (TRANSPARENT_PROMISE_WRAPPER_TYPES.has(parent.type)) {
+    if (isTransparentPromiseParent(parent, current)) {
       current = parent;
       parent = current.parent ?? null;
       continue;
     }
-    if (
-      isNodeOfType(parent, "ConditionalExpression") &&
-      (parent.consequent === current || parent.alternate === current)
-    ) {
-      current = parent;
-      parent = current.parent ?? null;
-      continue;
-    }
-    if (isNodeOfType(parent, "LogicalExpression") && parent.right === current) {
-      current = parent;
-      parent = current.parent ?? null;
-      continue;
-    }
-    if (
-      isNodeOfType(parent, "MemberExpression") &&
-      parent.object === current &&
-      !parent.computed &&
-      isNodeOfType(parent.property, "Identifier")
-    ) {
-      const chainMethodName = parent.property.name;
+    if (isNodeOfType(parent, "MemberExpression") && parent.object === current) {
+      const chainMethodName = getCallMethodName(parent);
       if (chainMethodName === "catch") return false;
       if (chainMethodName !== "then" && chainMethodName !== "finally") break;
       const chainStepCall: EsTreeNode | null = parent.parent ?? null;
-      if (
-        !chainStepCall ||
-        !isNodeOfType(chainStepCall, "CallExpression") ||
-        chainStepCall.callee !== parent
-      ) {
+      if (!isNodeOfType(chainStepCall, "CallExpression") || chainStepCall.callee !== parent) {
         return false;
       }
-      const thenHandlesRejection =
-        chainMethodName === "then" && (chainStepCall.arguments?.length ?? 0) >= 2;
-      if (thenHandlesRejection) return false;
+      if (chainMethodName === "then" && chainStepCall.arguments.length >= 2) return false;
       current = chainStepCall;
       parent = current.parent ?? null;
       continue;
     }
     break;
   }
-  if (!parent) return false;
   if (isNodeOfType(parent, "ExpressionStatement")) return true;
   if (isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === current) {
     return isDiscardedArrowReturn(parent);
@@ -139,6 +116,7 @@ const isFloatingMutateAsync = (node: EsTreeNode): boolean => {
 export const queryFloatingMutateAsync = defineRule({
   id: "query-floating-mutate-async",
   title: "Floating mutateAsync rejection",
+  tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "warn",
   recommendation:

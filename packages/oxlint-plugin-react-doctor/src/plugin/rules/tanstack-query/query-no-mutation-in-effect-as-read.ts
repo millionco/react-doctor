@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getCallMethodName } from "../../utils/get-call-method-name.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -56,22 +57,16 @@ const isSwrHookResult = (init: EsTreeNodeOfType<"CallExpression">): boolean => {
 // the declaration, not a consuming read.
 const isDestructureBindingPosition = (identifier: EsTreeNode): boolean => {
   const parent = identifier.parent;
-  if (!parent || !isNodeOfType(parent, "Property")) return false;
-  return Boolean(parent.parent) && isNodeOfType(parent.parent as EsTreeNode, "ObjectPattern");
+  return isNodeOfType(parent, "Property") && isNodeOfType(parent.parent, "ObjectPattern");
 };
 
 const isAckMemberRead = (identifier: EsTreeNode): boolean => {
   const parent = identifier.parent;
+  if (!isNodeOfType(parent, "MemberExpression") || parent.object !== identifier) return false;
   return (
-    Boolean(parent) &&
-    isNodeOfType(parent as EsTreeNode, "MemberExpression") &&
-    (parent as EsTreeNodeOfType<"MemberExpression">).object === identifier &&
-    !(parent as EsTreeNodeOfType<"MemberExpression">).computed &&
-    isNodeOfType((parent as EsTreeNodeOfType<"MemberExpression">).property, "Identifier") &&
-    ACK_FIELD_NAMES.has(
-      ((parent as EsTreeNodeOfType<"MemberExpression">).property as EsTreeNodeOfType<"Identifier">)
-        .name,
-    )
+    !parent.computed &&
+    isNodeOfType(parent.property, "Identifier") &&
+    ACK_FIELD_NAMES.has(parent.property.name)
   );
 };
 
@@ -85,7 +80,6 @@ const isNullishOperand = (node: EsTreeNode): boolean =>
 // consume the response body.
 const isGuardOnlyRead = (identifier: EsTreeNode): boolean => {
   const parent = identifier.parent;
-  if (!parent) return false;
   if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!") return true;
   if (isNodeOfType(parent, "LogicalExpression") && parent.operator === "&&") {
     return parent.left === identifier;
@@ -163,22 +157,25 @@ const isInvokedFromEffectBody = (node: EsTreeNode): boolean => {
   return false;
 };
 
+// The response lands either in a plain binding (scope-resolve and inspect
+// its reads) or a destructure pattern (inspect the destructured keys).
+const bindingConsumesResponse = (binding: EsTreeNode, context: RuleContext): boolean => {
+  if (isNodeOfType(binding, "Identifier")) {
+    const bindingSymbol = context.scopes.symbolFor(binding);
+    return Boolean(bindingSymbol && symbolHasConsumerRead(bindingSymbol));
+  }
+  return isNodeOfType(binding, "ObjectPattern") && objectPatternReadsResponseBody(binding);
+};
+
 const awaitedResultConsumesResponse = (
   callNode: EsTreeNodeOfType<"CallExpression">,
   context: RuleContext,
 ): boolean => {
   const awaitExpression = callNode.parent;
-  if (!awaitExpression || !isNodeOfType(awaitExpression, "AwaitExpression")) return false;
+  if (!isNodeOfType(awaitExpression, "AwaitExpression")) return false;
   const declarator = awaitExpression.parent;
-  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
-  if (isNodeOfType(declarator.id, "Identifier")) {
-    const resultSymbol = context.scopes.symbolFor(declarator.id);
-    return Boolean(resultSymbol && symbolHasConsumerRead(resultSymbol));
-  }
-  if (isNodeOfType(declarator.id, "ObjectPattern")) {
-    return objectPatternReadsResponseBody(declarator.id);
-  }
-  return false;
+  if (!isNodeOfType(declarator, "VariableDeclarator")) return false;
+  return bindingConsumesResponse(declarator.id, context);
 };
 
 const thenHandlerConsumesResponse = (
@@ -186,38 +183,19 @@ const thenHandlerConsumesResponse = (
   context: RuleContext,
 ): boolean => {
   const memberExpression = callNode.parent;
-  if (
-    !memberExpression ||
-    !isNodeOfType(memberExpression, "MemberExpression") ||
-    memberExpression.object !== callNode ||
-    memberExpression.computed ||
-    !isNodeOfType(memberExpression.property, "Identifier") ||
-    memberExpression.property.name !== "then"
-  ) {
+  if (!isNodeOfType(memberExpression, "MemberExpression") || memberExpression.object !== callNode) {
     return false;
   }
+  if (getCallMethodName(memberExpression) !== "then") return false;
   const thenCall = memberExpression.parent;
-  if (
-    !thenCall ||
-    !isNodeOfType(thenCall, "CallExpression") ||
-    thenCall.callee !== memberExpression
-  ) {
+  if (!isNodeOfType(thenCall, "CallExpression") || thenCall.callee !== memberExpression) {
     return false;
   }
   const handlerArgument = thenCall.arguments[0];
   if (!handlerArgument) return false;
   const handler = stripGroupingParens(handlerArgument);
-  if (!isFunctionLike(handler)) return false;
-  const responseParam = handler.params[0];
-  if (!responseParam) return false;
-  if (isNodeOfType(responseParam, "Identifier")) {
-    const responseSymbol = context.scopes.symbolFor(responseParam);
-    return Boolean(responseSymbol && symbolHasConsumerRead(responseSymbol));
-  }
-  if (isNodeOfType(responseParam, "ObjectPattern")) {
-    return objectPatternReadsResponseBody(responseParam);
-  }
-  return false;
+  if (!isFunctionLike(handler) || !handler.params[0]) return false;
+  return bindingConsumesResponse(handler.params[0], context);
 };
 
 export const queryNoMutationInEffectAsRead = defineRule({

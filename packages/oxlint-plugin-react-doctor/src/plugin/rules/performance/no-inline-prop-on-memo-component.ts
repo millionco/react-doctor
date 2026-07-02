@@ -18,12 +18,22 @@ const isMemoCall = (node: EsTreeNode): boolean => {
   return false;
 };
 
+// `memo(Comp, undefined)` normalizes to React's default shallow compare,
+// and an identifier named `shallowEqual` (the react-redux idiom) is
+// behaviorally the same — inline props defeat both exactly like the
+// default comparator.
+const isDefaultEquivalentComparator = (comparator: EsTreeNode | undefined): boolean =>
+  isNodeOfType(comparator, "Identifier") &&
+  (comparator.name === "undefined" || comparator.name === "shallowEqual");
+
 // `memo(Comp, areEqual)` with a custom comparator decides re-renders on
 // its own terms — an inline prop the comparator never inspects doesn't
 // defeat memoization. We can't prove which props the comparator reads, so
 // conservatively skip flagging inline props for such components.
 const hasCustomComparator = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "CallExpression") && (node.arguments?.length ?? 0) >= 2;
+  isNodeOfType(node, "CallExpression") &&
+  (node.arguments?.length ?? 0) >= 2 &&
+  !isDefaultEquivalentComparator(node.arguments?.[1]);
 
 const isInlineReference = (node: EsTreeNode): string | null => {
   if (
@@ -76,13 +86,12 @@ export const noInlinePropOnMemoComponent = defineRule({
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
         if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
-        // `ref` and `key` are reserved props that React strips before the
-        // memo comparison, so an inline `ref`/`key` callback never defeats
-        // memoization.
-        if (
-          isNodeOfType(node.name, "JSXIdentifier") &&
-          (node.name.name === "ref" || node.name.name === "key")
-        ) {
+        // `key` is a reserved prop React strips before the memo comparison,
+        // so an inline `key` never defeats memoization. `ref` is NOT
+        // stripped — the memo bailout also requires ref identity
+        // (`compare(prev, next) && current.ref === workInProgress.ref`),
+        // so an inline ref callback defeats memo like any other prop.
+        if (isNodeOfType(node.name, "JSXIdentifier") && node.name.name === "key") {
           return;
         }
 

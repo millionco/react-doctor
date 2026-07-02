@@ -11,7 +11,7 @@ interface ThresholdDerivedBinding {
   continuousName: string;
   hookName: string;
   declarator: EsTreeNode;
-  thresholdDeclarator: EsTreeNode;
+  thresholdDeclarators: EsTreeNode[];
 }
 
 const CONTINUOUS_VALUE_HOOK_PATTERN =
@@ -43,7 +43,7 @@ const isThresholdComparison = (node: EsTreeNode, valueName: string): boolean => 
 // elsewhere (e.g. `{width}px` in the JSX), it legitimately needs the
 // continuous value, so caching it behind a threshold hook would change
 // behaviour. Allowed references: the hook binding declarator itself and
-// the threshold comparison declarator.
+// every threshold comparison declarator derived from it.
 const isContinuousReferencedElsewhere = (
   componentBody: EsTreeNode,
   binding: ThresholdDerivedBinding,
@@ -51,7 +51,7 @@ const isContinuousReferencedElsewhere = (
   let referencedElsewhere = false;
   walkAst(componentBody, (child: EsTreeNode): boolean | void => {
     if (referencedElsewhere) return false;
-    if (child === binding.declarator || child === binding.thresholdDeclarator) return false;
+    if (child === binding.declarator || binding.thresholdDeclarators.includes(child)) return false;
     if (!isNodeOfType(child, "Identifier")) return;
     if (child.name !== binding.continuousName) return;
     const parent = child.parent;
@@ -85,21 +85,23 @@ const findThresholdDerivedBindings = (
       const continuousName = declarator.id.name;
       const hookName = init.callee.name;
 
-      // Look at the next statement(s) for a derived threshold binding.
+      // Collect every derived threshold binding from the following
+      // statement(s) — a multi-breakpoint component (`isMobile = width <
+      // 768; isDesktop = width > 1024`) derives several booleans from the
+      // same continuous value, and each one must be whitelisted when
+      // checking whether the raw value is read elsewhere.
+      const thresholdDeclarators: EsTreeNode[] = [];
       for (let innerIndex = outerIndex + 1; innerIndex < statements.length; innerIndex++) {
         const innerStatement = statements[innerIndex];
         if (!isNodeOfType(innerStatement, "VariableDeclaration")) break;
-        let thresholdDeclarator: EsTreeNode | null = null;
         for (const innerDecl of innerStatement.declarations ?? []) {
           if (innerDecl.init && isThresholdComparison(innerDecl.init, continuousName)) {
-            thresholdDeclarator = innerDecl;
-            break;
+            thresholdDeclarators.push(innerDecl);
           }
         }
-        if (thresholdDeclarator) {
-          out.push({ continuousName, hookName, declarator, thresholdDeclarator });
-          break;
-        }
+      }
+      if (thresholdDeclarators.length > 0) {
+        out.push({ continuousName, hookName, declarator, thresholdDeclarators });
       }
     }
   }

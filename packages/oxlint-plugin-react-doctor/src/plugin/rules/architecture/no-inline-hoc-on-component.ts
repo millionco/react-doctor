@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isJsxElementOrFragment } from "../../utils/is-jsx-element-or-fragment.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
@@ -82,8 +83,7 @@ const resolveInlineHocCalleeName = (callee: EsTreeNode): string | null => {
 // docs recommend for anonymous observer components.
 const isNamedComponentFunctionExpression = (functionNode: EsTreeNode): boolean =>
   isNodeOfType(functionNode, "FunctionExpression") &&
-  functionNode.id !== null &&
-  functionNode.id !== undefined &&
+  functionNode.id != null &&
   isUppercaseName(functionNode.id.name);
 
 // JSX detection bounded to the expression's own scope: nested function
@@ -93,7 +93,7 @@ const containsJsxInOwnExpression = (root: EsTreeNode): boolean => {
   let didFindJsx = false;
   walkAst(root, (node: EsTreeNode) => {
     if (didFindJsx || isFunctionLike(node)) return false;
-    if (isNodeOfType(node, "JSXElement") || isNodeOfType(node, "JSXFragment")) {
+    if (isJsxElementOrFragment(node)) {
       didFindJsx = true;
       return false;
     }

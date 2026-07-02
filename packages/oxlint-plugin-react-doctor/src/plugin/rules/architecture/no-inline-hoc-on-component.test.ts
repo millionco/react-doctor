@@ -77,6 +77,14 @@ describe("no-inline-hoc-on-component", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an inline HOC component cast inside the call parentheses", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const Header = observer(((props) => <h1>{useTitle(props)}</h1>) as React.FC<Props>);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a real HOC whose name merely contains but does not end in factory", () => {
     const result = runRule(
       noInlineHocOnComponent,

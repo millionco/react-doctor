@@ -88,6 +88,7 @@ const MAX_BINDING_RESOLUTION_DEPTH = 4;
 const isNullishExpression = (node: EsTreeNode | null | undefined): boolean => {
   if (node == null) return true;
   if (isNodeOfType(node, "Literal")) return node.value === null;
+  if (isNodeOfType(node, "UnaryExpression")) return node.operator === "void";
   return isNodeOfType(node, "Identifier") && node.name === "undefined";
 };
 
@@ -252,7 +253,7 @@ export const windowOpenWithoutNoopener = defineRule({
       if (isStringLiteral(targetArgument) && NAVIGATING_TARGETS.has(targetArgument.value)) return;
 
       const featuresArgument = node.arguments?.[2];
-      if (featuresArgument != null) {
+      if (featuresArgument != null && !isNullishExpression(featuresArgument)) {
         const featuresText = resolveStaticStringText(featuresArgument, 0);
         if (featuresText == null) return;
         const featureNames = featuresText

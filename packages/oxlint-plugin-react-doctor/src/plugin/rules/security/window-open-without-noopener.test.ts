@@ -242,6 +242,21 @@ describe("window-open-without-noopener", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags an explicitly nullish features argument like an omitted one", () => {
+    for (const features of ["undefined", "null", "void 0"]) {
+      const result = runRule(windowOpenWithoutNoopener, `window.open(url, '_blank', ${features});`);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("does not flag a const ternary URL with a void-0 fallback branch", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      "const releaseUrl = version ? 'https://github.com/owner/repo' : void 0;\nwindow.open(releaseUrl, '_blank');",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a noopener=value feature entry", () => {
     const result = runRule(
       windowOpenWithoutNoopener,

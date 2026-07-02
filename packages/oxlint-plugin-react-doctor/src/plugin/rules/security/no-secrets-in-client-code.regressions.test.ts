@@ -23,4 +23,21 @@ describe("security/no-secrets-in-client-code — regressions", () => {
         .length,
     ).toBeGreaterThan(0);
   });
+
+  // FP-fix PR #993: a credential carried in a URL #fragment (OAuth implicit
+  // flow) must defeat the public-URL exemption, not be exempted by it.
+  it("flags a fragment-credential URL (OAuth implicit flow)", () => {
+    expect(
+      runClient(
+        `const authEndpoint = "https://app.acmecorp.io/callback#access_token=ya29GxkQ83nfA71bQpz44";`,
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("flags a userinfo-credential URL", () => {
+    expect(
+      runClient(`const authEndpoint = "https://svcuser:qX9v3LmZk84TrWpB2@api.acmecorp.io/auth";`)
+        .length,
+    ).toBeGreaterThan(0);
+  });
 });

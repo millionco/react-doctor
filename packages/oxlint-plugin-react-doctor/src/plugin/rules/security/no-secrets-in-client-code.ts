@@ -22,11 +22,12 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // A public http(s) endpoint URL (OAuth authorize URL, API base) is meant to
 // ship to the browser even when its variable is named `authEndpoint`/`tokenUrl`.
 // Exempt it from the NAME heuristic only — but never when the URL itself
-// carries a credential (userinfo, or a `token=`/`secret=`/… query param), so
-// a secret-bearing URL still flags. The secret-shaped-VALUE detector
+// carries a credential (userinfo, or a `token=`/`secret=`/… query or
+// #fragment param, e.g. the OAuth implicit-flow `#access_token=`), so a
+// secret-bearing URL still flags. The secret-shaped-VALUE detector
 // (`SECRET_PATTERNS`) runs earlier and is untouched.
 const CREDENTIALED_URL_PATTERN =
-  /\/\/[^/@\s]+:[^/@\s]+@|[?&](?:access_?token|api_?key|client_?secret|token|secret|password|passwd|auth)=/i;
+  /\/\/[^/@\s]+:[^/@\s]+@|[?&#](?:access_?token|api_?key|client_?secret|token|secret|password|passwd|auth)=/i;
 const isPublicUrlValue = (value: string): boolean =>
   /^https?:\/\//.test(value) && !CREDENTIALED_URL_PATTERN.test(value);
 

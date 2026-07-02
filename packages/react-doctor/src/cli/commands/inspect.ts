@@ -632,13 +632,11 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     if (!isQuiet && isMultiProject && completedScans.length > 0) {
       // The aggregate summary covers every scanned project, so ANY project's
       // opt-out suppresses the online share prompt. `scanOptions.noScore` is
-      // flag-only (undefined when no flag was passed); each scan's MERGED
-      // (root + module) config decides its own `noScore` / `share`, the same
-      // way `inspect()`'s merge layer resolved the scan itself.
-      const shareOptedOut = completedScans.some(
-        (scan) =>
-          (scanOptions.noScore ?? scan.config?.noScore ?? false) || scan.config?.share === false,
-      );
+      // flag-only (undefined when no flag was passed), so each scan falls back
+      // to its own merged (root + module) `noScore` / `share`.
+      const shareOptedOut =
+        Boolean(scanOptions.noScore) ||
+        completedScans.some((scan) => scan.config?.noScore || scan.config?.share === false);
       const shouldShowShareLink = !shareOptedOut && !scanOptions.isCi;
       await Effect.runPromise(
         printMultiProjectSummary({

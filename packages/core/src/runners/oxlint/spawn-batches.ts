@@ -231,8 +231,11 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
           return [];
         }
         startedFileCount += batch.length;
+        const deadlineSkippedBefore = deadlineSkippedFiles.length;
         const batchDiagnostics = await spawnLintBatch(batch, 0);
-        scannedFileCount += batch.length;
+        // A split retry can deadline-skip part of the batch, so count only the
+        // files actually linted — not the whole batch — as scanned.
+        scannedFileCount += batch.length - (deadlineSkippedFiles.length - deadlineSkippedBefore);
         if (onFileProgress) {
           displayedFileCount = Math.min(
             Math.max(displayedFileCount, scannedFileCount),

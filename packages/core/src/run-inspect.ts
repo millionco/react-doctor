@@ -806,9 +806,12 @@ export const runInspect = <HooksR = never>(
     } else if (shouldRunDeadCode) {
       const isDeadlineSpent =
         input.deadlineEpochMs !== undefined && Date.now() >= input.deadlineEpochMs;
-      if (deadCodeFiber === null && isDeadlineSpent) {
-        // Max-duration budget already spent on lint — skip the sequential
-        // dead-code pass entirely rather than starting a doomed run.
+      if (isDeadlineSpent) {
+        // Max-duration budget spent on lint — skip dead-code so a truncated
+        // run nulls the score consistently whether the pass would have run
+        // sequentially or was overlapped with lint. Interrupt an overlap
+        // fiber rather than joining it past the budget.
+        if (deadCodeFiber !== null) yield* Fiber.interrupt(deadCodeFiber);
         yield* Ref.set(deadCodeFailure, {
           didFail: true,
           reason: "Dead-code analysis skipped — max scan duration reached.",

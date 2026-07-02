@@ -210,6 +210,36 @@ describe("runInspect — phase timeouts & overall deadline", () => {
     expect(output.diagnostics).toHaveLength(0);
   });
 
+  it("skips overlapped dead-code when the max-duration budget is spent before lint finishes", async () => {
+    // Lint outlasts the 150ms budget; the overlapped dead-code fiber completes
+    // early with a finding. Joining it would leave the score non-null while a
+    // sequential run past the same budget skips + nulls it — so the overlap
+    // path must skip consistently.
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, deadlineEpochMs: Date.now() + 150 }).pipe(
+        Effect.provide(
+          baseTimeoutLayers({
+            linter: Layer.mock(Linter, {
+              run: () => Stream.fromEffect(Effect.as(Effect.sleep("500 millis"), lintDiagnostic)),
+            }),
+            deadCode: DeadCode.layerOf([deadCodeDiagnostic]),
+            refOverrides: Layer.mergeAll(
+              Layer.succeed(DeadCodeOverlap, "on"),
+              Layer.succeed(LintPhaseTimeoutMs, 600_000),
+              Layer.succeed(DeadCodePhaseTimeoutMs, 600_000),
+              Layer.succeed(ScanDeadlineMs, 600_000),
+            ),
+          }),
+        ),
+      ),
+    );
+
+    expect(output.didDeadCodeFail).toBe(true);
+    expect(output.deadCodeFailureReason).toContain("max scan duration reached");
+    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).not.toContain("unused-file");
+    expect(output.score).toBeNull();
+  });
+
   it("raises ScanDeadlineExceeded when the overall scan deadline elapses", async () => {
     const error = await Effect.runPromise(
       runInspect(baseInput).pipe(

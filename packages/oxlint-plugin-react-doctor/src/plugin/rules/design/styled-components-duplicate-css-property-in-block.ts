@@ -45,18 +45,15 @@ const isTernaryInterpolation = (expression: EsTreeNode | undefined): boolean => 
     isNodeOfType(stripped, "ArrowFunctionExpression") ||
     isNodeOfType(stripped, "FunctionExpression")
   ) {
-    const body = stripped.body;
+    const body = stripParenExpression(stripped.body);
     if (isNodeOfType(body, "ConditionalExpression")) return true;
     if (isNodeOfType(body, "BlockStatement")) {
-      return body.body.some(
-        (statement) =>
-          isNodeOfType(statement, "ReturnStatement") &&
-          Boolean(statement.argument) &&
-          isNodeOfType(
-            stripParenExpression(statement.argument as EsTreeNode),
-            "ConditionalExpression",
-          ),
-      );
+      return body.body.some((statement) => {
+        if (!isNodeOfType(statement, "ReturnStatement")) return false;
+        const returnArgument = statement.argument;
+        if (!returnArgument) return false;
+        return isNodeOfType(stripParenExpression(returnArgument), "ConditionalExpression");
+      });
     }
   }
   return false;
@@ -112,6 +109,7 @@ const collectTopLevelDeclarations = (
       if (isTernaryInterpolation(expression)) currentHasTernary = true;
     }
   });
+  if (braceDepth === 0) finalizeDeclaration(currentText, currentHasTernary, declarations);
   return declarations;
 };
 

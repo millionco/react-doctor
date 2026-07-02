@@ -30,6 +30,22 @@ describe("styled-components-duplicate-css-property-in-block", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags Prettier-formatted paren-wrapped ternary arrow bodies", () => {
+    const result = runRule(
+      rule,
+      'const B = styled.div`padding-bottom: ${(p) => (p.$isLayoutVariant ? "8px" : "0")}; padding-bottom: ${(p) => (p.$isCtaVariant ? "4px" : "16px")};`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a duplicate whose last declaration omits the optional trailing semicolon", () => {
+    const result = runRule(
+      rule,
+      "const B = styled.div`opacity: ${p => p.$a ? 1 : 0}; opacity: ${p => p.$b ? 1 : 0.5}`;",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a layered computed + conditional pair", () => {
     const result = runRule(
       rule,

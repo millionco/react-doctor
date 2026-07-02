@@ -1,4 +1,3 @@
-import { HOOKS_WITH_DEPS } from "../../constants/react.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -12,10 +11,23 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
-// The single name whose identity is a guaranteed-fresh reference every
-// render: the whole props object bound to a `function C(props)` identifier
-// parameter. React allocates a new props object each render, so a bare
-// `props` dep whose body only reads members is reliably over-broad.
+// Only identity-sensitive memoization hooks: a whole-`props` dep provably
+// defeats useMemo/useCallback/useImperativeHandle whenever the parent
+// re-renders, so narrowing the dep is always a win. useEffect/useLayoutEffect
+// are deliberately excluded — root-mounted / singleton components keep a
+// referentially stable props object, so "re-runs every render" is not a
+// sound claim for effects (verified false positive in the wild).
+const IDENTITY_SENSITIVE_HOOKS_WITH_DEPS = new Set([
+  "useMemo",
+  "useCallback",
+  "useImperativeHandle",
+]);
+
+// The single name whose identity is a fresh reference whenever the parent
+// re-renders: the whole props object bound to a `function C(props)`
+// identifier parameter. React allocates a new props object on each parent
+// render, so a bare `props` dep whose body only reads members is reliably
+// over-broad for memoization hooks.
 //
 // We deliberately do NOT extend this to destructured names
 // (`function C({ user }) {}`). A destructured `user` is `props.user` — its
@@ -39,6 +51,20 @@ interface DependencyUsage {
   memberReadCount: number;
   hasBareUse: boolean;
 }
+
+// A non-rest, non-computed object destructure (`const { onChange } = props`)
+// is semantically a set of static member reads. A rest element captures the
+// remaining object and a computed key is a dynamic read, so both disqualify.
+const countStaticDestructureReads = (destructurePattern: EsTreeNode): number | null => {
+  if (!isNodeOfType(destructurePattern, "ObjectPattern")) return null;
+  const properties = destructurePattern.properties ?? [];
+  if (properties.length === 0) return null;
+  for (const property of properties) {
+    if (!isNodeOfType(property, "Property")) return null;
+    if (property.computed) return null;
+  }
+  return properties.length;
+};
 
 // Classifies every reference to `dependencyName` inside the callback body:
 // a "member read" is `X.prop` / `X["prop"]` (static), anything else — bare
@@ -79,6 +105,13 @@ const analyzeDependencyUsage = (
     ) {
       return;
     }
+    if (parent && isNodeOfType(parent, "VariableDeclarator") && parent.init === child) {
+      const destructureReadCount = countStaticDestructureReads(parent.id);
+      if (destructureReadCount !== null) {
+        usage.memberReadCount += destructureReadCount;
+        return;
+      }
+    }
     usage.hasBareUse = true;
   });
   return usage;
@@ -98,16 +131,17 @@ export const noWholeObjectDepWithMemberReads = defineRule({
   title: "Whole props object in deps while only members are read",
   severity: "warn",
   recommendation:
-    "Depend on the specific fields you read (e.g. `props.onChange`) instead of the whole `props` object. Props are a fresh object every render, so depending on the whole object re-runs the effect/memo every render.",
+    "Depend on the specific fields you read (e.g. `props.onChange`) instead of the whole `props` object. Props are a fresh object whenever the parent re-renders, so a whole-props dependency defeats the memoization.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isHookCall(node, HOOKS_WITH_DEPS)) return;
+      if (!isHookCall(node, IDENTITY_SENSITIVE_HOOKS_WITH_DEPS)) return;
+      const callbackIndex = isHookCall(node, "useImperativeHandle") ? 1 : 0;
       const args = node.arguments ?? [];
-      if (args.length < 2) return;
+      if (args.length < callbackIndex + 2) return;
 
-      const callback = args[0];
+      const callback = args[callbackIndex];
       if (!isFunctionLike(callback)) return;
-      const depsNode = stripParenExpression(args[1]);
+      const depsNode = stripParenExpression(args[callbackIndex + 1]);
       if (!isNodeOfType(depsNode, "ArrayExpression")) return;
 
       // The props object belongs to the enclosing component function; the
@@ -137,7 +171,7 @@ export const noWholeObjectDepWithMemberReads = defineRule({
 
         context.report({
           node: element,
-          message: `This hook depends on the whole "${dep.name}" object but only reads its properties, so it re-runs every render because "${dep.name}" is a fresh object each time; depend on the specific fields you read instead.`,
+          message: `This hook depends on the whole "${dep.name}" object but only reads its properties, so the memoization is defeated whenever the parent re-renders because "${dep.name}" is a fresh object each time; depend on the specific fields you read instead.`,
         });
       }
     },

@@ -106,4 +106,33 @@ describe("no-collapsed-literal-or-chain-as-value", () => {
     const result = runRule(noCollapsedLiteralOrChainAsValue, `foo.includes("a" || "b" || "c");`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags an all-literal chain as the receiver of a string-search call", () => {
+    const result = runRule(
+      noCollapsedLiteralOrChainAsValue,
+      `const isKnownRole = ("admin" || "owner").includes(role);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an all-literal chain used as a switch case test", () => {
+    const result = runRule(
+      noCollapsedLiteralOrChainAsValue,
+      `switch (method) { case "GET" || "HEAD": allow(); break; }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a switch case fallback where an operand is an identifier", () => {
+    const result = runRule(
+      noCollapsedLiteralOrChainAsValue,
+      `switch (method) { case preferredMethod || "GET": allow(); break; }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a literal-chain receiver of a non-search member access", () => {
+    const result = runRule(noCollapsedLiteralOrChainAsValue, `const length = ("a" || "b").length;`);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

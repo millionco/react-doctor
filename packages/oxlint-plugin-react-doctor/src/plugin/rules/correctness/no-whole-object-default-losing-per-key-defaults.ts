@@ -5,46 +5,75 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
-// A whole-object parameter default (`({ a, b } = { a: 1, b: false })`)
+// A whole-object parameter default (`({ a, b } = { a: 1, b: 'x' })`)
 // only applies when the argument is omitted ENTIRELY. The instant a
 // caller passes any object, the default object is discarded wholesale
 // and every key the caller left out becomes `undefined` — silently
 // bypassing the intended fallback. The correct form applies each
-// default independently: `({ a = 1, b = false } = {})`.
+// default independently: `({ a = 1, b = 'x' } = {})`.
 //
 // Scope-fix (fires only when a per-key default is actually reachable to
-// lose):
-//   1. the parameter is `ObjectPattern = ObjectExpression`,
-//   2. the default ObjectExpression carries >= 1 `key: value` property,
-//   3. at least one destructured binding lacks its OWN default.
-// `= {}` (the recommended idiom) and patterns where every binding is
-// already defaulted stay quiet.
+// lose, and losing it changes behavior):
+//   1. the parameter is `ObjectPattern = ObjectExpression` (TS wrappers
+//      like `as` / `satisfies` around the object are peeled first),
+//   2. at least one destructured binding lacks its OWN default AND has a
+//      matching `key: value` property in the default object — that value
+//      is the fallback a partial call silently drops,
+//   3. at least one such dropped fallback is something other than the
+//      literal `false` — boolean-flag bags defaulting everything to
+//      `false` are consumed in truthiness checks where `undefined`
+//      behaves identically, so nothing observable is lost.
+// `= {}` (the recommended idiom), patterns where every binding is
+// already defaulted, and all-`false` flag bags stay quiet.
 
-// True when the parameter's ObjectPattern has at least one binding that
-// carries no `= default` of its own — the bindings whose fallback the
-// whole-object default silently drops on a partial-argument call.
-const hasBindingWithoutOwnDefault = (objectPattern: EsTreeNodeOfType<"ObjectPattern">): boolean => {
-  for (const property of objectPattern.properties ?? []) {
-    // A rest element (`{ ...rest }`) collects the remaining keys; it is
-    // not a per-key default that can be lost, so it doesn't count.
-    if (isNodeOfType(property, "RestElement")) continue;
-    if (!isNodeOfType(property, "Property")) continue;
-    // A binding carries its own default only when its value node is an
-    // AssignmentPattern (`{ a = 1 }`). Anything else (a bare Identifier,
-    // a nested pattern with no default) lacks one.
-    if (!isNodeOfType(property.value as EsTreeNode, "AssignmentPattern")) return true;
-  }
-  return false;
+const getStaticPropertyKey = (property: EsTreeNodeOfType<"Property">): string | null => {
+  if (property.computed) return null;
+  const key = property.key as EsTreeNode;
+  if (isNodeOfType(key, "Identifier")) return key.name;
+  if (isNodeOfType(key, "Literal")) return String(key.value);
+  return null;
 };
 
-// True when the default ObjectExpression supplies at least one concrete
-// `key: value` fallback. A spread-only or empty object supplies no
-// per-key default, so there is nothing to lose.
-const objectDefaultSuppliesPerKeyValue = (
+// Keys of bindings that carry no `= default` of their own — the bindings
+// whose fallback the whole-object default silently drops on a
+// partial-argument call.
+const collectUndefaultedBindingKeys = (
+  objectPattern: EsTreeNodeOfType<"ObjectPattern">,
+): Set<string> => {
+  const undefaultedBindingKeys = new Set<string>();
+  for (const property of objectPattern.properties ?? []) {
+    if (!isNodeOfType(property, "Property")) continue;
+    if (isNodeOfType(property.value as EsTreeNode, "AssignmentPattern")) continue;
+    const bindingKey = getStaticPropertyKey(property);
+    if (bindingKey !== null) undefaultedBindingKeys.add(bindingKey);
+  }
+  return undefaultedBindingKeys;
+};
+
+// The default-object values that a partial call actually drops: each
+// `key: value` whose key matches an undefaulted binding.
+const collectDroppedFallbackValues = (
   objectExpression: EsTreeNodeOfType<"ObjectExpression">,
-): boolean =>
-  (objectExpression.properties ?? []).some((property) => isNodeOfType(property, "Property"));
+  undefaultedBindingKeys: Set<string>,
+): Array<EsTreeNode> => {
+  const droppedFallbackValues: Array<EsTreeNode> = [];
+  for (const property of objectExpression.properties ?? []) {
+    if (!isNodeOfType(property, "Property")) continue;
+    const propertyKey = getStaticPropertyKey(property);
+    if (propertyKey === null || !undefaultedBindingKeys.has(propertyKey)) continue;
+    droppedFallbackValues.push(property.value as EsTreeNode);
+  }
+  return droppedFallbackValues;
+};
+
+// `false` fallbacks feed truthiness checks where `undefined` behaves
+// identically, so dropping them is a runtime no-op.
+const isFalseLiteral = (value: EsTreeNode): boolean => {
+  const innerValue = stripParenExpression(value);
+  return isNodeOfType(innerValue, "Literal") && innerValue.value === false;
+};
 
 // True when the AssignmentPattern is a direct parameter of a function
 // (not a nested destructuring default inside another pattern).
@@ -69,11 +98,17 @@ export const noWholeObjectDefaultLosingPerKeyDefaults = defineRule({
     AssignmentPattern(node: EsTreeNodeOfType<"AssignmentPattern">) {
       if (!isFunctionParameter(node)) return;
       const pattern = node.left as EsTreeNode;
-      const defaultValue = node.right as EsTreeNode;
+      const defaultValue = stripParenExpression(node.right as EsTreeNode);
       if (!isNodeOfType(pattern, "ObjectPattern")) return;
       if (!isNodeOfType(defaultValue, "ObjectExpression")) return;
-      if (!objectDefaultSuppliesPerKeyValue(defaultValue)) return;
-      if (!hasBindingWithoutOwnDefault(pattern)) return;
+      const undefaultedBindingKeys = collectUndefaultedBindingKeys(pattern);
+      if (undefaultedBindingKeys.size === 0) return;
+      const droppedFallbackValues = collectDroppedFallbackValues(
+        defaultValue,
+        undefaultedBindingKeys,
+      );
+      if (droppedFallbackValues.length === 0) return;
+      if (droppedFallbackValues.every(isFalseLiteral)) return;
       context.report({
         node,
         message:

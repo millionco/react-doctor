@@ -103,6 +103,114 @@ describe("no-effect-cleanup-removes-listener-subset-or-adds-listener", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag mutually exclusive branches each returning their own matching cleanup", () => {
+    const result = runRule(
+      noEffectCleanupRemovesListenerSubsetOrAddsListener,
+      `useEffect(() => {
+        if (isMobile) {
+          window.addEventListener("touchmove", onTouch);
+          return () => window.removeEventListener("touchmove", onTouch);
+        }
+        window.addEventListener("wheel", onWheel);
+        return () => window.removeEventListener("wheel", onWheel);
+      }, [isMobile]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag the matchMedia addEventListener/addListener feature-detect fallback", () => {
+    const result = runRule(
+      noEffectCleanupRemovesListenerSubsetOrAddsListener,
+      `useEffect(() => {
+        const mediaQueryList = window.matchMedia(query);
+        if (mediaQueryList.addEventListener) {
+          mediaQueryList.addEventListener("change", onChange);
+          return () => mediaQueryList.removeEventListener("change", onChange);
+        }
+        mediaQueryList.addListener(onChange);
+        return () => mediaQueryList.removeListener(onChange);
+      }, [query]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a try/catch feature-detect fallback registration", () => {
+    const result = runRule(
+      noEffectCleanupRemovesListenerSubsetOrAddsListener,
+      `useEffect(() => {
+        try {
+          media.addEventListener("change", onChange);
+        } catch {
+          media.addListener(onChange);
+        }
+        return () => {
+          media.removeEventListener("change", onChange);
+        };
+      }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag runtime registrations inside nested handler functions", () => {
+    const result = runRule(
+      noEffectCleanupRemovesListenerSubsetOrAddsListener,
+      `useEffect(() => {
+        const handleOpen = () => {
+          socket.on("tick", onTick);
+        };
+        socket.on("open", handleOpen);
+        return () => {
+          socket.off("open", handleOpen);
+        };
+      }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag chained off().off() removals on fluent emitters", () => {
+    const result = runRule(
+      noEffectCleanupRemovesListenerSubsetOrAddsListener,
+      `useEffect(() => {
+        api.on("reInit", onSelect);
+        api.on("select", onSelect);
+        return () => {
+          api.off("reInit", onSelect).off("select", onSelect);
+        };
+      }, [api, onSelect]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a subscribe API disposed by calling its returned unsubscribe function", () => {
+    const result = runRule(
+      noEffectCleanupRemovesListenerSubsetOrAddsListener,
+      `useEffect(() => {
+        const dispose = api.on("select", onSelect);
+        api.on("reInit", onReInit);
+        return () => {
+          dispose();
+          api.off("reInit", onReInit);
+        };
+      }, [api]);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a subset leak when the cleanup is a named variable returned by identifier", () => {
+    const result = runRule(
+      noEffectCleanupRemovesListenerSubsetOrAddsListener,
+      `useEffect(() => {
+        api.on("reInit", onSelect);
+        api.on("select", onSelect);
+        const cleanup = () => {
+          api.off("select", onSelect);
+        };
+        return cleanup;
+      }, [api, onSelect]);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not treat module-scope emitter usage as an effect", () => {
     const result = runRule(
       noEffectCleanupRemovesListenerSubsetOrAddsListener,

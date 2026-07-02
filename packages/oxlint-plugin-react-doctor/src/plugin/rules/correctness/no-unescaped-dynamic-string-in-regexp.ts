@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { isInsideTryStatement } from "../../utils/is-inside-try-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -11,12 +12,22 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // Identifier names that resolve the RegExp source to a user/config search,
 // filter, highlight, or query term (the values that carry unescaped regex
 // metacharacters). Kept deliberately narrow so controlled/constant sources
-// stay quiet.
-const SEARCH_TERM_NAME_PATTERN = /search|query|highlight|filter|term|keyword/i;
+// stay quiet. `term(?!in)` keeps `searchTerm` while excluding
+// `terminalSequence` / `terminate`-shaped names.
+const SEARCH_TERM_NAME_PATTERN = /search|query|highlight|filter|term(?!in)|keyword/i;
 
-// An escape helper applied to the value in the same expression makes the
-// pattern safe. Also treat `.replace(...)` as author-driven sanitization.
+// An escape helper applied to the value makes the pattern safe. Also treat
+// `.replace(...)` / `.replaceAll(...)` as author-driven sanitization.
 const ESCAPE_HELPER_NAME_PATTERN = /escape.*reg|safe.*reg/i;
+
+// A binding named like `escapedSearchString` is an explicit author claim
+// that the value was sanitized before construction.
+const SANITIZED_NAME_PATTERN = /escap|sanitiz/i;
+
+// How many identifier-to-initializer hops to follow when checking whether
+// a binding was escaped on a prior line (`const escaped = escapeRegExp(q);
+// const pattern = escaped; new RegExp(pattern)`).
+const INITIALIZER_RESOLUTION_HOPS = 2;
 
 const isRegExpConstruction = (node: EsTreeNode): boolean => {
   const callee = isNodeOfType(node, "CallExpression")
@@ -36,26 +47,66 @@ const isFullyLiteralPattern = (argument: EsTreeNode): boolean => {
   return false;
 };
 
-const argumentHasSearchTermSignal = (argument: EsTreeNode): boolean => {
-  let hasSignal = false;
-  walkAst(argument, (child: EsTreeNode) => {
-    if (isNodeOfType(child, "Identifier") && SEARCH_TERM_NAME_PATTERN.test(child.name)) {
-      hasSignal = true;
-    }
-  });
-  return hasSignal;
+const isRegExpEscapeBuiltin = (callee: EsTreeNode): boolean =>
+  isNodeOfType(callee, "MemberExpression") &&
+  isNodeOfType(callee.object, "Identifier") &&
+  callee.object.name === "RegExp" &&
+  isNodeOfType(callee.property, "Identifier") &&
+  callee.property.name === "escape";
+
+const isEscapingCall = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  if (isRegExpEscapeBuiltin(node.callee)) return true;
+  const calleeName = getCalleeName(node);
+  return Boolean(
+    calleeName &&
+    (ESCAPE_HELPER_NAME_PATTERN.test(calleeName) ||
+      calleeName === "replace" ||
+      calleeName === "replaceAll"),
+  );
 };
 
-const expressionAppliesEscapeHelper = (argument: EsTreeNode): boolean => {
-  let escaped = false;
+const isRegexSourceAccess = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "MemberExpression") &&
+  !node.computed &&
+  isNodeOfType(node.property, "Identifier") &&
+  node.property.name === "source";
+
+const collectRawSearchTermIdentifiers = (
+  argument: EsTreeNode,
+): EsTreeNodeOfType<"Identifier">[] => {
+  const rawSearchTermIdentifiers: EsTreeNodeOfType<"Identifier">[] = [];
   walkAst(argument, (child: EsTreeNode) => {
-    if (!isNodeOfType(child, "CallExpression")) return;
-    const calleeName = getCalleeName(child);
-    if (calleeName && (ESCAPE_HELPER_NAME_PATTERN.test(calleeName) || calleeName === "replace")) {
-      escaped = true;
+    if (isEscapingCall(child) || isRegexSourceAccess(child)) return false;
+    if (isNodeOfType(child, "Identifier") && SEARCH_TERM_NAME_PATTERN.test(child.name)) {
+      rawSearchTermIdentifiers.push(child);
     }
   });
-  return escaped;
+  return rawSearchTermIdentifiers;
+};
+
+const initializerLooksEscaped = (initializer: EsTreeNode, remainingHops: number): boolean => {
+  const strippedInitializer = stripParenExpression(initializer);
+  if (isFullyLiteralPattern(strippedInitializer)) return true;
+  let didFindEscapingCall = false;
+  walkAst(strippedInitializer, (child: EsTreeNode) => {
+    if (isEscapingCall(child)) didFindEscapingCall = true;
+  });
+  if (didFindEscapingCall) return true;
+  if (remainingHops > 0 && isNodeOfType(strippedInitializer, "Identifier")) {
+    return identifierResolvesToEscapedValue(strippedInitializer, remainingHops - 1);
+  }
+  return false;
+};
+
+const identifierResolvesToEscapedValue = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+  remainingHops: number,
+): boolean => {
+  if (SANITIZED_NAME_PATTERN.test(identifier.name)) return true;
+  const binding = findVariableInitializer(identifier, identifier.name);
+  if (!binding?.initializer) return false;
+  return initializerLooksEscaped(binding.initializer, remainingHops);
 };
 
 export const noUnescapedDynamicStringInRegexp = defineRule({
@@ -73,8 +124,11 @@ export const noUnescapedDynamicStringInRegexp = defineRule({
       const firstArgument = node.arguments?.[0];
       if (!firstArgument || isNodeOfType(firstArgument, "SpreadElement")) return;
       if (isFullyLiteralPattern(firstArgument)) return;
-      if (!argumentHasSearchTermSignal(firstArgument)) return;
-      if (expressionAppliesEscapeHelper(firstArgument)) return;
+      const rawSearchTermIdentifiers = collectRawSearchTermIdentifiers(firstArgument);
+      const hasUnescapedSearchTerm = rawSearchTermIdentifiers.some(
+        (identifier) => !identifierResolvesToEscapedValue(identifier, INITIALIZER_RESOLUTION_HOPS),
+      );
+      if (!hasUnescapedSearchTerm) return;
       if (isInsideTryStatement(node, { region: "block" })) return;
       context.report({
         node,

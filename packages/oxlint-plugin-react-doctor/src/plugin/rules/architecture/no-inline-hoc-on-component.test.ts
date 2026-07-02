@@ -3,22 +3,35 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noInlineHocOnComponent } from "./no-inline-hoc-on-component.js";
 
 describe("no-inline-hoc-on-component", () => {
-  it("flags an inline arrow passed to observer", () => {
+  it("flags an inline hook-calling arrow passed to observer", () => {
     const result = runRule(
       noInlineHocOnComponent,
       `const Header = observer((props) => {
-        return <h1>{props.store.title}</h1>;
+        const [open, setOpen] = useState(false);
+        return <h1 onClick={() => setOpen(!open)}>{props.store.title}</h1>;
       });`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags an inline function expression passed to withRouter", () => {
+  it("flags an inline hook-calling function expression passed to withRouter", () => {
     const result = runRule(
       noInlineHocOnComponent,
       `const Page = withRouter(function (props) {
+        useEffect(() => trackVisit(props.location), [props.location]);
         return <div>{props.location.pathname}</div>;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a lowercase-named hook-calling function expression, which rules-of-hooks skips", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const Page = withRouter(function pageBase(props) {
+        const theme = useTheme();
+        return <div className={theme}>{props.location.pathname}</div>;
       });`,
     );
     expect(result.diagnostics).toHaveLength(1);
@@ -28,10 +41,90 @@ describe("no-inline-hoc-on-component", () => {
     const result = runRule(
       noInlineHocOnComponent,
       `export const Card = connect(mapState)((props) => (
-        <article>{props.title}</article>
+        <article>{useFormatted(props.title)}</article>
       ));`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a hook-calling inline component exported as default", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `export default observer((props) => {
+        const [count] = useState(0);
+        return <h1>{props.store.title}{count}</h1>;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an inline HOC component nested inside a memo composition", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const Card = memo(withTheme((props) => {
+        const label = useLabel(props);
+        return <div>{props.theme.color}{label}</div>;
+      }));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an inline HOC component whose result is cast before the binding", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const Card = withTheme((props) => <div>{useColor(props.theme)}</div>) as React.FC;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a real HOC whose name merely contains but does not end in factory", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `export const Container = createRefetchContainer((props) => {
+        const data = useFragmentData(props);
+        return <section>{data.children}</section>;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a hook-free inline function passed to a classic HOC (react-sortable-hoc idiom)", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const SortableItem = SortableElement((props) => <li>{props.value}</li>);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a hook-free instantsearch connector component", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const CurrentRefinements = connectCurrentRefinements(({ items, refine }) => (
+        <ul>{items.map((item) => <li key={item.label} onClick={() => refine(item.value)}>{item.label}</li>)}</ul>
+      ));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a hook-free inline observer component (classic pre-hooks HOC form)", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const TimerView = observer(function TimerView(props) {
+        return <span>{props.timer.secondsPassed}</span>;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a named hook-calling function expression (MobX docs' observer fix)", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const TimerView = observer(function TimerView(props) {
+        const seconds = useElapsedSeconds(props.timer);
+        return <span>{seconds}</span>;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag Mantine's factory component primitive", () => {
@@ -52,20 +145,10 @@ describe("no-inline-hoc-on-component", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("still flags a real HOC whose name merely contains but does not end in factory", () => {
-    const result = runRule(
-      noInlineHocOnComponent,
-      `export const Container = createRefetchContainer((props) => {
-        return <section>{props.children}</section>;
-      });`,
-    );
-    expect(result.diagnostics).toHaveLength(1);
-  });
-
   it("does not flag the extracted-reference form", () => {
     const result = runRule(
       noInlineHocOnComponent,
-      `const ComponentBase = (props) => <div>{props.content}</div>;
+      `const ComponentBase = (props) => <div>{useContent(props)}</div>;
        const Component = hoc(ComponentBase);`,
     );
     expect(result.diagnostics).toHaveLength(0);
@@ -157,6 +240,25 @@ describe("no-inline-hoc-on-component", () => {
       `const Wrapped = wrapData((rows) => {
         rows.forEach((row) => <Cell value={row} />);
         return rows.length;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an expression-body data callback whose JSX lives only in a nested closure", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const Wrapped = wrapData((rows) => useProcessed(rows).forEach((row) => <Cell value={row} />));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a hook-calling config factory that returns a render closure, not JSX", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `const Modal = createModal((props) => {
+        const state = useModalState(props);
+        return { render: () => <Dialog state={state} /> };
       });`,
     );
     expect(result.diagnostics).toHaveLength(0);

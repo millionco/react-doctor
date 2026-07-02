@@ -15,11 +15,20 @@ const REENTRY_GUARDED_EVENT_HANDLER_NAMES = new Set(["onClick", "onSubmit", "onP
 const MUTATING_REQUEST_METHOD_NAMES = new Set(["post", "put", "patch", "delete", "mutate"]);
 const MUTATING_FETCH_HTTP_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const STATE_SETTER_NAME_PATTERN = /^set[A-Z]/;
+const NON_STATE_SETTER_GLOBAL_NAMES = new Set(["setTimeout", "setInterval", "setImmediate"]);
+
+const getNodeOffset = (node: EsTreeNode, edge: "start" | "end"): number | null => {
+  const offset = (node as { start?: unknown; end?: unknown })[edge];
+  if (typeof offset === "number") return offset;
+  const range = node.range;
+  return range ? range[edge === "start" ? 0 : 1] : null;
+};
 
 const isStateSetterCall = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "CallExpression") &&
   isNodeOfType(node.callee, "Identifier") &&
-  STATE_SETTER_NAME_PATTERN.test(node.callee.name);
+  STATE_SETTER_NAME_PATTERN.test(node.callee.name) &&
+  !NON_STATE_SETTER_GLOBAL_NAMES.has(node.callee.name);
 
 // Walk a statement collecting only the nodes that execute on this handler path,
 // pruning nested function bodies (a nested arrow does not run synchronously).
@@ -54,10 +63,33 @@ const findFirstAwaitInStatement = (statement: EsTreeNode): EsTreeNode | null => 
   return awaitNode;
 };
 
-const statementContainsStateSetterCall = (statement: EsTreeNode): boolean => {
+// A setter inside a `catch` handler or `finally` finalizer is error handling
+// or cleanup, not the success-path state flip the rule's message describes.
+const isInsideCatchOrFinally = (node: EsTreeNode, boundary: EsTreeNode): boolean => {
+  let child: EsTreeNode = node;
+  let ancestor: EsTreeNode | null | undefined = node.parent;
+  while (ancestor && child !== boundary) {
+    if (isNodeOfType(ancestor, "CatchClause")) return true;
+    if (isNodeOfType(ancestor, "TryStatement") && ancestor.finalizer === child) return true;
+    child = ancestor;
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
+};
+
+const statementContainsPostAwaitStateSetter = (
+  statement: EsTreeNode,
+  afterPosition?: number,
+): boolean => {
   let found = false;
   walkStatementPruningNestedFunctions(statement, (node) => {
-    if (isStateSetterCall(node)) found = true;
+    if (found || !isStateSetterCall(node)) return;
+    if (afterPosition !== undefined) {
+      const setterStart = getNodeOffset(node, "start");
+      if (setterStart === null || setterStart <= afterPosition) return;
+    }
+    if (isInsideCatchOrFinally(node, statement)) return;
+    found = true;
   });
   return found;
 };
@@ -131,11 +163,32 @@ const isLeadingReentryGuard = (statement: EsTreeNode): boolean => {
   return false;
 };
 
+// `useCallback(async () => {...}, deps)` / `React.useCallback(...)` is a
+// transparent memoizing wrapper — the analyzable handler is its first argument.
+const unwrapUseCallback = (expression: EsTreeNode): EsTreeNode => {
+  const stripped = stripParenExpression(expression);
+  if (!isNodeOfType(stripped, "CallExpression")) return stripped;
+  const callee = stripped.callee;
+  const calleeName = isNodeOfType(callee, "Identifier")
+    ? callee.name
+    : isNodeOfType(callee, "MemberExpression") &&
+        !callee.computed &&
+        isNodeOfType(callee.property, "Identifier")
+      ? callee.property.name
+      : null;
+  if (calleeName !== "useCallback") return stripped;
+  const wrappedFunction = stripped.arguments[0];
+  return wrappedFunction && isFunctionLike(wrappedFunction) ? wrappedFunction : stripped;
+};
+
 const resolveHandlerFunction = (value: EsTreeNode): EsTreeNode | null => {
-  if (isInlineFunctionExpression(value)) return value;
-  if (isNodeOfType(value, "Identifier")) {
-    const binding = findVariableInitializer(value, value.name);
-    if (binding?.initializer && isFunctionLike(binding.initializer)) return binding.initializer;
+  const unwrappedValue = unwrapUseCallback(value);
+  if (isInlineFunctionExpression(unwrappedValue)) return unwrappedValue;
+  if (isNodeOfType(unwrappedValue, "Identifier")) {
+    const binding = findVariableInitializer(unwrappedValue, unwrappedValue.name);
+    if (!binding?.initializer) return null;
+    const unwrappedInitializer = unwrapUseCallback(binding.initializer);
+    if (isFunctionLike(unwrappedInitializer)) return unwrappedInitializer;
   }
   return null;
 };
@@ -165,10 +218,17 @@ const analyzeAsyncHandler = (context: RuleContext, functionNode: EsTreeNode): vo
           return;
         }
         mutatingAwaitNode = firstAwait;
+        const awaitEnd = getNodeOffset(firstAwait, "end");
+        if (
+          awaitEnd !== null &&
+          statementContainsPostAwaitStateSetter(currentStatement, awaitEnd)
+        ) {
+          hasPostAwaitStateSetter = true;
+        }
       }
       continue;
     }
-    if (statementContainsStateSetterCall(currentStatement)) hasPostAwaitStateSetter = true;
+    if (statementContainsPostAwaitStateSetter(currentStatement)) hasPostAwaitStateSetter = true;
   }
 
   if (!sawFirstAwait || !mutatingAwaitNode || !hasPostAwaitStateSetter) return;

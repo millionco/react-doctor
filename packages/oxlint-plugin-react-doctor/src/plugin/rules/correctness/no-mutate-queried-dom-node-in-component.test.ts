@@ -154,6 +154,117 @@ describe("no-mutate-queried-dom-node-in-component", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a shadowed createElement node whose name matches an owned query var (download-link idiom)", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function Panel() {
+        const el = document.getElementById('panel');
+        const width = el.offsetWidth;
+        const download = () => {
+          const el = document.createElement('a');
+          el.style.display = 'none';
+          document.body.appendChild(el);
+        };
+        return <div id="panel" onClick={download} />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a callback parameter that shadows an owned query var (helper decorating its own argument)", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function List() {
+        const item = document.querySelector('.item');
+        const top = item.offsetTop;
+        const decorate = (item) => {
+          item.style.opacity = '0.5';
+        };
+        return <div className="item" onMouseEnter={decorate} />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags the queried node when a nested handler shadows a different name", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function Panel() {
+        const el = document.getElementById('panel');
+        el.style.filter = 'blur(3px)';
+        const download = () => {
+          const link = document.createElement('a');
+          link.style.display = 'none';
+        };
+        return <div id="panel" onClick={download} />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags style mutation over an owned querySelectorAll forEach callback", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function List() {
+        document.querySelectorAll('.row').forEach((row) => {
+          row.style.background = 'red';
+        });
+        return <div className="row" />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags classList mutation inside a for-of over an owned querySelectorAll", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function List() {
+        for (const row of document.querySelectorAll('.row')) {
+          row.classList.add('active');
+        }
+        return <div className="row" />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag forEach over a selector the component does not render", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function List() {
+        document.querySelectorAll('.external-row').forEach((row) => {
+          row.style.background = 'red';
+        });
+        return <div className="row" />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags style.setProperty on an owned queried node", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function Panel() {
+        const el = document.getElementById('panel');
+        el.style.setProperty('--width', '10px');
+        return <div id="panel" />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag style.setProperty on a ref.current node", () => {
+    const result = runRule(
+      noMutateQueriedDomNodeInComponent,
+      `function Panel() {
+        const ref = useRef(null);
+        ref.current.style.setProperty('--width', '10px');
+        return <div ref={ref} className="panel" />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag the excluded #root token even when rendered", () => {
     const result = runRule(
       noMutateQueriedDomNodeInComponent,

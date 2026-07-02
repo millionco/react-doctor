@@ -7,12 +7,13 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 // Removal verbs that deregister a listener by reference equality on the
 // handler argument. Excludes `addEventListener` on purpose — a fresh
-// literal is only a bug on the REMOVE side.
+// literal is only a bug on the REMOVE side. Excludes `unsubscribe`
+// because APIs like MQTT.js use `unsubscribe(topic, completionCallback)`,
+// where an inline second argument is idiomatic and not a leak.
 const REFERENCE_EQUALITY_REMOVAL_METHOD_NAMES = new Set([
   "removeEventListener",
   "removeListener",
   "off",
-  "unsubscribe",
 ]);
 
 const isFreshFunctionReference = (node: EsTreeNode): boolean => {

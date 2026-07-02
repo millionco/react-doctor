@@ -1,12 +1,14 @@
-import { containsJsxElement } from "../../utils/contains-jsx-element.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 
 // Callees that legitimately take an inline JSX-returning function and either
@@ -27,6 +29,32 @@ const WHITELISTED_CALLEE_NAMES = new Set([
   "times",
   "when",
 ]);
+
+// Wrappers that pass their first argument through unchanged for the purpose
+// of "does this produce a component binding": `memo(withTheme(fn))` still
+// assigns the HOC result to the outer binding, so the inline function inside
+// `withTheme` keeps every harm the rule describes.
+const TRANSPARENT_WRAPPER_CALLEE_NAMES = new Set(["memo", "forwardRef"]);
+
+// TS assertion / paren wrappers that sit between an expression and the node
+// that consumes it (`observer(fn) as React.FC`, `(fn) satisfies Renderer`).
+// Mirrors the wrapper set stripParenExpression peels downward.
+const TRANSPARENT_PARENT_TYPES = new Set<string>([
+  "ParenthesizedExpression",
+  "TSAsExpression",
+  "TSSatisfiesExpression",
+  "TSTypeAssertion",
+  "TSNonNullExpression",
+  "TSInstantiationExpression",
+]);
+
+const climbTransparentParents = (node: EsTreeNode): EsTreeNode => {
+  let current = node;
+  while (current.parent && TRANSPARENT_PARENT_TYPES.has(current.parent.type)) {
+    current = current.parent;
+  }
+  return current;
+};
 
 // Component *factory primitives* — Mantine's `factory` / `polymorphicFactory`
 // and any `createXFactory` — take the component implementation inline and wire
@@ -49,40 +77,100 @@ const resolveInlineHocCalleeName = (callee: EsTreeNode): string | null => {
   return null;
 };
 
-// A function is component-shaped when its RETURN value is JSX — not merely when
-// its subtree contains JSX (which would also match a data callback that renders
-// JSX in a nested, non-returned map callback). Arrow expression bodies return
-// directly; block bodies return through `ReturnStatement`s in the same scope.
+// A named, uppercase FunctionExpression defeats both harms the rule cites:
+// `fn.name` gives a stable display name, and rules-of-hooks analyzes
+// capitalized named function expressions — this is the exact fix the MobX
+// docs recommend for anonymous observer components.
+const isNamedComponentFunctionExpression = (functionNode: EsTreeNode): boolean =>
+  isNodeOfType(functionNode, "FunctionExpression") &&
+  functionNode.id !== null &&
+  functionNode.id !== undefined &&
+  isUppercaseName(functionNode.id.name);
+
+// JSX detection bounded to the expression's own scope: nested function
+// expressions are separate closures (a data callback rendering JSX inside a
+// non-returned `.forEach`/render-prop closure is not itself a component).
+const containsJsxInOwnExpression = (root: EsTreeNode): boolean => {
+  let didFindJsx = false;
+  walkAst(root, (node: EsTreeNode) => {
+    if (didFindJsx || isFunctionLike(node)) return false;
+    if (isNodeOfType(node, "JSXElement") || isNodeOfType(node, "JSXFragment")) {
+      didFindJsx = true;
+      return false;
+    }
+  });
+  return didFindJsx;
+};
+
+// A function is component-shaped when its own RETURN value is JSX — not when
+// JSX merely appears somewhere in a deeper closure. Arrow expression bodies
+// return directly; block bodies return through same-scope `ReturnStatement`s.
 const functionReturnValueIsJsx = (functionNode: EsTreeNode): boolean => {
   if (!isFunctionLike(functionNode)) return false;
   if (
     isNodeOfType(functionNode, "ArrowFunctionExpression") &&
     !isNodeOfType(functionNode.body, "BlockStatement")
   ) {
-    return containsJsxElement(stripParenExpression(functionNode.body));
+    return containsJsxInOwnExpression(stripParenExpression(functionNode.body));
   }
   let returnsJsx = false;
   walkOwnFunctionScope(functionNode, (child: EsTreeNode) => {
     if (returnsJsx) return false;
     if (isNodeOfType(child, "ReturnStatement") && child.argument) {
-      if (containsJsxElement(child.argument)) returnsJsx = true;
+      if (containsJsxInOwnExpression(child.argument)) returnsJsx = true;
     }
   });
   return returnsJsx;
 };
 
-// The wrapping call's result must be assigned to an uppercase-named binding —
-// i.e. it produces a *component*. This filters non-component HOC-like helpers
-// whose results are lowercase-named (act(), render(), reduce()), pushing the
-// false-positive rate down without an ever-growing denylist.
-const isAssignedToComponentBinding = (wrappingCall: EsTreeNode): boolean => {
-  const declarator = wrappingCall.parent;
-  return Boolean(
-    declarator &&
-    isNodeOfType(declarator, "VariableDeclarator") &&
-    isNodeOfType(declarator.id, "Identifier") &&
-    isUppercaseName(declarator.id.name),
-  );
+// The headline harm — rules-of-hooks / exhaustive-deps no longer analyzing
+// the component — only exists when the inline function actually calls a hook.
+// Hook-free inline wrappers are the documented idiom of classic pre-hooks
+// HOCs (react-sortable-hoc, react-instantsearch connectors), and the
+// remaining display-name nit alone is below reporting threshold.
+const callsHookInOwnScope = (functionNode: EsTreeNode): boolean => {
+  let didCallHook = false;
+  walkOwnFunctionScope(functionNode, (child: EsTreeNode) => {
+    if (didCallHook) return false;
+    const calleeName = getCalleeName(child);
+    if (calleeName !== null && isReactHookName(calleeName)) {
+      didCallHook = true;
+      return false;
+    }
+  });
+  return didCallHook;
+};
+
+// The wrapping call's result must land in a component-shaped slot — an
+// uppercase binding / assignment target, or a default export — so
+// non-component HOC-like helpers whose results are lowercase-named (act(),
+// render(), reduce()) stay quiet. Transparent wrappers (`memo`, `forwardRef`,
+// TS casts) between the HOC call and the slot are peeled.
+const producesComponentValue = (wrappingCall: EsTreeNode): boolean => {
+  const outermostExpression = climbTransparentParents(wrappingCall);
+  const consumer = outermostExpression.parent;
+  if (!consumer) return false;
+  if (isNodeOfType(consumer, "VariableDeclarator")) {
+    return isNodeOfType(consumer.id, "Identifier") && isUppercaseName(consumer.id.name);
+  }
+  if (isNodeOfType(consumer, "ExportDefaultDeclaration")) return true;
+  if (isNodeOfType(consumer, "AssignmentExpression") && consumer.right === outermostExpression) {
+    if (isNodeOfType(consumer.left, "Identifier")) return isUppercaseName(consumer.left.name);
+    if (
+      isNodeOfType(consumer.left, "MemberExpression") &&
+      isNodeOfType(consumer.left.property, "Identifier")
+    ) {
+      return isUppercaseName(consumer.left.property.name);
+    }
+    return false;
+  }
+  if (isNodeOfType(consumer, "CallExpression") && consumer.arguments[0] === outermostExpression) {
+    const outerCalleeName = getCalleeName(consumer);
+    if (outerCalleeName !== null && TRANSPARENT_WRAPPER_CALLEE_NAMES.has(outerCalleeName)) {
+      return producesComponentValue(consumer);
+    }
+  }
+  return false;
 };
 
 export const noInlineHocOnComponent = defineRule({
@@ -95,9 +183,10 @@ export const noInlineHocOnComponent = defineRule({
     "Extract the inline function into a named base component at module scope and pass the reference to the HOC (`const CardBase = (props) => ...; const Card = withTracking(CardBase);`). This restores rules-of-hooks and exhaustive-deps analysis and gives the component a stable display name.",
   create: (context: RuleContext) => {
     const checkInlineFunction = (functionNode: EsTreeNode): void => {
-      const wrappingCall = functionNode.parent;
+      const passedExpression = climbTransparentParents(functionNode);
+      const wrappingCall = passedExpression.parent;
       if (!wrappingCall || !isNodeOfType(wrappingCall, "CallExpression")) return;
-      if (wrappingCall.arguments?.[0] !== functionNode) return;
+      if (wrappingCall.arguments[0] !== passedExpression) return;
 
       const calleeName = resolveInlineHocCalleeName(wrappingCall.callee);
       if (
@@ -107,8 +196,10 @@ export const noInlineHocOnComponent = defineRule({
       ) {
         return;
       }
+      if (isNamedComponentFunctionExpression(functionNode)) return;
       if (!functionReturnValueIsJsx(functionNode)) return;
-      if (!isAssignedToComponentBinding(wrappingCall)) return;
+      if (!callsHookInOwnScope(functionNode)) return;
+      if (!producesComponentValue(wrappingCall)) return;
 
       context.report({
         node: functionNode,

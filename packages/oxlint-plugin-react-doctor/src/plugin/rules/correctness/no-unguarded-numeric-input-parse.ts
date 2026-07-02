@@ -1,9 +1,12 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
+import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const MESSAGE =
@@ -12,6 +15,24 @@ const MESSAGE =
 const EVENT_VALUE_PROPERTIES: ReadonlySet<string> = new Set(["value", "valueAsNumber"]);
 const EVENT_TARGET_PROPERTIES: ReadonlySet<string> = new Set(["target", "currentTarget"]);
 const HANDLER_ATTRIBUTE_PATTERN = /^on[A-Z]/;
+const NAN_GUARD_FUNCTION_NAMES: ReadonlySet<string> = new Set(["isNaN", "isFinite"]);
+
+// The browser's value-sanitization algorithm guarantees these input types
+// never yield an empty or partially-typed string (a range slider is always
+// clamped to a valid in-bounds number; radio/checkbox carry a fixed literal
+// value), so the empty->0 / partial->NaN harm this rule warns about cannot
+// occur on them.
+const BROWSER_SANITIZED_INPUT_TYPES: ReadonlySet<string> = new Set([
+  "range",
+  "checkbox",
+  "radio",
+  "color",
+  "date",
+  "time",
+  "datetime-local",
+  "month",
+  "week",
+]);
 
 const isNumericParseCallee = (callee: EsTreeNode): boolean => {
   if (
@@ -27,26 +48,6 @@ const isNumericParseCallee = (callee: EsTreeNode): boolean => {
     callee.object.name === "Number" &&
     isNodeOfType(callee.property, "Identifier") &&
     (callee.property.name === "parseInt" || callee.property.name === "parseFloat")
-  );
-};
-
-// A radix-less `parseInt(x)` / `Number.parseInt(x)` is already owned by
-// `no-parseint-without-radix` (which fires on exactly one non-spread
-// argument), so reporting it here too would double-warn the same call.
-// Defer to that rule and keep this rule's niche: `Number(...)`,
-// `parseFloat(...)`, and radix-carrying `parseInt(x, 10)`.
-const isRadixlessParseInt = (callee: EsTreeNode, argumentList: readonly EsTreeNode[]): boolean => {
-  if (argumentList.length !== 1 || isNodeOfType(argumentList[0] as EsTreeNode, "SpreadElement")) {
-    return false;
-  }
-  if (isNodeOfType(callee, "Identifier")) return callee.name === "parseInt";
-  return (
-    isNodeOfType(callee, "MemberExpression") &&
-    !callee.computed &&
-    isNodeOfType(callee.object, "Identifier") &&
-    callee.object.name === "Number" &&
-    isNodeOfType(callee.property, "Identifier") &&
-    callee.property.name === "parseInt"
   );
 };
 
@@ -82,23 +83,122 @@ interface HandlerLookup {
 }
 
 // Walk from the call up to the nearest enclosing function, recording
-// whether a guard (`?:` ternary or `||`/`??` fallback) sits between them.
-// That nearest function is the handler candidate.
+// whether a guard (`?:` ternary or `||`/`??`/`&&` short-circuit) sits
+// between them. That nearest function is the handler candidate.
 const findEnclosingHandlerAndGuard = (call: EsTreeNode): HandlerLookup => {
   let ancestor = call.parent;
   let isGuarded = false;
   while (ancestor) {
     if (isFunctionLike(ancestor)) return { handler: ancestor, isGuarded };
     if (isNodeOfType(ancestor, "ConditionalExpression")) isGuarded = true;
-    if (
-      isNodeOfType(ancestor, "LogicalExpression") &&
-      (ancestor.operator === "||" || ancestor.operator === "??")
-    ) {
-      isGuarded = true;
-    }
+    if (isNodeOfType(ancestor, "LogicalExpression")) isGuarded = true;
     ancestor = ancestor.parent ?? null;
   }
   return { handler: null, isGuarded };
+};
+
+const isNanGuardCall = (node: EsTreeNode): node is EsTreeNodeOfType<"CallExpression"> => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = node.callee;
+  if (isNodeOfType(callee, "Identifier")) return NAN_GUARD_FUNCTION_NAMES.has(callee.name);
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    !callee.computed &&
+    isNodeOfType(callee.object, "Identifier") &&
+    callee.object.name === "Number" &&
+    isNodeOfType(callee.property, "Identifier") &&
+    (NAN_GUARD_FUNCTION_NAMES.has(callee.property.name) || callee.property.name === "isInteger")
+  );
+};
+
+const subtreeReferencesParsedValue = (
+  subtree: EsTreeNode,
+  eventRootName: string,
+  parseResultName: string | null,
+): boolean => {
+  let didFindReference = false;
+  walkAst(subtree, (child) => {
+    if (didFindReference) return false;
+    if (getEventValueRootName(child) === eventRootName) {
+      didFindReference = true;
+      return false;
+    }
+    if (
+      parseResultName !== null &&
+      isNodeOfType(child, "Identifier") &&
+      child.name === parseResultName
+    ) {
+      didFindReference = true;
+      return false;
+    }
+  });
+  return didFindReference;
+};
+
+// Recognizes guards the ancestor walk cannot see: a preceding early-return
+// (`if (e.target.value === "") return;`), a short-circuit whose left operand
+// checks the value, and the guard-on-next-line the rule's own recommendation
+// produces (`const next = Number(e.target.value); if (!Number.isNaN(next))
+// setX(next);`). A guard counts only when its test actually reads the event
+// value or the variable holding the parse result.
+const handlerGuardsParsedValue = (
+  handler: EsTreeNode,
+  eventRootName: string,
+  parseResultName: string | null,
+): boolean => {
+  let didFindGuard = false;
+  walkAst(handler, (node) => {
+    if (didFindGuard) return false;
+    if (isNodeOfType(node, "IfStatement") || isNodeOfType(node, "ConditionalExpression")) {
+      if (subtreeReferencesParsedValue(node.test, eventRootName, parseResultName)) {
+        didFindGuard = true;
+        return false;
+      }
+    }
+    if (
+      isNodeOfType(node, "LogicalExpression") &&
+      subtreeReferencesParsedValue(node.left, eventRootName, parseResultName)
+    ) {
+      didFindGuard = true;
+      return false;
+    }
+    if (isNanGuardCall(node)) {
+      const guardArgument = node.arguments[0];
+      if (
+        guardArgument &&
+        subtreeReferencesParsedValue(guardArgument, eventRootName, parseResultName)
+      ) {
+        didFindGuard = true;
+        return false;
+      }
+    }
+  });
+  return didFindGuard;
+};
+
+const getParseResultBindingName = (call: EsTreeNode): string | null => {
+  const parent = call.parent;
+  if (!parent || !isNodeOfType(parent, "VariableDeclarator")) return null;
+  return isNodeOfType(parent.id, "Identifier") ? parent.id.name : null;
+};
+
+const getStaticInputType = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+): string | null => {
+  const typeAttribute = findJsxAttribute(openingElement.attributes ?? [], "type");
+  if (!typeAttribute) return null;
+  const literalValue = getJsxPropStringValue(typeAttribute);
+  if (literalValue !== null) return literalValue;
+  const attributeValue = typeAttribute.value;
+  if (!attributeValue || !isNodeOfType(attributeValue, "JSXExpressionContainer")) return null;
+  const expression = attributeValue.expression;
+  if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
+    return expression.value;
+  }
+  if (isNodeOfType(expression, "TemplateLiteral") && expression.expressions.length === 0) {
+    return expression.quasis[0]?.value.cooked ?? null;
+  }
+  return null;
 };
 
 const firstParameterName = (handler: EsTreeNode): string | null => {
@@ -108,10 +208,12 @@ const firstParameterName = (handler: EsTreeNode): string | null => {
 };
 
 // True only when the inline handler is bound to an `onX` attribute of an
-// intrinsic `<input>` element. A `<select>`, `<textarea>`, or a component
-// (`<TextField>`, MUI pagination props) cannot be resolved to a free-text
-// input, so we bail — a false negative over a false positive.
-const isInputElementHandler = (handler: EsTreeNode): boolean => {
+// intrinsic `<input>` element whose `type` can hold free text. A `<select>`,
+// `<textarea>`, a component (`<TextField>`, MUI pagination props), or an
+// input type the browser sanitizes (`type="range"` sliders, radio/checkbox)
+// cannot yield an empty or partially-typed value, so we bail — a false
+// negative over a false positive.
+const isTextualInputElementHandler = (handler: EsTreeNode): boolean => {
   const container = handler.parent;
   if (!container || !isNodeOfType(container, "JSXExpressionContainer")) return false;
   const attribute = container.parent;
@@ -124,7 +226,11 @@ const isInputElementHandler = (handler: EsTreeNode): boolean => {
   }
   const openingElement = attribute.parent;
   if (!openingElement || !isNodeOfType(openingElement, "JSXOpeningElement")) return false;
-  return isNodeOfType(openingElement.name, "JSXIdentifier") && openingElement.name.name === "input";
+  if (!isNodeOfType(openingElement.name, "JSXIdentifier") || openingElement.name.name !== "input") {
+    return false;
+  }
+  const staticInputType = getStaticInputType(openingElement);
+  return staticInputType === null || !BROWSER_SANITIZED_INPUT_TYPES.has(staticInputType);
 };
 
 export const noUnguardedNumericInputParse = defineRule({
@@ -138,7 +244,6 @@ export const noUnguardedNumericInputParse = defineRule({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isNumericParseCallee(node.callee as EsTreeNode)) return;
       const argumentList = (node.arguments ?? []) as EsTreeNode[];
-      if (isRadixlessParseInt(node.callee as EsTreeNode, argumentList)) return;
       const firstArgument = argumentList[0];
       if (!firstArgument) return;
       const rootName = getEventValueRootName(firstArgument);
@@ -147,7 +252,9 @@ export const noUnguardedNumericInputParse = defineRule({
       const { handler, isGuarded } = findEnclosingHandlerAndGuard(node as EsTreeNode);
       if (isGuarded || !handler) return;
       if (firstParameterName(handler) !== rootName) return;
-      if (!isInputElementHandler(handler)) return;
+      if (!isTextualInputElementHandler(handler)) return;
+      const parseResultName = getParseResultBindingName(node as EsTreeNode);
+      if (handlerGuardsParsedValue(handler, rootName, parseResultName)) return;
 
       context.report({ node, message: MESSAGE });
     },

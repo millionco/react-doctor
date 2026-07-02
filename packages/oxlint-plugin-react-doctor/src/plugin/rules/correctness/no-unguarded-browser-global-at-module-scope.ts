@@ -20,6 +20,11 @@ const BROWSER_GLOBAL_NAMES = new Set([
   "matchMedia",
 ]);
 
+// Guard recognition is broader than the report set: `typeof document` implies
+// a browser environment just as strongly, even though `document` reads are
+// not reported.
+const GUARD_GLOBAL_NAMES = new Set([...BROWSER_GLOBAL_NAMES, "document"]);
+
 // Scopes that run AFTER import time — a browser-global read inside any of
 // them is deferred to browser-only execution and never crashes Node SSR.
 const DEFERRED_EXECUTION_NODE_TYPES = new Set<string>([
@@ -41,46 +46,119 @@ const isEvaluatedAtImportTime = (node: EsTreeNode): boolean => {
   return true;
 };
 
-const subtreeHasTypeofBrowserGlobal = (subtree: EsTreeNode): boolean => {
+const isImportMetaEnvSsrRead = (node: EsTreeNodeOfType<"MemberExpression">): boolean => {
+  if (node.computed) return false;
+  if (!isNodeOfType(node.property, "Identifier") || node.property.name !== "SSR") return false;
+  const envObject = stripParenExpression(node.object);
+  if (!isNodeOfType(envObject, "MemberExpression") || envObject.computed) return false;
+  if (!isNodeOfType(envObject.property, "Identifier") || envObject.property.name !== "env") {
+    return false;
+  }
+  const metaObject = stripParenExpression(envObject.object);
+  return isNodeOfType(metaObject, "MetaProperty") && metaObject.meta.name === "import";
+};
+
+const isProcessBrowserRead = (node: EsTreeNodeOfType<"MemberExpression">): boolean => {
+  if (node.computed) return false;
+  if (!isNodeOfType(node.property, "Identifier") || node.property.name !== "browser") return false;
+  const processObject = stripParenExpression(node.object);
+  return isNodeOfType(processObject, "Identifier") && processObject.name === "process";
+};
+
+const subtreeHasBrowserEnvironmentGuard = (
+  subtree: EsTreeNode,
+  guardAliasNames: ReadonlySet<string>,
+): boolean => {
   let found = false;
   walkAst(subtree, (child) => {
     if (found) return false;
     if (isNodeOfType(child, "UnaryExpression") && child.operator === "typeof") {
       const argument = stripParenExpression(child.argument);
-      if (isNodeOfType(argument, "Identifier") && BROWSER_GLOBAL_NAMES.has(argument.name)) {
+      if (isNodeOfType(argument, "Identifier") && GUARD_GLOBAL_NAMES.has(argument.name)) {
         found = true;
         return false;
       }
+    }
+    if (isNodeOfType(child, "Identifier") && guardAliasNames.has(child.name)) {
+      found = true;
+      return false;
+    }
+    if (
+      isNodeOfType(child, "MemberExpression") &&
+      (isImportMetaEnvSsrRead(child) || isProcessBrowserRead(child))
+    ) {
+      found = true;
+      return false;
     }
   });
   return found;
 };
 
-// True when a `typeof <global> !== "undefined"` check dominates the read via
-// an enclosing `if` / ternary / `&&`. Conservative: any such guard in an
-// ancestor's condition suppresses the report (favouring a false negative over
-// a false positive).
-const isTypeofGuarded = (node: EsTreeNode): boolean => {
+// True when a browser-environment check dominates the read via an enclosing
+// `if` / ternary / `&&` (a `typeof <global>` test, a module-scope alias like
+// `canUseDOM`, or an `import.meta.env.SSR` / `process.browser` check), or
+// when an enclosing try/catch swallows the ReferenceError. Conservative: any
+// such guard suppresses the report (favouring a false negative over a false
+// positive).
+const isGuardedAgainstSsrCrash = (
+  node: EsTreeNode,
+  guardAliasNames: ReadonlySet<string>,
+): boolean => {
+  let current: EsTreeNode = node;
   let ancestor = node.parent;
   while (ancestor) {
-    if (isNodeOfType(ancestor, "IfStatement") && subtreeHasTypeofBrowserGlobal(ancestor.test)) {
+    if (
+      isNodeOfType(ancestor, "TryStatement") &&
+      Boolean(ancestor.handler) &&
+      ancestor.block === current
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(ancestor, "IfStatement") &&
+      subtreeHasBrowserEnvironmentGuard(ancestor.test, guardAliasNames)
+    ) {
       return true;
     }
     if (
       isNodeOfType(ancestor, "ConditionalExpression") &&
-      subtreeHasTypeofBrowserGlobal(ancestor.test)
+      subtreeHasBrowserEnvironmentGuard(ancestor.test, guardAliasNames)
     ) {
       return true;
     }
     if (
       isNodeOfType(ancestor, "LogicalExpression") &&
-      subtreeHasTypeofBrowserGlobal(ancestor.left)
+      subtreeHasBrowserEnvironmentGuard(ancestor.left, guardAliasNames)
     ) {
       return true;
     }
+    current = ancestor;
     ancestor = ancestor.parent ?? null;
   }
   return false;
+};
+
+const NO_GUARD_ALIASES: ReadonlySet<string> = new Set();
+
+const collectGuardAliasNames = (program: EsTreeNodeOfType<"Program">): Set<string> => {
+  const aliasNames = new Set<string>();
+  const recordDeclaration = (declaration: EsTreeNode | null | undefined): void => {
+    if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) return;
+    for (const declarator of declaration.declarations ?? []) {
+      if (!isNodeOfType(declarator.id, "Identifier") || !declarator.init) continue;
+      if (subtreeHasBrowserEnvironmentGuard(declarator.init, NO_GUARD_ALIASES)) {
+        aliasNames.add(declarator.id.name);
+      }
+    }
+  };
+  for (const statement of program.body ?? []) {
+    if (isNodeOfType(statement, "ExportNamedDeclaration")) {
+      recordDeclaration(statement.declaration);
+      continue;
+    }
+    recordDeclaration(statement);
+  }
+  return aliasNames;
 };
 
 const collectModuleScopeBindingNames = (program: EsTreeNodeOfType<"Program">): Set<string> => {
@@ -132,10 +210,11 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
     if (isTestlikeFilename(context.filename)) return {};
 
     let activeGlobalNames = BROWSER_GLOBAL_NAMES;
+    let guardAliasNames: ReadonlySet<string> = NO_GUARD_ALIASES;
 
     const reportRead = (node: EsTreeNode, globalName: string): void => {
       if (!isEvaluatedAtImportTime(node)) return;
-      if (isTypeofGuarded(node)) return;
+      if (isGuardedAgainstSsrCrash(node, guardAliasNames)) return;
       context.report({
         node,
         message: `Reading \`${globalName}\` here crashes with "ReferenceError: ${globalName} is not defined" the instant this module is imported during SSR — move the read inside a function or effect, or guard it with \`typeof ${globalName} !== "undefined"\`.`,
@@ -150,6 +229,7 @@ export const noUnguardedBrowserGlobalAtModuleScope = defineRule({
             [...BROWSER_GLOBAL_NAMES].filter((name) => !shadowed.has(name)),
           );
         }
+        guardAliasNames = collectGuardAliasNames(node);
       },
       MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
         const object = stripParenExpression(node.object);

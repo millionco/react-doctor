@@ -94,4 +94,116 @@ describe("query-floating-mutate-async", () => {
     const result = runRule(queryFloatingMutateAsync, `obj['mutateAsync'](payload);`);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags an optional-chained bare mutateAsync statement", () => {
+    const result = runRule(queryFloatingMutateAsync, `ref.current?.mutateAsync(payload);`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an awaited optional-chained mutateAsync", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `async function f() { await ref.current?.mutateAsync(payload); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a floating destructured mutateAsync call", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `const { mutateAsync } = useMutation(opts); mutateAsync(payload);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an awaited destructured mutateAsync call", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `const { mutateAsync } = useMutation(opts);
+       async function f() { await mutateAsync(payload); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a bare mutateAsync identifier with no useMutation destructure", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `const mutateAsync = () => save(payload); mutateAsync(payload);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a mutateAsync parameter shadowing a useMutation destructure", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `const { mutateAsync } = useMutation(opts);
+       const run = (mutateAsync) => { mutateAsync(payload); };
+       run(fireAndForgetCallback);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags mutateAsync followed only by a fulfillment .then", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `mutation.mutateAsync(payload).then(onSuccess);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags mutateAsync followed only by .finally", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `mutation.mutateAsync(payload).finally(stopLoading);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a two-argument .then with a rejection handler", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `mutation.mutateAsync(payload).then(onSuccess, onError);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a .then chain closed by .catch", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `mutation.mutateAsync(payload).then(onSuccess).catch(onError);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a returned .then chain", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `function f() { return mutation.mutateAsync(payload).then(onSuccess); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags both branches of a ternary concise handler body", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `const x = <button onClick={() => (isNew ? create.mutateAsync(v) : update.mutateAsync(v))} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("flags a logical-guarded concise handler body", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `const x = <button onClick={() => canSave && mutation.mutateAsync(v)} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a ternary branch assigned to a variable", () => {
+    const result = runRule(
+      queryFloatingMutateAsync,
+      `const p = isNew ? create.mutateAsync(v) : null;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

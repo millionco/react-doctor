@@ -1,23 +1,21 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
-import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-// `setCount` → `count`. We only flag when the negated operand is exactly this
-// derived name, so `setDisabled(!isValid)` (a different variable) stays quiet.
-const deriveStateVariableName = (setterName: string): string | null => {
-  if (!setterName.startsWith("set") || setterName.length < 4) return null;
-  return setterName.charAt(3).toLowerCase() + setterName.slice(4);
-};
-
 // Callees that defer execution past the current render — a toggle captured by
 // one of these closures can read stale state because the callback runs after
 // later renders. A synchronous `onClick={() => setX(!x)}` recreates the arrow
 // (and re-reads fresh `x`) every render, so it is not a stale-read hazard.
+// Effect hooks (useEffect/useLayoutEffect/useInsertionEffect) are deliberately
+// NOT deferred: React runs the effect closure from the committing render, so a
+// direct effect-body toggle always reads the latest committed value; only
+// truly deferred calls nested inside an effect (setTimeout/subscribe/...)
+// carry the hazard, and those entries already cover them.
 const DEFERRED_EXECUTION_CALLEE_NAMES: ReadonlySet<string> = new Set([
   "setTimeout",
   "setInterval",
@@ -33,21 +31,19 @@ const DEFERRED_EXECUTION_CALLEE_NAMES: ReadonlySet<string> = new Set([
   "addListener",
   "on",
   "once",
-  "useEffect",
-  "useLayoutEffect",
-  "useInsertionEffect",
 ]);
+
+const isFunctionLikeNode = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "ArrowFunctionExpression") ||
+  isNodeOfType(node, "FunctionExpression") ||
+  isNodeOfType(node, "FunctionDeclaration");
 
 const isInsideDeferredCallback = (node: EsTreeNode): boolean => {
   let current: EsTreeNode | null | undefined = node;
   while (current) {
     const parent: EsTreeNode | null | undefined = current.parent;
     if (!parent) return false;
-    const isFunctionLike =
-      isNodeOfType(current, "ArrowFunctionExpression") ||
-      isNodeOfType(current, "FunctionExpression") ||
-      isNodeOfType(current, "FunctionDeclaration");
-    if (isFunctionLike && isNodeOfType(parent, "CallExpression")) {
+    if (isFunctionLikeNode(current) && isNodeOfType(parent, "CallExpression")) {
       const callee = parent.callee;
       let calleeName: string | null = null;
       if (isNodeOfType(callee, "Identifier")) {
@@ -65,11 +61,93 @@ const isInsideDeferredCallback = (node: EsTreeNode): boolean => {
   return false;
 };
 
+const patternBindsName = (pattern: EsTreeNode | null | undefined, name: string): boolean => {
+  if (!pattern) return false;
+  if (isNodeOfType(pattern, "Identifier")) return pattern.name === name;
+  if (isNodeOfType(pattern, "AssignmentPattern")) return patternBindsName(pattern.left, name);
+  if (isNodeOfType(pattern, "RestElement")) return patternBindsName(pattern.argument, name);
+  if (isNodeOfType(pattern, "ObjectPattern")) {
+    return (pattern.properties ?? []).some((property) =>
+      isNodeOfType(property, "Property")
+        ? patternBindsName(property.value, name)
+        : patternBindsName(property, name),
+    );
+  }
+  if (isNodeOfType(pattern, "ArrayPattern")) {
+    return (pattern.elements ?? []).some((element) => patternBindsName(element, name));
+  }
+  return false;
+};
+
+const isUseStateDeclarator = (declarator: EsTreeNode): boolean =>
+  isNodeOfType(declarator, "VariableDeclarator") &&
+  isNodeOfType(declarator.init, "CallExpression") &&
+  isHookCall(declarator.init, "useState");
+
+// Locates the `const [state, setX] = useState(...)` declarator that binds
+// `setterName` at index 1 and returns the paired state name from index 0 —
+// so `const [isOpen, setOpen]` pairs `setOpen` with `isOpen` instead of a
+// naming-convention guess.
+const findUseStatePairedStateName = (node: EsTreeNode, setterName: string): string | null => {
+  let cursor: EsTreeNode | null | undefined = node;
+  while (cursor) {
+    if (isNodeOfType(cursor, "BlockStatement") || isNodeOfType(cursor, "Program")) {
+      for (const statement of cursor.body ?? []) {
+        if (!isNodeOfType(statement, "VariableDeclaration")) continue;
+        for (const declarator of statement.declarations ?? []) {
+          if (!isUseStateDeclarator(declarator)) continue;
+          if (!isNodeOfType(declarator.id, "ArrayPattern")) continue;
+          const elements = declarator.id.elements ?? [];
+          const setterElement = elements.length > 1 ? elements[1] : null;
+          if (!isNodeOfType(setterElement, "Identifier") || setterElement.name !== setterName) {
+            continue;
+          }
+          const stateElement = elements[0];
+          return isNodeOfType(stateElement, "Identifier") ? stateElement.name : null;
+        }
+      }
+    }
+    cursor = cursor.parent;
+  }
+  return null;
+};
+
+// True when a binding between the setter call and the useState declaration
+// shadows the state name — a callback parameter or local const carrying the
+// FRESH value (`(checked) => setChecked(!checked)`) is not a stale state read.
+const isStateNameShadowedAtCall = (node: EsTreeNode, stateName: string): boolean => {
+  let cursor: EsTreeNode | null | undefined = node;
+  while (cursor) {
+    if (
+      isNodeOfType(cursor, "ArrowFunctionExpression") ||
+      isNodeOfType(cursor, "FunctionExpression") ||
+      isNodeOfType(cursor, "FunctionDeclaration")
+    ) {
+      for (const param of cursor.params ?? []) {
+        if (patternBindsName(param, stateName)) return true;
+      }
+    }
+    if (isNodeOfType(cursor, "BlockStatement") || isNodeOfType(cursor, "Program")) {
+      for (const statement of cursor.body ?? []) {
+        if (!isNodeOfType(statement, "VariableDeclaration")) continue;
+        for (const declarator of statement.declarations ?? []) {
+          if (!patternBindsName(declarator.id, stateName)) continue;
+          if (isUseStateDeclarator(declarator)) return false;
+          return true;
+        }
+      }
+    }
+    cursor = cursor.parent;
+  }
+  return false;
+};
+
 export const noBooleanToggleWithoutFunctionalUpdate = defineRule({
   id: "no-boolean-toggle-without-functional-update",
   title: "Boolean toggle reads a stale value",
   severity: "warn",
   category: "Bugs",
+  tags: ["test-noise"],
   recommendation:
     "Toggle boolean state with the functional updater `setX(prev => !prev)` so a deferred double-toggle always reads the latest committed value.",
   create: (context: RuleContext) => ({
@@ -77,7 +155,6 @@ export const noBooleanToggleWithoutFunctionalUpdate = defineRule({
       if (!isSetterCall(node)) return;
       if (!node.arguments?.length) return;
       if (!isNodeOfType(node.callee, "Identifier")) return;
-      if (!isUseStateSetterInScope(node, node.callee.name)) return;
 
       const argument = node.arguments[0];
       if (!isNodeOfType(argument, "UnaryExpression") || argument.operator !== "!") return;
@@ -87,8 +164,9 @@ export const noBooleanToggleWithoutFunctionalUpdate = defineRule({
       const operand = stripParenExpression(argument.argument);
       if (!isNodeOfType(operand, "Identifier")) return;
 
-      const expectedStateName = deriveStateVariableName(node.callee.name);
-      if (!expectedStateName || operand.name !== expectedStateName) return;
+      const pairedStateName = findUseStatePairedStateName(node, node.callee.name);
+      if (!pairedStateName || operand.name !== pairedStateName) return;
+      if (isStateNameShadowedAtCall(node, pairedStateName)) return;
 
       if (!isInsideDeferredCallback(node)) return;
 

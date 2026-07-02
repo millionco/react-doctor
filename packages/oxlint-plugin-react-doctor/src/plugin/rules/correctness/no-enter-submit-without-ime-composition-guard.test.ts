@@ -139,4 +139,110 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("stays quiet on a type=number field where IME composition cannot commit (time-picker idiom)", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const TimePicker = ({ commit }) => (
+         <input type="number" onKeyDown={(e) => { if (e.key === 'Enter') commit(); }} />
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet on an inputMode=numeric text field (numeric-semantics idiom)", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const PxField = ({ apply }) => (
+         <input inputMode="numeric" onKeyDown={(e) => { if (e.key === 'Enter') apply(); }} />
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when onChange coerces the value with Number() (seat-stepper idiom)", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const SeatStepper = ({ setSeats, confirm }) => (
+         <input
+           onChange={(e) => setSeats(Number(e.target.value))}
+           onKeyDown={(e) => { if (e.key === 'Enter') confirm(); }}
+         />
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when onChange coerces the value with parseInt (max-dimension option idiom)", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const MaxDimension = ({ update, save }) => (
+         <input
+           onChange={(e) => { update(parseInt(e.target.value, 10)); }}
+           onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
+         />
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet on an Enter handler that only calls preventDefault (implicit-submit blocker idiom)", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = () => (
+         <input onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }} />
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet on an Enter handler that only stops propagation", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = () => (
+         <input onKeyDown={(e) => { if (e.key === 'Enter') e.stopPropagation(); }} />
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet on a readOnly input trigger (date-picker/combobox idiom)", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const DateField = ({ openCalendar }) => (
+         <input readOnly onKeyDown={(e) => { if (e.key === 'Enter') openCalendar(); }} />
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet on a type=password Enter-to-login field", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Login = ({ handleLogin }) => (
+         <input type="password" onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }} />
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags the chat-composer send-on-Enter with a negated Shift gate", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Chat = ({ send }) => (
+         <textarea onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an unguarded Enter-commit even when nearby names contain 'composer'", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const ChatComposer = ({ composerText, onSend }) => (
+         <textarea onKeyDown={(e) => { if (e.key === 'Enter') onSend(composerText); }} />
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

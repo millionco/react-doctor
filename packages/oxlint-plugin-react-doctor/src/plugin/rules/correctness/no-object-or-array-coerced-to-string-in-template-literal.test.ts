@@ -107,4 +107,77 @@ describe("no-object-or-array-coerced-to-string-in-template-literal", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags a bare object literal interpolated directly", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      "function f() { return `obj: ${{ id: 1 }}`; }",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a bare array literal interpolated directly", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      "function f() { return `pair: ${[1, 2]}`; }",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an array interpolated into a styled-components tagged template", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      "const flexStyles = ['display: flex;', 'align-items: center;']; const Row = styled.div`${flexStyles} color: red;`;",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an array of templates interpolated into a lit-html tagged template", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      "function view() { const parts = [html`<li>a</li>`, html`<li>b</li>`]; return html`<ul>${parts}</ul>`; }",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an object literal that defines its own toString", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      "function f() { const point = { x: 1, y: 2, toString() { return this.x + ',' + this.y; } }; return `point: ${point}`; }",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an object literal that defines [Symbol.toPrimitive]", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      "function f() { const money = { amount: 5, [Symbol.toPrimitive]() { return '$5'; } }; return `cost: ${money}`; }",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an object literal that spreads unknown properties", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      "function f(base) { const merged = { ...base, id: 1 }; return `merged: ${merged}`; }",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag the string-builder idiom (let array reassigned to a joined string)", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      "function f() { let lines = ['a', 'b']; lines = lines.join('\\n'); return `text: ${lines}`; }",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a var array reassigned to a joined string before interpolation (Emscripten glue idiom)", () => {
+    const result = runRule(
+      noObjectOrArrayCoercedToStringInTemplateLiteral,
+      "function f() { var argsList = []; argsList = argsList.join(','); return `fn(${argsList})`; }",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

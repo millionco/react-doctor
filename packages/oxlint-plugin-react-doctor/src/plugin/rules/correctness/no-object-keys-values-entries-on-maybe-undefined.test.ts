@@ -183,6 +183,110 @@ describe("no-object-keys-values-entries-on-maybe-undefined", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag the isEmpty idiom `!x || Object.keys(x).length === 0`", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `
+      function isEmpty(params?: Record<string, unknown>) {
+        return !params || Object.keys(params).length === 0;
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a re-chained argument behind a `&&` guard on the same path", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `const x = response?.data && Object.keys(response?.data);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a re-chained argument inside an `if` guard on the same path", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `
+      function f(response) {
+        if (response?.data) {
+          return Object.keys(response?.data);
+        }
+        return [];
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag after a `params = params ?? {}` normalization", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `
+      function f(params?: Record<string, unknown>) {
+        params = params ?? {};
+        return Object.keys(params);
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag after an `if (!params) params = {}` normalization", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `
+      function g(params?: Record<string, unknown>) {
+        if (!params) params = {};
+        return Object.keys(params);
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a negated ternary with the call in the alternate", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `
+      function f(params?: any) {
+        return !params ? [] : Object.keys(params);
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a negated `if`/`else` with the call in the else branch", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `
+      function g(params?: any) {
+        if (!params) {
+          return [];
+        } else {
+          return Object.entries(params);
+        }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a re-chained argument when the guard covers a different path", () => {
+    const result = runRule(
+      noObjectKeysValuesEntriesOnMaybeUndefined,
+      `
+      function f(response) {
+        if (response?.meta) {
+          return Object.keys(response?.data);
+        }
+        return [];
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag an optional-chained argument inside a test file", () => {
     const result = runRule(
       noObjectKeysValuesEntriesOnMaybeUndefined,

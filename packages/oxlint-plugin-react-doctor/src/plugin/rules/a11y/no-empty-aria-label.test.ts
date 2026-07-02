@@ -4,29 +4,29 @@ import { noEmptyAriaLabel } from "./no-empty-aria-label.js";
 
 describe("no-empty-aria-label", () => {
   it("flags a literal empty aria-label", () => {
-    const result = runRule(noEmptyAriaLabel, `const x = <IconButton aria-label="" />;`);
+    const result = runRule(noEmptyAriaLabel, `const x = <button aria-label="" />;`);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags an empty-string expression container", () => {
-    const result = runRule(noEmptyAriaLabel, `const x = <IconButton aria-label={""} />;`);
+    const result = runRule(noEmptyAriaLabel, `const x = <button aria-label={""} />;`);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a nullish fallback to empty string", () => {
-    const result = runRule(noEmptyAriaLabel, `const x = <IconButton aria-label={text ?? ""} />;`);
+  it("flags a nullish fallback to empty string on an interactive element", () => {
+    const result = runRule(noEmptyAriaLabel, `const x = <button aria-label={text ?? ""} />;`);
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a logical-or fallback to empty string", () => {
-    const result = runRule(noEmptyAriaLabel, `const x = <IconButton aria-label={text || ""} />;`);
+  it("flags a logical-or fallback to empty string on an interactive element", () => {
+    const result = runRule(noEmptyAriaLabel, `const x = <input aria-label={text || ""} />;`);
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags an empty aria-labelledby fallback", () => {
-    const result = runRule(noEmptyAriaLabel, `const x = <div aria-labelledby={id ?? ""} />;`);
+  it("flags an empty aria-labelledby fallback on a landmark element", () => {
+    const result = runRule(noEmptyAriaLabel, `const x = <nav aria-labelledby={id ?? ""} />;`);
     expect(result.diagnostics).toHaveLength(1);
   });
 
@@ -43,6 +43,22 @@ describe("no-empty-aria-label", () => {
     expect(consequent.diagnostics).toHaveLength(1);
   });
 
+  it("flags a fallback on a generic element with an explicit role", () => {
+    const result = runRule(
+      noEmptyAriaLabel,
+      `const x = <div role="img" aria-label={text ?? ""} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a fallback on a generic element with an interaction handler", () => {
+    const result = runRule(
+      noEmptyAriaLabel,
+      `const x = <div onClick={open} aria-label={text ?? ""} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags case-insensitive attribute spelling", () => {
     const result = runRule(noEmptyAriaLabel, `const x = <button ARIA-LABEL="" />;`);
     expect(result.diagnostics).toHaveLength(1);
@@ -54,6 +70,71 @@ describe("no-empty-aria-label", () => {
       `const x = <button aria-label={(text ?? "") as string} />;`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags when aria-hidden is explicitly false", () => {
+    const result = runRule(
+      noEmptyAriaLabel,
+      `const x = <button aria-hidden={false} aria-label="" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an icon-library component suppressing its default label (rsuite SidenavToggle)", () => {
+    const result = runRule(
+      noEmptyAriaLabel,
+      `const x = <IconButton aria-label={expanded ? "Collapse" : "Expand"} icon={<ArrowLeftLineIcon aria-label="" />} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag any capitalized component, whose rendered semantics are unknown", () => {
+    const result = runRule(noEmptyAriaLabel, `const x = <Icon aria-label="" />;`);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an aria-hidden element, which is out of the accessibility tree", () => {
+    const bare = runRule(noEmptyAriaLabel, `const x = <span aria-hidden aria-label="" />;`);
+    expect(bare.diagnostics).toHaveLength(0);
+    const literal = runRule(
+      noEmptyAriaLabel,
+      `const x = <span aria-hidden="true" aria-label="" />;`,
+    );
+    expect(literal.diagnostics).toHaveLength(0);
+    const dynamic = runRule(
+      noEmptyAriaLabel,
+      `const x = <button aria-hidden={isDecorative} aria-label="" />;`,
+    );
+    expect(dynamic.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a presentational-role element", () => {
+    const result = runRule(
+      noEmptyAriaLabel,
+      `const x = <div role="presentation" aria-label="" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when text content provides the accessible name", () => {
+    const result = runRule(
+      noEmptyAriaLabel,
+      `const x = <button aria-label={ariaLabel ?? ""}>Save</button>;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when a sibling aria-labelledby provides the accessible name", () => {
+    const result = runRule(
+      noEmptyAriaLabel,
+      `const x = <input aria-label="" aria-labelledby="title-id" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a defensive fallback on a role-less generic element (text-reveal span)", () => {
+    const result = runRule(noEmptyAriaLabel, `const x = <span aria-label={text ?? ""} />;`);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag a decorative empty alt", () => {

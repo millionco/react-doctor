@@ -145,6 +145,86 @@ describe("no-array-find-result-member-access-without-guard", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags find(Boolean) first-truthy dereference (not an enzyme component selector)", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `const first = values.find(Boolean).id;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag the pre-ES2020 `find(f) && find(f).x` repeated-call guard", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `const label = items.find((i) => i.active) && items.find((i) => i.active).label;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag the `find(f) ? find(f).x : y` repeated-call ternary guard", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `const label = items.find((i) => i.id === id) ? items.find((i) => i.id === id).label : "";`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a repeated-call guard inside an if statement", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `
+      if (items.find((i) => i.id === id)) {
+        doSomething(items.find((i) => i.id === id).label);
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags when the truthiness test is a different find call", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `const label = items.find((i) => i.active) && items.find((i) => i.selected).label;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a self-derived equality lookup over an array it also maps (algolia ModalDropdown shape)", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `
+      const Dropdown = ({ items }) => (
+        <ModalDropdown
+          options={items.map((item) => item.label)}
+          onSelect={(value) => selectItem(items.find((item) => item.label === value).value)}
+        />
+      );
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags an equality lookup whose key does not come from a sibling map of the array", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `const name = users.find((u) => u.id === userId).name;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a non-identity predicate even when the array is mapped in the same scope", () => {
+    const result = runRule(
+      noArrayFindResultMemberAccessWithoutGuard,
+      `
+      const Sessions = ({ sessions }) => {
+        const labels = sessions.map((session) => session.label);
+        return renderBadge(labels, sessions.find((session) => session.confirmed === true).id);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a real array find() dereference inside a test file", () => {
     const result = runRule(
       noArrayFindResultMemberAccessWithoutGuard,

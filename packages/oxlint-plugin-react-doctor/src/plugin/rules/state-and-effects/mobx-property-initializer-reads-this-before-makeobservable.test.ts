@@ -138,6 +138,84 @@ describe("mobx-property-initializer-reads-this-before-makeobservable", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a field annotated action.bound (debounced handler reading this.props for config)", () => {
+    const result = runRule(
+      mobxPropertyInitializerReadsThisBeforeMakeobservable,
+      `
+      import { makeObservable, observable, action } from "mobx";
+      import debounce from "lodash/debounce";
+      class Form extends React.Component {
+        @observable value = "";
+        submit = debounce(() => this.doSubmit(), this.props.delayMs);
+        constructor(props) {
+          super(props);
+          makeObservable(this, { value: observable, submit: action.bound });
+        }
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a field explicitly excluded with `false` in the annotation object", () => {
+    const result = runRule(
+      mobxPropertyInitializerReadsThisBeforeMakeobservable,
+      `
+      import { makeObservable, observable } from "mobx";
+      class Tracker extends React.Component {
+        @observable value = "";
+        analytics = new Analytics(this.props.trackingId);
+        constructor(props) {
+          super(props);
+          makeObservable(this, { value: observable, analytics: false });
+        }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a plain field when makeObservable targets a local object, not `this`", () => {
+    const result = runRule(
+      mobxPropertyInitializerReadsThisBeforeMakeobservable,
+      `
+      import { makeObservable, observable } from "mobx";
+      class Widget extends React.Component {
+        items = this.props.items.slice();
+        componentDidMount() {
+          this.store = makeObservable({ items: [] }, { items: observable });
+        }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not leak annotation keys from a nested store class onto the outer component", () => {
+    const result = runRule(
+      mobxPropertyInitializerReadsThisBeforeMakeobservable,
+      `
+      import { makeObservable, observable } from "mobx";
+      class Widget extends React.Component {
+        items = this.props.items.slice();
+        createStore() {
+          class Store {
+            items = [];
+            constructor() {
+              makeObservable(this, { items: observable });
+            }
+          }
+          return new Store();
+        }
+        render() { return null; }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a non-React class (plain MobX store)", () => {
     const result = runRule(
       mobxPropertyInitializerReadsThisBeforeMakeobservable,

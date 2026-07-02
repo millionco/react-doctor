@@ -42,10 +42,58 @@ describe("styled-components-non-transient-custom-prop-on-intrinsic-element", () 
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag props stripped through .attrs()", () => {
+  it("flags a custom prop behind an .attrs() chain — .attrs merges attributes and strips nothing", () => {
     const result = runRule(
       rule,
-      "const D = styled.div.attrs({})<{ active: boolean }>`color: red;`;",
+      'const B = styled.button.attrs({ type: "button" })<{ active: boolean }>`color: red;`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag withConfig chains where shouldForwardProp can filter the prop", () => {
+    const result = runRule(
+      rule,
+      "const D = styled.div.withConfig({ shouldForwardProp: (prop) => prop !== 'active' })<{ active: boolean }>`color: red;`;",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag @emotion/styled, which filters invalid props on string tags by default", () => {
+    const result = runRule(
+      rule,
+      'import styled from "@emotion/styled";\nconst D = styled.div<{ active: boolean }>`color: red;`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag @linaria/react styled, a different library sharing the tagged-template syntax", () => {
+    const result = runRule(
+      rule,
+      'import { styled } from "@linaria/react";\nconst D = styled.div<{ active: boolean }>`color: red;`;',
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags when styled is explicitly imported from styled-components", () => {
+    const result = runRule(
+      rule,
+      'import styled from "styled-components";\nconst D = styled.div<{ active: boolean }>`color: red;`;',
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag theme, the per-component theme-typing idiom consumed internally by styled-components", () => {
+    const result = runRule(
+      rule,
+      "const D = styled.div<{ theme: AppTheme }>`color: ${(p) => p.theme.text};`;",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag as / forwardedAs, polymorphic props consumed internally by styled-components", () => {
+    const result = runRule(
+      rule,
+      "const D = styled.div<{ as: string; forwardedAs: string }>`color: red;`;",
     );
     expect(result.diagnostics).toHaveLength(0);
   });

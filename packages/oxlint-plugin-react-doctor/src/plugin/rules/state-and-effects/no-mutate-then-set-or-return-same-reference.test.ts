@@ -143,6 +143,121 @@ describe("no-mutate-then-set-or-return-same-reference", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a member-chain in-place mutation then setX(X) (form.tags.push then setForm(form))", () => {
+    const result = runRule(
+      noMutateThenSetOrReturnSameReference,
+      `const Form = () => {
+        const [form, setForm] = useState({ tags: [] });
+        const addTag = (tag) => {
+          form.tags.push(tag);
+          setForm(form);
+        };
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet for the fetch-then-sort-then-set idiom where a callback param shadows the state name", () => {
+    const result = runRule(
+      noMutateThenSetOrReturnSameReference,
+      `const Feed = () => {
+        const [posts, setPosts] = useState([]);
+        useEffect(() => {
+          fetchPosts().then((posts) => {
+            posts.sort(byDate);
+            setPosts(posts);
+          });
+        }, []);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a fresh await-ed local that shadows the state name (internxt const teams = await fetch)", () => {
+    const result = runRule(
+      noMutateThenSetOrReturnSameReference,
+      `const Members = () => {
+        const [teams, setTeams] = useState([]);
+        const refresh = async () => {
+          const teams = await fetchTeams();
+          teams.sort(byName);
+          setTeams(teams);
+        };
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a fresh empty local built up inside an effect that shadows the state name (AppFlowy const views = [])", () => {
+    const result = runRule(
+      noMutateThenSetOrReturnSameReference,
+      `const Sidebar = () => {
+        const [views, setViews] = useState([]);
+        useEffect(() => {
+          const views = [];
+          views.push(rootView);
+          setViews(views);
+        }, []);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when a JSX callback param shadows the state value handed to the setter (rsuite onShowColor)", () => {
+    const result = runRule(
+      noMutateThenSetOrReturnSameReference,
+      `const Palette = () => {
+        const [color, setColor] = useState(new Map());
+        return <Picker onShowColor={(color) => setColor(color.set("hue", 1))} />;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for dayjs date math where .add returns a new instance (antd/mantine date pickers)", () => {
+    const result = runRule(
+      noMutateThenSetOrReturnSameReference,
+      `const Calendar = () => {
+        const [date, setDate] = useState(dayjs());
+        const nextDay = () => setDate(date.add(1, "day"));
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for Immutable.js .set which returns a new map", () => {
+    const result = runRule(
+      noMutateThenSetOrReturnSameReference,
+      `const Editor = () => {
+        const [doc, setDoc] = useState(ImmutableMap());
+        const rename = (name) => setDoc(doc.set("name", name));
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a concise dayjs updater where .add returns a new instance", () => {
+    const result = runRule(
+      noMutateThenSetOrReturnSameReference,
+      `const Calendar = () => {
+        const [date, setDate] = useState(dayjs());
+        const nextDay = () => setDate((prev) => prev.add(1, "day"));
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags setX(state.add(x)) when a lazy initializer proves a native Set", () => {
+    const result = runRule(
+      noMutateThenSetOrReturnSameReference,
+      `const Synth = () => {
+        const [sequence, setSequence] = useState(() => new Set());
+        setSequence(sequence.add(index));
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet when the mutation lives inside a nested handler", () => {
     const result = runRule(
       noMutateThenSetOrReturnSameReference,

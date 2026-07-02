@@ -14,8 +14,11 @@ describe("no-nullish-coalescing-arithmetic-precedence", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a ?? 10 * 60", () => {
-    const result = runRule(noNullishCoalescingArithmeticPrecedence, `const r = a ?? 10 * 60;`);
+  it("flags the comparator swallow with a -1 fallback (indexOf/priority sentinel)", () => {
+    const result = runRule(
+      noNullishCoalescingArithmeticPrecedence,
+      `list.sort((a, b) => a.priority ?? -1 - (b.priority ?? -1));`,
+    );
     expect(result.diagnostics).toHaveLength(1);
   });
 
@@ -78,6 +81,27 @@ describe("no-nullish-coalescing-arithmetic-precedence", () => {
 
   it("does not flag a plain ?? with a literal fallback", () => {
     const result = runRule(noNullishCoalescingArithmeticPrecedence, `const r = x ?? 0;`);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a fully-constant unit-math default (60 * 1000 ms poll interval)", () => {
+    const result = runRule(
+      noNullishCoalescingArithmeticPrecedence,
+      `const pollInterval = props.interval ?? 60 * 1000;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a fully-constant bytes default (100 * 1024 * 1024 upload cap)", () => {
+    const result = runRule(
+      noNullishCoalescingArithmeticPrecedence,
+      `const cap = maxUploadBytes ?? 100 * 1024 * 1024;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a fully-constant default with a negated literal operand", () => {
+    const result = runRule(noNullishCoalescingArithmeticPrecedence, `const r = a ?? -1 * 60;`);
     expect(result.diagnostics).toHaveLength(0);
   });
 });

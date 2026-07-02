@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const NAVIGATING_TARGETS = new Set(["_self", "_top", "_parent"]);
@@ -49,11 +50,77 @@ const opensProtocolHandlerOnly = (urlArgument: EsTreeNode | null | undefined): b
   return NON_BROWSING_URL_SCHEMES.some((scheme) => urlText.startsWith(scheme));
 };
 
+// A fixed `https://host/` prefix pins the origin: the `[/?#]` terminator
+// after the host guarantees any interpolation lands in the path/query,
+// not the host (`` `https://github.com${x}` `` without it could become
+// `https://github.com.evil.com`).
+const COMPLETE_ORIGIN_PATTERN = /^https?:\/\/[^/?#]+[/?#]/i;
+
+const SAME_ORIGIN_URL_PREFIXES = ["./", "../", "?", "#"];
+
+const startsSameOriginPath = (urlText: string): boolean => {
+  if (urlText.startsWith("/")) return !urlText.startsWith("//");
+  return SAME_ORIGIN_URL_PREFIXES.some((prefix) => urlText.startsWith(prefix));
+};
+
+// Reverse tabnabbing needs an attacker-controlled opened page. A
+// developer-hardcoded string literal, a template whose origin is fixed
+// (interpolations confined to the path/query), or a statically
+// same-origin URL is a trusted-by-construction destination — the
+// dominant real-world idiom ("Star on GitHub" buttons, `/preview?…`
+// export routes) and not worth a warning. Dynamic URLs (identifiers,
+// call results, member accesses, templates interpolating the
+// scheme/host) keep firing.
+const isTrustedStaticDestination = (urlArgument: EsTreeNode | null | undefined): boolean => {
+  if (isStringLiteral(urlArgument)) return true;
+  if (urlArgument == null || !isNodeOfType(urlArgument, "TemplateLiteral")) return false;
+  if ((urlArgument.expressions?.length ?? 0) === 0) return true;
+  const firstQuasiText = (urlArgument.quasis?.[0]?.value?.raw ?? "").trimStart();
+  if (firstQuasiText.length === 0) return false;
+  if (COMPLETE_ORIGIN_PATTERN.test(firstQuasiText)) return true;
+  return startsSameOriginPath(firstQuasiText);
+};
+
+const MAX_BINDING_RESOLUTION_DEPTH = 4;
+
+// Best-effort static text of the features argument: string literals,
+// template literals (interpolations resolved when they are local const
+// strings, empty otherwise so `noopener,width=${w}` still resolves), and
+// identifiers bound to a resolvable initializer in this file. Returns
+// null when the value is opaque (imported constant, call result), in
+// which case the caller must not assume noopener is absent.
+const resolveStaticStringText = (
+  node: EsTreeNode | null | undefined,
+  depth: number,
+): string | null => {
+  if (node == null || depth > MAX_BINDING_RESOLUTION_DEPTH) return null;
+  if (isStringLiteral(node)) return node.value;
+  if (isNodeOfType(node, "TemplateLiteral")) {
+    const quasiTexts = node.quasis?.map((quasi) => quasi.value?.raw ?? "") ?? [];
+    const expressionTexts =
+      node.expressions?.map((expression) => resolveStaticStringText(expression, depth + 1) ?? "") ??
+      [];
+    return quasiTexts
+      .map((quasiText, quasiIndex) => quasiText + (expressionTexts[quasiIndex] ?? ""))
+      .join("");
+  }
+  if (isNodeOfType(node, "Identifier")) {
+    const binding = findVariableInitializer(node, node.name);
+    if (binding?.initializer == null) return null;
+    return resolveStaticStringText(binding.initializer, depth + 1);
+  }
+  return null;
+};
+
 // The opened handle is captured/used when the arrow that returns it is
 // stored or returned (its eventual return value may be consumed via
 // `getPopup().focus()`), so a concise `() => window.open(...)` is only
-// fire-and-forget when the arrow itself is an event handler, a callback
-// argument (forEach/map/addEventListener), or a bare statement.
+// fire-and-forget when the arrow itself is an event handler (JSX prop or
+// an `onX` property in a props object, whose return React/DOM ignores),
+// a callback argument (forEach/map/addEventListener), or a bare
+// statement.
+const EVENT_HANDLER_KEY_PATTERN = /^on[A-Z]/;
+
 const isArrowReturnDiscarded = (arrow: EsTreeNode): boolean => {
   const parent = arrow.parent;
   if (!parent) return false;
@@ -62,19 +129,34 @@ const isArrowReturnDiscarded = (arrow: EsTreeNode): boolean => {
   if (isNodeOfType(parent, "CallExpression")) {
     return parent.arguments?.some((argument) => argument === arrow) ?? false;
   }
+  if (isNodeOfType(parent, "Property") && parent.value === arrow && !parent.computed) {
+    return (
+      isNodeOfType(parent.key, "Identifier") && EVENT_HANDLER_KEY_PATTERN.test(parent.key.name)
+    );
+  }
   return false;
 };
 
 // The window handle is discarded (so `noopener`'s null return breaks
-// nothing) when the call is a bare statement or the concise body of a
-// discarded arrow. Any capturing parent — VariableDeclarator init,
-// AssignmentExpression right, ReturnStatement arg, a member access on the
-// result, or being passed as a call argument — means the caller wants the
-// handle, so we stay quiet.
+// nothing) when the call is a bare statement, the branch of a
+// guard-shaped logical/ternary that is itself discarded, or the concise
+// body of a discarded arrow. Any capturing parent — VariableDeclarator
+// init, AssignmentExpression right, ReturnStatement arg, a member access
+// on the result, or being passed as a call argument — means the caller
+// wants the handle, so we stay quiet.
 const isDiscardedWindowHandle = (callNode: EsTreeNode): boolean => {
   const parent = callNode.parent;
   if (!parent) return false;
   if (isNodeOfType(parent, "ExpressionStatement")) return true;
+  if (isNodeOfType(parent, "LogicalExpression") && parent.right === callNode) {
+    return isDiscardedWindowHandle(parent);
+  }
+  if (
+    isNodeOfType(parent, "ConditionalExpression") &&
+    (parent.consequent === callNode || parent.alternate === callNode)
+  ) {
+    return isDiscardedWindowHandle(parent);
+  }
   if (isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === callNode) {
     return isArrowReturnDiscarded(parent);
   }
@@ -91,14 +173,19 @@ export const windowOpenWithoutNoopener = defineRule({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isWindowOpenCallee(node.callee)) return;
       if (!isDiscardedWindowHandle(node)) return;
-      if (opensProtocolHandlerOnly(node.arguments?.[0])) return;
+
+      const urlArgument = node.arguments?.[0];
+      if (isTrustedStaticDestination(urlArgument)) return;
+      if (opensProtocolHandlerOnly(urlArgument)) return;
 
       const targetArgument = node.arguments?.[1];
       if (isStringLiteral(targetArgument) && NAVIGATING_TARGETS.has(targetArgument.value)) return;
 
       const featuresArgument = node.arguments?.[2];
-      if (isStringLiteral(featuresArgument)) {
-        const features = featuresArgument.value.toLowerCase();
+      if (featuresArgument != null) {
+        const featuresText = resolveStaticStringText(featuresArgument, 0);
+        if (featuresText == null) return;
+        const features = featuresText.toLowerCase();
         if (features.includes("noopener") || features.includes("noreferrer")) return;
       }
 

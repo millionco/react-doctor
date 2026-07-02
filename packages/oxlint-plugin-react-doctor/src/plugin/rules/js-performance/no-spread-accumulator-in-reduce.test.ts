@@ -143,6 +143,110 @@ describe("no-spread-accumulator-in-reduce", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a variadic merge over a rest parameter (AppFlowy-style merge(...objects), bounded by call-site arity)", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `
+      function mergeAll(...objects) {
+        return objects.reduce((acc, object) => ({ ...acc, ...object }), {});
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a reduce over an inline array literal (fixed tiny collection of UI flags)", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `const flags = ["alpha", "beta"].reduce((acc, name) => ({ ...acc, [name]: true }), {});`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a keyed lookup built from a const array literal of dropdown items", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `
+      const dropdownSizes = ["small", "medium", "large"];
+      const optionsBySize = dropdownSizes.reduce(
+        (acc, size) => ({ ...acc, [size]: renderOption(size) }),
+        {},
+      );
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag Object.keys of a locally constructed object literal (bounded key set)", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `
+      const iconGlyphs = { plus: "+", minus: "-" };
+      const icons = Object.keys(iconGlyphs).reduce(
+        (acc, name) => ({ ...acc, [name]: buildIcon(name) }),
+        {},
+      );
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a filter/dedup shape with an unchanged `return acc` path (growth bounded by matches)", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `
+      const selected = options.reduce((acc, option) => {
+        if (!option.selected) return acc;
+        return { ...acc, [option.value]: option };
+      }, {});
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a shadowed local that reuses the accumulator name (spreads the O(1) local, not the fold)", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `
+      const out = items.reduce((acc, x) => {
+        if (x.override) {
+          const acc = x.base;
+          return { ...acc, [x.id]: x.value };
+        }
+        acc[x.id] = x.value;
+        return acc;
+      }, {});
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags the accumulator spread even when another spread comes first", () => {
+    const objectCase = runRule(
+      noSpreadAccumulatorInReduce,
+      `const out = items.reduce((acc, x) => ({ ...mapItem(x), ...acc }), {});`,
+    );
+    expect(objectCase.diagnostics).toHaveLength(1);
+    const arrayCase = runRule(
+      noSpreadAccumulatorInReduce,
+      `const out = groups.reduce((acc, g) => [...g.items, ...acc], []);`,
+    );
+    expect(arrayCase.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags Object.keys of externally provided data (unbounded dataframe rows)", () => {
+    const result = runRule(
+      noSpreadAccumulatorInReduce,
+      `
+      const rows = Object.keys(response.results).reduce(
+        (res, rowIdx) => ({ ...res, [rowIdx]: buildRow(response.results[rowIdx]) }),
+        {},
+      );
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not confuse an inner callback's spread for the reducer's return", () => {
     const result = runRule(
       noSpreadAccumulatorInReduce,

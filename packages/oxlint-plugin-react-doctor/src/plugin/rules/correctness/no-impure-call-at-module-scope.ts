@@ -19,8 +19,24 @@ const IMPURE_MEMBER_CALLS = new Map<string, ReadonlySet<string>>([
 // Bindings whose name advertises an intentional per-process value
 // (instance/boot/startup ids, uptime timestamps). Applied from the
 // revision to spare those correct-by-design constants.
-const PER_PROCESS_BINDING_NAME_PATTERN =
-  /(^|_)(instance|boot|startup|started|process|server|build)(_|$|id|at|time)/i;
+const PER_PROCESS_NAME_KEYWORDS = new Set([
+  "instance",
+  "boot",
+  "startup",
+  "start",
+  "started",
+  "process",
+  "server",
+  "build",
+]);
+
+const isPerProcessBindingName = (bindingName: string): boolean =>
+  bindingName
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+    .toLowerCase()
+    .split(/[_-]+/)
+    .some((nameWord) => PER_PROCESS_NAME_KEYWORDS.has(nameWord));
 
 const impureBuiltinLabel = (node: EsTreeNode): string | null => {
   if (isNodeOfType(node, "NewExpression")) {
@@ -54,17 +70,28 @@ interface ModuleScopeBinding {
 
 // Walks up from an impure call to decide whether it is evaluated once at
 // module load — either in a top-level variable initializer or a static
-// class-field initializer — returning the bound name, or null when a
-// function boundary or non-module scope is crossed first.
+// class-field initializer of a module-scope class — returning the bound
+// name, or null when a function boundary is crossed first or the impure
+// value is an argument to a factory call (`atom(Date.now())`,
+// `signal(Date.now())`), a deliberate mutable seed rather than a frozen
+// constant.
 const resolveModuleScopeBinding = (impureNode: EsTreeNode): ModuleScopeBinding | null => {
   let child: EsTreeNode = impureNode;
   let cursor: EsTreeNode | null = impureNode.parent ?? null;
+  let staticFieldBinding: ModuleScopeBinding | null = null;
   while (cursor) {
     if (isFunctionLike(cursor) || isNodeOfType(cursor, "MethodDefinition")) return null;
 
+    if (
+      (isNodeOfType(cursor, "CallExpression") || isNodeOfType(cursor, "NewExpression")) &&
+      cursor.arguments?.some((argumentNode) => argumentNode === child)
+    ) {
+      return null;
+    }
+
     if (isNodeOfType(cursor, "PropertyDefinition")) {
       if (cursor.static !== true || cursor.key === child) return null;
-      return {
+      staticFieldBinding = {
         bindingName: isNodeOfType(cursor.key, "Identifier") ? cursor.key.name : null,
       };
     }
@@ -85,7 +112,7 @@ const resolveModuleScopeBinding = (impureNode: EsTreeNode): ModuleScopeBinding |
     child = cursor;
     cursor = cursor.parent ?? null;
   }
-  return null;
+  return staticFieldBinding;
 };
 
 export const noImpureCallAtModuleScope = defineRule({
@@ -102,7 +129,7 @@ export const noImpureCallAtModuleScope = defineRule({
       if (!label) return;
       const binding = resolveModuleScopeBinding(node);
       if (!binding) return;
-      if (binding.bindingName && PER_PROCESS_BINDING_NAME_PATTERN.test(binding.bindingName)) return;
+      if (binding.bindingName && isPerProcessBindingName(binding.bindingName)) return;
       context.report({
         node,
         message: `\`${label}\` runs once when this module loads, so the value is frozen for the whole server process and every SSR request reuses it — move it into a function or component so it evaluates per request.`,

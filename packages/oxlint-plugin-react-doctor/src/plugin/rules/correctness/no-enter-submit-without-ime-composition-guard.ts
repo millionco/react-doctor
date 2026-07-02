@@ -38,9 +38,23 @@ const NON_TEXT_INPUT_TYPES = new Set([
   "color",
   "image",
   "hidden",
+  "number",
+  "password",
+  "date",
+  "time",
+  "week",
+  "month",
+  "datetime-local",
+]);
+const NUMERIC_INPUT_MODES = new Set(["numeric", "decimal"]);
+const NUMERIC_COERCION_CALLEES = new Set(["Number", "parseInt", "parseFloat"]);
+const NON_COMMIT_CALL_PROPERTIES = new Set([
+  "preventDefault",
+  "stopPropagation",
+  "stopImmediatePropagation",
 ]);
 const MODIFIER_PROPERTIES = new Set(["metaKey", "ctrlKey", "shiftKey", "altKey"]);
-const COMPOSITION_TEXT_PATTERN = /compos/i;
+const COMPOSITION_TEXT_PATTERN = /composi/i;
 const IME_COMPOSITION_KEYCODE = 229;
 const ENTER_KEYCODE = 13;
 const SPACE_KEYCODE = 32;
@@ -56,9 +70,74 @@ const getStringAttr = (
   return attribute ? getJsxPropStringValue(attribute) : null;
 };
 
+const memberPropertyName = (node: EsTreeNode): string | null => {
+  if (
+    isNodeOfType(node, "MemberExpression") &&
+    !node.computed &&
+    isNodeOfType(node.property, "Identifier")
+  ) {
+    return node.property.name;
+  }
+  return null;
+};
+
+const argumentReadsValueMember = (argument: EsTreeNode): boolean => {
+  let readsValue = false;
+  walkAst(argument, (child) => {
+    if (readsValue) return false;
+    if (memberPropertyName(child) === "value") {
+      readsValue = true;
+      return false;
+    }
+  });
+  return readsValue;
+};
+
+const isNumericCoercionOfValue = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = stripGroupingParens(node.callee as EsTreeNode);
+  let calleeName: string | null = null;
+  if (isNodeOfType(callee, "Identifier")) {
+    calleeName = callee.name;
+  } else if (
+    isNodeOfType(callee, "MemberExpression") &&
+    !callee.computed &&
+    isNodeOfType(callee.object, "Identifier") &&
+    callee.object.name === "Number" &&
+    isNodeOfType(callee.property, "Identifier")
+  ) {
+    calleeName = callee.property.name;
+  }
+  if (!calleeName || !NUMERIC_COERCION_CALLEES.has(calleeName)) return false;
+  const firstArgument = node.arguments[0];
+  return Boolean(firstArgument) && argumentReadsValueMember(firstArgument as EsTreeNode);
+};
+
+const onChangeCoercesValueNumerically = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  const attribute = hasJsxPropIgnoreCase(node.attributes, "onChange");
+  if (!attribute || !attribute.value) return false;
+  if (!isNodeOfType(attribute.value, "JSXExpressionContainer")) return false;
+  const changeHandler = stripGroupingParens(attribute.value.expression as EsTreeNode);
+  if (!isFunctionLike(changeHandler)) return false;
+  let coercesValue = false;
+  walkAst(changeHandler, (child) => {
+    if (coercesValue) return false;
+    if (isNumericCoercionOfValue(child)) {
+      coercesValue = true;
+      return false;
+    }
+  });
+  return coercesValue;
+};
+
 const isTextEntryElement = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
   const role = getStringAttr(node, "role");
   if (role && NON_TEXT_ENTRY_ROLES.has(role)) return false;
+  if (hasJsxPropIgnoreCase(node.attributes, "readOnly")) return false;
+
+  const inputMode = getStringAttr(node, "inputMode");
+  if (inputMode && NUMERIC_INPUT_MODES.has(inputMode.toLowerCase())) return false;
+  if (onChangeCoercesValueNumerically(node)) return false;
 
   const tag = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name.toLowerCase() : "";
   if (tag === "textarea") return true;
@@ -70,17 +149,6 @@ const isTextEntryElement = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolea
   if (hasJsxPropIgnoreCase(node.attributes, "contentEditable")) return true;
   if (role && TEXT_ENTRY_ROLES.has(role)) return true;
   return false;
-};
-
-const memberPropertyName = (node: EsTreeNode): string | null => {
-  if (
-    isNodeOfType(node, "MemberExpression") &&
-    !node.computed &&
-    isNodeOfType(node.property, "Identifier")
-  ) {
-    return node.property.name;
-  }
-  return null;
 };
 
 const isEnterKeyTest = (node: EsTreeNode): boolean => {
@@ -144,6 +212,7 @@ const testUsesModifierOrSpace = (testExpr: EsTreeNode): boolean => {
   let found = false;
   walkAst(testExpr, (child) => {
     if (found) return false;
+    if (isNodeOfType(child, "UnaryExpression") && child.operator === "!") return false;
     const property = memberPropertyName(child);
     if (property && MODIFIER_PROPERTIES.has(property)) {
       found = true;
@@ -182,6 +251,8 @@ const branchPerformsCommit = (actionNode: EsTreeNode): boolean => {
   walkAst(actionNode, (child) => {
     if (found) return false;
     if (isNodeOfType(child, "CallExpression")) {
+      const calleeProperty = memberPropertyName(stripGroupingParens(child.callee as EsTreeNode));
+      if (calleeProperty && NON_COMMIT_CALL_PROPERTIES.has(calleeProperty)) return;
       found = true;
       return false;
     }
@@ -233,9 +304,13 @@ const findCompositionScope = (node: EsTreeNode): EsTreeNode => {
 // Pressing Enter while an IME is composing confirms the candidate, so a
 // bare Enter-submit fires mid-composition and corrupts input for CJK
 // users. Stays quiet on non-text-entry roles (button/radio/menuitem),
-// modifier-gated (Cmd/Ctrl+Enter) or Space+Enter activation, and handlers
-// already guarded by `isComposing` / `keyCode === 229` / composition
-// state.
+// inputs that cannot host composition (type number/password/date/time,
+// `inputMode` numeric/decimal, `readOnly`, or an `onChange` that coerces
+// the value via Number/parseInt/parseFloat), modifier-gated
+// (Cmd/Ctrl+Enter) or Space+Enter activation, `preventDefault`-only
+// handlers, and handlers already guarded by `isComposing` /
+// `keyCode === 229` / composition state. A negated modifier
+// (`!e.shiftKey`) is not a gate — plain Enter still commits there.
 export const noEnterSubmitWithoutImeCompositionGuard = defineRule({
   id: "no-enter-submit-without-ime-composition-guard",
   title: "Enter submit without IME composition guard",

@@ -17,56 +17,56 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // it does not shadow the canonical two-member `EFFECT_HOOK_NAMES`.
 const EFFECT_LIKE_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect", "useMount"]);
 const PROMISE_METHOD_NAMES = new Set(["then", "catch", "finally"]);
-
-// Call names that denote a real async source whose promise can reject
-// at runtime (network, loader, dynamic import, RPC).
-const ASYNC_INITIATOR_PATTERN =
-  /^(?:fetch|load|generate|download|request|refresh|reload|create|query|import|read|send|open|connect|init)/i;
-// Predicate-shaped names resolve to a settled value, not a real
-// rejectable async source — excluded to kill the `isImageValid(...)`
-// false positives.
-const PREDICATE_NAME_PATTERN =
-  /^(?:is|has|should|can|will|was|validate|check|assert|ensure|match)/i;
-const ASYNC_MEMBER_METHOD_NAMES = new Set([
-  "init",
-  "load",
-  "fetch",
-  "get",
-  "refresh",
-  "reload",
-  "query",
-  "request",
-  "create",
-  "open",
-  "connect",
-  "download",
-  "send",
-  "run",
-  "start",
+// `Promise.allSettled` never rejects; `resolve`/`reject` are the
+// microtask-defer idiom — only these combinators propagate an input
+// rejection to the chain.
+const REJECTING_PROMISE_COMBINATOR_NAMES = new Set(["all", "race", "any"]);
+// Global timer callables that match the `/^set[A-Z]/` state-setter
+// pattern but set no React state.
+const GLOBAL_TIMER_NAMES = new Set(["setTimeout", "setInterval", "setImmediate"]);
+const IMPORT_BINDING_TYPES = new Set([
+  "ImportSpecifier",
+  "ImportDefaultSpecifier",
+  "ImportNamespaceSpecifier",
 ]);
+const NULLISH_EQUALITY_OPERATORS = new Set(["==", "==="]);
+const MAX_INITIATOR_RESOLUTION_DEPTH = 3;
 
 const MESSAGE =
   "This promise chain runs in an effect, ends in a `.then` that sets state or mutates a ref, and has no `.catch` or enclosing try/catch, so a rejection leaves the state unset and surfaces as an unhandled rejection. Add a `.catch` handler on the chain (`.finally` does not count).";
 
-interface ChainAnalysis {
+type FunctionLikeNode =
+  | EsTreeNodeOfType<"ArrowFunctionExpression">
+  | EsTreeNodeOfType<"FunctionExpression">
+  | EsTreeNodeOfType<"FunctionDeclaration">;
+
+interface PromiseChainWalk {
   root: EsTreeNode;
   hasCatch: boolean;
   hasRejectionHandlerArgument: boolean;
-  sideEffectThenCallbacks: EsTreeNode[];
+  sawThen: boolean;
+  thenCallbacks: FunctionLikeNode[];
+  hasDirectSetterThenCallback: boolean;
 }
 
-const unwrapChain = (node: EsTreeNode): EsTreeNode =>
-  isNodeOfType(node, "ChainExpression") ? (node.expression as EsTreeNode) : node;
+interface ResolvedInitiator {
+  initiator: EsTreeNode;
+  hasUpstreamRejectionHandling: boolean;
+}
+
+const isReactStateSetterName = (name: string): boolean =>
+  isSetterIdentifier(name) && !GLOBAL_TIMER_NAMES.has(name);
 
 // Walks a `.then`/`.catch`/`.finally` member-call chain down to its
 // initiator, collecting which settlement methods appear and the
-// side-effecting `.then` callbacks.
-const analyzeChain = (chainExpression: EsTreeNode): ChainAnalysis | null => {
-  let cursor = unwrapChain(chainExpression);
+// `.then` callbacks.
+const walkPromiseChain = (chainExpression: EsTreeNode): PromiseChainWalk => {
+  let cursor = stripParenExpression(chainExpression);
   let hasCatch = false;
   let hasRejectionHandlerArgument = false;
-  const sideEffectThenCallbacks: EsTreeNode[] = [];
   let sawThen = false;
+  let hasDirectSetterThenCallback = false;
+  const thenCallbacks: FunctionLikeNode[] = [];
 
   while (
     isNodeOfType(cursor, "CallExpression") &&
@@ -80,99 +80,316 @@ const analyzeChain = (chainExpression: EsTreeNode): ChainAnalysis | null => {
     if (methodName === "then") {
       sawThen = true;
       if (cursor.arguments.length >= 2) hasRejectionHandlerArgument = true;
-      const callback = cursor.arguments[0];
-      if (callback && isFunctionLike(callback as EsTreeNode)) {
-        sideEffectThenCallbacks.push(callback as EsTreeNode);
+      const callbackArgument = cursor.arguments[0];
+      const callback = callbackArgument ? stripParenExpression(callbackArgument) : null;
+      if (callback && isFunctionLike(callback)) {
+        thenCallbacks.push(callback);
+      } else if (
+        callback &&
+        isNodeOfType(callback, "Identifier") &&
+        isReactStateSetterName(callback.name)
+      ) {
+        hasDirectSetterThenCallback = true;
       }
     }
-    cursor = unwrapChain(cursor.callee.object as EsTreeNode);
+    cursor = stripParenExpression(cursor.callee.object);
   }
 
-  if (!sawThen) return null;
   return {
     root: cursor,
     hasCatch,
     hasRejectionHandlerArgument,
-    sideEffectThenCallbacks,
+    sawThen,
+    thenCallbacks,
+    hasDirectSetterThenCallback,
   };
 };
 
-// Follow an identifier initiator (`const p = loader.init(); p.then(...)`)
-// to the call it was assigned.
-const resolveInitiator = (root: EsTreeNode): EsTreeNode => {
-  if (isNodeOfType(root, "Identifier")) {
-    const binding = findVariableInitializer(root, root.name);
-    if (binding?.initializer) return stripParenExpression(binding.initializer);
+// Follows an identifier initiator (`const request = fetch(url); request.then(...)`)
+// through its initializer — including an intermediate `.then` chain bound to a
+// variable — down to the root expression, remembering whether any hop along the
+// way already attached a `.catch`/onRejected handler.
+const resolveRootInitiator = (root: EsTreeNode): ResolvedInitiator => {
+  let cursor = stripParenExpression(root);
+  let hasUpstreamRejectionHandling = false;
+  const visitedBindingNames = new Set<string>();
+  while (true) {
+    const chainWalk = walkPromiseChain(cursor);
+    if (chainWalk.root !== cursor) {
+      if (chainWalk.hasCatch || chainWalk.hasRejectionHandlerArgument) {
+        hasUpstreamRejectionHandling = true;
+      }
+      cursor = stripParenExpression(chainWalk.root);
+      continue;
+    }
+    if (isNodeOfType(cursor, "Identifier") && !visitedBindingNames.has(cursor.name)) {
+      visitedBindingNames.add(cursor.name);
+      const binding = findVariableInitializer(cursor, cursor.name);
+      if (binding?.initializer && !isFunctionLike(binding.initializer)) {
+        cursor = stripParenExpression(binding.initializer);
+        continue;
+      }
+    }
+    return { initiator: cursor, hasUpstreamRejectionHandling };
   }
-  return root;
 };
 
-// A `xRef.current.get(key)` call reads a promise previously stored in a
-// ref-held Map/cache — the standard in-flight-request dedup idiom. The
-// stored promise's creation site owns the `.catch`, so re-reading it and
-// chaining a `.then` is not an unhandled fresh async source (resolving an
-// identifier initiator to this shape would otherwise false-positive).
-const isRefHeldCacheRead = (callee: EsTreeNode): boolean =>
-  isNodeOfType(callee, "MemberExpression") &&
-  !callee.computed &&
-  isNodeOfType(callee.property, "Identifier") &&
-  callee.property.name === "get" &&
-  isNodeOfType(callee.object, "MemberExpression") &&
-  !callee.object.computed &&
-  isNodeOfType(callee.object.property, "Identifier") &&
-  callee.object.property.name === "current";
-
-const initiatorIsRealAsyncSource = (initiator: EsTreeNode): boolean => {
-  if (isNodeOfType(initiator, "ImportExpression")) return true;
-  if (!isNodeOfType(initiator, "CallExpression")) return false;
-  const callee = initiator.callee;
-  if (isNodeOfType(callee, "Identifier")) {
-    if (callee.name === "fetch") return true;
-    if (PREDICATE_NAME_PATTERN.test(callee.name)) return false;
-    return ASYNC_INITIATOR_PATTERN.test(callee.name);
+const resolveObjectExpression = (
+  objectNode: EsTreeNode,
+): EsTreeNodeOfType<"ObjectExpression"> | null => {
+  const stripped = stripParenExpression(objectNode);
+  if (isNodeOfType(stripped, "ObjectExpression")) return stripped;
+  if (isNodeOfType(stripped, "Identifier")) {
+    const binding = findVariableInitializer(stripped, stripped.name);
+    const initializer = binding?.initializer ? stripParenExpression(binding.initializer) : null;
+    if (initializer && isNodeOfType(initializer, "ObjectExpression")) return initializer;
   }
+  return null;
+};
+
+// A loaders-map lookup (`loaders[locale]` / `loaders.en`) whose map holds
+// function values — the dynamic-import registry idiom. Rejectable when a
+// matching entry's function is.
+const memberLookupResolvesToRejectableFunction = (
+  memberNode: EsTreeNodeOfType<"MemberExpression">,
+  remainingDepth: number,
+): boolean => {
+  const objectExpression = resolveObjectExpression(memberNode.object);
+  if (!objectExpression) return false;
+  const lookedUpName =
+    !memberNode.computed && isNodeOfType(memberNode.property, "Identifier")
+      ? memberNode.property.name
+      : null;
+  return objectExpression.properties.some((property) => {
+    if (!isNodeOfType(property, "Property")) return false;
+    if (lookedUpName !== null) {
+      const keyMatches = isNodeOfType(property.key, "Identifier")
+        ? property.key.name === lookedUpName
+        : isNodeOfType(property.key, "Literal") && property.key.value === lookedUpName;
+      if (!keyMatches) return false;
+    }
+    const value = stripParenExpression(property.value);
+    return isFunctionLike(value) && functionHasUnhandledRejectableSource(value, remainingDepth);
+  });
+};
+
+// The narrowed initiator contract: only flag when the promise's rejection is
+// provable in-file — a dynamic `import()`, a call to the global `fetch`, a
+// `Promise.all/race/any` over provable inputs, or a call resolving in-file to
+// a function that awaits/returns such a source outside any try/catch. Name
+// heuristics (`load*`, `request*`, `x.get()`, …) are gone: in mature codebases
+// those wrappers routinely catch internally and resolve null/`{error}`.
+const isProvablyRejectableExpression = (
+  expression: EsTreeNode,
+  remainingDepth: number,
+): boolean => {
+  const stripped = stripParenExpression(expression);
+  if (isNodeOfType(stripped, "ImportExpression")) return true;
+  if (isNodeOfType(stripped, "AwaitExpression")) {
+    return isProvablyRejectableExpression(stripped.argument, remainingDepth);
+  }
+  if (!isNodeOfType(stripped, "CallExpression")) return false;
+  const callee = stripParenExpression(stripped.callee);
+  if (isNodeOfType(callee, "Identifier")) {
+    const binding = findVariableInitializer(callee, callee.name);
+    const initializer = binding?.initializer ?? null;
+    if (
+      callee.name === "fetch" &&
+      (initializer === null || IMPORT_BINDING_TYPES.has(initializer.type))
+    ) {
+      return true;
+    }
+    if (initializer === null || remainingDepth <= 0) return false;
+    const strippedInitializer = stripParenExpression(initializer);
+    if (isFunctionLike(strippedInitializer)) {
+      return functionHasUnhandledRejectableSource(strippedInitializer, remainingDepth - 1);
+    }
+    if (isNodeOfType(strippedInitializer, "MemberExpression")) {
+      return memberLookupResolvesToRejectableFunction(strippedInitializer, remainingDepth - 1);
+    }
+    return false;
+  }
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
   if (
-    isNodeOfType(callee, "MemberExpression") &&
     !callee.computed &&
+    isNodeOfType(callee.object, "Identifier") &&
+    callee.object.name === "Promise" &&
     isNodeOfType(callee.property, "Identifier")
   ) {
-    // `Promise.resolve()/reject()/all()` never model a real rejectable
-    // source — a microtask-defer idiom.
-    if (isNodeOfType(callee.object, "Identifier") && callee.object.name === "Promise") return false;
-    if (isRefHeldCacheRead(callee)) return false;
-    const methodName = callee.property.name;
-    if (PREDICATE_NAME_PATTERN.test(methodName)) return false;
-    if (ASYNC_MEMBER_METHOD_NAMES.has(methodName)) return true;
-    return ASYNC_INITIATOR_PATTERN.test(methodName);
+    if (!REJECTING_PROMISE_COMBINATOR_NAMES.has(callee.property.name)) return false;
+    const combinatorInput = stripped.arguments[0]
+      ? stripParenExpression(stripped.arguments[0])
+      : null;
+    if (!combinatorInput || !isNodeOfType(combinatorInput, "ArrayExpression")) return false;
+    return combinatorInput.elements.some((element) => {
+      if (!element || isNodeOfType(element, "SpreadElement")) return false;
+      const resolvedElement = resolveRootInitiator(element);
+      return (
+        !resolvedElement.hasUpstreamRejectionHandling &&
+        isProvablyRejectableExpression(resolvedElement.initiator, remainingDepth)
+      );
+    });
+  }
+  if (remainingDepth > 0) {
+    return memberLookupResolvesToRejectableFunction(callee, remainingDepth - 1);
   }
   return false;
 };
 
-const callbackHasStateSideEffect = (callback: EsTreeNode): boolean => {
-  let found = false;
+// True when the function's own body awaits or returns a provably rejectable
+// source outside any try/catch — a try-wrapped await means the wrapper folds
+// the failure into its resolution value (`resolve null` contract) and the
+// chain cannot reject through it.
+const functionHasUnhandledRejectableSource = (
+  functionNode: FunctionLikeNode,
+  remainingDepth: number,
+): boolean => {
+  let didFindRejectableSource = false;
+  const checkCandidate = (candidate: EsTreeNode, positionNode: EsTreeNode): void => {
+    if (didFindRejectableSource) return;
+    if (isInsideTryStatement(positionNode, { boundary: functionNode })) return;
+    const chainWalk = walkPromiseChain(stripParenExpression(candidate));
+    if (chainWalk.hasCatch || chainWalk.hasRejectionHandlerArgument) return;
+    if (isProvablyRejectableExpression(chainWalk.root, remainingDepth)) {
+      didFindRejectableSource = true;
+    }
+  };
+  const body = functionNode.body;
+  if (body && !isNodeOfType(body, "BlockStatement")) {
+    checkCandidate(body, body);
+  }
+  walkOwnFunctionScope(functionNode, (child: EsTreeNode) => {
+    if (didFindRejectableSource) return false;
+    if (isNodeOfType(child, "AwaitExpression")) {
+      checkCandidate(child.argument, child);
+    }
+    if (isNodeOfType(child, "ReturnStatement") && child.argument) {
+      checkCandidate(child.argument, child);
+    }
+  });
+  return didFindRejectableSource;
+};
+
+const collectStateSideEffectNodes = (callback: EsTreeNode): EsTreeNode[] => {
+  const sideEffectNodes: EsTreeNode[] = [];
   walkAst(callback, (child: EsTreeNode) => {
-    if (found) return false;
-    // A state setter call `setX(...)`.
     if (
       isNodeOfType(child, "CallExpression") &&
       isNodeOfType(child.callee, "Identifier") &&
-      isSetterIdentifier(child.callee.name)
+      isReactStateSetterName(child.callee.name)
     ) {
-      found = true;
-      return false;
+      sideEffectNodes.push(child);
+      return;
     }
-    // A ref mutation `xRef.current = ...`.
     if (
       isNodeOfType(child, "AssignmentExpression") &&
       isNodeOfType(child.left, "MemberExpression") &&
       isNodeOfType(child.left.property, "Identifier") &&
       child.left.property.name === "current"
     ) {
-      found = true;
-      return false;
+      sideEffectNodes.push(child);
     }
   });
-  return found;
+  return sideEffectNodes;
+};
+
+const isNullishComparisonAgainstParam = (test: EsTreeNode, paramName: string): boolean => {
+  if (!isNodeOfType(test, "BinaryExpression")) return false;
+  if (!NULLISH_EQUALITY_OPERATORS.has(test.operator)) return false;
+  const left = stripParenExpression(test.left);
+  const right = stripParenExpression(test.right);
+  const isParamSide = (side: EsTreeNode): boolean =>
+    isNodeOfType(side, "Identifier") && side.name === paramName;
+  const isNullishSide = (side: EsTreeNode): boolean =>
+    (isNodeOfType(side, "Literal") && side.value === null) ||
+    (isNodeOfType(side, "Identifier") && side.name === "undefined");
+  return (isParamSide(left) && isNullishSide(right)) || (isNullishSide(left) && isParamSide(right));
+};
+
+const isParamNullGuardReturn = (statement: EsTreeNode, paramName: string): boolean => {
+  if (!isNodeOfType(statement, "IfStatement")) return false;
+  const test = stripParenExpression(statement.test);
+  const negatedArgument =
+    isNodeOfType(test, "UnaryExpression") && test.operator === "!"
+      ? stripParenExpression(test.argument)
+      : null;
+  const isNegatedParam =
+    negatedArgument !== null &&
+    isNodeOfType(negatedArgument, "Identifier") &&
+    negatedArgument.name === paramName;
+  if (!isNegatedParam && !isNullishComparisonAgainstParam(test, paramName)) return false;
+  const consequent = statement.consequent;
+  if (isNodeOfType(consequent, "ReturnStatement")) return true;
+  return (
+    isNodeOfType(consequent, "BlockStatement") &&
+    consequent.body.length > 0 &&
+    isNodeOfType(consequent.body[consequent.body.length - 1], "ReturnStatement")
+  );
+};
+
+const callbackReadsParamError = (callback: EsTreeNode, paramName: string): boolean => {
+  let didFindErrorRead = false;
+  walkAst(callback, (child: EsTreeNode) => {
+    if (didFindErrorRead) return false;
+    if (
+      isNodeOfType(child, "MemberExpression") &&
+      !child.computed &&
+      isNodeOfType(child.property, "Identifier") &&
+      child.property.name === "error"
+    ) {
+      const errorReadObject = stripParenExpression(child.object);
+      if (isNodeOfType(errorReadObject, "Identifier") && errorReadObject.name === paramName) {
+        didFindErrorRead = true;
+      }
+    }
+  });
+  return didFindErrorRead;
+};
+
+const hasParamGuardingIfAncestor = (
+  node: EsTreeNode,
+  callback: EsTreeNode,
+  paramName: string,
+): boolean => {
+  let ancestor: EsTreeNode | null | undefined = node.parent;
+  while (ancestor && ancestor !== callback) {
+    if (isNodeOfType(ancestor, "IfStatement")) {
+      let testReferencesParam = false;
+      walkAst(ancestor.test, (testChild: EsTreeNode) => {
+        if (isNodeOfType(testChild, "Identifier") && testChild.name === paramName) {
+          testReferencesParam = true;
+          return false;
+        }
+      });
+      if (testReferencesParam) return true;
+    }
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
+};
+
+// A callback that null/error-guards its resolved value signals the initiator's
+// resolve-null-on-failure contract (`getDataFromService`-style error folding):
+// the wrapper never rejects, so demanding a `.catch` would be dead code.
+const callbackSignalsResolveNullContract = (
+  callback: FunctionLikeNode,
+  sideEffectNodes: EsTreeNode[],
+): boolean => {
+  const firstParam = callback.params[0] ? stripParenExpression(callback.params[0]) : null;
+  if (!firstParam || !isNodeOfType(firstParam, "Identifier")) return false;
+  const paramName = firstParam.name;
+  if (callbackReadsParamError(callback, paramName)) return true;
+  const body = callback.body;
+  if (
+    body &&
+    isNodeOfType(body, "BlockStatement") &&
+    body.body.some((statement: EsTreeNode) => isParamNullGuardReturn(statement, paramName))
+  ) {
+    return true;
+  }
+  return sideEffectNodes.every((sideEffectNode) =>
+    hasParamGuardingIfAncestor(sideEffectNode, callback, paramName),
+  );
 };
 
 // Walk the effect body without descending into nested functions, so the
@@ -191,16 +408,20 @@ const collectFloatingChains = (callback: EsTreeNode): EsTreeNode[] => {
   return chains;
 };
 
-// Flags a floating promise chain inside a React effect that is started
-// by a real async call, ends in a `.then` performing a state setter or
+// Flags a floating promise chain inside a React effect that is started by a
+// provably rejectable async source (dynamic import(), global fetch, a
+// Promise.all/race/any over such sources, or an in-file function that
+// awaits/returns one uncaught), ends in a `.then` performing a state setter or
 // ref mutation, and has no `.catch`/rejection handler and no enclosing
-// try/catch. `.finally` does not count as handling the rejection, and
-// `Promise.resolve()/reject()` initiators are excluded.
+// try/catch. `.finally` does not count as handling the rejection. Callbacks
+// that null/error-guard their resolved value are skipped — that shape signals
+// a wrapper with a resolve-null-on-failure contract.
 export const noPromiseThenSideEffectInEffectWithoutCatch = defineRule({
   id: "no-promise-then-side-effect-in-effect-without-catch",
   title: "Effect promise .then sets state with no catch",
   severity: "warn",
   category: "Correctness",
+  tags: ["test-noise"],
   recommendation:
     "An async init in an effect that sets state in `.then` but has no `.catch` leaves the component stuck and raises an unhandled rejection when it fails. Add a `.catch` on the chain (`.finally` does not handle the rejection).",
   create: (context: RuleContext) => ({
@@ -210,11 +431,22 @@ export const noPromiseThenSideEffectInEffectWithoutCatch = defineRule({
       if (!isFunctionLike(callback)) return;
 
       for (const chainExpression of collectFloatingChains(callback)) {
-        const analysis = analyzeChain(chainExpression);
-        if (!analysis) continue;
-        if (analysis.hasCatch || analysis.hasRejectionHandlerArgument) continue;
-        if (!analysis.sideEffectThenCallbacks.some(callbackHasStateSideEffect)) continue;
-        if (!initiatorIsRealAsyncSource(resolveInitiator(analysis.root))) continue;
+        const chainWalk = walkPromiseChain(chainExpression);
+        if (!chainWalk.sawThen) continue;
+        if (chainWalk.hasCatch || chainWalk.hasRejectionHandlerArgument) continue;
+        const hasUnguardedStateSideEffect =
+          chainWalk.hasDirectSetterThenCallback ||
+          chainWalk.thenCallbacks.some((thenCallback) => {
+            const sideEffectNodes = collectStateSideEffectNodes(thenCallback);
+            if (sideEffectNodes.length === 0) return false;
+            return !callbackSignalsResolveNullContract(thenCallback, sideEffectNodes);
+          });
+        if (!hasUnguardedStateSideEffect) continue;
+        const resolved = resolveRootInitiator(chainWalk.root);
+        if (resolved.hasUpstreamRejectionHandling) continue;
+        if (!isProvablyRejectableExpression(resolved.initiator, MAX_INITIATOR_RESOLUTION_DEPTH)) {
+          continue;
+        }
         if (isInsideTryStatement(chainExpression, { boundary: callback })) continue;
         context.report({ node: chainExpression, message: MESSAGE });
       }

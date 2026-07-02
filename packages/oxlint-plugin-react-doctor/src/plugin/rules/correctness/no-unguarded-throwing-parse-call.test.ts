@@ -37,11 +37,31 @@ describe("no-unguarded-throwing-parse-call", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a single-argument new URL of a runtime value", () => {
+  it("flags a single-argument new URL of a searchParams value", () => {
     const result = runRule(
       noUnguardedThrowingParseCall,
-      `function open(userInput) {
-        return new URL(userInput);
+      `function open(searchParams) {
+        return new URL(searchParams.get("redirect"));
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a single-argument new URL of a bare url parameter", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function open(url) {
+        return new URL(url);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags new URL of window.location.pathname (relative, throws)", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function readParams() {
+        return new URL(window.location.pathname);
       }`,
     );
     expect(result.diagnostics).toHaveLength(1);
@@ -165,6 +185,154 @@ describe("no-unguarded-throwing-parse-call", () => {
       `function run(token) {
         return decodeURIComponent(token);
       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for new URL(import.meta.url), the ESM __dirname idiom", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `const currentDirectory = new URL(import.meta.url).pathname;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for new URL(window.location), MDN's canonical Location-stringify example", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function share() {
+        const url = new URL(window.location);
+        url.searchParams.set("tab", "1");
+        return url;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for new URL(location) and new URL(document.location.href)", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function snapshot() {
+        return [new URL(location), new URL(document.location.href)];
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a location.href-derived expression like the pre-'?' split prefix", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function reportLink() {
+        return new URL(\`\${location.href.split("?")[0]}#reports\`);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a URL.canParse early-return guard before new URL", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function LinkPreview({ href }) {
+        if (!URL.canParse(href)) return null;
+        return new URL(href).hostname;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for new URL of a route value pre-validated with URL.canParse", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function Redirect(searchParams) {
+        const target = searchParams.get("next");
+        if (!URL.canParse(target)) return null;
+        return new URL(target).hostname;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for chroma guarded by the documented chroma.valid ternary", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function Swatch({ color }) {
+        return chroma.valid(color) ? chroma(color).hex() : "#000";
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for tinycolor, which never throws and documents isValid()", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `import tinycolor from "tinycolor2";
+      function Swatch({ color }) {
+        const parsed = tinycolor(color);
+        return parsed.isValid() ? parsed.toHexString() : "#000";
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a template literal with a hardcoded absolute origin prefix", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function repoUrl(owner, repo) {
+        return new URL(\`https://github.com/\${owner}/\${repo}\`);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for the Next.js metadataBase imported-config idiom", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `import { config } from "./config";
+      export const metadata = { metadataBase: new URL(config.url) };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a this-rooted class config field like this.baseUrl", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `class ApiClient {
+        connect() {
+          return new URL(this.baseUrl);
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a validated app-config URL read off props in render", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function ServerBadge(props) {
+        const host = new URL(props.server.http.url).host;
+        return host;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a websocket URL builder templating validated config members", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function terminalWebsocketUrl(input) {
+        return new URL(\`\${input.url}/pty/\${input.id}/connect\`);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for vendored files under vendor/", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function track(params) {
+        return new URL(params.target);
+      }`,
+      { filename: "vendor/analytics.js" },
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -39,6 +39,7 @@ const serializeReceiver = (node: EsTreeNode | null | undefined): string | null =
 
 interface LayoutRead {
   methodName: string;
+  readSignature: string;
   receiverKey: string;
   regionNode: EsTreeNode;
   callNode: EsTreeNode;
@@ -46,7 +47,7 @@ interface LayoutRead {
 
 interface ReceiverMutation {
   receiverKey: string;
-  start: number;
+  end: number;
 }
 
 // The layout-read receiver, or null when the call is not a recognized
@@ -78,13 +79,40 @@ const layoutReadMethodName = (call: EsTreeNodeOfType<"CallExpression">): string 
   return null;
 };
 
-// Nearest enclosing block (or the scope root) — two reads only "repeat"
-// when they share the same statement sequence, so reads in separate
-// branches never group together.
+// Distinguishes getComputedStyle(el) from getComputedStyle(el, "::before"):
+// only calls with the same pseudo-element selector return the same
+// declaration, so only those can pair. A dynamic selector is
+// incomparable, so the call is skipped entirely (null).
+const layoutReadSignature = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  methodName: string,
+): string | null => {
+  if (methodName !== "getComputedStyle") return methodName;
+  const pseudoElementArgument = call.arguments?.[1];
+  if (!pseudoElementArgument) return methodName;
+  if (isNodeOfType(pseudoElementArgument, "Literal")) {
+    return `${methodName}(${String(pseudoElementArgument.value)})`;
+  }
+  return null;
+};
+
+// Nearest enclosing block, branch arm, or the scope root — two reads
+// only "repeat" when they share the same execution path, so reads in
+// separate branches (blocks, switch cases, ternary arms, unbraced
+// if/else bodies) never group together.
 const enclosingRegion = (node: EsTreeNode, scopeRoot: EsTreeNode): EsTreeNode => {
+  let child: EsTreeNode = node;
   let cursor: EsTreeNode | null | undefined = node.parent;
   while (cursor && cursor !== scopeRoot) {
     if (isNodeOfType(cursor, "BlockStatement")) return cursor;
+    if (isNodeOfType(cursor, "SwitchCase")) return cursor;
+    if (
+      (isNodeOfType(cursor, "ConditionalExpression") || isNodeOfType(cursor, "IfStatement")) &&
+      (cursor.consequent === child || cursor.alternate === child)
+    ) {
+      return child;
+    }
+    child = cursor;
     cursor = cursor.parent ?? null;
   }
   return scopeRoot;
@@ -119,33 +147,50 @@ export const noRepeatedLayoutReadSameElement = defineRule({
     const inspectScope = (scopeRoot: EsTreeNode): void => {
       const reads: LayoutRead[] = [];
       const mutations: ReceiverMutation[] = [];
+      const barrierEnds: number[] = [];
 
       const visit = (node: EsTreeNode): void => {
+        if (isNodeOfType(node, "AwaitExpression")) {
+          // Any layout can change across an await, so a re-read after it
+          // is a legitimate re-measurement, not a duplicate.
+          barrierEnds.push(rangeEnd(node));
+        }
         if (isNodeOfType(node, "CallExpression")) {
           const methodName = layoutReadMethodName(node);
-          if (methodName) {
+          const readSignature = methodName ? layoutReadSignature(node, methodName) : null;
+          if (methodName && readSignature) {
             const receiver = layoutReadReceiver(node);
             const receiverKey = serializeReceiver(receiver);
             if (receiverKey) {
               reads.push({
                 methodName,
+                readSignature,
                 receiverKey,
                 regionNode: enclosingRegion(node, scopeRoot),
                 callNode: node,
               });
             }
-          } else if (isNodeOfType(node.callee, "MemberExpression")) {
-            // A non-read method call on a receiver invalidates its layout.
-            const mutatedKey = serializeReceiver(node.callee.object);
-            if (mutatedKey)
-              mutations.push({
-                receiverKey: mutatedKey,
-                start: rangeStart(node),
-              });
+          } else if (!methodName) {
+            if (isNodeOfType(node.callee, "MemberExpression")) {
+              // A non-read method call on a receiver invalidates its layout.
+              const mutatedKey = serializeReceiver(node.callee.object);
+              if (mutatedKey)
+                mutations.push({
+                  receiverKey: mutatedKey,
+                  end: rangeEnd(node),
+                });
+            }
+            // A call receiving the element (or a sub-object like
+            // `el.style`) may mutate it — `Object.assign(el.style, …)`,
+            // `applyCollapsedStyles(el)` — so it invalidates the cache.
+            for (const argument of node.arguments ?? []) {
+              const argumentKey = serializeReceiver(argument);
+              if (argumentKey) mutations.push({ receiverKey: argumentKey, end: rangeEnd(node) });
+            }
           }
         }
         const mutatedKey = mutatedReceiverKey(node);
-        if (mutatedKey) mutations.push({ receiverKey: mutatedKey, start: rangeStart(node) });
+        if (mutatedKey) mutations.push({ receiverKey: mutatedKey, end: rangeEnd(node) });
 
         const nodeRecord = node as unknown as Record<string, unknown>;
         for (const key of Object.keys(nodeRecord)) {
@@ -176,16 +221,19 @@ export const noRepeatedLayoutReadSameElement = defineRule({
           const second = reads[inner];
           if (first.regionNode !== second.regionNode) continue;
           if (first.receiverKey !== second.receiverKey) continue;
+          if (first.readSignature !== second.readSignature) continue;
           const groupSignature = `${
             first.regionNode === scopeRoot ? "root" : rangeStart(first.regionNode)
-          }::${first.receiverKey}`;
+          }::${first.receiverKey}::${first.readSignature}`;
           if (reportedGroups.has(groupSignature)) continue;
 
           const earlierEnd = Math.min(rangeEnd(first.callNode), rangeEnd(second.callNode));
           const laterStart = Math.max(rangeStart(first.callNode), rangeStart(second.callNode));
           // A mutation invalidates the cache when it writes to the receiver
           // itself, a sub-property of it (`el.style.top = …`), or a parent
-          // of it — any overlap of the access chains.
+          // of it — any overlap of the access chains. The mutation's END
+          // position orders it: an assignment whose right-hand side contains
+          // the first read still writes after that read completes.
           const invalidates = (mutatedKey: string): boolean =>
             mutatedKey === first.receiverKey ||
             mutatedKey.startsWith(`${first.receiverKey}.`) ||
@@ -193,10 +241,14 @@ export const noRepeatedLayoutReadSameElement = defineRule({
           const hasInterveningMutation = mutations.some(
             (mutation) =>
               invalidates(mutation.receiverKey) &&
-              mutation.start >= earlierEnd &&
-              mutation.start <= laterStart,
+              mutation.end >= earlierEnd &&
+              mutation.end <= laterStart,
           );
           if (hasInterveningMutation) continue;
+          const hasInterveningBarrier = barrierEnds.some(
+            (barrierEnd) => barrierEnd >= earlierEnd && barrierEnd <= laterStart,
+          );
+          if (hasInterveningBarrier) continue;
 
           reportedGroups.add(groupSignature);
           context.report({

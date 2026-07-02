@@ -38,11 +38,15 @@ const PURE_BUILTIN_METHOD_NAMES = new Set([
   "includes",
 ]);
 
+// Only `set*`-named identifiers count: `dispatch(fn)` is never a React
+// useReducer updater (dispatch takes action objects), so a function
+// argument to `dispatch` is a redux-thunk whose whole purpose is to run
+// side effects exactly once.
 const isReactStateUpdaterCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   if (!isNodeOfType(node.callee, "Identifier")) return false;
   const name = node.callee.name;
   if (TIMER_SETTER_NAMES.has(name)) return false;
-  return name === "dispatch" || isSetterIdentifier(name);
+  return isSetterIdentifier(name);
 };
 
 // An impure effectful call: an optional consumer callback `x?.(...)`, an
@@ -96,13 +100,46 @@ const findNearestEnclosingFunction = (
   return null;
 };
 
-const unwrapStatementCall = (expression: EsTreeNode): EsTreeNodeOfType<"CallExpression"> | null => {
-  let current = expression;
+// A nested function executes during the updater only when it is handed
+// directly to a call (`prev.map(fn)`, an IIFE); a function value merely
+// constructed and stored in the next state (a toast `dismiss` handler, a
+// column sorter) runs later on user interaction, never during a replay.
+const isDirectCallParticipant = (functionNode: EsTreeNode): boolean => {
+  const parent = functionNode.parent;
+  if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
+  if (parent.callee === functionNode) return true;
+  return parent.arguments?.some((argumentNode) => argumentNode === functionNode) === true;
+};
+
+// Collects the statement's effectful calls, peeling awaits, TS wrappers,
+// and guard shapes — `cond && onChange(next);` is the same side effect as
+// `if (cond) onChange(next);`.
+const collectStatementCalls = (
+  expression: EsTreeNode,
+  calls: EsTreeNodeOfType<"CallExpression">[],
+): void => {
+  const current = stripParenExpression(expression);
   if (isNodeOfType(current, "AwaitExpression") && current.argument) {
-    current = current.argument;
+    collectStatementCalls(current.argument, calls);
+    return;
   }
-  current = stripParenExpression(current);
-  return isNodeOfType(current, "CallExpression") ? current : null;
+  if (isNodeOfType(current, "LogicalExpression")) {
+    collectStatementCalls(current.left, calls);
+    collectStatementCalls(current.right, calls);
+    return;
+  }
+  if (isNodeOfType(current, "ConditionalExpression")) {
+    collectStatementCalls(current.consequent, calls);
+    collectStatementCalls(current.alternate, calls);
+    return;
+  }
+  if (isNodeOfType(current, "SequenceExpression")) {
+    for (const innerExpression of current.expressions ?? []) {
+      collectStatementCalls(innerExpression, calls);
+    }
+    return;
+  }
+  if (isNodeOfType(current, "CallExpression")) calls.push(current);
 };
 
 export const noSideEffectInStateUpdaterFunction = defineRule({
@@ -118,31 +155,63 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
       const updater = node.arguments?.[0];
       if (!updater || !isFunctionLike(updater)) return;
 
-      // Collect value-returning block-body functions inside the updater
-      // (the updater itself or a nested transform like `.map(...)`),
-      // pruning nested state-updater calls so their bodies are attributed
-      // to their own setter, not this one.
-      const valueReturningFunctions = new Set<EsTreeNode>();
+      const walkBoundary = updater.parent ?? updater;
+
+      // Collect the functions that run synchronously during the updater —
+      // the updater itself plus nested functions handed directly to a call
+      // (`.map(...)`, an IIFE), transitively. Functions merely stored in
+      // the next state are deferred and excluded. Nested state-updater
+      // calls are pruned so their bodies are attributed to their own
+      // setter, not this one.
+      const executedDuringUpdater = new Set<EsTreeNode>();
       walkAst(updater, (child: EsTreeNode) => {
         if (child !== updater && isImmediateStateUpdaterCall(child)) return false;
-        if (isFunctionLike(child) && blockBodyReturnsValue(child)) {
-          valueReturningFunctions.add(child);
+        if (!isFunctionLike(child)) return;
+        if (child === updater) {
+          executedDuringUpdater.add(child);
+          return;
+        }
+        if (!isDirectCallParticipant(child)) return;
+        const enclosingFunction = findNearestEnclosingFunction(child, walkBoundary);
+        if (enclosingFunction && executedDuringUpdater.has(enclosingFunction)) {
+          executedDuringUpdater.add(child);
         }
       });
+
+      // Only the "interleaved statement before a pure return" shape is
+      // reportable, so some executed function must reach `return <value>`.
+      const valueReturningFunctions = new Set<EsTreeNode>();
+      for (const executedFunction of executedDuringUpdater) {
+        if (blockBodyReturnsValue(executedFunction)) valueReturningFunctions.add(executedFunction);
+      }
       if (valueReturningFunctions.size === 0) return;
+
+      const hasValueReturningExecutedContext = (owner: EsTreeNode): boolean => {
+        let cursor: EsTreeNode | null = owner;
+        while (cursor && executedDuringUpdater.has(cursor)) {
+          if (valueReturningFunctions.has(cursor)) return true;
+          if (cursor === updater) break;
+          cursor = findNearestEnclosingFunction(cursor, walkBoundary);
+        }
+        return false;
+      };
 
       walkAst(updater, (child: EsTreeNode) => {
         if (child !== updater && isImmediateStateUpdaterCall(child)) return false;
         if (!isNodeOfType(child, "ExpressionStatement")) return;
-        const call = unwrapStatementCall(child.expression);
-        if (!call || !isImpureSideEffectCall(call)) return;
-        const owner = findNearestEnclosingFunction(child, updater.parent ?? updater);
-        if (!owner || !valueReturningFunctions.has(owner)) return;
-        context.report({
-          node: call,
-          message:
-            "This side-effecting call runs inside a state updater, which React may invoke more than once (StrictMode double-invoke, concurrent replay), so it fires an unpredictable number of times. Move it outside the setter after computing the next state.",
-        });
+        const statementCalls: EsTreeNodeOfType<"CallExpression">[] = [];
+        collectStatementCalls(child.expression, statementCalls);
+        const owner = findNearestEnclosingFunction(child, walkBoundary);
+        if (!owner || !executedDuringUpdater.has(owner)) return;
+        if (!hasValueReturningExecutedContext(owner)) return;
+        for (const call of statementCalls) {
+          if (!isImpureSideEffectCall(call)) continue;
+          context.report({
+            node: call,
+            message:
+              "This side-effecting call runs inside a state updater, which React may invoke more than once (StrictMode double-invoke, concurrent replay), so it fires an unpredictable number of times. Move it outside the setter after computing the next state.",
+          });
+        }
       });
     },
   }),

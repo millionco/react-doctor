@@ -151,4 +151,116 @@ describe("effect-listener-cleanup-reference-mismatch", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags the legacy MediaQueryList handler-only addListener/removeListener form", () => {
+    const result = runRule(
+      effectListenerCleanupReferenceMismatch,
+      `
+      useEffect(() => {
+        const mql = window.matchMedia('(min-width: 600px)');
+        mql.addListener((e) => setMatches(e.matches));
+        return () => mql.removeListener((e) => setMatches(e.matches));
+      }, []);
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags inline handlers when the event name is a shared identifier constant", () => {
+    const result = runRule(
+      effectListenerCleanupReferenceMismatch,
+      `
+      const RESIZE = 'resize';
+      useEffect(() => {
+        window.addEventListener(RESIZE, () => onResize());
+        return () => window.removeEventListener(RESIZE, () => onResize());
+      }, []);
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags inline handlers when the event name is a shared enum-style member expression", () => {
+    const result = runRule(
+      effectListenerCleanupReferenceMismatch,
+      `
+      useEffect(() => {
+        emitter.on(EVENTS.UPDATE, (d) => setData(d));
+        return () => emitter.off(EVENTS.UPDATE, (d) => setData(d));
+      }, []);
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags inline handlers when the event name is an expressionless template literal", () => {
+    const result = runRule(
+      effectListenerCleanupReferenceMismatch,
+      `
+      useEffect(() => {
+        window.addEventListener(\`resize\`, () => onResize());
+        return () => window.removeEventListener(\`resize\`, () => onResize());
+      }, []);
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag the MediaQueryList handler-only form with one shared named handler", () => {
+    const result = runRule(
+      effectListenerCleanupReferenceMismatch,
+      `
+      useEffect(() => {
+        const mql = window.matchMedia('(min-width: 600px)');
+        const onChange = (e) => setMatches(e.matches);
+        mql.addListener(onChange);
+        return () => mql.removeListener(onChange);
+      }, []);
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a handler-only removal paired with an event-form registration", () => {
+    const result = runRule(
+      effectListenerCleanupReferenceMismatch,
+      `
+      useEffect(() => {
+        mql.addListener('change', (e) => setMatches(e.matches));
+        return () => mql.removeListener((e) => setMatches(e.matches));
+      }, []);
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag different identifier event names on each side", () => {
+    const result = runRule(
+      effectListenerCleanupReferenceMismatch,
+      `
+      const RESIZE = 'resize';
+      const ONLINE = 'online';
+      useEffect(() => {
+        window.addEventListener(RESIZE, () => onResize());
+        return () => window.removeEventListener(ONLINE, () => sync());
+      }, []);
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag computed event name expressions it cannot compare", () => {
+    const result = runRule(
+      effectListenerCleanupReferenceMismatch,
+      `
+      useEffect(() => {
+        window.addEventListener(events[index], () => f());
+        return () => window.removeEventListener(events[index], () => f());
+      }, []);
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

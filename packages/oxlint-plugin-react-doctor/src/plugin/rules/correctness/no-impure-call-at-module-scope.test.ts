@@ -112,6 +112,51 @@ describe("no-impure-call-at-module-scope", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag camelCase per-process uptime names (startTime/appBootTime/serverStartedAt)", () => {
+    expect(
+      runRule(noImpureCallAtModuleScope, `const startTime = Date.now();`).diagnostics,
+    ).toHaveLength(0);
+    expect(
+      runRule(noImpureCallAtModuleScope, `const appBootTime = Date.now();`).diagnostics,
+    ).toHaveLength(0);
+    expect(
+      runRule(noImpureCallAtModuleScope, `const serverStartedAt = Date.now();`).diagnostics,
+    ).toHaveLength(0);
+    expect(
+      runRule(noImpureCallAtModuleScope, `const SERVER_START_TIME = Date.now();`).diagnostics,
+    ).toHaveLength(0);
+  });
+
+  it("does not flag a jotai atom seeded with Date.now() (TaskTrove refresh-trigger shape)", () => {
+    const result = runRule(
+      noImpureCallAtModuleScope,
+      `
+      import { atom } from "jotai";
+      export const appRefreshTriggerAtom = atom<number>(Date.now());
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag state-container factory seeds (svelte writable, rxjs BehaviorSubject)", () => {
+    expect(
+      runRule(noImpureCallAtModuleScope, `export const lastUpdated = writable(Date.now());`)
+        .diagnostics,
+    ).toHaveLength(0);
+    expect(
+      runRule(noImpureCallAtModuleScope, `const clock$ = new BehaviorSubject(Date.now());`)
+        .diagnostics,
+    ).toHaveLength(0);
+  });
+
+  it("does not flag a static field of a class created inside a factory/mixin", () => {
+    const result = runRule(
+      noImpureCallAtModuleScope,
+      `export const withInstanceKey = (Base) => class extends Base { static key = Math.random().toString(36); };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag when Date is shadowed by a local binding", () => {
     const result = runRule(
       noImpureCallAtModuleScope,

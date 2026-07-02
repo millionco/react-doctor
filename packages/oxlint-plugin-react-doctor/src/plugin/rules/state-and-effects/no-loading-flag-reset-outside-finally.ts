@@ -16,9 +16,19 @@ const MESSAGE =
 const LOADING_FLAG_SETTER_PATTERN =
   /(loading|busy|submitting|saving|pending|fetching|processing|uploading|spinner|disabl|refreshing|updating|inflight|working|posting|sending|deleting)/i;
 
+// Property names that mark the awaited call as a never-rejecting result-object
+// wrapper (`const result = await f(); if (result.success) ...`) — errors are
+// folded into the resolved value, so the await cannot skip the trailing reset.
+const RESULT_SHAPE_PROPERTY_NAMES = new Set(["success", "error", "ok"]);
+
 const getNodeStart = (node: EsTreeNode): number | null => {
   const start = (node as { start?: unknown }).start;
   return typeof start === "number" ? start : null;
+};
+
+const getNodeEnd = (node: EsTreeNode): number | null => {
+  const end = (node as { end?: unknown }).end;
+  return typeof end === "number" ? end : null;
 };
 
 // The boolean argument of a `setX(true)` / `setX(false)` call, or null when
@@ -63,6 +73,159 @@ const walkOwnScope = (functionNode: EsTreeNode, visit: (node: EsTreeNode) => voi
   });
 };
 
+const unwrapChainExpression = (expression: EsTreeNode): EsTreeNode =>
+  isNodeOfType(expression, "ChainExpression") ? expression.expression : expression;
+
+// `await Promise.allSettled(...)` never rejects by spec, and
+// `await f().catch(...)` handles rejection inline, so the await always
+// resumes and the trailing reset still runs.
+const isNeverRejectingAwaitedExpression = (
+  awaitNode: EsTreeNodeOfType<"AwaitExpression">,
+): boolean => {
+  const awaited = unwrapChainExpression(awaitNode.argument);
+  if (!isNodeOfType(awaited, "CallExpression")) return false;
+  const callee = unwrapChainExpression(awaited.callee);
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
+  if (!isNodeOfType(callee.property, "Identifier")) return false;
+  if (callee.property.name === "catch") return true;
+  return (
+    callee.property.name === "allSettled" &&
+    isNodeOfType(callee.object, "Identifier") &&
+    callee.object.name === "Promise"
+  );
+};
+
+const isWithinIfTest = (node: EsTreeNode, functionNode: EsTreeNode): boolean => {
+  let child: EsTreeNode = node;
+  let cursor: EsTreeNode | null | undefined = node.parent;
+  while (cursor && cursor !== functionNode) {
+    if (isNodeOfType(cursor, "IfStatement")) return cursor.test === child;
+    if (isFunctionLike(cursor)) return false;
+    child = cursor;
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
+// `const result = await f(...)` where the binding (or a destructured
+// success/error/ok field) is branch-checked in an `if` marks the callee as a
+// result-object wrapper that folds errors into a resolved value.
+const isResultObjectCheckedAwait = (
+  awaitNode: EsTreeNodeOfType<"AwaitExpression">,
+  checkedResultNames: ReadonlySet<string>,
+): boolean => {
+  const parent = awaitNode.parent;
+  if (!isNodeOfType(parent, "VariableDeclarator") || parent.init !== awaitNode) return false;
+  const bindingTarget = parent.id;
+  if (isNodeOfType(bindingTarget, "Identifier")) return checkedResultNames.has(bindingTarget.name);
+  if (isNodeOfType(bindingTarget, "ObjectPattern")) {
+    return bindingTarget.properties.some(
+      (property) =>
+        isNodeOfType(property, "Property") &&
+        isNodeOfType(property.key, "Identifier") &&
+        RESULT_SHAPE_PROPERTY_NAMES.has(property.key.name) &&
+        isNodeOfType(property.value, "Identifier") &&
+        checkedResultNames.has(property.value.name),
+    );
+  }
+  return false;
+};
+
+// A `throw` or `return` in the catch handler's own scope skips the statements
+// after the try, so the handler does not guarantee the trailing reset runs.
+const catchHandlerEscapes = (handler: EsTreeNode): boolean => {
+  let didFindEscape = false;
+  walkAst(handler, (child: EsTreeNode) => {
+    if (child !== handler && isFunctionLike(child)) return false;
+    if (isNodeOfType(child, "ThrowStatement") || isNodeOfType(child, "ReturnStatement")) {
+      didFindEscape = true;
+    }
+  });
+  return didFindEscape;
+};
+
+// When the await sits in a `try` whose catch swallows the error (no rethrow,
+// no return) and the reset comes after that whole try statement, the reset
+// runs on the rejection path too — it is semantically a `finally`.
+const isRejectionSwallowedBeforeReset = (
+  awaitNode: EsTreeNode,
+  functionNode: EsTreeNode,
+  resetStart: number,
+): boolean => {
+  let child: EsTreeNode = awaitNode;
+  let cursor: EsTreeNode | null | undefined = awaitNode.parent;
+  while (cursor && cursor !== functionNode) {
+    if (isNodeOfType(cursor, "TryStatement") && cursor.block === child && cursor.handler) {
+      const tryEnd = getNodeEnd(cursor);
+      if (tryEnd !== null && tryEnd < resetStart && !catchHandlerEscapes(cursor.handler)) {
+        return true;
+      }
+    }
+    child = cursor;
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
+const collectIfBranches = (
+  node: EsTreeNode,
+  functionNode: EsTreeNode,
+): Map<EsTreeNode, "consequent" | "alternate"> => {
+  const branches = new Map<EsTreeNode, "consequent" | "alternate">();
+  let child: EsTreeNode = node;
+  let cursor: EsTreeNode | null | undefined = node.parent;
+  while (cursor && cursor !== functionNode) {
+    if (isNodeOfType(cursor, "IfStatement")) {
+      if (cursor.consequent === child) branches.set(cursor, "consequent");
+      else if (cursor.alternate === child) branches.set(cursor, "alternate");
+    }
+    child = cursor;
+    cursor = cursor.parent ?? null;
+  }
+  return branches;
+};
+
+// Source-offset ordering merges mutually exclusive if/else branches; two nodes
+// on opposite branches of the same `if` never execute on the same call.
+const areOnExclusiveBranches = (
+  first: EsTreeNode,
+  second: EsTreeNode,
+  functionNode: EsTreeNode,
+): boolean => {
+  const firstBranches = collectIfBranches(first, functionNode);
+  if (firstBranches.size === 0) return false;
+  const secondBranches = collectIfBranches(second, functionNode);
+  for (const [ifNode, branch] of firstBranches) {
+    const otherBranch = secondBranches.get(ifNode);
+    if (otherBranch && otherBranch !== branch) return true;
+  }
+  return false;
+};
+
+const recordCheckedResultName = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+  checkedResultNames: Set<string>,
+): void => {
+  const parent = identifier.parent;
+  if (
+    isNodeOfType(parent, "MemberExpression") &&
+    parent.object === identifier &&
+    !parent.computed &&
+    isNodeOfType(parent.property, "Identifier") &&
+    RESULT_SHAPE_PROPERTY_NAMES.has(parent.property.name)
+  ) {
+    checkedResultNames.add(identifier.name);
+    return;
+  }
+  if (
+    isNodeOfType(parent, "IfStatement") ||
+    (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!") ||
+    isNodeOfType(parent, "LogicalExpression")
+  ) {
+    checkedResultNames.add(identifier.name);
+  }
+};
+
 interface SetterCall {
   value: boolean;
   start: number;
@@ -70,16 +233,24 @@ interface SetterCall {
   node: EsTreeNode;
 }
 
+interface AwaitSite {
+  node: EsTreeNodeOfType<"AwaitExpression">;
+  start: number;
+}
+
 const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void => {
-  let firstAwaitStart: number | null = null;
+  const awaitSites: AwaitSite[] = [];
   const settersByName = new Map<string, SetterCall[]>();
+  const checkedResultNames = new Set<string>();
 
   walkOwnScope(functionNode, (node) => {
     if (isNodeOfType(node, "AwaitExpression")) {
       const start = getNodeStart(node);
-      if (start !== null && (firstAwaitStart === null || start < firstAwaitStart)) {
-        firstAwaitStart = start;
-      }
+      if (start !== null) awaitSites.push({ node, start });
+      return;
+    }
+    if (isNodeOfType(node, "Identifier")) {
+      if (isWithinIfTest(node, functionNode)) recordCheckedResultName(node, checkedResultNames);
       return;
     }
     if (!isNodeOfType(node, "CallExpression")) return;
@@ -98,27 +269,44 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
     settersByName.set(setter.setterName, list);
   });
 
-  if (firstAwaitStart === null) return;
-  const awaitStart = firstAwaitStart;
+  if (awaitSites.length === 0) return;
+
+  const rejectionCanSkipReset = (awaitSite: AwaitSite, resetStart: number): boolean =>
+    !isNeverRejectingAwaitedExpression(awaitSite.node) &&
+    !isResultObjectCheckedAwait(awaitSite.node, checkedResultNames) &&
+    !isRejectionSwallowedBeforeReset(awaitSite.node, functionNode, resetStart);
 
   for (const calls of settersByName.values()) {
-    const setsTruthyBeforeAwait = calls.some((call) => call.value && call.start < awaitStart);
-    if (!setsTruthyBeforeAwait) continue;
-
-    const resets = calls.filter((call) => !call.value);
-    if (resets.length === 0) continue;
-
     // A reset in `finally` always runs; a reset in `catch` mirrors the reset
     // on the rejection path. Either discharges the clear-obligation, so the
     // flag is not stuck.
-    if (resets.some((reset) => reset.context === "finally" || reset.context === "catch")) continue;
+    if (
+      calls.some((call) => !call.value && (call.context === "finally" || call.context === "catch"))
+    ) {
+      continue;
+    }
 
-    const successPathReset = resets.find(
-      (reset) => reset.context === "plain" && reset.start > awaitStart,
-    );
-    if (successPathReset) {
-      context.report({ node: successPathReset.node, message: MESSAGE });
-      return;
+    const truthySets = calls.filter((call) => call.value);
+    if (truthySets.length === 0) continue;
+    const plainResets = calls.filter((call) => !call.value && call.context === "plain");
+
+    for (const reset of plainResets) {
+      const stuckFlagAwait = awaitSites.find(
+        (awaitSite) =>
+          awaitSite.start < reset.start &&
+          rejectionCanSkipReset(awaitSite, reset.start) &&
+          truthySets.some(
+            (truthySet) =>
+              truthySet.start < awaitSite.start &&
+              !areOnExclusiveBranches(truthySet.node, reset.node, functionNode) &&
+              !areOnExclusiveBranches(truthySet.node, awaitSite.node, functionNode) &&
+              !areOnExclusiveBranches(awaitSite.node, reset.node, functionNode),
+          ),
+      );
+      if (stuckFlagAwait) {
+        context.report({ node: reset.node, message: MESSAGE });
+        return;
+      }
     }
   }
 };

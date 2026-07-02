@@ -11,70 +11,70 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 interface ListenerMethodPairing {
   registerMethod: string;
-  handlerArgumentIndex: number;
-  requiresEventLiteral: boolean;
+  requiresEventArgument: boolean;
+  allowsHandlerOnlyForm: boolean;
 }
 
-// Keyed by the RELEASE method name. Handler position and whether a
-// leading event/topic string literal must match are per-method: the
-// addEventListener/on family takes `(event, handler)` (handler at index
-// 1, matching event string required); the subscribe family takes just
-// `(handler)` (handler at index 0, no topic to match).
+// Keyed by the RELEASE method name. The addEventListener/on family takes
+// `(event, handler)` (matching event argument required); the subscribe
+// family takes just `(handler)`. addListener/removeListener additionally
+// accept a handler-only form — the legacy MediaQueryList API and Chrome
+// extension events register with `addListener(handler)` alone.
 const RELEASE_METHOD_PAIRINGS = new Map<string, ListenerMethodPairing>([
   [
     "removeEventListener",
     {
       registerMethod: "addEventListener",
-      handlerArgumentIndex: 1,
-      requiresEventLiteral: true,
+      requiresEventArgument: true,
+      allowsHandlerOnlyForm: false,
     },
   ],
   [
     "removeListener",
     {
       registerMethod: "addListener",
-      handlerArgumentIndex: 1,
-      requiresEventLiteral: true,
+      requiresEventArgument: true,
+      allowsHandlerOnlyForm: true,
     },
   ],
   [
     "off",
     {
       registerMethod: "on",
-      handlerArgumentIndex: 1,
-      requiresEventLiteral: true,
+      requiresEventArgument: true,
+      allowsHandlerOnlyForm: false,
     },
   ],
   [
     "unsubscribe",
     {
       registerMethod: "subscribe",
-      handlerArgumentIndex: 0,
-      requiresEventLiteral: false,
+      requiresEventArgument: false,
+      allowsHandlerOnlyForm: false,
     },
   ],
   [
     "unsub",
     {
       registerMethod: "sub",
-      handlerArgumentIndex: 0,
-      requiresEventLiteral: false,
+      requiresEventArgument: false,
+      allowsHandlerOnlyForm: false,
     },
   ],
   [
     "unwatch",
     {
       registerMethod: "watch",
-      handlerArgumentIndex: 0,
-      requiresEventLiteral: false,
+      requiresEventArgument: false,
+      allowsHandlerOnlyForm: false,
     },
   ],
   [
     "unlisten",
     {
       registerMethod: "listen",
-      handlerArgumentIndex: 0,
-      requiresEventLiteral: false,
+      requiresEventArgument: false,
+      allowsHandlerOnlyForm: false,
     },
   ],
 ]);
@@ -88,14 +88,14 @@ const isFunctionLiteral = (node: EsTreeNode | null | undefined): boolean => {
   );
 };
 
-// Purely syntactic receiver key (node text equality, not aliasing
+// Purely syntactic reference key (node text equality, not aliasing
 // analysis) so `window`/`window`, `el`/`el`, `this.emitter`/`this.emitter`
 // match, and `a`/`b` do not. Returns null for shapes we can't compare.
-const serializeReceiver = (node: EsTreeNode): string | null => {
+const serializeReferenceKey = (node: EsTreeNode): string | null => {
   if (isNodeOfType(node, "Identifier")) return node.name;
   if (isNodeOfType(node, "ThisExpression")) return "this";
   if (isNodeOfType(node, "MemberExpression") && !node.computed) {
-    const object = serializeReceiver(node.object);
+    const object = serializeReferenceKey(node.object);
     if (object === null || !isNodeOfType(node.property, "Identifier")) return null;
     return `${object}.${node.property.name}`;
   }
@@ -105,7 +105,8 @@ const serializeReceiver = (node: EsTreeNode): string | null => {
 interface ListenerUsage {
   method: string;
   receiverKey: string;
-  eventLiteralValue: string | null;
+  eventKey: string | null;
+  usesHandlerOnlyForm: boolean;
   handlerNode: EsTreeNode;
 }
 
@@ -117,11 +118,52 @@ const readMemberCallMethod = (node: EsTreeNode): string | null => {
   return callee.property.name;
 };
 
-const getEventLiteralValue = (node: EsTreeNode | null | undefined): string | null => {
+// String literals and expressionless template literals share the `literal:`
+// namespace; identifiers and constant member chains (`EVENTS.RESIZE`) get a
+// `reference:` key so they only match the identical source expression.
+const serializeEventKey = (node: EsTreeNode | null | undefined): string | null => {
   if (!node) return null;
   const stripped = stripParenExpression(node);
   if (isNodeOfType(stripped, "Literal") && typeof stripped.value === "string") {
-    return stripped.value;
+    return `literal:${stripped.value}`;
+  }
+  if (isNodeOfType(stripped, "TemplateLiteral") && stripped.expressions.length === 0) {
+    return `literal:${stripped.quasis[0]?.value.cooked ?? ""}`;
+  }
+  const referenceKey = serializeReferenceKey(stripped);
+  return referenceKey === null ? null : `reference:${referenceKey}`;
+};
+
+const readListenerUsage = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  pairing: ListenerMethodPairing,
+  method: string,
+  receiverKey: string,
+): ListenerUsage | null => {
+  if (!pairing.requiresEventArgument) {
+    const handlerNode = call.arguments?.[0];
+    if (!isFunctionLiteral(handlerNode)) return null;
+    return { method, receiverKey, eventKey: null, usesHandlerOnlyForm: false, handlerNode };
+  }
+  const eventFormHandlerNode = call.arguments?.[1];
+  if (isFunctionLiteral(eventFormHandlerNode)) {
+    return {
+      method,
+      receiverKey,
+      eventKey: serializeEventKey(call.arguments?.[0]),
+      usesHandlerOnlyForm: false,
+      handlerNode: eventFormHandlerNode,
+    };
+  }
+  const handlerOnlyNode = call.arguments?.[0];
+  if (pairing.allowsHandlerOnlyForm && isFunctionLiteral(handlerOnlyNode)) {
+    return {
+      method,
+      receiverKey,
+      eventKey: null,
+      usesHandlerOnlyForm: true,
+      handlerNode: handlerOnlyNode,
+    };
   }
   return null;
 };
@@ -148,36 +190,20 @@ export const effectListenerCleanupReferenceMismatch = defineRule({
         if (!method) return;
         const callee = child.callee;
         if (!isNodeOfType(callee, "MemberExpression")) return;
-        const receiverKey = serializeReceiver(callee.object);
+        const receiverKey = serializeReferenceKey(callee.object);
         if (receiverKey === null) return;
 
-        const pairing = RELEASE_METHOD_PAIRINGS.get(method);
-        if (pairing) {
-          const handlerNode = child.arguments?.[pairing.handlerArgumentIndex];
-          if (!isFunctionLiteral(handlerNode)) return;
-          releaseUsages.push({
-            method,
-            receiverKey,
-            eventLiteralValue: pairing.requiresEventLiteral
-              ? getEventLiteralValue(child.arguments?.[0])
-              : null,
-            handlerNode,
-          });
+        const releasePairing = RELEASE_METHOD_PAIRINGS.get(method);
+        if (releasePairing) {
+          const usage = readListenerUsage(child, releasePairing, method, receiverKey);
+          if (usage) releaseUsages.push(usage);
           return;
         }
 
         for (const [, candidatePairing] of RELEASE_METHOD_PAIRINGS) {
           if (candidatePairing.registerMethod !== method) continue;
-          const handlerNode = child.arguments?.[candidatePairing.handlerArgumentIndex];
-          if (!isFunctionLiteral(handlerNode)) return;
-          registerUsages.push({
-            method,
-            receiverKey,
-            eventLiteralValue: candidatePairing.requiresEventLiteral
-              ? getEventLiteralValue(child.arguments?.[0])
-              : null,
-            handlerNode,
-          });
+          const usage = readListenerUsage(child, candidatePairing, method, receiverKey);
+          if (usage) registerUsages.push(usage);
           return;
         }
       });
@@ -188,10 +214,12 @@ export const effectListenerCleanupReferenceMismatch = defineRule({
         const hasMatchingRegister = registerUsages.some((registerUsage) => {
           if (registerUsage.method !== pairing.registerMethod) return false;
           if (registerUsage.receiverKey !== releaseUsage.receiverKey) return false;
-          if (!pairing.requiresEventLiteral) return true;
+          if (registerUsage.usesHandlerOnlyForm !== releaseUsage.usesHandlerOnlyForm) {
+            return false;
+          }
+          if (!pairing.requiresEventArgument || releaseUsage.usesHandlerOnlyForm) return true;
           return (
-            registerUsage.eventLiteralValue !== null &&
-            registerUsage.eventLiteralValue === releaseUsage.eventLiteralValue
+            registerUsage.eventKey !== null && registerUsage.eventKey === releaseUsage.eventKey
           );
         });
         if (!hasMatchingRegister) continue;

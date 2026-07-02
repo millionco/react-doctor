@@ -147,6 +147,80 @@ describe("no-unguarded-browser-global-at-module-scope", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a read guarded by an aliased typeof check (fbjs/exenv canUseDOM idiom)", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `const canUseDOM = typeof window !== 'undefined';
+       const initialWidth = canUseDOM ? window.innerWidth : 0;`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a read guarded by an exported guard alias in an if block", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `export const isBrowser = typeof window !== 'undefined';
+       if (isBrowser) { window.addEventListener('resize', () => {}); }`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a module-scope read inside try/catch (localStorage feature-detect idiom)", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `let persisted = null;
+       try { persisted = localStorage.getItem('theme'); } catch { persisted = null; }`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a read inside a try block without a catch handler", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `let persisted = null;
+       try { persisted = localStorage.getItem('theme'); } finally { persisted = persisted ?? null; }`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag window reads guarded by typeof document (DOM-library guard shape)", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `if (typeof document !== 'undefined') { window.addEventListener('resize', () => {}); }`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag reads guarded by import.meta.env.SSR (Vite docs idiom)", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `if (!import.meta.env.SSR) { window.addEventListener('resize', () => {}); }`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag reads guarded by process.browser (legacy Next.js idiom)", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalAtModuleScope,
+      `if (process.browser) { window.addEventListener('resize', () => {}); }`,
+      prod,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays quiet in test/setup files", () => {
     const result = runRule(
       noUnguardedBrowserGlobalAtModuleScope,

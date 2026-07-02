@@ -27,6 +27,30 @@ describe("no-unsafe-json-parse", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags object destructuring straight off the parse result", () => {
+    const result = runRule(noUnsafeJsonParse, `const { foo } = JSON.parse(raw);`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags array destructuring straight off the parse result", () => {
+    const result = runRule(noUnsafeJsonParse, `const [first] = JSON.parse(raw);`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a parse dereference in a handler merely defined inside a try block", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `
+      try {
+        socket.onmessage = (event) => setItems(JSON.parse(event.data).items);
+      } catch (error) {
+        handle(error);
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a bare assignment with no member access", () => {
     const result = runRule(noUnsafeJsonParse, `const data = JSON.parse(raw);`);
     expect(result.diagnostics).toHaveLength(0);
@@ -45,6 +69,33 @@ describe("no-unsafe-json-parse", () => {
       noUnsafeJsonParse,
       `try { const m = JSON.parse(raw).foo; } catch (error) { handle(error); }`,
     );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a synchronous array-callback parse inside an enclosing try block", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `
+      try {
+        const values = items.map((item) => JSON.parse(item).value);
+      } catch (error) {
+        handle(error);
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag object destructuring inside an enclosing try block", () => {
+    const result = runRule(
+      noUnsafeJsonParse,
+      `try { const { foo } = JSON.parse(raw); } catch (error) { handle(error); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag destructuring when the result is annotated with an as-cast", () => {
+    const result = runRule(noUnsafeJsonParse, `const { foo } = JSON.parse(raw) as Payload;`);
     expect(result.diagnostics).toHaveLength(0);
   });
 

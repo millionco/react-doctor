@@ -43,16 +43,86 @@ describe("no-side-effect-in-state-updater-function", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a side effect inside a dispatch updater", () => {
+  it("flags a logging call inside a block-body setter updater", () => {
     const result = runRule(
       noSideEffectInStateUpdaterFunction,
-      `dispatch((prev) => {
+      `setDialog((prev) => {
         const next = { ...prev, open: true };
         logEvent('opened');
         return next;
       });`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an &&-guarded consumer callback like the equivalent if statement", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `setSessions((prev) => {
+        const updated = prev.filter((s) => s.id !== sessionId);
+        updated.length !== prev.length && onSessionsChange(updated);
+        return updated;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an analytics call inside a synchronously invoked forEach callback", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `setItems((prev) => {
+        const next = [...prev];
+        next.forEach((item) => {
+          trackView(item.id);
+        });
+        return next;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a deferred dismiss handler stored on the next state (toast onDismiss idiom)", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `setToasts((prev) => prev.concat({
+        id,
+        dismiss: () => {
+          onDismiss?.(id);
+          return true;
+        },
+      }));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a deferred column sorter stored in a block-body updater", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `setColumns((prev) => {
+        const next = prev.map((column) => ({
+          ...column,
+          sort: () => {
+            onSort?.(column.id);
+            return column.id;
+          },
+        }));
+        return next;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a redux-thunk passed to dispatch (dispatch is not a React updater)", () => {
+    const result = runRule(
+      noSideEffectInStateUpdaterFunction,
+      `dispatch(async (dispatch, getState) => {
+        const settings = getState().settings;
+        const saved = await api.save(settings);
+        onSaved?.(saved);
+        return saved;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag a pure Set builder updater", () => {

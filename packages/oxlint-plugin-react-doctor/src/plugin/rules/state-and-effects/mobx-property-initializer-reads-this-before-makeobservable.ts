@@ -72,20 +72,30 @@ interface ObservableSetup {
   annotationKeys: Set<string>;
 }
 
+const isNestedClass = (child: EsTreeNode, classNode: EsTreeNode): boolean =>
+  child !== classNode &&
+  (isNodeOfType(child, "ClassDeclaration") || isNodeOfType(child, "ClassExpression"));
+
 const collectObservableSetup = (classNode: EsTreeNode): ObservableSetup => {
   let hasSetupCall = false;
   const annotationKeys = new Set<string>();
   walkAst(classNode, (child: EsTreeNode) => {
+    if (isNestedClass(child, classNode)) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isNodeOfType(child.callee, "Identifier")) return;
     const calleeName = child.callee.name;
     if (!OBSERVABLE_SETUP_CALLEES.has(calleeName)) return;
+    if (!ANNOTATION_ARGUMENT_CALLEES.has(calleeName)) {
+      hasSetupCall = true;
+      return;
+    }
+    if (!isNodeOfType(child.arguments?.[0], "ThisExpression")) return;
     hasSetupCall = true;
-    if (!ANNOTATION_ARGUMENT_CALLEES.has(calleeName)) return;
     const annotationArgument = child.arguments?.[1];
     if (!isNodeOfType(annotationArgument, "ObjectExpression")) return;
     for (const property of annotationArgument.properties ?? []) {
       if (!isNodeOfType(property, "Property")) continue;
+      if (!OBSERVABLE_DECORATOR_NAMES.has(getDecoratorRootName(property.value) ?? "")) continue;
       const keyName = getPropertyKeyName(property.key);
       if (keyName) annotationKeys.add(keyName);
     }

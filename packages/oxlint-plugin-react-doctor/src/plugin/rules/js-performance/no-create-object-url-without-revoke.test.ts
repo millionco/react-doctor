@@ -27,6 +27,41 @@ describe("no-create-object-url-without-revoke", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a guarded object URL assigned to a pre-declared variable", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const useImage = (data) => {
+         let imageObjectUrl;
+         imageObjectUrl = data && URL.createObjectURL(data);
+         setImgObjectUrl(imageObjectUrl);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an if-guarded object URL assigned to a pre-declared variable", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const useImage = (data) => {
+         let imageObjectUrl;
+         if (data) imageObjectUrl = URL.createObjectURL(data);
+         setImgObjectUrl(imageObjectUrl);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an object URL set as an anchor href via setAttribute", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const download = (blob) => {
+         a.setAttribute('href', URL.createObjectURL(blob));
+         a.click();
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags an inline per-render src object URL", () => {
     const result = runRule(
       noCreateObjectUrlWithoutRevoke,
@@ -94,6 +129,26 @@ describe("no-create-object-url-without-revoke", () => {
       noCreateObjectUrlWithoutRevoke,
       `const URL = getPolyfill();
        a.href = URL.createObjectURL(blob);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for an unguarded object URL assigned to a pre-declared variable", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `const onSelect = (file) => {
+         let preview;
+         preview = URL.createObjectURL(file);
+         setAvatar(preview);
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for setAttribute with a non-URL attribute name", () => {
+    const result = runRule(
+      noCreateObjectUrlWithoutRevoke,
+      `element.setAttribute('data-preview', URL.createObjectURL(blob));`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

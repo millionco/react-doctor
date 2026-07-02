@@ -120,6 +120,45 @@ describe("styled-static-zero-arg-arrow-interpolation", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag an arrow deferring a window read past module init (SSR-safe viewport idiom)", () => {
+    const result = runRule(
+      styledStaticZeroArgArrowInterpolation,
+      `
+      ${STYLED_IMPORT}
+      const FullHeight = styled.div\`
+        min-height: \${() => window.innerHeight}px;
+      \`;
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an arrow reading document state per render (RTL direction idiom)", () => {
+    const result = runRule(
+      styledStaticZeroArgArrowInterpolation,
+      `
+      ${STYLED_IMPORT}
+      const Label = styled.div\`
+        text-align: \${() => (document.dir === 'rtl' ? 'right' : 'left')};
+      \`;
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an arrow referencing an unresolved ambient global", () => {
+    const result = runRule(
+      styledStaticZeroArgArrowInterpolation,
+      `
+      ${STYLED_IMPORT}
+      const Bar = styled.div\`
+        height: \${() => navigator.userAgentData ? '10px' : '20px'};
+      \`;
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag interpolations in a non-styled tagged template", () => {
     const result = runRule(
       styledStaticZeroArgArrowInterpolation,

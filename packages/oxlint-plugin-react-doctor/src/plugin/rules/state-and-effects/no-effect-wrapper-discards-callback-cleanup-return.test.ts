@@ -55,6 +55,93 @@ describe("no-effect-wrapper-discards-callback-cleanup-return", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a bare optional call effect?.() on an optional EffectCallback param", () => {
+    const result = runRule(
+      noEffectWrapperDiscardsCallbackCleanupReturn,
+      `const useUpdateEffect = (effect?: EffectCallback, deps?: DependencyList) => {
+        const mounted = useRef(false);
+        useEffect(() => {
+          if (mounted.current) {
+            effect?.();
+          } else {
+            mounted.current = true;
+          }
+        }, deps);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a guarded bare call mounted.current && effect()", () => {
+    const result = runRule(
+      noEffectWrapperDiscardsCallbackCleanupReturn,
+      `const useUpdateEffect = (effect: EffectCallback, deps?: DependencyList) => {
+        const mounted = useRef(false);
+        useEffect(() => {
+          mounted.current && effect();
+          mounted.current = true;
+        }, deps);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a bare call inside a statement-position ternary", () => {
+    const result = runRule(
+      noEffectWrapperDiscardsCallbackCleanupReturn,
+      `const useUpdateEffect = (effect: EffectCallback, deps?: DependencyList) => {
+        const mounted = useRef(false);
+        useEffect(() => {
+          mounted.current ? effect() : (mounted.current = true);
+        }, deps);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a bare call when the EffectCallback param has a default value", () => {
+    const result = runRule(
+      noEffectWrapperDiscardsCallbackCleanupReturn,
+      `const useUpdateEffect = (effect: EffectCallback = () => {}, deps?: DependencyList) => {
+        const mounted = useRef(false);
+        useEffect(() => {
+          if (mounted.current) {
+            effect();
+          } else {
+            mounted.current = true;
+          }
+        }, deps);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet for a defaulted param typed plain () => void", () => {
+    const result = runRule(
+      noEffectWrapperDiscardsCallbackCleanupReturn,
+      `const useEffectOnce = (effect: () => void = () => {}, deps?: DependencyList) => {
+        useEffect(() => {
+          effect();
+        }, deps);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when the optional call is already returned", () => {
+    const result = runRule(
+      noEffectWrapperDiscardsCallbackCleanupReturn,
+      `const useUpdateEffect = (effect?: EffectCallback, deps?: DependencyList) => {
+        const mounted = useRef(false);
+        useEffect(() => {
+          if (mounted.current) return effect?.();
+          mounted.current = true;
+        }, deps);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays quiet when the param is typed () => void", () => {
     const result = runRule(
       noEffectWrapperDiscardsCallbackCleanupReturn,

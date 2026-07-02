@@ -36,20 +36,20 @@ describe("no-unguarded-numeric-input-parse", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not flag a radix-less parseInt already owned by no-parseint-without-radix", () => {
+  it("flags a radix-less parseInt now that no-parseint-without-radix is retired", () => {
     const result = runRule(
       noUnguardedNumericInputParse,
       `const F = () => <input onChange={(e) => setX(parseInt(e.target.value))} />;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("does not flag a radix-less Number.parseInt already owned by no-parseint-without-radix", () => {
+  it("flags a radix-less Number.parseInt now that no-parseint-without-radix is retired", () => {
     const result = runRule(
       noUnguardedNumericInputParse,
       `const F = () => <input onChange={(e) => setX(Number.parseInt(e.target.value))} />;`,
     );
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("flags a coercion of e.target.valueAsNumber", () => {
@@ -114,5 +114,97 @@ describe("no-unguarded-numeric-input-parse", () => {
       `const handleChange = (e) => setX(Number(e.target.value));`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag the canonical slider idiom: Number(e.target.value) on <input type='range'>", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input type="range" min={0} max={100} onChange={(e) => setVolume(Number(e.target.value))} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a radio input whose value is a fixed numeric literal", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input type="radio" value="2" checked={x === 2} onChange={(e) => setX(Number(e.target.value))} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a range input whose type is an expression-container string literal", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input type={"range"} onInput={(e) => setBlur(Number(e.currentTarget.value))} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a free-text type='number' field", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input type="number" onChange={(e) => setX(Number(e.target.value))} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an input whose type is a dynamic expression", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input type={inputType} onChange={(e) => setX(Number(e.target.value))} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag the empty-check early-return idiom before the parse", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input onChange={(e) => {
+        if (e.target.value === "") return;
+        setX(Number(e.target.value));
+      }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a && short-circuit whose left operand checks the value", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input onChange={(e) => e.target.value !== "" && setX(Number(e.target.value))} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag the parse-then-Number.isNaN-gate idiom the rule itself recommends", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input onChange={(e) => {
+        const next = Number(e.target.value);
+        if (!Number.isNaN(next)) setX(next);
+      }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a stored parse gated by a Number.isFinite ternary", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input onChange={(e) => {
+        const next = parseFloat(e.target.value);
+        setX(Number.isFinite(next) ? next : fallback);
+      }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags when the only if-statement in the handler is unrelated to the value", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input onChange={(e) => {
+        if (isOpen) trackEvent();
+        setX(Number(e.target.value));
+      }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

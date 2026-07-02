@@ -15,13 +15,25 @@ import type { RuleContext } from "../../utils/rule-context.js";
 const PARENTHESIZED_EXPRESSION: string = "ParenthesizedExpression";
 const DEPRECATED_NUMERIC_MEMBERS = new Set(["keyCode", "which", "charCode"]);
 const COMPARISON_OPERATORS = new Set(["===", "!==", "==", "!=", "<", ">", "<=", ">="]);
+const RELATIONAL_OPERATORS = new Set(["<", ">", "<=", ">="]);
 const MOUSE_BUTTON_LITERALS = new Set([1, 2, 3, 4]);
 const IME_COMPOSITION_KEYCODE = 229;
+// Control/navigation/activation keyCodes (Backspace, Tab, Enter,
+// modifiers, Escape, Space, PageUp/Down, End/Home, arrows, Insert,
+// Delete, Meta, F1-F12, locks) are identical across keyboard layouts,
+// browsers, and IMEs — comparing keyCode against them is layout-safe,
+// unlike letter (65-90), digit (48-57), and punctuation (186-222) codes.
+const LAYOUT_INVARIANT_CONTROL_KEYCODES = new Set([
+  8, 9, 13, 16, 17, 18, 19, 20, 27, 32, 33, 34, 35, 36, 37, 38, 39, 40, 45, 46, 91, 92, 93, 112,
+  113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 144, 145,
+]);
+const STANDARD_KEY_MEMBERS = new Set(["key", "code"]);
+const MOUSE_BUTTON_MEMBERS = new Set(["button", "buttons"]);
 const KEYBOARD_HANDLER_NAME_PATTERN = /key(down|up|press)/i;
 const KEYBOARD_LISTENER_EVENTS = new Set(["keydown", "keyup", "keypress"]);
 
 const MESSAGE =
-  "`KeyboardEvent.keyCode`/`which`/`charCode` are deprecated and vary by keyboard layout, browser, and input method, so this branch fires on the wrong key (or never) for untested layouts. Branch on the standardized `event.key` (logical key) or `event.code` (physical key) instead.";
+  "`KeyboardEvent.keyCode`/`which`/`charCode` are deprecated, and this comparison targets a character code that varies by keyboard layout, browser, and input method, so the branch fires on the wrong key (or never) for untested layouts. Branch on the standardized `event.key` (logical key) or `event.code` (physical key) instead.";
 
 const meaningfulParent = (node: EsTreeNode): EsTreeNode | null => {
   let parent = node.parent ?? null;
@@ -29,17 +41,60 @@ const meaningfulParent = (node: EsTreeNode): EsTreeNode | null => {
   return parent;
 };
 
-const getComparedNumericLiteral = (memberNode: EsTreeNode): number | null => {
+const resolveNumericValue = (operand: EsTreeNode): number | null => {
+  const valueNode = stripGroupingParens(operand);
+  if (isNodeOfType(valueNode, "Literal") && typeof valueNode.value === "number") {
+    return valueNode.value;
+  }
+  if (isNodeOfType(valueNode, "Identifier")) {
+    const binding = findVariableInitializer(valueNode, valueNode.name);
+    const initializer = binding?.initializer ?? null;
+    if (
+      initializer &&
+      isNodeOfType(initializer, "Literal") &&
+      typeof initializer.value === "number"
+    ) {
+      return initializer.value;
+    }
+  }
+  return null;
+};
+
+interface DeprecatedReadComparison {
+  operator: string;
+  comparedValue: number | null;
+}
+
+const getComparison = (memberNode: EsTreeNode): DeprecatedReadComparison | null => {
   const parent = meaningfulParent(memberNode);
   if (!parent || !isNodeOfType(parent, "BinaryExpression")) return null;
   if (!COMPARISON_OPERATORS.has(parent.operator)) return null;
-  const other =
+  const otherOperand =
     stripGroupingParens(parent.left as EsTreeNode) === memberNode ? parent.right : parent.left;
-  const otherNode = stripGroupingParens(other as EsTreeNode);
-  if (isNodeOfType(otherNode, "Literal") && typeof otherNode.value === "number") {
-    return otherNode.value;
+  return {
+    operator: parent.operator,
+    comparedValue: resolveNumericValue(otherOperand as EsTreeNode),
+  };
+};
+
+const isLayoutSensitiveCode = (value: number): boolean =>
+  value !== IME_COMPOSITION_KEYCODE && !LAYOUT_INVARIANT_CONTROL_KEYCODES.has(value);
+
+const switchTargetsLayoutSensitiveCode = (conditionRoot: EsTreeNode): boolean => {
+  const parent = conditionRoot.parent ?? null;
+  if (
+    !parent ||
+    !isNodeOfType(parent, "SwitchStatement") ||
+    parent.discriminant !== conditionRoot
+  ) {
+    return false;
   }
-  return null;
+  return parent.cases.some((switchCase) => {
+    const testNode = switchCase.test;
+    if (!testNode) return false;
+    const caseValue = resolveNumericValue(testNode as EsTreeNode);
+    return caseValue !== null && isLayoutSensitiveCode(caseValue);
+  });
 };
 
 interface BranchingContext {
@@ -119,6 +174,12 @@ const functionIsKeyboardHandler = (fnNode: EsTreeNode): boolean => {
   if (isNodeOfType(parent, "Property") && isNodeOfType(parent.key, "Identifier")) {
     return nameLooksLikeKeyboardHandler(parent.key.name);
   }
+  if (isNodeOfType(parent, "PropertyDefinition") && isNodeOfType(parent.key, "Identifier")) {
+    return nameLooksLikeKeyboardHandler(parent.key.name);
+  }
+  if (isNodeOfType(parent, "MethodDefinition") && isNodeOfType(parent.key, "Identifier")) {
+    return nameLooksLikeKeyboardHandler(parent.key.name);
+  }
   if (
     isNodeOfType(parent, "AssignmentExpression") &&
     isNodeOfType(parent.left, "MemberExpression")
@@ -157,9 +218,13 @@ const functionIsKeyboardHandler = (fnNode: EsTreeNode): boolean => {
   return false;
 };
 
-const conditionAlsoReadsKeyOrCode = (conditionRoot: EsTreeNode, receiverName: string): boolean => {
+const receiverReadsAnyProperty = (
+  scopeNode: EsTreeNode,
+  receiverName: string,
+  propertyNames: Set<string>,
+): boolean => {
   let found = false;
-  walkAst(conditionRoot, (child) => {
+  walkAst(scopeNode, (child) => {
     if (found) return false;
     if (
       isNodeOfType(child, "MemberExpression") &&
@@ -167,26 +232,7 @@ const conditionAlsoReadsKeyOrCode = (conditionRoot: EsTreeNode, receiverName: st
       isNodeOfType(child.object, "Identifier") &&
       child.object.name === receiverName &&
       isNodeOfType(child.property, "Identifier") &&
-      (child.property.name === "key" || child.property.name === "code")
-    ) {
-      found = true;
-      return false;
-    }
-  });
-  return found;
-};
-
-const receiverAlsoReadsMouseButton = (fnNode: EsTreeNode, receiverName: string): boolean => {
-  let found = false;
-  walkAst(fnNode, (child) => {
-    if (found) return false;
-    if (
-      isNodeOfType(child, "MemberExpression") &&
-      !child.computed &&
-      isNodeOfType(child.object, "Identifier") &&
-      child.object.name === receiverName &&
-      isNodeOfType(child.property, "Identifier") &&
-      (child.property.name === "button" || child.property.name === "buttons")
+      propertyNames.has(child.property.name)
     ) {
       found = true;
       return false;
@@ -196,19 +242,22 @@ const receiverAlsoReadsMouseButton = (fnNode: EsTreeNode, receiverName: string):
 };
 
 // Flags branching on a KeyboardEvent's deprecated numeric `keyCode` /
-// `which` / `charCode` instead of the standardized `key` / `code`. The
-// numeric codes drift across keyboard layouts, browsers, and input
-// methods, so a switch/if keyed off them silently mishandles keys for
-// untested layouts. Stays quiet on mouse-button `which`, the IME
-// `keyCode === 229` idiom, transitional `key || which` fallbacks, and
-// object-literal event-synthesis keys.
+// `which` / `charCode` where the targeted code is genuinely layout- or
+// IME-sensitive: any `charCode` read, relational character-range checks,
+// and comparisons against resolvable numeric codes for letters, digits,
+// or punctuation (which drift across keyboard layouts). Stays quiet on
+// layout-invariant control keys (Enter, Escape, Space, Tab, arrows, …),
+// unresolvable named key constants (`KeyCode.ENTER`), mouse-button
+// `which`, the IME `keyCode === 229` idiom, handlers that already read
+// `key`/`code` as a progressive-enhancement fallback, and object-literal
+// event-synthesis keys.
 export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
   id: "no-deprecated-keyboard-event-keycode-which",
   title: "Deprecated KeyboardEvent keyCode or which",
   severity: "warn",
   category: "Correctness",
   recommendation:
-    "`KeyboardEvent.keyCode`/`which`/`charCode` are deprecated and layout/engine dependent. Branch on `event.key` (logical key like `'Escape'`) or `event.code` (physical position) so the handler works across keyboard layouts and browsers.",
+    "`KeyboardEvent.keyCode`/`which`/`charCode` are deprecated and layout/engine dependent for character keys. Branch on `event.key` (logical key like `'/'`) or `event.code` (physical position) so the handler works across keyboard layouts and browsers.",
   create: (context: RuleContext) => ({
     MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
       if (node.computed) return;
@@ -242,22 +291,39 @@ export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
       const binding = findVariableInitializer(receiver, receiverName);
       if (binding && binding.scopeOwner !== enclosingFunction) return;
 
-      const comparedLiteral = getComparedNumericLiteral(node as EsTreeNode);
-      if (comparedLiteral === IME_COMPOSITION_KEYCODE) return;
+      const comparison = getComparison(node as EsTreeNode);
+      const comparedValue = comparison ? comparison.comparedValue : null;
+      if (comparedValue === IME_COMPOSITION_KEYCODE) return;
       if (
         propertyName === "which" &&
-        comparedLiteral !== null &&
-        MOUSE_BUTTON_LITERALS.has(comparedLiteral)
+        comparedValue !== null &&
+        MOUSE_BUTTON_LITERALS.has(comparedValue)
       ) {
         return;
       }
       if (
         propertyName === "which" &&
-        receiverAlsoReadsMouseButton(enclosingFunction, receiverName)
+        receiverReadsAnyProperty(enclosingFunction, receiverName, MOUSE_BUTTON_MEMBERS)
       ) {
         return;
       }
-      if (conditionAlsoReadsKeyOrCode(conditionRoot, receiverName)) return;
+      if (receiverReadsAnyProperty(enclosingFunction, receiverName, STANDARD_KEY_MEMBERS)) return;
+
+      if (propertyName !== "charCode") {
+        const isRelationalRangeCheck = Boolean(
+          comparison && RELATIONAL_OPERATORS.has(comparison.operator),
+        );
+        const comparesLayoutSensitiveCode =
+          comparedValue !== null && isLayoutSensitiveCode(comparedValue);
+        const switchesOnLayoutSensitiveCode = switchTargetsLayoutSensitiveCode(conditionRoot);
+        if (
+          !isRelationalRangeCheck &&
+          !comparesLayoutSensitiveCode &&
+          !switchesOnLayoutSensitiveCode
+        ) {
+          return;
+        }
+      }
 
       context.report({ node, message: MESSAGE });
     },

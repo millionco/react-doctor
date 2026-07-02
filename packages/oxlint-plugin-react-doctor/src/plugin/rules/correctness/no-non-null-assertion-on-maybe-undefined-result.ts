@@ -88,6 +88,74 @@ const scopeProvesKeyPresence = (assertion: EsTreeNode, receiverKey: string): boo
   return proven;
 };
 
+// The `get` branch only fires when the map's emptiness at construction is
+// provable in scope: the receiver must be a local variable initialized with
+// a bare `new Map()` / `new WeakMap()` (no entries argument). Parameters,
+// call-initialized variables (`const sides = assignSides(...)`), `new
+// Map(entries)` lookups, `this.*` fields, and unresolvable receivers all
+// carry cross-function population invariants the rule cannot see, so they
+// abstain.
+const isBareMapConstruction = (node: EsTreeNode | null | undefined): boolean => {
+  if (!node) return false;
+  const target = stripParenExpression(node);
+  return (
+    isNodeOfType(target, "NewExpression") &&
+    isNodeOfType(target.callee, "Identifier") &&
+    (target.callee.name === "Map" || target.callee.name === "WeakMap") &&
+    target.arguments.length === 0
+  );
+};
+
+const scopeDeclaresEmptyMap = (assertion: EsTreeNode, receiverName: string): boolean => {
+  const scope = findOutermostScope(assertion);
+  if (!scope) return false;
+  let didFindDeclaration = false;
+  walkAst(scope, (child) => {
+    if (didFindDeclaration) return false;
+    if (!isNodeOfType(child, "VariableDeclarator")) return;
+    if (!isNodeOfType(child.id, "Identifier") || child.id.name !== receiverName) return;
+    if (isBareMapConstruction(child.init ? (child.init as EsTreeNode) : null)) {
+      didFindDeclaration = true;
+      return false;
+    }
+  });
+  return didFindDeclaration;
+};
+
+// Normalize the regex a `.match(...)` receives so it can be compared with
+// the receiver of a `.test(...)` call: same identifier, or a regex literal
+// with the same source text.
+const regexComparableKey = (node: EsTreeNode): string | null => {
+  const target = stripParenExpression(node);
+  if (isNodeOfType(target, "Identifier")) return `id:${target.name}`;
+  if (isNodeOfType(target, "Literal") && "regex" in target) return `regex:${target.raw}`;
+  return null;
+};
+
+// `str.match(re)!` is likely on a proven-matching path when the enclosing
+// scope also runs `re.test(...)` (validate-then-extract), so abstain there.
+const scopeProvesMatchTested = (assertion: EsTreeNode, regexKey: string): boolean => {
+  const scope = findOutermostScope(assertion);
+  if (!scope) return false;
+  let proven = false;
+  walkAst(scope, (child) => {
+    if (proven) return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = child.callee;
+    if (
+      isNodeOfType(callee, "MemberExpression") &&
+      !callee.computed &&
+      isNodeOfType(callee.property, "Identifier") &&
+      callee.property.name === "test" &&
+      regexComparableKey(callee.object as EsTreeNode) === regexKey
+    ) {
+      proven = true;
+      return false;
+    }
+  });
+  return proven;
+};
+
 const isPredicateArgument = (node: EsTreeNode | null | undefined): boolean =>
   Boolean(
     node &&
@@ -120,15 +188,20 @@ export const noNonNullAssertionOnMaybeUndefinedResult = defineRule({
         if (methodName === "find" || methodName === "findLast") {
           if (!isPredicateArgument(args[0] ? stripParenExpression(args[0]) : null)) return;
         }
+        if (methodName === "match") {
+          const pattern = args[0] ? stripParenExpression(args[0]) : null;
+          const regexKey = pattern ? regexComparableKey(pattern) : null;
+          if (regexKey && scopeProvesMatchTested(node as EsTreeNode, regexKey)) return;
+        }
         if (methodName === "get") {
           const key = args[0] ? stripParenExpression(args[0]) : null;
           // A static literal key is often known-present; only dynamic keys
           // carry real miss risk.
           if (!key || isNodeOfType(key, "Literal")) return;
-          const receiverKey = receiverPathKey(callee.object as EsTreeNode);
-          if (receiverKey && scopeProvesKeyPresence(node as EsTreeNode, receiverKey)) {
-            return;
-          }
+          const receiver = stripParenExpression(callee.object as EsTreeNode);
+          if (!isNodeOfType(receiver, "Identifier")) return;
+          if (!scopeDeclaresEmptyMap(node as EsTreeNode, receiver.name)) return;
+          if (scopeProvesKeyPresence(node as EsTreeNode, receiver.name)) return;
         }
 
         context.report({ node, message });

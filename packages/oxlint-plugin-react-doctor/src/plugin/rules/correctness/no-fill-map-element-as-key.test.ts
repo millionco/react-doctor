@@ -108,6 +108,87 @@ describe("no-fill-map-element-as-key", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a for-loop counter shadowing the map param (calendar week/day grid idiom)", () => {
+    const result = runRule(
+      noFillMapElementAsKey,
+      `const Calendar = ({ weeks }) =>
+        Array(weeks).fill(null).map((i) => {
+          const days = [];
+          for (let i = 0; i < 7; i++) days.push(<Day key={i} />);
+          return <Week>{days}</Week>;
+        });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a for-of [i, v] entries() destructure shadowing the map param", () => {
+    const result = runRule(
+      noFillMapElementAsKey,
+      `const Grid = ({ rows, cells }) =>
+        Array(rows).fill(null).map((i) => {
+          const rendered = [];
+          for (const [i, cell] of cells.entries()) rendered.push(<Cell key={i} value={cell} />);
+          return <Row>{rendered}</Row>;
+        });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a nested-block const shadowing the map param", () => {
+    const result = runRule(
+      noFillMapElementAsKey,
+      `const Blocks = ({ n }) =>
+        Array(n).fill(null).map((i) => {
+          {
+            const i = nextStableId();
+            return <Row key={i} />;
+          }
+        });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a const fill array mapped through a variable (skeleton-loader idiom)", () => {
+    const result = runRule(
+      noFillMapElementAsKey,
+      `const Skeletons = ({ count }) => {
+        const slots = Array(count).fill(null);
+        return slots.map((index) => <Row key={index} />);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a const fill array whose elements are mutated before mapping", () => {
+    const result = runRule(
+      noFillMapElementAsKey,
+      `const Positions = ({ count }) => {
+        const slots = Array(count).fill(0);
+        slots.forEach((_, position) => { slots[position] = position * 2; });
+        return slots.map((i) => <Row key={i} />);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a let fill array that may be reassigned before mapping", () => {
+    const result = runRule(
+      noFillMapElementAsKey,
+      `const Rows = ({ count, loaded }) => {
+        let slots = Array(count).fill(null);
+        if (loaded) slots = fetchRows();
+        return slots.map((index) => <Row key={index} />);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag when the index key lives inside a nested function, not the map callback", () => {
     const result = runRule(
       noFillMapElementAsKey,

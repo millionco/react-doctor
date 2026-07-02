@@ -81,6 +81,100 @@ describe("no-window-size-in-render", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags destructuring innerWidth from window in a component body", () => {
+    const result = runRule(
+      noWindowSizeInRender,
+      `
+      const Banner = () => {
+        const { innerWidth } = window;
+        return <img width={innerWidth - 32} />;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a renamed destructured viewport read from globalThis", () => {
+    const result = runRule(
+      noWindowSizeInRender,
+      `
+      const Hero = () => {
+        const { innerHeight: viewportHeight } = globalThis;
+        return viewportHeight > 800 ? <Big /> : <Small />;
+      };
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a viewport read inside a synchronous IIFE in the component body", () => {
+    const result = runRule(
+      noWindowSizeInRender,
+      `
+      const Banner = () => {
+        const w = (() => window.innerWidth)();
+        return <img width={w} />;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag destructuring non-size window props (router/env feature reads)", () => {
+    const result = runRule(
+      noWindowSizeInRender,
+      `
+      const Comp = () => {
+        const { location, navigator } = window;
+        return <div data-path={location.pathname} data-ua={navigator.userAgent} />;
+      };
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag destructuring from a shadowed local window binding (test-stub idiom)", () => {
+    const result = runRule(
+      noWindowSizeInRender,
+      `
+      const Comp = () => {
+        const window = getStubWindow();
+        const { innerWidth } = window;
+        return <div data-w={innerWidth} />;
+      };
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag module-scope destructuring (client-only entry constant idiom)", () => {
+    const result = runRule(
+      noWindowSizeInRender,
+      `
+      const { innerWidth } = window;
+      const Comp = () => <div data-w={innerWidth} />;
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a read inside an async IIFE (fire-and-forget measurement idiom)", () => {
+    const result = runRule(
+      noWindowSizeInRender,
+      `
+      const Comp = () => {
+        (async () => {
+          await report(window.innerWidth);
+        })();
+        return <div />;
+      };
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a useState lazy initializer", () => {
     const result = runRule(
       noWindowSizeInRender,

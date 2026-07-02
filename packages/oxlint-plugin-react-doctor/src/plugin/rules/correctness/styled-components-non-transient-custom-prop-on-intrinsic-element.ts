@@ -6,6 +6,7 @@ import { DOM_PROPERTY_TO_ALLOWED_TAGS } from "../../constants/dom-property-tags.
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // Attributes that live in the global known-attribute set but are only
@@ -19,21 +20,50 @@ const ELEMENT_RESTRICTED_ATTRIBUTES: ReadonlyMap<string, ReadonlySet<string>> = 
 
 const EVENT_HANDLER_PROP_PATTERN = /^on[A-Z]/;
 
+// Props styled-components consumes internally (v6 createStyledComponent
+// skips them when building the element's props), so they never reach the
+// DOM node and prefixing them with `$` would break their behavior.
+const STYLED_COMPONENTS_CONSUMED_PROPS: ReadonlySet<string> = new Set([
+  "theme",
+  "as",
+  "forwardedAs",
+]);
+
 interface StyledIntrinsicTag {
   readonly tagName: string;
 }
 
+// Unwraps `.attrs(...)` chains — `.attrs()` merges attributes and strips
+// nothing, so `styled.div.attrs({...})` is still an intrinsic target whose
+// non-transient custom props forward to the DOM. `withConfig(...)` stays
+// opaque because `shouldForwardProp` can legitimately filter the prop.
+const unwrapAttrsCalls = (tag: EsTreeNode): EsTreeNode => {
+  let current = tag;
+  while (
+    isNodeOfType(current, "CallExpression") &&
+    isNodeOfType(current.callee, "MemberExpression") &&
+    !current.callee.computed &&
+    isNodeOfType(current.callee.property, "Identifier") &&
+    current.callee.property.name === "attrs"
+  ) {
+    current = current.callee.object;
+  }
+  return current;
+};
+
 // `styled.div` / `styled.button` — a non-computed `.<lowercase>` member off
-// the `styled` identifier. `styled(Component)`, `styled.div.attrs(...)`, and
-// `withConfig(...)` all produce a CallExpression tag, so they never match
-// here — matching the "only intrinsic, un-stripped" scope.
+// the `styled` identifier, optionally behind `.attrs(...)` calls.
+// `styled(Component)` and `withConfig(...)` produce non-matching shapes,
+// so they never match here — matching the "only intrinsic, un-stripped"
+// scope.
 const readStyledIntrinsicTag = (tag: EsTreeNode): StyledIntrinsicTag | null => {
-  if (!isNodeOfType(tag, "MemberExpression") || tag.computed) return null;
-  if (!isNodeOfType(tag.object, "Identifier") || tag.object.name !== "styled") return null;
-  if (!isNodeOfType(tag.property, "Identifier")) return null;
-  const firstCharacterCode = tag.property.name.charCodeAt(0);
+  const base = unwrapAttrsCalls(tag);
+  if (!isNodeOfType(base, "MemberExpression") || base.computed) return null;
+  if (!isNodeOfType(base.object, "Identifier") || base.object.name !== "styled") return null;
+  if (!isNodeOfType(base.property, "Identifier")) return null;
+  const firstCharacterCode = base.property.name.charCodeAt(0);
   if (firstCharacterCode < 97 || firstCharacterCode > 122) return null;
-  return { tagName: tag.property.name };
+  return { tagName: base.property.name };
 };
 
 const getPropertySignatureName = (member: EsTreeNode): string | null => {
@@ -61,6 +91,7 @@ const isForwardableToTag = (propName: string, tagName: string): boolean => {
   if (propName.startsWith("$")) return true;
   if (propName.startsWith("data-") || propName.startsWith("aria-")) return true;
   if (EVENT_HANDLER_PROP_PATTERN.test(propName)) return true;
+  if (STYLED_COMPONENTS_CONSUMED_PROPS.has(propName)) return true;
   if (!isKnownAttributeName(propName)) return false;
   const allowedTags = allowedTagsFor(propName);
   return allowedTags === null || allowedTags.has(tagName);
@@ -77,6 +108,8 @@ export const styledComponentsNonTransientCustomPropOnIntrinsicElement = defineRu
     TaggedTemplateExpression(node: EsTreeNodeOfType<"TaggedTemplateExpression">) {
       const intrinsic = readStyledIntrinsicTag(node.tag);
       if (!intrinsic) return;
+      const styledImportSource = getImportSourceForName(node, "styled");
+      if (styledImportSource !== null && styledImportSource !== "styled-components") return;
       const typeArguments = node.typeArguments;
       if (!typeArguments || typeArguments.params.length === 0) return;
       const typeLiteral = typeArguments.params[0];

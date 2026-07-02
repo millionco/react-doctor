@@ -81,20 +81,28 @@ const optionalChainRootName = (memberExpression: EsTreeNode): string | null => {
   return null;
 };
 
-// The chain root when the operand is a direct optional chain OR an identifier
-// bound to one (`const size = a?.b; size * n`). A `??`/`||` fallback on the
-// binding makes its initializer a LogicalExpression, so it naturally fails the
-// chain check and is not treated as unguarded.
-const resolveOptionalChainOperandRoot = (operand: EsTreeNode): string | null => {
+// The names a guard may test to prove the operand can never be undefined:
+// the chain root, plus the alias binding itself when the operand is an
+// identifier bound to a chain (`const size = a?.b` — guarding `size` is just
+// as sound as guarding `a`). A `??`/`||` fallback on the binding makes its
+// initializer a LogicalExpression, so it naturally fails the chain check and
+// is not treated as unguarded. Returns null when the operand is not an
+// optional-chain value at all.
+const resolveOptionalChainOperandGuardNames = (operand: EsTreeNode): string[] | null => {
   const direct = asDirectOptionalChainMember(operand);
-  if (direct) return optionalChainRootName(direct);
+  if (direct) {
+    const rootName = optionalChainRootName(direct);
+    return rootName ? [rootName] : null;
+  }
 
   const stripped = stripKeepingChain(operand);
   if (!isNodeOfType(stripped, "Identifier")) return null;
   const binding = findVariableInitializer(stripped, stripped.name);
   if (!binding?.initializer) return null;
   const initializerMember = asDirectOptionalChainMember(binding.initializer);
-  return initializerMember ? optionalChainRootName(initializerMember) : null;
+  if (!initializerMember) return null;
+  const rootName = optionalChainRootName(initializerMember);
+  return rootName ? [rootName, stripped.name] : null;
 };
 
 const unwrapUpwards = (node: EsTreeNode): { consumed: EsTreeNode; consumer: EsTreeNode | null } => {
@@ -149,6 +157,35 @@ const findScopeOwner = (node: EsTreeNode): EsTreeNode | null => {
   return null;
 };
 
+const NAN_CHECK_CALLEE_NAMES = new Set(["isNaN", "isFinite"]);
+
+// The result binding is reassigned or NaN-checked (`if (Number.isNaN(ratio))
+// ratio = 0;`) — the code already handles the failure the rule warns about,
+// so the binding no longer flows unhandled into the numeric consumer.
+const isNanHandledReference = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
+  const parent = identifier.parent;
+  if (!parent) return false;
+  if (isNodeOfType(parent, "AssignmentExpression") && parent.left === identifier) return true;
+  if (
+    isNodeOfType(parent, "CallExpression") &&
+    (parent.arguments ?? []).some((argument) => argument === identifier)
+  ) {
+    const callee = stripKeepingChain(parent.callee);
+    if (isNodeOfType(callee, "Identifier") && NAN_CHECK_CALLEE_NAMES.has(callee.name)) return true;
+    if (
+      isNodeOfType(callee, "MemberExpression") &&
+      isNodeOfType(callee.object, "Identifier") &&
+      callee.object.name === "Number" &&
+      !callee.computed &&
+      isNodeOfType(callee.property, "Identifier") &&
+      NAN_CHECK_CALLEE_NAMES.has(callee.property.name)
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 // A numeric consumer reached through an intermediate binding:
 // `const share = a?.b / total; share.toFixed(2)`.
 const flowsIntoNumericConsumerViaBinding = (binaryNode: EsTreeNode): boolean => {
@@ -165,19 +202,19 @@ const flowsIntoNumericConsumerViaBinding = (binaryNode: EsTreeNode): boolean => 
   const scopeOwner = findScopeOwner(binaryNode);
   if (!scopeOwner) return false;
   let reachesConsumer = false;
+  let isNanHandled = false;
   walkAst(scopeOwner, (child: EsTreeNode) => {
-    if (reachesConsumer) return false;
-    if (
-      isNodeOfType(child, "Identifier") &&
-      child.name === bindingName &&
-      child !== consumer.id &&
-      isDirectNumericConsumer(child)
-    ) {
-      reachesConsumer = true;
+    if (isNanHandled) return false;
+    if (!isNodeOfType(child, "Identifier") || child.name !== bindingName || child === consumer.id) {
+      return;
+    }
+    if (isNanHandledReference(child)) {
+      isNanHandled = true;
       return false;
     }
+    if (isDirectNumericConsumer(child)) reachesConsumer = true;
   });
-  return reachesConsumer;
+  return reachesConsumer && !isNanHandled;
 };
 
 const isNumericConsumerContext = (binaryNode: EsTreeNode): boolean =>
@@ -207,25 +244,30 @@ const subtreeReferencesName = (node: EsTreeNode | null | undefined, name: string
   return found;
 };
 
+const subtreeReferencesAnyName = (
+  node: EsTreeNode | null | undefined,
+  guardNames: string[],
+): boolean => guardNames.some((guardName) => subtreeReferencesName(node, guardName));
+
 // The chain can never short-circuit because an enclosing `if`/ternary
-// test or `&&`-guard already narrowed the same root. The arithmetic must sit
-// in the guarded BRANCH, not in the test itself (otherwise the test of
-// `if (a?.b * n < x)` would suppress its own finding).
-const rootIsGuardedByEnclosingTest = (binaryNode: EsTreeNode, rootName: string): boolean => {
+// test or `&&`-guard already narrowed the chain root or its alias binding.
+// The arithmetic must sit in the guarded BRANCH, not in the test itself
+// (otherwise the test of `if (a?.b * n < x)` would suppress its own finding).
+const isGuardedByEnclosingTest = (binaryNode: EsTreeNode, guardNames: string[]): boolean => {
   let child: EsTreeNode = binaryNode;
   let ancestor: EsTreeNode | null | undefined = binaryNode.parent;
   while (ancestor) {
     if (
       isNodeOfType(ancestor, "IfStatement") &&
       (child === ancestor.consequent || child === ancestor.alternate) &&
-      subtreeReferencesName(ancestor.test, rootName)
+      subtreeReferencesAnyName(ancestor.test, guardNames)
     ) {
       return true;
     }
     if (
       isNodeOfType(ancestor, "ConditionalExpression") &&
       (child === ancestor.consequent || child === ancestor.alternate) &&
-      subtreeReferencesName(ancestor.test, rootName)
+      subtreeReferencesAnyName(ancestor.test, guardNames)
     ) {
       return true;
     }
@@ -233,9 +275,49 @@ const rootIsGuardedByEnclosingTest = (binaryNode: EsTreeNode, rootName: string):
       isNodeOfType(ancestor, "LogicalExpression") &&
       (ancestor.operator === "&&" || ancestor.operator === "||") &&
       child === ancestor.right &&
-      subtreeReferencesName(ancestor.left, rootName)
+      subtreeReferencesAnyName(ancestor.left, guardNames)
     ) {
       return true;
+    }
+    child = ancestor;
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
+};
+
+const isEarlyExitStatement = (statement: EsTreeNode | null | undefined): boolean => {
+  if (!statement) return false;
+  if (isNodeOfType(statement, "BlockStatement")) {
+    const statements = statement.body;
+    return isEarlyExitStatement(statements.at(-1));
+  }
+  return (
+    isNodeOfType(statement, "ReturnStatement") ||
+    isNodeOfType(statement, "ThrowStatement") ||
+    isNodeOfType(statement, "ContinueStatement") ||
+    isNodeOfType(statement, "BreakStatement")
+  );
+};
+
+// A preceding sibling `if (!x) return;`-style guard dominates the arithmetic
+// just like an enclosing test does — the single most common React narrowing
+// idiom (`if (!invoice) return null;` before the math).
+const isGuardedByPrecedingEarlyExit = (binaryNode: EsTreeNode, guardNames: string[]): boolean => {
+  let child: EsTreeNode = binaryNode;
+  let ancestor: EsTreeNode | null | undefined = binaryNode.parent;
+  while (ancestor) {
+    if (isNodeOfType(ancestor, "BlockStatement") || isNodeOfType(ancestor, "Program")) {
+      const statements = ancestor.body;
+      const childStatementIndex = statements.findIndex((statement) => statement === child);
+      for (const precedingStatement of statements.slice(0, Math.max(childStatementIndex, 0))) {
+        if (
+          isNodeOfType(precedingStatement, "IfStatement") &&
+          isEarlyExitStatement(precedingStatement.consequent) &&
+          subtreeReferencesAnyName(precedingStatement.test, guardNames)
+        ) {
+          return true;
+        }
+      }
     }
     child = ancestor;
     ancestor = ancestor.parent ?? null;
@@ -259,9 +341,10 @@ export const noArithmeticOnOptionalChainedOperand = defineRule({
       if (!MULTIPLICATIVE_OPERATORS.has(node.operator)) return;
       const operands: EsTreeNode[] = [node.left as EsTreeNode, node.right as EsTreeNode];
       for (const operand of operands) {
-        const rootName = resolveOptionalChainOperandRoot(operand);
-        if (!rootName) continue;
-        if (rootIsGuardedByEnclosingTest(node as EsTreeNode, rootName)) continue;
+        const guardNames = resolveOptionalChainOperandGuardNames(operand);
+        if (!guardNames) continue;
+        if (isGuardedByEnclosingTest(node as EsTreeNode, guardNames)) continue;
+        if (isGuardedByPrecedingEarlyExit(node as EsTreeNode, guardNames)) continue;
         if (!isNumericConsumerContext(node as EsTreeNode)) continue;
         context.report({ node, message: MESSAGE });
         return;

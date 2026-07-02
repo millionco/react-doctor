@@ -36,6 +36,38 @@ describe("no-floating-then-in-jsx-handler", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an if-guarded floating then (confirm-before-delete idiom)", () => {
+    const result = runRule(
+      noFloatingThenInJsxHandler,
+      `const el = <button onClick={() => { if (window.confirm('Delete?')) removeItem().then(refetch); }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a &&-guarded concise floating then", () => {
+    const result = runRule(
+      noFloatingThenInJsxHandler,
+      `const el = <button onClick={() => isDirty && save().then(refetch)} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags both branches of a ternary with floating thens", () => {
+    const result = runRule(
+      noFloatingThenInJsxHandler,
+      `const el = <button onClick={() => (isNew ? create().then(done) : update().then(done))} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("flags a .then chain whose only settlement handler is .finally — .finally re-throws rejections", () => {
+    const result = runRule(
+      noFloatingThenInJsxHandler,
+      `const el = <button onClick={() => { fetchData().then(setData).finally(() => setLoading(false)); }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag an async handler", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
@@ -68,10 +100,26 @@ describe("no-floating-then-in-jsx-handler", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("does not flag a trailing .finally", () => {
+  it("does not flag a chain whose rejection is handled by a mid-chain .then(null, onErr)", () => {
     const result = runRule(
       noFloatingThenInJsxHandler,
-      `const el = <button onClick={() => save().then(r).finally(done)} />;`,
+      `const el = <button onClick={() => save().then(null, onErr).then(onOk)} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a bare .finally with no .then in the chain", () => {
+    const result = runRule(
+      noFloatingThenInJsxHandler,
+      `const el = <button onClick={() => save().finally(done)} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a .catch followed by a trailing .finally", () => {
+    const result = runRule(
+      noFloatingThenInJsxHandler,
+      `const el = <button onClick={() => save().then(r).catch(reportError).finally(done)} />;`,
     );
     expect(result.diagnostics).toHaveLength(0);
   });

@@ -28,6 +28,12 @@ const EVENT_KEYED_METHOD_NAMES = new Set([
   "removeEventListener",
   "removeListener",
 ]);
+// Fluent emitter APIs return `this`, so `.on(...)/.off(...)` chains share
+// one receiver.
+const CHAINABLE_LISTENER_METHOD_NAMES = new Set([
+  ...REGISTER_EVENT_METHOD_NAMES,
+  ...NAMED_REMOVAL_METHOD_NAMES,
+]);
 
 interface ListenerCall {
   method: string;
@@ -35,6 +41,11 @@ interface ListenerCall {
   event: string | null;
   handlerKey: string | null;
   node: EsTreeNode;
+}
+
+interface CleanupSearch {
+  cleanupFunction: EsTreeNode | null;
+  hasConditionalCleanupBranches: boolean;
 }
 
 const serializeNode = (node: EsTreeNode | null | undefined): string | null => {
@@ -57,13 +68,27 @@ const getStringLiteralValue = (node: EsTreeNode | null | undefined): string | nu
     : null;
 };
 
+const resolveChainedReceiver = (node: EsTreeNode): EsTreeNode => {
+  let receiver = stripParenExpression(node);
+  while (
+    isNodeOfType(receiver, "CallExpression") &&
+    isNodeOfType(receiver.callee, "MemberExpression") &&
+    !receiver.callee.computed &&
+    isNodeOfType(receiver.callee.property, "Identifier") &&
+    CHAINABLE_LISTENER_METHOD_NAMES.has(receiver.callee.property.name)
+  ) {
+    receiver = stripParenExpression(receiver.callee.object);
+  }
+  return receiver;
+};
+
 const readListenerCall = (node: EsTreeNode): ListenerCall | null => {
   if (!isNodeOfType(node, "CallExpression")) return null;
   const callee = node.callee;
   if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
   if (!isNodeOfType(callee.property, "Identifier")) return null;
   const method = callee.property.name;
-  const receiverKey = serializeNode(callee.object);
+  const receiverKey = serializeNode(resolveChainedReceiver(callee.object));
   if (receiverKey === null) return null;
   const args = node.arguments ?? [];
   let event: string | null = null;
@@ -82,21 +107,97 @@ const readListenerCall = (node: EsTreeNode): ListenerCall | null => {
   return { method, receiverKey, event, handlerKey, node };
 };
 
-const findCleanupFunction = (effectCallback: EsTreeNode): EsTreeNode | null => {
-  if (isFunctionLike(effectCallback) && !isNodeOfType(effectCallback.body, "BlockStatement")) {
-    const concise = stripParenExpression(effectCallback.body);
-    return isFunctionLike(concise) ? concise : null;
-  }
-  let cleanup: EsTreeNode | null = null;
-  walkAst(effectCallback, (child: EsTreeNode) => {
-    if (cleanup) return false;
-    if (child !== effectCallback && isFunctionLike(child)) return false;
-    if (isNodeOfType(child, "ReturnStatement") && child.argument) {
-      const returned = stripParenExpression(child.argument);
-      if (isFunctionLike(returned)) cleanup = returned;
+const subtreeContainsNode = (root: EsTreeNode, target: EsTreeNode): boolean => {
+  let didFindTarget = false;
+  walkAst(root, (child: EsTreeNode) => {
+    if (didFindTarget) return false;
+    if (child === target) {
+      didFindTarget = true;
+      return false;
     }
   });
-  return cleanup;
+  return didFindTarget;
+};
+
+const resolveReturnedFunction = (
+  returned: EsTreeNode,
+  effectCallback: EsTreeNode,
+): EsTreeNode | null => {
+  if (isFunctionLike(returned)) return returned;
+  if (!isNodeOfType(returned, "Identifier")) return null;
+  let resolved: EsTreeNode | null = null;
+  walkAst(effectCallback, (child: EsTreeNode) => {
+    if (resolved) return false;
+    if (
+      isNodeOfType(child, "FunctionDeclaration") &&
+      child.id &&
+      isNodeOfType(child.id, "Identifier") &&
+      child.id.name === returned.name
+    ) {
+      resolved = child;
+      return false;
+    }
+    if (child !== effectCallback && isFunctionLike(child)) return false;
+    if (
+      isNodeOfType(child, "VariableDeclarator") &&
+      isNodeOfType(child.id, "Identifier") &&
+      child.id.name === returned.name &&
+      child.init
+    ) {
+      const initializer = stripParenExpression(child.init);
+      if (isFunctionLike(initializer)) resolved = initializer;
+    }
+  });
+  return resolved;
+};
+
+const findCleanupFunction = (effectCallback: EsTreeNode): CleanupSearch => {
+  if (isFunctionLike(effectCallback) && !isNodeOfType(effectCallback.body, "BlockStatement")) {
+    const concise = stripParenExpression(effectCallback.body);
+    return {
+      cleanupFunction: isFunctionLike(concise) ? concise : null,
+      hasConditionalCleanupBranches: false,
+    };
+  }
+  const returnedCleanups = new Set<EsTreeNode>();
+  walkAst(effectCallback, (child: EsTreeNode) => {
+    if (child !== effectCallback && isFunctionLike(child)) return false;
+    if (isNodeOfType(child, "ReturnStatement") && child.argument) {
+      const resolved = resolveReturnedFunction(
+        stripParenExpression(child.argument),
+        effectCallback,
+      );
+      if (resolved) returnedCleanups.add(resolved);
+    }
+  });
+  const [onlyCleanup] = returnedCleanups;
+  return {
+    cleanupFunction: returnedCleanups.size === 1 ? onlyCleanup : null,
+    hasConditionalCleanupBranches: returnedCleanups.size > 1,
+  };
+};
+
+// Registrations inside an if/try branch the returned cleanup does not
+// share are fallback/one-time setups, not symmetric subscriptions.
+const collectBranchesWithoutCleanup = (
+  effectCallback: EsTreeNode,
+  cleanupFunction: EsTreeNode,
+): Set<EsTreeNode> => {
+  const branchesWithoutCleanup = new Set<EsTreeNode>();
+  walkAst(effectCallback, (child: EsTreeNode) => {
+    if (child !== effectCallback && isFunctionLike(child)) return false;
+    const branchNodes: (EsTreeNode | null | undefined)[] = isNodeOfType(child, "IfStatement")
+      ? [child.consequent, child.alternate]
+      : isNodeOfType(child, "TryStatement")
+        ? [child.block, child.handler, child.finalizer]
+        : [];
+    for (const branchNode of branchNodes) {
+      if (branchNode && !subtreeContainsNode(branchNode, cleanupFunction)) {
+        branchesWithoutCleanup.add(branchNode);
+      }
+    }
+  });
+  return branchesWithoutCleanup;
 };
 
 const removalCoversRegistration = (removal: ListenerCall, registration: ListenerCall): boolean => {
@@ -133,12 +234,27 @@ export const noEffectCleanupRemovesListenerSubsetOrAddsListener = defineRule({
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
       const effectCallback = getEffectCallback(node);
       if (!effectCallback) return;
-      const cleanupFunction = findCleanupFunction(effectCallback);
-      if (!cleanupFunction) return;
+      const { cleanupFunction, hasConditionalCleanupBranches } =
+        findCleanupFunction(effectCallback);
+      if (hasConditionalCleanupBranches || !cleanupFunction) return;
+      const branchesWithoutCleanup = collectBranchesWithoutCleanup(effectCallback, cleanupFunction);
 
       const setupCalls: ListenerCall[] = [];
+      const disposerNamesByRegistrationNode = new Map<EsTreeNode, string>();
       walkAst(effectCallback, (child: EsTreeNode) => {
         if (child === cleanupFunction) return false;
+        if (branchesWithoutCleanup.has(child)) return false;
+        if (child !== effectCallback && isFunctionLike(child)) return false;
+        if (
+          isNodeOfType(child, "VariableDeclarator") &&
+          isNodeOfType(child.id, "Identifier") &&
+          child.init
+        ) {
+          const initializerCall = readListenerCall(stripParenExpression(child.init));
+          if (initializerCall && REGISTER_EVENT_METHOD_NAMES.has(initializerCall.method)) {
+            disposerNamesByRegistrationNode.set(initializerCall.node, child.id.name);
+          }
+        }
         const listenerCall = readListenerCall(child);
         if (
           listenerCall &&
@@ -152,8 +268,15 @@ export const noEffectCleanupRemovesListenerSubsetOrAddsListener = defineRule({
 
       const namedRemovals: ListenerCall[] = [];
       const cleanupAdds: ListenerCall[] = [];
+      const invokedCleanupIdentifierNames = new Set<string>();
       let hasBulkRemoval = false;
       walkAst(cleanupFunction, (child: EsTreeNode) => {
+        if (isNodeOfType(child, "CallExpression")) {
+          const calleeExpression = stripParenExpression(child.callee);
+          if (isNodeOfType(calleeExpression, "Identifier")) {
+            invokedCleanupIdentifierNames.add(calleeExpression.name);
+          }
+        }
         const listenerCall = readListenerCall(child);
         if (!listenerCall) return;
         if (BULK_REMOVAL_METHOD_NAMES.has(listenerCall.method)) {
@@ -177,9 +300,13 @@ export const noEffectCleanupRemovesListenerSubsetOrAddsListener = defineRule({
       // Subset case: a named removal proves intent, but at least one
       // registered event on the same emitter has no matching removal.
       if (namedRemovals.length > 0 && !hasBulkRemoval) {
-        const registrations = setupCalls.filter((call) =>
-          REGISTER_EVENT_METHOD_NAMES.has(call.method),
-        );
+        const registrations = setupCalls.filter((call) => {
+          if (!REGISTER_EVENT_METHOD_NAMES.has(call.method)) return false;
+          const disposerName = disposerNamesByRegistrationNode.get(call.node);
+          // `const dispose = api.on(...)` torn down via `dispose()` in the
+          // cleanup is a subscribe API returning its own unsubscribe.
+          return !(disposerName !== undefined && invokedCleanupIdentifierNames.has(disposerName));
+        });
         const uncovered = registrations.find((registration) => {
           const removalsOnReceiver = namedRemovals.filter(
             (removal) => removal.receiverKey === registration.receiverKey,

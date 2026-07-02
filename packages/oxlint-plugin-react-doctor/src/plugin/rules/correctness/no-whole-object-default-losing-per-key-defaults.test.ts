@@ -85,4 +85,64 @@ describe("no-whole-object-default-losing-per-key-defaults", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("stays quiet for an all-false boolean-flag bag (antd onReset idiom: undefined is truthiness-identical to the dropped false)", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `const onReset = ({ confirm, closeDropdown } = { confirm: false, closeDropdown: false }) => { if (confirm) {} if (closeDropdown) {} };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a flag bag when any dropped fallback is a truthy literal", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `const fn = ({ confirm, closeDropdown } = { confirm: false, closeDropdown: true }) => {};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a dropped empty-string fallback (falsy literals other than false diverge from undefined under member access)", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `const fn = ({ path, ok } = { path: '', ok: false }) => {};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet when the default object only covers bindings that already carry their own default (hook options idiom)", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `function useThing({ signal, retries = 3 } = { retries: 5 }) {}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when the undefaulted binding has no matching key in the default object", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `const f = ({ a = 1, b } = { a: 1 }) => {};`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a whole-object default wrapped in a TS `as` assertion", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `function f({ a, b } = { a: 1 } as Options) {}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a whole-object default wrapped in a TS `satisfies` expression", () => {
+    const result = runRule(
+      noWholeObjectDefaultLosingPerKeyDefaults,
+      `function f({ a, b } = { a: 1 } satisfies Partial<Options>) {}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

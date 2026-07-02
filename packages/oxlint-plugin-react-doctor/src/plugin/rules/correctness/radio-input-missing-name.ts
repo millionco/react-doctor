@@ -1,14 +1,36 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
+import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { getReactDoctorStringArraySetting } from "../../utils/get-react-doctor-setting.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const RADIO_COMPONENTS_SETTING = "radioInputMissingName.radioComponents";
+const GROUP_PROVIDER_NAME_SUFFIX = "Group";
+
+const isGroupProviderName = (elementName: string): boolean => {
+  const finalSegment = elementName.split(".").at(-1) ?? "";
+  return finalSegment.endsWith(GROUP_PROVIDER_NAME_SUFFIX);
+};
+
+const hasGroupProviderAncestor = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean => {
+  let ancestor: EsTreeNode | null | undefined = openingElement.parent;
+  while (ancestor) {
+    if (isNodeOfType(ancestor, "JSXElement")) {
+      const ancestorName = flattenJsxName(ancestor.openingElement.name);
+      if (ancestorName && isGroupProviderName(ancestorName)) return true;
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
 
 export const radioInputMissingName = defineRule({
   id: "radio-input-missing-name",
@@ -24,7 +46,6 @@ export const radioInputMissingName = defineRule({
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (!isNodeOfType(node.name, "JSXIdentifier")) return;
         const attributes = node.attributes ?? [];
 
         // A spread could supply `name` at runtime (react-hook-form's
@@ -40,6 +61,10 @@ export const radioInputMissingName = defineRule({
           const typeAttribute = findJsxAttribute(attributes, "type");
           if (!typeAttribute || getJsxPropStringValue(typeAttribute) !== "radio") return;
         }
+
+        // Library group wrappers (Mantine/antd `Radio.Group`, Chakra
+        // `RadioGroup`, …) supply `name` to their radios via context.
+        if (isAllowlistedRadioComponent && hasGroupProviderAncestor(node)) return;
 
         if (findJsxAttribute(attributes, "name")) return;
 

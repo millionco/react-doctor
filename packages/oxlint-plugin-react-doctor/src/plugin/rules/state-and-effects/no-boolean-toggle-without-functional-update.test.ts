@@ -138,6 +138,93 @@ describe("no-boolean-toggle-without-functional-update", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags setOpen(!isOpen) when the useState pair is [isOpen, setOpen]", () => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `
+      const C = () => {
+        const [isOpen, setOpen] = useState(false);
+        useEffect(() => {
+          setTimeout(() => setOpen(!isOpen), 100);
+        }, []);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // Real-world idiom: a DOM event handler negating the FRESH value it just
+  // read from the event, stored in a local that shadows the state name.
+  it("does not flag when the operand is a shadowing local reading the fresh event value", () => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `
+      const C = () => {
+        const [checked, setChecked] = useState(false);
+        useEffect(() => {
+          el.addEventListener("change", (event) => {
+            const checked = event.target.checked;
+            setChecked(!checked);
+          });
+        }, []);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  // Real-world idiom: a subscription callback whose parameter delivers the
+  // fresh value and shadows the state name.
+  it("does not flag a callback parameter shadowing the state name", () => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `
+      const C = () => {
+        const [muted, setMuted] = useState(false);
+        useEffect(() => {
+          const sub = source.subscribe((muted) => setMuted(!muted));
+          return () => sub.unsubscribe();
+        }, []);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  // Real-world idiom: an effect closure runs from the committing render with
+  // fresh state, so a direct effect-body toggle never reads a stale value.
+  it("does not flag a direct effect-body toggle with the state in deps", () => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `
+      const C = ({ trigger }) => {
+        const [flipped, setFlipped] = useState(false);
+        useEffect(() => {
+          if (trigger && flipped) setFlipped(!flipped);
+        }, [trigger, flipped]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  // Real-world idiom: Storybook demo files toggle state loosely on purpose.
+  it("does not flag inside a Storybook stories file", () => {
+    const result = runRule(
+      noBooleanToggleWithoutFunctionalUpdate,
+      `
+      const Demo = () => {
+        const [isOpen, setIsOpen] = useState(false);
+        useEffect(() => {
+          setTimeout(() => setIsOpen(!isOpen), 100);
+        }, []);
+      };
+      `,
+      { filename: "toggle.stories.tsx" },
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a useReducer dispatch toggle", () => {
     const result = runRule(
       noBooleanToggleWithoutFunctionalUpdate,

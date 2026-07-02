@@ -135,6 +135,100 @@ describe("no-async-event-handler-without-reentry-guard", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag when the only post-await call is a setTimeout toast dismiss, not a state setter", () => {
+    const result = runRule(
+      noAsyncEventHandlerWithoutReentryGuard,
+      `function Save({ payload }) {
+        async function handleSave() {
+          await api.post('/save', payload);
+          setTimeout(closeToast, 2000);
+        }
+        return <button onClick={handleSave} />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not treat a leading setTimeout as a loading-flag guard", () => {
+    const result = runRule(
+      noAsyncEventHandlerWithoutReentryGuard,
+      `function Save({ payload }) {
+        async function handleSave() {
+          setTimeout(logAttempt, 0);
+          await api.post('/save', payload);
+          setSaved(true);
+        }
+        return <button onClick={handleSave} />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a fire-and-report handler whose only setter is error handling in catch", () => {
+    const result = runRule(
+      noAsyncEventHandlerWithoutReentryGuard,
+      `function Save({ payload }) {
+        async function handleSave() {
+          try {
+            await api.post('/save', payload);
+          } catch (error) {
+            setError(error);
+          }
+        }
+        return <button onClick={handleSave} />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a try/catch-wrapped POST whose state flip follows the await in the same try block", () => {
+    const result = runRule(
+      noAsyncEventHandlerWithoutReentryGuard,
+      `function Save() {
+        async function handleSave() {
+          try {
+            await fetch('/api/save', { method: 'POST' });
+            setSaved(true);
+          } catch (err) {
+            setError(err);
+          }
+        }
+        return <button onClick={handleSave} />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a useCallback-wrapped async handler that POSTs then sets state", () => {
+    const result = runRule(
+      noAsyncEventHandlerWithoutReentryGuard,
+      `function Save({ payload }) {
+        const handleSave = useCallback(async () => {
+          await api.post('/save', payload);
+          setSaved(true);
+        }, [payload]);
+        return <button onClick={handleSave} />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a guarded useCallback handler with a leading busy early return", () => {
+    const result = runRule(
+      noAsyncEventHandlerWithoutReentryGuard,
+      `function Save({ payload }) {
+        const handleSave = useCallback(async () => {
+          if (saving) return;
+          setSaving(true);
+          await api.post('/save', payload);
+          setSaved(true);
+        }, [payload, saving]);
+        return <button onClick={handleSave} />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a non-reentry-guarded event handler such as onChange", () => {
     const result = runRule(
       noAsyncEventHandlerWithoutReentryGuard,

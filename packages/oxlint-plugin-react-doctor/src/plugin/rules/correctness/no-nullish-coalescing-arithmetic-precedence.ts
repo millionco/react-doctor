@@ -6,6 +6,13 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 const ARITHMETIC_OPERATORS = new Set(["*", "/", "%", "-", "+"]);
 
+const isNumericLiteralLeaf = (node: EsTreeNode): boolean => {
+  if (isNodeOfType(node, "UnaryExpression") && (node.operator === "-" || node.operator === "+")) {
+    return isNumericLiteralLeaf(node.argument as EsTreeNode);
+  }
+  return isNodeOfType(node, "Literal") && typeof node.value === "number";
+};
+
 // The intended fallback is the token immediately after `??`. When the
 // right operand is a bare (unparenthesized) arithmetic expression whose
 // leftmost leaf is a numeric literal, that literal got swallowed into the
@@ -18,7 +25,20 @@ const leftmostLeafIsNumericLiteral = (node: EsTreeNode): boolean => {
   while (isNodeOfType(current, "BinaryExpression")) {
     current = current.left as EsTreeNode;
   }
-  return isNodeOfType(current, "Literal") && typeof current.value === "number";
+  return isNumericLiteralLeaf(current);
+};
+
+// A fully-constant fallback (`x ?? 100 * 1024 * 1024`, `x ?? 60 * 1000`)
+// evaluates to a fixed value regardless of precedence — the swallowed-fallback
+// bug needs an identifier/member operand in the arithmetic.
+const hasNonNumericLiteralLeaf = (node: EsTreeNode): boolean => {
+  if (isNodeOfType(node, "BinaryExpression")) {
+    return (
+      hasNonNumericLiteralLeaf(node.left as EsTreeNode) ||
+      hasNonNumericLiteralLeaf(node.right as EsTreeNode)
+    );
+  }
+  return !isNumericLiteralLeaf(node);
 };
 
 export const noNullishCoalescingArithmeticPrecedence = defineRule({
@@ -37,6 +57,7 @@ export const noNullishCoalescingArithmeticPrecedence = defineRule({
       if (!isNodeOfType(right, "BinaryExpression")) return;
       if (!ARITHMETIC_OPERATORS.has(right.operator)) return;
       if (!leftmostLeafIsNumericLiteral(right)) return;
+      if (!hasNonNumericLiteralLeaf(right)) return;
 
       context.report({
         node,

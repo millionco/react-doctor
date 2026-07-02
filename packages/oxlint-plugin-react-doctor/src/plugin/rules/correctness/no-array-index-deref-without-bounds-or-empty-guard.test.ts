@@ -64,6 +64,28 @@ describe("no-array-index-deref-without-bounds-or-empty-guard", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a reduce accumulator arithmetic deref under an index === 0 ternary (algolia idiom)", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `const totals = values.reduce((acc, value, index) => {
+        acc.push(index === 0 ? value : acc[index - 1].sum + value);
+        return acc;
+      }, []);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a virtualized-grid cellRenderer deref backed by columnCount invariants (dtale idiom)", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `const cellRenderer = ({ columnIndex, columns }) => {
+        if (columnIndex === 0) return null;
+        return <div>{columns[columnIndex - 1].name}</div>;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a delta computed in a map callback under an outer length early return", () => {
     const result = runRule(
       noArrayIndexDerefWithoutBoundsOrEmptyGuard,

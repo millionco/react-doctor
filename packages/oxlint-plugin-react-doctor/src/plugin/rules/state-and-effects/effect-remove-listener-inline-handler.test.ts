@@ -36,12 +36,20 @@ describe("effect-remove-listener-inline-handler", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags unsubscribe with two args and an inline handler", () => {
+  it("does not flag two-arg unsubscribe since the second arg may be a completion callback", () => {
     const result = runRule(
       effectRemoveListenerInlineHandler,
       `appEvent.unsubscribe('update', (e) => handle(e));`,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag mqtt-style unsubscribe with an inline ack callback", () => {
+    const result = runRule(
+      effectRemoveListenerInlineHandler,
+      `client.unsubscribe('presence/room', (err) => { if (err) console.error(err); });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag removeEventListener with a stable identifier handler", () => {

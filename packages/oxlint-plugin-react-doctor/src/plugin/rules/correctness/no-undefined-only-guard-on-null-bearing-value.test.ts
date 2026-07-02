@@ -109,6 +109,77 @@ describe("no-undefined-only-guard-on-null-bearing-value", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag an if/else-if null-vs-undefined split (outer branch already consumed null)", () => {
+    const result = runRule(
+      noUndefinedOnlyGuardOnNullBearingValue,
+      `function handle(value: string | null | undefined) {
+        if (value === null) {
+          sendNull();
+        } else if (value !== undefined) {
+          setField(value.toString());
+        }
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when a prior guard clause already returned on null", () => {
+    const result = runRule(
+      noUndefinedOnlyGuardOnNullBearingValue,
+      `function handle(value: string | null | undefined) {
+        if (value === null) return sendNull();
+        if (value !== undefined) return setField(value.toString());
+        return omit();
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when a prior truthiness guard clause already returned on falsy values", () => {
+    const result = runRule(
+      noUndefinedOnlyGuardOnNullBearingValue,
+      `function handle(value: string | null | undefined) {
+        if (!value) return '';
+        if (value !== undefined) return setField(value.toString());
+        return omit();
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an exiting undefined guard whose fall-through handles null separately", () => {
+    const result = runRule(
+      noUndefinedOnlyGuardOnNullBearingValue,
+      `function f(value: string | null | undefined) {
+        if (value === undefined) return '';
+        if (value === null) return 'null';
+        return value.toString();
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags an early-return undefined guard whose fall-through dereferences the value", () => {
+    const result = runRule(
+      noUndefinedOnlyGuardOnNullBearingValue,
+      `function f(value: string | null | undefined) {
+        if (value === undefined) return '';
+        return value.toString();
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an && guard whose right side dereferences the null-bearing value", () => {
+    const result = runRule(
+      noUndefinedOnlyGuardOnNullBearingValue,
+      `function List(items: string[] | null | undefined) {
+        return items !== undefined && items.map((item) => item);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a member-expression operand (not a bare identifier)", () => {
     const result = runRule(
       noUndefinedOnlyGuardOnNullBearingValue,

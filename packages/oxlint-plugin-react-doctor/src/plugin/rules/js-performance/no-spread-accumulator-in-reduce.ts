@@ -1,7 +1,9 @@
 import { FUNCTION_LIKE_TYPES } from "../../constants/js.js";
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -10,33 +12,140 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const REDUCE_METHOD_NAMES = new Set(["reduce", "reduceRight"]);
 
+const OBJECT_ENUMERATION_METHOD_NAMES = new Set(["keys", "entries", "values"]);
+
+const isSpreadFreeArrayLiteral = (node: EsTreeNode, mustHaveElements: boolean): boolean => {
+  if (!isNodeOfType(node, "ArrayExpression")) return false;
+  if (mustHaveElements && node.elements.length === 0) return false;
+  return node.elements.every(
+    (element) => !element || !isNodeOfType(element as EsTreeNode, "SpreadElement"),
+  );
+};
+
+const isSpreadFreeObjectLiteral = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "ObjectExpression") &&
+  node.properties.every(
+    (property) => !property || !isNodeOfType(property as EsTreeNode, "SpreadElement"),
+  );
+
+const isConstDeclaredBinding = (bindingIdentifier: EsTreeNode): boolean => {
+  const declarator = bindingIdentifier.parent;
+  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
+  const declaration = declarator.parent;
+  return Boolean(
+    declaration && isNodeOfType(declaration, "VariableDeclaration") && declaration.kind === "const",
+  );
+};
+
+const isRestParameterBinding = (bindingIdentifier: EsTreeNode): boolean => {
+  const restCandidate = bindingIdentifier.parent;
+  return Boolean(
+    restCandidate &&
+    isNodeOfType(restCandidate, "RestElement") &&
+    restCandidate.parent &&
+    FUNCTION_LIKE_TYPES.has(restCandidate.parent.type),
+  );
+};
+
+const isLocallyConstructedBoundedObject = (expression: EsTreeNode): boolean => {
+  const stripped = stripParenExpression(expression);
+  if (isSpreadFreeObjectLiteral(stripped)) return true;
+  if (!isNodeOfType(stripped, "Identifier")) return false;
+  const binding = findVariableInitializer(stripped, stripped.name);
+  if (!binding?.initializer || !isConstDeclaredBinding(binding.bindingIdentifier)) return false;
+  return isSpreadFreeObjectLiteral(stripParenExpression(binding.initializer));
+};
+
+// The empirical false-positive pattern is spreading the accumulator over a
+// statically bounded collection — a rest parameter (bounded by call-site
+// arity), an array literal, or the keys/entries of a locally constructed
+// object literal — where n is tiny and fixed, so the O(n²) copy cost is
+// unobservable and the immutable idiom is deliberate.
+const isStaticallyBoundedReduceSource = (source: EsTreeNode): boolean => {
+  const stripped = stripParenExpression(source);
+  if (isSpreadFreeArrayLiteral(stripped, false)) return true;
+  if (isNodeOfType(stripped, "Identifier")) {
+    const binding = findVariableInitializer(stripped, stripped.name);
+    if (!binding) return false;
+    if (isRestParameterBinding(binding.bindingIdentifier)) return true;
+    return Boolean(
+      binding.initializer &&
+      isConstDeclaredBinding(binding.bindingIdentifier) &&
+      isSpreadFreeArrayLiteral(stripParenExpression(binding.initializer), true),
+    );
+  }
+  if (!isNodeOfType(stripped, "CallExpression")) return false;
+  const enumerationCallee = stripParenExpression(stripped.callee);
+  if (!isNodeOfType(enumerationCallee, "MemberExpression")) return false;
+  if (
+    !isNodeOfType(enumerationCallee.object, "Identifier") ||
+    enumerationCallee.object.name !== "Object"
+  ) {
+    return false;
+  }
+  if (!isNodeOfType(enumerationCallee.property, "Identifier")) return false;
+  if (!OBJECT_ENUMERATION_METHOD_NAMES.has(enumerationCallee.property.name)) return false;
+  const enumeratedObject = stripped.arguments?.[0];
+  return Boolean(
+    enumeratedObject &&
+    isAstNode(enumeratedObject) &&
+    isLocallyConstructedBoundedObject(enumeratedObject),
+  );
+};
+
+interface ReducerReturnAnalysis {
+  returnedLiterals: EsTreeNode[];
+  // A `return acc` path unchanged alongside the spread is the filter /
+  // dedup shape — growth is bounded by matches, empirically benign.
+  hasAccumulatorPassthroughReturn: boolean;
+  // A local `const acc = …` inside the callback rebinds the name; the
+  // returned spread then copies the local, not the growing accumulator.
+  isAccumulatorNameShadowed: boolean;
+}
+
 // Collects the object/array literals a reducer callback returns — the
 // concise-body expression, or every top-level `return X`. Stops at
 // nested function boundaries so an inner callback's return isn't
 // mistaken for the reducer's own.
-const collectReturnedLiterals = (
+const analyzeReducerReturns = (
   callback: EsTreeNodeOfType<"ArrowFunctionExpression"> | EsTreeNodeOfType<"FunctionExpression">,
-): EsTreeNode[] => {
-  const literals: EsTreeNode[] = [];
-  const collectIfLiteral = (expression: EsTreeNode | null | undefined): void => {
+  accumulatorName: string,
+): ReducerReturnAnalysis => {
+  const analysis: ReducerReturnAnalysis = {
+    returnedLiterals: [],
+    hasAccumulatorPassthroughReturn: false,
+    isAccumulatorNameShadowed: false,
+  };
+  const recordReturnedExpression = (expression: EsTreeNode | null | undefined): void => {
     if (!expression) return;
     const stripped = stripParenExpression(expression);
     if (isNodeOfType(stripped, "ObjectExpression") || isNodeOfType(stripped, "ArrayExpression")) {
-      literals.push(stripped);
+      analysis.returnedLiterals.push(stripped);
+      return;
+    }
+    if (isNodeOfType(stripped, "Identifier") && stripped.name === accumulatorName) {
+      analysis.hasAccumulatorPassthroughReturn = true;
     }
   };
 
   const body = callback.body;
-  if (!body) return literals;
+  if (!body) return analysis;
   if (!isNodeOfType(body, "BlockStatement")) {
-    collectIfLiteral(body);
-    return literals;
+    recordReturnedExpression(body);
+    return analysis;
   }
 
   const visit = (node: EsTreeNode): void => {
     if (isNodeOfType(node, "ReturnStatement")) {
-      collectIfLiteral(node.argument);
+      recordReturnedExpression(node.argument);
       return;
+    }
+    if (isNodeOfType(node, "VariableDeclarator")) {
+      const declaredNames = new Set<string>();
+      collectPatternNames(node.id, declaredNames);
+      if (declaredNames.has(accumulatorName)) {
+        analysis.isAccumulatorNameShadowed = true;
+      }
     }
     const nodeRecord = node as unknown as Record<string, unknown>;
     for (const key of Object.keys(nodeRecord)) {
@@ -52,26 +161,29 @@ const collectReturnedLiterals = (
     }
   };
   visit(body);
-  return literals;
+  return analysis;
 };
 
-// The literal's first spread — `{ ...x, ... }` / `[ ...x, y ]`. Returns
-// the spread's argument expression, or null when the literal has no
-// spread as its leading element.
-const firstSpreadArgument = (literal: EsTreeNode): EsTreeNode | null => {
+// Any spread of the accumulator copies the whole growing collection,
+// no matter where it sits in the literal — `{ ...mapItem(x), ...acc }`
+// and `[...g.items, ...acc]` are as quadratic as the leading-spread form.
+const literalSpreadsAccumulator = (literal: EsTreeNode, accumulatorName: string): boolean => {
   const members = isNodeOfType(literal, "ObjectExpression")
     ? literal.properties
     : isNodeOfType(literal, "ArrayExpression")
       ? literal.elements
       : null;
-  if (!members) return null;
+  if (!members) return false;
   for (const member of members) {
-    if (!member) continue;
-    if (isNodeOfType(member as EsTreeNode, "SpreadElement")) {
-      return (member as EsTreeNodeOfType<"SpreadElement">).argument;
+    if (!member || !isNodeOfType(member as EsTreeNode, "SpreadElement")) continue;
+    const spreadArgument = stripParenExpression(
+      (member as EsTreeNodeOfType<"SpreadElement">).argument,
+    );
+    if (isNodeOfType(spreadArgument, "Identifier") && spreadArgument.name === accumulatorName) {
+      return true;
     }
   }
-  return null;
+  return false;
 };
 
 // The O(n²) premise only holds when the accumulator actually grows every step.
@@ -113,6 +225,7 @@ export const noSpreadAccumulatorInReduce = defineRule({
       if (!isNodeOfType(callee, "MemberExpression")) return;
       if (!isNodeOfType(callee.property, "Identifier")) return;
       if (!REDUCE_METHOD_NAMES.has(callee.property.name)) return;
+      if (isStaticallyBoundedReduceSource(callee.object)) return;
 
       const callback = node.arguments?.[0];
       if (
@@ -126,12 +239,12 @@ export const noSpreadAccumulatorInReduce = defineRule({
       if (!accumulatorParam || !isNodeOfType(accumulatorParam, "Identifier")) return;
       const accumulatorName = accumulatorParam.name;
 
-      for (const literal of collectReturnedLiterals(callback)) {
-        const spreadArgument = firstSpreadArgument(literal);
+      const analysis = analyzeReducerReturns(callback, accumulatorName);
+      if (analysis.isAccumulatorNameShadowed || analysis.hasAccumulatorPassthroughReturn) return;
+
+      for (const literal of analysis.returnedLiterals) {
         if (
-          spreadArgument &&
-          isNodeOfType(spreadArgument, "Identifier") &&
-          spreadArgument.name === accumulatorName &&
+          literalSpreadsAccumulator(literal, accumulatorName) &&
           literalGrowsAccumulatorPerIteration(literal)
         ) {
           context.report({

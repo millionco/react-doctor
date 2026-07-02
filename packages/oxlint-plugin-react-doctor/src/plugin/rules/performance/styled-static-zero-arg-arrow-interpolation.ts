@@ -1,7 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -60,9 +59,10 @@ const collectReferenceIdentifiers = (body: EsTreeNode): EsTreeNodeOfType<"Identi
 };
 
 // A body is "static" when it references only literals/template-literals
-// and import-bound (or unresolved/global) bindings — never a same-file
-// module const/let, which is the lazy/TDZ/circular-import deferral idiom
-// that must NOT be inlined.
+// and import-bound bindings. A same-file module const/let is the
+// lazy/TDZ/circular-import deferral idiom, and an unresolved identifier
+// is an environment global (window, document, navigator, …) whose read
+// the arrow deliberately defers past module init — neither may be inlined.
 const isStaticInlinableBody = (arrow: EsTreeNodeOfType<"ArrowFunctionExpression">): boolean => {
   let containsCall = false;
   walkAst(arrow.body, (child) => {
@@ -74,11 +74,7 @@ const isStaticInlinableBody = (arrow: EsTreeNodeOfType<"ArrowFunctionExpression"
   if (containsCall) return false;
 
   for (const reference of collectReferenceIdentifiers(arrow.body)) {
-    // Import-bound references are safe to inline (the value is available
-    // at module-init time in the styled block regardless).
-    if (getImportSourceForName(reference, reference.name) !== null) continue;
-    // A same-file variable declaration is the deferral case — keep quiet.
-    if (findVariableInitializer(reference, reference.name) !== null) return false;
+    if (getImportSourceForName(reference, reference.name) === null) return false;
   }
   return true;
 };

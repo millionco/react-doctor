@@ -11,23 +11,85 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 // and `rerender-lazy-state-init` (which bails on non-CallExpression
 // initializers, so `new X()` sails through). `useState` only uses its
 // argument on the first render but still evaluates it every render and
-// discards the result. Passing `new X()` directly constructs a fresh
-// instance every render — silent allocation churn for containers
-// (Map/Set/Date) and a genuine resource leak for side-effecting
-// constructors (new IntersectionObserver/AbortController). The fix is the
-// lazy form `useState(() => new X())`.
-const findEagerNewExpression = (argument: EsTreeNode): EsTreeNode | null => {
+// discards the result. Cheap built-in containers with constant arguments
+// (`new Set()`, `new Map()`, `new Date()`) cost about as much as the lazy
+// closure would, so they are exempt; the rule targets user-defined class
+// constructors, side-effecting web APIs (new IntersectionObserver /
+// AbortController / Worker), and containers rebuilt from a call result
+// (`new Map(items.map(...))`). The fix is the lazy form
+// `useState(() => new X())`.
+const CHEAP_BUILTIN_CONSTRUCTOR_NAMES = new Set([
+  "Map",
+  "Set",
+  "WeakMap",
+  "WeakSet",
+  "Date",
+  "RegExp",
+  "URL",
+  "URLSearchParams",
+  "Headers",
+]);
+
+const isConstantConstructorArgument = (argumentNode: EsTreeNode): boolean => {
+  const stripped = stripParenExpression(argumentNode);
+  if (isNodeOfType(stripped, "Literal") || isNodeOfType(stripped, "Identifier")) return true;
+  if (isNodeOfType(stripped, "TemplateLiteral")) {
+    return stripped.expressions.every(isConstantConstructorArgument);
+  }
+  if (isNodeOfType(stripped, "UnaryExpression")) {
+    return isConstantConstructorArgument(stripped.argument);
+  }
+  if (isNodeOfType(stripped, "MemberExpression")) {
+    return (
+      isConstantConstructorArgument(stripped.object) &&
+      (!stripped.computed || isConstantConstructorArgument(stripped.property))
+    );
+  }
+  if (isNodeOfType(stripped, "SpreadElement")) {
+    return isConstantConstructorArgument(stripped.argument);
+  }
+  if (isNodeOfType(stripped, "ArrayExpression")) {
+    return stripped.elements.every(
+      (element: EsTreeNode | null) => element === null || isConstantConstructorArgument(element),
+    );
+  }
+  if (isNodeOfType(stripped, "ObjectExpression")) {
+    return stripped.properties.every((property: EsTreeNode) => {
+      if (isNodeOfType(property, "SpreadElement")) {
+        return isConstantConstructorArgument(property.argument);
+      }
+      return isNodeOfType(property, "Property") && isConstantConstructorArgument(property.value);
+    });
+  }
+  return false;
+};
+
+const isExemptNewExpression = (newExpression: EsTreeNodeOfType<"NewExpression">): boolean => {
+  const name = constructorName(newExpression);
+  if (TRIVIAL_INITIALIZER_NAMES.has(name)) return true;
+  return (
+    CHEAP_BUILTIN_CONSTRUCTOR_NAMES.has(name) &&
+    newExpression.arguments.every(isConstantConstructorArgument)
+  );
+};
+
+const findReportableNewExpression = (argument: EsTreeNode): EsTreeNode | null => {
   const stripped = stripParenExpression(argument);
-  if (isNodeOfType(stripped, "NewExpression")) return stripped;
+  if (isNodeOfType(stripped, "NewExpression")) {
+    return isExemptNewExpression(stripped) ? null : stripped;
+  }
   // `useState(cond ? new A() : new B())` / `useState(flag && new A())` —
   // a branch that is directly a `new` expression still constructs eagerly.
   if (isNodeOfType(stripped, "ConditionalExpression")) {
     return (
-      findEagerNewExpression(stripped.consequent) ?? findEagerNewExpression(stripped.alternate)
+      findReportableNewExpression(stripped.consequent) ??
+      findReportableNewExpression(stripped.alternate)
     );
   }
   if (isNodeOfType(stripped, "LogicalExpression")) {
-    return findEagerNewExpression(stripped.left) ?? findEagerNewExpression(stripped.right);
+    return (
+      findReportableNewExpression(stripped.left) ?? findReportableNewExpression(stripped.right)
+    );
   }
   return null;
 };
@@ -53,12 +115,10 @@ export const noEagerNewInUseStateInitializer = defineRule({
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, "useState") || !node.arguments?.length) return;
-      const eagerNew = findEagerNewExpression(node.arguments[0]);
+      const eagerNew = findReportableNewExpression(node.arguments[0]);
       if (!eagerNew) return;
 
       const name = constructorName(eagerNew);
-      if (TRIVIAL_INITIALIZER_NAMES.has(name)) return;
-
       context.report({
         node: eagerNew,
         message: `useState(new ${name}()) builds a fresh instance on every render and throws it away. Wrap it as useState(() => new ${name}()) so it only runs once.`,

@@ -90,4 +90,82 @@ describe("no-unescaped-dynamic-string-in-regexp", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag an escaped value whose name keeps the search word (escapedQuery idiom)", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const escapedQuery = escapeRegExp(query);
+       const re = new RegExp(escapedQuery, 'gi');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a filter escaped on a prior line into a differently-named binding", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const resultFilter = escapeRegExp(filter);
+       const re = new RegExp(resultFilter, 'i');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a term sanitized via replaceAll on the preceding line (MDN escape idiom)", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      String.raw`const escapedSearchString = searchString.replaceAll(/[.*+?^$\{\}()|[\]\\]/g, '\\$&');
+       const re = new RegExp(escapedSearchString, 'i');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag the ES2025 RegExp.escape builtin", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const re = new RegExp(RegExp.escape(searchTerm), 'gi');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a provably-literal local constant whose name contains a search word", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const QUERY_SEPARATOR = '[?&]';
+       const re = new RegExp(QUERY_SEPARATOR, 'g');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag recomposition from an existing regex's .source", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const re = new RegExp(searchWordRegex.source, 'gi');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag names where 'term' is only a substring (terminalSequence)", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const re = new RegExp(terminalSequence, 'g');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a two-hop chain back to an escaped binding", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const escaped = escapeRegExp(query);
+       const searchPattern = escaped;
+       const re = new RegExp(searchPattern, 'gi');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a raw query concatenated next to an escaped prefix", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      `const re = new RegExp(escapeRegExp(prefix) + query, 'i');`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

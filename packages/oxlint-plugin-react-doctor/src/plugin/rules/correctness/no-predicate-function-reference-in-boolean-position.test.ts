@@ -74,6 +74,32 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a bare predicate as the left operand of `&&` in a JSX conditional render", () => {
+    const result = runRule(
+      noPredicateFunctionReferenceInBooleanPosition,
+      `
+      function isLoading() { return state.loading; }
+      function App() {
+        return <div>{isLoading && <Spinner />}</div>;
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("isLoading()");
+  });
+
+  it("flags a bare predicate guarding an expression statement via `&&`", () => {
+    const result = runRule(
+      noPredicateFunctionReferenceInBooleanPosition,
+      `
+      function isReady() { return true; }
+      isReady && start();
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag when the predicate is called", () => {
     const result = runRule(
       noPredicateFunctionReferenceInBooleanPosition,
@@ -174,6 +200,79 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
       if (check) {
         check();
       }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a reassignable `let` function slot guarded before its call (start/stop polling idiom)", () => {
+    const result = runRule(
+      noPredicateFunctionReferenceInBooleanPosition,
+      `
+      let isPolling = () => false;
+      function stop() { isPolling = null; }
+      function tick() {
+        if (isPolling) {
+          isPolling();
+        }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a hoisted `var` assigned only inside a conditional block (feature-detection idiom)", () => {
+    const result = runRule(
+      noPredicateFunctionReferenceInBooleanPosition,
+      `
+      function detect(flag) {
+        if (flag) {
+          var isSupported = function () { return true; };
+        }
+        if (isSupported) {
+          return isSupported();
+        }
+        return false;
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a destructured prop with a function default (caller may pass a boolean)", () => {
+    const result = runRule(
+      noPredicateFunctionReferenceInBooleanPosition,
+      `
+      function Menu({ isOpen = () => false }) {
+        if (isOpen) {
+          return open();
+        }
+        return null;
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an existence guard whose branch invokes the predicate (defensive-call idiom)", () => {
+    const result = runRule(
+      noPredicateFunctionReferenceInBooleanPosition,
+      `
+      function isEnabled() { return true; }
+      if (isEnabled) {
+        isEnabled();
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag `predicate && predicate()` (inline existence-guarded call idiom)", () => {
+    const result = runRule(
+      noPredicateFunctionReferenceInBooleanPosition,
+      `
+      const isDone = () => true;
+      isDone && isDone();
       `,
     );
     expect(result.diagnostics).toHaveLength(0);

@@ -14,14 +14,27 @@ describe("no-date-string-parsing", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags Date.parse on an ambiguous string literal", () => {
+  it("flags Date.parse on a calendar-invalid date-only literal", () => {
     const result = runRule(noDateStringParsing, `const ts = Date.parse("2021-02-30");`);
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags Date.parse on an unresolved runtime value", () => {
-    const result = runRule(noDateStringParsing, `const ts = Date.parse(item.timestamp);`);
+  it("flags new Date on a calendar-invalid Feb 29 in a non-leap year", () => {
+    const result = runRule(noDateStringParsing, `const d = new Date("2021-02-29");`);
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("abstains on Date.parse with an unresolved runtime value (parse-then-validate idiom)", () => {
+    const result = runRule(noDateStringParsing, `const ts = Date.parse(item.timestamp);`);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("abstains on runtime Date.parse whose NaN result is explicitly validated", () => {
+    const result = runRule(
+      noDateStringParsing,
+      `const ts = Date.parse(userInput); if (Number.isNaN(ts)) { throw new Error("invalid date"); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags new Date when an identifier resolves to a string literal", () => {
@@ -42,9 +55,29 @@ describe("no-date-string-parsing", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a date-only string literal", () => {
+  it("does not flag a calendar-valid date-only literal (spec-deterministic UTC midnight since ES2016)", () => {
     const result = runRule(noDateStringParsing, `const d = new Date("2022-11-05");`);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag Date.parse on a calendar-valid date-only literal", () => {
+    const result = runRule(noDateStringParsing, `const ts = Date.parse("2027-04-26");`);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a calendar-valid Feb 29 in a leap year", () => {
+    const result = runRule(noDateStringParsing, `const d = new Date("2024-02-29");`);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag the deliberate new Date('') Invalid Date sentinel", () => {
+    const result = runRule(noDateStringParsing, `const invalidDate = new Date("");`);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag Date.parse('') used as a NaN sentinel", () => {
+    const result = runRule(noDateStringParsing, `const nanSentinel = Date.parse("");`);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag new Date with no argument", () => {
@@ -137,6 +170,68 @@ describe("no-date-string-parsing", () => {
       `const iso = "2026-06-21T08:00:00Z"; const ts = Date.parse(iso);`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("abstains on a destructured prop with a string default (runtime prop, default only fills undefined)", () => {
+    const result = runRule(
+      noDateStringParsing,
+      `const EventDate = ({ value = "" }) => new Date(value);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("abstains on a function parameter with a string default (runtime argument wins)", () => {
+    const result = runRule(
+      noDateStringParsing,
+      `function format(dateString = "2024-01-01") { return new Date(dateString); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("abstains on a parameter default even when the default itself is ambiguous", () => {
+    const result = runRule(
+      noDateStringParsing,
+      `function format(dateString = "Jan 5 2021") { return new Date(dateString); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("abstains on the let-then-branch-assign pattern where the initializer is stale", () => {
+    const result = runRule(
+      noDateStringParsing,
+      `let dateInput = "";
+       if (typeof raw === "string") dateInput = raw; else dateInput = raw.toISOString();
+       const d = new Date(dateInput);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("abstains on a reassigned binding even when the initializer is an ambiguous literal", () => {
+    const result = runRule(
+      noDateStringParsing,
+      `let dateInput = "Jan 5 2021";
+       if (raw) dateInput = raw;
+       const d = new Date(dateInput);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("abstains on Date.parse of a binding reassigned to a runtime value after a safe initializer", () => {
+    const result = runRule(
+      noDateStringParsing,
+      `let iso = "2026-06-21T08:00:00Z";
+       iso = response.timestamp;
+       const ts = Date.parse(iso);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a let binding with an ambiguous initializer and no reassignment", () => {
+    const result = runRule(
+      noDateStringParsing,
+      `let dateString = "Jan 5 2021"; const d = new Date(dateString);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("abstains on an interpolated template literal", () => {

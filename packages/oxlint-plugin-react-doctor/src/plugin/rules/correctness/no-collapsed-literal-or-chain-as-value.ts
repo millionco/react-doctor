@@ -70,10 +70,31 @@ const isConsumedByStringSearchCall = (chainOrWrapper: EsTreeNode, parent: EsTree
   return parent.arguments.some((argument) => argument === chainOrWrapper);
 };
 
+const isReceiverOfStringSearchCall = (chainOrWrapper: EsTreeNode, parent: EsTreeNode): boolean => {
+  if (
+    !isNodeOfType(parent, "MemberExpression") ||
+    parent.object !== chainOrWrapper ||
+    parent.computed ||
+    !isNodeOfType(parent.property, "Identifier") ||
+    !STRING_SEARCH_METHODS.has(parent.property.name)
+  ) {
+    return false;
+  }
+  const grandparent = parent.parent ?? null;
+  return (
+    grandparent !== null &&
+    isNodeOfType(grandparent, "CallExpression") &&
+    grandparent.callee === parent
+  );
+};
+
 const isConsumedByEqualityComparison = (chainOrWrapper: EsTreeNode, parent: EsTreeNode): boolean =>
   isNodeOfType(parent, "BinaryExpression") &&
   EQUALITY_OPERATORS.has(parent.operator) &&
   (parent.left === chainOrWrapper || parent.right === chainOrWrapper);
+
+const isConsumedAsSwitchCaseTest = (chainOrWrapper: EsTreeNode, parent: EsTreeNode): boolean =>
+  isNodeOfType(parent, "SwitchCase") && parent.test === chainOrWrapper;
 
 export const noCollapsedLiteralOrChainAsValue = defineRule({
   id: "no-collapsed-literal-or-chain-as-value",
@@ -100,7 +121,9 @@ export const noCollapsedLiteralOrChainAsValue = defineRule({
 
       if (
         !isConsumedByStringSearchCall(wrapper, parent) &&
-        !isConsumedByEqualityComparison(wrapper, parent)
+        !isReceiverOfStringSearchCall(wrapper, parent) &&
+        !isConsumedByEqualityComparison(wrapper, parent) &&
+        !isConsumedAsSwitchCaseTest(wrapper, parent)
       ) {
         return;
       }

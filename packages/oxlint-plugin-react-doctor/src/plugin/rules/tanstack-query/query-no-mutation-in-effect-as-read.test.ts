@@ -71,6 +71,122 @@ describe("query-no-mutation-in-effect-as-read", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a then-handler that reads the response body in the effect", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `function C() {
+         const { mutateAsync } = useMutation(opts);
+         useEffect(() => {
+           mutateAsync(params).then((response) => setLogs(response.logs));
+         }, [id]);
+         return null;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a destructured awaited response body in the effect", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `function C() {
+         const { mutateAsync } = useMutation(opts);
+         useEffect(() => {
+           (async () => {
+             const { logs } = await mutateAsync(params);
+             setLogs(logs);
+           })();
+         }, [id]);
+         return null;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag the pre-optional-chaining ack guard `data && data.success`", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `function C() {
+         const { mutate, data } = useUploadEvent(opts);
+         useEffect(() => { mutate(buildEvent()); }, [id]);
+         return data && data.success ? <Done /> : <Pending />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an early-return existence guard before an ack read", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `function C() {
+         const { mutate, data } = useUploadEvent(opts);
+         useEffect(() => { mutate(buildEvent()); }, [id]);
+         if (!data) return <Pending />;
+         return data.success ? <Done /> : <Failed />;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a mutate fired from a socket handler registered in the effect", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `function C() {
+         const { mutate, data } = useMutation(opts);
+         useEffect(() => {
+           const onMessage = (event) => mutate(JSON.parse(event.data));
+           socket.addEventListener('message', onMessage);
+           return () => socket.removeEventListener('message', onMessage);
+         }, []);
+         return data ? <div>{data.value}</div> : null;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag SWR's revalidate-style mutate alongside a data render", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `import useSWR from 'swr';
+       function C() {
+         const { data, mutate } = useSWR('/api/user', fetcher);
+         useEffect(() => { mutate(); }, [focusCount]);
+         return <div>{data.name}</div>;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag an awaited response destructured to ack fields only", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `function C() {
+         const { mutateAsync } = useMutation(opts);
+         useEffect(() => {
+           (async () => {
+             const { success } = await mutateAsync(params);
+             if (!success) reportFailure();
+           })();
+         }, [id]);
+         return null;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a then-handler that ignores the response", () => {
+    const result = runRule(
+      queryNoMutationInEffectAsRead,
+      `function C() {
+         const { mutateAsync } = useMutation(opts);
+         useEffect(() => {
+           mutateAsync(params).then(() => setDone(true));
+         }, [id]);
+         return null;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a mutate called only from a handler", () => {
     const result = runRule(
       queryNoMutationInEffectAsRead,

@@ -96,6 +96,43 @@ describe("no-controlled-input-value-without-state-update", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a generic radio component with dynamic type and explicit checked", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Radio = ({ type, checked, onChange }) => <input type={type} checked={checked} value="a" onChange={onChange} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag type={'radio'} written as an expression container", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const C = () => <input type={"radio"} value="a" checked={sel} onChange={h} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a dynamic type={type} input, which may resolve to radio/checkbox/hidden", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `const Field = ({ type, onChange }) => <input type={type} value="a" onChange={onChange} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag Solid files, where a static value only sets the initial value", () => {
+    const result = runRule(
+      noControlledInputValueWithoutStateUpdate,
+      `import { createSignal } from "solid-js";
+const C = () => <input value="" onChange={(e) => setQuery(e.currentTarget.value)} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag when a spread could supply onChange/value", () => {
     const result = runRule(
       noControlledInputValueWithoutStateUpdate,

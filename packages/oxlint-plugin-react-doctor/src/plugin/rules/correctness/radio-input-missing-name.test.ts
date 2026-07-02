@@ -48,6 +48,45 @@ describe("radio-input-missing-name", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an allowlisted member-expression radio component with no name (semantic-ui Form.Radio)", () => {
+    const result = runRule(radioInputMissingName, `<Form.Radio value="a" />;`, {
+      settings: {
+        "react-doctor": { "radioInputMissingName.radioComponents": ["Form.Radio"] },
+      },
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a native radio inside a Group-named wrapper, which cannot supply name via context", () => {
+    const result = runRule(
+      radioInputMissingName,
+      `<InputGroup><input type="radio" value="a" /></InputGroup>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag allowlisted Radios whose name comes from the group provider (antd/Mantine Radio.Group)", () => {
+    const result = runRule(
+      radioInputMissingName,
+      `<Radio.Group name="framework"><Radio value="react" /><Radio value="vue" /></Radio.Group>;`,
+      { settings: withRadioComponents },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag allowlisted Radios inside a nameless RadioGroup, which auto-generates a name (Chakra/Mantine)", () => {
+    const result = runRule(
+      radioInputMissingName,
+      `<RadioGroup value={value} onChange={setValue}><div><Radio value="react" /></div></RadioGroup>;`,
+      { settings: withRadioComponents },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a radio that has a name", () => {
     const result = runRule(
       radioInputMissingName,

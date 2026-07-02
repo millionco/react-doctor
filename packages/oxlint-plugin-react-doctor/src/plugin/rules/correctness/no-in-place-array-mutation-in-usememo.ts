@@ -1,5 +1,4 @@
 import { MUTATING_ARRAY_METHODS } from "../../constants/js.js";
-import { MEMOIZING_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -12,9 +11,16 @@ import { nearestEnclosingFunction } from "../../utils/component-or-hook-display-
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
-// Returns the useMemo/useCallback callback that DIRECTLY encloses `node` — the
-// call must sit in the callback's own body, not in a deeper nested function
-// (which may never run during memoization). Null otherwise.
+// Global-object roots (`window.dataLayer.push(...)`, `window._paq.push([...])`)
+// are vendor command queues, not React render data — pushing onto them is the
+// documented API, so a copy would break tracking.
+const GLOBAL_OBJECT_ROOT_NAMES = new Set(["window", "globalThis", "self", "document"]);
+
+// Returns the useMemo callback that DIRECTLY encloses `node` — the call must
+// sit in the callback's own body, not in a deeper nested function (which may
+// never run during memoization). useCallback bodies are deferred imperative
+// code, not memo derivations, so they are deliberately out of scope. Null
+// otherwise.
 const enclosingMemoCallback = (node: EsTreeNode): EsTreeNode | null => {
   const functionNode = nearestEnclosingFunction(node);
   if (!functionNode) return null;
@@ -23,7 +29,7 @@ const enclosingMemoCallback = (node: EsTreeNode): EsTreeNode | null => {
     parent &&
     isNodeOfType(parent, "CallExpression") &&
     parent.arguments?.[0] === functionNode &&
-    isHookCall(parent, MEMOIZING_HOOK_NAMES)
+    isHookCall(parent, "useMemo")
   ) {
     return functionNode;
   }
@@ -34,9 +40,7 @@ const enclosingMemoCallback = (node: EsTreeNode): EsTreeNode | null => {
 // `ref.current[key].splice()`) means the mutated array lives inside a React
 // ref — a container the component deliberately keeps mutable and outside the
 // render data flow, so mutating it in place is the documented pattern, not
-// shared props / cache corruption. Excluding it removes the dominant false
-// positive (undo/redo stacks, pointer queues) while leaving foreign arrays
-// reached through plain member access (`props.rows`, `values.images`) flagged.
+// shared props / cache corruption.
 const receiverReachesThroughRefCurrent = (receiver: EsTreeNode): boolean => {
   let cursor: EsTreeNode = receiver;
   while (isNodeOfType(cursor, "MemberExpression")) {
@@ -52,18 +56,8 @@ const receiverReachesThroughRefCurrent = (receiver: EsTreeNode): boolean => {
   return false;
 };
 
-// A root identifier is callback-owned when its binding is declared inside the
-// memo callback (its params, or any variable — regardless of initializer form:
-// literal, `groupBy(...)`, destructure, etc.). Mutating an object the callback
-// created is always safe.
-const isRootDeclaredWithinCallback = (
-  rootIdentifier: EsTreeNode,
-  rootName: string,
-  callbackFunction: EsTreeNode,
-): boolean => {
-  const binding = findVariableInitializer(rootIdentifier, rootName);
-  if (!binding) return false;
-  let cursor: EsTreeNode | null | undefined = binding.bindingIdentifier;
+const isDeclaredWithin = (bindingIdentifier: EsTreeNode, callbackFunction: EsTreeNode): boolean => {
+  let cursor: EsTreeNode | null | undefined = bindingIdentifier;
   while (cursor) {
     if (cursor === callbackFunction) return true;
     cursor = cursor.parent ?? null;
@@ -71,13 +65,53 @@ const isRootDeclaredWithinCallback = (
   return false;
 };
 
+// A binding destructured as element [0] of a setter-less `useState(...)`
+// (`const [subscribers] = useState({})`) is the stable-mutable-container
+// idiom — semantically identical to the already-exempt `ref.current` chain.
+const isSetterlessUseStateBinding = (bindingIdentifier: EsTreeNode): boolean => {
+  const arrayPattern = bindingIdentifier.parent;
+  if (!arrayPattern || !isNodeOfType(arrayPattern, "ArrayPattern")) return false;
+  const elements = Array.isArray(arrayPattern.elements) ? arrayPattern.elements : [];
+  if (elements[0] !== bindingIdentifier) return false;
+  if (elements.filter(Boolean).length !== 1) return false;
+  const declarator = arrayPattern.parent;
+  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator") || !declarator.init) {
+    return false;
+  }
+  return isHookCall(stripParenExpression(declarator.init), "useState");
+};
+
+// True when the binding identifier sits inside a function's parameter list
+// (directly or through a destructuring pattern) — i.e. it is provably a
+// caller-supplied value like a destructured prop, never a fresh local.
+const isBindingAFunctionParameter = (bindingIdentifier: EsTreeNode): boolean => {
+  let cursor: EsTreeNode = bindingIdentifier;
+  let ancestor: EsTreeNode | null | undefined = cursor.parent;
+  while (ancestor) {
+    if (isNodeOfType(ancestor, "VariableDeclarator")) return false;
+    if (
+      isNodeOfType(ancestor, "FunctionDeclaration") ||
+      isNodeOfType(ancestor, "FunctionExpression") ||
+      isNodeOfType(ancestor, "ArrowFunctionExpression")
+    ) {
+      return (
+        Array.isArray(ancestor.params) &&
+        ancestor.params.some((parameterNode) => parameterNode === cursor)
+      );
+    }
+    cursor = ancestor;
+    ancestor = cursor.parent ?? null;
+  }
+  return false;
+};
+
 export const noInPlaceArrayMutationInUseMemo = defineRule({
   id: "no-in-place-array-mutation-in-usememo",
-  title: "In-place array mutation inside useMemo or useCallback",
+  title: "In-place array mutation inside useMemo",
   severity: "warn",
   category: "Correctness",
   recommendation:
-    "Copy the array before sorting/reversing (`[...items].sort(...)` or `items.toSorted(...)`). A useMemo/useCallback callback should be a pure derivation; mutating a props / query-cache / Formik array in place corrupts shared state and downstream identity checks miss the change.",
+    "Copy the array before sorting/reversing (`[...items].sort(...)` or `items.toSorted(...)`). A useMemo callback should be a pure derivation; mutating a props / query-cache / Formik array in place corrupts shared state and downstream identity checks miss the change.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       const methodName = getCallMethodName(node.callee);
@@ -89,15 +123,16 @@ export const noInPlaceArrayMutationInUseMemo = defineRule({
       // `callee` is `<receiver>.<method>` — the receiver is what gets mutated.
       if (!isNodeOfType(node.callee, "MemberExpression")) return;
       const receiver = stripParenExpression(node.callee.object);
-      // Bare-Identifier receivers (`const fresh = ...; fresh.sort()`) are never
-      // flagged; only a member-expression receiver points at a foreign object.
-      if (!isNodeOfType(receiver, "MemberExpression")) return;
-      if (receiverReachesThroughRefCurrent(receiver)) return;
+
+      const isBareIdentifierReceiver = isNodeOfType(receiver, "Identifier");
+      if (!isBareIdentifierReceiver && !isNodeOfType(receiver, "MemberExpression")) return;
+      if (!isBareIdentifierReceiver && receiverReachesThroughRefCurrent(receiver)) return;
 
       const rootName = getRootIdentifierName(receiver);
       // No plain-identifier root (e.g. `[...arr].foo.sort()`) — can't prove the
       // receiver is foreign, so stay quiet.
       if (!rootName) return;
+      if (GLOBAL_OBJECT_ROOT_NAMES.has(rootName)) return;
 
       let rootIdentifier: EsTreeNode = receiver;
       while (isNodeOfType(rootIdentifier, "MemberExpression")) {
@@ -105,7 +140,19 @@ export const noInPlaceArrayMutationInUseMemo = defineRule({
       }
       if (!isNodeOfType(rootIdentifier, "Identifier")) return;
 
-      if (isRootDeclaredWithinCallback(rootIdentifier, rootName, callbackFunction)) return;
+      const binding = findVariableInitializer(rootIdentifier, rootName);
+
+      if (isBareIdentifierReceiver) {
+        // A bare receiver (`items.sort()`) is only provably foreign when it is
+        // a function parameter — a destructured prop or hook argument. Locals,
+        // imports, and unresolved names stay quiet.
+        if (!binding) return;
+        if (!isBindingAFunctionParameter(binding.bindingIdentifier)) return;
+        if (isDeclaredWithin(binding.bindingIdentifier, callbackFunction)) return;
+      } else if (binding) {
+        if (isDeclaredWithin(binding.bindingIdentifier, callbackFunction)) return;
+        if (isSetterlessUseStateBinding(binding.bindingIdentifier)) return;
+      }
 
       context.report({
         node,

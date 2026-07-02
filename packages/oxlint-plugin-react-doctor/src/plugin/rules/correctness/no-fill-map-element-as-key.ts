@@ -1,12 +1,27 @@
 import { INDEX_PARAMETER_NAMES } from "../../constants/react.js";
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 const STRING_COERCION_FUNCTIONS = new Set(["String", "Number"]);
+
+const ARRAY_MUTATING_METHODS = new Set([
+  "copyWithin",
+  "fill",
+  "pop",
+  "push",
+  "reverse",
+  "shift",
+  "sort",
+  "splice",
+  "unshift",
+]);
 
 // Name of the index-shaped identifier a `key=` expression resolves to, or
 // null. Mirrors the coverage of no-array-index-as-key's `extractIndexName`
@@ -72,12 +87,147 @@ const getFillReceiverLengthArgument = (receiver: EsTreeNode): EsTreeNode | null 
   return getArrayConstructorLengthArgument(callee.object);
 };
 
+const doesPatternBindName = (pattern: EsTreeNode | null | undefined, name: string): boolean => {
+  if (!pattern) return false;
+  const boundNames = new Set<string>();
+  collectPatternNames(pattern, boundNames);
+  return boundNames.has(name);
+};
+
+const doesDeclarationBindName = (statement: EsTreeNode | null | undefined, name: string): boolean =>
+  Boolean(
+    statement &&
+    isNodeOfType(statement, "VariableDeclaration") &&
+    statement.declarations.some((declarator) => doesPatternBindName(declarator.id, name)),
+  );
+
+// Whether anything between the key expression and the map callback rebinds
+// (or reassigns) the callback parameter's name — a for-loop counter, a
+// destructured `[i, v]` from `.entries()`, a nested-block const, a catch
+// param, a switch-case declaration. When it does, the key identifier is
+// NOT the fill element and the keys can be genuinely distinct.
+const isKeyNameReboundBetween = (
+  attributeNode: EsTreeNode,
+  callback: EsTreeNode,
+  keyName: string,
+): boolean => {
+  let current: EsTreeNode | null | undefined = attributeNode.parent;
+  while (current && current !== callback) {
+    if (isNodeOfType(current, "ForStatement")) {
+      if (doesDeclarationBindName(current.init, keyName)) return true;
+      if (
+        isNodeOfType(current.init, "AssignmentExpression") &&
+        isNodeOfType(current.init.left, "Identifier") &&
+        current.init.left.name === keyName
+      ) {
+        return true;
+      }
+    }
+    if (isNodeOfType(current, "ForOfStatement") || isNodeOfType(current, "ForInStatement")) {
+      if (doesDeclarationBindName(current.left, keyName)) return true;
+      if (isNodeOfType(current.left, "Identifier") && current.left.name === keyName) return true;
+    }
+    if (
+      isNodeOfType(current, "BlockStatement") &&
+      current.body.some((statement) => doesDeclarationBindName(statement, keyName))
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(current, "SwitchStatement") &&
+      current.cases.some((switchCase) =>
+        switchCase.consequent.some((statement) => doesDeclarationBindName(statement, keyName)),
+      )
+    ) {
+      return true;
+    }
+    if (isNodeOfType(current, "CatchClause") && doesPatternBindName(current.param, keyName)) {
+      return true;
+    }
+    current = current.parent;
+  }
+  return false;
+};
+
+const isConstDeclaredBinding = (bindingIdentifier: EsTreeNode): boolean => {
+  const declarator = bindingIdentifier.parent;
+  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
+  if (declarator.id !== bindingIdentifier) return false;
+  const declaration = declarator.parent;
+  return Boolean(
+    declaration && isNodeOfType(declaration, "VariableDeclaration") && declaration.kind === "const",
+  );
+};
+
+// Whether the named array is reassigned, index-assigned, or hit with a
+// mutating method anywhere in its scope — after that, elements may no
+// longer be the identical fill value, so a param bound to them can be a
+// legitimate key.
+const isFilledArrayMutatedInScope = (scopeOwner: EsTreeNode, arrayName: string): boolean => {
+  let didFindMutation = false;
+  walkAst(scopeOwner, (descendant) => {
+    if (didFindMutation) return false;
+    if (isNodeOfType(descendant, "AssignmentExpression")) {
+      const target = descendant.left;
+      if (isNodeOfType(target, "Identifier") && target.name === arrayName) {
+        didFindMutation = true;
+        return false;
+      }
+      if (
+        isNodeOfType(target, "MemberExpression") &&
+        isNodeOfType(target.object, "Identifier") &&
+        target.object.name === arrayName
+      ) {
+        didFindMutation = true;
+        return false;
+      }
+    }
+    if (
+      isNodeOfType(descendant, "CallExpression") &&
+      isNodeOfType(descendant.callee, "MemberExpression") &&
+      isNodeOfType(descendant.callee.object, "Identifier") &&
+      descendant.callee.object.name === arrayName &&
+      isNodeOfType(descendant.callee.property, "Identifier") &&
+      ARRAY_MUTATING_METHODS.has(descendant.callee.property.name)
+    ) {
+      didFindMutation = true;
+      return false;
+    }
+    return undefined;
+  });
+  return didFindMutation;
+};
+
+// Length argument of the fill chain the `.map` receiver resolves to: the
+// inline `Array(n).fill(...).map(...)` chain, or an identifier whose sole
+// `const` initializer is that chain and which is never mutated afterwards
+// (`const slots = Array(n).fill(null); slots.map(...)`).
+const resolveFillReceiverLengthArgument = (receiver: EsTreeNode): EsTreeNode | null => {
+  const inlineLengthArgument = getFillReceiverLengthArgument(receiver);
+  if (inlineLengthArgument) return inlineLengthArgument;
+
+  if (!isNodeOfType(receiver, "Identifier")) return null;
+  const binding = findVariableInitializer(receiver, receiver.name);
+  if (!binding || !binding.initializer) return null;
+  if (!isConstDeclaredBinding(binding.bindingIdentifier)) return null;
+  const initializerLengthArgument = getFillReceiverLengthArgument(binding.initializer);
+  if (!initializerLengthArgument) return null;
+  if (isFilledArrayMutatedInScope(binding.scopeOwner, receiver.name)) return null;
+  return initializerLengthArgument;
+};
+
 // The nearest enclosing `.map(callback)` when the given node lives directly
 // in that callback (not behind an intervening nested function), plus the
 // receiver the `.map` was called on.
 const findEnclosingMapCall = (
   node: EsTreeNode,
-): { callback: EsTreeNode; receiver: EsTreeNode } | null => {
+): {
+  callback:
+    | EsTreeNodeOfType<"ArrowFunctionExpression">
+    | EsTreeNodeOfType<"FunctionExpression">
+    | EsTreeNodeOfType<"FunctionDeclaration">;
+  receiver: EsTreeNode;
+} | null => {
   let current = node;
   while (current.parent) {
     if (isFunctionLike(current)) {
@@ -115,13 +265,14 @@ export const noFillMapElementAsKey = defineRule({
       const enclosingMap = findEnclosingMapCall(node);
       if (!enclosingMap) return;
 
-      const parameters = (enclosingMap.callback as EsTreeNodeOfType<"ArrowFunctionExpression">)
-        .params;
+      const parameters = enclosingMap.callback.params;
       if (parameters.length !== 1) return;
       const soleParameter = parameters[0];
       if (!isNodeOfType(soleParameter, "Identifier") || soleParameter.name !== keyName) return;
 
-      const lengthArgument = getFillReceiverLengthArgument(enclosingMap.receiver);
+      if (isKeyNameReboundBetween(node, enclosingMap.callback, keyName)) return;
+
+      const lengthArgument = resolveFillReceiverLengthArgument(enclosingMap.receiver);
       if (!lengthArgument) return;
       if (isNodeOfType(lengthArgument, "Literal") && lengthArgument.value === 1) return;
 

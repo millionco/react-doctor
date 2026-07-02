@@ -8,10 +8,27 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 const HANDLER_PROP_PATTERN = /^on[A-Z]/;
 
-// True when a promise chain carries its own rejection/settlement handler
-// anywhere along it (`.catch`/`.finally`), so a trailing `.then` is
-// managed, not floating.
-const chainHasCatchOrFinally = (node: EsTreeNode): boolean => {
+const promiseChainMethodName = (call: EsTreeNodeOfType<"CallExpression">): string | null => {
+  const callee = call.callee;
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.computed ||
+    !isNodeOfType(callee.property, "Identifier")
+  ) {
+    return null;
+  }
+  return callee.property.name;
+};
+
+const isNullishArgument = (argument: EsTreeNode): boolean =>
+  (isNodeOfType(argument, "Literal") && argument.value === null) ||
+  (isNodeOfType(argument, "Identifier") && argument.name === "undefined");
+
+// True when the chain carries a rejection handler anywhere along it: a
+// `.catch(...)` call, or a two-argument `.then(onOk, onErr)` whose
+// onRejected is a real handler. `.finally` is NOT a rejection handler —
+// it re-throws the rejection.
+const chainHasRejectionHandler = (node: EsTreeNode): boolean => {
   let cursor: EsTreeNode | null | undefined = node;
   while (cursor) {
     if (isNodeOfType(cursor, "ChainExpression")) {
@@ -19,16 +36,16 @@ const chainHasCatchOrFinally = (node: EsTreeNode): boolean => {
       continue;
     }
     if (isNodeOfType(cursor, "CallExpression")) {
-      const callee = cursor.callee;
+      const methodName = promiseChainMethodName(cursor);
+      if (methodName === "catch") return true;
       if (
-        isNodeOfType(callee, "MemberExpression") &&
-        !callee.computed &&
-        isNodeOfType(callee.property, "Identifier") &&
-        (callee.property.name === "catch" || callee.property.name === "finally")
+        methodName === "then" &&
+        cursor.arguments.length >= 2 &&
+        !isNullishArgument(cursor.arguments[1] as EsTreeNode)
       ) {
         return true;
       }
-      cursor = callee as EsTreeNode;
+      cursor = cursor.callee as EsTreeNode;
       continue;
     }
     if (isNodeOfType(cursor, "MemberExpression")) {
@@ -40,50 +57,83 @@ const chainHasCatchOrFinally = (node: EsTreeNode): boolean => {
   return false;
 };
 
-// Returns the terminating `.then(handler)` call when `expression` is a
-// single-argument `.then`-ended chain with no `.catch`/`.finally`, else
-// null. Keyed purely off the literal `.then(` shape — no inference about
-// whether a bare call returns a promise.
+// Returns the last `.then(...)` call when `expression` is a `.then`-ended
+// chain (optionally followed by `.finally` calls, which re-throw
+// rejections) with no rejection handler, else null. Keyed purely off the
+// literal `.then(` shape — no inference about whether a bare call returns
+// a promise.
 const floatingThenCall = (expression: EsTreeNode): EsTreeNodeOfType<"CallExpression"> | null => {
-  const stripped = stripParenExpression(expression);
-  if (!isNodeOfType(stripped, "CallExpression")) return null;
-  const callee = stripped.callee;
-  if (
-    !isNodeOfType(callee, "MemberExpression") ||
-    callee.computed ||
-    !isNodeOfType(callee.property, "Identifier") ||
-    callee.property.name !== "then"
+  let terminal = stripParenExpression(expression);
+  while (
+    isNodeOfType(terminal, "CallExpression") &&
+    promiseChainMethodName(terminal) === "finally"
   ) {
-    return null;
+    const callee = terminal.callee;
+    if (!isNodeOfType(callee, "MemberExpression")) return null;
+    terminal = stripParenExpression(callee.object as EsTreeNode);
   }
-  // A second (onRejected) argument handles the rejection.
-  if (stripped.arguments.length !== 1) return null;
-  if (chainHasCatchOrFinally(stripped)) return null;
-  return stripped;
+  if (!isNodeOfType(terminal, "CallExpression")) return null;
+  if (promiseChainMethodName(terminal) !== "then") return null;
+  if (chainHasRejectionHandler(terminal)) return null;
+  return terminal;
 };
 
-// The handler's directly-executed statements: a concise arrow body is the
-// expression itself; a block body contributes only its top-level
-// ExpressionStatements. Nested functions are intentionally NOT descended
-// into — their `.then` chains don't run when the handler fires.
+// Discarded expression positions inside the handler: the expression
+// itself, the right side of a `&&`/`||`/`??` guard, and both ternary
+// branches. `void expr` is an explicit discard and never matches.
+const collectExpressionFloatingThenCalls = (
+  expression: EsTreeNode,
+  found: EsTreeNodeOfType<"CallExpression">[],
+): void => {
+  const stripped = stripParenExpression(expression);
+  if (isNodeOfType(stripped, "LogicalExpression")) {
+    collectExpressionFloatingThenCalls(stripped.right as EsTreeNode, found);
+    return;
+  }
+  if (isNodeOfType(stripped, "ConditionalExpression")) {
+    collectExpressionFloatingThenCalls(stripped.consequent as EsTreeNode, found);
+    collectExpressionFloatingThenCalls(stripped.alternate as EsTreeNode, found);
+    return;
+  }
+  const floating = floatingThenCall(stripped);
+  if (floating) found.push(floating);
+};
+
+// Statements that execute synchronously when the handler fires:
+// ExpressionStatements plus both branches of `if` (through nested
+// blocks). Nested functions are intentionally NOT descended into — their
+// `.then` chains don't run when the handler fires.
+const collectStatementFloatingThenCalls = (
+  statement: EsTreeNode,
+  found: EsTreeNodeOfType<"CallExpression">[],
+): void => {
+  if (isNodeOfType(statement, "ExpressionStatement")) {
+    collectExpressionFloatingThenCalls(statement.expression as EsTreeNode, found);
+    return;
+  }
+  if (isNodeOfType(statement, "BlockStatement")) {
+    for (const innerStatement of statement.body) {
+      collectStatementFloatingThenCalls(innerStatement as EsTreeNode, found);
+    }
+    return;
+  }
+  if (isNodeOfType(statement, "IfStatement")) {
+    collectStatementFloatingThenCalls(statement.consequent as EsTreeNode, found);
+    if (statement.alternate) {
+      collectStatementFloatingThenCalls(statement.alternate as EsTreeNode, found);
+    }
+  }
+};
+
 const collectDirectFloatingThenCalls = (
   handler: EsTreeNodeOfType<"ArrowFunctionExpression"> | EsTreeNodeOfType<"FunctionExpression">,
 ): EsTreeNodeOfType<"CallExpression">[] => {
-  const body = handler.body as EsTreeNode;
-  if (!isNodeOfType(body, "BlockStatement")) {
-    // Concise arrow body — a bare fire-and-forget expression. `void expr`
-    // is an explicit discard and is excluded.
-    if (isNodeOfType(body, "UnaryExpression") && body.operator === "void") return [];
-    const floating = floatingThenCall(body);
-    return floating ? [floating] : [];
-  }
   const found: EsTreeNodeOfType<"CallExpression">[] = [];
-  for (const statement of body.body) {
-    if (!isNodeOfType(statement as EsTreeNode, "ExpressionStatement")) continue;
-    const expression = (statement as EsTreeNodeOfType<"ExpressionStatement">).expression;
-    if (isNodeOfType(expression as EsTreeNode, "UnaryExpression")) continue;
-    const floating = floatingThenCall(expression as EsTreeNode);
-    if (floating) found.push(floating);
+  const body = handler.body as EsTreeNode;
+  if (isNodeOfType(body, "BlockStatement")) {
+    collectStatementFloatingThenCalls(body, found);
+  } else {
+    collectExpressionFloatingThenCalls(body, found);
   }
   return found;
 };

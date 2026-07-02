@@ -8,6 +8,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
 
 // Viewport-size reads only — the grounded Faire signal (FD-123153 SSR
 // useViewport fleet-fix). matchMedia / navigator were cut from v1 as
@@ -75,20 +76,50 @@ const isRenderIterationCallback = (functionNode: EsTreeNode): boolean => {
   return RENDER_ITERATION_METHODS.has(callee.property.name);
 };
 
+// oxc-parser can surface `(...)` as ParenthesizedExpression, which sits
+// outside the TSESTree union — matched by string, same as
+// strip-grouping-parens.
+const PARENTHESIZED_EXPRESSION_TYPE: string = "ParenthesizedExpression";
+
+// A plain synchronous IIFE runs its body immediately during render, so
+// it is render-path, not a deferred boundary. Async and generator
+// function expressions stay deferred — their bodies do not (fully) run
+// at the call site.
+const isImmediatelyInvokedRenderFunction = (functionNode: EsTreeNode): boolean => {
+  if (
+    !isNodeOfType(functionNode, "ArrowFunctionExpression") &&
+    !isNodeOfType(functionNode, "FunctionExpression")
+  ) {
+    return false;
+  }
+  if (functionNode.async || functionNode.generator) return false;
+  let callCandidate = functionNode.parent;
+  while (callCandidate && callCandidate.type === PARENTHESIZED_EXPRESSION_TYPE) {
+    callCandidate = callCandidate.parent;
+  }
+  if (!callCandidate || !isNodeOfType(callCandidate, "CallExpression")) return false;
+  return stripGroupingParens(callCandidate.callee) === functionNode;
+};
+
 // True when `node` sits on the render path of a component/hook: the
 // nearest enclosing function is the component/hook itself, or a chain of
-// render-path iteration callbacks leading up to it. Crossing any
-// deferred boundary (effect/handler/useMemo/useState-initializer)
-// returns false.
+// render-path iteration callbacks / synchronous IIFEs leading up to it.
+// Crossing any deferred boundary (effect/handler/useMemo/useState-
+// initializer) returns false.
 const isInComponentRenderPath = (node: EsTreeNode): boolean => {
   let current = nearestEnclosingFunction(node);
   while (current) {
     if (componentOrHookDisplayNameForFunction(current)) return true;
-    if (!isRenderIterationCallback(current)) return false;
+    if (!isRenderIterationCallback(current) && !isImmediatelyInvokedRenderFunction(current)) {
+      return false;
+    }
     current = nearestEnclosingFunction(current);
   }
   return false;
 };
+
+const RENDER_READ_MESSAGE =
+  "Reading window size during render breaks server-side rendering (hydration mismatch) and never updates on resize — read it in a useState lazy initializer with a resize subscription, or inside an effect/handler.";
 
 // Reading window.innerWidth/innerHeight/screen size during render is a
 // footgun: on the server these globals are absent (hydration mismatch +
@@ -114,11 +145,23 @@ export const noWindowSizeInRender = defineRule({
       if (findVariableInitializer(root, root.name) !== null) return;
       if (!isInComponentRenderPath(node)) return;
 
-      context.report({
-        node,
-        message:
-          "Reading window size during render breaks server-side rendering (hydration mismatch) and never updates on resize — read it in a useState lazy initializer with a resize subscription, or inside an effect/handler.",
-      });
+      context.report({ node, message: RENDER_READ_MESSAGE });
+    },
+    // `const { innerWidth } = window;` — the destructured form of the
+    // same render-path viewport read.
+    VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
+      if (!node.init || !isNodeOfType(node.id, "ObjectPattern")) return;
+      const source = stripGroupingParens(node.init);
+      if (!isWindowGlobalIdentifier(source)) return;
+      if (findVariableInitializer(source, source.name) !== null) return;
+      if (!isInComponentRenderPath(node)) return;
+
+      for (const property of node.id.properties) {
+        if (!isNodeOfType(property, "Property") || property.computed) continue;
+        if (!isNodeOfType(property.key, "Identifier")) continue;
+        if (!WINDOW_SIZE_PROPS.has(property.key.name)) continue;
+        context.report({ node: property, message: RENDER_READ_MESSAGE });
+      }
     },
   }),
 });

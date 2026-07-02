@@ -85,6 +85,38 @@ const isImpureIdGeneratorCall = (node: EsTreeNode): boolean => {
   return false;
 };
 
+// True when `node` is — or wraps, through the fallback/prefix spellings
+// (`providedId || uniqueId()`, `cond ? a : nanoid()`, `` `clip-${nanoid()}` ``,
+// `"clip-" + nanoid()`) — an impure id generator call.
+const containsImpureIdGeneratorCall = (node: EsTreeNode): boolean => {
+  const unwrapped = stripParenExpression(node);
+  if (isImpureIdGeneratorCall(unwrapped)) return true;
+  if (isNodeOfType(unwrapped, "LogicalExpression")) {
+    return (
+      containsImpureIdGeneratorCall(unwrapped.left) ||
+      containsImpureIdGeneratorCall(unwrapped.right)
+    );
+  }
+  if (isNodeOfType(unwrapped, "ConditionalExpression")) {
+    return (
+      containsImpureIdGeneratorCall(unwrapped.consequent) ||
+      containsImpureIdGeneratorCall(unwrapped.alternate)
+    );
+  }
+  if (isNodeOfType(unwrapped, "TemplateLiteral")) {
+    return (unwrapped.expressions ?? []).some((expression) =>
+      containsImpureIdGeneratorCall(expression),
+    );
+  }
+  if (isNodeOfType(unwrapped, "BinaryExpression") && unwrapped.operator === "+") {
+    return (
+      containsImpureIdGeneratorCall(unwrapped.left) ||
+      containsImpureIdGeneratorCall(unwrapped.right)
+    );
+  }
+  return false;
+};
+
 // The single returned expression of an arrow/function callback, or null
 // when the body doesn't reduce to one returned expression.
 const soleReturnedExpression = (callback: EsTreeNode): EsTreeNode | null => {
@@ -113,7 +145,7 @@ const isUseMemoOneShotImpureGenerator = (node: EsTreeNode): boolean => {
   if (!dependencies || !isNodeOfType(dependencies, "ArrayExpression")) return false;
   if ((dependencies.elements ?? []).length !== 0) return false;
   const returned = soleReturnedExpression(callback);
-  return Boolean(returned && isImpureIdGeneratorCall(returned));
+  return Boolean(returned && containsImpureIdGeneratorCall(returned));
 };
 
 const jsxAttributeName = (attribute: EsTreeNode): string | null => {
@@ -122,22 +154,59 @@ const jsxAttributeName = (attribute: EsTreeNode): string | null => {
   return null;
 };
 
-const subtreeReferencesName = (subtree: EsTreeNode, name: string): boolean => {
+// Filters out identifier positions that are not variable references:
+// a non-computed member property (`todo.id`) and a non-shorthand,
+// non-computed object key (`{ id: value }`) reuse the name without
+// reading the binding.
+const isVariableReferencePosition = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
+  const parent = identifier.parent;
+  if (!parent) return true;
+  if (
+    isNodeOfType(parent, "MemberExpression") &&
+    parent.property === identifier &&
+    !parent.computed
+  ) {
+    return false;
+  }
+  if (
+    isNodeOfType(parent, "Property") &&
+    parent.key === identifier &&
+    !parent.computed &&
+    !parent.shorthand
+  ) {
+    return false;
+  }
+  return true;
+};
+
+// True when the subtree reads the exact render-body binding — same name
+// alone is not enough: a map-callback param `({ id }) => …` shadows the
+// outer `const id = nanoid()`, so each candidate identifier is resolved
+// back to its declaration before it counts.
+const subtreeReferencesBinding = (
+  subtree: EsTreeNode,
+  bindingIdentifier: EsTreeNodeOfType<"Identifier">,
+): boolean => {
   let found = false;
   walkAst(subtree, (child) => {
     if (found) return false;
-    if (isNodeOfType(child, "Identifier") && child.name === name) {
-      found = true;
-      return false;
-    }
+    if (!isNodeOfType(child, "Identifier") || child.name !== bindingIdentifier.name) return;
+    if (!isVariableReferencePosition(child)) return;
+    const resolvedBinding = findVariableInitializer(child, child.name);
+    if (!resolvedBinding || resolvedBinding.bindingIdentifier !== bindingIdentifier) return;
+    found = true;
+    return false;
   });
   return found;
 };
 
-// True when `name` is threaded into an identity-reference JSX attribute
-// (`id` / `htmlFor` / `aria-*` / an SVG `clip-path` / `url(#...)` paint)
-// anywhere inside the component/hook body.
-const bindingFlowsIntoIdentityReferenceSink = (functionNode: EsTreeNode, name: string): boolean => {
+// True when the binding is threaded into an identity-reference JSX
+// attribute (`id` / `htmlFor` / `aria-*` / an SVG `clip-path` /
+// `url(#...)` paint) anywhere inside the component/hook body.
+const bindingFlowsIntoIdentityReferenceSink = (
+  functionNode: EsTreeNode,
+  bindingIdentifier: EsTreeNodeOfType<"Identifier">,
+): boolean => {
   let flows = false;
   walkAst(functionNode, (child) => {
     if (flows) return false;
@@ -147,7 +216,7 @@ const bindingFlowsIntoIdentityReferenceSink = (functionNode: EsTreeNode, name: s
       IDENTITY_SINK_ATTRIBUTE_NAMES.has(attributeName) || attributeName.startsWith("aria-");
     if (!isSink) return;
     const value = isNodeOfType(child, "JSXAttribute") ? (child.value as EsTreeNode | null) : null;
-    if (value && subtreeReferencesName(value, name)) {
+    if (value && subtreeReferencesBinding(value, bindingIdentifier)) {
       flows = true;
       return false;
     }
@@ -180,8 +249,8 @@ export const noNondeterministicIdValueInRenderBody = defineRule({
         context.report({ node: node.init, message: USE_MEMO_MESSAGE });
         return;
       }
-      if (!isImpureIdGeneratorCall(initializer)) return;
-      if (!bindingFlowsIntoIdentityReferenceSink(enclosingFunction, node.id.name)) return;
+      if (!containsImpureIdGeneratorCall(initializer)) return;
+      if (!bindingFlowsIntoIdentityReferenceSink(enclosingFunction, node.id)) return;
       context.report({ node: node.init, message: GENERATOR_MESSAGE });
     },
   }),

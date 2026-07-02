@@ -17,7 +17,7 @@ describe("no-loading-flag-reset-outside-finally", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a reset after a try/catch that does not reset the flag", () => {
+  it("stays quiet when a swallowing catch makes the trailing reset run on rejection too (setError-in-catch idiom)", () => {
     const result = runRule(
       noLoadingFlagResetOutsideFinally,
       `async function fetchNetworkAnalysis() {
@@ -30,6 +30,57 @@ describe("no-loading-flag-reset-outside-finally", () => {
         }
         setLoading(false);
       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a trailing reset when the catch rethrows, so rejection still skips it", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const save = async () => {
+        setSaving(true);
+        try {
+          await persist(draft);
+        } catch (e) {
+          reportError(e);
+          throw e;
+        }
+        setSaving(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a trailing reset when the catch returns early, so rejection still skips it", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const save = async () => {
+        setSaving(true);
+        try {
+          await persist(draft);
+        } catch (e) {
+          reportError(e);
+          return;
+        }
+        setSaving(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a reset inside the try body even when the catch swallows", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const load = async () => {
+        setLoading(true);
+        try {
+          const data = await fetchData();
+          setResult(data);
+          setLoading(false);
+        } catch (e) {
+          setError(e);
+        }
+      };`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
@@ -128,5 +179,120 @@ describe("no-loading-flag-reset-outside-finally", () => {
       };`,
     );
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for await Promise.allSettled, which never rejects by spec", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const loadAll = async () => {
+        setLoading(true);
+        const results = await Promise.allSettled(requests);
+        setItems(results);
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for the fetch-with-fallback idiom await f().catch(() => null)", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const load = async () => {
+        setLoading(true);
+        const data = await fetchThings().catch(() => null);
+        setItems(data ?? []);
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a never-rejecting result-object wrapper whose result is branch-checked", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const remove = async () => {
+        setIsDeleting(true);
+        const result = await deleteWorkspace(workspaceId);
+        if (!result.success) {
+          setError(result.message);
+        }
+        setIsDeleting(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when the awaited result binding itself is truthiness-checked (if (!result) guard)", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const invite = async () => {
+        setSending(true);
+        const response = await sendInvites(emails);
+        if (!response) {
+          showError();
+        }
+        setSending(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for the destructured error-field convention (supabase-style { data, error })", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const load = async () => {
+        setLoading(true);
+        const { data, error } = await supabase.from("posts").select();
+        if (error) {
+          setError(error);
+        }
+        setItems(data);
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags when the awaited result is used without any error-shape check", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const load = async () => {
+        setLoading(true);
+        const result = await getSurveyData(surveyId);
+        setSurvey(result.survey);
+        setLoading(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet when the truthy set and the reset sit on mutually exclusive if/else branches", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const toggle = async (next) => {
+        if (next) {
+          setLoading(true);
+          await start();
+        } else {
+          await stop();
+          setLoading(false);
+        }
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags an unprotected await between the set and the reset even when an earlier await gates the set", () => {
+    const result = runRule(
+      noLoadingFlagResetOutsideFinally,
+      `const submit = async () => {
+        const ok = await validate(values);
+        if (!ok) return;
+        setSubmitting(true);
+        await save(values);
+        setSubmitting(false);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

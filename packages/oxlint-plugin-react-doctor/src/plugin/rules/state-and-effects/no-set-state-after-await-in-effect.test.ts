@@ -24,53 +24,145 @@ describe("no-set-state-after-await-in-effect", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags an async IIFE that sets state after await", () => {
+  it("flags an async IIFE that sets state after await when deps can change", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
       `
-      const Pricing = () => {
+      const Pricing = ({ catalogId }) => {
         const [imports, setLocalCatalogImport] = useState([]);
         useEffect(() => {
           (async () => {
-            const res = await getCatalogImports();
+            const res = await getCatalogImports(catalogId);
             setLocalCatalogImport(res);
           })();
-        }, []);
+        }, [catalogId]);
       };
       `,
     );
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a useReducer dispatch called after await", () => {
+  it("flags a useReducer dispatch called after await when deps can change", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
       `
-      const Widget = () => {
+      const Widget = ({ query }) => {
         const [state, dispatch] = useReducer(reducer, {});
         useEffect(() => {
           async function run() {
-            const data = await load();
+            const data = await load(query);
             dispatch({ type: "set", data });
           }
           run();
-        }, []);
+        }, [query]);
       };
       `,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an unguarded post-await setter when the deps argument is omitted", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const C = () => {
+        const [user, setUser] = useState(null);
+        useEffect(() => {
+          (async () => {
+            const u = await load();
+            setUser(u);
+          })();
+        });
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a setter whose argument contains the await, like setUser(await load())", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const C = ({ id }) => {
+        const [user, setUser] = useState(null);
+        useEffect(() => {
+          (async () => {
+            setUser(await load(id));
+          })();
+        }, [id]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags streaming setters inside a for await...of loop when deps can change", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const C = ({ topic }) => {
+        const [chunks, setChunks] = useState([]);
+        useEffect(() => {
+          (async () => {
+            for await (const chunk of stream(topic)) {
+              setChunks((prev) => prev.concat(chunk));
+            }
+          })();
+        }, [topic]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a mount-only effect (empty deps) — the one-shot fetch idiom from TaskTrove/dtale cannot re-run out of order", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const AboutModal = () => {
+        const [version, setVersion] = useState("");
+        useEffect(() => {
+          (async () => {
+            const res = await getVersionInfo();
+            setVersion(res.version);
+          })();
+        }, []);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when every dependency is a stable-identity binding (setter/ref) — deps that never change identity cannot cause overlapping re-runs", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const C = () => {
+        const [user, setUser] = useState(null);
+        const storeRef = useRef(null);
+        useEffect(() => {
+          const run = async () => {
+            const u = await load();
+            setUser(u);
+          };
+          run();
+        }, [setUser, storeRef]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag when the effect callback is itself async (owned by another rule)", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
       `
-      const C = () => {
+      const C = ({ id }) => {
         const [user, setUser] = useState(null);
         useEffect(async () => {
-          const u = await load();
+          const u = await load(id);
           setUser(u);
-        }, []);
+        }, [id]);
       };
       `,
     );
@@ -81,17 +173,17 @@ describe("no-set-state-after-await-in-effect", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
       `
-      const C = () => {
+      const C = ({ userId }) => {
         const [user, setUser] = useState(null);
         useEffect(() => {
           let cancelled = false;
           const run = async () => {
-            const u = await load();
+            const u = await load(userId);
             setUser(u);
           };
           run();
           return () => { cancelled = true; };
-        }, []);
+        }, [userId]);
       };
       `,
     );
@@ -102,16 +194,16 @@ describe("no-set-state-after-await-in-effect", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
       `
-      const C = () => {
+      const C = ({ userId }) => {
         const [user, setUser] = useState(null);
         useEffect(() => {
           let isMounted = true;
           const run = async () => {
-            const u = await load();
+            const u = await load(userId);
             if (isMounted) setUser(u);
           };
           run();
-        }, []);
+        }, [userId]);
       };
       `,
     );
@@ -122,15 +214,15 @@ describe("no-set-state-after-await-in-effect", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
       `
-      const Form = () => {
+      const Form = ({ fieldId }) => {
         const { setValue } = useForm();
         useEffect(() => {
           const run = async () => {
-            const d = await load();
+            const d = await load(fieldId);
             setValue("x", d);
           };
           run();
-        }, []);
+        }, [fieldId]);
       };
       `,
     );
@@ -158,17 +250,17 @@ describe("no-set-state-after-await-in-effect", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
       `
-      const C = () => {
+      const C = ({ topic }) => {
         const [user, setUser] = useState(null);
         useEffect(() => {
           const run = async () => {
-            await ready();
+            await ready(topic);
             subscribe(() => {
               setUser(current);
             });
           };
           run();
-        }, []);
+        }, [topic]);
       };
       `,
     );
@@ -179,26 +271,26 @@ describe("no-set-state-after-await-in-effect", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
       `
-      const C = () => {
+      const C = ({ id }) => {
         const [loading, setLoading] = useState(false);
         useEffect(() => {
           const run = async () => {
             setLoading(true);
-            await load();
+            await load(id);
           };
           run();
-        }, []);
+        }, [id]);
       };
       `,
     );
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags a void async IIFE whose setter after await sits in a try/catch (try/catch handles rejection, not unmount)", () => {
+  it("flags a void async IIFE whose setter after await sits in a try/catch (try/catch handles rejection, not stale re-runs)", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
       `
-      const About = () => {
+      const About = ({ url }) => {
         const [version, setVersion] = useState("");
         useEffect(() => {
           void (async () => {
@@ -209,7 +301,7 @@ describe("no-set-state-after-await-in-effect", () => {
               setVersion("");
             }
           })();
-        }, []);
+        }, [url]);
       };
       `,
     );
@@ -220,7 +312,7 @@ describe("no-set-state-after-await-in-effect", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
       `
-      const C = () => {
+      const C = ({ url }) => {
         const [data, setData] = useState(null);
         useEffect(() => {
           const controller = new AbortController();
@@ -229,7 +321,7 @@ describe("no-set-state-after-await-in-effect", () => {
             setData(res);
           };
           run();
-        }, []);
+        }, [url]);
       };
       `,
     );
@@ -240,9 +332,9 @@ describe("no-set-state-after-await-in-effect", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,
       `
-      const C = () => {
+      const C = ({ id }) => {
         const [title, setTitle] = useState("");
-        useEffect(() => { setTitle(document.title); }, []);
+        useEffect(() => { setTitle(document.title); }, [id]);
       };
       `,
     );

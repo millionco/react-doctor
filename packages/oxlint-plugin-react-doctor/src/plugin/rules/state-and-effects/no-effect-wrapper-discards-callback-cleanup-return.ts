@@ -14,10 +14,21 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 const EFFECT_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect"]);
 
+// The parameter's binding Identifier, unwrapping a default-value
+// AssignmentPattern (`effect: EffectCallback = noop`), or null.
+const parameterIdentifier = (parameter: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
+  if (isNodeOfType(parameter, "Identifier")) return parameter;
+  if (isNodeOfType(parameter, "AssignmentPattern") && isNodeOfType(parameter.left, "Identifier")) {
+    return parameter.left;
+  }
+  return null;
+};
+
 // The actual type node behind a parameter's `: T` annotation, or null.
 const parameterTypeNode = (parameter: EsTreeNode): EsTreeNode | null => {
-  if (!isNodeOfType(parameter, "Identifier")) return null;
-  const annotation = parameter.typeAnnotation;
+  const identifier = parameterIdentifier(parameter);
+  if (!identifier) return null;
+  const annotation = identifier.typeAnnotation;
   if (!annotation || !isNodeOfType(annotation, "TSTypeAnnotation")) return null;
   return (annotation.typeAnnotation as EsTreeNode | undefined) ?? null;
 };
@@ -84,14 +95,45 @@ const forwardedEffectCallbackParameterName = (hookFunction: EsTreeNode): string 
   const params = hookFunction.params ?? [];
   if (wrapperBindingIsTypedAsEffectHook(hookFunction)) {
     const firstParam = params[0];
-    return firstParam && isNodeOfType(firstParam as EsTreeNode, "Identifier")
-      ? (firstParam as EsTreeNodeOfType<"Identifier">).name
-      : null;
+    return firstParam ? (parameterIdentifier(firstParam as EsTreeNode)?.name ?? null) : null;
   }
   for (const param of params) {
     if (parameterIsEffectCallback(param as EsTreeNode)) {
-      return (param as EsTreeNodeOfType<"Identifier">).name;
+      return parameterIdentifier(param as EsTreeNode)?.name ?? null;
     }
+  }
+  return null;
+};
+
+// The discarded `callbackName()` call inside a statement-position
+// expression, unwrapping the shapes that still drop the cleanup:
+// `fn?.()` (ChainExpression), `guard && fn()` (LogicalExpression), and
+// `guard ? fn() : other` (ConditionalExpression).
+const discardedForwardedCallInExpression = (
+  expression: EsTreeNode,
+  callbackName: string,
+): EsTreeNode | null => {
+  if (isNodeOfType(expression, "ChainExpression")) {
+    return discardedForwardedCallInExpression(expression.expression, callbackName);
+  }
+  if (isNodeOfType(expression, "LogicalExpression")) {
+    return (
+      discardedForwardedCallInExpression(expression.left, callbackName) ??
+      discardedForwardedCallInExpression(expression.right, callbackName)
+    );
+  }
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    return (
+      discardedForwardedCallInExpression(expression.consequent, callbackName) ??
+      discardedForwardedCallInExpression(expression.alternate, callbackName)
+    );
+  }
+  if (
+    isNodeOfType(expression, "CallExpression") &&
+    isNodeOfType(expression.callee, "Identifier") &&
+    expression.callee.name === callbackName
+  ) {
+    return expression;
   }
   return null;
 };
@@ -105,13 +147,9 @@ const findBareForwardedCall = (effectBody: EsTreeNode, callbackName: string): Es
     if (bareCall) return false;
     if (child !== effectBody && isFunctionLike(child)) return false;
     if (!isNodeOfType(child, "ExpressionStatement")) return;
-    const expression = child.expression;
-    if (
-      isNodeOfType(expression, "CallExpression") &&
-      isNodeOfType(expression.callee, "Identifier") &&
-      expression.callee.name === callbackName
-    ) {
-      bareCall = expression as EsTreeNode;
+    const forwardedCall = discardedForwardedCallInExpression(child.expression, callbackName);
+    if (forwardedCall) {
+      bareCall = forwardedCall;
       return false;
     }
   });

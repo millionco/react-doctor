@@ -104,12 +104,123 @@ describe("window-open-without-noopener", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("still flags an https URL opened in a new tab", () => {
+  it("does not flag a hardcoded literal destination (Star-on-GitHub button idiom)", () => {
     const result = runRule(
       windowOpenWithoutNoopener,
-      `window.open('https://example.com', '_blank');`,
+      `window.open('https://github.com/millionco/react-doctor', '_blank');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a same-origin relative URL (print/report route idiom)", () => {
+    const result = runRule(windowOpenWithoutNoopener, `window.open('/reports/print', '_blank');`);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a template with a fixed trusted origin and path-only interpolation", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      "window.open(`https://github.com/${owner}/${repo}`, '_blank');",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a same-origin template URL (app preview route idiom)", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      "window.open(`/preview?id=${documentId}`, '_blank');",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a template whose interpolation sits in the scheme/host position", () => {
+    const result = runRule(windowOpenWithoutNoopener, "window.open(`${baseUrl}/path`, '_blank');");
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a template whose fixed prefix does not terminate the host", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      "window.open(`https://github.com${suffix}`, '_blank');",
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a protocol-relative template URL", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      "window.open(`//cdn.example.com/${asset}`, '_blank');",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag when features come from a shared constant (popup-helper idiom)", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const POPUP_FEATURES = 'noopener,noreferrer';\nwindow.open(url, '_blank', POPUP_FEATURES);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a template features string containing noopener (computed popup size idiom)", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      "window.open(url, '_blank', `noopener,noreferrer,width=${width},height=${height}`);",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when features are opaque at lint time (imported constant idiom)", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `import { POPUP_FEATURES } from './popup';\nwindow.open(url, '_blank', POPUP_FEATURES);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags when a resolvable features constant lacks noopener", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const POPUP_FEATURES = 'width=500,height=400';\nwindow.open(url, '_blank', POPUP_FEATURES);`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a discarded window.open behind a logical guard", () => {
+    const result = runRule(windowOpenWithoutNoopener, `isExternal && window.open(url, '_blank');`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a discarded window.open in a ternary onClick", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const x = <a onClick={(e) => e.metaKey ? window.open(href, '_blank') : navigate(href)} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a logical guard whose result is captured", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const win = canOpen && window.open(url, '_blank');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a createElement onClick handler like the JSX equivalent", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `React.createElement('button', { onClick: () => window.open(url, '_blank') });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an arrow under a non-handler object property whose handle may be consumed", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `registerFactory({ createWindow: () => window.open(url, '_blank') });`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag other postMessage-style calls", () => {

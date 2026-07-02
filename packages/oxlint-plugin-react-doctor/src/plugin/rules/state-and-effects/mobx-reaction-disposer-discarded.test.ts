@@ -45,6 +45,101 @@ describe("mobx-reaction-disposer-discarded", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a namespace-import mobx.autorun() whose disposer is discarded", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `
+      import * as mobx from "mobx";
+      class Store {
+        constructor() {
+          mobx.autorun(() => this.persist());
+        }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags autorun() with a literal options object that has no signal", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `
+      import { autorun } from "mobx";
+      class ViewState {
+        start() {
+          autorun(() => this.sync(), { delay: 100 });
+        }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag autorun disposed via an AbortSignal `signal` option (MobX's documented alternative disposal)", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `
+      import { autorun } from "mobx";
+      class ViewState {
+        controller = new AbortController();
+        start() {
+          autorun(() => this.sync(), { signal: this.controller.signal });
+        }
+        stop() {
+          this.controller.abort();
+        }
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag reaction disposed via a `signal` option in its third argument", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `
+      import { reaction } from "mobx";
+      const controller = new AbortController();
+      reaction(() => store.value, (value) => persist(value), { signal: controller.signal });
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag autorun when the options argument is an opaque variable that may carry a signal", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `
+      import { autorun } from "mobx";
+      const runOptions = buildAutorunOptions();
+      autorun(() => sync(), runOptions);
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag autorun when the options object spreads unknown option bags", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `
+      import { autorun } from "mobx";
+      autorun(() => sync(), { ...sharedOptions });
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag autorun() member access on a non-mobx namespace import", () => {
+    const result = runRule(
+      mobxReactionDisposerDiscarded,
+      `
+      import * as scheduler from "./scheduler";
+      scheduler.autorun(() => sync());
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag when the disposer is passed to disposeOnUnmount", () => {
     const result = runRule(
       mobxReactionDisposerDiscarded,

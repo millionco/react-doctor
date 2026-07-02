@@ -151,6 +151,60 @@ describe("no-nondeterministic-id-value-in-render-body", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when the sink reads a member property of the same name (todo.id list idiom)", () => {
+    const result = runRule(
+      noNondeterministicIdValueInRenderBody,
+      `import { nanoid } from "nanoid";
+      const TodoList = ({ todos, onDraft }) => {
+        const id = nanoid();
+        const startDraft = () => onDraft({ id });
+        return (<ul onMouseDown={startDraft}>{todos.map((todo) => <li key={todo.id} id={\`todo-\${todo.id}\`}>{todo.text}</li>)}</ul>);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when a map-callback destructured param shadows the generated id (htmlFor={id} field-list idiom)", () => {
+    const result = runRule(
+      noNondeterministicIdValueInRenderBody,
+      `import { nanoid } from "nanoid";
+      const Fields = ({ fields, onAdd }) => {
+        const id = nanoid();
+        const addField = () => onAdd({ id, value: "" });
+        return (<div onFocus={addField}>{fields.map(({ id, label }) => <label key={id} htmlFor={id}>{label}</label>)}</div>);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags the pre-useId fallback idiom `providedId || uniqueId()` wired to htmlFor", () => {
+    const result = runRule(
+      noNondeterministicIdValueInRenderBody,
+      `import { uniqueId } from "lodash";
+      const Toggle = ({ label, id: providedId }) => {
+        const id = providedId || uniqueId();
+        return (<><label htmlFor={id}>{label}</label><input id={id} /></>);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a template-literal-prefixed generated id flowing into an SVG clipPath sink", () => {
+    const result = runRule(
+      noNondeterministicIdValueInRenderBody,
+      `import { nanoid } from "nanoid";
+      const Chart = () => {
+        const clipId = \`clip-\${nanoid()}\`;
+        return (<svg><clipPath id={clipId} /><rect clipPath={\`url(#\${clipId})\`} /></svg>);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not treat useMemo with real deps as a one-shot", () => {
     const result = runRule(
       noNondeterministicIdValueInRenderBody,

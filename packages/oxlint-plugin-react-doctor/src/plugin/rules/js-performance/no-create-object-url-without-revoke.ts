@@ -102,6 +102,34 @@ const resolveEscapeContext = (callNode: EsTreeNode): EscapeContext => {
 const isStateSetterCallee = (callee: EsTreeNode): boolean =>
   isNodeOfType(callee, "Identifier") && /^set[A-Z]/.test(callee.name);
 
+const SET_ATTRIBUTE_URL_NAMES = new Set(["href", "src"]);
+
+const isUrlSetAttributeCall = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  urlArgument: EsTreeNode,
+): boolean => {
+  const callee = call.callee;
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
+  if (!isNodeOfType(callee.property, "Identifier") || callee.property.name !== "setAttribute") {
+    return false;
+  }
+  const [attributeName, attributeValue] = call.arguments;
+  if (!attributeName || !attributeValue) return false;
+  if (!isNodeOfType(attributeName, "Literal") || typeof attributeName.value !== "string") {
+    return false;
+  }
+  if (!SET_ATTRIBUTE_URL_NAMES.has(attributeName.value)) return false;
+  return stripGroupingParens(attributeValue) === urlArgument;
+};
+
+const isDirectIfBranchStatement = (assignment: EsTreeNode): boolean => {
+  const statement = meaningfulParent(assignment);
+  if (!statement || !isNodeOfType(statement, "ExpressionStatement")) return false;
+  let container = statement.parent ?? null;
+  if (container && isNodeOfType(container, "BlockStatement")) container = container.parent ?? null;
+  return container !== null && isNodeOfType(container, "IfStatement");
+};
+
 const escapeIsLeaky = (context: EscapeContext): boolean => {
   const { guarded, topNode, parent } = context;
   if (!parent) return false;
@@ -118,6 +146,11 @@ const escapeIsLeaky = (context: EscapeContext): boolean => {
       ESCAPE_ASSIGNMENT_TARGET_PROPERTIES.has(target.property.name)
     ) {
       return true;
+    }
+    // The guarded creation assigned to a pre-declared variable is the same
+    // "object URL for fetched data" leak as the guarded VariableDeclarator.
+    if (isNodeOfType(target, "Identifier")) {
+      return guarded || isDirectIfBranchStatement(parent);
     }
     return false;
   }
@@ -146,17 +179,20 @@ const escapeIsLeaky = (context: EscapeContext): boolean => {
     return guarded;
   }
 
-  // Passed directly to a state setter (`setImageUrl(URL.createObjectURL(...))`).
-  if (isNodeOfType(parent, "CallExpression") && isStateSetterCallee(parent.callee)) {
-    return true;
+  // Passed directly to a state setter (`setImageUrl(URL.createObjectURL(...))`)
+  // or set as an element URL attribute (`a.setAttribute('href', ...)`).
+  if (isNodeOfType(parent, "CallExpression")) {
+    if (isStateSetterCallee(parent.callee)) return true;
+    if (isUrlSetAttributeCall(parent, topNode)) return true;
   }
 
   return false;
 };
 
 // Flags `URL.createObjectURL(...)` whose produced URL escapes (assigned to
-// an element `href`/`src`, stored into a ref, returned, rendered inline in
-// JSX, passed to a state setter, or a guarded value bound to a variable)
+// an element `href`/`src` directly or via `setAttribute`, stored into a ref,
+// returned, rendered inline in JSX, passed to a state setter, or a guarded
+// value bound to a variable — declared or assigned)
 // when the module never references `URL.revokeObjectURL`. The blob URL
 // pins its Blob/File in memory until revoked, so an un-revoked URL leaks.
 export const noCreateObjectUrlWithoutRevoke = defineRule({

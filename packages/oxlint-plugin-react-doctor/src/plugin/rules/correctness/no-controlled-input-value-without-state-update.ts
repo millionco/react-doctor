@@ -1,6 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
-import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -36,10 +35,28 @@ const isLiteralValueAttribute = (valueAttribute: EsTreeNodeOfType<"JSXAttribute"
   return false;
 };
 
+// Mirrors `isLiteralValueAttribute`'s two accepted shapes for the `type`
+// attribute: `type="radio"` and `type={"radio"}` both resolve statically.
+const getStaticStringAttributeValue = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+): string | null => {
+  const value = attribute.value;
+  if (!value) return null;
+  if (isNodeOfType(value, "Literal") && typeof value.value === "string") return value.value;
+  if (isNodeOfType(value, "JSXExpressionContainer")) {
+    const expression: EsTreeNode = stripParenExpression(value.expression);
+    if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
+      return expression.value;
+    }
+  }
+  return null;
+};
+
 export const noControlledInputValueWithoutStateUpdate = defineRule({
   id: "no-controlled-input-value-without-state-update",
   title: "Controlled input value is a fixed literal",
   severity: "warn",
+  tags: ["react-jsx-only"],
   recommendation:
     "Drive the input's `value` from state (`const [value, setValue] = useState(...)`) that `onChange` updates, or drop `value` if the field is meant to be read-only.",
   create: (context: RuleContext) => ({
@@ -58,9 +75,12 @@ export const noControlledInputValueWithoutStateUpdate = defineRule({
       if (READONLY_ATTRIBUTES.some((name) => findJsxAttribute(attributes, name))) return;
 
       if (tagName === "input") {
+        if (findJsxAttribute(attributes, "checked")) return;
         const typeAttribute = findJsxAttribute(attributes, "type");
-        const inputType = typeAttribute ? getJsxPropStringValue(typeAttribute) : null;
-        if (inputType !== null && VALUE_BYPASS_INPUT_TYPES.has(inputType)) return;
+        if (typeAttribute) {
+          const inputType = getStaticStringAttributeValue(typeAttribute);
+          if (inputType === null || VALUE_BYPASS_INPUT_TYPES.has(inputType)) return;
+        }
       }
 
       context.report({

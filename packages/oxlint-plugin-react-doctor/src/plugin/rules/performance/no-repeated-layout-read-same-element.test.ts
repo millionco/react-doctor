@@ -159,4 +159,148 @@ describe("no-repeated-layout-read-same-element", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("does not flag getComputedStyle plus getBoundingClientRect on the same element (canonical measure-an-element idiom)", () => {
+    const result = runRule(
+      noRepeatedLayoutReadSameElement,
+      `
+      function measure(el) {
+        const style = getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return rect.height - parseFloat(style.paddingTop);
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a same-method repeat when a different-method read is also present", () => {
+    const result = runRule(
+      noRepeatedLayoutReadSameElement,
+      `
+      function measure(el) {
+        const style = getComputedStyle(el);
+        const top = el.getBoundingClientRect().top;
+        const bottom = el.getBoundingClientRect().bottom;
+        return [style, top, bottom];
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag getComputedStyle with different pseudo-element selectors (::before/::after content reads)", () => {
+    const result = runRule(
+      noRepeatedLayoutReadSameElement,
+      `
+      function pseudo(el) {
+        const before = getComputedStyle(el, '::before').content;
+        const after = getComputedStyle(el, '::after').content;
+        return [before, after];
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag reads in different switch cases (per-placement edge lookup)", () => {
+    const result = runRule(
+      noRepeatedLayoutReadSameElement,
+      `
+      function edge(el, placement) {
+        switch (placement) {
+          case 'top':
+            return el.getBoundingClientRect().top;
+          case 'bottom':
+            return el.getBoundingClientRect().bottom;
+        }
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag reads in the two arms of a ternary (axis-conditional measurement)", () => {
+    const result = runRule(
+      noRepeatedLayoutReadSameElement,
+      `
+      function size(el, horizontal) {
+        return horizontal ? el.getBoundingClientRect().width : el.getBoundingClientRect().height;
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag reads in unbraced if/else branches", () => {
+    const result = runRule(
+      noRepeatedLayoutReadSameElement,
+      `
+      function edge(el, flag) {
+        if (flag) return el.getBoundingClientRect().top;
+        else return el.getBoundingClientRect().bottom;
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag re-measure after Object.assign(el.style, …) between reads (floating-ui apply-styles idiom)", () => {
+    const result = runRule(
+      noRepeatedLayoutReadSameElement,
+      `
+      function measure(el) {
+        const before = el.getBoundingClientRect();
+        Object.assign(el.style, { height: 'auto' });
+        const after = el.getBoundingClientRect();
+        return after.height - before.height;
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag re-measure after a helper call receiving the element (measure -> apply -> re-measure)", () => {
+    const result = runRule(
+      noRepeatedLayoutReadSameElement,
+      `
+      function measure(el) {
+        const before = el.getBoundingClientRect();
+        applyCollapsedStyles(el);
+        const after = el.getBoundingClientRect();
+        return after.height - before.height;
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag re-measure after an assignment whose right-hand side contains the first read", () => {
+    const result = runRule(
+      noRepeatedLayoutReadSameElement,
+      `
+      function collapse(el) {
+        el.style.height = el.getBoundingClientRect().height / 2 + 'px';
+        const after = el.getBoundingClientRect();
+        return after.height;
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag re-measure across an await (next-frame async re-measurement)", () => {
+    const result = runRule(
+      noRepeatedLayoutReadSameElement,
+      `
+      async function measure(el) {
+        const before = el.getBoundingClientRect();
+        await new Promise(requestAnimationFrame);
+        const after = el.getBoundingClientRect();
+        return after.top - before.top;
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

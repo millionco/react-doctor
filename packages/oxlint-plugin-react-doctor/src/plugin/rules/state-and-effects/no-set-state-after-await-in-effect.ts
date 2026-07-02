@@ -13,9 +13,10 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const MESSAGE =
-  "This setter runs after `await`, so it can write to an unmounted component if it navigates away mid-await; gate it behind a mounted/abort flag or return a cleanup that cancels the work.";
+  "This setter runs after `await`, so overlapping re-runs of the effect can resolve out of order and write stale state; gate it behind a cancellation/ignore flag or return a cleanup that cancels the work.";
 
 const STATE_DISPATCHER_HOOKS = new Set(["useState", "useReducer"]);
+const STABLE_IDENTITY_HOOK = "useRef";
 
 // Cancellation / mounted-guard idioms. When the awaiting scope reads any of
 // these we assume the developer already guards the post-await write, so we
@@ -27,6 +28,40 @@ const getNodeStart = (node: EsTreeNode): number | null => {
   const start = (node as { start?: unknown }).start;
   return typeof start === "number" ? start : null;
 };
+
+const getNodeEnd = (node: EsTreeNode): number | null => {
+  const end = (node as { end?: unknown }).end;
+  return typeof end === "number" ? end : null;
+};
+
+const getDependencyArray = (
+  effectCall: EsTreeNodeOfType<"CallExpression">,
+): EsTreeNodeOfType<"ArrayExpression"> | null => {
+  const dependencyArgument = effectCall.arguments?.[1];
+  if (!dependencyArgument || !isNodeOfType(dependencyArgument, "ArrayExpression")) return null;
+  return dependencyArgument;
+};
+
+// A mount-only effect (empty deps) or one whose deps are all stable-identity
+// bindings (useState/useReducer dispatcher, useRef box) can never have
+// overlapping re-runs, so the out-of-order stale-write hazard cannot occur.
+const hasOnlyStableIdentityDependencies = (
+  dependencyArray: EsTreeNodeOfType<"ArrayExpression">,
+): boolean =>
+  (dependencyArray.elements ?? []).every((dependencyElement) => {
+    if (!isNodeOfType(dependencyElement, "Identifier")) return false;
+    return (
+      isHookBindingInScope(dependencyArray, {
+        bindingName: dependencyElement.name,
+        hookName: STATE_DISPATCHER_HOOKS,
+        destructureIndex: 1,
+      }) ||
+      isHookBindingInScope(dependencyArray, {
+        bindingName: dependencyElement.name,
+        hookName: STABLE_IDENTITY_HOOK,
+      })
+    );
+  });
 
 const isStateDispatcherCall = (callExpression: EsTreeNodeOfType<"CallExpression">): boolean => {
   if (!isNodeOfType(callExpression.callee, "Identifier")) return false;
@@ -58,27 +93,35 @@ const referencesCancellationGuard = (asyncFunction: EsTreeNode): boolean => {
   return found;
 };
 
-// The awaiting async scope is a stale-write hazard when a state setter is
-// called lexically after the first `await` in that same scope.
+// The awaiting async scope is a stale-write hazard when a state setter
+// finishes lexically after the first suspension point (`await` or
+// `for await...of`) in that same scope. Comparing the setter's END offset
+// also catches `setData(await load())`, where the setter call starts before
+// the await nested in its own arguments but still executes after it.
 const hasPostAwaitStateSetter = (asyncFunction: EsTreeNode): boolean => {
-  let earliestAwaitStart: number | null = null;
+  let earliestSuspensionStart: number | null = null;
   walkOwnFunctionScope(asyncFunction, (node) => {
-    if (!isNodeOfType(node, "AwaitExpression")) return;
+    const isSuspensionPoint =
+      isNodeOfType(node, "AwaitExpression") ||
+      (isNodeOfType(node, "ForOfStatement") && node.await === true);
+    if (!isSuspensionPoint) return;
     const start = getNodeStart(node);
     if (start === null) return;
-    if (earliestAwaitStart === null || start < earliestAwaitStart) earliestAwaitStart = start;
+    if (earliestSuspensionStart === null || start < earliestSuspensionStart) {
+      earliestSuspensionStart = start;
+    }
   });
-  if (earliestAwaitStart === null) return false;
-  const firstAwaitStart = earliestAwaitStart;
+  if (earliestSuspensionStart === null) return false;
+  const firstSuspensionStart = earliestSuspensionStart;
 
   let hasLaterSetter = false;
   walkOwnFunctionScope(asyncFunction, (node) => {
     if (hasLaterSetter) return;
     if (!isNodeOfType(node, "CallExpression")) return;
     if (!isStateDispatcherCall(node)) return;
-    const setterStart = getNodeStart(node);
-    if (setterStart === null) return;
-    if (setterStart > firstAwaitStart) hasLaterSetter = true;
+    const setterEnd = getNodeEnd(node);
+    if (setterEnd === null) return;
+    if (setterEnd > firstSuspensionStart) hasLaterSetter = true;
   });
   return hasLaterSetter;
 };
@@ -89,7 +132,7 @@ export const noSetStateAfterAwaitInEffect = defineRule({
   severity: "warn",
   category: "Bugs",
   recommendation:
-    "In a `useEffect`, guard any setter call that runs after an `await` behind a mounted/abort flag, or return a cleanup that cancels the async work.",
+    "In a `useEffect` whose dependencies can change, guard any setter call that runs after an `await` behind a cancellation/ignore flag, or return a cleanup that cancels the async work.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
@@ -97,6 +140,8 @@ export const noSetStateAfterAwaitInEffect = defineRule({
       if (!isFunctionLike(callback)) return;
       // Async effect callbacks are owned by `no-async-effect-callback`.
       if (callback.async) return;
+      const dependencyArray = getDependencyArray(node);
+      if (dependencyArray && hasOnlyStableIdentityDependencies(dependencyArray)) return;
       // A cleanup return is the documented fix; stay quiet when one exists.
       if (functionBodyHasReturnWithValue(callback)) return;
 

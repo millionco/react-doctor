@@ -5,19 +5,39 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+
+interface AliasSource {
+  rootIdentifier: EsTreeNodeOfType<"Identifier">;
+  isMemberAccess: boolean;
+}
 
 // Only the in-place reorder/remove mutators this rule targets — a deliberate
 // subset of the canonical `MUTATING_ARRAY_METHODS`; named distinctly so it does
 // not shadow that nine-method set.
 const REORDERING_ARRAY_METHODS = new Set(["sort", "reverse", "splice"]);
 
-// Immer drafts and mutation-callback targets are deliberately mutable.
-// Their binding names conventionally advertise it.
-const MUTATION_SAFE_NAME_PATTERN = /draft|mutable|mutation/i;
+// Immer drafts and mutation-callback targets are deliberately mutable, and
+// their binding names conventionally advertise it. Matched as whole camel /
+// snake words so ordinary names that merely contain the letters (e.g.
+// `permutations`) are not exempted.
+const MUTATION_SAFE_WORDS = new Set(["draft", "mutable", "mutation"]);
+
+const ALIAS_RESOLUTION_DEPTH_LIMIT = 3;
+
+const identifierWords = (name: string): string[] =>
+  name
+    .split(/[^a-zA-Z]+/)
+    .flatMap((chunk) => chunk.split(/(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/))
+    .filter(Boolean);
+
+const hasMutationSafeWord = (name: string): boolean =>
+  identifierWords(name).some((word) => MUTATION_SAFE_WORDS.has(word.toLowerCase()));
 
 // A `.current` in the receiver chain (`stackRef.current.splice()`,
 // `mapRef.current[key].splice()`) means the array lives inside a React ref.
@@ -63,16 +83,24 @@ const isHookCallExpression = (node: EsTreeNode): boolean => {
   return calleeName !== null && isReactHookName(calleeName);
 };
 
-const nearestVariableDeclaratorInit = (node: EsTreeNode): EsTreeNode | null => {
+// Stops at function boundaries so a callback parameter nested inside a hook
+// call (`const handler = useCallback((rows) => rows.sort(), [])`) never
+// tunnels out to the enclosing declarator and gets misread as a hook result.
+const nearestVariableDeclarator = (
+  node: EsTreeNode,
+): EsTreeNodeOfType<"VariableDeclarator"> | null => {
   let cursor: EsTreeNode | null | undefined = node;
   while (cursor) {
-    if (isNodeOfType(cursor, "VariableDeclarator")) {
-      return (cursor.init as EsTreeNode | null) ?? null;
-    }
-    if (isNodeOfType(cursor, "VariableDeclaration")) return null;
+    if (isNodeOfType(cursor, "VariableDeclarator")) return cursor;
+    if (isNodeOfType(cursor, "VariableDeclaration") || isFunctionLike(cursor)) return null;
     cursor = cursor.parent ?? null;
   }
   return null;
+};
+
+const declaratorInitFor = (binding: BindingInfo): EsTreeNode | null => {
+  const declarator = nearestVariableDeclarator(binding.bindingIdentifier);
+  return declarator ? ((declarator.init as EsTreeNode | null) ?? null) : null;
 };
 
 const isDerivedFromHookCall = (binding: BindingInfo): boolean => {
@@ -80,8 +108,21 @@ const isDerivedFromHookCall = (binding: BindingInfo): boolean => {
     return true;
   }
   // Destructured hook result: `const { data } = useQuery()`.
-  const declaratorInit = nearestVariableDeclaratorInit(binding.bindingIdentifier);
+  const declaratorInit = declaratorInitFor(binding);
   return Boolean(declaratorInit && isHookCallExpression(stripParenExpression(declaratorInit)));
+};
+
+// `const [store] = useState({...})` with the setter never destructured is the
+// deliberate ref-like mutable-container idiom (same rationale as the
+// `.current` carve-out). Only applies when the array is reached through a
+// member access on the container — direct `stateArray.sort()` stays flagged.
+const isSetterlessUseStateBinding = (binding: BindingInfo): boolean => {
+  const declarator = nearestVariableDeclarator(binding.bindingIdentifier);
+  if (!declarator || !isNodeOfType(declarator.id, "ArrayPattern")) return false;
+  const boundElements = declarator.id.elements.filter(Boolean);
+  if (boundElements.length !== 1) return false;
+  if (!declarator.init) return false;
+  return getCalleeName(stripParenExpression(declarator.init as EsTreeNode)) === "useState";
 };
 
 // True when the binding is a parameter of its scope-owning function
@@ -98,22 +139,108 @@ const isParameterBinding = (binding: BindingInfo): boolean => {
   return false;
 };
 
+// oxlint runtime nodes carry `range`; the oxc-parser test AST carries
+// numeric `start`/`end` fields instead — accept either.
+const nodeSpan = (node: EsTreeNode): [number, number] | null => {
+  if (node.range) return [node.range[0], node.range[1]];
+  const nodeWithOffsets = node as { start?: number; end?: number };
+  if (typeof nodeWithOffsets.start === "number" && typeof nodeWithOffsets.end === "number") {
+    return [nodeWithOffsets.start, nodeWithOffsets.end];
+  }
+  return null;
+};
+
+// `events = events.filter(...)` before the flagged call rebinds the name to a
+// fresh array, so the mutating call no longer touches the prop / hook result.
+// The assignment must complete before the call starts, so `items = items.sort()`
+// (which still mutates the shared array in place) stays flagged.
+const hasRebindBeforeCall = (
+  binding: BindingInfo,
+  identifierName: string,
+  callNode: EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  const callSpan = nodeSpan(callNode);
+  const bindingSpan = nodeSpan(binding.bindingIdentifier);
+  if (!callSpan || !bindingSpan) return false;
+  let didFindRebind = false;
+  walkAst(binding.scopeOwner, (candidate) => {
+    if (didFindRebind) return false;
+    if (
+      isNodeOfType(candidate, "AssignmentExpression") &&
+      candidate.operator === "=" &&
+      isNodeOfType(candidate.left, "Identifier") &&
+      candidate.left.name === identifierName
+    ) {
+      const assignmentSpan = nodeSpan(candidate);
+      if (
+        assignmentSpan &&
+        assignmentSpan[0] > bindingSpan[0] &&
+        assignmentSpan[1] <= callSpan[0]
+      ) {
+        didFindRebind = true;
+        return false;
+      }
+    }
+    return undefined;
+  });
+  return didFindRebind;
+};
+
+// Body-level prop aliases: `const { items } = props` / `const list = props.items`
+// keep pointing at the parent's array, so follow the initializer chain back to
+// its root identifier. Copies (`[...items]`, `items.slice()`) are call / array
+// expressions and produce no alias, and a `.current` chain stays exempt.
+const aliasSourceFor = (binding: BindingInfo): AliasSource | null => {
+  const aliasCandidates = [binding.initializer, declaratorInitFor(binding)];
+  for (const aliasCandidate of aliasCandidates) {
+    if (!aliasCandidate) continue;
+    const strippedCandidate = stripParenExpression(aliasCandidate);
+    if (isNodeOfType(strippedCandidate, "Identifier")) {
+      return { rootIdentifier: strippedCandidate, isMemberAccess: false };
+    }
+    if (
+      isNodeOfType(strippedCandidate, "MemberExpression") &&
+      !receiverReachesThroughRefCurrent(strippedCandidate)
+    ) {
+      const aliasRoot = rootIdentifierNode(strippedCandidate);
+      if (aliasRoot) return { rootIdentifier: aliasRoot, isMemberAccess: true };
+    }
+  }
+  return null;
+};
+
 type SharedArraySource = "prop" | "hook-result";
 
 const resolveSharedArraySource = (
   rootIdentifier: EsTreeNodeOfType<"Identifier">,
+  callNode: EsTreeNodeOfType<"CallExpression">,
+  reachesThroughMemberAccess: boolean,
+  depth: number,
 ): SharedArraySource | null => {
+  if (depth > ALIAS_RESOLUTION_DEPTH_LIMIT) return null;
+  if (hasMutationSafeWord(rootIdentifier.name)) return null;
   const binding = findVariableInitializer(rootIdentifier, rootIdentifier.name);
   if (!binding) return null;
-  if (isDerivedFromHookCall(binding)) return "hook-result";
+  if (hasRebindBeforeCall(binding, rootIdentifier.name, callNode)) return null;
+  if (isDerivedFromHookCall(binding)) {
+    if (reachesThroughMemberAccess && isSetterlessUseStateBinding(binding)) return null;
+    return "hook-result";
+  }
   // A parameter of a React component (or hook) is a prop — shared with
   // the parent across renders. Plain-function/utility params and the
   // draft/mutation params of `produce`/`useMutation` callbacks are not
   // components, so they never reach this branch.
-  if (isParameterBinding(binding) && componentOrHookDisplayNameForFunction(binding.scopeOwner)) {
-    return "prop";
+  if (isParameterBinding(binding)) {
+    return componentOrHookDisplayNameForFunction(binding.scopeOwner) ? "prop" : null;
   }
-  return null;
+  const aliasSource = aliasSourceFor(binding);
+  if (!aliasSource) return null;
+  return resolveSharedArraySource(
+    aliasSource.rootIdentifier,
+    callNode,
+    reachesThroughMemberAccess || aliasSource.isMemberAccess,
+    depth + 1,
+  );
 };
 
 const messageFor = (source: SharedArraySource): string => {
@@ -141,9 +268,9 @@ export const noMutatingArrayMethodOnPropOrHookResult = defineRule({
       if (receiverReachesThroughRefCurrent(receiver)) return;
       const rootIdentifier = rootIdentifierNode(receiver);
       if (!rootIdentifier) return;
-      if (MUTATION_SAFE_NAME_PATTERN.test(rootIdentifier.name)) return;
 
-      const source = resolveSharedArraySource(rootIdentifier);
+      const receiverIsMemberAccess = isNodeOfType(receiver, "MemberExpression");
+      const source = resolveSharedArraySource(rootIdentifier, node, receiverIsMemberAccess, 0);
       if (!source) return;
       context.report({ node, message: messageFor(source) });
     },

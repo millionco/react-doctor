@@ -11,14 +11,12 @@ export interface CliInspectOptions extends InspectOptions {
 
 /**
  * Translates CLI flags into the `InspectOptions` contract `inspect()`
- * accepts. Flag-specific computed fields (`scoreOnly`, `noScore`,
- * `silent`, `isCi`) live here — there's no `userConfig` knob for them,
- * only flag derivation. The plain boolean knobs (`lint`, `deadCode`,
- * `verbose`) pass through unchanged: `inspect()` owns the
- * userConfig-fallback layer so the merge logic isn't duplicated. The
- * shell still hands `userConfig` in via `configOverride` and `noScore`
- * so this resolver can apply the one flag-and-config rule that flags own
- * (`--score false` wins, otherwise inherit `userConfig.noScore`).
+ * accepts. Flag-derived fields only (`scoreOnly`, `noScore`, `silent`,
+ * `isCi`): every `userConfig` fallback — including `noScore` — lives in
+ * `inspect()`'s merge layer, which sees each project's module-merged
+ * config. The plain boolean knobs (`lint`, `deadCode`, `verbose`) pass
+ * through unchanged for the same reason. This resolver reads
+ * `userConfig` only to decide the `--blocking warning` gate.
  */
 export const resolveCliInspectOptions = (
   flags: InspectFlags,

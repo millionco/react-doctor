@@ -204,11 +204,15 @@ const openStore = (options: CliStateOptions = {}): Conf<CliState> =>
 
 // Opens the store and upgrades it to the current schema in place (persisting
 // the upgrade once, best-effort) so every reader sees the canonical shape.
+// Persist only when migration produced a new object — `migrateCliState`
+// returns the same reference for current-or-newer versions, and an older
+// binary's reads must never rewrite a newer binary's state file (disk churn
+// plus a stale-snapshot last-writer-wins race).
 const openMigratedStore = (options: CliStateOptions): Conf<CliState> => {
   const store = openStore(options);
-  if (store.store.schemaVersion !== CLI_STATE_SCHEMA_VERSION) {
-    store.store = migrateCliState(store.store);
-  }
+  const state = store.store;
+  const migrated = migrateCliState(state);
+  if (migrated !== state) store.store = migrated;
   return store;
 };
 

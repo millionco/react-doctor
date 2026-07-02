@@ -254,6 +254,60 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     expect(fs.existsSync(legacyScriptPath)).toBe(false);
   });
 
+  it("preserves user hook groups the legacy strip didn't touch (empty or hook-less)", () => {
+    const settingsPath = path.join(fixture.projectRoot, ".claude/settings.json");
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        hooks: {
+          PostToolBatch: [{ matcher: "Bash" }, { matcher: "Write", hooks: [] }],
+        },
+      }),
+    );
+
+    installReactDoctorAgentHooks({
+      projectRoot: fixture.projectRoot,
+      agents: ["claude-code"],
+    });
+
+    const settings = readJson<{
+      hooks: { PostToolBatch: Array<{ matcher?: string; hooks?: Array<{ command: string }> }> };
+    }>(settingsPath);
+
+    expect(settings.hooks.PostToolBatch).toHaveLength(3);
+    expect(settings.hooks.PostToolBatch[0]).toEqual({ matcher: "Bash" });
+    expect(settings.hooks.PostToolBatch[1]).toEqual({ matcher: "Write", hooks: [] });
+    expect(
+      settings.hooks.PostToolBatch[2].hooks?.some((hook) =>
+        hook.command.includes("react-doctor.mjs"),
+      ),
+    ).toBe(true);
+  });
+
+  it("leaves a user's own wrapper referencing a react-doctor.sh outside our install paths", () => {
+    const configPath = path.join(fixture.projectRoot, ".cursor/hooks.json");
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    const userWrapperCommand = "bash scripts/hooks/react-doctor.sh --my-flags";
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        version: 1,
+        hooks: { postToolUse: [{ command: userWrapperCommand, matcher: "Write" }] },
+      }),
+    );
+
+    installReactDoctorAgentHooks({
+      projectRoot: fixture.projectRoot,
+      agents: ["cursor"],
+    });
+
+    const config = readJson<{ hooks: { postToolUse: Array<{ command: string }> } }>(configPath);
+    const commands = config.hooks.postToolUse.map((handler) => handler.command);
+    expect(commands).toContain(userWrapperCommand);
+    expect(commands.some((command) => command.includes("react-doctor.mjs"))).toBe(true);
+  });
+
   it("installs a Cursor postToolUse hook and preserves existing hook config", () => {
     const configPath = path.join(fixture.projectRoot, ".cursor/hooks.json");
     const hookPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.mjs");

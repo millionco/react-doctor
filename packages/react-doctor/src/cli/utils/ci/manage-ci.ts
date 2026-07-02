@@ -270,7 +270,7 @@ const openCiPullRequest = async (params: {
     return { mode: "pr", status: result.status };
   }
   pullRequestSpinner.stop();
-  const didStage = await stageWorkflowFile({ workflowPath: params.workflowPath });
+  const didStage = await stageWorkflowFile({ workflowPath: params.workflowPath, run: params.run });
   logger.dim(
     didStage
       ? "  Staged the change. Commit it to apply."
@@ -420,10 +420,10 @@ export const runCiUpgrade = async (options: CiCommandOptions = {}): Promise<void
       checkCommandAvailable: options.checkCommandAvailable,
     });
     if (outcome.status === "pr-exists") {
-      // The open PR predates this edit (it carries the initial setup scaffold,
-      // still on the old major), so the upgrade shipped nowhere — restore the
-      // on-disk file instead of leaving an unexplained local modification, and
-      // don't record a `ciUpgraded` metric for an upgrade that didn't land.
+      // Install and upgrade PRs share one branch namespace, so the open PR may
+      // be the initial setup scaffold OR a previous run of this upgrade —
+      // either way this edit shipped nowhere, so restore the on-disk file
+      // instead of leaving an unexplained local modification.
       try {
         fs.writeFileSync(workflow.path, workflow.content);
       } catch {
@@ -431,8 +431,9 @@ export const runCiUpgrade = async (options: CiCommandOptions = {}): Promise<void
         return;
       }
       logger.dim(
-        `  That PR doesn't include this upgrade — merge it first, then re-run ${highlighter.info("react-doctor ci upgrade")}.`,
+        `  Merge or close that PR, then re-run ${highlighter.info("react-doctor ci upgrade")} if the workflow still needs it.`,
       );
+      recordCount(METRIC.ciUpgraded, 1, { provider: provider.id, mode: "pr-exists" });
       return;
     }
     mode = outcome.mode;

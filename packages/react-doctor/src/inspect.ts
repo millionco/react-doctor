@@ -721,9 +721,9 @@ const runInspectWithRuntime = async (
   };
   // A degraded baseline (requested but no delta — e.g. a transient base-lint
   // failure) must not be persisted: the cache key includes the baseline ref,
-  // so a stored degraded payload would replay at this HEAD forever, skipping
-  // the gate on every subsequent run instead of re-attempting the comparison
-  // — the same rule `shouldStoreScanPayload` applies to supply-chain timeouts.
+  // so a stored degraded payload would replay at this HEAD/base pair until
+  // the commit changes, skipping the gate instead of re-attempting the
+  // comparison.
   if (
     cacheKey !== null &&
     scanResultCache !== null &&

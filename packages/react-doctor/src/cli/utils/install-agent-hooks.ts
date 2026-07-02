@@ -56,13 +56,19 @@ const CURSOR_HOOKS_SCHEMA_VERSION = 1;
 const JSON_INDENT_SPACES = 2;
 // Releases up to 0.5.8 installed a `react-doctor.sh` shell hook; re-installs
 // must replace those entries (and the orphaned script) instead of stacking a
-// second hook that scans every edit twice.
-const LEGACY_HOOK_SCRIPT_MARKER = "hooks/react-doctor.sh";
+// second hook that scans every edit twice. Anchored to the exact paths those
+// releases wrote so a user's own wrapper elsewhere (e.g.
+// `scripts/hooks/react-doctor.sh`) is never treated as ours.
+const LEGACY_HOOK_SCRIPT_PATHS = [
+  ".claude/hooks/react-doctor.sh",
+  ".cursor/hooks/react-doctor.sh",
+] as const;
 
 // `command` is typed required but comes from a user-edited JSON file, so a
 // parseable entry can still lack it — never crash the install on one.
 const isLegacyHookCommand = (command: string | undefined): boolean =>
-  typeof command === "string" && command.includes(LEGACY_HOOK_SCRIPT_MARKER);
+  typeof command === "string" &&
+  LEGACY_HOOK_SCRIPT_PATHS.some((legacyPath) => command.includes(legacyPath));
 
 const removeLegacyHookScript = (hookPath: string): void => {
   try {
@@ -133,12 +139,15 @@ const installClaudeHook = (projectRoot: string): readonly string[] => {
   const hookPath = path.join(projectRoot, CLAUDE_HOOK_RELATIVE_PATH);
   const settings = readJsonFile<ClaudeSettings>(settingsPath, {});
   const hooks = { ...(settings.hooks ?? {}) };
-  const postToolBatchHooks = [...(hooks.PostToolBatch ?? [])]
-    .map((group) => ({
-      ...group,
-      hooks: (group.hooks ?? []).filter((hook) => !isLegacyHookCommand(hook.command)),
-    }))
-    .filter((group) => group.hooks.length > 0);
+  // Strip legacy entries, dropping a group only when that strip emptied it.
+  // Groups react-doctor never touched (including empty or hook-less ones) pass
+  // through verbatim — the installer must not rewrite settings it doesn't own.
+  const postToolBatchHooks = (hooks.PostToolBatch ?? []).flatMap((group) => {
+    const groupHooks = group.hooks ?? [];
+    const keptHooks = groupHooks.filter((hook) => !isLegacyHookCommand(hook.command));
+    if (keptHooks.length === groupHooks.length) return [group];
+    return keptHooks.length > 0 ? [{ ...group, hooks: keptHooks }] : [];
+  });
 
   if (!hasClaudeHookCommand(postToolBatchHooks)) {
     postToolBatchHooks.push({

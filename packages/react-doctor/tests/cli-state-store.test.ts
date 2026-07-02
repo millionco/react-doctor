@@ -58,6 +58,14 @@ describe("cli-state-store schema migration", () => {
       const twice = migrateCliState(once);
       expect(twice).toEqual(once);
     });
+
+    it("returns a newer-schema state untouched, unknown fields included", () => {
+      const futureState = {
+        schemaVersion: CLI_STATE_SCHEMA_VERSION + 1,
+        futureField: "keep-me",
+      };
+      expect(migrateCliState(futureState)).toBe(futureState);
+    });
   });
 
   describe("on-disk migration (no re-nag)", () => {
@@ -102,6 +110,23 @@ describe("cli-state-store schema migration", () => {
       expect(readCliState((state) => state.schemaVersion, undefined, { cwd: configRoot })).toBe(
         CLI_STATE_SCHEMA_VERSION,
       );
+    });
+
+    it("treats a newer-schema file as read-only: reads never rewrite it", () => {
+      const configPath = getCliStatePath({ cwd: configRoot });
+      fs.mkdirSync(path.dirname(configPath), { recursive: true });
+      const futureContent = JSON.stringify({
+        schemaVersion: CLI_STATE_SCHEMA_VERSION + 1,
+        futureField: "keep-me",
+      });
+      fs.writeFileSync(configPath, futureContent);
+
+      expect(readCliState((state) => state.schemaVersion, undefined, { cwd: configRoot })).toBe(
+        CLI_STATE_SCHEMA_VERSION + 1,
+      );
+      // Byte-identical: any write-back would reserialize (Conf indents with
+      // tabs) and clobber a concurrently-running newer binary's snapshot.
+      expect(fs.readFileSync(configPath, "utf8")).toBe(futureContent);
     });
   });
 });

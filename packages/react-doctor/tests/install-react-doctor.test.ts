@@ -721,7 +721,10 @@ describe("runInstallReactDoctor", () => {
     expect(workflowContent).toContain("millionco/react-doctor@v2");
     expect(workflowContent).toContain("Advisory by default");
     expect(workflowContent).toContain("#   blocking: error");
-    expect(workflowContent).not.toContain("\n        with:\n");
+    // Advisory scaffold: the React Doctor step's gate stays commented (`# with:`),
+    // so its `uses:` line is never directly followed by an active `with:` block.
+    // (The checkout step carries its own `with: fetch-depth: 0`, which is fine.)
+    expect(workflowContent).not.toContain("react-doctor@v2\n        with:");
     expect(workflowContent).not.toContain("github-token");
     expect(workflowContent).not.toContain("diff: main");
   });

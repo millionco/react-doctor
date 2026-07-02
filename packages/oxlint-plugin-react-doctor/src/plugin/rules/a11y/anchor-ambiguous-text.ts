@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -45,6 +46,16 @@ const normalizeText = (text: string): string => {
     .join(" ");
 };
 
+const getStaticExpressionText = (expression: EsTreeNode): string | null => {
+  if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
+    return expression.value;
+  }
+  if (isNodeOfType(expression, "TemplateLiteral")) {
+    return getStaticTemplateLiteralValue(expression);
+  }
+  return null;
+};
+
 const getAccessibleText = (
   element: EsTreeNodeOfType<"JSXElement">,
   settings: Readonly<Record<string, unknown>> | undefined,
@@ -72,9 +83,18 @@ const getAccessibleText = (
     } else if (isNodeOfType(childNode, "JSXElement")) {
       const inner = getAccessibleText(childNode, settings);
       if (inner !== null) parts.push(inner);
+    } else if (isNodeOfType(childNode, "JSXExpressionContainer")) {
+      const expressionText = getStaticExpressionText(childNode.expression);
+      if (expressionText !== null) parts.push(expressionText);
     }
   }
-  return parts.join(" ");
+  // Concatenate adjacent child parts with no separator: real whitespace
+  // between elements arrives as its own JSXText child (preserved here),
+  // so joining with a space would invent a word break — turning the DOM
+  // accessible name "learnmore" of `<span>learn</span><span>more</span>`
+  // into the ambiguous "learn more". `normalizeText` collapses the genuine
+  // whitespace runs afterwards.
+  return parts.join("");
 };
 
 // Port of `oxc_linter::rules::jsx_a11y::anchor_ambiguous_text`.

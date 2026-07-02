@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
@@ -29,8 +30,10 @@ export const rnPreferPressable = defineRule({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
       if (typeof source !== "string" || !TOUCHABLE_SOURCES.has(source)) return;
+      if (isTypeOnlyImport(node)) return;
       for (const specifier of node.specifiers ?? []) {
         if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
+        if (specifier.importKind === "type") continue;
         const importedName = getImportedName(specifier);
         if (!importedName || !TOUCHABLE_COMPONENTS.has(importedName)) continue;
         context.report({

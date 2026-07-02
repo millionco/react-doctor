@@ -17,9 +17,12 @@ const seed = Number(process.env.FUZZ_SEED ?? DEFAULT_FUZZ_SEED);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const findingsDirectory = path.join(packageRoot, "tmp", "fuzz-findings");
 
+let reproducerSequence = 0;
+
 const writeReproducer = (finding: FuzzFinding): string => {
   fs.mkdirSync(findingsDirectory, { recursive: true });
-  const fileName = `${finding.ruleId.replace(/\//g, "__")}-${finding.kind}-seed-${finding.seed}.tsx`;
+  reproducerSequence += 1;
+  const fileName = `${finding.ruleId.replace(/\//g, "__")}-${finding.kind}-seed-${finding.seed}-${reproducerSequence}.tsx`;
   const filePath = path.join(findingsDirectory, fileName);
   const header = [
     `// rule: ${finding.ruleId}`,

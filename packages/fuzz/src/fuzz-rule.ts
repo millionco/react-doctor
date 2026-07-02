@@ -1,4 +1,5 @@
 import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
+import { parseFixture } from "../../oxlint-plugin-react-doctor/src/test-utils/parse-fixture.js";
 import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
 import { runScanRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-scan-rule.js";
 import {
@@ -33,10 +34,17 @@ export interface FuzzRuleOptions {
 
 interface RunOutcome {
   diagnosticSignature?: string[];
-  hasParseErrors: boolean;
   crashDetail?: string;
   elapsedMs: number;
 }
+
+const hasParseErrors = (code: string): boolean => {
+  try {
+    return parseFixture(code).errors.length > 0;
+  } catch {
+    return true;
+  }
+};
 
 const runRuleOnCode = (rule: Rule, code: string): RunOutcome => {
   const startedAt = performance.now();
@@ -45,7 +53,6 @@ const runRuleOnCode = (rule: Rule, code: string): RunOutcome => {
       const findings = runScanRule(rule, { relativePath: "src/fuzz-fixture.tsx", content: code });
       return {
         diagnosticSignature: findings.map((finding) => finding.message).sort(),
-        hasParseErrors: false,
         elapsedMs: performance.now() - startedAt,
       };
     }
@@ -54,12 +61,11 @@ const runRuleOnCode = (rule: Rule, code: string): RunOutcome => {
       diagnosticSignature: result.diagnostics
         .map((diagnostic) => `${diagnostic.nodeType}: ${diagnostic.message}`)
         .sort(),
-      hasParseErrors: result.parseErrors.length > 0,
       elapsedMs: performance.now() - startedAt,
     };
   } catch (thrown) {
     const detail = thrown instanceof Error ? (thrown.stack ?? thrown.message) : String(thrown);
-    return { hasParseErrors: false, crashDetail: detail, elapsedMs: performance.now() - startedAt };
+    return { crashDetail: detail, elapsedMs: performance.now() - startedAt };
   }
 };
 
@@ -89,8 +95,8 @@ export const fuzzRule = (
       code = mutateFuzzProgram(code, random, random.intBetween(1, MAX_NOISE_MUTATIONS + 1));
     }
 
+    if (!isScanRule && hasParseErrors(code)) continue;
     const outcome = runRuleOnCode(rule, code);
-    if (outcome.hasParseErrors) continue;
     if (outcome.crashDetail !== undefined) {
       findings.push({
         ruleId,
@@ -115,6 +121,7 @@ export const fuzzRule = (
 
     if (!options.checkInvariants || isScanRule || didApplyNoise) continue;
     for (const variant of buildEquivalentFuzzVariants(code)) {
+      if (hasParseErrors(variant.code)) continue;
       const variantOutcome = runRuleOnCode(rule, variant.code);
       if (variantOutcome.crashDetail !== undefined) {
         findings.push({
@@ -128,7 +135,6 @@ export const fuzzRule = (
         });
         continue;
       }
-      if (variantOutcome.hasParseErrors) continue;
       const baseSignature = JSON.stringify(outcome.diagnosticSignature);
       const variantSignature = JSON.stringify(variantOutcome.diagnosticSignature);
       if (baseSignature !== variantSignature) {

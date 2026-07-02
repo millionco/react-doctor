@@ -1,6 +1,6 @@
-import type { Rule } from "../../plugin/utils/rule.js";
-import { runRule } from "../run-rule.js";
-import { runScanRule } from "../run-scan-rule.js";
+import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
+import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
+import { runScanRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-scan-rule.js";
 import {
   DEFAULT_FUZZ_ITERATIONS,
   MAX_NOISE_MUTATIONS,

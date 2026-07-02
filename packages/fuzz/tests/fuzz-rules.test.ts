@@ -2,10 +2,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { reactDoctorRules } from "../src/plugin/rule-registry.js";
-import { fuzzRule } from "../src/test-utils/fuzz/fuzz-rule.js";
-import type { FuzzFinding } from "../src/test-utils/fuzz/fuzz-rule.js";
-import { DEFAULT_FUZZ_ITERATIONS, DEFAULT_FUZZ_SEED } from "../src/test-utils/fuzz/constants.js";
+import { reactDoctorRules } from "../../oxlint-plugin-react-doctor/src/plugin/rule-registry.js";
+import { fuzzRule } from "../src/fuzz-rule.js";
+import type { FuzzFinding } from "../src/fuzz-rule.js";
+import { DEFAULT_FUZZ_ITERATIONS, DEFAULT_FUZZ_SEED } from "../src/constants.js";
 
 const isFuzzEnabled = process.env.REACT_DOCTOR_FUZZ === "1";
 const isStrict = process.env.FUZZ_STRICT === "1";

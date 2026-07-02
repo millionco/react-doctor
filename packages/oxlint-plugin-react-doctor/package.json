@@ -49,7 +49,6 @@
     "gen:fixtures": "node ./scripts/extract-oxc-fixtures.mjs /tmp/oxc",
     "gen:fixture-tests": "node ./scripts/generate-fixture-tests.mjs",
     "gen:react-hooks-fixtures": "node ./scripts/extract-react-hooks-tests.mjs /tmp/react/packages/eslint-plugin-react-hooks/__tests__/ESLintRulesOfHooks-test.js src/plugin/rules/react-builtins/__upstream-fixtures__/rules-of-hooks.json && node ./scripts/extract-react-hooks-tests.mjs /tmp/react/packages/eslint-plugin-react-hooks/__tests__/ESLintRuleExhaustiveDeps-test.js src/plugin/rules/react-builtins/__upstream-fixtures__/exhaustive-deps.json",
-    "fuzz": "pnpm gen && cross-env REACT_DOCTOR_FUZZ=1 vp test run tests/fuzz-rules.test.ts",
     "typecheck": "pnpm gen && tsc --noEmit",
     "test": "pnpm gen && vp test run"
   },

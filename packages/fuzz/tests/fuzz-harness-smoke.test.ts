@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
-import { fuzzRule } from "../src/test-utils/fuzz/fuzz-rule.js";
-import type { Rule } from "../src/plugin/utils/rule.js";
+import { fuzzRule } from "../src/fuzz-rule.js";
+import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
 
 describe("fuzz harness oracles", () => {
   it("catches a rule that crashes on JSX", () => {

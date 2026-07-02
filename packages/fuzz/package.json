@@ -1,0 +1,27 @@
+{
+  "name": "@react-doctor/fuzz",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Adversarial fuzzing harness for React Doctor rules.",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "fuzz": "cross-env REACT_DOCTOR_FUZZ=1 vp test run tests/fuzz-rules.test.ts",
+    "test": "vp test run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "oxlint-plugin-react-doctor": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "cross-env": "^10.1.0"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.13.0"
+  }
+}

@@ -11,6 +11,7 @@ import type {
   ProjectInfo,
   ReactDoctorConfig,
   ScoreResult,
+  SuppressedRuleCount,
 } from "./types/index.js";
 import { assignFixGroups } from "./utils/assign-fix-groups.js";
 import { sortDiagnosticsStable } from "./utils/sort-diagnostics-stable.js";
@@ -220,6 +221,16 @@ export interface InspectOutput {
    */
   readonly lintCacheHitFileCount: number | null;
   readonly lintCacheTotalFileCount: number | null;
+  /**
+   * Per-rule tallies of diagnostics the pipeline dropped because the user
+   * explicitly silenced the rule (config off switches, per-path overrides,
+   * inline disable comments) — see `DiagnosticPipeline.summarizeSuppressions`.
+   * Telemetry-only; NOT part of the public `inspect()` `InspectResult`. Note
+   * that a `rules: "off"` lint rule is removed from the generated oxlint
+   * config upstream and never fires, so its findings can't be counted here —
+   * the CLI's scan-level `rule.disabled` counter covers that case.
+   */
+  readonly suppressedRuleCounts: ReadonlyArray<SuppressedRuleCount>;
 }
 
 /**
@@ -912,6 +923,7 @@ export const runInspect = <HooksR = never>(
       supplyChainOverlapTimedOut: supplyChainResult.timedOut,
       lintCacheHitFileCount,
       lintCacheTotalFileCount,
+      suppressedRuleCounts: transform.summarizeSuppressions(),
     };
   }).pipe(
     Effect.withSpan("runInspect", {

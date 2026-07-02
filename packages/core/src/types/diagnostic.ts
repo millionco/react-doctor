@@ -105,6 +105,20 @@ export interface CleanedDiagnostic {
 }
 
 /**
+ * Per-rule tally of diagnostics the user explicitly silenced, aggregated by
+ * how: a config-level off switch (`rules: "off"` / `ignore.rules`), a
+ * per-path `ignore.overrides` entry, or an inline `react-doctor-disable*`
+ * comment. Telemetry-only — the rule-quality signal for which rules users
+ * reject — never rendered, scored, or part of the JSON report.
+ */
+export interface SuppressedRuleCount {
+  /** Canonical `<plugin>/<rule>` key (see `getDiagnosticRuleIdentity`). */
+  readonly rule: string;
+  readonly source: "config" | "override" | "inline";
+  readonly count: number;
+}
+
+/**
  * A discovered source file paired with its on-disk byte size. The size is
  * the single `fs.statSync` the minified-file gate already pays during
  * discovery, captured instead of discarded so the lint pass can order

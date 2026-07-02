@@ -4,7 +4,12 @@ import {
   resolveGithubActionsScoreMetadata,
   summarizeDiagnostics,
 } from "@react-doctor/core";
-import type { BlockingLevel, InspectResult, ReactDoctorConfig } from "@react-doctor/core";
+import type {
+  BlockingLevel,
+  InspectResult,
+  ReactDoctorConfig,
+  SuppressedRuleCount,
+} from "@react-doctor/core";
 import { buildRuleBlastRadii } from "./diagnostic-grouping.js";
 import { ACTION_INPUT_ENVIRONMENT_VARIABLES, detectRunnerOs } from "./is-ci-environment.js";
 import { summarizeRuleFirings } from "./record-scan-metrics.js";
@@ -75,6 +80,14 @@ export interface RunEventInput {
   // A degraded baseline run (no delta computed) skips the CI gate, so the
   // `wouldBlock` prediction must match — never block on its plain-diff findings.
   readonly gateExempt?: boolean;
+  /**
+   * Per-rule tallies of findings the user explicitly silenced (config off
+   * switch / per-path override / inline disable comment), from the scan
+   * payload — so a cache hit replays them. Rolled up to the `diag.suppressed*`
+   * dims; per-rule identity rides the `rule.suppressed` counter instead
+   * (100+ rules would blow up the attribute set). Omitted on the failure path.
+   */
+  readonly suppressedRuleCounts?: ReadonlyArray<SuppressedRuleCount>;
   /** Present only when the scan threw. */
   readonly error?: unknown;
 }
@@ -195,6 +208,22 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     categoryRollup[`category.${toCategoryKey(category)}`] = count;
   }
 
+  // Findings the user explicitly silenced, by mechanism — the per-scan
+  // complement of the `rule.suppressed` counter (which carries rule identity).
+  // Absent (not zero) when the caller couldn't supply the tallies.
+  const suppressionRollup: RunEventAttributes = {};
+  if (input.suppressedRuleCounts) {
+    const countBySource = { config: 0, override: 0, inline: 0 };
+    for (const suppression of input.suppressedRuleCounts) {
+      countBySource[suppression.source] += suppression.count;
+    }
+    suppressionRollup.suppressed =
+      countBySource.config + countBySource.override + countBySource.inline;
+    suppressionRollup.suppressedConfig = countBySource.config;
+    suppressionRollup.suppressedOverride = countBySource.override;
+    suppressionRollup.suppressedInline = countBySource.inline;
+  }
+
   const attributes: RunEventAttributes = {
     ...withNamespace("outcome", {
       status: outcome,
@@ -216,6 +245,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
       fixGroups: findingsPerFixGroup.size,
       fixGroupedFindings,
       ...categoryRollup,
+      ...suppressionRollup,
     }),
     ...withNamespace("score", {
       value: result.score ? result.score.score : null,

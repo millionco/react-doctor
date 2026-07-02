@@ -114,23 +114,27 @@ const buildReport = (overrides: Partial<JsonReport> = {}): JsonReport => {
   };
 };
 
-const runRenderer = (report: JsonReport) => {
+const runRenderer = (report: JsonReport, envOverrides: Record<string, string> = {}) => {
   const tempDirectory = setupTempDirectory();
   const reportPath = path.join(tempDirectory, "report.json");
   const commentPath = path.join(tempDirectory, "comment.md");
   const outputPath = path.join(tempDirectory, "outputs.txt");
   fs.writeFileSync(reportPath, `${JSON.stringify(report)}\n`);
 
-  execFileSync(process.execPath, [RENDER_SCRIPT_PATH, reportPath, commentPath], {
-    env: {
-      ...process.env,
-      GITHUB_OUTPUT: outputPath,
-      GITHUB_RUN_URL: "https://github.com/millionco/react-doctor/actions/runs/123",
-      GITHUB_REPOSITORY: "millionco/react-doctor",
-      GITHUB_SERVER_URL: "https://github.com",
-      REACT_DOCTOR_HEAD_SHA: "cfc8878abcdef0123456789",
-    },
-  });
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    GITHUB_OUTPUT: outputPath,
+    GITHUB_RUN_URL: "https://github.com/millionco/react-doctor/actions/runs/123",
+    GITHUB_REPOSITORY: "millionco/react-doctor",
+    GITHUB_SERVER_URL: "https://github.com",
+    REACT_DOCTOR_HEAD_SHA: "cfc8878abcdef0123456789",
+    ...envOverrides,
+  };
+  // Drop the ambient value so the workflow-file notice is deterministic under
+  // CI (where GITHUB_WORKFLOW_REF is set) unless a test injects its own.
+  if (!("GITHUB_WORKFLOW_REF" in envOverrides)) delete env.GITHUB_WORKFLOW_REF;
+
+  execFileSync(process.execPath, [RENDER_SCRIPT_PATH, reportPath, commentPath], { env });
 
   return {
     comment: fs.readFileSync(commentPath, "utf8"),
@@ -182,20 +186,38 @@ describe("render-github-action-comment", () => {
     const { comment } = runRenderer(buildReport({ baselineDegraded: true }));
 
     // The counts now include pre-existing issues, so the comment must flag the
-    // degraded comparison and hand back the one-line `fetch-depth: 0` fix.
+    // misconfigured workflow and hand back the fix as a checkout diff.
     expect(comment).toContain(
-      "<details><summary>⚠️ Baseline comparison unavailable: showing all issues in the changed files</summary>",
+      "<details><summary>⚠️ Warning: this workflow is configured incorrectly. See below to fix.</summary>",
     );
     expect(comment).toContain("compares against `main`");
-    expect(comment).toContain("- uses: actions/checkout@v5");
-    expect(comment).toContain("fetch-depth: 0");
-    // The findings themselves still render below the notice.
-    expect(comment).toContain("**Errors**");
+    // The fix is a diff with surrounding context so the reader can locate the step.
+    expect(comment).toContain("```diff");
+    expect(comment).toContain("       - uses: actions/checkout@v5");
+    expect(comment).toContain("+          fetch-depth: 0");
+    expect(comment).toContain("       - uses: millionco/react-doctor@v2");
+    // The notice sits at the bottom: after the findings, just above the footer.
+    expect(comment.indexOf("configured incorrectly")).toBeGreaterThan(
+      comment.indexOf("**Errors**"),
+    );
+    expect(comment.indexOf("configured incorrectly")).toBeLessThan(
+      comment.indexOf("Reviewed by [React Doctor]"),
+    );
+  });
+
+  it("names the workflow file in the degraded notice when the ref is available", () => {
+    const { comment } = runRenderer(buildReport({ baselineDegraded: true }), {
+      GITHUB_WORKFLOW_REF: "millionco/same/.github/workflows/react-doctor.yml@refs/heads/main",
+    });
+    expect(comment).toContain(
+      "<details><summary>⚠️ Warning: `.github/workflows/react-doctor.yml` is configured incorrectly. See below to fix.</summary>",
+    );
+    expect(comment).toContain("in `.github/workflows/react-doctor.yml` so the checkout");
   });
 
   it("omits the baseline-degraded warning on a healthy run", () => {
     const { comment } = runRenderer(buildReport());
-    expect(comment).not.toContain("Baseline comparison unavailable");
+    expect(comment).not.toContain("configured incorrectly");
   });
 
   it("renders a baseline report with the new-issue count, fixed count, and commit footer", () => {

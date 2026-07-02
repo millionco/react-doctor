@@ -3,10 +3,10 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noArrayFindResultMemberAccessWithoutGuard } from "./no-array-find-result-member-access-without-guard.js";
 
 describe("no-array-find-result-member-access-without-guard", () => {
-  it("flags a property read on a find() result (Faire zendesk shape)", () => {
+  it("flags a property read on a find() result (locale-lookup shape)", () => {
     const result = runRule(
       noArrayFindResultMemberAccessWithoutGuard,
-      `const id = response.data.locales.find((i) => i.locale === zendeskLocale).id;`,
+      `const id = response.data.locales.find((i) => i.locale === targetLocale).id;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

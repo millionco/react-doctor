@@ -13,8 +13,7 @@ import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 
 // Callees that legitimately take an inline JSX-returning function and either
 // preserve hooks analysis (useCallback/useMemo/forwardRef/memo) or are not
-// HOCs at all (styled, and the lowercase iteration/conditional helpers Faire's
-// in-house rule enumerated). React.* member forms are covered structurally:
+// HOCs at all (styled, and common lowercase iteration/conditional helpers). React.* member forms are covered structurally:
 // this rule only matches bare-Identifier / curried callees, never a
 // MemberExpression callee, so `React.memo(...)` / `lodash.map(...)` never fire.
 const WHITELISTED_CALLEE_NAMES = new Set([
@@ -68,7 +67,7 @@ const isComponentFactoryName = (calleeName: string): boolean => /factory$/i.test
 // handed to. A bare `hoc(fn)` callee is the Identifier name; a curried
 // `connect(mapState)(fn)` callee is itself a CallExpression, so we read the
 // inner Identifier. A MemberExpression callee (`lib.render(fn)`) returns null
-// so the rule stays quiet — matching the narrow shape Faire's rule matched.
+// so the rule stays quiet — keeping the match deliberately narrow.
 const resolveInlineHocCalleeName = (callee: EsTreeNode): string | null => {
   if (isNodeOfType(callee, "Identifier")) return callee.name;
   if (isNodeOfType(callee, "CallExpression") && isNodeOfType(callee.callee, "Identifier")) {

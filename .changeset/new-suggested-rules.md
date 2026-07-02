@@ -6,7 +6,7 @@
 
 feat(rules): add 70 new lint rules with package-version guarding, SSR gating, and corpus-hardened detectors
 
-Adds 70 new AST-only rules (correctness, state-and-effects, performance, security, a11y, bundle-size, architecture, tanstack-query, nextjs, design, react-builtins) authored from the `faire` and `react-bench` suggested-rule specs. Each new rule was validated against an 81-repo OSS corpus and hardened for false positives; 19 candidate rules whose adversarially-verified false-positive share on mature OSS code was 0.75-1.0 (e.g. `no-double-cast-through-unknown`, `no-parseint-without-radix`, `math-max-min-spread-unguarded-array`) were dropped before release.
+Adds 70 new AST-only rules (correctness, state-and-effects, performance, security, a11y, bundle-size, architecture, tanstack-query, nextjs, design, react-builtins) authored from curated production-incident rule specs. Each new rule was validated against a large real-world OSS corpus and hardened for false positives; 19 candidate rules whose adversarially-verified false-positive share on mature OSS code was 0.75-1.0 (e.g. `no-double-cast-through-unknown`, `no-parseint-without-radix`, `math-max-min-spread-unguarded-array`) were dropped before release.
 
 Highlights:
 

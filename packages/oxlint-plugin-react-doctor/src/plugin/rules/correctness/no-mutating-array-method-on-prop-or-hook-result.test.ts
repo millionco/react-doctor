@@ -3,7 +3,7 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noMutatingArrayMethodOnPropOrHookResult } from "./no-mutating-array-method-on-prop-or-hook-result.js";
 
 describe("no-mutating-array-method-on-prop-or-hook-result", () => {
-  it("flags .sort() on a destructured-prop member (Faire experiments shape)", () => {
+  it("flags .sort() on a destructured-prop member (experiment-list shape)", () => {
     const result = runRule(
       noMutatingArrayMethodOnPropOrHookResult,
       `

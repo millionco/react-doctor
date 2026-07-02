@@ -3,15 +3,15 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noPredicateFunctionReferenceInBooleanPosition } from "./no-predicate-function-reference-in-boolean-position.js";
 
 describe("no-predicate-function-reference-in-boolean-position", () => {
-  it("flags `if (!isShopBoardsV0On)` (Faire commit shape)", () => {
+  it("flags `if (!isNewBoardsOn)` (production commit shape)", () => {
     const result = runRule(
       noPredicateFunctionReferenceInBooleanPosition,
       `
-      function isShopBoardsV0On() {
-        return featureFlags.shopBoards;
+      function isNewBoardsOn() {
+        return featureFlags.newBoards;
       }
       function followBrand() {
-        if (!isShopBoardsV0On) {
+        if (!isNewBoardsOn) {
           return;
         }
       }
@@ -19,7 +19,7 @@ describe("no-predicate-function-reference-in-boolean-position", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("isShopBoardsV0On()");
+    expect(result.diagnostics[0].message).toContain("isNewBoardsOn()");
   });
 
   it("flags a bare predicate in an if test", () => {

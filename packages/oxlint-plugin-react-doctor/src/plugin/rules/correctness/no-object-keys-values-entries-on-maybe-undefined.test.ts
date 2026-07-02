@@ -3,7 +3,7 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noObjectKeysValuesEntriesOnMaybeUndefined } from "./no-object-keys-values-entries-on-maybe-undefined.js";
 
 describe("no-object-keys-values-entries-on-maybe-undefined", () => {
-  it("flags Object.entries on an optional param (Faire web-api shape)", () => {
+  it("flags Object.entries on an optional param (api-client shape)", () => {
     const result = runRule(
       noObjectKeysValuesEntriesOnMaybeUndefined,
       `

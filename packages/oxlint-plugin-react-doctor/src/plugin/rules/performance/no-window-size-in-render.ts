@@ -10,9 +10,9 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
 
-// Viewport-size reads only — the grounded Faire signal (FD-123153 SSR
-// useViewport fleet-fix). matchMedia / navigator were cut from v1 as
-// high-FP feature-detection idioms.
+// Viewport-size reads only — grounded in a real production SSR viewport-hook
+// incident. matchMedia / navigator were cut from v1 as high-FP
+// feature-detection idioms.
 const WINDOW_SIZE_PROPS = new Set([
   "innerWidth",
   "innerHeight",

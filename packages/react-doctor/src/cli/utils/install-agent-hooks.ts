@@ -53,7 +53,6 @@ const CURSOR_HOOK_RELATIVE_PATH = ".cursor/hooks/react-doctor.mjs";
 const CURSOR_HOOK_COMMAND = "node .cursor/hooks/react-doctor.mjs";
 const CURSOR_HOOK_MATCHER = "Write|Edit|MultiEdit|ApplyPatch";
 const CURSOR_HOOKS_SCHEMA_VERSION = 1;
-const JSON_INDENT_SPACES = 2;
 // Releases up to 0.5.8 installed a `react-doctor.sh` shell hook; re-installs
 // must replace those entries (and the orphaned script) instead of stacking a
 // second hook that scans every edit twice. Anchored to the exact paths those

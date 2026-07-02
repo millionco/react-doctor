@@ -32,7 +32,6 @@ const GH_PR_LIST = "gh pr list --state open --json headRefName,url --limit 100";
 const GIT_STATUS = `git status --porcelain -- . :!${WORKFLOW_RELATIVE}`;
 const HEAD_BRANCH = "git rev-parse --abbrev-ref HEAD";
 const VERIFY_LOCAL_BRANCH = "git rev-parse --verify react-doctor/add-github-actions";
-const CHECKOUT_NEW = "git checkout -b react-doctor/add-github-actions origin/main";
 const GH_PR_CREATE =
   "gh pr create --title title --body body --base main --head react-doctor/add-github-actions";
 

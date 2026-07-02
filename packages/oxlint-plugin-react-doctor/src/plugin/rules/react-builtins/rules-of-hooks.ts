@@ -430,16 +430,33 @@ const inferFunctionName = (functionNode: EsTreeNode): string | null => {
 // hook / context-factory body), even when its name doesn't follow the
 // `useXxx` / PascalCase convention. The Solid→React port names these
 // `init` / `create*`, which the name gate alone misclassifies.
+// `countedFunctionNodes` guards the mutual recursion with
+// `isLocalNonHookFunctionCallee`: a use*-named call that resolves to a
+// LOCAL non-hook function is excluded from reporting, so it must not
+// count toward the render-scope threshold either — otherwise a
+// `create*` factory with one real hook plus one local `useKeyword(...)`
+// helper call would wrongly qualify as a render scope and exempt the
+// real hook.
 const countOwnScopeHookCalls = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
   settings: Required<RulesOfHooksSettings>,
+  countedFunctionNodes: Set<EsTreeNode> = new Set(),
 ): number => {
+  if (countedFunctionNodes.has(functionNode)) return 0;
+  countedFunctionNodes.add(functionNode);
   let count = 0;
   walkAst(functionNode, (child) => {
     if (child === functionNode) return;
     if (isFunctionLike(child)) return false;
-    if (isHookCall(child, scopes, settings)) count += 1;
+    if (!isHookCall(child, scopes, settings)) return;
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isLocalNonHookFunctionCallee(child, scopes, settings, countedFunctionNodes)
+    ) {
+      return;
+    }
+    count += 1;
   });
   return count;
 };
@@ -463,6 +480,7 @@ const isLocalNonHookFunctionCallee = (
   call: EsTreeNodeOfType<"CallExpression">,
   scopes: ScopeAnalysis,
   settings: Required<RulesOfHooksSettings>,
+  countedFunctionNodes?: Set<EsTreeNode>,
 ): boolean => {
   const callee = call.callee;
   if (!isNodeOfType(callee, "Identifier")) return false;
@@ -471,7 +489,7 @@ const isLocalNonHookFunctionCallee = (
   const localFunction =
     symbol.initializer && isFunctionLike(symbol.initializer) ? symbol.initializer : null;
   if (!localFunction) return false;
-  return countOwnScopeHookCalls(localFunction, scopes, settings) === 0;
+  return countOwnScopeHookCalls(localFunction, scopes, settings, countedFunctionNodes) === 0;
 };
 
 const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {

@@ -259,6 +259,27 @@ describe("react-builtins/rules-of-hooks — regressions: local non-hook use* cal
     expect(result.diagnostics).toEqual([]);
   });
 
+  // A local use*-named non-hook helper call must not count toward the
+  // render-scope threshold: one real hook + one `useKeyword(...)` call
+  // is NOT a multi-hook factory, so the real hook stays reported.
+  it("still flags the real hook in a create*-factory padded by a local use* helper call", () => {
+    const result = runTsx(`
+      import { useState } from "react";
+      function useKeyword(name) {
+        return name.toUpperCase();
+      }
+      function createValidator(name) {
+        const [state] = useState(null);
+        const keyword = useKeyword(name);
+        return { state, keyword };
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toBe(
+      "`useState` runs inside `createValidator`, which is not a component or Hook, so React cannot attach Hook state to a render.",
+    );
+  });
+
   it("still flags a local custom hook whose body calls hooks when used from a helper", () => {
     const result = runTsx(`
       import { useState } from "react";

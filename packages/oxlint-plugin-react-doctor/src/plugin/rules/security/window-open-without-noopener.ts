@@ -83,8 +83,8 @@ const isTrustedStaticDestination = (urlArgument: EsTreeNode | null | undefined):
 
 const MAX_BINDING_RESOLUTION_DEPTH = 4;
 
-// A nullish branch (`cond ? url : null`) is harmless: `window.open(null)`
-// opens about:blank, which the opener fully controls.
+// A nullish URL (`window.open(null)`, `cond ? url : null`) is harmless:
+// it opens about:blank, which the opener fully controls.
 const isNullishExpression = (node: EsTreeNode | null | undefined): boolean => {
   if (node == null) return true;
   if (isNodeOfType(node, "Literal")) return node.value === null;
@@ -124,29 +124,31 @@ const isTrustedDestination = (
   if (urlArgument == null || depth > MAX_BINDING_RESOLUTION_DEPTH) return false;
   if (isNodeOfType(urlArgument, "ConditionalExpression")) {
     return (
-      isTrustedOrNullishBranch(urlArgument.consequent, depth + 1) &&
-      isTrustedOrNullishBranch(urlArgument.alternate, depth + 1)
+      isTrustedOrNullishDestination(urlArgument.consequent, depth + 1) &&
+      isTrustedOrNullishDestination(urlArgument.alternate, depth + 1)
     );
   }
   if (isNodeOfType(urlArgument, "LogicalExpression")) {
     if (urlArgument.operator === "&&") {
-      return isTrustedOrNullishBranch(urlArgument.right, depth + 1);
+      return isTrustedOrNullishDestination(urlArgument.right, depth + 1);
     }
     return (
-      isTrustedOrNullishBranch(urlArgument.left, depth + 1) &&
-      isTrustedOrNullishBranch(urlArgument.right, depth + 1)
+      isTrustedOrNullishDestination(urlArgument.left, depth + 1) &&
+      isTrustedOrNullishDestination(urlArgument.right, depth + 1)
     );
   }
   if (isNodeOfType(urlArgument, "Identifier")) {
     const constInitializer = resolveConstInitializer(urlArgument);
     if (constInitializer == null) return false;
-    return isTrustedDestination(constInitializer, depth + 1);
+    return isTrustedOrNullishDestination(constInitializer, depth + 1);
   }
   return false;
 };
 
-const isTrustedOrNullishBranch = (branch: EsTreeNode | null | undefined, depth: number): boolean =>
-  isNullishExpression(branch) || isTrustedDestination(branch, depth);
+const isTrustedOrNullishDestination = (
+  urlExpression: EsTreeNode | null | undefined,
+  depth: number,
+): boolean => isNullishExpression(urlExpression) || isTrustedDestination(urlExpression, depth);
 
 // Best-effort static text of the features argument: string literals,
 // template literals (interpolations resolved when they are local const
@@ -204,9 +206,9 @@ const isArrowReturnDiscarded = (arrow: EsTreeNode): boolean => {
 };
 
 // The window handle is discarded (so `noopener`'s null return breaks
-// nothing) when the call is a bare statement, the branch of a
-// guard-shaped logical/ternary that is itself discarded, a non-final
-// position in a comma sequence, or the concise
+// nothing) when the call is a bare statement, a `void` operand, the
+// branch of a guard-shaped logical/ternary that is itself discarded, a
+// non-final position in a comma sequence, or the concise
 // body of a discarded arrow. Any capturing parent — VariableDeclarator
 // init, AssignmentExpression right, ReturnStatement arg, a member access
 // on the result, or being passed as a call argument — means the caller
@@ -215,6 +217,7 @@ const isDiscardedWindowHandle = (callNode: EsTreeNode): boolean => {
   const parent = callNode.parent;
   if (!parent) return false;
   if (isNodeOfType(parent, "ExpressionStatement")) return true;
+  if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "void") return true;
   if (isNodeOfType(parent, "LogicalExpression") && parent.right === callNode) {
     return isDiscardedWindowHandle(parent);
   }
@@ -246,7 +249,7 @@ export const windowOpenWithoutNoopener = defineRule({
       if (!isDiscardedWindowHandle(node)) return;
 
       const urlArgument = node.arguments?.[0];
-      if (isTrustedDestination(urlArgument, 0)) return;
+      if (isTrustedOrNullishDestination(urlArgument, 0)) return;
       if (opensProtocolHandlerOnly(urlArgument)) return;
 
       const targetArgument = node.arguments?.[1];

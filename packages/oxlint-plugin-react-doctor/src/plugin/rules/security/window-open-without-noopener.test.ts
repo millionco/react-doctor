@@ -133,6 +133,26 @@ describe("window-open-without-noopener", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a nullish URL argument (about:blank stays opener-controlled)", () => {
+    for (const call of [
+      "window.open();",
+      "window.open(null, '_blank');",
+      "window.open(undefined, '_blank');",
+      "window.open(void 0, '_blank');",
+    ]) {
+      const result = runRule(windowOpenWithoutNoopener, call);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("does not flag a const URL bound to null", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const fallbackUrl = null;\nwindow.open(fallbackUrl, '_blank');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag a const identifier bound to a hardcoded literal URL", () => {
     const result = runRule(
       windowOpenWithoutNoopener,
@@ -296,6 +316,11 @@ describe("window-open-without-noopener", () => {
       windowOpenWithoutNoopener,
       `const x = <a onClick={(e) => e.metaKey ? window.open(href, '_blank') : navigate(href)} />;`,
     );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a void-discarded window.open", () => {
+    const result = runRule(windowOpenWithoutNoopener, `void window.open(url, '_blank');`);
     expect(result.diagnostics).toHaveLength(1);
   });
 

@@ -3,6 +3,7 @@ import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -205,8 +206,15 @@ export const noPreventDefault = defineRule({
         // An `<a>` without href never navigates on click (anchor-as-button,
         // e.g. an ant-design Dropdown trigger), so "nothing navigates
         // because onClick calls preventDefault()" would be false — the
-        // preventDefault() is defensive, not a dead link.
-        if (elementName === "a" && !findJsxAttribute(node.attributes ?? [], "href")) return;
+        // preventDefault() is defensive, not a dead link. A spread
+        // (`{...props}`) can forward a real href at runtime, so the
+        // href-less bailout only applies when absence is provable.
+        if (
+          elementName === "a" &&
+          !findJsxAttribute(node.attributes ?? [], "href") &&
+          !hasJsxSpreadAttribute(node.attributes ?? [])
+        )
+          return;
 
         // A `<form action=…>` already has a native no-JS submit path: with
         // JS off the onSubmit handler never runs, so preventDefault() never

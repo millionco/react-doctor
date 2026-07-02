@@ -36,6 +36,52 @@ describe("correctness/no-prevent-default regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("flags an href-less anchor whose spread can forward a real href at runtime", () => {
+      const result = runRule(
+        noPreventDefault,
+        `interface LinkProps {
+  href?: string;
+}
+
+export const Link = (props: LinkProps) => (
+  <a {...props} onClick={(event) => event.preventDefault()}>
+    Open
+  </a>
+);
+`,
+        { filename: "src/link.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent on a spread anchor whose handler navigates itself", () => {
+      const result = runRule(
+        noPreventDefault,
+        `declare const router: { push: (path: string) => void };
+
+interface LinkProps {
+  href?: string;
+}
+
+export const Link = (props: LinkProps) => (
+  <a
+    {...props}
+    onClick={(event) => {
+      event.preventDefault();
+      router.push("/next");
+    }}
+  >
+    Open
+  </a>
+);
+`,
+        { filename: "src/link.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("stays silent on the ant-design dropdown trigger anchor in a demo file (test-noise)", () => {
       const result = runRule(
         noPreventDefault,

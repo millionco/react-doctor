@@ -3,10 +3,16 @@ import { isDevToolingPath } from "./utils/is-dev-tooling-path.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 import { scanByPattern } from "./utils/scan-by-pattern.js";
 
-// `(?<![-.\w$'"])` keeps taint accessors that merely appear inside string
-// literals (`path.resolve(__dirname, 'render-query.js')`) from counting.
+// `(?<![-./\w$'"`])` keeps taint accessors that merely appear inside string
+// literals (`path.resolve(__dirname, 'render-query.js')`, the static path
+// segment `"public/body.html"`, or a backtick suffix `` `${dir}/query.sql` ``)
+// from counting — a path separator `/` and backtick must NOT precede a real
+// taint read (`req.`/`params.` are bare code preceded by `(`, `,`, space, `=`).
+// `(?<!basename\(\s{0,4})` skips the standard traversal sanitizer
+// `path.join(base, path.basename(req.params.file))` — `path.basename()` strips
+// every directory component, so the join cannot escape `base`.
 const PATH_TRAVERSAL_RISK_PATTERN =
-  /\b(?:readFile|readFileSync|writeFile|writeFileSync)\s*\(\s*(?:req\.|request\.|params\.|query\.|body\.|parsed\.|`[^`]*(?<![-.\w$'"])(?:req\.|request\.|params\.|query\.|body\.))|\bpath\.(?:join|resolve)\s*\([^)]*(?<![-.\w$'"])(?:req\.|request\.|params\.|query\.|body\.|parsed\.)/;
+  /\b(?:readFile|readFileSync|writeFile|writeFileSync)\s*\(\s*(?:req\.|request\.|params\.|query\.|body\.|parsed\.|`[^`]*(?<![-./\w$'"`])(?:req\.|request\.|params\.|query\.|body\.))|\bpath\.(?:join|resolve)\s*\([^)]*(?<![-./\w$'"`])(?<!basename\(\s{0,4})(?:req\.|request\.|params\.|query\.|body\.|parsed\.)/;
 
 export const pathTraversalRisk = defineRule({
   id: "path-traversal-risk",

@@ -1,6 +1,7 @@
 import { MUTABLE_GLOBAL_ROOTS } from "../../constants/dom.js";
 import { HOOKS_WITH_DEPS } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -44,9 +45,37 @@ const collectUseRefBindingNames = (componentBody: EsTreeNode): Set<string> => {
   return useRefBindings;
 };
 
+// Every name introduced by a `const`/`let`/`var` declaration anywhere
+// in the component body. A root like `location` that resolves to a
+// local binding (e.g. `const location = useLocation()`) is NOT the
+// browser global — react-router's `useLocation()` returns a fresh,
+// reactive object on every navigation, so `location.pathname` in deps
+// is correct, not a footgun.
+const collectLocalBindingNames = (componentBody: EsTreeNode): Set<string> => {
+  const localBindingNames = new Set<string>();
+  walkAst(componentBody, (child: EsTreeNode) => {
+    // Don't descend into nested function scopes: a `const location = …`
+    // inside a callback or nested component must not mask a browser global
+    // (`location.pathname`) read in THIS component's own dependency array.
+    if (
+      child !== componentBody &&
+      (isNodeOfType(child, "FunctionDeclaration") ||
+        isNodeOfType(child, "FunctionExpression") ||
+        isNodeOfType(child, "ArrowFunctionExpression"))
+    ) {
+      return false;
+    }
+    if (isNodeOfType(child, "VariableDeclarator")) {
+      collectPatternNames(child.id, localBindingNames);
+    }
+  });
+  return localBindingNames;
+};
+
 const findMutableDepIssue = (
   depElement: EsTreeNode,
   useRefBindingNames: Set<string>,
+  localBindingNames: Set<string>,
 ): { kind: "global" | "ref-current"; rootName: string } | null => {
   if (!isNodeOfType(depElement, "MemberExpression")) return null;
 
@@ -61,7 +90,7 @@ const findMutableDepIssue = (
   }
 
   const rootName = getRootIdentifierName(depElement);
-  if (rootName !== null && MUTABLE_GLOBAL_ROOTS.has(rootName)) {
+  if (rootName !== null && MUTABLE_GLOBAL_ROOTS.has(rootName) && !localBindingNames.has(rootName)) {
     return { kind: "global", rootName };
   }
   return null;
@@ -74,9 +103,14 @@ export const noMutableInDeps = defineRule({
   recommendation:
     "Read mutable values like `location.pathname` or `ref.current` inside the effect body, or subscribe with `useSyncExternalStore`. Changing them doesn't redraw the screen, so listing them in deps won't make the effect run again.",
   create: (context: RuleContext) => {
-    const checkComponent = (componentBody: EsTreeNode | null | undefined): void => {
+    const checkComponent = (
+      componentBody: EsTreeNode | null | undefined,
+      componentParams: ReadonlyArray<EsTreeNode> = [],
+    ): void => {
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
       const useRefBindingNames = collectUseRefBindingNames(componentBody);
+      const localBindingNames = collectLocalBindingNames(componentBody);
+      for (const param of componentParams) collectPatternNames(param, localBindingNames);
 
       walkAst(componentBody, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "CallExpression")) return;
@@ -87,7 +121,7 @@ export const noMutableInDeps = defineRule({
 
         for (const element of depsNode.elements ?? []) {
           if (!element) continue;
-          const issue = findMutableDepIssue(element, useRefBindingNames);
+          const issue = findMutableDepIssue(element, useRefBindingNames, localBindingNames);
           if (!issue) continue;
           if (issue.kind === "ref-current") {
             context.report({
@@ -107,7 +141,7 @@ export const noMutableInDeps = defineRule({
     return {
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
         if (!node.id?.name || !isUppercaseName(node.id.name)) return;
-        checkComponent(node.body);
+        checkComponent(node.body, node.params);
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
         if (!isComponentAssignment(node)) return;
@@ -116,7 +150,7 @@ export const noMutableInDeps = defineRule({
           !isNodeOfType(node.init, "FunctionExpression")
         )
           return;
-        checkComponent(node.init.body);
+        checkComponent(node.init.body, node.init.params);
       },
     };
   },

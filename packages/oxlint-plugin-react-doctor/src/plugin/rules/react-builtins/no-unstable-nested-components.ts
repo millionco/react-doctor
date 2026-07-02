@@ -8,6 +8,7 @@ import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
+import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 
 const buildMessage = (parentName: string | null): string => {
   let message =
@@ -304,6 +305,114 @@ const isReturnOfMapCallback = (node: EsTreeNode): boolean => {
   return false;
 };
 
+const isCloneElementCall = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = node.callee;
+  if (isNodeOfType(callee, "Identifier")) return callee.name === "cloneElement";
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === "cloneElement"
+  );
+};
+
+// TS expression wrappers that forward their inner value unchanged.
+const TS_VALUE_PASSTHROUGH_TYPES: ReadonlySet<string> = new Set([
+  "TSAsExpression",
+  "TSNonNullExpression",
+  "TSSatisfiesExpression",
+  "TSTypeAssertion",
+]);
+
+// A PascalCase identifier READ counts as instantiation evidence only
+// when its value flows into a render-shaped sink: a JSX expression
+// container (`component={Inner}`, `<div>{Inner}</div>`), a
+// createElement / cloneElement argument, a return value, or a
+// component-shaped (PascalCase) binding a consumer can render
+// (`const Enhanced = withAnalytics(Inner)`). Arbitrary call arguments
+// whose result is discarded (`track(Inner)`, `console.log(Inner)`) are
+// side-effect reads, not renders. A DIRECT call (`Inner()`) inlines
+// into the parent's render — no child fiber — so the callee position
+// is not instantiation evidence either.
+const isRenderFlowingReadReference = (identifier: EsTreeNode): boolean => {
+  let valueNode: EsTreeNode = identifier;
+  let parent: EsTreeNode | null | undefined = valueNode.parent;
+  while (parent) {
+    if (TS_VALUE_PASSTHROUGH_TYPES.has(parent.type)) {
+      valueNode = parent;
+      parent = parent.parent;
+      continue;
+    }
+    switch (parent.type) {
+      case "JSXExpressionContainer":
+      case "ReturnStatement":
+        return true;
+      case "ArrowFunctionExpression":
+        return parent.body === valueNode;
+      case "CallExpression": {
+        if (parent.callee === valueNode) return false;
+        if (isCreateElementCall(parent) || isCloneElementCall(parent)) return true;
+        valueNode = parent;
+        parent = parent.parent;
+        continue;
+      }
+      case "VariableDeclarator":
+        return (
+          parent.init === valueNode &&
+          isNodeOfType(parent.id, "Identifier") &&
+          isUppercaseName(parent.id.name)
+        );
+      case "AssignmentExpression": {
+        const assignmentTarget = parent.left as EsTreeNode;
+        return (
+          parent.right === valueNode &&
+          isNodeOfType(assignmentTarget, "Identifier") &&
+          isUppercaseName(assignmentTarget.name)
+        );
+      }
+      case "Property": {
+        if (parent.value !== valueNode) return false;
+        valueNode = parent;
+        parent = parent.parent;
+        continue;
+      }
+      case "ObjectExpression":
+      case "ArrayExpression":
+      case "ConditionalExpression":
+      case "LogicalExpression":
+        valueNode = parent;
+        parent = parent.parent;
+        continue;
+      default:
+        return false;
+    }
+  }
+  return false;
+};
+
+// Flattens `<Thing.Panel/>` / `createElement(sections.General)` into
+// its dotted segments (["Thing", "Panel"]). Returns null for computed
+// / private / non-identifier segments.
+const collectMemberChainSegments = (memberExpression: EsTreeNode): string[] | null => {
+  const segments: string[] = [];
+  let current: EsTreeNode = memberExpression;
+  while (
+    isNodeOfType(current, "JSXMemberExpression") ||
+    isNodeOfType(current, "MemberExpression")
+  ) {
+    if (isNodeOfType(current, "MemberExpression") && current.computed) return null;
+    const property = current.property;
+    if (!isNodeOfType(property, "Identifier") && !isNodeOfType(property, "JSXIdentifier")) {
+      return null;
+    }
+    segments.unshift(property.name);
+    current = current.object;
+  }
+  if (!isNodeOfType(current, "Identifier") && !isNodeOfType(current, "JSXIdentifier")) return null;
+  segments.unshift(current.name);
+  return segments;
+};
+
 // Port of `oxc_linter::rules::react::no_unstable_nested_components`.
 export const noUnstableNestedComponents = defineRule({
   id: "no-unstable-nested-components",
@@ -316,7 +425,79 @@ export const noUnstableNestedComponents = defineRule({
     const settings = resolveSettings(context.settings);
     const renderPropRegex = compileGlob(settings.propNamePattern);
 
-    const reportCandidate = (candidateNode: EsTreeNode, reportNode: EsTreeNode): void => {
+    // Bindings actually INSTANTIATED as React elements (`<Name/>` or
+    // `createElement(Name)`). A capitalized nested helper that is only
+    // ever invoked as `Name()` is inlined into the parent's render —
+    // no child fiber, no state to lose — so requiring instantiation
+    // before reporting drops the inline-render-helper false positives.
+    // Keyed by the BINDING IDENTIFIER node the usage resolves to, so a
+    // same-named JSX usage of a DIFFERENT binding doesn't count; the
+    // name set only backs candidates without a binding (object-property
+    // components). The binding node (not the symbol id) is the key
+    // because scope analysis can register a hoisted declaration under
+    // two symbol records that share one binding identifier.
+    // Only enforced for candidates that qualify SOLELY by their
+    // PascalCase name; prop / object-callback / HoC candidates are
+    // instantiated by their consumer and keep firing as before.
+    const instantiatedComponentNames = new Set<string>();
+    const instantiatedBindingIdentifiers = new Set<EsTreeNode>();
+
+    const recordInstantiation = (identifier: EsTreeNode, name: string): void => {
+      instantiatedComponentNames.add(name);
+      const symbol = context.scopes.symbolFor(identifier);
+      if (symbol) instantiatedBindingIdentifiers.add(symbol.bindingIdentifier);
+    };
+
+    // `<Thing.Panel/>` instantiates the member-assigned candidate
+    // `Thing.Panel = () => …`, whose inferred name is the PROPERTY
+    // (`Panel`) and which has no binding — so record the property name
+    // (and the full dotted chain) for the name-matching fallback.
+    const recordMemberChainInstantiation = (memberExpression: EsTreeNode): void => {
+      const segments = collectMemberChainSegments(memberExpression);
+      if (!segments || segments.length < 2) return;
+      const propertyName = segments.at(-1);
+      if (propertyName !== undefined) instantiatedComponentNames.add(propertyName);
+      instantiatedComponentNames.add(segments.join("."));
+    };
+
+    // The identifier that BINDS the candidate function's name (`function
+    // Name()` / `const Name = () => …`). The VariableDeclarator id wins
+    // over a named FunctionExpression's own `.id` — for `const X =
+    // function Y() {}` outside references resolve to `X`, while `Y` only
+    // binds inside the function body. Property keys and member
+    // assignments aren't bindings, so those shapes return null and the
+    // instantiation gate falls back to name matching.
+    const findFunctionBindingIdentifier = (functionLike: EsTreeNode): EsTreeNode | null => {
+      const parent = functionLike.parent;
+      if (
+        parent &&
+        isNodeOfType(parent, "VariableDeclarator") &&
+        isNodeOfType(parent.id, "Identifier")
+      ) {
+        return parent.id;
+      }
+      if (
+        (isNodeOfType(functionLike, "FunctionDeclaration") ||
+          isNodeOfType(functionLike, "FunctionExpression")) &&
+        functionLike.id
+      ) {
+        return functionLike.id;
+      }
+      return null;
+    };
+
+    interface QueuedReport {
+      reportNode: EsTreeNode;
+      message: string;
+      requiredInstantiationName: string | null;
+      requiredInstantiationBinding: EsTreeNode | null;
+    }
+    const queuedReports: QueuedReport[] = [];
+
+    const enqueueCandidate = (
+      candidateNode: EsTreeNode,
+      requiredInstantiationName: string | null,
+    ): void => {
       if (isFirstArgumentOfHocCall(candidateNode)) return;
       if (isReturnOfMapCallback(candidateNode)) return;
       const propInfo = isComponentDeclaredInProp(candidateNode);
@@ -327,9 +508,15 @@ export const noUnstableNestedComponents = defineRule({
       }
       const enclosing = findEnclosingComponent(candidateNode);
       if (!enclosing) return;
-      context.report({
-        node: reportNode,
+      // A prop / object-callback candidate is instantiated by its
+      // consumer, so don't gate it on local instantiation.
+      const gatedName = propInfo ? null : requiredInstantiationName;
+      queuedReports.push({
+        reportNode: candidateNode,
         message: buildMessage(enclosing.name),
+        requiredInstantiationName: gatedName,
+        requiredInstantiationBinding:
+          gatedName !== null ? findFunctionBindingIdentifier(candidateNode) : null,
       });
     };
 
@@ -343,15 +530,30 @@ export const noUnstableNestedComponents = defineRule({
       }
       const inferredName = inferFunctionLikeName(node as EsTreeNode);
       const propInfo = isComponentDeclaredInProp(node as EsTreeNode);
-      const isCandidate =
-        (inferredName !== null && isReactComponentName(inferredName)) ||
-        propInfo !== null ||
-        isObjectCallbackCandidate(node as EsTreeNode);
+      const isObjectCallback = isObjectCallbackCandidate(node as EsTreeNode);
+      const isNameCandidate = inferredName !== null && isReactComponentName(inferredName);
+      const isCandidate = isNameCandidate || propInfo !== null || isObjectCallback;
       if (!isCandidate) return;
-      reportCandidate(node as EsTreeNode, node as EsTreeNode);
+      const requiredInstantiationName =
+        isNameCandidate && propInfo === null && !isObjectCallback ? inferredName : null;
+      enqueueCandidate(node as EsTreeNode, requiredInstantiationName);
     };
 
     return {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (isNodeOfType(node.name, "JSXIdentifier") && isUppercaseName(node.name.name)) {
+          recordInstantiation(node.name as EsTreeNode, node.name.name);
+          return;
+        }
+        if (isNodeOfType(node.name, "JSXMemberExpression")) {
+          recordMemberChainInstantiation(node.name as EsTreeNode);
+        }
+      },
+      Identifier(node: EsTreeNodeOfType<"Identifier">) {
+        if (!isUppercaseName(node.name)) return;
+        if (!isRenderFlowingReadReference(node as EsTreeNode)) return;
+        recordInstantiation(node as EsTreeNode, node.name);
+      },
       FunctionDeclaration: checkFunctionLike,
       FunctionExpression: checkFunctionLike,
       ArrowFunctionExpression: checkFunctionLike,
@@ -364,18 +566,38 @@ export const noUnstableNestedComponents = defineRule({
         // tldraw, `class Tool extends BaseTool`, etc.) as a nested React
         // component candidate.
         if (!isReactClassComponent(node as EsTreeNode)) return;
-        reportCandidate(node as EsTreeNode, node as EsTreeNode);
+        enqueueCandidate(node as EsTreeNode, null);
       },
       ClassExpression(node: EsTreeNodeOfType<"ClassExpression">) {
         const inferredName = node.id?.name ?? inferFunctionLikeName(node as EsTreeNode);
         if (!inferredName || !isReactComponentName(inferredName)) return;
         if (!isReactClassComponent(node as EsTreeNode)) return;
-        reportCandidate(node as EsTreeNode, node as EsTreeNode);
+        enqueueCandidate(node as EsTreeNode, null);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (isCreateElementCall(node)) {
+          const firstArgument = node.arguments[0] as EsTreeNode | undefined;
+          if (firstArgument && isNodeOfType(firstArgument, "Identifier")) {
+            recordInstantiation(firstArgument, firstArgument.name);
+          } else if (firstArgument && isNodeOfType(firstArgument, "MemberExpression")) {
+            recordMemberChainInstantiation(firstArgument);
+          }
+        }
         if (!isHocCallee(node)) return;
         if (!hocCallContainsComponent(node)) return;
-        reportCandidate(node as EsTreeNode, node as EsTreeNode);
+        enqueueCandidate(node as EsTreeNode, null);
+      },
+      "Program:exit"() {
+        for (const report of queuedReports) {
+          if (report.requiredInstantiationName !== null) {
+            const isInstantiated =
+              report.requiredInstantiationBinding !== null
+                ? instantiatedBindingIdentifiers.has(report.requiredInstantiationBinding)
+                : instantiatedComponentNames.has(report.requiredInstantiationName);
+            if (!isInstantiated) continue;
+          }
+          context.report({ node: report.reportNode, message: report.message });
+        }
       },
     };
   },

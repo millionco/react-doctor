@@ -1,8 +1,6 @@
-import {
-  componentOrHookDisplayNameForFunction,
-  nearestEnclosingFunction,
-} from "./component-or-hook-display-name.js";
+import { componentOrHookDisplayNameForFunction } from "./component-or-hook-display-name.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { findEnclosingFunction } from "./find-enclosing-function.js";
 
 // Returns the name of the React component / hook that DIRECTLY encloses
 // `node` — i.e. the nearest enclosing function is itself the component
@@ -22,6 +20,6 @@ import type { EsTreeNode } from "./es-tree-node.js";
 // Used by rules that fire only on calls inside render scope —
 // `no-create-context-in-render` and `no-create-store-in-render`.
 export const enclosingComponentOrHookName = (node: EsTreeNode): string | null => {
-  const functionNode = nearestEnclosingFunction(node);
+  const functionNode = findEnclosingFunction(node);
   return functionNode ? componentOrHookDisplayNameForFunction(functionNode) : null;
 };

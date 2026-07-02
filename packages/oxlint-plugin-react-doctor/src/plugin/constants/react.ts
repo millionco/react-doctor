@@ -52,6 +52,10 @@ export const UPPERCASE_PATTERN = /^[A-Z]/;
 // destructured.
 export const REACT_HANDLER_PROP_PATTERN = /^on[A-Z]/;
 
+// React's Rules-of-Hooks naming convention — an identifier is a hook when it
+// starts with `use` followed by an uppercase letter (`useState`, `useMemo`).
+export const HOOK_NAME_PATTERN = /^use[A-Z]/;
+
 // Naming convention for locally declared event-handler functions —
 // `handleSubmit`, `onLogin`, etc. Functions named this way are wired
 // to events and invoked later, not during render.
@@ -99,7 +103,17 @@ export const SUBSCRIPTION_METHOD_NAMES = new Set([
   "sub",
 ]);
 
-export const CLEANUP_RETURNING_SUBSCRIPTION_METHOD_NAMES = new Set(["subscribe", "sub"]);
+// Subscribe-like methods that return their own disposer. `listen`
+// follows the same `const stop = x.listen(cb); return stop` contract
+// as `subscribe` (the disposer IS the return value), so returning
+// that handle counts as cleanup — but only in the callback-argument
+// shape (`is-subscribe-like-call-expression.ts` requires an inline
+// function argument, since Node's `server.listen(3000)` returns the
+// server, not a disposer). `watch` is deliberately excluded:
+// react-hook-form's `form.watch(cb)` returns `{ unsubscribe }` (not
+// callable) and `fs.watch` returns an FSWatcher needing `.close()`,
+// so a returned watch handle is not a cleanup function.
+export const CLEANUP_RETURNING_SUBSCRIPTION_METHOD_NAMES = new Set(["subscribe", "sub", "listen"]);
 
 export const GLOBAL_RELEASE_METHOD_NAMES = new Set([
   "unsubscribe",

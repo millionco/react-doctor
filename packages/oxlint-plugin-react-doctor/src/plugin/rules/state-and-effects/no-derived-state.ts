@@ -4,9 +4,11 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { readsPostMountValue } from "../../utils/reads-post-mount-value.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getArgsUpstreamRefs, getCallExpr, getUpstreamRefs } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { isControlledPropMirror } from "./utils/is-controlled-prop-mirror.js";
 import {
   getEffectDepsRefs,
   getEffectFn,
@@ -69,6 +71,10 @@ export const noDerivedState = defineRule({
 
         const callExpr = getCallExpr(ref);
         if (!callExpr) continue;
+        // A value measured from the DOM / a ref / a browser global can't be
+        // "worked out while rendering" — the element isn't mounted yet. This
+        // is a deferred measurement, not a derived value copied into state.
+        if (readsPostMountValue(callExpr)) continue;
         const useStateNode = getUseStateDecl(analysis, ref);
         const stateName = getStateNameForUseStateDecl(useStateNode) ?? "<state>";
 
@@ -86,6 +92,12 @@ export const noDerivedState = defineRule({
         // to rebind on explicit "reset". Strict shape: avoids
         // `.every([]) === true` and AST-shape false-positives.
         if (isInitialOnlySetterCall(callExpr)) continue;
+
+        // Controlled/uncontrolled value mirror: a bare-prop setter argument
+        // whose setter is wired into a JSX event-handler attribute
+        // (`onChange={setValue}` / `onChange={(e) => setValue(e.target.value)}`).
+        // See `is-controlled-prop-mirror.ts` for the full discriminator.
+        if (isControlledPropMirror(node, callExpr)) continue;
 
         const isSomeArgsInternal = argsUpstreamRefs.some(
           (argRef) => isState(analysis, argRef) || isProp(analysis, argRef),

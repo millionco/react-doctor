@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
 import { isEs5Component } from "../../utils/is-es5-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
@@ -151,6 +152,11 @@ export const noThisInSfc = defineRule({
         const enclosingFunction = findEnclosingFunctionComponent(node);
         if (!enclosingFunction) return;
         if (!looksLikeFunctionComponent(enclosingFunction)) return;
+        // A PascalCase name alone isn't a component — an ES5 constructor
+        // (`function Stack() { this.items = []; }`) or factory shares the
+        // convention. Require the function to actually render JSX /
+        // createElement so prototype-based helpers keep their real `this`.
+        if (!functionContainsReactRenderOutput(enclosingFunction, context.scopes)) return;
         context.report({ node, message: MESSAGE });
       },
     };

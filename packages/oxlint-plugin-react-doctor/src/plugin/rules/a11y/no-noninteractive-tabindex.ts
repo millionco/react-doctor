@@ -12,6 +12,15 @@ import { parseJsxValue } from "../../utils/parse-jsx-value.js";
 const MESSAGE =
   "Keyboard users get stuck focusing this element they can't act on because `tabIndex` makes it tabbable, so remove it.";
 
+// A focusable container that ALSO wires a keyboard handler is operable by
+// design (roving focus, modal autofocus), so the `tabIndex` is intentional.
+const KEYBOARD_HANDLER_PROP_NAMES: ReadonlyArray<string> = ["onKeyDown", "onKeyUp", "onKeyPress"];
+
+const isKeyboardOperable = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean =>
+  KEYBOARD_HANDLER_PROP_NAMES.some((propName) =>
+    Boolean(hasJsxPropIgnoreCase(node.attributes, propName)),
+  );
+
 interface NoNoninteractiveTabindexSettings {
   tags?: ReadonlyArray<string>;
   roles?: ReadonlyArray<string>;
@@ -54,7 +63,8 @@ export const noNoninteractiveTabindex = defineRule({
         if (numeric === null) {
           if (
             isNodeOfType(tabIndexValue, "JSXExpressionContainer") &&
-            !settings.allowExpressionValues
+            !settings.allowExpressionValues &&
+            !isKeyboardOperable(node)
           ) {
             context.report({ node: tabIndex, message: MESSAGE });
           }
@@ -66,6 +76,7 @@ export const noNoninteractiveTabindex = defineRule({
         if (settings.tags.includes(elementType)) return;
         if (!HTML_TAGS.has(elementType)) return;
         if (isInteractiveElement(elementType, node)) return;
+        if (isKeyboardOperable(node)) return;
 
         const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
         if (!roleAttribute) {

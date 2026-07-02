@@ -1,9 +1,11 @@
+import { SMALL_LITERAL_ARRAY_MAX_ELEMENTS } from "../../constants/thresholds.js";
 import { createLoopAwareVisitors } from "../../utils/create-loop-aware-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 // HACK: methods that ALWAYS return a string when called on a string
 // receiver. Used to recognize `.toLowerCase().includes(x)` chains as
@@ -27,6 +29,7 @@ const STRING_RETURNING_METHODS: ReadonlySet<string> = new Set([
   "substring",
   "substr",
   "charAt",
+  "join",
   "toFixed",
   "toExponential",
   "toPrecision",
@@ -164,8 +167,15 @@ const STRING_TYPED_IDENTIFIER_NAMES: ReadonlySet<string> = new Set([
   "paragraph",
   "query",
   "search",
+  "pathname",
+  "href",
+  "hash",
   "haystack",
   "needle",
+  // A destructured `for (const [key] of Object.entries(...))` key is a
+  // string; `key.includes(sep)` is a substring search (a numeric Map key
+  // wouldn't have `.includes` at all), so the Set-rewrite never applies.
+  "key",
   // Common string-typed naming conventions in addition to the above
   "suffix",
   "prefix",
@@ -272,6 +282,74 @@ const isIndexedArrayElementWithStringArgument = (
   return false;
 };
 
+// `["admin", "owner"].includes(role)` — an inline literal array small
+// enough that a linear scan is trivial. Building a `Set` for a handful of
+// constants is pure ceremony, so skip it (same threshold the iteration-
+// combination rules use). A named/large array still scans on every loop
+// pass, so those stay flagged.
+const isSmallInlineLiteralArray = (receiver: EsTreeNode | null | undefined): boolean => {
+  if (!receiver || !isNodeOfType(receiver, "ArrayExpression")) return false;
+  const elements = receiver.elements ?? [];
+  if (elements.length === 0 || elements.length > SMALL_LITERAL_ARRAY_MAX_ELEMENTS) return false;
+  return elements.every((element) => element == null || !isNodeOfType(element, "SpreadElement"));
+};
+
+// `importClause.includes('{')` — a single-character argument is a
+// substring/character search on a string receiver in practice, not an
+// array membership test, so the Set rewrite never applies.
+const isSingleCharacterStringLiteral = (callArgument: EsTreeNode | null | undefined): boolean => {
+  if (!callArgument || !isNodeOfType(callArgument, "Literal")) return false;
+  return typeof callArgument.value === "string" && callArgument.value.length === 1;
+};
+
+const MEMBERSHIP_COMPARISON_OPERATORS: ReadonlySet<string> = new Set([
+  "===",
+  "!==",
+  "==",
+  "!=",
+  ">",
+  ">=",
+  "<",
+  "<=",
+]);
+
+const isNegativeOneLiteral = (expression: EsTreeNode | null | undefined): boolean =>
+  Boolean(expression) &&
+  isNodeOfType(expression, "UnaryExpression") &&
+  expression.operator === "-" &&
+  isNodeOfType(expression.argument, "Literal") &&
+  expression.argument.value === 1;
+
+const isZeroLiteral = (expression: EsTreeNode | null | undefined): boolean =>
+  Boolean(expression) && isNodeOfType(expression, "Literal") && expression.value === 0;
+
+const PARENT_WRAPPER_TYPES: ReadonlySet<string> = new Set([
+  "ParenthesizedExpression",
+  "ChainExpression",
+  "TSAsExpression",
+  "TSSatisfiesExpression",
+  "TSNonNullExpression",
+]);
+
+// A `Set` has no `indexOf`, so the rewrite only exists when the result
+// is consumed as a membership test (`!== -1`, `>= 0`, `~`-prefixed).
+// A result kept as a position (`columnHeights.indexOf(Math.min(...))`)
+// has no Set equivalent and must stay silent.
+const isIndexOfResultUsedAsMembershipTest = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
+  let parent: EsTreeNode | null | undefined = node.parent;
+  while (parent && PARENT_WRAPPER_TYPES.has(parent.type)) {
+    parent = parent.parent;
+  }
+  if (!parent) return false;
+  if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "~") return true;
+  if (!isNodeOfType(parent, "BinaryExpression")) return false;
+  if (!MEMBERSHIP_COMPARISON_OPERATORS.has(parent.operator)) return false;
+  const leftOperand = parent.left as EsTreeNode;
+  const rightOperand = parent.right as EsTreeNode;
+  const otherOperand = stripParenExpression(leftOperand) === node ? rightOperand : leftOperand;
+  return isNegativeOneLiteral(otherOperand) || isZeroLiteral(otherOperand);
+};
+
 export const jsSetMapLookups = defineRule({
   id: "js-set-map-lookups",
   title: "Array lookup inside a loop",
@@ -289,7 +367,10 @@ export const jsSetMapLookups = defineRule({
           return;
         const methodName = node.callee.property.name;
         if (methodName !== "includes" && methodName !== "indexOf") return;
+        if (methodName === "indexOf" && !isIndexOfResultUsedAsMembershipTest(node)) return;
         if (isLikelyStringReceiver(node.callee.object)) return;
+        if (isSmallInlineLiteralArray(node.callee.object)) return;
+        if (isSingleCharacterStringLiteral(node.arguments?.[0] as EsTreeNode | undefined)) return;
         if (
           isIndexedArrayElementWithStringArgument(
             node.callee.object,

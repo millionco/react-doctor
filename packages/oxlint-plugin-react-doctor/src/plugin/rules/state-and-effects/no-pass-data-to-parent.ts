@@ -2,7 +2,10 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
-import { DATA_SINK_METHOD_NAMES } from "../../constants/data-sink-method-names.js";
+import {
+  DATA_SINK_METHOD_NAMES,
+  STRING_READ_METHOD_NAMES,
+} from "../../constants/data-sink-method-names.js";
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import {
@@ -22,6 +25,7 @@ import {
   isRefCall,
   isRefCurrent,
   isUseEffect,
+  isWholePropsObjectReference,
 } from "./utils/effect/react.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
@@ -97,7 +101,24 @@ export const noPassDataToParent = defineRule({
         // which never uses these method names.
         const calleeNode = (callExpr as unknown as { callee?: EsTreeNode }).callee;
         const methodName = calleeNode ? getCallMethodName(calleeNode) : null;
-        if (methodName && DATA_SINK_METHOD_NAMES.has(methodName)) continue;
+        // ...except when a string-read name is called directly ON the
+        // props object: `props.search(results)` is a parent callback
+        // that happens to be named like `String.prototype.search`.
+        const isPropCallbackNamedLikeStringRead = Boolean(
+          methodName &&
+          STRING_READ_METHOD_NAMES.has(methodName) &&
+          calleeNode &&
+          isNodeOfType(calleeNode, "MemberExpression") &&
+          calleeNode.object === (ref.identifier as unknown as typeof calleeNode.object) &&
+          isWholePropsObjectReference(analysis, ref),
+        );
+        if (
+          methodName &&
+          DATA_SINK_METHOD_NAMES.has(methodName) &&
+          !isPropCallbackNamedLikeStringRead
+        ) {
+          continue;
+        }
         // `editor.commands.setSelection(...)`, `props.store.dispatch(...)`,
         // `props.queryClient.invalidate(...)` etc. — calling a method
         // on a namespaced API object, not handing data back to a parent.
@@ -113,6 +134,14 @@ export const noPassDataToParent = defineRule({
           if (isUseRefIdentifier(argRef.identifier as unknown as EsTreeNode)) return false;
           if (isRefCurrent(argRef)) return false;
           if (isConstant(argRef)) return false;
+          // `props.onReset(undefined)` is an imperative clear, not data
+          // lifted to a parent. `undefined` is a global identifier with no
+          // resolved def, so `isConstant` (which only inspects an init
+          // expression) misses it — recognize it explicitly.
+          const argIdentifier = argRef.identifier as unknown as EsTreeNode;
+          if (isNodeOfType(argIdentifier, "Identifier") && argIdentifier.name === "undefined") {
+            return false;
+          }
           return true;
         });
         if (!isSomeArgsData) continue;

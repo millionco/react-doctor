@@ -4,6 +4,7 @@ import type {
   DiagnosticFileContext,
   ReactDoctorConfig,
   RuleSeverityOverride,
+  SuppressedRuleCount,
 } from "./types/index.js";
 import {
   compileIgnoreOverrides,
@@ -43,6 +44,16 @@ interface BuildDiagnosticPipelineInput {
 
 export interface DiagnosticPipeline {
   readonly apply: (diagnostic: Diagnostic) => Diagnostic | null;
+  /**
+   * Per-rule tallies of the diagnostics `apply` dropped because the user
+   * explicitly silenced the rule — the config off switches (severity `"off"`,
+   * `ignore.rules`), per-path `ignore.overrides`, and inline disable
+   * comments. Engine-owned drops (test-file auto-suppression, the library
+   * gate, the global warnings hide, `ignore.files` patterns, the
+   * `textComponents` / `runtimeGlobals` feature knobs) are deliberately not
+   * counted: they say nothing about the user rejecting a specific rule.
+   */
+  readonly summarizeSuppressions: () => SuppressedRuleCount[];
 }
 
 const collectStringSet = (values: unknown): ReadonlySet<string> => {
@@ -103,6 +114,18 @@ export const buildDiagnosticPipeline = (
   const fileLinesCache = new Map<string, string[] | null>();
   const fileContextCache = new Map<string, DiagnosticFileContext>();
   const libraryFileCache = new Map<string, boolean>();
+  const suppressions = new Map<string, SuppressedRuleCount>();
+
+  const suppress = (diagnostic: Diagnostic, source: SuppressedRuleCount["source"]): null => {
+    const { ruleKey } = getDiagnosticRuleIdentity(diagnostic);
+    const suppressionKey = `${ruleKey}\u0000${source}`;
+    const existing = suppressions.get(suppressionKey);
+    suppressions.set(
+      suppressionKey,
+      existing ? { ...existing, count: existing.count + 1 } : { rule: ruleKey, source, count: 1 },
+    );
+    return null;
+  };
 
   // App-only rules (`static-components`, `no-render-prop-children`) describe
   // patterns that are noise in published libraries — silence them on files
@@ -213,7 +236,7 @@ export const buildDiagnosticPipeline = (
           { ruleKey, category },
           severityControls,
         );
-        if (explicitSeverityOverride === "off") return null;
+        if (explicitSeverityOverride === "off") return suppress(current, "config");
         if (explicitSeverityOverride !== undefined) {
           current = restampSeverity(current, explicitSeverityOverride);
         }
@@ -239,11 +262,13 @@ export const buildDiagnosticPipeline = (
 
       if (userConfig) {
         const ruleIdentifier = `${current.plugin}/${current.rule}`;
-        if (isRuleIgnored(ruleIdentifier)) return null;
+        if (isRuleIgnored(ruleIdentifier)) return suppress(current, "config");
         if (isFileIgnoredByPatterns(current.filePath, rootDirectory, ignoredFilePatterns)) {
           return null;
         }
-        if (isDiagnosticIgnoredByOverrides(current, rootDirectory, compiledOverrides)) return null;
+        if (isDiagnosticIgnoredByOverrides(current, rootDirectory, compiledOverrides)) {
+          return suppress(current, "override");
+        }
         if (isRnRawTextSuppressedByConfig(current)) return null;
         if (isJsxNoUndefSuppressedByConfig(current)) return null;
       }
@@ -254,7 +279,7 @@ export const buildDiagnosticPipeline = (
           const ruleIdentifier = `${current.plugin}/${current.rule}`;
           const diagnosticLineIndex = current.line - 1;
           const evaluation = evaluateSuppression(lines, diagnosticLineIndex, ruleIdentifier);
-          if (evaluation.isSuppressed) return null;
+          if (evaluation.isSuppressed) return suppress(current, "inline");
           if (evaluation.nearMissHint) {
             current = { ...current, suppressionHint: evaluation.nearMissHint };
           }
@@ -268,5 +293,6 @@ export const buildDiagnosticPipeline = (
 
       return current;
     },
+    summarizeSuppressions: () => [...suppressions.values()],
   };
 };

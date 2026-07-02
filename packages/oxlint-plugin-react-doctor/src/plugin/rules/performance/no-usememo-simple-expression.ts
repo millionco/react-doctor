@@ -5,26 +5,33 @@ import { isImportedFromModule } from "../../utils/find-import-source-for-name.js
 import { isCanonicalReactNamespaceName } from "../../utils/is-canonical-react-namespace-name.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const isSimpleExpression = (node: EsTreeNode | null): boolean => {
   if (!node) return false;
-  switch (node.type) {
+  const innerExpression = stripParenExpression(node);
+  switch (innerExpression.type) {
     case "Identifier":
     case "Literal":
-    case "TemplateLiteral":
       return true;
+    case "TemplateLiteral":
+      // A template with interpolations builds a fresh string every call —
+      // memoizing it caches the concatenation, which is often intentional
+      // (mined FP: `useMemo(() => \`${demoUrl}${isDark ? '?theme=dark' : ''}\`)`).
+      // Only a zero-interpolation template is a truly constant value.
+      return (innerExpression.expressions ?? []).length === 0;
     case "BinaryExpression":
-      return isSimpleExpression(node.left) && isSimpleExpression(node.right);
+      return isSimpleExpression(innerExpression.left) && isSimpleExpression(innerExpression.right);
     case "UnaryExpression":
-      return isSimpleExpression(node.argument);
+      return isSimpleExpression(innerExpression.argument);
     case "MemberExpression":
-      return !node.computed && isSimpleExpression(node.object);
+      return !innerExpression.computed && isSimpleExpression(innerExpression.object);
     case "ConditionalExpression":
       return (
-        isSimpleExpression(node.test) &&
-        isSimpleExpression(node.consequent) &&
-        isSimpleExpression(node.alternate)
+        isSimpleExpression(innerExpression.test) &&
+        isSimpleExpression(innerExpression.consequent) &&
+        isSimpleExpression(innerExpression.alternate)
       );
     default:
       return false;
@@ -36,9 +43,10 @@ const isSimpleExpression = (node: EsTreeNode | null): boolean => {
 // / literal trivial cases to keep false positives low.
 const isTriviallyCheapExpression = (node: EsTreeNode | null): boolean => {
   if (!node) return false;
-  if (!isSimpleExpression(node)) return false;
-  if (isNodeOfType(node, "Identifier")) return false;
-  if (isNodeOfType(node, "MemberExpression")) return false;
+  const innerExpression = stripParenExpression(node);
+  if (!isSimpleExpression(innerExpression)) return false;
+  if (isNodeOfType(innerExpression, "Identifier")) return false;
+  if (isNodeOfType(innerExpression, "MemberExpression")) return false;
   return true;
 };
 

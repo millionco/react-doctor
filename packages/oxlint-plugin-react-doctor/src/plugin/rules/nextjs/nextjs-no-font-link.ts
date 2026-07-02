@@ -21,6 +21,17 @@ export const nextjsNoFontLink = defineRule({
       const hrefAttribute = findJsxAttribute(attributes, "href");
       if (!hrefAttribute?.value) return;
 
+      // A `preconnect` / `dns-prefetch` / `preload` <link> to Google Fonts
+      // downloads no CSS and no font — it is a non-blocking performance hint,
+      // not the render-blocking stylesheet this rule targets. Only report a
+      // stylesheet (or a <link> with no `rel`, which the browser treats as one).
+      const relAttribute = findJsxAttribute(attributes, "rel");
+      const relValue =
+        relAttribute?.value && isNodeOfType(relAttribute.value, "Literal")
+          ? relAttribute.value.value
+          : null;
+      if (typeof relValue === "string" && relValue !== "stylesheet") return;
+
       const hrefValue = isNodeOfType(hrefAttribute.value, "Literal")
         ? hrefAttribute.value.value
         : null;

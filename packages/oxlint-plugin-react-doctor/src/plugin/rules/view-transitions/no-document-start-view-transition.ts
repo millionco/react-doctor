@@ -1,7 +1,26 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
+
+const REACT_VIEW_TRANSITION_EXPORT_NAMES = ["ViewTransition", "unstable_ViewTransition"];
+
+// Only files that opt into React's experimental <ViewTransition> can have
+// their animation lifecycle bypassed. A plain `document.startViewTransition`
+// call in a codebase that never imports it is legitimate direct use of the
+// browser View Transitions API.
+const importsReactViewTransition = (contextNode: EsTreeNode): boolean =>
+  REACT_VIEW_TRANSITION_EXPORT_NAMES.some((localName) => {
+    const binding = getImportBindingForName(contextNode, localName);
+    return (
+      binding !== null &&
+      binding.source === "react" &&
+      binding.exportedName !== null &&
+      REACT_VIEW_TRANSITION_EXPORT_NAMES.includes(binding.exportedName)
+    );
+  });
 
 // HACK: in React's <ViewTransition> world, calling
 // `document.startViewTransition()` directly bypasses React's lifecycle
@@ -26,6 +45,10 @@ export const noDocumentStartViewTransition = defineRule({
         callee.property.name !== "startViewTransition"
       )
         return;
+      // A locally-bound `document` (e.g. a function parameter) shadows the
+      // global, so its `startViewTransition` is unrelated to the DOM API.
+      if (context.scopes.symbolFor(callee.object) !== null) return;
+      if (!importsReactViewTransition(node)) return;
       context.report({
         node,
         message:

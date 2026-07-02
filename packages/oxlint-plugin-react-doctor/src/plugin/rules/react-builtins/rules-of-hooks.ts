@@ -8,7 +8,7 @@ import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { REACT_HOC_NAMES } from "../../constants/react.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
-import type { Rule } from "../../utils/rule.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 // Port of `oxc_linter::rules::react::rules_of_hooks`. Enforces React's
 // Rules of Hooks:
@@ -423,6 +423,74 @@ const inferFunctionName = (functionNode: EsTreeNode): string | null => {
   return null;
 };
 
+// Number of recognized hook calls living DIRECTLY in `functionNode`'s
+// own scope (nested functions pruned). A function whose body issues
+// several hook calls is — structurally — a render scope (a custom
+// hook / context-factory body), even when its name doesn't follow the
+// `useXxx` / PascalCase convention. The Solid→React port names these
+// `init` / `create*`, which the name gate alone misclassifies.
+// `countedFunctionNodes` guards the mutual recursion with
+// `isLocalNonHookFunctionCallee`: a use*-named call that resolves to a
+// LOCAL non-hook function is excluded from reporting, so it must not
+// count toward the render-scope threshold either — otherwise a
+// `create*` factory with one real hook plus one local `useKeyword(...)`
+// helper call would wrongly qualify as a render scope and exempt the
+// real hook.
+const countOwnScopeHookCalls = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+  settings: Required<RulesOfHooksSettings>,
+  countedFunctionNodes: Set<EsTreeNode> = new Set(),
+): number => {
+  if (countedFunctionNodes.has(functionNode)) return 0;
+  countedFunctionNodes.add(functionNode);
+  let count = 0;
+  walkAst(functionNode, (child) => {
+    if (child === functionNode) return;
+    if (isFunctionLike(child)) return false;
+    if (!isHookCall(child, scopes, settings)) return;
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isLocalNonHookFunctionCallee(child, scopes, settings, countedFunctionNodes)
+    ) {
+      return;
+    }
+    count += 1;
+  });
+  return count;
+};
+
+const MIN_HOOK_CALLS_FOR_RENDER_SCOPE = 2;
+
+// Factory-shaped names the render-scope escape is allowed to cover:
+// `init` (exact or `initFileContext`-style prefix), `create*`, `make*`,
+// `build*`, optionally underscore-prefixed. An arbitrary helper name
+// (`handleClick`, `fetchData`) must NOT qualify — otherwise any
+// module function with two copy-pasted hooks becomes exempt.
+const RENDER_SCOPE_FACTORY_NAME_PATTERN = /^_?(?:init|create|make|build)(?:[A-Z0-9_]|$)/;
+
+// A use-prefixed callee that scope analysis resolves to a LOCAL
+// function whose own body issues zero hook calls is not a React hook
+// (e.g. ajv's `useKeyword` codegen helper) — reporting its caller as
+// a broken render scope is noise. Only consulted on the
+// non-component report paths; conditional / loop checks are
+// unaffected.
+const isLocalNonHookFunctionCallee = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+  settings: Required<RulesOfHooksSettings>,
+  countedFunctionNodes?: Set<EsTreeNode>,
+): boolean => {
+  const callee = call.callee;
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const symbol = scopes.symbolFor(callee);
+  if (!symbol) return false;
+  const localFunction =
+    symbol.initializer && isFunctionLike(symbol.initializer) ? symbol.initializer : null;
+  if (!localFunction) return false;
+  return countOwnScopeHookCalls(localFunction, scopes, settings, countedFunctionNodes) === 0;
+};
+
 const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
@@ -668,13 +736,31 @@ export const rulesOfHooks = defineRule({
           return;
         }
 
+        // Structural render-scope escape: a factory-named function
+        // (`init` / `create*` / `make*` / `build*` — the Solid→React
+        // port shapes) whose own scope issues several hook calls is
+        // treated as a custom hook / factory body even though its name
+        // violates the `useXxx` / PascalCase convention. It must NOT
+        // sit inside a component / hook (hooks in a function nested
+        // inside a component are never legal), and it still runs the
+        // conditional / loop / try checks below, so misplaced hooks
+        // inside it are caught.
+        const isLikelyRenderScope =
+          !enclosing.isComponentOrHook &&
+          enclosing.hasResolvedName &&
+          RENDER_SCOPE_FACTORY_NAME_PATTERN.test(enclosing.name) &&
+          findEnclosingComponentOrHookFunction(enclosing.node) === null &&
+          countOwnScopeHookCalls(enclosing.node, context.scopes, settings) >=
+            MIN_HOOK_CALLS_FOR_RENDER_SCOPE;
+
         // The React 19 `use(...)` hook RELAXES the conditional / loop /
         // early-return checks (it's intentionally callable in
         // conditionals) BUT still must be inside a component / custom
-        // hook scope and NOT inside try / catch / finally.
+        // hook scope — the render-scope escape counts as one — and NOT
+        // inside try / catch / finally.
         if (isReactUseHook(hookName)) {
           let outerWalker: EsTreeNode | null = enclosing.node;
-          let isInsideComponentOrHook = enclosing.isComponentOrHook;
+          let isInsideComponentOrHook = enclosing.isComponentOrHook || isLikelyRenderScope;
           while (!isInsideComponentOrHook && outerWalker) {
             const parentInfo = findEnclosingFunctionInfo(outerWalker);
             if (!parentInfo) break;
@@ -682,6 +768,7 @@ export const rulesOfHooks = defineRule({
             if (parentInfo.isComponentOrHook) isInsideComponentOrHook = true;
           }
           if (!isInsideComponentOrHook) {
+            if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
             context.report({
               node: node.callee,
               message: buildNonComponentMessage(hookName, enclosing.name),
@@ -694,7 +781,7 @@ export const rulesOfHooks = defineRule({
           return;
         }
 
-        if (!enclosing.isComponentOrHook) {
+        if (!enclosing.isComponentOrHook && !isLikelyRenderScope) {
           // For anonymous callbacks, look outward: if any enclosing
           // function IS a component / custom hook, this nested anonymous
           // callback can't legally call a hook (Rule of Hooks forbids
@@ -720,6 +807,7 @@ export const rulesOfHooks = defineRule({
             return;
           }
 
+          if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
           context.report({
             node: node.callee,
             message: buildNonComponentMessage(hookName, enclosing.name),

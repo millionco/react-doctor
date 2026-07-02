@@ -26,7 +26,8 @@ export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
 // `readPersistedCache` instead of deserializing into an invalid payload.
 // Bumped to 2: `CachedScanPayload` gained the required `supplyChainOverlapTimedOut`
 // (supply-chain overlap) and `deadCodeOverlapped` (dead-code overlap) fields.
-export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 2;
+// Bumped to 3: gained the required `suppressedRuleCounts` field (suppression telemetry).
+export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 3;
 export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
 export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
 
@@ -168,6 +169,13 @@ export const METRIC = {
   scanCheckSkipped: "scan.check_skipped",
   baselineDegraded: "baseline.degraded",
   ruleFired: "rule.fired",
+  // Rule-rejection telemetry, both keyed by `rule` + `source` attributes:
+  // `rule.disabled` counts one per scan per config-off rule (`rules: "off"` /
+  // `ignore.rules` — the former never fires, so this is its only signal);
+  // `rule.suppressed` counts findings the pipeline dropped per user silencing
+  // (config / per-path override / inline disable comment).
+  ruleDisabled: "rule.disabled",
+  ruleSuppressed: "rule.suppressed",
   lintFailed: "lint.failed",
   deadCodeFailed: "deadcode.failed",
   scoreUnavailable: "score.unavailable",

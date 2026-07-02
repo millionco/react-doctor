@@ -14,6 +14,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { getClassNameLiteral } from "../react-ui/utils/get-class-name-literal.js";
 
 const MESSAGE =
   "Blind users can't tell what this control does because screen readers find no label, so add visible text, `aria-label`, or `aria-labelledby`.";
@@ -34,6 +35,76 @@ interface ControlHasAssociatedLabelSettings {
 // canvases, etc.). Users who genuinely need labels on canvases (rare)
 // set `aria-label` and the labelling-prop check passes; users who want
 // to enforce regardless can override via `ignoreElements: []`.
+
+// Only Tailwind's `hidden` (display: none) qualifies: it removes the
+// input from the accessibility tree AND the tab order, so the only way
+// to reach it is the programmatic trigger. sr-only-family classes
+// deliberately KEEP the element focusable — an AT user tabs to an
+// unnamed file control, which is a genuine violation.
+const DISPLAY_NONE_CLASS_TOKEN = "hidden";
+
+const isDisplayNoneClassToken = (token: string): boolean =>
+  token.toLowerCase() === DISPLAY_NONE_CLASS_TOKEN;
+
+// Tokens from a multi-quasi template's static chunks, keeping only
+// whitespace-bounded tokens: a quasi edge adjacent to an expression is
+// not a token boundary, so `` `hidden ${x}` `` yields "hidden" but
+// `` `${x}den` `` / `` `hid${x}` `` yield nothing.
+const collectStaticTemplateClassTokens = (
+  templateLiteral: EsTreeNodeOfType<"TemplateLiteral">,
+): ReadonlyArray<string> => {
+  const quasis = templateLiteral.quasis ?? [];
+  const tokens: string[] = [];
+  for (const [quasiIndex, quasi] of quasis.entries()) {
+    const quasiText = quasi.value?.cooked ?? quasi.value?.raw ?? "";
+    const quasiTokens = quasiText.split(/\s+/).filter((token) => token.length > 0);
+    if (quasiTokens.length === 0) continue;
+    const isCutByLeadingExpression = quasiIndex > 0 && !/^\s/.test(quasiText);
+    const isCutByTrailingExpression = quasiIndex < quasis.length - 1 && !/\s$/.test(quasiText);
+    if (isCutByLeadingExpression) quasiTokens.shift();
+    if (isCutByTrailingExpression) quasiTokens.pop();
+    tokens.push(...quasiTokens);
+  }
+  return tokens;
+};
+
+const hasDisplayNoneClass = (opening: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  const classAttribute =
+    hasJsxPropIgnoreCase(opening.attributes, "className") ??
+    hasJsxPropIgnoreCase(opening.attributes, "class");
+  if (!classAttribute) return false;
+  const literalValue = getClassNameLiteral(classAttribute);
+  if (literalValue !== null) {
+    return literalValue.split(/\s+/).some(isDisplayNoneClassToken);
+  }
+  if (
+    classAttribute.value &&
+    isNodeOfType(classAttribute.value, "JSXExpressionContainer") &&
+    isNodeOfType(classAttribute.value.expression, "TemplateLiteral")
+  ) {
+    return collectStaticTemplateClassTokens(classAttribute.value.expression).some(
+      isDisplayNoneClassToken,
+    );
+  }
+  return false;
+};
+
+// A `<input type="file">` that is display-none hidden AND wired to a ref
+// is opened programmatically (`fileInputRef.current?.click()`) from a
+// separate, already-labeled button. Requiring it to carry its own label
+// is a false positive — the accessible name lives on the trigger.
+const isProgrammaticHiddenFileInput = (
+  tagName: string,
+  opening: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean => {
+  if (tagName.toLowerCase() !== "input") return false;
+  const typeAttribute = hasJsxPropIgnoreCase(opening.attributes, "type");
+  const typeValue = typeAttribute ? getJsxPropStringValue(typeAttribute) : null;
+  if (!typeValue || typeValue.toLowerCase() !== "file") return false;
+  if (!hasDisplayNoneClass(opening)) return false;
+  return Boolean(hasJsxPropIgnoreCase(opening.attributes, "ref"));
+};
+
 const DEFAULT_IGNORE_ELEMENTS: ReadonlyArray<string> = ["link", "canvas"];
 const DEFAULT_LABELLING_PROPS: ReadonlyArray<string> = ["alt", "aria-label", "aria-labelledby"];
 const ID_ATTRIBUTE = "id";
@@ -306,6 +377,7 @@ export const controlHasAssociatedLabel = defineRule({
         const role = roleAttribute ? getJsxPropStringValue(roleAttribute) : null;
         if (role && settings.ignoreRoles.includes(role)) return;
         if (isHiddenFromScreenReader(opening, context.settings)) return;
+        if (isProgrammaticHiddenFileInput(tagName, opening)) return;
 
         const isDomElement = HTML_TAGS.has(tagName);
         const isInteractiveEl = isInteractiveElement(tagName, opening);

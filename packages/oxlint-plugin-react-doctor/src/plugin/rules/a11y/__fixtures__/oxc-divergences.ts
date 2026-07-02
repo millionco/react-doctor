@@ -30,4 +30,23 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     reason:
       "ignoreNonDOM defaults to true (jsx-a11y convention); `<Foo autoFocus />` is the consumer site, not the focus-call site.",
   },
+  // no-redundant-roles: `<ol role="list">` (failCases[21]) and
+  // `<ul role="list">` (failCases[22]) are the deliberate Safari/VoiceOver
+  // list-semantics workaround (`list-style: none` drops list semantics in
+  // WebKit), so we exempt them by default — an intentional a11y idiom, not
+  // redundant noise.
+  "no-redundant-roles": {
+    failSkips: [21, 22],
+    reason:
+      '`<ul|ol role="list">` is the Safari/VoiceOver list-semantics-preservation idiom, exempt by default.',
+  },
+  // role-has-required-aria-props: `<input type='checkbox' role='switch' />`
+  // (failCases[14]) is the recommended native switch pattern — the input's
+  // native checkedness maps to `aria-checked` intrinsically (even
+  // uncontrolled), and ARIA in HTML forbids authoring `aria-checked` on it.
+  "role-has-required-aria-props": {
+    failSkips: [14],
+    reason:
+      "A native `<input type='checkbox' role='switch'>` supplies `aria-checked` from its DOM checked state; requiring the explicit prop is a false positive.",
+  },
 };

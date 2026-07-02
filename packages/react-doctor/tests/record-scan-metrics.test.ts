@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { Diagnostic } from "@react-doctor/core";
-import { summarizeRuleFirings } from "../src/cli/utils/record-scan-metrics.js";
+import {
+  summarizeDisabledRules,
+  summarizeRuleFirings,
+} from "../src/cli/utils/record-scan-metrics.js";
 
 const buildDiagnostic = (overrides: Partial<Diagnostic>): Diagnostic => ({
   filePath: "src/App.tsx",
@@ -58,5 +61,37 @@ describe("summarizeRuleFirings", () => {
 
   it("returns an empty list when there are no diagnostics", () => {
     expect(summarizeRuleFirings([])).toEqual([]);
+  });
+});
+
+describe("summarizeDisabledRules", () => {
+  it("lists `rules: off` entries with canonicalized keys and skips warn/error overrides", () => {
+    const disabledRules = summarizeDisabledRules({
+      rules: {
+        "react/jsx-key": "off",
+        "no-eval": "off",
+        "react-doctor/no-danger": "warn",
+      },
+    });
+    expect(disabledRules).toEqual([
+      { rule: "react-doctor/jsx-key", source: "rules" },
+      { rule: "react-doctor/no-eval", source: "rules" },
+    ]);
+  });
+
+  it("lists `ignore.rules` entries, deduping alias spellings of one rule per source", () => {
+    const disabledRules = summarizeDisabledRules({
+      rules: { "react-doctor/jsx-key": "off" },
+      ignore: { rules: ["react/jsx-key", "react-doctor/jsx-key"] },
+    });
+    expect(disabledRules).toEqual([
+      { rule: "react-doctor/jsx-key", source: "rules" },
+      { rule: "react-doctor/jsx-key", source: "ignore" },
+    ]);
+  });
+
+  it("returns an empty list for a null or rule-free config", () => {
+    expect(summarizeDisabledRules(null)).toEqual([]);
+    expect(summarizeDisabledRules({})).toEqual([]);
   });
 });

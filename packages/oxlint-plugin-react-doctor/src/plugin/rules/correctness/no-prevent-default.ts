@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -64,6 +65,69 @@ const containsPreventDefaultCall = (node: EsTreeNode): boolean => {
   return didFindPreventDefault;
 };
 
+// Terminal callee names that read as navigation: router / history APIs
+// (`navigate`, `router.push`, `history.replace`, `history.go/back/forward`),
+// location APIs (`location.assign`, `location.replace`, `window.open`),
+// framework redirects (`redirect`), and desktop / native link openers
+// (`platform.openLink`, `Linking.openURL`). Deliberately NOT "any other
+// call": a handler that only logs or tracks (`analytics.track(...)`,
+// `console.log(...)`) after preventDefault() still leaves the link dead.
+const NAVIGATION_CALLEE_NAMES: ReadonlySet<string> = new Set([
+  "navigate",
+  "push",
+  "replace",
+  "assign",
+  "redirect",
+  "open",
+  "openLink",
+  "openURL",
+  "go",
+  "back",
+  "forward",
+]);
+
+const GLOBAL_LOCATION_RECEIVER_NAMES: ReadonlySet<string> = new Set([
+  "window",
+  "document",
+  "globalThis",
+  "self",
+  "top",
+]);
+
+const isLocationAssignmentTarget = (target: EsTreeNode): boolean => {
+  if (!isNodeOfType(target, "MemberExpression") || !isNodeOfType(target.property, "Identifier"))
+    return false;
+  if (target.property.name === "location") {
+    return (
+      isNodeOfType(target.object, "Identifier") &&
+      GLOBAL_LOCATION_RECEIVER_NAMES.has(target.object.name)
+    );
+  }
+  if (target.property.name !== "href") return false;
+  if (isNodeOfType(target.object, "Identifier")) return target.object.name === "location";
+  return (
+    isNodeOfType(target.object, "MemberExpression") &&
+    isNodeOfType(target.object.property, "Identifier") &&
+    target.object.property.name === "location"
+  );
+};
+
+const containsNavigationEffect = (node: EsTreeNode): boolean => {
+  let didFindNavigation = false;
+  walkAst(node, (child) => {
+    if (didFindNavigation) return;
+    if (isNodeOfType(child, "AssignmentExpression") && isLocationAssignmentTarget(child.left)) {
+      didFindNavigation = true;
+      return;
+    }
+    const calleeName = getCalleeName(child);
+    if (calleeName !== null && NAVIGATION_CALLEE_NAMES.has(calleeName)) {
+      didFindNavigation = true;
+    }
+  });
+  return didFindNavigation;
+};
+
 const selectFormMessage = (framework: string | undefined): string =>
   framework !== undefined && SERVER_CAPABLE_FRAMEWORKS.has(framework)
     ? FORM_MESSAGE_SERVER_CAPABLE
@@ -93,6 +157,12 @@ export const noPreventDefault = defineRule({
         // we don't recommend a server-action story the project can't use.
         if (elementName === "form" && isClientOnlyFramework) return;
 
+        // An `<a>` without href never navigates on click (anchor-as-button,
+        // e.g. an ant-design Dropdown trigger), so "nothing navigates
+        // because onClick calls preventDefault()" would be false — the
+        // preventDefault() is defensive, not a dead link.
+        if (elementName === "a" && !findJsxAttribute(node.attributes ?? [], "href")) return;
+
         for (const targetEventProp of targetEventProps) {
           const eventAttribute = findJsxAttribute(node.attributes ?? [], targetEventProp);
           if (
@@ -105,6 +175,13 @@ export const noPreventDefault = defineRule({
           if (!isInlineFunctionExpression(expression)) continue;
 
           if (!containsPreventDefaultCall(expression)) continue;
+
+          // An anchor whose handler performs its own navigation after
+          // preventDefault() (router push, `platform.openLink(href)`,
+          // a `location.href` assignment) is custom SPA / desktop
+          // navigation, not a dead link. The <form> variant keeps its
+          // existing behavior.
+          if (elementName === "a" && containsNavigationEffect(expression)) continue;
 
           context.report({
             node,

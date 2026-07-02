@@ -695,6 +695,19 @@ export const Link = ({ href }: { href?: string }) => (
     await expect(getPreventDefaultHits(projectDir, { framework: "unknown" })).resolves.toEqual([]);
   });
 
+  it("does NOT flag an href-less <a> (anchor-as-button dropdown trigger)", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-anchor-no-href", {
+      files: {
+        "src/dropdown-trigger.tsx": `export const Trigger = () => (
+  <a onClick={(event) => event.preventDefault()}>Hover me</a>
+);
+`,
+      },
+    });
+
+    await expect(getPreventDefaultHits(projectDir, { framework: "unknown" })).resolves.toEqual([]);
+  });
+
   it("still flags <a> when other unrelated attributes are present (target, rel, etc.)", async () => {
     const projectDir = setupReactProject(tempRoot, "ast-anchor-extra-attrs", {
       files: {

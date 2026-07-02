@@ -1,10 +1,13 @@
 import { ROUTE_HANDLER_HTTP_METHODS } from "../../constants/nextjs.js";
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
+import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const STATIC_IO_FUNCTIONS = new Set([
@@ -62,6 +65,31 @@ const callReadsHandlerArgs = (call: EsTreeNode, handlerParamNames: Set<string>):
   return referencesArg;
 };
 
+// Taint every binding derived from a handler param, transitively:
+// `const { path: pathArray } = await params; const filePath = pathArray.join("/");
+// const fullPath = path.join(cwd, filePath);` makes `fullPath` request-dependent,
+// so `readFile(fullPath)` varies per request and must NOT be hoisted. Declarations
+// are visited in document order, which covers const/let use-after-declare.
+const collectRequestTaintedNames = (
+  handlerBody: EsTreeNode,
+  handlerParamNames: Set<string>,
+): Set<string> => {
+  const taintedNames = new Set(handlerParamNames);
+  if (taintedNames.size === 0) return taintedNames;
+  walkAst(handlerBody, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "VariableDeclaration")) return;
+    for (const declarator of child.declarations ?? []) {
+      if (!declarator.init) continue;
+      const referencedNames = new Set<string>();
+      collectReferenceIdentifierNames(declarator.init, referencedNames);
+      if ([...referencedNames].some((name) => taintedNames.has(name))) {
+        collectPatternNames(declarator.id, taintedNames);
+      }
+    }
+  });
+  return taintedNames;
+};
+
 const PAGES_ROUTER_API_PATH_PATTERN = /\/pages\/api\//;
 
 const inspectHandlerBody = (
@@ -70,6 +98,7 @@ const inspectHandlerBody = (
   handlerLabel: string,
   handlerParamNames: Set<string>,
 ): void => {
+  const requestTaintedNames = collectRequestTaintedNames(handlerBody, handlerParamNames);
   walkAst(handlerBody, (child: EsTreeNode) => {
     let staticCall: EsTreeNode | null = null;
     if (isStaticIoCall(child)) staticCall = child;
@@ -82,20 +111,21 @@ const inspectHandlerBody = (
       staticCall = child.argument;
     }
     if (!staticCall) return;
-    if (callReadsHandlerArgs(staticCall, handlerParamNames)) return;
+    if (callReadsHandlerArgs(staticCall, requestTaintedNames)) return;
     if (!isNodeOfType(staticCall, "CallExpression")) return;
 
-    const calleeText =
+    let calleeText = "io";
+    if (
       isNodeOfType(staticCall.callee, "MemberExpression") &&
       isNodeOfType(staticCall.callee.property, "Identifier")
-        ? `${
-            isNodeOfType(staticCall.callee.object, "Identifier")
-              ? staticCall.callee.object.name
-              : "?"
-          }.${staticCall.callee.property.name}`
-        : isNodeOfType(staticCall.callee, "Identifier")
-          ? staticCall.callee.name
-          : "io";
+    ) {
+      const objectName = isNodeOfType(staticCall.callee.object, "Identifier")
+        ? staticCall.callee.object.name
+        : "?";
+      calleeText = `${objectName}.${staticCall.callee.property.name}`;
+    } else if (isNodeOfType(staticCall.callee, "Identifier")) {
+      calleeText = staticCall.callee.name;
+    }
     context.report({
       node: staticCall,
       message: `${calleeText}() runs on every request in ${handlerLabel}, re-reading the same file each time.`,
@@ -103,11 +133,13 @@ const inspectHandlerBody = (
   });
 };
 
-const collectIdentifierParams = (params: EsTreeNode[]): Set<string> => {
+// Collects every name a handler's params introduce, recursing into
+// destructuring so `{ params }`, `{ params: p }`, `{ searchParams }`
+// count as per-request handler args — a read whose path depends on one
+// of these varies per request and must NOT be hoisted.
+const collectHandlerParamNames = (params: EsTreeNode[]): Set<string> => {
   const names = new Set<string>();
-  for (const param of params) {
-    if (isNodeOfType(param, "Identifier")) names.add(param.name);
-  }
+  for (const param of params) collectPatternNames(param, names);
   return names;
 };
 
@@ -135,21 +167,14 @@ export const serverHoistStaticIo = defineRule({
         context,
         declaration.body,
         `${handlerName} route handler`,
-        collectIdentifierParams(declaration.params ?? []),
+        collectHandlerParamNames(declaration.params ?? []),
       );
     },
     ExportDefaultDeclaration(node: EsTreeNodeOfType<"ExportDefaultDeclaration">) {
       const filename = normalizeFilename(context.filename ?? "");
       if (!PAGES_ROUTER_API_PATH_PATTERN.test(filename)) return;
       const declaration = node.declaration;
-      if (
-        !declaration ||
-        (!isNodeOfType(declaration, "FunctionDeclaration") &&
-          !isNodeOfType(declaration, "FunctionExpression") &&
-          !isNodeOfType(declaration, "ArrowFunctionExpression"))
-      ) {
-        return;
-      }
+      if (!isFunctionLike(declaration)) return;
       if (!declaration.async) return;
       const body = declaration.body;
       if (!isNodeOfType(body, "BlockStatement")) return;
@@ -157,7 +182,7 @@ export const serverHoistStaticIo = defineRule({
         context,
         body,
         "pages/api handler",
-        collectIdentifierParams(declaration.params ?? []),
+        collectHandlerParamNames(declaration.params ?? []),
       );
     },
   }),

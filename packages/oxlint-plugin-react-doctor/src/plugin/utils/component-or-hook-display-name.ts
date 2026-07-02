@@ -1,6 +1,5 @@
 import { COMPONENT_HOC_WRAPPER_NAMES } from "../constants/react.js";
 import type { EsTreeNode } from "./es-tree-node.js";
-import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactComponentOrHookName } from "./is-react-component-or-hook-name.js";
 
@@ -59,15 +58,4 @@ export const componentOrHookDisplayNameForFunction = (functionNode: EsTreeNode):
     return isReactComponentOrHookName(functionNode.id.name) ? functionNode.id.name : null;
   }
   return displayNameFromFunctionBinding(functionNode);
-};
-
-// Walks up from `node` to the nearest enclosing function-like node
-// (skipping `node` itself), or null when `node` lives at module scope.
-export const nearestEnclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
-  let cursor: EsTreeNode | null | undefined = node.parent;
-  while (cursor) {
-    if (isFunctionLike(cursor)) return cursor;
-    cursor = cursor.parent ?? null;
-  }
-  return null;
 };

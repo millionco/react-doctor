@@ -33,20 +33,26 @@ interface AttributePresence {
   checkedNode: EsTreeNode | null;
   defaultCheckedNode: EsTreeNode | null;
   hasOnChangeOrReadOnly: boolean;
+  hasSpread: boolean;
 }
 
 const collectFromJsxAttributes = (attributes: ReadonlyArray<EsTreeNode>): AttributePresence => {
   let checkedNode: EsTreeNode | null = null;
   let defaultCheckedNode: EsTreeNode | null = null;
   let hasOnChangeOrReadOnly = false;
+  let hasSpread = false;
   for (const attribute of attributes) {
+    if (isNodeOfType(attribute, "JSXSpreadAttribute")) {
+      hasSpread = true;
+      continue;
+    }
     if (!isNodeOfType(attribute, "JSXAttribute")) continue;
     const name = getJsxAttributeName(attribute.name);
     if (name === "checked") checkedNode = attribute;
     else if (name === "defaultChecked" && !defaultCheckedNode) defaultCheckedNode = attribute;
     else if (name === "onChange" || name === "readOnly") hasOnChangeOrReadOnly = true;
   }
-  return { checkedNode, defaultCheckedNode, hasOnChangeOrReadOnly };
+  return { checkedNode, defaultCheckedNode, hasOnChangeOrReadOnly, hasSpread };
 };
 
 const collectFromObjectProperties = (
@@ -55,7 +61,12 @@ const collectFromObjectProperties = (
   let checkedNode: EsTreeNode | null = null;
   let defaultCheckedNode: EsTreeNode | null = null;
   let hasOnChangeOrReadOnly = false;
+  let hasSpread = false;
   for (const property of objectExpression.properties) {
+    if (isNodeOfType(property, "SpreadElement")) {
+      hasSpread = true;
+      continue;
+    }
     if (!isNodeOfType(property, "Property")) continue;
     const key = property.key;
     let propertyName: string | null = null;
@@ -69,7 +80,7 @@ const collectFromObjectProperties = (
     else if (propertyName === "onChange" || propertyName === "readOnly")
       hasOnChangeOrReadOnly = true;
   }
-  return { checkedNode, defaultCheckedNode, hasOnChangeOrReadOnly };
+  return { checkedNode, defaultCheckedNode, hasOnChangeOrReadOnly, hasSpread };
 };
 
 // Port of `oxc_linter::rules::react::checked_requires_onchange_or_readonly`.
@@ -97,8 +108,11 @@ export const checkedRequiresOnchangeOrReadonly = defineRule({
       if (
         presence.checkedNode &&
         !presence.hasOnChangeOrReadOnly &&
+        !presence.hasSpread &&
         !settings.ignoreMissingProperties
       ) {
+        // A spread (`{...rest}`) can supply `onChange`/`readOnly` at
+        // runtime, so their absence in the explicit attributes isn't proof.
         context.report({ node: presence.checkedNode, message: MISSING_MESSAGE });
       }
     };

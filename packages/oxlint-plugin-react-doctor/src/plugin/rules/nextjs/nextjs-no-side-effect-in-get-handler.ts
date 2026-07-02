@@ -14,6 +14,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 const extractMutatingRouteSegment = (rawFilename: string): string | null => {
   const segments = rawFilename.replaceAll("\\", "/").split("/");
@@ -189,6 +190,31 @@ const resolveGetHandlerBodies = (
   return [];
 };
 
+// One parser-visible hop: a helper defined in the same file and called from
+// the handler body hides the side effect from a body-only walk (`GET` calling
+// `destroySession()` whose body does `cookies().delete(...)`). Collect those
+// helper bodies so they're scanned alongside the handler body; helpers called
+// from within helpers are NOT followed.
+const collectCalledSameFileHelperBodies = (
+  handlerBody: EsTreeNode,
+  resolveBinding: (identifierName: string) => EsTreeNode | null,
+): EsTreeNode[] => {
+  const helperBodies: EsTreeNode[] = [];
+  const visitedHelperNames = new Set<string>();
+  walkAst(handlerBody, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "CallExpression")) return;
+    if (!isNodeOfType(child.callee, "Identifier")) return;
+    const helperName = child.callee.name;
+    if (visitedHelperNames.has(helperName)) return;
+    visitedHelperNames.add(helperName);
+    const helperBinding = resolveBinding(helperName);
+    if (!isFunctionLike(helperBinding) || !helperBinding.body) return;
+    if (helperBinding.body === handlerBody) return;
+    helperBodies.push(helperBinding.body);
+  });
+  return helperBodies;
+};
+
 export const nextjsNoSideEffectInGetHandler = defineRule({
   id: "nextjs-no-side-effect-in-get-handler",
   title: "Side effect in GET handler",
@@ -211,29 +237,30 @@ export const nextjsNoSideEffectInGetHandler = defineRule({
         if (CRON_ROUTE_PATTERN.test(filename)) return;
         if (!isExportedGetHandler(node)) return;
 
+        // A "mutating-sounding" route segment (cancel, delete, logout, …) is a
+        // hint, NOT proof: a read-only GET that returns a cancellation policy
+        // is safe. Require an actual side effect before reporting, and only
+        // use the segment to flavor the message.
         const mutatingSegment = extractMutatingRouteSegment(filename);
-        if (mutatingSegment) {
-          context.report({
-            node,
-            message: `This GET handler on the "/${mutatingSegment}" route is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`,
-          });
-          return;
-        }
 
         const handlerBodies = resolveGetHandlerBodies(node, resolveBinding);
         for (const handlerBody of handlerBodies) {
-          const locallyScopedSafeBindings = collectLocallyScopedSafeBindings(handlerBody);
-          const locallyScopedCookieBindings = collectLocallyScopedCookieBindings(handlerBody);
-          const sideEffect = findSideEffect(handlerBody, {
-            locallyScopedSafeBindings,
-            locallyScopedCookieBindings,
-          });
-          if (!sideEffect) continue;
-          context.report({
-            node,
-            message: `This GET handler's side effect (${sideEffect}) is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`,
-          });
-          return;
+          const bodiesToScan = [
+            handlerBody,
+            ...collectCalledSameFileHelperBodies(handlerBody, resolveBinding),
+          ];
+          for (const scanBody of bodiesToScan) {
+            const sideEffect = findSideEffect(scanBody, {
+              locallyScopedSafeBindings: collectLocallyScopedSafeBindings(scanBody),
+              locallyScopedCookieBindings: collectLocallyScopedCookieBindings(scanBody),
+            });
+            if (!sideEffect) continue;
+            const message = mutatingSegment
+              ? `This GET handler on the "/${mutatingSegment}" route performs a side effect (${sideEffect}) and is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`
+              : `This GET handler's side effect (${sideEffect}) is prone to CSRF vulnerabilities, since prefetching or a forged request can trigger it.`;
+            context.report({ node, message });
+            return;
+          }
         }
       },
     };

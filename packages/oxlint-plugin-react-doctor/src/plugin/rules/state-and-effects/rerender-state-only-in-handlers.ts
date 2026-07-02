@@ -13,45 +13,58 @@ import { buildLocalDependencyGraph } from "./utils/build-local-dependency-graph.
 import { collectRenderReachableNames } from "./utils/collect-render-reachable-names.js";
 import { expandTransitiveDependencies } from "./utils/expand-transitive-dependencies.js";
 import { collectFunctionLikeLocalNames } from "./utils/collect-function-like-local-names.js";
-import { callsSetterInOwnScope } from "./utils/calls-setter-in-own-scope.js";
+import { isSetterCalledDuringRender } from "./utils/is-setter-called-during-render.js";
+import {
+  collectScopedReferenceNames,
+  createComponentBindingScope,
+} from "./utils/scope-aware-reference-names.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// A binding named in an EFFECT hook's dependency array is reactively needed
-// ONLY when that effect is side-effect-only: the effect re-runs when the dep
-// changes, and swapping the state for a `useRef` would stop that re-run (ref
-// writes don't trigger effects), so the value is NOT "set but never shown".
-// When the effect's own scope synchronously calls a component state setter,
-// the effect is a chained state update (derived state / state sync — shapes
-// sibling rules flag), so the dep mention is just chain plumbing: the value
-// still never reaches the screen and must NOT be exempted. A name any state-
-// writing effect lists stays flagged even if a side-effect-only effect also
-// lists it. `useMemo`/`useCallback` deps merely control memoization/identity
-// and never qualify.
-const collectSideEffectOnlyDependencyNames = (
-  componentBody: EsTreeNode,
-  stateSetterNames: ReadonlySet<string>,
-): Set<string> => {
-  const sideEffectOnlyDependencyNames = new Set<string>();
-  const stateWritingEffectDependencyNames = new Set<string>();
+// Names listed in an EFFECT hook's dependency array. Only effect hooks
+// qualify — `useMemo`/`useCallback` deps merely control memoization/
+// identity, and reading `ref.current` inside those callbacks stays
+// correct, so they don't justify keeping the value in state.
+const collectDependencyArrayNames = (componentBody: EsTreeNode): Set<string> => {
+  const dependencyNames = new Set<string>();
   walkAst(componentBody, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isHookCall(child, EFFECT_HOOK_NAMES)) return;
-    const [effectCallback, dependencyArray] = child.arguments ?? [];
-    if (!effectCallback || !isNodeOfType(dependencyArray, "ArrayExpression")) return;
-    const dependencyNames = callsSetterInOwnScope(effectCallback, stateSetterNames)
-      ? stateWritingEffectDependencyNames
-      : sideEffectOnlyDependencyNames;
-    for (const element of dependencyArray.elements ?? []) {
-      if (!element) continue;
-      const rootName = getRootIdentifierName(element);
-      if (rootName) dependencyNames.add(rootName);
+    for (const argument of child.arguments ?? []) {
+      if (!isNodeOfType(argument, "ArrayExpression")) continue;
+      for (const element of argument.elements ?? []) {
+        if (!element) continue;
+        const rootName = getRootIdentifierName(element);
+        if (rootName) dependencyNames.add(rootName);
+      }
     }
   });
-  for (const chainedName of stateWritingEffectDependencyNames) {
-    sideEffectOnlyDependencyNames.delete(chainedName);
-  }
-  return sideEffectOnlyDependencyNames;
+  return dependencyNames;
+};
+
+// Names referenced inside an EFFECT hook's callback body (its render-time
+// arguments — the dependency array — are NOT included).
+const collectEffectCallbackReadNames = (componentBody: EsTreeNode): Set<string> => {
+  const readNames = new Set<string>();
+  walkAst(componentBody, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "CallExpression")) return;
+    if (!isHookCall(child, EFFECT_HOOK_NAMES)) return;
+    const effectCallback = child.arguments?.[0];
+    if (
+      !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
+      !isNodeOfType(effectCallback, "FunctionExpression")
+    ) {
+      return;
+    }
+    for (const referenceName of collectScopedReferenceNames(
+      effectCallback,
+      createComponentBindingScope(),
+      new Set(),
+    )) {
+      readNames.add(referenceName);
+    }
+  });
+  return readNames;
 };
 
 export const rerenderStateOnlyInHandlers = defineRule({
@@ -78,13 +91,26 @@ export const rerenderStateOnlyInHandlers = defineRule({
         eventHandlerReferenceNames,
       );
       const renderReachableNames = expandTransitiveDependencies(directRenderNames, dependencyGraph);
-      const stateSetterNames = new Set(bindings.map((binding) => binding.setterName));
-      const sideEffectOnlyDependencyNames = collectSideEffectOnlyDependencyNames(
-        componentBody,
-        stateSetterNames,
-      );
+      // An effect dep counts as a reason to keep the value in state only
+      // when it is a pure re-run TRIGGER: the effect never reads the value,
+      // so the dep's identity change is the whole point and a `useRef` swap
+      // would stop the re-run (`useEffect(() => scrollToHash(), [loaded])`).
+      // When the effect body READS the state, the dep entry is just
+      // exhaustive-deps hygiene for that read — it does not prove the value
+      // ever reaches the screen, and suppressing on it masks the canonical
+      // write-only-state-echoed-in-an-effect bug. Non-state dep names
+      // (derived render-phase locals like `offset` from `page * 10`) still
+      // suppress via the transitive expansion.
+      const stateValueNames = new Set(bindings.map((binding) => binding.valueName));
+      const effectCallbackReadNames = collectEffectCallbackReadNames(componentBody);
+      const effectTriggerNames = new Set<string>();
+      for (const dependencyName of collectDependencyArrayNames(componentBody)) {
+        const isStateReadByAnEffect =
+          stateValueNames.has(dependencyName) && effectCallbackReadNames.has(dependencyName);
+        if (!isStateReadByAnEffect) effectTriggerNames.add(dependencyName);
+      }
       for (const reachableName of expandTransitiveDependencies(
-        sideEffectOnlyDependencyNames,
+        effectTriggerNames,
         dependencyGraph,
       )) {
         renderReachableNames.add(reachableName);
@@ -131,7 +157,7 @@ export const rerenderStateOnlyInHandlers = defineRule({
         // re-syncs it by calling the setter during render. Such a value
         // shapes render-phase control flow, so it is NOT write-only and a
         // `useRef` swap would break the adjustment. Skip it.
-        if (callsSetterInOwnScope(componentBody, new Set([binding.setterName]))) continue;
+        if (isSetterCalledDuringRender(componentBody, binding.setterName)) continue;
 
         context.report({
           node: binding.declarator,

@@ -671,6 +671,43 @@ export const A = (props: AnchorProps) => <a onClick={props.onClick}>{props.child
     await expect(getPreventDefaultHits(projectDir, { framework: "unknown" })).resolves.toEqual([]);
   });
 
+  it("does NOT flag <a> when the handler navigates after preventDefault (custom SPA/desktop nav)", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-anchor-custom-nav", {
+      files: {
+        "src/link.tsx": `declare const platform: { openLink: (href: string) => void };
+
+export const Link = ({ href }: { href?: string }) => (
+  <a
+    href={href}
+    onClick={(event) => {
+      if (!href) return;
+      event.preventDefault();
+      platform.openLink(href);
+    }}
+  >
+    Open
+  </a>
+);
+`,
+      },
+    });
+
+    await expect(getPreventDefaultHits(projectDir, { framework: "unknown" })).resolves.toEqual([]);
+  });
+
+  it("does NOT flag an href-less <a> (anchor-as-button dropdown trigger)", async () => {
+    const projectDir = setupReactProject(tempRoot, "ast-anchor-no-href", {
+      files: {
+        "src/dropdown-trigger.tsx": `export const Trigger = () => (
+  <a onClick={(event) => event.preventDefault()}>Hover me</a>
+);
+`,
+      },
+    });
+
+    await expect(getPreventDefaultHits(projectDir, { framework: "unknown" })).resolves.toEqual([]);
+  });
+
   it("still flags <a> when other unrelated attributes are present (target, rel, etc.)", async () => {
     const projectDir = setupReactProject(tempRoot, "ast-anchor-extra-attrs", {
       files: {

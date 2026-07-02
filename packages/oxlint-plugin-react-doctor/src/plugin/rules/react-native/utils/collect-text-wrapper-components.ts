@@ -246,7 +246,10 @@ const jsxRootForwardsChildrenIntoText = (
   return didForwardIntoText;
 };
 
-const isMeaningfulJsxChild = (child: EsTreeNode): boolean =>
+// Deliberately looser than the shared utils/is-meaningful-jsx-child: here
+// ANY expression child (even `{null}` or a comment container) counts as a
+// child, because it can override an attribute-forwarded `children`.
+const isNonWhitespaceJsxChild = (child: EsTreeNode): boolean =>
   !isNodeOfType(child, "JSXText") || Boolean(child.value?.trim());
 
 // True when the component's children are forwarded into an element the caller
@@ -270,7 +273,7 @@ const jsxRootForwardsChildren = (
     if (isNodeOfType(node, "JSXElement")) {
       const elementName = resolveJsxElementName(node.openingElement);
       if (elementName && isTextHandlingElement(elementName)) return false;
-      const hasJsxChildren = (node.children ?? []).some(isMeaningfulJsxChild);
+      const hasJsxChildren = (node.children ?? []).some(isNonWhitespaceJsxChild);
       if (
         !hasJsxChildren &&
         countsAsForwardTarget(node) &&

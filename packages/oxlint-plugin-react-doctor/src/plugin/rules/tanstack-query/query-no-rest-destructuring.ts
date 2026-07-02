@@ -2,6 +2,8 @@ import { TANSTACK_QUERY_HOOKS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { isTanstackQuerySource } from "../../utils/is-tanstack-query-source.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -23,6 +25,13 @@ export const queryNoRestDestructuring = defineRule({
         : null;
 
       if (!calleeName || !TANSTACK_QUERY_HOOKS.has(calleeName)) return;
+
+      // Only flag a hook that actually comes from TanStack Query. A same-named
+      // hook from another library (e.g. Convex's `useQuery` from `convex/react`)
+      // returns the data directly, so rest-destructuring it is normal. `null`
+      // (no import in this file) still fires, preserving prior behavior.
+      const importSource = getImportSourceForName(node, calleeName);
+      if (importSource !== null && !isTanstackQuerySource(importSource)) return;
 
       const hasRestElement = node.id.properties?.some((property: EsTreeNode) =>
         isNodeOfType(property, "RestElement"),

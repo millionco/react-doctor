@@ -134,7 +134,10 @@ describe("jotai-tq-use-raw-query-atom", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags cross-file imported `*QueryAtom` binding (naming convention)", () => {
+  it("flags a cross-file `*QueryAtom` binding consumed as a query envelope", () => {
+    // The `*QueryAtom` suffix alone is ambiguous (`searchQueryAtom` may hold
+    // a plain search-query string), so the cross-file path also requires the
+    // hook result to be read as a `QueryObserverResult` envelope.
     const code = `
       import { userQueryAtom } from "./atoms";
       function UserProfile() {
@@ -146,7 +149,7 @@ describe("jotai-tq-use-raw-query-atom", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags cross-file imported `*SuspenseQueryAtom` binding", () => {
+  it("does NOT flag a cross-file `*SuspenseQueryAtom` binding whose result is not read as an envelope", () => {
     const code = `
       import { userSuspenseQueryAtom } from "./atoms";
       function UserProfile() {
@@ -154,10 +157,10 @@ describe("jotai-tq-use-raw-query-atom", () => {
       }
     `;
     const result = runRule(jotaiTqUseRawQueryAtom, code);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("flags cross-file imported `*InfiniteQueryAtom` binding", () => {
+  it("does NOT flag a cross-file `*InfiniteQueryAtom` binding whose result is not read as an envelope", () => {
     const code = `
       import { feedInfiniteQueryAtom } from "./atoms";
       function Feed() {
@@ -165,7 +168,7 @@ describe("jotai-tq-use-raw-query-atom", () => {
       }
     `;
     const result = runRule(jotaiTqUseRawQueryAtom, code);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does NOT flag cross-file binding without the QueryAtom suffix", () => {

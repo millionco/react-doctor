@@ -1,6 +1,8 @@
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import { collectEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -52,7 +54,17 @@ export const nextjsNoClientSideRedirect = defineRule({
         const callback = getEffectCallback(node);
         if (!callback) return;
 
+        const effectInvokedFunctions = collectEffectInvokedFunctions(callback);
         walkAst(callback, (child: EsTreeNode) => {
+          // Stop at non-invoked nested function boundaries: a navigation inside
+          // an event handler registered in the effect runs on a later user
+          // interaction, not as part of the mount-time effect, so it must not
+          // be flagged — but IIFEs, called local functions, and promise-chain
+          // callbacks of effect-body calls do run on mount.
+          if (child !== callback && isFunctionLike(child) && !effectInvokedFunctions.has(child)) {
+            return false;
+          }
+
           const navigationDescription = describeClientSideNavigation(child);
           if (navigationDescription) {
             context.report({

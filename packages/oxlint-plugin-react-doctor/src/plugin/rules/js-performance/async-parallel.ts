@@ -71,10 +71,13 @@ const reportIfIndependent = (statements: EsTreeNode[], context: RuleContext): vo
   const declaredNames = new Set<string>();
 
   for (const statement of statements) {
-    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
-    const declarator = statement.declarations[0];
-    if (!isNodeOfType(declarator.init, "AwaitExpression")) continue;
-    const awaitArgument = declarator.init.argument;
+    // Both `const x = await f(prev)` and a bare `await f(prev)` count
+    // toward the threshold, so both must be checked for a data
+    // dependency on an earlier result — otherwise a sequence whose
+    // ordering is forced by an expression-statement await reads as
+    // independent and gets a spurious `Promise.all()` suggestion.
+    const awaitArgument = getAwaitedCall(statement);
+    if (!awaitArgument) continue;
 
     let referencesEarlierResult = false;
     walkAst(awaitArgument, (child: EsTreeNode) => {
@@ -85,8 +88,11 @@ const reportIfIndependent = (statements: EsTreeNode[], context: RuleContext): vo
 
     if (referencesEarlierResult) return;
 
-    if (isNodeOfType(declarator.id, "Identifier")) {
-      declaredNames.add(declarator.id.name);
+    if (
+      isNodeOfType(statement, "VariableDeclaration") &&
+      isNodeOfType(statement.declarations[0]?.id, "Identifier")
+    ) {
+      declaredNames.add(statement.declarations[0].id.name);
     }
   }
 

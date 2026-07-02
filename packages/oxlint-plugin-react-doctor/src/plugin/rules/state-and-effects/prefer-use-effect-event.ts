@@ -6,7 +6,9 @@ import {
 } from "../../constants/react.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getFunctionBindingName } from "../../utils/get-function-binding-name.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -93,16 +95,6 @@ const isCallExpressionWithSubHandlerCallee = (callExpression: EsTreeNode): boole
   return false;
 };
 
-const getSubHandlerCalleeName = (callExpression: EsTreeNode): string | null => {
-  if (!isNodeOfType(callExpression, "CallExpression")) return null;
-  const callee = callExpression.callee;
-  if (isNodeOfType(callee, "Identifier")) return callee.name;
-  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
-    return callee.property.name;
-  }
-  return null;
-};
-
 // HACK: handles the dominant real-world shape where the handler is
 // bound to a const before being passed to addEventListener / subscribe:
 //
@@ -114,35 +106,6 @@ const getSubHandlerCalleeName = (callExpression: EsTreeNode): string | null => {
 // for either a direct sub-handler argument position OR a const binding
 // whose Identifier appears as an argument to a sub-handler call later
 // in the same effect body.
-// Resolve the enclosing function back to its local-binding name across
-// the three idiomatic shapes:
-//   const handler = (e) => ...      → VariableDeclarator binding
-//   function handler(e) { ... }     → FunctionDeclaration self-binding
-//   let handler; handler = (e) => ... → AssignmentExpression binding
-const getEnclosingFunctionBindingName = (enclosingFunction: EsTreeNode): string | null => {
-  if (
-    isNodeOfType(enclosingFunction, "FunctionDeclaration") &&
-    isNodeOfType(enclosingFunction.id, "Identifier")
-  ) {
-    return enclosingFunction.id.name;
-  }
-  const directParent = enclosingFunction.parent;
-  if (
-    isNodeOfType(directParent, "VariableDeclarator") &&
-    isNodeOfType(directParent.id, "Identifier")
-  ) {
-    return directParent.id.name;
-  }
-  if (
-    isNodeOfType(directParent, "AssignmentExpression") &&
-    directParent.right === enclosingFunction &&
-    isNodeOfType(directParent.left, "Identifier")
-  ) {
-    return directParent.left.name;
-  }
-  return null;
-};
-
 const findSubHandlerForEnclosingFunction = (
   enclosingFunction: EsTreeNode,
   effectCallback: EsTreeNode,
@@ -156,7 +119,7 @@ const findSubHandlerForEnclosingFunction = (
     return directParent;
   }
 
-  const localName = getEnclosingFunctionBindingName(enclosingFunction);
+  const localName = getFunctionBindingName(enclosingFunction);
   if (localName === null) return null;
 
   let matchingSubHandlerCall: EsTreeNode | null = null;
@@ -218,7 +181,7 @@ const classifyCallableReadsInsideEffect = (
       return;
     }
     if (firstSubHandlerName === null) {
-      firstSubHandlerName = getSubHandlerCalleeName(subHandlerCall);
+      firstSubHandlerName = getCalleeName(subHandlerCall);
     }
   });
 

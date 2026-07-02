@@ -1,7 +1,6 @@
-import type { Reference, Variable } from "eslint-scope";
+import type { Reference } from "eslint-scope";
 import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../../utils/es-tree-node-of-type.js";
-import { getCalleeName } from "../../../../utils/get-callee-name.js";
 import { isFunctionLike } from "../../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
 import type { ProgramAnalysis } from "./get-program-analysis.js";
@@ -32,31 +31,40 @@ const DEFERRING_CALLEE_NAMES: ReadonlySet<string> = new Set([
   "once",
 ]);
 
-const parentOf = (node: EsTreeNode): EsTreeNode | null => node.parent ?? null;
+const getCalleeName = (callee: EsTreeNode | null | undefined): string | null => {
+  if (!callee) return null;
+  if (isNodeOfType(callee, "Identifier")) return callee.name;
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    return callee.property.name;
+  }
+  return null;
+};
+
+const parentOf = (node: EsTreeNode): EsTreeNode | null =>
+  (node as unknown as { parent?: EsTreeNode | null }).parent ?? null;
 
 const argumentsInclude = (
   args: ReadonlyArray<unknown> | null | undefined,
   target: EsTreeNode,
-): boolean => (args ?? []).some((argument) => argument === target);
+): boolean => (args ?? []).some((argument) => (argument as unknown) === (target as unknown));
 
 // Is `expression` (a function value, or a bare identifier referencing one)
 // in a position that runs it LATER, off the synchronous path? Covers the
 // argument slot of a deferring call (`addEventListener('x', expr)`,
 // `setTimeout(expr)`), an observer / promise constructor, and assignment to
-// an `on*` event-handler property (`el.onmessage = expr`). A bare
-// `{ onX: expr }` object property is NOT deferred: plain options objects
-// (`{ onDestroyed: handler }`) use the same spelling as listener maps, and
-// assuming registration there silences real state-machine smells.
+// an `on*` event-handler property (`el.onmessage = expr`). An `onX:` key in a
+// plain options object is deliberately NOT deferred — config-object callbacks
+// (`{ onDestroyed: handler }`) routinely fire on the synchronous React path.
 const isDeferredCallbackPosition = (expression: EsTreeNode): boolean => {
   const parent = parentOf(expression);
   if (!parent) return false;
 
   if (isNodeOfType(parent, "CallExpression") && argumentsInclude(parent.arguments, expression)) {
-    const name = getCalleeName(parent);
+    const name = getCalleeName(parent.callee as EsTreeNode);
     if (name && DEFERRING_CALLEE_NAMES.has(name)) return true;
   }
   if (isNodeOfType(parent, "NewExpression") && argumentsInclude(parent.arguments, expression)) {
-    const name = getCalleeName(parent);
+    const name = getCalleeName(parent.callee as EsTreeNode);
     if (name && (name.endsWith("Observer") || name === "Promise")) return true;
   }
   if (
@@ -122,9 +130,9 @@ const isNamedHandlerUsedAsDeferredCallback = (
 
 // Is `fn` itself a "deferred" callback — handed to a deferring API inline, or
 // a named handler registered with one? These never run synchronously during
-// render or a React event. `async` alone does NOT qualify: an async onClick
-// handler is still a React event handler, so state it sets is
-// handler-driven, not externally driven.
+// render or a React event. An `async` function is deliberately NOT deferred
+// by itself: an async onClick handler is still a React event handler, so the
+// "fold the work into the handler" advice fully applies.
 const isDeferredCallbackFunction = (analysis: ProgramAnalysis, fn: EsTreeNode): boolean => {
   if (isDeferredCallbackPosition(fn)) return true;
   return isNamedHandlerUsedAsDeferredCallback(analysis, fn);
@@ -161,15 +169,15 @@ const findUseStateDeclarator = (ref: Reference): EsTreeNode | null => {
 const declaratorToExternallyDriven = new WeakMap<EsTreeNode, boolean>();
 
 // A `useState` value is "externally driven" when its setter is called
-// EXCLUSIVELY from inside deferred callbacks (timers / listeners /
-// observers / promise continuations / subscriptions). Effects that merely
-// REACT to such state (`useEffect(() => notify(state), [state])`) are not
-// the "you-might-not-need-an-effect" anti-pattern: there is no React event
-// handler to fold the work into, because the state only ever changes in
-// response to an imperative browser event. One deferred call site is NOT
-// enough — a setter that is also called from a render-path function (an
-// event handler, another effect) proves a handler exists to fold into, so
-// the state stays eligible for the effect-family rules.
+// EXCLUSIVELY from inside deferred callbacks (timers / listeners / observers /
+// promises / subscriptions). Effects that merely REACT to such state
+// (`useEffect(() => notify(state), [state])`) are not the
+// "you-might-not-need-an-effect" anti-pattern: there is no React event
+// handler to fold the work into, because the state changes only in response
+// to an imperative browser event. Mixed origin — the same setter also called
+// from a plain handler or render path — keeps the state reportable: the
+// handler-driven updates DO have a handler to fold into. The effect-family
+// rules consult this to suppress the exclusively-external false positives.
 export const isExternallyDrivenState = (analysis: ProgramAnalysis, ref: Reference): boolean => {
   const declarator = findUseStateDeclarator(ref);
   if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
@@ -195,7 +203,8 @@ const computeExternallyDriven = (
   // `ref.resolved.scope` — synthetic upstream refs don't always carry the
   // component scope, but the setter is always declared at the same
   // `useState` destructure as the state.
-  let setterVariable: Variable | null = null;
+  let setterVariable: (typeof analysis.scopeManager.scopes)[number]["variables"][number] | null =
+    null;
   for (const scope of analysis.scopeManager.scopes) {
     const match = scope.variables.find(
       (variable) =>
@@ -209,22 +218,14 @@ const computeExternallyDriven = (
   }
   if (!setterVariable) return false;
 
-  let hasDeferredSetterUse = false;
+  let hasDeferredCallSite = false;
   for (const setterReference of setterVariable.references) {
-    if (setterReference.init) continue;
     const identifier = setterReference.identifier as unknown as EsTreeNode;
     const parent = parentOf(identifier);
-    const isSetterCallSite =
-      parent !== null && isNodeOfType(parent, "CallExpression") && parent.callee === identifier;
-    const enclosingNode = isSetterCallSite && parent ? parent : identifier;
-    const isDeferredUse =
-      (!isSetterCallSite && isDeferredCallbackPosition(identifier)) ||
-      isInsideDeferredCallback(analysis, enclosingNode, declarator);
-    if (isDeferredUse) {
-      hasDeferredSetterUse = true;
-    } else {
-      return false;
-    }
+    if (!parent || !isNodeOfType(parent, "CallExpression")) continue;
+    if (parent.callee !== (identifier as unknown)) continue;
+    if (!isInsideDeferredCallback(analysis, parent, declarator)) return false;
+    hasDeferredCallSite = true;
   }
-  return hasDeferredSetterUse;
+  return hasDeferredCallSite;
 };

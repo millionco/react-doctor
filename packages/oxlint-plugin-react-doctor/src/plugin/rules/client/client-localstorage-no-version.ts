@@ -6,7 +6,17 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const VERSIONED_KEY_PATTERN = /(?:[._:-]v\d+|@\d+|\bv\d+\b)/i;
 
+// camelCase version suffix (`userPrefsV2`): a lowercase letter immediately
+// followed by a capital `V` and digits. Kept case-SENSITIVE on purpose — a
+// case-insensitive `[a-z]v\d+` would over-match plain words that happen to end
+// in `…v<digit>`, so the capital-V boundary is what marks an intentional
+// camelCase version tag.
+const CAMEL_CASE_VERSIONED_KEY_PATTERN = /[a-z]V\d+/;
+
 const STORAGE_OBJECTS = new Set(["localStorage", "sessionStorage"]);
+
+const isVersionedKey = (key: string): boolean =>
+  VERSIONED_KEY_PATTERN.test(key) || CAMEL_CASE_VERSIONED_KEY_PATTERN.test(key);
 
 // HACK: keys that store JSON-serialized objects in localStorage /
 // sessionStorage live forever and often outlast the JavaScript that
@@ -48,7 +58,7 @@ export const clientLocalstorageNoVersion = defineRule({
       if (!keyArg) return;
       if (!isNodeOfType(keyArg, "Literal")) return;
       if (typeof keyArg.value !== "string") return;
-      if (VERSIONED_KEY_PATTERN.test(keyArg.value)) return;
+      if (isVersionedKey(keyArg.value)) return;
 
       const valueArg = node.arguments?.[1];
       if (!valueArg) return;

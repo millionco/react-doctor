@@ -434,13 +434,32 @@ export async function GET() {
       expect(hits[0].message).toContain("cookies().delete()");
     });
 
-    it("mutating route segment `/logout` still fires on its own", async () => {
+    it("read-only GET on a mutating route segment `/logout` does NOT fire", async () => {
+      // The route name is a hint, not proof — a GET that only returns JSON has
+      // no side effect for a forged request or prefetch to trigger.
       const diagnostics = await writeRouteAndLint(
-        "issue-206-mutating-segment",
+        "issue-206-mutating-segment-readonly",
         "src/app/logout/route.ts",
         `import { NextResponse } from "next/server";
 
 export async function GET() {
+  return NextResponse.json({ ok: true });
+}
+`,
+      );
+      const hits = filterRule(diagnostics);
+      expect(hits).toHaveLength(0);
+    });
+
+    it("mutating route segment `/logout` fires when it performs a side effect", async () => {
+      const diagnostics = await writeRouteAndLint(
+        "issue-206-mutating-segment-side-effect",
+        "src/app/logout/route.ts",
+        `import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
+
+export async function GET() {
+  cookies().delete("session");
   return NextResponse.json({ ok: true });
 }
 `,

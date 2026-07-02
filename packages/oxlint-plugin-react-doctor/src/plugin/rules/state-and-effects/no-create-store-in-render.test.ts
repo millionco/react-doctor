@@ -310,4 +310,21 @@ describe("no-create-store-in-render", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not flag a jotai atom memoized inside a useMemo callback", () => {
+    const result = runRule(
+      noCreateStoreInRender,
+      `
+      import { atom } from "jotai";
+      import { useMemo } from "react";
+
+      const Widget = () => {
+        const countAtom = useMemo(() => atom(0), []);
+        return <Counter atom={countAtom} />;
+      };
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
 });

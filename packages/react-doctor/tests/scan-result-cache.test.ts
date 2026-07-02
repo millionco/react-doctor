@@ -269,6 +269,8 @@ describe("scan result cache", () => {
       scanElapsedMilliseconds: firstResult.scanElapsedMilliseconds ?? 0,
       baselineDelta: undefined,
       lintFailureReasonKind: null,
+      supplyChainOverlapTimedOut: false,
+      suppressedRuleCounts: [],
     });
 
     const verboseResult = await inspect(projectDirectory, {

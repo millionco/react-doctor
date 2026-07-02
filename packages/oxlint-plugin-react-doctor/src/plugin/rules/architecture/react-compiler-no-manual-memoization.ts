@@ -55,12 +55,17 @@ const resolveReactApiNameForMemberExpression = (callee: EsTreeNode): string | nu
   return null;
 };
 
-const resolveRemovalMessageForCallee = (callee: EsTreeNode): string | null => {
-  const apiName =
-    resolveReactApiNameForIdentifier(callee) ?? resolveReactApiNameForMemberExpression(callee);
-  if (!apiName) return null;
-  return REMOVAL_MESSAGE_BY_REACT_API_NAME.get(apiName) ?? null;
-};
+const resolveReactApiNameForCallee = (callee: EsTreeNode): string | null =>
+  resolveReactApiNameForIdentifier(callee) ?? resolveReactApiNameForMemberExpression(callee);
+
+// `memo(Inner, undefined)` / `memo(Inner, null)` make React fall back to
+// the default shallow compare — exactly as redundant under React Compiler
+// as `memo(Inner)`. Any other second-arg shape (function expression,
+// identifier, member/call expression, spread) could be a real comparator,
+// so it keeps the exemption.
+const isNullishComparatorArgument = (argumentNode: EsTreeNode): boolean =>
+  (isNodeOfType(argumentNode, "Identifier") && argumentNode.name === "undefined") ||
+  (isNodeOfType(argumentNode, "Literal") && argumentNode.value === null);
 
 // Active only when React Compiler is detected (`requires:
 // ["react-compiler"]` in the rule registry). Userland helpers and
@@ -82,7 +87,17 @@ export const reactCompilerNoManualMemoization = defineRule({
     "Delete the `useMemo` / `useCallback` / `memo` call and use the plain value or component. React Compiler caches it for you.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const removalMessage = resolveRemovalMessageForCallee(node.callee);
+      const apiName = resolveReactApiNameForCallee(node.callee);
+      if (!apiName) return;
+      // `memo(Component, areEqual)` with a custom comparator encodes
+      // bespoke equality the compiler can't replicate, so it isn't
+      // redundant — leave it alone. A nullish second arg is no comparator
+      // at all, so it doesn't earn the exemption.
+      if (apiName === "memo") {
+        const comparatorArgument = node.arguments?.[1];
+        if (comparatorArgument && !isNullishComparatorArgument(comparatorArgument)) return;
+      }
+      const removalMessage = REMOVAL_MESSAGE_BY_REACT_API_NAME.get(apiName);
       if (!removalMessage) return;
       context.report({
         node,

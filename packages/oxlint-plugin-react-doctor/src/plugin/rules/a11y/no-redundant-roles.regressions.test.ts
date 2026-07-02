@@ -1,0 +1,71 @@
+import { describe, expect, it } from "vite-plus/test";
+import { runRule } from "../../../test-utils/run-rule.js";
+import { noRedundantRoles } from "./no-redundant-roles.js";
+
+describe("a11y/no-redundant-roles regressions", () => {
+  it('exempts `<ul role="list">` (Safari/VoiceOver list-semantics workaround) by default', () => {
+    const result = runRule(noRedundantRoles, `const Nav = () => <ul role="list" />;`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('exempts `<ol role="list">` by default', () => {
+    const result = runRule(noRedundantRoles, `const Nav = () => <ol role="list" />;`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags genuinely redundant roles on other elements", () => {
+    const result = runRule(noRedundantRoles, `const Nav = () => <nav role="navigation" />;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it('exempts a text `<input role="combobox">` (its implicit role is textbox)', () => {
+    const result = runRule(
+      noRedundantRoles,
+      `const F = () => <input type="text" role="combobox" aria-expanded aria-controls="lb" />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("exempts the canonical W3C APG combobox (aria-autocomplete + aria-controls + aria-expanded)", () => {
+    const result = runRule(
+      noRedundantRoles,
+      `const F = ({ open }) => <input type="text" role="combobox" aria-autocomplete="list" aria-controls="lb" aria-expanded={open} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an input whose role matches its single implicit role", () => {
+    const result = runRule(
+      noRedundantRoles,
+      `const F = () => <input type="checkbox" role="checkbox" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it('exempts `<a role="link">` without `href` (a bare anchor has no implicit role)', () => {
+    const result = runRule(
+      noRedundantRoles,
+      `const Go = () => <a role="link" tabIndex={0} onClick={() => go()}>Go</a>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('still flags `<a href role="link">` (an anchor with href is genuinely a link)', () => {
+    const result = runRule(noRedundantRoles, `const Go = () => <a role="link" href="/x">Go</a>;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  for (const code of [
+    `<td role="gridcell" />`,
+    `<th role="gridcell" />`,
+    `<th role="rowheader" />`,
+  ]) {
+    it(`exempts the W3C grid-pattern role in ${code} (only the primary default role is redundant)`, () => {
+      expect(runRule(noRedundantRoles, code).diagnostics).toEqual([]);
+    });
+  }
+
+  it('still flags `<td role="cell">` (cell is the primary default role of `<td>`)', () => {
+    expect(runRule(noRedundantRoles, `<td role="cell" />`).diagnostics).toHaveLength(1);
+  });
+});

@@ -1,16 +1,17 @@
-import type { Reference } from "eslint-scope";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
-import { isCallResultConsumedAsArgument } from "../../utils/is-call-result-consumed-as-argument.js";
-import { DATA_SINK_METHOD_NAMES } from "../../constants/data-sink-method-names.js";
-import { getCalleeName } from "../../utils/get-callee-name.js";
+import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
+import {
+  DATA_SINK_METHOD_NAMES,
+  STRING_READ_METHOD_NAMES,
+} from "../../constants/data-sink-method-names.js";
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getArgsUpstreamRefs, getCallExpr, isSynchronous } from "./utils/effect/ast.js";
-import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getEffectFn,
@@ -18,36 +19,55 @@ import {
   isPropCall,
   isState,
   isUseEffect,
+  isWholePropsObjectReference,
 } from "./utils/effect/react.js";
 
-const HOOK_CALLEE_NAME_PATTERN = /^use[A-Z0-9]/;
+// Memoizing hooks that WRAP a function they're given — the wrapped function
+// is usually a genuine parent prop callback (`useCallback((v) => onChange(v))`,
+// `useEventCallback(onChange)`), so their return binding must NOT be exempt.
+const FUNCTION_WRAPPER_HOOK_NAMES: ReadonlySet<string> = new Set([
+  "useCallback",
+  "useMemo",
+  "useEvent",
+  "useEventCallback",
+  "useEffectEvent",
+  "useMemoizedFn",
+  "useLatest",
+  "useStableCallback",
+  "useCallbackRef",
+]);
 
-// Hooks that return (a memoized identity for) the very function they are
-// given. `const notify = useCallback((v) => onChange(v), [onChange])` is
-// still the parent's callback, just wrapped — calling it from an effect IS
-// the parent hand-back this rule targets.
-const MEMOIZING_WRAPPER_HOOK_NAMES: ReadonlySet<string> = new Set(["useCallback", "useMemo"]);
+const getInitializerCalleeName = (init: EsTreeNode): string | null => {
+  if (!isNodeOfType(init, "CallExpression")) return null;
+  const callee = init.callee;
+  if (isNodeOfType(callee, "Identifier")) return callee.name;
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    return callee.property.name;
+  }
+  return null;
+};
 
-// A function destructured from a *state-owning hook call return* — e.g.
+// A real parent callback arrives as a function-typed parameter of this
+// component / custom hook (or is destructured off the `props` object).
+// A setter destructured from a *local state-hook call return* — e.g.
 // `const [store, setStore] = useStore(...)` or
-// `const { clearHash } = useSessionHashScroll(...)` — operates on this
-// component's own state, so calling it from an effect is not a parent
-// hand-back even when the hook was seeded from props. Memoizing wrappers
-// (`useCallback` / `useMemo`) are excluded: they return the caller's own
-// function, so the binding is still whatever it wraps — often a genuine
-// prop callback.
-const resolvesToLocalHookReturnBinding = (ref: Reference): boolean =>
+// `const { clearHash } = useSessionHashScroll(...)` — owns this
+// component's own state, so calling it from an effect is not a
+// parent hand-back. Only hook-call initializers qualify, and never the
+// function-wrapper hooks: `useCallback` / `useEventCallback` bindings are
+// memoized wrappers AROUND a prop callback, the rule's core target.
+const resolvesToLocalHookReturnBinding = (
+  ref: { resolved?: { defs?: ReadonlyArray<{ node: unknown }> } | null } | null,
+): boolean =>
   Boolean(
-    ref.resolved?.defs.some((def) => {
-      const node = def.node as unknown as EsTreeNode;
-      if (!isNodeOfType(node, "VariableDeclarator") || !isNodeOfType(node.init, "CallExpression")) {
-        return false;
-      }
-      const calleeName = getCalleeName(node.init);
+    ref?.resolved?.defs?.some((def) => {
+      const node = def.node as EsTreeNode;
+      if (!isNodeOfType(node, "VariableDeclarator") || !node.init) return false;
+      const calleeName = getInitializerCalleeName(node.init as EsTreeNode);
       return (
         calleeName !== null &&
-        HOOK_CALLEE_NAME_PATTERN.test(calleeName) &&
-        !MEMOIZING_WRAPPER_HOOK_NAMES.has(calleeName)
+        isReactHookName(calleeName) &&
+        !FUNCTION_WRAPPER_HOOK_NAMES.has(calleeName)
       );
     }),
   );
@@ -75,28 +95,39 @@ export const noPassLiveStateToParent = defineRule({
         if (!isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn)) continue;
         const callExpr = getCallExpr(ref);
         if (!callExpr) continue;
-        // When the prop call's result flows into another call's argument
-        // (`setDisplay(format(amount))`) the prop is a pure transform
-        // consumed locally, not a parent push. Any other position — a bare
-        // statement, `onSync && onSync(x)`, a concise arrow body, an
-        // initializer — still hands live state up to the parent.
-        if (isCallResultConsumedAsArgument(callExpr)) continue;
+        // Only a discarded `onSync(state)` hands state up to the parent. When
+        // the prop call's result flows somewhere (`setDisplay(format(amount))`)
+        // the prop is a pure transform consumed locally, not a parent push.
+        if (!isResultDiscardedCall(callExpr)) continue;
 
         // Skip JS prototype / observer / promise methods — see
-        // `no-pass-data-to-parent` for the full rationale.
+        // `no-pass-data-to-parent` for the full rationale — except when
+        // a string-read name is called directly ON the props object:
+        // `props.search(results)` is a parent callback that happens to
+        // be named like `String.prototype.search`.
         const calleeNode = (callExpr as unknown as { callee?: EsTreeNode }).callee;
         const methodName = calleeNode ? getCallMethodName(calleeNode) : null;
-        if (methodName && DATA_SINK_METHOD_NAMES.has(methodName)) continue;
+        const isPropCallbackNamedLikeStringRead = Boolean(
+          methodName &&
+          STRING_READ_METHOD_NAMES.has(methodName) &&
+          calleeNode &&
+          isNodeOfType(calleeNode, "MemberExpression") &&
+          calleeNode.object === (ref.identifier as unknown as typeof calleeNode.object) &&
+          isWholePropsObjectReference(analysis, ref),
+        );
+        if (
+          methodName &&
+          DATA_SINK_METHOD_NAMES.has(methodName) &&
+          !isPropCallbackNamedLikeStringRead
+        ) {
+          continue;
+        }
         if (calleeNode && isNamespacedApiCallee(calleeNode)) continue;
 
         const stateArgRefs = getArgsUpstreamRefs(analysis, ref).filter((argRef) =>
           isState(analysis, argRef),
         );
         if (stateArgRefs.length === 0) continue;
-        // The state handed to the parent is driven by a timer / listener /
-        // observer / subscription — the child genuinely owns this
-        // externally-sourced value, so "lift it to the parent" doesn't apply.
-        if (stateArgRefs.every((argRef) => isExternallyDrivenState(analysis, argRef))) continue;
 
         context.report({
           node: callExpr,

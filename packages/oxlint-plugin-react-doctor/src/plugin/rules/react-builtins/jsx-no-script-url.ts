@@ -4,11 +4,14 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const MESSAGE = "A `javascript:` URL is an XSS hole that runs injected input as code.";
 
-// Matches `javascript:` allowing whitespace between letters and any
-// casing — exactly the regex `oxc_linter::rules::react::jsx_no_script_url`
-// uses to defeat the "j a v a s c r i p t :" obfuscation.
+// Matches a `javascript:` URL whose PROTOCOL is `javascript:` — anchored
+// to the start (allowing only leading control chars / spaces, mirroring
+// eslint-plugin-react) so an ordinary `https:` link that merely contains
+// the substring `JavaScript:` deeper in its path/query is not flagged.
+// Whitespace between letters + any casing still defeats the
+// "j a v a s c r i p t :" obfuscation.
 const JAVASCRIPT_URL_PATTERN =
-  /j[\r\n\t]*a[\r\n\t]*v[\r\n\t]*a[\r\n\t]*s[\r\n\t]*c[\r\n\t]*r[\r\n\t]*i[\r\n\t]*p[\r\n\t]*t[\r\n\t]*:/i;
+  /^[\u0000-\u001F ]*j[\r\n\t]*a[\r\n\t]*v[\r\n\t]*a[\r\n\t]*s[\r\n\t]*c[\r\n\t]*r[\r\n\t]*i[\r\n\t]*p[\r\n\t]*t[\r\n\t]*:/i;
 
 interface JsxNoScriptUrlSettings {
   components?: Record<string, ReadonlyArray<string>>;

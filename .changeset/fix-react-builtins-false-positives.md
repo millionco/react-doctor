@@ -1,0 +1,22 @@
+---
+"oxlint-plugin-react-doctor": patch
+---
+
+fix(react-builtins): eliminate false positives across builtin DOM/JSX rules
+
+Harden the react-builtins rules against false positives on real-world code:
+
+- `button-has-type`, `iframe-missing-sandbox`, `checked-requires-onchange-or-readonly`: a JSX or `createElement` spread (`{...props}`) can forward the "missing" attribute at runtime, so these rules no longer report an attribute they cannot see — except an `<iframe>` with an explicit `src`, which marks the real embed site where a missing `sandbox` is the author's omission. `button-has-type` also resolves locally-bound and destructured/renamed `type` props (only through `const` initializers and only when the destructure roots at a function parameter), and treats explicitly nullish `createElement` props (`null` / `undefined` / `void 0`) as missing.
+- `no-find-dom-node`: a bare `findDOMNode(...)` is flagged only when it is imported from `react-dom`, so a local helper of the same name is left alone.
+- `no-is-mounted`, `no-this-in-sfc`: fire only inside an actual React component, so a plain class that exposes an `isMounted` method or an ES5 constructor keeps its real `this`.
+- `no-call-component-as-function`, `no-unstable-nested-components`: a capitalized helper that is only ever called `Name()` (never instantiated as an element) is treated as an inline render helper, not a component — unless the helper owns hook calls, which inline into the caller's hook order. The instantiation check is keyed by binding, not name — a same-named component rendered elsewhere in the file doesn't count — and `createElement(Name, …)`, `<Thing.Panel/>`, and escaping reads (`withAnalytics(Inner)`, `component={Inner}`) count as instantiation alongside `<Name/>`.
+- `rules-of-hooks`: a factory-named function (`init` / `create*` / `make*` / `build*`) outside any component or hook whose own scope issues several hook calls is treated as a custom hook / factory body even though its name breaks the `useXxx` / PascalCase convention (Solid→React ports use these shapes); this escape also covers the React 19 `use()` hook. A `use`-prefixed callee that resolves to a local hook-free function (e.g. ajv's `useKeyword`) is not treated as a React hook.
+- `exhaustive-deps`: a zero-arg accessor call (`foo()`) listed in the deps array now matches the captured accessor instead of being dropped as a complex dependency, and its callee resolves for the unstable-function-dep check; a computed callee (`items[index]()`) stays a complex dependency, and an unused zero-arg call dep (`Date.now()`) is reported as a complex expression instead of a misleading unnecessary-dependency message.
+- `jsx-no-script-url`: the `javascript:` match is anchored to the URL start, so an ordinary `https:` link that merely contains `JavaScript:` deeper in its path is not flagged.
+- `jsx-no-comment-textnodes`: an interpolated `//` separator glyph (`{used} // {total} GB`) — including one with a literal right side (`{used} // 512 GB`) — is no longer mistaken for a `// comment`.
+- `no-string-false-on-boolean-attribute`: custom elements (hyphenated tag names) own their attribute semantics and are skipped.
+- `void-dom-elements-no-children`, `no-danger-with-children`: whitespace-with-newline text, `{/* comment */}`, and `{undefined}` / `{null}` / `{void 0}` no longer count as meaningful children; both rules also ignore nullish positional children in `createElement` (`createElement("img", props, null)`). `no-danger-with-children` still reports when two or more children survive the JSX transform, since React's `props.children != null` conflict guard sees the resulting array even when every entry is nullish.
+- `no-unknown-property`: `transform-origin` is allowed on every transformable SVG element (including `a`, `defs`, gradients, and `stop`), not just `<rect>`.
+- `no-prevent-default`: an href-less `<a>` (anchor-as-button) is not a dead link, and an anchor whose handler performs its own navigation after `preventDefault()` (router push, `location.href` assignment, `window.open`) is custom SPA navigation, not a dead link.
+- `jsx-no-jsx-as-prop`: `indicator`, `decoration`, and `*Children` props (antd `checkedChildren` and friends) are recognized as slot props.
+- dumi doc trees (`/.dumi/`) are treated as non-production files, so demo/docs code inside them is skipped by the rules that skip test-like files.

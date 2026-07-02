@@ -1,8 +1,6 @@
-import {
-  componentOrHookDisplayNameForFunction,
-  nearestEnclosingFunction,
-} from "./component-or-hook-display-name.js";
+import { componentOrHookDisplayNameForFunction } from "./component-or-hook-display-name.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { findEnclosingFunction } from "./find-enclosing-function.js";
 import { doesFunctionReturnsObjectLiteral } from "./function-returns-object-literal.js";
 import { isReactHookName } from "./is-react-hook-name.js";
 import type { ScopeAnalysis, ScopeDescriptor } from "../semantic/scope-analysis.js";
@@ -30,7 +28,7 @@ export const enclosingComponentOrHookScope = (
   startNode: EsTreeNode,
   ownScopeFor: ScopeAnalysis["ownScopeFor"],
 ): EnclosingComponentInfo | null => {
-  const functionNode = nearestEnclosingFunction(startNode);
+  const functionNode = findEnclosingFunction(startNode);
   if (!functionNode) return null;
   const displayName = componentOrHookDisplayNameForFunction(functionNode);
   if (!displayName) return null;

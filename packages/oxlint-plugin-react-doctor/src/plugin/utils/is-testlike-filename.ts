@@ -1,5 +1,6 @@
 // Directory names that mark a file as part of a test / fixture /
-// Storybook / Cypress / example surface, regardless of the file's own suffix.
+// Storybook / Cypress / docs-site (`.dumi`) / example surface, regardless
+// of the file's own suffix.
 const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/test/",
   "/tests/",
@@ -11,6 +12,7 @@ const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/mocks/",
   "/cypress/",
   "/.storybook/",
+  "/.dumi/",
   "/stories/",
   "/__stories__/",
   "/playground/",
@@ -186,6 +188,13 @@ const SOURCE_ROOT_SEGMENTS: ReadonlyArray<string> = [
   "/client/",
 ];
 
+// Dot-prefixed directories (`.storybook/`, `.dumi/`) are tool-owned and
+// never production code, even when they wrap source-root-looking layouts
+// like `.dumi/pages/.../components/...` — so they're checked against the
+// FULL path, before the source-root scoping below cuts them off.
+const DOT_PREFIXED_NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> =
+  NON_PRODUCTION_PATH_SEGMENTS.filter((segment) => segment.startsWith("/."));
+
 const sliceBelowSourceRoot = (filename: string): string => {
   let cutAt = -1;
   for (const segment of SOURCE_ROOT_SEGMENTS) {
@@ -208,6 +217,13 @@ export const isTestlikeFilename = (rawFilename: string | undefined): boolean => 
   for (const suffix of NON_PRODUCTION_FILENAME_SUFFIXES) {
     if (basename.includes(suffix)) return true;
   }
+  // HACK: root a relative path so a filename that STARTS with a
+  // dot-directory (`.dumi/pages/index.tsx`) still matches the
+  // slash-prefixed `/.dumi/` segment.
+  const rootedFilename = filename.startsWith("/") ? filename : `/${filename}`;
+  for (const dotDirectorySegment of DOT_PREFIXED_NON_PRODUCTION_PATH_SEGMENTS) {
+    if (rootedFilename.includes(dotDirectorySegment)) return true;
+  }
   // The PATH-segment check scopes itself to "below the source root":
   // for `tests/fixtures/proj/src/app/state-issues.tsx`, it only sees
   // `/src/app/state-issues.tsx` — so the OUTER `/tests/` + `/fixtures/`
@@ -215,9 +231,14 @@ export const isTestlikeFilename = (rawFilename: string | undefined): boolean => 
   // INSIDE the fixture project. Critical for any test runner that
   // builds a fake project under a test directory to assert rule
   // behaviour.
+  // Dot-directories (`/.storybook/`, `/.dumi/`) are tooling/docs surfaces
+  // that can never BE a source root, yet often CONTAIN one (`.dumi/pages/
+  // index/components/Group.tsx`) — so they're matched against the full
+  // path, before the source-root cut hides them.
   const scopedFilename = sliceBelowSourceRoot(filename);
   for (const segment of NON_PRODUCTION_PATH_SEGMENTS) {
-    if (scopedFilename.includes(segment)) return true;
+    const haystack = segment.startsWith("/.") ? filename : scopedFilename;
+    if (haystack.includes(segment)) return true;
   }
   return false;
 };

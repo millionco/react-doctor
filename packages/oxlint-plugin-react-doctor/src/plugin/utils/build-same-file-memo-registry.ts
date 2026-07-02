@@ -14,14 +14,14 @@ export type MemoStatus = "memoised" | "not-memoised" | "unknown";
 // `React.forwardRef` are deliberately excluded — they forward the ref
 // but don't skip re-renders when props haven't changed.
 // `memo(forwardRef(fn))` is still detected because the outermost call
-// is `memo`.
+// is `memo`. `lazy` / `React.lazy` are also excluded — `lazy` only
+// code-splits; the resulting component re-renders on every parent
+// render like a plain component and performs NO props-equality bailout.
 const HOC_NAMES_FOR_MEMOISATION: ReadonlySet<string> = new Set([
   "memo",
   "React.memo",
   "observer", // MobX
   "observable", // legend-state
-  "lazy",
-  "React.lazy",
   "withTracking",
 ]);
 

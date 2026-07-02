@@ -30,16 +30,16 @@ const deriveStateVariableName = (setterName: string): string | null => {
 // stable but the closed-over state is fresh on every dep-driven recreation.
 // Treating them as deferred caused false positives on memoized sync
 // handlers. The actual deferred wrappers (useEffect / useLayoutEffect /
-// useInsertionEffect / setTimeout / .then(...) / addEventListener / …)
-// remain in the list. `debounce` / `throttle` wrappers ARE deferred:
-// the wrapped callback runs after a delay, long after the closure was
-// created, so the closed-over state can be stale by the time it fires.
+// useInsertionEffect / setTimeout / .then(...) / addEventListener /
+// debounce / throttle / …) remain in the list. `debounce`/`throttle`
+// wrappers (lodash-style) run the closure after a delay, past later
+// renders, so their captured state goes stale exactly like setTimeout.
 const DEFERRED_EXECUTION_CALLEE_NAMES: ReadonlySet<string> = new Set([
-  "debounce",
-  "throttle",
   "setTimeout",
   "setInterval",
   "setImmediate",
+  "debounce",
+  "throttle",
   "queueMicrotask",
   "requestAnimationFrame",
   "requestIdleCallback",
@@ -160,12 +160,17 @@ export const rerenderFunctionalSetstate = defineRule({
       // the derived state variable: `setX([...x, ...])` or
       // `setX({ ...x, key: value })`.
       //
-      // GATE: only flag when the call site is inside a deferred-execution
-      // context (setTimeout, .then(), addEventListener, useEffect, …).
-      // Synchronous render-path handlers (`onClick`, `onChange`) close
-      // over fresh state every render — no stale-closure risk there.
-      const spreadIsInDeferredContext = isInsideDeferredCallback(node);
-      if (!spreadIsInDeferredContext) return;
+      // GATE (spread shapes only): a spread merge is flagged only when
+      // the call site is inside a deferred-execution context (setTimeout,
+      // .then(), addEventListener, useEffect, debounce, …) where the
+      // closure survives past later renders and the captured state goes
+      // stale. Synchronous render-path handlers (`onClick={() =>
+      // setX({...x, …})}`) close over fresh state every render. The
+      // arithmetic / update shapes above stay ungated: `setPage(page - 1)`
+      // in a sync handler still loses updates when events batch before the
+      // next render (double-click), so the functional form is always the
+      // fix there.
+      if (!isInsideDeferredCallback(node)) return;
       if (expectedStateName && isNodeOfType(argument, "ArrayExpression")) {
         const spreadsState = (argument.elements ?? []).some(
           (element: EsTreeNode | null) =>

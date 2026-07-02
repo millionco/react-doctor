@@ -34,6 +34,16 @@ const findEnclosingSameTag = (openingElement: EsTreeNode, tagName: string): EsTr
   if (!owningElement) return null;
   let ancestor: EsTreeNode | null | undefined = owningElement.parent;
   while (ancestor) {
+    // An interactive element passed as a PROP (`<button trigger={<button/>} />`)
+    // isn't nested inside the host element, so stop at the attribute
+    // boundary before treating the host's same-tag element as an ancestor.
+    // The explicit `children` prop is the one exception — React renders
+    // `<button children={<button/>} />` as a real DOM child, so keep walking.
+    if (isNodeOfType(ancestor, "JSXAttribute")) {
+      const isExplicitChildrenProp =
+        isNodeOfType(ancestor.name, "JSXIdentifier") && ancestor.name.name === "children";
+      if (!isExplicitChildrenProp) return null;
+    }
     if (isJsxElementWithTagName(ancestor, tagName)) return ancestor;
     ancestor = ancestor.parent ?? null;
   }

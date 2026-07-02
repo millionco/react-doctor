@@ -124,17 +124,6 @@ const Component = () => {
     expectFlaggedApiNames(`_react.useMemo(() => 1, []);`, ["useMemo"]);
   });
 
-  it("flags `React.memo(Component, areEqual)` with custom comparator", () => {
-    expectFlaggedApiNames(
-      `import React from "react";
-const Inner = ({ value }) => <span>{value}</span>;
-const areEqual = (prev, next) => prev.value === next.value;
-const Wrapped = React.memo(Inner, areEqual);
-export default Wrapped;`,
-      ["memo()"],
-    );
-  });
-
   it("emits one diagnostic per manual-memoization call in the file", () => {
     expectDiagnosticCount(
       `import { memo, useCallback, useMemo } from "react";
@@ -304,6 +293,19 @@ export { created };`,
     expectDiagnosticCount(
       `const cached = Reactosaurus.useMemo(() => 1, []);
 export { cached };`,
+      0,
+    );
+  });
+
+  it("does not flag `React.memo(Component, areEqual)` with a custom comparator", () => {
+    // A bespoke comparator encodes equality the compiler can't replicate,
+    // so the memo() is not redundant.
+    expectDiagnosticCount(
+      `import React from "react";
+const Inner = ({ value }) => <span>{value}</span>;
+const areEqual = (prev, next) => prev.value === next.value;
+const Wrapped = React.memo(Inner, areEqual);
+export default Wrapped;`,
       0,
     );
   });

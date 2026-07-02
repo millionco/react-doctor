@@ -1,3 +1,4 @@
+import { HTML_TAGS } from "../../constants/html-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
@@ -6,8 +7,16 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const ROLE_DIALOG_VALUES = new Set(["dialog", "alertdialog"]);
 
-const ROLE_DIALOG_MESSAGE =
+// `role="dialog"` PLUS a modal signal (`aria-modal`): the author is
+// hand-rolling a modal, so the focus-trap/Escape/backdrop pitch applies.
+const ROLE_DIALOG_MODAL_MESSAGE =
   'Keyboard users can tab out of this `role="dialog"` modal because it has no built-in focus trapping, so use the native `<dialog>`, which gives you focus trapping, `Escape` to close, and the backdrop for free.';
+
+// `role="dialog"` WITHOUT a modal signal is a legitimate non-modal
+// dialog, so don't claim it traps focus — just point at the native
+// `<dialog>`, which exposes the role and gives `.show()`/`.showModal()`.
+const ROLE_DIALOG_NONMODAL_MESSAGE =
+  'Screen reader users get native dialog semantics for free from the HTML `<dialog>` element, so swap this `role="dialog"` element for `<dialog>` and open it with `dialog.show()` (non-modal) or `dialog.showModal()` (modal).';
 
 const ARIA_MODAL_MESSAGE =
   'Keyboard users can tab out of this modal because `aria-modal="true"` only hints to screen readers without trapping focus or blocking the page, so use the native `<dialog>` with `dialog.showModal()` instead.';
@@ -75,6 +84,10 @@ export const preferHtmlDialog = defineRule({
       // know whether it itself renders a `<dialog>` underneath. Static
       // checks stay on lowercase host elements.
       if (tagName.length === 0 || tagName[0] !== tagName[0].toLowerCase()) return;
+      // Custom web components (`<ui-modal>`) are opaque host elements we
+      // can't reason about — only lint real HTML tags, matching the
+      // sibling `scope` / `no-static-element-interactions` rules.
+      if (!HTML_TAGS.has(tagName)) return;
 
       // Per-attribute reporting: when both `role` and `aria-modal` are
       // on the same element, the role is the more direct signal of a
@@ -84,7 +97,12 @@ export const preferHtmlDialog = defineRule({
       if (roleAttribute) {
         const roleValue = getJsxPropStringValue(roleAttribute);
         if (roleValue !== null && ROLE_DIALOG_VALUES.has(roleValue)) {
-          context.report({ node: roleAttribute, message: ROLE_DIALOG_MESSAGE });
+          const ariaModalAttribute = findJsxAttribute(node.attributes, "aria-modal");
+          const isModal = ariaModalAttribute ? isAriaModalTrue(ariaModalAttribute) : false;
+          context.report({
+            node: roleAttribute,
+            message: isModal ? ROLE_DIALOG_MODAL_MESSAGE : ROLE_DIALOG_NONMODAL_MESSAGE,
+          });
           return;
         }
       }

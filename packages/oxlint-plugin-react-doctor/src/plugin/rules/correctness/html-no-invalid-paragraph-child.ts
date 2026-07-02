@@ -81,6 +81,16 @@ const findEnclosingParagraph = (openingElement: EsTreeNode): EsTreeNode | null =
   if (!owningElement) return null;
   let ancestor: EsTreeNode | null | undefined = owningElement.parent;
   while (ancestor) {
+    // An element passed as a PROP (`<Tooltip overlay={<ul/>} />`) is not
+    // a DOM child of any enclosing `<p>`, so stop at the attribute
+    // boundary before mistaking the host element's `<p>` for an ancestor.
+    // The explicit `children` prop is the one exception — React renders
+    // `<p children={<ul/>} />` as a real DOM child, so keep walking.
+    if (isNodeOfType(ancestor, "JSXAttribute")) {
+      const isExplicitChildrenProp =
+        isNodeOfType(ancestor.name, "JSXIdentifier") && ancestor.name.name === "children";
+      if (!isExplicitChildrenProp) return null;
+    }
     if (isParagraphElement(ancestor)) return ancestor;
     ancestor = ancestor.parent ?? null;
   }

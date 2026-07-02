@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
@@ -17,9 +18,11 @@ export const rnPreferReanimated = defineRule({
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       if (node.source?.value !== "react-native") return;
+      if (isTypeOnlyImport(node)) return;
 
       for (const specifier of node.specifiers ?? []) {
         if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
+        if (specifier.importKind === "type") continue;
         const importedName = getImportedName(specifier);
         if (!importedName || !JS_THREAD_ANIMATION_IMPORTS.has(importedName)) continue;
 

@@ -1,5 +1,6 @@
 // Directory names that mark a file as part of a test / fixture /
-// Storybook / Cypress / example surface, regardless of the file's own suffix.
+// Storybook / Cypress / docs-site (`.dumi`) / example surface, regardless
+// of the file's own suffix.
 const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/test/",
   "/tests/",
@@ -187,6 +188,13 @@ const SOURCE_ROOT_SEGMENTS: ReadonlyArray<string> = [
   "/client/",
 ];
 
+// Dot-prefixed directories (`.storybook/`, `.dumi/`) are tool-owned and
+// never production code, even when they wrap source-root-looking layouts
+// like `.dumi/pages/.../components/...` — so they're checked against the
+// FULL path, before the source-root scoping below cuts them off.
+const DOT_PREFIXED_NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> =
+  NON_PRODUCTION_PATH_SEGMENTS.filter((segment) => segment.startsWith("/."));
+
 const sliceBelowSourceRoot = (filename: string): string => {
   let cutAt = -1;
   for (const segment of SOURCE_ROOT_SEGMENTS) {
@@ -208,6 +216,9 @@ export const isTestlikeFilename = (rawFilename: string | undefined): boolean => 
   // path context.
   for (const suffix of NON_PRODUCTION_FILENAME_SUFFIXES) {
     if (basename.includes(suffix)) return true;
+  }
+  for (const dotDirectorySegment of DOT_PREFIXED_NON_PRODUCTION_PATH_SEGMENTS) {
+    if (filename.includes(dotDirectorySegment)) return true;
   }
   // The PATH-segment check scopes itself to "below the source root":
   // for `tests/fixtures/proj/src/app/state-issues.tsx`, it only sees

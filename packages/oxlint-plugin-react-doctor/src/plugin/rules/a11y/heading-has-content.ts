@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { objectHasAccessibleChild } from "../../utils/object-has-accessible-child.js";
@@ -49,6 +50,9 @@ export const headingHasContent = defineRule({
           if (objectHasAccessibleChild(parent, context.settings)) return;
         }
         if (isHiddenFromScreenReader(node, context.settings)) return;
+        for (const attribute of ["aria-label", "aria-labelledby"]) {
+          if (hasJsxPropIgnoreCase(node.attributes, attribute)) return;
+        }
         context.report({ node, message: MESSAGE });
       },
     };

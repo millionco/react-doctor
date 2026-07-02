@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { readDirectoryEntries } from "./project-info/index.js";
 import { IGNORED_DIRECTORIES } from "./constants.js";
+import { hasIgnoredPathSegment } from "./utils/has-ignored-path-segment.js";
 import { isLintableSourceFile } from "./utils/is-lintable-source-file.js";
 import { messageFromUnknown } from "./utils/message-from-unknown.js";
 import { Git } from "./services/git.js";
@@ -35,7 +36,10 @@ const findFilesWithDisableDirectivesViaGit = async (
 
   return grepResult.stdout
     .split("\n")
-    .filter((filePath) => filePath.length > 0 && isLintableSourceFile(filePath));
+    .filter(
+      (filePath) =>
+        filePath.length > 0 && isLintableSourceFile(filePath) && !hasIgnoredPathSegment(filePath),
+    );
 };
 
 // HACK: filesystem fallback for non-git projects (and for cases where

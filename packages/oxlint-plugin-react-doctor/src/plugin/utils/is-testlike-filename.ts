@@ -11,6 +11,7 @@ const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/mocks/",
   "/cypress/",
   "/.storybook/",
+  "/.dumi/",
   "/stories/",
   "/__stories__/",
   "/playground/",
@@ -215,9 +216,14 @@ export const isTestlikeFilename = (rawFilename: string | undefined): boolean => 
   // INSIDE the fixture project. Critical for any test runner that
   // builds a fake project under a test directory to assert rule
   // behaviour.
+  // Dot-directories (`/.storybook/`, `/.dumi/`) are tooling/docs surfaces
+  // that can never BE a source root, yet often CONTAIN one (`.dumi/pages/
+  // index/components/Group.tsx`) — so they're matched against the full
+  // path, before the source-root cut hides them.
   const scopedFilename = sliceBelowSourceRoot(filename);
   for (const segment of NON_PRODUCTION_PATH_SEGMENTS) {
-    if (scopedFilename.includes(segment)) return true;
+    const haystack = segment.startsWith("/.") ? filename : scopedFilename;
+    if (haystack.includes(segment)) return true;
   }
   return false;
 };

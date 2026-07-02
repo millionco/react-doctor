@@ -116,13 +116,20 @@ const NAMESPACED_API_PROPERTY_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 // Walks `X.Y.Z(...)` style chains looking for an intermediate property
-// whose name is in NAMESPACED_API_PROPERTY_NAMES. If found, this is a
-// namespace-method call, not a parent-callback data hand-back.
+// — or the base receiver identifier — whose name is in
+// NAMESPACED_API_PROPERTY_NAMES. If found, this is a namespace-method
+// call, not a parent-callback data hand-back: a destructured `router`
+// prop calling `router.replace(...)` is the same redirect API as
+// `props.router.replace(...)`. A bare identifier callee never matches
+// (`dispatch(x)` / `onChange(x)` stay identifier-form parent callbacks).
 export const isNamespacedApiCallee = (callee: EsTreeNode): boolean => {
   let cursor: EsTreeNode | null | undefined = callee;
   let hops = 0;
   while (cursor && hops < 16) {
     hops += 1;
+    if (isNodeOfType(cursor, "Identifier")) {
+      return hops > 1 && NAMESPACED_API_PROPERTY_NAMES.has(cursor.name);
+    }
     if (!isNodeOfType(cursor, "MemberExpression")) return false;
     if (!cursor.computed && isNodeOfType(cursor.property, "Identifier")) {
       if (NAMESPACED_API_PROPERTY_NAMES.has(cursor.property.name)) return true;

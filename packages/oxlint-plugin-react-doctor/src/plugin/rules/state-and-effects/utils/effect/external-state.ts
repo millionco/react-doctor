@@ -52,7 +52,9 @@ const argumentsInclude = (
 // in a position that runs it LATER, off the synchronous path? Covers the
 // argument slot of a deferring call (`addEventListener('x', expr)`,
 // `setTimeout(expr)`), an observer / promise constructor, and assignment to
-// an `on*` event-handler property (`el.onmessage = expr`, `{ onmessage: expr }`).
+// an `on*` event-handler property (`el.onmessage = expr`). An `onX:` key in a
+// plain options object is deliberately NOT deferred — config-object callbacks
+// (`{ onDestroyed: handler }`) routinely fire on the synchronous React path.
 const isDeferredCallbackPosition = (expression: EsTreeNode): boolean => {
   const parent = parentOf(expression);
   if (!parent) return false;
@@ -71,14 +73,6 @@ const isDeferredCallbackPosition = (expression: EsTreeNode): boolean => {
     isNodeOfType(parent.left, "MemberExpression") &&
     isNodeOfType(parent.left.property, "Identifier") &&
     parent.left.property.name.startsWith("on")
-  ) {
-    return true;
-  }
-  if (
-    isNodeOfType(parent, "Property") &&
-    parent.value === expression &&
-    isNodeOfType(parent.key, "Identifier") &&
-    parent.key.name.startsWith("on")
   ) {
     return true;
   }
@@ -134,11 +128,12 @@ const isNamedHandlerUsedAsDeferredCallback = (
   return false;
 };
 
-// Is `fn` itself a "deferred" callback — async, handed to a deferring API
-// inline, or a named handler registered with one? These never run
-// synchronously during render or a React event.
+// Is `fn` itself a "deferred" callback — handed to a deferring API inline, or
+// a named handler registered with one? These never run synchronously during
+// render or a React event. An `async` function is deliberately NOT deferred
+// by itself: an async onClick handler is still a React event handler, so the
+// "fold the work into the handler" advice fully applies.
 const isDeferredCallbackFunction = (analysis: ProgramAnalysis, fn: EsTreeNode): boolean => {
-  if ((fn as { async?: boolean }).async) return true;
   if (isDeferredCallbackPosition(fn)) return true;
   return isNamedHandlerUsedAsDeferredCallback(analysis, fn);
 };
@@ -173,14 +168,16 @@ const findUseStateDeclarator = (ref: Reference): EsTreeNode | null => {
 // declarator — the effect-family rules query the same state from many refs.
 const declaratorToExternallyDriven = new WeakMap<EsTreeNode, boolean>();
 
-// A `useState` value is "externally driven" when its setter is ever called
-// from inside a deferred callback (a timer / listener / observer / promise /
-// subscription / async function). Effects that merely REACT to such state
+// A `useState` value is "externally driven" when its setter is called
+// EXCLUSIVELY from inside deferred callbacks (timers / listeners / observers /
+// promises / subscriptions). Effects that merely REACT to such state
 // (`useEffect(() => notify(state), [state])`) are not the
 // "you-might-not-need-an-effect" anti-pattern: there is no React event
-// handler to fold the work into, because the state changes in response to an
-// imperative browser event. The effect-family rules consult this to suppress
-// those false positives.
+// handler to fold the work into, because the state changes only in response
+// to an imperative browser event. Mixed origin — the same setter also called
+// from a plain handler or render path — keeps the state reportable: the
+// handler-driven updates DO have a handler to fold into. The effect-family
+// rules consult this to suppress the exclusively-external false positives.
 export const isExternallyDrivenState = (analysis: ProgramAnalysis, ref: Reference): boolean => {
   const declarator = findUseStateDeclarator(ref);
   if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
@@ -221,12 +218,14 @@ const computeExternallyDriven = (
   }
   if (!setterVariable) return false;
 
+  let hasDeferredCallSite = false;
   for (const setterReference of setterVariable.references) {
     const identifier = setterReference.identifier as unknown as EsTreeNode;
     const parent = parentOf(identifier);
     if (!parent || !isNodeOfType(parent, "CallExpression")) continue;
     if (parent.callee !== (identifier as unknown)) continue;
-    if (isInsideDeferredCallback(analysis, parent, declarator)) return true;
+    if (!isInsideDeferredCallback(analysis, parent, declarator)) return false;
+    hasDeferredCallSite = true;
   }
-  return false;
+  return hasDeferredCallSite;
 };

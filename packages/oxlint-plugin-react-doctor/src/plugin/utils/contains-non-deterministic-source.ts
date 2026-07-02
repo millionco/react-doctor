@@ -1,4 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
 
@@ -27,11 +28,14 @@ const NON_DETERMINISTIC_ID_GENERATOR_NAMES: ReadonlySet<string> = new Set([
 
 // True when the subtree invokes any non-deterministic source. Scans the whole
 // subtree because the value often flows through a local (`const id = nanoid();
-// setId(id)`) rather than being the direct setter argument.
+// setId(id)`) rather than being the direct setter argument — but never
+// descends into function expressions: a stored callback
+// (`setCallback(() => Date.now())`) is itself a deterministic value.
 export const containsNonDeterministicSource = (root: EsTreeNode): boolean => {
   let found = false;
   walkAst(root, (child: EsTreeNode): boolean | void => {
     if (found) return false;
+    if (isFunctionLike(child)) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
     const callee = child.callee;
     if (

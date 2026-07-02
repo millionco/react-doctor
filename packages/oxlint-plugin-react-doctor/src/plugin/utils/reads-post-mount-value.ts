@@ -1,4 +1,6 @@
 import type { EsTreeNode } from "./es-tree-node.js";
+import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { findProgramRoot } from "./find-program-root.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
 
@@ -9,7 +11,24 @@ import { walkAst } from "./walk-ast.js";
 // absent / inconsistent under SSR. Any state seeded from one of these is
 // legitimately deferred to a mount effect — it is NOT a "you might not need an
 // effect" smell, so the derived/adjust/init rules must not fire on it.
-export const POST_MOUNT_MEMBER_NAMES: ReadonlySet<string> = new Set([
+//
+// Unambiguous DOM API method names: these never appear on plain data objects,
+// so a bare name match is safe.
+const DOM_QUERY_MEMBER_NAMES: ReadonlySet<string> = new Set([
+  "getBoundingClientRect",
+  "getComputedStyle",
+  "getElementById",
+  "querySelector",
+  "querySelectorAll",
+  "getElementsByClassName",
+  "getElementsByTagName",
+  "matchMedia",
+]);
+
+// Ambiguous property names: `.current` and the layout measures also occur on
+// plain data objects (`pagination.current`, a swiper API's `offsetLeft`), so
+// they only count as a post-mount read when the receiver is ref-like.
+const LAYOUT_MEASUREMENT_MEMBER_NAMES: ReadonlySet<string> = new Set([
   "current",
   "scrollWidth",
   "clientWidth",
@@ -23,17 +42,9 @@ export const POST_MOUNT_MEMBER_NAMES: ReadonlySet<string> = new Set([
   "offsetLeft",
   "innerWidth",
   "innerHeight",
-  "getBoundingClientRect",
-  "getComputedStyle",
-  "getElementById",
-  "querySelector",
-  "querySelectorAll",
-  "getElementsByClassName",
-  "getElementsByTagName",
-  "matchMedia",
 ]);
 
-export const POST_MOUNT_GLOBAL_NAMES: ReadonlySet<string> = new Set([
+const POST_MOUNT_GLOBAL_NAMES: ReadonlySet<string> = new Set([
   "document",
   "window",
   "localStorage",
@@ -41,27 +52,102 @@ export const POST_MOUNT_GLOBAL_NAMES: ReadonlySet<string> = new Set([
   "navigator",
 ]);
 
-// The post-mount read is often not the setter argument itself — the effect
-// reads `localStorage` / `matchMedia` / a `ref.current` / a DOM measurement
-// into a local variable (or a helper / wrapper function) and then hands that
-// derived value onward (e.g. `const saved = read(KEY); setStore(saved)`,
-// `updateThumb()` measuring `viewportRef.current`, `setMode(scheme())` reading
-// `document`). Scanning only direct arguments misses all of those, so we scan
-// the whole subtree: if it touches any post-mount source anywhere, the values
-// it produces are not render-time-knowable.
-export const readsPostMountValue = (root: EsTreeNode): boolean => {
+const REF_FACTORY_CALLEE_NAMES: ReadonlySet<string> = new Set(["useRef", "createRef"]);
+
+const hasRefLikeName = (name: string): boolean =>
+  name === "ref" || name.endsWith("Ref") || name.endsWith("ref");
+
+const isRefFactoryInitializer = (init: EsTreeNode | null | undefined): boolean => {
+  if (!init || !isNodeOfType(init, "CallExpression")) return false;
+  const callee = init.callee;
+  if (isNodeOfType(callee, "Identifier")) return REF_FACTORY_CALLEE_NAMES.has(callee.name);
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    return REF_FACTORY_CALLEE_NAMES.has(callee.property.name);
+  }
+  return false;
+};
+
+const resolvesToRefFactoryCall = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
+  const root = findProgramRoot(identifier);
+  if (!root) return false;
   let found = false;
   walkAst(root, (child: EsTreeNode): boolean | void => {
     if (found) return false;
     if (
-      isNodeOfType(child, "MemberExpression") &&
-      isNodeOfType(child.property, "Identifier") &&
-      POST_MOUNT_MEMBER_NAMES.has(child.property.name)
+      isNodeOfType(child, "VariableDeclarator") &&
+      isNodeOfType(child.id, "Identifier") &&
+      child.id.name === identifier.name &&
+      isRefFactoryInitializer(child.init as EsTreeNode | null)
     ) {
       found = true;
       return false;
     }
-    if (isNodeOfType(child, "Identifier") && POST_MOUNT_GLOBAL_NAMES.has(child.name)) {
+  });
+  return found;
+};
+
+const isRefLikeReceiver = (receiver: EsTreeNode | null | undefined): boolean => {
+  if (!receiver) return false;
+  if (isNodeOfType(receiver, "ChainExpression")) {
+    return isRefLikeReceiver(receiver.expression as EsTreeNode);
+  }
+  if (isNodeOfType(receiver, "TSNonNullExpression")) {
+    return isRefLikeReceiver(receiver.expression as EsTreeNode);
+  }
+  if (isNodeOfType(receiver, "Identifier")) {
+    return hasRefLikeName(receiver.name) || resolvesToRefFactoryCall(receiver);
+  }
+  if (isNodeOfType(receiver, "MemberExpression") && isNodeOfType(receiver.property, "Identifier")) {
+    if (hasRefLikeName(receiver.property.name)) return true;
+    if (receiver.property.name === "current")
+      return isRefLikeReceiver(receiver.object as EsTreeNode);
+  }
+  return false;
+};
+
+// A member read that can only be answered by the live DOM: an unambiguous DOM
+// query API, or `.current` / a layout measure on a ref-like receiver
+// (`viewportRef.current`, `ref.current.offsetWidth`). Plain-data lookalikes
+// (`pagination.current`) do NOT match.
+export const isPostMountMemberRead = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "MemberExpression") || !isNodeOfType(node.property, "Identifier")) {
+    return false;
+  }
+  const memberName = node.property.name;
+  if (DOM_QUERY_MEMBER_NAMES.has(memberName)) return true;
+  if (!LAYOUT_MEASUREMENT_MEMBER_NAMES.has(memberName)) return false;
+  return isRefLikeReceiver(node.object as EsTreeNode);
+};
+
+const isPropertyNamePosition = (identifier: EsTreeNode): boolean => {
+  const parent = identifier.parent;
+  if (!parent) return false;
+  if (isNodeOfType(parent, "MemberExpression")) {
+    return parent.property === identifier && !parent.computed;
+  }
+  if (isNodeOfType(parent, "Property")) {
+    return parent.key === identifier && !parent.computed;
+  }
+  return false;
+};
+
+// A read of a browser global itself — NOT a same-named property on a data
+// object (`data.document`, `config.window`).
+export const isPostMountGlobalRead = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "Identifier") &&
+  POST_MOUNT_GLOBAL_NAMES.has(node.name) &&
+  !isPropertyNamePosition(node);
+
+// The post-mount read is often not the setter argument itself — the effect
+// reads a browser global / a `ref.current` / a DOM measurement into a local
+// variable and hands the derived value onward. Callers therefore scan the
+// subtree they care about (a setter call, an argument): if it touches any
+// post-mount source, the values it produces are not render-time-knowable.
+export const readsPostMountValue = (root: EsTreeNode): boolean => {
+  let found = false;
+  walkAst(root, (child: EsTreeNode): boolean | void => {
+    if (found) return false;
+    if (isPostMountMemberRead(child) || isPostMountGlobalRead(child)) {
       found = true;
       return false;
     }

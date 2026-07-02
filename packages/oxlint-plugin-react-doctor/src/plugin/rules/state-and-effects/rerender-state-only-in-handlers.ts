@@ -42,8 +42,97 @@ const collectDependencyArrayNames = (componentBody: EsTreeNode): Set<string> => 
   return dependencyNames;
 };
 
-// Names referenced inside an EFFECT hook's callback body (its render-time
-// arguments — the dependency array — are NOT included).
+const isPureEarlyExitConsequent = (consequent: EsTreeNode): boolean => {
+  if (
+    isNodeOfType(consequent, "ReturnStatement") ||
+    isNodeOfType(consequent, "ContinueStatement")
+  ) {
+    const returnArgument = isNodeOfType(consequent, "ReturnStatement") ? consequent.argument : null;
+    return (
+      !returnArgument || (isNodeOfType(returnArgument, "Literal") && returnArgument.value === null)
+    );
+  }
+  if (isNodeOfType(consequent, "BlockStatement")) {
+    const statements = consequent.body ?? [];
+    return statements.length === 1 && isPureEarlyExitConsequent(statements[0] as EsTreeNode);
+  }
+  return false;
+};
+
+// Counts occurrences of each candidate name inside an effect callback,
+// split by whether the occurrence sits in the TEST of an early-exit guard
+// (`if (!dirty) return;`). A name read ONLY in such guards gates the side
+// effect without consuming the value's content — it is a re-run trigger,
+// not a payload read.
+const countOccurrencesByGuardPosition = (
+  node: EsTreeNode,
+  candidateNames: ReadonlySet<string>,
+  insideGuardTest: boolean,
+  totals: Map<string, number>,
+  guardTestCounts: Map<string, number>,
+): void => {
+  if (!node || typeof node !== "object") return;
+  if (isNodeOfType(node, "Identifier") && candidateNames.has(node.name)) {
+    totals.set(node.name, (totals.get(node.name) ?? 0) + 1);
+    if (insideGuardTest) {
+      guardTestCounts.set(node.name, (guardTestCounts.get(node.name) ?? 0) + 1);
+    }
+  }
+  if (
+    isNodeOfType(node, "IfStatement") &&
+    !node.alternate &&
+    isPureEarlyExitConsequent(node.consequent as EsTreeNode)
+  ) {
+    countOccurrencesByGuardPosition(
+      node.test as EsTreeNode,
+      candidateNames,
+      true,
+      totals,
+      guardTestCounts,
+    );
+    countOccurrencesByGuardPosition(
+      node.consequent as EsTreeNode,
+      candidateNames,
+      insideGuardTest,
+      totals,
+      guardTestCounts,
+    );
+    return;
+  }
+  const record = node as unknown as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (key === "parent") continue;
+    const child = record[key];
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        if (item && typeof item === "object" && "type" in item) {
+          countOccurrencesByGuardPosition(
+            item as EsTreeNode,
+            candidateNames,
+            insideGuardTest,
+            totals,
+            guardTestCounts,
+          );
+        }
+      }
+    } else if (child && typeof child === "object" && "type" in child) {
+      countOccurrencesByGuardPosition(
+        child as EsTreeNode,
+        candidateNames,
+        insideGuardTest,
+        totals,
+        guardTestCounts,
+      );
+    }
+  }
+};
+
+// Names whose VALUE is consumed inside an EFFECT hook's callback body (its
+// render-time arguments — the dependency array — are NOT included). Reads
+// that only gate an early exit (`if (!dirty) return;`) do not count: the
+// guard needs the re-run, not the content, so the dep stays a pure trigger
+// (the debounced-save shape). A name read anywhere else in the callback
+// (`getEmojiPickerData(emojiData, …)`) is a payload read.
 const collectEffectCallbackReadNames = (componentBody: EsTreeNode): Set<string> => {
   const readNames = new Set<string>();
   walkAst(componentBody, (child: EsTreeNode) => {
@@ -56,12 +145,26 @@ const collectEffectCallbackReadNames = (componentBody: EsTreeNode): Set<string> 
     ) {
       return;
     }
-    for (const referenceName of collectScopedReferenceNames(
+    const scopedReferenceNames = collectScopedReferenceNames(
       effectCallback,
       createComponentBindingScope(),
       new Set(),
-    )) {
-      readNames.add(referenceName);
+    );
+    const totals = new Map<string, number>();
+    const guardTestCounts = new Map<string, number>();
+    countOccurrencesByGuardPosition(
+      effectCallback,
+      scopedReferenceNames,
+      false,
+      totals,
+      guardTestCounts,
+    );
+    for (const referenceName of scopedReferenceNames) {
+      const totalCount = totals.get(referenceName) ?? 0;
+      const guardOnlyCount = guardTestCounts.get(referenceName) ?? 0;
+      if (totalCount > guardOnlyCount || totalCount === 0) {
+        readNames.add(referenceName);
+      }
     }
   });
   return readNames;

@@ -231,4 +231,21 @@ describe("no-initialize-state — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("still flags a mount effect seeding state from scalar window size reads (react-transliterate bench shape)", () => {
+    const result = runRule(
+      noInitializeState,
+      `function Helper() {
+        const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
+        useEffect(() => {
+          const width = window.innerWidth;
+          const height = window.innerHeight;
+          setWindowSize({ width, height });
+        }, []);
+        return <div>{windowSize.width}</div>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

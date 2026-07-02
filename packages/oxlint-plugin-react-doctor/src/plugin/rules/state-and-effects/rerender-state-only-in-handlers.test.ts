@@ -76,7 +76,7 @@ describe("rerender-state-only-in-handlers", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags state echoed in an effect dep array when the effect also reads it", () => {
+  it("flags state echoed in an effect dep array when the effect reads its payload", () => {
     const result = runRule(
       rerenderStateOnlyInHandlers,
       `
@@ -84,9 +84,7 @@ describe("rerender-state-only-in-handlers", () => {
         const [dirty, setDirty] = useState(false);
         const onChange = () => setDirty(true);
         useEffect(() => {
-          if (!dirty) return;
-          const id = setTimeout(() => saveDraft(), 1000);
-          return () => clearTimeout(id);
+          reportDraftState(dirty);
         }, [dirty]);
         return <textarea onChange={onChange} />;
       }

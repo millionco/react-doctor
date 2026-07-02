@@ -44,6 +44,11 @@ const producesPlainStateValue = (expression: EsTreeNode): boolean => {
     return true;
   }
   if (isNullOrUndefinedExpression(unwrapped)) return true;
+  // Props are render data by convention (`useState(props.initialItems)`),
+  // so state seeded off the props bag stays tracked for in-place writes.
+  if (isNodeOfType(unwrapped, "MemberExpression") && getRootIdentifierName(unwrapped) === "props") {
+    return true;
+  }
   return isPlainDataProducerCall(unwrapped);
 };
 

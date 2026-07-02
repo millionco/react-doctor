@@ -3,8 +3,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
+import { isCallResultConsumedAsArgument } from "../../utils/is-call-result-consumed-as-argument.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
-import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import {
   DATA_SINK_METHOD_NAMES,
   STRING_READ_METHOD_NAMES,
@@ -12,6 +12,7 @@ import {
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getArgsUpstreamRefs, getCallExpr, isSynchronous } from "./utils/effect/ast.js";
+import { isExternallyDrivenFlagState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getEffectFn,
@@ -95,10 +96,13 @@ export const noPassLiveStateToParent = defineRule({
         if (!isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn)) continue;
         const callExpr = getCallExpr(ref);
         if (!callExpr) continue;
-        // Only a discarded `onSync(state)` hands state up to the parent. When
-        // the prop call's result flows somewhere (`setDisplay(format(amount))`)
-        // the prop is a pure transform consumed locally, not a parent push.
-        if (!isResultDiscardedCall(callExpr)) continue;
+        // When the prop call's result flows into another call's argument
+        // (`setDisplay(format(amount))`) the prop is a pure transform
+        // consumed locally, not a parent push. Any other position — a bare
+        // statement, `onSync && onSync(x)`, a concise arrow body, a promise
+        // chain receiver (`load().catch(...)`), an initializer — still hands
+        // live state up to the parent.
+        if (isCallResultConsumedAsArgument(callExpr)) continue;
 
         // Skip JS prototype / observer / promise methods — see
         // `no-pass-data-to-parent` for the full rationale — except when
@@ -128,6 +132,15 @@ export const noPassLiveStateToParent = defineRule({
           isState(analysis, argRef),
         );
         if (stateArgRefs.length === 0) continue;
+
+        // A flag set exclusively from literals inside deferred callbacks
+        // (`setSeen(true)` in an IntersectionObserver) is the child's own
+        // observation signal — there is no external payload the parent could
+        // own by lifting the subscription, so handing the flag up is not the
+        // live-state push this rule targets.
+        if (stateArgRefs.every((argRef) => isExternallyDrivenFlagState(analysis, argRef))) {
+          continue;
+        }
 
         context.report({
           node: callExpr,

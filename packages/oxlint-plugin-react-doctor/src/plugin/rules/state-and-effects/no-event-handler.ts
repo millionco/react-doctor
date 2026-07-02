@@ -161,8 +161,13 @@ const isControlledPropMirrorConsequent = (
 ): boolean => {
   const statements = getConsequentStatements(ifNode.consequent as EsTreeNode);
   if (statements.length === 0) return false;
+  const testRefs = getDownstreamRefs(analysis, ifNode.test as EsTreeNode);
+  // A pure mirror guard tests only the mirrored prop. A guard that ALSO
+  // reads other state (`!debouncing.current && searchValue === '' &&
+  // search !== ''`) is a reset state machine — real event work, not sync.
+  if (testRefs.some((ref) => isState(analysis, ref))) return false;
   const testedPropBindings = new Set<unknown>(
-    getDownstreamRefs(analysis, ifNode.test as EsTreeNode)
+    testRefs
       .filter((ref) => isProp(analysis, ref))
       .map((ref) => (ref as unknown as { resolved?: unknown }).resolved)
       .filter(Boolean),

@@ -190,32 +190,34 @@ export const isExternallyDrivenState = (analysis: ProgramAnalysis, ref: Referenc
   return result;
 };
 
-const computeExternallyDriven = (
+// Resolve the setter binding by the declarator it is defined at, not via
+// `ref.resolved.scope` — synthetic upstream refs don't always carry the
+// component scope, but the setter is always declared at the same
+// `useState` destructure as the state.
+const findSetterVariable = (
   analysis: ProgramAnalysis,
   declarator: EsTreeNodeOfType<"VariableDeclarator">,
-): boolean => {
-  if (!isNodeOfType(declarator.id, "ArrayPattern")) return false;
+): (typeof analysis.scopeManager.scopes)[number]["variables"][number] | null => {
+  if (!isNodeOfType(declarator.id, "ArrayPattern")) return null;
   const setterElement = declarator.id.elements?.[1];
-  if (!setterElement || !isNodeOfType(setterElement, "Identifier")) return false;
+  if (!setterElement || !isNodeOfType(setterElement, "Identifier")) return null;
   const setterName = setterElement.name;
-
-  // Resolve the setter binding by the declarator it is defined at, not via
-  // `ref.resolved.scope` — synthetic upstream refs don't always carry the
-  // component scope, but the setter is always declared at the same
-  // `useState` destructure as the state.
-  let setterVariable: (typeof analysis.scopeManager.scopes)[number]["variables"][number] | null =
-    null;
   for (const scope of analysis.scopeManager.scopes) {
     const match = scope.variables.find(
       (variable) =>
         variable.name === setterName &&
         variable.defs.some((def) => (def.node as unknown as EsTreeNode) === declarator),
     );
-    if (match) {
-      setterVariable = match;
-      break;
-    }
+    if (match) return match;
   }
+  return null;
+};
+
+const computeExternallyDriven = (
+  analysis: ProgramAnalysis,
+  declarator: EsTreeNodeOfType<"VariableDeclarator">,
+): boolean => {
+  const setterVariable = findSetterVariable(analysis, declarator);
   if (!setterVariable) return false;
 
   let hasDeferredCallSite = false;
@@ -228,4 +230,38 @@ const computeExternallyDriven = (
     hasDeferredCallSite = true;
   }
   return hasDeferredCallSite;
+};
+
+const isLiteralish = (node: EsTreeNode): boolean => {
+  if (isNodeOfType(node, "Literal")) return true;
+  if (isNodeOfType(node, "UnaryExpression")) return isLiteralish(node.argument as EsTreeNode);
+  return false;
+};
+
+// An externally-driven state that is a derived FLAG: every setter call
+// receives only literal values (`setSeen(true)` inside an
+// IntersectionObserver callback). Handing such a flag up to the parent is a
+// notification about the child's own imperative observation — there is no
+// live external payload the parent could own by lifting the subscription.
+// Contrast `setFrame(data)` inside a frame subscription: the state carries
+// the stream's payload, so the parent should own the subscription instead.
+export const isExternallyDrivenFlagState = (analysis: ProgramAnalysis, ref: Reference): boolean => {
+  if (!isExternallyDrivenState(analysis, ref)) return false;
+  const declarator = findUseStateDeclarator(ref);
+  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
+  const setterVariable = findSetterVariable(analysis, declarator);
+  if (!setterVariable) return false;
+  let didSeeSetterCall = false;
+  for (const setterReference of setterVariable.references) {
+    const identifier = setterReference.identifier as unknown as EsTreeNode;
+    const parent = parentOf(identifier);
+    if (!parent || !isNodeOfType(parent, "CallExpression")) continue;
+    if (parent.callee !== (identifier as unknown)) continue;
+    didSeeSetterCall = true;
+    const allArgumentsLiteral = (parent.arguments ?? []).every((argument) =>
+      isLiteralish(argument as EsTreeNode),
+    );
+    if (!allArgumentsLiteral) return false;
+  }
+  return didSeeSetterCall;
 };

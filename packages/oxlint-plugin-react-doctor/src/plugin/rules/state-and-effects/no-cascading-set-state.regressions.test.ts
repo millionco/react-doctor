@@ -34,7 +34,7 @@ describe("state-and-effects/no-cascading-set-state — regressions: bench plante
       };
     `);
     expect(result.diagnostics.length).toBeGreaterThan(0);
-    expect(result.diagnostics[0].message).toContain("3 setState calls");
+    expect(result.diagnostics[0].message).toContain("4 setState calls");
   });
 
   it("flags sequential early-return guard blocks whose setters sum past the threshold (openfootmanager MatchSimulation shape)", () => {
@@ -103,7 +103,7 @@ describe("state-and-effects/no-cascading-set-state — regressions: bench plante
 });
 
 describe("state-and-effects/no-cascading-set-state — regressions: FP-fix valid cases stay silent", () => {
-  it("does not sum setters inside a deferred listener callback when the effect sets no state synchronously", () => {
+  it("counts setters inside a variable-stored listener handler (stored handlers keep their call sites)", () => {
     const result = runTsx(`
       import { useEffect, useState } from "react";
       export const Multi = () => {
@@ -122,7 +122,7 @@ describe("state-and-effects/no-cascading-set-state — regressions: FP-fix valid
         return <div>{a}{b}{c}</div>;
       };
     `);
-    expect(result.diagnostics).toHaveLength(0);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("does not over-count: one synchronous setter plus a one-setter registered handler stays under the threshold", () => {

@@ -14,10 +14,6 @@ import { walkAst } from "../../utils/walk-ast.js";
 const MESSAGE =
   "Spreading props after defaults copies an explicit `undefined` over a default, and this merged value feeds a computation, so the component runs without the default it declared. Strip `undefined` keys before merging or apply the default at the use site (`props.width ?? defaults.width`).";
 
-// Lowercase `default(s)Xxx` / SCREAMING `..._DEFAULT_PROPS` naming only —
-// config-flavored names (`defaultGlobalConfig`, `currentConfig`) belong to
-// imperative patch/setter merges where later-wins (including explicit
-// `undefined`) is the intended API contract, so they never fire.
 const LOWER_DEFAULTS_PREFIX_PATTERN = /^defaults?([A-Z_]|$)/;
 const SCREAMING_DEFAULTS_PATTERN = /^([A-Z0-9]+_)*DEFAULTS?(_[A-Z0-9]+)*$/;
 const CONFIG_FLAVORED_NAME_PATTERN = /config/i;
@@ -43,12 +39,6 @@ const spreadArgumentOf = (spread: EsTreeNode): EsTreeNode | null => {
   return argument ?? null;
 };
 
-// The enclosing component/hook's own parameter binding for `name`: either a
-// plain parameter identifier (`(props) =>`) or a rest binding inside a
-// destructured parameter (`({ className, ...rest }) =>`). Local bindings that
-// merely reuse the name (a filtered copy, an object literal, a shadow inside
-// a callback) are not the caller's props and cannot carry the caller's
-// explicit `undefined`.
 const propsParameterBindingForName = (
   functionNode: EsTreeNode,
   name: string,
@@ -80,9 +70,6 @@ const propsParameterBindingForName = (
 };
 
 const typeAnnotationHasOptionalMember = (typeNode: EsTreeNode): boolean => {
-  // A named type reference (`Props`) may declare optional members we can't see
-  // across files, so treat it as possibly-optional. An inline object type is
-  // fully visible: only flag when it actually has a `?` member.
   if (isNodeOfType(typeNode, "TSTypeReference")) return true;
   if (isNodeOfType(typeNode, "TSTypeLiteral")) {
     return typeNode.members.some((member) => Boolean((member as { optional?: boolean }).optional));
@@ -91,12 +78,9 @@ const typeAnnotationHasOptionalMember = (typeNode: EsTreeNode): boolean => {
 };
 
 const parameterCanCarryExplicitUndefined = (parameterBinding: EsTreeNode): boolean => {
-  const annotationWrapper = (parameterBinding as { typeAnnotation?: EsTreeNode }).typeAnnotation;
-  const annotatedType = annotationWrapper
-    ? (annotationWrapper as { typeAnnotation?: EsTreeNode }).typeAnnotation
-    : null;
-  if (!annotatedType) return true;
-  return typeAnnotationHasOptionalMember(annotatedType);
+  const annotatedType = (parameterBinding as { typeAnnotation?: { typeAnnotation?: EsTreeNode } })
+    .typeAnnotation?.typeAnnotation;
+  return !annotatedType || typeAnnotationHasOptionalMember(annotatedType);
 };
 
 const MAX_MERGE_DESTRUCTURE_DEPTH = 3;
@@ -170,11 +154,6 @@ const isComputationalConsumer = (consumer: EsTreeNode, expression: EsTreeNode): 
   return isNodeOfType(consumer, "TemplateLiteral");
 };
 
-// Climbs from a reference through member accesses (`merged.width`) to the
-// expression the merge result feeds, then asks whether that consumer is a
-// computation (arithmetic, comparison, call argument, template) where an
-// `undefined` changes behavior. Pure JSX forwarding, returns, fallbacks
-// (`merged.x ?? 1`), and object re-wraps stay quiet.
 const referenceFlowsIntoComputation = (referenceIdentifier: EsTreeNode): boolean => {
   let current: EsTreeNode = referenceIdentifier;
   let consumer: EsTreeNode | null | undefined = current.parent;
@@ -206,9 +185,6 @@ const identifierIsValueReference = (identifier: EsTreeNodeOfType<"Identifier">):
   return true;
 };
 
-// `merged.<key>` (or `merged["key"]`) where <key> is possibly defaulted and
-// the climbed consumer is a computation. Accessing a never-defaulted key
-// cannot observe the clobber, so it stays quiet.
 const memberAccessFeedsDefaultedKeyComputation = (
   memberExpression: EsTreeNodeOfType<"MemberExpression">,
   defaultedKeys: Set<string> | null,
@@ -256,11 +232,6 @@ const objectBindingFeedsDefaultedKeyComputation = (
   return didFindComputationalUse;
 };
 
-// A reference to the merged object only counts when a possibly-defaulted KEY
-// flows onward — via a member access or a destructure of that key. The bare
-// merged object handed whole to a call/new is NOT a computation: the callee
-// may re-apply the defaults (basis `useResponsivePropsCSS(props, DEFAULT_PROPS,
-// ...)`) or strip the defaulted keys (victory `Helpers.omit(props, [...])`).
 const objectReferenceFeedsDefaultedKeyComputation = (
   referenceIdentifier: EsTreeNode,
   defaultedKeys: Set<string> | null,
@@ -302,8 +273,6 @@ const destructuredDefaultedKeysFeedComputation = (
     namedKeys.add(keyName);
     if (!isPossiblyDefaultedKey(keyName, defaultedKeys)) continue;
     const valuePattern = property.value;
-    // `const { width = 100 } = merged` re-defaults at the destructure, so the
-    // clobbered key is repaired before any use.
     if (isNodeOfType(valuePattern, "AssignmentPattern")) continue;
     if (isNodeOfType(valuePattern, "Identifier")) {
       if (scalarBindingFeedsComputation(valuePattern.name, pattern, functionNode)) return true;
@@ -368,19 +337,6 @@ const mergeResultFeedsDefaultedKeyComputation = (
   return false;
 };
 
-// Flags `{ ...defaultProps, ...props }` (or `{ ...X.defaultProps, ...props }`)
-// directly inside a React component/hook whose OWN props parameter — or the
-// rest binding of its destructured parameter — is the last spread operand,
-// and only when a possibly-DEFAULTED key of the merge (a `merged.<key>`
-// member access or a key destructured from it) flows into a computation where
-// an explicit `undefined` changes behavior. When the defaults initializer is
-// a visible object literal, only its keys qualify; when it is imported or
-// otherwise opaque, any key does. The whole merged object handed to a call
-// never qualifies — callees like `useResponsivePropsCSS(props, DEFAULT_PROPS)`
-// or `omit(props, [...])` re-apply or strip the defaults. Config-patch
-// setters, helpers co-located with components, local bindings that shadow the
-// props name, pure JSX-forwarding merges, fully-required inline types, and
-// test files stay quiet.
 export const noSpreadPropsOverDefaultsClobbersWithUndefined = defineRule({
   id: "no-spread-props-over-defaults-clobbers-with-undefined",
   title: "Spread props over defaults can clobber with undefined",

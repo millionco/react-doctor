@@ -25,16 +25,6 @@ const EXTERNAL_STORE_HOOK_PATTERN = /^use(?:[A-Z][A-Za-z0-9]*)?Store$/;
 const CANCELLATION_GUARD_PATTERN =
   /^(?:is|has|did|was)?_?(?:mount|unmount|cancel|abort|ignore|stale|dispos|destroy|alive|signal|active)/i;
 
-const getNodeStart = (node: EsTreeNode): number | null => {
-  const start = (node as { start?: unknown }).start;
-  return typeof start === "number" ? start : null;
-};
-
-const getNodeEnd = (node: EsTreeNode): number | null => {
-  const end = (node as { end?: unknown }).end;
-  return typeof end === "number" ? end : null;
-};
-
 const getDependencyArray = (
   effectCall: EsTreeNodeOfType<"CallExpression">,
 ): EsTreeNodeOfType<"ArrayExpression"> | null => {
@@ -216,15 +206,12 @@ const referencesCancellationGuard = (asyncFunction: EsTreeNode): boolean => {
   let found = false;
   walkAst(asyncFunction, (child: EsTreeNode) => {
     if (found) return false;
-    if (isNodeOfType(child, "Identifier") && CANCELLATION_GUARD_PATTERN.test(child.name)) {
-      found = true;
-      return false;
-    }
     // A `.current` read is the ref-based mounted-guard idiom.
     if (
-      isNodeOfType(child, "MemberExpression") &&
-      isNodeOfType(child.property, "Identifier") &&
-      child.property.name === "current"
+      (isNodeOfType(child, "Identifier") && CANCELLATION_GUARD_PATTERN.test(child.name)) ||
+      (isNodeOfType(child, "MemberExpression") &&
+        isNodeOfType(child.property, "Identifier") &&
+        child.property.name === "current")
     ) {
       found = true;
       return false;
@@ -245,8 +232,8 @@ const hasPostAwaitStateSetter = (asyncFunction: EsTreeNode): boolean => {
       isNodeOfType(node, "AwaitExpression") ||
       (isNodeOfType(node, "ForOfStatement") && node.await === true);
     if (!isSuspensionPoint) return;
-    const start = getNodeStart(node);
-    if (start === null) return;
+    const start = (node as { start?: unknown }).start;
+    if (typeof start !== "number") return;
     if (earliestSuspensionStart === null || start < earliestSuspensionStart) {
       earliestSuspensionStart = start;
     }
@@ -259,8 +246,8 @@ const hasPostAwaitStateSetter = (asyncFunction: EsTreeNode): boolean => {
     if (hasLaterSetter) return;
     if (!isNodeOfType(node, "CallExpression")) return;
     if (!isStateDispatcherCall(node)) return;
-    const setterEnd = getNodeEnd(node);
-    if (setterEnd === null) return;
+    const setterEnd = (node as { end?: unknown }).end;
+    if (typeof setterEnd !== "number") return;
     if (setterEnd > firstSuspensionStart) hasLaterSetter = true;
   });
   return hasLaterSetter;

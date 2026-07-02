@@ -134,19 +134,6 @@ const resolveRootInitiator = (root: EsTreeNode): ResolvedInitiator => {
   }
 };
 
-const resolveObjectExpression = (
-  objectNode: EsTreeNode,
-): EsTreeNodeOfType<"ObjectExpression"> | null => {
-  const stripped = stripParenExpression(objectNode);
-  if (isNodeOfType(stripped, "ObjectExpression")) return stripped;
-  if (isNodeOfType(stripped, "Identifier")) {
-    const binding = findVariableInitializer(stripped, stripped.name);
-    const initializer = binding?.initializer ? stripParenExpression(binding.initializer) : null;
-    if (initializer && isNodeOfType(initializer, "ObjectExpression")) return initializer;
-  }
-  return null;
-};
-
 // A loaders-map lookup (`loaders[locale]` / `loaders.en`) whose map holds
 // function values — the dynamic-import registry idiom. Rejectable when a
 // matching entry's function is.
@@ -154,8 +141,14 @@ const memberLookupResolvesToRejectableFunction = (
   memberNode: EsTreeNodeOfType<"MemberExpression">,
   remainingDepth: number,
 ): boolean => {
-  const objectExpression = resolveObjectExpression(memberNode.object);
-  if (!objectExpression) return false;
+  const strippedObject = stripParenExpression(memberNode.object);
+  const boundInitializer = isNodeOfType(strippedObject, "Identifier")
+    ? findVariableInitializer(strippedObject, strippedObject.name)?.initializer
+    : null;
+  const objectExpression = boundInitializer
+    ? stripParenExpression(boundInitializer)
+    : strippedObject;
+  if (!isNodeOfType(objectExpression, "ObjectExpression")) return false;
   const lookedUpName =
     !memberNode.computed && isNodeOfType(memberNode.property, "Identifier")
       ? memberNode.property.name
@@ -246,7 +239,6 @@ const functionHasUnhandledRejectableSource = (
 ): boolean => {
   let didFindRejectableSource = false;
   const checkCandidate = (candidate: EsTreeNode, positionNode: EsTreeNode): void => {
-    if (didFindRejectableSource) return;
     if (isInsideTryStatement(positionNode, { boundary: functionNode })) return;
     const chainWalk = walkPromiseChain(stripParenExpression(candidate));
     if (chainWalk.hasCatch || chainWalk.hasRejectionHandlerArgument) return;
@@ -279,7 +271,6 @@ const collectStateSideEffectNodes = (callback: EsTreeNode): EsTreeNode[] => {
       isReactStateSetterName(child.callee.name)
     ) {
       sideEffectNodes.push(child);
-      return;
     }
     if (
       isNodeOfType(child, "AssignmentExpression") &&

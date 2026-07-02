@@ -19,38 +19,11 @@ interface TrackedObserver {
   didEscape: boolean;
 }
 
-const isObserverConstruction = (node: EsTreeNode): node is EsTreeNodeOfType<"NewExpression"> => {
-  if (!isNodeOfType(node, "NewExpression")) return false;
-  if (isNodeOfType(node.callee, "Identifier")) {
-    return EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS.has(node.callee.name);
-  }
-  return (
-    isNodeOfType(node.callee, "MemberExpression") &&
-    !node.callee.computed &&
-    isNodeOfType(node.callee.object, "Identifier") &&
-    GLOBAL_OBJECT_NAMES.has(node.callee.object.name) &&
-    isNodeOfType(node.callee.property, "Identifier") &&
-    EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS.has(node.callee.property.name)
-  );
-};
-
-const getLocalObserverBindingName = (
-  construction: EsTreeNodeOfType<"NewExpression">,
-): string | null => {
-  const parent = construction.parent;
-  if (!isNodeOfType(parent, "VariableDeclarator") || parent.init !== construction) return null;
-  return isNodeOfType(parent.id, "Identifier") ? parent.id.name : null;
-};
-
 const recordObserverUsage = (
   identifier: EsTreeNodeOfType<"Identifier">,
   tracked: TrackedObserver,
 ): void => {
   const parent = identifier.parent;
-  if (!parent) {
-    tracked.didEscape = true;
-    return;
-  }
   if (isNodeOfType(parent, "VariableDeclarator") && parent.id === identifier) return;
   if (
     isNodeOfType(parent, "MemberExpression") &&
@@ -101,8 +74,19 @@ export const effectObserverNeedsDisconnect = defineRule({
 
       const trackedObserversByName = new Map<string, TrackedObserver>();
       walkAst(callback, (child: EsTreeNode) => {
-        if (!isObserverConstruction(child)) return;
-        const bindingName = getLocalObserverBindingName(child);
+        if (!isNodeOfType(child, "NewExpression")) return;
+        const isObserverConstructor = isNodeOfType(child.callee, "Identifier")
+          ? EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS.has(child.callee.name)
+          : isNodeOfType(child.callee, "MemberExpression") &&
+            !child.callee.computed &&
+            isNodeOfType(child.callee.object, "Identifier") &&
+            GLOBAL_OBJECT_NAMES.has(child.callee.object.name) &&
+            isNodeOfType(child.callee.property, "Identifier") &&
+            EXTERNAL_SYNC_OBSERVER_CONSTRUCTORS.has(child.callee.property.name);
+        if (!isObserverConstructor) return;
+        const declarator = child.parent;
+        if (!isNodeOfType(declarator, "VariableDeclarator") || declarator.init !== child) return;
+        const bindingName = isNodeOfType(declarator.id, "Identifier") ? declarator.id.name : null;
         if (!bindingName || trackedObserversByName.has(bindingName)) return;
         trackedObserversByName.set(bindingName, {
           construction: child,

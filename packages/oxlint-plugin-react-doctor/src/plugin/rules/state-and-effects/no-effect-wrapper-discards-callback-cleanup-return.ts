@@ -14,8 +14,6 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 const EFFECT_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect"]);
 
-// The parameter's binding Identifier, unwrapping a default-value
-// AssignmentPattern (`effect: EffectCallback = noop`), or null.
 const parameterIdentifier = (parameter: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
   if (isNodeOfType(parameter, "Identifier")) return parameter;
   if (isNodeOfType(parameter, "AssignmentPattern") && isNodeOfType(parameter.left, "Identifier")) {
@@ -24,7 +22,6 @@ const parameterIdentifier = (parameter: EsTreeNode): EsTreeNodeOfType<"Identifie
   return null;
 };
 
-// The actual type node behind a parameter's `: T` annotation, or null.
 const parameterTypeNode = (parameter: EsTreeNode): EsTreeNode | null => {
   const identifier = parameterIdentifier(parameter);
   if (!identifier) return null;
@@ -33,10 +30,7 @@ const parameterTypeNode = (parameter: EsTreeNode): EsTreeNode | null => {
   return (annotation.typeAnnotation as EsTreeNode | undefined) ?? null;
 };
 
-// Unwraps `(T)` parenthesized type wrappers so union members compare
-// against the semantic type. `TSParenthesizedType` is emitted by
-// oxc-parser but absent from `@typescript-eslint/types`, so it is
-// matched by its `.type` string rather than through `isNodeOfType`.
+// TSParenthesizedType is absent from @typescript-eslint/types, so match by type string.
 const unwrapParenthesizedType = (typeNode: EsTreeNode): EsTreeNode => {
   let current: EsTreeNode = typeNode;
   while ((current as { type: string }).type === "TSParenthesizedType") {
@@ -47,9 +41,6 @@ const unwrapParenthesizedType = (typeNode: EsTreeNode): EsTreeNode => {
   return current;
 };
 
-// True for a function type whose return can be a cleanup function, i.e.
-// `() => void | (() => void)`: the return type is a union that includes
-// a function type. A plain `() => void` returns false (cannot).
 const functionTypeCanReturnCleanup = (typeNode: EsTreeNode): boolean => {
   if (!isNodeOfType(typeNode, "TSFunctionType")) return false;
   const returnAnnotation = typeNode.returnType;
@@ -61,7 +52,6 @@ const functionTypeCanReturnCleanup = (typeNode: EsTreeNode): boolean => {
   );
 };
 
-// A parameter typed `EffectCallback` or `() => (void | (() => void))`.
 const parameterIsEffectCallback = (parameter: EsTreeNode): boolean => {
   const typeNode = parameterTypeNode(parameter);
   if (!typeNode) return false;
@@ -75,8 +65,6 @@ const parameterIsEffectCallback = (parameter: EsTreeNode): boolean => {
   return functionTypeCanReturnCleanup(typeNode);
 };
 
-// True when the wrapper binding is annotated `typeof useEffect` /
-// `typeof useLayoutEffect`, so its first parameter is the EffectCallback.
 const wrapperBindingIsTypedAsEffectHook = (hookFunction: EsTreeNode): boolean => {
   const declarator = hookFunction.parent;
   if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
@@ -88,8 +76,6 @@ const wrapperBindingIsTypedAsEffectHook = (hookFunction: EsTreeNode): boolean =>
   return isNodeOfType(query.exprName, "Identifier") && EFFECT_HOOK_NAMES.has(query.exprName.name);
 };
 
-// The name of the forwarded EffectCallback parameter of a custom hook,
-// or null when no parameter is a resolvable EffectCallback.
 const forwardedEffectCallbackParameterName = (hookFunction: EsTreeNode): string | null => {
   if (!isFunctionLike(hookFunction)) return null;
   const params = hookFunction.params ?? [];
@@ -98,17 +84,13 @@ const forwardedEffectCallbackParameterName = (hookFunction: EsTreeNode): string 
     return firstParam ? (parameterIdentifier(firstParam as EsTreeNode)?.name ?? null) : null;
   }
   for (const param of params) {
-    if (parameterIsEffectCallback(param as EsTreeNode)) {
-      return parameterIdentifier(param as EsTreeNode)?.name ?? null;
+    if (parameterIsEffectCallback(param)) {
+      return parameterIdentifier(param)?.name ?? null;
     }
   }
   return null;
 };
 
-// The discarded `callbackName()` call inside a statement-position
-// expression, unwrapping the shapes that still drop the cleanup:
-// `fn?.()` (ChainExpression), `guard && fn()` (LogicalExpression), and
-// `guard ? fn() : other` (ConditionalExpression).
 const discardedForwardedCallInExpression = (
   expression: EsTreeNode,
   callbackName: string,
@@ -138,9 +120,6 @@ const discardedForwardedCallInExpression = (
   return null;
 };
 
-// The bare `fn()` expression statement inside `effectBody` that invokes
-// `callbackName` without returning it, or null. Nested functions are
-// pruned; `return fn()` is a ReturnStatement and never matches.
 const findBareForwardedCall = (effectBody: EsTreeNode, callbackName: string): EsTreeNode | null => {
   let bareCall: EsTreeNode | null = null;
   walkAst(effectBody, (child) => {
@@ -172,7 +151,7 @@ export const noEffectWrapperDiscardsCallbackCleanupReturn = defineRule({
       // `useEffect(effect, deps)` forwards the callback directly (React
       // wires its return) — only inline effect bodies can drop it.
       if (!effectCallback || !isFunctionLike(effectCallback)) return;
-      const effectBody = effectCallback.body as EsTreeNode;
+      const effectBody = effectCallback.body;
       if (!isNodeOfType(effectBody, "BlockStatement")) return;
 
       const hookFunction = nearestEnclosingFunction(node);

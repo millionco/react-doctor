@@ -79,12 +79,6 @@ const timeoutCallbackMutatesComponent = (callback: EsTreeNode): boolean => {
   return mutates;
 };
 
-const getMemberChainBase = (node: EsTreeNode): EsTreeNode => {
-  let base = node;
-  while (isNodeOfType(base, "MemberExpression")) base = base.object;
-  return base;
-};
-
 // `addEventListener(..., { once: true })` self-removes after firing, so there
 // is usually nothing left to release on unmount.
 const isOneShotListenerOptions = (optionsArgument: EsTreeNode | undefined): boolean => {
@@ -133,7 +127,8 @@ const isMountHazard = (node: EsTreeNode, localReceiverNames: Set<string>): boole
   ) {
     const callArguments = node.arguments ?? [];
     const isFunctionFactoryOnce = methodName === "once" && callArguments.length < 2;
-    const receiverBase = getMemberChainBase(node.callee.object);
+    let receiverBase = node.callee.object;
+    while (isNodeOfType(receiverBase, "MemberExpression")) receiverBase = receiverBase.object;
     const isLocalReceiver =
       isNodeOfType(receiverBase, "Identifier") && localReceiverNames.has(receiverBase.name);
     const isSelfRemovingListener =
@@ -150,12 +145,9 @@ const isMountHazard = (node: EsTreeNode, localReceiverNames: Set<string>): boole
 };
 
 const getMemberFunctionBody = (member: EsTreeNode): EsTreeNode | null => {
-  if (!isNodeOfType(member, "MethodDefinition") && !isNodeOfType(member, "PropertyDefinition")) {
-    return null;
-  }
-  const value = member.value;
-  if (!value || !isFunctionLike(value)) return null;
-  return value.body ?? null;
+  const isRelevantMember =
+    isNodeOfType(member, "MethodDefinition") || isNodeOfType(member, "PropertyDefinition");
+  return isRelevantMember && isFunctionLike(member.value) ? (member.value.body ?? null) : null;
 };
 
 const getClassMemberName = (member: EsTreeNode): string | null => {
@@ -173,11 +165,9 @@ const getClassMemberName = (member: EsTreeNode): string | null => {
 const classUsesDisposeOnUnmount = (classNode: EsTreeNode): boolean => {
   let found = false;
   walkAst(classNode, (child: EsTreeNode) => {
-    if (found) return false;
-    if (isNodeOfType(child, "Identifier") && child.name === "disposeOnUnmount") {
-      found = true;
-      return false;
-    }
+    if (found || !(isNodeOfType(child, "Identifier") && child.name === "disposeOnUnmount")) return;
+    found = true;
+    return false;
   });
   return found;
 };

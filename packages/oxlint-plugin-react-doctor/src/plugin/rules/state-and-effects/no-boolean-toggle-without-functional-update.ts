@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
@@ -6,6 +7,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { patternBindsName } from "./utils/pattern-binds-name.js";
 
 // Callees that defer execution past the current render — a toggle captured by
 // one of these closures can read stale state because the callback runs after
@@ -33,17 +35,12 @@ const DEFERRED_EXECUTION_CALLEE_NAMES: ReadonlySet<string> = new Set([
   "once",
 ]);
 
-const isFunctionLikeNode = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "ArrowFunctionExpression") ||
-  isNodeOfType(node, "FunctionExpression") ||
-  isNodeOfType(node, "FunctionDeclaration");
-
 const isInsideDeferredCallback = (node: EsTreeNode): boolean => {
   let current: EsTreeNode | null | undefined = node;
   while (current) {
     const parent: EsTreeNode | null | undefined = current.parent;
     if (!parent) return false;
-    if (isFunctionLikeNode(current) && isNodeOfType(parent, "CallExpression")) {
+    if (isFunctionLike(current) && isNodeOfType(parent, "CallExpression")) {
       const callee = parent.callee;
       let calleeName: string | null = null;
       if (isNodeOfType(callee, "Identifier")) {
@@ -57,24 +54,6 @@ const isInsideDeferredCallback = (node: EsTreeNode): boolean => {
       if (calleeName && DEFERRED_EXECUTION_CALLEE_NAMES.has(calleeName)) return true;
     }
     current = parent;
-  }
-  return false;
-};
-
-const patternBindsName = (pattern: EsTreeNode | null | undefined, name: string): boolean => {
-  if (!pattern) return false;
-  if (isNodeOfType(pattern, "Identifier")) return pattern.name === name;
-  if (isNodeOfType(pattern, "AssignmentPattern")) return patternBindsName(pattern.left, name);
-  if (isNodeOfType(pattern, "RestElement")) return patternBindsName(pattern.argument, name);
-  if (isNodeOfType(pattern, "ObjectPattern")) {
-    return (pattern.properties ?? []).some((property) =>
-      isNodeOfType(property, "Property")
-        ? patternBindsName(property.value, name)
-        : patternBindsName(property, name),
-    );
-  }
-  if (isNodeOfType(pattern, "ArrayPattern")) {
-    return (pattern.elements ?? []).some((element) => patternBindsName(element, name));
   }
   return false;
 };
@@ -118,11 +97,7 @@ const findUseStatePairedStateName = (node: EsTreeNode, setterName: string): stri
 const isStateNameShadowedAtCall = (node: EsTreeNode, stateName: string): boolean => {
   let cursor: EsTreeNode | null | undefined = node;
   while (cursor) {
-    if (
-      isNodeOfType(cursor, "ArrowFunctionExpression") ||
-      isNodeOfType(cursor, "FunctionExpression") ||
-      isNodeOfType(cursor, "FunctionDeclaration")
-    ) {
+    if (isFunctionLike(cursor)) {
       for (const param of cursor.params ?? []) {
         if (patternBindsName(param, stateName)) return true;
       }

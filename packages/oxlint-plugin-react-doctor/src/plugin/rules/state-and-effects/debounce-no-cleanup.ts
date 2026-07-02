@@ -1,12 +1,15 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { subtreeReferencesIdentifierName } from "../../utils/subtree-references-identifier-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { findEnclosingFunction } from "./utils/find-enclosing-function.js";
 
 const DEBOUNCE_WRAPPER_HOOK_NAMES = new Set(["useMemo", "useCallback", "useRef"]);
 const DEBOUNCE_FACTORY_NAMES = new Set(["debounce", "throttle"]);
@@ -20,21 +23,14 @@ type FunctionEsTreeNode = EsTreeNodeOfType<
   "ArrowFunctionExpression" | "FunctionExpression" | "FunctionDeclaration"
 >;
 
-const isFunctionNode = (node: EsTreeNode): node is FunctionEsTreeNode =>
-  isNodeOfType(node, "ArrowFunctionExpression") ||
-  isNodeOfType(node, "FunctionExpression") ||
-  isNodeOfType(node, "FunctionDeclaration");
-
 const isLodashModuleSource = (source: string | null): boolean =>
-  Boolean(
-    source &&
-    (source === "lodash" ||
-      source === "lodash-es" ||
-      source === "lodash.debounce" ||
-      source === "lodash.throttle" ||
-      source.startsWith("lodash/") ||
-      source.startsWith("lodash-es/")),
-  );
+  source !== null &&
+  (source === "lodash" ||
+    source === "lodash-es" ||
+    source === "lodash.debounce" ||
+    source === "lodash.throttle" ||
+    source.startsWith("lodash/") ||
+    source.startsWith("lodash-es/"));
 
 const isLodashDebounceCall = (callExpression: EsTreeNode): boolean => {
   if (!isNodeOfType(callExpression, "CallExpression")) return false;
@@ -96,30 +92,6 @@ const hasTrailingFalseOption = (debounceCall: EsTreeNode): boolean => {
   );
 };
 
-const subtreeReferencesAnyName = (node: EsTreeNode, names: ReadonlySet<string>): boolean => {
-  let didReference = false;
-  walkAst(node, (child: EsTreeNode) => {
-    if (didReference) return false;
-    if (isNodeOfType(child, "Identifier") && names.has(child.name)) {
-      didReference = true;
-      return false;
-    }
-  });
-  return didReference;
-};
-
-const subtreeReferencesName = (node: EsTreeNode, bindingName: string): boolean =>
-  subtreeReferencesAnyName(node, new Set([bindingName]));
-
-const findEnclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
-  let cursor: EsTreeNode | null = node.parent ?? null;
-  while (cursor) {
-    if (isFunctionNode(cursor)) return cursor;
-    cursor = cursor.parent ?? null;
-  }
-  return null;
-};
-
 const collectBindingAliasNames = (searchRoot: EsTreeNode, bindingName: string): Set<string> => {
   const aliasNames = new Set([bindingName]);
   let didGrow = true;
@@ -131,7 +103,7 @@ const collectBindingAliasNames = (searchRoot: EsTreeNode, bindingName: string): 
       if (aliasNames.has(child.id.name)) return;
       const initializer = stripParenExpression(child.init);
       if (isNodeOfType(initializer, "CallExpression")) return;
-      if (subtreeReferencesAnyName(initializer, aliasNames)) {
+      if (subtreeReferencesIdentifierName(initializer, aliasNames)) {
         aliasNames.add(child.id.name);
         didGrow = true;
       }
@@ -147,7 +119,7 @@ const hasReleaseForBinding = (searchRoot: EsTreeNode, aliasNames: ReadonlySet<st
     if (!isNodeOfType(child, "MemberExpression") || child.computed) return;
     if (!isNodeOfType(child.property, "Identifier")) return;
     if (!DEBOUNCE_RELEASE_METHOD_NAMES.has(child.property.name)) return;
-    if (subtreeReferencesAnyName(child.object, aliasNames)) {
+    if (subtreeReferencesIdentifierName(child.object, aliasNames)) {
       didRelease = true;
       return false;
     }
@@ -167,7 +139,7 @@ const escapesViaReturn = (enclosingFunction: EsTreeNode, bindingName: string): b
     }
     if (
       (isNodeOfType(returned, "ObjectExpression") || isNodeOfType(returned, "ArrayExpression")) &&
-      subtreeReferencesName(returned, bindingName)
+      subtreeReferencesIdentifierName(returned, bindingName)
     ) {
       didEscape = true;
       return false;
@@ -188,11 +160,11 @@ const isInvokedInsideEffectCallback = (
     const effectArgument = child.arguments?.[0];
     if (!effectArgument) return;
     const effectCallback = stripParenExpression(effectArgument);
-    if (!isFunctionNode(effectCallback)) return;
+    if (!isFunctionLike(effectCallback)) return;
     walkAst(effectCallback, (inner: EsTreeNode) => {
       if (didInvoke) return false;
       if (!isNodeOfType(inner, "CallExpression")) return;
-      if (subtreeReferencesName(inner.callee, bindingName)) {
+      if (subtreeReferencesIdentifierName(inner.callee, bindingName)) {
         didInvoke = true;
         return false;
       }
@@ -209,7 +181,7 @@ const resolveWrappedCallbackFunction = (
   const wrappedArgument = debounceCall.arguments?.[0];
   if (!wrappedArgument) return null;
   const strippedArgument = stripParenExpression(wrappedArgument);
-  if (isFunctionNode(strippedArgument)) return strippedArgument;
+  if (isFunctionLike(strippedArgument)) return strippedArgument;
   if (!isNodeOfType(strippedArgument, "Identifier")) return null;
   const wrappedName = strippedArgument.name;
   let resolvedFunction: FunctionEsTreeNode | null = null;
@@ -226,14 +198,14 @@ const resolveWrappedCallbackFunction = (
       child.init
     ) {
       const initializer = stripParenExpression(child.init);
-      if (isFunctionNode(initializer)) {
+      if (isFunctionLike(initializer)) {
         resolvedFunction = initializer;
         return false;
       }
       if (isHookCall(initializer, "useCallback") && isNodeOfType(initializer, "CallExpression")) {
         const callbackArgument = initializer.arguments?.[0];
         const strippedCallback = callbackArgument ? stripParenExpression(callbackArgument) : null;
-        if (strippedCallback && isFunctionNode(strippedCallback)) {
+        if (strippedCallback && isFunctionLike(strippedCallback)) {
           resolvedFunction = strippedCallback;
           return false;
         }
@@ -241,14 +213,6 @@ const resolveWrappedCallbackFunction = (
     }
   });
   return resolvedFunction;
-};
-
-const isPropertyNamePosition = (node: EsTreeNode): boolean => {
-  const parent = node.parent;
-  if (isNodeOfType(parent, "MemberExpression") && !parent.computed && parent.property === node) {
-    return true;
-  }
-  return isNodeOfType(parent, "Property") && !parent.computed && parent.key === node;
 };
 
 const hasAsyncOrDomWork = (wrappedFunction: FunctionEsTreeNode): boolean => {
@@ -260,10 +224,16 @@ const hasAsyncOrDomWork = (wrappedFunction: FunctionEsTreeNode): boolean => {
       didFindWork = true;
       return false;
     }
+    const parent = child.parent;
     if (
       isNodeOfType(child, "Identifier") &&
       BROWSER_GLOBAL_NAMES.has(child.name) &&
-      !isPropertyNamePosition(child)
+      !(
+        isNodeOfType(parent, "MemberExpression") &&
+        !parent.computed &&
+        parent.property === child
+      ) &&
+      !(isNodeOfType(parent, "Property") && !parent.computed && parent.key === child)
     ) {
       didFindWork = true;
       return false;

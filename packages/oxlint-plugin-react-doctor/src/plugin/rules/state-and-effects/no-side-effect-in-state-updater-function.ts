@@ -180,10 +180,9 @@ export const noSideEffectInStateUpdaterFunction = defineRule({
 
       // Only the "interleaved statement before a pure return" shape is
       // reportable, so some executed function must reach `return <value>`.
-      const valueReturningFunctions = new Set<EsTreeNode>();
-      for (const executedFunction of executedDuringUpdater) {
-        if (blockBodyReturnsValue(executedFunction)) valueReturningFunctions.add(executedFunction);
-      }
+      const valueReturningFunctions = new Set(
+        [...executedDuringUpdater].filter(blockBodyReturnsValue),
+      );
       if (valueReturningFunctions.size === 0) return;
 
       const hasValueReturningExecutedContext = (owner: EsTreeNode): boolean => {

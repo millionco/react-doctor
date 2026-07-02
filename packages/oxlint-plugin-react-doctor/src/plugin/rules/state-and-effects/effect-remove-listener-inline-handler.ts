@@ -1,4 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
+import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -18,18 +20,11 @@ const REFERENCE_EQUALITY_REMOVAL_METHOD_NAMES = new Set([
 
 const isFreshFunctionReference = (node: EsTreeNode): boolean => {
   const handler = stripParenExpression(node);
-  if (
-    isNodeOfType(handler, "ArrowFunctionExpression") ||
-    isNodeOfType(handler, "FunctionExpression")
-  ) {
-    return true;
-  }
+  if (isInlineFunctionExpression(handler)) return true;
   return (
     isNodeOfType(handler, "CallExpression") &&
-    isNodeOfType(handler.callee, "MemberExpression") &&
-    !handler.callee.computed &&
-    isNodeOfType(handler.callee.property, "Identifier") &&
-    handler.callee.property.name === "bind"
+    isMemberProperty(handler.callee, "bind") &&
+    !handler.callee.computed
   );
 };
 
@@ -47,10 +42,10 @@ export const effectRemoveListenerInlineHandler = defineRule({
       if (!isNodeOfType(callee.property, "Identifier")) return;
       if (!REFERENCE_EQUALITY_REMOVAL_METHOD_NAMES.has(callee.property.name)) return;
 
-      const args = node.arguments ?? [];
+      const args = node.arguments;
       if (args.length < 2) return;
       const handlerArgument = args[1];
-      if (!handlerArgument || !isFreshFunctionReference(handlerArgument)) return;
+      if (!isFreshFunctionReference(handlerArgument)) return;
 
       context.report({
         node: handlerArgument,

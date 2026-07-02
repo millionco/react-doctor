@@ -9,6 +9,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
+import { patternBindsName } from "./utils/pattern-binds-name.js";
 
 type StateCollectionKind = "array" | "map" | "set";
 
@@ -52,30 +53,6 @@ const IN_PLACE_MUTATOR_METHODS = new Set([
 const MESSAGE =
   "This mutates the same object React already holds and hands it back, so Object.is sees no change and skips the re-render. Copy it first (for example `[...value]` or `new Set(value)`) and update the copy.";
 
-const patternBindsName = (pattern: EsTreeNode | null | undefined, name: string): boolean => {
-  if (!pattern) return false;
-  if (isNodeOfType(pattern, "Identifier")) return pattern.name === name;
-  if (isNodeOfType(pattern, "AssignmentPattern")) return patternBindsName(pattern.left, name);
-  if (isNodeOfType(pattern, "RestElement")) return patternBindsName(pattern.argument, name);
-  if (isNodeOfType(pattern, "ArrayPattern")) {
-    return (pattern.elements ?? []).some((element) => patternBindsName(element, name));
-  }
-  if (isNodeOfType(pattern, "ObjectPattern")) {
-    return (pattern.properties ?? []).some((property) =>
-      isNodeOfType(property, "Property")
-        ? patternBindsName(property.value, name)
-        : patternBindsName(property, name),
-    );
-  }
-  return false;
-};
-
-const declarationBindsName = (
-  declaration: EsTreeNodeOfType<"VariableDeclaration">,
-  name: string,
-): boolean =>
-  (declaration.declarations ?? []).some((declarator) => patternBindsName(declarator.id, name));
-
 const isStateHookDestructureAt = (
   declarator: EsTreeNodeOfType<"VariableDeclarator">,
   bindingName: string,
@@ -115,14 +92,18 @@ const findNearestStateHookDeclarator = (
     if (
       isNodeOfType(cursor, "ForStatement") &&
       isNodeOfType(cursor.init, "VariableDeclaration") &&
-      declarationBindsName(cursor.init, bindingName)
+      (cursor.init.declarations ?? []).some((declarator) =>
+        patternBindsName(declarator.id, bindingName),
+      )
     ) {
       return null;
     }
     if (
       (isNodeOfType(cursor, "ForOfStatement") || isNodeOfType(cursor, "ForInStatement")) &&
       isNodeOfType(cursor.left, "VariableDeclaration") &&
-      declarationBindsName(cursor.left, bindingName)
+      (cursor.left.declarations ?? []).some((declarator) =>
+        patternBindsName(declarator.id, bindingName),
+      )
     ) {
       return null;
     }
@@ -182,27 +163,20 @@ const memberChainRootIdentifier = (node: EsTreeNode): EsTreeNodeOfType<"Identifi
   return isNodeOfType(current, "Identifier") ? current : null;
 };
 
-// The mutator name when `node` is `<name>.<selfReturningMutator>(...)`,
-// or null. Callers must still match the name against the proven state
-// collection kind before treating the result as the same reference.
-const selfReturningMutatorMethodOn = (node: EsTreeNode, name: string): string | null => {
-  const unwrapped = stripParenExpression(node);
-  if (!isNodeOfType(unwrapped, "CallExpression")) return null;
-  if (!isNodeOfType(unwrapped.callee, "MemberExpression")) return null;
-  const method = getStaticMemberPropertyName(unwrapped.callee);
-  if (!method || !SELF_RETURNING_MUTATOR_KINDS.has(method)) return null;
-  const receiver = stripParenExpression(unwrapped.callee.object);
-  if (!isNodeOfType(receiver, "Identifier") || receiver.name !== name) return null;
-  return method;
-};
-
+// True when `node` is `<name>.<selfReturningMutator>(...)` and the
+// mutator matches the proven state collection kind.
 const isSelfReturningMutatorCallOn = (
   node: EsTreeNode,
   name: string,
   stateKind: StateCollectionKind | null,
 ): boolean => {
-  const method = selfReturningMutatorMethodOn(node, name);
-  return method !== null && SELF_RETURNING_MUTATOR_KINDS.get(method) === stateKind;
+  const unwrapped = stripParenExpression(node);
+  if (!isNodeOfType(unwrapped, "CallExpression")) return false;
+  if (!isNodeOfType(unwrapped.callee, "MemberExpression")) return false;
+  const method = getStaticMemberPropertyName(unwrapped.callee);
+  if (!method || SELF_RETURNING_MUTATOR_KINDS.get(method) !== stateKind) return false;
+  const receiver = stripParenExpression(unwrapped.callee.object);
+  return isNodeOfType(receiver, "Identifier") && receiver.name === name;
 };
 
 // True when some statement inside `root` mutates `name` in place: a
@@ -212,33 +186,24 @@ const isSelfReturningMutatorCallOn = (
 const containsInPlaceMutationOf = (root: EsTreeNode, name: string): boolean => {
   let mutated = false;
   walkAst(root, (child) => {
-    if (mutated) return false;
-    if (child !== root && isFunctionLike(child)) return false;
+    if (mutated || (child !== root && isFunctionLike(child))) return false;
 
+    let receiver: EsTreeNode | null = null;
     if (isNodeOfType(child, "CallExpression") && isNodeOfType(child.callee, "MemberExpression")) {
       const method = getStaticMemberPropertyName(child.callee);
-      if (method && IN_PLACE_MUTATOR_METHODS.has(method)) {
-        const receiverRoot = memberChainRootIdentifier(child.callee.object);
-        if (receiverRoot && receiverRoot.name === name) {
-          mutated = true;
-          return false;
-        }
-      }
+      if (method && IN_PLACE_MUTATOR_METHODS.has(method)) receiver = child.callee.object;
+    } else if (
+      isNodeOfType(child, "AssignmentExpression") ||
+      isNodeOfType(child, "UpdateExpression")
+    ) {
+      const target = stripParenExpression(
+        isNodeOfType(child, "AssignmentExpression")
+          ? (child.left as EsTreeNode)
+          : (child.argument as EsTreeNode),
+      );
+      if (isNodeOfType(target, "MemberExpression")) receiver = target;
     }
-
-    if (isNodeOfType(child, "AssignmentExpression") || isNodeOfType(child, "UpdateExpression")) {
-      const target = isNodeOfType(child, "AssignmentExpression")
-        ? (child.left as EsTreeNode)
-        : (child.argument as EsTreeNode);
-      const unwrappedTarget = stripParenExpression(target);
-      if (isNodeOfType(unwrappedTarget, "MemberExpression")) {
-        const rootIdentifier = memberChainRootIdentifier(unwrappedTarget);
-        if (rootIdentifier && rootIdentifier.name === name) {
-          mutated = true;
-          return false;
-        }
-      }
-    }
+    mutated = Boolean(receiver && memberChainRootIdentifier(receiver)?.name === name);
   });
   return mutated;
 };
@@ -250,19 +215,12 @@ const blockReturnsSameReference = (
 ): boolean => {
   let returnsSame = false;
   walkAst(blockBody, (child) => {
-    if (returnsSame) return false;
-    if (child !== blockBody && isFunctionLike(child)) return false;
-    if (isNodeOfType(child, "ReturnStatement") && child.argument) {
-      const returned = stripParenExpression(child.argument);
-      if (isNodeOfType(returned, "Identifier") && returned.name === name) {
-        returnsSame = true;
-        return false;
-      }
-      if (isSelfReturningMutatorCallOn(returned, name, stateKind)) {
-        returnsSame = true;
-        return false;
-      }
-    }
+    if (returnsSame || (child !== blockBody && isFunctionLike(child))) return false;
+    if (!isNodeOfType(child, "ReturnStatement") || !child.argument) return;
+    const returned = stripParenExpression(child.argument);
+    returnsSame =
+      (isNodeOfType(returned, "Identifier") && returned.name === name) ||
+      isSelfReturningMutatorCallOn(returned, name, stateKind);
   });
   return returnsSame;
 };
@@ -316,18 +274,16 @@ export const noMutateThenSetOrReturnSameReference = defineRule({
         isNodeOfType(argument, "CallExpression") &&
         isNodeOfType(argument.callee, "MemberExpression")
       ) {
-        const method = getStaticMemberPropertyName(argument.callee);
         const receiver = stripParenExpression(argument.callee.object);
-        if (
-          method &&
-          SELF_RETURNING_MUTATOR_KINDS.has(method) &&
-          isNodeOfType(receiver, "Identifier")
-        ) {
+        if (isNodeOfType(receiver, "Identifier")) {
           const valueDeclarator = findNearestStateHookDeclarator(receiver, receiver.name, 0);
           if (
             valueDeclarator &&
-            SELF_RETURNING_MUTATOR_KINDS.get(method) ===
-              stateInitializerCollectionKind(valueDeclarator)
+            isSelfReturningMutatorCallOn(
+              argument,
+              receiver.name,
+              stateInitializerCollectionKind(valueDeclarator),
+            )
           ) {
             context.report({ node, message: MESSAGE });
             return;

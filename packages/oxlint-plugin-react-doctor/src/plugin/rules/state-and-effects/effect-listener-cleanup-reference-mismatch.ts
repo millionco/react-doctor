@@ -2,6 +2,7 @@ import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -79,14 +80,12 @@ const RELEASE_METHOD_PAIRINGS = new Map<string, ListenerMethodPairing>([
   ],
 ]);
 
-const isFunctionLiteral = (node: EsTreeNode | null | undefined): boolean => {
-  if (!node) return false;
-  const stripped = stripParenExpression(node);
-  return (
-    isNodeOfType(stripped, "ArrowFunctionExpression") ||
-    isNodeOfType(stripped, "FunctionExpression")
-  );
-};
+const REGISTER_METHOD_PAIRINGS = new Map<string, ListenerMethodPairing>(
+  [...RELEASE_METHOD_PAIRINGS.values()].map((pairing) => [pairing.registerMethod, pairing]),
+);
+
+const isFunctionLiteral = (node: EsTreeNode | null | undefined): boolean =>
+  Boolean(node && isInlineFunctionExpression(stripParenExpression(node)));
 
 // Purely syntactic reference key (node text equality, not aliasing
 // analysis) so `window`/`window`, `el`/`el`, `this.emitter`/`this.emitter`
@@ -109,14 +108,6 @@ interface ListenerUsage {
   usesHandlerOnlyForm: boolean;
   handlerNode: EsTreeNode;
 }
-
-const readMemberCallMethod = (node: EsTreeNode): string | null => {
-  if (!isNodeOfType(node, "CallExpression")) return null;
-  const callee = node.callee;
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
-  if (!isNodeOfType(callee.property, "Identifier")) return null;
-  return callee.property.name;
-};
 
 // String literals and expressionless template literals share the `literal:`
 // namespace; identifiers and constant member chains (`EVENTS.RESIZE`) get a
@@ -186,10 +177,10 @@ export const effectListenerCleanupReferenceMismatch = defineRule({
 
       walkAst(callback, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "CallExpression")) return;
-        const method = readMemberCallMethod(child);
-        if (!method) return;
         const callee = child.callee;
-        if (!isNodeOfType(callee, "MemberExpression")) return;
+        if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return;
+        if (!isNodeOfType(callee.property, "Identifier")) return;
+        const method = callee.property.name;
         const receiverKey = serializeReferenceKey(callee.object);
         if (receiverKey === null) return;
 
@@ -200,12 +191,10 @@ export const effectListenerCleanupReferenceMismatch = defineRule({
           return;
         }
 
-        for (const [, candidatePairing] of RELEASE_METHOD_PAIRINGS) {
-          if (candidatePairing.registerMethod !== method) continue;
-          const usage = readListenerUsage(child, candidatePairing, method, receiverKey);
-          if (usage) registerUsages.push(usage);
-          return;
-        }
+        const registerPairing = REGISTER_METHOD_PAIRINGS.get(method);
+        if (!registerPairing) return;
+        const usage = readListenerUsage(child, registerPairing, method, receiverKey);
+        if (usage) registerUsages.push(usage);
       });
 
       for (const releaseUsage of releaseUsages) {

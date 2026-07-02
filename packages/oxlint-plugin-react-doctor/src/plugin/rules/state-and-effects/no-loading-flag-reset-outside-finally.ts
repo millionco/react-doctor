@@ -4,15 +4,13 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { walkOwnFunctionScope } from "../../utils/walk-own-function-scope.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { unwrapChainExpression } from "./utils/unwrap-chain-expression.js";
 
 const MESSAGE =
   "This resets a loading/busy flag only on the success path: if the awaited call rejects the reset never runs and the flag stays stuck truthy (a spinner that never stops, a button disabled forever). Move the reset into a `finally` block, or mirror it on every catch, so it clears on rejection too.";
 
-// Setters whose truthy/falsy value models a loading/busy/pending UI flag.
-// The reset-on-success defect only matters for a flag the UI reads to show a
-// spinner or disable a control, so we gate on the setter name to stay quiet
-// on ordinary boolean toggles.
 const LOADING_FLAG_SETTER_PATTERN =
   /(loading|busy|submitting|saving|pending|fetching|processing|uploading|spinner|disabl|refreshing|updating|inflight|working|posting|sending|deleting)/i;
 
@@ -73,21 +71,6 @@ const classifyResetContext = (
   }
   return "plain";
 };
-
-// Walks the function's own body, never descending into a nested function, so
-// awaits/setters belong to THIS async scope, not a deeper closure.
-const walkOwnScope = (functionNode: EsTreeNode, visit: (node: EsTreeNode) => void): void => {
-  if (!isFunctionLike(functionNode)) return;
-  const body = functionNode.body;
-  if (!body) return;
-  walkAst(body, (child: EsTreeNode) => {
-    if (child !== body && isFunctionLike(child)) return false;
-    visit(child);
-  });
-};
-
-const unwrapChainExpression = (expression: EsTreeNode): EsTreeNode =>
-  isNodeOfType(expression, "ChainExpression") ? expression.expression : expression;
 
 // `await Promise.allSettled(...)` never rejects by spec, and
 // `await f().catch(...)` handles rejection inline, so the await always
@@ -290,7 +273,7 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
   const settersByName = new Map<string, SetterCall[]>();
   const checkedResultNames = new Set<string>();
 
-  walkOwnScope(functionNode, (node) => {
+  walkOwnFunctionScope(functionNode, (node) => {
     if (isNodeOfType(node, "AwaitExpression")) {
       const start = getNodeStart(node);
       if (start !== null) awaitSites.push({ node, start });
@@ -320,11 +303,6 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
 
   if (awaitSites.length === 0) return;
 
-  const rejectionCanSkipReset = (awaitSite: AwaitSite, resetStart: number): boolean =>
-    !isNeverRejectingAwaitedExpression(awaitSite.node) &&
-    !isResultObjectCheckedAwait(awaitSite.node, checkedResultNames) &&
-    !isRejectionSwallowedBeforeReset(awaitSite.node, functionNode, resetStart);
-
   for (const calls of settersByName.values()) {
     // A reset in `finally` always runs; a reset in `catch` mirrors the reset
     // on the rejection path. Either discharges the clear-obligation, so the
@@ -343,7 +321,9 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
       const stuckFlagAwait = awaitSites.find(
         (awaitSite) =>
           awaitSite.start < reset.start &&
-          rejectionCanSkipReset(awaitSite, reset.start) &&
+          !isNeverRejectingAwaitedExpression(awaitSite.node) &&
+          !isResultObjectCheckedAwait(awaitSite.node, checkedResultNames) &&
+          !isRejectionSwallowedBeforeReset(awaitSite.node, functionNode, reset.start) &&
           truthySets.some(
             (truthySet) =>
               truthySet.start < awaitSite.start &&
@@ -369,13 +349,13 @@ export const noLoadingFlagResetOutsideFinally = defineRule({
     "A trailing `setLoading(false)` after an `await` never runs if the awaited call rejects, so the flag stays stuck truthy; reset it in a `finally` block (or mirror the reset on every catch) so it clears on both paths.",
   create: (context: RuleContext) => ({
     ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
-      analyzeFunction(node as EsTreeNode, context);
+      analyzeFunction(node, context);
     },
     FunctionExpression(node: EsTreeNodeOfType<"FunctionExpression">) {
-      analyzeFunction(node as EsTreeNode, context);
+      analyzeFunction(node, context);
     },
     FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
-      analyzeFunction(node as EsTreeNode, context);
+      analyzeFunction(node, context);
     },
   }),
 });

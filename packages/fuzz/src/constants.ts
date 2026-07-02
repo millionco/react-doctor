@@ -14,7 +14,7 @@ export const WIDE_COMPONENT_STATEMENT_COUNT = 250;
 // When a program makes the rule fire, mutate it this many extra times and
 // re-run — a cheap feedback loop that keeps fuzzing near reporting paths.
 export const EXPLOIT_DESCENDANT_COUNT = 3;
-export const MAX_CORPUS_FILES = 200;
+export const MAX_CORPUS_FILES = 400;
 export const MAX_CORPUS_FILE_BYTES = 48_000;
 // Fraction of iterations that start from a corpus file (when FUZZ_CORPUS_DIR
 // is set) instead of a generated program.

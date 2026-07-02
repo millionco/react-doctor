@@ -35,10 +35,13 @@ FUZZ_RULE=<rule-id> FUZZ_STRICT=1 FUZZ_ITERATIONS=500 pnpm fuzz
 ```
 
 Recommended full sweep (e.g. before a rule-batch release), pointing the
-corpus at real checkouts (react-bench corpus repos are ideal):
+corpus at real checkouts. Two ready-made corpora exist (see the package
+README "Canonical corpora"): the RDE repo cache (`~/.cache/rde/repos`,
+hundreds of pre-cloned pinned repos) and react-bench's diagnostic-dense
+RD-health target files (`bun scripts/build-bench-corpus.ts`):
 
 ```bash
-FUZZ_INVARIANTS=1 FUZZ_ITERATIONS=100 FUZZ_CORPUS_DIR=/path/to/corpus-repos pnpm fuzz
+FUZZ_INVARIANTS=1 FUZZ_ITERATIONS=100 FUZZ_CORPUS_DIR=~/.cache/rde/repos pnpm fuzz
 ```
 
 ## Fire-coverage doctrine

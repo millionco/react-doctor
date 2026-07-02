@@ -61,6 +61,21 @@ FUZZ_PRINT_SILENT=1 pnpm fuzz              # list rules that never fired
 `scripts/measure-coverage.ts` and `scripts/measure-corpus-coverage.ts` (run
 with `bun`) report generator/corpus fire-coverage when tuning snippet pools.
 
+## Canonical corpora
+
+Ready-made `FUZZ_CORPUS_DIR` targets, best first:
+
+- **RDE repo cache** (`~/.cache/rde/repos`) — repos already cloned by
+  react-doctor-evals runs at pinned SHAs (hundreds of real projects; the
+  loader round-robins across them). The full 8.4k-repo manifest lives in
+  `react-doctor-evals/repos.json` if more need cloning.
+- **react-bench RD-health targets** — `bun scripts/build-bench-corpus.ts`
+  (env: `REACT_BENCH`, `RDE_REPO_CACHE`, `CLONE_MISSING=1`) copies the
+  benchmark's target files — each selected for having ≥6 severe React
+  Doctor diagnostics — into `tmp/bench-corpus/`. Densest seeds available:
+  ~60 files fire ~90+ distinct rules.
+- **react-bench task checkouts** — any directory of cloned corpus repos.
+
 `pnpm test` in this package runs only the always-on harness smoke tests
 (including a generator-health check: 100 seeded programs must parse cleanly);
 the full fuzz run is opt-in via `REACT_DOCTOR_FUZZ=1` (what `pnpm fuzz` sets).

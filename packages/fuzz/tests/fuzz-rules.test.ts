@@ -15,10 +15,12 @@ const shouldCheckInvariants = isStrict || process.env.FUZZ_INVARIANTS === "1";
 const ruleFilter = process.env.FUZZ_RULE;
 
 // A malformed env value silently degrading to zero iterations would make
-// the whole run a false green, so fail loudly instead.
+// the whole run a false green, so fail loudly instead. Only validated when
+// fuzzing is actually enabled — a stale env var must not break the default
+// (skipped) suite at module load.
 const readPositiveIntegerEnv = (name: string, defaultValue: number): number => {
   const raw = process.env[name];
-  if (raw === undefined) return defaultValue;
+  if (raw === undefined || !isFuzzEnabled) return defaultValue;
   const value = Number(raw);
   if (!Number.isInteger(value) || value <= 0) {
     throw new Error(`${name} must be a positive integer, got ${JSON.stringify(raw)}`);
@@ -33,12 +35,12 @@ const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 // see corpus/README.md) is always fuzzed; FUZZ_CORPUS_DIR adds external
 // real-world files on top.
 const corpusDirectory = process.env.FUZZ_CORPUS_DIR;
-const corpus: FuzzCorpusEntry[] = isFuzzEnabled
-  ? [
-      ...loadFuzzCorpus(path.join(packageRoot, "corpus")),
-      ...(corpusDirectory ? loadFuzzCorpus(corpusDirectory) : []),
-    ]
+const builtinCorpus: FuzzCorpusEntry[] = isFuzzEnabled
+  ? loadFuzzCorpus(path.join(packageRoot, "corpus"))
   : [];
+const externalCorpus: FuzzCorpusEntry[] =
+  isFuzzEnabled && corpusDirectory ? loadFuzzCorpus(corpusDirectory) : [];
+const corpus: FuzzCorpusEntry[] = [...builtinCorpus, ...externalCorpus];
 const findingsDirectory = path.join(packageRoot, "tmp", "fuzz-findings");
 
 let reproducerSequence = 0;
@@ -80,7 +82,9 @@ const silentRuleIds = new Set<string>();
 
 describe.skipIf(!isFuzzEnabled)("adversarial rule fuzzing", () => {
   if (corpusDirectory) {
-    console.info(`fuzz corpus: ${corpus.length} files from ${corpusDirectory}`);
+    console.info(
+      `fuzz corpus: ${externalCorpus.length} files from ${corpusDirectory} + ${builtinCorpus.length} built-in regression seeds`,
+    );
   }
 
   // Fire-coverage summary — the health metric of the generator itself. A

@@ -77,6 +77,27 @@ describe("no-inline-hoc-on-component", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags an inline HOC component threaded through a curried outer HOC call", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `export const Page = connect(mapState)(withRouter((props) => {
+        const query = useQuery(props.location);
+        return <div>{query.data}</div>;
+      }));`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a hook-free inline component threaded through a curried outer HOC call", () => {
+    const result = runRule(
+      noInlineHocOnComponent,
+      `export const Page = connect(mapState)(withRouter((props) => (
+        <div>{props.location.pathname}</div>
+      )));`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags an inline HOC component cast inside the call parentheses", () => {
     const result = runRule(
       noInlineHocOnComponent,

@@ -5,7 +5,6 @@ import { findVariableInitializer } from "../../utils/find-variable-initializer.j
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
-import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import {
   PARENTHESIZED_EXPRESSION_TYPE,
   stripGroupingParens,
@@ -165,20 +164,19 @@ const escapeIsLeaky = (callNode: EsTreeNode): boolean => {
 export const noCreateObjectUrlWithoutRevoke = defineRule({
   id: "no-create-object-url-without-revoke",
   title: "createObjectURL without revokeObjectURL",
+  tags: ["test-noise"],
   severity: "warn",
   category: "Performance",
   recommendation:
     "Call `URL.revokeObjectURL(url)` once the object URL is no longer needed (after the download, in a `useEffect` cleanup, or on unmount). An object URL keeps its Blob/File alive for the document lifetime until it is revoked.",
   create: (context: RuleContext) => {
-    const isTestlikeFile = isTestlikeFilename(context.filename);
     let moduleHasRevoke = false;
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        if (isTestlikeFile) return;
         moduleHasRevoke = moduleReferencesRevoke(node);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (isTestlikeFile || moduleHasRevoke) return;
+        if (moduleHasRevoke) return;
         if (!isCreateObjectUrlCall(node)) return;
         if (!escapeIsLeaky(node)) return;
         context.report({ node, message: MESSAGE });

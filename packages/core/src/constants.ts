@@ -120,6 +120,12 @@ export const GITHUB_VIEWER_PERMISSION_TIMEOUT_MS = 2_000;
 // Use a conservative threshold to leave room for the executable path and quoting overhead.
 export const SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000;
 
+// POSIX argv limits are ~2 MB (ARG_MAX minus environment); a conservative cap
+// well below that keeps the pre-spawn guard meaningful without rejecting the
+// legitimately long `git diff -- <hundreds of files>` invocations that
+// `--scope lines` produces on large PRs (which fit fine on Linux/macOS).
+export const SPAWN_ARGS_MAX_LENGTH_CHARS_POSIX = 1_500_000;
+
 // HACK: bound per-batch work so that JS-evaluated plugins with bad
 // scaling (originally the upstream `effect` plugin — verified to hit
 // the 5-min spawn timeout on supabase/studio's ~3500 source files at

@@ -24,13 +24,15 @@ const ScoreApiResponseSchema = Schema.Struct({
 const parseScoreResult = (value: unknown): ScoreResult | null =>
   Option.getOrNull(Schema.decodeUnknownOption(ScoreApiResponseSchema)(value));
 
-// `filePath` never leaves the machine, and `fileContext` is derived
-// from it — neither rides the Score API payload, which keeps the
+// `filePath` never leaves the machine, and `fileContext` / `fixGroupId` are
+// derived from it — none of them ride the Score API payload, which keeps the
 // request shape identical to what the server has always received.
 const stripLocalFileFields = (
   diagnostics: Diagnostic[],
-): Omit<Diagnostic, "filePath" | "fileContext">[] =>
-  diagnostics.map(({ filePath: _filePath, fileContext: _fileContext, ...rest }) => rest);
+): Omit<Diagnostic, "filePath" | "fileContext" | "fixGroupId">[] =>
+  diagnostics.map(
+    ({ filePath: _filePath, fileContext: _fileContext, fixGroupId: _fixGroupId, ...rest }) => rest,
+  );
 
 const isAbortError = (error: unknown): boolean =>
   error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");

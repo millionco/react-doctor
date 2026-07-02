@@ -11,11 +11,13 @@ import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scop
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// Count setState calls along a SINGLE execution path. For if/else
-// branches and switch/case alternatives, take the MAX of the branches
-// (only one fires per render) instead of SUM. ASYNC function bodies
-// are NOT walked — their setStates fire across async boundaries on
-// separate render cycles (the canonical fetch pattern
+// Count distinct setState call sites reachable from the effect body.
+// If/else and conditional branches SUM (each call site is a separate
+// write the reducer recommendation would fold together), but an
+// early-returning guard branch stays mutually exclusive with the
+// post-guard body (see countStatementSequenceSetStateCalls). ASYNC
+// function bodies are NOT walked — their setStates fire across async
+// boundaries on separate render cycles (the canonical fetch pattern
 // `setStatus('loading'); await fetch(); setData(d); setStatus('idle')`
 // is 3 setStates separated by awaits, not 3 cascading synchronous
 // updates that need a reducer).
@@ -48,22 +50,25 @@ const SYNCHRONOUS_ITERATION_METHOD_NAMES: ReadonlySet<string> = new Set([
   "sort",
 ]);
 
-// A nested function whose body runs on the SAME synchronous dispatch as the
-// effect: an IIFE (`(() => { … })()`) or the callback of a synchronous array
-// iteration (`items.forEach(() => { setA(); setB() })`). Its setters DO
-// compound and must still be counted — unlike a deferred callback (timer /
-// listener / observer / promise / subscription, or a handler stored in a
-// variable and registered later), which runs on its own dispatch.
-const runsSynchronouslyInline = (fn: EsTreeNode): boolean => {
-  const parent = (fn as unknown as { parent?: EsTreeNode | null }).parent;
+// A function expression passed INLINE as a call argument to something other
+// than a synchronous array iteration — `store.subscribe(() => { … })`,
+// `setTimeout(() => { … })`, `promise.then(() => { … })` — is a deferred
+// callback that runs on its own dispatch, so its setters don't compound with
+// the effect body's. Everything else IS walked: IIFEs and `forEach`/`map`/…
+// callbacks run on the same synchronous dispatch, and a function stored in a
+// variable (a helper invoked inline, or a handler registered via
+// `addEventListener`) keeps its setter call sites counted — those are the
+// exact writes the reducer recommendation targets.
+const isDeferredInlineCallback = (functionNode: EsTreeNode): boolean => {
+  const parent = (functionNode as unknown as { parent?: EsTreeNode | null }).parent;
   if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
-  if ((parent.callee as unknown) === (fn as unknown)) return true;
+  if ((parent.callee as unknown) === (functionNode as unknown)) return false;
   const isCallbackArgument = (parent.arguments ?? []).some(
-    (argument) => (argument as unknown) === (fn as unknown),
+    (argument) => (argument as unknown) === (functionNode as unknown),
   );
   if (!isCallbackArgument) return false;
   const callee = parent.callee;
-  return (
+  return !(
     isNodeOfType(callee, "MemberExpression") &&
     isNodeOfType(callee.property, "Identifier") &&
     SYNCHRONOUS_ITERATION_METHOD_NAMES.has(callee.property.name)
@@ -122,9 +127,9 @@ const countStatementSequenceSetStateCalls = (statements: ReadonlyArray<EsTreeNod
 
 const countMaxPathSetStateCalls = (node: EsTreeNode): number => {
   if (!node || typeof node !== "object") return 0;
-  // Async function bodies — see comment above. Sync function bodies
-  // (callbacks for `.then(...)`, `setTimeout(...)`, etc.) are still
-  // walked because their setStates DO compound when fired together.
+  // Async function bodies — see comment above. Deferred INLINE callbacks
+  // (`.then(...)`, `setTimeout(...)`, subscriptions) are skipped by
+  // shouldWalkChild below; other sync function bodies are walked.
   if (isAsyncFunctionLike(node)) return 0;
   // Statement lists: walk with block-level control flow so setters in an
   // early-returning guard branch are mutually exclusive with the
@@ -132,17 +137,22 @@ const countMaxPathSetStateCalls = (node: EsTreeNode): number => {
   if (isNodeOfType(node, "BlockStatement") || isNodeOfType(node, "Program")) {
     return countStatementSequenceSetStateCalls((node.body ?? []) as EsTreeNode[]);
   }
-  // If/else: max of branches (only one fires).
+  // If/else: SUM the branches' call sites. Only one branch fires per run,
+  // but every call site is a separate write the rule's reducer
+  // recommendation would consolidate — an `if/else if/else` ladder that
+  // fans out over 3+ setters is exactly the cascading shape to flag.
+  // (Mutually exclusive early-return guards are handled at the statement-
+  // sequence level instead, where the mined FP shape actually lives.)
   if (isNodeOfType(node, "IfStatement")) {
     const thenCount = countMaxPathSetStateCalls(node.consequent as EsTreeNode);
     const elseCount = node.alternate ? countMaxPathSetStateCalls(node.alternate as EsTreeNode) : 0;
-    return Math.max(thenCount, elseCount);
+    return thenCount + elseCount;
   }
   // Conditional expression — same logic.
   if (isNodeOfType(node, "ConditionalExpression")) {
-    return Math.max(
-      countMaxPathSetStateCalls(node.consequent as EsTreeNode),
-      countMaxPathSetStateCalls(node.alternate as EsTreeNode),
+    return (
+      countMaxPathSetStateCalls(node.consequent as EsTreeNode) +
+      countMaxPathSetStateCalls(node.alternate as EsTreeNode)
     );
   }
   // Switch: max across runs (a "run" is a sequence of cases that fall
@@ -197,15 +207,15 @@ const countMaxPathSetStateCalls = (node: EsTreeNode): number => {
     }
     return 1 + nestedSettersInArgs;
   }
-  // Walk children, summing — sequential statements compound. A DEFERRED
-  // callback child (handed to `addEventListener` / `setTimeout` / an observer
-  // / `.then(...)`, or stored in a variable and registered later) runs on its
-  // own dispatch, so its setters don't compound and are skipped. A function
-  // that runs synchronously inline (an IIFE or a `forEach`/`map`/… callback)
-  // IS walked. (A `setX(prev => { setY() })` functional updater is counted via
-  // the setter-call arguments branch above, not here.)
+  // Walk children, summing — sequential statements compound. The only
+  // function-like children skipped are DEFERRED inline callbacks (handed
+  // straight to `store.subscribe(...)` / `setTimeout(...)` / `.then(...)`),
+  // which run on their own dispatch. IIFEs, `forEach`/`map`/… callbacks, and
+  // variable-stored helpers/handlers ARE walked. (A `setX(prev => { setY() })`
+  // functional updater is counted via the setter-call arguments branch above,
+  // not here.)
   const shouldWalkChild = (child: EsTreeNode): boolean =>
-    !isFunctionLike(child) || runsSynchronouslyInline(child);
+    !isFunctionLike(child) || !isDeferredInlineCallback(child);
   let total = 0;
   const nodeRecord = node as unknown as Record<string, unknown>;
   for (const key of Object.keys(nodeRecord)) {

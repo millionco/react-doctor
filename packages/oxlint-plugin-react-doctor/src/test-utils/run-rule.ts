@@ -31,8 +31,8 @@ export interface RunRuleResult {
 
 const dispatchTreeWalk = (root: EsTreeNode, visitors: RuleVisitors): void => {
   const visit = (node: EsTreeNode): void => {
-    const handler = visitors[node.type];
-    if (typeof handler === "function") handler(node);
+    const enterHandler = visitors[node.type];
+    if (typeof enterHandler === "function") enterHandler(node);
     const nodeRecord = node as unknown as Record<string, unknown>;
     for (const key of Object.keys(nodeRecord)) {
       if (key === "parent") continue;
@@ -45,10 +45,10 @@ const dispatchTreeWalk = (root: EsTreeNode, visitors: RuleVisitors): void => {
         visit(child);
       }
     }
+    const exitHandler = visitors[`${node.type}:exit`];
+    if (typeof exitHandler === "function") exitHandler(node);
   };
   visit(root);
-  const programExitHandler = visitors["Program:exit"];
-  if (typeof programExitHandler === "function") programExitHandler(root);
 };
 
 // Pure-TS rule runner mirroring what oxlint does at runtime: parse code,

@@ -1,5 +1,6 @@
 // Directory names that mark a file as part of a test / fixture /
-// Storybook / Cypress / example surface, regardless of the file's own suffix.
+// Storybook / Cypress / docs-site (`.dumi`) / example surface, regardless
+// of the file's own suffix.
 const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/test/",
   "/tests/",
@@ -11,6 +12,7 @@ const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/mocks/",
   "/cypress/",
   "/.storybook/",
+  "/.dumi/",
   "/stories/",
   "/__stories__/",
   "/playground/",

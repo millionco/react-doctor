@@ -12,6 +12,7 @@ export default defineConfig({
       "build",
       "node_modules",
       "packages/zed-react-doctor/**",
+      "packages/core/tests/fixtures/**",
       "packages/react-doctor/tests/fixtures/**",
       "packages/language-server/tests/fixtures/**",
       "packages/deslop-js/tests/fixtures/**",

@@ -101,9 +101,18 @@ export const EXPO_UI_MODULE_SOURCES = new Set([
   "@expo/ui/jetpack-compose",
 ]);
 
+// Modules whose FlatList/SectionList exports are the real react-native
+// virtualized lists — gesture-handler re-exports them with gesture support.
+// Mirrors rn-prefer-pressable's TOUCHABLE_SOURCES.
+export const REACT_NATIVE_LIST_MODULE_SOURCES = new Set([
+  "react-native",
+  "react-native-gesture-handler",
+]);
+
 // Built-in RN virtualized lists. Unlike recyclers these have no owning package
 // to resolve against, so rules match them by name and require the binding to
-// resolve to `react-native` (or an ambient/global reference).
+// resolve to a REACT_NATIVE_LIST_MODULE_SOURCES module (or an ambient/global
+// reference).
 export const REACT_NATIVE_BUILTIN_LIST_COMPONENTS = new Set([
   "FlatList",
   "SectionList",

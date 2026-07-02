@@ -29,9 +29,15 @@ export const rnListRecyclableWithoutTypes = defineRule({
       const elementName = resolveJsxElementName(node);
       if (!elementName) return;
       // Resolve the LOCAL JSX name back to a recycler that was really imported
-      // from `@shopify/flash-list` / `@legendapp/list`. A name-only match on a
-      // homegrown `FlashList` (`const FlashList = MyOwnList`) isn't a recycler.
-      if (resolveImportedRecyclerName(node, elementName) === null) return;
+      // from `@shopify/flash-list` / `@legendapp/list` — named, aliased, or
+      // namespace member access. A name-only match on a homegrown `FlashList`
+      // (`const FlashList = MyOwnList`) isn't a recycler.
+      if (
+        resolveImportedRecyclerName(node, elementName, {
+          allowNamespaceMemberAccess: true,
+        }) === null
+      )
+        return;
 
       let hasRecycleItemsEnabled = false;
       let hasGetItemType = false;

@@ -22,4 +22,34 @@ const C = () => (<FlashList recycleItems data={items} renderItem={r} />);`,
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("flags <FL.FlashList> on a flash-list namespace import", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import * as FL from "@shopify/flash-list";
+const C = () => (<FL.FlashList recycleItems data={items} renderItem={r} />);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags an aliased FlashList import without getItemType", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import { FlashList as List } from "@shopify/flash-list";
+const C = () => (<List recycleItems data={items} renderItem={r} />);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on a member FlashList from a non-owner namespace import", () => {
+    const result = runRule(
+      rnListRecyclableWithoutTypes,
+      `import * as FL from "./my-lists";
+const C = () => (<FL.FlashList recycleItems data={items} renderItem={r} />);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

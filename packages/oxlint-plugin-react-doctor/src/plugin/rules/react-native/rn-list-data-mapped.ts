@@ -1,7 +1,12 @@
-import { REACT_NATIVE_BUILTIN_LIST_COMPONENTS } from "../../constants/react-native.js";
+import {
+  REACT_NATIVE_BUILTIN_LIST_COMPONENTS,
+  REACT_NATIVE_LIST_MODULE_SOURCES,
+} from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { findDeclaratorForBinding } from "../../utils/find-declarator-for-binding.js";
+import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getRequireCallSource } from "../../utils/get-require-call-source.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
@@ -9,20 +14,77 @@ import { resolveImportedRecyclerName } from "./utils/resolve-imported-recycler-n
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const REACT_NATIVE_MODULE_SOURCE = "react-native";
+const getJsxMemberRootObjectName = (jsxElementName: EsTreeNode): string | null => {
+  let objectNode: EsTreeNode = jsxElementName;
+  while (isNodeOfType(objectNode, "JSXMemberExpression")) {
+    objectNode = objectNode.object;
+  }
+  return isNodeOfType(objectNode, "JSXIdentifier") ? objectNode.name : null;
+};
+
+// Classifies a non-import local binding of a built-in list name. A declarator
+// initialized from a `require("react-native")` (`const { FlatList } = ...`) or
+// from a react-native namespace import (`const { FlatList } = RN`) is still the
+// real RN list; any other initializer is a local rebinding
+// (`const FlatList = MyTable`). No binding at all — an ambient/global
+// reference — keeps the base fire-by-name behavior.
+const isLocalBindingReactNativeList = (node: EsTreeNode, elementName: string): boolean => {
+  const localBinding = findVariableInitializer(node, elementName);
+  if (localBinding === null) return true;
+  const declarator = findDeclaratorForBinding(localBinding.bindingIdentifier);
+  if (declarator === null) return false;
+  const declaratorInitializer = declarator.init;
+  if (!declaratorInitializer) return true;
+  const requireSource = getRequireCallSource(declaratorInitializer);
+  if (requireSource !== null) return REACT_NATIVE_LIST_MODULE_SOURCES.has(requireSource);
+  if (isNodeOfType(declaratorInitializer, "Identifier")) {
+    const namespaceBinding = getImportBindingForName(node, declaratorInitializer.name);
+    return (
+      namespaceBinding !== null &&
+      namespaceBinding.isNamespace &&
+      REACT_NATIVE_LIST_MODULE_SOURCES.has(namespaceBinding.source)
+    );
+  }
+  return false;
+};
 
 // True when the local JSX name genuinely refers to a virtualized list, not a
 // same-named local component. Recyclers (FlashList/LegendList) must resolve to
 // a real import from their owning package — which also covers aliased imports
-// (`import { FlashList as FL }`). The built-in RN lists fire for a
-// `react-native` import or an ambient/global reference, but not when the name
-// is rebound to a local declaration (`const FlatList = MyTable`).
-const isVirtualizedList = (node: EsTreeNode, elementName: string): boolean => {
-  if (resolveImportedRecyclerName(node, elementName) !== null) return true;
+// (`import { FlashList as FL }`) and namespace member access. The built-in RN
+// lists fire for an import / require / namespace destructure from a
+// react-native list source (or an ambient/global reference like
+// `Animated.FlatList`), but not when the name is rebound to a local
+// declaration (`const FlatList = MyTable`) or member-accessed on an object
+// imported from an unrelated module (`<Styled.FlatList>`).
+const isVirtualizedList = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  elementName: string,
+): boolean => {
+  if (
+    resolveImportedRecyclerName(node, elementName, {
+      allowNamespaceMemberAccess: true,
+    }) !== null
+  )
+    return true;
+  if (isNodeOfType(node.name, "JSXMemberExpression")) {
+    if (!REACT_NATIVE_BUILTIN_LIST_COMPONENTS.has(elementName)) return false;
+    const memberObjectName = getJsxMemberRootObjectName(node.name);
+    if (memberObjectName === null) return false;
+    const objectImportBinding = getImportBindingForName(node, memberObjectName);
+    if (objectImportBinding === null) return true;
+    return REACT_NATIVE_LIST_MODULE_SOURCES.has(objectImportBinding.source);
+  }
+  const importBinding = getImportBindingForName(node, elementName);
+  if (importBinding !== null) {
+    const canonicalName = importBinding.exportedName ?? elementName;
+    return (
+      REACT_NATIVE_LIST_MODULE_SOURCES.has(importBinding.source) &&
+      REACT_NATIVE_BUILTIN_LIST_COMPONENTS.has(canonicalName)
+    );
+  }
   if (!REACT_NATIVE_BUILTIN_LIST_COMPONENTS.has(elementName)) return false;
-  const importSource = getImportSourceForName(node, elementName);
-  if (importSource !== null) return importSource === REACT_NATIVE_MODULE_SOURCE;
-  return findVariableInitializer(node, elementName) === null;
+  return isLocalBindingReactNativeList(node, elementName);
 };
 
 const FRESH_ARRAY_METHODS = new Set([

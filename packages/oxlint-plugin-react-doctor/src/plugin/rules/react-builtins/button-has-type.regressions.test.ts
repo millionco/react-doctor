@@ -71,6 +71,70 @@ describe("react-builtins/button-has-type — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  // fp-review PR991: resolution through a `let` is not proof — the
+  // binding can be reassigned to an unknown value before render.
+  it("still flags a let binding even when initialized to a valid type", () => {
+    const result = runRule(
+      buttonHasType,
+      `function App({ dynamic }) { let kind = "submit"; kind = dynamic; return <button type={kind}>x</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // fp-review PR991: a destructured `type` key is only a consumer forward
+  // when the pattern roots at a function PARAMETER — a destructure of a
+  // local object literal keeps the (invalid) value statically visible.
+  it("still flags a type destructured from a local object literal", () => {
+    const result = runRule(
+      buttonHasType,
+      `function App() { const { type: kind } = { type: "banana" }; return <button type={kind}>x</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a type destructured from a dynamic local source", () => {
+    const result = runRule(
+      buttonHasType,
+      `function App({ raw }) { const { type: kind } = JSON.parse(raw); return <button type={kind}>x</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // …but a destructure OF A PARAM IDENTIFIER (`const { type } = props`)
+  // is still the wrapper forward — the value lives at the call site.
+  it("stays silent on a type destructured from a props param", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = (props) => { const { type: kind } = props; return <button type={kind}>x</button>; };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // fp-review PR991: a param DEFAULT only applies when the caller omits
+  // the arg — a caller-passed invalid value is unchecked, so the default
+  // is not proof of validity.
+  it("still flags a destructured param with a valid default", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = ({ kind = "button" }) => <button type={kind}>x</button>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a positional param with a valid default", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = (kind = "submit") => <button type={kind}>x</button>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   // Bugbot: a QUOTED destructured `type` key (`{ "type": kind }`) is the same
   // consumer forward as the bare-identifier key.
   it("stays silent on a quoted renamed destructured type prop forward", () => {

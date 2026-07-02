@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
@@ -71,12 +72,16 @@ const isProvenValidExpression = (
   // A bare identifier may name a local binding that resolves to a
   // provably valid literal (`const kind = "submit"; type={kind}`). Walk
   // to its initializer and re-test. `resolvedBindings` guards against a
-  // cyclic chain. An unresolvable binding (prop / param / external)
-  // stays "unknown → invalid".
+  // cyclic chain. Only a direct `const` declarator init is proof — a
+  // `let` can be reassigned before render, and a param DEFAULT
+  // (`({ kind = "button" }) =>`) only applies when the caller omits the
+  // arg, so both stay "unknown → invalid", as does an unresolvable
+  // binding (prop / param / external).
   if (isNodeOfType(expression, "Identifier")) {
     if (resolvedBindings.has(expression.name)) return false;
     const binding = findVariableInitializer(expression, expression.name);
     if (!binding?.initializer) return false;
+    if (!isUnconditionalConstInitializer(binding)) return false;
     return isProvenValidExpression(
       binding.initializer,
       settings,
@@ -86,16 +91,76 @@ const isProvenValidExpression = (
   return false;
 };
 
+const isUnconditionalConstInitializer = (binding: BindingInfo): boolean => {
+  const declarator = binding.bindingIdentifier.parent;
+  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
+  if (declarator.init !== binding.initializer) return false;
+  const declaration = declarator.parent;
+  return Boolean(
+    declaration && isNodeOfType(declaration, "VariableDeclaration") && declaration.kind === "const",
+  );
+};
+
+const DESTRUCTURING_PATTERN_TYPES = new Set<string>([
+  "ObjectPattern",
+  "ArrayPattern",
+  "Property",
+  "AssignmentPattern",
+  "RestElement",
+]);
+
+const findDestructuringPatternRoot = (node: EsTreeNode): EsTreeNode => {
+  let patternRoot = node;
+  while (patternRoot.parent && DESTRUCTURING_PATTERN_TYPES.has(patternRoot.parent.type)) {
+    patternRoot = patternRoot.parent;
+  }
+  return patternRoot;
+};
+
+// True when the destructuring pattern containing `bindingNode` roots at a
+// function PARAMETER — directly (`({ type }) => …`) or through a local
+// destructure of a param identifier (`const { type } = props`, where
+// `props` is itself a param). A destructure of a local object literal or
+// call result is NOT a consumer prop — the value lives right there.
+const rootsAtFunctionParameter = (
+  bindingNode: EsTreeNode,
+  visitedBindingIdentifiers: Set<EsTreeNode> = new Set(),
+): boolean => {
+  if (visitedBindingIdentifiers.has(bindingNode)) return false;
+  visitedBindingIdentifiers.add(bindingNode);
+  const patternRoot = findDestructuringPatternRoot(bindingNode);
+  const rootParent = patternRoot.parent;
+  if (!rootParent) return false;
+  if (
+    rootParent.type === "FunctionDeclaration" ||
+    rootParent.type === "FunctionExpression" ||
+    rootParent.type === "ArrowFunctionExpression"
+  ) {
+    return rootParent.params.some((parameter) => parameter === patternRoot);
+  }
+  if (isNodeOfType(rootParent, "VariableDeclarator") && rootParent.id === patternRoot) {
+    const initializer = rootParent.init;
+    if (!initializer || !isNodeOfType(initializer, "Identifier")) return false;
+    const sourceBinding = findVariableInitializer(initializer, initializer.name);
+    if (!sourceBinding) return false;
+    return rootsAtFunctionParameter(sourceBinding.bindingIdentifier, visitedBindingIdentifiers);
+  }
+  return false;
+};
+
 // True when the identifier binds to a destructured `type` prop, renamed
 // or not (`({ type }) => …` / `({ type: kind }) => …`). The binding
 // identifier's parent Property carries the original key `type`, so the
-// real value still lives at the consumer's call site.
+// real value still lives at the consumer's call site — but only when the
+// pattern destructures a function parameter (props); a local destructure
+// (`const { type: kind } = { type: "banana" }`) keeps the value in reach.
 const bindsToDestructuredTypeProp = (expression: EsTreeNodeOfType<"Identifier">): boolean => {
   const binding = findVariableInitializer(expression, expression.name);
   const declaration = binding?.bindingIdentifier;
   const property = declaration?.parent;
   if (!property || !isNodeOfType(property, "Property") || property.computed) return false;
   if (property.value !== declaration) return false;
+  if (!rootsAtFunctionParameter(property)) return false;
   // The original key is `type`, whether written bare (`{ type: kind }`) or
   // quoted (`{ "type": kind }`).
   if (isNodeOfType(property.key, "Identifier")) return property.key.name === "type";

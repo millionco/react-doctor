@@ -1,11 +1,14 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isComponentDeclaration } from "../../utils/is-component-declaration.js";
 import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -44,6 +47,28 @@ const isModuleScopeDeclaration = (declaration: EsTreeNode | null | undefined): b
   return true;
 };
 
+// A nested render helper that OWNS hooks is not exempt: calling it as
+// `Name()` inlines its hooks into the caller's hook order, so a
+// conditional call is exactly the hooks-order hazard the rule warns
+// about. Only hook-free nested helpers get the closure-helper pass.
+const declarationBodyContainsHookCall = (symbol: SymbolDescriptor): boolean => {
+  const componentFunction = isComponentDeclaration(symbol.declarationNode)
+    ? symbol.declarationNode
+    : symbol.initializer;
+  if (!componentFunction) return false;
+  let didFindHookCall = false;
+  walkAst(componentFunction, (descendant) => {
+    if (didFindHookCall) return false;
+    if (!isNodeOfType(descendant, "CallExpression")) return;
+    const calleeName = getCalleeName(descendant);
+    if (calleeName && isReactHookName(calleeName)) {
+      didFindHookCall = true;
+      return false;
+    }
+  });
+  return didFindHookCall;
+};
+
 // A component is only flagged on strong, shadow-safe evidence: the called
 // identifier resolves to a same-file component definition that returns JSX, OR
 // to an imported binding that is also rendered as a JSX element in this file.
@@ -68,7 +93,11 @@ export const noCallComponentAsFunction = defineRule({
     // the symbol id) is the key because scope analysis can register a
     // hoisted declaration under two symbol records sharing one binding.
     const renderedComponentBindings = new Set<EsTreeNode>();
-    const candidateCalls: Array<{ node: EsTreeNode; callee: EsTreeNode; name: string }> = [];
+    const candidateCalls: Array<{
+      node: EsTreeNode;
+      callee: EsTreeNode;
+      name: string;
+    }> = [];
 
     const recordRenderedComponent = (identifier: EsTreeNode): void => {
       const symbol = context.scopes.symbolFor(identifier);
@@ -90,7 +119,11 @@ export const noCallComponentAsFunction = defineRule({
           }
         }
         if (isNodeOfType(node.callee, "Identifier") && isUppercaseName(node.callee.name)) {
-          candidateCalls.push({ node, callee: node.callee, name: node.callee.name });
+          candidateCalls.push({
+            node,
+            callee: node.callee,
+            name: node.callee.name,
+          });
         }
       },
       "Program:exit"() {
@@ -100,10 +133,15 @@ export const noCallComponentAsFunction = defineRule({
           const isRendered = renderedComponentBindings.has(symbol.bindingIdentifier);
           const isLocalComponent =
             symbolIsLocalComponent(symbol, context) &&
-            (isModuleScopeDeclaration(symbol.declarationNode) || isRendered);
+            (isModuleScopeDeclaration(symbol.declarationNode) ||
+              isRendered ||
+              declarationBodyContainsHookCall(symbol));
           const isComponent = isLocalComponent || (symbol.kind === "import" && isRendered);
           if (isComponent) {
-            context.report({ node: candidate.node, message: message(candidate.name) });
+            context.report({
+              node: candidate.node,
+              message: message(candidate.name),
+            });
           }
         }
       },

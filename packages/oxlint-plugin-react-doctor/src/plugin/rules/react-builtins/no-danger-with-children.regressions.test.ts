@@ -23,10 +23,33 @@ describe("react-builtins/no-danger-with-children — regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  // A `{/* comment */}` emits no child at all, so comment + single
+  // nullish child still collapses to `children: null` — no conflict.
+  it("does not flag dangerouslySetInnerHTML beside a comment and one nullish child", () => {
+    const result = runRule(
+      noDangerWithChildren,
+      `const a = <div dangerouslySetInnerHTML={{ __html: html }}>{/* note */}{null}</div>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("still flags dangerouslySetInnerHTML with real text children", () => {
     const result = runRule(
       noDangerWithChildren,
       `const a = <div dangerouslySetInnerHTML={{ __html: html }}>text</div>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // fp-review PR991: TWO nullish children still become
+  // `children: [null, null]`, an array `!= null` — React throws, so the
+  // rule must fire even though each child is individually non-meaningful.
+  it("still flags dangerouslySetInnerHTML with two nullish expression children", () => {
+    const result = runRule(
+      noDangerWithChildren,
+      `const a = <div dangerouslySetInnerHTML={{ __html: html }}>{null}{null}</div>;`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
@@ -50,6 +73,17 @@ describe("react-builtins/no-danger-with-children — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  // fp-review PR991: 2+ positional children are collected into an array,
+  // so `props.children = [null, null] != null` and React throws.
+  it("still flags createElement with dangerouslySetInnerHTML and two null positional children", () => {
+    const result = runRule(
+      noDangerWithChildren,
+      `const a = React.createElement("div", { dangerouslySetInnerHTML: { __html: html } }, null, null);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
   it("still flags createElement with dangerouslySetInnerHTML and a real positional child", () => {

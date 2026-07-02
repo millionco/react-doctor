@@ -1,16 +1,19 @@
-import { SECRET_VALUE_PATTERNS } from "../../constants/security.js";
+import { JWT_LITERAL_VALUE_PATTERN, SECRET_VALUE_PATTERNS } from "../../constants/security.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findSuspiciousPublicEnvSecretNamePattern } from "./utils/find-suspicious-public-env-secret-name.js";
 import { getMatchLocation } from "./utils/get-match-location.js";
 
 // The bare keyword `service_role` (a Supabase role *name*) is a legitimate
 // word in a helper package's `description`/`keywords` — not a leaked secret.
-// A genuine service_role *credential* is a JWT (`eyJ…`) or `sb_secret_…`,
-// both caught by their own high-entropy value patterns, so dropping the bare
-// keyword from package-metadata scanning loses no real-secret coverage.
-const PACKAGE_METADATA_VALUE_PATTERNS = SECRET_VALUE_PATTERNS.filter(
-  (pattern) => !pattern.test("service_role"),
-);
+// A genuine service_role *credential* is a JWT (`eyJ…`) or `sb_secret_…`;
+// `sb_secret_` is caught by SECRET_VALUE_PATTERNS, and the JWT value is
+// caught by JWT_LITERAL_VALUE_PATTERN below (scoped to package metadata —
+// unlike source files, where anon-key JWTs are legitimate, ANY JWT literal
+// committed into package.json is a leak).
+const PACKAGE_METADATA_VALUE_PATTERNS = [
+  ...SECRET_VALUE_PATTERNS.filter((pattern) => !pattern.test("service_role")),
+  JWT_LITERAL_VALUE_PATTERN,
+];
 
 export const packageMetadataSecret = defineRule({
   id: "package-metadata-secret",

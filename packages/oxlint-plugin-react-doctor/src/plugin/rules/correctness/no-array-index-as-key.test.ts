@@ -107,6 +107,28 @@ const MatchedName = ({ name, matchedIndices, isSelected }: MatchedNameProps) => 
       expect(result.diagnostics).toHaveLength(0);
     });
 
+    it("does not flag index keys when the mapped binding is initialized from a split (openreplay regression)", () => {
+      const code = `const Lines = ({ line }) => {
+  const parts = line.split(" ");
+  return <div>{parts.map((part, index) => <b key={index}>{part}</b>)}</div>;
+};
+`;
+      const result = runRule(noArrayIndexAsKey, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("still flags when the mapped binding is initialized from a call that is not string-derived", () => {
+      const code = `const List = ({ getLetters }) => {
+  const letters = getLetters();
+  return <ul>{letters.map((letter, index) => <li key={index}>{letter}</li>)}</ul>;
+};
+`;
+      const result = runRule(noArrayIndexAsKey, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("still flags a spread of an untyped identifier (could be a data array)", () => {
       const code = `const List = ({ items }) => (
   <ul>{[...items].map((item, index) => <li key={index}>{item}</li>)}</ul>

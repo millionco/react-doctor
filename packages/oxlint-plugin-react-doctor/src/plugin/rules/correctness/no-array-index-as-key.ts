@@ -284,16 +284,31 @@ const isProvablyStringValued = (expression: EsTreeNode, depth: number): boolean 
   return false;
 };
 
+const hasProvablyStringFirstArgument = (callNode: EsTreeNode): boolean => {
+  if (!isNodeOfType(callNode, "CallExpression")) return false;
+  const source = callNode.arguments?.[0];
+  return Boolean(source && isProvablyStringValued(source, 0));
+};
+
 /**
- * `[...str]`, `str.split("")`, and `Array.from(str)` produce one entry
- * per character of a string. Character position IS the entry's stable
- * identity — nothing reorders, filters, or carries per-item state — so
- * an index key is correct there. `.split(...)` needs no string proof
- * (only strings have `.split`); the spread / `Array.from` forms do,
- * because both are equally common on arrays.
+ * `[...str]`, `str.split(...)`, and `Array.from(str)` slice ONE string
+ * into positional fragments (characters, lines, tokens). Fragment
+ * position IS the entry's stable identity — nothing reorders, filters,
+ * or carries per-item state — so an index key is correct there.
+ * `.split(...)` needs no string proof (only strings have `.split`);
+ * the spread / `Array.from` forms do, because both are equally common
+ * on arrays.
  */
-const isStringDerivedReceiver = (receiver: EsTreeNode): boolean => {
+const isStringDerivedReceiver = (receiver: EsTreeNode, depth = 0): boolean => {
   const node = stripParenExpression(receiver);
+  // `const parts = line.split(" "); parts.map(...)` — follow the local
+  // binding to its initializer (bounded, one hop per level).
+  if (isNodeOfType(node, "Identifier")) {
+    if (depth >= TYPE_RESOLUTION_DEPTH_LIMIT) return false;
+    const binding = findVariableInitializer(node, node.name);
+    if (!binding?.initializer) return false;
+    return isStringDerivedReceiver(binding.initializer, depth + 1);
+  }
   if (isNodeOfType(node, "ArrayExpression") && node.elements?.length === 1) {
     const only = node.elements[0];
     if (only && isNodeOfType(only, "SpreadElement")) {
@@ -308,11 +323,7 @@ const isStringDerivedReceiver = (receiver: EsTreeNode): boolean => {
   ) {
     return true;
   }
-  if (isArrayFromCall(node) && isNodeOfType(node, "CallExpression")) {
-    const source = node.arguments?.[0];
-    if (source && isProvablyStringValued(source, 0)) return true;
-  }
-  return false;
+  return isArrayFromCall(node) && hasProvablyStringFirstArgument(node);
 };
 
 // We must inspect only the INNERMOST iterator callback enclosing the
@@ -357,11 +368,7 @@ const isInsideIteratorMapMatching = (
 };
 
 const isInsideStringDerivedMap = (node: EsTreeNode): boolean =>
-  isInsideIteratorMapMatching(node, isStringDerivedReceiver, (arrayFromCall) => {
-    if (!isNodeOfType(arrayFromCall, "CallExpression")) return false;
-    const source = arrayFromCall.arguments?.[0];
-    return Boolean(source && isProvablyStringValued(source as EsTreeNode, 0));
-  });
+  isInsideIteratorMapMatching(node, isStringDerivedReceiver, hasProvablyStringFirstArgument);
 
 const isInsideStaticPlaceholderMap = (node: EsTreeNode): boolean =>
   isInsideIteratorMapMatching(node, isStaticPlaceholderReceiver, isArrayFromLengthObjectCall);

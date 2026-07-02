@@ -7,45 +7,44 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
 
-// `this.renderX(...)` is a class-component render-helper method. It has a
-// stable identity (declared on the class, not rebuilt in render) and
-// returns JSX that React inlines in place, so it remounts nothing — the
-// canonical "split render() into methods" pattern the recommendation is
-// itself nudging toward. Only locally-declared inline helpers carry the
-// smell this rule targets, never `this.method` calls.
-const isStableMethodReceiver = (object: EsTreeNode): boolean =>
-  isNodeOfType(object, "ThisExpression");
-
-// `({ renderItem }) => …` / `(props) => { const { renderItem } = props }`:
-// the callee resolves to a COMPONENT parameter or a name destructured FROM
-// one (a render prop owned by the parent). Its identity is the parent's,
-// so calling it inline remounts nothing — the same render-prop carve-out
-// as the `props.renderX()` shape, just for the destructured spelling.
-// A locally-declared `renderRow` helper, or a parameter of an ordinary
-// nested helper, still carries the smell and stays flagged.
+// `({ renderItem }) => …` / `const { renderItem } = props` /
+// `const renderItem = props.renderItem`: the callee resolves to a COMPONENT
+// parameter or a name whose declaration roots in one (a render prop owned by
+// the parent). Its identity is the parent's, so calling it inline remounts
+// nothing — the same render-prop carve-out as the `props.renderX()` shape,
+// for the destructured and plain-alias spellings. A locally-declared
+// `renderRow` helper, or a parameter of an ordinary nested helper, still
+// carries the smell and stays flagged.
 const tracesToPropOrParameter = (
   symbol: SymbolDescriptor | null,
   scopes: ScopeAnalysis,
 ): boolean => {
   if (!symbol) return false;
   if (isComponentParameterSymbol(symbol)) return true;
-  const declaration = symbol.declarationNode;
-  if (
-    !isNodeOfType(declaration, "VariableDeclarator") ||
-    (!isNodeOfType(declaration.id, "ObjectPattern") &&
-      !isNodeOfType(declaration.id, "ArrayPattern"))
-  ) {
-    return false;
-  }
+  if (!isNodeOfType(symbol.declarationNode, "VariableDeclarator")) return false;
   const source = symbol.initializer;
   if (!source) return false;
-  if (isNodeOfType(source, "Identifier")) {
-    return isComponentParameterSymbol(scopes.symbolFor(source));
+  return initializerRootsInProps(source, scopes);
+};
+
+// The initializer of a destructuring (`const { renderItem } = props.slots`)
+// or plain alias (`const renderItem = props.renderItem`) is parent-owned
+// when it roots in `props` / `this.props`, including the defaulted spellings
+// `props.renderItem ?? defaultRender` and
+// `cond ? props.renderItem : renderFallback` where an operand roots there.
+const initializerRootsInProps = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (isNodeOfType(node, "LogicalExpression")) {
+    return (
+      initializerRootsInProps(node.left, scopes) || initializerRootsInProps(node.right, scopes)
+    );
   }
-  // `const { renderItem } = this.props` / `const { renderItem } = props.slots`
-  // (a nested prop bag): the source still roots in the parent-owned `props`
-  // (or `this.props`), so the destructured render prop is parent-owned too.
-  return rootsInProps(source, scopes);
+  if (isNodeOfType(node, "ConditionalExpression")) {
+    return (
+      initializerRootsInProps(node.consequent, scopes) ||
+      initializerRootsInProps(node.alternate, scopes)
+    );
+  }
+  return rootsInProps(node, scopes);
 };
 
 // True when a member-expression chain bottoms out in a COMPONENT parameter
@@ -96,7 +95,6 @@ export const noRenderInRender = defineRule({
         isNodeOfType(expression.callee.property, "Identifier")
       ) {
         if (rootsInProps(expression.callee.object, context.scopes)) return;
-        if (isStableMethodReceiver(expression.callee.object)) return;
         calleeName = expression.callee.property.name;
       }
 

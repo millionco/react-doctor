@@ -58,6 +58,15 @@ const resolveReactApiNameForMemberExpression = (callee: EsTreeNode): string | nu
 const resolveReactApiNameForCallee = (callee: EsTreeNode): string | null =>
   resolveReactApiNameForIdentifier(callee) ?? resolveReactApiNameForMemberExpression(callee);
 
+// `memo(Inner, undefined)` / `memo(Inner, null)` make React fall back to
+// the default shallow compare — exactly as redundant under React Compiler
+// as `memo(Inner)`. Any other second-arg shape (function expression,
+// identifier, member/call expression, spread) could be a real comparator,
+// so it keeps the exemption.
+const isNullishComparatorArgument = (argumentNode: EsTreeNode): boolean =>
+  (isNodeOfType(argumentNode, "Identifier") && argumentNode.name === "undefined") ||
+  (isNodeOfType(argumentNode, "Literal") && argumentNode.value === null);
+
 // Active only when React Compiler is detected (`requires:
 // ["react-compiler"]` in the rule registry). Userland helpers and
 // `useMemo` from non-react packages are filtered out by the import-
@@ -82,8 +91,12 @@ export const reactCompilerNoManualMemoization = defineRule({
       if (!apiName) return;
       // `memo(Component, areEqual)` with a custom comparator encodes
       // bespoke equality the compiler can't replicate, so it isn't
-      // redundant — leave it alone.
-      if (apiName === "memo" && (node.arguments?.length ?? 0) >= 2) return;
+      // redundant — leave it alone. A nullish second arg is no comparator
+      // at all, so it doesn't earn the exemption.
+      if (apiName === "memo") {
+        const comparatorArgument = node.arguments?.[1];
+        if (comparatorArgument && !isNullishComparatorArgument(comparatorArgument)) return;
+      }
       const removalMessage = REMOVAL_MESSAGE_BY_REACT_API_NAME.get(apiName);
       if (!removalMessage) return;
       context.report({

@@ -36,12 +36,13 @@ export const noNestedComponentDefinition = defineRule({
   create: (context: RuleContext) => {
     const componentStack: EnclosingComponent[] = [];
     const candidates: NestedComponentCandidate[] = [];
-    // Only a PascalCase binding that is actually RENDERED as a JSX
-    // element (`<Name/>`) creates a child fiber that React remounts.
-    // A capitalized helper that is exclusively invoked as `Name()` is
-    // inlined into the parent's render (no separate fiber, no state to
-    // lose), so requiring JSX-render membership before reporting drops
-    // the inline-render-helper false positives. Each rendered element is
+    // Only a PascalCase binding that is actually RENDERED — as a JSX
+    // element (`<Name/>`) or passed by reference through a component prop
+    // (`<Route component={Name}/>`) — creates a child fiber that React
+    // remounts. A capitalized helper that is exclusively invoked as
+    // `Name()` is inlined into the parent's render (no separate fiber, no
+    // state to lose), so requiring render-site membership before reporting
+    // drops the inline-render-helper false positives. Each render site is
     // kept with its node so the membership test can be scoped to the
     // candidate's own enclosing component: a `<Inner/>` rendered in a
     // SIBLING component refers to that sibling's binding, not this one.
@@ -64,6 +65,16 @@ export const noNestedComponentDefinition = defineRule({
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (isNodeOfType(node.name, "JSXIdentifier") && isUppercaseName(node.name.name)) {
           renderedJsxElements.push({ name: node.name.name, node });
+        }
+      },
+      JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
+        if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
+        const attributeExpression = node.value.expression;
+        if (
+          isNodeOfType(attributeExpression, "Identifier") &&
+          isUppercaseName(attributeExpression.name)
+        ) {
+          renderedJsxElements.push({ name: attributeExpression.name, node });
         }
       },
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {

@@ -40,4 +40,118 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not flag the geist-ui shape: static array consumed only by .includes", () => {
+    const result = run(`
+      import React from "react";
+      import { ScalePropKeys } from "./scale-context";
+      const withScale = (Render) => {
+        const ScaleFC = React.forwardRef((props, ref) => {
+          const allScalePropKeys = [...ScalePropKeys, "scale", "unit"];
+          const filtered = Object.fromEntries(
+            Object.entries(props).filter(([key]) => !allScalePropKeys.includes(key)),
+          );
+          return <Render ref={ref} {...filtered} />;
+        });
+        return ScaleFC;
+      };
+      export default withScale;
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a tiny literal array fed only to .includes", () => {
+    const result = run(`
+      function Toolbar({ kind }) {
+        const hiddenKinds = ["draft", "archived"];
+        if (hiddenKinds.includes(kind)) return null;
+        return <div>{kind}</div>;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a static array consumed via .map into JSX", () => {
+    const result = run(`
+      function Tabs() {
+        const tabNames = ["home", "settings"];
+        return <div>{tabNames.map((tabName) => <span key={tabName}>{tabName}</span>)}</div>;
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a static array passed as a JSX prop even when also used by .includes", () => {
+    const result = run(`
+      function Filters({ active }) {
+        const filterKinds = ["all", "done"];
+        const isActive = filterKinds.includes(active);
+        return <FilterList kinds={filterKinds} highlighted={isActive} />;
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a static array listed in a hook dependency array", () => {
+    const result = run(`
+      import { useEffect } from "react";
+      function Sync() {
+        const channels = ["email", "sms"];
+        useEffect(() => { subscribe(channels); }, [channels]);
+        return null;
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a static object that is returned from a hook", () => {
+    const result = run(`
+      function useDefaults() {
+        const defaults = { pageSize: 10, sort: "asc" };
+        return defaults;
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a static array built from a pure module-scope helper named `random`", () => {
+    const result = run(`
+      const random = (seed) => (seed * 9301 + 49297) % 233280;
+      function List() {
+        const weights = [random(1), random(2)];
+        return <div>{weights.join()}</div>;
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a static array built from a deterministic module-scope `generateId` helper", () => {
+    const result = run(`
+      function Columns() {
+        const columns = [{ id: generateId("name") }, { id: generateId("age") }];
+        return <div>{columns.length}</div>;
+      }
+      const generateId = (label) => "col-" + label;
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an array built from an imported generateId helper", () => {
+    const result = run(`
+      import { generateId } from "./ids";
+      function Columns() {
+        const columns = [{ id: generateId("name") }, { id: generateId("age") }];
+        return <div>{columns.length}</div>;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag an array built from a bare unresolved randomUUID()", () => {
+    const result = run(
+      `function Row() { const ids = [randomUUID(), randomUUID()]; return <div>{ids.join()}</div>; }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

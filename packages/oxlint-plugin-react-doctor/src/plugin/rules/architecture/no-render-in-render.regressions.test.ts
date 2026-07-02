@@ -83,14 +83,84 @@ describe("architecture/no-render-in-render — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("does not flag a this.render* class-component helper method call", () => {
+  // fp-review PR 996: an earlier isStableMethodReceiver carve-out exempted
+  // every this.renderX() call, voiding the react-datepicker calendar
+  // must-detect oracle. Class fields (`renderX = () => …`) are per-instance,
+  // so `this.` is not a stability signal — these must fire.
+  it("flags a this.render* class-component helper method call", () => {
     const result = run(
       `class Chart extends React.Component {
         renderLine(props) { return <g>{props.x}</g>; }
         render() { return <g>{this.renderLine(this.props)}</g>; }
       }`,
     );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags inline this.renderX() class-field calls (calendar.tsx planted shape)", () => {
+    const result = run(
+      `class Calendar extends Component {
+        renderCurrentMonth = (date = this.state.date) => (
+          <h2 className="react-datepicker__current-month">{date.toString()}</h2>
+        );
+        renderDefaultHeader = ({ monthDate }) => (
+          <div className="react-datepicker__header">
+            {this.renderCurrentMonth(monthDate)}
+          </div>
+        );
+        render() {
+          return <div>{this.renderAriaLiveRegion()}</div>;
+        }
+      }`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a local const render* helper called inline", () => {
+    const result = run(
+      `const UploadFileItem = (props) => {
+        const renderIcon = () => <div className="icon" />;
+        return <div>{renderIcon()}</div>;
+      };`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // fp-review PR 996: the plain-alias spelling of a render prop is
+  // semantically identical to the destructured one and must stay silent.
+  it("does not flag a plain alias of a render prop (const renderItem = props.renderItem)", () => {
+    const result = run(
+      `function List(props){ const renderItem = props.renderItem; return <div>{renderItem(1)}</div>; }`,
+    );
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a defaulted render-prop alias (props.renderItem ?? defaultRender)", () => {
+    const result = run(
+      `function List(props){ const renderItem = props.renderItem ?? defaultRender; return <div>{renderItem(1)}</div>; }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a conditional render-prop alias", () => {
+    const result = run(
+      `function List(props){ const renderItem = props.compact ? props.renderCompactItem : props.renderItem; return <div>{renderItem(1)}</div>; }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag an alias of a parameter-destructured render prop", () => {
+    const result = run(
+      `function List({ renderItem }){ const renderRow = renderItem; return <div>{renderRow(1)}</div>; }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an alias of a local render* helper", () => {
+    const result = run(
+      `function List(){ const renderIcon = () => <i />; const renderItem = renderIcon; return <div>{renderItem(1)}</div>; }`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
   // Bugbot: the render-prop exemption is only for `props` / `this.props`. An

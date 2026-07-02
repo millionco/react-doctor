@@ -1,7 +1,8 @@
-// rule: no-pass-data-to-parent, no-flush-sync
+// rule: no-pass-data-to-parent
 // weakness: library-idiom
 // source: Claude Code session (forEach(callback) is an iterator idiom, not a
-// data leak; flushSync deliberately flushes before a synchronous DOM read)
+// data leak; flushSync-before-DOM-read is kept as realistic surrounding code —
+// no-flush-sync intentionally flags the import, that's its advisory contract)
 import { flushSync } from "react-dom";
 import { useState } from "react";
 

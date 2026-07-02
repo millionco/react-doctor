@@ -420,4 +420,49 @@ describe("no-derived-state — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  // Fuzz corpus regression (facebook/react#34905): the async-intermediate
+  // suppression must see through `const f = useCallback(async () => ...)` —
+  // a setter reached after an await is async sequencing state, not a value
+  // derivable during render.
+  it("stays silent when the effect calls an async useCallback that sets state after await", () => {
+    const result = runRule(
+      noDerivedState,
+      `import { useCallback, useEffect, useState } from "react";
+      const Component = () => {
+        const [ready, setReady] = useState(false);
+        const f = useCallback(async () => {
+          await fetch("...");
+          setReady(true);
+        }, []);
+        useEffect(() => {
+          f();
+        }, [f]);
+        return <div>{ready ? "Ready" : "Loading"}</div>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an effect calling a SYNC useCallback that mirrors a prop into state", () => {
+    const result = runRule(
+      noDerivedState,
+      `import { useCallback, useEffect, useState } from "react";
+      const Component = ({ value }) => {
+        const [mirror, setMirror] = useState(value);
+        const sync = useCallback(() => {
+          setMirror(value);
+        }, [value]);
+        useEffect(() => {
+          sync();
+        }, [sync]);
+        return <div>{mirror}</div>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

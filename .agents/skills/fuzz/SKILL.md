@@ -46,6 +46,22 @@ cd packages/fuzz && bun scripts/sync-fuzz-corpus.ts
 FUZZ_INVARIANTS=1 FUZZ_ITERATIONS=100 FUZZ_CORPUS_DIR=packages/fuzz/tmp/corpus-repos pnpm fuzz
 ```
 
+The direct FP oracle — every regression-corpus seed is ground-truth-valid
+code, so ANY rule firing on an unmutated seed is a signal:
+
+```bash
+cd packages/fuzz && bun scripts/hunt-false-positives.ts
+```
+
+A seed's own named rule firing = reintroduced regression (hard fail). Any
+OTHER pipeline-enabled rule firing = FP candidate; triage each against the
+seed code (incidental violations in minimal seeds are true positives —
+e.g. an unlabeled `<button>` — but cross-rule hits on the seed's core
+idiom have repeatedly exposed real bugs: a stale ARIA role→props table,
+useLayoutEffect treated as post-paint, async-useCallback opacity).
+`HUNT_CORPUS_DIR=<repos>` appends a hit census over real files for
+noise-ranking rules.
+
 ## Fire-coverage doctrine
 
 The run prints `fuzz fire-coverage: N/total rules produced a diagnostic`.

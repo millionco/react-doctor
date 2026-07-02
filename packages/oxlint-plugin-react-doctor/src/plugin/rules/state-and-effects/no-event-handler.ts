@@ -4,6 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { findDownstreamNodes, getDownstreamRefs, getUpstreamRefs } from "./utils/effect/ast.js";
+import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { getEffectFnRefs, hasCleanup, isProp, isState, isUseEffect } from "./utils/effect/react.js";
 
@@ -156,9 +157,15 @@ export const noEventHandler = defineRule({
       );
       const ifTestRefs = ifStatementsNoElse.flatMap((ifNode) => {
         if (!isNodeOfType(ifNode, "IfStatement")) return [];
-        return getDownstreamRefs(analysis, ifNode.test as EsTreeNode).flatMap((ref) =>
-          getUpstreamRefs(analysis, ref),
+        // A tested state that is exclusively set by a timer / listener /
+        // observer / subscription is reacting to an imperative browser event
+        // — drop that ref (and the props that merely seed it, via its
+        // upstream expansion) without silencing the other refs tested in the
+        // same condition.
+        const directTestRefs = getDownstreamRefs(analysis, ifNode.test as EsTreeNode).filter(
+          (ref) => !(isState(analysis, ref) && isExternallyDrivenState(analysis, ref)),
         );
+        return directTestRefs.flatMap((ref) => getUpstreamRefs(analysis, ref));
       });
 
       // Dedupe by resolved binding (not identifier identity) so a
@@ -179,6 +186,10 @@ export const noEventHandler = defineRule({
 
       for (const ref of dedupedRefs) {
         if (isState(analysis, ref)) {
+          // State written from a timer / listener / observer / promise /
+          // subscription changes in response to an imperative browser event,
+          // not a React event handler, so there is no handler to fold into.
+          if (isExternallyDrivenState(analysis, ref)) continue;
           context.report({
             node: ref.identifier as unknown as EsTreeNode,
             message:

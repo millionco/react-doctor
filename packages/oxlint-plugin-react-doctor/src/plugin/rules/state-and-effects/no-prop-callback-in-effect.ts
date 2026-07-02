@@ -3,11 +3,16 @@ import { createComponentPropStackTracker } from "../../utils/create-component-pr
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isCallResultConsumedAsArgument } from "../../utils/is-call-result-consumed-as-argument.js";
+import type { Reference } from "eslint-scope";
 import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blocks.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getRef } from "./utils/effect/ast.js";
+import { isExternallyDrivenState } from "./utils/effect/external-state.js";
+import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 
 // HACK: `useEffect(() => parentCallback(state.x), [state.x])` is the
 // "lift state up via callback" anti-pattern: the child owns state, then
@@ -43,11 +48,30 @@ export const noPropCallbackInEffect = defineRule({
         // Only flag if at least one dep is a non-prop (state-shape)
         // identifier — otherwise the effect is just adapting to prop
         // changes (legit pattern).
-        const hasStateLikeDep = (depsNode.elements ?? []).some(
+        const stateLikeDeps = (depsNode.elements ?? []).filter(
           (element) =>
             isNodeOfType(element, "Identifier") && !propStackTracker.isPropName(element.name),
         );
-        if (!hasStateLikeDep) return;
+        if (stateLikeDeps.length === 0) return;
+
+        // When every state-shape dep is driven by a timer / listener /
+        // observer / subscription, the parent callback bridges an imperative
+        // browser event, not a local state mirror — moving it into a Provider
+        // wouldn't remove the effect.
+        const analysis = getProgramAnalysis(node);
+        if (analysis) {
+          const stateLikeDepRefs: Reference[] = [];
+          for (const element of stateLikeDeps) {
+            const depRef = getRef(analysis, element as unknown as EsTreeNode);
+            if (depRef) stateLikeDepRefs.push(depRef);
+          }
+          if (
+            stateLikeDepRefs.length === stateLikeDeps.length &&
+            stateLikeDepRefs.every((depRef) => isExternallyDrivenState(analysis, depRef))
+          ) {
+            return;
+          }
+        }
 
         // HACK: walk control-flow descendants (`if`, `try`, `for`,
         // `switch`) but stop at any nested function boundary so calls
@@ -61,6 +85,12 @@ export const noPropCallbackInEffect = defineRule({
           if (!isNodeOfType(child.callee, "Identifier")) return;
           const calleeName = child.callee.name;
           if (!propStackTracker.isPropName(calleeName)) return;
+          // When the prop call's result flows into another call's argument
+          // (`setError(validate(value))`) the prop is a pure transform
+          // consumed locally, not a parent sync — leave it alone. Guarded
+          // (`onChange && onChange(v)`) and concise-arrow spellings still
+          // discard the result, so they still fire.
+          if (isCallResultConsumedAsArgument(child)) return;
           if (reportedNodes.has(child)) return;
           reportedNodes.add(child);
           context.report({

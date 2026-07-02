@@ -9,6 +9,7 @@ interface SourcePosition {
 interface NodeWithOffsets {
   start?: number;
   end?: number;
+  range?: [number, number];
   loc?: {
     start: SourcePosition;
     end: SourcePosition;
@@ -53,6 +54,13 @@ export const attachSourceLocations = (root: EsTreeNode, sourceText: string): voi
         start: offsetToSourcePosition(nodeWithOffsets.start, lineStartOffsets),
         end: offsetToSourcePosition(nodeWithOffsets.end, lineStartOffsets),
       };
+      // `range` mirrors oxlint's runtime AST. The `getProgramAnalysis`
+      // (eslint-scope) effect rules dereference `node.range` / `block.range`,
+      // so without this they silently resolve no scopes (or crash) under the
+      // unit harness — only integration fixtures exercised them before.
+      if (!nodeWithOffsets.range) {
+        nodeWithOffsets.range = [nodeWithOffsets.start, nodeWithOffsets.end];
+      }
     }
 
     const nodeRecord = node as unknown as Record<string, unknown>;

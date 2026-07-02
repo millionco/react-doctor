@@ -56,6 +56,7 @@ import {
   resolveInstallSetupProjectRoot,
   shouldShowAgentInstallHint,
 } from "../utils/prompt-install-setup.js";
+import { remainingScanBudgetMs } from "../utils/remaining-scan-budget-ms.js";
 import { resolveCliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
 import type { CliInspectOptions } from "../utils/resolve-cli-inspect-options.js";
 import { finalizeScope, resolveScope, warnDeprecatedDiff } from "../utils/resolve-scope.js";
@@ -308,6 +309,11 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     }
 
     const scanOptions: CliInspectOptions = resolveCliInspectOptions(flags, userConfig);
+    // One `--max-duration` budget per invocation, shared by every project of
+    // a workspace scan: the absolute deadline is fixed here, and each project
+    // receives the remaining budget when its scan starts.
+    const scanDeadlineEpochMs =
+      scanOptions.maxDurationMs !== undefined ? Date.now() + scanOptions.maxDurationMs : null;
     const categoryFilters = new Set(scanOptions.categoryFilters ?? []);
     const skipPrompts = shouldSkipPrompts({ yes: flags.yes, json: flags.json });
 
@@ -566,6 +572,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       }
       const scanResult = await inspect(scanDirectory, {
         ...scanOptions,
+        maxDurationMs: remainingScanBudgetMs(scanDeadlineEpochMs),
         includePaths,
         configOverride: projectConfig,
         configSourceDirectory: projectConfigSourceDirectory ?? undefined,

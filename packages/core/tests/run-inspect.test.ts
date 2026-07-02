@@ -183,9 +183,11 @@ describe("runInspect — phase timeouts & overall deadline", () => {
     expect(output.didDeadCodeFail).toBe(true);
     expect(output.deadCodeFailureReason).toContain("Dead-code analysis exceeded");
     expect(output.deadCodeFailureReason).toContain("skipped");
-    // The scan still completed: lint diagnostics came through, score computed.
+    // The scan still completed: lint diagnostics came through — but the score
+    // is null because the scored set is missing the dead-code findings.
     expect(output.didLintFail).toBe(false);
     expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toContain("no-derived-state");
+    expect(output.score).toBeNull();
   });
 
   it("caps the lint phase, nulls the score, and tags the failure as OxlintBatchExceeded", async () => {

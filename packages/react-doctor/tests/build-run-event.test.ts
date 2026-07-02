@@ -330,6 +330,16 @@ describe("buildRunEventAttributes", () => {
     expect(withoutDrops["lint.droppedFileCount"]).toBeUndefined();
   });
 
+  it("records lint.deadlineSkippedFileCount when present and drops it when absent", () => {
+    const withSkips = buildRunEventAttributes(
+      baseInput({ result: buildResult(), lintDeadlineSkippedFileCount: 12 }),
+    );
+    expect(withSkips["lint.deadlineSkippedFileCount"]).toBe(12);
+
+    const withoutSkips = buildRunEventAttributes(baseInput({ result: buildResult() }));
+    expect(withoutSkips["lint.deadlineSkippedFileCount"]).toBeUndefined();
+  });
+
   it("captures config shape and drops null/undefined-valued attributes", () => {
     const attributes = buildRunEventAttributes(
       baseInput({

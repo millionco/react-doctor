@@ -57,6 +57,11 @@ export interface RunEventInput {
   // if cost-ordering front-loads the pathological bucket and drops MORE files,
   // this rises on the `cost` cohort vs `arrival`.
   readonly lintDroppedFileCount?: number;
+  // Total files skipped because the `--max-duration` budget ran out — the
+  // "did the budget actually truncate a scan" kill-metric signal for the
+  // flag, distinct from `scan.maxDurationMs` (configured) and
+  // `lintDroppedFileCount` (pathological batches).
+  readonly lintDeadlineSkippedFileCount?: number;
   readonly didDeadCodeFail?: boolean;
   // `true` when the background supply-chain check hit its overlap budget and
   // failed open to no diagnostics. The kill metric for the lint/supply-chain
@@ -229,6 +234,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
       failureReasonKind: input.lintFailureReasonKind ?? null,
       partialFailureCount: input.lintPartialFailureCount ?? null,
       droppedFileCount: input.lintDroppedFileCount ?? null,
+      deadlineSkippedFileCount: input.lintDeadlineSkippedFileCount ?? null,
       // Per-file lint cache outcome. Numeric so Sentry can `p75(lint.cacheHitRatio)`;
       // all `null` when the cache was off/bypassed so "no cache" reads distinctly
       // from a 0% hit rate (`toSpanAttributes` drops the nulls).

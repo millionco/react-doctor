@@ -144,12 +144,10 @@ export interface InspectInput {
   readonly concurrentScan?: boolean;
   /**
    * Absolute epoch-millisecond deadline for the scan (the CLI's
-   * `--max-duration` budget resolved against the scan start). When it
-   * passes, the scan degrades gracefully instead of being killed: lint
-   * batches that haven't started are skipped (surfaced via
-   * `skippedCheckReasons["lint:partial"]` with the file list) and the
-   * dead-code phase is skipped or capped to the remaining budget — so
-   * partial results are still reported rather than an empty run.
+   * `--max-duration` budget resolved against the scan start). Past it the
+   * scan degrades gracefully: un-started lint batches are skipped (surfaced
+   * via `skippedCheckReasons["lint:partial"]` with the file list) and the
+   * dead-code phase is skipped or capped to the remaining budget.
    */
   readonly deadlineEpochMs?: number;
 }
@@ -581,16 +579,12 @@ export const runInspect = <HooksR = never>(
         : deadCodePhaseTimeoutMs;
     const workerCountSuffix =
       scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
-    // Milliseconds left on the `--max-duration` budget, or `null` when no
-    // deadline was set. Re-evaluated at each phase boundary.
-    const remainingDeadlineBudgetMs = (): number | null =>
-      input.deadlineEpochMs === undefined ? null : input.deadlineEpochMs - Date.now();
-    const capToDeadline = (phaseTimeoutMs: number): number => {
-      const remainingMs = remainingDeadlineBudgetMs();
-      return remainingMs === null
+    // Caps a phase timeout to what's left of the `--max-duration` budget;
+    // identity when no deadline was set.
+    const capToDeadline = (phaseTimeoutMs: number): number =>
+      input.deadlineEpochMs === undefined
         ? phaseTimeoutMs
-        : Math.min(phaseTimeoutMs, Math.max(remainingMs, 0));
-    };
+        : Math.min(phaseTimeoutMs, Math.max(input.deadlineEpochMs - Date.now(), 0));
 
     // ── Dead-code plan ────────────────────────────────────────────────
     // Dead-code (deslop reachability) emits only `"warning"`-severity
@@ -810,8 +804,9 @@ export const runInspect = <HooksR = never>(
     if (lintFailureState.didFail) {
       if (deadCodeFiber !== null) yield* Fiber.interrupt(deadCodeFiber);
     } else if (shouldRunDeadCode) {
-      const remainingMs = remainingDeadlineBudgetMs();
-      if (deadCodeFiber === null && remainingMs !== null && remainingMs <= 0) {
+      const isDeadlineSpent =
+        input.deadlineEpochMs !== undefined && Date.now() >= input.deadlineEpochMs;
+      if (deadCodeFiber === null && isDeadlineSpent) {
         // Max-duration budget already spent on lint — skip the sequential
         // dead-code pass entirely rather than starting a doomed run.
         yield* Ref.set(deadCodeFailure, {
@@ -914,13 +909,18 @@ export const runInspect = <HooksR = never>(
       scoreSurface,
       resolvedConfig.config,
     );
-    const score = lintFailureState.didFail
-      ? null
-      : yield* scoreService.compute({
-          diagnostics: scoreDiagnostics,
-          isCi: input.isCi,
-          metadata: scoreMetadata,
-        });
+    // Dead-code findings feed the scored set, so a failed or deadline-skipped
+    // dead-code pass would leave the score computed over an incomplete set —
+    // overstating health. Null it like a lint failure; a pass that was merely
+    // disabled never sets `didFail`, so `--no-deslop` scans keep their score.
+    const score =
+      lintFailureState.didFail || deadCodeFailureState.didFail
+        ? null
+        : yield* scoreService.compute({
+            diagnostics: scoreDiagnostics,
+            isCi: input.isCi,
+            metadata: scoreMetadata,
+          });
     const lintPartialFailures = yield* Ref.get(partialFailuresRef);
 
     return {

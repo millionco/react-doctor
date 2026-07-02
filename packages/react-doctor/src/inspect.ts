@@ -28,6 +28,7 @@ import { recordCount } from "./cli/utils/record-metric.js";
 import { recordScanMetrics } from "./cli/utils/record-scan-metrics.js";
 import { recordRunEvent } from "./cli/utils/build-run-event.js";
 import { resolveWorkerTelemetry } from "./cli/utils/resolve-worker-telemetry.js";
+import { countDeadlineSkippedFiles } from "./cli/utils/count-deadline-skipped-files.js";
 import { countDroppedLintFiles } from "./cli/utils/count-dropped-lint-files.js";
 import type {
   ChangedFileLineRanges,
@@ -865,6 +866,7 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     lintFailureReasonKind: input.payload.lintFailureReasonKind,
     lintPartialFailureCount: input.payload.lintPartialFailures.length,
     lintDroppedFileCount: countDroppedLintFiles(input.payload.lintPartialFailures),
+    lintDeadlineSkippedFileCount: countDeadlineSkippedFiles(input.payload.lintPartialFailures),
     didDeadCodeFail: input.payload.didDeadCodeFail,
     supplyChainOverlapTimedOut: input.payload.supplyChainOverlapTimedOut,
     deadCodeOverlapped: input.payload.deadCodeOverlapped,

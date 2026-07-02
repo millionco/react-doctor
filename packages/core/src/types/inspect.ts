@@ -144,7 +144,10 @@ export interface InspectOptions {
    * dead-code phase is skipped or capped to the remaining budget, so
    * partial results are still reported. In-flight work is allowed to
    * finish, so the wall clock can overshoot the budget by up to one
-   * lint batch. `undefined` (the default) applies no budget.
+   * lint batch. The CLI shares one budget across every project of a
+   * workspace scan (each project receives what remains); a programmatic
+   * `inspect()` call applies the budget to that call alone. `undefined`
+   * (the default) applies no budget.
    */
   maxDurationMs?: number;
   /**

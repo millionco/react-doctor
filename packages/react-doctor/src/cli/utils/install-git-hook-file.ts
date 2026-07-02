@@ -72,9 +72,10 @@ const mergeHookContent = (existingContent: string): string => {
   const hookBlock = `${buildReactDoctorHookBlock()}\n`;
 
   if (REACT_DOCTOR_BLOCK_PATTERN.test(existingContent)) {
-    // Replace the FIRST managed block and strip any extras — a bad merge (or a
-    // historical partial migration) can leave both a legacy launcher block and
-    // a current block, which would otherwise scan every commit twice.
+    // Replace the FIRST managed block and strip any extras. `.husky/pre-commit`
+    // is a committed file, so a no-conflict merge of two branches that each ran
+    // install at a different offset leaves two managed blocks — each scans
+    // staged files unconditionally, so the commit is scanned twice.
     let isFirstManagedBlock = true;
     const merged = existingContent.replace(ALL_REACT_DOCTOR_BLOCKS_PATTERN, () => {
       if (isFirstManagedBlock) {

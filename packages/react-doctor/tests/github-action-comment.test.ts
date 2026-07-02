@@ -204,12 +204,12 @@ describe("render-github-action-comment", () => {
       comment.indexOf("Reviewed by [React Doctor]"),
     );
     // The notice points at the opt-out.
-    expect(comment).toContain("set `baseline-warning: false`");
+    expect(comment).toContain("set `silence-missing-baseline-warning: true`");
   });
 
-  it("omits the warning when baseline-warning is disabled", () => {
+  it("omits the warning when silencing is opted into", () => {
     const { comment } = runRenderer(buildReport({ baselineDegraded: true }), {
-      REACT_DOCTOR_BASELINE_WARNING: "false",
+      REACT_DOCTOR_SILENCE_MISSING_BASELINE_WARNING: "true",
     });
     // The findings still render; only the config warning is silenced.
     expect(comment).not.toContain("configured incorrectly");

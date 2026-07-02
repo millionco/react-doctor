@@ -27,9 +27,11 @@ const WORKFLOW_FILE = (() => {
   return relativePath || null;
 })();
 
-// The degraded-baseline warning is opt-out via the action's `baseline-warning`
-// input (forwarded as this env). Enabled unless explicitly set to "false".
-const BASELINE_WARNING_ENABLED = process.env.REACT_DOCTOR_BASELINE_WARNING !== "false";
+// The missing-baseline warning is opt-out via the action's
+// `silence-missing-baseline-warning` input (forwarded as this env). Silenced only
+// when explicitly set to "true".
+const SILENCE_MISSING_BASELINE_WARNING =
+  process.env.REACT_DOCTOR_SILENCE_MISSING_BASELINE_WARNING === "true";
 
 const pluralize = (count, singular, plural = `${singular}s`) =>
   `${count} ${count === 1 ? singular : plural}`;
@@ -87,7 +89,7 @@ const COPY = {
     "       - uses: millionco/react-doctor@v2",
     "```",
     "",
-    "To silence this warning, set `baseline-warning: false` on the React Doctor action.",
+    "To silence this warning, set `silence-missing-baseline-warning: true` on the React Doctor action.",
   ],
 
   // Issue lists.
@@ -223,7 +225,7 @@ const buildScopeSegment = (report) => {
 // a compare run degraded to a full changed-files listing (see COPY.baselineDegraded*).
 // Empty string when the baseline was computed normally, so it drops out of the body.
 const buildBaselineDegradedNotice = (report) => {
-  if (!report.baselineDegraded || !BASELINE_WARNING_ENABLED) return "";
+  if (!report.baselineDegraded || SILENCE_MISSING_BASELINE_WARNING) return "";
   const baseBranch = report.diff?.baseBranch || "the base branch";
   const lines = [
     `<details><summary>${COPY.baselineDegradedSummary(WORKFLOW_FILE)}</summary>`,

@@ -23,9 +23,9 @@ inputs:
   review-comments:
     description: "Post inline review comments on the changed lines that triggered diagnostics (pull requests only)."
     default: "true"
-  baseline-warning:
-    description: "Show a warning in the PR comment when a compare scope (`changed`) can't reach the base branch (e.g. a shallow checkout) and falls back to reporting every issue in the changed files, not only the ones the PR introduced. Set to false to silence it (fixing the checkout with `fetch-depth: 0` is the real remedy)."
-    default: "true"
+  silence-missing-baseline-warning:
+    description: "By default the PR comment shows a warning when a compare scope (`changed`) can't reach the base branch (e.g. a shallow checkout) and falls back to reporting every issue in the changed files, not only the ones the PR introduced. Set to true to hide that warning (fixing the checkout with `fetch-depth: 0` is the real remedy)."
+    default: "false"
   commit-status:
     description: 'Publish a commit status with the score and error / warning counts, linking to the run. Surfaces the result on pushes to the default branch (where the PR comment is skipped). Reads "Skipped" when the pull request changes no React-eligible files. Requires `statuses: write` (skipped with a warning otherwise).'
     default: "true"
@@ -302,8 +302,8 @@ runs:
         # The reviewed commit, shown in the sticky comment's footer. On a PR the
         # head SHA is the merge ref's parent; `github.sha` covers push runs.
         REACT_DOCTOR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        # Opt out of the degraded-baseline warning (see the `baseline-warning` input).
-        REACT_DOCTOR_BASELINE_WARNING: ${{ inputs.baseline-warning }}
+        # Opt out of the missing-baseline warning (see the `silence-missing-baseline-warning` input).
+        REACT_DOCTOR_SILENCE_MISSING_BASELINE_WARNING: ${{ inputs.silence-missing-baseline-warning }}
       run: |
         node "$GITHUB_ACTION_PATH/scripts/render-github-action-comment.mjs" "$REPORT_FILE" "$COMMENT_FILE"
         echo "comment-file=$COMMENT_FILE" >> "$GITHUB_OUTPUT"

@@ -30,15 +30,20 @@ describe("resolveCliInspectOptions: CI behavior (issue #302)", () => {
 
     const resolved = resolveCliInspectOptions({}, null);
 
-    expect(resolved.noScore).toBe(false);
+    // Undefined (not `false`) so `inspect()`'s merge layer can inherit
+    // `userConfig.noScore` from the per-project config — the default with no
+    // config remains "scoring on".
+    expect(resolved.noScore).toBeUndefined();
     expect(resolved.isCi).toBe(true);
   });
 
-  it("respects an explicit user opt-out (CLI flag or config) in CI", () => {
+  it("respects an explicit user opt-out in CI, deferring a config opt-out to the merge layer", () => {
     process.env.GITHUB_ACTIONS = "true";
 
     expect(resolveCliInspectOptions({ score: false }, null).noScore).toBe(true);
-    expect(resolveCliInspectOptions({}, { noScore: true }).noScore).toBe(true);
+    // Config-driven opt-out is applied by `inspect()`'s merge (per-project
+    // config included), not eagerly collapsed here from the root config.
+    expect(resolveCliInspectOptions({}, { noScore: true }).noScore).toBeUndefined();
   });
 
   it("leaves isCi false outside CI", () => {
@@ -98,8 +103,8 @@ describe("resolveCliInspectOptions: --no-telemetry alias", () => {
     expect(resolveCliInspectOptions({ score: false }, null).noScore).toBe(true);
   });
 
-  it("keeps scoring on by default", () => {
-    expect(resolveCliInspectOptions({}, null).noScore).toBe(false);
+  it("keeps scoring on by default (undefined defers to the merge layer's `false`)", () => {
+    expect(resolveCliInspectOptions({}, null).noScore).toBeUndefined();
   });
 });
 

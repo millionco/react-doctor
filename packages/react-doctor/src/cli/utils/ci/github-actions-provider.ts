@@ -214,6 +214,11 @@ const surgicalApplyGate = (content: string, gate: CiGate): CiEditResult | null =
   } catch {
     return null;
   }
+  // `parseDocument` doesn't throw on malformed YAML — it records problems on
+  // `doc.errors` and still returns a partial AST. But `doc.toString()` below
+  // DOES throw for a document with errors, so bail here and let the caller
+  // print the apply-by-hand snippet instead of crashing with an internal error.
+  if (doc.errors.length > 0) return null;
   const located = findReactDoctorStep(doc);
   if (located === null) return null;
 

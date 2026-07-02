@@ -123,6 +123,7 @@ const isTrustedDestination = (
         isTrustedOrNullishDestination(urlArgument.right, depth + 1)
       );
     }
+    if (isStaticallyTruthyTrustedDestination(urlArgument.left, depth + 1)) return true;
     return (
       isTrustedOrNullishDestination(urlArgument.left, depth + 1) &&
       isTrustedOrNullishDestination(urlArgument.right, depth + 1)
@@ -140,6 +141,31 @@ const isTrustedOrNullishDestination = (
   urlExpression: EsTreeNode | null | undefined,
   depth: number,
 ): boolean => isNullishExpression(urlExpression) || isTrustedDestination(urlExpression, depth);
+
+// A statically truthy trusted left operand of `||`/`??` short-circuits, so
+// `trustedUrl || dynamicFallback` always opens the trusted destination and
+// the right side never evaluates. Only trusted destinations with nonempty
+// static text qualify — `''` is falsy under `||` and a nullish binding
+// falls through to the right operand under both operators.
+const isStaticallyTruthyTrustedDestination = (
+  urlExpression: EsTreeNode | null | undefined,
+  depth: number,
+): boolean => {
+  if (urlExpression == null || depth > MAX_BINDING_RESOLUTION_DEPTH) return false;
+  if (isStringLiteral(urlExpression)) return urlExpression.value.length > 0;
+  if (isNodeOfType(urlExpression, "TemplateLiteral")) {
+    const hasStaticText =
+      urlExpression.quasis?.some((quasi) => (quasi.value?.raw ?? "").length > 0) ?? false;
+    return hasStaticText && isTrustedStaticDestination(urlExpression);
+  }
+  if (isNodeOfType(urlExpression, "Identifier")) {
+    const constInitializer = resolveConstInitializer(urlExpression);
+    return (
+      constInitializer != null && isStaticallyTruthyTrustedDestination(constInitializer, depth + 1)
+    );
+  }
+  return false;
+};
 
 // Best-effort static text of the features argument: string literals,
 // template literals (interpolations resolved when they are local const
@@ -189,9 +215,12 @@ const isArrowReturnDiscarded = (arrow: EsTreeNode): boolean => {
     return parent.arguments?.some((argument) => argument === arrow) ?? false;
   }
   if (isNodeOfType(parent, "Property") && parent.value === arrow && !parent.computed) {
-    return (
-      isNodeOfType(parent.key, "Identifier") && EVENT_HANDLER_KEY_PATTERN.test(parent.key.name)
-    );
+    const handlerKeyName = isNodeOfType(parent.key, "Identifier")
+      ? parent.key.name
+      : isStringLiteral(parent.key)
+        ? parent.key.value
+        : null;
+    return handlerKeyName != null && EVENT_HANDLER_KEY_PATTERN.test(handlerKeyName);
   }
   return false;
 };

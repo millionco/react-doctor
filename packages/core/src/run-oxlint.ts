@@ -101,6 +101,13 @@ interface RunOxlintOptions {
    */
   signal?: AbortSignal;
   /**
+   * Absolute epoch-millisecond deadline for the lint pass (from the scan's
+   * `--max-duration` budget); forwarded to `spawnLintBatches` so batches
+   * that haven't started when it passes are skipped (and reported via
+   * `onPartialFailure`) instead of spawned.
+   */
+  deadlineEpochMs?: number;
+  /**
    * Full-scan batch ordering, resolved from the `LintBatchOrdering`
    * Reference. `"arrival"` (the default) keeps discovery order; `"cost"`
    * opts into LPT (largest files first). Only affects the full-scan branch
@@ -385,6 +392,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           outputMaxBytes,
           concurrency: options.concurrency,
           signal: options.signal,
+          deadlineEpochMs: options.deadlineEpochMs,
         });
       writeOxlintConfig(passConfigPath, buildConfigForPass({}));
       try {
@@ -541,6 +549,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         outputMaxBytes,
         concurrency: options.concurrency,
         signal: options.signal,
+        deadlineEpochMs: options.deadlineEpochMs,
       });
 
     writeOxlintConfig(configPath, buildConfig({ extendsPaths }));

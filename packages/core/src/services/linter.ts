@@ -46,6 +46,8 @@ export interface LintInput {
   readonly nodeBinaryPath?: string;
   readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
   readonly onCacheStats?: (cacheHitFileCount: number, totalConsideredFileCount: number) => void;
+  /** See `RunOxlintOptions.deadlineEpochMs`. */
+  readonly deadlineEpochMs?: number;
 }
 
 /**
@@ -143,6 +145,7 @@ export class Linter extends Context.Service<
                   concurrency,
                   signal,
                   lintBatchOrdering,
+                  deadlineEpochMs: input.deadlineEpochMs,
                 }),
               catch: ensureReactDoctorError,
             });

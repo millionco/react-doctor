@@ -69,6 +69,7 @@ const baseInput = (overrides: Partial<RunEventInput> = {}): RunEventInput => ({
   scope: "full",
   parallel: true,
   workerCount: 4,
+  maxDurationMs: null,
   lint: true,
   deadCode: true,
   scoreOnly: false,

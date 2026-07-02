@@ -39,12 +39,18 @@ export const MINIFIED_MIN_SIZE_BYTES = 20_000;
 export const GIT_LS_FILES_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
 
 export const IGNORED_DIRECTORIES = new Set([
+  ".cache",
+  ".expo",
   ".git",
+  ".hg",
   ".next",
   ".nuxt",
   ".output",
   ".svelte-kit",
+  ".svn",
   ".turbo",
+  ".vercel",
+  ".yarn",
   "build",
   "coverage",
   "dist",

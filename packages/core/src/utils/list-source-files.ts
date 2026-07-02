@@ -3,6 +3,7 @@ import * as path from "node:path";
 import type { SourceFileEntry } from "../types/index.js";
 import { readDirectoryEntries } from "../project-info/index.js";
 import { GIT_LS_FILES_MAX_BUFFER_BYTES, IGNORED_DIRECTORIES } from "../constants.js";
+import { hasIgnoredPathSegment } from "./has-ignored-path-segment.js";
 import { isLintableSourceFile } from "./is-lintable-source-file.js";
 import { isLargeMinifiedFile, statSourceFileSize } from "./is-large-minified-file.js";
 
@@ -49,7 +50,10 @@ const listSourceFilesViaGit = (rootDirectory: string): string[] | null => {
 
   return result.stdout
     .split("\0")
-    .filter((filePath) => filePath.length > 0 && isLintableSourceFile(filePath));
+    .filter(
+      (filePath) =>
+        filePath.length > 0 && isLintableSourceFile(filePath) && !hasIgnoredPathSegment(filePath),
+    );
 };
 
 const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
@@ -64,7 +68,11 @@ const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
       const absolutePath = path.join(currentDirectory, entry.name);
 
       if (entry.isDirectory()) {
-        if (!entry.name.startsWith(".") && !IGNORED_DIRECTORIES.has(entry.name)) {
+        // Descend into dot-directories that aren't explicitly ignored (e.g.
+        // `.dumi`, `.storybook`) — `git ls-files` includes their tracked
+        // sources, so the walk fallback must cover the same set or scans of
+        // one tree diverge depending on whether git was available.
+        if (!IGNORED_DIRECTORIES.has(entry.name)) {
           stack.push(absolutePath);
         }
         continue;
@@ -76,7 +84,9 @@ const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
     }
   }
 
-  return filePaths;
+  // readdir order is filesystem-dependent; sort so repeated walks (and the
+  // git path, which emits sorted output) enumerate identically.
+  return filePaths.sort();
 };
 
 // Returns every source file under `rootDirectory` paired with its byte size

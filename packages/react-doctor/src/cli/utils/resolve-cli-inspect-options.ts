@@ -3,6 +3,7 @@ import type { InspectFlags } from "./inspect-flags.js";
 import { isCiEnvironment } from "./is-ci-environment.js";
 import { pickBlockingLevel } from "./resolve-blocking-level.js";
 import { resolveCliCategories } from "./resolve-cli-categories.js";
+import { resolveMaxDurationFlag } from "./resolve-max-duration-flag.js";
 import { resolveParallelFlag } from "./resolve-parallel-flag.js";
 
 export interface CliInspectOptions extends InspectOptions {
@@ -46,6 +47,7 @@ export const resolveCliInspectOptions = (
     isCi: isCiEnvironment(),
     silent: Boolean(flags.json),
     concurrency: resolveParallelFlag(flags.parallel),
+    maxDurationMs: resolveMaxDurationFlag(flags.maxDuration),
     categoryFilters: resolveCliCategories(flags.category),
   };
 };

@@ -67,6 +67,14 @@ export interface SpawnLintBatchesInput {
    */
   readonly signal?: AbortSignal;
   /**
+   * Absolute epoch-millisecond deadline for the whole lint pass (from the
+   * caller's `--max-duration` budget). Once it passes, batches that haven't
+   * started yet are skipped — recorded and surfaced via `onPartialFailure` —
+   * instead of spawned, so the scan degrades to partial results rather than
+   * running past the budget. In-flight batches finish normally.
+   */
+  readonly deadlineEpochMs?: number;
+  /**
    * Number of batches to lint in parallel (from `OxlintConcurrency`).
    * Defaults to `1` (serial) when omitted. Each batch is its own oxlint
    * subprocess, so `N` here means up to `N` concurrent oxlint processes —
@@ -113,6 +121,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     splitTotalBudgetMs = OXLINT_SPLIT_TOTAL_BUDGET_MS,
     splitMaxDepth = OXLINT_SPLIT_MAX_DEPTH,
     signal,
+    deadlineEpochMs,
   } = input;
   // Clamp at the spawn boundary so any caller — including programmatic
   // `inspect({ concurrency })` that skips the CLI's resolver — is bounded by
@@ -136,6 +145,10 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     // ones (e.g. one file × one quadratic JS-plugin rule, originally
     // hit on supabase/studio's `apps/studio/pages/...` bucket).
     const droppedFiles: string[] = [];
+    // Files whose batch never spawned because `deadlineEpochMs` passed —
+    // reported separately from `droppedFiles` so consumers can tell "the
+    // scan ran out of budget" apart from "this file is pathological".
+    const deadlineSkippedFiles: string[] = [];
     // HACK: keep the first splittable error message we saw so
     // `onPartialFailure` can report WHY each batch failed instead of
     // misleadingly always blaming the per-batch budget. Same root cause
@@ -207,6 +220,10 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
 
     try {
       const batchResults = await mapWithConcurrency(fileBatches, concurrency, async (batch) => {
+        if (deadlineEpochMs !== undefined && Date.now() >= deadlineEpochMs) {
+          deadlineSkippedFiles.push(...batch);
+          return [];
+        }
         startedFileCount += batch.length;
         const batchDiagnostics = await spawnLintBatch(batch, 0);
         scannedFileCount += batch.length;
@@ -236,6 +253,18 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
       const reasonHint = firstDropReason ? ` — first failure: ${firstDropReason}` : "";
       onPartialFailure(
         `${droppedFiles.length} file(s) failed to lint and were skipped (${previewFiles}${remainderHint})${reasonHint}`,
+      );
+    }
+    if (deadlineSkippedFiles.length > 0 && onPartialFailure) {
+      const previewFiles = deadlineSkippedFiles
+        .slice(0, OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT)
+        .join(", ");
+      const remainderHint =
+        deadlineSkippedFiles.length > OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT
+          ? `, +${deadlineSkippedFiles.length - OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT} more`
+          : "";
+      onPartialFailure(
+        `${deadlineSkippedFiles.length} file(s) skipped — max scan duration reached before they were linted (${previewFiles}${remainderHint})`,
       );
     }
     return allDiagnostics;

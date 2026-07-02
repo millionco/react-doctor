@@ -200,6 +200,10 @@ const program = new Command()
   )
   .option("--staged", "scan only staged (git index) files for pre-commit hooks")
   .option(
+    "--max-duration <seconds>",
+    "scan time budget: past it, remaining lint batches and dead-code are skipped and partial results are reported (with the skipped files listed)",
+  )
+  .option(
     "--blocking <level>",
     "severity that fails CI: error (default), warning, or none (advisory)",
   )

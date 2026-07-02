@@ -72,7 +72,10 @@ const findFilesWithDisableDirectivesViaFilesystem = (
     const entries = readDirectoryEntries(current);
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        if (entry.name.startsWith(".") || IGNORED_DIRECTORIES.has(entry.name)) continue;
+        // Same descent rule as `listSourceFilesViaFilesystem`: non-ignored
+        // dot-directories (`.dumi`, `.storybook`) hold scanned sources, so
+        // their disable directives must be neutralized too.
+        if (IGNORED_DIRECTORIES.has(entry.name)) continue;
         stack.push(path.join(current, entry.name));
         continue;
       }

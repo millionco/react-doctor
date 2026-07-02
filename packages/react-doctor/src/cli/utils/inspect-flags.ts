@@ -35,6 +35,9 @@ export interface InspectFlags {
   // Set by the `why <file:line>` command (no longer a CLI flag); routes the
   // inspect flow into the single-location explain path.
   explain?: string;
+  // `--max-duration <seconds>`: scan time budget; parsed by
+  // `resolveMaxDurationFlag`.
+  maxDuration?: string;
   blocking?: string;
   /**
    * @deprecated Renamed to `blocking`. Still parsed as an alias when

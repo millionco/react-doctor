@@ -165,6 +165,8 @@ export interface ResolvedInspectOptions {
   concurrentScan: boolean;
   /** Resolved oxlint worker count, or `undefined` to keep the ambient default. */
   concurrency: number | undefined;
+  /** Scan time budget in milliseconds, or `null` for no budget. */
+  maxDurationMs: number | null;
   /** Baseline ref to subtract (new-only mode), or `null` for a plain scan. */
   baseline: { ref: string } | null;
   /**
@@ -212,6 +214,7 @@ const mergeInspectOptions = (
   suppressRendering: inputOptions.suppressRendering ?? false,
   concurrentScan: inputOptions.concurrentScan ?? false,
   concurrency: inputOptions.concurrency,
+  maxDurationMs: inputOptions.maxDurationMs ?? null,
   baseline: inputOptions.baseline ?? null,
   changedLineRanges: inputOptions.changedLineRanges ?? null,
   supplyChainManifestChanged: inputOptions.supplyChainManifestChanged ?? false,
@@ -250,6 +253,7 @@ const buildRunEventConfig = (
     scope: deriveScope(options),
     parallel,
     workerCount,
+    maxDurationMs: options.maxDurationMs,
     lint: options.lint,
     deadCode: options.deadCode,
     scoreOnly: options.scoreOnly,
@@ -574,6 +578,8 @@ const runInspectWithRuntime = async (
       suppressScanSummary: options.suppressRendering,
       supplyChainManifestChanged: options.supplyChainManifestChanged,
       concurrentScan: options.concurrentScan,
+      deadlineEpochMs:
+        options.maxDurationMs !== null ? Date.now() + options.maxDurationMs : undefined,
     },
     {
       beforeLint: (projectInfo, lintIncludePaths) =>

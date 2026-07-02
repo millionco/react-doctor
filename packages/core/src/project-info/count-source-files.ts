@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { GIT_LS_FILES_MAX_BUFFER_BYTES, IGNORED_DIRECTORIES } from "./constants.js";
+import { hasIgnoredPathSegment } from "../utils/has-ignored-path-segment.js";
 import { isLintableSourceFile } from "../utils/is-lintable-source-file.js";
 import { isLargeMinifiedFile } from "../utils/is-large-minified-file.js";
 import { readDirectoryEntries } from "./utils/read-directory-entries.js";
@@ -15,7 +16,10 @@ const countSourceFilesViaFilesystem = (rootDirectory: string): number => {
 
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        if (!entry.name.startsWith(".") && !IGNORED_DIRECTORIES.has(entry.name)) {
+        // Descends into non-ignored dot-directories — mirrors
+        // `listSourceFilesViaFilesystem` so the count and the scanned set
+        // stay in lockstep.
+        if (!IGNORED_DIRECTORIES.has(entry.name)) {
           stack.push(path.join(currentDirectory, entry.name));
         }
         continue;
@@ -58,6 +62,7 @@ const countSourceFilesViaGit = (rootDirectory: string): number | null => {
       (filePath) =>
         filePath.length > 0 &&
         isLintableSourceFile(filePath) &&
+        !hasIgnoredPathSegment(filePath) &&
         !isLargeMinifiedFile(path.resolve(rootDirectory, filePath)),
     ).length;
 };

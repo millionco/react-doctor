@@ -34,6 +34,8 @@ export interface RunEventInput {
   readonly scope: string;
   readonly parallel: boolean;
   readonly workerCount: number | undefined;
+  /** `--max-duration` budget in milliseconds; `null` when no budget was set. */
+  readonly maxDurationMs: number | null;
   readonly lint: boolean;
   readonly deadCode: boolean;
   readonly scoreOnly: boolean;
@@ -299,6 +301,7 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     scope: input.scope,
     parallel: input.parallel,
     workerCount: input.workerCount ?? null,
+    maxDurationMs: input.maxDurationMs,
     lint: input.lint,
     deadCode: input.deadCode,
     scoreOnly: input.scoreOnly,

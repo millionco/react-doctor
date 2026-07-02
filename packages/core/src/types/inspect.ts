@@ -137,6 +137,17 @@ export interface InspectOptions {
    */
   concurrency?: number;
   /**
+   * Scan time budget in milliseconds (the CLI's `--max-duration`, in
+   * seconds). When the budget runs out mid-scan, the run degrades
+   * gracefully instead of failing: lint batches that haven't started are
+   * skipped (listed in `skippedCheckReasons["lint:partial"]`) and the
+   * dead-code phase is skipped or capped to the remaining budget, so
+   * partial results are still reported. In-flight work is allowed to
+   * finish, so the wall clock can overshoot the budget by up to one
+   * lint batch. `undefined` (the default) applies no budget.
+   */
+  maxDurationMs?: number;
+  /**
    * Per-call override for `ReactDoctorConfig.warnings`. When omitted,
    * `config.warnings` wins (defaulting to `true`), so `"warning"`-
    * severity diagnostics surface on every surface — CLI, PR comment,

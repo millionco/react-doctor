@@ -8,13 +8,18 @@ import { isImportedFromModule } from "../../utils/find-import-source-for-name.js
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
+// Only hooks that return an object of BOUND function properties belong
+// here. `useSearchParams` is intentionally excluded: it returns a
+// `ReadonlyURLSearchParams` instance whose methods (`get`/`has`/…) are
+// unbound prototype methods that need their `this` receiver, so the
+// destructure recommendation (`const { get } = useSearchParams()`)
+// throws `TypeError: Illegal invocation`.
 const HOOK_OBJECTS_WITH_METHODS = new Map<string, Set<string>>([
   ["useRouter", new Set(["push", "replace", "back", "forward", "refresh", "prefetch"])],
   [
     "useNavigation",
     new Set(["navigate", "push", "goBack", "popToTop", "reset", "replace", "dispatch"]),
   ],
-  ["useSearchParams", new Set(["get", "getAll", "has", "set"])],
 ]);
 
 // Some libraries expose method-bearing hook objects where destructuring is not

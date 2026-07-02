@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import { getImportedName } from "../../utils/get-imported-name.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -18,13 +19,11 @@ export const useLazyMotion = defineRule({
       if (source !== "framer-motion" && source !== "motion/react") return;
       // `import type { ... } from 'framer-motion'` ships nothing —
       // no runtime cost, the LazyMotion swap has no benefit.
-      const declarationKind = (node as unknown as { importKind?: string }).importKind;
-      if (declarationKind === "type") return;
+      if (isTypeOnlyImport(node)) return;
 
       const hasFullMotionImport = node.specifiers?.some((specifier: EsTreeNode) => {
         if (!isNodeOfType(specifier, "ImportSpecifier")) return false;
-        const specifierKind = (specifier as unknown as { importKind?: string }).importKind;
-        if (specifierKind === "type") return false;
+        if (specifier.importKind === "type") return false;
         return getImportedName(specifier) === "motion";
       });
 

@@ -5,6 +5,14 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
+
+interface ThresholdDerivedBinding {
+  continuousName: string;
+  hookName: string;
+  declarator: EsTreeNode;
+  thresholdDeclarators: EsTreeNode[];
+}
 
 const CONTINUOUS_VALUE_HOOK_PATTERN =
   /^use(?:Window(?:Width|Height|Dimensions)|Scroll(?:Position|Y|X)|MousePosition|ResizeObserver|IntersectionObserver)/;
@@ -30,10 +38,36 @@ const isThresholdComparison = (node: EsTreeNode, valueName: string): boolean => 
   return isNodeOfType(node.left, "Literal") || isNodeOfType(node.right, "Literal");
 };
 
+// The continuous value is only over-rendering noise when the component
+// solely cares about the derived boolean. If the raw value is also read
+// elsewhere (e.g. `{width}px` in the JSX), it legitimately needs the
+// continuous value, so caching it behind a threshold hook would change
+// behaviour. Allowed references: the hook binding declarator itself and
+// every threshold comparison declarator derived from it.
+const isContinuousReferencedElsewhere = (
+  componentBody: EsTreeNode,
+  binding: ThresholdDerivedBinding,
+): boolean => {
+  let referencedElsewhere = false;
+  walkAst(componentBody, (child: EsTreeNode): boolean | void => {
+    if (referencedElsewhere) return false;
+    if (child === binding.declarator || binding.thresholdDeclarators.includes(child)) return false;
+    if (!isNodeOfType(child, "Identifier")) return;
+    if (child.name !== binding.continuousName) return;
+    const parent = child.parent;
+    if (isNodeOfType(parent, "MemberExpression") && !parent.computed && parent.property === child) {
+      return;
+    }
+    if (isNodeOfType(parent, "Property") && !parent.computed && parent.key === child) return;
+    referencedElsewhere = true;
+  });
+  return referencedElsewhere;
+};
+
 const findThresholdDerivedBindings = (
   componentBody: EsTreeNode,
-): Array<{ continuousName: string; hookName: string; declarator: EsTreeNode }> => {
-  const out: Array<{ continuousName: string; hookName: string; declarator: EsTreeNode }> = [];
+): Array<ThresholdDerivedBinding> => {
+  const out: Array<ThresholdDerivedBinding> = [];
   if (!isNodeOfType(componentBody, "BlockStatement")) return out;
   const statements = componentBody.body ?? [];
 
@@ -51,21 +85,23 @@ const findThresholdDerivedBindings = (
       const continuousName = declarator.id.name;
       const hookName = init.callee.name;
 
-      // Look at the next statement(s) for a derived threshold binding.
+      // Collect every derived threshold binding from the following
+      // statement(s) — a multi-breakpoint component (`isMobile = width <
+      // 768; isDesktop = width > 1024`) derives several booleans from the
+      // same continuous value, and each one must be whitelisted when
+      // checking whether the raw value is read elsewhere.
+      const thresholdDeclarators: EsTreeNode[] = [];
       for (let innerIndex = outerIndex + 1; innerIndex < statements.length; innerIndex++) {
         const innerStatement = statements[innerIndex];
         if (!isNodeOfType(innerStatement, "VariableDeclaration")) break;
-        let foundThreshold = false;
         for (const innerDecl of innerStatement.declarations ?? []) {
           if (innerDecl.init && isThresholdComparison(innerDecl.init, continuousName)) {
-            foundThreshold = true;
-            break;
+            thresholdDeclarators.push(innerDecl);
           }
         }
-        if (foundThreshold) {
-          out.push({ continuousName, hookName, declarator });
-          break;
-        }
+      }
+      if (thresholdDeclarators.length > 0) {
+        out.push({ continuousName, hookName, declarator, thresholdDeclarators });
       }
     }
   }
@@ -84,6 +120,7 @@ export const rerenderDerivedStateFromHook = defineRule({
       if (!componentBody || !isNodeOfType(componentBody, "BlockStatement")) return;
       const bindings = findThresholdDerivedBindings(componentBody);
       for (const binding of bindings) {
+        if (isContinuousReferencedElsewhere(componentBody, binding)) continue;
         context.report({
           node: binding.declarator,
           message: `This redraws the screen far more than needed because ${binding.hookName}() changes constantly but you only check it against a cutoff, so use a threshold hook like \`useMediaQuery("(max-width: 767px)")\` to redraw only when the answer changes`,

@@ -2,6 +2,7 @@ import { collectPatternNames } from "./collect-pattern-names.js";
 import type { ComponentPropStackTrackerCallbacks } from "./component-prop-stack-tracker-callbacks.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { isComponentFunction } from "./is-component-function.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isUppercaseName } from "./is-uppercase-name.js";
@@ -53,46 +54,6 @@ const getNearestComponentFunction = (
     cursor = cursor.parent ?? null;
   }
   return null;
-};
-
-const isFunctionAssignedToComponent = (
-  functionNode:
-    | EsTreeNodeOfType<"ArrowFunctionExpression">
-    | EsTreeNodeOfType<"FunctionDeclaration">
-    | EsTreeNodeOfType<"FunctionExpression">,
-): boolean => {
-  let cursor: EsTreeNode | null = functionNode.parent ?? null;
-  while (isNodeOfType(cursor, "CallExpression")) {
-    cursor = cursor.parent ?? null;
-  }
-
-  if (
-    isNodeOfType(cursor, "VariableDeclarator") &&
-    isNodeOfType(cursor.id, "Identifier") &&
-    isUppercaseName(cursor.id.name)
-  ) {
-    return true;
-  }
-
-  return isNodeOfType(cursor, "ExportDefaultDeclaration");
-};
-
-const isComponentFunction = (
-  functionNode:
-    | EsTreeNodeOfType<"ArrowFunctionExpression">
-    | EsTreeNodeOfType<"FunctionDeclaration">
-    | EsTreeNodeOfType<"FunctionExpression">,
-): boolean => {
-  if (isNodeOfType(functionNode, "FunctionDeclaration")) {
-    return (
-      !functionNode.id ||
-      functionNode.id.name === "default" ||
-      isUppercaseName(functionNode.id.name) ||
-      isNodeOfType(functionNode.parent, "ExportDefaultDeclaration")
-    );
-  }
-
-  return isFunctionAssignedToComponent(functionNode);
 };
 
 // HACK: barrier-frame predicate - a non-component arrow / function-expression

@@ -31,8 +31,8 @@ export interface RunRuleResult {
 
 const dispatchTreeWalk = (root: EsTreeNode, visitors: RuleVisitors): void => {
   const visit = (node: EsTreeNode): void => {
-    const handler = visitors[node.type];
-    if (typeof handler === "function") handler(node);
+    const enterHandler = visitors[node.type];
+    if (typeof enterHandler === "function") enterHandler(node);
     const nodeRecord = node as unknown as Record<string, unknown>;
     for (const key of Object.keys(nodeRecord)) {
       if (key === "parent") continue;
@@ -45,17 +45,19 @@ const dispatchTreeWalk = (root: EsTreeNode, visitors: RuleVisitors): void => {
         visit(child);
       }
     }
+    const exitHandler = visitors[`${node.type}:exit`];
+    if (typeof exitHandler === "function") exitHandler(node);
   };
   visit(root);
-  const programExitHandler = visitors["Program:exit"];
-  if (typeof programExitHandler === "function") programExitHandler(root);
 };
 
 // Pure-TS rule runner mirroring what oxlint does at runtime: parse code,
 // attach `parent` references, build a fake `RuleContext`, dispatch each
-// `node.type` / `Program:exit` to the matching visitor, and collect every
-// `report({...})` call as a `RuleDiagnostic`. Used by every `<rule>.test.ts`
-// to assert pass/fail semantics ported from OXC's `Tester::new(...).pass / .fail`.
+// `node.type` visitor pre-order and each `${node.type}:exit` visitor
+// post-order (exactly the enter/exit pairs oxlint compiles), and collect
+// every `report({...})` call as a `RuleDiagnostic`. Used by every
+// `<rule>.test.ts` to assert pass/fail semantics ported from OXC's
+// `Tester::new(...).pass / .fail`.
 export const runRule = (rule: Rule, code: string, options: RunRuleOptions = {}): RunRuleResult => {
   const parsed = parseFixture(code, {
     filename: options.filename,

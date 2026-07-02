@@ -1,8 +1,9 @@
-import { UPPERCASE_PATTERN } from "../../constants/react.js";
+import { STABLE_HOOK_WRAPPERS, UPPERCASE_PATTERN } from "../../constants/react.js";
 import { TANSTACK_QUERY_CLIENT_CLASS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { getFunctionBindingName } from "../../utils/get-function-binding-name.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -16,6 +17,35 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 const isComponentFunction = (functionNode: EsTreeNode): boolean => {
   const name = getFunctionBindingName(functionNode);
   return name ? UPPERCASE_PATTERN.test(name) : false;
+};
+
+// `useState(new QueryClient())` / `useRef(new QueryClient())` retain the
+// FIRST value — the client identity stays stable across renders, so the
+// direct-argument position is exempt even though the constructor re-runs.
+const isStableHookWrapperArgument = (node: EsTreeNode): boolean => {
+  const parent = node.parent;
+  return (
+    isNodeOfType(parent, "CallExpression") &&
+    isNodeOfType(parent.callee, "Identifier") &&
+    STABLE_HOOK_WRAPPERS.has(parent.callee.name) &&
+    Boolean(parent.arguments?.some((argument: EsTreeNode) => argument === node))
+  );
+};
+
+// An immediately-invoked function runs synchronously in whatever scope
+// encloses it, so it is transparent when deciding whether a construction
+// happens per render: `const client = (() => new QueryClient())()` in a
+// component body still constructs on every render.
+const isImmediatelyInvokedFunction = (functionNode: EsTreeNode): boolean => {
+  let wrappedCallee: EsTreeNode = functionNode;
+  let enclosing: EsTreeNode | null | undefined = functionNode.parent;
+  while (enclosing && stripParenExpression(enclosing) === functionNode) {
+    wrappedCallee = enclosing;
+    enclosing = enclosing.parent ?? null;
+  }
+  return Boolean(
+    enclosing && isNodeOfType(enclosing, "CallExpression") && enclosing.callee === wrappedCallee,
+  );
 };
 
 export const queryStableQueryClient = defineRule({
@@ -34,10 +64,16 @@ export const queryStableQueryClient = defineRule({
       )
         return;
 
+      if (isStableHookWrapperArgument(node)) return;
+
       // Only fire when the nearest enclosing function is the component itself
       // — i.e. the construction runs in the render body. A nested closure
-      // (event handler, stable-hook initializer) defers it, so it's stable.
-      const enclosingFunction = findEnclosingFunction(node);
+      // (event handler, stable-hook initializer) defers it, so it's stable;
+      // an IIFE executes inline, so keep climbing through it.
+      let enclosingFunction = findEnclosingFunction(node);
+      while (enclosingFunction && isImmediatelyInvokedFunction(enclosingFunction)) {
+        enclosingFunction = findEnclosingFunction(enclosingFunction);
+      }
       if (!enclosingFunction) return;
       if (!isComponentFunction(enclosingFunction)) return;
       context.report({

@@ -34,4 +34,34 @@ describe("tanstack-query/query-no-usequery-for-mutation — regressions", () => 
     );
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("still flags a DELETE to a /graphql URL (spec only sanctions POST)", () => {
+    const { diagnostics } = runRule(
+      queryNoUseQueryForMutation,
+      `const r = useQuery({ queryKey: ['x'], queryFn: () => fetch('/graphql', { method: 'DELETE' }) });`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a DELETE to a REST URL that merely contains 'graphql'", () => {
+    const { diagnostics } = runRule(
+      queryNoUseQueryForMutation,
+      `const r = useQuery({ queryKey: ['x'], queryFn: () => fetch('/api/graphql-schemas/123', { method: 'DELETE' }) });`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a statically visible GraphQL mutation POSTed inside useQuery", () => {
+    const { diagnostics } = runRule(
+      queryNoUseQueryForMutation,
+      `const r = useQuery({
+        queryKey: ['deleteUser'],
+        queryFn: () => fetch('/graphql', {
+          method: 'POST',
+          body: JSON.stringify({ query: 'mutation DeleteUser($id: ID!) { deleteUser(id: $id) { id } }' }),
+        }).then((res) => res.json()),
+      });`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
 });

@@ -2,40 +2,65 @@ import { TANSTACK_QUERY_HOOKS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { isTanstackQuerySource } from "../../utils/is-tanstack-query-source.js";
-import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
+
+// Wrappers that are transparent for "is this expression what the function
+// returns": `return preferCache ? cachedQuery : remoteQuery`,
+// `return query ?? fallback`, `return query as UseQueryResult`, `query!`.
+const RETURNED_EXPRESSION_WRAPPER_TYPES = new Set<string>([
+  "ConditionalExpression",
+  "LogicalExpression",
+  "ParenthesizedExpression",
+  "TSAsExpression",
+  "TSSatisfiesExpression",
+  "TSNonNullExpression",
+]);
+
+const findReturnedExpressionRoot = (identifier: EsTreeNode): EsTreeNode => {
+  let current = identifier;
+  while (current.parent && RETURNED_EXPRESSION_WRAPPER_TYPES.has(current.parent.type)) {
+    current = current.parent;
+  }
+  return current;
+};
 
 // A reference position that actually hands the whole object onward:
-// returned from a custom hook (incl. an arrow's implicit return and a
-// returned tuple/object literal), passed as a call argument, wired into JSX,
-// spread, or re-bound (`const q = query` / `const { data } = query`). A mere
-// mention — e.g. an effect dependency array `[query]` — is NOT forwarding,
-// so it must not silence the rule for a component that reads `query.data`
-// field-by-field in render.
+// returned from a custom hook (incl. an arrow's implicit return, a returned
+// tuple/object literal, and a conditional/logical/TS-wrapped return), wired
+// into JSX, spread, or re-bound (`const q = query` / `const { data } = query`).
+// A mere mention — an effect dependency array `[query]`, a diagnostic
+// `console.log(query)` / `useDebugValue(query)` call argument — is NOT
+// forwarding, so it must not silence the rule for a component that reads
+// `query.data` field-by-field in render.
 const isForwardingReference = (identifier: EsTreeNode): boolean => {
   const parent = identifier.parent;
-  if (isNodeOfType(parent, "ReturnStatement")) return true;
-  if (isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === identifier) return true;
-  if (
-    (isNodeOfType(parent, "CallExpression") || isNodeOfType(parent, "NewExpression")) &&
-    Boolean(parent.arguments?.some((argument: EsTreeNode) => argument === identifier))
-  ) {
-    return true;
-  }
   if (isNodeOfType(parent, "SpreadElement") || isNodeOfType(parent, "JSXSpreadAttribute")) {
     return true;
   }
   if (isNodeOfType(parent, "JSXExpressionContainer")) return true;
   if (isNodeOfType(parent, "Property") && parent.value === identifier) return true;
   if (isNodeOfType(parent, "VariableDeclarator") && parent.init === identifier) return true;
-  if (isNodeOfType(parent, "ArrayExpression")) {
-    const grandparent = parent.parent;
+
+  const returnedRoot = findReturnedExpressionRoot(identifier);
+  const returnedParent = returnedRoot.parent;
+  if (isNodeOfType(returnedParent, "ReturnStatement")) return true;
+  if (
+    isNodeOfType(returnedParent, "ArrowFunctionExpression") &&
+    returnedParent.body === returnedRoot
+  ) {
+    return true;
+  }
+  if (isNodeOfType(returnedParent, "ArrayExpression")) {
+    const grandparent = returnedParent.parent;
     if (isNodeOfType(grandparent, "ReturnStatement")) return true;
-    if (isNodeOfType(grandparent, "ArrowFunctionExpression") && grandparent.body === parent) {
+    if (
+      isNodeOfType(grandparent, "ArrowFunctionExpression") &&
+      grandparent.body === returnedParent
+    ) {
       return true;
     }
   }
@@ -44,28 +69,25 @@ const isForwardingReference = (identifier: EsTreeNode): boolean => {
 
 // True when the whole-query binding is FORWARDED rather than consumed
 // field-by-field in this scope: returned from a custom hook, passed as a JSX
-// attribute / call argument, or spread. Those are the documented
-// wrap-a-query patterns — TanStack's tracked-properties optimization keys off
-// which fields are accessed during render, so forwarding the object does not
-// "subscribe to every field." A reference that is the object of a member
-// access (`query.data`) is a field read and keeps the binding flag-eligible.
-const isForwardedBinding = (
-  declarator: EsTreeNodeOfType<"VariableDeclarator">,
-  bindingName: string,
-): boolean => {
-  const scope = findEnclosingFunction(declarator) ?? declarator.parent;
-  if (!scope) return false;
-
-  let forwarded = false;
-  walkAst(scope, (node: EsTreeNode) => {
-    if (forwarded) return;
-    if (!isNodeOfType(node, "Identifier") || node.name !== bindingName) return;
-    if (node === declarator.id) return;
-    const parent = node.parent;
-    if (isNodeOfType(parent, "MemberExpression") && parent.object === node) return;
-    if (isForwardingReference(node)) forwarded = true;
+// attribute, spread, or re-bound. Those are the documented wrap-a-query
+// patterns — TanStack's tracked-properties optimization keys off which fields
+// are accessed during render, so forwarding the object does not "subscribe to
+// every field." References are resolved through scope analysis, so a shadowed
+// unrelated binding of the same name never counts. A reference that is the
+// object of a member access (`query.data`) is a field read and keeps the
+// binding flag-eligible.
+const isForwardedBinding = (bindingIdentifier: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const bindingSymbol = scopes.symbolFor(bindingIdentifier);
+  if (!bindingSymbol) return false;
+  return bindingSymbol.references.some((reference) => {
+    const referenceIdentifier = reference.identifier;
+    if (referenceIdentifier === bindingIdentifier) return false;
+    const parent = referenceIdentifier.parent;
+    if (isNodeOfType(parent, "MemberExpression") && parent.object === referenceIdentifier) {
+      return false;
+    }
+    return isForwardingReference(referenceIdentifier);
   });
-  return forwarded;
 };
 
 export const queryDestructureResult = defineRule({
@@ -99,7 +121,7 @@ export const queryDestructureResult = defineRule({
       const importSource = getImportSourceForName(node, calleeName);
       if (importSource !== null && !isTanstackQuerySource(importSource)) return;
 
-      if (isForwardedBinding(node, node.id.name)) return;
+      if (isForwardedBinding(node.id, context.scopes)) return;
 
       context.report({
         node: node.id,

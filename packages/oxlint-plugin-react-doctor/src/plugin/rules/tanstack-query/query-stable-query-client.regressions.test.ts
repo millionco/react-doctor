@@ -26,4 +26,28 @@ describe("tanstack-query/query-stable-query-client — regressions", () => {
     );
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("stays silent when QueryClient is a direct useState argument", () => {
+    const { diagnostics } = runRule(
+      queryStableQueryClient,
+      `function App() { const [client] = useState(new QueryClient()); return null; }`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when QueryClient is a direct useRef argument", () => {
+    const { diagnostics } = runRule(
+      queryStableQueryClient,
+      `function App() { const clientRef = useRef(new QueryClient()); return null; }`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags an IIFE constructing QueryClient in the render body", () => {
+    const { diagnostics } = runRule(
+      queryStableQueryClient,
+      `function App() { const client = (() => new QueryClient())(); return null; }`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
 });

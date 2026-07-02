@@ -50,4 +50,84 @@ describe("tanstack-query/query-destructure-result — regressions", () => {
     );
     expect(diagnostics).toHaveLength(0);
   });
+
+  it("still flags when console.log(query) merely mentions the binding", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+function C() {
+  const query = useQuery({ queryKey: ['user'] });
+  console.log(query);
+  return query.data;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags when useDebugValue(query) merely mentions the binding", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+import { useDebugValue } from 'react';
+function C() {
+  const query = useQuery({ queryKey: ['user'] });
+  useDebugValue(query);
+  return query.data;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags when a shadowed unrelated binding is forwarded in a nested callback", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+function C() {
+  const query = useQuery({ queryKey: ['user'] });
+  const onClick = () => {
+    const query = buildSearchQuery();
+    send(query);
+  };
+  return <button onClick={onClick}>{query.data}</button>;
+}`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when a custom hook conditionally returns one of two whole queries", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+export function useUser(id, preferCache) {
+  const remoteQuery = useQuery({ queryKey: ['user', id] });
+  const cachedQuery = useQuery({ queryKey: ['cached-user', id] });
+  return preferCache ? cachedQuery : remoteQuery;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when a custom hook returns the query behind a logical fallback", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+export function useUser(id, fallback) {
+  const query = useQuery({ queryKey: ['user', id] });
+  return query ?? fallback;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when a custom hook returns the query behind a TS assertion", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+export function useUser(id) {
+  const query = useQuery({ queryKey: ['user', id] });
+  return query!;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
 });

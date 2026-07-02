@@ -1282,6 +1282,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "<div style=\"color: 'red'\" />",
     forceJsx: true,
   },
+  "styled-components-duplicate-css-property-in-block": {
+    code: 'import { css } from "styled-components"; const shared = css`opacity: ${p => p.$a ? 1 : 0}; opacity: ${p => p.$b ? 1 : 0.5};`;',
+  },
   "supabase-client-owned-authz-field": {
     code: 'export const createTeam = async (name: string) => {\n  await supabase.from("teams").insert({ name, ownerId: currentUser.id, role: "admin" });\n};',
     filePath: "src/lib/create-team.ts",

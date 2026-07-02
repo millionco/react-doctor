@@ -115,7 +115,7 @@ describe("namespace hook detection (React.useEffect, React.useState, etc.)", () 
   it("detects prefer-useReducer with React.useState", () => {
     const issues = findDiagnosticsInFile(diagnostics, "prefer-useReducer", "namespace-hooks");
     expect(issues.length).toBeGreaterThan(0);
-    expect(issues[0].message).toContain("useState calls");
+    expect(issues[0].message).toContain("useState values");
   });
 
   it("does not flag member expression calls like localStorage.setItem as state setters", () => {

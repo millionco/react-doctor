@@ -101,8 +101,17 @@ const NamespacePreferUseReducer = () => {
   const [d, setD] = React.useState("");
   const [e, setE] = React.useState("");
 
+  const resetForm = () => {
+    setA("");
+    setB("");
+    setC(0);
+    setD("");
+    setE("");
+  };
+
   return (
     <div>
+      <button onClick={resetForm}>Reset</button>
       <input value={a} onChange={(event) => setA(event.target.value)} />
       <input value={b} onChange={(event) => setB(event.target.value)} />
       <input value={c} type="number" onChange={(event) => setC(Number(event.target.value))} />

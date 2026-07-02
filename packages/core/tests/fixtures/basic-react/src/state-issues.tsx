@@ -70,6 +70,14 @@ const DerivedUseStateComponent = ({ initialName }: { initialName: string }) => {
   return <input value={name} onChange={(event) => setName(event.target.value)} />;
 };
 
+const loadSavedProfile = () => ({
+  name: "Ada",
+  email: "ada@example.com",
+  age: 36,
+  address: "1 Analytical Way",
+  phone: "555-0100",
+});
+
 const PreferUseReducerComponent = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -77,8 +85,23 @@ const PreferUseReducerComponent = () => {
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
 
+  const applyProfile = (profile: {
+    name: string;
+    email: string;
+    age: number;
+    address: string;
+    phone: string;
+  }) => {
+    setName(profile.name);
+    setEmail(profile.email);
+    setAge(profile.age);
+    setAddress(profile.address);
+    setPhone(profile.phone);
+  };
+
   return (
     <div>
+      <button onClick={() => applyProfile(loadSavedProfile())}>Load saved</button>
       <input value={name} onChange={(event) => setName(event.target.value)} />
       <input value={email} onChange={(event) => setEmail(event.target.value)} />
       <input value={age} type="number" onChange={(event) => setAge(Number(event.target.value))} />

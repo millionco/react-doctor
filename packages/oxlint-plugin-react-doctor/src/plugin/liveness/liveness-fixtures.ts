@@ -131,6 +131,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { exec } from "node:child_process";\n\napp.post("/convert", (req, res) => {\n  exec("convert " + req.body.filename, handleResult);\n});\n',
     filePath: "src/server/convert.ts",
   },
+  "context-provider-value-from-unmemoized-local-literal": {
+    code: 'import { createContext } from "react"; const Ctx = createContext(null); function App() { const value = {}; return <Ctx.Provider value={value} />; }',
+  },
   "control-has-associated-label": {
     code: '\n        const Demo = () => {\n          const fieldId = "amount";\n\n          return (\n            <div>\n              <FieldShell renderLabel={() => <label htmlFor={fieldId}>Amount</label>} />\n              <input id={fieldId} name="amount" type="number" />\n            </div>\n          );\n        };\n      ',
   },

@@ -1,5 +1,6 @@
 import { COMPONENT_HOC_WRAPPER_NAMES } from "../constants/react.js";
 import type { EsTreeNode } from "./es-tree-node.js";
+import { findTransparentExpressionRoot } from "./find-transparent-expression-root.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { isReactComponentOrHookName } from "./is-react-component-or-hook-name.js";
 
@@ -20,7 +21,7 @@ const hocWrapperCalleeName = (callee: EsTreeNode): string | null => {
 //   const Input = forwardRef((props, ref) => {})
 //   const App = memo(forwardRef(() => {}))
 const displayNameFromFunctionBinding = (functionNode: EsTreeNode): string | null => {
-  let current: EsTreeNode = functionNode;
+  let current = findTransparentExpressionRoot(functionNode);
   for (;;) {
     const parent = current.parent;
     if (parent && isNodeOfType(parent, "CallExpression") && parent.arguments?.[0] === current) {

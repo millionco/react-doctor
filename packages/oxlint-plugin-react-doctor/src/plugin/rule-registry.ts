@@ -38,6 +38,7 @@ import { clickjackingRedirectRisk } from "./rules/security-scan/clickjacking-red
 import { clientLocalstorageNoVersion } from "./rules/client/client-localstorage-no-version.js";
 import { clientPassiveEventListeners } from "./rules/client/client-passive-event-listeners.js";
 import { commandExecutionInputRisk } from "./rules/security-scan/command-execution-input-risk.js";
+import { contextProviderValueFromUnmemoizedLocalLiteral } from "./rules/performance/context-provider-value-from-unmemoized-local-literal.js";
 import { controlHasAssociatedLabel } from "./rules/a11y/control-has-associated-label.js";
 import { corsCookieTrustRisk } from "./rules/security-scan/cors-cookie-trust-risk.js";
 import { dangerousHtmlSink } from "./rules/security-scan/dangerous-html-sink.js";
@@ -769,6 +770,23 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       tags: [...new Set(["security-scan", ...(commandExecutionInputRisk.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/context-provider-value-from-unmemoized-local-literal",
+    id: "context-provider-value-from-unmemoized-local-literal",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...contextProviderValueFromUnmemoizedLocalLiteral,
+      framework: "global",
+      category: "Performance",
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          ...(contextProviderValueFromUnmemoizedLocalLiteral.requires ?? []),
+        ]),
+      ],
     },
   },
   {

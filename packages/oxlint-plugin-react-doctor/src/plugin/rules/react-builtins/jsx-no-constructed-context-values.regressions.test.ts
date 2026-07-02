@@ -209,4 +209,16 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not treat a local React-shaped object as React", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `const React = { createContext: () => FakeContext };
+       const Ctx = React.createContext(null);
+       function App() { return <Ctx value={{ a: 1 }} />; }`,
+      { filename: "fixture.jsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
 });

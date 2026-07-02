@@ -75,6 +75,24 @@ describe("react-native/rn-no-dimensions-get — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("still flags Dimensions member-aliased from a react-native namespace import", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import * as ReactNative from "react-native";\nconst Dimensions = ReactNative.Dimensions;\nexport const w = () => Dimensions.get("window").width;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on Dimensions member-aliased from an unrelated namespace import", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import * as Store from "./my-dimensions-store";\nconst Dimensions = Store.Dimensions;\nexport const value = Dimensions.get("a");`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on Dimensions imported from another module", () => {
     const result = runRule(
       rnNoDimensionsGet,

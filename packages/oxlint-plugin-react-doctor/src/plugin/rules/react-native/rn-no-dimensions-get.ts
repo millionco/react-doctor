@@ -2,11 +2,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import { findDeclaratorForBinding } from "../../utils/find-declarator-for-binding.js";
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
-import {
-  getImportSourceForName,
-  isNamespaceImportFromModule,
-} from "../../utils/find-import-source-for-name.js";
-import { getRequireCallSource } from "../../utils/get-require-call-source.js";
+import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { getInitializerModuleSource } from "../../utils/get-initializer-module-source.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -23,10 +20,11 @@ const IMPORT_SPECIFIER_TYPES = new Set([
 // module only when its source is "react-native"; a variable declarator is
 // React Native when initialized from `require("react-native")` (including
 // destructures and `require("react-native").Dimensions`) or from a
-// react-native namespace import (`const { Dimensions } = RN`). An
-// initializer-less declaration (`let Dimensions;` later assigned) keeps
-// reporting — detection wins. Any other initializer (`new Map()`, another
-// module's require) is an unrelated local binding.
+// react-native namespace import (`const { Dimensions } = RN` / the member
+// alias `const Dimensions = RN.Dimensions`). An initializer-less declaration
+// (`let Dimensions;` later assigned) keeps reporting — detection wins. Any
+// other initializer (`new Map()`, another module's require) is an unrelated
+// local binding.
 const isBindingReactNativeDimensions = (node: EsTreeNode, binding: BindingInfo): boolean => {
   if (binding.initializer && IMPORT_SPECIFIER_TYPES.has(binding.initializer.type)) {
     return getImportSourceForName(node, "Dimensions") === "react-native";
@@ -35,11 +33,7 @@ const isBindingReactNativeDimensions = (node: EsTreeNode, binding: BindingInfo):
   if (declarator === null) return false;
   const declaratorInitializer = declarator.init;
   if (!declaratorInitializer) return true;
-  if (getRequireCallSource(declaratorInitializer) === "react-native") return true;
-  if (isNodeOfType(declaratorInitializer, "Identifier")) {
-    return isNamespaceImportFromModule(node, declaratorInitializer.name, "react-native");
-  }
-  return false;
+  return getInitializerModuleSource(node, declaratorInitializer) === "react-native";
 };
 
 export const rnNoDimensionsGet = defineRule({

@@ -6,7 +6,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { findDeclaratorForBinding } from "../../utils/find-declarator-for-binding.js";
 import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
-import { getRequireCallSource } from "../../utils/get-require-call-source.js";
+import { getInitializerModuleSource } from "../../utils/get-initializer-module-source.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
@@ -23,9 +23,10 @@ const getJsxMemberRootObjectName = (jsxElementName: EsTreeNode): string | null =
 };
 
 // Classifies a non-import local binding of a built-in list name. A declarator
-// initialized from a `require("react-native")` (`const { FlatList } = ...`) or
-// from a react-native namespace import (`const { FlatList } = RN`) is still the
-// real RN list; any other initializer is a local rebinding
+// initialized from a `require("react-native")` (`const { FlatList } = ...` /
+// `require("react-native").FlatList`) or from a react-native namespace import
+// (`const { FlatList } = RN` / the member alias `const FlatList = RN.FlatList`)
+// is still the real RN list; any other initializer is a local rebinding
 // (`const FlatList = MyTable`). No binding at all — an ambient/global
 // reference — keeps the base fire-by-name behavior.
 const isLocalBindingReactNativeList = (node: EsTreeNode, elementName: string): boolean => {
@@ -35,17 +36,11 @@ const isLocalBindingReactNativeList = (node: EsTreeNode, elementName: string): b
   if (declarator === null) return false;
   const declaratorInitializer = declarator.init;
   if (!declaratorInitializer) return true;
-  const requireSource = getRequireCallSource(declaratorInitializer);
-  if (requireSource !== null) return REACT_NATIVE_LIST_MODULE_SOURCES.has(requireSource);
-  if (isNodeOfType(declaratorInitializer, "Identifier")) {
-    const namespaceBinding = getImportBindingForName(node, declaratorInitializer.name);
-    return (
-      namespaceBinding !== null &&
-      namespaceBinding.isNamespace &&
-      REACT_NATIVE_LIST_MODULE_SOURCES.has(namespaceBinding.source)
-    );
-  }
-  return false;
+  const initializerModuleSource = getInitializerModuleSource(node, declaratorInitializer);
+  return (
+    initializerModuleSource !== null &&
+    REACT_NATIVE_LIST_MODULE_SOURCES.has(initializerModuleSource)
+  );
 };
 
 // True when the local JSX name genuinely refers to a virtualized list, not a

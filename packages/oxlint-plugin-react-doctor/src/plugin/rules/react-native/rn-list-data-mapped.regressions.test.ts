@@ -102,6 +102,38 @@ const C = ({ items }) => <FlatList data={items.map((x) => x.v)} renderItem={r} /
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("flags a FlatList member-aliased from a react-native namespace import", () => {
+    const result = runRule(
+      rnListDataMapped,
+      `import * as RN from "react-native";
+const FlatList = RN.FlatList;
+const C = ({ items }) => <FlatList data={items.map((x) => x.v)} renderItem={r} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on a FlatList member-aliased from an unrelated namespace import", () => {
+    const result = runRule(
+      rnListDataMapped,
+      `import * as Styled from "./design-system";
+const FlatList = Styled.FlatList;
+const C = ({ items }) => <FlatList data={items.map((x) => x.v)} renderItem={r} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the list name is aliased to a local component", () => {
+    const result = runRule(
+      rnListDataMapped,
+      `const FlatList = MyFlatList;
+const C = ({ items }) => <FlatList data={items.map((x) => x.v)} renderItem={r} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags an aliased built-in list import (`import { FlatList as List }`)", () => {
     const result = runRule(
       rnListDataMapped,

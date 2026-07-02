@@ -1,10 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vite-plus/test";
+import { afterAll, describe, expect, it } from "vite-plus/test";
 import { reactDoctorRules } from "../../oxlint-plugin-react-doctor/src/plugin/rule-registry.js";
-import { fuzzRule } from "../src/fuzz-rule.js";
+import { fuzzRuleWithStats } from "../src/fuzz-rule.js";
 import type { FuzzFinding } from "../src/fuzz-rule.js";
+import { loadFuzzCorpus } from "../src/load-fuzz-corpus.js";
+import type { FuzzCorpusEntry } from "../src/load-fuzz-corpus.js";
 import { DEFAULT_FUZZ_ITERATIONS, DEFAULT_FUZZ_SEED } from "../src/constants.js";
 
 const isFuzzEnabled = process.env.REACT_DOCTOR_FUZZ === "1";
@@ -13,6 +15,9 @@ const shouldCheckInvariants = isStrict || process.env.FUZZ_INVARIANTS === "1";
 const ruleFilter = process.env.FUZZ_RULE;
 const iterations = Number(process.env.FUZZ_ITERATIONS ?? DEFAULT_FUZZ_ITERATIONS);
 const seed = Number(process.env.FUZZ_SEED ?? DEFAULT_FUZZ_SEED);
+const corpusDirectory = process.env.FUZZ_CORPUS_DIR;
+const corpus: FuzzCorpusEntry[] =
+  isFuzzEnabled && corpusDirectory ? loadFuzzCorpus(corpusDirectory) : [];
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const findingsDirectory = path.join(packageRoot, "tmp", "fuzz-findings");
@@ -51,14 +56,37 @@ const selectedRules = reactDoctorRules.filter(
 // invariance oracles. Opt-in via REACT_DOCTOR_FUZZ=1 (`pnpm fuzz`); tune with
 // FUZZ_RULE=<id substring>, FUZZ_ITERATIONS, FUZZ_SEED, FUZZ_INVARIANTS=1
 // (warn on invariant violations), FUZZ_STRICT=1 (fail on them too).
+const firedRuleIds = new Set<string>();
+const silentRuleIds = new Set<string>();
+
 describe.skipIf(!isFuzzEnabled)("adversarial rule fuzzing", () => {
+  if (corpusDirectory) {
+    console.info(`fuzz corpus: ${corpus.length} files from ${corpusDirectory}`);
+  }
+
+  // Fire-coverage summary — the health metric of the generator itself. A
+  // rule that never fires only has its early bails fuzzed, so growing this
+  // number (not the iteration count) is what strengthens the harness.
+  afterAll(() => {
+    const totalRuleCount = firedRuleIds.size + silentRuleIds.size;
+    if (totalRuleCount === 0) return;
+    console.info(
+      `fuzz fire-coverage: ${firedRuleIds.size}/${totalRuleCount} rules produced a diagnostic at least once`,
+    );
+    if (silentRuleIds.size > 0 && process.env.FUZZ_PRINT_SILENT === "1") {
+      console.info(`silent rules:\n${[...silentRuleIds].sort().join("\n")}`);
+    }
+  });
+
   for (const entry of selectedRules) {
     it(`survives fuzzing: ${entry.id}`, () => {
-      const findings = fuzzRule(entry.id, entry.rule, {
+      const { findings, stats } = fuzzRuleWithStats(entry.id, entry.rule, {
         iterations,
         seed,
         checkInvariants: shouldCheckInvariants,
+        corpus,
       });
+      (stats.firedProgramCount > 0 ? firedRuleIds : silentRuleIds).add(entry.id);
       const blockingFindings = isStrict
         ? findings
         : findings.filter((finding) => finding.kind !== "invariant-violation");

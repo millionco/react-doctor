@@ -1,21 +1,31 @@
+import { PATHOLOGICAL_PROGRAM_PROBABILITY } from "./constants.js";
+import { generatePathologicalProgram } from "./generate-pathological-program.js";
 import type { SeededRandom } from "./seeded-random.js";
+import {
+  A11Y_TRIGGER_ATTRIBUTE_POOL,
+  EDGE_CASE_STATEMENT_POOL,
+  EFFECT_SNIPPET_POOL,
+  GUARD_SNIPPET_POOL,
+  HANDLER_SNIPPET_POOL,
+  IMPORT_LINE_POOL,
+  JSX_ATTRIBUTE_POOL,
+  JSX_LEAF_POOL,
+  LIBRARY_SNIPPET_POOL,
+  MODULE_SCOPE_SNIPPET_POOL,
+  STATE_SNIPPET_POOL,
+  TRIGGER_IDENTIFIER_POOL,
+} from "./snippet-pools.js";
 
 type SnippetBuilder = (random: SeededRandom) => string;
 
-const IDENTIFIER_POOL = [
-  "value",
-  "data",
-  "items",
-  "user",
-  "config",
-  "resolvedValue",
-  "$dollar",
-  "_underscore",
-  "ключ",
-  "変数",
-  "ItemsList",
-  "useThing",
-] as const;
+export interface GeneratedFuzzProgram {
+  code: string;
+  // Top-level sections (import block, module statements, components) —
+  // metamorphic variants splice comments/whitespace BETWEEN sections, which
+  // is always syntax- and semantics-preserving, unlike splicing into
+  // arbitrary line positions (template literals and JSX text span lines).
+  sections: string[];
+}
 
 const HTML_TAG_POOL = [
   "div",
@@ -39,125 +49,24 @@ const HTML_TAG_POOL = [
   "dialog",
 ] as const;
 
-const ATTRIBUTE_POOL = [
-  `role="button"`,
-  `role={dynamicRole}`,
-  `aria-hidden="true"`,
-  `aria-label={label}`,
-  `alt=""`,
-  `alt={altText}`,
-  `href="#"`,
-  `href={url}`,
-  `tabIndex={-1}`,
-  `onClick={() => handle()}`,
-  `onClick={handle}`,
-  `onKeyDown={handle}`,
-  `style={{ color: "red" }}`,
-  `key={index}`,
-  `key={item.id}`,
-  `key={Math.random()}`,
-  `dangerouslySetInnerHTML={{ __html: value }}`,
-  `{...restProps}`,
-  `data-testid="fuzz"`,
-  `className={\`btn \${variant}\`}`,
-  `checked={isChecked}`,
-  `defaultValue={value}`,
-  `autoFocus`,
-] as const;
-
-const HOOK_STATEMENT_POOL = [
-  `const [state, setState] = useState(0);`,
-  `const [state, setState] = React.useState(() => compute());`,
-  `const stateRef = useRef<HTMLDivElement | null>(null);`,
-  `const memoized = useMemo(() => items.map((item) => item.id), [items]);`,
-  `const memoized = useMemo(() => ({ deep: { value } }), []);`,
-  `const callback = useCallback(() => setState((prev) => prev + 1), []);`,
-  `const callback = useCallback(async () => { await fetch(url); }, [url]);`,
-  `useEffect(() => { document.title = String(state); }, [state]);`,
-  `useEffect(() => { const id = setInterval(tick, 1000); }, []);`,
-  `useEffect(() => { const id = setInterval(tick, 1000); return () => clearInterval(id); }, []);`,
-  `useEffect(() => { setState(state + 1); }, [state]);`,
-  `useLayoutEffect(() => { stateRef.current?.focus(); });`,
-  `const context = useContext(ThemeContext);`,
-  `const [isPending, startTransition] = useTransition();`,
-  `const deferred = useDeferredValue(state);`,
-  `const id = useId();`,
-] as const;
-
-const STATEMENT_POOL = [
-  `const derived = state * 2;`,
-  `let mutable = 0; mutable += 1;`,
-  `if (typeof window !== "undefined") { window.localStorage.setItem("token", value); }`,
-  `const parsed = JSON.parse(JSON.stringify(items));`,
-  `console.log("debug", state);`,
-  `const promise = fetch("/api/data").then((response) => response.json());`,
-  `for (const item of items) { if (item == null) continue; }`,
-  `try { riskyOperation(); } catch { /* swallowed */ }`,
-  `const html = "<b>" + value + "</b>";`,
-  `const query = \`SELECT * FROM users WHERE id = \${value}\`;`,
-  `document.querySelector("#root")?.addEventListener("scroll", handle);`,
-  `const timestamp = Date.now();`,
-  `eval(value);`,
-  `const clone = structuredClone(config);`,
-  `while (mutableCondition()) { break; }`,
-] as const;
-
-const EDGE_CASE_STATEMENT_POOL = [
-  `const useState = () => [0, () => {}] as const;`,
-  `const { useEffect: renamedEffect } = React;`,
-  `const shadowed = (useMemo: () => void) => useMemo();`,
-  `const conditionalHook = () => { if (Math.random() > 0.5) { useState(0); } };`,
-  `function* generatorWithHookName() { yield useRef; }`,
-  `const nested = () => () => () => useCallback(() => {}, []);`,
-  `const computed = { ["use" + "State"]: 1 };`,
-  `const optional = config?.nested?.[key]?.();`,
-  `const asserted = (value as unknown as { deep: string }).deep!;`,
-  `enum Direction { Up, Down }`,
-  `type Recursive<T> = { child: Recursive<T> } | T;`,
-  `const satisfied = { mode: "dark" } satisfies { mode: string };`,
-  `label: for (let index = 0; index < 3; index += 1) { continue label; }`,
-  `const tagged = html\`<div onclick="\${value}"></div>\`;`,
-  `export default class extends React.Component { render() { return null; } }`,
-] as const;
-
 const buildImportBlock: SnippetBuilder = (random) => {
-  const candidates = [
-    `import React from "react";`,
-    `import * as React from "react";`,
-    `import { useState, useEffect, useMemo, useCallback, useRef, useContext, useTransition, useDeferredValue, useId, useLayoutEffect } from "react";`,
-    `import { useState as useLocalState } from "react";`,
-    `import Link from "next/link";`,
-    `import Image from "next/image";`,
-    `import { View, Text, FlatList } from "react-native";`,
-    `import { useQuery, useMutation } from "@tanstack/react-query";`,
-    `import { atom, useAtom } from "jotai";`,
-    `import { z } from "zod";`,
-    `import dynamic from "next/dynamic";`,
-  ];
-  const importCount = random.intBetween(1, 5);
+  const importCount = random.intBetween(2, 6);
   const chosen = new Set<string>();
-  for (let index = 0; index < importCount; index += 1) chosen.add(random.pick(candidates));
+  for (let index = 0; index < importCount; index += 1) chosen.add(random.pick(IMPORT_LINE_POOL));
   return [...chosen].join("\n");
 };
 
 const buildJsxTree = (random: SeededRandom, depth: number): string => {
-  if (depth <= 0) {
-    return random.pick([
-      `{state}`,
-      `{items.map((item, index) => <li key={index}>{item}</li>)}`,
-      `{items.map((item) => <li key={item.id}>{item.name}</li>)}`,
-      `text content`,
-      `{condition ? <span>yes</span> : null}`,
-      `{condition && <em>maybe</em>}`,
-      `{...items}`,
-      `<>{state}</>`,
-    ]);
-  }
+  if (depth <= 0) return random.pick(JSX_LEAF_POOL);
   const tag = random.pick(HTML_TAG_POOL);
   const attributeCount = random.int(3);
   const attributes: string[] = [];
   for (let index = 0; index < attributeCount; index += 1) {
-    attributes.push(random.pick(ATTRIBUTE_POOL));
+    attributes.push(
+      random.chance(0.2)
+        ? random.pick(A11Y_TRIGGER_ATTRIBUTE_POOL)
+        : random.pick(JSX_ATTRIBUTE_POOL),
+    );
   }
   const attributeText = attributes.length > 0 ? ` ${attributes.join(" ")}` : "";
   if (random.chance(0.2)) return `<${tag}${attributeText} />`;
@@ -169,32 +78,153 @@ const buildJsxTree = (random: SeededRandom, depth: number): string => {
   return `<${tag}${attributeText}>${children.join("")}</${tag}>`;
 };
 
+// Scenario builders emit MULTI-statement sequences whose statements share
+// bindings (alias → guard → deref, register → cleanup, flag → async write).
+// Rules with relationship-sensitive exemptions (alias guards, copy-before-
+// mutate, cleanup pairing, cancellation flags) only leave their early bails
+// when these relationships exist — independent statement sampling almost
+// never forms them.
+const SCENARIO_POOL: ReadonlyArray<SnippetBuilder> = [
+  (random) =>
+    [
+      `const price = config?.price;`,
+      random.chance(0.5) ? `if (!price) return null;` : `if (price == null) return null;`,
+      `const total = config?.price * ${random.intBetween(2, 9)};`,
+      `const formatted = total.toFixed(2);`,
+    ].join("\n  "),
+  (random) =>
+    [
+      random.chance(0.5) ? `const draft = [...items];` : `const draft = items.slice();`,
+      `draft.sort();`,
+      `setSelected(draft);`,
+    ].join("\n  "),
+  () =>
+    [
+      `const savingRef = useRef(false);`,
+      `const handleGuardedSave = async () => {`,
+      `  if (savingRef.current) return;`,
+      `  savingRef.current = true;`,
+      `  await api.post(url, values);`,
+      `  setState(true);`,
+      `  savingRef.current = false;`,
+      `};`,
+    ].join("\n  "),
+  (random) => {
+    const usesCancellation = random.chance(0.6);
+    return [
+      `useEffect(() => {`,
+      usesCancellation ? `  let cancelled = false;` : ``,
+      `  (async () => {`,
+      `    const response = await fetch(url);`,
+      `    const payload = await response.json();`,
+      usesCancellation ? `    if (!cancelled) setState(payload);` : `    setState(payload);`,
+      `  })();`,
+      usesCancellation ? `  return () => { cancelled = true; };` : ``,
+      `}, [url]);`,
+    ]
+      .filter((line) => line.length > 0)
+      .join("\n  ");
+  },
+  (random) => {
+    const removesSameHandler = random.chance(0.6);
+    return [
+      `useEffect(() => {`,
+      `  const onScroll = () => handle(window.scrollY);`,
+      `  window.addEventListener("scroll", onScroll);`,
+      removesSameHandler
+        ? `  return () => window.removeEventListener("scroll", onScroll);`
+        : `  return () => window.removeEventListener("scroll", () => handle(window.scrollY));`,
+      `}, []);`,
+    ].join("\n  ");
+  },
+  (random) =>
+    [
+      `const response = await fetch(url);`,
+      random.chance(0.5) ? `if (!response.ok) throw new Error("failed");` : ``,
+      `const payload = await response.json();`,
+      `setState(payload);`,
+    ]
+      .filter((line) => line.length > 0)
+      .join("\n    ")
+      .replace(/^/, `const load = async () => {\n    `)
+      .concat(`\n  };`),
+];
+
 const buildComponent: SnippetBuilder = (random) => {
   const componentName = `Fuzz${random.pick(["Panel", "Card", "List", "Widget", "Overlay"])}${random.int(100)}`;
   const bodyStatements: string[] = [];
-  const hookCount = random.int(4);
-  for (let index = 0; index < hookCount; index += 1) {
-    bodyStatements.push(random.pick(HOOK_STATEMENT_POOL));
+  const stateCount = random.intBetween(1, 3);
+  for (let index = 0; index < stateCount; index += 1) {
+    bodyStatements.push(random.pick(STATE_SNIPPET_POOL));
   }
-  const statementCount = random.int(3);
-  for (let index = 0; index < statementCount; index += 1) {
-    bodyStatements.push(random.pick(STATEMENT_POOL));
+  const effectCount = random.int(3);
+  for (let index = 0; index < effectCount; index += 1) {
+    bodyStatements.push(random.pick(EFFECT_SNIPPET_POOL));
   }
-  if (random.chance(0.3)) bodyStatements.push(random.pick(EDGE_CASE_STATEMENT_POOL));
+  const handlerCount = random.int(3);
+  for (let index = 0; index < handlerCount; index += 1) {
+    bodyStatements.push(random.pick(HANDLER_SNIPPET_POOL));
+  }
+  const guardCount = random.int(3);
+  for (let index = 0; index < guardCount; index += 1) {
+    bodyStatements.push(random.pick(GUARD_SNIPPET_POOL));
+  }
+  if (random.chance(0.35)) bodyStatements.push(random.pick(LIBRARY_SNIPPET_POOL));
+  if (random.chance(0.4)) bodyStatements.push(random.pick(SCENARIO_POOL)(random));
+  if (random.chance(0.25)) bodyStatements.push(random.pick(EDGE_CASE_STATEMENT_POOL));
+  if (random.chance(0.3)) {
+    const gateName = random.pick(TRIGGER_IDENTIFIER_POOL);
+    bodyStatements.push(`if (!${gateName}) return null;`);
+  }
   const jsx = buildJsxTree(random, random.intBetween(1, 4));
   const propsPattern = random.pick([
     `()`,
     `({ items, value, onSelect })`,
     `(props)`,
     `({ items = [], ...restProps })`,
+    `({ value, isChecked, isOpen: isOpenProp, config, params, blob, condition, label, altText, url, variant, index, dynamicRole, key })`,
   ]);
+  const wrapperName = random.chance(0.2) ? random.pick(["memo", "observer", "forwardRef"]) : null;
   const exportPrefix = random.chance(0.5) ? "export " : "";
+  const openLine = wrapperName
+    ? `${exportPrefix}const ${componentName} = ${wrapperName}(${propsPattern} => {`
+    : `${exportPrefix}const ${componentName} = ${propsPattern} => {`;
+  const closeLine = wrapperName ? `});` : `};`;
   return [
-    `${exportPrefix}const ${componentName} = ${propsPattern} => {`,
+    openLine,
     ...bodyStatements.map((statement) => `  ${statement}`),
     `  return (${jsx});`,
-    `};`,
+    closeLine,
   ].join("\n");
+};
+
+const buildClassComponent: SnippetBuilder = (random) => {
+  const componentName = `FuzzLegacy${random.int(100)}`;
+  const hasWillUnmount = random.chance(0.6);
+  const usesRefNode = random.chance(0.4);
+  const mountTarget = usesRefNode ? "this.containerRef.current" : "window";
+  return [
+    `export class ${componentName} extends React.Component {`,
+    `  containerRef = React.createRef();`,
+    `  handleScroll = () => { this.setState({ top: window.scrollY }); };`,
+    `  componentDidMount() {`,
+    `    ${mountTarget}.addEventListener("scroll", this.handleScroll);`,
+    random.chance(0.4) ? `    this.timer = setInterval(() => this.forceUpdate(), 1000);` : ``,
+    `  }`,
+    hasWillUnmount
+      ? [
+          `  componentWillUnmount() {`,
+          `    ${mountTarget}.removeEventListener("scroll", this.handleScroll);`,
+          `  }`,
+        ].join("\n")
+      : ``,
+    `  render() {`,
+    `    return <div ref={this.containerRef}>{this.props.children}</div>;`,
+    `  }`,
+    `}`,
+  ]
+    .filter((line) => line.length > 0)
+    .join("\n");
 };
 
 const buildCustomHook: SnippetBuilder = (random) => {
@@ -204,32 +234,35 @@ const buildCustomHook: SnippetBuilder = (random) => {
     `const stored = useRef(initial);\n  return stored.current;`,
     `if (!globalThis.flag) return null;\n  return useContext(ThemeContext);`,
     `const [state, setState] = useState(initial);\n  const toggle = useCallback(() => setState((prev) => !prev), []);\n  return [state, toggle] as const;`,
+    `const [state, setState] = useState(() => (typeof window === "undefined" ? initial : window.matchMedia("(max-width: 768px)").matches));\n  useEffect(() => { const onChange = () => setState(window.innerWidth < 768); window.addEventListener("resize", onChange); return () => window.removeEventListener("resize", onChange); }, []);\n  return state;`,
+    `const stored = useRef(initial);\n  useEffect(() => { stored.current = initial; });\n  return useCallback(() => stored.current, []);`,
   ]);
   return `const ${hookName} = (initial) => {\n  ${body}\n};`;
 };
 
 const buildModuleNoise: SnippetBuilder = (random) =>
-  random.pick([
-    `const GLOBAL_CACHE = new Map<string, unknown>();`,
-    `let moduleMutableState = 0;`,
-    `const ThemeContext = React.createContext({ mode: "light" });`,
-    `export const dynamicComponent = dynamic(() => import("./heavy"), { ssr: false });`,
-    `const SECRET_KEY = "sk-live-abc123def456ghi789jkl012mno345";`,
-    `if (typeof process !== "undefined") { process.env.NODE_ENV; }`,
-    random.pick(EDGE_CASE_STATEMENT_POOL),
-    `const ${random.pick(IDENTIFIER_POOL)} = ${random.int(1000)};`,
-  ]);
+  random.chance(0.15)
+    ? random.pick(EDGE_CASE_STATEMENT_POOL)
+    : random.pick(MODULE_SCOPE_SNIPPET_POOL);
 
-export const generateFuzzProgram = (random: SeededRandom): string => {
+export const generateStructuredFuzzProgram = (random: SeededRandom): GeneratedFuzzProgram => {
+  if (random.chance(PATHOLOGICAL_PROGRAM_PROBABILITY)) {
+    const code = generatePathologicalProgram(random);
+    return { code, sections: [code] };
+  }
   const sections: string[] = [buildImportBlock(random)];
   const moduleNoiseCount = random.int(3);
   for (let index = 0; index < moduleNoiseCount; index += 1) {
     sections.push(buildModuleNoise(random));
   }
   if (random.chance(0.4)) sections.push(buildCustomHook(random));
+  if (random.chance(0.2)) sections.push(buildClassComponent(random));
   const componentCount = random.intBetween(1, 3);
   for (let index = 0; index < componentCount; index += 1) {
     sections.push(buildComponent(random));
   }
-  return `${sections.join("\n\n")}\n`;
+  return { code: `${sections.join("\n\n")}\n`, sections };
 };
+
+export const generateFuzzProgram = (random: SeededRandom): string =>
+  generateStructuredFuzzProgram(random).code;

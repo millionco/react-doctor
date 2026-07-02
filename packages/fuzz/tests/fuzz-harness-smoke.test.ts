@@ -1,8 +1,36 @@
 import { describe, expect, it } from "vite-plus/test";
 import { fuzzRule } from "../src/fuzz-rule.js";
+import { generateStructuredFuzzProgram } from "../src/generate-fuzz-program.js";
+import { createSeededRandom } from "../src/seeded-random.js";
+import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
 import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
 
+const NOOP_RULE: Rule = { id: "fuzz-smoke-noop", severity: "warn", create: () => ({}) };
+
 describe("fuzz harness oracles", () => {
+  // Generator health: every unmutated program must parse — a snippet-pool
+  // typo would otherwise silently turn iterations into parse-error skips.
+  it("generates programs that all parse cleanly", () => {
+    const unparseableSeeds: number[] = [];
+    for (let seedValue = 1; seedValue <= 100; seedValue += 1) {
+      const { code } = generateStructuredFuzzProgram(createSeededRandom(seedValue));
+      const result = runRule(NOOP_RULE, code);
+      if (result.parseErrors.length > 0) unparseableSeeds.push(seedValue);
+    }
+    expect(unparseableSeeds).toEqual([]);
+  });
+
+  it("joins multi-section programs back into the exact generated code", () => {
+    let checkedCount = 0;
+    for (let seedValue = 1; seedValue <= 20; seedValue += 1) {
+      const { code, sections } = generateStructuredFuzzProgram(createSeededRandom(seedValue));
+      if (sections.length < 2) continue;
+      expect(`${sections.join("\n\n")}\n`).toBe(code);
+      checkedCount += 1;
+    }
+    expect(checkedCount).toBeGreaterThan(0);
+  });
+
   it("catches a rule that crashes on JSX", () => {
     const crashingRule: Rule = {
       id: "fuzz-smoke-crash",

@@ -273,6 +273,13 @@ export const inspect = async (
   inputOptions: ReactDoctorInspectOptions = {},
 ): Promise<InspectResult> => {
   const startTime = performance.now();
+  // Anchor the `--max-duration` deadline here, before any discovery / native-
+  // binding preamble, so that work doesn't silently push the effective budget
+  // later. The CLI passes the REMAINING budget of a shared invocation deadline
+  // (so every workspace project resolves to the same absolute deadline); a
+  // programmatic caller passes its own budget. `null` when no budget was set.
+  const deadlineEpochMs =
+    inputOptions.maxDurationMs != null ? Date.now() + inputOptions.maxDurationMs : null;
 
   // Clear any run-scoped Sentry state from a prior inspect() so a stale
   // project/trace can't leak onto this run's events — including errors thrown
@@ -336,6 +343,7 @@ export const inspect = async (
             hasConfigOverride,
             configSourceDirectory,
             startTime,
+            deadlineEpochMs,
             rootSentrySpan,
           );
         } catch (error) {
@@ -381,6 +389,8 @@ interface RunBaselineComparisonInput {
   headDiagnostics: ReadonlyArray<Diagnostic>;
   resolvedNodeBinaryPath: string | null;
   baselineRef: string;
+  /** Shared invocation deadline; bounds the base-ref lint like the head scan. */
+  deadlineEpochMs: number | null;
 }
 
 /**
@@ -437,6 +447,9 @@ const runBaselineComparison = async (
         // Score the base manifest too so `computeDiagnosticDelta` filters out
         // pre-existing low-score dependencies instead of reporting them as new.
         supplyChainManifestChanged: params.options.supplyChainManifestChanged,
+        // The base-ref lint shares the invocation deadline, so a --max-duration
+        // budget bounds the whole run, not just the head scan.
+        deadlineEpochMs: params.deadlineEpochMs ?? undefined,
       },
       {},
     );
@@ -448,12 +461,13 @@ const runBaselineComparison = async (
         ),
       ),
     );
-    // A failed base lint leaves base findings unreliable/empty, which would
-    // mislabel pre-existing head issues as newly introduced. Signal "no delta"
-    // (null) so the caller degrades to a plain diff — full head findings stay
-    // visible, but the run won't claim they're new or gate on them. A genuinely
-    // empty but *successful* base lint is fine — every head finding is new.
-    if (baseOutput.didLintFail) {
+    // A failed OR budget-truncated base lint leaves base findings
+    // unreliable/incomplete, which would mislabel pre-existing head issues as
+    // newly introduced. Signal "no delta" (null) so the caller degrades to a
+    // plain diff — full head findings stay visible, but the run won't claim
+    // they're new or gate on them. A genuinely empty but *successful* base lint
+    // is fine — every head finding is new.
+    if (baseOutput.didLintFail || baseOutput.lintPartialFailures.length > 0) {
       return null;
     }
     const delta = computeDiagnosticDelta({
@@ -482,6 +496,7 @@ const runInspectWithRuntime = async (
   hasConfigOverride: boolean,
   configSourceDirectory: string | null,
   startTime: number,
+  deadlineEpochMs: number | null,
   rootSentrySpan: SentryRootSpan,
 ): Promise<InspectResult> => {
   const isDiffMode = options.includePaths.length > 0;
@@ -579,8 +594,7 @@ const runInspectWithRuntime = async (
       suppressScanSummary: options.suppressRendering,
       supplyChainManifestChanged: options.supplyChainManifestChanged,
       concurrentScan: options.concurrentScan,
-      deadlineEpochMs:
-        options.maxDurationMs !== null ? Date.now() + options.maxDurationMs : undefined,
+      deadlineEpochMs: deadlineEpochMs ?? undefined,
     },
     {
       beforeLint: (projectInfo, lintIncludePaths) =>
@@ -678,6 +692,7 @@ const runInspectWithRuntime = async (
       headDiagnostics: output.diagnostics,
       resolvedNodeBinaryPath,
       baselineRef: options.baseline.ref,
+      deadlineEpochMs,
     });
     if (comparison) {
       inspectDiagnostics = comparison.displayDiagnostics;

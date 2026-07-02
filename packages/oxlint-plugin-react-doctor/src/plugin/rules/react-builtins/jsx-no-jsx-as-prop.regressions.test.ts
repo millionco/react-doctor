@@ -148,6 +148,23 @@ ${INK_STATUS_BAR_USAGE}
     );
   });
 
+  it("keeps conditional wording when the same-file receiver is lazy() — lazy does not memoize (chartdb regression)", () => {
+    const code = `
+import { lazy } from "react";
+import { Box, Text } from "ink";
+const StatusBar = lazy(() => import("./status-bar.js"));
+const DiagnosticList = ({ isMenuOpen }) => {
+${INK_STATUS_BAR_USAGE}
+};
+`;
+    const result = runRule(jsxNoJsxAsProp, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toBe(
+      "If this child is memoized, it still redraws every render because the prop gets brand new JSX each time.",
+    );
+  });
+
   it("softens the message to conditional wording when the receiver is imported", () => {
     const code = `
 import { Box, Text } from "ink";

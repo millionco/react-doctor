@@ -13,17 +13,43 @@ import { walkAst } from "../../utils/walk-ast.js";
 // passive listeners silently ignore preventDefault(). Recommending
 // `{ passive: true }` here is exactly backwards (the rule's own
 // recommendation says so), so an inline handler that calls
-// preventDefault suppresses the report.
+// preventDefault suppresses the report. Nested functions are pruned:
+// a preventDefault inside a callback the handler merely creates runs
+// outside the listener call, so it says nothing about this listener.
 const handlerCallsPreventDefault = (handler: EsTreeNode | undefined): boolean => {
   if (!isFunctionLike(handler)) return false;
   let didFindPreventDefault = false;
   walkAst(handler, (child) => {
-    if (didFindPreventDefault) return;
+    if (didFindPreventDefault) return false;
+    if (child !== handler && isFunctionLike(child)) return false;
     if (
       isNodeOfType(child, "CallExpression") &&
       isNodeOfType(child.callee, "MemberExpression") &&
       isNodeOfType(child.callee.property, "Identifier") &&
       child.callee.property.name === "preventDefault"
+    ) {
+      didFindPreventDefault = true;
+    }
+  });
+  return didFindPreventDefault;
+};
+
+// Later writes to a `let` binding (`let onTouchMove; onTouchMove = (e) =>
+// e.preventDefault()`) don't show up as the declarator initializer, so scan
+// the binding's scope for plain assignments to the same name.
+const assignedHandlerCallsPreventDefault = (
+  scopeOwner: EsTreeNode,
+  handlerName: string,
+): boolean => {
+  let didFindPreventDefault = false;
+  walkAst(scopeOwner, (child) => {
+    if (didFindPreventDefault) return false;
+    if (
+      isNodeOfType(child, "AssignmentExpression") &&
+      child.operator === "=" &&
+      isNodeOfType(child.left, "Identifier") &&
+      child.left.name === handlerName &&
+      handlerCallsPreventDefault(child.right)
     ) {
       didFindPreventDefault = true;
     }
@@ -39,34 +65,61 @@ const asHandlerFunction = (value: EsTreeNode | null | undefined): EsTreeNode | u
   return undefined;
 };
 
-// Resolve a member-expression handler (`this.handleMove`, `obj.onMove`) to the
-// function it points at: a class method/field for `this.x`, or an object
-// method/field for a locally-declared `obj`. Returns undefined when the target
-// can't be traced in this file.
+const memberKeyName = (keyNode: EsTreeNode | null | undefined): string | undefined => {
+  if (isNodeOfType(keyNode, "Identifier") || isNodeOfType(keyNode, "PrivateIdentifier")) {
+    return keyNode.name;
+  }
+  return undefined;
+};
+
+const resolveFromClassBody = (
+  classBody: EsTreeNodeOfType<"ClassBody">,
+  propertyName: string,
+): EsTreeNode | undefined => {
+  for (const element of classBody.body ?? []) {
+    if (!isNodeOfType(element, "MethodDefinition") && !isNodeOfType(element, "PropertyDefinition"))
+      continue;
+    if (memberKeyName(element.key) !== propertyName) continue;
+    const resolved = asHandlerFunction(element.value);
+    if (resolved) return resolved;
+  }
+  return undefined;
+};
+
+const resolveFromObjectExpression = (
+  objectExpression: EsTreeNodeOfType<"ObjectExpression">,
+  propertyName: string,
+): EsTreeNode | undefined => {
+  for (const objectProperty of objectExpression.properties ?? []) {
+    if (!isNodeOfType(objectProperty, "Property")) continue;
+    if (memberKeyName(objectProperty.key) !== propertyName) continue;
+    const resolved = asHandlerFunction(objectProperty.value);
+    if (resolved) return resolved;
+  }
+  return undefined;
+};
+
+// Resolve a member-expression handler (`this.handleMove`, `this.#handleMove`,
+// `obj.onMove`) to the function it points at: a class method/field or
+// object-literal method for `this.x`, or an object method/field for a
+// locally-declared `obj`. Returns undefined when the target can't be traced
+// in this file.
 const resolveMemberHandlerFunction = (
   handler: EsTreeNodeOfType<"MemberExpression">,
 ): EsTreeNode | undefined => {
-  const property = handler.property;
-  if (!isNodeOfType(property, "Identifier")) return undefined;
-  const propertyName = property.name;
+  const propertyName = memberKeyName(handler.property);
+  if (propertyName === undefined) return undefined;
   const objectNode = handler.object;
 
   if (isNodeOfType(objectNode, "ThisExpression")) {
     let ancestor: EsTreeNode | null | undefined = handler.parent;
     while (ancestor) {
       if (isNodeOfType(ancestor, "ClassBody")) {
-        for (const element of ancestor.body ?? []) {
-          if (
-            (isNodeOfType(element, "MethodDefinition") ||
-              isNodeOfType(element, "PropertyDefinition")) &&
-            isNodeOfType(element.key, "Identifier") &&
-            element.key.name === propertyName
-          ) {
-            const resolved = asHandlerFunction(element.value);
-            if (resolved) return resolved;
-          }
-        }
-        return undefined;
+        return resolveFromClassBody(ancestor, propertyName);
+      }
+      if (isNodeOfType(ancestor, "ObjectExpression")) {
+        const resolved = resolveFromObjectExpression(ancestor, propertyName);
+        if (resolved) return resolved;
       }
       ancestor = ancestor.parent ?? null;
     }
@@ -77,16 +130,7 @@ const resolveMemberHandlerFunction = (
     const binding = findVariableInitializer(objectNode, objectNode.name);
     const initializer = binding?.initializer;
     if (initializer && isNodeOfType(initializer, "ObjectExpression")) {
-      for (const objectProperty of initializer.properties ?? []) {
-        if (
-          isNodeOfType(objectProperty, "Property") &&
-          isNodeOfType(objectProperty.key, "Identifier") &&
-          objectProperty.key.name === propertyName
-        ) {
-          const resolved = asHandlerFunction(objectProperty.value);
-          if (resolved) return resolved;
-        }
-      }
+      return resolveFromObjectExpression(initializer, propertyName);
     }
   }
 
@@ -104,15 +148,13 @@ const handlerArgumentCallsPreventDefault = (handler: EsTreeNode | undefined): bo
   if (handlerCallsPreventDefault(handler)) return true;
   if (isNodeOfType(handler, "Identifier")) {
     const binding = findVariableInitializer(handler, handler.name);
-    return handlerCallsPreventDefault(binding?.initializer ?? undefined);
+    if (!binding) return false;
+    if (handlerCallsPreventDefault(binding.initializer ?? undefined)) return true;
+    return assignedHandlerCallsPreventDefault(binding.scopeOwner, handler.name);
   }
   if (isNodeOfType(handler, "MemberExpression")) {
     const resolved = resolveMemberHandlerFunction(handler);
-    // An unresolved member handler (`this.x` / `obj.y` we can't trace) may call
-    // preventDefault — recommending `{ passive: true }` would silently break
-    // it, so suppress conservatively rather than assume it's passive-safe.
-    if (!resolved) return true;
-    return handlerCallsPreventDefault(resolved);
+    return resolved ? handlerCallsPreventDefault(resolved) : false;
   }
   return false;
 };

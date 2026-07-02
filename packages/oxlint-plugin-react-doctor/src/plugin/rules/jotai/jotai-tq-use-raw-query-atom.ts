@@ -4,6 +4,7 @@ import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 // HACK: jotai-tanstack-query's `atomWithQuery` returns an atom whose
 // value is the full `QueryObserverResult` envelope. TanStack rebuilds
@@ -29,6 +30,110 @@ const QUERY_ATOM_FACTORY_IMPORTED_NAMES = new Set([
 
 const SUBSCRIBING_HOOK_NAMES = new Set(["useAtomValue", "useAtom"]);
 
+// Atoms usually live in a separate atoms module, so a name-only
+// heuristic is needed for imports. The `*QueryAtom` suffix alone is
+// not enough — `searchQueryAtom` is a mainstream name for a plain
+// `atom('')` holding a search-query string — so the cross-file path
+// additionally requires the hook result to be consumed as a
+// `QueryObserverResult` envelope (see ENVELOPE_FIELD_NAMES).
+const QUERY_ATOM_NAME_PATTERN = /QueryAtom$/;
+
+// Package sources whose exports are factories/hooks, never user atoms.
+const NON_ATOM_IMPORT_SOURCES = new Set(["jotai", "jotai/react", "jotai-tanstack-query"]);
+
+const ENVELOPE_FIELD_NAMES = new Set([
+  "data",
+  "error",
+  "status",
+  "fetchStatus",
+  "isLoading",
+  "isError",
+  "isPending",
+  "isSuccess",
+  "isFetching",
+  "refetch",
+]);
+
+const patternDestructuresEnvelopeField = (pattern: EsTreeNode): boolean =>
+  isNodeOfType(pattern, "ObjectPattern") &&
+  (pattern.properties ?? []).some(
+    (property) =>
+      isNodeOfType(property, "Property") &&
+      isNodeOfType(property.key, "Identifier") &&
+      ENVELOPE_FIELD_NAMES.has(property.key.name),
+  );
+
+const isEnvelopeMemberAccess = (memberExpression: EsTreeNode): boolean =>
+  isNodeOfType(memberExpression, "MemberExpression") &&
+  !memberExpression.computed &&
+  isNodeOfType(memberExpression.property, "Identifier") &&
+  ENVELOPE_FIELD_NAMES.has(memberExpression.property.name);
+
+const bindingIsConsumedAsEnvelope = (
+  bindingIdentifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const symbol = scopes.symbolFor(bindingIdentifier);
+  if (!symbol) return false;
+  return symbol.references.some((reference) => {
+    const referenceParent = reference.identifier.parent;
+    if (
+      isNodeOfType(referenceParent, "MemberExpression") &&
+      referenceParent.object === reference.identifier
+    ) {
+      return isEnvelopeMemberAccess(referenceParent);
+    }
+    if (
+      isNodeOfType(referenceParent, "VariableDeclarator") &&
+      referenceParent.init === reference.identifier
+    ) {
+      return patternDestructuresEnvelopeField(referenceParent.id);
+    }
+    return false;
+  });
+};
+
+// Whether the subscribe call's result is read as the query envelope:
+// `useAtomValue(a).data`, `const { data } = useAtomValue(a)`,
+// `const result = useAtomValue(a); result.isLoading`, and the
+// `const [result] = useAtom(a)` tuple equivalents.
+const isHookResultConsumedAsEnvelope = (
+  callNode: EsTreeNodeOfType<"CallExpression">,
+  hookName: string,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const callParent = callNode.parent;
+  if (hookName === "useAtomValue") {
+    if (isNodeOfType(callParent, "MemberExpression") && callParent.object === callNode) {
+      return isEnvelopeMemberAccess(callParent);
+    }
+    if (isNodeOfType(callParent, "VariableDeclarator") && callParent.init === callNode) {
+      if (patternDestructuresEnvelopeField(callParent.id)) return true;
+      if (isNodeOfType(callParent.id, "Identifier")) {
+        return bindingIsConsumedAsEnvelope(callParent.id, scopes);
+      }
+    }
+    return false;
+  }
+  if (!isNodeOfType(callParent, "VariableDeclarator") || callParent.init !== callNode) {
+    return false;
+  }
+  if (!isNodeOfType(callParent.id, "ArrayPattern")) return false;
+  const valueElement = callParent.id.elements?.[0];
+  if (!valueElement) return false;
+  if (patternDestructuresEnvelopeField(valueElement)) return true;
+  if (isNodeOfType(valueElement, "Identifier")) {
+    return bindingIsConsumedAsEnvelope(valueElement, scopes);
+  }
+  return false;
+};
+
+interface SubscribeCallCandidate {
+  callNode: EsTreeNodeOfType<"CallExpression">;
+  hookName: string;
+  atomName: string;
+}
+
 export const jotaiTqUseRawQueryAtom = defineRule({
   id: "jotai-tq-use-raw-query-atom",
   title: "Subscribing to raw query atom",
@@ -38,47 +143,69 @@ export const jotaiTqUseRawQueryAtom = defineRule({
   create: (context: RuleContext) => {
     const queryAtomFactoryLocalNames = new Set<string>();
     const queryAtomBindingNames = new Set<string>();
+    const importedQueryAtomNames = new Set<string>();
+    const factoryCallDeclarators: EsTreeNodeOfType<"VariableDeclarator">[] = [];
+    const subscribeCallCandidates: SubscribeCallCandidate[] = [];
 
     return {
       ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
         const source = node.source?.value;
-        // Only trust factories actually imported from `jotai-tanstack-query`.
-        // A cross-file naming heuristic (`*QueryAtom`) collides with mainstream
-        // plain atoms like `searchQueryAtom` / `userQueryAtom` that hold a
-        // search-query string, so it is not used. File-local atoms created by
-        // `atomWithQuery(...)` still resolve via the binding tracker below.
-        if (source !== "jotai-tanstack-query") return;
+        if (typeof source !== "string") return;
         for (const specifier of node.specifiers ?? []) {
           if (!isNodeOfType(specifier, "ImportSpecifier")) continue;
           if (!isNodeOfType(specifier.local, "Identifier")) continue;
-          const importedName = getImportedName(specifier);
-          if (importedName && QUERY_ATOM_FACTORY_IMPORTED_NAMES.has(importedName)) {
-            queryAtomFactoryLocalNames.add(specifier.local.name);
+          if (source === "jotai-tanstack-query") {
+            const importedName = getImportedName(specifier);
+            if (importedName && QUERY_ATOM_FACTORY_IMPORTED_NAMES.has(importedName)) {
+              queryAtomFactoryLocalNames.add(specifier.local.name);
+            }
+            continue;
+          }
+          if (NON_ATOM_IMPORT_SOURCES.has(source)) continue;
+          if (QUERY_ATOM_NAME_PATTERN.test(specifier.local.name)) {
+            importedQueryAtomNames.add(specifier.local.name);
           }
         }
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
-        if (queryAtomFactoryLocalNames.size === 0) return;
         if (!isNodeOfType(node.id, "Identifier")) return;
         const initializer: EsTreeNode | null | undefined = node.init;
         if (!isNodeOfType(initializer, "CallExpression")) return;
         if (!isNodeOfType(initializer.callee, "Identifier")) return;
-        if (!queryAtomFactoryLocalNames.has(initializer.callee.name)) return;
-        queryAtomBindingNames.add(node.id.name);
+        factoryCallDeclarators.push(node);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (queryAtomBindingNames.size === 0) return;
         if (!isNodeOfType(node.callee, "Identifier")) return;
         if (!SUBSCRIBING_HOOK_NAMES.has(node.callee.name)) return;
-        const args = node.arguments ?? [];
-        if (args.length === 0) return;
-        const firstArgument = args[0];
+        const firstArgument = (node.arguments ?? [])[0];
         if (!isNodeOfType(firstArgument, "Identifier")) return;
-        if (!queryAtomBindingNames.has(firstArgument.name)) return;
-        context.report({
-          node,
-          message: `\`${node.callee.name}(${firstArgument.name})\` subscribes to the whole query atom, so it re-renders your component on every refetch, focus, or no-op cache hit. Derive the field first: \`const dataAtom = atom((get) => get(${firstArgument.name}).data)\`.`,
+        subscribeCallCandidates.push({
+          callNode: node,
+          hookName: node.callee.name,
+          atomName: firstArgument.name,
         });
+      },
+      // Decide only after the whole file is seen — a component defined
+      // ABOVE the `atomWithQuery(...)` declaration must still resolve.
+      "Program:exit"() {
+        for (const declarator of factoryCallDeclarators) {
+          if (!isNodeOfType(declarator.id, "Identifier")) continue;
+          if (!isNodeOfType(declarator.init, "CallExpression")) continue;
+          if (!isNodeOfType(declarator.init.callee, "Identifier")) continue;
+          if (!queryAtomFactoryLocalNames.has(declarator.init.callee.name)) continue;
+          queryAtomBindingNames.add(declarator.id.name);
+        }
+        for (const candidate of subscribeCallCandidates) {
+          const isFileLocalQueryAtom = queryAtomBindingNames.has(candidate.atomName);
+          const isImportedQueryAtom =
+            importedQueryAtomNames.has(candidate.atomName) &&
+            isHookResultConsumedAsEnvelope(candidate.callNode, candidate.hookName, context.scopes);
+          if (!isFileLocalQueryAtom && !isImportedQueryAtom) continue;
+          context.report({
+            node: candidate.callNode,
+            message: `\`${candidate.hookName}(${candidate.atomName})\` subscribes to the whole query atom, so it re-renders your component on every refetch, focus, or no-op cache hit. Derive the field first: \`const dataAtom = atom((get) => get(${candidate.atomName}).data)\`.`,
+          });
+        }
       },
     };
   },

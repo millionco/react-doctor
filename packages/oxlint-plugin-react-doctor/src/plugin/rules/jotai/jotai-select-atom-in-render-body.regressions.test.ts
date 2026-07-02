@@ -43,4 +43,60 @@ describe("jotai/jotai-select-atom-in-render-body — regressions", () => {
     );
     expect(diagnostics).toHaveLength(0);
   });
+
+  it("still flags selectAtom in a deps-less useEffect (runs after every render)", () => {
+    const { diagnostics } = runRule(
+      jotaiSelectAtomInRenderBody,
+      `import { selectAtom } from "jotai/utils";
+       function MyComponent({ base }) {
+         const [derived, setDerived] = useState(null);
+         useEffect(() => {
+           setDerived(selectAtom(base, (s) => s.value));
+         });
+         return useAtomValue(derived ?? base);
+       }`,
+    );
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a handle*-named helper INVOKED during render", () => {
+    const { diagnostics } = runRule(
+      jotaiSelectAtomInRenderBody,
+      `import { selectAtom } from "jotai/utils";
+       function MyComponent() {
+         const handleSelection = () => selectAtom(baseAtom, (s) => s.foo);
+         const sliceAtom = handleSelection();
+         return useAtomValue(sliceAtom);
+       }`,
+    );
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an on*-named arrow used as a render helper (not a handler)", () => {
+    const { diagnostics } = runRule(
+      jotaiSelectAtomInRenderBody,
+      `import { selectAtom } from "jotai/utils";
+       function MyComponent() {
+         const onDerive = () => selectAtom(baseAtom, (s) => s.foo);
+         const sliceAtom = onDerive();
+         return useAtomValue(sliceAtom);
+       }`,
+    );
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a factory invoked inline in an onClick attribute (runs during render)", () => {
+    const { diagnostics } = runRule(
+      jotaiSelectAtomInRenderBody,
+      `import { selectAtom } from "jotai/utils";
+       function MyComponent() {
+         const makeClickAtom = () => {
+           const derived = selectAtom(baseAtom, (s) => s.value);
+           return useAtomValue(derived);
+         };
+         return <button onClick={makeClickAtom()}>go</button>;
+       }`,
+    );
+    expect(diagnostics).toHaveLength(1);
+  });
 });

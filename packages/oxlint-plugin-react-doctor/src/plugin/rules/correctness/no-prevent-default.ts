@@ -1,6 +1,9 @@
+import { NAVIGATION_RECEIVER_NAMES } from "../../constants/react.js";
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -64,6 +67,76 @@ const containsPreventDefaultCall = (node: EsTreeNode): boolean => {
   return didFindPreventDefault;
 };
 
+// A dead-link anchor stays flagged unless the handler carries POSITIVE
+// navigation evidence: a member call whose property is a navigation verb
+// (`router.push`, `location.assign`, `history.go`), a member call on a
+// navigation-shaped receiver (`router.*`, `window.*`, …), an identifier
+// call whose name reads like navigation (`navigate(...)`, `redirectTo(...)`,
+// `openLink(...)`), or delegation to a component prop / enclosing parameter
+// (`onNavigate()`). Non-navigating side effects (`analytics.track(...)`,
+// `console.log(...)`) do NOT count — the link is still dead for the user.
+const NAVIGATION_METHOD_NAME_PATTERN = /^(?:push|replace|navigate|open|assign|go|back|reload)$/;
+
+const NAVIGATION_FUNCTION_NAME_PATTERN = /^(?:navigate|redirect|open)/i;
+
+const isNavigationReceiverName = (receiverName: string): boolean =>
+  NAVIGATION_RECEIVER_NAMES.has(receiverName) || receiverName === "window";
+
+const isNavigationReceiver = (receiverNode: EsTreeNode): boolean => {
+  if (isNodeOfType(receiverNode, "Identifier")) {
+    return isNavigationReceiverName(receiverNode.name);
+  }
+  if (
+    isNodeOfType(receiverNode, "MemberExpression") &&
+    isNodeOfType(receiverNode.property, "Identifier")
+  ) {
+    return isNavigationReceiverName(receiverNode.property.name);
+  }
+  return false;
+};
+
+const collectEnclosingParameterNames = (handlerExpression: EsTreeNode): Set<string> => {
+  const parameterNames = new Set<string>();
+  let ancestor: EsTreeNode | null | undefined = handlerExpression;
+  while (ancestor) {
+    if (isFunctionLike(ancestor)) {
+      for (const parameter of ancestor.params ?? []) {
+        collectPatternNames(parameter, parameterNames);
+      }
+    }
+    ancestor = ancestor.parent ?? null;
+  }
+  return parameterNames;
+};
+
+const containsNavigationEvidenceCall = (handlerExpression: EsTreeNode): boolean => {
+  const enclosingParameterNames = collectEnclosingParameterNames(handlerExpression);
+  let didFindNavigationCall = false;
+  walkAst(handlerExpression, (child) => {
+    if (didFindNavigationCall) return;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = child.callee;
+    if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+      if (
+        NAVIGATION_METHOD_NAME_PATTERN.test(callee.property.name) ||
+        isNavigationReceiver(callee.object)
+      ) {
+        didFindNavigationCall = true;
+      }
+      return;
+    }
+    if (isNodeOfType(callee, "Identifier")) {
+      if (
+        NAVIGATION_FUNCTION_NAME_PATTERN.test(callee.name) ||
+        enclosingParameterNames.has(callee.name)
+      ) {
+        didFindNavigationCall = true;
+      }
+    }
+  });
+  return didFindNavigationCall;
+};
+
 const selectFormMessage = (framework: string | undefined): string =>
   framework !== undefined && SERVER_CAPABLE_FRAMEWORKS.has(framework)
     ? FORM_MESSAGE_SERVER_CAPABLE
@@ -73,6 +146,7 @@ export const noPreventDefault = defineRule({
   id: "no-prevent-default",
   title: "preventDefault on a form or link",
   severity: "warn",
+  tags: ["test-noise"],
   recommendation:
     "Use `<form action>` where your framework supports it (it works without JS), or use a `<button>` instead of an `<a>` with preventDefault.",
   create: (context: RuleContext) => {
@@ -93,6 +167,12 @@ export const noPreventDefault = defineRule({
         // we don't recommend a server-action story the project can't use.
         if (elementName === "form" && isClientOnlyFramework) return;
 
+        // A `<form action=…>` already has a native no-JS submit path: with
+        // JS off the onSubmit handler never runs, so preventDefault() never
+        // fires and the browser performs the native action. The "won't work
+        // without JS" advice is false here — only flag action-less forms.
+        if (elementName === "form" && findJsxAttribute(node.attributes ?? [], "action")) return;
+
         for (const targetEventProp of targetEventProps) {
           const eventAttribute = findJsxAttribute(node.attributes ?? [], targetEventProp);
           if (
@@ -105,6 +185,12 @@ export const noPreventDefault = defineRule({
           if (!isInlineFunctionExpression(expression)) continue;
 
           if (!containsPreventDefaultCall(expression)) continue;
+
+          // An anchor whose handler performs its own navigation after
+          // preventDefault() is custom SPA / desktop navigation, not a
+          // dead link — the ANCHOR_MESSAGE ("nothing navigates") would
+          // be false. The <form> variant keeps its existing behavior.
+          if (elementName === "a" && containsNavigationEvidenceCall(expression)) continue;
 
           context.report({
             node,

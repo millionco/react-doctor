@@ -20,7 +20,21 @@ const UNCONTROLLED_INPUT_TAGS = new Set(["input", "textarea", "select"]);
 // rules.
 const VALUE_BYPASS_INPUT_TYPES = new Set(["hidden", "checkbox", "radio"]);
 
-const VALUE_PARTNER_ATTRIBUTES = ["onChange", "readOnly"];
+// `onInput` fires on every value change in React's DOM model exactly
+// like `onChange`, so a `value`-bound input wired to `onInput` is just
+// as controlled (the SolidJS-port idiom keeps `onInput`). `disabled`
+// (like `readOnly`) suppresses React's own missing-`onChange` warning —
+// the user can't type into a disabled/read-only field, so a static
+// `value` needs no handler and must not be flagged. The one statically
+// decidable exception: a literal `disabled={false}` is never disabled,
+// so it doesn't excuse the missing handler (dynamic `disabled={expr}`
+// stays exempt — we can't prove it's ever enabled).
+const VALUE_PARTNER_ATTRIBUTES = ["onChange", "onInput", "readOnly", "disabled"];
+
+const isLiteralFalseAttributeValue = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean =>
+  isNodeOfType(attribute.value, "JSXExpressionContainer") &&
+  isNodeOfType(attribute.value.expression, "Literal") &&
+  attribute.value.expression.value === false;
 
 const getInputTypeLiteral = (attributes: EsTreeNode[]): string | null => {
   const typeAttribute = findJsxAttribute(attributes, "type");
@@ -76,6 +90,7 @@ export const noUncontrolledInput = defineRule({
   id: "no-uncontrolled-input",
   title: "Uncontrolled input value",
   severity: "warn",
+  tags: ["test-noise"],
   recommendation:
     'Give `useState` a starting value (e.g. `useState("")` instead of `useState()`), add `onChange` (or `readOnly`) whenever you set `value`, and drop `defaultValue` on controlled inputs since React ignores it.',
   create: (context: RuleContext) => {
@@ -106,9 +121,13 @@ export const noUncontrolledInput = defineRule({
           if (inputType !== null && VALUE_BYPASS_INPUT_TYPES.has(inputType)) return;
         }
 
-        const hasAllowedPartner = VALUE_PARTNER_ATTRIBUTES.some((partnerAttributeName) =>
-          findJsxAttribute(attributes, partnerAttributeName),
-        );
+        const hasAllowedPartner = VALUE_PARTNER_ATTRIBUTES.some((partnerAttributeName) => {
+          const partnerAttribute = findJsxAttribute(attributes, partnerAttributeName);
+          if (!partnerAttribute) return false;
+          if (partnerAttributeName === "disabled" && isLiteralFalseAttributeValue(partnerAttribute))
+            return false;
+          return true;
+        });
 
         if (
           isNodeOfType(valueAttribute.value, "JSXExpressionContainer") &&

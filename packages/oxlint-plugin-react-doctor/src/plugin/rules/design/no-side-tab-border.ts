@@ -52,6 +52,12 @@ const BORDER_SIDE_WIDTH_KEYS = new Set([
   "borderInlineEndWidth",
 ]);
 
+const ARBITRARY_BORDER_COLOR_PATTERN = /\bborder(?:-([lrse]))?-\[([^\]]+)\]/g;
+const NAMED_BORDER_COLOR_PATTERN =
+  /\bborder(?:-([lrse]))?-((?:gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+|white|black|transparent)\b/g;
+const NEUTRAL_NAMED_BORDER_COLOR_PATTERN =
+  /^(?:(?:gray|slate|zinc|neutral|stone)-\d+|white|black|transparent)$/;
+
 export const noSideTabBorder = defineRule({
   id: "no-side-tab-border",
   title: "Thick one-sided border",
@@ -137,16 +143,32 @@ export const noSideTabBorder = defineRule({
       const classStr = getStringFromClassNameAttr(node);
       if (!classStr) return;
 
-      const sideMatch = classStr.match(/\bborder-[lrse]-(\d+)\b/);
+      const sideMatch = classStr.match(/\bborder-([lrse])-(\d+)\b/);
       if (!sideMatch) return;
+      const flaggedSideLetter = sideMatch[1];
 
-      const hasNeutralBorderColor =
-        /\bborder-(?:(?:gray|slate|zinc|neutral|stone)-\d+|white|black|transparent)\b/.test(
-          classStr,
+      // The color that decides is the one scoped to the flagged side
+      // (`border-l-[#e5e7eb]`, `border-l-red-500`), falling back to the
+      // base border color (`border-[#e5e7eb]`, `border-gray-200`).
+      // Arbitrary hex / rgb / hsl values run through the same chroma
+      // check the inline-style path uses; achromatic borders are exempt.
+      const isBorderColorNeutralBySide = new Map<string, boolean>();
+      for (const namedColorMatch of classStr.matchAll(NAMED_BORDER_COLOR_PATTERN)) {
+        isBorderColorNeutralBySide.set(
+          namedColorMatch[1] ?? "",
+          NEUTRAL_NAMED_BORDER_COLOR_PATTERN.test(namedColorMatch[2]),
         );
-      if (hasNeutralBorderColor) return;
+      }
+      for (const arbitraryColorMatch of classStr.matchAll(ARBITRARY_BORDER_COLOR_PATTERN)) {
+        const parsed = parseColorToRgb(arbitraryColorMatch[2]);
+        if (parsed)
+          isBorderColorNeutralBySide.set(arbitraryColorMatch[1] ?? "", !hasColorChroma(parsed));
+      }
+      const isDecidingBorderColorNeutral =
+        isBorderColorNeutralBySide.get(flaggedSideLetter) ?? isBorderColorNeutralBySide.get("");
+      if (isDecidingBorderColorNeutral) return;
 
-      const width = parseInt(sideMatch[1], 10);
+      const width = parseInt(sideMatch[2], 10);
       const hasRounded =
         /\brounded(?:-(?!none\b)\w+)?\b/.test(classStr) && !/\brounded-none\b/.test(classStr);
       const tailwindThreshold = hasRounded

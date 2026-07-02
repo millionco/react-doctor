@@ -36,20 +36,6 @@ const isStringLiteral = (
 // there is nothing to reverse-tabnab — flagging them is a false positive.
 const NON_BROWSING_URL_SCHEMES = ["mailto:", "tel:", "sms:"];
 
-const getStaticUrlText = (node: EsTreeNode | null | undefined): string | null => {
-  if (isStringLiteral(node)) return node.value;
-  if (node != null && isNodeOfType(node, "TemplateLiteral")) {
-    return node.quasis?.[0]?.value?.raw ?? null;
-  }
-  return null;
-};
-
-const opensProtocolHandlerOnly = (urlArgument: EsTreeNode | null | undefined): boolean => {
-  const urlText = getStaticUrlText(urlArgument)?.trimStart().toLowerCase();
-  if (urlText == null) return false;
-  return NON_BROWSING_URL_SCHEMES.some((scheme) => urlText.startsWith(scheme));
-};
-
 // A fixed `https://host/` prefix pins the origin: the `[/?#]` terminator
 // after the host guarantees any interpolation lands in the path/query,
 // not the host (`` `https://github.com${x}` `` without it could become
@@ -77,6 +63,8 @@ const isTrustedStaticDestination = (urlArgument: EsTreeNode | null | undefined):
   if ((urlArgument.expressions?.length ?? 0) === 0) return true;
   const firstQuasiText = (urlArgument.quasis?.[0]?.value?.raw ?? "").trimStart();
   if (firstQuasiText.length === 0) return false;
+  const loweredQuasiText = firstQuasiText.toLowerCase();
+  if (NON_BROWSING_URL_SCHEMES.some((scheme) => loweredQuasiText.startsWith(scheme))) return true;
   if (COMPLETE_ORIGIN_PATTERN.test(firstQuasiText)) return true;
   return startsSameOriginPath(firstQuasiText);
 };
@@ -130,7 +118,10 @@ const isTrustedDestination = (
   }
   if (isNodeOfType(urlArgument, "LogicalExpression")) {
     if (urlArgument.operator === "&&") {
-      return isTrustedOrNullishDestination(urlArgument.right, depth + 1);
+      return (
+        isNullishExpression(urlArgument.left) ||
+        isTrustedOrNullishDestination(urlArgument.right, depth + 1)
+      );
     }
     return (
       isTrustedOrNullishDestination(urlArgument.left, depth + 1) &&
@@ -252,7 +243,6 @@ export const windowOpenWithoutNoopener = defineRule({
 
       const urlArgument = node.arguments?.[0];
       if (isTrustedOrNullishDestination(urlArgument, 0)) return;
-      if (opensProtocolHandlerOnly(urlArgument)) return;
 
       const targetArgument = node.arguments?.[1];
       if (isStringLiteral(targetArgument) && NAVIGATING_TARGETS.has(targetArgument.value)) return;

@@ -50,4 +50,77 @@ describe("preact/preact-no-children-length — regressions", () => {
     );
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("flags props.children.length inside an event handler of a named JSX component", () => {
+    const { diagnostics } = runRule(
+      preactNoChildrenLength,
+      `function List(props) {
+        const onToggle = () => { console.log(props.children.length); };
+        return <button onClick={onToggle}>t</button>;
+      }`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags props.children.length inside a useMemo callback of a named JSX component", () => {
+    const { diagnostics } = runRule(
+      preactNoChildrenLength,
+      `function List(props) {
+        const count = useMemo(() => props.children.length, [props.children]);
+        return <div>{count}</div>;
+      }`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags an anonymous default-export component using h() instead of JSX", () => {
+    const { diagnostics } = runRule(
+      preactNoChildrenLength,
+      `import { h } from "preact";
+      export default function ({ children }) {
+        return h("div", null, children.map((child) => h("span", null, child)));
+      }`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags an uppercase-named h()-based component", () => {
+    const { diagnostics } = runRule(
+      preactNoChildrenLength,
+      `import { h } from "preact";
+      const List = ({ children }) => h("ul", null, children.map((child) => h("li", null, child)));`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags an uppercase component assigned via plain assignment (List = ...) without JSX", () => {
+    const { diagnostics } = runRule(
+      preactNoChildrenLength,
+      `import { h } from "preact";
+      let List;
+      List = ({ children }) => h("ul", null, children.length);`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags props.children in a nested callback whose body has JSX", () => {
+    const { diagnostics } = runRule(
+      preactNoChildrenLength,
+      `function List(props) {
+        return <ul>{props.children.map((child) => <li>{child}</li>)}</ul>;
+      }`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on a data helper destructuring `children` inside a nested callback", () => {
+    const { diagnostics } = runRule(
+      preactNoChildrenLength,
+      `function flattenTree({ children }) {
+        const onVisit = () => children.length;
+        return children.flatMap(flattenTree);
+      }`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
 });

@@ -45,6 +45,8 @@ describe("no-repeated-layout-read-same-element", () => {
     `,
     );
     expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("const style = getComputedStyle(el)");
+    expect(result.diagnostics[0].message).not.toContain("el.getComputedStyle");
   });
 
   it("flags window.getComputedStyle repeated on the same element", () => {

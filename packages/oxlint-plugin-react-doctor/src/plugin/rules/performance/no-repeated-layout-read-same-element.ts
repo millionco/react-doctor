@@ -229,9 +229,13 @@ export const noRepeatedLayoutReadSameElement = defineRule({
           if (hasInterveningBarrier) continue;
 
           reportedGroups.add(groupSignature);
+          const cacheExample =
+            second.methodName === "getComputedStyle"
+              ? "const style = getComputedStyle(el)"
+              : "const rect = el.getBoundingClientRect()";
           context.report({
             node: second.callNode,
-            message: `You call ${second.methodName}() on the same element twice here, forcing a second layout reflow. Read it once into a const (const rect = el.${second.methodName}()) and reuse it.`,
+            message: `You call ${second.methodName}() on the same element twice here, forcing a second layout reflow. Read it once into a const (${cacheExample}) and reuse it.`,
           });
         }
       }

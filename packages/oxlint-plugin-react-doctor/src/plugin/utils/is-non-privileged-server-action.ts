@@ -4,6 +4,7 @@ import {
 } from "../constants/nextjs.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { getImportSourceForName } from "./find-import-source-for-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
@@ -22,13 +23,30 @@ const NON_DATA_EFFECT_FUNCTION_NAMES: ReadonlySet<string> = new Set([
   ...NEXTJS_NAVIGATION_FUNCTIONS,
 ]);
 
-// Matched only as a BARE identifier callee. A member call (`obj.redirect()`,
+// The modules Next.js exports the exempt functions from. These functions are
+// not globals, so real usage always imports them — a same-named binding from
+// anywhere else (a module-local `const revalidatePath = …` doing privileged
+// work, an import from an unrelated package) must not satisfy the exemption.
+const NON_DATA_EFFECT_MODULE_SOURCES: ReadonlySet<string> = new Set([
+  "next/cache",
+  "next/navigation",
+]);
+
+// Matched only as a BARE identifier callee whose binding is imported from
+// `next/cache` / `next/navigation`. A member call (`obj.redirect()`,
 // `db.revalidateTag()`) shares the name but not the import, and could touch
-// data on an arbitrary receiver, so it must not satisfy the exemption.
-const isCacheOrNavigationCall = (node: EsTreeNode): boolean =>
-  isNodeOfType(node, "CallExpression") &&
-  isNodeOfType(node.callee, "Identifier") &&
-  NON_DATA_EFFECT_FUNCTION_NAMES.has(node.callee.name);
+// data on an arbitrary receiver, so it must not satisfy the exemption either.
+const isCacheOrNavigationCall = (node: EsTreeNode): boolean => {
+  if (
+    !isNodeOfType(node, "CallExpression") ||
+    !isNodeOfType(node.callee, "Identifier") ||
+    !NON_DATA_EFFECT_FUNCTION_NAMES.has(node.callee.name)
+  ) {
+    return false;
+  }
+  const importSource = getImportSourceForName(node, node.callee.name);
+  return importSource !== null && NON_DATA_EFFECT_MODULE_SOURCES.has(importSource);
+};
 
 // Reduce an expression to the value it actually yields: strip TS / optional-
 // chain wrappers, and collapse a comma sequence to its last operand (the value
@@ -70,6 +88,10 @@ const isDataExposingValue = (node: EsTreeNode | null | undefined): boolean => {
 const isLiteralOnlyExpression = (node: EsTreeNode | null | undefined): boolean => {
   if (!node) return false;
   if (isNodeOfType(node, "Literal")) return true;
+  // `return undefined` parses as an Identifier but exposes nothing — same as
+  // the bare `return;` (which has no argument at all). `void 0` already
+  // passes via the UnaryExpression branch.
+  if (isNodeOfType(node, "Identifier")) return node.name === "undefined";
   if (isNodeOfType(node, "TemplateLiteral")) {
     return (node.expressions ?? []).every(isLiteralOnlyExpression);
   }

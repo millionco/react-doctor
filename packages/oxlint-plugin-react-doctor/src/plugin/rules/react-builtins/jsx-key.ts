@@ -219,9 +219,12 @@ const checkKeyBeforeSpread = (
 ): void => {
   // A `{...spread}` only clobbers an explicit `key` when it sits AFTER the
   // key. JSX applies attributes left-to-right, so a later spread's `key`
-  // property wins under the classic runtime (`{ key: "x", ...spread }`), and
-  // under the automatic runtime React falls back to `createElement` and the
-  // later spread wins there too. When every spread precedes the key, the
+  // property wins under the classic runtime (`{ key: "x", ...spread }`); the
+  // automatic runtime compiles key-BEFORE-spread to `jsx(type, {...spread},
+  // "x")` where the props object's `key` (from the spread) overrides the
+  // `maybeKey` argument — key-AFTER-spread is the shape that falls back to
+  // `createElement`. Either way the later spread wins. When every spread
+  // precedes the key, the
   // explicit `key` is applied last and always survives, so there is nothing
   // to flag. We compare the key against the LAST overwrite-capable spread so
   // a spread sandwiched after the key — `<App {...a} key="x" {...b} />` —

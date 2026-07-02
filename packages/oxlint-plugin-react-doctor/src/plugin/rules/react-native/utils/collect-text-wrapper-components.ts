@@ -203,6 +203,21 @@ const isChildrenForwardingJsxChild = (child: EsTreeNode, bindings: ChildrenBindi
   isNodeOfType(child, "JSXExpressionContainer") &&
   isChildrenValueExpression(child.expression, bindings);
 
+// Fragments are render-transparent: `<View><>{children}</></View>` places the
+// children directly inside the View at runtime, so the forwarding check must
+// see through fragment wrappers when scanning a host's children. Only
+// fragments are pierced — an element child is its own receiver.
+const isChildrenForwardingJsxChildThroughFragments = (
+  child: EsTreeNode,
+  bindings: ChildrenBindings,
+): boolean => {
+  if (isChildrenForwardingJsxChild(child, bindings)) return true;
+  if (!isNodeOfType(child, "JSXFragment")) return false;
+  return (child.children ?? []).some((innerChild) =>
+    isChildrenForwardingJsxChildThroughFragments(innerChild, bindings),
+  );
+};
+
 // `children={children}` or a props spread (`{...props}` / `{...this.props}`)
 // that carries the component's children onto the element.
 const isChildrenForwardingAttribute = (
@@ -238,7 +253,9 @@ const jsxRootForwardsChildrenIntoText = (
     const elementName = resolveJsxElementName(node.openingElement);
     if (!elementName || !isTextHandlingElement(elementName)) return;
     didForwardIntoText =
-      (node.children ?? []).some((child) => isChildrenForwardingJsxChild(child, bindings)) ||
+      (node.children ?? []).some((child) =>
+        isChildrenForwardingJsxChildThroughFragments(child, bindings),
+      ) ||
       (node.openingElement.attributes ?? []).some((attribute) =>
         isChildrenForwardingAttribute(attribute, bindings),
       );
@@ -284,7 +301,9 @@ const jsxRootForwardsChildren = (
     }
     if (
       countsAsForwardTarget(node) &&
-      (node.children ?? []).some((child) => isChildrenForwardingJsxChild(child, bindings))
+      (node.children ?? []).some((child) =>
+        isChildrenForwardingJsxChildThroughFragments(child, bindings),
+      )
     ) {
       didForward = true;
     }
@@ -460,17 +479,18 @@ const recordWrapperFromDeclaration = (
   else if (kind === "nonText") nonTextWrappers.add(componentName);
 };
 
-const MAX_TRANSITIVE_WRAPPER_PASSES = 3;
-
 // Walks a program and classifies its in-file PascalCase components into
 // `textWrappers` / `nonTextWrappers` (see `ChildrenForwardingComponents`).
 // `isNonTextHostRoot` seeds the built-in crash hosts; the walk extends it
 // transitively (a component forwarding into a proven non-text wrapper is itself
-// non-text), repeating a bounded number of times so wrappers-of-wrappers
+// non-text), repeating to a fixpoint so wrappers-of-wrappers
 // (`const Badge = ({ children }) => <Chip>{children}</Chip>`) resolve regardless
-// of declaration order. A final pass drops any name that settled as a text
-// wrapper from `nonTextWrappers`, since an early pass can mark a component
-// non-text before the wrapper it forwards into is known.
+// of declaration order or chain depth — a fixed pass cap left deep chains
+// declared in reverse dependency order unclassified. Termination is guaranteed:
+// every non-final pass grows one of the (declaration-bounded) sets. A final
+// pass drops any name that settled as a text wrapper from `nonTextWrappers`,
+// since an early pass can mark a component non-text before the wrapper it
+// forwards into is known.
 export const collectTextWrapperComponents = (
   programNode: EsTreeNode,
   isTextHandlingRoot: (elementName: string) => boolean,
@@ -493,7 +513,7 @@ export const collectTextWrapperComponents = (
       nonTextWrappers,
     );
 
-  for (let pass = 0; pass < MAX_TRANSITIVE_WRAPPER_PASSES; pass += 1) {
+  while (true) {
     const wrappersSizeBeforePass = wrappers.size;
     const nonTextSizeBeforePass = nonTextWrappers.size;
     walkAst(programNode, (node) => {

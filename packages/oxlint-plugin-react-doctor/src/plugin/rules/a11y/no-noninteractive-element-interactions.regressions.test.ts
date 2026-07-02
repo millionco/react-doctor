@@ -70,4 +70,100 @@ describe("a11y/no-noninteractive-element-interactions regressions", () => {
     );
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("stays silent for an opaque template-literal role", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<li role={\`list\${suffix}\`} onClick={() => {}}>x</li>`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // PR #989 mined FP (ant-design ThemePicker.tsx / ColorPicker.tsx):
+  // clicking a <label> forwards activation to its nested keyboard-accessible
+  // input, and upstream jsx-a11y / oxc never flag <label> in this rule.
+  it("stays silent for a <label onClick> wrapping a radio input", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<label onClick={() => onChange?.(theme)} className={styles.themeCard}>
+        <input type="radio" name="theme" />
+        <img draggable={false} src={src} alt={theme} />
+      </label>`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a bare <label onClick>", () => {
+    const result = runRule(noNoninteractiveElementInteractions, `<label onClick={() => {}} />`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // PR #989 mined FP (ant-design components/space/__tests__/index.test.tsx):
+  // throwaway test JSX is not held to interactive-a11y standards.
+  it("stays silent inside a testlike file", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<p onClick={() => setState((value) => value + 1)}>{state}</p>`,
+      { filename: "/repo/components/space/__tests__/index.test.tsx" },
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags <p onClick> in a plain source file", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<p onClick={() => setState((value) => value + 1)}>{state}</p>`,
+      { filename: "/repo/src/components/counter.tsx" },
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // jsx-a11y parity: <form> maps to the non-interactive `form` landmark
+  // role, so the mined ant-design Actions.tsx submit-wrapper stays a TP.
+  it("still flags a <form onClick> submit wrapper", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<form
+        className="code-box-code-action"
+        action="https://codesandbox.io/api/v1/sandboxes/define"
+        method="POST"
+        target="_blank"
+        onClick={() => {
+          track({ type: 'codesandbox', demo: assetId });
+          formRef.current?.submit();
+        }}
+      >
+        <input type="hidden" name="parameters" value={value} />
+      </form>`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // PR #989 fn-introduced: `void 0` always evaluates to `undefined`, so a
+  // ternary branch of `void 0` leaves the element sometimes role-less.
+  it("flags a ternary role with a `void 0` branch", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<li role={show ? "button" : void 0} onClick={() => {}}>x</li>`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // …and `??` (unlike `||`) lets a non-nullish falsy left pass through:
+  // `false ?? "button"` renders role-less.
+  it("flags a `??` role whose opaque left can pass through falsy", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<li role={maybeFalse ?? "button"} onClick={() => {}}>x</li>`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a ternary mixing an interactive and a non-interactive role", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<li role={cond ? "button" : "listitem"} onClick={() => {}}>x</li>`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

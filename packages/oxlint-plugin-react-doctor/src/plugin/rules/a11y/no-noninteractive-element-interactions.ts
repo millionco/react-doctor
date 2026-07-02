@@ -6,6 +6,7 @@ import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js"
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { NON_INTERACTIVE_ELEMENTS } from "../../constants/html-tags.js";
 import { INTERACTIVE_ROLES } from "../../constants/aria-roles.js";
 
@@ -42,6 +43,11 @@ const collectRoleBranches = (expression: EsTreeNode, out: RoleExpressionBranches
     out.hasNonRoleBranch = true;
     return;
   }
+  // `void 0` (or `void anything`) always evaluates to `undefined`.
+  if (isNodeOfType(expression, "UnaryExpression") && expression.operator === "void") {
+    out.hasNonRoleBranch = true;
+    return;
+  }
   if (isNodeOfType(expression, "ConditionalExpression")) {
     collectRoleBranches(expression.consequent as EsTreeNode, out);
     collectRoleBranches(expression.alternate as EsTreeNode, out);
@@ -50,6 +56,18 @@ const collectRoleBranches = (expression: EsTreeNode, out: RoleExpressionBranches
   if (isNodeOfType(expression, "LogicalExpression")) {
     if (expression.operator === "&&") {
       out.hasNonRoleBranch = true;
+      collectRoleBranches(expression.right as EsTreeNode, out);
+      return;
+    }
+    if (expression.operator === "??") {
+      // Unlike `||`, a non-nullish falsy left (`false ?? "button"` → `false`)
+      // passes through `??`, so an opaque left the collector can't resolve
+      // means the element can end up role-less.
+      const stringCountBeforeLeft = out.stringValues.length;
+      collectRoleBranches(expression.left as EsTreeNode, out);
+      const didLeftResolve =
+        out.stringValues.length > stringCountBeforeLeft || out.hasNonRoleBranch;
+      if (!didLeftResolve) out.hasNonRoleBranch = true;
       collectRoleBranches(expression.right as EsTreeNode, out);
       return;
     }
@@ -81,44 +99,52 @@ export const noNoninteractiveElementInteractions = defineRule({
   severity: "warn",
   recommendation: "Put interactions on a button or link, or add an interactive role.",
   category: "Accessibility",
-  create: (context) => ({
-    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      const tag = getElementType(node, context.settings);
-      if (!NON_INTERACTIVE_ELEMENTS.has(tag)) return;
-      const hasHandler = INTERACTIVE_HANDLERS.some((handler) =>
-        hasJsxPropIgnoreCase(node.attributes, handler),
-      );
-      if (!hasHandler) return;
-      if (isHiddenFromScreenReader(node, context.settings)) return;
-      const roleAttr = hasJsxPropIgnoreCase(node.attributes, "role");
-      if (roleAttr) {
-        const role = getJsxPropStringValue(roleAttr);
-        if (role && INTERACTIVE_ROLES.has(role)) return;
+  create: (context) => {
+    const isTestlikeFile = isTestlikeFilename(context.filename);
+    return {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (isTestlikeFile) return;
+        const tag = getElementType(node, context.settings);
+        if (!NON_INTERACTIVE_ELEMENTS.has(tag)) return;
+        // Upstream jsx-a11y / oxc never flag <label> here: it has no mapped
+        // ARIA role, and clicking a label forwards activation to its nested
+        // keyboard-accessible input.
+        if (tag === "label") return;
+        const hasHandler = INTERACTIVE_HANDLERS.some((handler) =>
+          hasJsxPropIgnoreCase(node.attributes, handler),
+        );
+        if (!hasHandler) return;
+        if (isHiddenFromScreenReader(node, context.settings)) return;
+        const roleAttr = hasJsxPropIgnoreCase(node.attributes, "role");
+        if (roleAttr) {
+          const role = getJsxPropStringValue(roleAttr);
+          if (role && INTERACTIVE_ROLES.has(role)) return;
 
-        // Non-static role (`role={cond ? "checkbox" : "radio"}`): if every
-        // string branch is an interactive role AND no branch can resolve to
-        // a non-role value, the element always has one. When a role is
-        // present but fully opaque (`role={x}`), we can't prove it is
-        // non-interactive, so we stay quiet (the SolidJS-port idiom keeps
-        // roles as ternaries). But a provable escape to `null`/`false`/
-        // `undefined` (or the `&&` short-circuit) means it is sometimes role-less,
-        // so we still report.
-        const roleValue = roleAttr.value as EsTreeNode | null;
-        if (roleValue && isNodeOfType(roleValue, "JSXExpressionContainer")) {
-          const branches: RoleExpressionBranches = {
-            stringValues: [],
-            hasNonRoleBranch: false,
-          };
-          collectRoleBranches(roleValue.expression as EsTreeNode, branches);
-          const everyBranchIsInteractiveRole =
-            branches.stringValues.length > 0 &&
-            !branches.hasNonRoleBranch &&
-            branches.stringValues.every((branch) => INTERACTIVE_ROLES.has(branch));
-          if (everyBranchIsInteractiveRole) return;
-          if (branches.stringValues.length === 0 && !branches.hasNonRoleBranch) return;
+          // Non-static role (`role={cond ? "checkbox" : "radio"}`): if every
+          // string branch is an interactive role AND no branch can resolve to
+          // a non-role value, the element always has one. When a role is
+          // present but fully opaque (`role={x}`), we can't prove it is
+          // non-interactive, so we stay quiet (the SolidJS-port idiom keeps
+          // roles as ternaries). But a provable escape to `null`/`false`/
+          // `undefined` (or the `&&` short-circuit) means it is sometimes role-less,
+          // so we still report.
+          const roleValue = roleAttr.value as EsTreeNode | null;
+          if (roleValue && isNodeOfType(roleValue, "JSXExpressionContainer")) {
+            const branches: RoleExpressionBranches = {
+              stringValues: [],
+              hasNonRoleBranch: false,
+            };
+            collectRoleBranches(roleValue.expression as EsTreeNode, branches);
+            const everyBranchIsInteractiveRole =
+              branches.stringValues.length > 0 &&
+              !branches.hasNonRoleBranch &&
+              branches.stringValues.every((branch) => INTERACTIVE_ROLES.has(branch));
+            if (everyBranchIsInteractiveRole) return;
+            if (branches.stringValues.length === 0 && !branches.hasNonRoleBranch) return;
+          }
         }
-      }
-      context.report({ node: node.name, message: buildMessage(tag) });
-    },
-  }),
+        context.report({ node: node.name, message: buildMessage(tag) });
+      },
+    };
+  },
 });

@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import * as path from "node:path";
 import type { SourceFileEntry } from "../types/index.js";
-import { readDirectoryEntries } from "../project-info/index.js";
+import { readDirectoryEntries } from "../project-info/utils/read-directory-entries.js";
 import { GIT_LS_FILES_MAX_BUFFER_BYTES, IGNORED_DIRECTORIES } from "../constants.js";
 import { hasIgnoredPathSegment } from "./has-ignored-path-segment.js";
 import { isLintableSourceFile } from "./is-lintable-source-file.js";
@@ -9,9 +9,9 @@ import { isLargeMinifiedFile, statSourceFileSize } from "./is-large-minified-fil
 
 // Stats each candidate once (the same stat the minified gate already paid),
 // drops files that sniff as large minified bundles, and keeps the size so the
-// lint pass can order batches largest-first. Shares its predicate with
-// `countSourceFiles` so the scanned set and the reported source-file count
-// stay in lockstep. A file that can't be stat'd is KEPT (parity with
+// lint pass can order batches largest-first. `countSourceFiles` delegates to
+// `listSourceFilesWithSize`, so the scanned set and the reported source-file
+// count can never diverge. A file that can't be stat'd is KEPT (parity with
 // `isLargeMinifiedFile`'s keep-on-error) with size `0`, so it sorts to the
 // cheap tail.
 const collectSizedSourceFiles = (
@@ -68,10 +68,9 @@ const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
       const absolutePath = path.join(currentDirectory, entry.name);
 
       if (entry.isDirectory()) {
-        // Descend into dot-directories that aren't explicitly ignored (e.g.
-        // `.dumi`, `.storybook`) — `git ls-files` includes their tracked
-        // sources, so the walk fallback must cover the same set or scans of
-        // one tree diverge depending on whether git was available.
+        // Descend into non-ignored dot-directories (`.dumi`, `.storybook`) —
+        // `git ls-files` lists their tracked sources, so the walk fallback
+        // must enumerate the same set.
         if (!IGNORED_DIRECTORIES.has(entry.name)) {
           stack.push(absolutePath);
         }

@@ -25,13 +25,11 @@ export const statSourceFileSize = (absolutePath: string): number | null => {
 
 // Whether a file is large enough to plausibly be a bundle AND sniffs as
 // minified. The size gate keeps whole-tree discovery from reading every
-// small source file just to check. Both `listSourceFiles` (the scanned set)
-// and `countSourceFiles` (the reported `sourceFileCount`) route through here
-// so the two can never diverge. Memoized by absolute path because a full scan
-// walks the tree more than once; returns (and caches) false on any stat error
-// so an unreadable file is kept / counted as usual. A caller that already
-// stat'd the file (the sized-discovery walk) passes `knownSizeBytes` to skip
-// the second stat; bare callers (`countSourceFiles`) stat here.
+// small source file just to check. Memoized by absolute path because a full
+// scan walks the tree more than once; returns (and caches) false on any stat
+// error so an unreadable file is kept / counted as usual. A caller that
+// already stat'd the file (the sized-discovery walk) passes `knownSizeBytes`
+// to skip the second stat; bare callers (the security scan) stat here.
 export const isLargeMinifiedFile = (
   absolutePath: string,
   knownSizeBytes?: number | null,

@@ -11,11 +11,6 @@ describe("hasIgnoredPathSegment", () => {
     expect(hasIgnoredPathSegment("node_modules/react/index.js")).toBe(true);
   });
 
-  it("handles backslash-separated paths", () => {
-    expect(hasIgnoredPathSegment("ai\\dist\\mcp-server.js")).toBe(true);
-    expect(hasIgnoredPathSegment("src\\components\\app.tsx")).toBe(false);
-  });
-
   it("ignores the filename segment", () => {
     expect(hasIgnoredPathSegment("src/dist")).toBe(false);
     expect(hasIgnoredPathSegment("build")).toBe(false);

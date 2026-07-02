@@ -63,7 +63,7 @@ const discoverReactSubprojectsByFilesystem = (rootDirectory: string): WorkspaceP
   const packages: WorkspacePackage[] = [];
   // HACK: stack + .pop() rather than queue + .shift() because Array.shift()
   // is O(n), which degraded this walk to O(n^2) on large trees. Sibling
-  // walks in count-source-files / resolve-lint-include-paths use the same
+  // walks in list-source-files / resolve-lint-include-paths use the same
   // stack pattern. Result is the same set of directories with a different
   // visit order (depth-first instead of breadth-first), which doesn't
   // matter for the final packages list.

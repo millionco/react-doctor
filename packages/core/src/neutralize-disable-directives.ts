@@ -77,8 +77,7 @@ const findFilesWithDisableDirectivesViaFilesystem = (
     for (const entry of entries) {
       if (entry.isDirectory()) {
         // Same descent rule as `listSourceFilesViaFilesystem`: non-ignored
-        // dot-directories (`.dumi`, `.storybook`) hold scanned sources, so
-        // their disable directives must be neutralized too.
+        // dot-directories hold scanned sources.
         if (IGNORED_DIRECTORIES.has(entry.name)) continue;
         stack.push(path.join(current, entry.name));
         continue;

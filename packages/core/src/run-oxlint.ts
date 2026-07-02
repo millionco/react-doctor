@@ -100,12 +100,7 @@ interface RunOxlintOptions {
    * of running on after the phase is abandoned.
    */
   signal?: AbortSignal;
-  /**
-   * Absolute epoch-millisecond deadline for the lint pass (from the scan's
-   * `--max-duration` budget); forwarded to `spawnLintBatches` so batches
-   * that haven't started when it passes are skipped (and reported via
-   * `onPartialFailure`) instead of spawned.
-   */
+  /** See `SpawnLintBatchesInput.deadlineEpochMs`. */
   deadlineEpochMs?: number;
   /**
    * Full-scan batch ordering, resolved from the `LintBatchOrdering`

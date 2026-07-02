@@ -145,9 +145,8 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     // ones (e.g. one file × one quadratic JS-plugin rule, originally
     // hit on supabase/studio's `apps/studio/pages/...` bucket).
     const droppedFiles: string[] = [];
-    // Files whose batch never spawned because `deadlineEpochMs` passed —
-    // reported separately from `droppedFiles` so consumers can tell "the
-    // scan ran out of budget" apart from "this file is pathological".
+    // Batches that never spawned because `deadlineEpochMs` passed — reported
+    // apart from `droppedFiles` (budget exhaustion, not pathological files).
     const deadlineSkippedFiles: string[] = [];
     // HACK: keep the first splittable error message we saw so
     // `onPartialFailure` can report WHY each batch failed instead of
@@ -241,32 +240,32 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
       if (progressTimer !== null) clearInterval(progressTimer);
     }
 
-    // Report dropped files once per completed pass. A pass that throws (e.g.
+    // Report skipped files once per completed pass. A pass that throws (e.g.
     // the parallel attempt below hitting EAGAIN) exits before this point, so
     // only the winning pass surfaces its skips.
-    if (droppedFiles.length > 0 && onPartialFailure) {
-      const previewFiles = droppedFiles.slice(0, OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT).join(", ");
+    const reportSkippedFiles = (
+      skippedFiles: string[],
+      buildMessage: (fileListPreview: string) => string,
+    ): void => {
+      if (skippedFiles.length === 0 || !onPartialFailure) return;
+      const previewFiles = skippedFiles.slice(0, OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT).join(", ");
       const remainderHint =
-        droppedFiles.length > OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT
-          ? `, +${droppedFiles.length - OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT} more`
+        skippedFiles.length > OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT
+          ? `, +${skippedFiles.length - OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT} more`
           : "";
-      const reasonHint = firstDropReason ? ` — first failure: ${firstDropReason}` : "";
-      onPartialFailure(
-        `${droppedFiles.length} file(s) failed to lint and were skipped (${previewFiles}${remainderHint})${reasonHint}`,
-      );
-    }
-    if (deadlineSkippedFiles.length > 0 && onPartialFailure) {
-      const previewFiles = deadlineSkippedFiles
-        .slice(0, OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT)
-        .join(", ");
-      const remainderHint =
-        deadlineSkippedFiles.length > OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT
-          ? `, +${deadlineSkippedFiles.length - OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT} more`
-          : "";
-      onPartialFailure(
-        `${deadlineSkippedFiles.length} file(s) skipped — max scan duration reached before they were linted (${previewFiles}${remainderHint})`,
-      );
-    }
+      onPartialFailure(buildMessage(`${previewFiles}${remainderHint}`));
+    };
+    const reasonHint = firstDropReason ? ` — first failure: ${firstDropReason}` : "";
+    reportSkippedFiles(
+      droppedFiles,
+      (fileListPreview) =>
+        `${droppedFiles.length} file(s) failed to lint and were skipped (${fileListPreview})${reasonHint}`,
+    );
+    reportSkippedFiles(
+      deadlineSkippedFiles,
+      (fileListPreview) =>
+        `${deadlineSkippedFiles.length} file(s) skipped — max scan duration reached before they were linted (${fileListPreview})`,
+    );
     return allDiagnostics;
   };
 

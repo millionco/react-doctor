@@ -204,3 +204,52 @@ describe("spawnLintBatches — LPT batch-order invariance", () => {
     ]);
   });
 });
+
+/**
+ * `--max-duration` graceful degradation: once `deadlineEpochMs` passes,
+ * batches that haven't spawned are skipped and reported via
+ * `onPartialFailure` (with the file list), while already-collected
+ * diagnostics are still returned — a partial result instead of the empty
+ * `{"ok":false,"projects":[]}` report a SIGTERM'd scan produced.
+ */
+const lintFileBatchesWithDeadline = (fileBatches: string[][], deadlineEpochMs: number) => {
+  const partialFailures: string[] = [];
+  const diagnostics = spawnLintBatches({
+    baseArgs: ["-e", EMIT_ONE_DIAGNOSTIC_PER_FILE_SCRIPT],
+    fileBatches,
+    rootDirectory: process.cwd(),
+    nodeBinaryPath: process.execPath,
+    project,
+    deadlineEpochMs,
+    onPartialFailure: (reason) => partialFailures.push(reason),
+  });
+  return { diagnostics, partialFailures };
+};
+
+describe("spawnLintBatches — max-duration deadline", () => {
+  it("skips remaining batches past the deadline and reports the skipped files", async () => {
+    const { diagnostics, partialFailures } = lintFileBatchesWithDeadline(
+      [["src/a.tsx"], ["src/b.tsx"], ["src/c.tsx"]],
+      Date.now() - 1,
+    );
+
+    expect(await diagnostics).toEqual([]);
+    expect(partialFailures).toHaveLength(1);
+    expect(partialFailures[0]).toContain("3 file(s) skipped");
+    expect(partialFailures[0]).toContain("max scan duration reached");
+    expect(partialFailures[0]).toContain("src/a.tsx");
+  });
+
+  it("lints every batch when the deadline has not passed", async () => {
+    const { diagnostics, partialFailures } = lintFileBatchesWithDeadline(
+      [["src/a.tsx"], ["src/b.tsx"]],
+      Date.now() + 60_000,
+    );
+
+    expect((await diagnostics).map((diagnostic) => diagnostic.filePath).sort()).toEqual([
+      "src/a.tsx",
+      "src/b.tsx",
+    ]);
+    expect(partialFailures).toEqual([]);
+  });
+});

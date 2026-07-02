@@ -203,6 +203,17 @@ describe("render-github-action-comment", () => {
     expect(comment.indexOf("configured incorrectly")).toBeLessThan(
       comment.indexOf("Reviewed by [React Doctor]"),
     );
+    // The notice points at the opt-out.
+    expect(comment).toContain("set `baseline-warning: false`");
+  });
+
+  it("omits the warning when baseline-warning is disabled", () => {
+    const { comment } = runRenderer(buildReport({ baselineDegraded: true }), {
+      REACT_DOCTOR_BASELINE_WARNING: "false",
+    });
+    // The findings still render; only the config warning is silenced.
+    expect(comment).not.toContain("configured incorrectly");
+    expect(comment).toContain("**Errors**");
   });
 
   it("names the workflow file in the degraded notice when the ref is available", () => {
@@ -231,7 +242,11 @@ describe("render-github-action-comment", () => {
     scoreLabel: null,
   };
 
-  it("keeps the degraded warning when the compare run scanned no files", () => {
+  it("treats a degraded run that scanned no React files as a normal skip, not a warning", () => {
+    // `baselineDegraded` is set on any `changed` run whose base can't be reached
+    // — including a PR that changed no React-eligible files. That's a normal skip,
+    // not a misconfiguration to warn about (the warning only fires once files are
+    // actually scanned and compared). See the two Bugbot findings on PR #1019.
     const { comment, outputs } = runRenderer(
       buildReport({
         baselineDegraded: true,
@@ -240,19 +255,9 @@ describe("render-github-action-comment", () => {
         summary: emptySummary,
       }),
     );
-    // A zero-finding degraded run isn't a clean skip: it must still warn, and
-    // must not be marked skipped (so the action posts the comment).
-    expect(comment).toContain("configured incorrectly");
-    expect(comment).not.toContain("skipped this pull request");
-    expect(outputs).toContain("skipped=false");
-  });
-
-  it("keeps the degraded warning even when no projects were scanned", () => {
-    const { comment } = runRenderer(
-      buildReport({ baselineDegraded: true, diagnostics: [], projects: [], summary: emptySummary }),
-    );
-    expect(comment).toContain("configured incorrectly");
-    expect(comment).not.toContain("No React Doctor issues found");
+    expect(comment).not.toContain("configured incorrectly");
+    expect(comment).toContain("skipped this pull request");
+    expect(outputs).toContain("skipped=true");
   });
 
   it("renders a baseline report with the new-issue count, fixed count, and commit footer", () => {

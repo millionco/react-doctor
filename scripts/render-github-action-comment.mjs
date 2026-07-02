@@ -27,6 +27,10 @@ const WORKFLOW_FILE = (() => {
   return relativePath || null;
 })();
 
+// The degraded-baseline warning is opt-out via the action's `baseline-warning`
+// input (forwarded as this env). Enabled unless explicitly set to "false".
+const BASELINE_WARNING_ENABLED = process.env.REACT_DOCTOR_BASELINE_WARNING !== "false";
+
 const pluralize = (count, singular, plural = `${singular}s`) =>
   `${count} ${count === 1 ? singular : plural}`;
 
@@ -82,6 +86,8 @@ const COPY = {
     "",
     "       - uses: millionco/react-doctor@v2",
     "```",
+    "",
+    "To silence this warning, set `baseline-warning: false` on the React Doctor action.",
   ],
 
   // Issue lists.
@@ -217,7 +223,7 @@ const buildScopeSegment = (report) => {
 // a compare run degraded to a full changed-files listing (see COPY.baselineDegraded*).
 // Empty string when the baseline was computed normally, so it drops out of the body.
 const buildBaselineDegradedNotice = (report) => {
-  if (!report.baselineDegraded) return "";
+  if (!report.baselineDegraded || !BASELINE_WARNING_ENABLED) return "";
   const baseBranch = report.diff?.baseBranch || "the base branch";
   const lines = [
     `<details><summary>${COPY.baselineDegradedSummary(WORKFLOW_FILE)}</summary>`,
@@ -388,9 +394,6 @@ const buildSingleLineBody = (line) => renderLines([MARKER, "", line, "", buildRe
 const isSkippedScan = (report) => {
   if (!report.ok) return false;
   if (!report.diff) return false;
-  // A degraded compare run must still surface its workflow-config warning, even
-  // when it scanned nothing — it's a misconfiguration to report, not a clean skip.
-  if (report.baselineDegraded) return false;
   if ((report.summary?.totalDiagnosticCount ?? 0) > 0) return false;
   if (hasIncompleteChecks(report)) return false;
   return (report.projects ?? []).every((project) => project.scannedFileCount === 0);
@@ -418,12 +421,8 @@ const buildCommentBody = (report) => {
   if (!report.ok) return buildErrorBody(report);
   // A scan that matched no files (no changed/staged source, or nothing covered
   // by the enabled checks) is a pass, not a special case — render a plain
-  // success line rather than a metrics table full of zeros. A degraded compare
-  // run is the exception: it still needs its workflow-config warning, so fall
-  // through to the full body (which renders the notice) even with no projects.
-  if ((report.projects ?? []).length === 0 && !report.baselineDegraded) {
-    return buildSingleLineBody(COPY.cleanSuccess);
-  }
+  // success line rather than a metrics table full of zeros.
+  if ((report.projects ?? []).length === 0) return buildSingleLineBody(COPY.cleanSuccess);
   return buildIssuesBody(report);
 };
 

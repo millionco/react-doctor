@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { nearestEnclosingFunction } from "../../utils/component-or-hook-display-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -47,20 +48,11 @@ const isTouchListAccess = (node: EsTreeNode): boolean =>
   isNodeOfType(node.property, "Identifier") &&
   TOUCH_LIST_PROPERTY_NAMES.has(node.property.name);
 
-const findNearestFunction = (node: EsTreeNode): EsTreeNode | null => {
-  let cursor: EsTreeNode | null | undefined = node.parent;
-  while (cursor) {
-    if (isFunctionLike(cursor)) return cursor;
-    cursor = cursor.parent ?? null;
-  }
-  return null;
-};
-
 // True when the nearest enclosing function is wired to a
 // `touchend`/`touchcancel` listener — the only touch phase where the
 // TouchList is empty and `touches[0]` throws.
 const isInsideTouchEndHandler = (node: EsTreeNode): boolean => {
-  const handler = findNearestFunction(node);
+  const handler = nearestEnclosingFunction(node);
   if (!handler) return false;
   const parent = handler.parent;
   if (!parent) return false;

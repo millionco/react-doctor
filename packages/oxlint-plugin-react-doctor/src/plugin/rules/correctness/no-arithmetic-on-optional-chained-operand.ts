@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -283,20 +284,6 @@ const isGuardedByEnclosingTest = (binaryNode: EsTreeNode, guardNames: string[]):
     ancestor = ancestor.parent ?? null;
   }
   return false;
-};
-
-const isEarlyExitStatement = (statement: EsTreeNode | null | undefined): boolean => {
-  if (!statement) return false;
-  if (isNodeOfType(statement, "BlockStatement")) {
-    const statements = statement.body;
-    return isEarlyExitStatement(statements.at(-1));
-  }
-  return (
-    isNodeOfType(statement, "ReturnStatement") ||
-    isNodeOfType(statement, "ThrowStatement") ||
-    isNodeOfType(statement, "ContinueStatement") ||
-    isNodeOfType(statement, "BreakStatement")
-  );
 };
 
 // A preceding sibling `if (!x) return;`-style guard dominates the arithmetic

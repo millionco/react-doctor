@@ -1,10 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { isAstNode } from "../../utils/is-ast-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 const MESSAGE =
   "`find` returns `undefined` when nothing matches, so reading from its result here throws `Cannot read properties of undefined` — use optional chaining (`?.`) or guard the result before you use it.";
@@ -95,23 +95,15 @@ const subtreeContainsMatch = (
   root: EsTreeNode,
   matches: (node: EsTreeNode) => boolean,
 ): boolean => {
-  const pending: EsTreeNode[] = [root];
-  while (pending.length > 0) {
-    const current = pending.pop();
-    if (!current) continue;
-    if (matches(current)) return true;
-    for (const [key, value] of Object.entries(current)) {
-      if (key === "parent") continue;
-      if (Array.isArray(value)) {
-        for (const item of value) {
-          if (isAstNode(item)) pending.push(item);
-        }
-      } else if (isAstNode(value)) {
-        pending.push(value);
-      }
+  let found = false;
+  walkAst(root, (node) => {
+    if (found) return false;
+    if (matches(node)) {
+      found = true;
+      return false;
     }
-  }
-  return false;
+  });
+  return found;
 };
 
 // `items.find(f) && items.find(f).x` / `items.find(f) ? items.find(f).x : y`

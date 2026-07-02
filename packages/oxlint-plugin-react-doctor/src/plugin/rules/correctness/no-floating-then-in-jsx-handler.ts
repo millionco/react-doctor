@@ -1,24 +1,13 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getCallMethodName } from "../../utils/get-call-method-name.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const HANDLER_PROP_PATTERN = /^on[A-Z]/;
-
-const promiseChainMethodName = (call: EsTreeNodeOfType<"CallExpression">): string | null => {
-  const callee = call.callee;
-  if (
-    !isNodeOfType(callee, "MemberExpression") ||
-    callee.computed ||
-    !isNodeOfType(callee.property, "Identifier")
-  ) {
-    return null;
-  }
-  return callee.property.name;
-};
 
 const isNullishArgument = (argument: EsTreeNode): boolean =>
   (isNodeOfType(argument, "Literal") && argument.value === null) ||
@@ -36,7 +25,7 @@ const chainHasRejectionHandler = (node: EsTreeNode): boolean => {
       continue;
     }
     if (isNodeOfType(cursor, "CallExpression")) {
-      const methodName = promiseChainMethodName(cursor);
+      const methodName = getCallMethodName(cursor.callee as EsTreeNode);
       if (methodName === "catch") return true;
       if (
         methodName === "then" &&
@@ -66,14 +55,14 @@ const floatingThenCall = (expression: EsTreeNode): EsTreeNodeOfType<"CallExpress
   let terminal = stripParenExpression(expression);
   while (
     isNodeOfType(terminal, "CallExpression") &&
-    promiseChainMethodName(terminal) === "finally"
+    getCallMethodName(terminal.callee as EsTreeNode) === "finally"
   ) {
     const callee = terminal.callee;
     if (!isNodeOfType(callee, "MemberExpression")) return null;
     terminal = stripParenExpression(callee.object as EsTreeNode);
   }
   if (!isNodeOfType(terminal, "CallExpression")) return null;
-  if (promiseChainMethodName(terminal) !== "then") return null;
+  if (getCallMethodName(terminal.callee as EsTreeNode) !== "then") return null;
   if (chainHasRejectionHandler(terminal)) return null;
   return terminal;
 };

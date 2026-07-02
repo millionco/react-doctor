@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingDeclarator } from "../../utils/find-enclosing-declarator.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -79,18 +80,6 @@ const hasEnclosingFunction = (node: EsTreeNode): boolean => {
 
 const isProcessEnvMember = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "MemberExpression") && getRootIdentifierName(node) === "process";
-
-const findEnclosingDeclarator = (
-  bindingIdentifier: EsTreeNode,
-): EsTreeNodeOfType<"VariableDeclarator"> | null => {
-  let cursor: EsTreeNode | null | undefined = bindingIdentifier.parent;
-  while (cursor) {
-    if (isNodeOfType(cursor, "VariableDeclarator")) return cursor;
-    if (isFunctionLike(cursor)) return null;
-    cursor = cursor.parent ?? null;
-  }
-  return null;
-};
 
 // True when the argument is a literal, a template with a hardcoded absolute
 // origin prefix, a `process.env.*` read, or an identifier bound to a

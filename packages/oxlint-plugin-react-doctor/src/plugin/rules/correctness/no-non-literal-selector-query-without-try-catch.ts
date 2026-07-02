@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
+import { isEarlyExitStatement } from "../../utils/is-early-exit-statement.js";
 import { isInsideTryStatement } from "../../utils/is-inside-try-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -206,19 +207,6 @@ const isShapeValidatingCall = (
   if (someNodeInSubtree(node.callee.object, referencesTaintedValue)) return true;
   return (node.arguments ?? []).some((argument) =>
     someNodeInSubtree(argument, referencesTaintedValue),
-  );
-};
-
-const isEarlyExitStatement = (node: EsTreeNode): boolean => {
-  if (isNodeOfType(node, "BlockStatement")) {
-    const lastStatement = node.body[node.body.length - 1];
-    return Boolean(lastStatement && isEarlyExitStatement(lastStatement));
-  }
-  return (
-    node.type === "ReturnStatement" ||
-    node.type === "ThrowStatement" ||
-    node.type === "ContinueStatement" ||
-    node.type === "BreakStatement"
   );
 };
 

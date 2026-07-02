@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getMeaningfulParent } from "../../utils/get-meaningful-parent.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
@@ -10,9 +11,6 @@ import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
-// oxc-parser surfaces `(...)` as a node kind outside the TSESTree union,
-// so it is matched via a `string`-typed constant.
-const PARENTHESIZED_EXPRESSION: string = "ParenthesizedExpression";
 const BODY_CONSUMER_METHODS = new Set(["json", "text", "blob", "arrayBuffer", "formData"]);
 const STATUS_CHECK_PROPERTIES = new Set(["ok", "status"]);
 const PROMISE_CHAIN_METHODS = new Set(["then", "catch", "finally"]);
@@ -26,12 +24,6 @@ const BUILD_SCRIPT_BASENAME_PATTERN = /^gatsby-(?:node|config|ssr|browser)\.|\.c
 
 const MESSAGE =
   "`fetch()` resolves (does not reject) on HTTP 4xx/5xx, so consuming this Response without checking `response.ok`/`response.status` parses an error body as success or crashes on a truthiness guard that is always true. Check `if (!response.ok) throw ...` before reading `.json()`/`.text()`/`.blob()`.";
-
-const meaningfulParent = (node: EsTreeNode): EsTreeNode | null => {
-  let parent = node.parent ?? null;
-  while (parent && parent.type === PARENTHESIZED_EXPRESSION) parent = parent.parent ?? null;
-  return parent;
-};
 
 const isGlobalFetchCall = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   const callee = node.callee;
@@ -289,7 +281,7 @@ const isErrorMaterializingHandler = (handlerExpression: EsTreeNode): boolean => 
 const chainMaterializesRejection = (fetchCall: EsTreeNode): boolean => {
   let chainLink: EsTreeNode = fetchCall;
   while (true) {
-    const member = meaningfulParent(chainLink);
+    const member = getMeaningfulParent(chainLink);
     if (
       !member ||
       !isNodeOfType(member, "MemberExpression") ||
@@ -300,7 +292,7 @@ const chainMaterializesRejection = (fetchCall: EsTreeNode): boolean => {
     ) {
       return false;
     }
-    const chainCall = meaningfulParent(member);
+    const chainCall = getMeaningfulParent(member);
     if (
       !chainCall ||
       !isNodeOfType(chainCall, "CallExpression") ||
@@ -330,7 +322,7 @@ const chainMaterializesRejection = (fetchCall: EsTreeNode): boolean => {
 const outermostPromiseChainCall = (fetchCall: EsTreeNode): EsTreeNode => {
   let chainLink: EsTreeNode = fetchCall;
   while (true) {
-    const member = meaningfulParent(chainLink);
+    const member = getMeaningfulParent(chainLink);
     if (
       !member ||
       !isNodeOfType(member, "MemberExpression") ||
@@ -341,7 +333,7 @@ const outermostPromiseChainCall = (fetchCall: EsTreeNode): EsTreeNode => {
     ) {
       return chainLink;
     }
-    const chainCall = meaningfulParent(member);
+    const chainCall = getMeaningfulParent(member);
     if (
       !chainCall ||
       !isNodeOfType(chainCall, "CallExpression") ||
@@ -381,7 +373,7 @@ const enclosingTryMaterializesErrors = (node: EsTreeNode): boolean => {
 // Without the await the try never sees the rejection, so it exempts
 // nothing.
 const awaitedChainCoveredByMaterializingTry = (fetchCall: EsTreeNode): boolean => {
-  const chainConsumer = meaningfulParent(outermostPromiseChainCall(fetchCall));
+  const chainConsumer = getMeaningfulParent(outermostPromiseChainCall(fetchCall));
   return Boolean(
     chainConsumer &&
     isNodeOfType(chainConsumer, "AwaitExpression") &&
@@ -440,7 +432,7 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isGlobalFetchCall(node)) return;
         if (fetchesInertUrlScheme(node)) return;
-        const parent = meaningfulParent(node as EsTreeNode);
+        const parent = getMeaningfulParent(node as EsTreeNode);
         if (!parent) return;
 
         // Shape: fetch(...).then((response) => ...consume...)
@@ -451,7 +443,7 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
           isNodeOfType(parent.property, "Identifier") &&
           parent.property.name === "then"
         ) {
-          const thenCall = meaningfulParent(parent);
+          const thenCall = getMeaningfulParent(parent);
           if (!thenCall || !isNodeOfType(thenCall, "CallExpression")) return;
           const callback = thenCall.arguments?.[0]
             ? stripGroupingParens(thenCall.arguments[0] as EsTreeNode)
@@ -484,7 +476,7 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
         }
 
         if (isNodeOfType(parent, "AwaitExpression")) {
-          const afterAwait = meaningfulParent(parent);
+          const afterAwait = getMeaningfulParent(parent);
           if (!afterAwait) return;
 
           // (await fetch(...)).json()

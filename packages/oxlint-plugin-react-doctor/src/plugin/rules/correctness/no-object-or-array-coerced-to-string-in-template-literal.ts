@@ -1,8 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingDeclarator } from "../../utils/find-enclosing-declarator.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
-import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -60,21 +60,6 @@ const firstArgumentLiteralKind = (call: EsTreeNodeOfType<"CallExpression">): Lit
   const firstArgument = call.arguments[0];
   if (!firstArgument) return null;
   return objectOrArrayKind(stripParenExpression(firstArgument as EsTreeNode));
-};
-
-// The VariableDeclarator that declares `bindingIdentifier`, or null when
-// the binding is a function parameter (skipped — a parameter typed as an
-// object/array may have a meaningful `toString()`, per the revision).
-const findEnclosingDeclarator = (
-  bindingIdentifier: EsTreeNode,
-): EsTreeNodeOfType<"VariableDeclarator"> | null => {
-  let cursor: EsTreeNode | null | undefined = bindingIdentifier.parent;
-  while (cursor) {
-    if (isNodeOfType(cursor, "VariableDeclarator")) return cursor;
-    if (isFunctionLike(cursor)) return null;
-    cursor = cursor.parent ?? null;
-  }
-  return null;
 };
 
 const isConstDeclarator = (declarator: EsTreeNodeOfType<"VariableDeclarator">): boolean => {

@@ -3,8 +3,9 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
-import type { Diagnostic } from "@react-doctor/core";
+import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/core";
 import {
+  buildDiagnosticPipeline,
   clearAutoSuppressionCaches,
   createNodeReadFileLinesSync,
   mergeAndFilterDiagnostics,
@@ -161,5 +162,66 @@ describe("mergeAndFilterDiagnostics — test-noise tag auto-suppression for asyn
       { respectInlineDisables: false },
     );
     expect(filtered).toHaveLength(1);
+  });
+});
+
+describe("buildDiagnosticPipeline — summarizeSuppressions", () => {
+  const readNoop = () => null;
+  const buildPipeline = (
+    userConfig: ReactDoctorConfig | null,
+    rootDirectory: string = path.join(tempRoot, "suppression-summary"),
+    readFileLinesSync: (filePath: string) => string[] | null = readNoop,
+  ) =>
+    buildDiagnosticPipeline({
+      rootDirectory,
+      userConfig,
+      readFileLinesSync,
+      respectInlineDisables: true,
+      showWarnings: true,
+    });
+
+  it("tallies rules dropped via severity `off` and `ignore.rules` as `config`", () => {
+    const pipeline = buildPipeline({
+      rules: { "react-doctor/no-derived-state-effect": "off" },
+      ignore: { rules: ["react-doctor/test-rule"] },
+    });
+    expect(pipeline.apply(baseDiagnostic())).toBeNull();
+    expect(pipeline.apply(baseDiagnostic({ filePath: "src/other.tsx" }))).toBeNull();
+    expect(pipeline.apply(buildDiagnostic({ line: 3 }))).toBeNull();
+    expect(pipeline.summarizeSuppressions()).toEqual([
+      { rule: "react-doctor/no-derived-state-effect", source: "config", count: 2 },
+      { rule: "react-doctor/test-rule", source: "config", count: 1 },
+    ]);
+  });
+
+  it("tallies per-path `ignore.overrides` drops as `override` and leaves survivors uncounted", () => {
+    const pipeline = buildPipeline({
+      ignore: {
+        overrides: [{ files: ["src/legacy/**"], rules: ["react-doctor/no-derived-state-effect"] }],
+      },
+    });
+    expect(pipeline.apply(baseDiagnostic({ filePath: "src/legacy/app.tsx" }))).toBeNull();
+    expect(pipeline.apply(baseDiagnostic())).not.toBeNull();
+    expect(pipeline.summarizeSuppressions()).toEqual([
+      { rule: "react-doctor/no-derived-state-effect", source: "override", count: 1 },
+    ]);
+  });
+
+  it("tallies inline disable comments as `inline`", () => {
+    const projectDir = setupCase(
+      "suppression-summary-inline",
+      `// react-doctor-disable-next-line react-doctor/no-derived-state-effect\nconst x = 1;\n`,
+    );
+    const pipeline = buildPipeline(null, projectDir, createNodeReadFileLinesSync(projectDir));
+    expect(pipeline.apply(baseDiagnostic())).toBeNull();
+    expect(pipeline.summarizeSuppressions()).toEqual([
+      { rule: "react-doctor/no-derived-state-effect", source: "inline", count: 1 },
+    ]);
+  });
+
+  it("does not count file-level `ignore.files` drops — they reject a path, not a rule", () => {
+    const pipeline = buildPipeline({ ignore: { files: ["src/skip.tsx"] } });
+    expect(pipeline.apply(baseDiagnostic({ filePath: "src/skip.tsx" }))).toBeNull();
+    expect(pipeline.summarizeSuppressions()).toEqual([]);
   });
 });

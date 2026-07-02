@@ -10,6 +10,7 @@ import type {
   InspectResult,
   ReactDoctorConfig,
   ScoreResult,
+  SuppressedRuleCount,
 } from "@react-doctor/core";
 import {
   CACHE_FILENAME_HASH_LENGTH_CHARS,
@@ -54,6 +55,12 @@ export interface CachedScanPayload {
    * `undefined` reads as the healthy `false`.
    */
   readonly securityScanFailed?: boolean;
+  /**
+   * `InspectOutput["suppressedRuleCounts"]` — deterministic for a given
+   * commit + config (part of the cache key), so a cache hit replays the same
+   * suppression telemetry the fresh scan emitted.
+   */
+  readonly suppressedRuleCounts: ReadonlyArray<SuppressedRuleCount>;
 }
 
 interface PersistedScanResultCacheEntry {

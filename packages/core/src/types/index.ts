@@ -25,6 +25,7 @@ export type {
   DiagnosticRelatedLocation,
   OxlintOutput,
   SourceFileEntry,
+  SuppressedRuleCount,
 } from "./diagnostic.js";
 export type { HandleErrorOptions } from "./handle-error.js";
 export type {

@@ -168,6 +168,19 @@ const isReactDoctorShortIdOf = (bareRuleKey: string, qualifiedRuleKey: string): 
   !bareRuleKey.includes("/") &&
   qualifiedRuleKey === `${REACT_DOCTOR_RULE_KEY_PREFIX}${bareRuleKey}`;
 
+/**
+ * Canonicalizes a rule key as users write it in config: a legacy alias
+ * (`react/jsx-key`) maps to its native key, and a bare short id (`no-eval`)
+ * qualifies as `react-doctor/<id>` — mirroring `isSameRuleKey`'s matching —
+ * so telemetry groups every spelling of one rule under one key.
+ */
+export const canonicalizeUserRuleKey = (ruleKey: string): string => {
+  const nativeRuleKey = canonicalizeRuleKey(ruleKey);
+  return nativeRuleKey.includes("/")
+    ? nativeRuleKey
+    : `${REACT_DOCTOR_RULE_KEY_PREFIX}${nativeRuleKey}`;
+};
+
 export const isSameRuleKey = (candidateRuleKey: string, targetRuleKey: string): boolean => {
   const canonicalCandidate = canonicalizeRuleKey(candidateRuleKey);
   const canonicalTarget = canonicalizeRuleKey(targetRuleKey);

@@ -710,6 +710,7 @@ const runInspectWithRuntime = async (
       : output.lintFailureReasonKind,
     supplyChainOverlapTimedOut: output.supplyChainOverlapTimedOut,
     securityScanFailed: output.securityScanFailed,
+    suppressedRuleCounts: output.suppressedRuleCounts,
   };
   if (cacheKey !== null && scanResultCache !== null && shouldStoreScanPayload(payload)) {
     scanResultCache.store(cacheKey, payload);
@@ -845,6 +846,8 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     didLintFail: input.payload.didLintFail,
     lintFailureReasonKind: input.payload.lintFailureReasonKind,
     didDeadCodeFail: input.payload.didDeadCodeFail,
+    userConfig: input.userConfig,
+    suppressedRuleCounts: input.payload.suppressedRuleCounts,
   });
   recordRunEvent(input.rootSentrySpan, {
     ...buildRunEventConfig(
@@ -864,6 +867,7 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     supplyChainOverlapTimedOut: input.payload.supplyChainOverlapTimedOut,
     securityScanFailed: input.payload.securityScanFailed,
     deadCodeOverlapped: input.payload.deadCodeOverlapped,
+    suppressedRuleCounts: input.payload.suppressedRuleCounts,
   });
   return result;
 };

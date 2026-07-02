@@ -75,10 +75,10 @@ describe("listSourceFilesWithSize", () => {
 
     const filePaths = listSourceFiles(temporaryDirectory);
 
-    expect(filePaths).toContain(path.join(".dumi", "hooks", "use-local-storage.ts"));
-    expect(filePaths).toContain(path.join("src", "app.tsx"));
-    expect(filePaths).not.toContain(path.join(".next", "server", "page.js"));
-    expect(filePaths).not.toContain(path.join(".git", "hooks", "sample.js"));
+    expect(filePaths).toContain(".dumi/hooks/use-local-storage.ts");
+    expect(filePaths).toContain("src/app.tsx");
+    expect(filePaths).not.toContain(".next/server/page.js");
+    expect(filePaths).not.toContain(".git/hooks/sample.js");
   });
 
   it("filesystem walk returns a sorted, repeatable listing", () => {
@@ -128,9 +128,6 @@ describe("listSourceFilesWithSize", () => {
     // Same tree without `.git` falls back to the filesystem walk; both
     // discovery paths must enumerate the identical (sorted) set.
     fs.rmSync(path.join(temporaryDirectory, ".git"), { recursive: true, force: true });
-    const walkListing = listSourceFiles(temporaryDirectory).map((filePath) =>
-      filePath.split(path.sep).join("/"),
-    );
-    expect(walkListing).toEqual(gitListing);
+    expect(listSourceFiles(temporaryDirectory)).toEqual(gitListing);
   });
 });

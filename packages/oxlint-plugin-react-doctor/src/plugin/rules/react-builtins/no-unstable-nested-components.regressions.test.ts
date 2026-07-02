@@ -63,4 +63,91 @@ describe("react-builtins/no-unstable-nested-components — regressions", () => {
     `);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // PR #991 FN: a nested component consumed BY REFERENCE is still
+  // instantiated by its consumer — the canonical react-router
+  // `component={Inner}` remount bug.
+  it("flags a nested component passed by reference via a component prop", () => {
+    const result = run(`
+      const Parent = () => {
+        const Inner = () => <div>x</div>;
+        return <Route path="/x" component={Inner} />;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // PR #991 FN: a nested component passed to a non-allowlisted wrapper
+  // call whose result is rendered remounts every render too.
+  it("flags a nested component passed to a wrapper call whose result is rendered", () => {
+    const result = run(`
+      const Parent = () => {
+        const Inner = () => <div>x</div>;
+        const Enhanced = withAnalytics(Inner);
+        return <Enhanced />;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // PR #991 FN: `<Thing.Panel/>` is a JSXMemberExpression — the
+  // member-assigned candidate infers the PROPERTY name (`Panel`), so
+  // the recorder must feed the name-matching fallback.
+  it("flags a member-assigned nested component rendered as a JSX member expression", () => {
+    const result = run(`
+      const Parent = () => {
+        const Thing = () => null;
+        Thing.Panel = () => <div>x</div>;
+        return <Thing.Panel />;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a member-assigned nested component instantiated via createElement", () => {
+    const result = run(`
+      const Parent = () => {
+        const Thing = () => null;
+        Thing.Panel = () => React.createElement("div", null);
+        return React.createElement(Thing.Panel, null);
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // A member-expression WRITE (`Helper.displayName = …`) is not escape
+  // evidence — the inline-called helper must stay silent.
+  it("does not flag an inline-called helper that only receives a displayName assignment", () => {
+    const result = run(`
+      const Parent = () => {
+        const Helper = () => <div>x</div>;
+        Helper.displayName = "Helper";
+        return <div>{Helper()}</div>;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // allowAsProps (default true) exempts components declared inside a
+  // JSX prop at ENQUEUE time; recording `<sections.General/>` as
+  // instantiation evidence must not resurrect them.
+  it("does not flag a prop-declared component object rendered via a JSX member expression", () => {
+    const result = run(`
+      const Screen = () => {
+        return <Tabs sections={{ General: () => <div>tab</div> }} />;
+      };
+      const Body = ({ sections }) => <sections.General />;
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a prop-declared component object instantiated via createElement", () => {
+    const result = run(`
+      const Screen = () => {
+        return <Tabs sections={{ General: () => <div>tab</div> }} />;
+      };
+      const Body = ({ sections }) => React.createElement(sections.General, null);
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

@@ -305,6 +305,73 @@ const isReturnOfMapCallback = (node: EsTreeNode): boolean => {
   return false;
 };
 
+// An identifier READ that lets a component escape its declaration site
+// — a call argument (`withAnalytics(Inner)`), a JSX expression value
+// (`component={Inner}`), an object property value, an array element, a
+// return value, or an assignment value. A DIRECT call (`Inner()`)
+// inlines into the parent's render — no child fiber — so the callee
+// position is NOT escape evidence. Binding positions, member accesses
+// (`Inner.displayName = …`), import/export specifiers, and TS type
+// positions are not value reads at all.
+const isEscapingReadReference = (identifier: EsTreeNode): boolean => {
+  const parent = identifier.parent;
+  if (!parent) return false;
+  if (parent.type.startsWith("TS")) return false;
+  if (parent.type.startsWith("Import") || parent.type.startsWith("Export")) return false;
+  switch (parent.type) {
+    case "CallExpression":
+    case "NewExpression":
+      return parent.callee !== identifier;
+    case "VariableDeclarator":
+      return parent.init === identifier;
+    case "AssignmentExpression":
+    case "AssignmentPattern":
+      return parent.right === identifier;
+    case "Property":
+      return parent.value === identifier && parent.parent?.type === "ObjectExpression";
+    case "PropertyDefinition":
+      return parent.value === identifier;
+    case "ArrowFunctionExpression":
+      return parent.body === identifier;
+    case "MemberExpression":
+    case "MethodDefinition":
+    case "CatchClause":
+    case "FunctionDeclaration":
+    case "FunctionExpression":
+    case "ClassDeclaration":
+    case "ClassExpression":
+    case "ArrayPattern":
+    case "ObjectPattern":
+    case "RestElement":
+      return false;
+    default:
+      return true;
+  }
+};
+
+// Flattens `<Thing.Panel/>` / `createElement(sections.General)` into
+// its dotted segments (["Thing", "Panel"]). Returns null for computed
+// / private / non-identifier segments.
+const collectMemberChainSegments = (memberExpression: EsTreeNode): string[] | null => {
+  const segments: string[] = [];
+  let current: EsTreeNode = memberExpression;
+  while (
+    isNodeOfType(current, "JSXMemberExpression") ||
+    isNodeOfType(current, "MemberExpression")
+  ) {
+    if (isNodeOfType(current, "MemberExpression") && current.computed) return null;
+    const property = current.property;
+    if (!isNodeOfType(property, "Identifier") && !isNodeOfType(property, "JSXIdentifier")) {
+      return null;
+    }
+    segments.unshift(property.name);
+    current = current.object;
+  }
+  if (!isNodeOfType(current, "Identifier") && !isNodeOfType(current, "JSXIdentifier")) return null;
+  segments.unshift(current.name);
+  return segments;
+};
+
 // Port of `oxc_linter::rules::react::no_unstable_nested_components`.
 export const noUnstableNestedComponents = defineRule({
   id: "no-unstable-nested-components",
@@ -338,6 +405,18 @@ export const noUnstableNestedComponents = defineRule({
       instantiatedComponentNames.add(name);
       const symbol = context.scopes.symbolFor(identifier);
       if (symbol) instantiatedBindingIdentifiers.add(symbol.bindingIdentifier);
+    };
+
+    // `<Thing.Panel/>` instantiates the member-assigned candidate
+    // `Thing.Panel = () => …`, whose inferred name is the PROPERTY
+    // (`Panel`) and which has no binding — so record the property name
+    // (and the full dotted chain) for the name-matching fallback.
+    const recordMemberChainInstantiation = (memberExpression: EsTreeNode): void => {
+      const segments = collectMemberChainSegments(memberExpression);
+      if (!segments || segments.length < 2) return;
+      const propertyName = segments.at(-1);
+      if (propertyName !== undefined) instantiatedComponentNames.add(propertyName);
+      instantiatedComponentNames.add(segments.join("."));
     };
 
     // The identifier that BINDS the candidate function's name (`function
@@ -423,7 +502,16 @@ export const noUnstableNestedComponents = defineRule({
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (isNodeOfType(node.name, "JSXIdentifier") && isUppercaseName(node.name.name)) {
           recordInstantiation(node.name as EsTreeNode, node.name.name);
+          return;
         }
+        if (isNodeOfType(node.name, "JSXMemberExpression")) {
+          recordMemberChainInstantiation(node.name as EsTreeNode);
+        }
+      },
+      Identifier(node: EsTreeNodeOfType<"Identifier">) {
+        if (!isUppercaseName(node.name)) return;
+        if (!isEscapingReadReference(node as EsTreeNode)) return;
+        recordInstantiation(node as EsTreeNode, node.name);
       },
       FunctionDeclaration: checkFunctionLike,
       FunctionExpression: checkFunctionLike,
@@ -450,6 +538,8 @@ export const noUnstableNestedComponents = defineRule({
           const firstArgument = node.arguments[0] as EsTreeNode | undefined;
           if (firstArgument && isNodeOfType(firstArgument, "Identifier")) {
             recordInstantiation(firstArgument, firstArgument.name);
+          } else if (firstArgument && isNodeOfType(firstArgument, "MemberExpression")) {
+            recordMemberChainInstantiation(firstArgument);
           }
         }
         if (!isHocCallee(node)) return;

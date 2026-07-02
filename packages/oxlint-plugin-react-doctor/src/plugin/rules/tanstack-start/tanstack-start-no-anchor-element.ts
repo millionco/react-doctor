@@ -1,6 +1,5 @@
-import { TANSTACK_ROUTE_FILE_PATTERN } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { normalizeFilename } from "../../utils/normalize-filename.js";
+import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -32,9 +31,7 @@ export const tanstackStartNoAnchorElement = defineRule({
     "Use `Link` from `@tanstack/react-router` so internal navigation keeps client state, preloading, and typed routes.",
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      const filename = normalizeFilename(context.filename ?? "");
-      const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
-      if (!isRouteFile) return;
+      if (!isInProjectDirectory(context, "routes")) return;
 
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "a") return;
 

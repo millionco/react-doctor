@@ -2,7 +2,7 @@ import { ROUTE_HANDLER_HTTP_METHODS } from "../../constants/nextjs.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { collectReferenceIdentifierNames } from "../../utils/collect-reference-identifier-names.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { normalizeFilename } from "../../utils/normalize-filename.js";
+import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -90,8 +90,6 @@ const collectRequestTaintedNames = (
   return taintedNames;
 };
 
-const PAGES_ROUTER_API_PATH_PATTERN = /\/pages\/api\//;
-
 const inspectHandlerBody = (
   context: RuleContext,
   handlerBody: EsTreeNode,
@@ -171,8 +169,7 @@ export const serverHoistStaticIo = defineRule({
       );
     },
     ExportDefaultDeclaration(node: EsTreeNodeOfType<"ExportDefaultDeclaration">) {
-      const filename = normalizeFilename(context.filename ?? "");
-      if (!PAGES_ROUTER_API_PATH_PATTERN.test(filename)) return;
+      if (!isInProjectDirectory(context, "pages/api")) return;
       const declaration = node.declaration;
       if (!isFunctionLike(declaration)) return;
       if (!declaration.async) return;

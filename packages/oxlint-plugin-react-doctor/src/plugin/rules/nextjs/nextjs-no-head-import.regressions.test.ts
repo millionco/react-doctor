@@ -36,4 +36,22 @@ describe("nextjs/nextjs-no-head-import — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("stays silent for a pages-router repo whose project root is /app", () => {
+    const result = runRule(nextjsNoHeadImport, HEAD_IMPORT_SOURCE, {
+      filename: "/app/pages/index.tsx",
+      settings: { "react-doctor": { rootDirectory: "/app" } },
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a top-level app/ file when the project root is /app", () => {
+    const result = runRule(nextjsNoHeadImport, HEAD_IMPORT_SOURCE, {
+      filename: "/app/app/page.tsx",
+      settings: { "react-doctor": { rootDirectory: "/app" } },
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

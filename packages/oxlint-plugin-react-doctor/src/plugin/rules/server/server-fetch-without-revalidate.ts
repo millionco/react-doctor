@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -72,7 +73,7 @@ export const serverFetchWithoutRevalidate = defineRule({
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         const filename = normalizeFilename(context.filename ?? "");
-        if (!APP_ROUTER_FILE_PATTERN.test(filename)) {
+        if (!isInProjectDirectory(context, "app") || !APP_ROUTER_FILE_PATTERN.test(filename)) {
           isServerSideFile = false;
           return;
         }

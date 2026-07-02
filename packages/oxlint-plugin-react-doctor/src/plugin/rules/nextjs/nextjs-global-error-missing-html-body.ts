@@ -1,6 +1,7 @@
-import { APP_DIRECTORY_PATTERN, GLOBAL_ERROR_FILE_PATTERN } from "../../constants/nextjs.js";
+import { GLOBAL_ERROR_FILE_PATTERN } from "../../constants/nextjs.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { fileContainsJsxElements } from "../../utils/file-contains-jsx-elements.js";
+import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -18,7 +19,7 @@ export const nextjsGlobalErrorMissingHtmlBody = defineRule({
   create: (context: RuleContext) => ({
     Program(programNode: EsTreeNodeOfType<"Program">) {
       const filename = normalizeFilename(context.filename ?? "");
-      if (!APP_DIRECTORY_PATTERN.test(filename)) return;
+      if (!isInProjectDirectory(context, "app")) return;
       if (!GLOBAL_ERROR_FILE_PATTERN.test(filename)) return;
 
       const foundTags = fileContainsJsxElements(programNode, REQUIRED_HTML_TAGS);

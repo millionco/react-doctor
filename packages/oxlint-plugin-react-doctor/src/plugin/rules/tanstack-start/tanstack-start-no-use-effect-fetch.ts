@@ -1,10 +1,9 @@
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
-import { TANSTACK_ROUTE_FILE_PATTERN } from "../../constants/tanstack.js";
 import { collectEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -21,9 +20,7 @@ export const tanstackStartNoUseEffectFetch = defineRule({
     "Fetch data in the route `loader` instead. The router loads it before rendering and avoids waterfalls.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const filename = normalizeFilename(context.filename ?? "");
-      const isRouteFile = TANSTACK_ROUTE_FILE_PATTERN.test(filename);
-      if (!isRouteFile) return;
+      if (!isInProjectDirectory(context, "routes")) return;
 
       if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
 

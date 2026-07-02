@@ -1,4 +1,4 @@
-import { PAGES_DIRECTORY_PATTERN, PAGE_OR_LAYOUT_FILE_PATTERN } from "../../constants/nextjs.js";
+import { PAGE_OR_LAYOUT_FILE_PATTERN } from "../../constants/nextjs.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { containsFetchCall } from "../../utils/contains-fetch-call.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -6,6 +6,7 @@ import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -32,7 +33,7 @@ export const nextjsNoClientFetchForServerData = defineRule({
 
         const filename = normalizeFilename(context.filename ?? "");
         const isPageOrLayoutFile =
-          PAGE_OR_LAYOUT_FILE_PATTERN.test(filename) || PAGES_DIRECTORY_PATTERN.test(filename);
+          PAGE_OR_LAYOUT_FILE_PATTERN.test(filename) || isInProjectDirectory(context, "pages");
 
         if (isPageOrLayoutFile) {
           context.report({

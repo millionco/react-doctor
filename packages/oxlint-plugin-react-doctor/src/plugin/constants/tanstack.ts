@@ -1,4 +1,3 @@
-export const TANSTACK_ROUTE_FILE_PATTERN = /\/routes\//;
 export const TANSTACK_ROOT_ROUTE_FILE_PATTERN = /__root\.(tsx?|jsx?)$/;
 
 export const TANSTACK_ROUTE_PROPERTY_ORDER = [

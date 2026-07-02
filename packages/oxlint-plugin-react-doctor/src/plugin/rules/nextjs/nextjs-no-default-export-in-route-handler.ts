@@ -1,9 +1,6 @@
-import {
-  APP_DIRECTORY_PATTERN,
-  ROUTE_HANDLER_FILE_PATTERN,
-  ROUTE_HANDLER_HTTP_METHODS,
-} from "../../constants/nextjs.js";
+import { ROUTE_HANDLER_FILE_PATTERN, ROUTE_HANDLER_HTTP_METHODS } from "../../constants/nextjs.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -59,7 +56,7 @@ export const nextjsNoDefaultExportInRouteHandler = defineRule({
       Program(node: EsTreeNodeOfType<"Program">) {
         const filename = normalizeFilename(context.filename ?? "");
         isAppRouteHandler =
-          APP_DIRECTORY_PATTERN.test(filename) && ROUTE_HANDLER_FILE_PATTERN.test(filename);
+          isInProjectDirectory(context, "app") && ROUTE_HANDLER_FILE_PATTERN.test(filename);
         programNode = node;
       },
       ExportDefaultDeclaration(node: EsTreeNodeOfType<"ExportDefaultDeclaration">) {

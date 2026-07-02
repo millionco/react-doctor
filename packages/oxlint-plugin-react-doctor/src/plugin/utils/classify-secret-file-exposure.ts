@@ -13,6 +13,7 @@ import {
   SECRET_TOOLING_FILE_PATTERN,
   SECRET_TOOLING_RC_FILE_PATTERN,
 } from "../constants/security.js";
+import { getProjectRelativeFilename } from "./get-project-relative-filename.js";
 
 export interface SecretFileExposureOptions {
   framework?: string;
@@ -27,22 +28,6 @@ const CLIENT_APP_DIRECTORY_FRAMEWORKS = new Set(["cra", "expo", "gatsby", "vite"
 
 const isInsideDirectory = (pathSegments: string[], directoryNames: ReadonlySet<string>): boolean =>
   pathSegments.some((pathSegment) => directoryNames.has(pathSegment));
-
-const normalizeFilename = (filename: string): string => filename.replaceAll("\\", "/");
-
-const normalizeDirectory = (directory: string): string =>
-  normalizeFilename(directory).replace(/\/+$/, "");
-
-const getProjectRelativeFilename = (filename: string, rootDirectory?: string): string => {
-  const normalizedFilename = normalizeFilename(filename);
-  if (!rootDirectory) return normalizedFilename;
-
-  const normalizedRootDirectory = normalizeDirectory(rootDirectory);
-  const rootDirectoryPrefix = `${normalizedRootDirectory}/`;
-  if (!normalizedFilename.startsWith(rootDirectoryPrefix)) return normalizedFilename;
-
-  return normalizedFilename.slice(rootDirectoryPrefix.length);
-};
 
 const getClassifiablePathSegments = (pathSegments: string[]): string[] => {
   const srcIndex = pathSegments.lastIndexOf("src");

@@ -32,6 +32,7 @@ import { autocompleteValid } from "./rules/a11y/autocomplete-valid.js";
 import { buildPipelineSecretBoundary } from "./rules/security-scan/build-pipeline-secret-boundary.js";
 import { buttonHasType } from "./rules/react-builtins/button-has-type.js";
 import { checkedRequiresOnchangeOrReadonly } from "./rules/react-builtins/checked-requires-onchange-or-readonly.js";
+import { classComponentMissingComponentWillUnmountTeardown } from "./rules/state-and-effects/class-component-missing-component-will-unmount-teardown.js";
 import { clickEventsHaveKeyEvents } from "./rules/a11y/click-events-have-key-events.js";
 import { clickjackingRedirectRisk } from "./rules/security-scan/clickjacking-redirect-risk.js";
 import { clientLocalstorageNoVersion } from "./rules/client/client-localstorage-no-version.js";
@@ -41,6 +42,7 @@ import { contextProviderValueFromUnmemoizedLocalLiteral } from "./rules/performa
 import { controlHasAssociatedLabel } from "./rules/a11y/control-has-associated-label.js";
 import { corsCookieTrustRisk } from "./rules/security-scan/cors-cookie-trust-risk.js";
 import { dangerousHtmlSink } from "./rules/security-scan/dangerous-html-sink.js";
+import { debounceNoCleanup } from "./rules/state-and-effects/debounce-no-cleanup.js";
 import { noEmDashInJsxText } from "./rules/react-ui/no-em-dash-in-jsx-text.js";
 import { noRedundantPaddingAxes } from "./rules/react-ui/no-redundant-padding-axes.js";
 import { noRedundantSizeAxes } from "./rules/react-ui/no-redundant-size-axes.js";
@@ -49,7 +51,11 @@ import { noThreePeriodEllipsis } from "./rules/react-ui/no-three-period-ellipsis
 import { noVagueButtonLabel } from "./rules/react-ui/no-vague-button-label.js";
 import { dialogHasAccessibleName } from "./rules/a11y/dialog-has-accessible-name.js";
 import { displayName } from "./rules/react-builtins/display-name.js";
+import { effectListenerCleanupReferenceMismatch } from "./rules/state-and-effects/effect-listener-cleanup-reference-mismatch.js";
 import { effectNeedsCleanup } from "./rules/state-and-effects/effect-needs-cleanup.js";
+import { effectObserverNeedsDisconnect } from "./rules/state-and-effects/effect-observer-needs-disconnect.js";
+import { effectRafLoopNeedsCancel } from "./rules/state-and-effects/effect-raf-loop-needs-cancel.js";
+import { effectRemoveListenerInlineHandler } from "./rules/state-and-effects/effect-remove-listener-inline-handler.js";
 import { exhaustiveDeps } from "./rules/react-builtins/exhaustive-deps.js";
 import { expoNoNonInlinedEnv } from "./rules/react-native/expo-no-non-inlined-env.js";
 import { firebaseClientOwnedAuthzField } from "./rules/security-scan/firebase-client-owned-authz-field.js";
@@ -120,6 +126,7 @@ import { localRpcNativeBridgeRisk } from "./rules/security-scan/local-rpc-native
 import { mcpToolCapabilityRisk } from "./rules/security-scan/mcp-tool-capability-risk.js";
 import { mdxSsrExecutionRisk } from "./rules/security-scan/mdx-ssr-execution-risk.js";
 import { mediaHasCaption } from "./rules/a11y/media-has-caption.js";
+import { mobxReactionDisposerDiscarded } from "./rules/state-and-effects/mobx-reaction-disposer-discarded.js";
 import { mouseEventsHaveKeyEvents } from "./rules/a11y/mouse-events-have-key-events.js";
 import { nextjsAsyncClientComponent } from "./rules/nextjs/nextjs-async-client-component.js";
 import { nextjsErrorBoundaryMissingUseClient } from "./rules/nextjs/nextjs-error-boundary-missing-use-client.js";
@@ -150,8 +157,10 @@ import { noAriaHiddenOnFocusable } from "./rules/a11y/no-aria-hidden-on-focusabl
 import { noArrayIndexAsKey } from "./rules/correctness/no-array-index-as-key.js";
 import { noArrayIndexKey } from "./rules/react-builtins/no-array-index-key.js";
 import { noAsyncEffectCallback } from "./rules/state-and-effects/no-async-effect-callback.js";
+import { noAsyncEventHandlerWithoutReentryGuard } from "./rules/state-and-effects/no-async-event-handler-without-reentry-guard.js";
 import { noAutofocus } from "./rules/a11y/no-autofocus.js";
 import { noBarrelImport } from "./rules/bundle-size/no-barrel-import.js";
+import { noBooleanToggleWithoutFunctionalUpdate } from "./rules/state-and-effects/no-boolean-toggle-without-functional-update.js";
 import { noCallComponentAsFunction } from "./rules/react-builtins/no-call-component-as-function.js";
 import { noCascadingSetState } from "./rules/state-and-effects/no-cascading-set-state.js";
 import { noChainStateUpdates } from "./rules/state-and-effects/no-chain-state-updates.js";
@@ -182,6 +191,7 @@ import { noEffectChain } from "./rules/state-and-effects/no-effect-chain.js";
 import { noEffectEventHandler } from "./rules/state-and-effects/no-effect-event-handler.js";
 import { noEffectEventInDeps } from "./rules/state-and-effects/no-effect-event-in-deps.js";
 import { noEffectWithFreshDeps } from "./rules/state-and-effects/no-effect-with-fresh-deps.js";
+import { noEffectWrapperDiscardsCallbackCleanupReturn } from "./rules/state-and-effects/no-effect-wrapper-discards-callback-cleanup-return.js";
 import { noEval } from "./rules/security/no-eval.js";
 import { noEventHandler } from "./rules/state-and-effects/no-event-handler.js";
 import { noEventTriggerState } from "./rules/state-and-effects/no-event-trigger-state.js";
@@ -210,12 +220,14 @@ import { noLayoutPropertyAnimation } from "./rules/performance/no-layout-propert
 import { noLayoutTransitionInline } from "./rules/design/no-layout-transition-inline.js";
 import { noLegacyClassLifecycles } from "./rules/architecture/no-legacy-class-lifecycles.js";
 import { noLegacyContextApi } from "./rules/architecture/no-legacy-context-api.js";
+import { noLoadingFlagResetOutsideFinally } from "./rules/state-and-effects/no-loading-flag-reset-outside-finally.js";
 import { noLongTransitionDuration } from "./rules/design/no-long-transition-duration.js";
 import { noManyBooleanProps } from "./rules/architecture/no-many-boolean-props.js";
 import { noMirrorPropEffect } from "./rules/state-and-effects/no-mirror-prop-effect.js";
 import { noMoment } from "./rules/bundle-size/no-moment.js";
 import { noMultiComp } from "./rules/react-builtins/no-multi-comp.js";
 import { noMutableInDeps } from "./rules/state-and-effects/no-mutable-in-deps.js";
+import { noMutateThenSetOrReturnSameReference } from "./rules/state-and-effects/no-mutate-then-set-or-return-same-reference.js";
 import { noMutatingReducerState } from "./rules/state-and-effects/no-mutating-reducer-state.js";
 import { noNamespace } from "./rules/react-builtins/no-namespace.js";
 import { noNestedComponentDefinition } from "./rules/architecture/no-nested-component-definition.js";
@@ -228,6 +240,7 @@ import { noPassLiveStateToParent } from "./rules/state-and-effects/no-pass-live-
 import { noPermanentWillChange } from "./rules/performance/no-permanent-will-change.js";
 import { noPolymorphicChildren } from "./rules/correctness/no-polymorphic-children.js";
 import { noPreventDefault } from "./rules/correctness/no-prevent-default.js";
+import { noPromiseThenSideEffectInEffectWithoutCatch } from "./rules/state-and-effects/no-promise-then-side-effect-in-effect-without-catch.js";
 import { noPropCallbackInEffect } from "./rules/state-and-effects/no-prop-callback-in-effect.js";
 import { noPropTypes } from "./rules/architecture/no-prop-types.js";
 import { noPureBlackBackground } from "./rules/design/no-pure-black-background.js";
@@ -246,9 +259,12 @@ import { noScaleFromZero } from "./rules/performance/no-scale-from-zero.js";
 import { noSecretsInClientCode } from "./rules/security/no-secrets-in-client-code.js";
 import { noSelfUpdatingEffect } from "./rules/state-and-effects/no-self-updating-effect.js";
 import { noSetState } from "./rules/react-builtins/no-set-state.js";
+import { noSetStateAfterAwaitInEffect } from "./rules/state-and-effects/no-set-state-after-await-in-effect.js";
 import { noSetStateInRender } from "./rules/state-and-effects/no-set-state-in-render.js";
+import { noSideEffectInStateUpdaterFunction } from "./rules/state-and-effects/no-side-effect-in-state-updater-function.js";
 import { noSideTabBorder } from "./rules/design/no-side-tab-border.js";
 import { noSpreadAccumulatorInReduce } from "./rules/js-performance/no-spread-accumulator-in-reduce.js";
+import { noSpreadPropsOverDefaultsClobbersWithUndefined } from "./rules/state-and-effects/no-spread-props-over-defaults-clobbers-with-undefined.js";
 import { noStaticElementInteractions } from "./rules/a11y/no-static-element-interactions.js";
 import { noStringFalseOnBooleanAttribute } from "./rules/react-builtins/no-string-false-on-boolean-attribute.js";
 import { noStringRefs } from "./rules/react-builtins/no-string-refs.js";
@@ -263,6 +279,7 @@ import { noUnknownProperty } from "./rules/react-builtins/no-unknown-property.js
 import { noUnsafe } from "./rules/react-builtins/no-unsafe.js";
 import { noUnstableNestedComponents } from "./rules/react-builtins/no-unstable-nested-components.js";
 import { noUsememoSimpleExpression } from "./rules/performance/no-usememo-simple-expression.js";
+import { noWholeObjectDepWithMemberReads } from "./rules/state-and-effects/no-whole-object-dep-with-member-reads.js";
 import { noWideLetterSpacing } from "./rules/design/no-wide-letter-spacing.js";
 import { noWillUpdateSetState } from "./rules/react-builtins/no-will-update-set-state.js";
 import { noZIndex9999 } from "./rules/design/no-z-index9999.js";
@@ -695,6 +712,23 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/class-component-missing-component-will-unmount-teardown",
+    id: "class-component-missing-component-will-unmount-teardown",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...classComponentMissingComponentWillUnmountTeardown,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set([
+          "react",
+          ...(classComponentMissingComponentWillUnmountTeardown.requires ?? []),
+        ]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/click-events-have-key-events",
     id: "click-events-have-key-events",
     source: "react-doctor",
@@ -805,6 +839,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/debounce-no-cleanup",
+    id: "debounce-no-cleanup",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...debounceNoCleanup,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(debounceNoCleanup.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/design-no-em-dash-in-jsx-text",
     id: "design-no-em-dash-in-jsx-text",
     source: "react-doctor",
@@ -901,6 +947,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/effect-listener-cleanup-reference-mismatch",
+    id: "effect-listener-cleanup-reference-mismatch",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...effectListenerCleanupReferenceMismatch,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(effectListenerCleanupReferenceMismatch.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/effect-needs-cleanup",
     id: "effect-needs-cleanup",
     source: "react-doctor",
@@ -910,6 +968,42 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set(["react", ...(effectNeedsCleanup.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/effect-observer-needs-disconnect",
+    id: "effect-observer-needs-disconnect",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...effectObserverNeedsDisconnect,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(effectObserverNeedsDisconnect.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/effect-raf-loop-needs-cancel",
+    id: "effect-raf-loop-needs-cancel",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...effectRafLoopNeedsCancel,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(effectRafLoopNeedsCancel.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/effect-remove-listener-inline-handler",
+    id: "effect-remove-listener-inline-handler",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...effectRemoveListenerInlineHandler,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(effectRemoveListenerInlineHandler.requires ?? [])])],
     },
   },
   {
@@ -1736,6 +1830,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/mobx-reaction-disposer-discarded",
+    id: "mobx-reaction-disposer-discarded",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...mobxReactionDisposerDiscarded,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(mobxReactionDisposerDiscarded.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/mouse-events-have-key-events",
     id: "mouse-events-have-key-events",
     source: "react-doctor",
@@ -2072,6 +2178,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-async-event-handler-without-reentry-guard",
+    id: "no-async-event-handler-without-reentry-guard",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noAsyncEventHandlerWithoutReentryGuard,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(noAsyncEventHandlerWithoutReentryGuard.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-autofocus",
     id: "no-autofocus",
     source: "react-doctor",
@@ -2092,6 +2210,18 @@ export const reactDoctorRules = [
       ...noBarrelImport,
       framework: "global",
       category: "Performance",
+    },
+  },
+  {
+    key: "react-doctor/no-boolean-toggle-without-functional-update",
+    id: "no-boolean-toggle-without-functional-update",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noBooleanToggleWithoutFunctionalUpdate,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(noBooleanToggleWithoutFunctionalUpdate.requires ?? [])])],
     },
   },
   {
@@ -2449,6 +2579,20 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-effect-wrapper-discards-callback-cleanup-return",
+    id: "no-effect-wrapper-discards-callback-cleanup-return",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noEffectWrapperDiscardsCallbackCleanupReturn,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set(["react", ...(noEffectWrapperDiscardsCallbackCleanupReturn.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/no-eval",
     id: "no-eval",
     source: "react-doctor",
@@ -2772,6 +2916,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-loading-flag-reset-outside-finally",
+    id: "no-loading-flag-reset-outside-finally",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noLoadingFlagResetOutsideFinally,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(noLoadingFlagResetOutsideFinally.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-long-transition-duration",
     id: "no-long-transition-duration",
     source: "react-doctor",
@@ -2838,6 +2994,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set(["react", ...(noMutableInDeps.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-mutate-then-set-or-return-same-reference",
+    id: "no-mutate-then-set-or-return-same-reference",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noMutateThenSetOrReturnSameReference,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(noMutateThenSetOrReturnSameReference.requires ?? [])])],
     },
   },
   {
@@ -2980,6 +3148,20 @@ export const reactDoctorRules = [
       ...noPreventDefault,
       framework: "global",
       category: "Bugs",
+    },
+  },
+  {
+    key: "react-doctor/no-promise-then-side-effect-in-effect-without-catch",
+    id: "no-promise-then-side-effect-in-effect-without-catch",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noPromiseThenSideEffectInEffectWithoutCatch,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set(["react", ...(noPromiseThenSideEffectInEffectWithoutCatch.requires ?? [])]),
+      ],
     },
   },
   {
@@ -3191,6 +3373,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-set-state-after-await-in-effect",
+    id: "no-set-state-after-await-in-effect",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noSetStateAfterAwaitInEffect,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(noSetStateAfterAwaitInEffect.requires ?? [])])],
+    },
+  },
+  {
     key: "react-doctor/no-set-state-in-render",
     id: "no-set-state-in-render",
     source: "react-doctor",
@@ -3200,6 +3394,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set(["react", ...(noSetStateInRender.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-side-effect-in-state-updater-function",
+    id: "no-side-effect-in-state-updater-function",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noSideEffectInStateUpdaterFunction,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(noSideEffectInStateUpdaterFunction.requires ?? [])])],
     },
   },
   {
@@ -3222,6 +3428,20 @@ export const reactDoctorRules = [
       ...noSpreadAccumulatorInReduce,
       framework: "global",
       category: "Performance",
+    },
+  },
+  {
+    key: "react-doctor/no-spread-props-over-defaults-clobbers-with-undefined",
+    id: "no-spread-props-over-defaults-clobbers-with-undefined",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noSpreadPropsOverDefaultsClobbersWithUndefined,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set(["react", ...(noSpreadPropsOverDefaultsClobbersWithUndefined.requires ?? [])]),
+      ],
     },
   },
   {
@@ -3386,6 +3606,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Performance",
       requires: [...new Set(["react", ...(noUsememoSimpleExpression.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-whole-object-dep-with-member-reads",
+    id: "no-whole-object-dep-with-member-reads",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noWholeObjectDepWithMemberReads,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(noWholeObjectDepWithMemberReads.requires ?? [])])],
     },
   },
   {

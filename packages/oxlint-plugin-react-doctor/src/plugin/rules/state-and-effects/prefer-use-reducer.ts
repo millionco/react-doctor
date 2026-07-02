@@ -1,7 +1,6 @@
 import { RELATED_USE_STATE_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
-import { isHookCall } from "../../utils/is-hook-call.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -10,22 +9,7 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-
-const collectUseStateSetterNames = (body: EsTreeNodeOfType<"BlockStatement">): Set<string> => {
-  const setterNames = new Set<string>();
-  for (const statement of body.body ?? []) {
-    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
-    for (const declarator of statement.declarations ?? []) {
-      if (!declarator.init || !isHookCall(declarator.init, "useState")) continue;
-      if (!isNodeOfType(declarator.id, "ArrayPattern")) continue;
-      const setterElement = declarator.id.elements?.[1];
-      if (setterElement && isNodeOfType(setterElement, "Identifier")) {
-        setterNames.add(setterElement.name);
-      }
-    }
-  }
-  return setterNames;
-};
+import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
 
 const getSetterNameFromStatement = (
   statement: EsTreeNode,
@@ -91,7 +75,9 @@ export const preferUseReducer = defineRule({
   create: (context: RuleContext) => {
     const reportCoUpdatedUseState = (body: EsTreeNode, componentName: string): void => {
       if (!isNodeOfType(body, "BlockStatement")) return;
-      const setterNames = collectUseStateSetterNames(body);
+      const setterNames = new Set(
+        collectUseStateBindings(body).map((binding) => binding.setterName),
+      );
       if (setterNames.size < RELATED_USE_STATE_THRESHOLD) return;
       const coUpdatedCount = findLargestCoUpdatedSetterGroup(body, setterNames);
       if (coUpdatedCount >= RELATED_USE_STATE_THRESHOLD) {

@@ -27,11 +27,35 @@ describe("rerender-lazy-state-init — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on useState(React.useContext(...)) — member-form hook callee", () => {
+    const result = runRule(
+      rerenderLazyStateInit,
+      `function C() {
+        const [theme] = useState(React.useContext(ThemeContext));
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags an expensive non-hook initializer call", () => {
     const result = runRule(
       rerenderLazyStateInit,
       `function C() {
         const [v, setV] = useState(makeBigArray());
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags an expensive member-form non-hook initializer call", () => {
+    const result = runRule(
+      rerenderLazyStateInit,
+      `function C() {
+        const [v, setV] = useState(utils.makeBigArray());
         return null;
       }`,
     );

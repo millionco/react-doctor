@@ -19,7 +19,26 @@ describe("rerender-state-only-in-handlers", () => {
     expect(result.diagnostics[0].message).toContain("logged");
   });
 
-  it("does not flag state read in a hook dependency array", () => {
+  it("does not flag state used only as an effect re-run trigger (in deps, never read by the effect)", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `
+      function DraftEditor() {
+        const [saveRequestId, setSaveRequestId] = useState(0);
+        const onChange = () => setSaveRequestId((requestId) => requestId + 1);
+        useEffect(() => {
+          const id = setTimeout(() => saveDraft(), 1000);
+          return () => clearTimeout(id);
+        }, [saveRequestId]);
+        return <textarea onChange={onChange} />;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags state echoed in an effect dep array when the effect also reads it", () => {
     const result = runRule(
       rerenderStateOnlyInHandlers,
       `
@@ -36,6 +55,7 @@ describe("rerender-state-only-in-handlers", () => {
     `,
     );
 
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("dirty");
   });
 });

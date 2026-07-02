@@ -14,16 +14,17 @@ import { collectRenderReachableNames } from "./utils/collect-render-reachable-na
 import { expandTransitiveDependencies } from "./utils/expand-transitive-dependencies.js";
 import { collectFunctionLikeLocalNames } from "./utils/collect-function-like-local-names.js";
 import { isSetterCalledDuringRender } from "./utils/is-setter-called-during-render.js";
+import {
+  collectScopedReferenceNames,
+  createComponentBindingScope,
+} from "./utils/scope-aware-reference-names.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// A binding whose value name appears in an EFFECT hook's dependency
-// array is reactively needed: an effect re-runs when a dep changes, and
-// swapping the state for a `useRef` would stop that re-run (ref writes
-// don't trigger effects), so the value is NOT "set but never shown".
-// Only effect hooks qualify — `useMemo`/`useCallback` deps merely control
-// memoization/identity, and reading `ref.current` inside those callbacks
-// stays correct, so they don't justify keeping the value in state.
+// Names listed in an EFFECT hook's dependency array. Only effect hooks
+// qualify — `useMemo`/`useCallback` deps merely control memoization/
+// identity, and reading `ref.current` inside those callbacks stays
+// correct, so they don't justify keeping the value in state.
 const collectDependencyArrayNames = (componentBody: EsTreeNode): Set<string> => {
   const dependencyNames = new Set<string>();
   walkAst(componentBody, (child: EsTreeNode) => {
@@ -39,6 +40,31 @@ const collectDependencyArrayNames = (componentBody: EsTreeNode): Set<string> => 
     }
   });
   return dependencyNames;
+};
+
+// Names referenced inside an EFFECT hook's callback body (its render-time
+// arguments — the dependency array — are NOT included).
+const collectEffectCallbackReadNames = (componentBody: EsTreeNode): Set<string> => {
+  const readNames = new Set<string>();
+  walkAst(componentBody, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "CallExpression")) return;
+    if (!isHookCall(child, EFFECT_HOOK_NAMES)) return;
+    const effectCallback = child.arguments?.[0];
+    if (
+      !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
+      !isNodeOfType(effectCallback, "FunctionExpression")
+    ) {
+      return;
+    }
+    for (const referenceName of collectScopedReferenceNames(
+      effectCallback,
+      createComponentBindingScope(),
+      new Set(),
+    )) {
+      readNames.add(referenceName);
+    }
+  });
+  return readNames;
 };
 
 export const rerenderStateOnlyInHandlers = defineRule({
@@ -65,9 +91,26 @@ export const rerenderStateOnlyInHandlers = defineRule({
         eventHandlerReferenceNames,
       );
       const renderReachableNames = expandTransitiveDependencies(directRenderNames, dependencyGraph);
-      const effectDependencyNames = collectDependencyArrayNames(componentBody);
+      // An effect dep counts as a reason to keep the value in state only
+      // when it is a pure re-run TRIGGER: the effect never reads the value,
+      // so the dep's identity change is the whole point and a `useRef` swap
+      // would stop the re-run (`useEffect(() => scrollToHash(), [loaded])`).
+      // When the effect body READS the state, the dep entry is just
+      // exhaustive-deps hygiene for that read — it does not prove the value
+      // ever reaches the screen, and suppressing on it masks the canonical
+      // write-only-state-echoed-in-an-effect bug. Non-state dep names
+      // (derived render-phase locals like `offset` from `page * 10`) still
+      // suppress via the transitive expansion.
+      const stateValueNames = new Set(bindings.map((binding) => binding.valueName));
+      const effectCallbackReadNames = collectEffectCallbackReadNames(componentBody);
+      const effectTriggerNames = new Set<string>();
+      for (const dependencyName of collectDependencyArrayNames(componentBody)) {
+        const isStateReadByAnEffect =
+          stateValueNames.has(dependencyName) && effectCallbackReadNames.has(dependencyName);
+        if (!isStateReadByAnEffect) effectTriggerNames.add(dependencyName);
+      }
       for (const reachableName of expandTransitiveDependencies(
-        effectDependencyNames,
+        effectTriggerNames,
         dependencyGraph,
       )) {
         renderReachableNames.add(reachableName);

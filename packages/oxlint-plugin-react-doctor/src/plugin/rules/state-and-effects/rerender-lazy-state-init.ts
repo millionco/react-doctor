@@ -32,12 +32,13 @@ export const rerenderLazyStateInit = defineRule({
 
       if (TRIVIAL_INITIALIZER_NAMES.has(calleeName)) return;
 
-      // `useState(useContext(Ctx))` / `useState(useLocalStorageDefault(...))`
-      // captures another hook's value. Wrapping it in a lazy initializer
-      // (`useState(() => useContext(Ctx))`) would call a hook conditionally —
-      // an illegal rules-of-hooks violation. Skip hook-shaped callees, matching
-      // the sibling `rerender-lazy-ref-init`.
-      if (calleeIsIdentifier && isReactHookName(calleeName)) return;
+      // `useState(useContext(Ctx))` / `useState(React.useContext(Ctx))` /
+      // `useState(useLocalStorageDefault(...))` captures another hook's value.
+      // Wrapping it in a lazy initializer (`useState(() => useContext(Ctx))`)
+      // would call a hook conditionally — an illegal rules-of-hooks violation.
+      // Skip hook-shaped callees (identifier or member form), matching the
+      // sibling `rerender-lazy-ref-init`.
+      if (isReactHookName(calleeName)) return;
 
       context.report({
         node: initializer,

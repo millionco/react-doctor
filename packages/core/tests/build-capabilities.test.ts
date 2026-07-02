@@ -13,7 +13,9 @@ const baseProject: ProjectInfo = {
   framework: "vite",
   hasTypeScript: true,
   hasReactCompiler: false,
-  hasTanStackQuery: false,
+  tanstackQueryVersion: null,
+  mobxVersion: null,
+  styledComponentsVersion: null,
   nextjsVersion: null,
   nextjsMajorVersion: null,
   hasReactNativeWorkspace: false,
@@ -209,6 +211,18 @@ describe("buildCapabilities", () => {
     expect(capabilities.has("nextjs:15")).toBe(true);
   });
 
+  it("emits the `ssr` capability for server-rendering frameworks", () => {
+    for (const framework of ["nextjs", "remix", "gatsby", "tanstack-start"] as const) {
+      expect(buildCapabilities({ ...baseProject, framework }).has("ssr")).toBe(true);
+    }
+  });
+
+  it("omits the `ssr` capability for client-only SPA frameworks", () => {
+    for (const framework of ["vite", "cra", "preact"] as const) {
+      expect(buildCapabilities({ ...baseProject, framework }).has("ssr")).toBe(false);
+    }
+  });
+
   it("omits `nextjs:15` capability for Next.js 14 projects", () => {
     const capabilities = buildCapabilities({
       ...baseProject,
@@ -229,6 +243,22 @@ describe("buildCapabilities", () => {
     });
     expect(capabilities.has("nextjs")).toBe(true);
     expect(capabilities.has("nextjs:15")).toBe(false);
+  });
+
+  it("emits the `mobx` capability only when the project declares MobX", () => {
+    expect(buildCapabilities({ ...baseProject, mobxVersion: "^6.12.0" }).has("mobx")).toBe(true);
+    expect(buildCapabilities({ ...baseProject, mobxVersion: null }).has("mobx")).toBe(false);
+  });
+
+  it("emits the `styled-components` capability only when the project declares styled-components", () => {
+    expect(
+      buildCapabilities({ ...baseProject, styledComponentsVersion: "^6.1.0" }).has(
+        "styled-components",
+      ),
+    ).toBe(true);
+    expect(
+      buildCapabilities({ ...baseProject, styledComponentsVersion: null }).has("styled-components"),
+    ).toBe(false);
   });
 
   it("emits `pre-es2023` when the project target predates ES2023", () => {

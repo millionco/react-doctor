@@ -387,10 +387,14 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
 
   it("rules never reference a plugin that isn't in plugins or jsPlugins", () => {
     const allCombinations = [
-      { hasReactCompiler: true, hasTanStackQuery: true, framework: "nextjs" as const },
-      { hasReactCompiler: true, hasTanStackQuery: false, framework: "expo" as const },
-      { hasReactCompiler: false, hasTanStackQuery: true, framework: "tanstack-start" as const },
-      { hasReactCompiler: false, hasTanStackQuery: false, framework: "unknown" as const },
+      { hasReactCompiler: true, tanstackQueryVersion: "^5.66.0", framework: "nextjs" as const },
+      { hasReactCompiler: true, tanstackQueryVersion: null, framework: "expo" as const },
+      {
+        hasReactCompiler: false,
+        tanstackQueryVersion: "^5.66.0",
+        framework: "tanstack-start" as const,
+      },
+      { hasReactCompiler: false, tanstackQueryVersion: null, framework: "unknown" as const },
     ];
     for (const combination of allCombinations) {
       const config = createOxlintConfig({

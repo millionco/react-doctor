@@ -296,16 +296,25 @@ const formatAutoTagsLine = (entry) => {
 // already implies React is present.
 const formatRequiresLine = (entry) => {
   if (!entry.requiresReact) return "";
-  // Match prettier's 100-char print width so `gen:check` and `format:check`
-  // agree: emit the single-line form when it fits, else the wrapped form
-  // prettier would otherwise rewrite it into (a few rules have long enough
-  // identifiers — e.g. `noNoninteractiveElementToInteractiveRole` — to spill
-  // past the limit).
+  // Match the formatter's 100-char print width so `gen:check` and
+  // `format:check` agree, emitting whichever of three forms the formatter
+  // would settle on: single line when it fits; else the array wrapped with
+  // the `...new Set([...])` spread on one line; else — for the longest
+  // identifiers (e.g. `mobxPropertyInitializerReadsThisBeforeMakeobservable`)
+  // whose wrapped spread line itself spills past 100 — the fully-broken form
+  // with each Set element on its own line.
   const singleLine = `      requires: [...new Set(["react", ...(${entry.identifier}.requires ?? [])])],`;
   if (singleLine.length <= 100) return `${singleLine}\n`;
+  const wrappedSpreadLine = `        ...new Set(["react", ...(${entry.identifier}.requires ?? [])]),`;
+  if (wrappedSpreadLine.length <= 100) {
+    return `      requires: [\n${wrappedSpreadLine}\n      ],\n`;
+  }
   return (
     `      requires: [\n` +
-    `        ...new Set(["react", ...(${entry.identifier}.requires ?? [])]),\n` +
+    `        ...new Set([\n` +
+    `          "react",\n` +
+    `          ...(${entry.identifier}.requires ?? []),\n` +
+    `        ]),\n` +
     `      ],\n`
   );
 };

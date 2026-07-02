@@ -36,4 +36,34 @@ describe("react-builtins/no-this-in-sfc — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // JSX produced inside a callback argument (map, useMemo, …) flows into
+  // the outer component's render, so it is render-output evidence for the
+  // outer function — the nested-function boundary must not swallow it.
+  it("flags this.props in an SFC whose JSX lives only in a map callback", () => {
+    const result = runRule(
+      noThisInSfc,
+      `function Table(props) {
+        return this.props.rows.map((row) => <tr key={row.id} />);
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // A nested component DEFINITION (bound to a name) is its own render
+  // unit — its JSX must not make the enclosing PascalCase factory look
+  // like an SFC.
+  it("stays silent on a PascalCase factory whose only JSX is a nested component definition", () => {
+    const result = runRule(
+      noThisInSfc,
+      `function Builder(options) {
+        this.options = options;
+        const Preview = () => <div>{options.label}</div>;
+        return Preview;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

@@ -6,11 +6,37 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis
 
 const NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES: ReadonlySet<string> = new Set([
   "FunctionDeclaration",
-  "FunctionExpression",
-  "ArrowFunctionExpression",
   "ClassDeclaration",
   "ClassExpression",
 ]);
+
+const NESTED_FUNCTION_EXPRESSION_TYPES: ReadonlySet<string> = new Set([
+  "FunctionExpression",
+  "ArrowFunctionExpression",
+]);
+
+// A nested function expression bound to a name (a nested component /
+// render-helper definition) is its own render unit, so its JSX is not
+// evidence that the OUTER function renders. An unbound function
+// expression — a callback argument (`rows.map(row => <tr/>)`,
+// `useMemo(() => <div/>)`) or a returned closure — feeds its output
+// into the outer function's render, so its JSX counts.
+const NESTED_FUNCTION_EXPRESSION_BINDING_PARENT_TYPES: ReadonlySet<string> = new Set([
+  "VariableDeclarator",
+  "AssignmentExpression",
+  "Property",
+  "PropertyDefinition",
+  "MethodDefinition",
+]);
+
+const isNestedRenderEvidenceBoundary = (node: EsTreeNode): boolean => {
+  if (NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES.has(node.type)) return true;
+  if (!NESTED_FUNCTION_EXPRESSION_TYPES.has(node.type)) return false;
+  const parentType = node.parent?.type;
+  return (
+    parentType !== undefined && NESTED_FUNCTION_EXPRESSION_BINDING_PARENT_TYPES.has(parentType)
+  );
+};
 
 const isReactImport = (symbol: SymbolDescriptor): boolean => {
   let importDeclaration: EsTreeNode | null | undefined = symbol.declarationNode?.parent;
@@ -65,7 +91,7 @@ const containsRenderOutput = (
   rootNode: EsTreeNode,
   scopes: ScopeAnalysis,
 ): boolean => {
-  if (node !== rootNode && NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES.has(node.type)) {
+  if (node !== rootNode && isNestedRenderEvidenceBoundary(node)) {
     return false;
   }
   if (node.type === "JSXElement" || node.type === "JSXFragment") {

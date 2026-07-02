@@ -150,7 +150,8 @@ const isTrustedOrNullishBranch = (branch: EsTreeNode | null | undefined, depth: 
 // Best-effort static text of the features argument: string literals,
 // template literals (interpolations resolved when they are local const
 // strings, empty otherwise so `noopener,width=${w}` still resolves), and
-// identifiers bound to a resolvable initializer in this file. Returns
+// identifiers bound to a local const initializer (`let`/`var` can be
+// reassigned after the initializer, so they stay opaque). Returns
 // null when the value is opaque (imported constant, call result), in
 // which case the caller must not assume noopener is absent.
 const resolveStaticStringText = (
@@ -169,9 +170,9 @@ const resolveStaticStringText = (
       .join("");
   }
   if (isNodeOfType(node, "Identifier")) {
-    const binding = findVariableInitializer(node, node.name);
-    if (binding?.initializer == null) return null;
-    return resolveStaticStringText(binding.initializer, depth + 1);
+    const constInitializer = resolveConstInitializer(node);
+    if (constInitializer == null) return null;
+    return resolveStaticStringText(constInitializer, depth + 1);
   }
   return null;
 };
@@ -203,7 +204,8 @@ const isArrowReturnDiscarded = (arrow: EsTreeNode): boolean => {
 
 // The window handle is discarded (so `noopener`'s null return breaks
 // nothing) when the call is a bare statement, the branch of a
-// guard-shaped logical/ternary that is itself discarded, or the concise
+// guard-shaped logical/ternary that is itself discarded, a non-final
+// position in a comma sequence, or the concise
 // body of a discarded arrow. Any capturing parent — VariableDeclarator
 // init, AssignmentExpression right, ReturnStatement arg, a member access
 // on the result, or being passed as a call argument — means the caller
@@ -220,6 +222,10 @@ const isDiscardedWindowHandle = (callNode: EsTreeNode): boolean => {
     (parent.consequent === callNode || parent.alternate === callNode)
   ) {
     return isDiscardedWindowHandle(parent);
+  }
+  if (isNodeOfType(parent, "SequenceExpression")) {
+    const finalExpression = parent.expressions?.[parent.expressions.length - 1];
+    return finalExpression !== callNode || isDiscardedWindowHandle(parent);
   }
   if (isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === callNode) {
     return isArrowReturnDiscarded(parent);
@@ -249,8 +255,11 @@ export const windowOpenWithoutNoopener = defineRule({
       if (featuresArgument != null) {
         const featuresText = resolveStaticStringText(featuresArgument, 0);
         if (featuresText == null) return;
-        const features = featuresText.toLowerCase();
-        if (features.includes("noopener") || features.includes("noreferrer")) return;
+        const featureNames = featuresText
+          .toLowerCase()
+          .split(/[\s,]+/)
+          .map((featureEntry) => featureEntry.split("=")[0]);
+        if (featureNames.some((name) => name === "noopener" || name === "noreferrer")) return;
       }
 
       context.report({

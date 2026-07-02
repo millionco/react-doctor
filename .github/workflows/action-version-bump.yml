@@ -67,18 +67,22 @@ jobs:
               issue_number: issueNumber,
             });
             const existing = comments.find((comment) => comment.body?.includes(marker));
+            const actionChanged = process.env.ACTION_CHANGED === "true";
+            // Read outside the try: a missing comment file when the detect step
+            // reported changed=true is a contract violation, not a token issue,
+            // and should red the check.
+            const body = actionChanged ? fs.readFileSync(process.env.COMMENT_FILE, "utf8") : "";
             // Comment writes are best-effort: on a fork PR the GITHUB_TOKEN is
             // read-only regardless of the declared permissions, and a 403 here
             // must not red the check for an external contributor.
             try {
-              if (process.env.ACTION_CHANGED !== "true") {
+              if (!actionChanged) {
                 // The PR no longer touches the action surface — clear a stale recommendation.
                 if (existing) {
                   await github.rest.issues.deleteComment({ owner, repo, comment_id: existing.id });
                 }
                 return;
               }
-              const body = fs.readFileSync(process.env.COMMENT_FILE, "utf8");
               if (existing) {
                 await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
               } else {
@@ -96,11 +100,12 @@ jobs:
     if: ${{ github.event_name == 'push' && vars.AUTO_BUMP_ACTION_TAG == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Serialize bump runs so two quick merges never race on the same next tag,
-    # and `queue: max` so a superseded PENDING run is queued rather than
-    # canceled (the default single-slot queue would silently skip judging that
-    # merge — an untagged action release). `queue: max` requires
-    # cancel-in-progress to be false/absent.
+    # Serialize bump runs, with `queue: max` so a superseded PENDING run stays
+    # queued instead of canceled — under the default single pending slot, the
+    # middle of three quick merges would never be judged for a tag (an untagged
+    # action release). Queued runs are NOT guaranteed to execute in order, so
+    # the tag step below refuses to move the floating major backwards.
+    # `queue: max` requires cancel-in-progress to be false/absent.
     concurrency:
       group: action-version-bump-main
       queue: max
@@ -157,7 +162,16 @@ jobs:
           # CI has no signing key, so override the repo's tag.gpgsign default and
           # create an unsigned annotated tag instead of failing on a missing key.
           git -c tag.gpgsign=false tag -a "${NEXT_TAG}" -m "react-doctor action ${NEXT_TAG} (${BUMP_LEVEL})"
-          git -c tag.gpgsign=false tag -fa "${MAJOR_TAG}" -m "react-doctor action ${MAJOR_TAG} (floating major -> ${NEXT_TAG})"
           git push origin "${NEXT_TAG}"
+          # `queue: max` serializes runs but does not order them: an older
+          # commit's run can execute after a newer commit already tagged and
+          # moved the floating major forward. Never move it backwards.
+          if git rev-parse --quiet --verify "refs/tags/${MAJOR_TAG}" >/dev/null \
+            && ! git merge-base --is-ancestor "${MAJOR_TAG}^{commit}" "${GITHUB_SHA}"; then
+            echo "::warning::${MAJOR_TAG} points at a commit that is not an ancestor of ${GITHUB_SHA} (out-of-order bump runs); tagged ${NEXT_TAG} without moving ${MAJOR_TAG}."
+            echo "Tagged ${NEXT_TAG}; left ${MAJOR_TAG} in place (a newer commit already carries it)." >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+          git -c tag.gpgsign=false tag -fa "${MAJOR_TAG}" -m "react-doctor action ${MAJOR_TAG} (floating major -> ${NEXT_TAG})"
           git push --force origin "${MAJOR_TAG}"
           echo "Tagged ${NEXT_TAG} and moved ${MAJOR_TAG} to ${GITHUB_SHA}." >> "${GITHUB_STEP_SUMMARY}"

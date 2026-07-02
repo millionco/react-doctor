@@ -9,8 +9,10 @@ on:
 permissions:
   contents: read
 
-# Cancel superseded runs on a PR (a new push obsoletes the in-flight one); let
-# every push to main finish so per-commit jobs aren't skipped.
+# Cancel superseded runs on a PR (a new push obsoletes the in-flight one).
+# Pushes to main are never canceled in-flight — though GitHub keeps only the
+# newest PENDING run per group, so rapid pushes can skip an intermediate
+# commit's run.
 concurrency:
   # Keyed by PR number (not head_ref): two different fork PRs can share a
   # head branch name (most commonly `main`), and a name-keyed group would let

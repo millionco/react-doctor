@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { MOTION_LIBRARY_PACKAGES } from "oxlint-plugin-react-doctor";
 import type { Diagnostic } from "./types/index.js";
 import { IGNORED_DIRECTORIES } from "./constants.js";
+import { hasIgnoredPathSegment } from "./utils/has-ignored-path-segment.js";
 import { isFile, readDirectoryEntries, readPackageJson } from "./project-info/index.js";
 
 const REDUCED_MOTION_PATTERN = /prefers-reduced-motion|useReducedMotion|MotionConfig|reducedMotion/;
@@ -73,22 +74,24 @@ export const checkReducedMotion = (rootDirectory: string): Diagnostic[] => {
 
   const result = spawnSync(
     "git",
-    [
-      "grep",
-      "--untracked",
-      "-ql",
-      "-E",
-      REDUCED_MOTION_GREP_PATTERN,
-      "--",
-      ...REDUCED_MOTION_FILE_GLOBS,
-    ],
-    { cwd: rootDirectory, stdio: ["ignore", "pipe", "pipe"] },
+    ["grep", "--untracked", "-lE", REDUCED_MOTION_GREP_PATTERN, "--", ...REDUCED_MOTION_FILE_GLOBS],
+    { cwd: rootDirectory, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] },
   );
-  if (result.status === 0) return [];
-  if (result.error || result.status !== GIT_GREP_NO_MATCH_STATUS) {
+  const gitRan =
+    !result.error && (result.status === 0 || result.status === GIT_GREP_NO_MATCH_STATUS);
+  if (!gitRan) {
     return hasReducedMotionHandlingViaFilesystem(rootDirectory)
       ? []
       : [MISSING_REDUCED_MOTION_DIAGNOSTIC];
   }
-  return [MISSING_REDUCED_MOTION_DIAGNOSTIC];
+  // Ignore matches inside ignored build directories so the verdict matches the
+  // filesystem fallback (which never descends into them) — a committed bundle
+  // that mentions `prefers-reduced-motion` doesn't prove the app source handles
+  // it, so `git grep` and the walk agree on one tree.
+  const hasHandlingInSource =
+    result.status === 0 &&
+    result.stdout
+      .split("\n")
+      .some((filePath) => filePath.length > 0 && !hasIgnoredPathSegment(filePath));
+  return hasHandlingInSource ? [] : [MISSING_REDUCED_MOTION_DIAGNOSTIC];
 };

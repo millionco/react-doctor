@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
@@ -54,6 +55,37 @@ describe("checkReducedMotion", () => {
     writeNestedFile("dist/bundle.js", "matchMedia('(prefers-reduced-motion: reduce)');\n");
 
     expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  const initGitRepo = (): void => {
+    const run = (...args: string[]): void => {
+      const result = spawnSync("git", args, { cwd: temporaryDirectory });
+      expect(result.status).toBe(0);
+    };
+    run("init", "--quiet");
+    run("add", "-A");
+    run("-c", "user.email=t@e.com", "-c", "user.name=t", "commit", "--quiet", "-m", "init");
+  };
+
+  // Issue: `git grep` matches committed build output, so a `prefers-reduced-motion`
+  // string inside `dist/` cleared the diagnostic on the git path while the
+  // filesystem fallback (which skips `dist/`) still reported it — the same tree
+  // diverged on git availability.
+  it("ignores git-tracked reduced-motion handling that only lives in ignored directories", () => {
+    writePackageJsonWithMotionLibrary();
+    writeNestedFile("dist/bundle.js", "matchMedia('(prefers-reduced-motion: reduce)');\n");
+    writeNestedFile("src/app.tsx", "export const App = () => null;\n");
+    initGitRepo();
+
+    expect(checkReducedMotion(temporaryDirectory)).toHaveLength(1);
+  });
+
+  it("finds git-tracked reduced-motion handling in real source", () => {
+    writePackageJsonWithMotionLibrary();
+    writeNestedFile("src/app.tsx", "const reduced = useReducedMotion();\n");
+    initGitRepo();
+
+    expect(checkReducedMotion(temporaryDirectory)).toEqual([]);
   });
 
   it("returns no diagnostics when the project has no motion library", () => {

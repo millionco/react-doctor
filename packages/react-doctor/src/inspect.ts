@@ -381,6 +381,14 @@ interface BaselineComparison {
   baselineDelta: NonNullable<InspectResult["baselineDelta"]>;
 }
 
+// Files the lint pass failed to cover — dropped (pathological batches) plus
+// deadline-skipped. Distinct from `lintPartialFailures.length`, which also
+// counts informational notes (e.g. the react-hooks-js plugin-drop) that leave
+// the lint COMPLETE. Baseline comparison is only unreliable when coverage is
+// actually incomplete, so it degrades on this count, not on any partial string.
+const countIncompleteLintFiles = (lintPartialFailures: ReadonlyArray<string>): number =>
+  countDroppedLintFiles(lintPartialFailures) + countDeadlineSkippedFiles(lintPartialFailures);
+
 interface RunBaselineComparisonInput {
   directory: string;
   options: ResolvedInspectOptions;
@@ -467,7 +475,7 @@ const runBaselineComparison = async (
     // plain diff — full head findings stay visible, but the run won't claim
     // they're new or gate on them. A genuinely empty but *successful* base lint
     // is fine — every head finding is new.
-    if (baseOutput.didLintFail || baseOutput.lintPartialFailures.length > 0) {
+    if (baseOutput.didLintFail || countIncompleteLintFiles(baseOutput.lintPartialFailures) > 0) {
       return null;
     }
     const delta = computeDiagnosticDelta({
@@ -680,10 +688,12 @@ const runInspectWithRuntime = async (
   // A head lint that dropped or deadline-skipped files is incomplete, so the
   // delta would silently miss findings in the unlinted files — degrade to a
   // plain diff exactly like a failed head lint.
-  const headLintSkippedFileCount =
-    countDroppedLintFiles(output.lintPartialFailures) +
-    countDeadlineSkippedFiles(output.lintPartialFailures);
-  if (options.baseline && isDiffMode && !didLintFail && headLintSkippedFileCount === 0) {
+  if (
+    options.baseline &&
+    isDiffMode &&
+    !didLintFail &&
+    countIncompleteLintFiles(output.lintPartialFailures) === 0
+  ) {
     const comparison = await runBaselineComparison({
       directory,
       options,

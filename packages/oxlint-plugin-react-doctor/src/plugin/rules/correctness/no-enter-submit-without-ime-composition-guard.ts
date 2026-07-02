@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -260,7 +261,7 @@ const branchPerformsCommit = (actionNode: EsTreeNode): boolean => {
   return found;
 };
 
-const componentHasCompositionGuard = (scope: EsTreeNode): boolean => {
+const scopeHasCompositionGuard = (scope: EsTreeNode): boolean => {
   let found = false;
   walkAst(scope, (child) => {
     if (found) return false;
@@ -279,6 +280,33 @@ const componentHasCompositionGuard = (scope: EsTreeNode): boolean => {
   return found;
 };
 
+// Same-file function bodies reachable from the handler through bare
+// identifier calls (`commitEdit()` resolved to its `const commitEdit = …`
+// or `function commitEdit` initializer, then that body's own callees,
+// transitively) — a composition guard may live inside the commit helper
+// chain rather than the inline handler.
+const handlerCalleeInitializers = (handler: EsTreeNode): EsTreeNode[] => {
+  const initializers: EsTreeNode[] = [];
+  const seenCalleeNames = new Set<string>();
+  const pendingScopes: EsTreeNode[] = [handler];
+  while (pendingScopes.length > 0) {
+    const scope = pendingScopes.pop();
+    if (!scope) continue;
+    walkAst(scope, (child) => {
+      if (!isNodeOfType(child, "CallExpression")) return;
+      const callee = stripGroupingParens(child.callee as EsTreeNode);
+      if (!isNodeOfType(callee, "Identifier") || seenCalleeNames.has(callee.name)) return;
+      seenCalleeNames.add(callee.name);
+      const binding = findVariableInitializer(callee, callee.name);
+      if (binding?.initializer) {
+        initializers.push(binding.initializer);
+        pendingScopes.push(binding.initializer);
+      }
+    });
+  }
+  return initializers;
+};
+
 const getHandlerFunction = (node: EsTreeNodeOfType<"JSXOpeningElement">): EsTreeNode | null => {
   for (const attributeName of KEY_HANDLER_ATTRS) {
     const attribute = hasJsxPropIgnoreCase(node.attributes, attributeName);
@@ -290,15 +318,6 @@ const getHandlerFunction = (node: EsTreeNodeOfType<"JSXOpeningElement">): EsTree
   return null;
 };
 
-const findCompositionScope = (node: EsTreeNode): EsTreeNode => {
-  let ancestor = node.parent ?? null;
-  while (ancestor) {
-    if (isFunctionLike(ancestor)) return ancestor;
-    ancestor = ancestor.parent ?? null;
-  }
-  return node.parent ?? node;
-};
-
 // Flags an `onKeyDown`/`onKeyUp` handler on a text-entry element that
 // commits/submits on plain Enter without an IME-composition bail-out.
 // Pressing Enter while an IME is composing confirms the candidate, so a
@@ -308,8 +327,10 @@ const findCompositionScope = (node: EsTreeNode): EsTreeNode => {
 // `inputMode` numeric/decimal, `readOnly`, or an `onChange` that coerces
 // the value via Number/parseInt/parseFloat), modifier-gated
 // (Cmd/Ctrl+Enter) or Space+Enter activation, `preventDefault`-only
-// handlers, and handlers already guarded by `isComposing` /
-// `keyCode === 229` / composition state. A negated modifier
+// handlers, and handlers guarded by `isComposing` / `keyCode === 229` /
+// composition wiring on the element itself, in the handler body, or in a
+// same-file function the handler calls — a sibling control's guard does
+// not protect this handler and does not suppress. A negated modifier
 // (`!e.shiftKey`) is not a gate — plain Enter still commits there.
 export const noEnterSubmitWithoutImeCompositionGuard = defineRule({
   id: "no-enter-submit-without-ime-composition-guard",
@@ -342,8 +363,14 @@ export const noEnterSubmitWithoutImeCompositionGuard = defineRule({
       }
       if (!hasBareEnterCommit) return;
 
-      const scope = findCompositionScope(node as EsTreeNode);
-      if (componentHasCompositionGuard(scope)) return;
+      // A composition guard only protects THIS handler when it is wired
+      // on the element itself (`onCompositionStart`/`onCompositionEnd`
+      // attrs), read inside the handler (`isComposing`, `229`), or
+      // checked inside a same-file function the handler calls. A sibling
+      // control's guard elsewhere in the component does not stop this
+      // handler firing mid-composition, so it must not suppress.
+      const guardScopes = [node as EsTreeNode, ...handlerCalleeInitializers(handler)];
+      if (guardScopes.some(scopeHasCompositionGuard)) return;
 
       context.report({ node: node.name as EsTreeNode, message: MESSAGE });
     },

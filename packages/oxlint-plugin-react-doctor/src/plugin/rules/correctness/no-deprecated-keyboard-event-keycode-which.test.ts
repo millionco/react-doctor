@@ -248,4 +248,59 @@ describe("no-deprecated-keyboard-event-keycode-which", () => {
     );
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("flags a layout-sensitive keyCode branch when event.key is only logged", () => {
+    const result = runRule(
+      noDeprecatedKeyboardEventKeycodeWhich,
+      `const onKeyDown = (event: KeyboardEvent) => {
+         console.log(event.key);
+         if (event.keyCode === 65) selectAll();
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet when a key-derived comparison guards the fallback", () => {
+    const result = runRule(
+      noDeprecatedKeyboardEventKeycodeWhich,
+      `const onKeyDown = (event: KeyboardEvent) => {
+         if (event.key.toLowerCase() === 'a') { selectAll(); return; }
+         if (event.keyCode === 65) selectAll();
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when event.key is aliased for later logic", () => {
+    const result = runRule(
+      noDeprecatedKeyboardEventKeycodeWhich,
+      `const onKeyDown = (event: KeyboardEvent) => {
+         const pressed = event.key;
+         if (event.keyCode === 65 && pressed !== 'a') selectAll();
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when event.key feeds a matcher helper whose result branches", () => {
+    const result = runRule(
+      noDeprecatedKeyboardEventKeycodeWhich,
+      `const onKeyDown = (event: KeyboardEvent) => {
+         if (isHotkey(event.key)) { selectAll(); return; }
+         if (event.keyCode === 65) selectAll();
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags when event.key only rides an analytics payload", () => {
+    const result = runRule(
+      noDeprecatedKeyboardEventKeycodeWhich,
+      `const onKeyDown = (event: KeyboardEvent) => {
+         analytics({ key: event.key });
+         if (event.keyCode === 65) selectAll();
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

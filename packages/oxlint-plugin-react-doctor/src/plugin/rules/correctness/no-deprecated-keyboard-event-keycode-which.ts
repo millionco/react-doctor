@@ -3,6 +3,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
+import { getMeaningfulParent } from "../../utils/get-meaningful-parent.js";
+import { nearestEnclosingFunction } from "../../utils/component-or-hook-display-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
@@ -35,12 +37,6 @@ const KEYBOARD_LISTENER_EVENTS = new Set(["keydown", "keyup", "keypress"]);
 const MESSAGE =
   "`KeyboardEvent.keyCode`/`which`/`charCode` are deprecated, and this comparison targets a character code that varies by keyboard layout, browser, and input method, so the branch fires on the wrong key (or never) for untested layouts. Branch on the standardized `event.key` (logical key) or `event.code` (physical key) instead.";
 
-const meaningfulParent = (node: EsTreeNode): EsTreeNode | null => {
-  let parent = node.parent ?? null;
-  while (parent && parent.type === PARENTHESIZED_EXPRESSION) parent = parent.parent ?? null;
-  return parent;
-};
-
 const resolveNumericValue = (operand: EsTreeNode): number | null => {
   const valueNode = stripGroupingParens(operand);
   if (isNodeOfType(valueNode, "Literal") && typeof valueNode.value === "number") {
@@ -66,7 +62,7 @@ interface DeprecatedReadComparison {
 }
 
 const getComparison = (memberNode: EsTreeNode): DeprecatedReadComparison | null => {
-  const parent = meaningfulParent(memberNode);
+  const parent = getMeaningfulParent(memberNode);
   if (!parent || !isNodeOfType(parent, "BinaryExpression")) return null;
   if (!COMPARISON_OPERATORS.has(parent.operator)) return null;
   const otherOperand =
@@ -100,11 +96,13 @@ const switchTargetsLayoutSensitiveCode = (conditionRoot: EsTreeNode): boolean =>
 interface BranchingContext {
   conditionRoot: EsTreeNode;
   branching: boolean;
+  climbedThroughLogical: boolean;
 }
 
 const resolveBranchingContext = (memberNode: EsTreeNode): BranchingContext => {
   let node = memberNode;
   let climbedThroughComparison = false;
+  let climbedThroughLogical = false;
   while (node.parent) {
     const parent = node.parent;
     if (parent.type === PARENTHESIZED_EXPRESSION || parent.type === "UnaryExpression") {
@@ -112,6 +110,7 @@ const resolveBranchingContext = (memberNode: EsTreeNode): BranchingContext => {
       continue;
     }
     if (parent.type === "LogicalExpression") {
+      climbedThroughLogical = true;
       node = parent;
       continue;
     }
@@ -135,16 +134,59 @@ const resolveBranchingContext = (memberNode: EsTreeNode): BranchingContext => {
   return {
     conditionRoot: node,
     branching: climbedThroughComparison || isTestOrDiscriminant,
+    climbedThroughLogical,
   };
 };
 
-const getEnclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
-  let ancestor = node.parent ?? null;
-  while (ancestor) {
-    if (isFunctionLike(ancestor)) return ancestor;
-    ancestor = ancestor.parent ?? null;
+const LOGIC_SINK_PARENT_TYPES = new Set([
+  "VariableDeclarator",
+  "AssignmentExpression",
+  "ReturnStatement",
+]);
+
+// Climbs from a property read to the value it produces: through grouping
+// parens, member chains rooted at the read (`event.key.toLowerCase()`),
+// and calls of those chains, so the classification below sees where the
+// derived value lands rather than the raw read.
+const readValueRoot = (readNode: EsTreeNode): EsTreeNode => {
+  let current = readNode;
+  while (current.parent) {
+    const parent = current.parent;
+    if (parent.type === PARENTHESIZED_EXPRESSION || isNodeOfType(parent, "ChainExpression")) {
+      current = parent;
+      continue;
+    }
+    if (isNodeOfType(parent, "MemberExpression") && parent.object === current) {
+      current = parent;
+      continue;
+    }
+    if (isNodeOfType(parent, "CallExpression") && parent.callee === current) {
+      current = parent;
+      continue;
+    }
+    break;
   }
-  return null;
+  return current;
+};
+
+// A `key`/`code` read only signals the progressive-enhancement fallback
+// idiom when its value feeds logic: a comparison, a branch test or switch
+// discriminant, a `||`/`??` fallback chain, an alias/assignment/return
+// that carries it onward, or a helper call whose RESULT feeds logic
+// (`if (isHotkey(event.key))`). A read whose value is discarded
+// (`console.log(event.key);`) leaves the deprecated branching as the
+// sole control path and must not suppress the report.
+const readFeedsLogic = (readNode: EsTreeNode): boolean => {
+  const valueRoot = readValueRoot(readNode);
+  const { conditionRoot, branching, climbedThroughLogical } = resolveBranchingContext(valueRoot);
+  if (branching || climbedThroughLogical) return true;
+  const parent = conditionRoot.parent ?? null;
+  if (!parent) return false;
+  if (LOGIC_SINK_PARENT_TYPES.has(parent.type)) return true;
+  if (isNodeOfType(parent, "CallExpression") && parent.callee !== conditionRoot) {
+    return readFeedsLogic(parent as EsTreeNode);
+  }
+  return false;
 };
 
 const typeReferenceIsKeyboardEvent = (typeAnnotation: EsTreeNode | null | undefined): boolean => {
@@ -222,6 +264,7 @@ const receiverReadsAnyProperty = (
   scopeNode: EsTreeNode,
   receiverName: string,
   propertyNames: Set<string>,
+  readQualifies?: (readNode: EsTreeNode) => boolean,
 ): boolean => {
   let found = false;
   walkAst(scopeNode, (child) => {
@@ -232,7 +275,8 @@ const receiverReadsAnyProperty = (
       isNodeOfType(child.object, "Identifier") &&
       child.object.name === receiverName &&
       isNodeOfType(child.property, "Identifier") &&
-      propertyNames.has(child.property.name)
+      propertyNames.has(child.property.name) &&
+      (!readQualifies || readQualifies(child))
     ) {
       found = true;
       return false;
@@ -248,9 +292,11 @@ const receiverReadsAnyProperty = (
 // or punctuation (which drift across keyboard layouts). Stays quiet on
 // layout-invariant control keys (Enter, Escape, Space, Tab, arrows, …),
 // unresolvable named key constants (`KeyCode.ENTER`), mouse-button
-// `which`, the IME `keyCode === 229` idiom, handlers that already read
-// `key`/`code` as a progressive-enhancement fallback, and object-literal
-// event-synthesis keys.
+// `which`, the IME `keyCode === 229` idiom, handlers whose `key`/`code`
+// reads feed logic (comparisons, branch tests, fallback chains, aliases)
+// as a progressive-enhancement fallback — a read that is only a bare call
+// argument like `console.log(event.key)` does not suppress — and
+// object-literal event-synthesis keys.
 export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
   id: "no-deprecated-keyboard-event-keycode-which",
   title: "Deprecated KeyboardEvent keyCode or which",
@@ -271,7 +317,7 @@ export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
       const { conditionRoot, branching } = resolveBranchingContext(node as EsTreeNode);
       if (!branching) return;
 
-      const enclosingFunction = getEnclosingFunction(node as EsTreeNode);
+      const enclosingFunction = nearestEnclosingFunction(node as EsTreeNode);
       if (!enclosingFunction || !isFunctionLike(enclosingFunction)) return;
       const firstParam = enclosingFunction.params?.[0];
       if (!firstParam || !isNodeOfType(firstParam as EsTreeNode, "Identifier")) return;
@@ -307,7 +353,16 @@ export const noDeprecatedKeyboardEventKeycodeWhich = defineRule({
       ) {
         return;
       }
-      if (receiverReadsAnyProperty(enclosingFunction, receiverName, STANDARD_KEY_MEMBERS)) return;
+      if (
+        receiverReadsAnyProperty(
+          enclosingFunction,
+          receiverName,
+          STANDARD_KEY_MEMBERS,
+          readFeedsLogic,
+        )
+      ) {
+        return;
+      }
 
       if (propertyName !== "charCode") {
         const isRelationalRangeCheck = Boolean(

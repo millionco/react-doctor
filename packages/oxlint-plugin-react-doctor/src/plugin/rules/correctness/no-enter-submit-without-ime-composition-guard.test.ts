@@ -245,4 +245,50 @@ describe("no-enter-submit-without-ime-composition-guard", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags an unguarded field even when a sibling control has composition wiring", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Form = ({ isComposing, setComposing, saveTitle, saveNote }) => (
+         <form>
+           <input
+             onCompositionStart={() => setComposing(true)}
+             onCompositionEnd={() => setComposing(false)}
+             onKeyDown={(e) => { if (e.key === 'Enter' && !isComposing) saveTitle(); }}
+           />
+           <input onKeyDown={(e) => { if (e.key === 'Enter') saveNote(); }} />
+         </form>
+       );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet when the composition guard lives inside the called commit helper", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = ({ isComposingRef, onSave }) => {
+         const commitEdit = () => {
+           if (isComposingRef.current) return;
+           onSave();
+         };
+         return <input onKeyDown={(e) => { if (e.key === 'Enter') commitEdit(); }} />;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when the guard sits two helper hops below the handler", () => {
+    const result = runRule(
+      noEnterSubmitWithoutImeCompositionGuard,
+      `const Field = ({ isComposingRef, onSave }) => {
+         const guardedCommit = () => {
+           if (isComposingRef.current) return;
+           onSave();
+         };
+         const submitDraft = () => guardedCommit();
+         return <input onKeyDown={(e) => { if (e.key === 'Enter') submitDraft(); }} />;
+       };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

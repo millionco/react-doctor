@@ -1,5 +1,191 @@
 # oxlint-plugin-react-doctor
 
+## 0.6.0
+
+### Patch Changes
+
+- [#936](https://github.com/millionco/react-doctor/pull/936) [`ba2af1b`](https://github.com/millionco/react-doctor/commit/ba2af1b7faa5ef4e1ae39e6c3b786259fba23f1f) Thanks [@aidenybai](https://github.com/aidenybai)! - Update the license to MIT with additional restrictions: the software may not be used as training, fine-tuning, or evaluation data for machine-learning models or AI systems, nor sold or resold as a commercial product or service (e.g. a paid API, SaaS, or hosted/managed service) whose value derives substantially from the software, without prior written permission (contact founders@million.dev). Each version's additional restrictions expire on the second anniversary of its release, after which that version is available under the standard MIT License (an FSL-style grant of future license). Each published package now ships its own up-to-date `LICENSE` file so the terms travel with the tarball.
+
+  The `react-doctor` CLI also now prints a one-time notice (once per run) when it detects it is running inside an AI/ML training pipeline or agent sandbox, pointing to the license terms.
+
+- [#1013](https://github.com/millionco/react-doctor/pull/1013) [`7ef9f0e`](https://github.com/millionco/react-doctor/commit/7ef9f0eb7c026b4f9003902d1ab66d232e8ab43f) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - fix(rules): close three follow-up gaps in the 20-day audit fixes
+
+  - **Comment stripper**: `isRegexLiteralStart` now uses a Unicode-aware
+    identifier class, so a division after a non-ASCII identifier (`café / total`,
+    `合計 / 個数`) is no longer misread as a regex literal — which had blanked
+    real code up to the next slash and let `/* … */` comment bodies escape
+    stripping across the pattern-based security-scan rules.
+  - **`server-auth-actions`**: the cache/navigation exemption now requires the
+    callee to resolve to _any_ import rather than specifically `next/cache` /
+    `next/navigation`. A module-local `const revalidatePath = …` (a privileged
+    shadow) is still flagged, but a revalidation-only action importing through a
+    common re-export barrel (`import { revalidatePath } from "@/lib/cache"`) is no
+    longer a false positive.
+  - **`rn-no-raw-text`**: fragment piercing now sees through named
+    `<Fragment>` / `<React.Fragment>` (via the existing `isJsxFragmentElement`
+    helper), not only the shorthand `<>`, so children forwarded through a named
+    fragment into a host are classified the same as the shorthand form.
+
+- [#1017](https://github.com/millionco/react-doctor/pull/1017) [`c2af308`](https://github.com/millionco/react-doctor/commit/c2af3082bfcb85c97e4bfa0d0d71f20478cebe9b) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix four false positives found by React Doctor reviewing real, idiomatic React code (the Ink TUI in [#979](https://github.com/millionco/react-doctor/issues/979)):
+
+  - `no-derived-state` no longer flags state accumulators — a `setState` inside an effect whose functional updater computes the new value from its own parameter (`setKeys((previous) => new Set(previous).add(key))`, `setTotal((prev) => prev + count)`, `setItems((prev) => [...prev, item])`). Accumulated history is by definition not derivable from the current props/state. The spread-only object merge (`setForm((prev) => ({ ...prev, field: <derived> }))`) still reports.
+  - `no-array-index-as-key` no longer flags positional rendering of string fragments (characters, lines, tokens): `[...str]` and `Array.from(str)` where the source is provably a string (literal, template, `String()` call, or a binding/prop typed `string` in the same file), plus any `str.split(...)` receiver (only strings have `.split`, so no proof is needed) — including a local binding initialized from one (`const parts = line.split(" "); parts.map(...)`). Fragment position is the stable identity there — nothing reorders, filters, or carries per-item state. Data lists still report.
+  - `prefer-useReducer` now requires an actual co-update signal instead of merely counting `useState` calls: it reports only when the threshold number of distinct setters are called together as sibling statements of one handler/effect block. Independent state updated from separate handlers or separate keyboard-handler branches stays quiet, and the message no longer claims each `useState` "can trigger a separate render" (wrong since React 18 automatic batching) — it now explains the real rationale: state that changes together is easier to keep consistent as a single reducer action.
+  - `jsx-no-jsx-as-prop` only claims what it can prove: when the receiving component is not resolvable in the current file (imported), the message uses conditional wording ("If this child is memoized, …") instead of asserting a memo bailout that may not exist. Same-file components provably wrapped in `memo()` (or MobX `observer()`) keep the assertive message; provably plain function components already stayed quiet.
+  - `lazy()` / `React.lazy()` components are no longer treated as memoized — `lazy` defers loading but does not skip re-renders. `jsx-no-jsx-as-prop` now uses the conditional wording for them, and the memoised-consumer-gated rules (`jsx-no-new-object-as-prop`, `jsx-no-new-array-as-prop`, `jsx-no-new-function-as-prop`, `prefer-stable-empty-fallback`) no longer report fresh-reference props passed to a `lazy()` component, matching their premise of a provably defeated memo bailout.
+
+- [#958](https://github.com/millionco/react-doctor/pull/958) [`c72b560`](https://github.com/millionco/react-doctor/commit/c72b560682f1254aa4dd793898f2eed48afdbe27) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix `jsx-key`'s spread-overwrites-`key` check to key off the spread's position. A `{...spread}` can only clobber an explicit `key` when it appears _after_ the key — the later attribute wins under the classic runtime (`{ key, ...spread }`) and React falls back to `createElement` under the automatic runtime, so the later spread wins there too. The rule now reports `<App key="x" {...spread} />` (and the sandwiched `<App {...a} key="x" {...b} />`) and stays silent on `<App {...spread} key="x" />`, which previously produced a false positive. Spreads of object literals that provably carry no `key` (e.g. `{...{}}`, `{...{ className }}`) are never treated as overwriting.
+
+- [#988](https://github.com/millionco/react-doctor/pull/988) [`6e67626`](https://github.com/millionco/react-doctor/commit/6e6762667838caa518cea203fe985184ab0bd31f) Thanks [@aidenybai](https://github.com/aidenybai)! - fix(react-builtins): eliminate false positives across builtin DOM/JSX rules
+
+  Harden the react-builtins rules against false positives on real-world code:
+
+  - `button-has-type`, `iframe-missing-sandbox`, `checked-requires-onchange-or-readonly`: a JSX or `createElement` spread (`{...props}`) can forward the "missing" attribute at runtime, so these rules no longer report an attribute they cannot see — except an `<iframe>` with an explicit `src`, which marks the real embed site where a missing `sandbox` is the author's omission. `button-has-type` also resolves locally-bound and destructured/renamed `type` props (only through `const` initializers and only when the destructure roots at a function parameter), and treats explicitly nullish `createElement` props (`null` / `undefined` / `void 0`) as missing.
+  - `no-find-dom-node`: a bare `findDOMNode(...)` is flagged only when it is imported from `react-dom`, so a local helper of the same name is left alone.
+  - `no-is-mounted`, `no-this-in-sfc`: fire only inside an actual React component, so a plain class that exposes an `isMounted` method or an ES5 constructor keeps its real `this`.
+  - `no-call-component-as-function`, `no-unstable-nested-components`: a capitalized helper that is only ever called `Name()` (never instantiated as an element) is treated as an inline render helper, not a component — unless the helper owns hook calls, which inline into the caller's hook order. The instantiation check is keyed by binding, not name — a same-named component rendered elsewhere in the file doesn't count — and `createElement(Name, …)`, `<Thing.Panel/>`, and escaping reads (`withAnalytics(Inner)`, `component={Inner}`) count as instantiation alongside `<Name/>`.
+  - `rules-of-hooks`: a factory-named function (`init` / `create*` / `make*` / `build*`) outside any component or hook whose own scope issues several hook calls is treated as a custom hook / factory body even though its name breaks the `useXxx` / PascalCase convention (Solid→React ports use these shapes); this escape also covers the React 19 `use()` hook. A `use`-prefixed callee that resolves to a local hook-free function (e.g. ajv's `useKeyword`) is not treated as a React hook.
+  - `exhaustive-deps`: a zero-arg accessor call (`foo()`) listed in the deps array now matches the captured accessor instead of being dropped as a complex dependency, and its callee resolves for the unstable-function-dep check; a computed callee (`items[index]()`) stays a complex dependency, and an unused zero-arg call dep (`Date.now()`) is reported as a complex expression instead of a misleading unnecessary-dependency message.
+  - `jsx-no-script-url`: the `javascript:` match is anchored to the URL start, so an ordinary `https:` link that merely contains `JavaScript:` deeper in its path is not flagged.
+  - `jsx-no-comment-textnodes`: an interpolated `//` separator glyph (`{used} // {total} GB`) — including one with a literal right side (`{used} // 512 GB`) — is no longer mistaken for a `// comment`.
+  - `no-string-false-on-boolean-attribute`: custom elements (hyphenated tag names) own their attribute semantics and are skipped.
+  - `void-dom-elements-no-children`, `no-danger-with-children`: whitespace-with-newline text, `{/* comment */}`, and `{undefined}` / `{null}` / `{void 0}` no longer count as meaningful children; both rules also ignore nullish positional children in `createElement` (`createElement("img", props, null)`). `no-danger-with-children` still reports when two or more children survive the JSX transform, since React's `props.children != null` conflict guard sees the resulting array even when every entry is nullish.
+  - `no-unknown-property`: `transform-origin` is allowed on every transformable SVG element (including `a`, `defs`, gradients, and `stop`), not just `<rect>`.
+  - `no-prevent-default`: an href-less `<a>` (anchor-as-button) is not a dead link, and an anchor whose handler performs its own navigation after `preventDefault()` (router push, `location.href` assignment, `window.open`) is custom SPA navigation, not a dead link.
+  - `jsx-no-jsx-as-prop`: `indicator`, `decoration`, and `*Children` props (antd `checkedChildren` and friends) are recognized as slot props.
+  - dumi doc trees (`/.dumi/`) are treated as non-production files, so demo/docs code inside them is skipped by the rules that skip test-like files.
+
+- [#984](https://github.com/millionco/react-doctor/pull/984) [`0b64af5`](https://github.com/millionco/react-doctor/commit/0b64af58b16329c5cae7a210463d2842e34b150d) Thanks [@aidenybai](https://github.com/aidenybai)! - Stop `no-eval` and `auth-token-in-web-storage` from firing in non-production files
+
+  `eval` / `new Function` / a stringy `setTimeout`, and a token written to web
+  storage, are only vulnerabilities in code that ships to users. Both rules now
+  skip test, spec, fixture, story, and script files (`isTestlikeFilename`), so a
+  `new Function(...)` inside a `*.test.ts` or a throwaway token in `__tests__/` is
+  no longer reported. The rules stay fully enabled in production code.
+
+- [#983](https://github.com/millionco/react-doctor/pull/983) [`5639b1e`](https://github.com/millionco/react-doctor/commit/5639b1e40e66650cb7042206b19807b2f785d8ff) Thanks [@aidenybai](https://github.com/aidenybai)! - fix: stop flagging non-privileged server actions in server-auth-actions
+
+  `server-auth-actions` flagged any exported server action without an auth check,
+  including actions that touch no protected data. It now exempts an action whose
+  body only:
+
+  - busts the Next.js cache — `revalidateTag`, `revalidatePath`, `expireTag`,
+    `expirePath`, and the `unstable_` variants, and/or
+  - navigates — `redirect`, `permanentRedirect`, `notFound`, `forbidden`,
+    `unauthorized`.
+
+  An unauthenticated caller gains nothing by invoking such actions, so requiring
+  an auth guard was a false positive.
+
+  The exemption is deliberately conservative — the body must contain at least one
+  cache- or navigation call (matched only as a bare imported identifier, never a
+  same-named method like `obj.redirect()`) and **no** other effect. Any DB query,
+  `fetch`, imported helper, raw-SQL tagged template (`sql\`DELETE …\``),
+  constructor, or assignment keeps the action flagged, so a genuinely sensitive
+  action is never silently allowed through.
+
+- [#1018](https://github.com/millionco/react-doctor/pull/1018) [`988ce57`](https://github.com/millionco/react-doctor/commit/988ce5701af82aef406be48190dace1449a5393c) Thanks [@aidenybai](https://github.com/aidenybai)! - Cut false positives across the state-and-effects rule family while locking the true-positive shapes in with regression tests:
+
+  - `no-cascading-set-state` now counts setters per synchronous dispatch: deferred callbacks (timers, listeners, observers, promise continuations, subscriptions) no longer inflate the count on their own, but still compound when the effect also sets state synchronously; IIFE and synchronous-iteration (`forEach`/`map`/…) callbacks stay counted; statements after an unconditional `return`/`throw` are ignored, and early-return guard branches accumulate across re-runs.
+  - `no-chain-state-updates`, `no-event-handler`, `no-pass-live-state-to-parent`, and `no-prop-callback-in-effect` stay silent when the triggering state is externally driven — its setter is called exclusively from timers, listeners, observers, promise continuations, or subscriptions — since there is no React event handler to fold the work into.
+  - `no-derived-state` no longer flags a controlled-value mirror whose setter is also handed to a child as an `on*` JSX callback (`onChange={setValue}`): the state buffers the child's live edits.
+  - `no-direct-state-mutation` exempts state whose `useState` initializer provably constructs a class instance (`useState(new TrackQueue())` or a lazy initializer returning one) — an opaque imperative object, not render data.
+  - `no-pass-live-state-to-parent` and `no-prop-callback-in-effect` skip prop calls whose result flows into another call's argument (`setDisplay(format(amount))`) — a pure transform, not a parent hand-back — and `no-pass-live-state-to-parent` also skips functions returned by state-owning custom hooks.
+  - `rerender-functional-setstate` recognizes `debounce`/`throttle` wrappers as deferred execution.
+  - `rerender-state-only-in-handlers` no longer flags state that drives a side-effect-only `useEffect` dependency, feeds a render-phase hook call, or participates in React's adjust-state-while-rendering pattern. Effect reads are now resolved through binding scopes, so a local that shadows a state name neither hides nor fakes a read of the outer value.
+  - `no-initialize-state` only defers to a mount effect for measurement API calls (`window.matchMedia(...)`), not bare method references (`!!window.matchMedia`) or scalar reads (`window.innerWidth`).
+
+- [#911](https://github.com/millionco/react-doctor/pull/911) [`f69f216`](https://github.com/millionco/react-doctor/commit/f69f21681dd7f17d632a09d742d501ef0b9b3047) Thanks [@skoshx](https://github.com/skoshx)! - fix: reduce false positives in supabase-rls-policy-risk
+
+  The rule now classifies each `CREATE POLICY` statement individually (over
+  comment/string-sanitized SQL) instead of matching the whole file with one
+  regex. A permissive `using/with check (true)` policy whose `TO` clause names
+  **only** server-only roles (`service_role`, `postgres`, `supabase_admin`) is
+  treated as hardening, not a public bypass — including two-clause `FOR ALL` /
+  `FOR UPDATE` forms and all-server-only role lists that the previous
+  negative-lookbehind missed. `anon` / `authenticated` (and a `TO` clause that
+  mixes one in, or no `TO` clause at all → `PUBLIC`) stay flagged, since those are
+  client-reachable via a JWT.
+
+  `auth.role() = 'service_role'` checks inside policy bodies are still flagged
+  (true runtime bypasses). The previous `IF EXISTS` suppression on `DISABLE ROW
+LEVEL SECURITY` was removed: it silently downgraded a real risk on live tables,
+  and the dropped-table case it targeted needs cross-migration analysis — deferred
+  with the issue's cross-migration class.
+
+  Fixes [#910](https://github.com/millionco/react-doctor/issues/910)
+
+- [#988](https://github.com/millionco/react-doctor/pull/988) [`6e67626`](https://github.com/millionco/react-doctor/commit/6e6762667838caa518cea203fe985184ab0bd31f) Thanks [@aidenybai](https://github.com/aidenybai)! - fix(architecture): eliminate false positives across architecture, correctness, and design rules
+
+  Hardens ~15 rules so they stop firing on valid code, without weakening the real smell each targets.
+
+  Architecture:
+
+  - `no-many-boolean-props` requires actual render output before treating a parameter as component props (so non-component factories like `CreateValidator(options)` are skipped; JSX inside `.map`/`useMemo` callbacks still counts), and no longer counts props that are invoked, wired as event handlers (`onClick={showMenu}`), or passed as imperative-prefixed call arguments (`setTimeout(props.showMenu, 100)`) as boolean flags — resolving each name to the component's own props binding, including renamed destructurings.
+  - `no-nested-component-definition` only flags a nested definition that is actually rendered — as JSX (`<Inner/>`) or by reference through a component prop (`component={Inner}`) — inside its own enclosing component, not a capitalized helper that is merely called (`Inner()`), and no longer leaks a sibling component's `<Inner/>` onto a same-named call-only helper.
+  - `no-render-in-render` exempts render-prop invocations (`props.renderX()`, `this.props.renderX()`, `props.slots.renderX()` on a nested prop bag, and render props destructured or aliased from props or a component parameter — including defaulted/conditional aliases like `props.renderItem ?? defaultRender`), while still flagging local `render*` helpers, `this.renderX()` class-field calls, and a `render*` parameter of an ordinary nested helper.
+  - `no-render-prop-children` ignores `render*Props` config bags and literal `render*` mode/flag values, which are not render slots.
+  - `prefer-module-scope-static-value` no longer hoists initializers that call impure globals (`Date.now()`, `Math.random()`, `crypto.randomUUID()`, `nanoid()`, …) — local helpers that merely share one of those names stay hoistable — and abstains when every reference is a read-only scalar lookup (`KEYS.includes(k)`), where referential identity can't matter.
+  - `react-compiler-destructure-method` drops `useSearchParams` (its methods are unbound and throw when destructured).
+  - `react-compiler-no-manual-memoization` leaves `memo(Component, areEqual)` with a custom comparator alone (a nullish second argument still counts as redundant).
+
+  Correctness:
+
+  - `html-no-invalid-paragraph-child` and `html-no-nested-interactive` stop at JSX attribute boundaries, so an element passed as a prop is no longer treated as a DOM child / nested element — except the explicit `children` prop, which React renders as a real DOM child.
+  - `no-polymorphic-children` only flags `typeof children` when `children` resolves to the component's props, not a local variable or field that happens to be named `children`.
+  - `no-prevent-default` skips `<form action=…>` (which has a native no-JS submit path) and anchors whose handler carries positive navigation evidence after `preventDefault()` (`router.push`, `navigate(...)`, `window.open`, delegation to a prop handler) — analytics-only handlers stay flagged as dead links — and stays quiet in test/demo files.
+  - `no-uncontrolled-input` treats `onInput` as controlling like `onChange`, no longer flags `disabled` inputs (React suppresses its missing-`onChange` warning for `disabled` fields, just like `readOnly`) unless `disabled={false}` is literal, and stays quiet in test/demo files.
+  - `rendering-svg-precision` requires at least two over-precise token occurrences before reporting, and stays quiet in test/demo/docs-site files.
+
+  Design:
+
+  - `no-gray-on-colored-background` pairs gray text and colored backgrounds by Tailwind variant scope (order-insensitive, `!important`-aware), including the additive case where a base utility applies under a variant with no same-property override, and tightens the palette/shade patterns.
+  - `no-layout-transition-inline` matches an exact set of layout property tokens (now also `border-*-width`, `line-height`, `column-width`) so lookalikes such as `stroke-width` no longer match.
+  - `no-long-transition-duration` exempts infinite / looping animation segments (an animation NAME containing "infinite" still counts) and decorative `aria-hidden` elements.
+  - `no-outline-none` allows `outline: none` alongside a class that ADDS a visible ring on the element's OWN focus (removal utilities like `focus:ring-0` / `focus:outline-hidden` and `group-focus:`/`peer-focus:` variants don't count) or on elements removed from the tab order (negative `tabIndex`, including conditionals where both branches are negative).
+  - `no-side-tab-border` runs arbitrary hex/rgb/hsl border colors through the same achromatic check as named palette colors, preferring the color scoped to the flagged side (`border-l-[#e5e7eb]`) over the base border color.
+
+- [#988](https://github.com/millionco/react-doctor/pull/988) [`6e67626`](https://github.com/millionco/react-doctor/commit/6e6762667838caa518cea203fe985184ab0bd31f) Thanks [@aidenybai](https://github.com/aidenybai)! - fix(performance): reduce false positives across performance, js-performance, and bundle-size rules
+
+  Hardens the performance rule families so common, legitimate patterns stop
+  triggering warnings. Validated against 500 distinct OSS repos with the RDE
+  harness (react-doctor caching disabled).
+
+  - **bundle-size** — `no-dynamic-import-path` only treats bundler-analyzable
+    relative specifiers (`./`, `../`) as static prefixes (protocol/absolute
+    URLs stay flagged); heavy-library rules skip type-only imports;
+    `no-undeferred-third-party` ignores `type="module"` and non-executable
+    script types.
+  - **js-performance** — smarter guards for order-dependent async
+    (`async-await-in-loop`, `async-parallel`), `.find()` in loops
+    (`js-index-maps`: single-field equality, loop-variant receivers — including
+    receivers behind a TS cast — and nested-scope bindings), property-access and
+    `localStorage` caching, `filter(Boolean)` chains, `Intl`/`RegExp` memo and
+    hoist patterns, direction-aware `Math.min`/`Math.max` hints, small literal
+    `includes`, and `[...x].sort()` when `x` is a fresh, otherwise-unreferenced
+    array or iterator.
+  - **`no-json-parse-stringify-clone`** — exempts clones inside `snapshot*`
+    helpers, and no longer flags `JSON.parse(JSON.stringify(x, replacer))` when
+    the replacer is an inline function or array (it transforms the output, so
+    `structuredClone` is not an equivalent rewrite).
+  - **performance / React** — memo inline-prop skips custom comparators and
+    `ref`/`key`; hoist-JSX respects render-local components; the hydration rule
+    ignores time/random inside nested handlers; loading-state, derived-hook, and
+    memo-before-return rules only fire when the suggested refactor would help.
+
+- [#988](https://github.com/millionco/react-doctor/pull/988) [`6e67626`](https://github.com/millionco/react-doctor/commit/6e6762667838caa518cea203fe985184ab0bd31f) Thanks [@aidenybai](https://github.com/aidenybai)! - Eliminate false positives across the framework rules (nextjs, server, tanstack-query, tanstack-start, jotai, preact, view-transitions, client): redirect-in-try-catch rules now resolve the real next/navigation import and treat a catch that re-throws the caught error (or a bare try/finally, or an IIFE boundary) as transparent instead of swallowing, effect-fetch rules follow IIFEs, called local functions, and promise-chain callbacks the effect actually runs while still skipping later-firing handlers, `server-hoist-static-io` tracks request-derived paths through intermediate bindings, the tanstack-query rules verify receiver bindings through scope analysis (`query-mutation-missing-invalidation` recognizes destructured and tRPC-style `utils.x.invalidate()` cache invalidation without accepting unrelated `invalidate()` verbs), `server-no-mutable-module-state` only flags const containers that are actually mutated (including through aliases and one same-file call hop), `no-document-start-view-transition` only fires in files that import React's `ViewTransition`, and passive-event-listener, image-sizes, anchor, GET-handler, loader-waterfall, navigate-in-render, select-atom, raw-query-atom, and children-length checks all gained escape hatches for legitimate patterns. Validated against 500 OSS repositories.
+
+- [#954](https://github.com/millionco/react-doctor/pull/954) [`6339f71`](https://github.com/millionco/react-doctor/commit/6339f715cc1a30521a699b818140ec2fae6f569e) Thanks [@rayhanadev](https://github.com/rayhanadev)! - fix(rn-no-raw-text): report raw text by where it actually crashes, resolving imported wrappers across files
+
+  The `rn-no-raw-text` rule reported raw text inside any element it couldn't prove was a text component — including a custom component imported from another file (e.g. a `<MyButton>` that wraps its label in `<Text>` internally), which produced false positives on the common "custom component that renders Text" pattern.
+
+  The rule now anchors its report on where React Native actually crashes — a host boundary — and resolves imported components across files instead of guessing:
+
+  - Raw text is reported inside a known host primitive (`View`, `ScrollView`, `Pressable`, the `Touchable*` family, `Modal`, …), a lowercase intrinsic, or an in-file component proven to forward its children into one.
+  - A component imported from another first-party file (relative or tsconfig-alias) is resolved and classified the same way: one that wraps its children in `<Text>` is left alone, while one that renders them into a `<View>` is still reported — so genuine crashes inside imported wrappers are kept.
+  - Components the resolver can't follow (`node_modules`, namespace imports, unanalyzable exports) are left unreported rather than assumed to crash; `rawTextWrapperComponents` / `textComponents` config still covers those.
+  - React's structural `<Fragment>` / `<React.Fragment>` now counts as a transparent wrapper alongside fbtee's `<fbt>` / `<fbs>`, so an `<fbt>` nested under a `<Fragment>` inside a `<Text>` is no longer falsely flagged.
+
 ## 0.5.8
 
 ### Patch Changes

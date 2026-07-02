@@ -1,5 +1,12 @@
 # @react-doctor/language-server
 
+## 0.6.0
+
+### Patch Changes
+
+- Updated dependencies [[`8232e96`](https://github.com/millionco/react-doctor/commit/8232e967238ff7943c0cac0d0b2a2f9d349c89dd), [`99f2417`](https://github.com/millionco/react-doctor/commit/99f2417d8c181916919e6ae0a5ea0722770c7857), [`5f2bd72`](https://github.com/millionco/react-doctor/commit/5f2bd7254362109555194e43a019824478cb9ab5), [`441e6af`](https://github.com/millionco/react-doctor/commit/441e6afb55ee154e70e56f10a79565b9fd1f3295), [`c16e8ea`](https://github.com/millionco/react-doctor/commit/c16e8ea6f6cd455c837d02aafedb916817a4008e), [`fff9466`](https://github.com/millionco/react-doctor/commit/fff946689638bab3641474b6f8712a62777934ab), [`80e3093`](https://github.com/millionco/react-doctor/commit/80e3093815ecc40f29442ef44b4fee9accd76e8a), [`c2ce298`](https://github.com/millionco/react-doctor/commit/c2ce2989add3e43d21b7f609cad975e0284b6c42), [`ea4d9af`](https://github.com/millionco/react-doctor/commit/ea4d9afd4f2afc15c5d52217c3d001bd02b84046)]:
+  - @react-doctor/core@0.6.0
+
 ## 0.5.8
 
 ### Patch Changes

@@ -1,5 +1,59 @@
 # deslop-js
 
+## 0.6.0
+
+### Patch Changes
+
+- [#936](https://github.com/millionco/react-doctor/pull/936) [`ba2af1b`](https://github.com/millionco/react-doctor/commit/ba2af1b7faa5ef4e1ae39e6c3b786259fba23f1f) Thanks [@aidenybai](https://github.com/aidenybai)! - Update the license to MIT with additional restrictions: the software may not be used as training, fine-tuning, or evaluation data for machine-learning models or AI systems, nor sold or resold as a commercial product or service (e.g. a paid API, SaaS, or hosted/managed service) whose value derives substantially from the software, without prior written permission (contact founders@million.dev). Each version's additional restrictions expire on the second anniversary of its release, after which that version is available under the standard MIT License (an FSL-style grant of future license). Each published package now ships its own up-to-date `LICENSE` file so the terms travel with the tarball.
+
+  The `react-doctor` CLI also now prints a one-time notice (once per run) when it detects it is running inside an AI/ML training pipeline or agent sandbox, pointing to the license terms.
+
+- [#915](https://github.com/millionco/react-doctor/pull/915) [`b69f4a7`](https://github.com/millionco/react-doctor/commit/b69f4a75360ad17d1d149aeb9de16835e792606a) Thanks [@skoshx](https://github.com/skoshx)! - Fix false positives in Expo config plugin detection for package-name plugins and nested expo config
+
+  Expo config plugins can be referenced by package name (not just local file paths) from `app.json` / `app.config.*`, but the collector dropped any plugin entry that didn't resolve to a local file — so packages referenced only as config plugins were reported as unused. The `app.config.{js,ts}` AST path also only matched a top-level `plugins` property and never descended into the standard `{ expo: { plugins: [...] } }` shape (the JSON `app.json` path already read `expo.plugins`).
+
+  Fixed by:
+
+  - Tracking package-name plugins (e.g. `@config-plugins/detox`, `@react-native-firebase/app`) alongside local file-path plugins
+  - Descending into the nested `expo` object in the config-object AST collector
+  - Marking those package-name plugins as used in `detectStalePackages` (gated on the declared dependency set, so unrelated strings can't suppress real unused deps)
+
+  Closes [#914](https://github.com/millionco/react-doctor/issues/914)
+
+- [#971](https://github.com/millionco/react-doctor/pull/971) [`a7ad969`](https://github.com/millionco/react-doctor/commit/a7ad969e5621ce1f61422b9bf578da600220d3e2) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Fix `deslop/unused-export` false positive for namespace-imported components used in JSX
+
+  A component referenced only through a namespace import in JSX —
+  `import * as S from "./style"` then `<S.Custom />` — was reported as an unused
+  export. The usage walker recorded namespace member access in regular expressions
+  (`MemberExpression`, e.g. `S.helper()`) but not in JSX (`JSXMemberExpression`),
+  so a member used solely as `<S.x />` was missed whenever the namespace had any
+  other accessed member. Closes [#875](https://github.com/millionco/react-doctor/issues/875).
+
+- [#963](https://github.com/millionco/react-doctor/pull/963) [`03b7a5f`](https://github.com/millionco/react-doctor/commit/03b7a5f79e50d42f1d4f1aaddb2587605c8edde0) Thanks [@skoshx](https://github.com/skoshx)! - Exclude TypeScript 6.x to fix bunx installation crash
+
+  TypeScript 6.0.3 has an internal circular dependency with its `Comparison` enum
+  that triggers a known Bun module loader bug, causing `bunx react-doctor install`
+  to crash with "ReferenceError: Cannot access 'Comparison' before initialization".
+  Narrow the dependency range to `>=5.0.4 <6` until Bun fixes enum initialization
+  order (see oven-sh/bun#12805).
+
+  The constraint covers both `react-doctor` (whose CLI imports `typescript` at
+  startup) and `deslop-js` (loaded by the dead-code scan, which can run under bun),
+  so no published package pulls TypeScript 6.x into a consumer's install tree.
+
+  `npx` continues to work because npm's resolver handles the circular dependency
+  correctly. TypeScript 5.9.3 is stable and tested; TypeScript 6.x support will
+  return once the upstream bug is resolved.
+
+  Closes [#962](https://github.com/millionco/react-doctor/issues/962)
+
+- [#916](https://github.com/millionco/react-doctor/pull/916) [`7f9e7f4`](https://github.com/millionco/react-doctor/commit/7f9e7f42832f40a32d7583126c096067f948856f) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Rework unused-dependency detection to lean on real package metadata instead of hand-maintained whitelists.
+
+  - Treat any installed dependency that ships a CLI binary as used. A package that declares a `bin` is routinely invoked outside what a static scan can see (Makefiles, CI, git hooks, ad-hoc `npx`), so it's no longer flagged just because no `package.json` script names the binary. Empty `bin` fields (`""` / `{}`) don't count.
+  - Drop the hardcoded fallback tables now that the bin/peer scans read real `node_modules` metadata: the binary→package map (`CLI_BINARY_TO_PACKAGE` + the `babel`/`jest`/`remark` fallbacks), the env-wrapper binary set, the static peer-dependency map, and the implicit-companion map. With dependencies installed (the normal scan condition) detection is unchanged — a package's real `bin` and `peerDependencies` cover what the tables used to hardcode.
+
+  Trade-off: when scanning **without** `node_modules`, a CLI dependency whose binary name differs from its package name (e.g. `vp` → `vite-plus`) can no longer be resolved from scripts, and a few heuristic peer relationships that aren't declared `peerDependencies` (e.g. `@hookform/resolvers` → `zod`) are no longer inferred. The always-used lists for tooling that can't be detected statically (`typescript`, `eslint`, `@types/*`, `eslint-plugin-*`, …) are unchanged.
+
 ## 0.5.8
 
 ### Patch Changes

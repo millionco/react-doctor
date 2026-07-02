@@ -1,6 +1,6 @@
 {
   "name": "@react-doctor/api",
-  "version": "0.5.8",
+  "version": "0.6.0",
   "private": true,
   "description": "Programmatic API for React Doctor.",
   "license": "SEE LICENSE IN LICENSE",

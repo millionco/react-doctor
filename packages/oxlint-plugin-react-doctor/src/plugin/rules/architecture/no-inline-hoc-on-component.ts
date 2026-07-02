@@ -144,7 +144,9 @@ const callsHookInOwnScope = (functionNode: EsTreeNode): boolean => {
 // uppercase binding / assignment target, or a default export — so
 // non-component HOC-like helpers whose results are lowercase-named (act(),
 // render(), reduce()) stay quiet. Transparent wrappers (`memo`, `forwardRef`,
-// TS casts) between the HOC call and the slot are peeled.
+// TS casts) and curried HOC applications (`connect(mapState)(...)` — the
+// callee is itself a CallExpression) between the HOC call and the slot are
+// peeled.
 const producesComponentValue = (wrappingCall: EsTreeNode): boolean => {
   const outermostExpression = climbTransparentParents(wrappingCall);
   const consumer = outermostExpression.parent;
@@ -164,6 +166,7 @@ const producesComponentValue = (wrappingCall: EsTreeNode): boolean => {
     return false;
   }
   if (isNodeOfType(consumer, "CallExpression") && consumer.arguments[0] === outermostExpression) {
+    if (isNodeOfType(consumer.callee, "CallExpression")) return producesComponentValue(consumer);
     const outerCalleeName = getCalleeName(consumer);
     if (outerCalleeName !== null && TRANSPARENT_WRAPPER_CALLEE_NAMES.has(outerCalleeName)) {
       return producesComponentValue(consumer);
@@ -175,7 +178,7 @@ const producesComponentValue = (wrappingCall: EsTreeNode): boolean => {
 export const noInlineHocOnComponent = defineRule({
   id: "no-inline-hoc-on-component",
   title: "Function component defined inline inside an HOC call",
-  tags: ["test-noise"],
+  tags: ["test-noise", "react-jsx-only"],
   severity: "warn",
   category: "Architecture",
   recommendation:

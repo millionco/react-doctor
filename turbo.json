@@ -20,7 +20,7 @@
     },
     "test": {
       "dependsOn": ["build"],
-      "env": ["MATRIX_NODE_VERSION"]
+      "env": ["MATRIX_NODE_VERSION", "MATRIX_OS"]
     },
     "typecheck": {
       "dependsOn": ["^build"]

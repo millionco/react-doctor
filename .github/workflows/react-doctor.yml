@@ -57,6 +57,10 @@ jobs:
   # can't silently break. Cross-run cache HITS (the ~15s→~1s win) are validated
   # by dogfooding on real runs — the cache service persists between runs, not
   # within a single job. Advisory (`blocking: none`), so it never reds the repo.
+  # PR reporting is disabled: this job exists purely to exercise the install
+  # path, and letting it also write the sticky comment / inline reviews /
+  # commit status would race the dogfood job above on the same markers with a
+  # published CLI's results, leaving nondeterministic last-writer-wins feedback.
   action-cacheable-install:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -69,3 +73,6 @@ jobs:
           blocking: none
           node-version: 22.18.0
           version: latest
+          comment: false
+          review-comments: false
+          commit-status: false

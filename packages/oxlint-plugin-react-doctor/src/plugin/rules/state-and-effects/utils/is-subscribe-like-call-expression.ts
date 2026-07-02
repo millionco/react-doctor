@@ -19,5 +19,20 @@ export const isSubscribeLikeCallExpression = (node: EsTreeNode): boolean => {
 
 export const isCleanupReturningSubscribeLikeCallExpression = (node: EsTreeNode): boolean => {
   const methodName = getSubscribeLikeMethodName(node);
-  return methodName !== null && CLEANUP_RETURNING_SUBSCRIPTION_METHOD_NAMES.has(methodName);
+  if (methodName === null || !CLEANUP_RETURNING_SUBSCRIPTION_METHOD_NAMES.has(methodName)) {
+    return false;
+  }
+  // `listen` is only disposer-returning in the store-subscription shape
+  // (`store.listen(cb)` — nanostores et al.). Node's `server.listen(3000)`
+  // returns the server itself, so returning that handle closes nothing;
+  // require an inline callback argument before trusting the contract.
+  if (methodName === "listen") {
+    const callArguments = isNodeOfType(node, "CallExpression") ? (node.arguments ?? []) : [];
+    return callArguments.some(
+      (argument) =>
+        isNodeOfType(argument, "ArrowFunctionExpression") ||
+        isNodeOfType(argument, "FunctionExpression"),
+    );
+  }
+  return true;
 };

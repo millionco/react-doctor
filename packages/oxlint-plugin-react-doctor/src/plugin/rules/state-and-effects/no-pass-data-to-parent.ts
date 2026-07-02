@@ -7,7 +7,6 @@ import {
   STRING_READ_METHOD_NAMES,
 } from "../../constants/data-sink-method-names.js";
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
-import { isFunctionLike } from "../../utils/is-function-like.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import {
   getArgsUpstreamRefs,
@@ -26,10 +25,9 @@ import {
   isRefCall,
   isRefCurrent,
   isUseEffect,
+  isWholePropsObjectReference,
 } from "./utils/effect/react.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import type { Reference } from "eslint-scope";
-import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 
 // 1:1 port of upstream `src/rules/no-pass-data-to-parent.js`.
 
@@ -68,22 +66,6 @@ const isUseRefIdentifier = (identifier: EsTreeNode): boolean => {
   }
   return false;
 };
-
-// True when the reference binds the WHOLE props object (`(props) =>`)
-// rather than a destructured prop value (`({ text }) =>`). Calling a
-// method directly on the props object (`props.search(results)`) calls
-// a parent-supplied callback prop, even when the method name collides
-// with a string-prototype read — whereas `text.startsWith(x)` reads
-// from a prop value.
-const isWholePropsObjectReference = (analysis: ProgramAnalysis, ref: Reference): boolean =>
-  isProp(analysis, ref) &&
-  Boolean(
-    ref.resolved?.defs.some((def) => {
-      if (def.type !== "Parameter") return false;
-      const bindingParent = (def.name as unknown as { parent?: EsTreeNode | null }).parent;
-      return isFunctionLike(bindingParent);
-    }),
-  );
 
 export const noPassDataToParent = defineRule({
   id: "no-pass-data-to-parent",

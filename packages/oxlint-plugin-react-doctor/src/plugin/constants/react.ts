@@ -106,7 +106,10 @@ export const SUBSCRIPTION_METHOD_NAMES = new Set([
 // Subscribe-like methods that return their own disposer. `listen`
 // follows the same `const stop = x.listen(cb); return stop` contract
 // as `subscribe` (the disposer IS the return value), so returning
-// that handle counts as cleanup. `watch` is deliberately excluded:
+// that handle counts as cleanup — but only in the callback-argument
+// shape (`is-subscribe-like-call-expression.ts` requires an inline
+// function argument, since Node's `server.listen(3000)` returns the
+// server, not a disposer). `watch` is deliberately excluded:
 // react-hook-form's `form.watch(cb)` returns `{ unsubscribe }` (not
 // callable) and `fs.watch` returns an FSWatcher needing `.close()`,
 // so a returned watch handle is not a cleanup function.

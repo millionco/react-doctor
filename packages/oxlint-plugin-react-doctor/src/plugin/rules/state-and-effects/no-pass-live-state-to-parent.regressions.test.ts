@@ -3,6 +3,36 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noPassLiveStateToParent } from "./no-pass-live-state-to-parent.js";
 
 describe("no-pass-live-state-to-parent — regressions", () => {
+  it("still flags props.search(state) — a parent callback named like String.prototype.search", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `const Child = (props) => {
+        const [results, setResults] = useState([]);
+        useEffect(() => {
+          props.search(results);
+        }, [props, results]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on a string read from a prop value (text.search)", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `const Child = ({ text }) => {
+        const [pattern] = useState("needle");
+        useEffect(() => {
+          if (text.search(pattern) >= 0) console.log("found");
+        }, [text, pattern]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when the prop is a pure transform consumed locally", () => {
     const result = runRule(
       noPassLiveStateToParent,

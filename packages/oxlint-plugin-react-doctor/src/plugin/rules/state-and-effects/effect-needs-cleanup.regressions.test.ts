@@ -106,4 +106,20 @@ export const StoreSubscriber = ({ store }) => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("still flags an HTTP `server.listen(port)` whose returned server is returned from the effect", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const DevServer = ({ app }) => {
+  useEffect(() => {
+    const server = app.listen(3000);
+    return server;
+  }, [app]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

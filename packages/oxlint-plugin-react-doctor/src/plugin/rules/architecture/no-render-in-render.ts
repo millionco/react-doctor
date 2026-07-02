@@ -18,13 +18,15 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analy
 const tracesToPropOrParameter = (
   symbol: SymbolDescriptor | null,
   scopes: ScopeAnalysis,
+  visitedSymbols: Set<SymbolDescriptor> = new Set(),
 ): boolean => {
-  if (!symbol) return false;
+  if (!symbol || visitedSymbols.has(symbol)) return false;
+  visitedSymbols.add(symbol);
   if (isComponentParameterSymbol(symbol)) return true;
   if (!isNodeOfType(symbol.declarationNode, "VariableDeclarator")) return false;
   const source = symbol.initializer;
   if (!source) return false;
-  return initializerRootsInProps(source, scopes);
+  return initializerRootsInProps(source, scopes, visitedSymbols);
 };
 
 // The initializer of a destructuring (`const { renderItem } = props.slots`)
@@ -32,29 +34,40 @@ const tracesToPropOrParameter = (
 // when it roots in `props` / `this.props`, including the defaulted spellings
 // `props.renderItem ?? defaultRender` and
 // `cond ? props.renderItem : renderFallback` where an operand roots there.
-const initializerRootsInProps = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+const initializerRootsInProps = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbols: Set<SymbolDescriptor> = new Set(),
+): boolean => {
   if (isNodeOfType(node, "LogicalExpression")) {
     return (
-      initializerRootsInProps(node.left, scopes) || initializerRootsInProps(node.right, scopes)
+      initializerRootsInProps(node.left, scopes, visitedSymbols) ||
+      initializerRootsInProps(node.right, scopes, visitedSymbols)
     );
   }
   if (isNodeOfType(node, "ConditionalExpression")) {
     return (
-      initializerRootsInProps(node.consequent, scopes) ||
-      initializerRootsInProps(node.alternate, scopes)
+      initializerRootsInProps(node.consequent, scopes, visitedSymbols) ||
+      initializerRootsInProps(node.alternate, scopes, visitedSymbols)
     );
   }
-  return rootsInProps(node, scopes);
+  return rootsInProps(node, scopes, visitedSymbols);
 };
 
 // True when a member-expression chain bottoms out in a COMPONENT parameter
 // (`props.slots.header`, or `slots.header` where `slots` is a component
-// parameter) or a `this.props` access (`this.props.slots`). The root is
-// resolved through scope, so a local variable named `props` is NOT treated
-// as the component's props bag. Also gates the inline member-call receiver,
-// so `props.slots.renderItem()` is exempt for the same reason its
-// destructured form (`const { renderItem } = props.slots`) already is.
-const rootsInProps = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+// parameter), a `this.props` access (`this.props.slots`), or a local alias
+// whose declaration roots in one (`const slots = props.slots` then
+// `slots.renderItem()`). The root is resolved through scope, so a local
+// variable named `props` is NOT treated as the component's props bag. Also
+// gates the inline member-call receiver, so `props.slots.renderItem()` is
+// exempt for the same reason its destructured form
+// (`const { renderItem } = props.slots`) already is.
+const rootsInProps = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbols: Set<SymbolDescriptor> = new Set(),
+): boolean => {
   let current: EsTreeNode = node;
   while (isNodeOfType(current, "MemberExpression")) {
     if (
@@ -67,7 +80,7 @@ const rootsInProps = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
     current = current.object;
   }
   if (isNodeOfType(current, "Identifier")) {
-    return isComponentParameterSymbol(scopes.symbolFor(current));
+    return tracesToPropOrParameter(scopes.symbolFor(current), scopes, visitedSymbols);
   }
   return false;
 };

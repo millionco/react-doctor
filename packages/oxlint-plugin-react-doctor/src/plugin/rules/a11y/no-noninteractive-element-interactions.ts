@@ -18,6 +18,10 @@ interface RoleExpressionBranches {
   // when the guard is falsy). When set, we can't claim the element always
   // carries an interactive role, so suppression is unsafe.
   hasNonRoleBranch: boolean;
+  // A branch the collector cannot resolve (`role={left || "button"}` with an
+  // opaque `left`): a truthy left supplies an arbitrary runtime role, so the
+  // string branches alone cannot prove the element is always interactive.
+  hasOpaqueBranch: boolean;
 }
 
 // Collect every string-literal branch a `role={…}` expression can produce.
@@ -38,7 +42,7 @@ const collectRoleBranches = (expression: EsTreeNode, out: RoleExpressionBranches
   // `undefined` is an Identifier, not a Literal, but resolves to no role just
   // like a `null`/`false` literal — so a branch that yields it leaves the
   // element sometimes role-less. A different identifier (`role={dynamicRole}`)
-  // stays opaque, so it does not flip the flag.
+  // stays opaque, so it marks the opaque flag instead.
   if (isNodeOfType(expression, "Identifier") && expression.name === "undefined") {
     out.hasNonRoleBranch = true;
     return;
@@ -71,9 +75,26 @@ const collectRoleBranches = (expression: EsTreeNode, out: RoleExpressionBranches
       collectRoleBranches(expression.right as EsTreeNode, out);
       return;
     }
-    collectRoleBranches(expression.left as EsTreeNode, out);
+    // `||`: a truthy string-literal left always short-circuits, so the right
+    // operand is unreachable and only the left branch matters.
+    const leftOperand = expression.left as EsTreeNode;
+    if (
+      expression.operator === "||" &&
+      isNodeOfType(leftOperand, "Literal") &&
+      typeof leftOperand.value === "string" &&
+      leftOperand.value.length > 0
+    ) {
+      out.stringValues.push(leftOperand.value);
+      return;
+    }
+    collectRoleBranches(leftOperand, out);
     collectRoleBranches(expression.right as EsTreeNode, out);
+    return;
   }
+  // Anything else (`role={dynamicRole}`, `role={getRole()}`,
+  // `role={roles[kind]}`, template literals, …) can supply an arbitrary
+  // runtime role the collector cannot see.
+  out.hasOpaqueBranch = true;
 };
 
 const buildMessage = (tag: string): string =>
@@ -133,11 +154,13 @@ export const noNoninteractiveElementInteractions = defineRule({
             const branches: RoleExpressionBranches = {
               stringValues: [],
               hasNonRoleBranch: false,
+              hasOpaqueBranch: false,
             };
             collectRoleBranches(roleValue.expression as EsTreeNode, branches);
             const everyBranchIsInteractiveRole =
               branches.stringValues.length > 0 &&
               !branches.hasNonRoleBranch &&
+              !branches.hasOpaqueBranch &&
               branches.stringValues.every((branch) => INTERACTIVE_ROLES.has(branch));
             if (everyBranchIsInteractiveRole) return;
             if (branches.stringValues.length === 0 && !branches.hasNonRoleBranch) return;

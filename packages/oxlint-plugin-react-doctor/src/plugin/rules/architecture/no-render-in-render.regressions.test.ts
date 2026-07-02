@@ -172,4 +172,25 @@ describe("architecture/no-render-in-render — regressions", () => {
     );
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("does not flag a render prop called through a props-slice alias", () => {
+    const result = run(
+      `function List(props){ const slots = props.slots; return <div>{slots.renderItem(1)}</div>; }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a render prop called through a whole-props alias", () => {
+    const result = run(
+      `function List(props){ const p = props; return <div>{p.renderRow(1)}</div>; }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a member render* call whose alias roots in a local object", () => {
+    const result = run(
+      `function List(){ const renderRow = (x) => <li>{x}</li>; const local = { renderRow }; const slots = local; return <ul>{slots.renderRow(1)}</ul>; }`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

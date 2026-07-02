@@ -166,4 +166,28 @@ describe("a11y/no-noninteractive-element-interactions regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it('flags `role={left || "button"}` when the left operand is opaque', () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<li role={dynamicRole || "button"} onClick={() => {}}>x</li>`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a ternary whose consequent is opaque even with an interactive fallback", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<li role={cond ? dynamicRole : "button"} onClick={() => {}}>x</li>`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it('stays silent on `role={"button" || fallback}` where the left always wins', () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<li role={"button" || fallbackRole} onClick={() => {}}>x</li>`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

@@ -5,7 +5,10 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNamespacedApiCallee } from "../../utils/is-namespaced-api-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
-import { DATA_SINK_METHOD_NAMES } from "../../constants/data-sink-method-names.js";
+import {
+  DATA_SINK_METHOD_NAMES,
+  STRING_READ_METHOD_NAMES,
+} from "../../constants/data-sink-method-names.js";
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getArgsUpstreamRefs, getCallExpr, isSynchronous } from "./utils/effect/ast.js";
@@ -16,6 +19,7 @@ import {
   isPropCall,
   isState,
   isUseEffect,
+  isWholePropsObjectReference,
 } from "./utils/effect/react.js";
 
 // Memoizing hooks that WRAP a function they're given — the wrapped function
@@ -97,10 +101,27 @@ export const noPassLiveStateToParent = defineRule({
         if (!isResultDiscardedCall(callExpr)) continue;
 
         // Skip JS prototype / observer / promise methods — see
-        // `no-pass-data-to-parent` for the full rationale.
+        // `no-pass-data-to-parent` for the full rationale — except when
+        // a string-read name is called directly ON the props object:
+        // `props.search(results)` is a parent callback that happens to
+        // be named like `String.prototype.search`.
         const calleeNode = (callExpr as unknown as { callee?: EsTreeNode }).callee;
         const methodName = calleeNode ? getCallMethodName(calleeNode) : null;
-        if (methodName && DATA_SINK_METHOD_NAMES.has(methodName)) continue;
+        const isPropCallbackNamedLikeStringRead = Boolean(
+          methodName &&
+          STRING_READ_METHOD_NAMES.has(methodName) &&
+          calleeNode &&
+          isNodeOfType(calleeNode, "MemberExpression") &&
+          calleeNode.object === (ref.identifier as unknown as typeof calleeNode.object) &&
+          isWholePropsObjectReference(analysis, ref),
+        );
+        if (
+          methodName &&
+          DATA_SINK_METHOD_NAMES.has(methodName) &&
+          !isPropCallbackNamedLikeStringRead
+        ) {
+          continue;
+        }
         if (calleeNode && isNamespacedApiCallee(calleeNode)) continue;
 
         const stateArgRefs = getArgsUpstreamRefs(analysis, ref).filter((argRef) =>

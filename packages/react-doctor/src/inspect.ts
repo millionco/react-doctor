@@ -138,6 +138,14 @@ const buildChangedLineMatcher = (
 
 export interface ReactDoctorInspectOptions extends InspectOptions {
   categoryFilters?: string[];
+  /**
+   * Internal: an absolute epoch-ms deadline shared across a workspace scan's
+   * projects. The CLI sets it so every project honors ONE `--max-duration`
+   * budget without restarting it per project, while `maxDurationMs` stays the
+   * user's configured value (so telemetry reports what they set). When unset,
+   * the deadline is derived from `maxDurationMs` at call start.
+   */
+  deadlineEpochMs?: number;
 }
 
 export interface ResolvedInspectOptions {
@@ -273,13 +281,14 @@ export const inspect = async (
   inputOptions: ReactDoctorInspectOptions = {},
 ): Promise<InspectResult> => {
   const startTime = performance.now();
-  // Anchor the `--max-duration` deadline here, before any discovery / native-
-  // binding preamble, so that work doesn't silently push the effective budget
-  // later. The CLI passes the REMAINING budget of a shared invocation deadline
-  // (so every workspace project resolves to the same absolute deadline); a
-  // programmatic caller passes its own budget. `null` when no budget was set.
+  // The CLI passes an absolute `deadlineEpochMs` shared across a workspace
+  // scan's projects (one budget, not restarted per project). A programmatic
+  // caller passes only `maxDurationMs`, so derive the deadline here — before
+  // any discovery / native-binding preamble, so that work doesn't silently
+  // push the effective budget later. `null` when no budget was set.
   const deadlineEpochMs =
-    inputOptions.maxDurationMs != null ? Date.now() + inputOptions.maxDurationMs : null;
+    inputOptions.deadlineEpochMs ??
+    (inputOptions.maxDurationMs != null ? Date.now() + inputOptions.maxDurationMs : null);
 
   // Clear any run-scoped Sentry state from a prior inspect() so a stale
   // project/trace can't leak onto this run's events — including errors thrown

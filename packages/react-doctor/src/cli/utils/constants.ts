@@ -40,12 +40,6 @@ export const AGENT_HOOK_TIMEOUT_SECONDS = 120;
 // git fallbacks behind it are correct for almost every repo — so fail fast.
 export const GH_DEFAULT_BRANCH_PROBE_TIMEOUT_MS = 5000;
 
-// Floor for a workspace project's share of the `--max-duration` budget: a
-// spent budget still hands the project a 1ms deadline so it runs the
-// graceful-degradation path (lint batches deadline-skip, partial results
-// report) instead of scanning unbounded.
-export const MIN_REMAINING_SCAN_BUDGET_MS = 1;
-
 // Cap on open PRs scanned when checking for an already-open React Doctor
 // setup PR (the idempotency guard). Far above any realistic count of open
 // PRs whose head sits under the setup-branch prefix.

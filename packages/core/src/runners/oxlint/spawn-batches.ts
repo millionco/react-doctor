@@ -159,20 +159,26 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     // is enough to diagnose.
     let firstDropReason: string | null = null;
 
-    // Anchored lazily at the batch's FIRST splittable failure — anchoring at
-    // pass start would let healthy lint time consume the budget — and scoped
-    // per batch so one bad batch exhausting its budget can't starve a later
-    // batch of its own split attempts.
+    // Per-top-level-batch state threaded through the binary-split recursion
+    // (which awaits its two halves sequentially, so this is race-free even
+    // under concurrent top-level batches). `deadlineMs` is the split budget,
+    // anchored lazily at the batch's FIRST splittable failure — anchoring at
+    // pass start would let healthy lint time consume it — and scoped per batch
+    // so one bad batch can't starve a later one. `deadlineSkippedFileCount`
+    // tallies files THIS batch skipped for `--max-duration`, counted here
+    // rather than off the shared `deadlineSkippedFiles` (which concurrent
+    // workers append to, so a length-diff would count another worker's skips).
     const spawnLintBatch = async (
       batch: string[],
       depth: number,
-      splitBudget: { deadlineMs: number | null },
+      batchState: { deadlineMs: number | null; deadlineSkippedFileCount: number },
     ): Promise<Diagnostic[]> => {
       // Past the --max-duration budget: skip instead of spawning, even inside a
       // binary-split retry, so a batch that started just before the deadline
       // can't keep splitting past it.
       if (isPastDeadline()) {
         deadlineSkippedFiles.push(...batch);
+        batchState.deadlineSkippedFileCount += batch.length;
         return [];
       }
       const batchArgs = [...baseArgs, ...batch];
@@ -188,8 +194,15 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
         return parseOxlintOutput(stdout, project, rootDirectory);
       } catch (error) {
         if (!isSplittableReactDoctorError(error)) throw error;
-        splitBudget.deadlineMs ??= Date.now() + splitTotalBudgetMs;
-        const isBudgetElapsed = Date.now() >= splitBudget.deadlineMs;
+        // A splittable failure that surfaced only after the deadline passed is
+        // a budget skip, not a pathological drop — attribute it accordingly.
+        if (isPastDeadline()) {
+          deadlineSkippedFiles.push(...batch);
+          batchState.deadlineSkippedFileCount += batch.length;
+          return [];
+        }
+        batchState.deadlineMs ??= Date.now() + splitTotalBudgetMs;
+        const isBudgetElapsed = Date.now() >= batchState.deadlineMs;
         const isDepthCapReached = depth >= splitMaxDepth;
         if (batch.length <= 1 || isBudgetElapsed || isDepthCapReached) {
           // Either the smallest splittable batch (a single file) still failed,
@@ -209,8 +222,8 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
         }
         const splitIndex = Math.ceil(batch.length / 2);
         return [
-          ...(await spawnLintBatch(batch.slice(0, splitIndex), depth + 1, splitBudget)),
-          ...(await spawnLintBatch(batch.slice(splitIndex), depth + 1, splitBudget)),
+          ...(await spawnLintBatch(batch.slice(0, splitIndex), depth + 1, batchState)),
+          ...(await spawnLintBatch(batch.slice(splitIndex), depth + 1, batchState)),
         ];
       }
     };
@@ -242,11 +255,14 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
           return [];
         }
         startedFileCount += batch.length;
-        const deadlineSkippedBefore = deadlineSkippedFiles.length;
-        const batchDiagnostics = await spawnLintBatch(batch, 0, { deadlineMs: null });
+        const batchState: { deadlineMs: number | null; deadlineSkippedFileCount: number } = {
+          deadlineMs: null,
+          deadlineSkippedFileCount: 0,
+        };
+        const batchDiagnostics = await spawnLintBatch(batch, 0, batchState);
         // A split retry can deadline-skip part of the batch, so count only the
         // files actually linted — not the whole batch — as scanned.
-        scannedFileCount += batch.length - (deadlineSkippedFiles.length - deadlineSkippedBefore);
+        scannedFileCount += batch.length - batchState.deadlineSkippedFileCount;
         if (onFileProgress) {
           displayedFileCount = Math.min(
             Math.max(displayedFileCount, scannedFileCount),

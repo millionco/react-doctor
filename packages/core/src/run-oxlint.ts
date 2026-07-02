@@ -701,7 +701,8 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       //     stored cross-file diagnostics; only mismatching (or unknown)
       //     files re-lint, in a sidecar pass narrowed to the bounded rules.
       //   - UNBOUNDED rules (no collector — see the plugin's
-      //     `UNBOUNDED_CROSS_FILE_RULE_IDS`; empty today) can't be
+      //     `UNBOUNDED_CROSS_FILE_RULE_IDS`; the oxc-resolver-backed rules,
+      //     whose probe set the resolver cannot report) can't be
       //     fingerprinted, so they run always-fresh over EVERY hit file in a
       //     second narrowed pass. The degradation is per-rule, not global.
       //

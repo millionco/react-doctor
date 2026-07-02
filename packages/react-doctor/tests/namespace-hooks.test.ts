@@ -32,7 +32,9 @@ describe("namespace hook detection (React.useEffect, React.useState, etc.)", () 
       rootDirectory: BASIC_REACT_DIRECTORY,
       project: buildTestProject({
         rootDirectory: BASIC_REACT_DIRECTORY,
-        hasTanStackQuery: true,
+        tanstackQueryVersion: "^5.66.0",
+        mobxVersion: null,
+        styledComponentsVersion: null,
       }),
     });
     isolatedDerivedStateEffectDiagnostics = await runOxlint({

@@ -14,6 +14,7 @@ describe("runOxlint", () => {
         rootDirectory: BASIC_REACT_DIRECTORY,
         framework: "nextjs",
         hasTanStackQuery: true,
+        tanstackQueryVersion: "^5.66.0",
       }),
     });
   });

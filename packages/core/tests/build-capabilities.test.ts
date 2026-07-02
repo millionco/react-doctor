@@ -18,6 +18,10 @@ const baseProject: ProjectInfo = {
   hasTypeScript: true,
   hasReactCompiler: false,
   hasTanStackQuery: false,
+  hasI18nLibrary: false,
+  tanstackQueryVersion: null,
+  mobxVersion: null,
+  styledComponentsVersion: null,
   hasSsrDependency: false,
   nextjsVersion: null,
   nextjsMajorVersion: null,
@@ -47,6 +51,7 @@ describe("buildCapabilities", () => {
       nextjsMajorVersion: 15,
       hasReactCompiler: true,
       hasTanStackQuery: true,
+      tanstackQueryVersion: "^5.66.0",
       hasTypeScript: true,
     });
     expect([...capabilities].sort()).toEqual([
@@ -78,6 +83,58 @@ describe("buildCapabilities", () => {
     });
     expect(capabilities.has("preact")).toBe(true);
     expect(capabilities.has("vite")).toBe(true);
+  });
+
+  it("emits the `tanstack-query` capability from either project signal", () => {
+    const legacyBooleanCapabilities = buildCapabilities({
+      ...baseProject,
+      hasTanStackQuery: true,
+    });
+    const versionCapabilities = buildCapabilities({
+      ...baseProject,
+      tanstackQueryVersion: "^5.66.0",
+    });
+    const incompleteProject = { ...baseProject };
+    Reflect.deleteProperty(incompleteProject, "tanstackQueryVersion");
+    const incompleteCapabilities = buildCapabilities(incompleteProject);
+
+    expect(legacyBooleanCapabilities.has("tanstack-query")).toBe(true);
+    expect(versionCapabilities.has("tanstack-query")).toBe(true);
+    expect(incompleteCapabilities.has("tanstack-query")).toBe(false);
+  });
+
+  it("emits library capabilities only when their dependencies are present", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      hasI18nLibrary: true,
+      mobxVersion: "^6.13.0",
+      styledComponentsVersion: "^6.1.0",
+    });
+    expect(capabilities.has("i18n")).toBe(true);
+    expect(capabilities.has("mobx")).toBe(true);
+    expect(capabilities.has("styled-components")).toBe(true);
+    expect(capabilities.has("styled-components:6")).toBe(true);
+
+    const absentCapabilities = buildCapabilities(baseProject);
+    expect(absentCapabilities.has("i18n")).toBe(false);
+    expect(absentCapabilities.has("mobx")).toBe(false);
+    expect(absentCapabilities.has("styled-components")).toBe(false);
+    expect(absentCapabilities.has("styled-components:6")).toBe(false);
+  });
+
+  it("only emits the styled-components v6 capability for a parseable v6 spec", () => {
+    const versionFiveCapabilities = buildCapabilities({
+      ...baseProject,
+      styledComponentsVersion: "^5.3.11",
+    });
+    const unparseableCapabilities = buildCapabilities({
+      ...baseProject,
+      styledComponentsVersion: "workspace:*",
+    });
+    expect(versionFiveCapabilities.has("styled-components")).toBe(true);
+    expect(versionFiveCapabilities.has("styled-components:6")).toBe(false);
+    expect(unparseableCapabilities.has("styled-components")).toBe(true);
+    expect(unparseableCapabilities.has("styled-components:6")).toBe(false);
   });
 
   it("emits a `preact:<major>` ladder from `preactMajorVersion`, mirroring `react:<major>`", () => {

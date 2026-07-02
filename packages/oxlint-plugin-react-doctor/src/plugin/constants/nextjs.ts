@@ -50,7 +50,10 @@ export const GOOGLE_FONTS_PATTERN = /fonts\.googleapis\.com/;
 
 export const POLYFILL_SCRIPT_PATTERN = /polyfill\.io|polyfill\.min\.js|cdn\.polyfill/;
 
-export const APP_DIRECTORY_PATTERN = /\/app\//;
+// An `/app/` segment at index 0 of an absolute path is a filesystem mount
+// point (e.g. a pages-router repo checked out at `/app`), not an App Router
+// directory, so the lookbehind requires at least one character before it.
+export const APP_DIRECTORY_PATTERN = /(?<=.)\/app\//;
 
 export const ROUTE_HANDLER_FILE_PATTERN = new RegExp(
   `/route\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`,

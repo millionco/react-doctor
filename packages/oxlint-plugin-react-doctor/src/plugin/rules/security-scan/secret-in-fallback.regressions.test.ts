@@ -44,4 +44,38 @@ describe("security-scan/secret-in-fallback — regressions", () => {
     });
     expect(findings.length).toBeGreaterThan(0);
   });
+
+  // Bugbot: a PUBLIC segment mid-name is not public-by-design — only a
+  // leading framework public prefix or a publishable/anon key convention is.
+  it("flags a mid-name PUBLIC segment with a secret fallback", () => {
+    const findings = runScanRule(secretInFallback, {
+      relativePath: "src/lib/webhooks.ts",
+      content: `const s = process.env.INTERNAL_PUBLIC_WEBHOOK_SECRET ?? "whsec_realvalue123456";\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags a public-prefixed name that still ends in _SECRET", () => {
+    const findings = runScanRule(secretInFallback, {
+      relativePath: "src/lib/webhooks.ts",
+      content: `const s = process.env.NEXT_PUBLIC_WEBHOOK_SECRET ?? "whsec_abc123def456";\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent on a NEXT_PUBLIC_* URL fallback", () => {
+    const findings = runScanRule(secretInFallback, {
+      relativePath: "src/lib/api.ts",
+      content: `const u = process.env.NEXT_PUBLIC_API_URL ?? "https://api.example.com";\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on a SUPABASE_ANON_KEY fallback (client-safe by convention)", () => {
+    const findings = runScanRule(secretInFallback, {
+      relativePath: "src/lib/supabase.ts",
+      content: `const k = process.env.SUPABASE_ANON_KEY ?? "eyJhbGciOiJIUzI1NiJ9.anonpayload";\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

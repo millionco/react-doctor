@@ -242,6 +242,27 @@ describe("window-open-without-noopener", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a noopener=value feature entry", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `window.open(url, '_blank', 'noopener=1,width=500');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a feature entry that merely contains noopener as a substring", () => {
+    const result = runRule(windowOpenWithoutNoopener, `window.open(url, '_blank', 'notnoopener');`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag features behind a reassignable let binding (opaque at lint time)", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `let features = 'width=500';\nfeatures = POPUP_FEATURES;\nwindow.open(url, '_blank', features);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags when a resolvable features constant lacks noopener", () => {
     const result = runRule(
       windowOpenWithoutNoopener,
@@ -261,6 +282,16 @@ describe("window-open-without-noopener", () => {
       `const x = <a onClick={(e) => e.metaKey ? window.open(href, '_blank') : navigate(href)} />;`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a window.open in a non-final comma-sequence position", () => {
+    const result = runRule(windowOpenWithoutNoopener, `(window.open(url, '_blank'), undefined);`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a comma sequence whose final window.open result is captured", () => {
+    const result = runRule(windowOpenWithoutNoopener, `const win = (log(), window.open(url));`);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not flag a logical guard whose result is captured", () => {

@@ -446,6 +446,48 @@ export const Pricing = () => (
       );
       expect(result.diagnostics).toEqual([]);
     });
+
+    it("stays silent when the handler assigns window.location.href after preventDefault", () => {
+      const result = runRule(
+        noPreventDefault,
+        `export const HardNav = () => (
+  <a
+    href="/legacy"
+    onClick={(event) => {
+      event.preventDefault();
+      window.location.href = "/legacy?from=spa";
+    }}
+  >
+    Legacy
+  </a>
+);
+`,
+        { filename: "src/hard-nav.tsx" },
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a dead link whose handler assigns an unrelated object's location.href", () => {
+      const result = runRule(
+        noPreventDefault,
+        `declare const draft: { location: { href: string } };
+
+export const DeadLink = () => (
+  <a
+    href="/checkout"
+    onClick={(event) => {
+      event.preventDefault();
+      draft.location.href = "/checkout";
+    }}
+  >
+    Checkout
+  </a>
+);
+`,
+        { filename: "src/dead-link.tsx" },
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
   });
 
   describe("the <form> path is unchanged by the anchor gates", () => {

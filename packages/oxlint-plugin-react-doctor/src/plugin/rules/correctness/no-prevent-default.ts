@@ -106,7 +106,9 @@ const isLocationAssignmentTarget = (target: EsTreeNode): boolean => {
   return (
     isNodeOfType(target.object, "MemberExpression") &&
     isNodeOfType(target.object.property, "Identifier") &&
-    target.object.property.name === "location"
+    target.object.property.name === "location" &&
+    isNodeOfType(target.object.object, "Identifier") &&
+    GLOBAL_LOCATION_RECEIVER_NAMES.has(target.object.object.name)
   );
 };
 

@@ -1,17 +1,15 @@
 import { BUILTIN_GLOBAL_NAMESPACE_NAMES } from "../../constants/js.js";
 import { EFFECT_HOOK_NAMES, TRIVIAL_DERIVATION_CALLEE_NAMES } from "../../constants/react.js";
-import { collectPatternNames } from "../../utils/collect-pattern-names.js";
-import { nearestEnclosingFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
-import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
+import { isControlledPropMirror } from "./utils/is-controlled-prop-mirror.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -74,43 +72,6 @@ const collectValueIdentifierNames = (node: EsTreeNode | null | undefined, into: 
       collectValueIdentifierNames(child as EsTreeNode, into);
     }
   }
-};
-
-// Controlled/uncontrolled value mirror: `useState(value)` +
-// `useEffect(() => setDraft(value), [value])` where `setDraft` is ALSO
-// called from an event handler (`onChange={(e) => setDraft(e.target.value)}`).
-// The state holds the user's live edits and merely re-syncs to the
-// controlled prop, so it is NOT a value derivable while rendering — a
-// `useMemo` would erase the user's input. Ported from `no-derived-state`'s
-// `isControlledPropMirror`: a bare-prop setter argument whose setter is
-// invoked from more than one site. A pure mirror (setter only called by
-// the effect) has a single call site and still fires.
-const isControlledPropMirror = (effectNode: EsTreeNode, setterCall: EsTreeNode): boolean => {
-  if (!isNodeOfType(setterCall, "CallExpression")) return false;
-  if (!isNodeOfType(setterCall.callee, "Identifier")) return false;
-  const setterArguments = setterCall.arguments ?? [];
-  if (setterArguments.length !== 1) return false;
-  const setterArgument = setterArguments[0];
-  if (!isNodeOfType(setterArgument, "Identifier")) return false;
-
-  const componentFunction = nearestEnclosingFunction(effectNode);
-  if (!isFunctionLike(componentFunction)) return false;
-  const propNames = new Set<string>();
-  for (const param of componentFunction.params ?? []) collectPatternNames(param, propNames);
-  if (!propNames.has(setterArgument.name)) return false;
-
-  const setterName = setterCall.callee.name;
-  let setterCallSiteCount = 0;
-  walkAst(componentFunction, (child: EsTreeNode) => {
-    if (
-      isNodeOfType(child, "CallExpression") &&
-      isNodeOfType(child.callee, "Identifier") &&
-      child.callee.name === setterName
-    ) {
-      setterCallSiteCount += 1;
-    }
-  });
-  return setterCallSiteCount > 1;
 };
 
 export const noDerivedStateEffect = defineRule({

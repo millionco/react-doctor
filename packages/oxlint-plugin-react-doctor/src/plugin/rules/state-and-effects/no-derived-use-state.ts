@@ -1,11 +1,12 @@
-import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import { nearestEnclosingFunction } from "../../utils/component-or-hook-display-name.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
-import { isSetterCalledDuringRender } from "./utils/is-setter-called-during-render.js";
+import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -23,15 +24,6 @@ const getStateSetterName = (useStateCall: EsTreeNodeOfType<"CallExpression">): s
   return setterElement.name;
 };
 
-const getEnclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
-  let cursor: EsTreeNode | null = node.parent ?? null;
-  while (cursor) {
-    if (isFunctionLike(cursor)) return cursor;
-    cursor = cursor.parent ?? null;
-  }
-  return null;
-};
-
 const isPropDerivedArgument = (
   argument: EsTreeNode | null | undefined,
   isPropName: IsPropNameFn,
@@ -45,33 +37,58 @@ const isPropDerivedArgument = (
   return false;
 };
 
+const isNonHandlerHookCallback = (functionNode: EsTreeNode): boolean => {
+  const parent = functionNode.parent ?? null;
+  if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
+  if (!(parent.arguments ?? []).some((argument) => argument === functionNode)) return false;
+  const calleeName = getCalleeName(parent);
+  return calleeName !== null && isReactHookName(calleeName) && calleeName !== "useCallback";
+};
+
+// A re-seed only counts when every function between the setter call and the
+// component is handler-shaped: a plain nested function or a `useCallback`
+// callback. Any other hook callback — `useEffect`, `useMemo`, or a custom
+// effect wrapper like `useUpdateEffect` — is a genuine prop mirror, not a
+// user-triggered draft reset.
+const isHandlerShapedReseed = (setterCall: EsTreeNode, componentFunction: EsTreeNode): boolean => {
+  let hasNestedFunction = false;
+  let cursor: EsTreeNode | null = setterCall.parent ?? null;
+  while (cursor && cursor !== componentFunction) {
+    if (isFunctionLike(cursor)) {
+      hasNestedFunction = true;
+      if (isNonHandlerHookCallback(cursor)) return false;
+    }
+    cursor = cursor.parent ?? null;
+  }
+  return hasNestedFunction;
+};
+
 // An editable draft buffer re-seeds itself from the prop inside an event
 // handler (e.g. `edit = () => setTitle(props.title)` on entering rename
 // mode) and commits via a callback — the prop stays the source of truth for
 // display, so `useState(prop)` holds intentional decoupled user-edit text,
 // not a stale mirror. The re-seed must live in a NESTED handler: a re-seed in
 // the render body is the adjust-state-during-render pattern, and a re-seed in
-// an effect is the genuine prop mirror — neither is a draft, so the effect
-// subtree is skipped and render-body setter calls are ignored.
+// an effect (built-in or custom wrapper) or a memo is the genuine prop
+// mirror — neither is a draft.
 const isReseededDraftBuffer = (
   useStateCall: EsTreeNodeOfType<"CallExpression">,
   isPropName: IsPropNameFn,
 ): boolean => {
   const setterName = getStateSetterName(useStateCall);
   if (!setterName) return false;
-  const componentFunction = getEnclosingFunction(useStateCall);
+  const componentFunction = nearestEnclosingFunction(useStateCall);
   if (!componentFunction) return false;
 
   let isReseeded = false;
   walkAst(componentFunction, (child) => {
     if (isReseeded) return false;
-    if (isHookCall(child, EFFECT_HOOK_NAMES)) return false;
     if (
       isNodeOfType(child, "CallExpression") &&
       isNodeOfType(child.callee, "Identifier") &&
       child.callee.name === setterName &&
       isPropDerivedArgument(child.arguments?.[0], isPropName) &&
-      getEnclosingFunction(child) !== componentFunction
+      isHandlerShapedReseed(child, componentFunction)
     ) {
       isReseeded = true;
       return false;
@@ -84,13 +101,32 @@ const isReseededDraftBuffer = (
 // from a prop and re-syncs it during render (`if (prop !== prev)
 // setPrev(prop)`), so the value is never stale — it tracks the prop every
 // render. React endorses this over a mirroring effect, so it must not be
-// reported as a stale copy.
-const isAdjustedDuringRender = (useStateCall: EsTreeNodeOfType<"CallExpression">): boolean => {
+// reported as a stale copy. The render-phase call must pass a prop-derived
+// argument: a render-phase reset to an unrelated constant leaves the stale
+// prop copy in place and keeps the report.
+const isAdjustedDuringRender = (
+  useStateCall: EsTreeNodeOfType<"CallExpression">,
+  isPropName: IsPropNameFn,
+): boolean => {
   const setterName = getStateSetterName(useStateCall);
   if (!setterName) return false;
-  const componentFunction = getEnclosingFunction(useStateCall);
+  const componentFunction = nearestEnclosingFunction(useStateCall);
   if (!componentFunction) return false;
-  return isSetterCalledDuringRender(componentFunction, setterName);
+  let isAdjusted = false;
+  walkAst(componentFunction, (child) => {
+    if (isAdjusted) return false;
+    if (child !== componentFunction && isFunctionLike(child)) return false;
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      child.callee.name === setterName &&
+      isPropDerivedArgument(child.arguments?.[0], isPropName)
+    ) {
+      isAdjusted = true;
+      return false;
+    }
+  });
+  return isAdjusted;
 };
 
 export const noDerivedUseState = defineRule({
@@ -115,7 +151,7 @@ export const noDerivedUseState = defineRule({
         ) {
           if (isInitialOnlyPropName(initializer.name)) return;
           if (isReseededDraftBuffer(node, propStackTracker.isPropName)) return;
-          if (isAdjustedDuringRender(node)) return;
+          if (isAdjustedDuringRender(node, propStackTracker.isPropName)) return;
           context.report({
             node,
             message: `Your users see a stale value when prop "${initializer.name}" changes because useState copies it once.`,
@@ -135,7 +171,7 @@ export const noDerivedUseState = defineRule({
               return;
             }
             if (isReseededDraftBuffer(node, propStackTracker.isPropName)) return;
-            if (isAdjustedDuringRender(node)) return;
+            if (isAdjustedDuringRender(node, propStackTracker.isPropName)) return;
             context.report({
               node,
               message: `Your users see a stale value when prop "${rootIdentifierName}" changes because useState copies it once.`,

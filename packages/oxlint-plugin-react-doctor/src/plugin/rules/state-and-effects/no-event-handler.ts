@@ -3,9 +3,23 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { findDownstreamNodes, getDownstreamRefs, getUpstreamRefs } from "./utils/effect/ast.js";
+import {
+  findDownstreamNodes,
+  getDownstreamRefs,
+  getRef,
+  getUpstreamRefs,
+} from "./utils/effect/ast.js";
+import { isExternallyDrivenState } from "./utils/effect/external-state.js";
+import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
-import { getEffectFnRefs, hasCleanup, isProp, isState, isUseEffect } from "./utils/effect/react.js";
+import {
+  getEffectFnRefs,
+  hasCleanup,
+  isProp,
+  isState,
+  isStateSetter,
+  isUseEffect,
+} from "./utils/effect/react.js";
 
 const SETTER_NAME_PATTERN = /^set[A-Z]/;
 
@@ -102,6 +116,63 @@ const isSideEffectFreeExit = (statement: EsTreeNode): boolean => {
   return false;
 };
 
+// The controlled/uncontrolled mirror — `if (valueProp !== undefined)
+// setValue(valueProp)` — is state SYNCHRONISATION owned by the dedicated
+// state-sync rules, not a faked event handler. The exemption is deliberately
+// exact: every consequent statement must be a `setX(prop)` call whose callee
+// resolves to a useState setter and whose sole argument is a prop tested by
+// the guard itself. Anything looser (`setResults(items.slice(...))`,
+// `setTimeout(onShow, 0)`, `el.setAttribute(...)`) is real event work and
+// must keep firing.
+const getConsequentStatements = (consequent: EsTreeNode): ReadonlyArray<EsTreeNode> => {
+  if (isNodeOfType(consequent, "BlockStatement")) {
+    return (consequent.body ?? []) as unknown as ReadonlyArray<EsTreeNode>;
+  }
+  return [consequent];
+};
+
+const isControlledPropMirrorStatement = (
+  analysis: ProgramAnalysis,
+  statement: EsTreeNode,
+  testedPropBindings: ReadonlySet<unknown>,
+): boolean => {
+  if (!isNodeOfType(statement, "ExpressionStatement")) return false;
+  let expression = statement.expression as EsTreeNode | null;
+  if (expression && isNodeOfType(expression, "ChainExpression")) {
+    expression = expression.expression as EsTreeNode;
+  }
+  if (!expression || !isNodeOfType(expression, "CallExpression")) return false;
+  const callee = expression.callee;
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const calleeRef = getRef(analysis, callee);
+  if (!calleeRef || !isStateSetter(analysis, calleeRef)) return false;
+  const callArguments = expression.arguments ?? [];
+  if (callArguments.length !== 1) return false;
+  const argument = callArguments[0];
+  if (!isNodeOfType(argument, "Identifier")) return false;
+  const argumentRef = getRef(analysis, argument);
+  if (!argumentRef?.resolved || !isProp(analysis, argumentRef)) return false;
+  return testedPropBindings.has(argumentRef.resolved);
+};
+
+const isControlledPropMirrorConsequent = (
+  analysis: ProgramAnalysis,
+  ifNode: EsTreeNodeOfType<"IfStatement">,
+): boolean => {
+  const statements = getConsequentStatements(ifNode.consequent as EsTreeNode);
+  if (statements.length === 0) return false;
+  const testedPropBindings = new Set<unknown>(
+    getDownstreamRefs(analysis, ifNode.test as EsTreeNode)
+      .filter((ref) => isProp(analysis, ref))
+      .map((ref) => (ref as unknown as { resolved?: unknown }).resolved)
+      .filter(Boolean),
+  );
+  if (testedPropBindings.size === 0) return false;
+  return statements.every((statement) =>
+    isControlledPropMirrorStatement(analysis, statement, testedPropBindings),
+  );
+};
+
 const isPureEarlyExitConsequent = (consequent: EsTreeNode): boolean => {
   if (
     isNodeOfType(consequent, "ReturnStatement") ||
@@ -152,13 +223,18 @@ export const noEventHandler = defineRule({
           isNodeOfType(ifNode, "IfStatement") &&
           !ifNode.alternate &&
           !isPureEarlyExitConsequent(ifNode.consequent as EsTreeNode) &&
+          !isControlledPropMirrorConsequent(analysis, ifNode) &&
           !containsRefGuard(ifNode.test as EsTreeNode),
       );
       const ifTestRefs = ifStatementsNoElse.flatMap((ifNode) => {
         if (!isNodeOfType(ifNode, "IfStatement")) return [];
-        return getDownstreamRefs(analysis, ifNode.test as EsTreeNode).flatMap((ref) =>
-          getUpstreamRefs(analysis, ref),
-        );
+        // A tested state driven EXCLUSIVELY by a timer / listener / observer /
+        // subscription is reacting to an imperative browser event — drop that
+        // ref (and the seeds only reachable through it), but keep reporting
+        // the other props / handler-driven state tested by the same guard.
+        return getDownstreamRefs(analysis, ifNode.test as EsTreeNode)
+          .filter((ref) => !(isState(analysis, ref) && isExternallyDrivenState(analysis, ref)))
+          .flatMap((ref) => getUpstreamRefs(analysis, ref));
       });
 
       // Dedupe by resolved binding (not identifier identity) so a
@@ -179,6 +255,10 @@ export const noEventHandler = defineRule({
 
       for (const ref of dedupedRefs) {
         if (isState(analysis, ref)) {
+          // State written from a timer / listener / observer / promise /
+          // subscription changes in response to an imperative browser event,
+          // not a React event handler, so there is no handler to fold into.
+          if (isExternallyDrivenState(analysis, ref)) continue;
           context.report({
             node: ref.identifier as unknown as EsTreeNode,
             message:

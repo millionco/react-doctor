@@ -319,6 +319,22 @@ describe("window-open-without-noopener", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a bare awaited window.open in an async handler", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `async function openIt() { await window.open(url, '_blank'); }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an awaited window.open whose handle is captured", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `async function openIt() { const win = await window.open(url, '_blank'); win?.focus(); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("flags a void-discarded window.open", () => {
     const result = runRule(windowOpenWithoutNoopener, `void window.open(url, '_blank');`);
     expect(result.diagnostics).toHaveLength(1);

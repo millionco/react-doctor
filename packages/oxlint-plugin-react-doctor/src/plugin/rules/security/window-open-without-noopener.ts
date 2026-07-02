@@ -208,7 +208,8 @@ const isArrowReturnDiscarded = (arrow: EsTreeNode): boolean => {
 // The window handle is discarded (so `noopener`'s null return breaks
 // nothing) when the call is a bare statement, a `void` operand, the
 // branch of a guard-shaped logical/ternary that is itself discarded, a
-// non-final position in a comma sequence, or the concise
+// non-final position in a comma sequence, an `await` whose own result
+// is discarded, or the concise
 // body of a discarded arrow. Any capturing parent — VariableDeclarator
 // init, AssignmentExpression right, ReturnStatement arg, a member access
 // on the result, or being passed as a call argument — means the caller
@@ -218,6 +219,7 @@ const isDiscardedWindowHandle = (callNode: EsTreeNode): boolean => {
   if (!parent) return false;
   if (isNodeOfType(parent, "ExpressionStatement")) return true;
   if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "void") return true;
+  if (isNodeOfType(parent, "AwaitExpression")) return isDiscardedWindowHandle(parent);
   if (isNodeOfType(parent, "LogicalExpression") && parent.right === callNode) {
     return isDiscardedWindowHandle(parent);
   }

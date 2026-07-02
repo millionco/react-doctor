@@ -20,4 +20,16 @@ describe("a11y/anchor-ambiguous-text regressions", () => {
       expect(runRule(anchorAmbiguousText, code).diagnostics).toHaveLength(1);
     });
   }
+
+  // Prettier inserts explicit `{" "}` between wrapped JSX children — that
+  // string-literal expression is a real word break in the accessible name.
+  for (const code of [
+    `<a>learn{" "}more</a>`,
+    `<a><span>learn</span>{" "}more</a>`,
+    `<a><span>click</span>{" "}<span>here</span></a>`,
+  ]) {
+    it(`flags ambiguous text separated by an explicit {" "} in ${code}`, () => {
+      expect(runRule(anchorAmbiguousText, code).diagnostics).toHaveLength(1);
+    });
+  }
 });

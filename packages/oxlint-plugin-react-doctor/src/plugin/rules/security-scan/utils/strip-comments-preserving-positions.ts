@@ -83,9 +83,14 @@ const isRegexLiteralStart = (characters: string[], slashIndex: number): boolean 
 // character classes (where `/` is not a terminator). Returns null when no
 // closing slash exists on the line — regex literals cannot span a raw newline,
 // so the opening slash was division after all. A candidate terminator whose
-// next character is also `/` or `*` is rejected too: the scan collided with the
-// first slash of a real `//` or `/*` comment, so treating the span as a regex
-// would un-strip the comment.
+// next character is also `/` is rejected too: the scan collided with the first
+// slash of a real `//` comment, so treating the span as a regex would un-strip
+// the comment (the comment tail would be blanked either way, so nothing real is
+// lost). The `/*` case is deliberately NOT rejected here — a real `/regex/`
+// can be immediately followed by a `*` operator (`/ab/* 2`), and blanking that
+// as a comment would erase live code; a mislexed `/*` collision only survives
+// for the rare non-identifier false-regex starts (`x!! / y`), the same residue
+// the `//` guard already tolerates.
 const findRegexLiteralEnd = (content: string, slashIndex: number): number | null => {
   let cursor = slashIndex + 1;
   let isInsideCharacterClass = false;
@@ -101,7 +106,7 @@ const findRegexLiteralEnd = (content: string, slashIndex: number): number | null
     } else if (character === "]") {
       isInsideCharacterClass = false;
     } else if (character === "/" && !isInsideCharacterClass) {
-      if (content[cursor + 1] === "/" || content[cursor + 1] === "*") return null;
+      if (content[cursor + 1] === "/") return null;
       return cursor + 1;
     }
     cursor += 1;

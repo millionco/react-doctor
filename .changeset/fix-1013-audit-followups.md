@@ -9,9 +9,7 @@ fix(rules): close three follow-up gaps in the 20-day audit fixes
   identifier class, so a division after a non-ASCII identifier (`café / total`,
   `合計 / 個数`) is no longer misread as a regex literal — which had blanked
   real code up to the next slash and let `/* … */` comment bodies escape
-  stripping across the pattern-based security-scan rules. `findRegexLiteralEnd`
-  also rejects a candidate terminator that begins a `/*` block comment, matching
-  the existing `//` guard.
+  stripping across the pattern-based security-scan rules.
 - **`server-auth-actions`**: the cache/navigation exemption now requires the
   callee to resolve to _any_ import rather than specifically `next/cache` /
   `next/navigation`. A module-local `const revalidatePath = …` (a privileged

@@ -69,6 +69,21 @@ describe("security-scan/utils/strip-comments-preserving-positions", () => {
     expect(stripped).not.toContain("eval(evil)");
   });
 
+  it("keeps a regex literal immediately followed by a multiplication operator", () => {
+    const source = "const x = /ab/* 2;";
+    const stripped = stripCommentsPreservingPositions(source);
+    expect(stripped).toHaveLength(source.length);
+    expect(stripped).toContain("/ab/* 2");
+  });
+
+  it("still strips a real block comment tight after a regex literal", () => {
+    const source = "const re = /ab/;/* md5(password) */ const y = 1;";
+    const stripped = stripCommentsPreservingPositions(source);
+    expect(stripped).toHaveLength(source.length);
+    expect(stripped).toContain("/ab/;");
+    expect(stripped).not.toContain("md5(password)");
+  });
+
   it("still strips a comment after a self-closing JSX tag", () => {
     const source = "const el = <Foo bar={x} />; // md5(password)";
     const stripped = stripCommentsPreservingPositions(source);

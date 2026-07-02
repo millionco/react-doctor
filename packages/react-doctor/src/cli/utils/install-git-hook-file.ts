@@ -18,9 +18,9 @@ const REACT_DOCTOR_BLOCK_START = "# react-doctor hook start";
 const REACT_DOCTOR_BLOCK_END = "# react-doctor hook end";
 const LEGACY_MANAGED_BLOCK_START = "# react-doctor hook launcher start";
 const LEGACY_MANAGED_BLOCK_END = "# react-doctor hook launcher end";
-const REACT_DOCTOR_BLOCK_PATTERN = new RegExp(
-  `(?:${REACT_DOCTOR_BLOCK_START}[\\s\\S]*?${REACT_DOCTOR_BLOCK_END}\\n?|${LEGACY_MANAGED_BLOCK_START}[\\s\\S]*?${LEGACY_MANAGED_BLOCK_END}\\n?)`,
-);
+const REACT_DOCTOR_BLOCK_PATTERN_SOURCE = `(?:${REACT_DOCTOR_BLOCK_START}[\\s\\S]*?${REACT_DOCTOR_BLOCK_END}\\n?|${LEGACY_MANAGED_BLOCK_START}[\\s\\S]*?${LEGACY_MANAGED_BLOCK_END}\\n?)`;
+const REACT_DOCTOR_BLOCK_PATTERN = new RegExp(REACT_DOCTOR_BLOCK_PATTERN_SOURCE);
+const ALL_REACT_DOCTOR_BLOCKS_PATTERN = new RegExp(REACT_DOCTOR_BLOCK_PATTERN_SOURCE, "g");
 const SHEBANG = "#!/bin/sh";
 const SHEBANG_PREFIX = "#!";
 const LOCAL_REACT_DOCTOR_BIN = "./node_modules/.bin/react-doctor";
@@ -72,7 +72,19 @@ const mergeHookContent = (existingContent: string): string => {
   const hookBlock = `${buildReactDoctorHookBlock()}\n`;
 
   if (REACT_DOCTOR_BLOCK_PATTERN.test(existingContent)) {
-    return ensureTrailingNewline(existingContent.replace(REACT_DOCTOR_BLOCK_PATTERN, hookBlock));
+    // Replace the FIRST managed block and strip any extras. `.husky/pre-commit`
+    // is a committed file, so a no-conflict merge of two branches that each ran
+    // install at a different offset leaves two managed blocks — each scans
+    // staged files unconditionally, so the commit is scanned twice.
+    let isFirstManagedBlock = true;
+    const merged = existingContent.replace(ALL_REACT_DOCTOR_BLOCKS_PATTERN, () => {
+      if (isFirstManagedBlock) {
+        isFirstManagedBlock = false;
+        return hookBlock;
+      }
+      return "";
+    });
+    return ensureTrailingNewline(merged);
   }
 
   if (existingContent.length === 0) return `${SHEBANG}\n\n${hookBlock}`;

@@ -17,12 +17,8 @@ import {
   SCAN_RESULT_CACHE_MAX_ENTRY_COUNT,
   SCAN_RESULT_CACHE_SCHEMA_VERSION,
 } from "./constants.js";
-import { runGit } from "./git-hook-shared.js";
+import { isRecord, runGit } from "./git-hook-shared.js";
 import type { ResolvedInspectOptions } from "../../inspect.js";
-
-interface StringUnknownRecord {
-  readonly [key: string]: unknown;
-}
 
 export interface CachedScanPayload {
   readonly diagnostics: ReadonlyArray<Diagnostic>;
@@ -99,9 +95,6 @@ const TOOLCHAIN_PACKAGE_SPECIFIERS = [
 ] as const;
 const bundledRequire = createRequire(import.meta.url);
 
-const isRecord = (value: unknown): value is StringUnknownRecord =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const normalizeForStableJson = (value: unknown): unknown => {
   if (value === null) return null;
   if (value === undefined) return undefined;
@@ -120,10 +113,10 @@ const normalizeForStableJson = (value: unknown): unknown => {
   if (prototype !== Object.prototype && prototype !== null) {
     throw new Error("Unsupported cache key object");
   }
-  const record = value as StringUnknownRecord;
+  if (!isRecord(value)) throw new Error("Unsupported cache key object");
   const normalizedRecord: Record<string, unknown> = {};
-  for (const key of Object.keys(record).sort()) {
-    const normalized = normalizeForStableJson(record[key]);
+  for (const key of Object.keys(value).sort()) {
+    const normalized = normalizeForStableJson(value[key]);
     if (normalized !== undefined) normalizedRecord[key] = normalized;
   }
   return normalizedRecord;

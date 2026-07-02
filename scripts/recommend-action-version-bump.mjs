@@ -6,7 +6,9 @@ import * as fs from "node:fs";
 const ACTION_RELEASE_FILES = [
   "action.yml",
   "scripts/ensure-json-report.mjs",
+  "scripts/normalize-changed-files.mjs",
   "scripts/render-github-action-comment.mjs",
+  "scripts/resolve-package-spec.mjs",
 ];
 
 const COMMENT_MARKER = "<!-- react-doctor:action-version -->";

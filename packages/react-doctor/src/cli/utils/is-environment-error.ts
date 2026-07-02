@@ -1,12 +1,4 @@
-interface NodeSystemError extends Error {
-  code?: string;
-  errno?: number;
-  syscall?: string;
-  path?: string;
-}
-
-const isNodeSystemError = (error: unknown): error is NodeSystemError =>
-  error instanceof Error && typeof (error as NodeSystemError).code === "string";
+import { isErrnoException, messageFromUnknown } from "@react-doctor/core";
 
 // Filesystem conditions React Doctor cannot fix: a full or read-only disk, a
 // failing disk, denied permissions, or a path blocked by an existing file.
@@ -17,19 +9,17 @@ const isNodeSystemError = (error: unknown): error is NodeSystemError =>
 const ENVIRONMENT_ERROR_CODES = new Set(["ENOSPC", "EIO", "EROFS", "EACCES", "EPERM", "ENOTDIR"]);
 
 export const isEnvironmentError = (error: unknown): boolean => {
-  if (!isNodeSystemError(error)) return false;
+  if (!isErrnoException(error) || typeof error.code !== "string") return false;
   // A spawn that can't find its binary is the user's environment (a tool isn't
   // installed / on PATH), not our bug — but scoped to `spawn` so a missing
   // *file* we tried to read still surfaces. (git is degraded gracefully
   // upstream; this covers any other tool we shell out to.)
   if (error.code === "ENOENT") return error.syscall?.startsWith("spawn") ?? false;
-  return error.code !== undefined && ENVIRONMENT_ERROR_CODES.has(error.code);
+  return ENVIRONMENT_ERROR_CODES.has(error.code);
 };
 
 export const formatEnvironmentError = (error: unknown): string => {
-  if (!isNodeSystemError(error)) {
-    return error instanceof Error ? error.message : String(error);
-  }
+  if (!isErrnoException(error)) return messageFromUnknown(error);
 
   switch (error.code) {
     case "ENOSPC":

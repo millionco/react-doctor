@@ -143,10 +143,15 @@ const foldLegacyDecisions = (
 };
 
 // Upgrades a state object read from disk to `CLI_STATE_SCHEMA_VERSION`. Pure
-// and idempotent: a current-version object is returned untouched, and the fold
-// preserves every recorded answer so the upgrade never re-nags or re-runs.
+// and idempotent: a current-or-NEWER-version object is returned untouched —
+// an older binary running beside a newer one (`npx` vs a global install) must
+// treat a future schema as read-only rather than "migrating" it back down and
+// clobbering fields it doesn't know about. The fold preserves every recorded
+// answer so the upgrade never re-nags or re-runs.
 export const migrateCliState = (state: CliState): CliState => {
-  if (state.schemaVersion === CLI_STATE_SCHEMA_VERSION) return state;
+  if (typeof state.schemaVersion === "number" && state.schemaVersion >= CLI_STATE_SCHEMA_VERSION) {
+    return state;
+  }
 
   const projects: Record<string, ProjectScopeState> = {};
 
@@ -199,11 +204,15 @@ const openStore = (options: CliStateOptions = {}): Conf<CliState> =>
 
 // Opens the store and upgrades it to the current schema in place (persisting
 // the upgrade once, best-effort) so every reader sees the canonical shape.
+// Persist only when migration produced a new object — `migrateCliState`
+// returns the same reference for current-or-newer versions, and an older
+// binary's reads must never rewrite a newer binary's state file (disk churn
+// plus a stale-snapshot last-writer-wins race).
 const openMigratedStore = (options: CliStateOptions): Conf<CliState> => {
   const store = openStore(options);
-  if (store.store.schemaVersion !== CLI_STATE_SCHEMA_VERSION) {
-    store.store = migrateCliState(store.store);
-  }
+  const state = store.store;
+  const migrated = migrateCliState(state);
+  if (migrated !== state) store.store = migrated;
   return store;
 };
 

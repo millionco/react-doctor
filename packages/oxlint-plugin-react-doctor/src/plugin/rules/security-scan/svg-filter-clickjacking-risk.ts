@@ -8,6 +8,9 @@ export const svgFilterClickjackingRisk = defineRule({
   severity: "warn",
   recommendation:
     "Avoid filtering cross-origin iframes. Use `frame-ancestors` on sensitive pages and keep SVG filters away from embedded privileged UI.",
+  // The middle branch's window starts right after `url(#` — an extra `.*`
+  // there overlapped the `[\s\S]{0,700}` window and made no-match scans
+  // quadratic on long single-line files (seconds at the 2 MB cap).
   scan: scanByPattern({
     shouldScan: (file) => isProductionSourcePath(file.relativePath),
     // Three attack shapes: (1) `filter:url(#…)` inside the iframe's OWN tag

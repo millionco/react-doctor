@@ -551,6 +551,55 @@ export async function go() {
     await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
   });
 
+  it("still flags an action whose module-local function merely shares a revalidation name", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "local-revalidate-name", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`const revalidatePath = (path: string) => {
+  globalThis.databaseHandle.wipe(path);
+};
+
+export async function wipeEverything() {
+  revalidatePath("/");
+}`),
+      },
+    });
+
+    const issues = await collectAuthActionIssues(projectDirectory);
+    expect(issues.some((issue) => issue.message.includes("wipeEverything"))).toBe(true);
+  });
+
+  it("accepts a revalidation-only action ending in an explicit return undefined", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-return-undefined", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidatePath } from "next/cache";
+
+export async function refreshDashboard() {
+  revalidatePath("/dashboard");
+  return undefined;
+}`),
+      },
+    });
+
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
+  it("accepts a revalidation-only action importing revalidatePath from a re-export barrel", async () => {
+    const projectDirectory = setupReactProject(tempRoot, "revalidate-barrel-import", {
+      packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },
+      files: {
+        "src/app/actions.ts": buildServerActionFile(`import { revalidatePath } from "@/lib/cache";
+
+export async function refreshDashboard() {
+  revalidatePath("/dashboard");
+}`),
+      },
+    });
+
+    await expect(collectAuthActionIssues(projectDirectory)).resolves.toEqual([]);
+  });
+
   it("still flags a revalidation action that also reads data from a non-parameter source", async () => {
     const projectDirectory = setupReactProject(tempRoot, "revalidate-plus-db-read", {
       packageJsonExtras: { dependencies: NEXTJS_PACKAGE_DEPENDENCIES },

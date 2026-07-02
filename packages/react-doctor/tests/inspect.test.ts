@@ -177,6 +177,95 @@ describe("inspect", () => {
     }
   });
 
+  // Regression: `resolveCliInspectOptions` leaves `noScore` undefined unless a
+  // flag opted out, so a `doctor.config` opt-out must be honored by inspect()'s
+  // merge layer (`inputOptions.noScore ?? userConfig?.noScore`). Reverting that
+  // merge to ignore config would silently re-enable scoring for opted-out users.
+  it("honors config-file noScore (score skipped) when no flag is passed", async () => {
+    clearConfigCache();
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-noscore-config-"));
+    try {
+      const projectDirectory = setupReactProject(tempDirectory, "app");
+      const scanOptions = { lint: false, deadCode: false, silent: true } as const;
+
+      // Control: no config → scoring on (the merge layer's `?? false` default).
+      const withScore = await inspect(projectDirectory, scanOptions);
+      expect(withScore.score).not.toBeNull();
+
+      // Config opt-out with NO flag → inherited by the merge layer → score skipped.
+      clearConfigCache();
+      writeJson(path.join(projectDirectory, "doctor.config.json"), { noScore: true });
+      const withoutScore = await inspect(projectDirectory, scanOptions);
+      expect(withoutScore.score).toBeNull();
+    } finally {
+      consoleSpy.mockRestore();
+      fs.rmSync(tempDirectory, { recursive: true, force: true });
+    }
+  });
+
+  // Regression: the baseline base scan materializes only the changed source +
+  // config into a temp tree (no node_modules / plugin files), so it MUST resolve
+  // a relative `config.plugins` entry from the REAL config dir. When that
+  // threading was hardcoded to null, the base side dropped the plugin, its
+  // finding vanished from `baseTotalCount`, and head's finding was mislabeled as
+  // newly introduced (gating CI on a pre-existing issue).
+  it("resolves config.plugins from the real config dir for the baseline base scan", async () => {
+    clearConfigCache();
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-baseline-plugin-"));
+    const forbiddenWordPlugin = `
+module.exports = {
+  meta: { name: "team-conventions" },
+  rules: {
+    "no-forbidden-word": {
+      create: (context) => ({
+        JSXText(node) {
+          if (typeof node.value === "string" && node.value.includes("FORBIDDEN")) {
+            context.report({ node, message: "'FORBIDDEN' is not allowed" });
+          }
+        },
+      }),
+    },
+  },
+};
+`;
+    try {
+      const projectDir = setupReactProject(projectRoot, "app", {
+        files: {
+          "src/App.tsx": "export const App = () => <div>FORBIDDEN base</div>;\n",
+          "lint/team-conventions.cjs": forbiddenWordPlugin,
+        },
+      });
+      writeJson(path.join(projectDir, "doctor.config.json"), {
+        plugins: ["./lint/team-conventions.cjs"],
+        rules: { "team-conventions/no-forbidden-word": "error" },
+      });
+      initGitRepo(projectDir);
+      const baseRef = commitAll(projectDir, "base carries the plugin finding");
+      // Head keeps the finding but edits the file so it's in the scanned diff.
+      writeFile(
+        path.join(projectDir, "src/App.tsx"),
+        "export const App = () => <div>FORBIDDEN head</div>;\n",
+      );
+
+      const result = await inspect(projectDir, {
+        lint: true,
+        deadCode: false,
+        silent: true,
+        includePaths: ["src/App.tsx"],
+        baseline: { ref: baseRef },
+      });
+
+      // baseTotalCount > 0 proves the base scan loaded the relative plugin from
+      // the real config dir; the pre-fix null would leave it at 0.
+      expect(result.baselineDelta?.baseTotalCount).toBeGreaterThan(0);
+    } finally {
+      consoleSpy.mockRestore();
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("reuses head project metadata for baseline scans of leaf-only pnpm catalog monorepos", async () => {
     clearConfigCache();
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});

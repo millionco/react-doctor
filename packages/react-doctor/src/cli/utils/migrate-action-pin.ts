@@ -8,11 +8,13 @@ const WORKFLOWS_DIRECTORY = path.join(".github", "workflows");
 // points to, with the workflow's write permissions, a supply-chain risk (#299).
 const RECOMMENDED_ACTION_REF = "v2";
 
-// A `uses:` reference to the React Doctor action pinned to a MUTABLE branch
-// (`@main` / `@master`). Only these are unsafe; a pinned tag (`@v2.1.0`) or a
-// commit SHA is a deliberate pin and left untouched. The capture group keeps the
-// `uses: <owner>/react-doctor@` prefix so only the ref is rewritten.
-const MUTABLE_ACTION_REF = /(uses:\s*[\w.-]+\/react-doctor@)(?:main|master)\b/g;
+// A `uses:` reference to the OFFICIAL React Doctor action pinned to a MUTABLE
+// branch (`@main` / `@master`). Scoped to `millionco/` — a fork reference
+// (`someuser/react-doctor@main`) must not be rewritten to a `@v2` tag that
+// likely doesn't exist on the fork — and case-insensitive because GitHub
+// resolves owner/repo names in any casing. The capture group keeps the
+// `uses: …react-doctor@` prefix so only the ref is rewritten.
+const MUTABLE_ACTION_REF = /(uses:\s*millionco\/react-doctor@)(?:main|master)\b/gi;
 
 const isWorkflowFile = (fileName: string): boolean => /\.ya?ml$/.test(fileName);
 

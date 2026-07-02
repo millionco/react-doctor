@@ -2,7 +2,10 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { installReactDoctorAgentHooks } from "../src/cli/utils/install-agent-hooks.js";
+import {
+  findAgentsWithLegacyShellHooks,
+  installReactDoctorAgentHooks,
+} from "../src/cli/utils/install-agent-hooks.js";
 import * as fs from "node:fs";
 
 interface AgentHooksFixture {
@@ -154,6 +157,196 @@ describe.skipIf(process.platform === "win32")("installReactDoctorAgentHooks", ()
     expect(hookCommands.filter((command) => command.includes("react-doctor.mjs"))).toHaveLength(1);
     expect(hookContent).toContain("CLAUDE_PROJECT_DIR");
     expect(hookContent).toContain("react-doctor --verbose --scope changed --blocking warning");
+    // cmd.exe signals a missing command with exit 9009 (not the POSIX 127) —
+    // the generated runner loop must fall through on it or every Windows edit
+    // reports shell noise as scan findings.
+    expect(hookContent).toContain("9009");
+    expect(hookContent).toContain("maxBuffer");
+  });
+
+  it("replaces a legacy .sh Claude hook instead of stacking a second entry", () => {
+    const settingsPath = path.join(fixture.projectRoot, ".claude/settings.json");
+    const legacyScriptPath = path.join(fixture.projectRoot, ".claude/hooks/react-doctor.sh");
+    fs.mkdirSync(path.dirname(legacyScriptPath), { recursive: true });
+    fs.writeFileSync(legacyScriptPath, "#!/bin/sh\nexit 0\n");
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        hooks: {
+          PostToolBatch: [
+            {
+              hooks: [
+                {
+                  type: "command",
+                  command: 'sh "$CLAUDE_PROJECT_DIR/.claude/hooks/react-doctor.sh"',
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    installReactDoctorAgentHooks({
+      projectRoot: fixture.projectRoot,
+      agents: ["claude-code"],
+    });
+
+    const settings = readJson<{
+      hooks: { PostToolBatch: Array<{ hooks: Array<{ command: string }> }> };
+    }>(settingsPath);
+    const hookCommands = settings.hooks.PostToolBatch.flatMap((group) =>
+      group.hooks.map((hook) => hook.command),
+    );
+
+    expect(hookCommands).toHaveLength(1);
+    expect(hookCommands[0]).toContain("react-doctor.mjs");
+    expect(fs.existsSync(legacyScriptPath)).toBe(false);
+  });
+
+  it("tolerates a parseable hook entry that lacks a command", () => {
+    const configPath = path.join(fixture.projectRoot, ".cursor/hooks.json");
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        version: 1,
+        hooks: { postToolUse: [{ matcher: "Write" }] },
+      }),
+    );
+
+    expect(() => {
+      installReactDoctorAgentHooks({
+        projectRoot: fixture.projectRoot,
+        agents: ["cursor"],
+      });
+    }).not.toThrow();
+
+    const config = readJson<{ hooks: { postToolUse: Array<{ command?: string }> } }>(configPath);
+    expect(
+      config.hooks.postToolUse.some((handler) => handler.command?.includes("react-doctor.mjs")),
+    ).toBe(true);
+  });
+
+  it("replaces a legacy .sh Cursor hook instead of stacking a second entry", () => {
+    const configPath = path.join(fixture.projectRoot, ".cursor/hooks.json");
+    const legacyScriptPath = path.join(fixture.projectRoot, ".cursor/hooks/react-doctor.sh");
+    fs.mkdirSync(path.dirname(legacyScriptPath), { recursive: true });
+    fs.writeFileSync(legacyScriptPath, "#!/bin/sh\nexit 0\n");
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        version: 1,
+        hooks: {
+          postToolUse: [{ command: ".cursor/hooks/react-doctor.sh", matcher: "Write" }],
+        },
+      }),
+    );
+
+    installReactDoctorAgentHooks({
+      projectRoot: fixture.projectRoot,
+      agents: ["cursor"],
+    });
+
+    const config = readJson<{
+      hooks: { postToolUse: Array<{ command: string }> };
+    }>(configPath);
+
+    expect(config.hooks.postToolUse).toHaveLength(1);
+    expect(config.hooks.postToolUse[0].command).toContain("react-doctor.mjs");
+    expect(fs.existsSync(legacyScriptPath)).toBe(false);
+  });
+
+  it("preserves user hook groups the legacy strip didn't touch (empty or hook-less)", () => {
+    const settingsPath = path.join(fixture.projectRoot, ".claude/settings.json");
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        hooks: {
+          PostToolBatch: [{ matcher: "Bash" }, { matcher: "Write", hooks: [] }],
+        },
+      }),
+    );
+
+    installReactDoctorAgentHooks({
+      projectRoot: fixture.projectRoot,
+      agents: ["claude-code"],
+    });
+
+    const settings = readJson<{
+      hooks: { PostToolBatch: Array<{ matcher?: string; hooks?: Array<{ command: string }> }> };
+    }>(settingsPath);
+
+    expect(settings.hooks.PostToolBatch).toHaveLength(3);
+    expect(settings.hooks.PostToolBatch[0]).toEqual({ matcher: "Bash" });
+    expect(settings.hooks.PostToolBatch[1]).toEqual({ matcher: "Write", hooks: [] });
+    expect(
+      settings.hooks.PostToolBatch[2].hooks?.some((hook) =>
+        hook.command.includes("react-doctor.mjs"),
+      ),
+    ).toBe(true);
+  });
+
+  it("detects legacy shell hooks per agent and tolerates invalid settings JSON", () => {
+    expect(findAgentsWithLegacyShellHooks(fixture.projectRoot)).toEqual([]);
+
+    const settingsPath = path.join(fixture.projectRoot, ".claude/settings.json");
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        hooks: {
+          PostToolBatch: [
+            {
+              hooks: [
+                {
+                  type: "command",
+                  command: 'sh "$CLAUDE_PROJECT_DIR/.claude/hooks/react-doctor.sh"',
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    const configPath = path.join(fixture.projectRoot, ".cursor/hooks.json");
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        version: 1,
+        hooks: { postToolUse: [{ command: ".cursor/hooks/react-doctor.sh", matcher: "Write" }] },
+      }),
+    );
+    expect(findAgentsWithLegacyShellHooks(fixture.projectRoot)).toEqual(["claude-code", "cursor"]);
+
+    // A probe must never crash a scan on a user-mangled file.
+    fs.writeFileSync(settingsPath, "{ not json");
+    expect(findAgentsWithLegacyShellHooks(fixture.projectRoot)).toEqual(["cursor"]);
+  });
+
+  it("leaves a user's own wrapper referencing a react-doctor.sh outside our install paths", () => {
+    const configPath = path.join(fixture.projectRoot, ".cursor/hooks.json");
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    const userWrapperCommand = "bash scripts/hooks/react-doctor.sh --my-flags";
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        version: 1,
+        hooks: { postToolUse: [{ command: userWrapperCommand, matcher: "Write" }] },
+      }),
+    );
+
+    installReactDoctorAgentHooks({
+      projectRoot: fixture.projectRoot,
+      agents: ["cursor"],
+    });
+
+    const config = readJson<{ hooks: { postToolUse: Array<{ command: string }> } }>(configPath);
+    const commands = config.hooks.postToolUse.map((handler) => handler.command);
+    expect(commands).toContain(userWrapperCommand);
+    expect(commands.some((command) => command.includes("react-doctor.mjs"))).toBe(true);
   });
 
   it("installs a Cursor postToolUse hook and preserves existing hook config", () => {

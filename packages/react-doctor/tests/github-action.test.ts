@@ -1,5 +1,8 @@
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 
 const REPOSITORY_ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
@@ -7,6 +10,43 @@ const ACTION_YAML_PATH = path.join(REPOSITORY_ROOT, "action.yml");
 
 const readActionYaml = (): string => fs.readFileSync(ACTION_YAML_PATH, "utf8");
 const normalizeWhitespace = (value: string): string => value.replace(/\s+/g, " ");
+
+// Neutral git identity + config so the fixture commits below can't hang on a
+// developer's global `commit.gpgsign` (no TTY for the passphrase prompt).
+const GIT_TEST_ENV = {
+  ...process.env,
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_CONFIG_SYSTEM: "/dev/null",
+  GIT_AUTHOR_NAME: "react-doctor-test",
+  GIT_AUTHOR_EMAIL: "test@react.doctor",
+  GIT_COMMITTER_NAME: "react-doctor-test",
+  GIT_COMMITTER_EMAIL: "test@react.doctor",
+};
+
+const runGit = (cwd: string, ...args: string[]): string =>
+  execFileSync("git", args, { cwd, env: GIT_TEST_ENV, encoding: "utf8" }).trim();
+
+const BASE_STEP_RUN_MARKER = "run: |\n";
+
+const extractBaseStepScript = (actionYaml: string): string => {
+  const baseStep = extractStep(actionYaml, "- id: base");
+  const runIndex = baseStep.indexOf(BASE_STEP_RUN_MARKER);
+  if (runIndex < 0) throw new Error("Missing run block on the base step");
+  const scriptLines: string[] = [];
+  for (const rawLine of baseStep.slice(runIndex + BASE_STEP_RUN_MARKER.length).split("\n")) {
+    // The block scalar ends at the first line shallower than its 8-space body
+    // indent (extractStep keeps trailing step-level comments that would
+    // dedent into broken bash).
+    if (rawLine.trim() !== "" && !rawLine.startsWith("        ")) break;
+    scriptLines.push(rawLine.slice(8));
+  }
+  return scriptLines.join("\n");
+};
+
+// The fixture spawns bash + git; Windows runners route through Git Bash where
+// file:// shallow transport quirks make this flaky, and CI covers it on the
+// POSIX legs.
+const itOnPosix = process.platform === "win32" ? it.skip : it;
 
 const extractBlock = (actionYaml: string, startMarker: string, endMarker: string): string => {
   const startIndex = actionYaml.indexOf(startMarker);
@@ -100,7 +140,24 @@ describe("GitHub Action contract", () => {
     // fallback, which only runs when the base wasn't reachable for a local diff.
     expect(baseStep).toContain('git -C "$INPUT_DIRECTORY" diff --name-only --diff-filter=AMR');
     expect(baseStep).toContain("scripts/normalize-changed-files.mjs");
-    expect(prFilesStep).toContain("INPUT_DIRECTORY: ${{ inputs.directory }}");
+    // The strip prefix comes from git (`rev-parse --show-prefix`), not the raw
+    // `directory` input, and the API fallback reuses the derived prefix — the
+    // full rationale lives on the `base` step in action.yml. Each locked line
+    // is load-bearing: dropping the `prefix=` output write or the `.` sentinel
+    // silently reverts to the raw input via the GHA `||` fallback, and the
+    // newline guard is what keeps a hostile directory name out of
+    // $GITHUB_OUTPUT's line protocol.
+    expect(baseStep).toContain("rev-parse --show-prefix");
+    expect(baseStep).toContain('SCAN_PREFIX="${SCAN_PREFIX:-.}"');
+    expect(baseStep).toContain('else SCAN_PREFIX="$INPUT_DIRECTORY"');
+    expect(baseStep).toContain("*$'\\n'*) SCAN_PREFIX=\".\" ;;");
+    expect(baseStep).toContain('echo "prefix=$SCAN_PREFIX" >> "$GITHUB_OUTPUT"');
+    expect(baseStep).toContain(
+      'node "$GITHUB_ACTION_PATH/scripts/normalize-changed-files.mjs" "$SCAN_PREFIX"',
+    );
+    expect(prFilesStep).toContain(
+      "INPUT_DIRECTORY: ${{ steps.base.outputs.prefix || inputs.directory }}",
+    );
     expect(prFilesStep).toContain("scripts/normalize-changed-files.mjs");
     expect(prFilesStep).toContain("normalizeChangedFiles(");
     expect(prFilesStep).toContain("steps.base.outputs.path == ''");
@@ -111,6 +168,124 @@ describe("GitHub Action contract", () => {
     expect(prFilesStep).toContain("process.env.COMPOSITE_ACTION_PATH");
     expect(prFilesStep).not.toContain("process.env.GITHUB_ACTION_PATH");
   });
+
+  // Executes the REAL base-step shell against a fixture mimicking
+  // actions/checkout's default `fetch-depth: 1` pull_request checkout: a
+  // shallow-grafted merge-ref HEAD, where the three-dot diff has no merge
+  // base. Locks the shallow-checkout contract end to end: the git-derived
+  // prefix is still emitted (the API fallback consumes it), the changed-files
+  // file stays unwritten, and the ::warning points consumers at
+  // `fetch-depth: 0` — the scaffolded setup, which the baseline compare needs
+  // anyway. There is deliberately NO local-diff fast path for shallow
+  // checkouts (a two-dot variant was dropped in favor of scaffolding
+  // `fetch-depth: 0`).
+  itOnPosix(
+    "defers to the API fallback on a fetch-depth:1 merge-ref checkout while still emitting the prefix",
+    () => {
+      const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-action-base-"));
+      try {
+        const originDirectory = path.join(fixtureRoot, "origin");
+        const checkoutDirectory = path.join(fixtureRoot, "checkout");
+        const runnerTemp = path.join(fixtureRoot, "runner-temp");
+        fs.mkdirSync(originDirectory);
+        fs.mkdirSync(checkoutDirectory);
+        fs.mkdirSync(runnerTemp);
+
+        runGit(originDirectory, "init", "--initial-branch=main");
+        // GitHub's upload-pack allows fetching the event's base SHA directly;
+        // the local fixture needs the same for the base step's best-effort fetch.
+        runGit(originDirectory, "config", "uploadpack.allowAnySHA1InWant", "true");
+        fs.mkdirSync(path.join(originDirectory, "src"));
+        fs.writeFileSync(
+          path.join(originDirectory, "src", "app.tsx"),
+          "export const App = () => null;\n",
+        );
+        runGit(originDirectory, "add", ".");
+        runGit(originDirectory, "-c", "commit.gpgsign=false", "commit", "-m", "base");
+        const baseSha = runGit(originDirectory, "rev-parse", "HEAD");
+        runGit(originDirectory, "checkout", "-b", "pr");
+        fs.writeFileSync(
+          path.join(originDirectory, "src", "feature.tsx"),
+          "export const Feature = () => null;\n",
+        );
+        runGit(originDirectory, "add", ".");
+        runGit(originDirectory, "-c", "commit.gpgsign=false", "commit", "-m", "feature");
+        // refs/pull/N/merge: a merge commit whose FIRST parent is the base tip.
+        runGit(originDirectory, "-c", "advice.detachedHead=false", "checkout", "--detach", "main");
+        runGit(
+          originDirectory,
+          "-c",
+          "commit.gpgsign=false",
+          "merge",
+          "--no-ff",
+          "pr",
+          "-m",
+          "merge pr into main",
+        );
+        runGit(originDirectory, "update-ref", "refs/pull/1/merge", "HEAD");
+
+        runGit(checkoutDirectory, "init");
+        runGit(checkoutDirectory, "remote", "add", "origin", pathToFileURL(originDirectory).href);
+        runGit(
+          checkoutDirectory,
+          "fetch",
+          "--depth=1",
+          "origin",
+          "+refs/pull/1/merge:refs/remotes/pull/1/merge",
+        );
+        runGit(
+          checkoutDirectory,
+          "-c",
+          "advice.detachedHead=false",
+          "checkout",
+          "--force",
+          "refs/remotes/pull/1/merge",
+        );
+
+        const changedFilesFile = path.join(runnerTemp, "react-doctor-changed-files.txt");
+        const githubOutputFile = path.join(runnerTemp, "github-output.txt");
+        fs.writeFileSync(githubOutputFile, "");
+        // Match the composite `shell: bash` invocation (errexit + pipefail).
+        const scriptOutput = execFileSync(
+          "bash",
+          [
+            "--noprofile",
+            "--norc",
+            "-e",
+            "-o",
+            "pipefail",
+            "-c",
+            extractBaseStepScript(readActionYaml()),
+          ],
+          {
+            cwd: checkoutDirectory,
+            encoding: "utf8",
+            env: {
+              ...GIT_TEST_ENV,
+              INPUT_DIRECTORY: ".",
+              BASE_SHA: baseSha,
+              CHANGED_FILES_FILE: changedFilesFile,
+              RUNNER_TEMP: runnerTemp,
+              GITHUB_OUTPUT: githubOutputFile,
+              GITHUB_ACTION_PATH: REPOSITORY_ROOT,
+            },
+          },
+        );
+
+        expect(scriptOutput).toContain(
+          "::warning::React Doctor could not derive the PR's changed files from git",
+        );
+        expect(scriptOutput).toContain("fetch-depth: 0");
+        expect(fs.existsSync(changedFilesFile)).toBe(false);
+        const githubOutput = fs.readFileSync(githubOutputFile, "utf8");
+        expect(githubOutput).toContain("prefix=.");
+        expect(githubOutput).not.toContain("path=");
+      } finally {
+        fs.rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
 
   it("falls back to a full-project scan when listing PR files is not permitted", () => {
     const prFilesStep = normalizeWhitespace(extractStep(readActionYaml(), "- id: pr-files"));
@@ -178,12 +353,20 @@ describe("GitHub Action contract", () => {
     expect(scanStep).toContain('npm install --prefix "$TOOLCHAIN_DIR"');
     expect(scanStep).toContain('"$RD_BIN" "$INPUT_DIRECTORY" "${FLAGS[@]}" > "$REPORT_FILE"');
     expect(scanStep).toContain("REACT_DOCTOR_CACHE_DIR: ${{ runner.temp }}/react-doctor-cache");
-    // A cache-miss install runs under `set +e` and the cached binary is adopted
-    // only when it's executable afterward — a transient npm failure leaves
-    // RD_BIN empty and falls through to the npx path instead of aborting the
-    // whole step under the composite shell's errexit.
-    expect(scanStep).toContain('if [ -x "$TOOLCHAIN_DIR/node_modules/.bin/react-doctor" ]; then');
+    // A cache-miss install runs under `set +e` and the toolchain is adopted
+    // only when the bin actually RUNS (`--version`), not merely exists — npm
+    // treats optionalDependency failures (the oxlint platform binding) as
+    // non-fatal, so exit 0 can leave a linked-but-broken bin. A failed probe
+    // wipes the dir so the post-job cache save can't persist the poison under
+    // the immutable version key, and the scan falls through to the npx path.
+    expect(scanStep).toContain(
+      'if ! "$TOOLCHAIN_DIR/node_modules/.bin/react-doctor" --version >/dev/null 2>&1; then',
+    );
+    expect(scanStep).toContain(
+      'if "$TOOLCHAIN_DIR/node_modules/.bin/react-doctor" --version >/dev/null 2>&1; then',
+    );
     expect(scanStep).toContain('RD_BIN="$TOOLCHAIN_DIR/node_modules/.bin/react-doctor"');
+    expect(scanStep).toContain('else rm -rf "$TOOLCHAIN_DIR"');
   });
 
   it("fetches the PR base commit and forwards it for baseline (new-vs-existing) mode", () => {
@@ -217,6 +400,12 @@ describe("GitHub Action contract", () => {
     );
 
     expect(reviewStep).toContain("inputs.review-comments == 'true'");
+    // The inline-comment path mapping uses the same git-derived scan prefix as
+    // the changed-files steps; the raw input remains the fallback for runs
+    // where the base step is skipped (`scope: full`).
+    expect(reviewStep).toContain(
+      "INPUT_DIRECTORY: ${{ steps.base.outputs.prefix || inputs.directory }}",
+    );
     expect(reviewStep).toContain("github.rest.pulls.listFiles");
     expect(reviewStep).toContain("github.rest.pulls.createReview");
     expect(reviewStep).toContain('event: "COMMENT"');

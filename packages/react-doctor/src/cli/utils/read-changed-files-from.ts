@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isErrnoException } from "@react-doctor/core";
 import { CliInputError } from "./cli-input-error.js";
 import { toForwardSlashes } from "./path-format.js";
 
@@ -22,7 +23,7 @@ export const readChangedFilesFrom = (filePath: string): string[] => {
     // pipe/process-substitution fd — EBADF, REACT-DOCTOR-V) is an invocation
     // mistake, not a bug. Surface it as a clean CLI error instead of crashing
     // and reporting the read failure to Sentry.
-    const errorCode = (error as NodeJS.ErrnoException)?.code;
+    const errorCode = isErrnoException(error) ? error.code : undefined;
     throw new CliInputError(
       `Could not read the --changed-files-from file "${filePath}"${errorCode ? ` (${errorCode})` : ""}. ` +
         "Pass a path to a readable text file that lists changed files, one per line.",

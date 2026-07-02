@@ -94,6 +94,42 @@ describe.skipIf(process.platform === "win32")("installReactDoctorGitHook", () =>
     expect(hookContent).toContain("react-doctor --staged --blocking warning");
   });
 
+  it("collapses two managed blocks (from a no-conflict merge) into one, preserving user content", () => {
+    // A committed `.husky/pre-commit` merged across two branches that each ran
+    // install at a different offset ends up with TWO current-format blocks and
+    // no conflict — each scans staged files, so the commit is scanned twice.
+    // Derive a real block by installing once, then simulate the doubled file.
+    installReactDoctorGitHook({ hookPath: fixture.hookPath, projectRoot: fixture.projectRoot });
+    const installedHook = readHook(fixture.hookPath);
+    const blockStartIndex = installedHook.indexOf("# react-doctor hook start");
+    const blockEndMarker = "# react-doctor hook end";
+    const managedBlock = installedHook.slice(
+      blockStartIndex,
+      installedHook.indexOf(blockEndMarker) + blockEndMarker.length,
+    );
+    fs.writeFileSync(
+      fixture.hookPath,
+      [
+        "#!/bin/sh",
+        "",
+        "echo user-top",
+        managedBlock,
+        "echo user-middle",
+        managedBlock,
+        "echo user-bottom",
+        "",
+      ].join("\n"),
+    );
+
+    installReactDoctorGitHook({ hookPath: fixture.hookPath, projectRoot: fixture.projectRoot });
+
+    const hookContent = readHook(fixture.hookPath);
+    expect(hookContent.match(/# react-doctor hook start/g) ?? []).toHaveLength(1);
+    expect(hookContent).toContain("echo user-top");
+    expect(hookContent).toContain("echo user-middle");
+    expect(hookContent).toContain("echo user-bottom");
+  });
+
   it("replaces the legacy managed-runner launcher block", () => {
     const legacyRunnerPath = path.join(fixture.projectRoot, ".react-doctor/hooks/pre-commit");
     fs.mkdirSync(path.dirname(fixture.hookPath), { recursive: true });

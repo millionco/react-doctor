@@ -14,8 +14,11 @@ export const clickjackingRedirectRisk = defineRule({
   // identifier/property between `redirect(` and the keyword is caller input.
   // `(?!\s*(?:await\s+)?[\w$]*(?:safe|valid|sanitiz|allowlist|whitelist)`
   // skips targets already passed through a safe-redirect helper.
-  // The iframe branch requires URL-param shapes (`redirect=`), not the bare
-  // word `redirect`, which JSX comments inside the tag commonly mention.
+  // The iframe branch requires URL-param shapes (`redirect=`, query-style
+  // `role=` — `[?&]role=`, including the `&amp;`-escaped form), not the bare
+  // word `redirect` or an ARIA `role="..."` attribute — the 700-char window
+  // bleeds past the tag, so a bare `role=` matched the accessible-iframe /
+  // iframe-inside-a-modal idioms.
   scan: scanByPattern({
     shouldScan: (file) =>
       isProductionSourcePath(file.relativePath) || isConfigOrCiPath(file.relativePath),

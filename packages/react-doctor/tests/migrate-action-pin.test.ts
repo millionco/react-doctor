@@ -67,6 +67,19 @@ describe("migrateActionPin", () => {
     expect(migrateActionPin(projectRoot)).toEqual([]);
   });
 
+  it("rewrites a mixed-case owner ref (GitHub resolves owner/repo in any casing)", () => {
+    const workflowPath = writeWorkflow("cased.yml", "      - uses: MillionCo/React-Doctor@main\n");
+    expect(migrateActionPin(projectRoot)).toEqual([workflowPath]);
+    expect(fs.readFileSync(workflowPath, "utf-8").trim()).toBe("- uses: MillionCo/React-Doctor@v2");
+  });
+
+  it("leaves a fork's mutable ref untouched (a @v2 tag likely doesn't exist there)", () => {
+    const fork = "      - uses: someuser/react-doctor@main\n";
+    const workflowPath = writeWorkflow("fork.yml", fork);
+    expect(migrateActionPin(projectRoot)).toEqual([]);
+    expect(fs.readFileSync(workflowPath, "utf-8")).toBe(fork);
+  });
+
   it("leaves a different action on @main untouched", () => {
     const other = "      - uses: actions/checkout@main\n";
     const workflowPath = writeWorkflow("other.yml", other);

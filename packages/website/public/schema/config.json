@@ -172,7 +172,7 @@
           "additionalProperties": {
             "$ref": "#/definitions/RuleSeverityOverride"
           },
-          "description": "Per-category severity map. Mirrors oxlint's top-level `categories` field, but keyed by React Doctor's five user-facing buckets: `\"Security\"`, `\"Bugs\"`, `\"Performance\"`, `\"Accessibility\"`, `\"Maintainability\"`.\n\n```json { \"categories\": { \"Maintainability\": \"off\", \"Performance\": \"warn\" } } ```\n\nTo silence a whole tag-defined rule family (e.g. `\"design\"`, `\"test-noise\"`, `\"migration-hint\"`) that doesn't align with a single category, use `ignore.tags` instead."
+          "description": "Per-category severity map. Mirrors oxlint's top-level `categories` field, but keyed by React Doctor's five user-facing buckets: `\"Security\"`, `\"Bugs\"`, `\"Performance\"`, `\"Accessibility\"`, `\"Maintainability\"`.\n\n```json { \"categories\": { \"Maintainability\": \"off\", \"Performance\": \"warn\" } } ```\n\nA category severity re-stamps rules that are already enabled; it never activates opt-out (`defaultEnabled: false`) rules — pin the rule itself under `rules` to opt in.\n\nTo silence a whole tag-defined rule family (e.g. `\"design\"`, `\"test-noise\"`, `\"migration-hint\"`) that doesn't align with a single category, use `ignore.tags` instead."
         },
         "buckets": {
           "$ref": "#/definitions/SeverityBuckets",

@@ -126,6 +126,29 @@ runs:
           git -C "$INPUT_DIRECTORY" fetch --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
         fi
 
+        # The prefix that maps repo-root-relative diff paths to scan-relative
+        # ones. Derived from git (not the raw `directory` input) so it's correct
+        # for an absolute `directory`, an `actions/checkout` `path:` layout, and
+        # a nested-git-repo scan alike — the raw input only matches repo paths
+        # in the default layout, and a wrong prefix silently drops EVERY changed
+        # file (the scan then reads "Skipped — no React files changed"). A
+        # resolved-to-root prefix is emitted as the `.` sentinel: `--show-prefix`
+        # legitimately returns "" at the repo root, and GHA's `||` fallback in
+        # the pr-files step would treat that empty output as "unresolved" and
+        # substitute the raw input again.
+        if SCAN_PREFIX="$(git -C "$INPUT_DIRECTORY" rev-parse --show-prefix 2>/dev/null)"; then
+          SCAN_PREFIX="${SCAN_PREFIX:-.}"
+        else
+          SCAN_PREFIX="$INPUT_DIRECTORY"
+        fi
+        # A newline in the prefix (a hostile directory name reached through the
+        # checkout) would smuggle extra entries into $GITHUB_OUTPUT's
+        # line-oriented protocol. No legitimate prefix contains one.
+        case "$SCAN_PREFIX" in
+          *$'\n'*) SCAN_PREFIX="." ;;
+        esac
+        echo "prefix=$SCAN_PREFIX" >> "$GITHUB_OUTPUT"
+
         # Derive the changed set locally. Three-dot (merge-base) + AMR
         # (added/modified/renamed) match the `pulls.listFiles` API contract and
         # the CLI's baseline semantics. Attempt it whenever a base SHA is known —
@@ -135,7 +158,7 @@ runs:
         # regression vs the previous API-only behavior.
         RAW_CHANGED="${RUNNER_TEMP:-/tmp}/react-doctor-raw-changed.txt"
         if [ -n "$BASE_SHA" ] && git -C "$INPUT_DIRECTORY" diff --name-only --diff-filter=AMR "$BASE_SHA...HEAD" > "$RAW_CHANGED" 2>/dev/null; then
-          node "$GITHUB_ACTION_PATH/scripts/normalize-changed-files.mjs" "$INPUT_DIRECTORY" "$CHANGED_FILES_FILE" < "$RAW_CHANGED"
+          node "$GITHUB_ACTION_PATH/scripts/normalize-changed-files.mjs" "$SCAN_PREFIX" "$CHANGED_FILES_FILE" < "$RAW_CHANGED"
           echo "path=$CHANGED_FILES_FILE" >> "$GITHUB_OUTPUT"
         else
           echo "::warning::React Doctor could not derive the PR's changed files from git (the base commit isn't reachable — set \`fetch-depth: 0\` on actions/checkout for deep histories). Falling back to the GitHub API."
@@ -150,7 +173,10 @@ runs:
       uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
       env:
         REACT_DOCTOR_CHANGED_FILES: ${{ runner.temp }}/react-doctor-changed-files.txt
-        INPUT_DIRECTORY: ${{ inputs.directory }}
+        # Prefer the git-derived scan prefix from the base step (correct for
+        # absolute `directory` values and `actions/checkout` `path:` layouts);
+        # fall back to the raw input when git couldn't resolve one.
+        INPUT_DIRECTORY: ${{ steps.base.outputs.prefix || inputs.directory }}
         # `github.action_path` is THIS composite action's directory. Inside a
         # nested `actions/github-script` step, the ambient GITHUB_ACTION_PATH env
         # points at github-script's own dir, not ours — so the shared script
@@ -253,26 +279,32 @@ runs:
         # Install/run from a cached prefix for a published version (the common
         # path): actions/cache restored $TOOLCHAIN_DIR before this step, so a
         # cache hit skips the ~15s npm download. `--prefix` gives a deterministic,
-        # cacheable location (unlike npx's opaque _npx/<hash> dir). The `[ ! -x ]`
-        # guard re-installs if the restore was empty or corrupt. A non-cacheable
+        # cacheable location (unlike npx's opaque _npx/<hash> dir). The version
+        # probe re-installs if the restore was empty or broken. A non-cacheable
         # local-path spec (self-test) keeps the npx path unchanged.
         TOOLCHAIN_DIR="${RUNNER_TEMP:-/tmp}/react-doctor-toolchain"
         RD_BIN=""
         if [ "$CACHEABLE" = "true" ]; then
           # Run the install under `set +e` so a transient npm failure on a cache
           # miss doesn't abort the whole step under the composite shell's errexit.
-          # Adopt the cached binary only if it's actually executable afterward —
-          # a failed/partial install leaves RD_BIN empty and falls through to the
-          # npx path below instead of failing the action with a raw npm error.
           set +e
-          if [ ! -x "$TOOLCHAIN_DIR/node_modules/.bin/react-doctor" ]; then
+          if ! "$TOOLCHAIN_DIR/node_modules/.bin/react-doctor" --version >/dev/null 2>&1; then
             mkdir -p "$TOOLCHAIN_DIR"
             npm install --prefix "$TOOLCHAIN_DIR" --no-save --no-audit --no-fund "$PACKAGE_SPEC"
           fi
-          set -e
-          if [ -x "$TOOLCHAIN_DIR/node_modules/.bin/react-doctor" ]; then
+          # Adopt the toolchain only if the bin actually RUNS, not merely
+          # exists: npm treats optionalDependency failures (e.g. the oxlint
+          # platform binding) as non-fatal, so `npm install` can exit 0 with a
+          # linked-but-broken bin. Persisting that via the post-job cache save
+          # under the immutable version key would poison every later run; a
+          # failed probe wipes the dir so nothing broken is ever cached, and
+          # the scan falls through to the npx path below.
+          if "$TOOLCHAIN_DIR/node_modules/.bin/react-doctor" --version >/dev/null 2>&1; then
             RD_BIN="$TOOLCHAIN_DIR/node_modules/.bin/react-doctor"
+          else
+            rm -rf "$TOOLCHAIN_DIR"
           fi
+          set -e
         fi
 
         set +e
@@ -363,7 +395,11 @@ runs:
       uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
       env:
         REACT_DOCTOR_REPORT_FILE: ${{ steps.scan.outputs.report-file }}
-        INPUT_DIRECTORY: ${{ inputs.directory }}
+        # The same git-derived scan prefix the changed-files steps use (correct
+        # for absolute `directory` values and checkout `path:` layouts). Here
+        # the raw-input fallback IS load-bearing: this step also runs when the
+        # base step was skipped (`scope: full`), where the output is empty.
+        INPUT_DIRECTORY: ${{ steps.base.outputs.prefix || inputs.directory }}
       with:
         script: |
           const fs = require("fs");

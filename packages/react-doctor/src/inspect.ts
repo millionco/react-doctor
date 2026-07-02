@@ -402,6 +402,14 @@ interface RunBaselineComparisonInput {
   directory: string;
   options: ResolvedInspectOptions;
   userConfig: ReactDoctorConfig | null;
+  /**
+   * Where `userConfig` was loaded from, so the base scan resolves
+   * `config.plugins` specifiers from the real config directory — anchoring
+   * them at the temp snapshot (which has no `node_modules` or plugin files)
+   * silently drops every custom plugin from the base side and mislabels its
+   * pre-existing findings as newly introduced.
+   */
+  configSourceDirectory: string | null;
   headProjectInfo: ProjectInfo;
   headDiagnostics: ReadonlyArray<Diagnostic>;
   resolvedNodeBinaryPath: string | null;
@@ -437,7 +445,7 @@ const runBaselineComparison = async (
       directory: snapshot.tempDirectory,
       hasConfigOverride: true,
       userConfig: params.userConfig,
-      configSourceDirectory: null,
+      configSourceDirectory: params.configSourceDirectory,
       projectInfoOverride: params.headProjectInfo,
       shouldSkipLint: !params.options.lint || !params.resolvedNodeBinaryPath,
       shouldRunDeadCode: false,
@@ -707,6 +715,7 @@ const runInspectWithRuntime = async (
       directory,
       options,
       userConfig,
+      configSourceDirectory,
       headProjectInfo: output.project,
       headDiagnostics: output.diagnostics,
       resolvedNodeBinaryPath,
@@ -759,7 +768,17 @@ const runInspectWithRuntime = async (
     securityScanFailed: output.securityScanFailed,
     suppressedRuleCounts: output.suppressedRuleCounts,
   };
-  if (cacheKey !== null && scanResultCache !== null && shouldStoreScanPayload(payload)) {
+  // A degraded baseline (requested but no delta — e.g. a transient base-lint
+  // failure) must not be persisted: the cache key includes the baseline ref,
+  // so a stored degraded payload would replay at this HEAD/base pair until
+  // the commit changes, skipping the gate instead of re-attempting the
+  // comparison.
+  if (
+    cacheKey !== null &&
+    scanResultCache !== null &&
+    shouldStoreScanPayload(payload) &&
+    !baselineDegraded
+  ) {
     scanResultCache.store(cacheKey, payload);
   }
   const result = await renderAndRecordScan({

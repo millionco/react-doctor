@@ -159,6 +159,7 @@ import { noChainStateUpdates } from "./rules/state-and-effects/no-chain-state-up
 import { noChildrenProp } from "./rules/react-builtins/no-children-prop.js";
 import { noCloneElement } from "./rules/react-builtins/no-clone-element.js";
 import { noCreateContextInRender } from "./rules/state-and-effects/no-create-context-in-render.js";
+import { noCreateObjectUrlWithoutRevoke } from "./rules/js-performance/no-create-object-url-without-revoke.js";
 import { noCreateRefInFunctionComponent } from "./rules/react-builtins/no-create-ref-in-function-component.js";
 import { noCreateStoreInRender } from "./rules/state-and-effects/no-create-store-in-render.js";
 import { noDanger } from "./rules/react-builtins/no-danger.js";
@@ -253,6 +254,7 @@ import { noSelfUpdatingEffect } from "./rules/state-and-effects/no-self-updating
 import { noSetState } from "./rules/react-builtins/no-set-state.js";
 import { noSetStateInRender } from "./rules/state-and-effects/no-set-state-in-render.js";
 import { noSideTabBorder } from "./rules/design/no-side-tab-border.js";
+import { noSpreadAccumulatorInReduce } from "./rules/js-performance/no-spread-accumulator-in-reduce.js";
 import { noStaleTimerRef } from "./rules/state-and-effects/no-stale-timer-ref.js";
 import { noStaticElementInteractions } from "./rules/a11y/no-static-element-interactions.js";
 import { noStringFalseOnBooleanAttribute } from "./rules/react-builtins/no-string-false-on-boolean-attribute.js";
@@ -2188,6 +2190,17 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-create-object-url-without-revoke",
+    id: "no-create-object-url-without-revoke",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noCreateObjectUrlWithoutRevoke,
+      framework: "global",
+      category: "Performance",
+    },
+  },
+  {
     key: "react-doctor/no-create-ref-in-function-component",
     id: "no-create-ref-in-function-component",
     source: "react-doctor",
@@ -3306,6 +3319,17 @@ export const reactDoctorRules = [
       ...noSideTabBorder,
       framework: "global",
       category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-spread-accumulator-in-reduce",
+    id: "no-spread-accumulator-in-reduce",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noSpreadAccumulatorInReduce,
+      framework: "global",
+      category: "Performance",
     },
   },
   {

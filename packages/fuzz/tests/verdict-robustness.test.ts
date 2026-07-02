@@ -27,6 +27,7 @@ const AUDITED_RULE_IDS = [
   "nextjs-no-polyfill-script",
   "no-adjust-state-on-prop-change",
   "no-aria-hidden-on-focusable",
+  "no-create-object-url-without-revoke",
   "no-derived-state-effect",
   "no-effect-chain",
   "no-impure-state-updater",

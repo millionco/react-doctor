@@ -545,6 +545,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-create-context-in-render": {
     code: '\n      import { createContext } from "react";\n\n      function App() {\n        const Ctx = createContext(null);\n        return null;\n      }\n    ',
   },
+  "no-create-object-url-without-revoke": {
+    code: "function make(blob) { return URL.createObjectURL(blob); }",
+  },
   "no-create-ref-in-function-component": {
     code: "import { createRef, useMemo } from 'react';\nconst useDriveItemActions = (item) => {\n  const nameInputRef = useMemo(() => createRef(), []);\n  return { nameInputRef };\n};\nexport default useDriveItemActions;",
   },
@@ -858,6 +861,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-side-tab-border": {
     code: 'const C = () => <div className="border-l-4 border-[#ff0000]" />;',
+  },
+  "no-spread-accumulator-in-reduce": {
+    code: "const out = items.reduce((acc, item) => [...acc, item], []);",
   },
   "no-stale-timer-ref": {
     code: 'import { useRef } from "react";\nexport const useDelayedCallback = (callback) => {\n  const timerRef = useRef(null);\n  const schedule = () => {\n    if (timerRef.current) return;\n    timerRef.current = setTimeout(callback, 100);\n  };\n  const cancel = () => {\n    clearTimeout(timerRef.current);\n  };\n  return { schedule, cancel };\n};',

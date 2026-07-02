@@ -120,6 +120,24 @@ export const GITHUB_VIEWER_PERMISSION_TIMEOUT_MS = 2_000;
 // Use a conservative threshold to leave room for the executable path and quoting overhead.
 export const SPAWN_ARGS_MAX_LENGTH_CHARS = 24_000;
 
+// Linux argv limits are ~2 MB (ARG_MAX minus environment); a conservative cap
+// below that keeps the pre-spawn guard meaningful without rejecting the
+// legitimately long `git diff -- <hundreds of files>` invocations that
+// `--scope lines` produces on large PRs.
+export const SPAWN_ARGS_MAX_LENGTH_CHARS_POSIX = 1_500_000;
+
+// macOS ARG_MAX is 1 MiB and covers argv AND envp together, so its cap sits
+// well below that: an argv that passes the guard but crosses the real OS
+// limit makes `spawn` throw `E2BIG` SYNCHRONOUSLY (Node routes only
+// EACCES/EAGAIN/EMFILE/ENFILE/ENOENT through the catchable 'error' event),
+// escaping Effect's failure channel — the exact crash class the guard
+// exists to prevent (issue #924).
+export const SPAWN_ARGS_MAX_LENGTH_CHARS_DARWIN = 800_000;
+
+// Probe of the oxlint child Node's `--version` (the nvm fallback can run a
+// different Node than this process), once per binary path per process.
+export const NODE_VERSION_PROBE_TIMEOUT_MS = 5_000;
+
 // HACK: bound per-batch work so that JS-evaluated plugins with bad
 // scaling (originally the upstream `effect` plugin — verified to hit
 // the 5-min spawn timeout on supabase/studio's ~3500 source files at
@@ -319,7 +337,10 @@ export const DEAD_CODE_PHASE_TIMEOUT_MS = 150_000;
 // Effect-side cap on the lint phase. Sits ABOVE the worst bounded split
 // cascade (OXLINT_SPLIT_TOTAL_BUDGET_MS plus scheduling overhead across
 // parallel workers) so a healthy-but-slow large repo finishes while a
-// truly wedged lint phase is still reclaimed.
+// truly wedged lint phase is still reclaimed. The split budget is scoped
+// PER top-level batch, so several failing batches can stagger past one
+// budget's worth of wall-clock — this cap is the hard ceiling that reclaims
+// those pathological scans.
 export const LINT_PHASE_TIMEOUT_MS = 300_000;
 
 // Overall scan deadline backstop. Catches everything the per-phase

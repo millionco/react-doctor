@@ -109,7 +109,7 @@ describe("spawnLintBatches binary-split cascade bound", () => {
     expect(spawnState.callCount).toBe(1);
     expect(partialFailures).toHaveLength(1);
     expect(partialFailures[0]).toContain(`${FILE_COUNT} file(s) failed to lint`);
-    expect(partialFailures[0]).toContain("split budget exhausted");
+    expect(partialFailures[0]).toContain("split budget");
   });
 
   it("bounds recursion at the depth cap rather than splitting down to single files", async () => {
@@ -134,7 +134,43 @@ describe("spawnLintBatches binary-split cascade bound", () => {
     expect(spawnState.callCount).toBeGreaterThan(1);
     expect(spawnState.callCount).toBeLessThanOrEqual(2 ** (splitMaxDepth + 1));
     expect(partialFailures).toHaveLength(1);
-    expect(partialFailures[0]).toContain("split budget exhausted");
+    expect(partialFailures[0]).toContain("split depth cap");
+  });
+
+  it("anchors the split budget per top-level batch, so one exhausted batch cannot starve a later batch of split attempts", async () => {
+    // Virtual clock: every spawn "takes" 10s, so a 5s budget is exhausted by
+    // the time any split retry lands — each top-level batch gets exactly one
+    // depth-0 spawn plus two depth-1 half spawns. Under the regressed
+    // (pass-wide) anchoring, the SECOND batch would see the first batch's
+    // elapsed deadline and be dropped whole after a single spawn (4 total
+    // spawns instead of 6).
+    const virtualSpawnCostMs = 10_000;
+    const dateNowSpy = vi
+      .spyOn(Date, "now")
+      .mockImplementation(() => spawnState.callCount * virtualSpawnCostMs);
+    try {
+      const partialFailures: string[] = [];
+      const diagnostics = await spawnLintBatches({
+        baseArgs: ["--stub"],
+        fileBatches: [
+          Array.from({ length: 4 }, (_unused, index) => `src/first-${index}.tsx`),
+          Array.from({ length: 4 }, (_unused, index) => `src/second-${index}.tsx`),
+        ],
+        rootDirectory: process.cwd(),
+        nodeBinaryPath: process.execPath,
+        project,
+        onPartialFailure: (reason) => partialFailures.push(reason),
+        splitTotalBudgetMs: 5_000,
+        splitMaxDepth: 8,
+      });
+
+      expect(diagnostics).toEqual([]);
+      expect(spawnState.callCount).toBe(6);
+      expect(partialFailures).toHaveLength(1);
+      expect(partialFailures[0]).toContain("8 file(s) failed to lint");
+    } finally {
+      dateNowSpy.mockRestore();
+    }
   });
 });
 

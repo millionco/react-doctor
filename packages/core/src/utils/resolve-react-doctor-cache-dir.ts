@@ -21,8 +21,12 @@ const projectCacheSubdir = (projectDirectory: string): string =>
 //      A per-project subdirectory keeps a batch scan's projects from colliding.
 //   2. the project's `node_modules/.cache/react-doctor` (npm convention,
 //      project-local, cleaned by `node_modules` removal).
-//   3. a per-project subdirectory of the OS temp dir, when the project has no
-//      `node_modules` (e.g. a not-yet-installed checkout).
+//   3. a per-user, per-project subdirectory of the OS temp dir, when the
+//      project has no `node_modules` (e.g. a not-yet-installed checkout). The
+//      uid is folded into the directory name because the OS temp dir is
+//      world-writable and the path is otherwise predictable — without it,
+//      another local user could pre-create the directory and plant cache
+//      contents (suppressed or fabricated cached diagnostics).
 // The whole-repo scan cache, the per-file lint cache, and the supply-chain cache
 // sit side by side here under distinct filenames.
 export const resolveReactDoctorCacheDir = (projectDirectory: string): string => {
@@ -34,5 +38,19 @@ export const resolveReactDoctorCacheDir = (projectDirectory: string): string => 
   if (fs.existsSync(nodeModulesDirectory)) {
     return path.join(nodeModulesDirectory, ".cache", "react-doctor");
   }
-  return path.join(os.tmpdir(), "react-doctor-cache", projectCacheSubdir(projectDirectory));
+  return path.join(
+    os.tmpdir(),
+    `react-doctor-cache-${resolveUserCacheScope()}`,
+    projectCacheSubdir(projectDirectory),
+  );
+};
+
+// `os.userInfo()` can throw on systems with no passwd entry for the uid;
+// fall back to the raw uid (POSIX) or username (Windows has no getuid).
+const resolveUserCacheScope = (): string => {
+  try {
+    return String(process.getuid?.() ?? os.userInfo().username);
+  } catch {
+    return "shared";
+  }
 };

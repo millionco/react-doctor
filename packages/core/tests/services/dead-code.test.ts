@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Stream from "effect/Stream";
 import { describe, expect, it } from "vite-plus/test";
-import type { Diagnostic, ProjectInfo } from "@react-doctor/core";
+import type { Diagnostic } from "@react-doctor/core";
 import { DeadCode } from "../../src/services/dead-code.js";
 
 const sampleDiagnostic: Diagnostic = {
@@ -17,20 +17,12 @@ const sampleDiagnostic: Diagnostic = {
   category: "Maintainability",
 };
 
-const sampleInput = {
-  rootDirectory: "/repo",
-  userConfig: null,
-} satisfies {
-  rootDirectory: string;
-  userConfig: ProjectInfo["framework"] extends string ? null : null;
-};
-
 describe("DeadCode.layerOf", () => {
   it("emits the supplied diagnostics as a stream", async () => {
     const collected = await Effect.runPromise(
       Effect.gen(function* () {
         const deadCode = yield* DeadCode;
-        return yield* Stream.runCollect(deadCode.run({ rootDirectory: "/repo", userConfig: null }));
+        return yield* Stream.runCollect(deadCode.run({ rootDirectory: "/repo" }));
       }).pipe(Effect.provide(DeadCode.layerOf([sampleDiagnostic, sampleDiagnostic]))),
     );
     const items = Array.from(collected);
@@ -42,7 +34,7 @@ describe("DeadCode.layerOf", () => {
     const collected = await Effect.runPromise(
       Effect.gen(function* () {
         const deadCode = yield* DeadCode;
-        return yield* Stream.runCollect(deadCode.run({ rootDirectory: "/repo", userConfig: null }));
+        return yield* Stream.runCollect(deadCode.run({ rootDirectory: "/repo" }));
       }).pipe(Effect.provide(DeadCode.layerOf([]))),
     );
     expect(Array.from(collected)).toEqual([]);
@@ -57,7 +49,6 @@ describe("DeadCode.layerNode", () => {
         return yield* Stream.runCollect(
           deadCode.run({
             rootDirectory: "/this/path/should/not/exist/dead-code-test-12345",
-            userConfig: null,
           }),
         );
       }).pipe(Effect.provide(DeadCode.layerNode)),
@@ -70,5 +61,3 @@ describe("DeadCode.layerNode", () => {
     }
   });
 });
-
-void sampleInput;

@@ -2,13 +2,12 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
-import type { Diagnostic, ReactDoctorConfig } from "../types/index.js";
+import type { Diagnostic } from "../types/index.js";
 import { checkDeadCode } from "../check-dead-code.js";
 import { DeadCodeAnalysisFailed, ReactDoctorError } from "../errors.js";
 
 interface DeadCodeInput {
   readonly rootDirectory: string;
-  readonly userConfig: ReactDoctorConfig | null;
   /**
    * Caps deslop's parse pool so it shares cores with a concurrent lint pass
    * instead of oversubscribing. Set by the orchestrator only when dead-code
@@ -56,7 +55,6 @@ export class DeadCode extends Context.Service<
               try: (signal) =>
                 checkDeadCode({
                   rootDirectory: input.rootDirectory,
-                  userConfig: input.userConfig,
                   parseConcurrency: input.parseConcurrency,
                   workerTimeoutMs: input.workerTimeoutMs,
                   abortSignal: signal,

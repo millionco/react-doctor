@@ -63,6 +63,7 @@ import { forbidElements } from "./rules/react-builtins/forbid-elements.js";
 import { forwardRefUsesRef } from "./rules/react-builtins/forward-ref-uses-ref.js";
 import { gitProviderUrlInjectionRisk } from "./rules/security-scan/git-provider-url-injection-risk.js";
 import { headingHasContent } from "./rules/a11y/heading-has-content.js";
+import { hookImportRenameLosesUsePrefix } from "./rules/react-builtins/hook-import-rename-loses-use-prefix.js";
 import { hookUseState } from "./rules/react-builtins/hook-use-state.js";
 import { hooksNoNanInDeps } from "./rules/state-and-effects/hooks-no-nan-in-deps.js";
 import { htmlHasLang } from "./rules/a11y/html-has-lang.js";
@@ -1078,6 +1079,18 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Accessibility",
       requires: [...new Set<Capability>(["react", ...(headingHasContent.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/hook-import-rename-loses-use-prefix",
+    id: "hook-import-rename-loses-use-prefix",
+    source: "react-doctor",
+    originallyExternal: true,
+    rule: {
+      ...hookImportRenameLosesUsePrefix,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set(["react", ...(hookImportRenameLosesUsePrefix.requires ?? [])])],
     },
   },
   {

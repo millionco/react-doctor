@@ -181,8 +181,23 @@ export const isSynchronous = (node: EsTreeNode | null | undefined, within: EsTre
   return isSynchronous(node.parent, within);
 };
 
+// `const f = useCallback(async () => {...}, [])` — the binding's callable
+// identity is the memoized inner function, so async-ness and effect-fn
+// resolution must see through the hook wrapper.
+const unwrapUseCallback = (node: EsTreeNode | null | undefined): EsTreeNode | null | undefined => {
+  if (!node || !isNodeOfType(node, "CallExpression")) return node;
+  const callee = node.callee;
+  const isUseCallbackCallee =
+    (isNodeOfType(callee, "Identifier") && callee.name === "useCallback") ||
+    (isNodeOfType(callee, "MemberExpression") &&
+      isNodeOfType(callee.property, "Identifier") &&
+      callee.property.name === "useCallback");
+  return isUseCallbackCallee ? node.arguments?.[0] : node;
+};
+
 // Resolves a reference to the function-like node its first definition
-// denotes, unwrapping a `const fn = () => {}` declarator. Returns null
+// denotes, unwrapping a `const fn = () => {}` declarator and a
+// `const fn = useCallback(() => {}, [])` wrapper. Returns null
 // when the reference doesn't resolve to a function. Shared by
 // `getEffectFn`, `isCleanupReturnArgument`, and `resolvesToAsyncFunction`.
 export const resolveToFunction = (
@@ -195,8 +210,9 @@ export const resolveToFunction = (
   const definitionNode = ref.resolved?.defs[0]?.node as unknown as EsTreeNode | undefined;
   if (!definitionNode) return null;
   if (isFunctionLike(definitionNode)) return definitionNode;
-  if (isNodeOfType(definitionNode, "VariableDeclarator") && isFunctionLike(definitionNode.init)) {
-    return definitionNode.init;
+  if (isNodeOfType(definitionNode, "VariableDeclarator")) {
+    const initializer = unwrapUseCallback(definitionNode.init);
+    if (isFunctionLike(initializer)) return initializer;
   }
   return null;
 };

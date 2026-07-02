@@ -1,4 +1,3 @@
-import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -7,6 +6,8 @@ import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scop
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+const USE_EFFECT_ONLY = new Set(["useEffect"]);
 
 export const renderingHydrationNoFlicker = defineRule({
   id: "rendering-hydration-no-flicker",
@@ -17,7 +18,11 @@ export const renderingHydrationNoFlicker = defineRule({
     "Use `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)` or add `suppressHydrationWarning` to the element",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isHookCall(node, EFFECT_HOOK_NAMES) || (node.arguments?.length ?? 0) < 2) return;
+      // useLayoutEffect runs synchronously BEFORE paint, so a mount-time
+      // setState there never flashes — it's the canonical DOM-measurement
+      // pattern (react.dev "you might not need an effect"). Only the
+      // post-paint useEffect variant can flicker.
+      if (!isHookCall(node, USE_EFFECT_ONLY) || (node.arguments?.length ?? 0) < 2) return;
 
       const depsNode = node.arguments[1];
       if (!isNodeOfType(depsNode, "ArrayExpression") || depsNode.elements?.length !== 0) return;

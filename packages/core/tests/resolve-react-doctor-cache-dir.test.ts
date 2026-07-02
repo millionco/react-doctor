@@ -38,11 +38,16 @@ describe("resolveReactDoctorCacheDir", () => {
     );
   });
 
-  it("falls back to an OS-temp per-project dir when there is no node_modules or override", () => {
+  it("falls back to a user-scoped OS-temp per-project dir when there is no node_modules or override", () => {
     delete process.env["REACT_DOCTOR_CACHE_DIR"];
     const projectDir = path.join(tempRoot, "no-node-modules");
     fs.mkdirSync(projectDir, { recursive: true });
     const resolved = resolveReactDoctorCacheDir(projectDir);
-    expect(resolved.startsWith(path.join(os.tmpdir(), "react-doctor-cache"))).toBe(true);
+    const scopedCacheRoot = path.dirname(resolved);
+    expect(scopedCacheRoot.startsWith(os.tmpdir())).toBe(true);
+    // The uid/username suffix must be present: a bare `react-doctor-cache`
+    // would be the predictable world-writable path another local user can
+    // pre-create and poison.
+    expect(path.basename(scopedCacheRoot)).toMatch(/^react-doctor-cache-.+$/);
   });
 });

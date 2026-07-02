@@ -70,6 +70,12 @@ export interface RunEventInput {
   // always reports `false`. Omitted only on the failure path (the scan threw
   // before finalizing).
   readonly supplyChainOverlapTimedOut?: boolean;
+  // `true` when the forked security scan failed open to no diagnostics — the
+  // kill metric for that fail-open: a rising rate means fs errors are being
+  // swallowed instead of scanned. Never cached (`shouldStoreScanPayload`), so
+  // a cache hit reports the healthy `false`; omitted (null) on payloads from
+  // before the field and on the failure path.
+  readonly securityScanFailed?: boolean;
   /**
    * Whether the dead-code pass ran concurrently with lint this scan (gate
    * opened / overlap forced). Lets a query compare `runInspect` wall-clock
@@ -273,6 +279,9 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     }),
     ...withNamespace("supplyChain", {
       overlapTimedOut: input.supplyChainOverlapTimedOut ?? null,
+    }),
+    ...withNamespace("securityScan", {
+      failed: input.securityScanFailed ?? null,
     }),
     ...withNamespace("timing", {
       elapsedMs: result.elapsedMilliseconds,

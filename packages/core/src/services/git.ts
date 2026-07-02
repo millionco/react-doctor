@@ -13,6 +13,8 @@ import {
   DEFAULT_BRANCH_CANDIDATES,
   GITHUB_VIEWER_PERMISSION_TIMEOUT_MS,
   SPAWN_ARGS_MAX_LENGTH_CHARS,
+  SPAWN_ARGS_MAX_LENGTH_CHARS_DARWIN,
+  SPAWN_ARGS_MAX_LENGTH_CHARS_POSIX,
 } from "../constants.js";
 import {
   GitBaseBranchInvalid,
@@ -76,6 +78,17 @@ const isSafeGitRevision = (candidate: string): boolean => {
   if (candidate.startsWith(".") || candidate.endsWith(".")) return false;
   if (candidate.includes("..") || candidate.includes("@{")) return false;
   return SAFE_GIT_REVISION_PATTERN.test(candidate);
+};
+
+// The Windows cap would reject legitimately long `--scope lines` diffs
+// (`git diff -- <hundreds of files>`) that other platforms handle fine,
+// silently degrading the scope — so the guard is platform-sized. Darwin gets
+// its own cap because macOS ARG_MAX sits below the Linux one (rationale on
+// each constant).
+const resolveSpawnArgsLengthCap = (): number => {
+  if (process.platform === "win32") return SPAWN_ARGS_MAX_LENGTH_CHARS;
+  if (process.platform === "darwin") return SPAWN_ARGS_MAX_LENGTH_CHARS_DARWIN;
+  return SPAWN_ARGS_MAX_LENGTH_CHARS_POSIX;
 };
 
 interface GitDiffRange {
@@ -358,9 +371,10 @@ export class Git extends Context.Service<
               input.command.length +
               1 +
               input.args.reduce((total, arg) => total + arg.length + 1, 0);
-            if (argvLengthChars > SPAWN_ARGS_MAX_LENGTH_CHARS) {
+            const spawnArgsLengthCap = resolveSpawnArgsLengthCap();
+            if (argvLengthChars > spawnArgsLengthCap) {
               return yield* foldSpawnFailure(
-                `spawn ENAMETOOLONG (${argvLengthChars} argv chars exceed ${SPAWN_ARGS_MAX_LENGTH_CHARS})`,
+                `spawn ENAMETOOLONG (${argvLengthChars} argv chars exceed ${spawnArgsLengthCap})`,
               );
             }
             const handle = yield* spawner.spawn(
@@ -677,6 +691,13 @@ export class Git extends Context.Service<
 
             const baseBranch = explicitBaseBranch ?? (yield* defaultBranch(directory));
             if (baseBranch === null) return null;
+            // An explicit base was validated above, but the auto-detected
+            // default branch derives from repo-controlled data (the
+            // `origin/HEAD` symref) — validate it the same way before it
+            // reaches git argv, degrading to "no diff" like the other
+            // unresolvable-base paths instead of passing an option-shaped
+            // token to `git merge-base`.
+            if (!isSafeGitRevision(baseBranch)) return null;
 
             if (explicitBaseBranch !== undefined) {
               const exists = yield* branchExists(directory, explicitBaseBranch);

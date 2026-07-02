@@ -1,6 +1,7 @@
 import { TANSTACK_REDIRECT_FUNCTIONS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { findGuardingTryStatement } from "../../utils/find-guarding-try-statement.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -12,37 +13,23 @@ export const tanstackStartRedirectInTryCatch = defineRule({
   severity: "warn",
   recommendation:
     "TanStack Router's `redirect()` and `notFound()` throw special errors caught by the router. Move them outside the try block or re-throw in the catch",
-  create: (context: RuleContext) => {
-    let tryBlockDepth = 0;
-    let catchClauseDepth = 0;
+  create: (context: RuleContext) => ({
+    ThrowStatement(node: EsTreeNodeOfType<"ThrowStatement">) {
+      const argument = node.argument;
+      if (!isNodeOfType(argument, "CallExpression")) return;
+      if (!isNodeOfType(argument.callee, "Identifier")) return;
+      if (!TANSTACK_REDIRECT_FUNCTIONS.has(argument.callee.name)) return;
 
-    return {
-      TryStatement() {
-        tryBlockDepth++;
-      },
-      "TryStatement:exit"() {
-        tryBlockDepth--;
-      },
-      CatchClause() {
-        catchClauseDepth++;
-      },
-      "CatchClause:exit"() {
-        catchClauseDepth--;
-      },
-      ThrowStatement(node: EsTreeNodeOfType<"ThrowStatement">) {
-        if (tryBlockDepth === 0) return;
-        if (catchClauseDepth > 0) return;
+      // findGuardingTryStatement resolves the try/catch that actually
+      // swallows the router's control-flow error, climbing past re-throwing
+      // catches, bare try/finally, and IIFE boundaries.
+      const guardingTry = findGuardingTryStatement(node);
+      if (!guardingTry) return;
 
-        const argument = node.argument;
-        if (!isNodeOfType(argument, "CallExpression")) return;
-        if (!isNodeOfType(argument.callee, "Identifier")) return;
-        if (!TANSTACK_REDIRECT_FUNCTIONS.has(argument.callee.name)) return;
-
-        context.report({
-          node,
-          message: `throw ${argument.callee.name}() inside a try block gets swallowed, so the redirect silently fails.`,
-        });
-      },
-    };
-  },
+      context.report({
+        node,
+        message: `throw ${argument.callee.name}() inside a try block gets swallowed, so the redirect silently fails.`,
+      });
+    },
+  }),
 });

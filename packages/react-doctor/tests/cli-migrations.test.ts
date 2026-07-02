@@ -6,11 +6,10 @@ import { clearConfigCache } from "@react-doctor/core";
 import { runProjectMigrations } from "../src/cli/utils/cli-migrations.js";
 import { CONFIG_DIR_ENV_VAR } from "../src/cli/utils/cli-state-store.js";
 
-// Integration test for the real registered migration (not the framework with a
-// fake one): a legacy `react-doctor.config.json` in `projectRoot` should be
-// renamed to `doctor.config.ts` exactly once, print its summary, and be
+// Integration tests for the real registered migrations (not the framework with
+// a fake one): each should apply exactly once, print its summary, and be
 // recorded so it never re-runs. Config state is isolated to a temp dir.
-describe("runProjectMigrations — config-json-to-ts", () => {
+describe("runProjectMigrations", () => {
   let projectRoot: string;
   let configDir: string;
   let originalConfigDir: string | undefined;
@@ -74,5 +73,85 @@ describe("runProjectMigrations — config-json-to-ts", () => {
 
     expect(second).toContainEqual({ id: "config-json-to-ts", ran: false, applied: true });
     expect(logSpy.mock.calls.length).toBe(0);
+  });
+
+  describe("agent-hooks-sh-to-mjs", () => {
+    const writeLegacyClaudeHook = (): void => {
+      const settingsPath = path.join(projectRoot, ".claude/settings.json");
+      const legacyScriptPath = path.join(projectRoot, ".claude/hooks/react-doctor.sh");
+      fs.mkdirSync(path.dirname(legacyScriptPath), { recursive: true });
+      fs.writeFileSync(legacyScriptPath, "#!/bin/sh\nexit 0\n");
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify({
+          hooks: {
+            PostToolBatch: [
+              {
+                hooks: [
+                  {
+                    type: "command",
+                    command: 'sh "$CLAUDE_PROJECT_DIR/.claude/hooks/react-doctor.sh"',
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      );
+    };
+
+    it("upgrades a legacy Claude shell hook, prints the summary, and records the migration", async () => {
+      writeLegacyClaudeHook();
+
+      const report = await runProjectMigrations(projectRoot);
+
+      expect(report).toContainEqual({ id: "agent-hooks-sh-to-mjs", ran: true, applied: true });
+      const settings: { hooks: { PostToolBatch: Array<{ hooks: Array<{ command: string }> }> } } =
+        JSON.parse(fs.readFileSync(path.join(projectRoot, ".claude/settings.json"), "utf8"));
+      const hookCommands = settings.hooks.PostToolBatch.flatMap((group) =>
+        group.hooks.map((hook) => hook.command),
+      );
+      expect(hookCommands).toHaveLength(1);
+      expect(hookCommands[0]).toContain("react-doctor.mjs");
+      expect(fs.existsSync(path.join(projectRoot, ".claude/hooks/react-doctor.sh"))).toBe(false);
+      expect(fs.existsSync(path.join(projectRoot, ".claude/hooks/react-doctor.mjs"))).toBe(true);
+      expect(capturedOutput()).toContain("Upgraded the legacy react-doctor.sh agent hook");
+    });
+
+    it("stays pending with no legacy hooks and doesn't touch agent settings", async () => {
+      const report = await runProjectMigrations(projectRoot);
+
+      expect(report).toContainEqual({ id: "agent-hooks-sh-to-mjs", ran: true, applied: false });
+      expect(fs.existsSync(path.join(projectRoot, ".claude"))).toBe(false);
+      expect(fs.existsSync(path.join(projectRoot, ".cursor"))).toBe(false);
+    });
+
+    it("does not run again once applied (recorded)", async () => {
+      writeLegacyClaudeHook();
+      await runProjectMigrations(projectRoot);
+      logSpy.mockClear();
+
+      const second = await runProjectMigrations(projectRoot);
+
+      expect(second).toContainEqual({ id: "agent-hooks-sh-to-mjs", ran: false, applied: true });
+      expect(logSpy.mock.calls.length).toBe(0);
+    });
+
+    it("ignores a user's own wrapper outside our install paths (anchored detection)", async () => {
+      const configPath = path.join(projectRoot, ".cursor/hooks.json");
+      fs.mkdirSync(path.dirname(configPath), { recursive: true });
+      const userConfig = JSON.stringify({
+        version: 1,
+        hooks: {
+          postToolUse: [{ command: "bash scripts/hooks/react-doctor.sh", matcher: "Write" }],
+        },
+      });
+      fs.writeFileSync(configPath, userConfig);
+
+      const report = await runProjectMigrations(projectRoot);
+
+      expect(report).toContainEqual({ id: "agent-hooks-sh-to-mjs", ran: true, applied: false });
+      expect(fs.readFileSync(configPath, "utf8")).toBe(userConfig);
+    });
   });
 });

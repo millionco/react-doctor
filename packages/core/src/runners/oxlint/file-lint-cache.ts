@@ -14,7 +14,7 @@ import { isRecord } from "../../utils/is-record.js";
 
 /**
  * Per-file lint cache for the oxlint backend. Maps a per-file content key
- * (`<relativePath> <contentHash>`) to the RAW oxlint diagnostics that the
+ * (`<relativePath>\u0000<contentHash>`) to the RAW oxlint diagnostics that the
  * CACHEABLE rules produced for that file — the diagnostics before the
  * presentation pipeline (suppressions, surface filtering, fix grouping), so
  * those toggles never invalidate it. Cross-file rules are NEVER cached here;
@@ -128,12 +128,15 @@ export const createFileLintCache = (cacheDirectory: string, rulesetHash: string)
         files: Object.fromEntries(cappedEntries),
       };
 
-      const keptHashes = Object.entries(rulesets)
-        .sort(([, first], [, second]) => second.updatedAtMs - first.updatedAtMs)
-        .slice(0, FILE_LINT_CACHE_MAX_RULESET_COUNT)
-        .map(([hash]) => hash);
-      const prunedRulesets: Record<string, PersistedRuleset> = {};
-      for (const hash of keptHashes) prunedRulesets[hash] = rulesets[hash];
+      // A corrupt sibling bucket (e.g. a hand-edited or truncated file where a
+      // bucket is `null` or missing `updatedAtMs`) must not crash the LRU sort
+      // — persist fails open like every other operation here, so drop it.
+      const prunedRulesets: Record<string, PersistedRuleset> = Object.fromEntries(
+        Object.entries(rulesets)
+          .filter(([, bucket]) => isRecord(bucket) && typeof bucket.updatedAtMs === "number")
+          .sort(([, first], [, second]) => second.updatedAtMs - first.updatedAtMs)
+          .slice(0, FILE_LINT_CACHE_MAX_RULESET_COUNT),
+      );
 
       atomicWriteJson(cacheFilePath, {
         version: FILE_LINT_CACHE_SCHEMA_VERSION,

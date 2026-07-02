@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Head from "next/head";
+import { redirect } from "next/navigation";
 
 const useSearchParams = () => new URLSearchParams();
 
@@ -45,7 +46,6 @@ const RedirectInTryCatchComponent = () => {
 };
 
 const router = { push: (_path: string) => {} };
-const redirect = (_path: string) => {};
 const Image = (props: any) => <img {...props} />;
 const Script = (props: any) => <script {...props} />;
 

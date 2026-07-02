@@ -14,6 +14,12 @@ const LIST_ROW_PRESS_HANDLER_PROPS = new Set([
   "onClick",
 ]);
 
+const isRenderItemJsxAttribute = (parent: EsTreeNode | null | undefined): boolean => {
+  if (!isNodeOfType(parent, "JSXAttribute")) return false;
+  const attrName = isNodeOfType(parent.name, "JSXIdentifier") ? parent.name.name : null;
+  return attrName ? RENDER_ITEM_PROP_NAMES.has(attrName) : false;
+};
+
 const detectInlineRowHandlers = (renderItemFn: EsTreeNode): EsTreeNode[] => {
   const inlineHandlers: EsTreeNode[] = [];
   if (
@@ -23,6 +29,19 @@ const detectInlineRowHandlers = (renderItemFn: EsTreeNode): EsTreeNode[] => {
     return inlineHandlers;
   }
   walkAst(renderItemFn.body, (child: EsTreeNode) => {
+    // A nested list's direct-function `renderItem` is inspected as its own
+    // renderItem function, so descending into it here would report its inline
+    // handlers a second time. Prune only that shape — a wrapped renderItem
+    // (useCallback, conditional) is never inspected on its own, so this walk
+    // must descend into it.
+    if (
+      isNodeOfType(child, "JSXExpressionContainer") &&
+      isRenderItemJsxAttribute(child.parent) &&
+      (isNodeOfType(child.expression, "ArrowFunctionExpression") ||
+        isNodeOfType(child.expression, "FunctionExpression"))
+    ) {
+      return false;
+    }
     if (!isNodeOfType(child, "JSXAttribute")) return;
     if (!isNodeOfType(child.name, "JSXIdentifier")) return;
     if (!LIST_ROW_PRESS_HANDLER_PROPS.has(child.name.name)) return;
@@ -36,12 +55,6 @@ const detectInlineRowHandlers = (renderItemFn: EsTreeNode): EsTreeNode[] => {
     }
   });
   return inlineHandlers;
-};
-
-const isRenderItemJsxAttribute = (parent: EsTreeNode | null | undefined): boolean => {
-  if (!isNodeOfType(parent, "JSXAttribute")) return false;
-  const attrName = isNodeOfType(parent.name, "JSXIdentifier") ? parent.name.name : null;
-  return attrName ? RENDER_ITEM_PROP_NAMES.has(attrName) : false;
 };
 
 const isRenderItemFunction = (node: EsTreeNode): boolean => {

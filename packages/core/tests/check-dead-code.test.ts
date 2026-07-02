@@ -124,9 +124,10 @@ describe("checkDeadCode", () => {
         'import { serverAction } from "../../actions/server-action";\nexport const Hero = () => serverAction();\n',
       "src/actions/server-action.ts": 'export const serverAction = () => "hello";\n',
     });
+    // `ignore.files` never reaches deslop's graph (it suppresses at the
+    // reporting layer), so the ignored importer keeps its import target alive.
     const diagnostics = await checkDeadCode({
       rootDirectory: directory,
-      userConfig: { ignore: { files: ["src/sanity/components/**"] } },
     });
     const flagged = diagnostics
       .filter((diagnostic) => diagnostic.rule === "unused-file")

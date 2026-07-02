@@ -7,6 +7,27 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const RENDER_PROP_PATTERN = /^render[A-Z]/;
 
+// A render prop hands a render slot (a function/JSX node) to the child. Two
+// `render*`-prefixed shapes are NOT render slots and must not inflate the count:
+//   - a `render*Props` config bag (e.g. react-pdf's `renderTextLayerProps`,
+//     `renderAnnotationLayerProps`) is an options object passed to a layer, and
+//   - a data literal value (e.g. `renderMode="canvas"`, `renderable={false}`) is
+//     a mode/flag, not a render function.
+// Counting either misreads a plain forwarding component as render-prop
+// proliferation.
+const looksLikeRenderSlot = (attr: EsTreeNodeOfType<"JSXAttribute">, name: string): boolean => {
+  if (name.endsWith("Props")) return false;
+  if (attr.value === null) return false;
+  if (isNodeOfType(attr.value, "Literal")) return false;
+  if (
+    isNodeOfType(attr.value, "JSXExpressionContainer") &&
+    isNodeOfType(attr.value.expression, "Literal")
+  ) {
+    return false;
+  }
+  return true;
+};
+
 // HACK: render-prop proliferation (`<Foo renderHeader={…} renderFooter={…}
 // renderActions={…} />`) is the smell — a single render-prop is often
 // the legitimate library API (MUI Autocomplete's `renderInput`, FlatList's
@@ -30,6 +51,7 @@ export const noRenderPropChildren = defineRule({
         if (!isNodeOfType(attr.name, "JSXIdentifier")) continue;
         const name = attr.name.name;
         if (!RENDER_PROP_PATTERN.test(name)) continue;
+        if (!looksLikeRenderSlot(attr, name)) continue;
         renderPropAttrs.push({ name, node: attr });
       }
       if (renderPropAttrs.length < RENDER_PROP_PROLIFERATION_THRESHOLD) return;

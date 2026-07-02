@@ -7,7 +7,7 @@ import { NODE_ARGUMENT_COUNT } from "./constants.js";
 // diff) scan and `--explain` would be ignored entirely. Detect them in raw argv
 // and fail loudly with migration guidance instead.
 const REMOVED_FLAGS: ReadonlyMap<string, string> = new Map([
-  ["--full", "use `--diff false` to force a full scan"],
+  ["--full", "use `--scope full` to force a full scan"],
   ["--explain", "use the `why <file>:<line>` command"],
   ["--why", "use the `why <file>:<line>` command"],
   ["--pr-comment", "the GitHub Action posts the PR comment for you; remove this flag"],

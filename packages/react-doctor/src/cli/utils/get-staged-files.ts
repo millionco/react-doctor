@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { Git, StagedFiles, type StagedSnapshot } from "@react-doctor/core";
+import { Git, StagedFiles, messageFromUnknown, type StagedSnapshot } from "@react-doctor/core";
 import { cliLogger } from "./cli-logger.js";
 
 const stagedFilesLayer = StagedFiles.layerNode.pipe(Layer.provide(Git.layerNode));
@@ -15,9 +15,7 @@ export const getStagedSourceFiles = async (directory: string): Promise<string[]>
     );
     return [...files];
   } catch (error) {
-    cliLogger.warn(
-      `Failed to discover staged files: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    cliLogger.warn(`Failed to discover staged files: ${messageFromUnknown(error)}`);
     return [];
   }
 };

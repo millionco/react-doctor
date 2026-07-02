@@ -70,6 +70,14 @@ const DerivedUseStateComponent = ({ initialName }: { initialName: string }) => {
   return <input value={name} onChange={(event) => setName(event.target.value)} />;
 };
 
+const loadSavedProfile = () => ({
+  name: "Ada",
+  email: "ada@example.com",
+  age: 36,
+  address: "1 Analytical Way",
+  phone: "555-0100",
+});
+
 const PreferUseReducerComponent = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -77,8 +85,23 @@ const PreferUseReducerComponent = () => {
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
 
+  const applyProfile = (profile: {
+    name: string;
+    email: string;
+    age: number;
+    address: string;
+    phone: string;
+  }) => {
+    setName(profile.name);
+    setEmail(profile.email);
+    setAge(profile.age);
+    setAddress(profile.address);
+    setPhone(profile.phone);
+  };
+
   return (
     <div>
+      <button onClick={() => applyProfile(loadSavedProfile())}>Load saved</button>
       <input value={name} onChange={(event) => setName(event.target.value)} />
       <input value={email} onChange={(event) => setEmail(event.target.value)} />
       <input value={age} type="number" onChange={(event) => setAge(Number(event.target.value))} />
@@ -90,7 +113,11 @@ const PreferUseReducerComponent = () => {
 
 const FunctionalSetStateComponent = () => {
   const [count, setCount] = useState(0);
-  return <button onClick={() => setCount(count + 1)}>{count}</button>;
+  // Deferred (setTimeout) read of `count` — a real stale-closure trap. A
+  // synchronous `onClick={() => setCount(count + 1)}` would NOT fire (fresh
+  // state per render), so the deferred form keeps coverage of the setter
+  // arithmetic path.
+  return <button onClick={() => setTimeout(() => setCount(count + 1), 0)}>{count}</button>;
 };
 
 const DependencyLiteralComponent = () => {
@@ -157,7 +184,7 @@ const MutableInDepsComponent = ({ token }: { token: string }) => {
   void token;
   useEffect(() => {
     document.title = location.pathname;
-  }, [location.pathname]);
+  }, []);
   return <div />;
 };
 

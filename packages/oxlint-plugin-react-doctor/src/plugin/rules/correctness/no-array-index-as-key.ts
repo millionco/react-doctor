@@ -2,9 +2,12 @@ import { INDEX_PARAMETER_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isAllLiteralArrayExpression } from "../../utils/is-all-literal-array-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import {
   containsStatefulDescendant,
@@ -164,12 +167,175 @@ const isArrayFromLengthObjectCall = (node: EsTreeNode): boolean => {
   return false;
 };
 
+const TYPE_RESOLUTION_DEPTH_LIMIT = 4;
+
+const isStringKeywordAnnotation = (typeAnnotation: EsTreeNode | null | undefined): boolean =>
+  Boolean(
+    typeAnnotation &&
+    isNodeOfType(typeAnnotation, "TSTypeAnnotation") &&
+    isNodeOfType(typeAnnotation.typeAnnotation, "TSStringKeyword"),
+  );
+
+const findSameFileTypeDeclaration = (
+  referenceNode: EsTreeNode,
+  typeName: string,
+): EsTreeNode | null => {
+  const programRoot = findProgramRoot(referenceNode);
+  if (!programRoot || !isNodeOfType(programRoot, "Program")) return null;
+  for (const statement of programRoot.body) {
+    const declaration: EsTreeNode | null = isNodeOfType(statement, "ExportNamedDeclaration")
+      ? statement.declaration
+      : statement;
+    if (!declaration) continue;
+    if (
+      (isNodeOfType(declaration, "TSInterfaceDeclaration") ||
+        isNodeOfType(declaration, "TSTypeAliasDeclaration")) &&
+      isNodeOfType(declaration.id, "Identifier") &&
+      declaration.id.name === typeName
+    ) {
+      return declaration;
+    }
+  }
+  return null;
+};
+
+// Does `typeNode` (a type-literal, or a reference to a same-file
+// interface / type alias) declare `propertyName: string`?
+const typeDeclaresStringProperty = (
+  typeNode: EsTreeNode,
+  propertyName: string,
+  referenceNode: EsTreeNode,
+  depth: number,
+): boolean => {
+  if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return false;
+  let members: ReadonlyArray<EsTreeNode> | null = null;
+  if (isNodeOfType(typeNode, "TSTypeLiteral")) members = typeNode.members;
+  else if (isNodeOfType(typeNode, "TSInterfaceDeclaration")) members = typeNode.body.body;
+  if (members) {
+    for (const member of members) {
+      if (!isNodeOfType(member, "TSPropertySignature")) continue;
+      if (!isNodeOfType(member.key, "Identifier") || member.key.name !== propertyName) continue;
+      return isStringKeywordAnnotation(member.typeAnnotation);
+    }
+    return false;
+  }
+  if (isNodeOfType(typeNode, "TSTypeAliasDeclaration")) {
+    return typeDeclaresStringProperty(
+      typeNode.typeAnnotation,
+      propertyName,
+      referenceNode,
+      depth + 1,
+    );
+  }
+  if (isNodeOfType(typeNode, "TSTypeReference") && isNodeOfType(typeNode.typeName, "Identifier")) {
+    const declaration = findSameFileTypeDeclaration(referenceNode, typeNode.typeName.name);
+    if (!declaration) return false;
+    return typeDeclaresStringProperty(declaration, propertyName, referenceNode, depth + 1);
+  }
+  return false;
+};
+
+// `{ name }: MatchedNameProps` / `{ name }: { name: string }` — the
+// identifier is destructured from an object pattern whose annotation
+// (inline type literal, or same-file interface / type alias) declares
+// the property as `string`.
+const isDestructuredFromStringTypedPattern = (bindingIdentifier: EsTreeNode): boolean => {
+  const property = bindingIdentifier.parent;
+  if (!property || !isNodeOfType(property, "Property")) return false;
+  if (!isNodeOfType(property.key, "Identifier")) return false;
+  const pattern = property.parent;
+  if (!pattern || !isNodeOfType(pattern, "ObjectPattern")) return false;
+  const typeAnnotation = pattern.typeAnnotation;
+  if (!typeAnnotation || !isNodeOfType(typeAnnotation, "TSTypeAnnotation")) return false;
+  return typeDeclaresStringProperty(
+    typeAnnotation.typeAnnotation,
+    property.key.name,
+    bindingIdentifier,
+    0,
+  );
+};
+
+// Provably-string expressions only — a wrong exemption here silences a
+// real reorder hazard, so name heuristics are deliberately not used.
+const isProvablyStringValued = (expression: EsTreeNode, depth: number): boolean => {
+  if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return false;
+  const node = stripParenExpression(expression);
+  if (isNodeOfType(node, "Literal")) return typeof node.value === "string";
+  if (isNodeOfType(node, "TemplateLiteral")) return true;
+  if (
+    isNodeOfType(node, "CallExpression") &&
+    isNodeOfType(node.callee, "Identifier") &&
+    node.callee.name === "String"
+  ) {
+    return true;
+  }
+  if (isNodeOfType(node, "Identifier")) {
+    const binding = findVariableInitializer(node, node.name);
+    if (!binding) return false;
+    if (binding.initializer && isProvablyStringValued(binding.initializer, depth + 1)) return true;
+    if (
+      isNodeOfType(binding.bindingIdentifier, "Identifier") &&
+      isStringKeywordAnnotation(binding.bindingIdentifier.typeAnnotation)
+    ) {
+      return true;
+    }
+    return isDestructuredFromStringTypedPattern(binding.bindingIdentifier);
+  }
+  return false;
+};
+
+const hasProvablyStringFirstArgument = (callNode: EsTreeNode): boolean => {
+  if (!isNodeOfType(callNode, "CallExpression")) return false;
+  const source = callNode.arguments?.[0];
+  return Boolean(source && isProvablyStringValued(source, 0));
+};
+
+/**
+ * `[...str]`, `str.split(...)`, and `Array.from(str)` slice ONE string
+ * into positional fragments (characters, lines, tokens). Fragment
+ * position IS the entry's stable identity — nothing reorders, filters,
+ * or carries per-item state — so an index key is correct there.
+ * `.split(...)` needs no string proof (only strings have `.split`);
+ * the spread / `Array.from` forms do, because both are equally common
+ * on arrays.
+ */
+const isStringDerivedReceiver = (receiver: EsTreeNode, depth = 0): boolean => {
+  const node = stripParenExpression(receiver);
+  // `const parts = line.split(" "); parts.map(...)` — follow the local
+  // binding to its initializer (bounded, one hop per level).
+  if (isNodeOfType(node, "Identifier")) {
+    if (depth >= TYPE_RESOLUTION_DEPTH_LIMIT) return false;
+    const binding = findVariableInitializer(node, node.name);
+    if (!binding?.initializer) return false;
+    return isStringDerivedReceiver(binding.initializer, depth + 1);
+  }
+  if (isNodeOfType(node, "ArrayExpression") && node.elements?.length === 1) {
+    const only = node.elements[0];
+    if (only && isNodeOfType(only, "SpreadElement")) {
+      return isProvablyStringValued(only.argument, 0);
+    }
+  }
+  if (
+    isNodeOfType(node, "CallExpression") &&
+    isNodeOfType(node.callee, "MemberExpression") &&
+    isNodeOfType(node.callee.property, "Identifier") &&
+    node.callee.property.name === "split"
+  ) {
+    return true;
+  }
+  return isArrayFromCall(node) && hasProvablyStringFirstArgument(node);
+};
+
 // We must inspect only the INNERMOST iterator callback enclosing the
 // keyed JSX — that's the one whose index parameter actually feeds the
 // `key=` binding. Outer `Array.from({length: N}, ...)` ancestors are
 // irrelevant when there's a nested `items.map(...)` between them and
 // the JSX (the inner index is from the dynamic map, not the placeholder).
-const isInsideStaticPlaceholderMap = (node: EsTreeNode): boolean => {
+const isInsideIteratorMapMatching = (
+  node: EsTreeNode,
+  matchesMethodReceiver: (receiver: EsTreeNode) => boolean,
+  matchesArrayFromCall: (arrayFromCall: EsTreeNode) => boolean,
+): boolean => {
   let current = node;
   while (current.parent) {
     const parent = current.parent;
@@ -186,20 +352,26 @@ const isInsideStaticPlaceholderMap = (node: EsTreeNode): boolean => {
           callee.property.name === "flatMap" ||
           callee.property.name === "forEach")
       ) {
-        return isStaticPlaceholderReceiver(callee.object);
+        return matchesMethodReceiver(callee.object);
       }
       if (
         isArrayFromCall(parent) &&
         parent.arguments.length >= 2 &&
         parent.arguments[1] === current
       ) {
-        return isArrayFromLengthObjectCall(parent);
+        return matchesArrayFromCall(parent);
       }
     }
     current = parent;
   }
   return false;
 };
+
+const isInsideStringDerivedMap = (node: EsTreeNode): boolean =>
+  isInsideIteratorMapMatching(node, isStringDerivedReceiver, hasProvablyStringFirstArgument);
+
+const isInsideStaticPlaceholderMap = (node: EsTreeNode): boolean =>
+  isInsideIteratorMapMatching(node, isStaticPlaceholderReceiver, isArrayFromLengthObjectCall);
 
 /**
  * Walk up from a JSXAttribute node looking for the enclosing iterator
@@ -290,6 +462,7 @@ export const noArrayIndexAsKey = defineRule({
       const indexName = extractIndexName(node.value.expression);
       if (!indexName) return;
       if (isInsideStaticPlaceholderMap(node)) return;
+      if (isInsideStringDerivedMap(node)) return;
       if (isCompositeKeyWithIteratorIdentity(node.value.expression, node)) return;
 
       // Fragment / React.Fragment has no DOM identity or state — even

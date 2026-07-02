@@ -1,0 +1,6 @@
+---
+"react-doctor": patch
+"@react-doctor/core": patch
+---
+
+Core-engine reliability and security fixes from the 20-day audit. The lint binary-split retry budget is now scoped per batch and anchored at the first failure, so one pathological batch no longer starves the rest of the scan's recovery (and drop reasons name the limit that fired). `REACT_DOCTOR_SUPPLY_CHAIN_TIMEOUT_MS` can now raise the supply-chain budget instead of only lowering it. A corrupt per-file lint cache no longer fails every warm scan until hand-deleted, and the cache now busts when the oxlint child runs a different Node than the CLI (nvm fallback). The `/tmp` fallback cache directory is scoped per user so another local user can't pre-create and poison it, and the auto-detected default branch is validated before reaching git argv. The spawn argv guard is platform-sized (Windows 24k chars, macOS 800k, other POSIX 1.5M), so large `--scope lines` diffs no longer silently degrade to file scope on Linux/macOS. A security-scan I/O failure now skips that pass instead of failing the whole scan, and is reported on the run's telemetry as `securityScan.failed`. Note: the per-file lint cache is invalidated once on upgrade (its ruleset-hash separators changed).

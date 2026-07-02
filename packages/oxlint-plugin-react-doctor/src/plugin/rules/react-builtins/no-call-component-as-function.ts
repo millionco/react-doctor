@@ -1,9 +1,14 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isComponentDeclaration } from "../../utils/is-component-declaration.js";
+import { isCreateElementCall } from "../../utils/is-create-element-call.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -28,6 +33,42 @@ const symbolIsLocalComponent = (symbol: SymbolDescriptor, context: RuleContext):
   return false;
 };
 
+// True when `declaration` lives at module scope (no enclosing
+// function). A PascalCase arrow defined INSIDE a parent component and
+// only ever called as `Name()` (never `<Name/>`) is a render helper
+// that closes over the parent's hooks — calling it inline is correct,
+// and rendering it as JSX would break those closed-over reads.
+const isModuleScopeDeclaration = (declaration: EsTreeNode | null | undefined): boolean => {
+  let current: EsTreeNode | null | undefined = declaration?.parent;
+  while (current) {
+    if (isFunctionLike(current)) return false;
+    current = current.parent ?? null;
+  }
+  return true;
+};
+
+// A nested render helper that OWNS hooks is not exempt: calling it as
+// `Name()` inlines its hooks into the caller's hook order, so a
+// conditional call is exactly the hooks-order hazard the rule warns
+// about. Only hook-free nested helpers get the closure-helper pass.
+const declarationBodyContainsHookCall = (symbol: SymbolDescriptor): boolean => {
+  const componentFunction = isComponentDeclaration(symbol.declarationNode)
+    ? symbol.declarationNode
+    : symbol.initializer;
+  if (!componentFunction) return false;
+  let didFindHookCall = false;
+  walkAst(componentFunction, (descendant) => {
+    if (didFindHookCall) return false;
+    if (!isNodeOfType(descendant, "CallExpression")) return;
+    const calleeName = getCalleeName(descendant);
+    if (calleeName && isReactHookName(calleeName)) {
+      didFindHookCall = true;
+      return false;
+    }
+  });
+  return didFindHookCall;
+};
+
 // A component is only flagged on strong, shadow-safe evidence: the called
 // identifier resolves to a same-file component definition that returns JSX, OR
 // to an imported binding that is also rendered as a JSX element in this file.
@@ -45,29 +86,62 @@ export const noCallComponentAsFunction = defineRule({
   recommendation:
     "Render components as JSX (`<Component />`), never call them like functions (`Component(props)`). A direct call runs the component outside React and breaks hooks, state, and memoization.",
   create: (context: RuleContext) => {
-    const renderedJsxNames = new Set<string>();
-    const candidateCalls: Array<{ node: EsTreeNode; callee: EsTreeNode; name: string }> = [];
+    // Keyed by the BINDING IDENTIFIER node, not name: a rendered `<Item/>`
+    // of one binding must not count as instantiation of a same-named
+    // different binding (an inline render helper shadowing an import, or
+    // two components in one file sharing a name). The binding node (not
+    // the symbol id) is the key because scope analysis can register a
+    // hoisted declaration under two symbol records sharing one binding.
+    const renderedComponentBindings = new Set<EsTreeNode>();
+    const candidateCalls: Array<{
+      node: EsTreeNode;
+      callee: EsTreeNode;
+      name: string;
+    }> = [];
+
+    const recordRenderedComponent = (identifier: EsTreeNode): void => {
+      const symbol = context.scopes.symbolFor(identifier);
+      if (symbol) renderedComponentBindings.add(symbol.bindingIdentifier);
+    };
 
     const visitors: RuleVisitors = {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (isNodeOfType(node.name, "JSXIdentifier") && isUppercaseName(node.name.name)) {
-          renderedJsxNames.add(node.name.name);
+          recordRenderedComponent(node.name as EsTreeNode);
         }
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        // `createElement(Name, …)` is a real instantiation, same as `<Name/>`.
+        if (isCreateElementCall(node)) {
+          const firstArgument = node.arguments[0];
+          if (firstArgument && isNodeOfType(firstArgument, "Identifier")) {
+            recordRenderedComponent(firstArgument);
+          }
+        }
         if (isNodeOfType(node.callee, "Identifier") && isUppercaseName(node.callee.name)) {
-          candidateCalls.push({ node, callee: node.callee, name: node.callee.name });
+          candidateCalls.push({
+            node,
+            callee: node.callee,
+            name: node.callee.name,
+          });
         }
       },
       "Program:exit"() {
         for (const candidate of candidateCalls) {
           const symbol = context.scopes.symbolFor(candidate.callee);
           if (!symbol) continue;
-          const isComponent =
-            symbolIsLocalComponent(symbol, context) ||
-            (symbol.kind === "import" && renderedJsxNames.has(candidate.name));
+          const isRendered = renderedComponentBindings.has(symbol.bindingIdentifier);
+          const isLocalComponent =
+            symbolIsLocalComponent(symbol, context) &&
+            (isModuleScopeDeclaration(symbol.declarationNode) ||
+              isRendered ||
+              declarationBodyContainsHookCall(symbol));
+          const isComponent = isLocalComponent || (symbol.kind === "import" && isRendered);
           if (isComponent) {
-            context.report({ node: candidate.node, message: message(candidate.name) });
+            context.report({
+              node: candidate.node,
+              message: message(candidate.name),
+            });
           }
         }
       },

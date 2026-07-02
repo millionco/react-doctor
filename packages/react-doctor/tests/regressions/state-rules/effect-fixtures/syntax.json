@@ -158,7 +158,7 @@
       "idx": 20,
       "name": "Value-less useState",
       "code": "\n        import { useState } from 'react';\n\n        function AttemptCounter() {\n          const [, setAttempts] = useState(0);\n          const [count, setCount] = useState(0);\n\n          useEffect(() => {\n            setAttempts((prev) => {\n              return prev + count;\n            });\n          }, [count]);\n        }\n      ",
-      "todo": false,
+      "todo": true,
       "errors": 1
     },
     {

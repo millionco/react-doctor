@@ -9,10 +9,15 @@ on:
 permissions:
   contents: read
 
-# Cancel superseded runs on a PR (a new push obsoletes the in-flight one); let
-# every push to main finish so per-commit jobs aren't skipped.
+# Cancel superseded runs on a PR (a new push obsoletes the in-flight one).
+# Pushes to main are never canceled in-flight — though GitHub keeps only the
+# newest PENDING run per group, so rapid pushes can skip an intermediate
+# commit's run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  # Keyed by PR number (not head_ref): two different fork PRs can share a
+  # head branch name (most commonly `main`), and a name-keyed group would let
+  # one contributor's push cancel or queue behind another's unrelated run.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Turbo Remote Cache: share build/typecheck/test artifacts across runs, runners,
@@ -26,10 +31,14 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
-    # Fold the Node version into turbo's `test` task hash (turbo.json) so a
-    # cached result from one matrix leg is never replayed for another.
+    # Fold the Node version AND the OS into turbo's `test` task hash
+    # (turbo.json) so a cached result from one matrix leg is never replayed for
+    # another — turbo does not hash the platform by default, so without the OS
+    # dimension the Windows/macOS legs (same Node as an ubuntu leg) would hit
+    # the remote cache and replay ubuntu's test logs instead of running.
     env:
       MATRIX_NODE_VERSION: ${{ matrix.node-version }}
+      MATRIX_OS: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:

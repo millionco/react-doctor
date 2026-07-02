@@ -68,7 +68,11 @@ const NamespaceLazyInit = () => {
 
 const NamespaceFunctionalSetState = () => {
   const [count, setCount] = React.useState(0);
-  return <button onClick={() => setCount(count + 1)}>{count}</button>;
+  // Deferred (setTimeout) read of `count` — a real stale-closure trap.
+  // A synchronous `onClick={() => setCount(count + 1)}` would NOT fire
+  // (fresh state per render), so the deferred form keeps coverage of the
+  // namespaced-setter arithmetic path.
+  return <button onClick={() => setTimeout(() => setCount(count + 1), 0)}>{count}</button>;
 };
 
 const NamespaceDependencyLiteral = () => {
@@ -97,8 +101,17 @@ const NamespacePreferUseReducer = () => {
   const [d, setD] = React.useState("");
   const [e, setE] = React.useState("");
 
+  const resetForm = () => {
+    setA("");
+    setB("");
+    setC(0);
+    setD("");
+    setE("");
+  };
+
   return (
     <div>
+      <button onClick={resetForm}>Reset</button>
       <input value={a} onChange={(event) => setA(event.target.value)} />
       <input value={b} onChange={(event) => setB(event.target.value)} />
       <input value={c} type="number" onChange={(event) => setC(Number(event.target.value))} />

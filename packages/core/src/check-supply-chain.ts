@@ -490,7 +490,13 @@ const ALERT_SEVERITY_RANK: Record<string, number> = {
   low: 1,
 };
 
-const severityRank = (severity: string): number => ALERT_SEVERITY_RANK[severity.toLowerCase()] ?? 0;
+// `Object.hasOwn`, not bare index access: `severity` / `type` come off the
+// wire, so `"constructor"` would read an inherited `Object.prototype` member
+// (#920's rule-key crash class).
+const severityRank = (severity: string): number => {
+  const normalized = severity.toLowerCase();
+  return Object.hasOwn(ALERT_SEVERITY_RANK, normalized) ? ALERT_SEVERITY_RANK[normalized] : 0;
+};
 
 // Display spelling for a severity: normalize Socket's "middle" to "medium",
 // otherwise lowercase the (remote, sanitized) wire value.
@@ -523,7 +529,9 @@ const humanizeAlertType = (type: string): string =>
     .trim();
 
 const friendlyAlertType = (type: string): string =>
-  ALERT_TYPE_LABELS[type] ?? sanitizeTerminalText(humanizeAlertType(type));
+  Object.hasOwn(ALERT_TYPE_LABELS, type)
+    ? ALERT_TYPE_LABELS[type]
+    : sanitizeTerminalText(humanizeAlertType(type));
 
 // First sentence of a Socket alert note, whitespace-collapsed and capped so a
 // paragraph-long malware description doesn't blow out the diagnostic line.

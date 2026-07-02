@@ -238,7 +238,7 @@
       "idx": 16,
       "name": "From props via callback setter",
       "code": "\n        import { useState, useEffect } from 'react';\n\n        function CountAccumulator({ count }) {\n          const [total, setTotal] = useState(count);\n\n          useEffect(() => {\n            setTotal((prev) => prev + count);\n          }, [count]);\n        }\n      ",
-      "todo": false,
+      "todo": true,
       "errors": 1
     },
     {

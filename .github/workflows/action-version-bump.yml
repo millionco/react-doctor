@@ -21,6 +21,10 @@ jobs:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # A newer push to the same PR obsoletes the in-flight recommendation.
+    concurrency:
+      group: action-version-bump-recommend-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     permissions:
       contents: read
       pull-requests: write
@@ -38,8 +42,12 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           ACTION_COMMIT_SUBJECT: ${{ github.event.pull_request.title }}
         run: |
-          export ACTION_CHANGED_FILES="$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}")"
-          export ACTION_ALL_TAGS="$(git tag --list 'v*')"
+          # Assign separately from `export` so errexit sees a failing git diff
+          # instead of silently treating it as "no files changed".
+          changed_files="$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}")"
+          all_tags="$(git tag --list 'v*')"
+          export ACTION_CHANGED_FILES="${changed_files}"
+          export ACTION_ALL_TAGS="${all_tags}"
           node scripts/recommend-action-version-bump.mjs "${RUNNER_TEMP}/action-version-comment.md"
 
       - name: Upsert recommendation comment
@@ -59,18 +67,29 @@ jobs:
               issue_number: issueNumber,
             });
             const existing = comments.find((comment) => comment.body?.includes(marker));
-            if (process.env.ACTION_CHANGED !== "true") {
-              // The PR no longer touches the action surface — clear a stale recommendation.
-              if (existing) {
-                await github.rest.issues.deleteComment({ owner, repo, comment_id: existing.id });
+            const actionChanged = process.env.ACTION_CHANGED === "true";
+            // Read outside the try: a missing comment file when the detect step
+            // reported changed=true is a contract violation, not a token issue,
+            // and should red the check.
+            const body = actionChanged ? fs.readFileSync(process.env.COMMENT_FILE, "utf8") : "";
+            // Comment writes are best-effort: on a fork PR the GITHUB_TOKEN is
+            // read-only regardless of the declared permissions, and a 403 here
+            // must not red the check for an external contributor.
+            try {
+              if (!actionChanged) {
+                // The PR no longer touches the action surface — clear a stale recommendation.
+                if (existing) {
+                  await github.rest.issues.deleteComment({ owner, repo, comment_id: existing.id });
+                }
+                return;
               }
-              return;
-            }
-            const body = fs.readFileSync(process.env.COMMENT_FILE, "utf8");
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+              }
+            } catch (error) {
+              core.warning(`Could not upsert the action-version comment: ${error.message}`);
             }
 
   bump:
@@ -81,6 +100,15 @@ jobs:
     if: ${{ github.event_name == 'push' && vars.AUTO_BUMP_ACTION_TAG == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Serialize bump runs, with `queue: max` so a superseded PENDING run stays
+    # queued instead of canceled — under the default single pending slot, the
+    # middle of three quick merges would never be judged for a tag (an untagged
+    # action release). Queued runs are NOT guaranteed to execute in order, so
+    # the tag step below refuses to move the floating major backwards.
+    # `queue: max` requires cancel-in-progress to be false/absent.
+    concurrency:
+      group: action-version-bump-main
+      queue: max
     permissions:
       contents: write
     steps:
@@ -113,8 +141,13 @@ jobs:
           else
             export ACTION_COMMIT_SUBJECT="$(printf '%s' "${HEAD_COMMIT_MESSAGE}" | head -n1)"
           fi
-          export ACTION_CHANGED_FILES="$(git diff --name-only "${base}" "${GITHUB_SHA}")"
-          export ACTION_ALL_TAGS="$(git tag --list 'v*')"
+          # Assign separately from `export` so errexit sees a failing git diff
+          # (e.g. an unreachable `github.event.before` after a force-push)
+          # instead of silently treating it as "no files changed".
+          changed_files="$(git diff --name-only "${base}" "${GITHUB_SHA}")"
+          all_tags="$(git tag --list 'v*')"
+          export ACTION_CHANGED_FILES="${changed_files}"
+          export ACTION_ALL_TAGS="${all_tags}"
           node scripts/recommend-action-version-bump.mjs
 
       - name: Create and push action release tags
@@ -129,7 +162,16 @@ jobs:
           # CI has no signing key, so override the repo's tag.gpgsign default and
           # create an unsigned annotated tag instead of failing on a missing key.
           git -c tag.gpgsign=false tag -a "${NEXT_TAG}" -m "react-doctor action ${NEXT_TAG} (${BUMP_LEVEL})"
-          git -c tag.gpgsign=false tag -fa "${MAJOR_TAG}" -m "react-doctor action ${MAJOR_TAG} (floating major -> ${NEXT_TAG})"
           git push origin "${NEXT_TAG}"
+          # `queue: max` serializes runs but does not order them: an older
+          # commit's run can execute after a newer commit already tagged and
+          # moved the floating major forward. Never move it backwards.
+          if git rev-parse --quiet --verify "refs/tags/${MAJOR_TAG}" >/dev/null \
+            && ! git merge-base --is-ancestor "${MAJOR_TAG}^{commit}" "${GITHUB_SHA}"; then
+            echo "::warning::${MAJOR_TAG} points at a commit that is not an ancestor of ${GITHUB_SHA} (out-of-order bump runs); tagged ${NEXT_TAG} without moving ${MAJOR_TAG}."
+            echo "Tagged ${NEXT_TAG}; left ${MAJOR_TAG} in place (a newer commit already carries it)." >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+          git -c tag.gpgsign=false tag -fa "${MAJOR_TAG}" -m "react-doctor action ${MAJOR_TAG} (floating major -> ${NEXT_TAG})"
           git push --force origin "${MAJOR_TAG}"
           echo "Tagged ${NEXT_TAG} and moved ${MAJOR_TAG} to ${GITHUB_SHA}." >> "${GITHUB_STEP_SUMMARY}"

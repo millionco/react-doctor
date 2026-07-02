@@ -2,6 +2,10 @@ import { findLegacyConfig, toRelativePath } from "@react-doctor/core";
 import { cliLogger as logger } from "./cli-logger.js";
 import { type CliStateOptions } from "./cli-state-store.js";
 import { type Migration, type MigrationResult, runMigrations } from "./cli-lifecycle.js";
+import {
+  findAgentsWithLegacyShellHooks,
+  installReactDoctorAgentHooks,
+} from "./install-agent-hooks.js";
 import { migrateActionPin } from "./migrate-action-pin.js";
 import { migrateLegacyConfig } from "./migrate-legacy-config.js";
 
@@ -62,9 +66,38 @@ const actionPinMainToMajor: Migration = {
   },
 };
 
+// Replaces the ≤0.5.8 `react-doctor.sh` shell agent hooks with the current
+// Node hook by re-running the installer for exactly the agents that still
+// carry a legacy entry (the installer strips the legacy entry, writes the
+// `.mjs` hook, and deletes the orphaned script). A re-install migrates in
+// place already; this covers everyone who never re-runs
+// `install --agent-hooks`. With no legacy hooks it's a no-op that returns
+// `false` (stays pending, so a legacy hook restored from an old branch later
+// is still migrated).
+const agentHooksShellToNode: Migration = {
+  id: "agent-hooks-sh-to-mjs",
+  scope: "project",
+  run: ({ projectRoot }) => {
+    if (projectRoot === undefined) return false;
+    const agents = findAgentsWithLegacyShellHooks(projectRoot);
+    if (agents.length === 0) return false;
+
+    installReactDoctorAgentHooks({ projectRoot, agents });
+    logger.success(
+      `Upgraded the legacy react-doctor.sh agent hook to the Node hook (${agents.join(", ")})`,
+    );
+    logger.dim(
+      "  The shell hook can't run on Windows and would double-scan next to the current hook. Review and commit the change.",
+    );
+    logger.break();
+    return true;
+  },
+};
+
 export const PROJECT_MIGRATIONS: ReadonlyArray<Migration> = [
   legacyConfigToTypescript,
   actionPinMainToMajor,
+  agentHooksShellToNode,
 ];
 
 // Runs every pending per-repo migration for `projectRoot` once, recording the

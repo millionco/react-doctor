@@ -4,6 +4,7 @@ import {
 } from "../constants/nextjs.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
+import { getImportSourceForName } from "./find-import-source-for-name.js";
 import { isFunctionLike } from "./is-function-like.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
@@ -22,13 +23,19 @@ const NON_DATA_EFFECT_FUNCTION_NAMES: ReadonlySet<string> = new Set([
   ...NEXTJS_NAVIGATION_FUNCTIONS,
 ]);
 
-// Matched only as a BARE identifier callee. A member call (`obj.redirect()`,
-// `db.revalidateTag()`) shares the name but not the import, and could touch
-// data on an arbitrary receiver, so it must not satisfy the exemption.
+// Matched only as a BARE identifier callee whose binding is IMPORTED. A member
+// call (`obj.redirect()`, `db.revalidateTag()`) shares the name but not the
+// import, and a module-local `const revalidatePath = …` doing privileged work
+// defines the name locally rather than importing it — both must not satisfy the
+// exemption. Requiring an import (rather than a specific `next/*` source) keeps
+// the local-shadow out while still exempting the common re-export barrel
+// (`import { revalidatePath } from "@/lib/cache"`), which the real Next.js
+// symbol is routinely funneled through and which we cannot resolve in-file.
 const isCacheOrNavigationCall = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "CallExpression") &&
   isNodeOfType(node.callee, "Identifier") &&
-  NON_DATA_EFFECT_FUNCTION_NAMES.has(node.callee.name);
+  NON_DATA_EFFECT_FUNCTION_NAMES.has(node.callee.name) &&
+  getImportSourceForName(node, node.callee.name) !== null;
 
 // Reduce an expression to the value it actually yields: strip TS / optional-
 // chain wrappers, and collapse a comma sequence to its last operand (the value
@@ -70,6 +77,10 @@ const isDataExposingValue = (node: EsTreeNode | null | undefined): boolean => {
 const isLiteralOnlyExpression = (node: EsTreeNode | null | undefined): boolean => {
   if (!node) return false;
   if (isNodeOfType(node, "Literal")) return true;
+  // `return undefined` parses as an Identifier but exposes nothing — same as
+  // the bare `return;` (which has no argument at all). `void 0` already
+  // passes via the UnaryExpression branch.
+  if (isNodeOfType(node, "Identifier")) return node.name === "undefined";
   if (isNodeOfType(node, "TemplateLiteral")) {
     return (node.expressions ?? []).every(isLiteralOnlyExpression);
   }

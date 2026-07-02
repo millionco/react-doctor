@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -30,6 +31,7 @@ export const rnNoNonNativeNavigator = defineRule({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
       if (typeof source !== "string") return;
+      if (isTypeOnlyImport(node)) return;
       const replacement = NON_NATIVE_NAVIGATOR_PACKAGES.get(source);
       if (!replacement) return;
       context.report({

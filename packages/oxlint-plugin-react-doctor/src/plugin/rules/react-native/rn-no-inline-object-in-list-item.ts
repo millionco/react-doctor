@@ -41,6 +41,26 @@ export const rnNoInlineObjectInListItem = defineRule({
       return attrName && RENDER_ITEM_PROP_NAMES.has(attrName) ? attrName : null;
     };
 
+    const containsFreshObjectLiteral = (node: EsTreeNode | null): boolean => {
+      if (!node) return false;
+      if (isNodeOfType(node, "ObjectExpression")) return true;
+      if (isNodeOfType(node, "ArrayExpression")) {
+        return node.elements.some((element) => containsFreshObjectLiteral(element));
+      }
+      if (isNodeOfType(node, "LogicalExpression")) {
+        return containsFreshObjectLiteral(node.left) || containsFreshObjectLiteral(node.right);
+      }
+      if (isNodeOfType(node, "ConditionalExpression")) {
+        return (
+          containsFreshObjectLiteral(node.consequent) || containsFreshObjectLiteral(node.alternate)
+        );
+      }
+      if (isNodeOfType(node, "SpreadElement")) {
+        return containsFreshObjectLiteral(node.argument);
+      }
+      return false;
+    };
+
     const enter = (node: EsTreeNode): void => {
       const renderPropName = resolveRenderPropName(node);
       if (renderPropName) renderPropStack.push(renderPropName);
@@ -62,6 +82,19 @@ export const rnNoInlineObjectInListItem = defineRule({
         const isInlineObject = isNodeOfType(expression, "ObjectExpression");
         const isInlineArray = isNodeOfType(expression, "ArrayExpression");
         if (!isInlineObject && !isInlineArray) return;
+        // HACK: a style ARRAY of StyleSheet refs (`[styles.row, styles.active]`)
+        // allocates the outer array but no fresh per-row objects — RN dedupes
+        // style refs, so memo() rows don't break on it. The exemption is
+        // style-only: a fresh array on any other prop (`ids={[item.a]}`) is a
+        // new identity per row, and a fresh object anywhere inside the style
+        // tree (`[styles.row, item.active && { opacity: 0.5 }]`) still leaks.
+        const attrName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : null;
+        const isStyleProp = Boolean(
+          attrName && (attrName === "style" || attrName.endsWith("Style")),
+        );
+        if (isInlineArray && isStyleProp && !containsFreshObjectLiteral(expression)) {
+          return;
+        }
         const literalKind = isInlineArray ? "array" : "object";
         context.report({
           node,

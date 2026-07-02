@@ -36,6 +36,14 @@ describe("security-scan/insecure-crypto-risk — regressions", () => {
     expect(findings).toHaveLength(0);
   });
 
+  it("stays silent on weak-crypto mentions that live only in comments", () => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath: "src/server/auth.ts",
+      content: `// TODO: stop hashing the password with md5(value)\n/* legacy DES cipher removed in v2 — see encrypt.ts */\nexport const hashPassword = (password: string) => argon2.hash(password);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
   it("flags md5 hashing of password material", () => {
     const findings = runScanRule(insecureCryptoRisk, {
       relativePath: "src/server/auth.ts",

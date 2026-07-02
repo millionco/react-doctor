@@ -6,6 +6,7 @@ import { getCallbackStatements } from "../../utils/get-callback-statements.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -40,7 +41,9 @@ const getPropRootName = (
   expression: EsTreeNode | null | undefined,
   propNames: Set<string>,
 ): string | null => {
-  const rootName = getRootIdentifierName(expression, { followCallChains: true });
+  const rootName = getRootIdentifierName(expression, {
+    followCallChains: true,
+  });
   return rootName !== null && propNames.has(rootName) ? rootName : null;
 };
 
@@ -145,6 +148,12 @@ export const noMirrorPropEffect = defineRule({
             areExpressionsStructurallyEqual(binding.initializer, setterArgument),
         );
         if (!matchedBinding) continue;
+        // Initial-only / seed prop names (`initialCount`, `defaultX`,
+        // `seedY`) are the documented "re-seed when the caller passes a
+        // new initial value" idiom — the sibling rules
+        // `no-derived-state-effect` and `no-derived-state` already
+        // exempt this exact shape, so match them here.
+        if (isInitialOnlyPropName(matchedBinding.propRootName)) continue;
 
         context.report({
           node: effectCall,

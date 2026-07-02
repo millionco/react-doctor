@@ -1,4 +1,118 @@
 const WHITESPACE_PATTERN = /\s/;
+// Unicode-aware: a division after an identifier ending in a non-ASCII letter
+// (`café / total`, `合計 / 個数`) must still read as division. An ASCII-only
+// class classified those as regex starts and blanked the code up to the next
+// slash — the exact opposite of the "misclassify toward division is safe"
+// invariant this file relies on.
+const IDENTIFIER_CHARACTER_PATTERN = /[\p{ID_Continue}$]/u;
+
+// These keywords put a following `/` in expression position (`return /x/`)
+// even though they end with an identifier character.
+const REGEX_PRECEDING_KEYWORDS = new Set([
+  "return",
+  "typeof",
+  "case",
+  "in",
+  "of",
+  "new",
+  "delete",
+  "void",
+  "instanceof",
+  "do",
+  "else",
+  "yield",
+  "await",
+  "throw",
+]);
+
+// Whether a `/` at `slashIndex` sits in expression position (a regex literal)
+// rather than operator position (division). Looks at the last significant
+// character before it in the already-blanked output, so blanked comments don't
+// count as preceding tokens. A value-ending token — identifier, number, `)`,
+// `]`, a closing quote, a JSX `}`/`>`, a postfix `++`/`--`, or a TS non-null
+// `!` — means division; anything else (or nothing) means a regex can start
+// here. Misclassifying toward "division" is the safe direction: the slash is
+// then lexed as plain code, which is exactly the pre-regex-support behavior.
+const isRegexLiteralStart = (characters: string[], slashIndex: number): boolean => {
+  let cursor = slashIndex - 1;
+  while (cursor >= 0 && WHITESPACE_PATTERN.test(characters[cursor])) cursor -= 1;
+  if (cursor < 0) return true;
+  const previousCharacter = characters[cursor];
+  const characterBefore = cursor > 0 ? characters[cursor - 1] : "";
+  if (IDENTIFIER_CHARACTER_PATTERN.test(previousCharacter)) {
+    let wordStartIndex = cursor;
+    while (
+      wordStartIndex > 0 &&
+      IDENTIFIER_CHARACTER_PATTERN.test(characters[wordStartIndex - 1])
+    ) {
+      wordStartIndex -= 1;
+    }
+    // `obj.return / 2` is a property access, not the keyword.
+    if (wordStartIndex > 0 && characters[wordStartIndex - 1] === ".") return false;
+    return REGEX_PRECEDING_KEYWORDS.has(characters.slice(wordStartIndex, cursor + 1).join(""));
+  }
+  // `</` opens a JSX closing tag, never a regex.
+  if (previousCharacter === "<") return false;
+  // `=> /regex/` (arrow body) is expression position; any other `>` ends a
+  // value-ish token (a sibling JSX `/>`, a generic close, a comparison).
+  if (previousCharacter === ">") return characterBefore === "=";
+  // Postfix `++` / `--` ends a value (`count++ / total`); a single binary
+  // `+` / `-` keeps expression position.
+  if (previousCharacter === "+" || previousCharacter === "-") {
+    return characterBefore !== previousCharacter;
+  }
+  // A TS non-null assertion (`value!`) ends a value; a prefix `!` doesn't.
+  if (previousCharacter === "!") {
+    return !(
+      IDENTIFIER_CHARACTER_PATTERN.test(characterBefore) ||
+      characterBefore === ")" ||
+      characterBefore === "]"
+    );
+  }
+  return !(
+    previousCharacter === ")" ||
+    previousCharacter === "]" ||
+    previousCharacter === "}" ||
+    previousCharacter === '"' ||
+    previousCharacter === "'" ||
+    previousCharacter === "`"
+  );
+};
+
+// Index just past a regex literal's closing `/`, honoring escapes and `[...]`
+// character classes (where `/` is not a terminator). Returns null when no
+// closing slash exists on the line — regex literals cannot span a raw newline,
+// so the opening slash was division after all. A candidate terminator whose
+// next character is also `/` is rejected too: the scan collided with the first
+// slash of a real `//` comment, so treating the span as a regex would un-strip
+// the comment (the comment tail would be blanked either way, so nothing real is
+// lost). The `/*` case is deliberately NOT rejected here — a real `/regex/`
+// can be immediately followed by a `*` operator (`/ab/* 2`), and blanking that
+// as a comment would erase live code; a mislexed `/*` collision only survives
+// for the rare non-identifier false-regex starts (`x!! / y`), the same residue
+// the `//` guard already tolerates.
+const findRegexLiteralEnd = (content: string, slashIndex: number): number | null => {
+  let cursor = slashIndex + 1;
+  let isInsideCharacterClass = false;
+  while (cursor < content.length) {
+    const character = content[cursor];
+    if (character === "\\") {
+      cursor += 2;
+      continue;
+    }
+    if (character === "\n") return null;
+    if (character === "[") {
+      isInsideCharacterClass = true;
+    } else if (character === "]") {
+      isInsideCharacterClass = false;
+    } else if (character === "/" && !isInsideCharacterClass) {
+      if (content[cursor + 1] === "/") return null;
+      return cursor + 1;
+    }
+    cursor += 1;
+  }
+  return null;
+};
 
 // A capability keyword is a real signal as a single-token literal — a module
 // specifier (`"node:child_process"`, `"axios"`) or identifier-shaped value —
@@ -56,6 +170,16 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
           blankUnlessNewline(index + 1);
         }
         index += 2;
+        continue;
+      }
+      // A raw newline cannot appear inside a '…' / "…" string, so an
+      // unbalanced quote (most commonly a JSX apostrophe: `Don't`) must not
+      // swallow the rest of the file — close string mode at the line end so
+      // any lexer desync is bounded to a single line. Template literals
+      // legitimately span lines and keep the multi-line behavior.
+      if (character === "\n" && stringDelimiter !== "`") {
+        stringDelimiter = null;
+        index += 1;
         continue;
       }
       if (character === stringDelimiter) {
@@ -118,6 +242,31 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
         index += 1;
       }
       continue;
+    }
+
+    // A regex literal's body routinely contains the very tokens this scanner
+    // keys on (`/https:\/\//` ends in what looks like a `//` comment; `/"/`
+    // opens what looks like a string). Skip over it as one opaque token so the
+    // rest of the line is still lexed as code; in string-blanking mode its
+    // interior is blanked like prose so pattern words inside it don't count as
+    // call sites.
+    if (character === "/") {
+      const regexEndIndex = isRegexLiteralStart(characters, index)
+        ? findRegexLiteralEnd(content, index)
+        : null;
+      if (regexEndIndex !== null) {
+        if (blankStringContents) {
+          for (
+            let interiorIndex = index + 1;
+            interiorIndex < regexEndIndex - 1;
+            interiorIndex += 1
+          ) {
+            blankUnlessNewline(interiorIndex);
+          }
+        }
+        index = regexEndIndex;
+        continue;
+      }
     }
 
     // Track brace depth inside a template expression so the matching `}` returns

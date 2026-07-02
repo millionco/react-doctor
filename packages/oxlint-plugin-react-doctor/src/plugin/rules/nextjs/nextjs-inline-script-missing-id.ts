@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { hasJsxAttribute } from "../../utils/has-jsx-attribute.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -17,6 +18,7 @@ export const nextjsInlineScriptMissingId = defineRule({
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "Script") return;
       const attributes = node.attributes ?? [];
 
+      if (hasJsxSpreadAttribute(attributes)) return;
       if (hasJsxAttribute(attributes, "src")) return;
       if (hasJsxAttribute(attributes, "id")) return;
 

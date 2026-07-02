@@ -156,6 +156,51 @@ describe("runCiUpgrade", () => {
     expect(githubContent(project.root)).toContain("millionco/react-doctor@v2");
   });
 
+  it("restores the workflow when --pr finds an already-open setup PR", async () => {
+    const workflowPath = githubActionsProvider.workflowPath(project.root);
+    fs.mkdirSync(path.dirname(workflowPath), { recursive: true });
+    const originalContent = buildWorkflowContent("main", "v1");
+    fs.writeFileSync(workflowPath, originalContent);
+
+    // Fake git/gh: repo-root probe + gh auth succeed, and `gh pr list`
+    // reports an open setup PR — the flow must then restore the original
+    // file instead of leaving the upgraded edit as an unexplained local
+    // modification the (install-scaffold) PR does not contain.
+    const prExistsRun: CommandRunner = (command, args) => {
+      if (command === "git" && args[0] === "rev-parse" && args[1] === "--show-toplevel") {
+        return Promise.resolve({ success: true, stdout: project.root, stderr: "" });
+      }
+      if (command === "gh" && args[0] === "auth") {
+        return Promise.resolve({ success: true, stdout: "", stderr: "" });
+      }
+      if (command === "gh" && args[0] === "pr" && args[1] === "list") {
+        return Promise.resolve({
+          success: true,
+          stdout: JSON.stringify([
+            {
+              headRefName: "react-doctor/add-github-actions",
+              url: "https://github.com/acme/app/pull/7",
+            },
+          ]),
+          stderr: "",
+        });
+      }
+      return Promise.resolve({ success: false, stdout: "", stderr: "" });
+    };
+
+    await runCiUpgrade(
+      baseOptions({
+        provider: "github-actions",
+        pr: true,
+        run: prExistsRun,
+        checkCommandAvailable: () => true,
+      }),
+    );
+
+    expect(fs.readFileSync(workflowPath, "utf8")).toBe(originalContent);
+    expect(process.exitCode).toBe(originalExitCode);
+  });
+
   it("reports nothing to upgrade for GitLab without throwing", async () => {
     gitlabCiProvider.scaffold(project.root, "main", {
       blocking: "none",

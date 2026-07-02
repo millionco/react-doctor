@@ -85,6 +85,41 @@ const setterIsCalledInAsyncContext = (
   return found;
 };
 
+const PROMISE_CHAIN_METHOD_NAMES: ReadonlySet<string> = new Set(["then", "catch", "finally"]);
+
+// True when `setterName` is called inside a Promise-chain callback
+// (`loadData().then(() => setIsLoading(false))`). That flag tracks real
+// async I/O the same way an `async`/`await` setter does, so `useTransition`
+// (which only deprioritizes sync state updates, it doesn't await a promise)
+// is not a substitute.
+const setterIsCalledInPromiseChain = (
+  componentBody: EsTreeNode | null,
+  setterName: string,
+): boolean => {
+  if (!componentBody) return false;
+  let found = false;
+  walkAst(componentBody, (child: EsTreeNode) => {
+    if (found) return;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = child.callee;
+    if (
+      !isNodeOfType(callee, "MemberExpression") ||
+      !isNodeOfType(callee.property, "Identifier") ||
+      !PROMISE_CHAIN_METHOD_NAMES.has(callee.property.name)
+    ) {
+      return;
+    }
+    for (const argument of child.arguments ?? []) {
+      if (!isFunctionLike(argument)) continue;
+      if (callsIdentifier(argument.body, setterName)) {
+        found = true;
+        return;
+      }
+    }
+  });
+  return found;
+};
+
 // Identifiers that, when present alongside a loading useState, strongly
 // signal async data fetching (not a transition). The rule's
 // recommendation to use `useTransition` only applies to UI-state-only
@@ -160,6 +195,7 @@ export const renderingUsetransitionLoading = defineRule({
       if (
         fnBody &&
         ((setterName && setterIsCalledInAsyncContext(fnBody, setterName)) ||
+          (setterName && setterIsCalledInPromiseChain(fnBody, setterName)) ||
           referencesAsyncDataApi(fnBody))
       ) {
         return;

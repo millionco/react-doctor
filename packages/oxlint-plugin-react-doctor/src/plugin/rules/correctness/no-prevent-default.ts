@@ -1,7 +1,9 @@
+import { NAVIGATION_RECEIVER_NAMES } from "../../constants/react.js";
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
-import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -65,26 +67,21 @@ const containsPreventDefaultCall = (node: EsTreeNode): boolean => {
   return didFindPreventDefault;
 };
 
-// Terminal callee names that read as navigation: router / history APIs
-// (`navigate`, `router.push`, `history.replace`, `history.go/back/forward`),
-// location APIs (`location.assign`, `location.replace`, `window.open`),
-// framework redirects (`redirect`), and desktop / native link openers
-// (`platform.openLink`, `Linking.openURL`). Deliberately NOT "any other
-// call": a handler that only logs or tracks (`analytics.track(...)`,
-// `console.log(...)`) after preventDefault() still leaves the link dead.
-const NAVIGATION_CALLEE_NAMES: ReadonlySet<string> = new Set([
-  "navigate",
-  "push",
-  "replace",
-  "assign",
-  "redirect",
-  "open",
-  "openLink",
-  "openURL",
-  "go",
-  "back",
-  "forward",
-]);
+// A dead-link anchor stays flagged unless the handler carries POSITIVE
+// navigation evidence: a navigation verb called on a navigation-shaped
+// receiver (`router.push`, `history.replace`, `window.open`,
+// `location.assign`), an unambiguous navigation callee regardless of
+// receiver (`platform.openLink`, `Linking.openURL`, `redirectTo(...)`,
+// `navigate(...)`), a `location` assignment (`location.href = ...`), or
+// delegation to an enclosing parameter (`onNavigate()`). Ambiguous verbs
+// on other receivers (`items.push`, `text.replace`, `Object.assign`) and
+// non-navigating side effects (`analytics.track`, `console.log`) do NOT
+// count — the link is still dead for the user.
+const NAVIGATION_METHOD_NAME_PATTERN = /^(?:push|replace|assign|open|go|back|forward|reload)$/;
+
+const UNAMBIGUOUS_NAVIGATION_CALLEE_NAME_PATTERN = /^(?:navigate|redirect|openLink|openURL)/i;
+
+const NAVIGATION_FUNCTION_NAME_PATTERN = /^(?:navigate|redirect|open)/i;
 
 const GLOBAL_LOCATION_RECEIVER_NAMES: ReadonlySet<string> = new Set([
   "window",
@@ -112,17 +109,64 @@ const isLocationAssignmentTarget = (target: EsTreeNode): boolean => {
   );
 };
 
-const containsNavigationEffect = (node: EsTreeNode): boolean => {
+const isNavigationReceiverName = (receiverName: string): boolean =>
+  NAVIGATION_RECEIVER_NAMES.has(receiverName) || receiverName === "window";
+
+const isNavigationReceiver = (receiverNode: EsTreeNode): boolean => {
+  if (isNodeOfType(receiverNode, "Identifier")) {
+    return isNavigationReceiverName(receiverNode.name);
+  }
+  if (
+    isNodeOfType(receiverNode, "MemberExpression") &&
+    isNodeOfType(receiverNode.property, "Identifier")
+  ) {
+    return isNavigationReceiverName(receiverNode.property.name);
+  }
+  return false;
+};
+
+const collectEnclosingParameterNames = (handlerExpression: EsTreeNode): Set<string> => {
+  const parameterNames = new Set<string>();
+  let ancestor: EsTreeNode | null | undefined = handlerExpression;
+  while (ancestor) {
+    if (isFunctionLike(ancestor)) {
+      for (const parameter of ancestor.params ?? []) {
+        collectPatternNames(parameter, parameterNames);
+      }
+    }
+    ancestor = ancestor.parent ?? null;
+  }
+  return parameterNames;
+};
+
+const containsNavigationEffect = (handlerExpression: EsTreeNode): boolean => {
+  const enclosingParameterNames = collectEnclosingParameterNames(handlerExpression);
   let didFindNavigation = false;
-  walkAst(node, (child) => {
+  walkAst(handlerExpression, (child) => {
     if (didFindNavigation) return;
     if (isNodeOfType(child, "AssignmentExpression") && isLocationAssignmentTarget(child.left)) {
       didFindNavigation = true;
       return;
     }
-    const calleeName = getCalleeName(child);
-    if (calleeName !== null && NAVIGATION_CALLEE_NAMES.has(calleeName)) {
-      didFindNavigation = true;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = child.callee;
+    if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+      if (
+        UNAMBIGUOUS_NAVIGATION_CALLEE_NAME_PATTERN.test(callee.property.name) ||
+        (NAVIGATION_METHOD_NAME_PATTERN.test(callee.property.name) &&
+          isNavigationReceiver(callee.object))
+      ) {
+        didFindNavigation = true;
+      }
+      return;
+    }
+    if (isNodeOfType(callee, "Identifier")) {
+      if (
+        NAVIGATION_FUNCTION_NAME_PATTERN.test(callee.name) ||
+        enclosingParameterNames.has(callee.name)
+      ) {
+        didFindNavigation = true;
+      }
     }
   });
   return didFindNavigation;
@@ -137,6 +181,7 @@ export const noPreventDefault = defineRule({
   id: "no-prevent-default",
   title: "preventDefault on a form or link",
   severity: "warn",
+  tags: ["test-noise"],
   recommendation:
     "Use `<form action>` where your framework supports it (it works without JS), or use a `<button>` instead of an `<a>` with preventDefault.",
   create: (context: RuleContext) => {
@@ -162,6 +207,12 @@ export const noPreventDefault = defineRule({
         // because onClick calls preventDefault()" would be false — the
         // preventDefault() is defensive, not a dead link.
         if (elementName === "a" && !findJsxAttribute(node.attributes ?? [], "href")) return;
+
+        // A `<form action=…>` already has a native no-JS submit path: with
+        // JS off the onSubmit handler never runs, so preventDefault() never
+        // fires and the browser performs the native action. The "won't work
+        // without JS" advice is false here — only flag action-less forms.
+        if (elementName === "form" && findJsxAttribute(node.attributes ?? [], "action")) return;
 
         for (const targetEventProp of targetEventProps) {
           const eventAttribute = findJsxAttribute(node.attributes ?? [], targetEventProp);

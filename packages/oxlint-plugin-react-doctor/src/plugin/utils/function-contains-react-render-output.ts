@@ -6,37 +6,28 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis
 
 const NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES: ReadonlySet<string> = new Set([
   "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
   "ClassDeclaration",
   "ClassExpression",
 ]);
 
-const NESTED_FUNCTION_EXPRESSION_TYPES: ReadonlySet<string> = new Set([
-  "FunctionExpression",
-  "ArrowFunctionExpression",
-]);
-
-// A nested function expression bound to a name (a nested component /
-// render-helper definition) is its own render unit, so its JSX is not
-// evidence that the OUTER function renders. An unbound function
-// expression — a callback argument (`rows.map(row => <tr/>)`,
-// `useMemo(() => <div/>)`) or a returned closure — feeds its output
-// into the outer function's render, so its JSX counts.
-const NESTED_FUNCTION_EXPRESSION_BINDING_PARENT_TYPES: ReadonlySet<string> = new Set([
-  "VariableDeclarator",
-  "AssignmentExpression",
-  "Property",
-  "PropertyDefinition",
-  "MethodDefinition",
-]);
-
-const isNestedRenderEvidenceBoundary = (node: EsTreeNode): boolean => {
-  if (NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES.has(node.type)) return true;
-  if (!NESTED_FUNCTION_EXPRESSION_TYPES.has(node.type)) return false;
-  const parentType = node.parent?.type;
-  return (
-    parentType !== undefined && NESTED_FUNCTION_EXPRESSION_BINDING_PARENT_TYPES.has(parentType)
-  );
+// A function expression passed directly as a call argument
+// (`items.map(item => <li/>)`, `useMemo(() => <div/>, deps)`) feeds the
+// enclosing component's render output, so JSX inside it still counts as
+// render evidence. Function expressions in any other position (assigned
+// handlers, JSX attribute values) and declarations/classes stay boundaries.
+const isCallArgumentFunctionExpression = (node: EsTreeNode): boolean => {
+  if (node.type !== "ArrowFunctionExpression" && node.type !== "FunctionExpression") {
+    return false;
+  }
+  const parent = node.parent;
+  if (!isNodeOfType(parent, "CallExpression")) return false;
+  return parent.arguments.some((argumentNode) => argumentNode === node);
 };
+
+const isNestedRenderEvidenceBoundary = (node: EsTreeNode): boolean =>
+  NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES.has(node.type) && !isCallArgumentFunctionExpression(node);
 
 const isReactImport = (symbol: SymbolDescriptor): boolean => {
   let importDeclaration: EsTreeNode | null | undefined = symbol.declarationNode?.parent;

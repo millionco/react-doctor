@@ -35,6 +35,34 @@ describe("correctness/no-prevent-default regressions", () => {
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toEqual([]);
     });
+
+    it("stays silent on the ant-design dropdown trigger anchor in a demo file (test-noise)", () => {
+      const result = runRule(
+        noPreventDefault,
+        `export default function App() {
+        return (
+          <Dropdown menu={{ items }}>
+            <a onClick={(e) => e.preventDefault()}>
+              <Space>Hover me</Space>
+            </a>
+          </Dropdown>
+        );
+      }`,
+        { filename: "components/dropdown/demo/basic.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on the same anchor in a __tests__ file (test-noise)", () => {
+      const result = runRule(
+        noPreventDefault,
+        `export default function App() { return <a onClick={(e) => e.preventDefault()}>Hover me</a>; }`,
+        { filename: "components/dropdown/__tests__/index.test.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
   });
 
   describe("anchors with an href stay flagged when the handler never navigates", () => {
@@ -113,6 +141,73 @@ export const Cta = () => (
       );
       expect(result.diagnostics).toHaveLength(1);
     });
+
+    it("flags a dead link whose handler pushes into an array after preventDefault (push needs a navigation receiver)", () => {
+      const result = runRule(
+        noPreventDefault,
+        `declare const items: string[];
+
+export const Queue = () => (
+  <a
+    href="/queue"
+    onClick={(event) => {
+      event.preventDefault();
+      items.push("queued");
+    }}
+  >
+    Queue
+  </a>
+);
+`,
+        { filename: "src/queue.tsx" },
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("flags a dead link whose handler only string-replaces after preventDefault (replace needs a navigation receiver)", () => {
+      const result = runRule(
+        noPreventDefault,
+        `declare const text: string;
+declare const setLabel: (label: string) => void;
+
+export const Label = () => (
+  <a
+    href="/label"
+    onClick={(event) => {
+      event.preventDefault();
+      setLabel(text.replace("a", "b"));
+    }}
+  >
+    Label
+  </a>
+);
+`,
+        { filename: "src/label.tsx" },
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("flags a dead link whose handler only Object.assigns after preventDefault (assign needs a navigation receiver)", () => {
+      const result = runRule(
+        noPreventDefault,
+        `declare const state: { clicked: boolean };
+
+export const Merge = () => (
+  <a
+    href="/merge"
+    onClick={(event) => {
+      event.preventDefault();
+      Object.assign(state, { clicked: true });
+    }}
+  >
+    Merge
+  </a>
+);
+`,
+        { filename: "src/merge.tsx" },
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
   });
 
   describe("anchors whose handler performs its own navigation are exempt", () => {
@@ -158,6 +253,110 @@ export const NavLink = () => (
 );
 `,
         { filename: "src/nav-link.tsx" },
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when the handler pushes through a props.router-style member", () => {
+      const result = runRule(
+        noPreventDefault,
+        `export const NavLink = (props: { router: { push: (href: string) => void } }) => (
+  <a
+    href="/settings"
+    onClick={(event) => {
+      event.preventDefault();
+      props.router.push("/settings");
+    }}
+  >
+    Settings
+  </a>
+);
+`,
+        { filename: "src/nav-link.tsx" },
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when the handler replaces through history after preventDefault", () => {
+      const result = runRule(
+        noPreventDefault,
+        `declare const history: { replace: (href: string) => void };
+
+export const BackLink = () => (
+  <a
+    href="/back"
+    onClick={(event) => {
+      event.preventDefault();
+      history.replace("/back");
+    }}
+  >
+    Back
+  </a>
+);
+`,
+        { filename: "src/back-link.tsx" },
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when the handler opens through window after preventDefault", () => {
+      const result = runRule(
+        noPreventDefault,
+        `export const Docs = () => (
+  <a
+    href="/docs"
+    onClick={(event) => {
+      event.preventDefault();
+      window.open("/docs", "_blank");
+    }}
+  >
+    Docs
+  </a>
+);
+`,
+        { filename: "src/docs.tsx" },
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when the handler calls a navigate-shaped function after preventDefault", () => {
+      const result = runRule(
+        noPreventDefault,
+        `declare const navigate: (href: string) => void;
+
+export const Pricing = () => (
+  <a
+    href="/pricing"
+    onClick={(event) => {
+      event.preventDefault();
+      navigate("/pricing");
+    }}
+  >
+    Pricing
+  </a>
+);
+`,
+        { filename: "src/pricing.tsx" },
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when the handler delegates to a component prop handler", () => {
+      const result = runRule(
+        noPreventDefault,
+        `export const LinkButton = ({ href, onNavigate }: { href: string; onNavigate: (href: string) => void }) => (
+  <a
+    href={href}
+    onClick={(event) => {
+      event.preventDefault();
+      onNavigate(href);
+    }}
+  >
+    Go
+  </a>
+);
+`,
+        { filename: "src/link-button.tsx" },
       );
       expect(result.diagnostics).toEqual([]);
     });
@@ -220,6 +419,52 @@ export const NavLink = () => (
         { filename: "src/sign-up.tsx" },
       );
       expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags an action-less form whose handler only does local work", () => {
+      const result = runRule(
+        noPreventDefault,
+        `declare const setOpen: (isOpen: boolean) => void;
+
+export const Toggle = () => (
+  <form
+    onSubmit={(event) => {
+      event.preventDefault();
+      setOpen(true);
+    }}
+  >
+    <button>Go</button>
+  </form>
+);
+`,
+        { filename: "app/page.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent on a progressively-enhanced form with a native action", () => {
+      const result = runRule(
+        noPreventDefault,
+        `declare const clientSubmit: () => void;
+
+export const Enhanced = () => (
+  <form
+    action="/submit"
+    method="post"
+    onSubmit={(event) => {
+      event.preventDefault();
+      clientSubmit();
+    }}
+  >
+    <button>Go</button>
+  </form>
+);
+`,
+        { filename: "app/page.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
     });
   });
 });

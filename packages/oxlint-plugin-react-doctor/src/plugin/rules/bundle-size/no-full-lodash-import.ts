@@ -1,4 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
+import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -12,6 +13,8 @@ export const noFullLodashImport = defineRule({
   create: (context: RuleContext) => ({
     ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
       const source = node.source?.value;
+      // Type-only imports are erased at emit time, so they ship nothing.
+      if (isTypeOnlyImport(node)) return;
       // `lodash-es` ships ES modules that bundlers can tree-shake
       // (each function is a separate file); only the legacy bundled
       // `lodash` import pulls the whole library. Flagging

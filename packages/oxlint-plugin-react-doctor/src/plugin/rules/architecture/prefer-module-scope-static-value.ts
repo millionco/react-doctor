@@ -121,6 +121,55 @@ const isBindingMutatedAfterInit = (
   return false;
 };
 
+// Read-only scalar-lookup method names. When EVERY reference to the
+// binding is the receiver of one of these calls (`KEYS.includes(k)`,
+// `IDS.indexOf(id)`, …) the produced value is a scalar answer, never
+// the array/object itself — so the allocation can't escape into JSX,
+// props, or hook dependency arrays and referential identity is
+// irrelevant. Deliberately EXCLUDES `.map` / `.filter` / `.join` /
+// property reads: those results can feed JSX or memoized consumers,
+// where per-render identity still matters.
+const READ_ONLY_SCALAR_LOOKUP_METHOD_NAMES = new Set([
+  "includes",
+  "indexOf",
+  "lastIndexOf",
+  "has",
+  "some",
+  "every",
+  "find",
+  "findIndex",
+]);
+
+const isScalarLookupReceiverContext = (referenceIdentifier: EsTreeNode): boolean => {
+  const parent = referenceIdentifier.parent;
+  if (!parent) return false;
+  if (!isNodeOfType(parent, "MemberExpression") || parent.object !== referenceIdentifier) {
+    return false;
+  }
+  if (parent.computed || !isNodeOfType(parent.property, "Identifier")) return false;
+  if (!READ_ONLY_SCALAR_LOOKUP_METHOD_NAMES.has(parent.property.name)) return false;
+  const grandparent = parent.parent;
+  return Boolean(
+    grandparent && isNodeOfType(grandparent, "CallExpression") && grandparent.callee === parent,
+  );
+};
+
+const isBindingOnlyUsedForScalarLookups = (
+  declaratorNode: EsTreeNodeOfType<"VariableDeclarator">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!isNodeOfType(declaratorNode.id, "Identifier")) return false;
+  const symbol = scopes.symbolFor(declaratorNode.id);
+  if (!symbol) return false;
+  let lookupReferenceCount = 0;
+  for (const reference of symbol.references) {
+    if (reference.identifier === declaratorNode.id) continue;
+    if (!isScalarLookupReceiverContext(reference.identifier)) return false;
+    lookupReferenceCount += 1;
+  }
+  return lookupReferenceCount > 0;
+};
+
 // Walks the expression and collects every referenced identifier whose
 // binding lives INSIDE the component scope. Used to decide whether the
 // value is hoistable.
@@ -158,6 +207,76 @@ const hasComponentLocalReferences = (
 const isHoistableValueExpression = (expression: EsTreeNode): boolean => {
   const stripped = stripParenExpression(expression);
   return isNodeOfType(stripped, "ArrayExpression") || isNodeOfType(stripped, "ObjectExpression");
+};
+
+// Known-impure global namespaces whose calls produce a fresh value every
+// render (`Date.now()`, `Math.random()`, `performance.now()`,
+// `crypto.randomUUID()`, …). Hoisting an initializer that calls one of
+// these to module scope freezes it to a single module-load evaluation,
+// changing observable behavior — so such initializers are NOT hoistable.
+const IMPURE_MEMBER_RECEIVERS = new Map<string, ReadonlySet<string>>([
+  ["Math", new Set(["random"])],
+  ["Date", new Set(["now"])],
+  ["performance", new Set(["now"])],
+  ["crypto", new Set(["randomUUID", "getRandomValues", "randomBytes"])],
+]);
+
+// Bare-function ID / random generators (`nanoid()`, `uuid()`, `v4()`,
+// `randomUUID()`). Like the member-call generators above, each produces a
+// fresh value every render, so hoisting freezes/shares it — abstain.
+// Only applies when the callee is an unresolved global or an import:
+// a LOCAL binding that merely collides with one of these names is
+// user-owned code and presumed pure (deterministic helpers named
+// `random` / `generateId` are common).
+const IMPURE_BARE_CALL_NAMES = new Set([
+  "nanoid",
+  "uuid",
+  "v4",
+  "cuid",
+  "ulid",
+  "createId",
+  "randomUUID",
+  "generateId",
+  "random",
+]);
+
+const isImpureBareCallee = (
+  callee: EsTreeNodeOfType<"Identifier">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  if (!IMPURE_BARE_CALL_NAMES.has(callee.name)) return false;
+  const resolvedSymbol = scopes.referenceFor(callee)?.resolvedSymbol;
+  if (!resolvedSymbol) return true;
+  return resolvedSymbol.kind === "import";
+};
+
+const isImpureCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (isNodeOfType(node, "NewExpression")) {
+    return isNodeOfType(node.callee, "Identifier") && node.callee.name === "Date";
+  }
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = node.callee;
+  if (isNodeOfType(callee, "Identifier")) return isImpureBareCallee(callee, scopes);
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
+  if (!isNodeOfType(callee.object, "Identifier")) return false;
+  if (!isNodeOfType(callee.property, "Identifier")) return false;
+  return Boolean(IMPURE_MEMBER_RECEIVERS.get(callee.object.name)?.has(callee.property.name));
+};
+
+// True when the initializer contains a call to a known-impure global.
+// Such values legitimately differ per render, so hoisting them would
+// freeze the value and change behavior — the rule must abstain.
+const containsImpureExpression = (expression: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  let foundImpure = false;
+  walkAst(expression, (node) => {
+    if (foundImpure) return false;
+    if (isImpureCall(node, scopes)) {
+      foundImpure = true;
+      return false;
+    }
+    return undefined;
+  });
+  return foundImpure;
 };
 
 // Detects array / object literals defined inside a component or hook
@@ -213,6 +332,14 @@ export const preferModuleScopeStaticValue = defineRule({
       if (hasComponentLocalReferences(initializer, component.bodyScope, context.scopes)) {
         return;
       }
+      // Impure initializers (`Date.now()`, `Math.random()`, …) are meant
+      // to recompute each render; hoisting would freeze them to a single
+      // module-load value and change observable behavior.
+      if (containsImpureExpression(initializer, context.scopes)) return;
+      // A binding consumed ONLY as the receiver of scalar lookups
+      // (`KEYS.includes(k)`) never escapes as a value — identity can't
+      // break memoized children, so the hoist advice is pure noise.
+      if (isBindingOnlyUsedForScalarLookups(node, context.scopes)) return;
       // Hoisting a mutated binding to module scope would either
       // silently lose the per-render reinitialisation OR turn the
       // const into a shared mutable singleton. Either way the rule's

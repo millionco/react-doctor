@@ -40,16 +40,47 @@ try {
   cachedRepoNames = [];
 }
 const shouldCloneMissing = process.env.CLONE_MISSING !== "0";
-const findCachedRepo = (repo: string): string | null => {
+// Cache directory names embed the checkout SHA (`<org>-<name>-<sha>`), so a
+// task pinning a DIFFERENT sha of the same repo must not reuse the cached
+// tree — it falls through to a pinned clone instead.
+const findCachedRepo = (repo: string, sha: string): string | null => {
   const slug = repo.replace("/", "-").toLowerCase();
-  const match = cachedRepoNames.find((name) => name.toLowerCase().startsWith(`${slug}-`));
+  const match = cachedRepoNames.find(
+    (name) => name.toLowerCase() === `${slug}-${sha.toLowerCase()}`,
+  );
   return match ? path.join(repoCachePath, match) : null;
+};
+
+const gitHeadSha = (repoRoot: string): string | null => {
+  try {
+    return execFileSync("git", ["-C", repoRoot, "rev-parse", "HEAD"], {
+      stdio: "pipe",
+      timeout: 30_000,
+    })
+      .toString()
+      .trim();
+  } catch {
+    return null;
+  }
 };
 
 const cloneRepoAtSha = (repo: string, sha: string): string | null => {
   const cloneRoot = path.join(clonesDirectory, repo.replace("/", "__"));
-  if (fs.existsSync(cloneRoot)) return cloneRoot;
   try {
+    if (fs.existsSync(cloneRoot)) {
+      // Two tasks can share a repo but pin different SHAs — re-pin an
+      // existing clone instead of trusting whatever it was left at.
+      if (gitHeadSha(cloneRoot) === sha) return cloneRoot;
+      execFileSync("git", ["-C", cloneRoot, "fetch", "--quiet", "origin", sha], {
+        stdio: "pipe",
+        timeout: 120_000,
+      });
+      execFileSync("git", ["-C", cloneRoot, "checkout", "--quiet", sha], {
+        stdio: "pipe",
+        timeout: 60_000,
+      });
+      return cloneRoot;
+    }
     fs.mkdirSync(clonesDirectory, { recursive: true });
     execFileSync(
       "git",
@@ -89,9 +120,9 @@ for (const taskName of taskNames) {
   const repoMatch = dockerfile.match(CLONE_PATTERN);
   const shaMatch = dockerfile.match(CHECKOUT_PATTERN);
   const fileMatch = instruction.match(TARGET_FILE_PATTERN);
-  if (!repoMatch || !fileMatch) continue;
-  let repoRoot = findCachedRepo(repoMatch[1]);
-  if (!repoRoot && shouldCloneMissing && shaMatch) {
+  if (!repoMatch || !shaMatch || !fileMatch) continue;
+  let repoRoot = findCachedRepo(repoMatch[1], shaMatch[1]);
+  if (!repoRoot && shouldCloneMissing) {
     repoRoot = cloneRepoAtSha(repoMatch[1], shaMatch[1]);
   }
   if (!repoRoot) {

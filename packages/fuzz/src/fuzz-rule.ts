@@ -163,16 +163,22 @@ export const fuzzRuleWithStats = (
   for (let iteration = 0; iteration < iterations; iteration += 1) {
     const iterationSeed = (baseSeed * 1_000_003 + iteration) >>> 0;
     const random = createSeededRandom(iterationSeed);
-    const filename = random.pick(FUZZ_FILENAME_POOL);
+    let filename: string = random.pick(FUZZ_FILENAME_POOL);
 
     const generated = generateStructuredFuzzProgram(random);
     let code = generated.code;
     let sections: ReadonlyArray<string> | undefined = generated.sections;
     if (corpus.length > 0 && random.chance(CORPUS_PROGRAM_PROBABILITY)) {
       const corpusEntry = random.pick(corpus);
-      code = random.chance(0.4)
-        ? crossoverFuzzPrograms(corpusEntry.code, generated.code, random)
-        : corpusEntry.code;
+      if (random.chance(0.4)) {
+        code = crossoverFuzzPrograms(corpusEntry.code, generated.code, random);
+      } else {
+        // Verbatim corpus code keeps its own path so path-gated rules see
+        // the file as it really lives; synthetic/crossover programs keep
+        // the rotated pool filename for path-gating coverage.
+        code = corpusEntry.code;
+        filename = corpusEntry.relativePath;
+      }
       sections = undefined;
     }
     const didApplyNoise = random.chance(NOISE_MUTATION_PROBABILITY);

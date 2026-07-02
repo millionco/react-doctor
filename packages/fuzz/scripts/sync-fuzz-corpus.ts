@@ -37,20 +37,59 @@ try {
   cachedRepoNames = [];
 }
 
+const gitHeadSha = (repoRoot: string): string | null => {
+  try {
+    return execFileSync("git", ["-C", repoRoot, "rev-parse", "HEAD"], {
+      stdio: "pipe",
+      timeout: 30_000,
+    })
+      .toString()
+      .trim();
+  } catch {
+    return null;
+  }
+};
+
 fs.mkdirSync(outputDirectory, { recursive: true });
 let linked = 0;
 let cloned = 0;
+let repinned = 0;
 let reused = 0;
 let failed = 0;
 for (const repo of pinnedRepos.slice(0, syncLimit)) {
   const slug = `${repo.org}__${repo.name}`;
   const targetPath = path.join(outputDirectory, slug);
+  // An existing entry only counts when its tree actually sits at the
+  // pinned ref — manifest updates and stale cache symlinks must not be
+  // silently reused.
   if (fs.existsSync(targetPath)) {
-    reused += 1;
-    continue;
+    if (gitHeadSha(targetPath) === repo.ref) {
+      reused += 1;
+      continue;
+    }
+    const isSymbolicLink = fs.lstatSync(targetPath).isSymbolicLink();
+    if (!isSymbolicLink) {
+      try {
+        execFileSync("git", ["-C", targetPath, "fetch", "--quiet", "origin", repo.ref], {
+          stdio: "pipe",
+          timeout: 300_000,
+        });
+        execFileSync("git", ["-C", targetPath, "checkout", "--quiet", repo.ref], {
+          stdio: "pipe",
+          timeout: 120_000,
+        });
+        repinned += 1;
+        continue;
+      } catch {
+        // fall through to a fresh clone
+      }
+    }
+    fs.rmSync(targetPath, { recursive: true, force: true });
   }
-  const cachedName = cachedRepoNames.find((name) =>
-    name.toLowerCase().startsWith(`${repo.org}-${repo.name}-`.toLowerCase()),
+  // Cache directory names embed the checkout SHA, so only an exact
+  // `<org>-<name>-<ref>` match may be symlinked.
+  const cachedName = cachedRepoNames.find(
+    (name) => name.toLowerCase() === `${repo.org}-${repo.name}-${repo.ref}`.toLowerCase(),
   );
   if (cachedName) {
     fs.symlinkSync(path.join(repoCachePath, cachedName), targetPath);
@@ -80,5 +119,5 @@ for (const repo of pinnedRepos.slice(0, syncLimit)) {
   }
 }
 console.log(
-  `corpus at ${outputDirectory}: ${reused} reused, ${linked} linked from cache, ${cloned} cloned, ${failed} failed`,
+  `corpus at ${outputDirectory}: ${reused} reused, ${repinned} re-pinned, ${linked} linked from cache, ${cloned} cloned, ${failed} failed`,
 );

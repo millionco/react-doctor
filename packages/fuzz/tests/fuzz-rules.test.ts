@@ -13,8 +13,20 @@ const isFuzzEnabled = process.env.REACT_DOCTOR_FUZZ === "1";
 const isStrict = process.env.FUZZ_STRICT === "1";
 const shouldCheckInvariants = isStrict || process.env.FUZZ_INVARIANTS === "1";
 const ruleFilter = process.env.FUZZ_RULE;
-const iterations = Number(process.env.FUZZ_ITERATIONS ?? DEFAULT_FUZZ_ITERATIONS);
-const seed = Number(process.env.FUZZ_SEED ?? DEFAULT_FUZZ_SEED);
+
+// A malformed env value silently degrading to zero iterations would make
+// the whole run a false green, so fail loudly instead.
+const readPositiveIntegerEnv = (name: string, defaultValue: number): number => {
+  const raw = process.env[name];
+  if (raw === undefined) return defaultValue;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer, got ${JSON.stringify(raw)}`);
+  }
+  return value;
+};
+const iterations = readPositiveIntegerEnv("FUZZ_ITERATIONS", DEFAULT_FUZZ_ITERATIONS);
+const seed = readPositiveIntegerEnv("FUZZ_SEED", DEFAULT_FUZZ_SEED);
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 // The built-in regression corpus (confirmed historical false positives —
@@ -85,6 +97,14 @@ describe.skipIf(!isFuzzEnabled)("adversarial rule fuzzing", () => {
     }
   });
 
+  if (ruleFilter !== undefined && selectedRules.length === 0) {
+    it(`FUZZ_RULE matches at least one rule`, () => {
+      expect.fail(
+        `FUZZ_RULE=${JSON.stringify(ruleFilter)} matches no registry rule id — nothing was fuzzed`,
+      );
+    });
+  }
+
   for (const entry of selectedRules) {
     it(`survives fuzzing: ${entry.id}`, () => {
       const { findings, stats } = fuzzRuleWithStats(entry.id, entry.rule, {
@@ -93,7 +113,10 @@ describe.skipIf(!isFuzzEnabled)("adversarial rule fuzzing", () => {
         checkInvariants: shouldCheckInvariants,
         corpus,
       });
-      (stats.firedProgramCount > 0 ? firedRuleIds : silentRuleIds).add(entry.id);
+      // A rule with crash/slow findings was definitely exercised past its
+      // early bails, so it isn't "silent" even without a diagnostic.
+      const wasExercised = stats.firedProgramCount > 0 || findings.length > 0;
+      (wasExercised ? firedRuleIds : silentRuleIds).add(entry.id);
       const blockingFindings = isStrict
         ? findings
         : findings.filter((finding) => finding.kind !== "invariant-violation");

@@ -21,6 +21,19 @@ const LOADING_FLAG_SETTER_PATTERN =
 // folded into the resolved value, so the await cannot skip the trailing reset.
 const RESULT_SHAPE_PROPERTY_NAMES = new Set(["success", "error", "ok"]);
 
+// Array methods whose callback receives each element of the awaited result,
+// so `<results>.filter((entry) => !entry.success)` is a per-element result-shape
+// check equivalent to `if (result.success)` on a single awaited binding.
+const ARRAY_CALLBACK_METHOD_NAMES = new Set([
+  "filter",
+  "map",
+  "flatMap",
+  "some",
+  "every",
+  "find",
+  "forEach",
+]);
+
 const getNodeStart = (node: EsTreeNode): number | null => {
   const start = (node as { start?: unknown }).start;
   return typeof start === "number" ? start : null;
@@ -226,6 +239,40 @@ const recordCheckedResultName = (
   }
 };
 
+// `<results>.filter((entry) => !entry.success)`-style calls: a result-shape
+// field of the callback parameter is checked per element, marking the awaited
+// `<results>` binding (e.g. from `await Promise.all(...)`) as a never-rejecting
+// result-object wrapper whose errors are consumed via the resolved value.
+const getResultCheckedArrayCallbackBindingName = (
+  callNode: EsTreeNodeOfType<"CallExpression">,
+): string | null => {
+  const callee = unwrapChainExpression(callNode.callee);
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return null;
+  if (!isNodeOfType(callee.property, "Identifier")) return null;
+  if (!ARRAY_CALLBACK_METHOD_NAMES.has(callee.property.name)) return null;
+  const calleeObject = unwrapChainExpression(callee.object);
+  if (!isNodeOfType(calleeObject, "Identifier")) return null;
+  const callback = callNode.arguments[0];
+  if (!isFunctionLike(callback)) return null;
+  const firstParameter = callback.params[0];
+  if (!firstParameter || !isNodeOfType(firstParameter, "Identifier")) return null;
+  const parameterName = firstParameter.name;
+  let didFindResultShapeCheck = false;
+  walkAst(callback.body, (child: EsTreeNode) => {
+    if (
+      isNodeOfType(child, "MemberExpression") &&
+      !child.computed &&
+      isNodeOfType(child.object, "Identifier") &&
+      child.object.name === parameterName &&
+      isNodeOfType(child.property, "Identifier") &&
+      RESULT_SHAPE_PROPERTY_NAMES.has(child.property.name)
+    ) {
+      didFindResultShapeCheck = true;
+    }
+  });
+  return didFindResultShapeCheck ? calleeObject.name : null;
+};
+
 interface SetterCall {
   value: boolean;
   start: number;
@@ -254,6 +301,8 @@ const analyzeFunction = (functionNode: EsTreeNode, context: RuleContext): void =
       return;
     }
     if (!isNodeOfType(node, "CallExpression")) return;
+    const resultCheckedBindingName = getResultCheckedArrayCallbackBindingName(node);
+    if (resultCheckedBindingName) checkedResultNames.add(resultCheckedBindingName);
     const setter = getSetterBooleanValue(node);
     if (!setter) return;
     if (!LOADING_FLAG_SETTER_PATTERN.test(setter.setterName)) return;

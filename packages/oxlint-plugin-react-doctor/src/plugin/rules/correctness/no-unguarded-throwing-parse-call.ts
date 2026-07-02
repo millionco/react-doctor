@@ -144,9 +144,91 @@ const argumentTracesToUrlRouteSource = (argument: EsTreeNode): boolean => {
   return false;
 };
 
-const isRuntimeColorArgument = (argument: EsTreeNode): boolean => {
+// Design-token theme objects (antd-style/emotion `useTheme()`, antd
+// `theme.useToken()`) hold concrete computed color values, never `var(--x)`
+// CSS custom properties — a color parse of `theme.<token>` cannot throw.
+const THEME_TOKEN_ROOT_NAMES = new Set(["theme", "token", "tokens"]);
+const THEME_HOOK_NAMES = new Set(["useTheme", "useToken"]);
+const COMPUTED_STYLE_READ_NAMES = new Set(["getComputedStyle", "getPropertyValue"]);
+const CSS_CUSTOM_PROPERTY_PATTERN = /var\(/;
+
+const findRootIdentifier = (node: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
+  let cursor: EsTreeNode | null = stripParenExpression(node);
+  while (cursor) {
+    if (isNodeOfType(cursor, "ChainExpression")) {
+      cursor = cursor.expression;
+      continue;
+    }
+    if (isNodeOfType(cursor, "MemberExpression")) {
+      cursor = cursor.object;
+      continue;
+    }
+    break;
+  }
+  return cursor && isNodeOfType(cursor, "Identifier") ? cursor : null;
+};
+
+const isThemeTokenReference = (rootIdentifier: EsTreeNodeOfType<"Identifier">): boolean => {
+  if (THEME_TOKEN_ROOT_NAMES.has(rootIdentifier.name)) return true;
+  const binding = findVariableInitializer(rootIdentifier, rootIdentifier.name);
+  const initializer = binding?.initializer ?? null;
+  if (!initializer || !isNodeOfType(initializer, "CallExpression")) return false;
+  const hookCallee = initializer.callee;
+  if (isNodeOfType(hookCallee, "Identifier")) return THEME_HOOK_NAMES.has(hookCallee.name);
+  return (
+    isNodeOfType(hookCallee, "MemberExpression") &&
+    !hookCallee.computed &&
+    isNodeOfType(hookCallee.property, "Identifier") &&
+    THEME_HOOK_NAMES.has(hookCallee.property.name)
+  );
+};
+
+// The color arm only fires when the argument can actually carry a value the
+// parser rejects at runtime — a `var(--x)` CSS custom property or an empty
+// computed-style read: a string/template containing `var(`, a
+// `getComputedStyle`/`getPropertyValue` read, or a component prop/param
+// (traced through initializers). Theme/design-token members are concrete
+// computed colors and are skipped.
+const canCarryCssCustomProperty = (argument: EsTreeNode, traceDepth: number): boolean => {
+  if (traceDepth > MAX_INITIALIZER_TRACE_DEPTH) return false;
   const inner = stripParenExpression(argument);
-  return isNodeOfType(inner, "Identifier") || isNodeOfType(inner, "MemberExpression");
+  if (isNodeOfType(inner, "Literal")) {
+    return typeof inner.value === "string" && CSS_CUSTOM_PROPERTY_PATTERN.test(inner.value);
+  }
+  if (isNodeOfType(inner, "TemplateLiteral")) {
+    return (
+      inner.quasis.some((quasi) => CSS_CUSTOM_PROPERTY_PATTERN.test(quasi.value.raw)) ||
+      inner.expressions.some((expression) =>
+        canCarryCssCustomProperty(expression as EsTreeNode, traceDepth + 1),
+      )
+    );
+  }
+  if (isNodeOfType(inner, "ConditionalExpression")) {
+    return (
+      canCarryCssCustomProperty(inner.consequent as EsTreeNode, traceDepth + 1) ||
+      canCarryCssCustomProperty(inner.alternate as EsTreeNode, traceDepth + 1)
+    );
+  }
+  if (isNodeOfType(inner, "LogicalExpression")) {
+    return (
+      canCarryCssCustomProperty(inner.left as EsTreeNode, traceDepth + 1) ||
+      canCarryCssCustomProperty(inner.right as EsTreeNode, traceDepth + 1)
+    );
+  }
+  if (subtreeReferencesIdentifierName(inner, COMPUTED_STYLE_READ_NAMES)) return true;
+  if (!isNodeOfType(inner, "Identifier") && !isNodeOfType(inner, "MemberExpression")) {
+    return false;
+  }
+  const rootIdentifier = findRootIdentifier(inner);
+  if (!rootIdentifier) return false;
+  if (isThemeTokenReference(rootIdentifier)) return false;
+  const binding = findVariableInitializer(rootIdentifier, rootIdentifier.name);
+  if (!binding) return false;
+  const declarator = findEnclosingDeclarator(binding.bindingIdentifier);
+  if (declarator && declarator.init) {
+    return canCarryCssCustomProperty(declarator.init as EsTreeNode, traceDepth + 1);
+  }
+  return !declarator && isFunctionLike(binding.scopeOwner);
 };
 
 // Request objects whose `.url` is a framework-guaranteed valid absolute URL.
@@ -174,18 +256,37 @@ const isLocationObjectReference = (node: EsTreeNode): boolean => {
 };
 
 // Expressions that always yield a syntactically-valid absolute URL string:
-// `location.href` on any Location reference (NOT `.pathname`/`.search`/`.hash`,
-// which are not absolute URLs and DO throw), `document.URL`, `import.meta.url`,
-// a framework request's own `.url`, and a live-URL accessor call on a known
-// receiver. Each arm requires the exact shape so a user-controlled deep chain
-// (`request.body.url`) still gets flagged.
+// `location.href` / `location.toString()` / `String(location)` on any Location
+// reference (NOT `.pathname`/`.search`/`.hash`, which are not absolute URLs
+// and DO throw), `document.URL`, `import.meta.url`, a framework request's own
+// `.url`, and a live-URL accessor call on a known receiver. Each arm requires
+// the exact shape so a user-controlled deep chain (`request.body.url`) still
+// gets flagged.
 const isValidUrlStringSource = (node: EsTreeNode): boolean => {
   if (isNodeOfType(node, "CallExpression")) {
+    if (
+      node.arguments.length === 1 &&
+      isNodeOfType(node.callee, "Identifier") &&
+      node.callee.name === "String"
+    ) {
+      const stringifiedArgument = node.arguments[0];
+      return Boolean(
+        stringifiedArgument &&
+        isLocationObjectReference(stripParenExpression(stringifiedArgument as EsTreeNode)),
+      );
+    }
+    if (
+      node.arguments.length !== 0 ||
+      !isNodeOfType(node.callee, "MemberExpression") ||
+      node.callee.computed ||
+      !isNodeOfType(node.callee.property, "Identifier")
+    ) {
+      return false;
+    }
+    if (node.callee.property.name === "toString") {
+      return isLocationObjectReference(node.callee.object);
+    }
     return (
-      node.arguments.length === 0 &&
-      isNodeOfType(node.callee, "MemberExpression") &&
-      !node.callee.computed &&
-      isNodeOfType(node.callee.property, "Identifier") &&
       node.callee.property.name === "url" &&
       isNodeOfType(node.callee.object, "Identifier") &&
       LIVE_URL_ACCESSOR_RECEIVERS.has(node.callee.object.name)
@@ -249,7 +350,10 @@ const isUntrustedUrlArgument = (argument: EsTreeNode, traceDepth: number): boole
     if (declarator && declarator.init) {
       return isUntrustedUrlArgument(declarator.init as EsTreeNode, traceDepth + 1);
     }
-    return URL_ROUTE_FIELD_NAMES.has(inner.name);
+    // A bare parameter (or untraceable binding) merely NAMED `url`/`path` is
+    // not evidence of runtime-malformed input — only fire when the value
+    // traces to a route/query/location/request source.
+    return false;
   }
   const rootName = getRootIdentifierName(inner, { followCallChains: true });
   if (rootName && URL_UNTRUSTED_ROOT_NAMES.has(rootName)) return true;
@@ -386,7 +490,7 @@ export const noUnguardedThrowingParseCall = defineRule({
         }
 
         // Color arm: a runtime color value parsed in a render/hook path.
-        if (!isRuntimeColorArgument(argument as EsTreeNode)) return;
+        if (!canCarryCssCustomProperty(argument as EsTreeNode, 0)) return;
         if (!hasEnclosingFunction(node as EsTreeNode)) return;
         if (isGuardedByValidityCheck(node as EsTreeNode)) return;
         context.report({ node: node as EsTreeNode, message: COLOR_MESSAGE });

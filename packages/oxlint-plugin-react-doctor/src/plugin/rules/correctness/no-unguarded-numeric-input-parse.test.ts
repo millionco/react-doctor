@@ -140,10 +140,60 @@ describe("no-unguarded-numeric-input-parse", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
-  it("still flags a free-text type='number' field", () => {
+  it("does not flag a type='number' field, whose .value is '' for partial input so NaN is unreachable", () => {
     const result = runRule(
       noUnguardedNumericInputParse,
-      `const F = () => <input type="number" onChange={(e) => setX(Number(e.target.value))} />;`,
+      `const F = () => <input type="number" value={alpha} onChange={(e) => setAlpha(Number(e.target.value))} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a type='number' field when the type attribute follows the handler", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input onChange={(event) => setRowHeight(Number(event.target.value))} type="number" value={rowHeight} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a wrapper-nested parse whose binding is isNaN-guarded on the next line", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input type="text" onChange={(e) => {
+        const v = Math.max(1, Math.min(100000, Math.floor(Number(e.target.value))));
+        if (!isNaN(v)) update("games", v);
+      }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a wrapper-nested parse with no guard on its binding", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input type="text" onChange={(e) => {
+        const v = Math.floor(Number(e.target.value));
+        update("games", v);
+      }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an unguarded coercion in a multi-statement type='text' handler", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input type="text" maxLength={3} value={totalUsers} onChange={(e) => {
+        e.preventDefault();
+        setDisableApplyButton(false);
+        setTotalUsers(Number(e.target.value));
+      }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an unguarded parseInt on a type='text' field", () => {
+    const result = runRule(
+      noUnguardedNumericInputParse,
+      `const F = () => <input type="text" value={\`\${rows}\`} onChange={(e) => setRows(parseInt(e.target.value, 10))} />;`,
     );
     expect(result.diagnostics).toHaveLength(1);
   });

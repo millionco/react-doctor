@@ -169,6 +169,37 @@ const collectDominatingConditionTests = (node: EsTreeNode): EsTreeNode[] => {
   return dominatingTests;
 };
 
+// Walks a value expression down to the identifier it reads from:
+// `value.toString()` -> `value`, `currentUser.address` -> `currentUser`.
+const findValueBaseIdentifier = (node: EsTreeNode): EsTreeNodeOfType<"Identifier"> | null => {
+  let cursor = stripParenExpression(node);
+  while (!isNodeOfType(cursor, "Identifier")) {
+    if (isNodeOfType(cursor, "CallExpression") && isNodeOfType(cursor.callee, "MemberExpression")) {
+      cursor = stripParenExpression(cursor.callee.object);
+      continue;
+    }
+    if (isNodeOfType(cursor, "MemberExpression")) {
+      cursor = stripParenExpression(cursor.object);
+      continue;
+    }
+    return null;
+  }
+  return cursor;
+};
+
+// A same-file predicate helper invoked over the dereferenced value
+// (`isNumber(value)` dominating `value.toString().split('.')[1]`) —
+// its body is invisible to intra-procedural analysis, so treat it as a
+// guard the rule cannot refute.
+const isPredicateCallOverBaseIdentifier = (
+  call: EsTreeNodeOfType<"CallExpression">,
+  baseIdentifier: EsTreeNodeOfType<"Identifier"> | null,
+): boolean =>
+  Boolean(baseIdentifier) &&
+  call.arguments.some((argument) =>
+    areGuardExpressionsEqual(stripParenExpression(argument), baseIdentifier),
+  );
+
 const someDominatingTestHasCall = (
   node: EsTreeNode,
   isGuardCall: (call: EsTreeNodeOfType<"CallExpression">) => boolean,
@@ -187,9 +218,26 @@ const someDominatingTestHasCall = (
 
 // The double-read idiom `str.match(re) ? str.match(re)[1].trim() : ''` —
 // a dominating condition repeats the same exec/match call, so the indexed
-// read is proven non-null on this branch.
-const isRegexResultDerefGuarded = (node: EsTreeNode, regexResultCall: EsTreeNode): boolean =>
-  someDominatingTestHasCall(node, (call) => areGuardExpressionsEqual(call, regexResultCall));
+// read is proven non-null on this branch — or an opaque predicate call is
+// made over the matched value (`isHex(color) ? color.match(re)[1] : ...`).
+const isRegexResultDerefGuarded = (node: EsTreeNode, regexResultCall: EsTreeNode): boolean => {
+  const matchedValueIdentifier =
+    isNodeOfType(regexResultCall, "CallExpression") &&
+    isNodeOfType(regexResultCall.callee, "MemberExpression") &&
+    isNodeOfType(regexResultCall.callee.property, "Identifier")
+      ? findValueBaseIdentifier(
+          regexResultCall.callee.property.name === "exec"
+            ? (regexResultCall.arguments[0] ?? regexResultCall.callee.object)
+            : regexResultCall.callee.object,
+        )
+      : null;
+  return someDominatingTestHasCall(
+    node,
+    (call) =>
+      areGuardExpressionsEqual(call, regexResultCall) ||
+      isPredicateCallOverBaseIdentifier(call, matchedValueIdentifier),
+  );
+};
 
 // `"1.2.3".split(".")[1]` — splitting a string literal by a string-literal
 // delimiter has a statically known part count.
@@ -207,14 +255,17 @@ const isStaticallyPresentSplitPart = (splitCall: EsTreeNode, partIndex: number):
 
 // A dominating condition that guarantees the delimiter exists before the
 // split is read: `receiver.includes(delimiter)` on the same receiver and
-// delimiter, or a regex precondition via `.test(...)` (the delimiter's
-// presence is asserted by the pattern).
+// delimiter, a regex precondition via `.test(...)` (the delimiter's
+// presence is asserted by the pattern), or an opaque predicate call over
+// the split value (`isNumber(value)` before `value.toString().split('.')[1]`).
 const isSplitPartDerefGuarded = (node: EsTreeNode, splitCall: EsTreeNode): boolean => {
   if (!isNodeOfType(splitCall, "CallExpression")) return false;
   if (!isNodeOfType(splitCall.callee, "MemberExpression")) return false;
   const splitReceiver = stripParenExpression(splitCall.callee.object);
   const splitDelimiter = splitCall.arguments[0] ?? null;
+  const splitValueIdentifier = findValueBaseIdentifier(splitReceiver);
   return someDominatingTestHasCall(node, (call) => {
+    if (isPredicateCallOverBaseIdentifier(call, splitValueIdentifier)) return true;
     if (!isNodeOfType(call.callee, "MemberExpression") || call.callee.computed) return false;
     if (!isNodeOfType(call.callee.property, "Identifier")) return false;
     const guardMethodName = call.callee.property.name;

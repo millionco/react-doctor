@@ -133,6 +133,70 @@ describe("window-open-without-noopener", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a const identifier bound to a hardcoded literal URL", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const docsUrl = 'https://docs.example.com/guide';\nwindow.open(docsUrl, '_blank');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a const ternary over an origin-pinned template (release-page dialog idiom)", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      "const releaseUrl = availableVersion ? `https://github.com/owner/repo/releases/tag/v${availableVersion}` : null;\nconst x = <button onClick={() => window.open(releaseUrl, '_blank')} />;",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a const chained through another trusted const binding", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const baseUrl = 'https://github.com/owner/repo';\nconst releaseUrl = baseUrl;\nwindow.open(releaseUrl, '_blank');`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a const ternary with one untrusted branch", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const url = useMirror ? mirrorUrl : 'https://example.com/download';\nwindow.open(url, '_blank');`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a let binding even when its initializer is trusted", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `let url = '/safe/route';\nurl = userInput;\nwindow.open(url, '_blank');`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a const holding an awaited API-returned URL (billing-link idiom)", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `async function upgrade() {\n  const link = await BillingService.getSubscriptionLink(workspaceId);\n  window.open(link, '_blank');\n}`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a hook-destructured URL behind a logical guard (update-checker idiom)", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const { releaseUrl } = useUpdateChecker();\nconst x = <button onClick={() => releaseUrl && window.open(releaseUrl, '_blank')} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a member-expression URL from server data (upload-list download idiom)", () => {
+    const result = runRule(
+      windowOpenWithoutNoopener,
+      `const onInternalDownload = (file) => {\n  if (file.url) window.open(file.url);\n};`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a template whose interpolation sits in the scheme/host position", () => {
     const result = runRule(windowOpenWithoutNoopener, "window.open(`${baseUrl}/path`, '_blank');");
     expect(result.diagnostics).toHaveLength(1);

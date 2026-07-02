@@ -8,6 +8,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripGroupingParens } from "../../utils/strip-grouping-parens.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
 // oxc-parser surfaces `(...)` as a node kind outside the TSESTree union,
 // so it is matched via a `string`-typed constant.
@@ -15,6 +16,13 @@ const PARENTHESIZED_EXPRESSION: string = "ParenthesizedExpression";
 const BODY_CONSUMER_METHODS = new Set(["json", "text", "blob", "arrayBuffer", "formData"]);
 const STATUS_CHECK_PROPERTIES = new Set(["ok", "status"]);
 const PROMISE_CHAIN_METHODS = new Set(["then", "catch", "finally"]);
+// `data:` / `blob:` URLs decode in-process — they can never produce an
+// HTTP 4xx/5xx, so the Response is always ok and a status check is noise.
+const INERT_URL_SCHEME_PATTERN = /^(?:data|blob):/i;
+const MAX_URL_BINDING_RESOLUTION_DEPTH = 4;
+// Build-time scripts (Gatsby node APIs, *.config.* files) run once at
+// build and fail the build loudly on a bad response — not user-facing.
+const BUILD_SCRIPT_BASENAME_PATTERN = /^gatsby-(?:node|config|ssr|browser)\.|\.config\./i;
 
 const MESSAGE =
   "`fetch()` resolves (does not reject) on HTTP 4xx/5xx, so consuming this Response without checking `response.ok`/`response.status` parses an error body as success or crashes on a truthiness guard that is always true. Check `if (!response.ok) throw ...` before reading `.json()`/`.text()`/`.blob()`.";
@@ -32,6 +40,33 @@ const isGlobalFetchCall = (node: EsTreeNodeOfType<"CallExpression">): boolean =>
   // status check the detector can't see; only root at the DOM global.
   if (findVariableInitializer(callee, "fetch")) return false;
   return true;
+};
+
+const resolveStaticUrlPrefix = (argument: EsTreeNode, depth: number): string | null => {
+  if (depth > MAX_URL_BINDING_RESOLUTION_DEPTH) return null;
+  const expression = stripGroupingParens(argument);
+  if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
+    return expression.value;
+  }
+  if (isNodeOfType(expression, "TemplateLiteral")) {
+    return expression.quasis[0]?.value.cooked ?? null;
+  }
+  if (isNodeOfType(expression, "BinaryExpression") && expression.operator === "+") {
+    return resolveStaticUrlPrefix(expression.left as EsTreeNode, depth + 1);
+  }
+  if (isNodeOfType(expression, "Identifier")) {
+    const binding = findVariableInitializer(expression, expression.name);
+    if (!binding?.initializer || binding.initializer === expression) return null;
+    return resolveStaticUrlPrefix(binding.initializer, depth + 1);
+  }
+  return null;
+};
+
+const fetchesInertUrlScheme = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
+  const firstArgument = node.arguments?.[0];
+  if (!firstArgument) return false;
+  const urlPrefix = resolveStaticUrlPrefix(firstArgument as EsTreeNode, 0);
+  return urlPrefix !== null && INERT_URL_SCHEME_PATTERN.test(urlPrefix);
 };
 
 const nearestFunctionOrProgram = (node: EsTreeNode): EsTreeNode | null => {
@@ -292,6 +327,32 @@ const chainMaterializesRejection = (fetchCall: EsTreeNode): boolean => {
   }
 };
 
+const outermostPromiseChainCall = (fetchCall: EsTreeNode): EsTreeNode => {
+  let chainLink: EsTreeNode = fetchCall;
+  while (true) {
+    const member = meaningfulParent(chainLink);
+    if (
+      !member ||
+      !isNodeOfType(member, "MemberExpression") ||
+      stripGroupingParens(member.object as EsTreeNode) !== chainLink ||
+      member.computed ||
+      !isNodeOfType(member.property, "Identifier") ||
+      !PROMISE_CHAIN_METHODS.has(member.property.name)
+    ) {
+      return chainLink;
+    }
+    const chainCall = meaningfulParent(member);
+    if (
+      !chainCall ||
+      !isNodeOfType(chainCall, "CallExpression") ||
+      stripGroupingParens(chainCall.callee as EsTreeNode) !== member
+    ) {
+      return chainLink;
+    }
+    chainLink = chainCall;
+  }
+};
+
 // A `try { ... await fetch ... } catch` whose catch clause materializes
 // the failure covers the awaited Response the same way a `.catch` link
 // covers a promise chain.
@@ -312,6 +373,20 @@ const enclosingTryMaterializesErrors = (node: EsTreeNode): boolean => {
     ancestor = ancestor.parent ?? null;
   }
   return false;
+};
+
+// `await fetch(...).then(...)` inside a materializing try-catch: the
+// await routes the chain's rejection into the catch clause, so the
+// failure is covered the same way the awaited-declarator shapes are.
+// Without the await the try never sees the rejection, so it exempts
+// nothing.
+const awaitedChainCoveredByMaterializingTry = (fetchCall: EsTreeNode): boolean => {
+  const chainConsumer = meaningfulParent(outermostPromiseChainCall(fetchCall));
+  return Boolean(
+    chainConsumer &&
+    isNodeOfType(chainConsumer, "AwaitExpression") &&
+    enclosingTryMaterializesErrors(chainConsumer),
+  );
 };
 
 interface UnguardedReportInput {
@@ -346,8 +421,9 @@ const reportUnguarded = ({
 // parsed as success. Roots only at the literal global `fetch`, and stays
 // quiet when the Response escapes to a caller or validator, when a
 // `.catch` / two-arg `.then` / enclosing try-catch materializes the
-// failure beyond logging, and in non-production files (stories, demos,
-// tests, build config).
+// failure beyond logging, when the URL is a `data:`/`blob:` scheme that
+// can never yield a non-ok response, and in non-production files
+// (stories, demos, tests, build config, gatsby-node scripts).
 export const noFetchResponseUsedWithoutStatusCheck = defineRule({
   id: "no-fetch-response-used-without-status-check",
   title: "fetch Response consumed without status check",
@@ -356,95 +432,102 @@ export const noFetchResponseUsedWithoutStatusCheck = defineRule({
   tags: ["test-noise"],
   recommendation:
     "Check `response.ok` (or `response.status`) before consuming a `fetch` Response with `.json()`/`.text()`/`.blob()`. `fetch` resolves on HTTP 4xx/5xx, so an unchecked response parses the error body as success or crashes on an always-truthy guard.",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isGlobalFetchCall(node)) return;
-      const parent = meaningfulParent(node as EsTreeNode);
-      if (!parent) return;
+  create: (context: RuleContext): RuleVisitors => {
+    const normalizedFilename = (context.filename ?? "").replaceAll("\\", "/");
+    const basename = normalizedFilename.slice(normalizedFilename.lastIndexOf("/") + 1);
+    if (BUILD_SCRIPT_BASENAME_PATTERN.test(basename)) return {};
+    return {
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!isGlobalFetchCall(node)) return;
+        if (fetchesInertUrlScheme(node)) return;
+        const parent = meaningfulParent(node as EsTreeNode);
+        if (!parent) return;
 
-      // Shape: fetch(...).then((response) => ...consume...)
-      if (
-        isNodeOfType(parent, "MemberExpression") &&
-        parent.object === (node as EsTreeNode) &&
-        !parent.computed &&
-        isNodeOfType(parent.property, "Identifier") &&
-        parent.property.name === "then"
-      ) {
-        const thenCall = meaningfulParent(parent);
-        if (!thenCall || !isNodeOfType(thenCall, "CallExpression")) return;
-        const callback = thenCall.arguments?.[0]
-          ? stripGroupingParens(thenCall.arguments[0] as EsTreeNode)
-          : null;
-        if (!callback || !isFunctionLike(callback)) return;
-        const firstParam = callback.params?.[0];
-        if (!firstParam || !isNodeOfType(firstParam as EsTreeNode, "Identifier")) return;
-        if (chainMaterializesRejection(node as EsTreeNode)) return;
-        reportUnguarded({
-          context,
-          reportNode: node as EsTreeNode,
-          scope: callback,
-          responseName: (firstParam as EsTreeNodeOfType<"Identifier">).name,
-          responseBindingCanBeUndefined: false,
-        });
-        return;
-      }
-
-      // Shape: fetch(...).json() — immediate consume, no status possible.
-      if (
-        isNodeOfType(parent, "MemberExpression") &&
-        parent.object === (node as EsTreeNode) &&
-        !parent.computed &&
-        isNodeOfType(parent.property, "Identifier") &&
-        BODY_CONSUMER_METHODS.has(parent.property.name)
-      ) {
-        context.report({ node: node as EsTreeNode, message: MESSAGE });
-        return;
-      }
-
-      if (isNodeOfType(parent, "AwaitExpression")) {
-        const afterAwait = meaningfulParent(parent);
-        if (!afterAwait) return;
-
-        // (await fetch(...)).json()
+        // Shape: fetch(...).then((response) => ...consume...)
         if (
-          isNodeOfType(afterAwait, "MemberExpression") &&
-          stripGroupingParens(afterAwait.object as EsTreeNode) === parent &&
-          !afterAwait.computed &&
-          isNodeOfType(afterAwait.property, "Identifier") &&
-          BODY_CONSUMER_METHODS.has(afterAwait.property.name)
+          isNodeOfType(parent, "MemberExpression") &&
+          parent.object === (node as EsTreeNode) &&
+          !parent.computed &&
+          isNodeOfType(parent.property, "Identifier") &&
+          parent.property.name === "then"
         ) {
-          if (enclosingTryMaterializesErrors(parent)) return;
+          const thenCall = meaningfulParent(parent);
+          if (!thenCall || !isNodeOfType(thenCall, "CallExpression")) return;
+          const callback = thenCall.arguments?.[0]
+            ? stripGroupingParens(thenCall.arguments[0] as EsTreeNode)
+            : null;
+          if (!callback || !isFunctionLike(callback)) return;
+          const firstParam = callback.params?.[0];
+          if (!firstParam || !isNodeOfType(firstParam as EsTreeNode, "Identifier")) return;
+          if (chainMaterializesRejection(node as EsTreeNode)) return;
+          if (awaitedChainCoveredByMaterializingTry(node as EsTreeNode)) return;
+          reportUnguarded({
+            context,
+            reportNode: node as EsTreeNode,
+            scope: callback,
+            responseName: (firstParam as EsTreeNodeOfType<"Identifier">).name,
+            responseBindingCanBeUndefined: false,
+          });
+          return;
+        }
+
+        // Shape: fetch(...).json() — immediate consume, no status possible.
+        if (
+          isNodeOfType(parent, "MemberExpression") &&
+          parent.object === (node as EsTreeNode) &&
+          !parent.computed &&
+          isNodeOfType(parent.property, "Identifier") &&
+          BODY_CONSUMER_METHODS.has(parent.property.name)
+        ) {
           context.report({ node: node as EsTreeNode, message: MESSAGE });
           return;
         }
 
-        // const response = await fetch(...)
-        let responseName: string | null = null;
-        let responseBindingCanBeUndefined = false;
-        if (
-          isNodeOfType(afterAwait, "VariableDeclarator") &&
-          isNodeOfType(afterAwait.id, "Identifier")
-        ) {
-          responseName = afterAwait.id.name;
-        } else if (
-          isNodeOfType(afterAwait, "AssignmentExpression") &&
-          isNodeOfType(afterAwait.left, "Identifier")
-        ) {
-          responseName = afterAwait.left.name;
-          responseBindingCanBeUndefined = true;
+        if (isNodeOfType(parent, "AwaitExpression")) {
+          const afterAwait = meaningfulParent(parent);
+          if (!afterAwait) return;
+
+          // (await fetch(...)).json()
+          if (
+            isNodeOfType(afterAwait, "MemberExpression") &&
+            stripGroupingParens(afterAwait.object as EsTreeNode) === parent &&
+            !afterAwait.computed &&
+            isNodeOfType(afterAwait.property, "Identifier") &&
+            BODY_CONSUMER_METHODS.has(afterAwait.property.name)
+          ) {
+            if (enclosingTryMaterializesErrors(parent)) return;
+            context.report({ node: node as EsTreeNode, message: MESSAGE });
+            return;
+          }
+
+          // const response = await fetch(...)
+          let responseName: string | null = null;
+          let responseBindingCanBeUndefined = false;
+          if (
+            isNodeOfType(afterAwait, "VariableDeclarator") &&
+            isNodeOfType(afterAwait.id, "Identifier")
+          ) {
+            responseName = afterAwait.id.name;
+          } else if (
+            isNodeOfType(afterAwait, "AssignmentExpression") &&
+            isNodeOfType(afterAwait.left, "Identifier")
+          ) {
+            responseName = afterAwait.left.name;
+            responseBindingCanBeUndefined = true;
+          }
+          if (!responseName) return;
+          if (enclosingTryMaterializesErrors(parent)) return;
+          const scope = nearestFunctionOrProgram(afterAwait);
+          if (!scope) return;
+          reportUnguarded({
+            context,
+            reportNode: node as EsTreeNode,
+            scope,
+            responseName,
+            responseBindingCanBeUndefined,
+          });
         }
-        if (!responseName) return;
-        if (enclosingTryMaterializesErrors(parent)) return;
-        const scope = nearestFunctionOrProgram(afterAwait);
-        if (!scope) return;
-        reportUnguarded({
-          context,
-          reportNode: node as EsTreeNode,
-          scope,
-          responseName,
-          responseBindingCanBeUndefined,
-        });
-      }
-    },
-  }),
+      },
+    };
+  },
 });

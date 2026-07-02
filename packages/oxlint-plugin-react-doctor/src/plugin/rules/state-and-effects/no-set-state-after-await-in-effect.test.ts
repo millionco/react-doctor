@@ -328,6 +328,166 @@ describe("no-set-state-after-await-in-effect", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag when the only dep is an external-store action the effect just invokes (zustand useStore + useShallow destructure)", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const NotificationsView = () => {
+        const { fetchNotifications } = useStore(
+          useShallow((s) => ({ fetchNotifications: s.fetchNotifications })),
+        );
+        const [isBusy, setIsBusy] = useState(true);
+        useEffect(() => {
+          const loadNotifications = async () => {
+            setIsBusy(true);
+            try {
+              await fetchNotifications();
+            } finally {
+              setIsBusy(false);
+            }
+          };
+          void loadNotifications();
+        }, [fetchNotifications]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when the dep is a store action selected directly (useUserStore((s) => s.fetchUser))", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const Profile = () => {
+        const fetchUser = useUserStore((s) => s.fetchUser);
+        const [profile, setProfile] = useState(null);
+        useEffect(() => {
+          const run = async () => {
+            const loaded = await fetchUser();
+            setProfile(loaded);
+          };
+          run();
+        }, [fetchUser]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when every dep is a module-scope const — its identity can never change between renders", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const DATA_SOURCE = "SOCRATA";
+      const Footer = () => {
+        const [lastUpdated, setLastUpdated] = useState("");
+        useEffect(() => {
+          const run = async () => {
+            const rows = await queryLastUpdated(DATA_SOURCE);
+            setLastUpdated(rows[0]);
+          };
+          run();
+        }, [DATA_SOURCE]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags when a store-selected dep is read as data, not invoked — selected state can change identity per render", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const Detail = () => {
+        const selectedId = useAppStore((s) => s.selectedId);
+        const [detail, setDetail] = useState(null);
+        useEffect(() => {
+          const run = async () => {
+            const loaded = await load(selectedId);
+            setDetail(loaded);
+          };
+          run();
+        }, [selectedId]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags try/catch status-literal writes after await when deps can change — which branch lands depends on which run resolves last (VerifyEmailPage shape)", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const VerifyEmailPage = () => {
+        const { t } = useTranslation("auth");
+        const searchParams = useSearch({ strict: false });
+        const token = searchParams.token;
+        const [status, setStatus] = useState("pending");
+        useEffect(() => {
+          const verify = async () => {
+            try {
+              await apiClient.post("/auth/verification/confirm", { token });
+              setStatus("success");
+            } catch (err) {
+              setStatus("error");
+            }
+          };
+          void verify();
+        }, [token, t]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an awaited-derived setter when a mutable context dep rides alongside a module-scope const (LastUpdated shape)", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const DATA_SOURCE = "DUCKDB";
+      const LastUpdated = () => {
+        const [lastUpdated, setLastUpdated] = useState("");
+        const { conn } = useContext(DbContext);
+        useEffect(() => {
+          const getLastUpdated = async () => {
+            const rows = await conn.query("select max(createddate) from requests;");
+            setLastUpdated(rows[0]);
+          };
+          if (DATA_SOURCE !== "SOCRATA" && conn) {
+            getLastUpdated();
+          }
+        }, [conn, DATA_SOURCE]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an awaited-derived setter when a context-provided callback dep can change identity (MentionPanel shape)", () => {
+    const result = runRule(
+      noSetStateAfterAwaitInEffect,
+      `
+      const MentionPanel = () => {
+        const { loadViews } = useEditorContext();
+        const [open] = useState(false);
+        const [views, setViews] = useState([]);
+        useEffect(() => {
+          if (!open || !loadViews) return;
+          void (async () => {
+            try {
+              const result = await loadViews();
+              setViews(result);
+            } catch (e) {
+              console.error(e);
+            }
+          })();
+        }, [loadViews, open]);
+      };
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a plain sync effect with no async work", () => {
     const result = runRule(
       noSetStateAfterAwaitInEffect,

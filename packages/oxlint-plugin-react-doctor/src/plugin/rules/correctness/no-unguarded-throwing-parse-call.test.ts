@@ -26,6 +26,26 @@ describe("no-unguarded-throwing-parse-call", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags decodeURIComponent of a bare route param named branch", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `const getDecodedBranch = (branch) =>
+        branch ? decodeURIComponent(branch) : undefined;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags decodeURIComponent of a local traced back to searchParams.get", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function AsTemplatePage() {
+        const viewName = searchParams.get("viewName");
+        return viewName ? decodeURIComponent(viewName) : "";
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags readableColor of a runtime theme color in a hook", () => {
     const result = runRule(
       noUnguardedThrowingParseCall,
@@ -35,6 +55,67 @@ describe("no-unguarded-throwing-parse-call", () => {
       }`,
     );
     expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags chroma of a color prop member in render", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function Swatch(props) {
+        return chroma(props.color).hex();
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags chroma of a getComputedStyle custom-property read", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function useAccentColor(element) {
+        const accent = getComputedStyle(element).getPropertyValue("--accent");
+        return chroma(accent).hex();
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet for chroma of a useTheme design-token member", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function EmojiPicker() {
+        const theme = useTheme();
+        const pickerCssVariables = useMemo(
+          () => ({
+            accent: chroma(theme.colorPrimary).rgb().join(", "),
+            background: chroma(theme.colorBgElevated).rgb().join(", "),
+          }),
+          [theme.colorPrimary, theme.colorBgElevated],
+        );
+        return pickerCssVariables;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for readableColor of a custom-named useTheme token object", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function Badge() {
+        const appTheme = useTheme();
+        return readableColor(appTheme.colorText);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for chroma of an antd theme.useToken() token member", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function Tag() {
+        const { token } = theme.useToken();
+        return chroma(token.colorPrimary).alpha(0.4).hex();
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags a single-argument new URL of a searchParams value", () => {
@@ -47,11 +128,46 @@ describe("no-unguarded-throwing-parse-call", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a single-argument new URL of a bare url parameter", () => {
+  it("stays quiet for new URL of a bare url parameter (name alone is not evidence)", () => {
     const result = runRule(
       noUnguardedThrowingParseCall,
       `function open(url) {
         return new URL(url);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for new URL of a url parameter inside a Promise executor", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function httpGet(url, redirectsLeft) {
+        return new Promise((resolve, reject) => {
+          const parsedUrl = new URL(url);
+          resolve(parsedUrl.protocol);
+        });
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for new URL of a url parameter in an async upload callback", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `const upload = async (url) => {
+        const useProxy = !new URL(url).hostname.includes("internxt");
+        return useProxy;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags new URL of a local traced back to a searchParams read", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function Redirect() {
+        const target = searchParams.get("next");
+        return new URL(target);
       }`,
     );
     expect(result.diagnostics).toHaveLength(1);
@@ -204,6 +320,26 @@ describe("no-unguarded-throwing-parse-call", () => {
         const url = new URL(window.location);
         url.searchParams.set("tab", "1");
         return url;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for new URL(location.toString()) and new URL(window.location.toString())", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function shareUrl() {
+        return [new URL(location.toString()), new URL(window.location.toString())];
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for new URL(String(window.location))", () => {
+    const result = runRule(
+      noUnguardedThrowingParseCall,
+      `function snapshotUrl() {
+        return new URL(String(window.location));
       }`,
     );
     expect(result.diagnostics).toHaveLength(0);

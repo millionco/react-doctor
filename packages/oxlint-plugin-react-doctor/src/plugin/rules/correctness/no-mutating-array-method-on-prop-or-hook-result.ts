@@ -98,6 +98,20 @@ const nearestVariableDeclarator = (
   return null;
 };
 
+// A rest-element destructuring binding (`const [a, ...rest] = arr`,
+// `const { a, ...rest } = obj`) materializes a freshly allocated array /
+// object, so mutating the binding itself never touches the source. Member
+// access through the binding (`rest.items.sort()`) still reaches shared
+// inner values and stays flagged.
+const isBoundThroughRestElement = (binding: BindingInfo): boolean => {
+  let cursor: EsTreeNode | null | undefined = binding.bindingIdentifier;
+  while (cursor && !isNodeOfType(cursor, "VariableDeclarator") && !isFunctionLike(cursor)) {
+    if (isNodeOfType(cursor, "RestElement")) return true;
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
 const declaratorInitFor = (binding: BindingInfo): EsTreeNode | null => {
   const declarator = nearestVariableDeclarator(binding.bindingIdentifier);
   return declarator ? ((declarator.init as EsTreeNode | null) ?? null) : null;
@@ -222,6 +236,7 @@ const resolveSharedArraySource = (
   const binding = findVariableInitializer(rootIdentifier, rootIdentifier.name);
   if (!binding) return null;
   if (hasRebindBeforeCall(binding, rootIdentifier.name, callNode)) return null;
+  if (!reachesThroughMemberAccess && isBoundThroughRestElement(binding)) return null;
   if (isDerivedFromHookCall(binding)) {
     if (reachesThroughMemberAccess && isSetterlessUseStateBinding(binding)) return null;
     return "hook-result";

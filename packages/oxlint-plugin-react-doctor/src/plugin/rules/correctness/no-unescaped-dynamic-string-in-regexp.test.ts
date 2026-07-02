@@ -161,6 +161,44 @@ describe("no-unescaped-dynamic-string-in-regexp", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a search term interpolated into a template pattern (grid highlight idiom)", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      "const regex = new RegExp(`(${searchTerm})`, 'gi');",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a ternary initializer composed entirely from escaped bindings", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      "const escapedFilter = escapeRegExp(filter);\n" +
+        "const resultFilter = matchWholeWord ? `\\\\b${escapedFilter}\\\\b` : escapedFilter;\n" +
+        "const regExp = new RegExp(resultFilter, flags);",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a template initializer wrapping an escaped binding", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      "const escapedQuery = escapeRegExp(query);\n" +
+        "const queryPattern = `^${escapedQuery}`;\n" +
+        "const re = new RegExp(queryPattern, 'i');",
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a ternary initializer where one branch is a raw search term", () => {
+    const result = runRule(
+      noUnescapedDynamicStringInRegexp,
+      "const escapedFilter = escapeRegExp(filter);\n" +
+        "const resultFilter = matchWholeWord ? escapedFilter : filter;\n" +
+        "const regExp = new RegExp(resultFilter, flags);",
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a raw query concatenated next to an escaped prefix", () => {
     const result = runRule(
       noUnescapedDynamicStringInRegexp,

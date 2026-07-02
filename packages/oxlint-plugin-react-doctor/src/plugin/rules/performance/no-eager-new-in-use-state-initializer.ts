@@ -11,13 +11,13 @@ import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 // and `rerender-lazy-state-init` (which bails on non-CallExpression
 // initializers, so `new X()` sails through). `useState` only uses its
 // argument on the first render but still evaluates it every render and
-// discards the result. Cheap built-in containers with constant arguments
-// (`new Set()`, `new Map()`, `new Date()`) cost about as much as the lazy
-// closure would, so they are exempt; the rule targets user-defined class
-// constructors, side-effecting web APIs (new IntersectionObserver /
-// AbortController / Worker), and containers rebuilt from a call result
-// (`new Map(items.map(...))`). The fix is the lazy form
-// `useState(() => new X())`.
+// discards the result. Cheap built-in containers and DOM geometry value
+// objects with constant arguments (`new Set()`, `new Map()`, `new Date()`,
+// `new DOMRect()`) cost about as much as the lazy closure would, so they are
+// exempt; the rule targets user-defined class constructors, side-effecting
+// web APIs (new IntersectionObserver / AbortController / Worker), and
+// containers rebuilt from a call result (`new Map(items.map(...))`). The fix
+// is the lazy form `useState(() => new X())`.
 const CHEAP_BUILTIN_CONSTRUCTOR_NAMES = new Set([
   "Map",
   "Set",
@@ -28,6 +28,14 @@ const CHEAP_BUILTIN_CONSTRUCTOR_NAMES = new Set([
   "URL",
   "URLSearchParams",
   "Headers",
+  "DOMRect",
+  "DOMRectReadOnly",
+  "DOMPoint",
+  "DOMPointReadOnly",
+  "DOMMatrix",
+  "DOMMatrixReadOnly",
+  "DOMQuad",
+  "Path2D",
 ]);
 
 const isConstantConstructorArgument = (argumentNode: EsTreeNode): boolean => {

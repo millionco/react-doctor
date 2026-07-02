@@ -85,6 +85,30 @@ const collectRawSearchTermIdentifiers = (
   return rawSearchTermIdentifiers;
 };
 
+const collectLeafIdentifiers = (node: EsTreeNode): EsTreeNodeOfType<"Identifier">[] => {
+  const leafIdentifiers: EsTreeNodeOfType<"Identifier">[] = [];
+  walkAst(node, (child: EsTreeNode) => {
+    if (isEscapingCall(child) || isRegexSourceAccess(child)) return false;
+    if (isNodeOfType(child, "Identifier")) leafIdentifiers.push(child);
+  });
+  return leafIdentifiers;
+};
+
+const compositeInitializerResolvesEscaped = (
+  strippedInitializer: EsTreeNode,
+  remainingHops: number,
+): boolean => {
+  let didResolveAnyLeafEscaped = false;
+  for (const leafIdentifier of collectLeafIdentifiers(strippedInitializer)) {
+    if (identifierResolvesToEscapedValue(leafIdentifier, remainingHops)) {
+      didResolveAnyLeafEscaped = true;
+    } else if (SEARCH_TERM_NAME_PATTERN.test(leafIdentifier.name)) {
+      return false;
+    }
+  }
+  return didResolveAnyLeafEscaped;
+};
+
 const initializerLooksEscaped = (initializer: EsTreeNode, remainingHops: number): boolean => {
   const strippedInitializer = stripParenExpression(initializer);
   if (isFullyLiteralPattern(strippedInitializer)) return true;
@@ -93,8 +117,11 @@ const initializerLooksEscaped = (initializer: EsTreeNode, remainingHops: number)
     if (isEscapingCall(child)) didFindEscapingCall = true;
   });
   if (didFindEscapingCall) return true;
-  if (remainingHops > 0 && isNodeOfType(strippedInitializer, "Identifier")) {
-    return identifierResolvesToEscapedValue(strippedInitializer, remainingHops - 1);
+  if (remainingHops > 0) {
+    if (isNodeOfType(strippedInitializer, "Identifier")) {
+      return identifierResolvesToEscapedValue(strippedInitializer, remainingHops - 1);
+    }
+    return compositeInitializerResolvesEscaped(strippedInitializer, remainingHops - 1);
   }
   return false;
 };

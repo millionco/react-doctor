@@ -277,6 +277,111 @@ describe("no-fetch-response-used-without-status-check", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("stays quiet when fetching a data: URL literal (no HTTP status possible)", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `fetch('data:image/png;base64,AAAA')
+         .then((response) => response.blob())
+         .then(save);`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when fetching a data: template URL through a local binding", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function download(mime, base64) {
+         const dataUrl = \`data:\${mime};base64,\${base64}\`;
+         const blob = await fetch(dataUrl).then((response) => response.blob());
+         save(blob);
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when fetching a blob: object URL", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function read(objectUrl) {
+         const blobUrl = 'blob:' + objectUrl;
+         const response = await fetch(blobUrl);
+         const buffer = await response.arrayBuffer();
+         return buffer;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when an awaited .then chain sits in a try whose catch materializes the failure", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `async function download(url) {
+         try {
+           const blob = await fetch(url).then((response) => response.blob());
+           save(blob);
+         } catch (error) {
+           setError('Failed to download');
+         }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a non-awaited .then chain inside a materializing try (the try never sees the rejection)", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `function load(url) {
+         try {
+           fetch(url)
+             .then((response) => response.json())
+             .then(setData);
+         } catch (error) {
+           setError(error);
+         }
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an awaited .then consume with no try (getServerSideProps shape)", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `export async function getServerSideProps() {
+         const repositoryData = await fetch(
+           'https://api.github.com/repos/example/repo'
+         ).then((res) => res.json());
+         return { props: { repositoryData } };
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an https template URL resolved through a constant base", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `const BASE_URL = 'https://internxt.com';
+       async function getDownloadAppUrl() {
+         const fetchDownloadResponse = await fetch(\`\${BASE_URL}/api/download\`, { method: 'GET' });
+         const response = await fetchDownloadResponse.json();
+         return response.platforms;
+       }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays quiet in gatsby-node build scripts", () => {
+    const result = runRule(
+      noFetchResponseUsedWithoutStatusCheck,
+      `export const sourceNodes = async () => {
+         const response = await fetch('https://api.github.com/repos/example/repo');
+         const data = await response.json();
+         return data;
+       };`,
+      { filename: "docs/gatsby-node.mjs" },
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays quiet in Storybook loader/demo files", () => {
     const result = runRule(
       noFetchResponseUsedWithoutStatusCheck,

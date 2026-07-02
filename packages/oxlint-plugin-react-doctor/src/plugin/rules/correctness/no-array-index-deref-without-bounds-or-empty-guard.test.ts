@@ -121,6 +121,54 @@ describe("no-array-index-deref-without-bounds-or-empty-guard", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a split dominated by a predicate helper call over the same value (rsuite idiom)", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `function getDecimalLength(value) {
+        if (isNumber(value)) {
+          return value.toString().split('.')[1].length;
+        }
+        return 0;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a match deref dominated by a predicate helper call over the matched value", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `const hue = isHexColor(color) ? color.match(/#(\\w+)/)[1].toLowerCase() : null;`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a split when the dominating predicate call is over a different value", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `function getDecimalLength(value, other) {
+        if (isNumber(other)) {
+          return value.toString().split('.')[1].length;
+        }
+        return 0;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags an unconditional member-chain split deref in a hook body (Mern delivery-app shape)", () => {
+    const result = runRule(
+      noArrayIndexDerefWithoutBoundsOrEmptyGuard,
+      `function useEditProfileForm() {
+        const { currentUser } = useStorage();
+        const defaultsValues = {
+          city: currentUser.address.split(",")[1].trim(),
+        };
+        return defaultsValues;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag a split on a string literal with a statically guaranteed part count", () => {
     const result = runRule(
       noArrayIndexDerefWithoutBoundsOrEmptyGuard,

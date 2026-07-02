@@ -56,6 +56,19 @@ const isLocallyConstructedBoundedObject = (expression: EsTreeNode): boolean => {
   return isSpreadFreeObjectLiteral(stripParenExpression(binding.initializer));
 };
 
+// A `const IDS = cond ? ["a", "b"] : ["a", "b", "c"]` initializer is as
+// statically bounded as a plain array literal — both branches enumerate a
+// fixed key set.
+const isBoundedArrayInitializer = (initializer: EsTreeNode): boolean => {
+  const stripped = stripParenExpression(initializer);
+  if (isSpreadFreeArrayLiteral(stripped, true)) return true;
+  if (!isNodeOfType(stripped, "ConditionalExpression")) return false;
+  return (
+    isSpreadFreeArrayLiteral(stripParenExpression(stripped.consequent), true) &&
+    isSpreadFreeArrayLiteral(stripParenExpression(stripped.alternate), true)
+  );
+};
+
 // The empirical false-positive pattern is spreading the accumulator over a
 // statically bounded collection — a rest parameter (bounded by call-site
 // arity), an array literal, or the keys/entries of a locally constructed
@@ -71,7 +84,7 @@ const isStaticallyBoundedReduceSource = (source: EsTreeNode): boolean => {
     return Boolean(
       binding.initializer &&
       isConstDeclaredBinding(binding.bindingIdentifier) &&
-      isSpreadFreeArrayLiteral(stripParenExpression(binding.initializer), true),
+      isBoundedArrayInitializer(binding.initializer),
     );
   }
   if (!isNodeOfType(stripped, "CallExpression")) return false;
@@ -186,24 +199,21 @@ const literalSpreadsAccumulator = (literal: EsTreeNode, accumulatorName: string)
   return false;
 };
 
-// The O(n²) premise only holds when the accumulator actually grows every step.
-// An array literal always appends. An object literal grows only when it adds an
-// unbounded key set — a computed `[expr]: v` key or a second spread; a
-// fixed-shape merge of static named keys (`{ ...acc, city: component }`) keeps
-// the accumulator bounded, so copying it stays O(1)/step (O(n) total).
+// Only unambiguous growth shapes are worth reporting. An array literal always
+// appends. An object literal counts only with a second spread merged in
+// (`{ ...acc, ...chunk(x) }`) — a single accumulator spread plus one computed
+// key (`{ ...acc, [key]: value }`) is the keyed-lookup-build idiom over a
+// semantically bounded key set, empirically the dominant false positive.
 const literalGrowsAccumulatorPerIteration = (literal: EsTreeNode): boolean => {
   if (isNodeOfType(literal, "ArrayExpression")) return true;
   if (!isNodeOfType(literal, "ObjectExpression")) return false;
   let spreadCount = 0;
   for (const property of literal.properties) {
     if (!property) continue;
-    const member = property as EsTreeNode;
-    if (isNodeOfType(member, "SpreadElement")) {
+    if (isNodeOfType(property as EsTreeNode, "SpreadElement")) {
       spreadCount += 1;
       if (spreadCount >= 2) return true;
-      continue;
     }
-    if (isNodeOfType(member, "Property") && member.computed) return true;
   }
   return false;
 };

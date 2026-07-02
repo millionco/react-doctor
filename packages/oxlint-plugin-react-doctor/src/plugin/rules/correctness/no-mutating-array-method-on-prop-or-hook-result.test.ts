@@ -365,6 +365,76 @@ describe("no-mutating-array-method-on-prop-or-hook-result", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not flag splicing a rest-element copy of a prop array (Breadcrumbs idiom)", () => {
+    const result = runRule(
+      noMutatingArrayMethodOnPropOrHookResult,
+      `
+      function Breadcrumbs({ items }) {
+        const [firstItem, ...restItems] = items;
+        restItems.splice(0, restItems.length - 1);
+        return null;
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag sorting a rest-element copy of a hook result", () => {
+    const result = runRule(
+      noMutatingArrayMethodOnPropOrHookResult,
+      `
+      function List() {
+        const [firstRow, ...otherRows] = useRows();
+        otherRows.sort();
+        return null;
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag splicing an object rest-element copy of a hook result", () => {
+    const result = runRule(
+      noMutatingArrayMethodOnPropOrHookResult,
+      `
+      function List() {
+        const { first, ...rest } = useEntries();
+        rest.splice(0, 1);
+        return null;
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a member array reached through an object rest binding", () => {
+    const result = runRule(
+      noMutatingArrayMethodOnPropOrHookResult,
+      `
+      function List(props) {
+        const { onClick, ...rest } = props;
+        rest.items.sort();
+        return null;
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a non-rest array-destructured element of a prop (nested array alias)", () => {
+    const result = runRule(
+      noMutatingArrayMethodOnPropOrHookResult,
+      `
+      function Grid({ matrix }) {
+        const [firstRow] = matrix;
+        firstRow.sort();
+        return null;
+      }
+      `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag an alias of a ref's current array", () => {
     const result = runRule(
       noMutatingArrayMethodOnPropOrHookResult,

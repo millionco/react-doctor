@@ -18,11 +18,14 @@ const HANDLER_ATTRIBUTE_PATTERN = /^on[A-Z]/;
 const NAN_GUARD_FUNCTION_NAMES: ReadonlySet<string> = new Set(["isNaN", "isFinite"]);
 
 // The browser's value-sanitization algorithm guarantees these input types
-// never yield an empty or partially-typed string (a range slider is always
-// clamped to a valid in-bounds number; radio/checkbox carry a fixed literal
-// value), so the empty->0 / partial->NaN harm this rule warns about cannot
-// occur on them.
+// never yield a partially-typed string (a range slider is always clamped to
+// a valid in-bounds number; radio/checkbox carry a fixed literal value; a
+// type="number" field's .value is "" whenever the field holds partial or
+// invalid text, so a numeric parse can never see NaN — only the empty->0
+// case remains, which real-world code guards downstream), so the harm this
+// rule warns about cannot occur on them.
 const BROWSER_SANITIZED_INPUT_TYPES: ReadonlySet<string> = new Set([
+  "number",
   "range",
   "checkbox",
   "radio",
@@ -176,10 +179,24 @@ const handlerGuardsParsedValue = (
   return didFindGuard;
 };
 
+// Resolves the variable the parse result lands in, walking up through pure
+// wrapper calls so `const v = Math.floor(Number(e.target.value))` still binds
+// `v` and a later `if (!isNaN(v))` counts as a guard.
 const getParseResultBindingName = (call: EsTreeNode): string | null => {
-  const parent = call.parent;
-  if (!parent || !isNodeOfType(parent, "VariableDeclarator")) return null;
-  return isNodeOfType(parent.id, "Identifier") ? parent.id.name : null;
+  let wrappedExpression: EsTreeNode = call;
+  let ancestor = call.parent;
+  while (ancestor) {
+    if (isNodeOfType(ancestor, "VariableDeclarator")) {
+      return isNodeOfType(ancestor.id, "Identifier") ? ancestor.id.name : null;
+    }
+    const isCallArgumentWrapper =
+      isNodeOfType(ancestor, "CallExpression") &&
+      ancestor.arguments.some((callArgument) => callArgument === wrappedExpression);
+    if (!isCallArgumentWrapper) return null;
+    wrappedExpression = ancestor;
+    ancestor = ancestor.parent ?? null;
+  }
+  return null;
 };
 
 const getStaticInputType = (

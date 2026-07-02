@@ -81,6 +81,85 @@ describe("no-spread-props-over-defaults-clobbers-with-undefined", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a visible defaulted key destructured from the merge that feeds a call argument", () => {
+    const result = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `const DEFAULT_PROPS = { color: "grey.t07" };
+      function Divider(_props) {
+        const props = { ...DEFAULT_PROPS, ..._props };
+        const { color, testId } = props;
+        const circleColor = theme.getColor(color);
+        return <svg data-testid={testId} fill={circleColor} />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags imported defaults whose merged key feeds arithmetic in a timer", () => {
+    const result = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `import { defaultProps } from "./defaultProps";
+      export const Carousel = (userProps: CarouselProps) => {
+        const props = { ...defaultProps, ...userProps };
+        setTimeout(() => slide(), props.transition * 1000);
+        return <div />;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag when the only defaulted key is re-wrapped and the whole merge goes to an omit call", () => {
+    const result = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `const defaultProps = { groupComponent: "g" };
+      const VictoryPortal = (initialProps: VictoryPortalProps) => {
+        const props = { ...defaultProps, ...initialProps };
+        const { groupComponent } = props;
+        const standardProps = { groupComponent, standalone: false };
+        const newProps = merge(standardProps, omit(props, ["children", "groupComponent"]));
+        return <g {...newProps} />;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when the whole merge and the visible defaults are handed to a re-defaulting hook", () => {
+    const result = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `const DEFAULT_PROPS = { direction: "row" };
+      function Flex(_props) {
+        const props = { ...DEFAULT_PROPS, ..._props };
+        const { children, testId } = props;
+        const wrapperCSS = useResponsivePropsCSS(props, DEFAULT_PROPS, { margin: responsiveMargin });
+        return <div css={wrapperCSS} data-testid={testId}>{children}</div>;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a destructured key that re-applies its default at the destructure", () => {
+    const result = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `const Gauge = (props: GaugeProps) => {
+        const { width = 100 } = { ...defaultGaugeProps, ...props };
+        return <svg width={width * 2} />;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag when only never-defaulted keys of a visible defaults literal feed computations", () => {
+    const result = runRule(
+      noSpreadPropsOverDefaultsClobbersWithUndefined,
+      `const defaultProps = { groupComponent: "g" };
+      const Portal = (initialProps: PortalProps) => {
+        const props = { ...defaultProps, ...initialProps };
+        return <div>{Math.min(props.width, 500)}</div>;
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag the defaultProps-replacement merge that only forwards into JSX", () => {
     const result = runRule(
       noSpreadPropsOverDefaultsClobbersWithUndefined,

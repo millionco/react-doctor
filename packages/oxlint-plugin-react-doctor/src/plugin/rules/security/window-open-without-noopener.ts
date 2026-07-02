@@ -83,6 +83,70 @@ const isTrustedStaticDestination = (urlArgument: EsTreeNode | null | undefined):
 
 const MAX_BINDING_RESOLUTION_DEPTH = 4;
 
+// A nullish branch (`cond ? url : null`) is harmless: `window.open(null)`
+// opens about:blank, which the opener fully controls.
+const isNullishExpression = (node: EsTreeNode | null | undefined): boolean => {
+  if (node == null) return true;
+  if (isNodeOfType(node, "Literal")) return node.value === null;
+  return isNodeOfType(node, "Identifier") && node.name === "undefined";
+};
+
+// Only a direct `const name = <init>` declarator is safe to resolve —
+// `let`/`var` can be reassigned to attacker-controlled input after the
+// trusted initializer, and destructured/parameter bindings carry a
+// default expression here, not the actual runtime value.
+const resolveConstInitializer = (identifier: EsTreeNodeOfType<"Identifier">): EsTreeNode | null => {
+  const binding = findVariableInitializer(identifier, identifier.name);
+  if (binding?.initializer == null) return null;
+  const declarator = binding.bindingIdentifier.parent;
+  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return null;
+  if (declarator.init !== binding.initializer) return null;
+  const declaration = declarator.parent;
+  if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) return null;
+  if (declaration.kind !== "const") return null;
+  return binding.initializer;
+};
+
+// The trusted-by-construction check, extended one binding hop: a local
+// const holding a ternary over origin-pinned templates
+// (releaseUrl = version ? `https://github.com/…/tag/v${version}` : null)
+// is the same trusted destination as an inline one, just behind a name
+// ("open release page" dialogs). Every non-nullish branch of the
+// initializer must itself be trusted; opaque initializers (call results,
+// awaited API responses, hook-destructured values) resolve to nothing
+// and keep firing.
+const isTrustedDestination = (
+  urlArgument: EsTreeNode | null | undefined,
+  depth: number,
+): boolean => {
+  if (isTrustedStaticDestination(urlArgument)) return true;
+  if (urlArgument == null || depth > MAX_BINDING_RESOLUTION_DEPTH) return false;
+  if (isNodeOfType(urlArgument, "ConditionalExpression")) {
+    return (
+      isTrustedOrNullishBranch(urlArgument.consequent, depth + 1) &&
+      isTrustedOrNullishBranch(urlArgument.alternate, depth + 1)
+    );
+  }
+  if (isNodeOfType(urlArgument, "LogicalExpression")) {
+    if (urlArgument.operator === "&&") {
+      return isTrustedOrNullishBranch(urlArgument.right, depth + 1);
+    }
+    return (
+      isTrustedOrNullishBranch(urlArgument.left, depth + 1) &&
+      isTrustedOrNullishBranch(urlArgument.right, depth + 1)
+    );
+  }
+  if (isNodeOfType(urlArgument, "Identifier")) {
+    const constInitializer = resolveConstInitializer(urlArgument);
+    if (constInitializer == null) return false;
+    return isTrustedDestination(constInitializer, depth + 1);
+  }
+  return false;
+};
+
+const isTrustedOrNullishBranch = (branch: EsTreeNode | null | undefined, depth: number): boolean =>
+  isNullishExpression(branch) || isTrustedDestination(branch, depth);
+
 // Best-effort static text of the features argument: string literals,
 // template literals (interpolations resolved when they are local const
 // strings, empty otherwise so `noopener,width=${w}` still resolves), and
@@ -175,7 +239,7 @@ export const windowOpenWithoutNoopener = defineRule({
       if (!isDiscardedWindowHandle(node)) return;
 
       const urlArgument = node.arguments?.[0];
-      if (isTrustedStaticDestination(urlArgument)) return;
+      if (isTrustedDestination(urlArgument, 0)) return;
       if (opensProtocolHandlerOnly(urlArgument)) return;
 
       const targetArgument = node.arguments?.[1];

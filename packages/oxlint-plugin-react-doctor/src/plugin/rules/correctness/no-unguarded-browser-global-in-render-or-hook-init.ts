@@ -47,7 +47,26 @@ const NORMALIZED_DOM_GUARD_NAMES = new Set([
   "haswindow",
 ]);
 
+// Interaction-driven visibility flags (`open` / `isVisible` / `showTooltip`)
+// that gate overlays: false during the initial server render, so a
+// flow-terminating `if (!open) return ...` before the read makes it
+// unreachable under SSR.
+const VISIBILITY_GATE_NAMES = new Set([
+  "open",
+  "isopen",
+  "opened",
+  "isopened",
+  "visible",
+  "isvisible",
+]);
+
 const normalizeGuardName = (name: string): string => name.toLowerCase().replace(/[_$]/g, "");
+
+const isVisibilityGateName = (name: string): boolean => {
+  const normalizedName = normalizeGuardName(name);
+  if (VISIBILITY_GATE_NAMES.has(normalizedName)) return true;
+  return normalizedName.startsWith("show") || normalizedName.startsWith("isshow");
+};
 
 const isBrowserGlobalIdentifier = (node: EsTreeNode): node is EsTreeNodeOfType<"Identifier"> =>
   isNodeOfType(node, "Identifier") && BROWSER_GLOBAL_NAMES.has(node.name);
@@ -130,8 +149,27 @@ const isFlowTerminatingStatement = (statement: EsTreeNode): boolean => {
   return false;
 };
 
+// `if (!open) ...` / `if (!props.showTooltip) ...` — the negated
+// visibility flag that gates overlay render paths off during SSR.
+const isNegatedVisibilityGateCondition = (condition: EsTreeNode): boolean => {
+  const strippedCondition = stripParenExpression(condition);
+  if (!isNodeOfType(strippedCondition, "UnaryExpression") || strippedCondition.operator !== "!") {
+    return false;
+  }
+  const negatedValue = stripParenExpression(strippedCondition.argument);
+  if (isNodeOfType(negatedValue, "Identifier")) {
+    return isVisibilityGateName(negatedValue.name);
+  }
+  return (
+    isNodeOfType(negatedValue, "MemberExpression") &&
+    isNodeOfType(negatedValue.property, "Identifier") &&
+    isVisibilityGateName(negatedValue.property.name)
+  );
+};
+
 // An earlier sibling `if (typeof window === 'undefined') return null;`
-// (or `if (!mounted) return null;`) dominates every statement after it.
+// (or `if (!mounted) return null;` / `if (!open) return null;`)
+// dominates every statement after it.
 const hasDomGuardEarlyReturnBefore = (
   block: EsTreeNodeOfType<"BlockStatement">,
   statement: EsTreeNode,
@@ -141,10 +179,32 @@ const hasDomGuardEarlyReturnBefore = (
     if (
       isNodeOfType(sibling, "IfStatement") &&
       isFlowTerminatingStatement(sibling.consequent) &&
-      conditionContainsDomGuard(sibling.test)
+      (conditionContainsDomGuard(sibling.test) || isNegatedVisibilityGateCondition(sibling.test))
     ) {
       return true;
     }
+  }
+  return false;
+};
+
+// A read anywhere inside an argument of `createPortal(...)` (the
+// `document.body` container idiom). Portal-returning render paths are
+// gated client-side in practice, and an ungated portal already breaks
+// the server render on its own — the browser-global read is not the
+// signal there.
+const isInsideCreatePortalArgument = (node: EsTreeNode): boolean => {
+  let previous: EsTreeNode = node;
+  let ancestor = node.parent;
+  while (ancestor) {
+    if (
+      isNodeOfType(ancestor, "CallExpression") &&
+      getCalleeName(ancestor) === "createPortal" &&
+      Boolean(ancestor.arguments?.some((argument) => argument === previous))
+    ) {
+      return true;
+    }
+    previous = ancestor;
+    ancestor = ancestor.parent ?? null;
   }
   return false;
 };
@@ -197,6 +257,7 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
     const reportRead = (readNode: EsTreeNode, globalName: string): void => {
       if (!isOnRenderTimePath(readNode)) return;
       if (isDominatedByDomGuard(readNode)) return;
+      if (isInsideCreatePortalArgument(readNode)) return;
       context.report({
         node: readNode,
         message: `Reading \`${globalName}\` during render or in a useState/useReducer/useRef initializer crashes SSR ("${globalName} is not defined") and causes hydration mismatches. Seed a stable default and read \`${globalName}\` inside a useEffect after mount, or guard it with \`typeof ${globalName} !== "undefined"\`.`,

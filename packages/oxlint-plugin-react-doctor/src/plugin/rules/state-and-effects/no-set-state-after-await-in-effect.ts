@@ -17,6 +17,7 @@ const MESSAGE =
 
 const STATE_DISPATCHER_HOOKS = new Set(["useState", "useReducer"]);
 const STABLE_IDENTITY_HOOK = "useRef";
+const EXTERNAL_STORE_HOOK_PATTERN = /^use(?:[A-Z][A-Za-z0-9]*)?Store$/;
 
 // Cancellation / mounted-guard idioms. When the awaiting scope reads any of
 // these we assume the developer already guards the post-await write, so we
@@ -42,12 +43,148 @@ const getDependencyArray = (
   return dependencyArgument;
 };
 
+const doesBindingPatternBindName = (pattern: unknown, bindingName: string): boolean => {
+  if (isNodeOfType(pattern, "Identifier")) return pattern.name === bindingName;
+  if (isNodeOfType(pattern, "ObjectPattern")) {
+    return (pattern.properties ?? []).some((property) => {
+      if (isNodeOfType(property, "Property")) {
+        return doesBindingPatternBindName(property.value, bindingName);
+      }
+      if (isNodeOfType(property, "RestElement")) {
+        return doesBindingPatternBindName(property.argument, bindingName);
+      }
+      return false;
+    });
+  }
+  if (isNodeOfType(pattern, "ArrayPattern")) {
+    return (pattern.elements ?? []).some((element) =>
+      doesBindingPatternBindName(element, bindingName),
+    );
+  }
+  if (isNodeOfType(pattern, "AssignmentPattern")) {
+    return doesBindingPatternBindName(pattern.left, bindingName);
+  }
+  if (isNodeOfType(pattern, "RestElement")) {
+    return doesBindingPatternBindName(pattern.argument, bindingName);
+  }
+  return false;
+};
+
+// External-store hooks (zustand's useStore / useXxxStore) hand back action
+// references that are stable for the store's lifetime, so a dep bound from
+// one cannot re-trigger the effect (NotificationsView-class false positive).
+const isExternalStoreHookBinding = (scopeAnchor: EsTreeNode, bindingName: string): boolean => {
+  let cursor: EsTreeNode | null | undefined = scopeAnchor;
+  while (cursor) {
+    if (isNodeOfType(cursor, "BlockStatement") || isNodeOfType(cursor, "Program")) {
+      for (const statement of cursor.body ?? []) {
+        if (!isNodeOfType(statement, "VariableDeclaration")) continue;
+        for (const declarator of statement.declarations ?? []) {
+          if (!isNodeOfType(declarator.init, "CallExpression")) continue;
+          const storeHookCallee = declarator.init.callee;
+          if (!isNodeOfType(storeHookCallee, "Identifier")) continue;
+          if (!EXTERNAL_STORE_HOOK_PATTERN.test(storeHookCallee.name)) continue;
+          if (doesBindingPatternBindName(declarator.id, bindingName)) return true;
+        }
+      }
+    }
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
+// Store hooks also select mutable data; only a dep the effect exclusively
+// INVOKES is action-shaped. Any other read (argument, member base, shorthand
+// spread) means the dep carries data whose identity can change per render.
+const isDependencyOnlyInvokedInCallback = (
+  effectCallback: EsTreeNode,
+  bindingName: string,
+): boolean => {
+  let hasNonInvocationUse = false;
+  walkAst(effectCallback, (child: EsTreeNode) => {
+    if (hasNonInvocationUse) return false;
+    if (!isNodeOfType(child, "Identifier") || child.name !== bindingName) return;
+    const parent = child.parent;
+    if (isNodeOfType(parent, "CallExpression") && parent.callee === child) return;
+    if (isNodeOfType(parent, "MemberExpression") && parent.property === child && !parent.computed) {
+      return;
+    }
+    if (
+      isNodeOfType(parent, "Property") &&
+      parent.key === child &&
+      !parent.computed &&
+      !parent.shorthand
+    ) {
+      return;
+    }
+    hasNonInvocationUse = true;
+    return false;
+  });
+  return !hasNonInvocationUse;
+};
+
+// A module-scope `const` (or import) has one identity for the module's whole
+// lifetime, so it can never re-trigger the effect. Any closer binding of the
+// same name (param, local declaration) shadows it and disqualifies the dep.
+const isModuleScopeConstBinding = (scopeAnchor: EsTreeNode, bindingName: string): boolean => {
+  let cursor: EsTreeNode | null | undefined = scopeAnchor;
+  while (cursor) {
+    if (isNodeOfType(cursor, "Program")) {
+      for (const statement of cursor.body ?? []) {
+        if (isNodeOfType(statement, "ImportDeclaration")) {
+          const bindsImportedName = (statement.specifiers ?? []).some((specifier) =>
+            doesBindingPatternBindName(specifier.local, bindingName),
+          );
+          if (bindsImportedName) return true;
+        }
+        if (isNodeOfType(statement, "VariableDeclaration") && statement.kind === "const") {
+          const bindsConstName = (statement.declarations ?? []).some((declarator) =>
+            doesBindingPatternBindName(declarator.id, bindingName),
+          );
+          if (bindsConstName) return true;
+        }
+      }
+      return false;
+    }
+    if (isFunctionLike(cursor)) {
+      const isShadowedByParam = (cursor.params ?? []).some((param) =>
+        doesBindingPatternBindName(param, bindingName),
+      );
+      if (isShadowedByParam) return false;
+    }
+    if (isNodeOfType(cursor, "BlockStatement")) {
+      for (const statement of cursor.body ?? []) {
+        if (isNodeOfType(statement, "VariableDeclaration")) {
+          const isShadowedLocally = (statement.declarations ?? []).some((declarator) =>
+            doesBindingPatternBindName(declarator.id, bindingName),
+          );
+          if (isShadowedLocally) return false;
+        }
+        if (
+          isNodeOfType(statement, "FunctionDeclaration") &&
+          isNodeOfType(statement.id, "Identifier") &&
+          statement.id.name === bindingName
+        ) {
+          return false;
+        }
+      }
+    }
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
 // A mount-only effect (empty deps) or one whose deps are all stable-identity
-// bindings (useState/useReducer dispatcher, useRef box) can never have
-// overlapping re-runs, so the out-of-order stale-write hazard cannot occur.
-const hasOnlyStableIdentityDependencies = (
-  dependencyArray: EsTreeNodeOfType<"ArrayExpression">,
-): boolean =>
+// bindings (useState/useReducer dispatcher, useRef box, external-store action
+// reference, module-scope const) can never have overlapping re-runs, so the
+// out-of-order stale-write hazard cannot occur.
+const hasOnlyStableIdentityDependencies = ({
+  dependencyArray,
+  effectCallback,
+}: {
+  dependencyArray: EsTreeNodeOfType<"ArrayExpression">;
+  effectCallback: EsTreeNode;
+}): boolean =>
   (dependencyArray.elements ?? []).every((dependencyElement) => {
     if (!isNodeOfType(dependencyElement, "Identifier")) return false;
     return (
@@ -59,7 +196,10 @@ const hasOnlyStableIdentityDependencies = (
       isHookBindingInScope(dependencyArray, {
         bindingName: dependencyElement.name,
         hookName: STABLE_IDENTITY_HOOK,
-      })
+      }) ||
+      isModuleScopeConstBinding(dependencyArray, dependencyElement.name) ||
+      (isExternalStoreHookBinding(dependencyArray, dependencyElement.name) &&
+        isDependencyOnlyInvokedInCallback(effectCallback, dependencyElement.name))
     );
   });
 
@@ -141,7 +281,12 @@ export const noSetStateAfterAwaitInEffect = defineRule({
       // Async effect callbacks are owned by `no-async-effect-callback`.
       if (callback.async) return;
       const dependencyArray = getDependencyArray(node);
-      if (dependencyArray && hasOnlyStableIdentityDependencies(dependencyArray)) return;
+      if (
+        dependencyArray &&
+        hasOnlyStableIdentityDependencies({ dependencyArray, effectCallback: callback })
+      ) {
+        return;
+      }
       // A cleanup return is the documented fix; stay quiet when one exists.
       if (functionBodyHasReturnWithValue(callback)) return;
 

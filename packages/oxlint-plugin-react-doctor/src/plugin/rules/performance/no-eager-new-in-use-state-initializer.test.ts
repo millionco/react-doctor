@@ -82,6 +82,47 @@ describe("no-eager-new-in-use-state-initializer", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag the zero-arg DOM geometry idiom useState<DOMRect>(new DOMRect()) (agent-teams-ai idiom)", () => {
+    const result = runRule(
+      noEagerNewInUseStateInitializer,
+      `
+      import { useState } from "react";
+      function Component() {
+        const [anchorRect, setAnchorRect] = useState<DOMRect>(new DOMRect());
+      }
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a DOMPoint built from constant coordinates", () => {
+    const result = runRule(
+      noEagerNewInUseStateInitializer,
+      `
+      import { useState } from "react";
+      function Component() {
+        const [origin] = useState(new DOMPoint(0, 0));
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a DOM geometry constructor fed a call result (new DOMRect(...measure()))", () => {
+    const result = runRule(
+      noEagerNewInUseStateInitializer,
+      `
+      import { useState } from "react";
+      function Component({ element }) {
+        const [rect] = useState(new DOMRect(0, 0, measureWidth(element), 0));
+      }
+    `,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("new DOMRect()");
+  });
+
   it("flags a cheap builtin rebuilt from a call result (new Map(items.map(...)))", () => {
     const result = runRule(
       noEagerNewInUseStateInitializer,

@@ -265,6 +265,79 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("stays quiet for a createPortal container read behind an open early return", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalInRenderOrHookInit,
+      `function ColorPickerFloating({ open, onColorSelect }) {
+        if (!open) return null;
+        return createPortal(<div onClick={onColorSelect} />, document.body);
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet for a createPortal container read without a preceding gate", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalInRenderOrHookInit,
+      `const Overlay = ({ children }) => {
+        return createPortal(children, document.body);
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet after a flow-terminating negated showX gate (the tooltip idiom)", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalInRenderOrHookInit,
+      `const UndoButton = ({ showTooltip = true }) => {
+        const button = <button aria-label="Undo" />;
+        if (!showTooltip) {
+          return button;
+        }
+        return (
+          <Tooltip trigger={button}>
+            {navigator.platform.includes('Mac') ? 'Cmd+Z' : 'Ctrl+Z'}
+          </Tooltip>
+        );
+      };`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet after a negated isVisible early return", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalInRenderOrHookInit,
+      `function Modal({ isVisible }) {
+        if (!isVisible) return null;
+        return <div>{window.location.href}</div>;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags unconditional window.location reads at the top of a modal body", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalInRenderOrHookInit,
+      `export default function ShareSurveyModal({ surveyId, isOpened, closeModal }) {
+        const link = \`\${window.location.protocol}//\${window.location.host}/survey/\${surveyId}\`;
+        return <StyledDialog isOpen={isOpened} onClose={closeModal}>{link}</StyledDialog>;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("still flags a read after an early return on a non-visibility flag", () => {
+    const result = runRule(
+      noUnguardedBrowserGlobalInRenderOrHookInit,
+      `function Profile({ user }) {
+        if (!user) return null;
+        const width = window.innerWidth;
+        return <div style={{ width }} />;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet outside a component or hook body", () => {
     const result = runRule(
       noUnguardedBrowserGlobalInRenderOrHookInit,

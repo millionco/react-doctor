@@ -4,6 +4,31 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { walkAst } from "./walk-ast.js";
 
+// A call in handler position (`onClick={makeHandler()}`) runs DURING render,
+// so its callee is not a deferred handler — only the values it receives may
+// be. Member-expression callees (`handleClick.bind(null)`) keep collecting
+// their object, which the bound function defers.
+const collectDeferredHandlerValueNames = (
+  valueNode: EsTreeNode | null | undefined,
+  names: Set<string>,
+): void => {
+  if (!valueNode) return;
+  if (isNodeOfType(valueNode, "JSXExpressionContainer")) {
+    collectDeferredHandlerValueNames(valueNode.expression, names);
+    return;
+  }
+  if (isNodeOfType(valueNode, "CallExpression")) {
+    if (!isNodeOfType(valueNode.callee, "Identifier")) {
+      collectDeferredHandlerValueNames(valueNode.callee, names);
+    }
+    for (const callArgument of valueNode.arguments ?? []) {
+      collectDeferredHandlerValueNames(callArgument, names);
+    }
+    return;
+  }
+  collectReferenceIdentifierNames(valueNode, names);
+};
+
 // Names referenced by any JSX `onXxx` attribute value (`onClick={goHome}`) or
 // `onXxx` object property — functions wired up as event handlers, so they run
 // on interaction rather than during render.
@@ -16,7 +41,7 @@ export const collectHandlerReferencedNames = (root: EsTreeNode): Set<string> => 
       REACT_HANDLER_PROP_PATTERN.test(node.name.name) &&
       node.value
     ) {
-      collectReferenceIdentifierNames(node.value, names);
+      collectDeferredHandlerValueNames(node.value, names);
       return;
     }
     if (
@@ -26,7 +51,7 @@ export const collectHandlerReferencedNames = (root: EsTreeNode): Set<string> => 
           typeof node.key.value === "string" &&
           REACT_HANDLER_PROP_PATTERN.test(node.key.value)))
     ) {
-      collectReferenceIdentifierNames(node.value, names);
+      collectDeferredHandlerValueNames(node.value, names);
     }
   });
   return names;

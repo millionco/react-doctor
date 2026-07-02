@@ -3,7 +3,7 @@ import { isFrameworkRouteOrSpecialFilename } from "../../utils/is-framework-rout
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { isAstNode } from "../../utils/is-ast-node.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
@@ -267,23 +267,30 @@ const classifyExport = (
     : { kind: "non-component", reportNode };
 };
 
-const collectAllNodes = (programRoot: EsTreeNode): EsTreeNode[] => {
-  const out: EsTreeNode[] = [];
-  const visit = (node: EsTreeNode): void => {
-    out.push(node);
-    const record = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-      if (key === "parent") continue;
-      const child = record[key];
-      if (Array.isArray(child)) {
-        for (const item of child) if (isAstNode(item)) visit(item);
-      } else if (isAstNode(child)) {
-        visit(child);
-      }
+interface RelevantNodes {
+  exportNodes: EsTreeNode[];
+  componentCandidates: EsTreeNode[];
+}
+
+// One walk collecting only the node kinds the two analysis passes below
+// consume — materializing every node of the program cost more than the
+// passes themselves.
+const collectRelevantNodes = (programRoot: EsTreeNode): RelevantNodes => {
+  const exportNodes: EsTreeNode[] = [];
+  const componentCandidates: EsTreeNode[] = [];
+  walkAst(programRoot, (child) => {
+    const childType = child.type;
+    if (
+      childType === "ExportAllDeclaration" ||
+      childType === "ExportDefaultDeclaration" ||
+      childType === "ExportNamedDeclaration"
+    ) {
+      exportNodes.push(child);
+    } else if (childType === "FunctionDeclaration" || childType === "VariableDeclarator") {
+      componentCandidates.push(child);
     }
-  };
-  visit(programRoot);
-  return out;
+  });
+  return { exportNodes, componentCandidates };
 };
 
 const isEntryPointFile = (filename: string): boolean => {
@@ -412,7 +419,7 @@ export const onlyExportComponents = defineRule({
       Program(node: EsTreeNodeOfType<"Program">) {
         const filename = normalizeFilename(context.filename ?? "");
         if (!isFileNameAllowed(filename, settings.checkJS)) return;
-        const allNodes = collectAllNodes(node as EsTreeNode);
+        const { exportNodes, componentCandidates } = collectRelevantNodes(node as EsTreeNode);
 
         const exports: ExportType[] = [];
         let hasReactExport = false;
@@ -421,7 +428,7 @@ export const onlyExportComponents = defineRule({
         const isExportedNodeIds = new WeakSet<object>();
 
         // First pass: collect exports.
-        for (const child of allNodes) {
+        for (const child of exportNodes) {
           if (isNodeOfType(child, "ExportAllDeclaration")) {
             // `export type * from '…'` is TS-type-only; skip.
             if ((child as { exportKind?: string }).exportKind === "type") continue;
@@ -608,7 +615,7 @@ export const onlyExportComponents = defineRule({
           }
           return false;
         };
-        for (const child of allNodes) {
+        for (const child of componentCandidates) {
           if (isNodeOfType(child, "FunctionDeclaration") && child.id) {
             if (isReactComponentName(child.id.name) && !isInsideExport(child as EsTreeNode)) {
               localComponents.push(child.id);

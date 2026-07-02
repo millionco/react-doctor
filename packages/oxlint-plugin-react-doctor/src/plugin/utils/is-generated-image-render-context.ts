@@ -2,6 +2,7 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import {
   getImportedNameFromModule,
+  hasImportFromModules,
   isDefaultImportFromModule,
   isNamespaceImportFromModule,
 } from "./find-import-source-for-name.js";
@@ -18,6 +19,7 @@ import { walkAst } from "./walk-ast.js";
 
 const IMAGE_RESPONSE_MODULES: ReadonlyArray<string> = ["next/og", "@vercel/og"];
 const SATORI_MODULE = "satori";
+const GENERATED_IMAGE_MODULES: ReadonlyArray<string> = [...IMAGE_RESPONSE_MODULES, SATORI_MODULE];
 
 const generatedImageJsxCache = new WeakMap<EsTreeNodeOfType<"Program">, WeakSet<EsTreeNode>>();
 
@@ -306,12 +308,16 @@ const collectGeneratedImageJsxNodes = (
   if (cached) return cached;
 
   const generatedImageJsxNodes = new WeakSet<EsTreeNode>();
-  walkAst(programRoot, (descendantNode) => {
-    if (!isGeneratedImageRendererCall(descendantNode)) return;
-    for (const argument of descendantNode.arguments) {
-      markGeneratedImageExpression(argument, programRoot, generatedImageJsxNodes, new Set());
-    }
-  });
+  // Renderer detection below is import-lookup based, so a module that never
+  // imports an image-response library can't produce a match — skip its walk.
+  if (hasImportFromModules(programRoot, GENERATED_IMAGE_MODULES)) {
+    walkAst(programRoot, (descendantNode) => {
+      if (!isGeneratedImageRendererCall(descendantNode)) return;
+      for (const argument of descendantNode.arguments) {
+        markGeneratedImageExpression(argument, programRoot, generatedImageJsxNodes, new Set());
+      }
+    });
+  }
 
   generatedImageJsxCache.set(programRoot, generatedImageJsxNodes);
   return generatedImageJsxNodes;

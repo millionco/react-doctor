@@ -1,7 +1,7 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findProgramRoot } from "./find-program-root.js";
-import { isAstNode } from "./is-ast-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { walkAst } from "./walk-ast.js";
 
 interface BindingInfo {
   // The Identifier node where the binding is declared (or destructured).
@@ -243,18 +243,8 @@ const buildBindingIndex = (root: EsTreeNode): Map<string, BindingInfo[]> => {
         }
       }
     }
-    const nodeRecord = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(nodeRecord)) {
-      if (key === "parent") continue;
-      const child = nodeRecord[key];
-      if (Array.isArray(child)) {
-        for (const item of child) if (isAstNode(item)) visit(item);
-      } else if (isAstNode(child)) {
-        visit(child);
-      }
-    }
   };
-  visit(root);
+  walkAst(root, visit);
   return out;
 };
 

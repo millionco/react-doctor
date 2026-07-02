@@ -3,7 +3,7 @@ import type { FileScan, ScannedFile } from "oxlint-plugin-react-doctor";
 import { buildSecurityScanDiagnostic } from "./checks/security-scan/build-security-scan-diagnostic.js";
 import type { SecurityScanRuleEntry } from "./checks/security-scan/build-security-scan-diagnostic.js";
 import { collectSecurityScanFiles } from "./checks/security-scan/collect-security-scan-files.js";
-import { SECURITY_SCAN_YIELD_FILE_INTERVAL } from "./checks/security-scan/constants.js";
+import { SECURITY_SCAN_YIELD_BUDGET_MS } from "./checks/security-scan/constants.js";
 import { buildCapabilities, shouldEnableRule } from "./runners/oxlint/capabilities.js";
 import type { Diagnostic, ProjectInfo } from "./types/index.js";
 import { isPathGitIgnored } from "./utils/is-path-git-ignored.js";
@@ -22,8 +22,13 @@ interface EnabledScanRule {
 }
 
 interface SecurityScanSession {
-  /** Runs every enabled scan rule over one file, accumulating into `diagnostics`. */
-  readonly scanFile: (file: ScannedFile) => void;
+  /**
+   * Runs every enabled scan rule over one file, accumulating into
+   * `diagnostics`. Yields once per rule so the cooperative driver can
+   * re-check its time budget between rules — a single 8 MB bundle file
+   * held the event loop for the whole rule set otherwise.
+   */
+  readonly scanFileByRule: (file: ScannedFile) => Generator<void, void, void>;
   readonly diagnostics: Diagnostic[];
 }
 
@@ -62,7 +67,7 @@ const createSecurityScanSession = (
     return status === true;
   };
 
-  const scanFile = (file: ScannedFile): void => {
+  const scanFileByRule = function* (file: ScannedFile): Generator<void, void, void> {
     for (const { entry, scan, committedFilesOnly } of enabledScanRules) {
       for (const finding of scan(file)) {
         // A committed-file rule's finding doesn't apply to a path git ignores
@@ -78,10 +83,11 @@ const createSecurityScanSession = (
         seen.add(key);
         diagnostics.push(diagnostic);
       }
+      yield;
     }
   };
 
-  return { scanFile, diagnostics };
+  return { scanFileByRule, diagnostics };
 };
 
 // Project-level security scan check: registry rules carrying a
@@ -97,28 +103,34 @@ export const checkSecurityScan = (
   const session = createSecurityScanSession(rootDirectory, options);
   if (session === null) return [];
   for (const file of collectSecurityScanFiles(rootDirectory)) {
-    session.scanFile(file);
+    for (const _ruleStep of session.scanFileByRule(file)) {
+      // Sync driver: exhaust the per-rule steps without yielding.
+    }
   }
   return session.diagnostics;
 };
 
-// Cooperative variant: identical output to `checkSecurityScan`, but yields to
-// the event loop every `SECURITY_SCAN_YIELD_FILE_INTERVAL` files so a caller
-// that forks it (the orchestrator) can overlap its CPU with other async work
-// instead of blocking the loop for the whole scan.
+// Cooperative variant: identical output to `checkSecurityScan`, but hands the
+// event loop back whenever a scan slice has held it for
+// `SECURITY_SCAN_YIELD_BUDGET_MS`, checked between every (file, rule) step, so
+// a caller that forks it (the orchestrator) can overlap its CPU with other
+// async work. A time budget rather than a file interval: lint's child
+// processes are spawned and drained from main-thread continuations, so any
+// long stall idles the whole worker pool — and one large minified bundle
+// could previously stall for its entire rule set.
 export const checkSecurityScanCooperative = async (
   rootDirectory: string,
   options: CheckSecurityScanOptions = {},
 ): Promise<Diagnostic[]> => {
   const session = createSecurityScanSession(rootDirectory, options);
   if (session === null) return [];
-  let filesSinceYield = 0;
+  let sliceStartedAt = performance.now();
   for (const file of collectSecurityScanFiles(rootDirectory)) {
-    session.scanFile(file);
-    filesSinceYield += 1;
-    if (filesSinceYield >= SECURITY_SCAN_YIELD_FILE_INTERVAL) {
-      filesSinceYield = 0;
-      await yieldToEventLoop();
+    for (const _ruleStep of session.scanFileByRule(file)) {
+      if (performance.now() - sliceStartedAt >= SECURITY_SCAN_YIELD_BUDGET_MS) {
+        await yieldToEventLoop();
+        sliceStartedAt = performance.now();
+      }
     }
   }
   return session.diagnostics;

@@ -489,8 +489,8 @@ export const runInspect = <HooksR = never>(
     // SYNCHRONOUSLY before lint, blocking the event loop the whole time. Fork it
     // here (before lint) and join it just before the concat so its main-thread
     // CPU overlaps the subprocess-bound lint pass; `checkSecurityScanCooperative`
-    // yields to the event loop between file chunks so it can't starve lint's
-    // subprocess I/O or concurrently-scanning sibling projects. Skipped in
+    // hands the event loop back on a per-slice time budget so it can't starve
+    // lint's subprocess spawning/draining or sibling projects. Skipped in
     // diff/staged mode like the env checks. The final stable sort makes the
     // concat order irrelevant, so output stays byte-identical to the serial path.
     const securityScanFailedRef = yield* Ref.make(false);

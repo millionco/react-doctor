@@ -263,11 +263,19 @@ export const jsCombineIterations = defineRule({
   recommendation:
     "Combine `.map().filter()` style chains into one pass with `.reduce()` or a `for...of` loop, so you only loop over the list once",
   create: (context: RuleContext) => {
-    let generatorNamesInFile: ReadonlySet<string> = new Set();
+    let programNode: EsTreeNode | null = null;
+    let generatorNamesInFile: ReadonlySet<string> | null = null;
+    // Collecting generator names walks the whole program, and the set only
+    // matters once a chained-iteration candidate survives the guards below —
+    // most files never get that far, so the walk is deferred to first use.
+    const getGeneratorNamesInFile = (): ReadonlySet<string> => {
+      generatorNamesInFile ??= programNode ? collectGeneratorNames(programNode) : new Set();
+      return generatorNamesInFile;
+    };
 
     return {
-      Program(programNode: EsTreeNodeOfType<"Program">) {
-        generatorNamesInFile = collectGeneratorNames(programNode);
+      Program(node: EsTreeNodeOfType<"Program">) {
+        programNode = node;
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (
@@ -322,7 +330,8 @@ export const jsCombineIterations = defineRule({
           if (isTypePredicateArrow(filterArgument as EsTreeNode | null | undefined)) return;
         }
 
-        if (isReceiverChainIteratorRooted(innerCall.callee.object, generatorNamesInFile)) return;
+        if (isReceiverChainIteratorRooted(innerCall.callee.object, getGeneratorNamesInFile()))
+          return;
         if (isSmallLiteralArrayRootedChain(innerCall.callee.object)) return;
         if (isStringSplitRootedChain(innerCall.callee.object)) return;
 

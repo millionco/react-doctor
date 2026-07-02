@@ -1,5 +1,4 @@
 import type { EsTreeNode } from "./es-tree-node.js";
-import { findProgramRoot } from "./find-program-root.js";
 import type { Rule } from "./rule.js";
 import type { BaseRuleContext, RuleContext } from "./rule-context.js";
 import type { HostRule } from "./rule-plugin.js";
@@ -14,12 +13,13 @@ import type { ControlFlowAnalysis } from "../semantic/control-flow-graph.js";
 // scope tree and CFG lazily on first access, scoped to the AST root
 // captured by the rule's Program visitor.
 //
-// Both analyses are pure — they only depend on the AST root — so a
-// per-file rebuild is correct. Caching across calls would require
-// re-running on AST mutation; not relevant for our visit-only plugin.
+// Both analyses are pure — they only depend on the AST root — and the
+// host runs every rule over one shared AST per file, so the memo below
+// is keyed on the Program node and shared across rules. Keeping it in a
+// per-rule closure instead re-ran the full O(file) analysis once per
+// scope-reading rule per file (~20% of plugin lint CPU). Entries die
+// with the AST via the WeakMap.
 //
-// Performance: each analysis is O(file size). For the average React
-// component file (≤500 lines), the combined cost is well under 1ms.
 // Files we don't visit (no rule ever reads `scopes`/`cfg`) pay nothing
 // because the lazy getters never fire.
 // HACK: the fallback scope/CFG stubs are unreachable in practice — the
@@ -54,25 +54,32 @@ const FALLBACK_CFG: ControlFlowAnalysis = {
   isUnconditionalFromEntry: () => false,
 };
 
+const scopesByProgram = new WeakMap<EsTreeNode, ScopeAnalysis>();
+const cfgByProgram = new WeakMap<EsTreeNode, ControlFlowAnalysis>();
+
 export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
   ...rule,
   create: (baseContext: BaseRuleContext): RuleVisitors => {
     let programRoot: EsTreeNode | null = null;
-    let cachedScopes: ScopeAnalysis | null = null;
-    let cachedCfg: ControlFlowAnalysis | null = null;
 
     const getScopes = (): ScopeAnalysis => {
-      if (cachedScopes) return cachedScopes;
       if (!programRoot) return buildFallbackScopes();
-      cachedScopes = analyzeScopes(programRoot);
-      return cachedScopes;
+      let scopes = scopesByProgram.get(programRoot);
+      if (!scopes) {
+        scopes = analyzeScopes(programRoot);
+        scopesByProgram.set(programRoot, scopes);
+      }
+      return scopes;
     };
 
     const getCfg = (): ControlFlowAnalysis => {
-      if (cachedCfg) return cachedCfg;
       if (!programRoot) return FALLBACK_CFG;
-      cachedCfg = analyzeControlFlow(programRoot);
-      return cachedCfg;
+      let cfg = cfgByProgram.get(programRoot);
+      if (!cfg) {
+        cfg = analyzeControlFlow(programRoot);
+        cfgByProgram.set(programRoot, cfg);
+      }
+      return cfg;
     };
 
     // Resolve from the host's modern `filename` property, falling back to
@@ -93,29 +100,24 @@ export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
       },
     };
 
-    const captureRootIfNeeded = (node: EsTreeNode): void => {
-      if (programRoot) return;
-      programRoot = findProgramRoot(node);
-    };
-
     const visitors = rule.create(enrichedContext);
-    const wrappedVisitors: RuleVisitors = {};
+    const passthroughVisitors: RuleVisitors = {};
     for (const [nodeType, handler] of Object.entries(visitors)) {
       if (typeof handler !== "function") continue;
-      wrappedVisitors[nodeType] = ((node: EsTreeNode) => {
-        captureRootIfNeeded(node);
-        handler(node);
-      }) as RuleVisitors[string];
+      passthroughVisitors[nodeType] = handler;
     }
 
-    // Always observe Program so the root is captured deterministically
-    // before any other visitor reads scopes / cfg.
-    if (!visitors.Program) {
-      wrappedVisitors.Program = (node: EsTreeNode) => {
-        captureRootIfNeeded(node);
-      };
-    }
+    // Program enter fires before every other visitor, so capturing the root
+    // there is enough — wrapping every visitor of every rule in a
+    // capture-then-forward closure added a call per (node × rule) for
+    // nothing. A handler that somehow ran without a Program visit falls back
+    // to the conservative stubs above, same as before capture happened.
+    const innerProgramHandler = passthroughVisitors.Program;
+    passthroughVisitors.Program = ((node: EsTreeNode) => {
+      programRoot = node;
+      if (innerProgramHandler) innerProgramHandler(node);
+    }) as RuleVisitors[string];
 
-    return wrappedVisitors;
+    return passthroughVisitors;
   },
 });

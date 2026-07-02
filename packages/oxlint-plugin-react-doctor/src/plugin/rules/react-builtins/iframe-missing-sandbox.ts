@@ -8,6 +8,7 @@ import { isCreateElementCall } from "../../utils/is-create-element-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import type { Rule } from "../../utils/rule.js";
+import { skipNonProductionFiles } from "../../utils/skip-non-production-files.js";
 
 const ALLOWED_SANDBOX_VALUES = new Set([
   "downloads-without-user-activation",
@@ -49,7 +50,10 @@ const validateSandboxValue = (
   for (const rawToken of value.split(" ")) {
     const token = rawToken.trim();
     if (!isAllowedSandboxToken(token)) {
-      context.report({ node: reportNode, message: INVALID_VALUE_MESSAGE(token) });
+      context.report({
+        node: reportNode,
+        message: INVALID_VALUE_MESSAGE(token),
+      });
     }
     if (token === "allow-scripts") hasAllowScripts = true;
     if (token === "allow-same-origin") hasAllowSameOrigin = true;
@@ -73,14 +77,17 @@ export const iframeMissingSandbox = defineRule({
   recommendation:
     'Add `sandbox=""` or a curated value so embedded pages cannot get full access to your site by default.',
   category: "Security",
-  create: (context) => ({
+  create: skipNonProductionFiles((context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "iframe") return;
       const sandboxAttr = hasJsxPropIgnoreCase(node.attributes, "sandbox");
       if (!sandboxAttr) {
-        // A spread (`<iframe {...props} />`) can forward `sandbox` at
-        // runtime, so its absence here isn't proof of a missing attribute.
-        if (hasJsxSpreadAttribute(node.attributes)) return;
+        // A fully-opaque spread (`<iframe {...props} />`) can forward
+        // `sandbox` at runtime, so its absence here isn't proof of a missing
+        // attribute — but an explicit `src` marks this element as the real
+        // embed site, where a missing `sandbox` is the author's omission.
+        const hasExplicitSrc = Boolean(hasJsxPropIgnoreCase(node.attributes, "src"));
+        if (!hasExplicitSrc && hasJsxSpreadAttribute(node.attributes)) return;
         context.report({ node: node.name, message: MISSING_MESSAGE });
         return;
       }
@@ -105,6 +112,7 @@ export const iframeMissingSandbox = defineRule({
       if (!isNodeOfType(propsArgument, "ObjectExpression")) return;
       let sandboxValueNode: EsTreeNode | null = null;
       let hasSpread = false;
+      let hasExplicitSrcProperty = false;
       for (const property of propsArgument.properties) {
         if (isNodeOfType(property, "SpreadElement")) {
           hasSpread = true;
@@ -112,17 +120,21 @@ export const iframeMissingSandbox = defineRule({
         }
         if (!isNodeOfType(property, "Property")) continue;
         const propertyKey = property.key;
-        const matches =
-          (isNodeOfType(propertyKey, "Identifier") && propertyKey.name === "sandbox") ||
-          (isNodeOfType(propertyKey, "Literal") && propertyKey.value === "sandbox");
-        if (matches) {
+        const keyName = isNodeOfType(propertyKey, "Identifier")
+          ? propertyKey.name
+          : isNodeOfType(propertyKey, "Literal")
+            ? propertyKey.value
+            : null;
+        if (keyName === "src") hasExplicitSrcProperty = true;
+        if (keyName === "sandbox") {
           sandboxValueNode = property.value;
           break;
         }
       }
       if (!sandboxValueNode) {
-        // `{ ...props }` may supply `sandbox` at runtime, like a JSX spread.
-        if (hasSpread) return;
+        // `{ ...props }` may supply `sandbox` at runtime, like a JSX spread —
+        // unless an explicit `src` marks this call as the real embed site.
+        if (hasSpread && !hasExplicitSrcProperty) return;
         context.report({ node: propsArgument, message: MISSING_MESSAGE });
         return;
       }
@@ -134,5 +146,5 @@ export const iframeMissingSandbox = defineRule({
       }
       validateSandboxValue(context, sandboxValueNode.value, sandboxValueNode);
     },
-  }),
+  })),
 });

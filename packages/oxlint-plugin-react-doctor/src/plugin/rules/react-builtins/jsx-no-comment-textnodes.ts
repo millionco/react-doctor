@@ -22,11 +22,14 @@ const hasCommentLikePattern = (text: string, followsExpressionContainer: boolean
     // separator glyph (`{used} // {total} GB`), not a `// comment` —
     // require some comment body after the slashes before flagging.
     if (trimmed.slice(2).trim().length === 0) continue;
-    // The same separator idiom with a literal right side
+    // The same separator idiom with a literal numeric right side
     // (`{used} // 512 GB`) — a first line that continues a preceding
-    // `{expression}` is deliberate rendered text, not a stray comment.
-    // Later lines start fresh and are still checked.
-    if (lineIndex === 0 && followsExpressionContainer) continue;
+    // `{expression}` with a digit-leading value is deliberate rendered
+    // text, not a stray comment. Prose after the slashes
+    // (`{value} // visible to users`) is still a comment; later lines
+    // start fresh and are still checked.
+    if (lineIndex === 0 && followsExpressionContainer && /^\d/.test(trimmed.slice(2).trimStart()))
+      continue;
     return true;
   }
   return false;

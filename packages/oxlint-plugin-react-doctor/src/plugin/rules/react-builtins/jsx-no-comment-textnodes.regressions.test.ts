@@ -27,6 +27,17 @@ describe("react-builtins/jsx-no-comment-textnodes — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  // Only a digit-leading right side reads as a value continuation —
+  // prose after the slashes is a real stray comment and must still fire.
+  it("still flags prose `//` text after an expression container", () => {
+    const result = runRule(
+      jsxNoCommentTextnodes,
+      `function Note({ value }) { return <div>{value} // visible to users</div>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   // Only the FIRST line continues the expression — a later line starting
   // with `//` is a fresh stray comment and must still fire.
   it("still flags a `//` line after the separator line", () => {

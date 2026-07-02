@@ -25,7 +25,8 @@ interface BuildJsonReportInput {
    * True when a `changed` run was intended but its baseline delta couldn't be
    * computed (no merge base — usually a shallow CI checkout — or a failed
    * base/head lint), so `diagnostics` list every finding in the changed files
-   * rather than only the introduced ones. Mutually exclusive with `baseline`.
+   * rather than only the introduced ones. Ignored when `baseline` is set: a
+   * computed baseline (v2) wins, so callers pass at most one.
    */
   baselineDegraded?: boolean;
 }

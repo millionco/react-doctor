@@ -50,7 +50,7 @@ const COPY = {
   baselineDegradedSummary:
     "⚠️ Baseline comparison unavailable: showing all issues in the changed files",
   baselineDegradedBody: (baseBranch) => [
-    `React Doctor compares against \`${baseBranch}\` to report only the issues this pull request introduces. This run couldn't reach the base commit for that comparison (usually a **shallow CI checkout** with no merge base), so it listed **every** issue in the changed files, including ones that already existed on \`${baseBranch}\`.`,
+    `React Doctor compares against \`${baseBranch}\` to report only the issues this pull request introduces. This run couldn't complete that comparison (usually a **shallow CI checkout** with no merge base), so it listed **every** issue in the changed files, including ones that already existed on \`${baseBranch}\`.`,
     "",
     "Give the checkout the full git history so the comparison works:",
     "",

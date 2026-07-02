@@ -58,6 +58,24 @@ describe("nextjs-async-dynamic-api-not-awaited", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag member use after the binding is reassigned from await on itself", () => {
+    const result = runRule(
+      nextjsAsyncDynamicApiNotAwaited,
+      `import { cookies } from 'next/headers';
+       async function f() { let c = cookies(); c = await c; return c.get('t'); }`,
+    );
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags member use that happens before the awaited reassignment", () => {
+    const result = runRule(
+      nextjsAsyncDynamicApiNotAwaited,
+      `import { cookies } from 'next/headers';
+       async function f() { let c = cookies(); const value = c.get('t'); c = await c; return value; }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag cookies() passed as an argument", () => {
     const result = runRule(
       nextjsAsyncDynamicApiNotAwaited,

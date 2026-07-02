@@ -9,6 +9,7 @@ import {
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { ReferenceDescriptor } from "../../semantic/scope-analysis.js";
 
 const DYNAMIC_API_NAMES = new Set(["cookies", "headers", "draftMode"]);
 
@@ -58,6 +59,24 @@ const isDestructureOfReference = (parent: EsTreeNode, referenceIdentifier: EsTre
   parent.init === referenceIdentifier &&
   isNodeOfType(parent.id, "ObjectPattern");
 
+// HACK: oxc's parseSync emits ESTree byte offsets as `start`/`end` (never
+// `range`), which TSESTree's types don't declare — so read them structurally.
+const getNodeStartIndex = (node: EsTreeNode): number =>
+  "start" in node && typeof node.start === "number" ? node.start : -1;
+
+// After the binding is reassigned (e.g. `c = await c`) it no longer holds the
+// un-awaited promise, so only uses before the first write can be violations.
+const firstReassignmentStart = (references: readonly ReferenceDescriptor[]): number => {
+  let earliestWriteStart = Number.POSITIVE_INFINITY;
+  for (const reference of references) {
+    if (reference.flag === "read") continue;
+    const writeStart = getNodeStartIndex(reference.identifier);
+    if (writeStart < 0) continue;
+    earliestWriteStart = Math.min(earliestWriteStart, writeStart);
+  }
+  return earliestWriteStart;
+};
+
 export const nextjsAsyncDynamicApiNotAwaited = defineRule({
   id: "nextjs-async-dynamic-api-not-awaited",
   title: "Un-awaited async next/headers API",
@@ -87,8 +106,11 @@ export const nextjsAsyncDynamicApiNotAwaited = defineRule({
       if (!isNodeOfType(node.id, "Identifier")) return;
       const symbol = context.scopes.symbolFor(node.id);
       if (!symbol) return;
+      const reassignmentStart = firstReassignmentStart(symbol.references);
       for (const reference of symbol.references) {
         const referenceIdentifier = reference.identifier;
+        const referenceStart = getNodeStartIndex(referenceIdentifier);
+        if (referenceStart >= 0 && referenceStart >= reassignmentStart) continue;
         const parent = referenceIdentifier.parent;
         if (!parent) continue;
         if (isDestructureOfReference(parent, referenceIdentifier)) {

@@ -7,7 +7,14 @@ import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 import { isEventHandlerName } from "./event-handler-reference.js";
 
-const collectComponentPropNames = (componentFunction: EsTreeNode): Set<string> => {
+// Memoized per component function node — the prop-name set is a pure
+// function of the (immutable) subtree, and every isControlledPropMirror
+// query for the same component recomputes it otherwise.
+const componentPropNamesCache = new WeakMap<EsTreeNode, ReadonlySet<string>>();
+
+const collectComponentPropNames = (componentFunction: EsTreeNode): ReadonlySet<string> => {
+  const cached = componentPropNamesCache.get(componentFunction);
+  if (cached) return cached;
   const propNames = new Set<string>();
   if (!isFunctionLike(componentFunction)) return propNames;
   const propsObjectParamNames = new Set<string>();
@@ -28,30 +35,34 @@ const collectComponentPropNames = (componentFunction: EsTreeNode): Set<string> =
       collectPatternNames(child.id, propNames);
     }
   });
+  componentPropNamesCache.set(componentFunction, propNames);
   return propNames;
 };
 
-const declaresBindingNamed = (functionNode: EsTreeNode, bindingName: string): boolean => {
+// Own-scope bound names (params + non-nested declarators) per function node,
+// memoized so the repeated "does this nested function declare X" checks are
+// a Set lookup instead of a fresh subtree walk each time.
+const ownScopeBoundNamesCache = new WeakMap<EsTreeNode, ReadonlySet<string>>();
+
+const getOwnScopeBoundNames = (functionNode: EsTreeNode): ReadonlySet<string> => {
+  const cached = ownScopeBoundNamesCache.get(functionNode);
+  if (cached) return cached;
   const boundNames = new Set<string>();
   if (isFunctionLike(functionNode)) {
     for (const param of functionNode.params ?? []) collectPatternNames(param, boundNames);
   }
-  if (boundNames.has(bindingName)) return true;
-  let declaresName = false;
   walkAst(functionNode, (child: EsTreeNode): boolean | void => {
-    if (declaresName) return false;
     if (child !== functionNode && isFunctionLike(child)) return false;
     if (isNodeOfType(child, "VariableDeclarator")) {
-      const declaratorNames = new Set<string>();
-      collectPatternNames(child.id, declaratorNames);
-      if (declaratorNames.has(bindingName)) {
-        declaresName = true;
-        return false;
-      }
+      collectPatternNames(child.id, boundNames);
     }
   });
-  return declaresName;
+  ownScopeBoundNamesCache.set(functionNode, boundNames);
+  return boundNames;
 };
+
+const declaresBindingNamed = (functionNode: EsTreeNode, bindingName: string): boolean =>
+  getOwnScopeBoundNames(functionNode).has(bindingName);
 
 const isPropertyNamePosition = (identifier: EsTreeNode): boolean => {
   const parent = identifier.parent;

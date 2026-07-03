@@ -58,7 +58,13 @@ const isReactVersionAtLeast = (version: string, major: number, minor: number): b
   return actualMajor > major || (actualMajor === major && actualMinor >= minor);
 };
 
+// Memoized per (immutable) subtree root — nested candidates re-query the
+// same regions from several visitors, so each subtree is walked once.
+const containsJsxCache = new WeakMap<EsTreeNode, boolean>();
+
 const containsJsx = (root: EsTreeNode): boolean => {
+  const cached = containsJsxCache.get(root);
+  if (cached !== undefined) return cached;
   let found = false;
   const visit = (node: EsTreeNode): void => {
     if (found) return;
@@ -83,6 +89,7 @@ const containsJsx = (root: EsTreeNode): boolean => {
     }
   };
   visit(root);
+  containsJsxCache.set(root, found);
   return found;
 };
 
@@ -269,39 +276,6 @@ const hasDisplayNameMember = (classNode: EsTreeNode): boolean => {
   return false;
 };
 
-// Looks for a `<ClassName>.displayName = ...` assignment ANYWHERE in
-// the program. Transpiler output and most React codebases attach
-// display names this way for non-anonymous classes/functions.
-const hasDisplayNameAssignment = (className: string, programRoot: EsTreeNode): boolean => {
-  let found = false;
-  const visit = (node: EsTreeNode): void => {
-    if (found) return;
-    if (
-      isNodeOfType(node, "AssignmentExpression") &&
-      isNodeOfType(node.left, "MemberExpression") &&
-      isNodeOfType(node.left.object, "Identifier") &&
-      node.left.object.name === className &&
-      getStaticMemberName(node.left) === "displayName"
-    ) {
-      found = true;
-      return;
-    }
-    const record = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-      if (key === "parent") continue;
-      const child = record[key];
-      if (Array.isArray(child)) {
-        for (const item of child) if (isAstNode(item)) visit(item);
-      } else if (isAstNode(child)) {
-        visit(child);
-      }
-      if (found) return;
-    }
-  };
-  visit(programRoot);
-  return found;
-};
-
 const memberExpressionPath = (node: EsTreeNode): ReadonlyArray<string> => {
   if (isNodeOfType(node, "Identifier")) return [node.name];
   if (!isNodeOfType(node, "MemberExpression")) return [];
@@ -310,22 +284,34 @@ const memberExpressionPath = (node: EsTreeNode): ReadonlyArray<string> => {
   return propertyName ? [...objectPath, propertyName] : objectPath;
 };
 
-const hasDisplayNameAssignmentForProperty = (
-  propertyName: string,
-  programRoot: EsTreeNode,
-): boolean => {
-  let found = false;
+interface DisplayNameAssignmentIndex {
+  // `X.displayName = …` targets where `X` is a plain identifier.
+  identifierTargets: ReadonlySet<string>;
+  // Every static path segment of every `….displayName = …` target object
+  // (`Foo.Bar.displayName = …` contributes both `Foo` and `Bar`).
+  memberPathSegments: ReadonlySet<string>;
+}
+
+// One program walk indexes every `<target>.displayName = …` assignment so
+// each candidate answers with a Set lookup instead of re-walking the file.
+const displayNameAssignmentIndexCache = new WeakMap<EsTreeNode, DisplayNameAssignmentIndex>();
+
+const getDisplayNameAssignmentIndex = (programRoot: EsTreeNode): DisplayNameAssignmentIndex => {
+  const cached = displayNameAssignmentIndexCache.get(programRoot);
+  if (cached) return cached;
+  const identifierTargets = new Set<string>();
+  const memberPathSegments = new Set<string>();
   const visit = (node: EsTreeNode): void => {
-    if (found) return;
     if (
       isNodeOfType(node, "AssignmentExpression") &&
       isNodeOfType(node.left, "MemberExpression") &&
       getStaticMemberName(node.left) === "displayName"
     ) {
-      const objectPath = memberExpressionPath(node.left.object);
-      if (objectPath.includes(propertyName)) {
-        found = true;
-        return;
+      if (isNodeOfType(node.left.object, "Identifier")) {
+        identifierTargets.add(node.left.object.name);
+      }
+      for (const segment of memberExpressionPath(node.left.object)) {
+        memberPathSegments.add(segment);
       }
     }
     const record = node as unknown as Record<string, unknown>;
@@ -337,12 +323,24 @@ const hasDisplayNameAssignmentForProperty = (
       } else if (isAstNode(child)) {
         visit(child);
       }
-      if (found) return;
     }
   };
   visit(programRoot);
-  return found;
+  const index: DisplayNameAssignmentIndex = { identifierTargets, memberPathSegments };
+  displayNameAssignmentIndexCache.set(programRoot, index);
+  return index;
 };
+
+// Looks for a `<ClassName>.displayName = ...` assignment ANYWHERE in
+// the program. Transpiler output and most React codebases attach
+// display names this way for non-anonymous classes/functions.
+const hasDisplayNameAssignment = (className: string, programRoot: EsTreeNode): boolean =>
+  getDisplayNameAssignmentIndex(programRoot).identifierTargets.has(className);
+
+const hasDisplayNameAssignmentForProperty = (
+  propertyName: string,
+  programRoot: EsTreeNode,
+): boolean => getDisplayNameAssignmentIndex(programRoot).memberPathSegments.has(propertyName);
 
 // Port of `oxc_linter::rules::react::display_name`. Reports React
 // components whose displayName is unknown to React DevTools — most

@@ -77,76 +77,37 @@ const collectPatternIdentifiers = (pattern: EsTreeNode, target: Set<string>): vo
   }
 };
 
-const collectAssignedIdentifiers = (block: EsTreeNode): Set<string> => {
-  const assigned = new Set<string>();
-  walkAst(block, (child: EsTreeNode): boolean | void => {
-    if (isInlineFunctionExpression(child) || isNodeOfType(child, "FunctionDeclaration"))
-      return false;
-    if (isNodeOfType(child, "AssignmentExpression") && child.left) {
-      collectPatternIdentifiers(child.left, assigned);
-    }
-  });
-  return assigned;
-};
-
-const collectAwaitedArgIdentifiers = (block: EsTreeNode): Set<string> => {
-  const referenced = new Set<string>();
-  walkAst(block, (child: EsTreeNode): boolean | void => {
-    if (isInlineFunctionExpression(child) || isNodeOfType(child, "FunctionDeclaration"))
-      return false;
-    if (!isNodeOfType(child, "AwaitExpression") || !child.argument) return;
-    collectReferenceIdentifierNames(child.argument, referenced);
-  });
-  return referenced;
-};
-
 const ARRAY_MUTATION_METHOD_NAMES = new Set(["push", "unshift", "splice"]);
-
-// Arrays mutated in-place (`results.push(...)`, `acc.unshift(...)`) carry
-// state across iterations just like a reassigned variable. Collect the
-// mutated object's name so a later iteration reading from it counts as a
-// loop-carried dependency.
-const collectMutatedArrayNames = (block: EsTreeNode): Set<string> => {
-  const mutated = new Set<string>();
-  walkAst(block, (child: EsTreeNode): boolean | void => {
-    if (child !== block && isFunctionLike(child)) return false;
-    if (!isNodeOfType(child, "CallExpression")) return;
-    const callee = child.callee;
-    if (
-      isNodeOfType(callee, "MemberExpression") &&
-      !callee.computed &&
-      isNodeOfType(callee.property, "Identifier") &&
-      ARRAY_MUTATION_METHOD_NAMES.has(callee.property.name) &&
-      isNodeOfType(callee.object, "Identifier")
-    ) {
-      mutated.add(callee.object.name);
-    }
-  });
-  return mutated;
-};
 
 // Variables initialized by reading any of `names` (e.g.
 // `const prev = results[results.length - 1]`) carry the mutated array's
 // state forward, so awaiting on them is also order-dependent. Iterated to
-// a fixpoint to follow multi-step derivations.
+// a fixpoint to follow multi-step derivations. The declarators and their
+// referenced names never change between passes, so they are collected in
+// one walk and only the membership test repeats per round.
 const addDerivedBindings = (block: EsTreeNode, names: Set<string>): void => {
+  const declaratorBindings: Array<{ declaredName: string; referencedNames: Set<string> }> = [];
+  walkAst(block, (child: EsTreeNode): boolean | void => {
+    if (child !== block && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "VariableDeclarator") || !child.init) return;
+    if (!isNodeOfType(child.id, "Identifier")) return;
+    const referencedNames = new Set<string>();
+    collectReferenceIdentifierNames(child.init, referencedNames);
+    declaratorBindings.push({ declaredName: child.id.name, referencedNames });
+  });
   let didGrow = true;
   while (didGrow) {
     didGrow = false;
-    walkAst(block, (child: EsTreeNode): boolean | void => {
-      if (child !== block && isFunctionLike(child)) return false;
-      if (!isNodeOfType(child, "VariableDeclarator") || !child.init) return;
-      if (!isNodeOfType(child.id, "Identifier") || names.has(child.id.name)) return;
-      const initReferences = new Set<string>();
-      collectReferenceIdentifierNames(child.init, initReferences);
-      for (const referenced of initReferences) {
+    for (const { declaredName, referencedNames } of declaratorBindings) {
+      if (names.has(declaredName)) continue;
+      for (const referenced of referencedNames) {
         if (names.has(referenced)) {
-          names.add(child.id.name);
+          names.add(declaredName);
           didGrow = true;
           break;
         }
       }
-    });
+    }
   }
 };
 
@@ -156,12 +117,35 @@ const addDerivedBindings = (block: EsTreeNode, names: Set<string>): void => {
 // covers carries that flow through an in-place array mutation
 // (`results.push(await fetchNext(id, prev))` with `prev` read from
 // `results`): the awaited argument reads a binding the loop mutates.
+// Assignments, in-place array mutations, and awaited-argument reads inspect
+// disjoint node types, so one walk collects all three signal sets.
 const hasLoopCarriedDependency = (block: EsTreeNode): boolean => {
-  const carried = collectAssignedIdentifiers(block);
-  for (const name of collectMutatedArrayNames(block)) carried.add(name);
+  const carried = new Set<string>();
+  const awaitedReferences = new Set<string>();
+  walkAst(block, (child: EsTreeNode): boolean | void => {
+    if (child !== block && isFunctionLike(child)) return false;
+    if (isNodeOfType(child, "AssignmentExpression") && child.left) {
+      collectPatternIdentifiers(child.left, carried);
+      return;
+    }
+    if (isNodeOfType(child, "AwaitExpression") && child.argument) {
+      collectReferenceIdentifierNames(child.argument, awaitedReferences);
+      return;
+    }
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = child.callee;
+    if (
+      isNodeOfType(callee, "MemberExpression") &&
+      !callee.computed &&
+      isNodeOfType(callee.property, "Identifier") &&
+      ARRAY_MUTATION_METHOD_NAMES.has(callee.property.name) &&
+      isNodeOfType(callee.object, "Identifier")
+    ) {
+      carried.add(callee.object.name);
+    }
+  });
   if (carried.size === 0) return false;
   addDerivedBindings(block, carried);
-  const awaitedReferences = collectAwaitedArgIdentifiers(block);
   for (const name of carried) {
     if (awaitedReferences.has(name)) return true;
   }

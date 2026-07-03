@@ -169,6 +169,20 @@ export const rerenderStateOnlyInHandlers = defineRule({
         renderReachableNames.add(reachableName);
       }
 
+      // One walk records which setters are called at all, replacing a full
+      // component-body walk per binding.
+      const setterNames = new Set(bindings.map((binding) => binding.setterName));
+      const calledSetterNames = new Set<string>();
+      walkAst(componentBody, (child: EsTreeNode) => {
+        if (
+          isNodeOfType(child, "CallExpression") &&
+          isNodeOfType(child.callee, "Identifier") &&
+          setterNames.has(child.callee.name)
+        ) {
+          calledSetterNames.add(child.callee.name);
+        }
+      });
+
       for (const binding of bindings) {
         if (renderReachableNames.has(binding.valueName)) continue;
         // Underscore-only or underscore-prefixed value names signal
@@ -192,18 +206,7 @@ export const rerenderStateOnlyInHandlers = defineRule({
           continue;
         }
 
-        let setterCalled = false;
-        walkAst(componentBody, (child: EsTreeNode) => {
-          if (setterCalled) return;
-          if (
-            isNodeOfType(child, "CallExpression") &&
-            isNodeOfType(child.callee, "Identifier") &&
-            child.callee.name === binding.setterName
-          ) {
-            setterCalled = true;
-          }
-        });
-        if (!setterCalled) continue;
+        if (!calledSetterNames.has(binding.setterName)) continue;
 
         // The "store information from previous renders" pattern reads the
         // value in a render-phase guard (`if (value !== prevValue)`) and

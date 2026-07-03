@@ -64,8 +64,15 @@ const isSingleFieldEqualityPredicate = (node: EsTreeNodeOfType<"CallExpression">
 // inside the loop body. When the `.find()` receiver roots at one of
 // these, the receiver is a different array each pass, so a single
 // pre-loop Map can't replace it — flagging it would be a false
-// positive.
-const collectLoopBoundNames = (loop: EsTreeNode, names: Set<string>): void => {
+// positive. The set is a pure function of the (immutable) loop subtree, so
+// it is memoized per loop node — nested `.find()`s under the same loops
+// reuse one walk instead of re-collecting per call site.
+const loopBoundNamesCache = new WeakMap<EsTreeNode, ReadonlySet<string>>();
+
+const getLoopBoundNames = (loop: EsTreeNode): ReadonlySet<string> => {
+  const cached = loopBoundNamesCache.get(loop);
+  if (cached) return cached;
+  const names = new Set<string>();
   if ((isNodeOfType(loop, "ForOfStatement") || isNodeOfType(loop, "ForInStatement")) && loop.left) {
     walkAst(loop.left, (child: EsTreeNode) => {
       if (isNodeOfType(child, "Identifier")) names.add(child.name);
@@ -88,6 +95,8 @@ const collectLoopBoundNames = (loop: EsTreeNode, names: Set<string>): void => {
       if (targetRoot) names.add(targetRoot);
     }
   });
+  loopBoundNamesCache.set(loop, names);
+  return names;
 };
 
 // `groups[i].links.find(...)` — the chain roots at an invariant name,
@@ -126,7 +135,9 @@ const isLoopVariantReceiver = (node: EsTreeNodeOfType<"CallExpression">): boolea
   const loopBoundNames = new Set<string>();
   let ancestor: EsTreeNode | null | undefined = node.parent;
   while (ancestor) {
-    if (LOOP_TYPES.includes(ancestor.type)) collectLoopBoundNames(ancestor, loopBoundNames);
+    if (LOOP_TYPES.includes(ancestor.type)) {
+      for (const name of getLoopBoundNames(ancestor)) loopBoundNames.add(name);
+    }
     ancestor = ancestor.parent;
   }
   if (loopBoundNames.has(receiverRoot)) return true;

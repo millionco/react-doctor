@@ -56,35 +56,6 @@ const collectChildComponentNames = (
   });
 };
 
-const findSameFileComponentBody = (
-  programRoot: EsTreeNode,
-  componentName: string,
-): EsTreeNode | null => {
-  let foundBody: EsTreeNode | null = null;
-  walkAst(programRoot, (node: EsTreeNode) => {
-    if (foundBody) return false;
-    if (isNodeOfType(node, "FunctionDeclaration") && node.id && node.id.name === componentName) {
-      foundBody = node.body;
-      return false;
-    }
-    if (
-      isNodeOfType(node, "VariableDeclarator") &&
-      isNodeOfType(node.id, "Identifier") &&
-      node.id.name === componentName
-    ) {
-      const initializer = node.init;
-      if (
-        isNodeOfType(initializer, "ArrowFunctionExpression") ||
-        isNodeOfType(initializer, "FunctionExpression")
-      ) {
-        foundBody = initializer.body;
-        return false;
-      }
-    }
-  });
-  return foundBody;
-};
-
 const countEffectHookCalls = (body: EsTreeNode | null): number => {
   if (!body) return 0;
   let count = 0;
@@ -92,6 +63,59 @@ const countEffectHookCalls = (body: EsTreeNode | null): number => {
     if (!isNodeOfType(child, "CallExpression")) return;
     if (isHookCall(child, EFFECT_HOOK_NAMES)) count++;
   });
+  return count;
+};
+
+interface ComponentEffectIndex {
+  // First (pre-order) same-file function body per name — the same body a
+  // fresh first-match program walk would resolve.
+  bodyByName: Map<string, EsTreeNode>;
+  // Effect-hook counts, filled lazily per queried component.
+  effectCountByName: Map<string, number>;
+}
+
+// One program walk indexes every named function body; each Activity child
+// then costs a Map lookup plus one lazily-cached body count, instead of a
+// full program walk per child name per Activity element.
+const componentEffectIndexCache = new WeakMap<EsTreeNode, ComponentEffectIndex>();
+
+const getComponentEffectIndex = (programRoot: EsTreeNode): ComponentEffectIndex => {
+  const cached = componentEffectIndexCache.get(programRoot);
+  if (cached) return cached;
+  const bodyByName = new Map<string, EsTreeNode>();
+  walkAst(programRoot, (node: EsTreeNode) => {
+    if (isNodeOfType(node, "FunctionDeclaration") && node.id && !bodyByName.has(node.id.name)) {
+      bodyByName.set(node.id.name, node.body);
+      return;
+    }
+    if (
+      isNodeOfType(node, "VariableDeclarator") &&
+      isNodeOfType(node.id, "Identifier") &&
+      !bodyByName.has(node.id.name)
+    ) {
+      const initializer = node.init;
+      if (
+        isNodeOfType(initializer, "ArrowFunctionExpression") ||
+        isNodeOfType(initializer, "FunctionExpression")
+      ) {
+        bodyByName.set(node.id.name, initializer.body);
+      }
+    }
+  });
+  const index: ComponentEffectIndex = { bodyByName, effectCountByName: new Map() };
+  componentEffectIndexCache.set(programRoot, index);
+  return index;
+};
+
+const getSameFileComponentEffectCount = (
+  programRoot: EsTreeNode,
+  componentName: string,
+): number => {
+  const index = getComponentEffectIndex(programRoot);
+  const cachedCount = index.effectCountByName.get(componentName);
+  if (cachedCount !== undefined) return cachedCount;
+  const count = countEffectHookCalls(index.bodyByName.get(componentName) ?? null);
+  index.effectCountByName.set(componentName, count);
   return count;
 };
 
@@ -192,9 +216,7 @@ export const activityWrapsEffectHeavySubtree = defineRule({
         let totalEffects = 0;
         const effectfulChildren: string[] = [];
         for (const componentName of childComponentNames) {
-          const body = findSameFileComponentBody(programRoot, componentName);
-          if (!body) continue;
-          const effectCount = countEffectHookCalls(body);
+          const effectCount = getSameFileComponentEffectCount(programRoot, componentName);
           if (effectCount === 0) continue;
           totalEffects += effectCount;
           effectfulChildren.push(`<${componentName}>`);

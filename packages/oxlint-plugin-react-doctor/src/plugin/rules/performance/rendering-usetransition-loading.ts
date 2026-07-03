@@ -61,64 +61,7 @@ const callsIdentifier = (root: EsTreeNode | null, identifierName: string): boole
   return found;
 };
 
-// True when ANY async-context function inside `componentBody` calls
-// `setterName`. An "async-context function" is `async` or has an own-
-// scope `await`. Setter calls inside non-async helpers (e.g. a sync
-// `handleTabChange` that toggles `setIsTabPending`) don't count, so a
-// sync state transition in a component that ALSO has an unrelated
-// `handleSubmit = async () => …` no longer gets suppressed.
-const setterIsCalledInAsyncContext = (
-  componentBody: EsTreeNode | null,
-  setterName: string,
-): boolean => {
-  if (!componentBody) return false;
-  let found = false;
-  walkAst(componentBody, (child: EsTreeNode) => {
-    if (found) return;
-    if (!isFunctionLike(child)) return;
-    const functionBody = (child as { body: EsTreeNode | null }).body;
-    const isAsyncContext =
-      Boolean((child as { async?: boolean }).async) || hasOwnAwait(functionBody);
-    if (!isAsyncContext) return;
-    if (callsIdentifier(functionBody, setterName)) found = true;
-  });
-  return found;
-};
-
 const PROMISE_CHAIN_METHOD_NAMES: ReadonlySet<string> = new Set(["then", "catch", "finally"]);
-
-// True when `setterName` is called inside a Promise-chain callback
-// (`loadData().then(() => setIsLoading(false))`). That flag tracks real
-// async I/O the same way an `async`/`await` setter does, so `useTransition`
-// (which only deprioritizes sync state updates, it doesn't await a promise)
-// is not a substitute.
-const setterIsCalledInPromiseChain = (
-  componentBody: EsTreeNode | null,
-  setterName: string,
-): boolean => {
-  if (!componentBody) return false;
-  let found = false;
-  walkAst(componentBody, (child: EsTreeNode) => {
-    if (found) return;
-    if (!isNodeOfType(child, "CallExpression")) return;
-    const callee = child.callee;
-    if (
-      !isNodeOfType(callee, "MemberExpression") ||
-      !isNodeOfType(callee.property, "Identifier") ||
-      !PROMISE_CHAIN_METHOD_NAMES.has(callee.property.name)
-    ) {
-      return;
-    }
-    for (const argument of child.arguments ?? []) {
-      if (!isFunctionLike(argument)) continue;
-      if (callsIdentifier(argument.body, setterName)) {
-        found = true;
-        return;
-      }
-    }
-  });
-  return found;
-};
 
 // Identifiers that, when present alongside a loading useState, strongly
 // signal async data fetching (not a transition). The rule's
@@ -138,24 +81,47 @@ const ASYNC_DATA_CALLEE_NAMES: ReadonlySet<string> = new Set([
   "axios",
 ]);
 
-const referencesAsyncDataApi = (body: EsTreeNode | null): boolean => {
-  if (!body) return false;
+// One pass over the component body computes every async-work signal the
+// caller ORs together, short-circuiting on the first hit:
+//   - `setterName` called inside an async-context function ("async" or an
+//     own-scope `await`) — a sync helper toggling the flag doesn't count.
+//   - `setterName` called inside a Promise-chain callback
+//     (`loadData().then(() => setIsLoading(false))`).
+//   - a call to a known async-data hook / global anywhere in the body.
+const hasAsyncLoadingWork = (fnBody: EsTreeNode, setterName: string | null): boolean => {
   let found = false;
-  walkAst(body, (child: EsTreeNode) => {
-    if (found) return;
+  walkAst(fnBody, (child: EsTreeNode) => {
+    if (found) return false;
     if (isNodeOfType(child, "CallExpression")) {
       const callee = child.callee;
       if (isNodeOfType(callee, "Identifier") && ASYNC_DATA_CALLEE_NAMES.has(callee.name)) {
         found = true;
-        return;
+        return false;
       }
-      if (
-        isNodeOfType(callee, "MemberExpression") &&
-        isNodeOfType(callee.property, "Identifier") &&
-        ASYNC_DATA_CALLEE_NAMES.has(callee.property.name)
-      ) {
+      if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+        if (ASYNC_DATA_CALLEE_NAMES.has(callee.property.name)) {
+          found = true;
+          return false;
+        }
+        if (setterName !== null && PROMISE_CHAIN_METHOD_NAMES.has(callee.property.name)) {
+          for (const argument of child.arguments ?? []) {
+            if (!isFunctionLike(argument)) continue;
+            if (callsIdentifier(argument.body, setterName)) {
+              found = true;
+              return false;
+            }
+          }
+        }
+      }
+      return;
+    }
+    if (setterName !== null && isFunctionLike(child)) {
+      const functionBody = (child as { body: EsTreeNode | null }).body;
+      const isAsyncContext =
+        Boolean((child as { async?: boolean }).async) || hasOwnAwait(functionBody);
+      if (isAsyncContext && callsIdentifier(functionBody, setterName)) {
         found = true;
-        return;
+        return false;
       }
     }
   });
@@ -192,14 +158,7 @@ export const renderingUsetransitionLoading = defineRule({
       // flag is wrapping that async work) OR a call to a known
       // async-data hook / global in the component body.
       const fnBody = enclosingFunctionBody(node as EsTreeNode);
-      if (
-        fnBody &&
-        ((setterName && setterIsCalledInAsyncContext(fnBody, setterName)) ||
-          (setterName && setterIsCalledInPromiseChain(fnBody, setterName)) ||
-          referencesAsyncDataApi(fnBody))
-      ) {
-        return;
-      }
+      if (fnBody && hasAsyncLoadingWork(fnBody, setterName)) return;
 
       context.report({
         node: node.init,

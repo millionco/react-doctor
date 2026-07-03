@@ -14,6 +14,7 @@ import { isHookCall } from "../../utils/is-hook-call.js";
 import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -33,7 +34,9 @@ export const tanstackStartNoNavigateInRender = defineRule({
   severity: "warn",
   recommendation:
     "Use `throw redirect({ to: '/path' })` in `beforeLoad` or `loader`. navigate() during render causes hydration issues.",
-  create: (context: RuleContext) => {
+  create: (context: RuleContext): RuleVisitors => {
+    if (!isInProjectDirectory(context, "routes")) return {};
+
     // HACK: only callbacks that React calls LATER are safe scopes for
     // navigate() — useEffect / useLayoutEffect (post-commit), useCallback
     // / useMemo (cached, fired by event handlers later), JSX `onXxx`
@@ -45,7 +48,6 @@ export const tanstackStartNoNavigateInRender = defineRule({
     // they must NOT be treated as deferred — they're still render-time
     // side effects. A pure function-depth counter would skip them and
     // miss real bugs; the explicit allow-list is the correct boundary.
-    const isRouteFile = isInProjectDirectory(context, "routes");
     let deferredCallbackDepth = 0;
     let eventHandlerDepth = 0;
 
@@ -191,8 +193,6 @@ export const tanstackStartNoNavigateInRender = defineRule({
 
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        if (!isRouteFile) return;
-
         if (isDeferredHookCall(node)) deferredCallbackDepth++;
 
         if (deferredCallbackDepth > 0 || eventHandlerDepth > 0) return;
@@ -211,47 +211,38 @@ export const tanstackStartNoNavigateInRender = defineRule({
         }
       },
       "CallExpression:exit"(node: EsTreeNode) {
-        if (!isRouteFile) return;
         if (isDeferredHookCall(node)) {
           deferredCallbackDepth = Math.max(0, deferredCallbackDepth - 1);
         }
       },
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-        if (!isRouteFile) return;
         if (isEventHandlerAttribute(node)) eventHandlerDepth++;
       },
       "JSXAttribute:exit"(node: EsTreeNode) {
-        if (!isRouteFile) return;
         if (isEventHandlerAttribute(node)) {
           eventHandlerDepth = Math.max(0, eventHandlerDepth - 1);
         }
       },
       Property(node: EsTreeNodeOfType<"Property">) {
-        if (!isRouteFile) return;
         if (isEventHandlerProperty(node)) eventHandlerDepth++;
       },
       "Property:exit"(node: EsTreeNode) {
-        if (!isRouteFile) return;
         if (isEventHandlerProperty(node)) {
           eventHandlerDepth = Math.max(0, eventHandlerDepth - 1);
         }
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
-        if (!isRouteFile) return;
         if (isHandlerNamedVariableDeclarator(node)) eventHandlerDepth++;
       },
       "VariableDeclarator:exit"(node: EsTreeNode) {
-        if (!isRouteFile) return;
         if (isHandlerNamedVariableDeclarator(node)) {
           eventHandlerDepth = Math.max(0, eventHandlerDepth - 1);
         }
       },
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
-        if (!isRouteFile) return;
         if (isHandlerNamedFunctionDeclaration(node)) eventHandlerDepth++;
       },
       "FunctionDeclaration:exit"(node: EsTreeNode) {
-        if (!isRouteFile) return;
         if (isHandlerNamedFunctionDeclaration(node)) {
           eventHandlerDepth = Math.max(0, eventHandlerDepth - 1);
         }

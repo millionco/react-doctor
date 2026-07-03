@@ -51,4 +51,13 @@ describe("tanstack-start/tanstack-start-no-anchor-element — regressions", () =
     );
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("stays silent outside the routes directory", () => {
+    const { diagnostics } = runRule(
+      tanstackStartNoAnchorElement,
+      `const C = () => <a href="/dashboard">Go</a>;`,
+      { filename: "src/components/nav.tsx" },
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
 });

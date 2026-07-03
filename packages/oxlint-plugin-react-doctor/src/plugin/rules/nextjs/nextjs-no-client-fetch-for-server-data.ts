@@ -8,6 +8,7 @@ import { hasDirective } from "../../utils/has-directive.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoClientFetchForServerData = defineRule({
@@ -18,7 +19,12 @@ export const nextjsNoClientFetchForServerData = defineRule({
   severity: "warn",
   recommendation:
     "Remove 'use client' and fetch directly in the Server Component. No API round-trip, and secrets stay on the server.",
-  create: (context: RuleContext) => {
+  create: (context: RuleContext): RuleVisitors => {
+    const filename = normalizeFilename(context.filename ?? "");
+    const isPageOrLayoutFile =
+      PAGE_OR_LAYOUT_FILE_PATTERN.test(filename) || isInProjectDirectory(context, "pages");
+    if (!isPageOrLayoutFile) return {};
+
     let fileHasUseClient = false;
 
     return {
@@ -31,17 +37,11 @@ export const nextjsNoClientFetchForServerData = defineRule({
         const callback = getEffectCallback(node);
         if (!callback || !containsFetchCall(callback, { stopAtFunctionBoundary: true })) return;
 
-        const filename = normalizeFilename(context.filename ?? "");
-        const isPageOrLayoutFile =
-          PAGE_OR_LAYOUT_FILE_PATTERN.test(filename) || isInProjectDirectory(context, "pages");
-
-        if (isPageOrLayoutFile) {
-          context.report({
-            node,
-            message:
-              "useEffect + fetch in a page/layout makes your users wait through an extra round trip & loading spinner.",
-          });
-        }
+        context.report({
+          node,
+          message:
+            "useEffect + fetch in a page/layout makes your users wait through an extra round trip & loading spinner.",
+        });
       },
     };
   },

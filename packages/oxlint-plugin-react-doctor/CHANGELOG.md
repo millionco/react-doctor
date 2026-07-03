@@ -1,5 +1,124 @@
 # oxlint-plugin-react-doctor
 
+## 0.6.3
+
+### Patch Changes
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - no-array-index-as-key: stop flagging index keys when the mapped receiver is a variable holding a static placeholder array (`const list = Array.from({ length: 3 }); list.map(...)`) — the binding is now resolved to its initializer, matching the existing inline `Array.from({ length: N })` exemption.
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - button-has-type: stop flagging `type` values wrapped in TS assertion expressions (`"submit" as const`, `satisfies`) — the wrapper is stripped before proving validity, so a local `const kind = "submit" as const` now resolves like the bare literal; invalid values under a wrapper stay flagged.
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - fix(react-builtins): `checked-requires-onchange-or-readonly` no longer flags
+  statically disabled checkboxes (`<input type="checkbox" checked={x} disabled />`).
+  Users can't toggle a disabled input, so no `onChange` is needed — React's own
+  controlled-checkbox runtime warning exempts `disabled` the same way. A dynamic
+  `disabled={cond}` still reports, since the input can be enabled at runtime.
+  Found by corpus census triage.
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - fix: six false-positive classes found by differential testing against the
+  upstream ESLint plugins over an OSS corpus:
+
+  - `exhaustive-deps`: cleanup `ref.current` reads no longer warn when the ref
+    is assigned via a callback anywhere in the component, and an explicit
+    `undefined` deps argument is treated like an omitted one for effect hooks
+    (upstream parity; `null` still reports as a non-array deps list).
+  - `no-static-element-interactions`: a string-literal role wrapped in a JSX
+    expression container (`role={'link'}`) now counts as a role, and `<svg>`
+    is skipped — it has the implicit `graphics-document` role, so it isn't
+    static (upstream parity).
+  - `no-aria-hidden-on-focusable`: dynamic `aria-hidden` expressions
+    (`aria-hidden={!interactive || undefined}`) are no longer treated as
+    literal `true`.
+  - `img-redundant-alt`: hyphens and underscores are word-continuation
+    characters, so `alt="image-left-top"` and `alt="my_image_1"` no longer
+    match the redundant word "image".
+  - `no-noninteractive-tabindex`: the roving-tabindex pattern
+    (`tabIndex={active ? 0 : -1}`) is no longer flagged.
+  - `rules-of-hooks`: hooks in anonymous callbacks with no resolved name are
+    skipped (upstream's conservative approach), and a hook call in a ternary
+    test position is no longer treated as conditional.
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - display-name: a curried component factory now reports consistently whether the outer arrow uses an expression body (`(order) => (props) => <X />`) or a block body with an explicit return — the block-body shape was silently skipped (found by the metamorphic arrow-body fuzz oracle).
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - fix(react-builtins): `exhaustive-deps` now truncates captured member chains at
+  `.current` (e.g. `textareaRef.current.style.height` → `textareaRef`), matching
+  upstream eslint-plugin-react-hooks. Previously an effect reading a prop-passed
+  ref reported mutable `.current` paths as "stale" dependencies and effectively
+  told users to add `ref.current.*` values to the deps array, which is never
+  valid. Found by corpus census triage.
+
+- [#1030](https://github.com/millionco/react-doctor/pull/1030) [`b4faf74`](https://github.com/millionco/react-doctor/commit/b4faf74744c730d0836235854b0233ce59a42566) Thanks [@aidenybai](https://github.com/aidenybai)! - fix(react-builtins): `jsx-no-jsx-as-prop` recognises more conventional JSX
+  slot props mined from the real-world corpus — the `*Avatar`, `*Text`,
+  `*State`, and `*Zone` suffixes (material-ui `ListItem
+leftAvatar`/`primaryText`, supabase `ChartContent loadingState`, leemons
+  `leftZone`/`rightZone`), the `config` slot, and capitalised exact forms of
+  known slot names (`Footer={<PageFooter />}`). Inline JSX in these slots is the
+  component's designed API, so flagging it was unactionable noise. Found by the
+  fuzz FP oracle.
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - Fix false positives found on a fresh React 19 / RSC / Next.js 15 corpus:
+
+  - `server-sequential-independent-await` no longer flags awaits of Next.js request-scoped APIs (`headers()`, `cookies()`, `draftMode()`, `connection()`, next-intl server helpers) or awaits of already-existing promises such as Next.js 15 `props.params` / `props.searchParams`.
+  - `server-fetch-without-revalidate` no longer flags the documented `next/og` static-asset fetch (`fetch(new URL(..., import.meta.url))`) or Remix / React Router `app/` route files, where the Next.js data cache never applies.
+  - `rendering-hydration-mismatch-time` no longer flags time/random values in JSX rasterized by `ImageResponse` / satori (og images never hydrate).
+  - `nextjs-missing-metadata` no longer flags `"use client"` pages, which cannot export `metadata` / `generateMetadata`.
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - no-array-index-as-key: recognize composite keys whose per-item identity comes from a destructured callback field (`({ message }, index) => key={`${message} ${index}`}`) or a method call on the item (`key={`${index}-${color.toHexString()}`}`) — the index is just a uniqueness fallback there; composite keys with no item-derived part stay flagged. Also extend the static-placeholder exemption to `Array.from({length: values.length}, …)` and to numeric `for (let i = 0; …)` loop counters — both imperative twins of the already-exempt `Array(N)` placeholder; a manually incremented index over real items stays flagged.
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - no-derived-state (and the shared post-mount-read detector): recognize layout measurements read through a local alias of a ref's `.current` (`const el = contentRef.current; setX(el.scrollHeight > max)`) as deferred DOM measurements, not derived state.
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - no-direct-state-mutation: stop flagging in-place writes to a callback-ref target. When a `useState` setter is passed straight to a JSX `ref` attribute (`ref={setNode}`), the paired state holds a DOM element / component instance, so `node.dataset.x = ...` or `node.style.x = ...` is deliberate imperative DOM work, not a lost state update. The wangeditor `useState(null)` + effect-mutation bug (whose ref comes from a separate `useRef`) stays flagged.
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - no-initialize-state: stop flagging mount effects that seed state from a resource their cleanup disposes. When the setter argument derives from an effect-local binding referenced by the returned cleanup (`const audioContext = new AudioContext(); setGainNode(audioContext.createGain()); return () => audioContext.close();` — same shape for WebSockets, editors, observers), the effect owns a resource lifecycle and the value cannot be hoisted into `useState(initial)` because render has no matching dispose slot. Deterministic inits beside an unrelated cleanup (`setCount(42)` next to a `clearInterval` cleanup) keep firing.
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - no-initialize-state: stop flagging mount effects that seed state from a zero-arg `new Date()` (e.g. an SSR-safe live clock's `setNow(new Date().toLocaleTimeString())`) — it captures the current instant like `Date.now()`, which was already exempt; `new Date(value)` stays flagged.
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - no-initialize-state: stop flagging setters that only fire from a callback argument of an effect-local instance (`const observer = new MutationObserver((m) => setEntryCount(m.length)); observer.observe(...)`). The eventual-call resolver treated a callback passed to a constructor or factory as the binding's own call graph, so a method call on the instance counted as a synchronous setter call. Function-expression arguments of a binding's initializer call are now excluded from the resolver (hook wrappers like `useCallback(fn, deps)` still count, since calling the binding runs the wrapped function). Bare identifier arguments (`debounce(setN)`) are unaffected.
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - no-reset-all-state-on-prop-change: stop flagging effects whose state setters only run inside listener / observer / subscription callbacks — those reset on the external event, not on the prop change.
+
+- [#1030](https://github.com/millionco/react-doctor/pull/1030) [`b4faf74`](https://github.com/millionco/react-doctor/commit/b4faf74744c730d0836235854b0233ce59a42566) Thanks [@aidenybai](https://github.com/aidenybai)! - fix(security): `no-secrets-in-client-code`'s variable-name heuristic no longer
+  matches `auth` inside `author`/`authors`/`authority` — a component identifier
+  like `TOP_PR_AUTHORS_FRONT_COMPONENT_UNIVERSAL_IDENTIFIER = "<uuid>"` is not a
+  credential. The credential words that contain "author"
+  (`authorization`, `authorised`) still match. Found by the fuzz FP oracle over
+  the real-world corpus.
+
+- [#1030](https://github.com/millionco/react-doctor/pull/1030) [`b4faf74`](https://github.com/millionco/react-doctor/commit/b4faf74744c730d0836235854b0233ce59a42566) Thanks [@aidenybai](https://github.com/aidenybai)! - fix(react-builtins): `only-export-components` no longer flags components
+  declared inside another function — a test callback (`test("x", () => { const
+Harness = () => ... })`), a factory (`function setup() { const Row = () =>
+... }`), or an object-literal `render` method. Those are never Fast Refresh
+  boundaries, so the "not exported" / "file exports nothing" messages told
+  users to export values that can't be exported. The local-component walk now
+  stays at module scope, matching the origin rule in
+  eslint-plugin-react-refresh. Found by the fuzz FP oracle.
+
+- [#1039](https://github.com/millionco/react-doctor/pull/1039) [`072d37e`](https://github.com/millionco/react-doctor/commit/072d37e8e4f82454d2e187114d0194f26efc1bf0) Thanks [@rayhanadev](https://github.com/rayhanadev)! - perf: memoize `closureCaptures` per (ScopeAnalysis, function node) so nested callbacks compute once and every calling rule reuses the result, and drop the redundant per-reference containment re-filter
+
+- [#1044](https://github.com/millionco/react-doctor/pull/1044) [`2980d0f`](https://github.com/millionco/react-doctor/commit/2980d0f4ed6abfee061ac02f3a0820806f942b95) Thanks [@rayhanadev](https://github.com/rayhanadev)! - perf: cache compiled glob RegExps in `compileGlob` so rules matching user-configured patterns per node stop recompiling the same pattern on every call
+
+- [#1041](https://github.com/millionco/react-doctor/pull/1041) [`5fec491`](https://github.com/millionco/react-doctor/commit/5fec491e6844d73f658f355ae2cbe86285068f0e) Thanks [@rayhanadev](https://github.com/rayhanadev)! - perf: memoize getElementType per JSX opening element (with a settings-identity guard) so the ~30 a11y rules resolve each element once instead of once per rule
+
+- [#1042](https://github.com/millionco/react-doctor/pull/1042) [`05f6399`](https://github.com/millionco/react-doctor/commit/05f639910abf2b3bfc0802e9ad568ecd2b7ce13d) Thanks [@rayhanadev](https://github.com/rayhanadev)! - perf: memoize `functionContainsReactRenderOutput` per function node so the ~5 rules sharing it walk each function subtree once per file instead of once per query
+
+- [#1040](https://github.com/millionco/react-doctor/pull/1040) [`a1c8ee1`](https://github.com/millionco/react-doctor/commit/a1c8ee110e137bbc8771c8a471c20287cccd2b38) Thanks [@rayhanadev](https://github.com/rayhanadev)! - perf: replace the security scan's per-match O(content) slice+split in `getLocationAtIndex` with a memoized per-content line-start index answered by binary search
+
+- [#1047](https://github.com/millionco/react-doctor/pull/1047) [`fa61c20`](https://github.com/millionco/react-doctor/commit/fa61c2056951df2429e79d888e5f7334aaf61cfd) Thanks [@rayhanadev](https://github.com/rayhanadev)! - perf: early-exit sweep — cheap discriminators now run before walks, scope lookups, and parent climbs across ~23 rules (raw-name bails before getElementType, whole-file import gates for the zod and recycler-list rules, substring gates before regex-heavy className analysis, filename gates hoisted to Program, and first-match pruning in containsFetchCall)
+
+- [#1050](https://github.com/millionco/react-doctor/pull/1050) [`ac71a3b`](https://github.com/millionco/react-doctor/commit/ac71a3b8cfc8bdd157f0f1bcd242b61ec69f9c17) Thanks [@rayhanadev](https://github.com/rayhanadev)! - perf: fused-walk sweep — ~13 repeated subtree traversals collapse into single passes or per-node memos (async-await-in-loop's triple walk and fixpoint pre-pass, js-cache/js-index-maps loop walks, rendering-usetransition's three detectors, display-name's per-candidate program scans, per-binding setter walks in the state/effect rules, and WeakMap memos for prop-name/bound-name/effect-count analyses)
+
+- [#1051](https://github.com/millionco/react-doctor/pull/1051) [`d8628d7`](https://github.com/millionco/react-doctor/commit/d8628d7f21e60b0e6dfd98d76c9f24e03f7afe24) Thanks [@rayhanadev](https://github.com/rayhanadev)! - perf: memoization sweep — per-file/per-Program analyses stop recomputing per node and per rule (security-scan path classification cached per pattern+path, layout export scans cached per file with mtime invalidation, effect scope/reference/upstream-ref lookups memoized per analysis, the duplicated outer-scope scan converged onto getScopeForNode, zod import classification memoized per identifier, and normalizeFilename skips the no-op allocation)
+
+- [#1049](https://github.com/millionco/react-doctor/pull/1049) [`ebeee56`](https://github.com/millionco/react-doctor/commit/ebeee568abf9a7ed37ed9fe0bba695e4f2a11c9f) Thanks [@rayhanadev](https://github.com/rayhanadev)! - perf: regex-hoist sweep — ~8 per-call RegExp constructions move to module scope or behind cheap gates (public-env secret-name global pattern hoisted, supabase RLS enables collected in one pass instead of per-table compile+slice, dangerous-html-sink inert-target and serializer exemptions gated/lazy, design color/duration parsers get first-char and substring discriminators)
+
+- [#1048](https://github.com/millionco/react-doctor/pull/1048) [`da3b19c`](https://github.com/millionco/react-doctor/commit/da3b19c79c27945d873eb24e34431cbefa8f9938) Thanks [@rayhanadev](https://github.com/rayhanadev)! - perf: set-membership sweep — ~13 linear array scans on per-element hot paths now use Sets/Maps (ARIA element-role tables become O(1) lookup maps, event-handler presence checks collapse to one lowercased-Set pass per element, a11y settings lists and tanstack order tables convert to Sets/index Maps)
+
+- [#1043](https://github.com/millionco/react-doctor/pull/1043) [`6a9a73b`](https://github.com/millionco/react-doctor/commit/6a9a73b14908272535aabab6742258b61bc2ee5c) Thanks [@rayhanadev](https://github.com/rayhanadev)! - perf(rules): hoist per-file directory classification out of per-node visitors — the TanStack Start and Next.js rules that called `isInProjectDirectory` (or tested the root-route filename pattern) on every JSX element / call expression now compute it once in `create()` and skip non-matching files entirely
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - rn-no-raw-text: collapse internal whitespace in the quoted raw-text preview so multi-line JSX text produces a single-line message and CRLF vs LF sources report identically (found by the new metamorphic CRLF fuzz oracle).
+
+- [#1032](https://github.com/millionco/react-doctor/pull/1032) [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - Reword six diagnostic messages that asserted concrete runtime harm on trigger shapes where the harm does not occur: no-render-in-render (plain render-helper calls do not remount or lose state), no-direct-state-mutation (a setter call after the mutation still redraws), no-direct-mutation-state (setState after the mutation still redraws), server-no-mutable-module-state (a never-written module `let` leaks nothing), query-mutation-missing-invalidation (invalidation can happen at the mutate() call site), and rn-no-dimensions-get (a Dimensions.get() read inside an event handler is fresh, not stale).
+
 ## 0.6.2
 
 ### Patch Changes

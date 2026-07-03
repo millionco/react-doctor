@@ -439,7 +439,10 @@ export const displayName = defineRule({
       },
       ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
         if (!containsJsx(node)) return;
-        if (isNodeOfType(node.parent, "ArrowFunctionExpression")) {
+        if (
+          isNodeOfType(node.parent, "ArrowFunctionExpression") ||
+          isNodeOfType(node.parent, "ReturnStatement")
+        ) {
           reportAt(node as EsTreeNode);
           return;
         }

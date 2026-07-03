@@ -246,7 +246,13 @@ export const SECRET_CONTEXTUAL_PLACEHOLDER_VALUE_PATTERNS = [
 export const SECRET_PLACEHOLDER_CONTEXT_PATTERN =
   /(?:placeholder|example|sample|dummy|masked|redacted|mask)/i;
 
-export const SECRET_VARIABLE_PATTERN = /(?:api_?key|secret|token|password|credential|auth)/i;
+// `auth(?!or(?!i[sz]))` keeps `auth` / `oauth` / `authorization` /
+// `authorised` matching while exempting `author` / `authors` /
+// `authority` — the person-who-writes words are the single biggest
+// source of name-heuristic false positives (e.g.
+// `TOP_PR_AUTHORS_COMPONENT_IDENTIFIER`).
+export const SECRET_VARIABLE_PATTERN =
+  /(?:api_?key|secret|token|password|credential|auth(?!or(?!i[sz])))/i;
 
 export const SECRET_TOOLING_FILE_PATTERN = /(?:^|\/)[^/]+\.config\.[cm]?[jt]s$/;
 

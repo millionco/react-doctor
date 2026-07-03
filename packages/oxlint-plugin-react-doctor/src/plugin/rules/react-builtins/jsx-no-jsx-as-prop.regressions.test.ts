@@ -72,6 +72,30 @@ describe("react-builtins/jsx-no-jsx-as-prop regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  // Fuzz FP hunt (corpus census 2026-07): material-ui `ListItem
+  // leftAvatar/primaryText/secondaryText`, supabase `ChartContent
+  // loadingState/disabledState`, leemons `leftZone/rightZone`, and the
+  // capitalised exact slot `Footer={<PageFooter />}` — all conventional
+  // JSX slots the suffix/name tables missed.
+  it("does not flag corpus-mined slot props (Avatar/Text/State/Zone suffixes, capitalised Footer)", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      const View = () => (
+        <>
+          <ListItem leftAvatar={<Avatar src={user.image} />} primaryText={<b>{user.name}</b>} secondaryText={<i>{user.bio}</i>} />
+          <ChartContent loadingState={<ChartLoadingState />} disabledState={<ChartDisabledState />} />
+          <FooterContainer leftZone={<BackButton />} rightZone={<NextButton />} />
+          <StepContainer Footer={<PageFooter />} />
+          <AuthenticationMethodCard config={<ToggleSwitch value={enabled} />} />
+        </>
+      );
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   // Mined ant-design FP (.dumi/pages/index/components/PreviewPane/Components.tsx:376):
   // antd Spin's lowercase `indicator` — the case-sensitive `Indicator` suffix
   // never matched it, so it needs the explicit slot-name entry.

@@ -217,6 +217,51 @@ describe("react-builtins/only-export-components — regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  // Fuzz FP hunt: components declared inside another function — a test
+  // callback, a factory, or an object-literal `render` method — are never
+  // Fast Refresh boundaries, so neither the "not exported" nor the
+  // "exports nothing" message applies to them.
+  it("ignores components declared inside function scopes", () => {
+    const testCallbackFile = `
+      declare const test: (name: string, run: () => void) => void;
+      declare const render: (element: unknown) => void;
+      test("renders", () => {
+        const Harness = () => <div />;
+        render(<Harness />);
+      });
+    `;
+    const factoryFile = `
+      function setup() {
+        const Row = () => <tr />;
+        return Row;
+      }
+      export const config = setup();
+    `;
+    const renderMethodFile = `
+      const meta = { render: () => { const Demo = () => <div />; return <Demo />; } };
+      export default meta;
+    `;
+    for (const [code, filename] of [
+      [testCallbackFile, "src/harness.tsx"],
+      [factoryFile, "src/setup-table.tsx"],
+      [renderMethodFile, "src/demo-meta.tsx"],
+    ]) {
+      const result = runRule(onlyExportComponents, code, { filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("still flags module-scope local components", () => {
+    const moduleScopeFile = `
+      const Widget = () => <div />;
+    `;
+    const result = runRule(onlyExportComponents, moduleScopeFile, {
+      filename: "src/widget.tsx",
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags non-component exports in ordinary component files", () => {
     const mixedFile = `
       export const formatProfile = (profile) => profile.name.trim();

@@ -96,6 +96,7 @@ const KNOWN_SLOT_PROP_NAMES: ReadonlySet<string> = new Set([
   "leftContent",
   "rightContent",
   // Generic JSX-receiving slots (corpus-derived)
+  "config",
   "value",
   "currentValue",
   "form",
@@ -255,6 +256,13 @@ const SLOT_PROP_SUFFIXES: ReadonlyArray<string> = [
   "Panel",
   "Overlay",
   "Shape",
+  // material-ui `ListItem leftAvatar/rightAvatar` + `primaryText/
+  // secondaryText`, supabase `loadingState/disabledState/emptyState`,
+  // leemons `leftZone/rightZone` — corpus-derived slot conventions.
+  "Avatar",
+  "Text",
+  "State",
+  "Zone",
   // Slot-replacement / customization suffixes
   "Override",
   "Overrides",
@@ -275,6 +283,11 @@ const SLOT_PROP_SUFFIXES: ReadonlyArray<string> = [
 
 const isSlotPropName = (propName: string): boolean => {
   if (KNOWN_SLOT_PROP_NAMES.has(propName)) return true;
+  // Capitalised exact form of a known slot (`Footer={<PageFooter />}`,
+  // `Header={...}`) — design systems that treat the slot as a
+  // component-shaped prop capitalise the same conventional names.
+  const decapitalized = propName.charAt(0).toLowerCase() + propName.slice(1);
+  if (decapitalized !== propName && KNOWN_SLOT_PROP_NAMES.has(decapitalized)) return true;
   for (const suffix of SLOT_PROP_SUFFIXES) {
     if (propName.length > suffix.length && propName.endsWith(suffix)) return true;
   }

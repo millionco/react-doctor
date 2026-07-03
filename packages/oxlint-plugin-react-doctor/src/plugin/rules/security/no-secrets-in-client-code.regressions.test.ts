@@ -40,4 +40,29 @@ describe("security/no-secrets-in-client-code — regressions", () => {
         .length,
     ).toBeGreaterThan(0);
   });
+
+  // Fuzz FP hunt (corpus census 2026-07): `auth` matching inside
+  // `author(s)` — a component identifier named
+  // `TOP_PR_AUTHORS_..._IDENTIFIER` holding a UUID is not a credential.
+  it("stays silent on author-named variables (auth inside author)", () => {
+    expect(
+      runClient(
+        `export const TOP_PR_AUTHORS_FRONT_COMPONENT_UNIVERSAL_IDENTIFIER = "a1d4f7e2-9b3c-4e8a-bf21-5d6c8a9b2e3f";`,
+      ),
+    ).toHaveLength(0);
+    expect(
+      runClient(`export const coAuthorsListJson = "jane;john;maria;pedro;li;omar;zoe";`),
+    ).toHaveLength(0);
+  });
+
+  // …while authorization/authorised (the credential words containing
+  // "author") still match the name heuristic.
+  it("still flags authorization/authorised-named values", () => {
+    expect(
+      runClient(`const authorizationValue = "Bearer 9f8e7d6c5b4a39281706f5e4d3c2b1a0";`).length,
+    ).toBeGreaterThan(0);
+    expect(
+      runClient(`const authorisedSigningValue = "9f8e7d6c5b4a39281706f5e4d3c2b1a0abcdef";`).length,
+    ).toBeGreaterThan(0);
+  });
 });

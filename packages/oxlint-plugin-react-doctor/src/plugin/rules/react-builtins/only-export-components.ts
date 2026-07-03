@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
+import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import {
@@ -615,9 +616,19 @@ export const onlyExportComponents = defineRule({
           }
           return false;
         };
+        // A component declared inside another function (a test callback, a
+        // factory, an object-literal `render` method) is never a Fast
+        // Refresh boundary — only module-scope components are. The origin
+        // rule (eslint-plugin-react-refresh) walks top-level statements
+        // only; flagging nested declarations tells users to export values
+        // that can't be exported.
         for (const child of componentCandidates) {
           if (isNodeOfType(child, "FunctionDeclaration") && child.id) {
-            if (isReactComponentName(child.id.name) && !isInsideExport(child as EsTreeNode)) {
+            if (
+              isReactComponentName(child.id.name) &&
+              !isInsideExport(child as EsTreeNode) &&
+              !isInsideFunctionScope(child as EsTreeNode)
+            ) {
               localComponents.push(child.id);
             }
           }
@@ -625,7 +636,8 @@ export const onlyExportComponents = defineRule({
             if (
               isReactComponentName(child.id.name) &&
               canBeReactFunctionComponent(child.init as EsTreeNode | null | undefined, state) &&
-              !isInsideExport(child as EsTreeNode)
+              !isInsideExport(child as EsTreeNode) &&
+              !isInsideFunctionScope(child as EsTreeNode)
             ) {
               localComponents.push(child.id);
             }

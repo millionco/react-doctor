@@ -11,6 +11,7 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { Rule } from "../../utils/rule.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const MISSING_MESSAGE =
   "Your users can submit the form by accident because a `<button>` with no `type` defaults to submit.";
@@ -52,10 +53,11 @@ const isValidTypeValue = (rawValue: string, settings: Required<ButtonHasTypeSett
 // fires the diagnostic. This matches OXC's "if you can't show me a
 // valid value, it's invalid" stance.
 const isProvenValidExpression = (
-  expression: EsTreeNode,
+  rawExpression: EsTreeNode,
   settings: Required<ButtonHasTypeSettings>,
   resolvedBindings: ReadonlySet<string> = new Set(),
 ): boolean => {
+  const expression = stripParenExpression(rawExpression);
   if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
     return isValidTypeValue(expression.value, settings);
   }

@@ -40,6 +40,36 @@ describe("react-builtins/button-has-type — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  // A TS assertion wrapper (`as const` / `satisfies`) around a valid
+  // literal is the type-safest way to write the binding — strip the
+  // wrapper before proving validity.
+  it("stays silent on a local const with an `as const` valid type", () => {
+    const result = runRule(
+      buttonHasType,
+      `function Save() { const kind = "submit" as const; return <button type={kind}>Save</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on an inline `satisfies`-wrapped valid type", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Save = () => <button type={"submit" satisfies "submit"}>Save</button>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an `as const` INVALID literal type", () => {
+    const result = runRule(
+      buttonHasType,
+      `function Save() { const kind = "banana" as const; return <button type={kind}>Save</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   // An identifier with no resolvable initializer stays "unknown →
   // invalid" and must fire.
   it("still flags an unresolvable identifier type", () => {

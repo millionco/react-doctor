@@ -181,6 +181,76 @@ const MatchedName = ({ name, matchedIndices, isSelected }: MatchedNameProps) => 
       expect(result.diagnostics).toHaveLength(1);
     });
 
+    it("does not flag a composite key mixing the index with a destructured item field", () => {
+      const code = `const Console = ({ messages }) => (
+  <div>{messages.map(({ message, time }, index) => <Entry key={\`\${message} \${index}\`} time={time} />)}</div>
+);
+`;
+      const result = runRule(noArrayIndexAsKey, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("does not flag a composite key mixing the index with a method call on the item", () => {
+      const code = `const Presets = ({ colors }) => (
+  <div>{colors.map((presetColor, index) => <Swatch key={\`preset-\${index}-\${presetColor.toHexString()}\`} />)}</div>
+);
+`;
+      const result = runRule(noArrayIndexAsKey, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("does not flag Array.from({length: values.length}) placeholder index keys", () => {
+      const code = `const Thumbs = ({ values }) => (
+  <div>{Array.from({ length: values.length }, (_, index) => <Thumb key={index} />)}</div>
+);
+`;
+      const result = runRule(noArrayIndexAsKey, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("does not flag a numeric for-loop counter used as key", () => {
+      const code = `const Grid = ({ count }) => {
+  const cols = [];
+  for (let i = 0; i < count; i++) {
+    cols.push(<Col key={i} span={24 / count} />);
+  }
+  return <Row>{cols}</Row>;
+};
+`;
+      const result = runRule(noArrayIndexAsKey, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a manually incremented index inside a for-of over items", () => {
+      const code = `const List = ({ items }) => {
+  const out = [];
+  let index = 0;
+  for (const item of items) {
+    out.push(<Row key={index} item={item} />);
+    index++;
+  }
+  return out;
+};
+`;
+      const result = runRule(noArrayIndexAsKey, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags a composite key whose other expression is not item-derived", () => {
+      const code = `const List = ({ items, prefix }) => (
+  <div>{items.map((item, index) => <Row key={\`\${prefix}-\${index}\`} />)}</div>
+);
+`;
+      const result = runRule(noArrayIndexAsKey, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("still flags a spread of an untyped inner binding shadowing a typed string prop", () => {
       const code = `const Rows = ({ name, groups }: { name: string; groups: string[][] }) => {
   return groups.map((name) => (

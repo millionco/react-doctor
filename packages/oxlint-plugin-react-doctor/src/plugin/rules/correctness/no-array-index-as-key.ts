@@ -3,6 +3,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
+import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isAllLiteralArrayExpression } from "../../utils/is-all-literal-array-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -170,6 +172,13 @@ const isArrayFromLengthObjectCall = (node: EsTreeNode): boolean => {
     // also accept simple identifier — `{length: count}` — assume it's a numeric
     // constant; almost always is in placeholder constructions.
     if (isNodeOfType(prop.value, "Identifier")) return true;
+    // `{length: values.length}` — a `.length` read is a numeric count too.
+    if (
+      isNodeOfType(prop.value, "MemberExpression") &&
+      isNodeOfType(prop.value.property, "Identifier") &&
+      prop.value.property.name === "length"
+    )
+      return true;
   }
   return false;
 };
@@ -383,10 +392,11 @@ const isInsideStaticPlaceholderMap = (node: EsTreeNode): boolean =>
 /**
  * Walk up from a JSXAttribute node looking for the enclosing iterator
  * callback (`.map(cb)`, `.flatMap(cb)`, `.forEach(cb)`, `Array.from(_, cb)`)
- * and return the first parameter's name. The first param is the per-item
- * value, e.g. `item` in `arr.map((item, index) => …)`.
+ * and return the names bound by the first parameter — `item` in
+ * `arr.map((item, index) => …)`, or every destructured field in
+ * `arr.map(({ id, label }, index) => …)`.
  */
-const findIteratorItemName = (node: EsTreeNode): string | null => {
+const findIteratorItemNames = (node: EsTreeNode): Set<string> | null => {
   let current = node;
   while (current.parent) {
     const parent = current.parent;
@@ -411,8 +421,10 @@ const findIteratorItemName = (node: EsTreeNode): string | null => {
       if (isIteratorMethodCall || isArrayFromCallback) {
         const cbParams = (current as EsTreeNodeOfType<"ArrowFunctionExpression">).params ?? [];
         const first = cbParams[0];
-        if (first && isNodeOfType(first, "Identifier")) return first.name;
-        return null;
+        if (!first) return null;
+        const names = new Set<string>();
+        collectPatternNames(first, names);
+        return names.size > 0 ? names : null;
       }
     }
 
@@ -423,16 +435,11 @@ const findIteratorItemName = (node: EsTreeNode): string | null => {
 
 const templateLiteralHasIteratorIdentity = (
   template: EsTreeNodeOfType<"TemplateLiteral">,
-  itemName: string,
+  itemNames: ReadonlySet<string>,
 ): boolean => {
   for (const expression of template.expressions ?? []) {
-    if (isNodeOfType(expression, "Identifier") && expression.name === itemName) return true;
-    if (
-      isNodeOfType(expression, "MemberExpression") &&
-      isNodeOfType(expression.object, "Identifier") &&
-      expression.object.name === itemName
-    )
-      return true;
+    const rootName = getRootIdentifierName(expression, { followCallChains: true });
+    if (rootName !== null && itemNames.has(rootName)) return true;
   }
   return false;
 };
@@ -450,9 +457,30 @@ const isCompositeKeyWithIteratorIdentity = (
   if (!isNodeOfType(keyExpression, "TemplateLiteral")) return false;
   const expressions = keyExpression.expressions ?? [];
   if (expressions.length < 2) return false;
-  const itemName = findIteratorItemName(attributeNode);
-  if (!itemName) return false;
-  return templateLiteralHasIteratorIdentity(keyExpression, itemName);
+  const itemNames = findIteratorItemNames(attributeNode);
+  if (!itemNames) return false;
+  return templateLiteralHasIteratorIdentity(keyExpression, itemNames);
+};
+
+// `for (let i = 0; i < count; i++) { children.push(<Col key={i} />) }` is
+// the imperative twin of the exempt `Array.from({length: count}).map(…)`
+// placeholder — the counter has no identity beyond its position.
+const isNumericForLoopCounter = (attributeNode: EsTreeNode, indexName: string): boolean => {
+  const binding = findVariableInitializer(attributeNode, indexName);
+  if (!binding) return false;
+  const declarator = binding.bindingIdentifier.parent;
+  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
+  const declaration = declarator.parent;
+  if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) return false;
+  const forStatement = declaration.parent;
+  return Boolean(
+    forStatement &&
+    isNodeOfType(forStatement, "ForStatement") &&
+    forStatement.init === declaration &&
+    declarator.init &&
+    isNodeOfType(declarator.init, "Literal") &&
+    typeof declarator.init.value === "number",
+  );
 };
 
 export const noArrayIndexAsKey = defineRule({
@@ -468,6 +496,7 @@ export const noArrayIndexAsKey = defineRule({
 
       const indexName = extractIndexName(node.value.expression);
       if (!indexName) return;
+      if (isNumericForLoopCounter(node, indexName)) return;
       if (isInsideStaticPlaceholderMap(node)) return;
       if (isInsideStringDerivedMap(node)) return;
       if (isCompositeKeyWithIteratorIdentity(node.value.expression, node)) return;

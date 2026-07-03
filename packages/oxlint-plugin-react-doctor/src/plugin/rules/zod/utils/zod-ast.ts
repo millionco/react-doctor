@@ -28,7 +28,21 @@ export const getStaticPropertyName = (
   return null;
 };
 
+// The classification is a pure function of the identifier node within its
+// (immutable) file, and every zod rule re-queries the same identifiers —
+// memoize per node; `has()` distinguishes a cached null from a miss.
+const importInfoCache = new WeakMap<EsTreeNode, ZodImportInfo | null>();
+
 const getImportInfoForIdentifier = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+): ZodImportInfo | null => {
+  if (importInfoCache.has(identifier)) return importInfoCache.get(identifier) ?? null;
+  const importInfo = computeImportInfoForIdentifier(identifier);
+  importInfoCache.set(identifier, importInfo);
+  return importInfo;
+};
+
+const computeImportInfoForIdentifier = (
   identifier: EsTreeNodeOfType<"Identifier">,
 ): ZodImportInfo | null => {
   const binding = findVariableInitializer(identifier, identifier.name);

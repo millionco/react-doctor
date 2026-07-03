@@ -1,4 +1,4 @@
-import type { Reference, Scope } from "eslint-scope";
+import type { Reference } from "eslint-scope";
 import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
 import { isAstNode } from "../../../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../../../utils/is-function-like.js";
@@ -12,32 +12,7 @@ import {
   resolvesToAsyncFunction,
   resolveToFunction,
 } from "./ast.js";
-import type { ProgramAnalysis } from "./get-program-analysis.js";
-
-const getOuterScopeContaining = (analysis: ProgramAnalysis, node: EsTreeNode): Scope | null => {
-  if (!node.range) return null;
-  // Find the smallest scope whose block strictly *contains* `node`
-  // (block.range fully envelops node.range). For a top-level
-  // VariableDeclarator in the module scope, this returns the
-  // module scope.
-  let best: Scope | null = null;
-  let bestSize = Infinity;
-  for (const scope of analysis.scopeManager.scopes) {
-    const block = scope.block as unknown as EsTreeNode;
-    if (!block?.range) continue;
-    if (node.range[0] < block.range[0] || node.range[1] > block.range[1]) continue;
-    const size = block.range[1] - block.range[0];
-    // `<=` so that when two scopes have identical ranges (the
-    // global + module pair always share the Program range), the
-    // later-created (i.e. inner) scope wins — module variables live
-    // there, not in the global scope.
-    if (size <= bestSize) {
-      bestSize = size;
-      best = scope;
-    }
-  }
-  return best;
-};
+import { getScopeForNode, type ProgramAnalysis } from "./get-program-analysis.js";
 
 // 1:1 port of upstream `src/util/react.js` from
 // `eslint-plugin-react-you-might-not-need-an-effect`. See `./ast.ts`
@@ -94,7 +69,7 @@ const isReactFunctionalHOC = (
   const isWrappedSeparately = (): boolean => {
     if (!isNodeOfType(node.id, "Identifier")) return false;
     const bindingName = node.id.name;
-    const containingScope = getOuterScopeContaining(analysis, node as unknown as EsTreeNode);
+    const containingScope = getScopeForNode(node as unknown as EsTreeNode, analysis.scopeManager);
     if (!containingScope) return false;
     const variable = containingScope.variables.find((v) => v.name === bindingName);
     if (!variable) return false;

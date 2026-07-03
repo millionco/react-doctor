@@ -8,30 +8,52 @@ const NAMED_EXPORT_DECLARATION_PATTERN =
 const LOCAL_EXPORT_SPECIFIER_DECLARATION_PATTERN =
   /^\s*export\s+(?:type\s+)?\{([\s\S]*?)\}(?:\s+from\s+["'][^"']+["'])?\s*;?\s*(?:(?:\/\/[^\n]*)?\s*)/gm;
 
-const doesSourceTextExportName = (sourceText: string, exportedName: string): boolean => {
+const collectSourceTextExportNames = (sourceText: string): ReadonlySet<string> => {
   const strippedSource = stripJsComments(sourceText);
-  if (exportedName === "default" && DEFAULT_EXPORT_DECLARATION_PATTERN.test(strippedSource)) {
-    return true;
+  const exportedNames = new Set<string>();
+  if (DEFAULT_EXPORT_DECLARATION_PATTERN.test(strippedSource)) {
+    exportedNames.add("default");
   }
 
   for (const match of strippedSource.matchAll(NAMED_EXPORT_DECLARATION_PATTERN)) {
-    if (match[1] === exportedName) return true;
+    if (match[1]) exportedNames.add(match[1]);
   }
 
   for (const match of strippedSource.matchAll(LOCAL_EXPORT_SPECIFIER_DECLARATION_PATTERN)) {
     const specifiersText = match[1] ?? "";
-    const exportedNames = parseExportSpecifiers(specifiersText, false).map(
-      (specifier) => specifier.exportedName,
-    );
-    if (exportedNames.includes(exportedName)) return true;
+    for (const specifier of parseExportSpecifiers(specifiersText, false)) {
+      exportedNames.add(specifier.exportedName);
+    }
   }
 
-  return false;
+  return exportedNames;
 };
+
+interface ExportNamesCacheEntry {
+  mtimeMs: number;
+  size: number;
+  exportedNames: ReadonlySet<string>;
+}
+
+// The same layout / barrel file is probed once per export name per page, so
+// the read + comment-strip + export scan is cached per file, keyed by
+// mtime/size for invalidation (mirrors `parse-source-file.ts`).
+const exportNamesCache = new Map<string, ExportNamesCacheEntry>();
 
 export const doesModuleExportName = (filePath: string, exportedName: string): boolean => {
   try {
-    return doesSourceTextExportName(fs.readFileSync(filePath, "utf8"), exportedName);
+    const fileStat = fs.statSync(filePath);
+    const cached = exportNamesCache.get(filePath);
+    if (cached && cached.mtimeMs === fileStat.mtimeMs && cached.size === fileStat.size) {
+      return cached.exportedNames.has(exportedName);
+    }
+    const exportedNames = collectSourceTextExportNames(fs.readFileSync(filePath, "utf8"));
+    exportNamesCache.set(filePath, {
+      mtimeMs: fileStat.mtimeMs,
+      size: fileStat.size,
+      exportedNames,
+    });
+    return exportedNames.has(exportedName);
   } catch {
     return false;
   }

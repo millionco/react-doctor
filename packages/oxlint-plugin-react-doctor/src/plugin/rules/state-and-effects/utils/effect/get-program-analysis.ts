@@ -90,12 +90,23 @@ export const getProgramAnalysis = (anyNode: EsTreeNode): ProgramAnalysis | null 
   return analysis;
 };
 
+// Scope membership is fixed per file, so the linear scan over
+// `manager.scopes` runs once per queried node — every rule and pass that
+// asks about the same identifier afterwards gets a WeakMap hit.
+const scopeByNodeCache = new WeakMap<ScopeManager, WeakMap<EsTreeNode, Scope | null>>();
+
 // Replicates upstream's `context.sourceCode.getScope(node)`: returns the
 // innermost scope that *contains* `node`. We find the deepest scope
 // whose `block.range` strictly contains `node.range` (or whose `block`
 // IS the node).
 export const getScopeForNode = (node: EsTreeNode, manager: ScopeManager): Scope | null => {
   if (!node.range) return null;
+  let scopeByNode = scopeByNodeCache.get(manager);
+  if (!scopeByNode) {
+    scopeByNode = new WeakMap();
+    scopeByNodeCache.set(manager, scopeByNode);
+  }
+  if (scopeByNode.has(node)) return scopeByNode.get(node) ?? null;
   let bestScope: Scope | null = null;
   let bestSize = Infinity;
   for (const scope of manager.scopes) {
@@ -112,5 +123,6 @@ export const getScopeForNode = (node: EsTreeNode, manager: ScopeManager): Scope 
       bestScope = scope;
     }
   }
+  scopeByNode.set(node, bestScope);
   return bestScope;
 };

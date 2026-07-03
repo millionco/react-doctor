@@ -1,10 +1,12 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { hasImportFromModules } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import {
+  ZOD_MODULE_SOURCES,
   getMethodCall,
   getStaticPropertyName,
   getZodNamedImport,
@@ -70,31 +72,39 @@ export const zodV4NoDeprecatedErrorApis = defineRule({
   severity: "warn",
   recommendation:
     "Use the Zod 4 helpers instead: `z.treeifyError()`, `z.flattenError()`, `z.prettifyError()`, or read `error.issues` directly.",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (isZodErrorCreateCall(node) && isReceiverOfDeprecatedZodErrorMember(node)) return;
-      if (!isZodErrorCreateCall(node) && !isDeprecatedZodErrorMemberAccess(node.callee)) {
-        return;
-      }
-      context.report({
-        node,
-        message: ZOD_ERROR_API_MESSAGE,
-      });
-    },
-    MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
-      const parent = node.parent;
-      if (
-        parent &&
-        isNodeOfType(parent, "CallExpression") &&
-        stripParenExpression(parent.callee as EsTreeNode) === node
-      ) {
-        return;
-      }
-      if (!isDeprecatedZodErrorMemberAccess(node)) return;
-      context.report({
-        node,
-        message: ZOD_ERROR_API_MESSAGE,
-      });
-    },
-  }),
+  create: (context: RuleContext) => {
+    let fileImportsZod = false;
+    return {
+      Program(node: EsTreeNodeOfType<"Program">) {
+        fileImportsZod = hasImportFromModules(node, ZOD_MODULE_SOURCES);
+      },
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!fileImportsZod) return;
+        if (isZodErrorCreateCall(node) && isReceiverOfDeprecatedZodErrorMember(node)) return;
+        if (!isZodErrorCreateCall(node) && !isDeprecatedZodErrorMemberAccess(node.callee)) {
+          return;
+        }
+        context.report({
+          node,
+          message: ZOD_ERROR_API_MESSAGE,
+        });
+      },
+      MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
+        if (!fileImportsZod) return;
+        const parent = node.parent;
+        if (
+          parent &&
+          isNodeOfType(parent, "CallExpression") &&
+          stripParenExpression(parent.callee as EsTreeNode) === node
+        ) {
+          return;
+        }
+        if (!isDeprecatedZodErrorMemberAccess(node)) return;
+        context.report({
+          node,
+          message: ZOD_ERROR_API_MESSAGE,
+        });
+      },
+    };
+  },
 });

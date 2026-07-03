@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
+import { hasJsxA11ySettings } from "../../utils/has-jsx-a11y-settings.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -200,9 +201,25 @@ export const altText = defineRule({
     const objectAliases = new Set(settings.object ?? []);
     const areaAliases = new Set(settings.area ?? []);
     const inputImageAliases = new Set(settings['input[type="image"]'] ?? []);
+    const fileHasJsxA11ySettings = hasJsxA11ySettings(context.settings);
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (!fileHasJsxA11ySettings && isNodeOfType(node.name, "JSXIdentifier")) {
+          const rawName = node.name.name;
+          if (
+            rawName !== "img" &&
+            rawName !== "object" &&
+            rawName !== "area" &&
+            rawName.toLowerCase() !== "input" &&
+            !imgAliases.has(rawName) &&
+            !objectAliases.has(rawName) &&
+            !areaAliases.has(rawName) &&
+            !inputImageAliases.has(rawName)
+          ) {
+            return;
+          }
+        }
         if (isGeneratedImageRenderContext(context, node)) return;
         const tag = getElementType(node, context.settings);
 

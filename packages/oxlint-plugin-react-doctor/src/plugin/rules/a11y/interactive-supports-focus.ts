@@ -59,10 +59,16 @@ export const interactiveSupportsFocus = defineRule({
     const tabbableSet = new Set(settings.tabbable);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (node.attributes.length === 0) return;
         // A spread (`{...props}`) can carry `tabIndex`, so focus support is indeterminate.
         if (hasJsxSpreadAttribute(node.attributes)) return;
         const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
         const role = roleAttribute ? getJsxPropStringValue(roleAttribute) : null;
+        if (!role) return;
+        const hasInteractiveHandler = ALL_EVENT_HANDLERS.some((handler) =>
+          Boolean(hasJsxPropIgnoreCase(node.attributes, handler)),
+        );
+        if (!hasInteractiveHandler) return;
         const elementType = getElementType(node, context.settings);
         // Custom components (PascalCase, not in HTML_TAGS) encapsulate
         // their own focus behaviour — `<SegmentButton role="option" />`
@@ -71,20 +77,14 @@ export const interactiveSupportsFocus = defineRule({
         // unactionable: the user can't add tabIndex to a wrapper that
         // already handles focus correctly.
         if (!HTML_TAGS.has(elementType)) return;
-        const hasInteractiveHandler = ALL_EVENT_HANDLERS.some((handler) =>
-          Boolean(hasJsxPropIgnoreCase(node.attributes, handler)),
-        );
-        const hasTabIndex = Boolean(hasJsxPropIgnoreCase(node.attributes, "tabIndex"));
-
         if (
-          !hasInteractiveHandler ||
           isDisabledElement(node) ||
           isHiddenFromScreenReader(node, context.settings) ||
           isPresentationRole(node)
         ) {
           return;
         }
-        if (!role) return;
+        const hasTabIndex = Boolean(hasJsxPropIgnoreCase(node.attributes, "tabIndex"));
         if (
           !isInteractiveRole(role) ||
           isInteractiveElement(elementType, node) ||

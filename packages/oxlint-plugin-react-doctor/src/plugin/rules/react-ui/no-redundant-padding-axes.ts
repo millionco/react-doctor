@@ -31,6 +31,9 @@ export const noRedundantPaddingAxes = defineRule({
       }
       const classNameLiteral = getClassNameLiteral(jsxAttribute);
       if (!classNameLiteral) return;
+      // A collapsible pair needs BOTH axes present, so a class list missing
+      // either substring can never match — bail before any regex work.
+      if (!classNameLiteral.includes("px-") || !classNameLiteral.includes("py-")) return;
       // Per-breakpoint variation is a legit reason to keep the axes split.
       if (
         hasResponsivePrefix(classNameLiteral, "px") ||

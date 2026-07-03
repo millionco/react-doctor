@@ -129,6 +129,12 @@ export const RECYCLABLE_LIST_PACKAGES: Record<string, ReadonlyArray<string>> = {
   LegendList: ["@legendapp/list"],
 };
 
+// Flat list of every recycler-owning package source, for whole-file
+// import-presence gates: a file importing none of these can never resolve a
+// recycler, so per-element resolution is skipped entirely.
+export const RECYCLABLE_LIST_PACKAGE_SOURCES: ReadonlyArray<string> =
+  Object.values(RECYCLABLE_LIST_PACKAGES).flat();
+
 // Every list-like element name: built-in RN lists plus the recycler exports.
 // A name-only set for the cheap first filter — provenance lives in the rules.
 export const REACT_NATIVE_LIST_COMPONENTS = new Set([

@@ -99,19 +99,23 @@ export const noRenderInRender = defineRule({
 
       let calleeName: string | null = null;
       if (isNodeOfType(expression.callee, "Identifier")) {
-        if (tracesToPropOrParameter(context.scopes.symbolFor(expression.callee), context.scopes)) {
-          return;
-        }
         calleeName = expression.callee.name;
       } else if (
         isNodeOfType(expression.callee, "MemberExpression") &&
         isNodeOfType(expression.callee.property, "Identifier")
       ) {
-        if (rootsInProps(expression.callee.object, context.scopes)) return;
         calleeName = expression.callee.property.name;
       }
 
       if (!calleeName || !RENDER_FUNCTION_PATTERN.test(calleeName)) return;
+
+      if (isNodeOfType(expression.callee, "Identifier")) {
+        if (tracesToPropOrParameter(context.scopes.symbolFor(expression.callee), context.scopes)) {
+          return;
+        }
+      } else if (isNodeOfType(expression.callee, "MemberExpression")) {
+        if (rootsInProps(expression.callee.object, context.scopes)) return;
+      }
 
       context.report({
         node: expression,

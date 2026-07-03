@@ -29,6 +29,8 @@ export const noSpaceOnFlexChildren = defineRule({
       }
       const classNameLiteral = getClassNameLiteral(jsxAttribute);
       if (!classNameLiteral) return;
+      // No `space-*` utility means nothing to report — bail before tokenizing.
+      if (!classNameLiteral.includes("space-")) return;
       const tokens = tokenizeClassName(classNameLiteral);
       let hasFlexOrGridLayout = false;
       for (const token of tokens) {

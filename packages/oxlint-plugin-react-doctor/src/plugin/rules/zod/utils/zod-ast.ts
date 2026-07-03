@@ -6,6 +6,11 @@ import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 
 const ZOD_MODULE = "zod";
 
+// Every zod detection below bottoms out in `getImportInfoForIdentifier`,
+// which requires an import whose source is exactly `ZOD_MODULE` — so a file
+// with no such import can never report, and rules gate their visitors on it.
+export const ZOD_MODULE_SOURCES: ReadonlyArray<string> = [ZOD_MODULE];
+
 interface ZodImportInfo {
   imported: string | null;
   isDefault: boolean;

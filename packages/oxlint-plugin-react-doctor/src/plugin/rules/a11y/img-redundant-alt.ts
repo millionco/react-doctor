@@ -94,10 +94,10 @@ export const imgRedundantAlt = defineRule({
     const settings = resolveSettings(context.settings);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (isGeneratedImageRenderContext(context, node)) return;
         const tag = getElementType(node, context.settings);
         if (!settings.components.includes(tag)) return;
         if (isHiddenFromScreenReader(node, context.settings)) return;
+        if (isGeneratedImageRenderContext(context, node)) return;
         const altAttribute = hasJsxPropIgnoreCase(node.attributes, "alt");
         if (!altAttribute) return;
         if (altValueRedundant(altAttribute, settings.words)) {

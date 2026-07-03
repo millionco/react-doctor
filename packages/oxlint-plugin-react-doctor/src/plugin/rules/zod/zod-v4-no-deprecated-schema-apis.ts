@@ -1,10 +1,12 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { hasImportFromModules } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import {
+  ZOD_MODULE_SOURCES,
   getMethodCall,
   getStaticPropertyName,
   getZodNamedImport,
@@ -169,33 +171,41 @@ export const zodV4NoDeprecatedSchemaApis = defineRule({
   severity: "warn",
   recommendation:
     "Switch to the Zod 4 versions: top-level factories like `z.enum()`, object helpers like `z.strictObject()`, the new `z.function({ input, output })` form, and explicit key/value schemas for `z.record()`.",
-  create: (context: RuleContext) => ({
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (
-        isCallToDeprecatedTopLevelFactory(node) ||
-        isCallToDroppedCreateFactory(node) ||
-        isSingleArgumentRecordCall(node) ||
-        isLiteralSymbolCall(node) ||
-        isDeprecatedFunctionChainCall(node) ||
-        isDirectMethodCallOnZodFactory(node, OBJECT_FACTORY, OBJECT_METHODS) ||
-        isDirectMethodCallOnZodFactory(node, NUMBER_FACTORY, NUMBER_METHODS) ||
-        isRefineSecondArgumentFunction(node)
-      ) {
-        reportSchemaMigration(context, node);
-      }
-    },
-    MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
-      const parent = node.parent;
-      if (
-        parent &&
-        isNodeOfType(parent, "CallExpression") &&
-        stripParenExpression(parent.callee as EsTreeNode) === node
-      ) {
-        return;
-      }
-      if (isDroppedEnumAliasAccess(node) || isZodNamespaceImportMemberCreate(node)) {
-        reportSchemaMigration(context, node);
-      }
-    },
-  }),
+  create: (context: RuleContext) => {
+    let fileImportsZod = false;
+    return {
+      Program(node: EsTreeNodeOfType<"Program">) {
+        fileImportsZod = hasImportFromModules(node, ZOD_MODULE_SOURCES);
+      },
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (!fileImportsZod) return;
+        if (
+          isCallToDeprecatedTopLevelFactory(node) ||
+          isCallToDroppedCreateFactory(node) ||
+          isSingleArgumentRecordCall(node) ||
+          isLiteralSymbolCall(node) ||
+          isDeprecatedFunctionChainCall(node) ||
+          isDirectMethodCallOnZodFactory(node, OBJECT_FACTORY, OBJECT_METHODS) ||
+          isDirectMethodCallOnZodFactory(node, NUMBER_FACTORY, NUMBER_METHODS) ||
+          isRefineSecondArgumentFunction(node)
+        ) {
+          reportSchemaMigration(context, node);
+        }
+      },
+      MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
+        if (!fileImportsZod) return;
+        const parent = node.parent;
+        if (
+          parent &&
+          isNodeOfType(parent, "CallExpression") &&
+          stripParenExpression(parent.callee as EsTreeNode) === node
+        ) {
+          return;
+        }
+        if (isDroppedEnumAliasAccess(node) || isZodNamespaceImportMemberCreate(node)) {
+          reportSchemaMigration(context, node);
+        }
+      },
+    };
+  },
 });

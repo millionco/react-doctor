@@ -226,22 +226,24 @@ export const nextjsNoSideEffectInGetHandler = defineRule({
     "GET requests can be prefetched and are open to CSRF. Move the side effect to a POST handler.",
   create: (context: RuleContext) => {
     let resolveBinding: (identifierName: string) => EsTreeNode | null = () => null;
+    let isRouteHandlerFile = false;
+    // A "mutating-sounding" route segment (cancel, delete, logout, …) is a
+    // hint, NOT proof: a read-only GET that returns a cancellation policy
+    // is safe. Require an actual side effect before reporting, and only
+    // use the segment to flavor the message.
+    let mutatingSegment: string | null = null;
 
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         resolveBinding = buildProgramBindingLookup(node);
+        const filename = normalizeFilename(context.filename ?? "");
+        isRouteHandlerFile =
+          ROUTE_HANDLER_FILE_PATTERN.test(filename) && !CRON_ROUTE_PATTERN.test(filename);
+        mutatingSegment = isRouteHandlerFile ? extractMutatingRouteSegment(filename) : null;
       },
       ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {
-        const filename = normalizeFilename(context.filename ?? "");
-        if (!ROUTE_HANDLER_FILE_PATTERN.test(filename)) return;
-        if (CRON_ROUTE_PATTERN.test(filename)) return;
+        if (!isRouteHandlerFile) return;
         if (!isExportedGetHandler(node)) return;
-
-        // A "mutating-sounding" route segment (cancel, delete, logout, …) is a
-        // hint, NOT proof: a read-only GET that returns a cancellation policy
-        // is safe. Require an actual side effect before reporting, and only
-        // use the segment to flavor the message.
-        const mutatingSegment = extractMutatingRouteSegment(filename);
 
         const handlerBodies = resolveGetHandlerBodies(node, resolveBinding);
         for (const handlerBody of handlerBodies) {

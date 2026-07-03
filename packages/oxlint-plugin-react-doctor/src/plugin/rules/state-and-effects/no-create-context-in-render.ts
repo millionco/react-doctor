@@ -3,8 +3,8 @@ import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import {
-  getImportedNameFromModule,
-  isImportedFromModule,
+  getImportBindingForName,
+  getImportSourceForName,
 } from "../../utils/find-import-source-for-name.js";
 import { isCanonicalReactNamespaceName } from "../../utils/is-canonical-react-namespace-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -21,16 +21,17 @@ const CONTEXT_MODULES: ReadonlyArray<string> = ["react", "use-context-selector",
 
 const isCreateContextCallee = (callee: EsTreeNode): boolean => {
   if (isNodeOfType(callee, "Identifier")) {
-    // Resolve through any renamed import — `getImportedNameFromModule`
-    // returns the originally-exported symbol name, so we catch both
+    // Resolve through any renamed import — the binding carries the
+    // originally-exported symbol name, so we catch both
     // `import { createContext } from "react"` and
     // `import { createContext as makeCtx } from "react"`. We accept
     // any module in `CONTEXT_MODULES`.
-    for (const moduleName of CONTEXT_MODULES) {
-      const canonicalName = getImportedNameFromModule(callee, callee.name, moduleName);
-      if (canonicalName === "createContext") return true;
-    }
-    return false;
+    const binding = getImportBindingForName(callee, callee.name);
+    return (
+      binding !== null &&
+      binding.exportedName === "createContext" &&
+      CONTEXT_MODULES.includes(binding.source)
+    );
   }
 
   if (isNodeOfType(callee, "MemberExpression") && !callee.computed) {
@@ -41,10 +42,8 @@ const isCreateContextCallee = (callee: EsTreeNode): boolean => {
     if (propertyIdentifier.name !== "createContext") return false;
     const namespaceName = namespaceIdentifier.name;
     if (isCanonicalReactNamespaceName(namespaceName)) return true;
-    for (const moduleName of CONTEXT_MODULES) {
-      if (isImportedFromModule(namespaceIdentifier, namespaceName, moduleName)) return true;
-    }
-    return false;
+    const importSource = getImportSourceForName(namespaceIdentifier, namespaceName);
+    return importSource !== null && CONTEXT_MODULES.includes(importSource);
   }
 
   return false;

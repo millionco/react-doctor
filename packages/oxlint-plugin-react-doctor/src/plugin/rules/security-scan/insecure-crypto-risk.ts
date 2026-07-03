@@ -71,6 +71,14 @@ const MATH_RANDOM_CALL_PATTERN = /Math\.random\s*\(/g;
 
 const SECURITY_CONTEXT_WINDOW_CHARS = 250;
 
+// Every detection pass below requires one of these substrings, so a file
+// without any of them can never report — bail before stripping comments and
+// running the multi-pass scan. Comment stripping only blanks characters
+// (positions preserved), so a token present in stripped content is always
+// present in the raw content too.
+const CRYPTO_SURFACE_TRIGGER_PATTERN =
+  /createHash|md5|cipher|encrypt|decrypt|crypto|signature|Math\.random/i;
+
 // File-level co-occurrence is a trap: any OAuth service mentions `token`
 // somewhere, so the context word must sit near the flagged call itself.
 const findMatchIndexNearContext = (
@@ -124,6 +132,8 @@ export const insecureCryptoRisk = defineRule({
     // The protocol marker often lives in the file name (`digest-auth.ts`),
     // not within the 250-char window around the hash call.
     if (PROTOCOL_MANDATED_HASH_CONTEXT_PATTERN.test(file.relativePath)) return [];
+
+    if (!CRYPTO_SURFACE_TRIGGER_PATTERN.test(file.content)) return [];
 
     // Match against comment-stripped content (positions preserved) — migration
     // notes and doc comments are exactly where `md5` / `DES` prose concentrates,

@@ -213,7 +213,6 @@ export const jsHoistIntl = defineRule({
   create: (context: RuleContext) => ({
     NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
       if (!isIntlNewExpression(node)) return;
-      if (isInsideCacheMemo(node)) return;
       // Walk up: if any enclosing function is a function/arrow, this is in
       // a function body. Module-scope `new Intl.X()` is fine; we only flag
       // when wrapped in a function (likely called per render or per item).
@@ -259,6 +258,7 @@ export const jsHoistIntl = defineRule({
         cursor = cursor.parent ?? null;
       }
       if (!inFunctionBody) return;
+      if (isInsideCacheMemo(node)) return;
 
       const className =
         isNodeOfType(node.callee, "MemberExpression") &&

@@ -1,4 +1,6 @@
+import { RECYCLABLE_LIST_PACKAGE_SOURCES } from "../../constants/react-native.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { hasImportFromModules } from "../../utils/find-import-source-for-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { resolveImportedRecyclerName } from "./utils/resolve-imported-recycler-name.js";
@@ -24,48 +26,55 @@ export const rnListRecyclableWithoutTypes = defineRule({
   severity: "warn",
   recommendation:
     "When rows have different shapes, reused cells can show the wrong layout. Add `getItemType={item => item.kind}` so FlashList keeps a separate pool per row type.",
-  create: (context: RuleContext) => ({
-    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      const elementName = resolveJsxElementName(node);
-      if (!elementName) return;
-      // Resolve the LOCAL JSX name back to a recycler that was really imported
-      // from `@shopify/flash-list` / `@legendapp/list` — named, aliased, or
-      // namespace member access. A name-only match on a homegrown `FlashList`
-      // (`const FlashList = MyOwnList`) isn't a recycler.
-      if (
-        resolveImportedRecyclerName(node, elementName, {
-          allowNamespaceMemberAccess: true,
-        }) === null
-      )
-        return;
+  create: (context: RuleContext) => {
+    let fileImportsRecycler = false;
+    return {
+      Program(node: EsTreeNodeOfType<"Program">) {
+        fileImportsRecycler = hasImportFromModules(node, RECYCLABLE_LIST_PACKAGE_SOURCES);
+      },
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (!fileImportsRecycler) return;
+        const elementName = resolveJsxElementName(node);
+        if (!elementName) return;
+        // Resolve the LOCAL JSX name back to a recycler that was really imported
+        // from `@shopify/flash-list` / `@legendapp/list` — named, aliased, or
+        // namespace member access. A name-only match on a homegrown `FlashList`
+        // (`const FlashList = MyOwnList`) isn't a recycler.
+        if (
+          resolveImportedRecyclerName(node, elementName, {
+            allowNamespaceMemberAccess: true,
+          }) === null
+        )
+          return;
 
-      let hasRecycleItemsEnabled = false;
-      let hasGetItemType = false;
+        let hasRecycleItemsEnabled = false;
+        let hasGetItemType = false;
 
-      for (const attr of node.attributes ?? []) {
-        if (!isNodeOfType(attr, "JSXAttribute")) continue;
-        if (!isNodeOfType(attr.name, "JSXIdentifier")) continue;
-        if (attr.name.name === "recycleItems") {
-          if (!attr.value) {
-            hasRecycleItemsEnabled = true;
-          } else if (
-            isNodeOfType(attr.value, "JSXExpressionContainer") &&
-            isNodeOfType(attr.value.expression, "Literal")
-          ) {
-            hasRecycleItemsEnabled = attr.value.expression.value === true;
-          } else {
-            hasRecycleItemsEnabled = true;
+        for (const attr of node.attributes ?? []) {
+          if (!isNodeOfType(attr, "JSXAttribute")) continue;
+          if (!isNodeOfType(attr.name, "JSXIdentifier")) continue;
+          if (attr.name.name === "recycleItems") {
+            if (!attr.value) {
+              hasRecycleItemsEnabled = true;
+            } else if (
+              isNodeOfType(attr.value, "JSXExpressionContainer") &&
+              isNodeOfType(attr.value.expression, "Literal")
+            ) {
+              hasRecycleItemsEnabled = attr.value.expression.value === true;
+            } else {
+              hasRecycleItemsEnabled = true;
+            }
           }
+          if (attr.name.name === "getItemType") hasGetItemType = true;
         }
-        if (attr.name.name === "getItemType") hasGetItemType = true;
-      }
 
-      if (hasRecycleItemsEnabled && !hasGetItemType) {
-        context.report({
-          node,
-          message: `Your users see rows of different shapes reuse the wrong cells when <${elementName} recycleItems> has no \`getItemType\`.`,
-        });
-      }
-    },
-  }),
+        if (hasRecycleItemsEnabled && !hasGetItemType) {
+          context.report({
+            node,
+            message: `Your users see rows of different shapes reuse the wrong cells when <${elementName} recycleItems> has no \`getItemType\`.`,
+          });
+        }
+      },
+    };
+  },
 });

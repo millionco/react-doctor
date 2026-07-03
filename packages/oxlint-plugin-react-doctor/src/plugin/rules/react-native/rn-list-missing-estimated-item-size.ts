@@ -1,6 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { getReactDoctorNumberSetting } from "../../utils/get-react-doctor-setting.js";
-import { FLASH_LIST_V2_MAJOR } from "../../constants/react-native.js";
+import {
+  FLASH_LIST_V2_MAJOR,
+  RECYCLABLE_LIST_PACKAGE_SOURCES,
+} from "../../constants/react-native.js";
+import { hasImportFromModules } from "../../utils/find-import-source-for-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
 import { resolveImportedRecyclerName } from "./utils/resolve-imported-recycler-name.js";
@@ -42,48 +46,55 @@ export const rnListMissingEstimatedItemSize = defineRule({
   severity: "warn",
   recommendation:
     "Without `estimatedItemSize` the list guesses row height and can flash blank cells on fast scroll. Add `estimatedItemSize={<avg-row-height-in-px>}` so it matches your rows.",
-  create: (context: RuleContext) => ({
-    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      const localElementName = resolveJsxElementName(node);
-      if (!localElementName) return;
-      // Resolve the LOCAL JSX name back to its originally-exported
-      // symbol from one of the recycler-owning packages. This handles
-      // both plain (`import { FlashList }`) and aliased
-      // (`import { FlashList as List }; <List />`) imports — we never
-      // key off the local JSX name directly.
-      const canonicalRecyclerName = resolveImportedRecyclerName(node, localElementName);
-      if (canonicalRecyclerName === null) return;
-      if (canonicalRecyclerName === "FlashList" && isFlashListV2OrNewer(context)) return;
+  create: (context: RuleContext) => {
+    let fileImportsRecycler = false;
+    return {
+      Program(node: EsTreeNodeOfType<"Program">) {
+        fileImportsRecycler = hasImportFromModules(node, RECYCLABLE_LIST_PACKAGE_SOURCES);
+      },
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (!fileImportsRecycler) return;
+        const localElementName = resolveJsxElementName(node);
+        if (!localElementName) return;
+        // Resolve the LOCAL JSX name back to its originally-exported
+        // symbol from one of the recycler-owning packages. This handles
+        // both plain (`import { FlashList }`) and aliased
+        // (`import { FlashList as List }; <List />`) imports — we never
+        // key off the local JSX name directly.
+        const canonicalRecyclerName = resolveImportedRecyclerName(node, localElementName);
+        if (canonicalRecyclerName === null) return;
+        if (canonicalRecyclerName === "FlashList" && isFlashListV2OrNewer(context)) return;
 
-      let hasSizingHint = false;
-      let dataIsEmptyLiteral = false;
-      let hasDataProp = false;
+        let hasSizingHint = false;
+        let dataIsEmptyLiteral = false;
+        let hasDataProp = false;
 
-      for (const attribute of node.attributes ?? []) {
-        if (!isNodeOfType(attribute, "JSXAttribute")) continue;
-        if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;
-        const attributeName = attribute.name.name;
-        if (SIZING_HINT_ATTRIBUTE_NAMES.has(attributeName)) hasSizingHint = true;
-        if (attributeName === "data") {
-          hasDataProp = true;
-          if (isEmptyArrayLiteral(attribute)) dataIsEmptyLiteral = true;
+        for (const attribute of node.attributes ?? []) {
+          if (!isNodeOfType(attribute, "JSXAttribute")) continue;
+          if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;
+          const attributeName = attribute.name.name;
+          if (SIZING_HINT_ATTRIBUTE_NAMES.has(attributeName)) hasSizingHint = true;
+          if (attributeName === "data") {
+            hasDataProp = true;
+            if (isEmptyArrayLiteral(attribute)) dataIsEmptyLiteral = true;
+          }
         }
-      }
 
-      if (hasSizingHint) return;
-      // Skip placeholder lists — `<FlashList data={[]} />` is almost
-      // always a render-with-empty-data branch, not a production code
-      // path, and adding `estimatedItemSize` there is busywork.
-      if (dataIsEmptyLiteral) return;
-      // Skip JSX that doesn't even pass `data` — likely an
-      // abstract wrapper component being defined, not an instantiation
-      // with real items.
-      if (!hasDataProp) return;
+        if (hasSizingHint) return;
+        // Skip placeholder lists — `<FlashList data={[]} />` is almost
+        // always a render-with-empty-data branch, not a production code
+        // path, and adding `estimatedItemSize` there is busywork.
+        if (dataIsEmptyLiteral) return;
+        // Skip JSX that doesn't even pass `data` — likely an
+        // abstract wrapper component being defined, not an instantiation
+        // with real items.
+        if (!hasDataProp) return;
 
-      context.report({
-        node,
-        message: `Your users see blank cells flash on fast scroll when <${localElementName}> has no \`estimatedItemSize\`.`,
-      });
-    },
-  }),
+        context.report({
+          node,
+          message: `Your users see blank cells flash on fast scroll when <${localElementName}> has no \`estimatedItemSize\`.`,
+        });
+      },
+    };
+  },
 });

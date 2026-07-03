@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
+import { hasJsxA11ySettings } from "../../utils/has-jsx-a11y-settings.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
@@ -76,8 +77,15 @@ export const anchorIsValid = defineRule({
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const fileHasJsxA11ySettings = hasJsxA11ySettings(context.settings);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (
+          !fileHasJsxA11ySettings &&
+          (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "a")
+        ) {
+          return;
+        }
         const tag = getElementType(node, context.settings);
         if (tag !== "a") return;
         // First-found custom href alternative, falling back to "href".

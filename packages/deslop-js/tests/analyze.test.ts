@@ -1,4 +1,4 @@
-import { describe, it, test } from "node:test";
+import { before, describe, it, test } from "node:test";
 import assert from "node:assert/strict";
 import { resolve, relative } from "node:path";
 import { analyze, defineConfig } from "../src/index.js";
@@ -40,9 +40,14 @@ const staleDependencyNames = (result: ScanResult): string[] =>
   result.unusedDependencies.map((dep) => dep.name).sort();
 
 describe("simple-app", () => {
-  it("should detect orphan file", async () => {
-    const result = await scanFixture("simple-app");
-    const fixtureDir = resolve(FIXTURES_DIR, "simple-app");
+  let result: ScanResult;
+  const fixtureDir = resolve(FIXTURES_DIR, "simple-app");
+
+  before(async () => {
+    result = await scanFixture("simple-app");
+  });
+
+  it("should detect orphan file", () => {
     const unusedFilePaths = orphanPaths(result, fixtureDir);
     assert.ok(
       unusedFilePaths.includes("src/orphan.ts"),
@@ -50,9 +55,7 @@ describe("simple-app", () => {
     );
   });
 
-  it("should detect unused exports in utils", async () => {
-    const result = await scanFixture("simple-app");
-    const fixtureDir = resolve(FIXTURES_DIR, "simple-app");
+  it("should detect unused exports in utils", () => {
     const exportsByFile = deadExportsByFile(result, fixtureDir);
     assert.ok(
       exportsByFile["src/utils.ts"]?.includes("unusedFunction"),
@@ -60,14 +63,12 @@ describe("simple-app", () => {
     );
   });
 
-  it("should detect unused dependency", async () => {
-    const result = await scanFixture("simple-app");
+  it("should detect unused dependency", () => {
     const deps = staleDependencyNames(result);
     assert.ok(deps.includes("unused-dep"), `unused-dep should be flagged, got: ${deps}`);
   });
 
-  it("should explain each unused dependency with a reason that names the package", async () => {
-    const result = await scanFixture("simple-app");
+  it("should explain each unused dependency with a reason that names the package", () => {
     const unusedDep = result.unusedDependencies.find((dep) => dep.name === "unused-dep");
     assert.ok(unusedDep, `unused-dep finding should exist, got: ${staleDependencyNames(result)}`);
     assert.equal(unusedDep.isDevDependency, false);
@@ -75,14 +76,12 @@ describe("simple-app", () => {
     assert.match(unusedDep.reason, /declared in dependencies\b/);
   });
 
-  it("should not flag usedFunction as unused", async () => {
-    const result = await scanFixture("simple-app");
+  it("should not flag usedFunction as unused", () => {
     const allUnusedNames = deadExportNames(result);
     assert.ok(!allUnusedNames.includes("usedFunction"), "usedFunction should not be unused");
   });
 
-  it("should flag react as unused (declared but never imported)", async () => {
-    const result = await scanFixture("simple-app");
+  it("should flag react as unused (declared but never imported)", () => {
     const deps = staleDependencyNames(result);
     assert.ok(deps.includes("react"), `react should be unused since never imported, got: ${deps}`);
   });
@@ -1002,7 +1001,9 @@ describe("import-dynamic", () => {
 describe("type-deps", () => {
   it("should detect type-only imports", async () => {
     const result = await scanFixture("type-deps");
-    assert.ok(result.totalFiles > 0, "should find files");
+    const deps = staleDependencyNames(result);
+    assert.ok(!deps.includes("express"), `express is imported as a value, got: ${deps}`);
+    assert.ok(!deps.includes("zod"), `zod is imported as a type, got: ${deps}`);
   });
 });
 
@@ -1011,9 +1012,9 @@ describe("orphan-barrel-subtree", () => {
     const result = await scanFixture("orphan-barrel-subtree");
     const fixtureDir = resolve(FIXTURES_DIR, "orphan-barrel-subtree");
     const unusedFilePaths = orphanPaths(result, fixtureDir);
-    assert.ok(
-      unusedFilePaths.includes("src/subtree/setup.ts"),
-      `setup.ts should be unused, got: ${unusedFilePaths}`,
+    assert.deepEqual(
+      unusedFilePaths.filter((filePath) => filePath.startsWith("src/subtree/")),
+      ["src/subtree/setup.ts", "src/subtree/tabs/helpers.ts", "src/subtree/tabs/index.ts"],
     );
   });
 });
@@ -4843,7 +4844,10 @@ describe("code-clones", () => {
     const result = await scanFixture("duplicate-blocks-basic", {
       duplicateBlocks: { enabled: true, mode: "semantic", minTokens: 30, minLines: 3 },
     });
-    if (result.duplicateBlocks.length === 0) return;
+    assert.ok(
+      result.duplicateBlocks.length > 0,
+      `expected duplicate blocks before checking clusters, got: ${JSON.stringify(result.duplicateBlocks, null, 2)}`,
+    );
     assert.ok(
       result.duplicateBlockClusters.length > 0,
       "expected at least one duplicate-block cluster when clones are present",

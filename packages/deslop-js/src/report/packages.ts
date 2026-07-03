@@ -19,10 +19,11 @@ interface OverrideMapping {
 interface PackageJsonDependencies {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
 }
 
-const discoverAllPackageJsonPaths = (rootDir: string): string[] => {
-  const paths = [join(rootDir, "package.json")];
+const discoverAllPackageJsonPathSet = (rootDir: string): Set<string> => {
+  const paths = new Set([join(rootDir, "package.json")]);
   const workspacePackageJsons = fg.sync("**/package.json", {
     cwd: rootDir,
     absolute: true,
@@ -31,9 +32,7 @@ const discoverAllPackageJsonPaths = (rootDir: string): string[] => {
     deep: 5,
   });
   for (const workspacePath of workspacePackageJsons) {
-    if (workspacePath !== paths[0] && !paths.includes(workspacePath)) {
-      paths.push(workspacePath);
-    }
+    paths.add(workspacePath);
   }
   return paths;
 };
@@ -67,21 +66,22 @@ export const detectStalePackages = (
   const usedPackageNames = collectUsedPackages(graph);
 
   const monorepoRoot = findMonorepoRoot(config.rootDir);
-  const nodeModulesSearchRoots =
+  const searchRoots =
     monorepoRoot && monorepoRoot !== config.rootDir
       ? [config.rootDir, monorepoRoot]
       : [config.rootDir];
 
-  const allPackageJsonPaths = discoverAllPackageJsonPaths(config.rootDir);
+  const allPackageJsonPathSet = discoverAllPackageJsonPathSet(config.rootDir);
   if (monorepoRoot) {
     const monorepoPackageJson = join(monorepoRoot, "package.json");
-    if (!allPackageJsonPaths.includes(monorepoPackageJson) && existsSync(monorepoPackageJson)) {
-      allPackageJsonPaths.push(monorepoPackageJson);
+    if (existsSync(monorepoPackageJson)) {
+      allPackageJsonPathSet.add(monorepoPackageJson);
     }
   }
+  const allPackageJsonPaths = [...allPackageJsonPathSet];
 
   const { binToPackage, packagesProvidingBinary } = buildBinaryPackageIndex(
-    nodeModulesSearchRoots,
+    searchRoots,
     declaredNames,
   );
 
@@ -111,11 +111,7 @@ export const detectStalePackages = (
   );
   for (const packageName of nxProjectReferenced) usedPackageNames.add(packageName);
 
-  const configSearchRoots =
-    monorepoRoot && monorepoRoot !== config.rootDir
-      ? [config.rootDir, monorepoRoot]
-      : [config.rootDir];
-  for (const configSearchRoot of configSearchRoots) {
+  for (const configSearchRoot of searchRoots) {
     const configReferenced = collectConfigReferencedPackages(
       configSearchRoot,
       graph,
@@ -165,39 +161,21 @@ export const detectStalePackages = (
   }
 
   if (declaredNames.has("react") && declaredNames.has("react-dom")) {
-    const packageJsonPath = resolve(config.rootDir, "package.json");
-    try {
-      const content = readFileSync(packageJsonPath, "utf-8");
-      const packageJson = JSON.parse(content);
-      const peerDeps = packageJson.peerDependencies ?? {};
-      if ("react" in peerDeps && declaredDependencies.get("react") === true) {
-        usedPackageNames.add("react");
-      }
-      if ("react-dom" in peerDeps && declaredDependencies.get("react-dom") === true) {
-        usedPackageNames.add("react-dom");
-      }
-    } catch {
-      // fall through
+    const peerDependencies = packageJson.peerDependencies ?? {};
+    if ("react" in peerDependencies && declaredDependencies.get("react") === true) {
+      usedPackageNames.add("react");
+    }
+    if ("react-dom" in peerDependencies && declaredDependencies.get("react-dom") === true) {
+      usedPackageNames.add("react-dom");
     }
   }
 
-  const peerSatisfied = collectPeerSatisfiedPackages(
-    nodeModulesSearchRoots,
-    declaredNames,
-    usedPackageNames,
-  );
+  const peerSatisfied = collectPeerSatisfiedPackages(searchRoots, declaredNames, usedPackageNames);
   for (const packageName of peerSatisfied) usedPackageNames.add(packageName);
 
-  const overrideMappings = collectOverrideMappings(
-    configSearchRoots,
-    allPackageJsonPaths,
-    monorepoRoot,
-  );
-  for (const { fromPackage, toPackage } of overrideMappings) {
+  const overrideMappings = collectOverrideMappings(searchRoots, allPackageJsonPaths, monorepoRoot);
+  for (const { toPackage } of overrideMappings) {
     if (declaredNames.has(toPackage)) usedPackageNames.add(toPackage);
-    if (usedPackageNames.has(fromPackage) && declaredNames.has(toPackage)) {
-      usedPackageNames.add(toPackage);
-    }
   }
 
   const candidateUnused = new Set<string>();
@@ -322,7 +300,9 @@ const buildBinaryPackageIndex = (
       const binPackageJson = JSON.parse(binContent);
       const binField = binPackageJson.bin;
       if (typeof binField === "string" && binField.length > 0) {
-        binToPackage.set(packageName.split("/").pop()!, packageName);
+        const defaultBinaryName = packageName.split("/").at(-1);
+        if (!defaultBinaryName) continue;
+        binToPackage.set(defaultBinaryName, packageName);
         packagesProvidingBinary.add(packageName);
       } else if (typeof binField === "object" && binField !== null) {
         const binaryNames = Object.keys(binField);
@@ -767,6 +747,7 @@ const scanSourceFilesForPackageImports = (
 ): Set<string> => {
   const found = new Set<string>();
   if (candidatePackages.size === 0) return found;
+  const remainingCandidates = new Set(candidatePackages);
 
   const sourceFiles = fg.sync(SOURCE_FILE_GLOBS, {
     cwd: rootDir,
@@ -777,13 +758,13 @@ const scanSourceFilesForPackageImports = (
   });
 
   for (const filePath of sourceFiles) {
-    if (candidatePackages.size === 0) break;
+    if (remainingCandidates.size === 0) break;
     try {
       const content = readFileSync(filePath, "utf-8");
-      for (const packageName of candidatePackages) {
+      for (const packageName of remainingCandidates) {
         if (matchesPackageImportReference(content, packageName)) {
           found.add(packageName);
-          candidatePackages.delete(packageName);
+          remainingCandidates.delete(packageName);
         }
       }
     } catch {

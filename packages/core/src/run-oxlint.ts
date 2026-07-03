@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { CROSS_FILE_RULE_IDS } from "oxlint-plugin-react-doctor";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "./types/index.js";
 import { batchIncludePaths } from "./batch-include-paths.js";
+import { COOPERATIVE_YIELD_BUDGET_MS } from "./constants.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
@@ -27,6 +28,7 @@ import { hashFileContents } from "./utils/hash-file-contents.js";
 import { listSourceFilesWithSize } from "./utils/list-source-files.js";
 import { planLintBatches } from "./utils/plan-lint-batches.js";
 import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
+import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
 
 interface RunOxlintOptions {
   rootDirectory: string;
@@ -333,6 +335,13 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     // diagnostics. Materializing the file list ahead of time and
     // feeding it through the batch planner keeps each spawn under
     // the timeout and recovers the diagnostics we were dropping.
+    // Hand the event loop back once before the synchronous discovery walk +
+    // cache-hash burst below. The orchestrator forked the security-scan and
+    // supply-chain fibers just before lint, but a forked fiber only runs when
+    // the current one suspends — this is their first chance to start (fire the
+    // Socket.dev requests, begin the scan walk) instead of stalling until the
+    // first oxlint spawn.
+    await yieldToEventLoop();
     // Only a full scan pays the walk — diff / staged scans pass
     // explicit paths.
     const sizedScanFiles =
@@ -441,10 +450,14 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       const cache = createFileLintCache(resolveReactDoctorCacheDir(rootDirectory), rulesetHash);
 
       // Partition candidates by content hash. An unreadable file (no hash) is
-      // treated as a miss and re-linted.
+      // treated as a miss and re-linted. Hashing reads every candidate's whole
+      // content, so the loop yields on the cooperative time budget — otherwise
+      // this pre-spawn burst starves the forked security-scan / supply-chain
+      // fibers (and sibling projects) until the first oxlint spawn.
       const cacheKeyByFile = new Map<string, string>();
       const missFiles: string[] = [];
       const replayedDiagnostics: Diagnostic[] = [];
+      let hashSliceStartedAt = performance.now();
       for (const candidateFile of candidateFiles) {
         const contentHash = hashFileContents(path.resolve(rootDirectory, candidateFile));
         if (contentHash === null) {
@@ -456,6 +469,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         const cachedDiagnostics = cache.lookup(cacheKey);
         if (cachedDiagnostics === null) missFiles.push(candidateFile);
         else replayedDiagnostics.push(...cachedDiagnostics);
+        if (performance.now() - hashSliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
+          await yieldToEventLoop();
+          hashSliceStartedAt = performance.now();
+        }
       }
       const cacheHitFileCount = candidateFiles.length - missFiles.length;
 

@@ -3,7 +3,7 @@ import type { FileScan, ScannedFile } from "oxlint-plugin-react-doctor";
 import { buildSecurityScanDiagnostic } from "./checks/security-scan/build-security-scan-diagnostic.js";
 import type { SecurityScanRuleEntry } from "./checks/security-scan/build-security-scan-diagnostic.js";
 import { collectSecurityScanFiles } from "./checks/security-scan/collect-security-scan-files.js";
-import { SECURITY_SCAN_YIELD_BUDGET_MS } from "./checks/security-scan/constants.js";
+import { COOPERATIVE_YIELD_BUDGET_MS } from "./constants.js";
 import { buildCapabilities, shouldEnableRule } from "./runners/oxlint/capabilities.js";
 import type { Diagnostic, ProjectInfo } from "./types/index.js";
 import { isPathGitIgnored } from "./utils/is-path-git-ignored.js";
@@ -103,6 +103,7 @@ export const checkSecurityScan = (
   const session = createSecurityScanSession(rootDirectory, options);
   if (session === null) return [];
   for (const file of collectSecurityScanFiles(rootDirectory)) {
+    if (file === null) continue;
     for (const _ruleStep of session.scanFileByRule(file)) {
       // Sync driver: exhaust the per-rule steps without yielding.
     }
@@ -112,12 +113,13 @@ export const checkSecurityScan = (
 
 // Cooperative variant: identical output to `checkSecurityScan`, but hands the
 // event loop back whenever a scan slice has held it for
-// `SECURITY_SCAN_YIELD_BUDGET_MS`, checked between every (file, rule) step, so
-// a caller that forks it (the orchestrator) can overlap its CPU with other
-// async work. A time budget rather than a file interval: lint's child
-// processes are spawned and drained from main-thread continuations, so any
-// long stall idles the whole worker pool — and one large minified bundle
-// could previously stall for its entire rule set.
+// `COOPERATIVE_YIELD_BUDGET_MS`, checked between every walk step and every
+// (file, rule) step, so a caller that forks it (the orchestrator) can overlap
+// its CPU with other async work. A time budget rather than a file interval:
+// lint's child processes are spawned and drained from main-thread
+// continuations, so any long stall idles the whole worker pool — and one
+// large minified bundle could previously stall for its entire rule set (as
+// could a large tree's whole directory walk, before the walk markers).
 export const checkSecurityScanCooperative = async (
   rootDirectory: string,
   options: CheckSecurityScanOptions = {},
@@ -126,8 +128,15 @@ export const checkSecurityScanCooperative = async (
   if (session === null) return [];
   let sliceStartedAt = performance.now();
   for (const file of collectSecurityScanFiles(rootDirectory)) {
+    if (file === null) {
+      if (performance.now() - sliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
+        await yieldToEventLoop();
+        sliceStartedAt = performance.now();
+      }
+      continue;
+    }
     for (const _ruleStep of session.scanFileByRule(file)) {
-      if (performance.now() - sliceStartedAt >= SECURITY_SCAN_YIELD_BUDGET_MS) {
+      if (performance.now() - sliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
         await yieldToEventLoop();
         sliceStartedAt = performance.now();
       }

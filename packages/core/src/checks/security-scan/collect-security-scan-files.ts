@@ -62,9 +62,15 @@ const readScannedFile = (candidate: SecurityScanCandidate): ScannedFile | null =
 // lazily, one file per iteration (capped at SECURITY_SCAN_MAX_FILES
 // successful reads per bucket), so a caller that streams findings never
 // holds more than one file's content at a time.
+//
+// `null` is a walk-progress marker, yielded once per directory processed: the
+// path-collection phase runs BEFORE any file can be yielded (the buckets need
+// the whole tree), so without markers a large tree's readdir + classify pass
+// would be one unyielding burst — the cooperative driver uses them as budget
+// checkpoints. Drivers that don't pace themselves just skip them.
 export function* collectSecurityScanFiles(
   rootDirectory: string,
-): Generator<ScannedFile, void, void> {
+): Generator<ScannedFile | null, void, void> {
   const priorityCandidates: SecurityScanCandidate[] = [];
   const artifactCandidates: SecurityScanCandidate[] = [];
   const otherCandidates: SecurityScanCandidate[] = [];
@@ -99,6 +105,7 @@ export function* collectSecurityScanFiles(
         isGeneratedBundleByName: classification.isGeneratedBundleByName,
       });
     }
+    yield null;
   }
 
   for (const candidates of [priorityCandidates, artifactCandidates, otherCandidates]) {

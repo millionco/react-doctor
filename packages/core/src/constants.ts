@@ -306,6 +306,13 @@ export const OXLINT_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;
 // binding is markedly slower than on a developer laptop.
 export const OXLINT_SPAWN_TIMEOUT_MS = 60_000;
 
+// Longest synchronous burst a cooperative main-thread pass (the security
+// scan's walk / file / rule steps, lint's pre-spawn cache hashing) may hold
+// the event loop before handing it back. Lint child processes are spawned and
+// drained from main-thread continuations, so bursts beyond ~a frame idle the
+// whole worker pool — and starve concurrently-scanning sibling projects.
+export const COOPERATIVE_YIELD_BUDGET_MS = 12;
+
 // Directory name appended to os.tmpdir() to form the shared base for the V8
 // compile cache. Matches the base Node's own module.enableCompileCache() uses,
 // so the bin (parent) and the spawned oxlint batches (children) share one tree.

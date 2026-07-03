@@ -465,4 +465,46 @@ describe("no-derived-state — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("stays silent on a layout measurement read through a ref.current alias (posthog CollapsibleContent)", () => {
+    const result = runRule(
+      noDerivedState,
+      `import { useEffect, useRef, useState } from "react";
+      const CollapsibleContent = ({ maxHeight, children }) => {
+        const [isOverflowing, setIsOverflowing] = useState(false);
+        const contentRef = useRef(null);
+        useEffect(() => {
+          const el = contentRef.current;
+          if (el) {
+            setIsOverflowing(el.scrollHeight > maxHeight);
+          }
+        }, [children, maxHeight]);
+        return <div ref={contentRef}>{children}</div>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a plain-data alias whose value is derivable at render time", () => {
+    const result = runRule(
+      noDerivedState,
+      `import { useEffect, useState } from "react";
+      const Summary = ({ maxHeight, content }) => {
+        const [isOverflowing, setIsOverflowing] = useState(false);
+        useEffect(() => {
+          const el = content;
+          if (el) {
+            setIsOverflowing(el.length > maxHeight);
+          }
+        }, [content, maxHeight]);
+        return <div>{String(isOverflowing)}</div>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain('"isOverflowing"');
+  });
 });

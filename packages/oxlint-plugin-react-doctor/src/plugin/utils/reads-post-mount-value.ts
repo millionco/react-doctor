@@ -86,6 +86,45 @@ const resolvesToRefFactoryCall = (identifier: EsTreeNodeOfType<"Identifier">): b
   return found;
 };
 
+const unwrapExpression = (node: EsTreeNode | null | undefined): EsTreeNode | null => {
+  if (!node) return null;
+  if (isNodeOfType(node, "ChainExpression")) return unwrapExpression(node.expression as EsTreeNode);
+  if (isNodeOfType(node, "TSNonNullExpression")) {
+    return unwrapExpression(node.expression as EsTreeNode);
+  }
+  return node;
+};
+
+// `const el = contentRef.current` — a local alias of a ref's `.current`
+// carries the mounted element, so layout reads through the alias
+// (`el.scrollHeight`) are post-mount measurements too.
+const resolvesToRefCurrentAlias = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
+  const root = findProgramRoot(identifier);
+  if (!root) return false;
+  let found = false;
+  walkAst(root, (child: EsTreeNode): boolean | void => {
+    if (found) return false;
+    if (
+      isNodeOfType(child, "VariableDeclarator") &&
+      isNodeOfType(child.id, "Identifier") &&
+      child.id.name === identifier.name
+    ) {
+      const init = unwrapExpression(child.init as EsTreeNode | null);
+      if (
+        init &&
+        isNodeOfType(init, "MemberExpression") &&
+        isNodeOfType(init.property, "Identifier") &&
+        init.property.name === "current" &&
+        isRefLikeReceiver(init.object as EsTreeNode)
+      ) {
+        found = true;
+        return false;
+      }
+    }
+  });
+  return found;
+};
+
 const isRefLikeReceiver = (receiver: EsTreeNode | null | undefined): boolean => {
   if (!receiver) return false;
   if (isNodeOfType(receiver, "ChainExpression")) {
@@ -95,7 +134,11 @@ const isRefLikeReceiver = (receiver: EsTreeNode | null | undefined): boolean => 
     return isRefLikeReceiver(receiver.expression as EsTreeNode);
   }
   if (isNodeOfType(receiver, "Identifier")) {
-    return hasRefLikeName(receiver.name) || resolvesToRefFactoryCall(receiver);
+    return (
+      hasRefLikeName(receiver.name) ||
+      resolvesToRefFactoryCall(receiver) ||
+      resolvesToRefCurrentAlias(receiver)
+    );
   }
   if (isNodeOfType(receiver, "MemberExpression") && isNodeOfType(receiver.property, "Identifier")) {
     if (hasRefLikeName(receiver.property.name)) return true;

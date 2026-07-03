@@ -24,9 +24,9 @@ import { spawnLintBatches } from "./runners/oxlint/spawn-batches.js";
 import { validateRuleRegistration } from "./runners/oxlint/validate-rule-registration.js";
 import { dedupeDiagnostics } from "./utils/dedupe-diagnostics.js";
 import { hashFileContents } from "./utils/hash-file-contents.js";
-import { listSourceFiles, listSourceFilesWithSize } from "./utils/list-source-files.js";
+import { listSourceFilesWithSize } from "./utils/list-source-files.js";
+import { planLintBatches } from "./utils/plan-lint-batches.js";
 import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
-import { sortSourceFilesByCost } from "./utils/sort-source-files-by-cost.js";
 
 interface RunOxlintOptions {
   rootDirectory: string;
@@ -105,9 +105,10 @@ interface RunOxlintOptions {
   /** See `SpawnLintBatchesInput.deadlineEpochMs`. */
   deadlineEpochMs?: number;
   /**
-   * Full-scan batch ordering, resolved from the `LintBatchOrdering`
-   * Reference. `"arrival"` (the default) keeps discovery order; `"cost"`
-   * opts into LPT (largest files first). Only affects the full-scan branch
+   * Full-scan batch planning, resolved from the `LintBatchOrdering`
+   * Reference. `"cost"` (the default) plans size-balanced LPT batches via
+   * `planLintBatches`; `"arrival"` is the rollback hatch to the plain greedy
+   * 100-file chunking in discovery order. Only affects the full-scan branch
    * (`includePaths` undefined) — diff / staged scans pass explicit paths and
    * are untouched.
    */
@@ -206,7 +207,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     onCacheStats,
     spawnTimeoutMs,
     outputMaxBytes,
-    lintBatchOrdering = "arrival",
+    lintBatchOrdering = "cost",
   } = options;
 
   const serverAuthFunctionNames = Array.isArray(userConfig?.serverAuthFunctionNames)
@@ -330,21 +331,27 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     // that JS-plugin rules hit the 5-min `OXLINT_SPAWN_TIMEOUT_MS`
     // in a single batch, leaving `skippedChecks: ["lint"]` and zero
     // diagnostics. Materializing the file list ahead of time and
-    // feeding it through `batchIncludePaths` keeps each spawn under
+    // feeding it through the batch planner keeps each spawn under
     // the timeout and recovers the diagnostics we were dropping.
-    //
-    // `"cost"` orders discovered files largest-first (LPT) so the
-    // heaviest batch starts in wave 1 of the parallel pool instead of
-    // stranding in the tail — the size is the minified gate's existing
-    // stat, captured rather than re-paid. `"arrival"` (the default) keeps
-    // discovery order; `cost` is the env opt-in (`LintBatchOrdering`). Only
-    // invoked for a full scan, so diff / staged scans never pay the walk.
-    const discoverScanFiles = (): string[] =>
-      lintBatchOrdering === "cost"
-        ? sortSourceFilesByCost(listSourceFilesWithSize(rootDirectory))
-        : listSourceFiles(rootDirectory);
+    // Only a full scan pays the walk — diff / staged scans pass
+    // explicit paths.
+    const sizedScanFiles =
+      includePaths === undefined ? listSourceFilesWithSize(rootDirectory) : null;
+    const candidateFiles =
+      includePaths !== undefined ? includePaths : (sizedScanFiles ?? []).map((entry) => entry.path);
 
-    const candidateFiles = includePaths !== undefined ? includePaths : discoverScanFiles();
+    // `"cost"` (the default) plans size-balanced LPT batches — the size is
+    // the discovery walk's existing stat, captured rather than re-paid.
+    // `"arrival"` (the `REACT_DOCTOR_LINT_BATCH_ORDERING` rollback hatch) and
+    // every explicit-`includePaths` scan keep the plain greedy chunking.
+    const sizeByFile =
+      sizedScanFiles !== null && lintBatchOrdering === "cost"
+        ? new Map(sizedScanFiles.map((entry) => [entry.path, entry.sizeBytes]))
+        : null;
+    const buildFileBatches = (passBaseArgs: string[], passFiles: string[]): string[][] =>
+      sizeByFile !== null
+        ? planLintBatches({ baseArgs: passBaseArgs, files: passFiles, sizeByFile })
+        : batchIncludePaths(passBaseArgs, passFiles);
 
     // Runs one oxlintrc over a file list, retrying once with the optional
     // react-hooks-js plugin stripped if it fails to import (issue #833).
@@ -375,7 +382,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       };
       const passConfigPath = path.join(configDirectory, configFileName);
       const passBaseArgs = makeBaseArgs(passConfigPath);
-      const passFileBatches = batchIncludePaths(passBaseArgs, files);
+      const passFileBatches = buildFileBatches(passBaseArgs, files);
       const spawnPass = () =>
         spawnLintBatches({
           baseArgs: passBaseArgs,
@@ -545,7 +552,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     }
 
     const baseArgs = makeBaseArgs(configPath);
-    const fileBatches = batchIncludePaths(baseArgs, candidateFiles);
+    const fileBatches = buildFileBatches(baseArgs, candidateFiles);
 
     const runBatches = () =>
       spawnLintBatches({

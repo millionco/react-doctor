@@ -1,7 +1,5 @@
 import { OXLINT_MAX_FILES_PER_BATCH, SPAWN_ARGS_MAX_LENGTH_CHARS } from "./constants.js";
-
-const estimateArgsLength = (args: string[]): number =>
-  args.reduce((total, argument) => total + argument.length + 1, 0);
+import { estimateArgsLength } from "./utils/estimate-args-length.js";
 
 // Splits a (possibly huge) include-path list into batches that each
 // fit under BOTH the spawn-args byte budget (Windows CreateProcessW caps

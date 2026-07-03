@@ -158,17 +158,19 @@ export class DeadCodeOverlap extends Context.Reference<"auto" | "on" | "off">(
 ) {}
 
 /**
- * How the full-scan lint pass orders its file batches. `"arrival"` (the
- * default) keeps `git ls-files` discovery order. `"cost"` opts into LPT (feed
- * the largest files first); set `REACT_DOCTOR_LINT_BATCH_ORDERING=cost`. NOTE:
- * `cost` is OFF by default because the current sort-desc-then-chunk-100 packs
- * the heaviest files into one wave-1 batch — on size-skewed repos that mega-
- * batch is a straggler (and can trip the per-batch timeout + split), measurably
- * regressing the common full-scan case. LPT needs the heavy files SPREAD across
- * batches before `cost` earns the default. Tests override via
- * `Layer.succeed(LintBatchOrdering, ...)`. Diff / staged scans never reach this
- * — they pass user-scoped `includePaths` that skip discovery and stay in
- * arrival order; only the full-scan branch reads it.
+ * How the full-scan lint pass plans its file batches. `"cost"` (the default)
+ * builds size-balanced LPT batches (`planLintBatches`): the same mandatory
+ * batch count as greedy chunking (`ceil(files / 100)`), but every batch gets
+ * an even share of files AND bytes, so no 100-file chunk is a straggler while
+ * the remainder-batch worker idles — and the heavy files are SPREAD across
+ * batches, the precondition the old sort-desc-then-chunk-100 `cost` mode
+ * lacked (it packed the heaviest files into one wave-1 straggler batch,
+ * measurably regressing size-skewed repos, which is why it never earned the
+ * default). `"arrival"` (`REACT_DOCTOR_LINT_BATCH_ORDERING=arrival`) is the
+ * rollback hatch to plain greedy 100-file chunking in discovery order. Tests
+ * override via `Layer.succeed(LintBatchOrdering, ...)`. Diff / staged scans
+ * never reach this — they pass user-scoped `includePaths` that skip discovery
+ * and stay in arrival order; only the full-scan branch reads it.
  */
 export class LintBatchOrdering extends Context.Reference<"cost" | "arrival">(
   "react-doctor/LintBatchOrdering",

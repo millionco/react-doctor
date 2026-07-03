@@ -22,9 +22,9 @@ interface MediaHasCaptionSettings {
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
 ): {
-  audio: ReadonlyArray<string>;
-  video: ReadonlyArray<string>;
-  track: ReadonlyArray<string>;
+  audio: ReadonlySet<string>;
+  video: ReadonlySet<string>;
+  track: ReadonlySet<string>;
 } => {
   const reactDoctor = settings?.["react-doctor"];
   const ruleSettings =
@@ -32,9 +32,9 @@ const resolveSettings = (
       ? ((reactDoctor as { mediaHasCaption?: MediaHasCaptionSettings }).mediaHasCaption ?? {})
       : {};
   return {
-    audio: [...DEFAULT_AUDIO, ...(ruleSettings.audio ?? [])],
-    video: [...DEFAULT_VIDEO, ...(ruleSettings.video ?? [])],
-    track: [...DEFAULT_TRACK, ...(ruleSettings.track ?? [])],
+    audio: new Set([...DEFAULT_AUDIO, ...(ruleSettings.audio ?? [])]),
+    video: new Set([...DEFAULT_VIDEO, ...(ruleSettings.video ?? [])]),
+    track: new Set([...DEFAULT_TRACK, ...(ruleSettings.track ?? [])]),
   };
 };
 
@@ -83,7 +83,7 @@ const trackKindMightBeCaptions = (
 // tracks (e.g. a static `kind="subtitles"`) does not satisfy the requirement.
 const childMayRenderTrack = (
   child: EsTreeNode,
-  trackTags: ReadonlyArray<string>,
+  trackTags: ReadonlySet<string>,
   settings: Readonly<Record<string, unknown>> | undefined,
 ): boolean => {
   if (!isNodeOfType(child, "JSXExpressionContainer")) return false;
@@ -104,7 +104,7 @@ const childMayRenderTrack = (
     if (rendersCaptionTrack) return false;
     if (
       isNodeOfType(inner, "JSXElement") &&
-      trackTags.includes(getElementType(inner.openingElement, settings)) &&
+      trackTags.has(getElementType(inner.openingElement, settings)) &&
       trackKindMightBeCaptions(inner.openingElement)
     ) {
       rendersCaptionTrack = true;
@@ -127,7 +127,7 @@ export const mediaHasCaption = defineRule({
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         const tag = getElementType(node, context.settings);
-        const isAudioOrVideo = settings.audio.includes(tag) || settings.video.includes(tag);
+        const isAudioOrVideo = settings.audio.has(tag) || settings.video.has(tag);
         if (!isAudioOrVideo) return;
         const mutedAttribute = hasJsxPropIgnoreCase(node.attributes, "muted");
         if (evaluateMuted(mutedAttribute) === true) return;
@@ -145,7 +145,7 @@ export const mediaHasCaption = defineRule({
           if (!isNodeOfType(child as EsTreeNode, "JSXElement")) return false;
           const opening = (child as EsTreeNodeOfType<"JSXElement">).openingElement;
           const childTag = getElementType(opening, context.settings);
-          if (!settings.track.includes(childTag)) return false;
+          if (!settings.track.has(childTag)) return false;
           const kindAttribute = hasJsxPropIgnoreCase(opening.attributes, "kind");
           if (!kindAttribute) return false;
           let kindValue = kindAttribute.value as EsTreeNode | null;

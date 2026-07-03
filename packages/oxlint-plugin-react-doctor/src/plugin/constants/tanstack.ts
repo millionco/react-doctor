@@ -18,6 +18,12 @@ export const TANSTACK_ROUTE_PROPERTY_ORDER = [
   "remountDeps",
 ];
 
+// Index of each order-sensitive route property, so membership and ordering
+// are one Map lookup instead of includes() + indexOf() linear scans.
+export const TANSTACK_ROUTE_PROPERTY_INDEX: ReadonlyMap<string, number> = new Map(
+  TANSTACK_ROUTE_PROPERTY_ORDER.map((propertyName, orderIndex) => [propertyName, orderIndex]),
+);
+
 export const TANSTACK_ROUTE_CREATION_FUNCTIONS = new Set([
   "createFileRoute",
   "createRoute",
@@ -38,6 +44,11 @@ export const TANSTACK_MIDDLEWARE_METHOD_ORDER = [
   "server",
   "handler",
 ];
+
+// Same Map-index companion for the server-fn middleware chain order.
+export const TANSTACK_MIDDLEWARE_METHOD_INDEX: ReadonlyMap<string, number> = new Map(
+  TANSTACK_MIDDLEWARE_METHOD_ORDER.map((methodName, orderIndex) => [methodName, orderIndex]),
+);
 
 export const TANSTACK_REDIRECT_FUNCTIONS = new Set(["redirect", "notFound"]);
 

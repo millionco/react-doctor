@@ -1,7 +1,7 @@
 import { isValidDomAriaProperty } from "../../constants/dom-aria-properties.js";
 import {
   DOM_ATTRIBUTES_TO_CAMEL,
-  DOM_PROPERTIES_IGNORE_CASE,
+  DOM_PROPERTIES_IGNORE_CASE_BY_LOWER,
   DOM_PROPERTY_NAMES,
   DOM_PROPERTY_NAMES_LOWER,
 } from "../../constants/dom-property-names.js";
@@ -44,12 +44,8 @@ const matchesHtmlTagConventions = (tagName: string): boolean => {
   return !tagName.includes("-");
 };
 
-const normalizeAttributeCase = (name: string): string => {
-  for (const ignoreCaseName of DOM_PROPERTIES_IGNORE_CASE) {
-    if (ignoreCaseName.toLowerCase() === name.toLowerCase()) return ignoreCaseName;
-  }
-  return name;
-};
+const normalizeAttributeCase = (name: string): string =>
+  DOM_PROPERTIES_IGNORE_CASE_BY_LOWER.get(name.toLowerCase()) ?? name;
 
 const hasUppercaseChar = (input: string): boolean => /[A-Z]/.test(input);
 

@@ -26,20 +26,22 @@ interface JsxA11ySettings {
   attributes?: { for?: ReadonlyArray<string> };
 }
 
-const DEFAULT_CONTROL_COMPONENTS: ReadonlyArray<string> = [
+const DEFAULT_CONTROL_COMPONENTS: ReadonlySet<string> = new Set([
   "input",
   "meter",
   "output",
   "progress",
   "select",
   "textarea",
-];
+]);
 
 const DEFAULT_LABEL_ATTRIBUTES: ReadonlyArray<string> = ["alt", "aria-label", "aria-labelledby"];
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
-): Required<LabelHasAssociatedControlSettings> & {
+): Omit<Required<LabelHasAssociatedControlSettings>, "labelComponents" | "labelAttributes"> & {
+  labelComponents: ReadonlySet<string>;
+  labelAttributes: ReadonlySet<string>;
   forAttributes: ReadonlyArray<string>;
 } => {
   const reactDoctor = settings?.["react-doctor"];
@@ -52,10 +54,14 @@ const resolveSettings = (
   const a11ySettings =
     typeof jsxA11y === "object" && jsxA11y !== null ? (jsxA11y as JsxA11ySettings) : {};
   const forAttributes = a11ySettings.attributes?.for ?? ["htmlFor"];
-  const labelComponents = ["label", ...(ruleSettings.labelComponents ?? [])].sort();
-  const labelAttributes = [
-    ...new Set([...DEFAULT_LABEL_ATTRIBUTES, ...(ruleSettings.labelAttributes ?? [])]),
-  ].sort();
+  const labelComponents: ReadonlySet<string> = new Set([
+    "label",
+    ...(ruleSettings.labelComponents ?? []),
+  ]);
+  const labelAttributes: ReadonlySet<string> = new Set([
+    ...DEFAULT_LABEL_ATTRIBUTES,
+    ...(ruleSettings.labelAttributes ?? []),
+  ]);
   return {
     labelComponents,
     labelAttributes,
@@ -75,13 +81,13 @@ const resolveSettings = (
 
 // Glob match used by OXC for `controlComponents` entries (supports `*`).
 const isControlComponent = (tagName: string, controlComponents: ReadonlyArray<string>): boolean => {
-  if (DEFAULT_CONTROL_COMPONENTS.includes(tagName)) return true;
+  if (DEFAULT_CONTROL_COMPONENTS.has(tagName)) return true;
   return controlComponents.some((pattern) => compileGlob(pattern).test(tagName));
 };
 
 interface SearchContext {
   depth: number;
-  labelAttributes: ReadonlyArray<string>;
+  labelAttributes: ReadonlySet<string>;
   controlComponents: ReadonlyArray<string>;
   settings: Readonly<Record<string, unknown>> | undefined;
 }
@@ -131,7 +137,7 @@ const searchForAccessibleLabel = (
       const attributeName = (attribute as EsTreeNodeOfType<"JSXAttribute">).name;
       if (!isNodeOfType(attributeName as EsTreeNode, "JSXIdentifier")) continue;
       const propName = getJsxAttributeName(attributeName as EsTreeNodeOfType<"JSXIdentifier">);
-      if (!propName || !searchContext.labelAttributes.includes(propName)) continue;
+      if (!propName || !searchContext.labelAttributes.has(propName)) continue;
       const attributeValue = (attribute as EsTreeNodeOfType<"JSXAttribute">).value;
       if (!attributeValue) continue;
       if (
@@ -173,7 +179,7 @@ const hasAccessibleLabel = (
     const attributeName = (attribute as EsTreeNodeOfType<"JSXAttribute">).name;
     if (!isNodeOfType(attributeName as EsTreeNode, "JSXIdentifier")) continue;
     const propName = getJsxAttributeName(attributeName as EsTreeNodeOfType<"JSXIdentifier">);
-    if (propName && searchContext.labelAttributes.includes(propName)) return true;
+    if (propName && searchContext.labelAttributes.has(propName)) return true;
   }
   for (const child of element.children) {
     if (searchForAccessibleLabel(child as EsTreeNode, 1, searchContext)) return true;
@@ -207,7 +213,7 @@ export const labelHasAssociatedControl = defineRule({
         if (isTestlikeFile) return;
         const opening = node.openingElement;
         const tagName = getElementType(opening, context.settings);
-        if (!settings.labelComponents.includes(tagName)) return;
+        if (!settings.labelComponents.has(tagName)) return;
         const hasHtmlFor = settings.forAttributes.some((attributeName) =>
           Boolean(hasJsxPropIgnoreCase(opening.attributes, attributeName)),
         );

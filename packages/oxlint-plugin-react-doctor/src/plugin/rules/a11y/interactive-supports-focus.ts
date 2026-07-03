@@ -1,11 +1,13 @@
-import { ALL_EVENT_HANDLERS } from "../../constants/event-handlers.js";
+import { ALL_EVENT_HANDLERS_LOWER } from "../../constants/event-handlers.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isDisabledElement } from "../../utils/is-disabled-element.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isInteractiveElement } from "../../utils/is-interactive-element.js";
@@ -65,9 +67,15 @@ export const interactiveSupportsFocus = defineRule({
         const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
         const role = roleAttribute ? getJsxPropStringValue(roleAttribute) : null;
         if (!role) return;
-        const hasInteractiveHandler = ALL_EVENT_HANDLERS.some((handler) =>
-          Boolean(hasJsxPropIgnoreCase(node.attributes, handler)),
-        );
+        let hasInteractiveHandler = false;
+        for (const attribute of node.attributes) {
+          if (!isNodeOfType(attribute, "JSXAttribute")) continue;
+          const attributeName = getJsxAttributeName(attribute.name);
+          if (attributeName && ALL_EVENT_HANDLERS_LOWER.has(attributeName.toLowerCase())) {
+            hasInteractiveHandler = true;
+            break;
+          }
+        }
         if (!hasInteractiveHandler) return;
         const elementType = getElementType(node, context.settings);
         // Custom components (PascalCase, not in HTML_TAGS) encapsulate

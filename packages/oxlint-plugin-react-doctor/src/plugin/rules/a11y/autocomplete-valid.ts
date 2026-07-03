@@ -131,13 +131,13 @@ interface AutocompleteValidSettings {
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
-): { inputComponents: ReadonlyArray<string> } => {
+): { inputComponents: ReadonlySet<string> } => {
   const reactDoctor = settings?.["react-doctor"];
   const ruleSettings =
     typeof reactDoctor === "object" && reactDoctor !== null
       ? ((reactDoctor as { autocompleteValid?: AutocompleteValidSettings }).autocompleteValid ?? {})
       : {};
-  return { inputComponents: ruleSettings.inputComponents ?? [] };
+  return { inputComponents: new Set(ruleSettings.inputComponents ?? []) };
 };
 
 // Port of `oxc_linter::rules::jsx_a11y::autocomplete_valid`. Validates
@@ -155,7 +155,7 @@ export const autocompleteValid = defineRule({
     return {
       JSXOpeningElement: (node: EsTreeNodeOfType<"JSXOpeningElement">) => {
         const tag = getElementType(node, context.settings);
-        if (!FORM_CONTROL_TAGS.has(tag) && !settings.inputComponents.includes(tag)) return;
+        if (!FORM_CONTROL_TAGS.has(tag) && !settings.inputComponents.has(tag)) return;
         const attribute = hasJsxPropIgnoreCase(node.attributes, "autoComplete");
         if (!attribute) return;
         const value = getJsxPropStringValue(attribute);

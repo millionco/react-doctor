@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
@@ -100,15 +101,13 @@ const collectRoleBranches = (expression: EsTreeNode, out: RoleExpressionBranches
 const buildMessage = (tag: string): string =>
   `Keyboard & screen reader users can't trigger this \`<${tag}>\` because it isn't interactive, so use a button or link or add an interactive role.`;
 
-// Mouse / pointer / keyboard events that imply interaction.
-const INTERACTIVE_HANDLERS: ReadonlyArray<string> = [
-  "onClick",
-  "onMouseDown",
-  "onMouseUp",
-  "onKeyDown",
-  "onKeyPress",
-  "onKeyUp",
-];
+// Mouse / pointer / keyboard events that imply interaction, keyed by
+// lowercased form for a single case-insensitive pass over the attributes.
+const INTERACTIVE_HANDLERS_LOWER: ReadonlySet<string> = new Set(
+  ["onClick", "onMouseDown", "onMouseUp", "onKeyDown", "onKeyPress", "onKeyUp"].map((handlerName) =>
+    handlerName.toLowerCase(),
+  ),
+);
 
 // Port of `oxc_linter::rules::jsx_a11y::no_noninteractive_element_interactions`.
 // Reports interactive event handlers attached to non-interactive HTML
@@ -131,9 +130,15 @@ export const noNoninteractiveElementInteractions = defineRule({
         // ARIA role, and clicking a label forwards activation to its nested
         // keyboard-accessible input.
         if (tag === "label") return;
-        const hasHandler = INTERACTIVE_HANDLERS.some((handler) =>
-          hasJsxPropIgnoreCase(node.attributes, handler),
-        );
+        let hasHandler = false;
+        for (const attribute of node.attributes) {
+          if (!isNodeOfType(attribute, "JSXAttribute")) continue;
+          const attributeName = getJsxAttributeName(attribute.name);
+          if (attributeName && INTERACTIVE_HANDLERS_LOWER.has(attributeName.toLowerCase())) {
+            hasHandler = true;
+            break;
+          }
+        }
         if (!hasHandler) return;
         if (isHiddenFromScreenReader(node, context.settings)) return;
         const roleAttr = hasJsxPropIgnoreCase(node.attributes, "role");

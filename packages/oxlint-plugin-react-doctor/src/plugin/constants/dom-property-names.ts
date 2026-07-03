@@ -694,11 +694,15 @@ export const DOM_ATTRIBUTES_TO_CAMEL: ReadonlyMap<string, string> = new Map([
 ]);
 
 // Names for which casing isn't enforced — i.e. both `charset` and
-// `charSet` (and similar) are accepted spellings.
-export const DOM_PROPERTIES_IGNORE_CASE: ReadonlyArray<string> = [
-  "charset",
-  "allowFullScreen",
-  "webkitAllowFullScreen",
-  "mozAllowFullScreen",
-  "webkitDirectory",
-];
+// `charSet` (and similar) are accepted spellings. Keyed by lowercased form
+// so a lookup is one `toLowerCase` + one `Map.get` instead of a linear scan
+// that re-lowercases the constants per call.
+export const DOM_PROPERTIES_IGNORE_CASE_BY_LOWER: ReadonlyMap<string, string> = new Map(
+  [
+    "charset",
+    "allowFullScreen",
+    "webkitAllowFullScreen",
+    "mozAllowFullScreen",
+    "webkitDirectory",
+  ].map((name) => [name.toLowerCase(), name]),
+);

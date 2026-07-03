@@ -18,14 +18,14 @@ interface HeadingHasContentSettings {
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
-): { headingTags: ReadonlyArray<string> } => {
+): { headingTags: ReadonlySet<string> } => {
   const reactDoctor = settings?.["react-doctor"];
   const ruleSettings =
     typeof reactDoctor === "object" && reactDoctor !== null
       ? ((reactDoctor as { headingHasContent?: HeadingHasContentSettings }).headingHasContent ?? {})
       : {};
   return {
-    headingTags: [...DEFAULT_HEADING_TAGS, ...(ruleSettings.components ?? [])],
+    headingTags: new Set([...DEFAULT_HEADING_TAGS, ...(ruleSettings.components ?? [])]),
   };
 };
 
@@ -44,7 +44,7 @@ export const headingHasContent = defineRule({
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         const elementType = getElementType(node, context.settings);
-        if (!settings.headingTags.includes(elementType)) return;
+        if (!settings.headingTags.has(elementType)) return;
         const parent = (node as EsTreeNode).parent;
         if (parent && isNodeOfType(parent, "JSXElement")) {
           if (objectHasAccessibleChild(parent, context.settings)) return;

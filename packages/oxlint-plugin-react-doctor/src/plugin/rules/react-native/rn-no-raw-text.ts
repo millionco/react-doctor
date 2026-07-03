@@ -67,9 +67,11 @@ const resolveTextBoundaryName = (
   return resolveJsxElementName(openingElement);
 };
 
+const TEXT_COMPONENT_KEYWORDS: ReadonlyArray<string> = [...REACT_NATIVE_TEXT_COMPONENT_KEYWORDS];
+
 const isTextHandlingComponent = (elementName: string): boolean => {
   if (REACT_NATIVE_TEXT_COMPONENTS.has(elementName)) return true;
-  return [...REACT_NATIVE_TEXT_COMPONENT_KEYWORDS].some((keyword) => elementName.includes(keyword));
+  return TEXT_COMPONENT_KEYWORDS.some((keyword) => elementName.includes(keyword));
 };
 
 const isTransparentTextWrapper = (elementName: string | null): boolean =>

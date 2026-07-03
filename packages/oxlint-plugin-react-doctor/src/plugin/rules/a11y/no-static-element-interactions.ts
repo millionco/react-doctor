@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isAbstractRole } from "../../utils/is-abstract-role.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
@@ -70,6 +71,9 @@ export const noStaticElementInteractions = defineRule({
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const handlersLower: ReadonlySet<string> = new Set(
+      settings.handlers.map((handlerName) => handlerName.toLowerCase()),
+    );
     const isTestlikeFile = isTestlikeFilename(context.filename);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
@@ -82,9 +86,17 @@ export const noStaticElementInteractions = defineRule({
         // pass through.
         let hasNonBlockerHandler = false;
         let hasAnyHandler = false;
-        for (const handler of settings.handlers) {
-          const attribute = hasJsxPropIgnoreCase(node.attributes, handler);
-          if (!attribute) continue;
+        // Only the FIRST attribute per handler name counts (mirrors the
+        // per-handler `hasJsxPropIgnoreCase` first-match this replaces).
+        let seenHandlerNames: Set<string> | null = null;
+        for (const attribute of node.attributes) {
+          if (!isNodeOfType(attribute, "JSXAttribute")) continue;
+          const attributeName = getJsxAttributeName(attribute.name);
+          if (!attributeName) continue;
+          const handlerNameLower = attributeName.toLowerCase();
+          if (!handlersLower.has(handlerNameLower)) continue;
+          if (seenHandlerNames?.has(handlerNameLower)) continue;
+          (seenHandlerNames ??= new Set()).add(handlerNameLower);
           if (isNullValue(attribute)) continue;
           hasAnyHandler = true;
           if (!isPureEventBlockerHandler(attribute)) {

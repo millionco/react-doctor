@@ -85,24 +85,34 @@ runs:
         path: ${{ runner.temp }}/react-doctor-toolchain
         key: react-doctor-toolchain-${{ steps.resolve-version.outputs.resolved }}-node${{ inputs.node-version }}-${{ runner.os }}-${{ runner.arch }}
 
-    # Persist react-doctor's scan caches (the per-file content-addressed lint
-    # cache + the supply-chain cache) across CI runs. In CI every commit is a
-    # fresh, SHA-scoped checkout, so the project-local `node_modules/.cache`
-    # never survives between commits — pointing REACT_DOCTOR_CACHE_DIR (set on
-    # the scan step) at a stable `${runner.temp}` path lets actions/cache restore
-    # it. The key busts on the react-doctor version + lockfile (the inputs that
-    # change the ruleset / dep set); `restore-keys` allows a partial hit from the
-    # last same-version run, which is sound because the engine re-validates every
-    # cached entry by content hash + ruleset hash internally (a stale entry just
-    # misses and re-computes).
+    # Restore react-doctor's scan caches (the per-file content-addressed lint
+    # cache + the supply-chain cache) from the most recent previous run. In CI
+    # every commit is a fresh, SHA-scoped checkout, so the project-local
+    # `node_modules/.cache` never survives between commits — pointing
+    # REACT_DOCTOR_CACHE_DIR (set on the scan step) at a stable
+    # `${runner.temp}` path lets actions/cache carry it across runs. Restore +
+    # explicit save (after the scan) instead of the combined action: the
+    # combined post-job save is skipped when the job fails, and a blocking PR
+    # scan with findings fails the job BY DESIGN — exactly the runs whose
+    # fix-and-push retry needs a warm cache. The key is unique per run (an
+    # exact hit would suppress the save), so every run persists its refreshed
+    # state instead of freezing the first snapshot under an immutable key;
+    # restore falls back by prefix to the newest same-version save, then to
+    # ANY version. Cross-version restore is sound because every cached
+    # artifact re-validates internally (content hash + ruleset hash for lint
+    # entries — the bucket is LRU-pruned — schema version for scan results,
+    # TTL for supply-chain scores): a stale entry just misses and re-computes,
+    # while the version-independent supply-chain cache keeps a react-doctor
+    # release from cold-starting every repo's network checks at once.
     - id: scan-cache
       if: ${{ steps.resolve-version.outputs.cacheable == 'true' }}
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: ${{ runner.temp }}/react-doctor-cache
-        key: react-doctor-scan-cache-${{ steps.resolve-version.outputs.resolved }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock', '**/bun.lock', '**/bun.lockb') }}
+        key: react-doctor-scan-cache-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-version.outputs.resolved }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: |
-          react-doctor-scan-cache-${{ steps.resolve-version.outputs.resolved }}-${{ runner.os }}-${{ runner.arch }}-
+          react-doctor-scan-cache-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-version.outputs.resolved }}-
+          react-doctor-scan-cache-${{ runner.os }}-${{ runner.arch }}-
 
     # Resolve the PR's changed files LOCALLY first: fetch the base commit (also
     # needed for baseline mode), then derive the changed set with `git diff`.
@@ -254,6 +264,10 @@ runs:
         REPORT_FILE="${RUNNER_TEMP:-/tmp}/react-doctor-report-${GITHUB_RUN_ID:-$$}.json"
         echo "report-file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
 
+        # actions/cache/save errors on a missing path; guarantee the cache dir
+        # exists even when the scan dies before its first cache write.
+        mkdir -p "${RUNNER_TEMP:-/tmp}/react-doctor-cache"
+
         FLAGS=("--json" "--json-compact")
         if [ -n "$INPUT_BLOCKING" ]; then FLAGS+=("--blocking" "$INPUT_BLOCKING"); fi
         if [ -n "$INPUT_PROJECT" ]; then FLAGS+=("--project" "$INPUT_PROJECT"); fi
@@ -323,6 +337,19 @@ runs:
           SCAN_STATUS=1
         fi
         echo "exit-code=$SCAN_STATUS" >> "$GITHUB_OUTPUT"
+
+    # Persist the refreshed scan caches for the next run. Explicit save rather
+    # than actions/cache's post-job hook — the post hook is skipped when the
+    # job fails, and the "Fail if React Doctor found blocking issues" step
+    # fails PR runs with findings by design. Guarded on the scan step's own
+    # outcome (it defers the CLI exit code, so it only "fails" on a genuine
+    # crash) rather than the job's.
+    - name: Save scan cache
+      if: ${{ always() && steps.scan.outcome == 'success' && steps.resolve-version.outputs.cacheable == 'true' }}
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: ${{ runner.temp }}/react-doctor-cache
+        key: react-doctor-scan-cache-${{ runner.os }}-${{ runner.arch }}-${{ steps.resolve-version.outputs.resolved }}-${{ github.run_id }}-${{ github.run_attempt }}
 
     - id: render
       if: always()

@@ -119,10 +119,17 @@ const isArrayFromCall = (node: EsTreeNode | null | undefined): boolean => {
  *
  * Used both for `<receiver>.map(...)` and for `Array.from(<length>, fn)`.
  */
-const isStaticPlaceholderReceiver = (receiver: EsTreeNode): boolean => {
+const isStaticPlaceholderReceiver = (receiver: EsTreeNode, depth = 0): boolean => {
   if (isArrayFromCall(receiver)) return true;
   if (isArrayConstructorCallWithNumericLength(receiver)) return true;
   if (isAllLiteralArrayExpression(receiver)) return true;
+
+  if (isNodeOfType(receiver, "Identifier")) {
+    if (depth >= TYPE_RESOLUTION_DEPTH_LIMIT) return false;
+    const binding = findVariableInitializer(receiver, receiver.name);
+    if (!binding?.initializer) return false;
+    return isStaticPlaceholderReceiver(binding.initializer, depth + 1);
+  }
 
   if (isNodeOfType(receiver, "CallExpression")) {
     const callee = receiver.callee;

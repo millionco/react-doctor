@@ -14,6 +14,26 @@ describe("react-builtins/checked-requires-onchange-or-readonly — regressions",
     expect(result.diagnostics).toEqual([]);
   });
 
+  // React's controlled-checkbox runtime warning exempts `disabled`
+  // inputs — users can't toggle them, so no `onChange` is needed.
+  it("stays silent for a statically disabled checkbox without onChange", () => {
+    const result = runRule(
+      checkedRequiresOnchangeOrReadonly,
+      `const C = ({ checked }) => <input type="checkbox" checked={checked} disabled />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a dynamically disabled checkbox (it can be enabled at runtime)", () => {
+    const result = runRule(
+      checkedRequiresOnchangeOrReadonly,
+      `const C = ({ checked, locked }) => <input type="checkbox" checked={checked} disabled={locked} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags checked + defaultChecked used together even with a spread", () => {
     const result = runRule(
       checkedRequiresOnchangeOrReadonly,

@@ -28,6 +28,28 @@ describe("no-array-index-as-key (test-harness smoke test)", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag index when the receiver is a variable holding a static placeholder", () => {
+    const code = `const App = () => {
+  const list = Array.from({ length: 3 });
+  return list.map((_, index) => <li key={\`mobile-\${index}\`} />);
+};
+`;
+    const result = runRule(noArrayIndexAsKey, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags index when the receiver variable holds dynamic data", () => {
+    const code = `const App = ({ items }) => {
+  const list = items.slice(0, 3);
+  return list.map((item, index) => <li key={index}>{item.name}</li>);
+};
+`;
+    const result = runRule(noArrayIndexAsKey, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags String(index) coercion used as JSX key", () => {
     const code = `const App = ({ items }) => items.map((item, index) => <li key={String(index)}>{item}</li>);
 `;

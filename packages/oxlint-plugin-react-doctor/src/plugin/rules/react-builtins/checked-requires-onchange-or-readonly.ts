@@ -34,13 +34,24 @@ interface AttributePresence {
   defaultCheckedNode: EsTreeNode | null;
   hasOnChangeOrReadOnly: boolean;
   hasSpread: boolean;
+  hasTruthyDisabled: boolean;
 }
+
+const isTruthyDisabledJsxValue = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
+  if (!attribute.value) return true;
+  if (isNodeOfType(attribute.value, "JSXExpressionContainer")) {
+    const expression = attribute.value.expression as EsTreeNode;
+    return isNodeOfType(expression, "Literal") && expression.value === true;
+  }
+  return false;
+};
 
 const collectFromJsxAttributes = (attributes: ReadonlyArray<EsTreeNode>): AttributePresence => {
   let checkedNode: EsTreeNode | null = null;
   let defaultCheckedNode: EsTreeNode | null = null;
   let hasOnChangeOrReadOnly = false;
   let hasSpread = false;
+  let hasTruthyDisabled = false;
   for (const attribute of attributes) {
     if (isNodeOfType(attribute, "JSXSpreadAttribute")) {
       hasSpread = true;
@@ -51,8 +62,9 @@ const collectFromJsxAttributes = (attributes: ReadonlyArray<EsTreeNode>): Attrib
     if (name === "checked") checkedNode = attribute;
     else if (name === "defaultChecked" && !defaultCheckedNode) defaultCheckedNode = attribute;
     else if (name === "onChange" || name === "readOnly") hasOnChangeOrReadOnly = true;
+    else if (name === "disabled" && isTruthyDisabledJsxValue(attribute)) hasTruthyDisabled = true;
   }
-  return { checkedNode, defaultCheckedNode, hasOnChangeOrReadOnly, hasSpread };
+  return { checkedNode, defaultCheckedNode, hasOnChangeOrReadOnly, hasSpread, hasTruthyDisabled };
 };
 
 const collectFromObjectProperties = (
@@ -62,6 +74,7 @@ const collectFromObjectProperties = (
   let defaultCheckedNode: EsTreeNode | null = null;
   let hasOnChangeOrReadOnly = false;
   let hasSpread = false;
+  let hasTruthyDisabled = false;
   for (const property of objectExpression.properties) {
     if (isNodeOfType(property, "SpreadElement")) {
       hasSpread = true;
@@ -79,8 +92,13 @@ const collectFromObjectProperties = (
       defaultCheckedNode = property;
     else if (propertyName === "onChange" || propertyName === "readOnly")
       hasOnChangeOrReadOnly = true;
+    else if (propertyName === "disabled") {
+      const propertyValue = property.value as EsTreeNode;
+      if (isNodeOfType(propertyValue, "Literal") && propertyValue.value === true)
+        hasTruthyDisabled = true;
+    }
   }
-  return { checkedNode, defaultCheckedNode, hasOnChangeOrReadOnly, hasSpread };
+  return { checkedNode, defaultCheckedNode, hasOnChangeOrReadOnly, hasSpread, hasTruthyDisabled };
 };
 
 // Port of `oxc_linter::rules::react::checked_requires_onchange_or_readonly`.
@@ -109,10 +127,13 @@ export const checkedRequiresOnchangeOrReadonly = defineRule({
         presence.checkedNode &&
         !presence.hasOnChangeOrReadOnly &&
         !presence.hasSpread &&
+        !presence.hasTruthyDisabled &&
         !settings.ignoreMissingProperties
       ) {
         // A spread (`{...rest}`) can supply `onChange`/`readOnly` at
-        // runtime, so their absence in the explicit attributes isn't proof.
+        // runtime, so their absence in the explicit attributes isn't
+        // proof, and React's own controlled-checkbox warning exempts
+        // `disabled` inputs (users can't toggle them anyway).
         context.report({ node: presence.checkedNode, message: MISSING_MESSAGE });
       }
     };

@@ -175,6 +175,22 @@ const flattenReferenceRootName = (reference: ReferenceDescriptor): string => {
   return "";
 };
 
+// Cuts a member-chain dep key at its `.current` segment: `.current` is
+// a mutable ref cell, so anything read through it can't be a dependency
+// — the ref itself is the dependable value (upstream truncates
+// `props.someOtherRefs.current.innerHTML` to `props.someOtherRefs` the
+// same way, even when the ref isn't a local `useRef`).
+const REF_CURRENT_SEGMENT = ".current";
+const truncateAtRefCurrent = (chain: string): string => {
+  const refCurrentIndex = chain.indexOf(REF_CURRENT_SEGMENT);
+  if (refCurrentIndex === -1) return chain;
+  const segmentEndIndex = refCurrentIndex + REF_CURRENT_SEGMENT.length;
+  if (segmentEndIndex === chain.length || chain[segmentEndIndex] === ".") {
+    return chain.slice(0, refCurrentIndex);
+  }
+  return chain;
+};
+
 // Computes the dep "key" (root identifier name OR the full member-path)
 // for a captured reference. e.g.:
 //   reference points to `count`            → "count"
@@ -235,17 +251,13 @@ const computeDepKey = (reference: ReferenceDescriptor): string => {
     declarator.init === outermost
   ) {
     const destructuredPath = getDestructuredPropertyPath(declarator.id);
-    if (destructuredPath) return `${fullName}.${destructuredPath}`;
+    if (destructuredPath) return truncateAtRefCurrent(`${fullName}.${destructuredPath}`);
   }
+  const truncatedName = truncateAtRefCurrent(fullName);
+  if (truncatedName !== fullName) return truncatedName;
   if (reference.flag !== "read") {
     const lastDotIndex = fullName.lastIndexOf(".");
     if (lastDotIndex !== -1) return fullName.slice(0, lastDotIndex);
-  }
-  // Strip `.current` suffix for ref-like values; that property is
-  // mutable but the ref itself is stable.
-  const REF_CURRENT_SUFFIX = ".current";
-  if (fullName.endsWith(REF_CURRENT_SUFFIX)) {
-    return fullName.slice(0, -REF_CURRENT_SUFFIX.length);
   }
   return fullName;
 };

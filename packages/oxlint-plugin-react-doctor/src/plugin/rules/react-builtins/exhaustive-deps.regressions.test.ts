@@ -300,4 +300,35 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
     expect(messages).toContain("A complex expression");
   });
+
+  it("truncates prop-ref member chains at .current instead of demanding mutable paths", () => {
+    const code = `
+      function ChatInput({ textareaRef, content }) {
+        useEffect(() => {
+          if (textareaRef.current) {
+            textareaRef.current.style.height = \`\${textareaRef.current.scrollHeight}px\`;
+          }
+        }, [content]);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("textareaRef");
+    expect(messages).not.toContain("textareaRef.current");
+  });
+
+  it("still reports the truncated prop-ref root when it is missing from deps", () => {
+    const code = `
+      function MyComponent({ myRef }) {
+        useCallback(() => { console.log(myRef.current.innerHTML); }, []);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("myRef");
+  });
 });

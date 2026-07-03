@@ -193,4 +193,17 @@ describe("architecture/no-render-in-render — regressions", () => {
     );
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("does not claim a remount or state loss for a plain render-helper call", () => {
+    const result = run(
+      `function Page() {
+        const renderHeader = () => <h1>Title</h1>;
+        return <div>{renderHeader()}</div>;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).not.toContain("remount");
+    expect(result.diagnostics[0].message).not.toContain("lose state");
+    expect(result.diagnostics[0].message).toContain("renderHeader()");
+  });
 });

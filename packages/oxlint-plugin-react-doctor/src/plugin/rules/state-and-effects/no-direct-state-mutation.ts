@@ -222,7 +222,7 @@ export const noDirectStateMutation = defineRule({
             if (currentlyShadowed.has(rootName)) return;
             context.report({
               node: child,
-              message: `Your screen won't update because you change "${rootName}" in place.`,
+              message: `React can't tell you changed "${rootName}" in place, so this update can be skipped or lost.`,
             });
             return;
           }
@@ -239,7 +239,7 @@ export const noDirectStateMutation = defineRule({
             if (currentlyShadowed.has(rootName)) return;
             context.report({
               node: child,
-              message: `Your screen won't update because .${methodName}() changes "${rootName}" in place.`,
+              message: `React can't tell .${methodName}() changed "${rootName}" in place, so this update can be skipped or lost.`,
             });
           }
         },

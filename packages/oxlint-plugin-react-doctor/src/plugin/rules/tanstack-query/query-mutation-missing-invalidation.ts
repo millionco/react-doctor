@@ -115,7 +115,7 @@ export const queryMutationMissingInvalidation = defineRule({
         context.report({
           node,
           message:
-            "useMutation with no cache update leaves your users looking at stale data after it runs.",
+            "useMutation with no cache update here can leave your users looking at stale data after it runs.",
         });
       }
     },

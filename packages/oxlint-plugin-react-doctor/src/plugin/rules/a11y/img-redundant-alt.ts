@@ -34,12 +34,14 @@ const resolveSettings = (
 };
 
 const isWordBoundary = (text: string, start: number, end: number): boolean => {
-  const isAlphanumeric = (charCode: number): boolean =>
+  const isWordCharacter = (charCode: number): boolean =>
     (charCode >= 48 && charCode <= 57) ||
     (charCode >= 65 && charCode <= 90) ||
-    (charCode >= 97 && charCode <= 122);
-  const startsBoundary = start === 0 || !isAlphanumeric(text.charCodeAt(start - 1));
-  const endsBoundary = end === text.length || !isAlphanumeric(text.charCodeAt(end));
+    (charCode >= 97 && charCode <= 122) ||
+    charCode === 45 ||
+    charCode === 95;
+  const startsBoundary = start === 0 || !isWordCharacter(text.charCodeAt(start - 1));
+  const endsBoundary = end === text.length || !isWordCharacter(text.charCodeAt(end));
   return startsBoundary && endsBoundary;
 };
 

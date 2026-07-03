@@ -331,4 +331,89 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
     expect(messages).toContain("myRef");
   });
+
+  it("does not warn about cleanup ref reads when the ref is only assigned by React via JSX", () => {
+    const code = `
+      function MyComponent() {
+        const areaRef = useRef(null);
+        const attach = (node) => { areaRef.current = node; };
+        useEffect(() => {
+          const handle = () => {};
+          areaRef.current?.addEventListener("mousedown", handle);
+          return () => {
+            areaRef.current?.removeEventListener("mousedown", handle);
+          };
+        }, []);
+        return <div ref={attach} />;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code, { filename: "fixture.tsx" });
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).not.toContain("wrong node");
+  });
+
+  it("still warns about cleanup ref reads when the ref is never assigned in the component", () => {
+    const code = `
+      function MyComponent() {
+        const areaRef = useRef(null);
+        useEffect(() => {
+          const handle = () => {};
+          areaRef.current?.addEventListener("mousedown", handle);
+          return () => {
+            areaRef.current?.removeEventListener("mousedown", handle);
+          };
+        }, []);
+        return <div ref={areaRef} />;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code, { filename: "fixture.tsx" });
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("wrong node");
+  });
+
+  it("treats an explicit undefined deps argument like an omitted one for effect hooks", () => {
+    const code = `
+      function MyComponent({ focusAndScrollRef }) {
+        useLayoutEffect(
+          () => {
+            focusAndScrollRef.apply = false;
+          },
+          undefined
+        );
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports an explicit undefined deps argument for hooks that require deps", () => {
+    const code = `
+      function MyComponent({ compute }) {
+        const value = useMemo(() => compute(), undefined);
+        return value;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("useMemo");
+  });
+
+  it("still reports a null deps argument on an effect hook as a non-array deps list", () => {
+    const code = `
+      function MyComponent(props) {
+        useEffect(() => {
+          console.log(props.foo);
+        }, null);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

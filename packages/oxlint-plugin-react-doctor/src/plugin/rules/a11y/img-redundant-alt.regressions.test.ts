@@ -90,4 +90,29 @@ describe("a11y/img-redundant-alt regressions", () => {
 
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("does not flag redundant words joined by hyphens or underscores", () => {
+    const result = runRule(
+      imgRedundantAlt,
+      `export const Page = () => (
+        <div>
+          <img src="/a.png" alt="image-left-top" />
+          <img src="/b.png" alt="my_image_1" />
+        </div>
+      );`,
+      { filename: "/proj/app/page.tsx" },
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a redundant word separated by spaces", () => {
+    const result = runRule(
+      imgRedundantAlt,
+      `export const Page = () => <img src="/a.png" alt="image of a cat" />;`,
+      { filename: "/proj/app/page.tsx" },
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

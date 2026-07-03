@@ -550,7 +550,13 @@ const isInsideClassComponent = (node: EsTreeNode): boolean => {
 const hasShortCircuitAncestor = (descendant: EsTreeNode, ancestor: EsTreeNode): boolean => {
   let current: EsTreeNode | null | undefined = descendant.parent;
   while (current && current !== ancestor) {
-    if (isNodeOfType(current, "ConditionalExpression")) return true;
+    if (
+      isNodeOfType(current, "ConditionalExpression") &&
+      (isWithinRange(descendant, current.consequent) ||
+        isWithinRange(descendant, current.alternate))
+    ) {
+      return true;
+    }
     if (
       isNodeOfType(current, "LogicalExpression") &&
       (current.operator === "&&" || current.operator === "||" || current.operator === "??") &&
@@ -768,6 +774,7 @@ export const rulesOfHooks = defineRule({
             if (parentInfo.isComponentOrHook) isInsideComponentOrHook = true;
           }
           if (!isInsideComponentOrHook) {
+            if (!enclosing.hasResolvedName) return;
             if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
             context.report({
               node: node.callee,

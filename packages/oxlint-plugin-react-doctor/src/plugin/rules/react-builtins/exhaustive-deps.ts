@@ -543,7 +543,15 @@ const getRefCurrentNameFromMemberExpression = (node: EsTreeNode): string | null 
   return currentIndex === -1 ? null : chain.slice(0, currentIndex + ".current".length);
 };
 
-const findRefCurrentInCleanup = (callback: EsTreeNode, scopes: ScopeAnalysis): string | null => {
+interface RefCurrentInCleanup {
+  refCurrentName: string;
+  refSymbol: SymbolDescriptor | null;
+}
+
+const findRefCurrentInCleanup = (
+  callback: EsTreeNode,
+  scopes: ScopeAnalysis,
+): RefCurrentInCleanup | null => {
   let cleanupFunction: EsTreeNode | null = null;
   const findReturn = (node: EsTreeNode): void => {
     if (cleanupFunction) return;
@@ -578,9 +586,9 @@ const findRefCurrentInCleanup = (callback: EsTreeNode, scopes: ScopeAnalysis): s
   findReturn(callback);
   if (!cleanupFunction) return null;
 
-  let refCurrentName: string | null = null;
+  let found: RefCurrentInCleanup | null = null;
   const visitCleanup = (node: EsTreeNode): void => {
-    if (refCurrentName) return;
+    if (found) return;
     if (isNodeOfType(node, "MemberExpression")) {
       const candidateName = getRefCurrentNameFromMemberExpression(node);
       if (candidateName) {
@@ -588,7 +596,7 @@ const findRefCurrentInCleanup = (callback: EsTreeNode, scopes: ScopeAnalysis): s
         const symbol = rootIdentifier ? scopes.symbolFor(rootIdentifier) : null;
         const callbackScope = scopes.ownScopeFor(callback) ?? scopes.scopeFor(callback);
         if (!symbol || !isDescendantScope(symbol.scope, callbackScope)) {
-          refCurrentName = candidateName;
+          found = { refCurrentName: candidateName, refSymbol: symbol };
           return;
         }
       }
@@ -605,7 +613,26 @@ const findRefCurrentInCleanup = (callback: EsTreeNode, scopes: ScopeAnalysis): s
     }
   };
   visitCleanup(cleanupFunction);
-  return refCurrentName;
+  return found;
+};
+
+const hasRefCurrentAssignmentInComponent = (refSymbol: SymbolDescriptor | null): boolean => {
+  if (!refSymbol) return false;
+  for (const reference of refSymbol.references) {
+    const memberParent = reference.identifier.parent;
+    if (!memberParent || !isNodeOfType(memberParent, "MemberExpression")) continue;
+    if (memberParent.object !== reference.identifier) continue;
+    if (getRefCurrentNameFromMemberExpression(memberParent) === null) continue;
+    const assignmentParent = memberParent.parent;
+    if (
+      assignmentParent &&
+      isNodeOfType(assignmentParent, "AssignmentExpression") &&
+      assignmentParent.left === memberParent
+    ) {
+      return true;
+    }
+  }
+  return false;
 };
 
 const hasRefCurrentAssignment = (callback: EsTreeNode, refCurrentName: string): boolean => {
@@ -662,10 +689,12 @@ const hasMemberCallForRoot = (node: EsTreeNode, rootName: string): boolean => {
     if (didFindMemberCall) return;
     if (isNodeOfType(current, "CallExpression")) {
       const callee = unwrapExpression(current.callee);
-      const rootIdentifier = getMemberRootIdentifier(callee);
-      if (rootIdentifier?.name === rootName) {
-        didFindMemberCall = true;
-        return;
+      if (isNodeOfType(callee, "MemberExpression")) {
+        const calleeObject = unwrapExpression(callee.object);
+        if (isNodeOfType(calleeObject, "Identifier") && calleeObject.name === rootName) {
+          didFindMemberCall = true;
+          return;
+        }
       }
     }
     const record = current as unknown as Record<string, unknown>;
@@ -807,18 +836,19 @@ If the missing value is recreated every render, move it inside the hook or stabi
             });
           }
           if (outerAssignments.length > 0) return;
-          const refCurrentName = findRefCurrentInCleanup(callbackToAnalyze, context.scopes);
+          const refCurrentInCleanup = findRefCurrentInCleanup(callbackToAnalyze, context.scopes);
           const shouldCheckRefCleanup =
             EFFECT_HOOKS_ALLOWING_EXTRA_REACTIVE_DEPS.has(hookName) ||
             Boolean(additionalHooksRegex && additionalHooksRegex.test(hookName));
           if (
-            refCurrentName &&
+            refCurrentInCleanup &&
             shouldCheckRefCleanup &&
-            !hasRefCurrentAssignment(callbackToAnalyze, refCurrentName)
+            !hasRefCurrentAssignment(callbackToAnalyze, refCurrentInCleanup.refCurrentName) &&
+            !hasRefCurrentAssignmentInComponent(refCurrentInCleanup.refSymbol)
           ) {
             context.report({
               node: callbackToAnalyze,
-              message: buildRefCleanupMessage(refCurrentName),
+              message: buildRefCleanupMessage(refCurrentInCleanup.refCurrentName),
             });
           }
         }
@@ -843,14 +873,23 @@ If the missing value is recreated every render, move it inside the hook or stabi
           return;
         }
 
-        // null / undefined deps argument → treat as "no deps". Upstream
-        // tolerates these as "intentional no-deps" for useEffect-style
-        // hooks but flags them for hooks that require deps.
+        // An explicit `undefined` deps argument is the same as omitting
+        // it (run on every commit), so upstream treats it as "no deps"
+        // for useEffect-style hooks and only flags it for hooks that
+        // require deps. A `null` deps argument stays a non-array report
+        // below, matching upstream.
         const depsArgument = unwrapExpression(depsArgumentRaw as EsTreeNode);
-        if (
-          (isNodeOfType(depsArgument, "Literal") && depsArgument.value === null) ||
-          (isNodeOfType(depsArgument, "Identifier") && depsArgument.name === "undefined")
-        ) {
+        if (isNodeOfType(depsArgument, "Identifier") && depsArgument.name === "undefined") {
+          if (isAutoDependenciesHook(hookName)) return;
+          if (HOOKS_REQUIRING_DEPS_ARRAY.has(hookName)) {
+            context.report({
+              node: depsArgument,
+              message: buildMissingDepArrayMessage(hookName),
+            });
+          }
+          return;
+        }
+        if (isNodeOfType(depsArgument, "Literal") && depsArgument.value === null) {
           if (isAutoDependenciesHook(hookName)) return;
           if (HOOKS_REQUIRING_DEPS_ARRAY.has(hookName)) {
             context.report({
@@ -859,20 +898,6 @@ If the missing value is recreated every render, move it inside the hook or stabi
             });
             return;
           }
-          const nonArrayCaptureKeys =
-            callbackToAnalyze !== null
-              ? new Set(collectCaptureDepKeys(callbackToAnalyze, context.scopes).keys)
-              : new Set<string>();
-          for (const forcedCaptureKey of forcedCaptureKeys)
-            nonArrayCaptureKeys.add(forcedCaptureKey);
-          if (nonArrayCaptureKeys.size > 0) {
-            context.report({ node: depsArgument, message: buildNonArrayDepsMessage(hookName) });
-            context.report({
-              node: depsArgument,
-              message: buildMissingDepMessage(hookName, [...nonArrayCaptureKeys].join(", ")),
-            });
-          }
-          return;
         }
 
         if (!isNodeOfType(depsArgument, "ArrayExpression")) {

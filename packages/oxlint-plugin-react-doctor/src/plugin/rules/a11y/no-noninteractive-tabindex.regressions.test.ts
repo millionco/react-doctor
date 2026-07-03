@@ -71,4 +71,18 @@ describe("a11y/no-noninteractive-tabindex regressions", () => {
       ).toHaveLength(1);
     });
   });
+
+  describe("roving tabindex", () => {
+    it("does not flag a conditional roving tabIndex with a negative branch", () => {
+      expect(
+        runRule(noNoninteractiveTabindex, `<div tabIndex={isActive ? 0 : -1} />`).diagnostics,
+      ).toEqual([]);
+    });
+
+    it("still flags a conditional tabIndex whose branches are both non-negative", () => {
+      expect(
+        runRule(noNoninteractiveTabindex, `<div tabIndex={isActive ? 0 : 1} />`).diagnostics,
+      ).toHaveLength(1);
+    });
+  });
 });

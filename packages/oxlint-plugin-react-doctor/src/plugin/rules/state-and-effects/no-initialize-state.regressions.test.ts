@@ -30,6 +30,32 @@ describe("no-initialize-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when a mount effect seeds a zero-arg new Date() value", () => {
+    const result = runRule(
+      noInitializeState,
+      `function Clock() {
+        const [now, setNow] = useState(null);
+        useEffect(() => { setNow(new Date().toLocaleTimeString()); }, []);
+        return <time>{now}</time>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a deterministic new Date(value) init from a mount effect", () => {
+    const result = runRule(
+      noInitializeState,
+      `function C({ createdAt }) {
+        const [label, setLabel] = useState("");
+        useEffect(() => { setLabel(new Date(0).toISOString()); }, []);
+        return <span>{label}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags a deterministic literal init from a mount effect", () => {
     const result = runRule(
       noInitializeState,

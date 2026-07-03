@@ -32,12 +32,21 @@ const extractColorFromShadowLayer = (layer: string): ParsedRgb | null => {
   return null;
 };
 
+const RGB_FUNCTION_PATTERN = /rgba?\([^)]*\)/g;
+const HEX_COLOR_PATTERN = /#[0-9a-f]{3,8}\b/gi;
+const NUMERIC_TOKEN_PATTERN = /(\d+(?:\.\d+)?)(px)?/g;
+
+// The blur radius is the third numeric token (`offset-x offset-y blur`).
+const SHADOW_BLUR_TOKEN_INDEX = 2;
+
 const parseShadowLayerBlur = (layer: string): number => {
-  const withoutColors = layer.replace(/rgba?\([^)]*\)/g, "").replace(/#[0-9a-f]{3,8}\b/gi, "");
-  const numericTokens = [...withoutColors.matchAll(/(\d+(?:\.\d+)?)(px)?/g)].map((match) =>
-    parseFloat(match[1]),
-  );
-  return numericTokens.length >= 3 ? numericTokens[2] : 0;
+  const withoutColors = layer.replace(RGB_FUNCTION_PATTERN, "").replace(HEX_COLOR_PATTERN, "");
+  let tokenIndex = 0;
+  for (const match of withoutColors.matchAll(NUMERIC_TOKEN_PATTERN)) {
+    if (tokenIndex === SHADOW_BLUR_TOKEN_INDEX) return parseFloat(match[1]);
+    tokenIndex += 1;
+  }
+  return 0;
 };
 
 const hasColoredGlowShadow = (shadowValue: string): boolean => {

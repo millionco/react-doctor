@@ -1,6 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
-import { escapeRegExp } from "./utils/escape-reg-exp.js";
 import { getLocationAtIndex } from "./utils/get-location-at-index.js";
 import { isSupabaseMigrationPath } from "./utils/is-supabase-migration-path.js";
 import { sanitizeSqlForScan } from "./utils/sanitize-sql-for-scan.js";
@@ -19,11 +18,20 @@ const CREATE_PUBLIC_TABLE_PATTERN =
 // enabled — so RLS must be checked per table rather than file-wide (a sibling
 // table enabling RLS must not vouch for this one). The enable keyword must
 // follow the table name directly so a nearby unrelated `enable` cannot match.
-const enableRlsForTablePattern = (tableName: string): RegExp =>
-  new RegExp(
-    `alter\\s+table\\s+(?:if\\s+exists\\s+)?(?:only\\s+)?(?:public\\s*\\.\\s*)?["\`]?${escapeRegExp(tableName)}["\`]?\\s+(?:force\\s+)?enable\\s+row\\s+level\\s+security`,
-    "i",
-  );
+// One global pass collects every enable's (table, index) pair, replacing a
+// per-created-table RegExp compile + tail slice.
+const ENABLE_RLS_PATTERN =
+  /alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?(?:public\s*\.\s*)?["`]?([A-Za-z_][\w$]*)["`]?\s+(?:force\s+)?enable\s+row\s+level\s+security/gi;
+
+const collectLastEnableRlsIndexByTable = (content: string): Map<string, number> => {
+  const lastEnableIndexByTable = new Map<string, number>();
+  for (const match of content.matchAll(ENABLE_RLS_PATTERN)) {
+    const tableName = match[1];
+    if (tableName === undefined) continue;
+    lastEnableIndexByTable.set(tableName.toLowerCase(), match.index);
+  }
+  return lastEnableIndexByTable;
+};
 
 export const supabaseTableMissingRls = defineRule({
   id: "supabase-table-missing-rls",
@@ -44,6 +52,7 @@ export const supabaseTableMissingRls = defineRule({
     if (!/create\s+(?:unlogged\s+)?table/i.test(content)) return [];
 
     const findings: ScanFinding[] = [];
+    const lastEnableIndexByTable = collectLastEnableRlsIndexByTable(content);
     CREATE_PUBLIC_TABLE_PATTERN.lastIndex = 0;
     for (
       let match = CREATE_PUBLIC_TABLE_PATTERN.exec(content);
@@ -54,8 +63,9 @@ export const supabaseTableMissingRls = defineRule({
       if (tableName === undefined) continue;
       // The enable must come AFTER this `create table` — an `alter table if
       // exists <name> enable …` before it is a no-op on a not-yet-created
-      // table, so only scan from the create position onward.
-      if (enableRlsForTablePattern(tableName).test(content.slice(match.index))) continue;
+      // table, so only the latest same-name enable position matters.
+      const lastEnableIndex = lastEnableIndexByTable.get(tableName.toLowerCase());
+      if (lastEnableIndex !== undefined && lastEnableIndex >= match.index) continue;
       const location = getLocationAtIndex(content, match.index);
       findings.push({
         message:

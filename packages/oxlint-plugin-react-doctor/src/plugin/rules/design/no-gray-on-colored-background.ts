@@ -17,6 +17,9 @@ const BG_COLOR_PATTERN =
 // reordered stacks (`md:hover` vs `hover:md`) share one key. A leading
 // `!` (the important modifier) is not part of the utility name.
 const splitVariantScope = (token: string): { scope: string; utility: string } => {
+  if (!token.includes(":")) {
+    return { scope: "", utility: token.startsWith("!") ? token.slice(1) : token };
+  }
   const segments = token.split(":");
   const rawUtility = segments[segments.length - 1];
   return {
@@ -44,6 +47,10 @@ export const noGrayOnColoredBackground = defineRule({
       const bgColorScopes = new Set<string>();
       for (const token of classStr.split(/\s+/)) {
         if (!token) continue;
+        // Every pattern below anchors on a `text-` / `bg-` utility, so a
+        // token containing neither substring can never match — skip the
+        // variant-scope split and the four regexes.
+        if (!token.includes("text-") && !token.includes("bg-")) continue;
         const { scope, utility } = splitVariantScope(token);
         if (TEXT_COLOR_PATTERN.test(utility)) textColorScopes.add(scope);
         if (BG_COLOR_PATTERN.test(utility)) bgColorScopes.add(scope);

@@ -28,6 +28,13 @@ const hasInfiniteIterationCount = (properties: ReadonlyArray<EsTreeNode>): boole
 const isInfiniteAnimationSegment = (segment: string): boolean =>
   segment.trim().split(/\s+/).includes("infinite");
 
+// `100ms` / `1.5s` as the WHOLE segment (transitionDuration / animationDuration
+// values). One combined pattern replaces separate ms and s matches per segment.
+const DURATION_SEGMENT_PATTERN = /^([\d.]+)(m?s)$/;
+
+// First time token inside a `transition` / `animation` shorthand segment.
+const FIRST_TIME_TOKEN_PATTERN = /(?<![a-zA-Z\d])([\d.]+)(m?s)(?![a-zA-Z\d-])/;
+
 export const noLongTransitionDuration = defineRule({
   id: "no-long-transition-duration",
   title: "Transition duration too long",
@@ -67,19 +74,13 @@ export const noLongTransitionDuration = defineRule({
         if (key === "transitionDuration" || key === "animationDuration") {
           let longestDurationPropertyMs = 0;
           for (const segment of value.split(",")) {
-            const trimmedSegment = segment.trim();
-            const msMatch = trimmedSegment.match(/^([\d.]+)ms$/);
-            const secondsMatch = trimmedSegment.match(/^([\d.]+)s$/);
-            if (msMatch)
-              longestDurationPropertyMs = Math.max(
-                longestDurationPropertyMs,
-                parseFloat(msMatch[1]),
-              );
-            else if (secondsMatch)
-              longestDurationPropertyMs = Math.max(
-                longestDurationPropertyMs,
-                parseFloat(secondsMatch[1]) * 1000,
-              );
+            const durationMatch = segment.trim().match(DURATION_SEGMENT_PATTERN);
+            if (!durationMatch) continue;
+            const segmentDurationMs =
+              durationMatch[2] === "ms"
+                ? parseFloat(durationMatch[1])
+                : parseFloat(durationMatch[1]) * 1000;
+            longestDurationPropertyMs = Math.max(longestDurationPropertyMs, segmentDurationMs);
           }
           if (longestDurationPropertyMs > 0) durationMs = longestDurationPropertyMs;
         }
@@ -88,7 +89,7 @@ export const noLongTransitionDuration = defineRule({
           let longestDurationMs = 0;
           for (const segment of value.split(",")) {
             if (key === "animation" && isInfiniteAnimationSegment(segment)) continue;
-            const firstTimeMatch = segment.match(/(?<![a-zA-Z\d])([\d.]+)(m?s)(?![a-zA-Z\d-])/);
+            const firstTimeMatch = segment.match(FIRST_TIME_TOKEN_PATTERN);
             if (!firstTimeMatch) continue;
             const segmentDurationMs =
               firstTimeMatch[2] === "ms"

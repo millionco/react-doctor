@@ -153,6 +153,12 @@ const getTemplateInterpolations = (valueTail: string): string | null => {
 // catches scratch nodes parsed across a loop (the second write in a reuse loop
 // sits far from its `createElement`).
 const isInertParseTarget = (target: string, fileContent: string): boolean => {
+  // Every inert idiom below requires one of these call names somewhere in the
+  // file — without them no pattern can match, so skip all regex builds/scans.
+  const fileHasCreateElement = fileContent.includes("createElement");
+  const fileHasIsolatedDocument = fileContent.includes("createHTMLDocument");
+  if (!fileHasCreateElement && !fileHasIsolatedDocument) return false;
+
   const escapedTarget = escapeRegExp(target);
   const rootIdentifier = target.split(".")[0] ?? target;
   const escapedRoot = escapeRegExp(rootIdentifier);
@@ -165,26 +171,31 @@ const isInertParseTarget = (target: string, fileContent: string): boolean => {
   );
   if (liveDomSourcePattern.test(fileContent)) return false;
 
-  const templateElementPattern = new RegExp(
-    `${escapedTarget}\\s*=\\s*document\\.createElement\\(\\s*["'\`]template["'\`]`,
-  );
-  if (templateElementPattern.test(fileContent)) return true;
+  if (fileHasCreateElement) {
+    const templateElementPattern = new RegExp(
+      `${escapedTarget}\\s*=\\s*document\\.createElement\\(\\s*["'\`]template["'\`]`,
+    );
+    if (templateElementPattern.test(fileContent)) return true;
 
-  // A `<style>` element's innerHTML is CSS text (the critical-CSS idiom via the
-  // DOM API, counterpart of the `<style dangerouslySetInnerHTML>` JSX exemption);
-  // a `<textarea>`'s is RCDATA — scripts never execute — which is the HTML-entity
-  // decode idiom (`textarea.innerHTML = x; return textarea.value`). Neither is
-  // executable markup.
-  const inertElementPattern = new RegExp(
-    `${escapedRoot}\\s*=\\s*[^\\n;]*\\bcreateElement\\(\\s*["'\`](?:style|textarea)["'\`]`,
-  );
-  if (inertElementPattern.test(fileContent)) return true;
+    // A `<style>` element's innerHTML is CSS text (the critical-CSS idiom via the
+    // DOM API, counterpart of the `<style dangerouslySetInnerHTML>` JSX exemption);
+    // a `<textarea>`'s is RCDATA — scripts never execute — which is the HTML-entity
+    // decode idiom (`textarea.innerHTML = x; return textarea.value`). Neither is
+    // executable markup.
+    const inertElementPattern = new RegExp(
+      `${escapedRoot}\\s*=\\s*[^\\n;]*\\bcreateElement\\(\\s*["'\`](?:style|textarea)["'\`]`,
+    );
+    if (inertElementPattern.test(fileContent)) return true;
+  }
 
-  const isolatedDocumentPattern = new RegExp(
-    `${escapedRoot}\\s*=\\s*[^\\n;]*\\bcreateHTMLDocument\\s*\\(`,
-  );
-  if (isolatedDocumentPattern.test(fileContent)) return true;
+  if (fileHasIsolatedDocument) {
+    const isolatedDocumentPattern = new RegExp(
+      `${escapedRoot}\\s*=\\s*[^\\n;]*\\bcreateHTMLDocument\\s*\\(`,
+    );
+    if (isolatedDocumentPattern.test(fileContent)) return true;
+  }
 
+  if (!fileHasCreateElement) return false;
   const createElementPattern = new RegExp(`${escapedRoot}\\s*=\\s*[^\\n;]*\\bcreateElement\\s*\\(`);
   if (!createElementPattern.test(fileContent)) return false;
 
@@ -341,20 +352,16 @@ export const dangerousHtmlSink = defineRule({
             `\\b${escapedIdentifier}\\b\\s*${SERIALIZER_ASSIGNMENT_PATTERN.source}`,
             "i",
           );
+          if (fromSerializer.test(file.content)) continue;
           const fromSanitizer = new RegExp(
             `\\b${escapedIdentifier}\\b\\s*${SANITIZED_ASSIGNMENT_PATTERN.source}`,
             "i",
           );
+          if (fromSanitizer.test(file.content)) continue;
           const fromDomContent = new RegExp(
             `\\b${escapedIdentifier}\\b\\s*${DOM_CONTENT_ASSIGNMENT_PATTERN.source}`,
           );
-          if (
-            fromSerializer.test(file.content) ||
-            fromSanitizer.test(file.content) ||
-            fromDomContent.test(file.content)
-          ) {
-            continue;
-          }
+          if (fromDomContent.test(file.content)) continue;
         }
       }
       const sinkTargetMatch = INNERHTML_TARGET_PATTERN.exec(line);

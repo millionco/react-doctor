@@ -643,4 +643,18 @@ describe("react-native/rn-no-raw-text", () => {
       `);
     });
   });
+
+  describe("message preview", () => {
+    it("collapses internal whitespace so CRLF and LF sources produce the same message", () => {
+      const source = `const App = () => (\n  <View>\n    a long raw headline that\n    wraps across source lines in the file body\n  </View>\n);`;
+      const lfResult = runRule(rnNoRawText, source, { filename: "App.native.tsx" });
+      const crlfResult = runRule(rnNoRawText, source.replace(/\n/g, "\r\n"), {
+        filename: "App.native.tsx",
+      });
+      expect(lfResult.diagnostics.map((diagnostic) => diagnostic.message)).toEqual(
+        crlfResult.diagnostics.map((diagnostic) => diagnostic.message),
+      );
+      expect(lfResult.diagnostics[0]?.message).not.toContain("\n");
+    });
+  });
 });

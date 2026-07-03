@@ -18,10 +18,12 @@ import { isExpoUiComponentElement } from "./utils/is-expo-ui-component-element.j
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const truncateText = (text: string): string =>
-  text.length > RAW_TEXT_PREVIEW_MAX_CHARS
-    ? `${text.slice(0, RAW_TEXT_PREVIEW_MAX_CHARS)}...`
-    : text;
+const truncateText = (text: string): string => {
+  const collapsedText = text.replace(/\s+/g, " ");
+  return collapsedText.length > RAW_TEXT_PREVIEW_MAX_CHARS
+    ? `${collapsedText.slice(0, RAW_TEXT_PREVIEW_MAX_CHARS)}...`
+    : collapsedText;
+};
 
 const isRawTextContent = (child: EsTreeNode): boolean => {
   if (isNodeOfType(child, "JSXText")) return Boolean(child.value?.trim());

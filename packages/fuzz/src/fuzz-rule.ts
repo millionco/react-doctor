@@ -11,6 +11,7 @@ import {
   SLOW_RULE_THRESHOLD_MS,
   SLOW_VERIFY_RERUN_COUNT,
 } from "./constants.js";
+import { buildAstEquivalentFuzzVariants } from "./ast-equivalent-fuzz-variants.js";
 import { buildEquivalentFuzzVariants } from "./equivalent-fuzz-variants.js";
 import { generateStructuredFuzzProgram } from "./generate-fuzz-program.js";
 import type { FuzzCorpusEntry } from "./load-fuzz-corpus.js";
@@ -218,7 +219,10 @@ export const fuzzRuleWithStats = (
     }
 
     if (!options.checkInvariants || isScanRule || didApplyNoise) continue;
-    for (const variant of buildEquivalentFuzzVariants(code, sections)) {
+    for (const variant of [
+      ...buildEquivalentFuzzVariants(code, sections),
+      ...buildAstEquivalentFuzzVariants(code, filename),
+    ]) {
       if (hasParseErrors(variant.code, filename)) continue;
       const variantOutcome = runRuleOnCode(rule, variant.code, filename);
       if (variantOutcome.crashDetail !== undefined) {

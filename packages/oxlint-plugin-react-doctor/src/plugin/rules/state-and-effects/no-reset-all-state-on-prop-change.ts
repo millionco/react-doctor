@@ -9,12 +9,13 @@ import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-pro
 import {
   findContainingNode,
   getEffectDepsRefs,
+  getEffectFn,
   getEffectFnRefs,
   getUseStateDecl,
   isCustomHook,
   isProp,
   isState,
-  isStateSetterCall,
+  isSyncStateSetterCall,
   isUseEffect,
 } from "./utils/effect/react.js";
 
@@ -66,8 +67,14 @@ const findPropUsedToResetAllState = (
   effectFnRefs: Reference[],
   depsRefs: Reference[],
   useEffectNode: EsTreeNode,
+  effectFn: EsTreeNode,
 ): Reference | null => {
-  const stateSetterRefs = effectFnRefs.filter((ref) => isStateSetterCall(analysis, ref));
+  // A setter that only runs inside a listener / observer / subscription
+  // callback fires on that event, not when the prop changes — only
+  // synchronous setter calls are the reset-on-prop-change shape.
+  const stateSetterRefs = effectFnRefs.filter((ref) =>
+    isSyncStateSetterCall(analysis, ref, effectFn),
+  );
   if (stateSetterRefs.length === 0) return null;
 
   const allResetToInitial = stateSetterRefs.every((ref) => isSetStateToInitialValue(analysis, ref));
@@ -101,8 +108,16 @@ export const noResetAllStateOnPropChange = defineRule({
       if (!effectFnRefs || !depsRefs) return;
       const containing = findContainingNode(analysis, node);
       if (containing && isCustomHook(containing)) return;
+      const effectFn = getEffectFn(analysis, node);
+      if (!effectFn) return;
 
-      const propUsedToReset = findPropUsedToResetAllState(analysis, effectFnRefs, depsRefs, node);
+      const propUsedToReset = findPropUsedToResetAllState(
+        analysis,
+        effectFnRefs,
+        depsRefs,
+        node,
+        effectFn,
+      );
       if (!propUsedToReset) return;
       context.report({
         node,

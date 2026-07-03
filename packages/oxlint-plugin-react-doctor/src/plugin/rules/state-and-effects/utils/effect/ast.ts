@@ -17,6 +17,38 @@ import { VISITOR_KEYS } from "./constants.js";
 const getChildKeys = (node: EsTreeNode): ReadonlyArray<string> =>
   VISITOR_KEYS[node.type] ?? Object.keys(node).filter((key) => key !== "parent");
 
+// A function-expression ARGUMENT of a binding's initializer call
+// (`const observer = new MutationObserver((m) => setN(m.length))`) is a
+// callback the instance invokes later — using the binding does not run
+// it, so refs inside it must not count as the binding's own call graph.
+// Bare identifier arguments (`const debounced = debounce(setN)`) still do.
+const HOOK_NAME_PATTERN = /^use[A-Z0-9]/;
+
+const isInsideCallbackArgumentOf = (identifier: EsTreeNode, initializer: EsTreeNode): boolean => {
+  if (!isNodeOfType(initializer, "CallExpression") && !isNodeOfType(initializer, "NewExpression")) {
+    return false;
+  }
+  // Hook wrappers (`useCallback(fn, deps)`, `useMemo(() => fn, deps)`)
+  // return the wrapped function itself — calling the binding DOES run it.
+  if (
+    isNodeOfType(initializer, "CallExpression") &&
+    isNodeOfType(initializer.callee, "Identifier") &&
+    HOOK_NAME_PATTERN.test(initializer.callee.name)
+  ) {
+    return false;
+  }
+  const callbackArguments = (initializer.arguments ?? []).filter((argument) =>
+    isFunctionLike(argument as EsTreeNode),
+  );
+  if (callbackArguments.length === 0) return false;
+  let node: EsTreeNode | null | undefined = identifier;
+  while (node && node !== initializer) {
+    if ((callbackArguments as ReadonlyArray<unknown>).includes(node)) return true;
+    node = (node as unknown as { parent?: EsTreeNode | null }).parent;
+  }
+  return false;
+};
+
 const ascend = (
   analysis: ProgramAnalysis,
   ref: Reference,
@@ -40,6 +72,9 @@ const ascend = (
     const next = (defNode.init ?? defNode.body) as EsTreeNode | undefined;
     if (!next) continue;
     for (const innerRef of getDownstreamRefs(analysis, next)) {
+      if (isInsideCallbackArgumentOf(innerRef.identifier as unknown as EsTreeNode, next)) {
+        continue;
+      }
       ascend(analysis, innerRef, visit, visited);
     }
   }

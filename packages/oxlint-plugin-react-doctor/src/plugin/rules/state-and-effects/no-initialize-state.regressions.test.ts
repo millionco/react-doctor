@@ -43,6 +43,79 @@ describe("no-initialize-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent when the cleanup disposes the resource feeding the setter", () => {
+    const result = runRule(
+      noInitializeState,
+      `function AudioNodeState() {
+        const [gainNode, setGainNode] = useState(null);
+        useEffect(() => {
+          const audioContext = new AudioContext();
+          setGainNode(audioContext.createGain());
+          return () => {
+            audioContext.close();
+          };
+        }, []);
+        return null;
+      }`,
+      { filename: "audio.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a mount effect stores a socket its cleanup closes", () => {
+    const result = runRule(
+      noInitializeState,
+      `function LiveFeed({ url }) {
+        const [socket, setSocket] = useState(null);
+        useEffect(() => {
+          const webSocket = new WebSocket(url);
+          setSocket(webSocket);
+          return () => webSocket.close();
+        }, []);
+        return null;
+      }`,
+      { filename: "feed.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the setter only fires from an observer callback", () => {
+    const result = runRule(
+      noInitializeState,
+      `function ObserverConnected() {
+        const [entryCount, setEntryCount] = useState(0);
+        useEffect(() => {
+          const observer = new MutationObserver((mutations) => setEntryCount(mutations.length));
+          observer.observe(document.body, { childList: true });
+          return () => observer.disconnect();
+        }, []);
+        return <output>{entryCount}</output>;
+      }`,
+      { filename: "observer.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a literal init even when the effect has an unrelated cleanup", () => {
+    const result = runRule(
+      noInitializeState,
+      `function C() {
+        const [count, setCount] = useState(null);
+        useEffect(() => {
+          setCount(42);
+          const id = setInterval(() => {}, 1000);
+          return () => clearInterval(id);
+        }, []);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags a deterministic new Date(value) init from a mount effect", () => {
     const result = runRule(
       noInitializeState,

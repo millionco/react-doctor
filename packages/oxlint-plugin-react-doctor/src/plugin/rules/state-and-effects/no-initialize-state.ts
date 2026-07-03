@@ -100,6 +100,73 @@ const argumentReadsPostMountMeasurement = (
   return found;
 };
 
+// Effect-local names that (transitively) produce the setter argument:
+// `const audioContext = new AudioContext(); setGainNode(audioContext.createGain())`
+// yields { audioContext }.
+const collectArgumentSourceLocalNames = (
+  argument: EsTreeNode,
+  effectFn: EsTreeNode,
+  sourceLocalNames: Set<string> = new Set(),
+): Set<string> => {
+  walkAst(argument, (child: EsTreeNode): void => {
+    if (!isNodeOfType(child, "Identifier")) return;
+    if (sourceLocalNames.has(child.name)) return;
+    const localInitializer = findEffectLocalInitializer(effectFn, child.name);
+    if (!localInitializer) return;
+    sourceLocalNames.add(child.name);
+    collectArgumentSourceLocalNames(localInitializer, effectFn, sourceLocalNames);
+  });
+  return sourceLocalNames;
+};
+
+const isFunctionExpressionLike = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression");
+
+const findCleanupFunction = (effectFn: EsTreeNode): EsTreeNode | null => {
+  if (
+    !isNodeOfType(effectFn, "ArrowFunctionExpression") &&
+    !isNodeOfType(effectFn, "FunctionExpression")
+  ) {
+    return null;
+  }
+  const body = effectFn.body;
+  if (!isNodeOfType(body, "BlockStatement")) return null;
+  let cleanupFunction: EsTreeNode | null = null;
+  walkAst(body, (child: EsTreeNode): boolean | void => {
+    if (cleanupFunction) return false;
+    if (isNodeOfType(child, "ReturnStatement")) {
+      if (child.argument && isFunctionExpressionLike(child.argument as EsTreeNode)) {
+        cleanupFunction = child.argument as EsTreeNode;
+      }
+      return false;
+    }
+    if (child !== body && isFunctionExpressionLike(child)) return false;
+    if (isNodeOfType(child, "FunctionDeclaration")) return false;
+  });
+  return cleanupFunction;
+};
+
+// A mount effect whose CLEANUP disposes the very resource feeding the setter
+// (`const audioContext = new AudioContext(); setGainNode(audioContext.createGain());
+// return () => audioContext.close();`) owns a resource lifecycle — the value
+// cannot be hoisted into `useState(initial)` because render has no matching
+// dispose slot, so the effect is the correct home for the init.
+const cleanupDisposesArgumentSource = (argument: EsTreeNode, effectFn: EsTreeNode): boolean => {
+  const cleanupFunction = findCleanupFunction(effectFn);
+  if (!cleanupFunction) return false;
+  const sourceLocalNames = collectArgumentSourceLocalNames(argument, effectFn);
+  if (sourceLocalNames.size === 0) return false;
+  let referencesSource = false;
+  walkAst(cleanupFunction, (child: EsTreeNode): boolean | void => {
+    if (referencesSource) return false;
+    if (isNodeOfType(child, "Identifier") && sourceLocalNames.has(child.name)) {
+      referencesSource = true;
+      return false;
+    }
+  });
+  return referencesSource;
+};
+
 // 1:1 port of upstream `src/rules/no-initialize-state.js`.
 // Difference vs upstream: upstream uses `context.sourceCode.getText`
 // for the diagnostic's "arguments" field; we use
@@ -149,6 +216,13 @@ export const noInitializeState = defineRule({
           callExpr.arguments?.some(
             (argument) =>
               Boolean(argument) && argumentReadsPostMountMeasurement(argument, effectFn),
+          )
+        ) {
+          continue;
+        }
+        if (
+          callExpr.arguments?.some(
+            (argument) => Boolean(argument) && cleanupDisposesArgumentSource(argument, effectFn),
           )
         ) {
           continue;

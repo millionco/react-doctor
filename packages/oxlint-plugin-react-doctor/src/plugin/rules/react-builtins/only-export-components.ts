@@ -627,7 +627,7 @@ export const onlyExportComponents = defineRule({
             if (
               isReactComponentName(child.id.name) &&
               !isInsideExport(child as EsTreeNode) &&
-              !isInsideFunctionScope(child as EsTreeNode)
+              !isInsideFunctionScope(child)
             ) {
               localComponents.push(child.id);
             }
@@ -637,7 +637,7 @@ export const onlyExportComponents = defineRule({
               isReactComponentName(child.id.name) &&
               canBeReactFunctionComponent(child.init as EsTreeNode | null | undefined, state) &&
               !isInsideExport(child as EsTreeNode) &&
-              !isInsideFunctionScope(child as EsTreeNode)
+              !isInsideFunctionScope(child)
             ) {
               localComponents.push(child.id);
             }

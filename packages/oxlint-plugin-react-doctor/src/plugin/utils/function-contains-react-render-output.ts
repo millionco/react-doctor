@@ -108,7 +108,27 @@ const containsRenderOutput = (
   return false;
 };
 
+interface RenderOutputCacheEntry {
+  scopes: ScopeAnalysis;
+  hasRenderOutput: boolean;
+}
+
+// The walk result is a pure function of (functionNode, scopes), and the host
+// shares one ScopeAnalysis per Program across every rule (see
+// wrap-with-semantic-context.ts), so the ~5 rules re-querying the same
+// function node collapse to one subtree walk per file. The scopes-identity
+// guard recomputes if a different analysis ever shows up for the same node
+// (the pre-capture fallback scopes, or tests building their own analysis).
+// Entries die with the AST via the WeakMap.
+const renderOutputCache = new WeakMap<EsTreeNode, RenderOutputCacheEntry>();
+
 export const functionContainsReactRenderOutput = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
-): boolean => containsRenderOutput(functionNode, functionNode, scopes);
+): boolean => {
+  const cachedEntry = renderOutputCache.get(functionNode);
+  if (cachedEntry && cachedEntry.scopes === scopes) return cachedEntry.hasRenderOutput;
+  const hasRenderOutput = containsRenderOutput(functionNode, functionNode, scopes);
+  renderOutputCache.set(functionNode, { scopes, hasRenderOutput });
+  return hasRenderOutput;
+};

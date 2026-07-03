@@ -60,6 +60,34 @@ const APP_ROUTER_FILE_PATTERN = new RegExp(
 
 const NON_PROJECT_PATH_PATTERN = /\/(?:node_modules|dist|build|\.next)\//;
 
+// Remix / React Router also use an `app/` directory with `route.tsx`
+// files, but their `fetch` has standard browser/undici semantics — the
+// Next.js data-cache never applies there.
+const REMIX_IMPORT_SOURCE_PATTERN = /^(?:@remix-run\/|@react-router\/|react-router(?:-dom)?$)/;
+
+const programImportsRemixRouter = (programNode: EsTreeNodeOfType<"Program">): boolean =>
+  (programNode.body ?? []).some(
+    (statement) =>
+      isNodeOfType(statement, "ImportDeclaration") &&
+      typeof statement.source?.value === "string" &&
+      REMIX_IMPORT_SOURCE_PATTERN.test(statement.source.value),
+  );
+
+// `fetch(new URL("./font.ttf", import.meta.url))` is the documented
+// `next/og` pattern for loading a bundled static asset — caching it
+// forever is the intended behavior, so "stale data" never applies.
+const isImportMetaUrlAssetArgument = (urlArg: EsTreeNode | undefined): boolean => {
+  if (!isNodeOfType(urlArg, "NewExpression")) return false;
+  if (!isNodeOfType(urlArg.callee, "Identifier") || urlArg.callee.name !== "URL") return false;
+  const baseArg = urlArg.arguments?.[1];
+  return (
+    isNodeOfType(baseArg, "MemberExpression") &&
+    isNodeOfType(baseArg.object, "MetaProperty") &&
+    isNodeOfType(baseArg.property, "Identifier") &&
+    baseArg.property.name === "url"
+  );
+};
+
 export const serverFetchWithoutRevalidate = defineRule({
   id: "server-fetch-without-revalidate",
   title: "Fetch without revalidate",
@@ -87,7 +115,7 @@ export const serverFetchWithoutRevalidate = defineRule({
             isNodeOfType(statement.expression, "Literal") &&
             statement.expression.value === "use client",
         );
-        isServerSideFile = !hasUseClient;
+        isServerSideFile = !hasUseClient && !programImportsRemixRouter(node);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!isServerSideFile) return;
@@ -112,6 +140,7 @@ export const serverFetchWithoutRevalidate = defineRule({
         }
 
         const urlArg = node.arguments?.[0];
+        if (isImportMetaUrlAssetArgument(urlArg)) return;
         const urlText =
           isNodeOfType(urlArg, "Literal") && typeof urlArg.value === "string"
             ? `"${urlArg.value}"`

@@ -63,6 +63,31 @@ describe("performance/rendering-hydration-mismatch-time — regressions", () => 
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag new Date() inside JSX rendered by next/og ImageResponse", () => {
+    expectPass(`
+      import { ImageResponse } from "next/og";
+      export async function GET() {
+        return new ImageResponse(
+          <div>
+            <p>{formatDate(new Date())}</p>
+          </div>,
+        );
+      }
+    `);
+  });
+
+  it("does not flag Date.now() in an opengraph-image file", () => {
+    const result = runRule(
+      renderingHydrationMismatchTime,
+      `export default function Image() {
+        return <div>{Date.now()}</div>;
+      }`,
+      { filename: "app/blog/opengraph-image.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("still flags an IIFE returning new Date().toLocaleString()", () => {
     expectFail(`export const Banner = () => <span>{(() => new Date().toLocaleString())()}</span>;`);
   });

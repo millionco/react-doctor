@@ -23,6 +23,16 @@ export const nextjsMissingMetadata = defineRule({
       const filename = normalizeFilename(context.filename ?? "");
       if (!PAGE_FILE_PATTERN.test(filename)) return;
       if (INTERNAL_PAGE_PATH_PATTERN.test(filename)) return;
+      // A "use client" page cannot export `metadata` / `generateMetadata`
+      // (Next.js fails the build), so metadata for it can only live in a
+      // layout — there is nothing to fix in this file.
+      const hasUseClientDirective = (programNode.body ?? []).some(
+        (statement) =>
+          isNodeOfType(statement, "ExpressionStatement") &&
+          isNodeOfType(statement.expression, "Literal") &&
+          statement.expression.value === "use client",
+      );
+      if (hasUseClientDirective) return;
 
       const hasMetadataExport = programNode.body?.some((statement) => {
         if (!isNodeOfType(statement, "ExportNamedDeclaration")) return false;

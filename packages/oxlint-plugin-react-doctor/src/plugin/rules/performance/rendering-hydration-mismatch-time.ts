@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -121,6 +122,10 @@ export const renderingHydrationMismatchTime = defineRule({
       JSXExpressionContainer(node: EsTreeNodeOfType<"JSXExpressionContainer">) {
         if (isTestlikeFile) return;
         if (!node.expression) return;
+        // JSX rasterized by `ImageResponse` / satori (og images) renders
+        // once on the server into a static image — it never hydrates, so
+        // a time/random value there cannot mismatch.
+        if (isGeneratedImageRenderContext(context, findOpeningElementOfChild(node) ?? node)) return;
         const matched = NONDETERMINISTIC_RENDER_PATTERNS.find((pattern) =>
           pattern.matches(node.expression),
         );

@@ -98,6 +98,9 @@ export const noStaticElementInteractions = defineRule({
         const elementType = getElementType(node, context.settings);
         // Custom JSX elements pass through.
         if (!HTML_TAGS.has(elementType)) return;
+        // <svg> has the implicit `graphics-document` role, so it isn't
+        // static; upstream skips it too.
+        if (elementType === "svg") return;
         if (isHiddenFromScreenReader(node, context.settings)) return;
         if (isPresentationRole(node)) return;
         if (isInteractiveElement(elementType, node)) return;
@@ -110,7 +113,14 @@ export const noStaticElementInteractions = defineRule({
           return;
         }
 
-        const attributeValue = roleAttribute.value as EsTreeNode;
+        let attributeValue = roleAttribute.value as EsTreeNode;
+        if (
+          isNodeOfType(attributeValue, "JSXExpressionContainer") &&
+          isNodeOfType(attributeValue.expression, "Literal") &&
+          typeof attributeValue.expression.value === "string"
+        ) {
+          attributeValue = attributeValue.expression;
+        }
         if (isNodeOfType(attributeValue, "Literal") && typeof attributeValue.value === "string") {
           const firstRole = attributeValue.value.toLowerCase().trim().split(/\s+/)[0];
           if (firstRole && (isInteractiveRole(firstRole) || isNonInteractiveRole(firstRole))) {

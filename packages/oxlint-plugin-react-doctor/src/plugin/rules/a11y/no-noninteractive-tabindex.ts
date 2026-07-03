@@ -21,6 +21,36 @@ const isKeyboardOperable = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolea
     Boolean(hasJsxPropIgnoreCase(node.attributes, propName)),
   );
 
+const parseNumericBranch = (expression: EsTreeNode): number | null => {
+  if (isNodeOfType(expression, "Literal") && typeof expression.value === "number") {
+    return expression.value;
+  }
+  if (
+    isNodeOfType(expression, "UnaryExpression") &&
+    expression.operator === "-" &&
+    isNodeOfType(expression.argument, "Literal") &&
+    typeof expression.argument.value === "number"
+  ) {
+    return -expression.argument.value;
+  }
+  return null;
+};
+
+// `tabIndex={active ? 0 : -1}` is the roving-tabindex pattern: only one
+// element in the composite is tabbable at a time, and the `-1` branch keeps
+// the rest reachable by script. The `tabIndex` is intentional, so skip it.
+const isRovingTabindexValue = (value: EsTreeNode): boolean => {
+  if (!isNodeOfType(value, "JSXExpressionContainer")) return false;
+  const expression = value.expression;
+  if (!isNodeOfType(expression, "ConditionalExpression")) return false;
+  if (isNodeOfType(expression.test, "Literal")) return false;
+  const branchValues = [
+    parseNumericBranch(expression.consequent),
+    parseNumericBranch(expression.alternate),
+  ];
+  return branchValues.some((branchValue) => branchValue !== null && branchValue < 0);
+};
+
 interface NoNoninteractiveTabindexSettings {
   tags?: ReadonlyArray<string>;
   roles?: ReadonlyArray<string>;
@@ -59,6 +89,7 @@ export const noNoninteractiveTabindex = defineRule({
         if (!tabIndex) return;
         const tabIndexValue = tabIndex.value as EsTreeNode | null;
         if (!tabIndexValue) return;
+        if (isRovingTabindexValue(tabIndexValue)) return;
         const numeric = parseJsxValue(tabIndexValue);
         if (numeric === null) {
           if (

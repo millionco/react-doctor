@@ -30,7 +30,8 @@ export const noAriaHiddenOnFocusable = defineRule({
         if (isNodeOfType(value, "Literal") && value.value !== "true") return;
         if (isNodeOfType(value, "JSXExpressionContainer")) {
           const expression = value.expression;
-          if (isNodeOfType(expression, "Literal") && !expression.value) return;
+          if (!isNodeOfType(expression, "Literal")) return;
+          if (expression.value !== true && expression.value !== "true") return;
         }
       }
       const tag = getElementType(node, context.settings);

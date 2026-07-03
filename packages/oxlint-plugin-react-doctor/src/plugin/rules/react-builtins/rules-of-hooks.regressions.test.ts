@@ -296,4 +296,48 @@ describe("react-builtins/rules-of-hooks — regressions: local non-hook use* cal
       "`useCounter` runs inside `calculateTotal`, which is not a component or Hook, so React cannot attach Hook state to a render.",
     );
   });
+
+  it("does not flag hooks inside an anonymous inline callback with no resolved name", () => {
+    const result = runTsx(`
+      import { use } from "react";
+      register(() => {
+        const value = use(somePromise);
+        return value;
+      });
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags hooks inside a named non-component function", () => {
+    const result = runTsx(`
+      import { useState } from "react";
+      function calculateTotal() {
+        const [value] = useState(0);
+        return value;
+      }
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not treat a hook call in a ternary test position as conditional", () => {
+    const result = runTsx(`
+      import { useFlag, useState } from "./flags";
+      const MyComponent = () => {
+        const label = useFlag("beta") ? "beta" : "stable";
+        return label;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a hook call in a ternary branch position", () => {
+    const result = runTsx(`
+      import { useState } from "react";
+      const MyComponent = ({ enabled }) => {
+        const value = enabled ? useState(0)[0] : 0;
+        return value;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

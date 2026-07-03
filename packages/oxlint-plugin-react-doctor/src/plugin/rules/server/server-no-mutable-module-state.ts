@@ -229,7 +229,7 @@ export const serverNoMutableModuleState = defineRule({
           if (node.kind === "let" || node.kind === "var") {
             context.report({
               node: declarator,
-              message: `Module-scoped ${node.kind} "${variableName}" leaks state between your users, since every request shares it.`,
+              message: `Module-scoped ${node.kind} "${variableName}" is shared by every request, so any write to it leaks state between your users.`,
             });
             continue;
           }

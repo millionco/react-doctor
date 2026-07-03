@@ -119,4 +119,22 @@ describe("react-native/rn-no-dimensions-get — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not claim users see a stale layout for a fresh read in an event handler", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";
+      function Card() {
+        const onPress = () => {
+          const { width } = Dimensions.get("window");
+          logTapPosition(width);
+        };
+        return <Pressable onPress={onPress} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).not.toContain("Your users see a stale layout");
+    expect(result.diagnostics[0].message).toContain("never updates");
+  });
 });

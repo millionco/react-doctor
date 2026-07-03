@@ -327,6 +327,21 @@ describe("no-direct-state-mutation — regressions", () => {
     expect(result.diagnostics[0].message).toContain("draft");
   });
 
+  it("does not claim the screen won't update when a setter runs after the mutation", () => {
+    const result = runRule(
+      noDirectStateMutation,
+      `function List() {
+        const [items, setItems] = useState([]);
+        const add = (x) => { items.push(x); setItems([...items]); };
+        return <button onClick={() => add(1)}>{items.length}</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).not.toContain("won't update");
+    expect(result.diagnostics[0].message).toContain("items");
+  });
+
   it("stays silent on a lazy initializer returning an opaque instance", () => {
     const result = runRule(
       noDirectStateMutation,

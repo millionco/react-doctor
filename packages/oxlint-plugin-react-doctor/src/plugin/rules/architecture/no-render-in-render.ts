@@ -91,7 +91,7 @@ export const noRenderInRender = defineRule({
   severity: "warn",
   tags: ["test-noise"],
   recommendation:
-    "Make it a named component so React preserves its identity and does not remount its state.",
+    "Make it a named component rendered as JSX so React can track it and preserve its state.",
   create: (context: RuleContext) => ({
     JSXExpressionContainer(node: EsTreeNodeOfType<"JSXExpressionContainer">) {
       const expression = node.expression;
@@ -115,7 +115,7 @@ export const noRenderInRender = defineRule({
 
       context.report({
         node: expression,
-        message: `Your users lose state because "${calleeName}()" builds UI from an inline call that React remounts, so pull it into its own component instead.`,
+        message: `"${calleeName}()" hides a component behind an inline call, so pull it into its own component and render it as JSX so React can track it.`,
       });
     },
   }),

@@ -58,4 +58,20 @@ describe("tanstack-query/query-mutation-missing-invalidation — regressions", (
     );
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("does not assert stale data as certain when invalidation happens at the mutate() call site", () => {
+    const { diagnostics } = runRule(
+      queryMutationMissingInvalidation,
+      `function SaveButton() {
+        const queryClient = useQueryClient();
+        const mutation = useMutation({ mutationFn: (data) => api.save(data) });
+        const onClick = () => mutation.mutate(payload, {
+          onSuccess: () => queryClient.invalidateQueries({ queryKey: ["items"] }),
+        });
+        return <button onClick={onClick}>Save</button>;
+      }`,
+    );
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].message).toContain("can leave");
+  });
 });

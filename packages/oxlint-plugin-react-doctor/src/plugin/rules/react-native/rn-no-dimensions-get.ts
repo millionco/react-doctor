@@ -63,7 +63,7 @@ export const rnNoDimensionsGet = defineRule({
         context.report({
           node,
           message:
-            "Your users see a stale layout on rotation or resize because Dimensions.get() does not update.",
+            "Dimensions.get() reads the size once and never updates, so layouts built from it go stale on rotation or resize.",
         });
       }
 

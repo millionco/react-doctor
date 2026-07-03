@@ -6,6 +6,7 @@ import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
@@ -85,6 +86,32 @@ const initializerMarksPlainState = (initializerArgument: EsTreeNode | undefined)
     );
   }
   return producesPlainStateValue(unwrapped);
+};
+
+// Setter names passed straight to a JSX `ref` attribute (`ref={setNode}`) are
+// callback refs, so their paired state holds a DOM element / component
+// instance — not React render data. Writing to its fields
+// (`node.dataset.x = ...`, `node.style.x = ...`) is deliberate imperative DOM
+// work, not a lost state update, so those bindings must not be treated as
+// plain-object state.
+const collectCallbackRefSetterNames = (componentBody: EsTreeNode): Set<string> => {
+  const callbackRefSetterNames = new Set<string>();
+  walkAst(componentBody, (node: EsTreeNode): void => {
+    if (!isNodeOfType(node, "JSXAttribute")) return;
+    const attributeName = node.name;
+    if (
+      isNodeOfType(attributeName, "JSXIdentifier") &&
+      attributeName.name === "ref" &&
+      node.value &&
+      isNodeOfType(node.value, "JSXExpressionContainer")
+    ) {
+      const expression = stripParenExpression(node.value.expression);
+      if (isNodeOfType(expression, "Identifier")) {
+        callbackRefSetterNames.add(expression.name);
+      }
+    }
+  });
+  return callbackRefSetterNames;
 };
 
 const collectFunctionLocalBindings = (functionNode: EsTreeNode): Set<string> => {
@@ -173,8 +200,10 @@ export const noDirectStateMutation = defineRule({
       // is only React-owned-state mutation when the state plausibly holds
       // React-managed data — see `initializerMarksPlainState` for the exact
       // boundary between plain data and opaque third-party instances.
+      const callbackRefSetterNames = collectCallbackRefSetterNames(componentBody);
       const plainObjectStateValueNames = new Set<string>();
       for (const binding of bindings) {
+        if (callbackRefSetterNames.has(binding.setterName)) continue;
         if (!isNodeOfType(binding.declarator.init, "CallExpression")) continue;
         if (initializerMarksPlainState(binding.declarator.init.arguments?.[0])) {
           plainObjectStateValueNames.add(binding.valueName);

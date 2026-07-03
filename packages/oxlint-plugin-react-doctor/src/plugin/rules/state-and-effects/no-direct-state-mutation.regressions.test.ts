@@ -282,6 +282,51 @@ describe("no-direct-state-mutation — regressions", () => {
     expect(result.diagnostics[0].message).toContain("items");
   });
 
+  it("stays silent on a callback-ref DOM node written to in an effect", () => {
+    const result = runRule(
+      noDirectStateMutation,
+      `function CallbackRefCounter() {
+        const [node, setNode] = useState(null);
+        useEffect(() => {
+          if (!node) return;
+          node.dataset.mounted = "true";
+        }, [node]);
+        return <span ref={setNode}>ready</span>;
+      }`,
+      { filename: "counter.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a callback-ref DOM node has its style mutated inline", () => {
+    const result = runRule(
+      noDirectStateMutation,
+      `function Highlight() {
+        const [element, setElement] = useState(null);
+        if (element) element.style.outline = "2px solid";
+        return <div ref={setElement} />;
+      }`,
+      { filename: "highlight.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags null-initialized plain-object state when the setter is not a callback ref", () => {
+    const result = runRule(
+      noDirectStateMutation,
+      `function Form() {
+        const [draft, setDraft] = useState(null);
+        const touch = () => { draft.dirty = true; };
+        return <button onClick={touch}>save</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("draft");
+  });
+
   it("stays silent on a lazy initializer returning an opaque instance", () => {
     const result = runRule(
       noDirectStateMutation,

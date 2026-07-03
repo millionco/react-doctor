@@ -1,6 +1,11 @@
 export const DEFAULT_FUZZ_ITERATIONS = 25;
 export const DEFAULT_FUZZ_SEED = 1;
 export const SLOW_RULE_THRESHOLD_MS = 2_000;
+// A slow measurement is only a finding if the program stays slow across
+// this many re-runs of the same code (fastest time wins). Filters out
+// wall-clock spikes from CPU contention that masquerade as pathological
+// inputs.
+export const SLOW_VERIFY_RERUN_COUNT = 2;
 export const NOISE_MUTATION_PROBABILITY = 0.4;
 export const MAX_NOISE_MUTATIONS = 3;
 // One iteration in ~8 produces a pathological-shape program (deep JSX,

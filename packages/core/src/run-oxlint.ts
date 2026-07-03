@@ -73,7 +73,8 @@ interface RunOxlintOptions {
    * `PerFileLintCacheEnabled` Reference. When on (and the scan is eligible —
    * no audit mode, no adopted `extends`, no user plugins), unchanged files
    * replay their cached cacheable-rule diagnostics and only changed files are
-   * re-linted; the cross-file rules always run fresh in a sidecar pass.
+   * re-linted; the cross-file rules always run fresh on every file (in the
+   * misses' full pass, and in a sidecar pass over the cache hits).
    */
   perFileLintCacheEnabled?: boolean;
   /**

@@ -487,6 +487,27 @@ describe("no-derived-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not stack-overflow on mutually referencing .current aliases", () => {
+    const result = runRule(
+      noDerivedState,
+      `import { useEffect, useState } from "react";
+      const Cycle = ({ maxHeight }) => {
+        const [isOverflowing, setIsOverflowing] = useState(false);
+        const a = b.current;
+        const b = a.current;
+        useEffect(() => {
+          const el = a;
+          if (el) {
+            setIsOverflowing(el.scrollHeight > maxHeight);
+          }
+        }, [maxHeight]);
+        return <div>{String(isOverflowing)}</div>;
+      };`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+  });
+
   it("still flags a plain-data alias whose value is derivable at render time", () => {
     const result = runRule(
       noDerivedState,

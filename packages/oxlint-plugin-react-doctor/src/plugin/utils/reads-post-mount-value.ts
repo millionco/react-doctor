@@ -98,9 +98,14 @@ const unwrapExpression = (node: EsTreeNode | null | undefined): EsTreeNode | nul
 // `const el = contentRef.current` — a local alias of a ref's `.current`
 // carries the mounted element, so layout reads through the alias
 // (`el.scrollHeight`) are post-mount measurements too.
-const resolvesToRefCurrentAlias = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
+const resolvesToRefCurrentAlias = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+  visitedAliasNames: ReadonlySet<string>,
+): boolean => {
+  if (visitedAliasNames.has(identifier.name)) return false;
   const root = findProgramRoot(identifier);
   if (!root) return false;
+  const nextVisited = new Set([...visitedAliasNames, identifier.name]);
   let found = false;
   walkAst(root, (child: EsTreeNode): boolean | void => {
     if (found) return false;
@@ -115,7 +120,7 @@ const resolvesToRefCurrentAlias = (identifier: EsTreeNodeOfType<"Identifier">): 
         isNodeOfType(init, "MemberExpression") &&
         isNodeOfType(init.property, "Identifier") &&
         init.property.name === "current" &&
-        isRefLikeReceiver(init.object as EsTreeNode)
+        isRefLikeReceiver(init.object as EsTreeNode, nextVisited)
       ) {
         found = true;
         return false;
@@ -125,25 +130,28 @@ const resolvesToRefCurrentAlias = (identifier: EsTreeNodeOfType<"Identifier">): 
   return found;
 };
 
-const isRefLikeReceiver = (receiver: EsTreeNode | null | undefined): boolean => {
+const isRefLikeReceiver = (
+  receiver: EsTreeNode | null | undefined,
+  visitedAliasNames: ReadonlySet<string> = new Set(),
+): boolean => {
   if (!receiver) return false;
   if (isNodeOfType(receiver, "ChainExpression")) {
-    return isRefLikeReceiver(receiver.expression as EsTreeNode);
+    return isRefLikeReceiver(receiver.expression as EsTreeNode, visitedAliasNames);
   }
   if (isNodeOfType(receiver, "TSNonNullExpression")) {
-    return isRefLikeReceiver(receiver.expression as EsTreeNode);
+    return isRefLikeReceiver(receiver.expression as EsTreeNode, visitedAliasNames);
   }
   if (isNodeOfType(receiver, "Identifier")) {
     return (
       hasRefLikeName(receiver.name) ||
       resolvesToRefFactoryCall(receiver) ||
-      resolvesToRefCurrentAlias(receiver)
+      resolvesToRefCurrentAlias(receiver, visitedAliasNames)
     );
   }
   if (isNodeOfType(receiver, "MemberExpression") && isNodeOfType(receiver.property, "Identifier")) {
     if (hasRefLikeName(receiver.property.name)) return true;
     if (receiver.property.name === "current")
-      return isRefLikeReceiver(receiver.object as EsTreeNode);
+      return isRefLikeReceiver(receiver.object as EsTreeNode, visitedAliasNames);
   }
   return false;
 };

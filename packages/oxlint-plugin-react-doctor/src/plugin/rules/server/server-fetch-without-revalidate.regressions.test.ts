@@ -116,6 +116,20 @@ export default function Page() {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("still flags a Next.js page whose only router import is type-only", () => {
+    const result = runRule(
+      serverFetchWithoutRevalidate,
+      `import type { LinkProps } from "react-router";
+export default async function Page() {
+  const data = await fetch("https://api.example.com/feed");
+  return <div>{(await data.json()).title}</div>;
+}`,
+      { filename: "src/app/feed/page.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags a runtime-URL fetch in an og route handler", () => {
     const result = runRule(
       serverFetchWithoutRevalidate,

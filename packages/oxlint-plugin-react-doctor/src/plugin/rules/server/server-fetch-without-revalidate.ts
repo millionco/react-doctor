@@ -3,6 +3,7 @@ import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isMutatingFetchCall } from "../../utils/find-side-effect.js";
@@ -69,6 +70,7 @@ const programImportsRemixRouter = (programNode: EsTreeNodeOfType<"Program">): bo
   (programNode.body ?? []).some(
     (statement) =>
       isNodeOfType(statement, "ImportDeclaration") &&
+      !isTypeOnlyImport(statement) &&
       typeof statement.source?.value === "string" &&
       REMIX_IMPORT_SOURCE_PATTERN.test(statement.source.value),
   );

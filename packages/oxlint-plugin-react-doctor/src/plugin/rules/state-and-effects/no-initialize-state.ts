@@ -100,6 +100,17 @@ const argumentReadsPostMountMeasurement = (
   return found;
 };
 
+// A resource is something constructed at runtime (`new AudioContext()`,
+// `navigator.mediaDevices.getUserMedia()`); plain data initializers
+// (literals, object/array expressions) are hoistable and never need a
+// dispose slot.
+const isResourceLikeInitializer = (initializer: EsTreeNode): boolean => {
+  if (isNodeOfType(initializer, "AwaitExpression")) {
+    return isResourceLikeInitializer(initializer.argument as EsTreeNode);
+  }
+  return isNodeOfType(initializer, "NewExpression") || isNodeOfType(initializer, "CallExpression");
+};
+
 // Effect-local names that (transitively) produce the setter argument:
 // `const audioContext = new AudioContext(); setGainNode(audioContext.createGain())`
 // yields { audioContext }.
@@ -112,7 +123,7 @@ const collectArgumentSourceLocalNames = (
     if (!isNodeOfType(child, "Identifier")) return;
     if (sourceLocalNames.has(child.name)) return;
     const localInitializer = findEffectLocalInitializer(effectFn, child.name);
-    if (!localInitializer) return;
+    if (!localInitializer || !isResourceLikeInitializer(localInitializer)) return;
     sourceLocalNames.add(child.name);
     collectArgumentSourceLocalNames(localInitializer, effectFn, sourceLocalNames);
   });

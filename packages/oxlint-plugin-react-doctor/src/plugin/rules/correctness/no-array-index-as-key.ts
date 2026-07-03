@@ -10,6 +10,7 @@ import { isAllLiteralArrayExpression } from "../../utils/is-all-literal-array-ex
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import {
   containsStatefulDescendant,
@@ -121,6 +122,24 @@ const isArrayFromCall = (node: EsTreeNode | null | undefined): boolean => {
  *
  * Used both for `<receiver>.map(...)` and for `Array.from(<length>, fn)`.
  */
+const isBindingReassigned = (referenceNode: EsTreeNode, bindingName: string): boolean => {
+  const programRoot = findProgramRoot(referenceNode);
+  if (!programRoot) return false;
+  let didFindReassignment = false;
+  walkAst(programRoot, (child: EsTreeNode): boolean | void => {
+    if (didFindReassignment) return false;
+    if (
+      isNodeOfType(child, "AssignmentExpression") &&
+      isNodeOfType(child.left, "Identifier") &&
+      child.left.name === bindingName
+    ) {
+      didFindReassignment = true;
+      return false;
+    }
+  });
+  return didFindReassignment;
+};
+
 const isStaticPlaceholderReceiver = (receiver: EsTreeNode, depth = 0): boolean => {
   if (isArrayFromCall(receiver)) return true;
   if (isArrayConstructorCallWithNumericLength(receiver)) return true;
@@ -130,6 +149,7 @@ const isStaticPlaceholderReceiver = (receiver: EsTreeNode, depth = 0): boolean =
     if (depth >= TYPE_RESOLUTION_DEPTH_LIMIT) return false;
     const binding = findVariableInitializer(receiver, receiver.name);
     if (!binding?.initializer) return false;
+    if (isBindingReassigned(receiver, receiver.name)) return false;
     return isStaticPlaceholderReceiver(binding.initializer, depth + 1);
   }
 
@@ -462,6 +482,22 @@ const isCompositeKeyWithIteratorIdentity = (
   return templateLiteralHasIteratorIdentity(keyExpression, itemNames);
 };
 
+const forLoopTestReadsDataLength = (test: EsTreeNode): boolean => {
+  let didFindLengthRead = false;
+  walkAst(test, (child: EsTreeNode): boolean | void => {
+    if (didFindLengthRead) return false;
+    if (
+      isNodeOfType(child, "MemberExpression") &&
+      isNodeOfType(child.property, "Identifier") &&
+      child.property.name === "length"
+    ) {
+      didFindLengthRead = true;
+      return false;
+    }
+  });
+  return didFindLengthRead;
+};
+
 // `for (let i = 0; i < count; i++) { children.push(<Col key={i} />) }` is
 // the imperative twin of the exempt `Array.from({length: count}).map(…)`
 // placeholder — the counter has no identity beyond its position.
@@ -473,14 +509,22 @@ const isNumericForLoopCounter = (attributeNode: EsTreeNode, indexName: string): 
   const declaration = declarator.parent;
   if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) return false;
   const forStatement = declaration.parent;
-  return Boolean(
-    forStatement &&
-    isNodeOfType(forStatement, "ForStatement") &&
-    forStatement.init === declaration &&
-    declarator.init &&
-    isNodeOfType(declarator.init, "Literal") &&
-    typeof declarator.init.value === "number",
-  );
+  if (
+    !forStatement ||
+    !isNodeOfType(forStatement, "ForStatement") ||
+    forStatement.init !== declaration ||
+    !declarator.init ||
+    !isNodeOfType(declarator.init, "Literal") ||
+    typeof declarator.init.value !== "number"
+  ) {
+    return false;
+  }
+  // `for (let i = 0; i < items.length; i++)` walks real list data — the
+  // items carry identity, so an index key there still breaks on reorder.
+  if (forStatement.test && forLoopTestReadsDataLength(forStatement.test as EsTreeNode)) {
+    return false;
+  }
+  return true;
 };
 
 export const noArrayIndexAsKey = defineRule({

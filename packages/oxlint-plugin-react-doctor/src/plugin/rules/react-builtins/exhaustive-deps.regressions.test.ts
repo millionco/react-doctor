@@ -403,6 +403,22 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     expect(messages).toContain("useMemo");
   });
 
+  it("suggests aggregate props when the only props call is a nested chain like props.api.load()", () => {
+    const code = `
+      function MyComponent(props) {
+        useEffect(() => {
+          console.log(props.a, props.b);
+          props.api.load();
+        }, []);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("props");
+  });
+
   it("still reports a null deps argument on an effect hook as a non-array deps list", () => {
     const code = `
       function MyComponent(props) {

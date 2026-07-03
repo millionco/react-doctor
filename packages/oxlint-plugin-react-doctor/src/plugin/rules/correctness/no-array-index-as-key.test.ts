@@ -225,6 +225,32 @@ const MatchedName = ({ name, matchedIndices, isSelected }: MatchedNameProps) => 
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("still flags a for-loop counter bounded by real list data's .length", () => {
+      const code = `const List = ({ items }) => {
+  const out = [];
+  for (let i = 0; i < items.length; i++) {
+    out.push(<Row key={i} item={items[i]} />);
+  }
+  return out;
+};
+`;
+      const result = runRule(noArrayIndexAsKey, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags when a placeholder-initialized binding is reassigned to real data", () => {
+      const code = `const List = ({ items }) => {
+  let list = Array.from({ length: 3 });
+  list = items;
+  return <ul>{list.map((item, index) => <Row key={\`s-\${index}\`} item={item} />)}</ul>;
+};
+`;
+      const result = runRule(noArrayIndexAsKey, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("still flags a manually incremented index inside a for-of over items", () => {
       const code = `const List = ({ items }) => {
   const out = [];

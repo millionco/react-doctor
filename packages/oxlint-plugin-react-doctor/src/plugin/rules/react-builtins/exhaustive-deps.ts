@@ -690,8 +690,24 @@ const hasMemberCallForRoot = (node: EsTreeNode, rootName: string): boolean => {
     if (isNodeOfType(current, "CallExpression")) {
       const callee = unwrapExpression(current.callee);
       if (isNodeOfType(callee, "MemberExpression")) {
-        const calleeObject = unwrapExpression(callee.object);
-        if (isNodeOfType(calleeObject, "Identifier") && calleeObject.name === rootName) {
+        let chainObject = unwrapExpression(callee.object);
+        let doesChainPassThroughCurrent = false;
+        while (chainObject && isNodeOfType(chainObject, "MemberExpression")) {
+          if (
+            isNodeOfType(chainObject.property, "Identifier") &&
+            chainObject.property.name === "current"
+          ) {
+            doesChainPassThroughCurrent = true;
+            break;
+          }
+          chainObject = unwrapExpression(chainObject.object);
+        }
+        if (
+          !doesChainPassThroughCurrent &&
+          chainObject &&
+          isNodeOfType(chainObject, "Identifier") &&
+          chainObject.name === rootName
+        ) {
           didFindMemberCall = true;
           return;
         }

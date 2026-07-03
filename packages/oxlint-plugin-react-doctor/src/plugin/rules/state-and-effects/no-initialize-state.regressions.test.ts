@@ -99,6 +99,23 @@ describe("no-initialize-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("still flags a hoistable literal local even when the cleanup mentions it", () => {
+    const result = runRule(
+      noInitializeState,
+      `function C() {
+        const [count, setCount] = useState(null);
+        useEffect(() => {
+          const initial = 42;
+          setCount(initial);
+          return () => console.log(initial);
+        }, []);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags a literal init even when the effect has an unrelated cleanup", () => {
     const result = runRule(
       noInitializeState,

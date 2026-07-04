@@ -226,6 +226,36 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
       );
       process.exit(1);
     }
+    // Required classification fields, projected into the entry's `tags`
+    // below. Same fail-loud contract as `severity`.
+    const impactMatch = source.match(/^\s*impact:\s*"(behavior|style|perf|a11y|security)",?\s*$/m);
+    const confidenceMatch = source.match(/^\s*confidence:\s*"(high|heuristic)",?\s*$/m);
+    const fixMatch = source.match(/^\s*fix:\s*"(mechanical|local|structural)",?\s*$/m);
+    for (const [field, match] of [
+      ["impact", impactMatch],
+      ["confidence", confidenceMatch],
+      ["fix", fixMatch],
+    ]) {
+      if (!match) {
+        console.error(
+          `Rule file missing or invalid \`${field}\` field: ${path.relative(PACKAGE_ROOT, filePath)}`,
+        );
+        process.exit(1);
+      }
+    }
+    // `impact:`/`confidence:`/`fix:` tags are codegen-projected — a rule
+    // must not hand-author them in its `tags` array (that would fork the
+    // classification from the field). Reject at codegen.
+    const authoredTagsMatch = source.match(/^\s*tags:\s*\[([^\]]*)\]/m);
+    const authoredTags = authoredTagsMatch
+      ? [...authoredTagsMatch[1].matchAll(/"([^"]+)"/g)].map((tagMatch) => tagMatch[1])
+      : [];
+    if (authoredTags.some((tag) => /^(?:impact|confidence|fix):/.test(tag))) {
+      console.error(
+        `Rule file hand-authors a projected impact:/confidence:/fix: tag (codegen owns these): ${path.relative(PACKAGE_ROOT, filePath)}`,
+      );
+      process.exit(1);
+    }
     const ruleId = idMatch[1];
     if (RULE_IDS_TO_SKIP_REGISTRATION.has(ruleId)) continue;
     const category = toBucket(categoryMatch ? categoryMatch[1] : defaultCategory);
@@ -251,7 +281,11 @@ for (const bucket of fs.readdirSync(PLUGIN_RULES_ROOT, { withFileTypes: true }))
       framework,
       category,
       severity,
+      impact: impactMatch[1],
+      confidence: confidenceMatch[1],
+      fix: fixMatch[1],
       autoTags,
+      authoredTags,
       requiresReact,
       originallyExternal,
     });
@@ -276,17 +310,28 @@ const importLines = ruleEntries
 // has nothing to rewrite. Single-line entries would be reformatted when
 // they exceed the 100-char default width, and the registry-overwrite-on-
 // codegen contract would loop forever.
-const formatAutoTagsLine = (entry) => {
-  if (entry.autoTags.length === 0) return "";
-  // Merge bucket-derived auto-tags with rule-authored tags at runtime,
-  // deduped so a rule that explicitly repeats the bucket tag doesn't
-  // end up with `["react-native", "react-native"]`. The `[...new Set(...)]`
-  // form keeps every emitted line under prettier's 100-char limit (the
-  // longest rule identifier in the project still fits comfortably) so
-  // we don't have to mirror prettier's wrap decision at codegen time
-  // — `gen:check` stays idempotent.
-  const autoTagLiteral = entry.autoTags.map((tag) => `"${tag}"`).join(", ");
-  return `      tags: [...new Set([${autoTagLiteral}, ...(${entry.identifier}.tags ?? [])])],\n`;
+const PRINT_WIDTH = 100;
+const formatTagsLine = (entry) => {
+  // Every registry entry carries the three projected classification tags
+  // first, then bucket auto-tags, then rule-authored tags — deduped at
+  // codegen (so the emitted array is a plain literal, no runtime `Set`).
+  // The literals are type-checked against `RuleTag` by the
+  // `Record<string, Rule>` assignment on `ruleRegistry`, so a projected
+  // typo fails `tsc`. Wrapping mirrors prettier: single line when it
+  // fits `PRINT_WIDTH`, else one element per line with a trailing comma,
+  // keeping `gen:check` idempotent.
+  const tags = [
+    `impact:${entry.impact}`,
+    `confidence:${entry.confidence}`,
+    `fix:${entry.fix}`,
+    ...entry.autoTags,
+    ...entry.authoredTags,
+  ];
+  const deduped = [...new Set(tags)];
+  const literals = deduped.map((tag) => `"${tag}"`);
+  const singleLine = `      tags: [${literals.join(", ")}],`;
+  if (singleLine.length <= PRINT_WIDTH) return `${singleLine}\n`;
+  return `      tags: [\n${literals.map((literal) => `        ${literal},`).join("\n")}\n      ],\n`;
 };
 
 // Merge the bucket-synthesized `"react"` capability with any
@@ -330,7 +375,7 @@ const ruleLines = ruleEntries
       `      ...${entry.identifier},\n` +
       `      framework: "${entry.framework}",\n` +
       `      category: "${entry.category}",\n` +
-      formatAutoTagsLine(entry) +
+      formatTagsLine(entry) +
       formatRequiresLine(entry) +
       `    },\n` +
       `  },`,

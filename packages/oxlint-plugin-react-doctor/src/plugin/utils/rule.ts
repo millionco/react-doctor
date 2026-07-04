@@ -23,6 +23,24 @@ export type RuleConfidence = "high" | "heuristic";
 // cross-cutting refactor beyond the flagged site.
 export type RuleFix = "mechanical" | "local" | "structural";
 
+// Closed vocabulary for a rule's `tags`. The bare tags are behavioral
+// controls (opt families in/out of a scan); the `impact:`/`confidence:`/
+// `fix:` forms are PROJECTED by codegen from the same-named required
+// fields — never hand-write them in a rule's `tags` array (the registry
+// generator rejects it). Typing `tags` to this union turns a tag typo
+// into a compile error.
+export type RuleTag =
+  | "design"
+  | "migration-hint"
+  | "react-jsx-only"
+  | "react-native"
+  | "security-scan"
+  | "server-action"
+  | "test-noise"
+  | `impact:${RuleImpact}`
+  | `confidence:${RuleConfidence}`
+  | `fix:${RuleFix}`;
+
 // `global` rules are enabled on every project; the other buckets only
 // activate when the project actually uses that framework (detected by
 // `detectProject`). The framework name doubles as the ESLint flat-config
@@ -76,18 +94,18 @@ export interface Rule {
   disabledBy?: ReadonlyArray<string>;
   // Classification axes, projected by codegen into the registry entry's
   // `tags` as `impact:<v>` / `confidence:<v>` / `fix:<v>` — never
-  // hand-write those tag forms in `tags`. Optional on the interface
-  // until every rule declares them; codegen enforces presence.
-  impact?: RuleImpact;
-  confidence?: RuleConfidence;
-  fix?: RuleFix;
+  // hand-write those tag forms in `tags`. Required: the registry
+  // generator refuses to emit a rule that omits any of them.
+  impact: RuleImpact;
+  confidence: RuleConfidence;
+  fix: RuleFix;
   // Behavioral tags (e.g. `"test-noise"`, `"design"`) consumed by
   // `--ignore-tag` / `shouldEnableRule` to opt families of rules in
   // or out of a scan independently of the framework gate. `design` is
   // a narrower surface-semantics tag than `impact:style` (default-
   // excluded from prComment/score/ciFailure); every `design` rule is
   // also `impact:style`.
-  tags?: ReadonlyArray<string>;
+  tags?: ReadonlyArray<RuleTag>;
   // When `true`, a finding's identity is the flagged element itself (a
   // missing attribute, a wrong element) rather than the flagged line's
   // text, so reformatting the line doesn't change the finding. The CI

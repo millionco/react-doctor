@@ -76,4 +76,24 @@ describe("rule registry", () => {
       }
     }
   });
+
+  it("projects exactly one impact/confidence/fix tag onto every rule, matching its field", () => {
+    for (const [ruleId, rule] of Object.entries(ruleRegistry)) {
+      const tags = rule.tags ?? [];
+      const perAxis = (prefix: string) => tags.filter((tag) => tag.startsWith(prefix));
+      expect(perAxis("impact:"), `${ruleId} impact tags`).toEqual([`impact:${rule.impact}`]);
+      expect(perAxis("confidence:"), `${ruleId} confidence tags`).toEqual([
+        `confidence:${rule.confidence}`,
+      ]);
+      expect(perAxis("fix:"), `${ruleId} fix tags`).toEqual([`fix:${rule.fix}`]);
+    }
+  });
+
+  it("classifies every security-scan rule as impact:security", () => {
+    for (const [ruleId, rule] of Object.entries(ruleRegistry)) {
+      if ((rule.tags ?? []).includes("security-scan")) {
+        expect(rule.impact, `${ruleId} should be impact:security`).toBe("security");
+      }
+    }
+  });
 });

@@ -49,6 +49,14 @@ export interface InspectResult {
   lintCacheHitFileCount?: number | null;
   lintCacheTotalFileCount?: number | null;
   /**
+   * Sidecar lint cache outcome: cache-hit files whose cross-file diagnostics
+   * replayed from the sidecar store, and the hits considered. Both absent
+   * when the sidecar cache was off or bypassed. The CLI projects these onto
+   * the Sentry wide event as `lint.sidecarReplayRatio`.
+   */
+  lintSidecarReplayedFileCount?: number | null;
+  lintSidecarTotalFileCount?: number | null;
+  /**
    * Dead-code result cache outcome: `true` when the pass replayed a cached
    * result (the analysis never ran), `false` on a fresh analysis. Absent when
    * the pass never consulted the cache — dead-code skipped, the cache

@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import { recordContentProbe } from "./cross-file-probe-recorder.js";
 import { parseExportSpecifiers } from "./parse-export-specifiers.js";
 import { stripJsComments } from "./strip-js-comments.js";
 
@@ -41,6 +42,10 @@ interface ExportNamesCacheEntry {
 const exportNamesCache = new Map<string, ExportNamesCacheEntry>();
 
 export const doesModuleExportName = (filePath: string, exportedName: string): boolean => {
+  // Recorded BEFORE the cache lookup — the export set is a pure function of
+  // this one file's content (see cross-file-probe-recorder.ts). An absent
+  // file lands in the same probe: its content answer is "absent".
+  recordContentProbe(filePath);
   try {
     const fileStat = fs.statSync(filePath);
     const cached = exportNamesCache.get(filePath);

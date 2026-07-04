@@ -1,11 +1,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { recordContentProbe, recordExistenceProbe } from "./cross-file-probe-recorder.js";
 
 const MODULE_FILE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"];
 const PACKAGE_EXPORT_CONDITIONS = ["import", "default", "module", "browser", "require"];
 const PACKAGE_ENTRY_FIELDS = ["module", "main", "browser"];
 
 const getExistingFilePath = (filePath: string): string | null => {
+  recordExistenceProbe(filePath);
   try {
     return fs.statSync(filePath).isFile() ? filePath : null;
   } catch {
@@ -14,6 +16,7 @@ const getExistingFilePath = (filePath: string): string | null => {
 };
 
 const getExistingDirectoryPath = (directoryPath: string): string | null => {
+  recordExistenceProbe(directoryPath);
   try {
     return fs.statSync(directoryPath).isDirectory() ? directoryPath : null;
   } catch {
@@ -88,6 +91,7 @@ const resolvePackageDirectoryEntry = (directoryPath: string): string | null => {
   if (!existingDirectoryPath) return null;
 
   const packageJsonPath = path.join(existingDirectoryPath, "package.json");
+  recordContentProbe(packageJsonPath);
   try {
     const packageJson: Record<string, unknown> = JSON.parse(
       fs.readFileSync(packageJsonPath, "utf8"),

@@ -46,9 +46,16 @@ export interface OxlintConfigOptions {
    *     linted file's own content, so their output is content-addressable.
    *   - `"sidecar"` — ONLY the cross-file react-doctor rules; the React
    *     Compiler frontend and user plugins are dropped (none are cross-file).
-   *     This config always runs fresh on every file and is never cached.
    */
   ruleSelection?: "cacheable" | "sidecar";
+  /**
+   * Narrows a `"sidecar"` selection to a subset of the cross-file rules.
+   * The sidecar cache path uses it to split fingerprint-BOUNDED rules
+   * (replayable via the dependency-probe store) from UNBOUNDED ones (no
+   * dependency collector — they re-lint every file, every scan). Ignored
+   * for other selections.
+   */
+  sidecarRuleIdFilter?: ReadonlySet<string>;
 }
 
 const resolveSettingsRootDirectory = (rootDirectory: string): string => {
@@ -117,6 +124,7 @@ export const createOxlintConfig = ({
   userPlugins = [],
   disableReactHooksJsPlugin = false,
   ruleSelection,
+  sidecarRuleIdFilter,
 }: OxlintConfigOptions) => {
   // The sidecar carries only cross-file react-doctor rules — the React
   // Compiler frontend isn't cross-file, so it never belongs there.
@@ -149,6 +157,13 @@ export const createOxlintConfig = ({
     // only them. The default (undefined) keeps every rule.
     if (ruleSelection === "cacheable" && CROSS_FILE_RULE_IDS.has(registryEntry.id)) continue;
     if (ruleSelection === "sidecar" && !CROSS_FILE_RULE_IDS.has(registryEntry.id)) continue;
+    if (
+      ruleSelection === "sidecar" &&
+      sidecarRuleIdFilter !== undefined &&
+      !sidecarRuleIdFilter.has(registryEntry.id)
+    ) {
+      continue;
+    }
     // Scan rules run via core's check-security-scan environment
     // check, not oxlint — registering them would only add dead visitors.
     if (rule.scan !== undefined) continue;

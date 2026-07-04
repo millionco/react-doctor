@@ -280,6 +280,14 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
         result.lintCacheTotalFileCount != null && result.lintCacheTotalFileCount > 0
           ? (result.lintCacheHitFileCount ?? 0) / result.lintCacheTotalFileCount
           : null,
+      // Sidecar lint cache outcome — same shape as the per-file cache dims;
+      // all `null` when the sidecar cache was off/bypassed.
+      sidecarReplayedFiles: result.lintSidecarReplayedFileCount ?? null,
+      sidecarTotalFiles: result.lintSidecarTotalFileCount ?? null,
+      sidecarReplayRatio:
+        result.lintSidecarTotalFileCount != null && result.lintSidecarTotalFileCount > 0
+          ? (result.lintSidecarReplayedFileCount ?? 0) / result.lintSidecarTotalFileCount
+          : null,
     }),
     ...withNamespace("deadCode", {
       failed: input.didDeadCodeFail ?? null,

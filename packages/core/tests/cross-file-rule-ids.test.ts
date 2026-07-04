@@ -2,7 +2,11 @@ import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import { describe, expect, it } from "vite-plus/test";
-import { CROSS_FILE_RULE_IDS } from "oxlint-plugin-react-doctor";
+import {
+  CROSS_FILE_DEPENDENCY_COLLECTORS,
+  CROSS_FILE_RULE_IDS,
+  UNBOUNDED_CROSS_FILE_RULE_IDS,
+} from "oxlint-plugin-react-doctor";
 
 // The staleness safety net. Reproduces the transitive import-graph analysis
 // that classifies a rule as cross-file (its verdict can depend on the content
@@ -136,5 +140,22 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "rn-no-raw-text",
       "rn-prefer-expo-image",
     ]);
+  });
+
+  // The sidecar lint cache's classification guard: every cross-file rule must
+  // be CONSCIOUSLY classified as either fingerprint-BOUNDED (it ships a
+  // dependency collector, so its diagnostics can replay from the sidecar
+  // cache) or UNBOUNDED (no sound dependency bound exists — it re-lints every
+  // file on every scan). A new cross-file rule fails here until its author
+  // adds it to one side in the plugin's `cross-file-dependencies.ts`.
+  it("classifies every cross-file rule as bounded (collector) or unbounded — exactly one", () => {
+    const collectorRuleIds = [...CROSS_FILE_DEPENDENCY_COLLECTORS.keys()];
+    const overlappingRuleIds = collectorRuleIds.filter((ruleId) =>
+      UNBOUNDED_CROSS_FILE_RULE_IDS.has(ruleId),
+    );
+    expect(overlappingRuleIds).toEqual([]);
+    expect([...collectorRuleIds, ...UNBOUNDED_CROSS_FILE_RULE_IDS].sort()).toEqual(
+      [...CROSS_FILE_RULE_IDS].sort(),
+    );
   });
 });

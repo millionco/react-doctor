@@ -239,6 +239,16 @@ export interface InspectOutput {
   readonly lintCacheHitFileCount: number | null;
   readonly lintCacheTotalFileCount: number | null;
   /**
+   * Sidecar lint cache outcome for the lint pass: cache-hit files whose
+   * cross-file diagnostics replayed from the sidecar store, and the hits
+   * considered. Both `null` when the sidecar cache was disabled or bypassed
+   * (per-file cache off, `REACT_DOCTOR_NO_SIDECAR_CACHE`, no bounded
+   * cross-file rule enabled). Fed to the Sentry wide event as
+   * `lint.sidecarReplayRatio`.
+   */
+  readonly lintSidecarReplayedFileCount: number | null;
+  readonly lintSidecarTotalFileCount: number | null;
+  /**
    * Dead-code result cache outcome for this scan's dead-code pass: `true`
    * when the cached result was replayed (the analysis worker never spawned),
    * `false` on a miss (fresh analysis). `null` when the pass never consulted
@@ -749,6 +759,8 @@ export const runInspect = <HooksR = never>(
     // or bypassed so the wide event can tell "no cache" from "0% hit".
     let lintCacheHitFileCount: number | null = null;
     let lintCacheTotalFileCount: number | null = null;
+    let lintSidecarReplayedFileCount: number | null = null;
+    let lintSidecarTotalFileCount: number | null = null;
     let deadCodeCacheHit: boolean | null = null;
 
     const baseLintStream = linterService
@@ -774,6 +786,10 @@ export const runInspect = <HooksR = never>(
         onCacheStats: (cacheHitFileCount, totalConsideredFileCount) => {
           lintCacheHitFileCount = cacheHitFileCount;
           lintCacheTotalFileCount = totalConsideredFileCount;
+        },
+        onSidecarStats: (sidecarReplayedFileCount, sidecarConsideredFileCount) => {
+          lintSidecarReplayedFileCount = sidecarReplayedFileCount;
+          lintSidecarTotalFileCount = sidecarConsideredFileCount;
         },
         deadlineEpochMs: input.deadlineEpochMs,
       })
@@ -999,6 +1015,8 @@ export const runInspect = <HooksR = never>(
       securityScanFailed,
       lintCacheHitFileCount,
       lintCacheTotalFileCount,
+      lintSidecarReplayedFileCount,
+      lintSidecarTotalFileCount,
       // Lint failure discards the dead-code pass entirely (see
       // `deadCodeFailureState` above), so its cache outcome must not leak.
       deadCodeCacheHit: lintFailureState.didFail ? null : deadCodeCacheHit,

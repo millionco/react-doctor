@@ -4,6 +4,11 @@ import {
   isExpoManagedDependencyName,
   isReactNativeDependencyName,
 } from "../../react-native-dependency-names.js";
+import {
+  isProbeRecorderActive,
+  recordContentProbe,
+  recordExistenceProbe,
+} from "./cross-file-probe-recorder.js";
 
 // Packages that mark the manifest as a web-only React target. If a manifest
 // contains one of these AND has no React Native indicator, every React
@@ -43,12 +48,31 @@ const cachedPackageDirectoryByFilename = new Map<string, string | null>();
 const findNearestPackageDirectory = (filename: string): string | null => {
   if (!filename) return null;
 
+  // The walk's outcome depends on EVERY ancestor probe (a package.json
+  // appearing closer to the file re-anchors the classification), so a memo
+  // hit regenerates the walk's existence probes LEXICALLY — the exact
+  // candidate list is derivable from the filename and the memoized stop
+  // directory without touching the filesystem
+  // (see cross-file-probe-recorder.ts).
   const fromCache = cachedPackageDirectoryByFilename.get(filename);
-  if (fromCache !== undefined) return fromCache;
+  if (fromCache !== undefined) {
+    if (isProbeRecorderActive()) {
+      let probedDirectory = path.dirname(filename);
+      while (true) {
+        recordExistenceProbe(path.join(probedDirectory, "package.json"));
+        if (probedDirectory === fromCache) break;
+        const parentDirectory = path.dirname(probedDirectory);
+        if (parentDirectory === probedDirectory) break;
+        probedDirectory = parentDirectory;
+      }
+    }
+    return fromCache;
+  }
 
   let currentDirectory = path.dirname(filename);
   while (true) {
     const candidatePackageJsonPath = path.join(currentDirectory, "package.json");
+    recordExistenceProbe(candidatePackageJsonPath);
     let hasPackageJson = false;
     try {
       hasPackageJson = fs.statSync(candidatePackageJsonPath).isFile();
@@ -166,6 +190,10 @@ export const classifyPackagePlatform = (filename: string): PackagePlatform => {
   const packageDirectory = findNearestPackageDirectory(filename);
   if (!packageDirectory) return "unknown";
 
+  // Recorded BEFORE the memo lookup — the classification is a pure function
+  // of this one manifest's content, so the probe alone captures the
+  // dependency while the memo stays warm (see cross-file-probe-recorder.ts).
+  recordContentProbe(path.join(packageDirectory, "package.json"));
   const cached = cachedPlatformByPackageDirectory.get(packageDirectory);
   if (cached !== undefined) return cached;
 

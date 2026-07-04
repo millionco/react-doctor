@@ -209,6 +209,35 @@ export class PerFileLintCacheEnabled extends Context.Reference<boolean>(
 ) {}
 
 /**
+ * Whether the sidecar lint cache (`runners/oxlint/sidecar-lint-cache.ts`) is
+ * active. Defaults ON — warm rescans replay the cross-file rules' cached
+ * diagnostics for every file whose dependency fingerprint (the probe set the
+ * plugin's collectors recorded) still matches the tree, and re-lint only the
+ * rest. Only reachable when the per-file lint cache itself is on (the
+ * sidecar covers its cache hits), so `REACT_DOCTOR_NO_CACHE` /
+ * `REACT_DOCTOR_NO_FILE_CACHE` implicitly disable it too. Opt-OUT knobs:
+ *
+ *   - `REACT_DOCTOR_NO_CACHE` — the global off-switch.
+ *   - `REACT_DOCTOR_NO_SIDECAR_CACHE` — granular rollback hatch: keep the
+ *     per-file cache but run the always-fresh sidecar over every hit
+ *     (the pre-cache behavior).
+ *
+ * Tests override via `Layer.succeed(SidecarLintCacheEnabled, false)`.
+ */
+export class SidecarLintCacheEnabled extends Context.Reference<boolean>(
+  "react-doctor/SidecarLintCacheEnabled",
+  {
+    defaultValue: () => {
+      const noCache = process.env["REACT_DOCTOR_NO_CACHE"]?.toLowerCase() ?? "";
+      const noSidecarCache = process.env["REACT_DOCTOR_NO_SIDECAR_CACHE"]?.toLowerCase() ?? "";
+      if (CACHE_DISABLED_VALUES.has(noCache)) return false;
+      if (CACHE_DISABLED_VALUES.has(noSidecarCache)) return false;
+      return true;
+    },
+  },
+) {}
+
+/**
  * Whether the whole-project dead-code result cache
  * (`dead-code/dead-code-result-cache.ts`) is active. Defaults ON — a rescan
  * whose inputs (source tree, manifests, configs, analyzer version) are

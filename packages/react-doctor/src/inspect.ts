@@ -792,6 +792,8 @@ const runInspectWithRuntime = async (
     baselineDegraded,
     lintCacheHitFileCount: output.lintCacheHitFileCount,
     lintCacheTotalFileCount: output.lintCacheTotalFileCount,
+    lintSidecarReplayedFileCount: output.lintSidecarReplayedFileCount,
+    lintSidecarTotalFileCount: output.lintSidecarTotalFileCount,
     deadCodeCacheHit: output.deadCodeCacheHit,
   });
   recordOnboardingCompletion(options);
@@ -816,6 +818,8 @@ interface FinalizeInput {
   scanElapsedMilliseconds: number;
   lintCacheHitFileCount: number | null;
   lintCacheTotalFileCount: number | null;
+  lintSidecarReplayedFileCount: number | null;
+  lintSidecarTotalFileCount: number | null;
   deadCodeCacheHit: boolean | null;
   baselineDelta: InspectResult["baselineDelta"];
 }
@@ -844,6 +848,12 @@ interface RenderAndRecordScanInput {
    */
   readonly lintCacheHitFileCount?: number | null;
   readonly lintCacheTotalFileCount?: number | null;
+  /**
+   * Sidecar lint cache outcome for THIS scan's lint pass. Threaded outside
+   * `CachedScanPayload` for the same reason as the lint cache stats above.
+   */
+  readonly lintSidecarReplayedFileCount?: number | null;
+  readonly lintSidecarTotalFileCount?: number | null;
   /**
    * Dead-code result cache outcome for THIS scan's dead-code pass. Threaded
    * outside `CachedScanPayload` for the same reason as the lint cache stats
@@ -896,6 +906,8 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     scanElapsedMilliseconds: input.payload.scanElapsedMilliseconds,
     lintCacheHitFileCount: input.lintCacheHitFileCount ?? null,
     lintCacheTotalFileCount: input.lintCacheTotalFileCount ?? null,
+    lintSidecarReplayedFileCount: input.lintSidecarReplayedFileCount ?? null,
+    lintSidecarTotalFileCount: input.lintSidecarTotalFileCount ?? null,
     deadCodeCacheHit: input.deadCodeCacheHit ?? null,
     baselineDelta: input.payload.baselineDelta,
   };
@@ -969,6 +981,8 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       scanElapsedMilliseconds,
       lintCacheHitFileCount,
       lintCacheTotalFileCount,
+      lintSidecarReplayedFileCount,
+      lintSidecarTotalFileCount,
       deadCodeCacheHit,
       baselineDelta,
     } = input;
@@ -996,6 +1010,9 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       scanElapsedMilliseconds,
       ...(lintCacheTotalFileCount !== null
         ? { lintCacheHitFileCount, lintCacheTotalFileCount }
+        : {}),
+      ...(lintSidecarTotalFileCount !== null
+        ? { lintSidecarReplayedFileCount, lintSidecarTotalFileCount }
         : {}),
       ...(deadCodeCacheHit !== null ? { deadCodeCacheHit } : {}),
       ...(baselineDelta ? { baselineDelta } : {}),

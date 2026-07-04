@@ -11,6 +11,7 @@ import {
   OxlintOutputMaxBytes,
   OxlintSpawnTimeoutMs,
   PerFileLintCacheEnabled,
+  SidecarLintCacheEnabled,
 } from "../refs.js";
 import { runOxlint } from "../run-oxlint.js";
 
@@ -46,6 +47,11 @@ export interface LintInput {
   readonly nodeBinaryPath?: string;
   readonly onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
   readonly onCacheStats?: (cacheHitFileCount: number, totalConsideredFileCount: number) => void;
+  /** See `RunOxlintOptions.onSidecarStats`. */
+  readonly onSidecarStats?: (
+    sidecarReplayedFileCount: number,
+    sidecarConsideredFileCount: number,
+  ) => void;
   /** See `RunOxlintOptions.deadlineEpochMs`. */
   readonly deadlineEpochMs?: number;
 }
@@ -117,6 +123,7 @@ export class Linter extends Context.Service<
             const concurrency = yield* OxlintConcurrency;
             const lintBatchOrdering = yield* LintBatchOrdering;
             const perFileLintCacheEnabled = yield* PerFileLintCacheEnabled;
+            const sidecarLintCacheEnabled = yield* SidecarLintCacheEnabled;
             const collectedFailures: string[] = [];
             const diagnostics = yield* Effect.tryPromise({
               // `Effect.tryPromise` aborts this signal when the fiber is
@@ -139,7 +146,9 @@ export class Linter extends Context.Service<
                   },
                   onFileProgress: input.onFileProgress,
                   perFileLintCacheEnabled,
+                  sidecarLintCacheEnabled,
                   onCacheStats: input.onCacheStats,
+                  onSidecarStats: input.onSidecarStats,
                   spawnTimeoutMs,
                   outputMaxBytes,
                   concurrency,

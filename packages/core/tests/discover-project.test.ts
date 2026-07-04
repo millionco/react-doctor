@@ -899,6 +899,78 @@ describe("listWorkspacePackages", () => {
   });
 });
 
+describe("discoverProject — node-resolution React fallback", () => {
+  const writeInstalledReact = (rootDirectory: string, version: string): void => {
+    const reactDirectory = path.join(rootDirectory, "node_modules", "react");
+    fs.mkdirSync(reactDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(reactDirectory, "package.json"),
+      JSON.stringify({ name: "react", version, main: "index.js" }),
+    );
+    fs.writeFileSync(path.join(reactDirectory, "index.js"), "module.exports = {};\n");
+  };
+
+  it("resolves the installed React version when the declaration is version-less", () => {
+    const projectDirectory = path.join(tempDirectory, "react-workspace-protocol-installed");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "widget", dependencies: { react: "workspace:*" } }),
+    );
+    writeInstalledReact(projectDirectory, "19.1.0");
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactVersion).toBe("19.1.0");
+    expect(projectInfo.reactMajorVersion).toBe(19);
+  });
+
+  it("detects React hoisted into an enclosing node_modules with no declaration", () => {
+    const repositoryRoot = path.join(tempDirectory, "hoisted-react-repo");
+    const packageDirectory = path.join(repositoryRoot, "packages", "widget");
+    fs.mkdirSync(path.join(repositoryRoot, ".git"), { recursive: true });
+    fs.mkdirSync(packageDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(packageDirectory, "package.json"),
+      JSON.stringify({ name: "widget" }),
+    );
+    writeInstalledReact(repositoryRoot, "18.3.1");
+
+    const projectInfo = discoverProject(packageDirectory);
+    expect(projectInfo.reactVersion).toBe("18.3.1");
+    expect(projectInfo.reactMajorVersion).toBe(18);
+  });
+
+  it("does not adopt a React installed outside the enclosing repo boundary", () => {
+    const outsideDirectory = path.join(tempDirectory, "containment-outside");
+    const repositoryRoot = path.join(outsideDirectory, "repo");
+    fs.mkdirSync(path.join(repositoryRoot, ".git"), { recursive: true });
+    fs.writeFileSync(path.join(repositoryRoot, "package.json"), JSON.stringify({ name: "repo" }));
+    // React lives one level ABOVE the git root, so the guard rejects it.
+    writeInstalledReact(outsideDirectory, "18.0.0");
+
+    const projectInfo = discoverProject(repositoryRoot);
+    expect(projectInfo.reactVersion).toBeNull();
+    expect(projectInfo.reactMajorVersion).toBeNull();
+  });
+
+  it("leaves a parseable peer range untouched even when a different React is installed", () => {
+    const projectDirectory = path.join(tempDirectory, "peer-range-installed");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "component-lib",
+        peerDependencies: { react: "^18.0.0 || ^19.0.0" },
+      }),
+    );
+    writeInstalledReact(projectDirectory, "19.5.0");
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactVersion).toBe("^18.0.0 || ^19.0.0");
+    expect(projectInfo.reactMajorVersion).toBe(18);
+  });
+});
+
 const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-discover-test-"));
 
 afterAll(() => {
@@ -947,6 +1019,23 @@ describe("discoverProject without a package.json", () => {
 
     // `packages` has no package.json of its own, so detection is inherited
     // from the React workspace root above it.
+    const projectInfo = discoverProject(subdirectory);
+    expect(projectInfo.reactVersion).toBe("^19.0.0");
+    expect(projectInfo.rootDirectory).toBe(subdirectory);
+  });
+
+  it("inherits React detection from a plain (non-monorepo) enclosing app root", () => {
+    const appRoot = path.join(tempDirectory, "plain-react-app");
+    const subdirectory = path.join(appRoot, "src", "components");
+    fs.mkdirSync(subdirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(appRoot, "package.json"),
+      JSON.stringify({ name: "plain-react-app", dependencies: { react: "^19.0.0" } }),
+    );
+    fs.writeFileSync(path.join(subdirectory, "button.tsx"), "export const ok = true;\n");
+
+    // `src/components` has no package.json and the app is not a workspace root,
+    // so the nearest-ancestor walk adopts the app root to keep React on.
     const projectInfo = discoverProject(subdirectory);
     expect(projectInfo.reactVersion).toBe("^19.0.0");
     expect(projectInfo.rootDirectory).toBe(subdirectory);

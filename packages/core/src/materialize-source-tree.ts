@@ -3,23 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { STAGED_FILES_PROJECT_CONFIG_FILENAMES } from "./constants.js";
 import type { ReactDoctorError } from "./errors.js";
+import { isPathInsideDirectory } from "./utils/is-path-inside-directory.js";
 
 export interface MaterializedTree {
   readonly tempDirectory: string;
   readonly materializedFiles: ReadonlyArray<string>;
   readonly cleanup: () => void;
 }
-
-/**
- * Zip-Slip defense: relative paths come from git (`diff --name-only`), which
- * normalizes during ordinary adds, but a crafted index/pack/symlinked tree can
- * smuggle `..` segments that escape the temp root. Resolve against the temp dir
- * and reject anything that lands outside before writing.
- */
-const isPathInsideDirectory = (childAbsolutePath: string, parentAbsolutePath: string): boolean => {
-  const relative = path.relative(parentAbsolutePath, childAbsolutePath);
-  return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
-};
 
 /**
  * Writes a set of source files (supplied by `readContent` — e.g.
@@ -44,6 +34,9 @@ export const materializeSourceTree = (input: {
       const content = yield* input.readContent(relativePath).pipe(Effect.orElseSucceed(() => null));
       if (content === null) continue;
       const candidateTargetPath = path.resolve(resolvedTempDirectory, relativePath);
+      // Zip-Slip defense: relative paths come from git (`diff --name-only`),
+      // which normalizes during ordinary adds, but a crafted index/pack/
+      // symlinked tree can smuggle `..` segments that escape the temp root.
       if (!isPathInsideDirectory(candidateTargetPath, resolvedTempDirectory)) continue;
       yield* Effect.sync(() => {
         fs.mkdirSync(path.dirname(candidateTargetPath), { recursive: true });

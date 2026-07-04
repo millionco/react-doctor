@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
+import { ANALYZED_MANIFEST_FILENAMES, DEFAULT_EXTENSIONS } from "deslop-js/analyzed-inputs";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic } from "../src/types/index.js";
 import { checkDeadCode } from "../src/check-dead-code.js";
@@ -53,6 +54,7 @@ const keyInput = (projectDirectory: string) => ({
   ignorePatterns: [],
   tsConfigPath: undefined,
   deslopJsModuleSpecifier: "deslop-js",
+  coreVersion: "0.0.0",
 });
 
 interface SpyWorker {
@@ -159,6 +161,86 @@ describe("computeDeadCodeCacheKey", () => {
     const keyBefore = computeDeadCodeCacheKey(keyInput(directory));
     fs.writeFileSync(path.join(directory, "scratch.txt"), "not part of the graph\n");
     expect(computeDeadCodeCacheKey(keyInput(directory))).toBe(keyBefore);
+  });
+
+  it("changes when the core package version changes", () => {
+    const directory = setupProject("key-core-version", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    expect(computeDeadCodeCacheKey({ ...keyInput(directory), coreVersion: "99.0.0" })).not.toBe(
+      computeDeadCodeCacheKey(keyInput(directory)),
+    );
+  });
+});
+
+describe("fingerprinted file sets (imported from deslop-js/analyzed-inputs)", () => {
+  it("fingerprints a file for every extension deslop's walk parses", () => {
+    const directory = setupProject("key-extension-coverage", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    const keyBefore = computeDeadCodeCacheKey(keyInput(directory));
+    for (const extension of DEFAULT_EXTENSIONS) {
+      const probePath = path.join(directory, "probe", `probe${extension}`);
+      fs.mkdirSync(path.dirname(probePath), { recursive: true });
+      fs.writeFileSync(probePath, "probe\n");
+      expect(computeDeadCodeCacheKey(keyInput(directory)), extension).not.toBe(keyBefore);
+      fs.rmSync(probePath);
+    }
+  });
+
+  it("fingerprints every manifest name deslop's analysis reads", () => {
+    const directory = setupProject("key-manifest-coverage", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    const keyBefore = computeDeadCodeCacheKey(keyInput(directory));
+    for (const manifestName of ANALYZED_MANIFEST_FILENAMES) {
+      const probePath = path.join(directory, "probe", manifestName);
+      fs.mkdirSync(path.dirname(probePath), { recursive: true });
+      fs.writeFileSync(probePath, "probe\n");
+      expect(computeDeadCodeCacheKey(keyInput(directory)), manifestName).not.toBe(keyBefore);
+      fs.rmSync(probePath);
+    }
+  });
+
+  // Not a redundant copy: a NEW extension or manifest in a deslop-js upgrade
+  // widens what the cache fingerprints, so it must land here as a conscious,
+  // reviewed choice rather than silently.
+  it("matches the reviewed set snapshots", () => {
+    expect([...DEFAULT_EXTENSIONS].sort()).toEqual([
+      ".astro",
+      ".cjs",
+      ".css",
+      ".cts",
+      ".gql",
+      ".graphql",
+      ".js",
+      ".jsx",
+      ".mdx",
+      ".mjs",
+      ".mts",
+      ".scss",
+      ".svelte",
+      ".ts",
+      ".tsx",
+      ".vue",
+    ]);
+    expect([...ANALYZED_MANIFEST_FILENAMES].sort()).toEqual([
+      ".gitignore",
+      "app.json",
+      "bun.lock",
+      "bun.lockb",
+      "lerna.json",
+      "ng-package.json",
+      "nx.json",
+      "package-lock.json",
+      "package.json",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "pnpm-workspace.yml",
+      "rush.json",
+      "turbo.json",
+      "yarn.lock",
+    ]);
   });
 });
 

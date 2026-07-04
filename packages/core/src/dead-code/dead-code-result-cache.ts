@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import * as Schema from "effect/Schema";
+import { ANALYZED_MANIFEST_FILENAMES, DEFAULT_EXTENSIONS } from "deslop-js/analyzed-inputs";
 import type { Diagnostic } from "../types/index.js";
 import { DEAD_CODE_CACHE_FILENAME, DEAD_CODE_CACHE_SCHEMA_VERSION } from "../constants.js";
 import { Diagnostic as DiagnosticSchema } from "../schemas.js";
@@ -37,6 +38,13 @@ interface DeadCodeCacheKeyInput {
   readonly ignorePatterns: ReadonlyArray<string>;
   readonly tsConfigPath: string | undefined;
   readonly deslopJsModuleSpecifier: string;
+  /**
+   * `@react-doctor/core`'s own version (`CORE_PACKAGE_VERSION`). Cached
+   * entries store diagnostics AFTER `checkDeadCode`'s post-processing
+   * (message text, toolchain-dependency filtering), so a core upgrade must
+   * invalidate them even when the analyzed tree is unchanged.
+   */
+  readonly coreVersion: string;
 }
 
 interface PersistedDeadCodeResultCache {
@@ -45,46 +53,24 @@ interface PersistedDeadCodeResultCache {
   readonly diagnostics: ReadonlyArray<unknown>;
 }
 
-// The extensions deslop's import-graph walk parses (its DEFAULT_EXTENSIONS),
-// so an edit to any file the graph can reach changes the key.
-const ANALYZED_FILE_EXTENSIONS = new Set([
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".mts",
-  ".mjs",
-  ".cts",
-  ".cjs",
-  ".mdx",
-  ".astro",
-  ".graphql",
-  ".gql",
-  ".css",
-  ".scss",
-  ".vue",
-  ".svelte",
-]);
+// The fingerprinted file sets come straight from the analyzer package
+// (`deslop-js/analyzed-inputs`): the extensions its import-graph walk parses
+// and every manifest/lockfile/.gitignore name its analysis reads. The worker
+// resolves deslop-js from the same install, so these constants are exactly
+// what the analysis will use — and a deslop version bump also rotates the key
+// via the `deslopVersion` field (belt and suspenders).
+const ANALYZED_FILE_EXTENSIONS = new Set(DEFAULT_EXTENSIONS);
 
-// Non-source files deslop's entry/workspace/dependency analysis reads:
-// manifests (workspace layout, dependency declarations, knip/expo config),
-// lockfiles (the proxy for installed `node_modules` metadata — deslop reads
-// installed packages' bin/peer fields, which only change through an install
-// that rewrites the lockfile), and `.gitignore` files at every level (deslop
-// consults git's ignore state for its walk).
+// Beyond what deslop itself reads, the dead-code PASS also depends on:
+// `knip.json` (read core-side by `collect-dead-code-patterns.ts` to derive
+// the entry/ignore patterns) and `deno.lock` (an extra proxy for installed
+// `node_modules` metadata — deslop reads installed packages' bin/peer fields,
+// which only change through an install that rewrites a lockfile).
+const CORE_SIDE_MANIFEST_NAMES = ["knip.json", "deno.lock"];
+
 const ANALYZED_MANIFEST_NAMES = new Set([
-  "package.json",
-  "knip.json",
-  "app.json",
-  "pnpm-workspace.yaml",
-  "lerna.json",
-  "pnpm-lock.yaml",
-  "package-lock.json",
-  "yarn.lock",
-  "bun.lock",
-  "bun.lockb",
-  "deno.lock",
-  ".gitignore",
+  ...ANALYZED_MANIFEST_FILENAMES,
+  ...CORE_SIDE_MANIFEST_NAMES,
 ]);
 
 // tsconfig/jsconfig files anywhere in the tree — path-alias resolution reads
@@ -134,6 +120,7 @@ export const computeDeadCodeCacheKey = (input: DeadCodeCacheKeyInput): string =>
     .update(
       JSON.stringify({
         schemaVersion: DEAD_CODE_CACHE_SCHEMA_VERSION,
+        coreVersion: input.coreVersion,
         deslopVersion: resolveDeslopVersion(),
         deslopJsModuleSpecifier: input.deslopJsModuleSpecifier,
         entryPatterns: input.entryPatterns,

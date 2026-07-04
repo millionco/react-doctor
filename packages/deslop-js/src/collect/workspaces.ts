@@ -1,6 +1,7 @@
 import { resolve, join, relative, dirname } from "node:path";
 import { readFileSync, existsSync, statSync } from "node:fs";
 import fg from "fast-glob";
+import { STANDALONE_PROJECT_LOCKFILES } from "../constants.js";
 import { extractReactRouterRouteModuleEntries } from "./parse.js";
 
 export interface WorkspacePackage {
@@ -69,13 +70,6 @@ export const resolveWorkspaces = (rootDir: string): WorkspaceDiscoveryResult => 
 };
 
 const IMPLICIT_SUB_PROJECT_SEARCH_DEPTH = 3;
-
-const STANDALONE_PROJECT_LOCKFILES = [
-  "package-lock.json",
-  "yarn.lock",
-  "pnpm-lock.yaml",
-  "bun.lockb",
-];
 
 const isStandaloneProject = (directory: string): boolean =>
   STANDALONE_PROJECT_LOCKFILES.some((lockfile) => existsSync(join(directory, lockfile)));

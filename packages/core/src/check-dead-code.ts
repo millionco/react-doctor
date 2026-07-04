@@ -13,6 +13,7 @@ import {
 } from "./dead-code/dead-code-result-cache.js";
 import { withDeadCodeWorkerSlot } from "./dead-code/dead-code-worker-slots.js";
 import {
+  CORE_PACKAGE_VERSION,
   DEAD_CODE_WORKER_MAX_OLD_SPACE_MB,
   DEAD_CODE_WORKER_TIMEOUT_MS,
   MILLISECONDS_PER_SECOND,
@@ -534,6 +535,7 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
         ignorePatterns,
         tsConfigPath,
         deslopJsModuleSpecifier,
+        coreVersion: CORE_PACKAGE_VERSION,
       })
     : null;
   if (cacheKey !== null) {

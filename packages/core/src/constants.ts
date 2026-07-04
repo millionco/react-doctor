@@ -631,6 +631,13 @@ export const FILE_LINT_CACHE_MAX_FILE_COUNT = 50_000;
 // fallback when a project has no `node_modules` to host `.cache/react-doctor`.
 export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
 
+// This package's own version, inlined at build time (`vite.config.ts` `env`)
+// the same way the CLI inlines `VERSION`; running from source (tests, dev)
+// falls back to "0.0.0". Cache keys include it because cached diagnostics
+// carry core's POST-PROCESSING (message text, toolchain-dependency filtering),
+// so an upgrade must never replay entries shaped by an older core.
+export const CORE_PACKAGE_VERSION = process.env.REACT_DOCTOR_CORE_VERSION ?? "0.0.0";
+
 // Whole-project dead-code result cache (`dead-code/dead-code-result-cache.ts`).
 // Replays deslop's diagnostics — skipping the analysis worker entirely — when
 // nothing the analysis reads has changed since the stored run.

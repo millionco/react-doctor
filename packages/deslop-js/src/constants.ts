@@ -17,6 +17,52 @@ export const DEFAULT_EXTENSIONS = [
   ".svelte",
 ];
 
+export const STANDALONE_PROJECT_LOCKFILES = [
+  "package-lock.json",
+  "yarn.lock",
+  "pnpm-lock.yaml",
+  "bun.lockb",
+];
+
+export const MONOREPO_ROOT_MARKERS = [
+  "pnpm-workspace.yaml",
+  "pnpm-workspace.yml",
+  "lerna.json",
+  "nx.json",
+  "turbo.json",
+  "rush.json",
+];
+
+export const LOCKFILE_MARKERS = [
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "package-lock.json",
+  "bun.lockb",
+  "bun.lock",
+];
+
+// Every non-source file name the analysis reads, assembled from the same
+// constants the readers consume (plus the names read individually by
+// `collect/workspaces.ts`, `collect/entries.ts`,
+// `collect/expo-config-plugin-entries.ts`, and — via `git check-ignore` —
+// `utils/collect-git-ignored-paths.ts`). Exported through
+// `deslop-js/analyzed-inputs` so external result caches can fingerprint
+// exactly the files a pass depends on; extend this list whenever a reader
+// starts consuming a new manifest name.
+export const ANALYZED_MANIFEST_FILENAMES = [
+  ...new Set([
+    "package.json",
+    "pnpm-workspace.yaml",
+    "lerna.json",
+    "app.json",
+    "ng-package.json",
+    ".gitignore",
+    ...STANDALONE_PROJECT_LOCKFILES,
+    ...MONOREPO_ROOT_MARKERS,
+    ...LOCKFILE_MARKERS,
+  ]),
+];
+
 export const HIDDEN_DIRECTORY_ALLOWLIST = [
   ".storybook",
   ".vitepress",

@@ -47,6 +47,16 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./analyzed-inputs": {
+      "import": {
+        "types": "./dist/analyzed-inputs.d.mts",
+        "default": "./dist/analyzed-inputs.mjs"
+      },
+      "require": {
+        "types": "./dist/analyzed-inputs.d.cts",
+        "default": "./dist/analyzed-inputs.cjs"
+      }
     }
   },
   "publishConfig": {

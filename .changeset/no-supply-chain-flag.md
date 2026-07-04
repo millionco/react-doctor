@@ -2,4 +2,4 @@
 "react-doctor": minor
 ---
 
-Add `--supply-chain` / `--no-supply-chain` CLI flags to toggle the dependency supply-chain scan, mirroring `--lint`/`--no-lint` and `--dead-code`/`--no-dead-code`. `--no-supply-chain` is sugar for `supplyChain: { enabled: false }` in the config: the flag folds into the effective config at load, so every downstream reader (the runtime layer selector, the diff-mode manifest gate, per-project merges) inherits it from one source, and `--supply-chain` wins over a config `enabled: false`. The enabled state also rides the per-scan wide event as `scan.supplyChain`.
+Add `--supply-chain` / `--no-supply-chain` CLI flags to toggle the dependency supply-chain scan, mirroring `--lint`/`--no-lint` and `--dead-code`/`--no-dead-code`. Supply-chain enablement now resolves as a scan option (`InspectOptions.supplyChain`) against `supplyChain.enabled` — the flag wins — so it takes precedence over per-project config on every scan (a workspace module's config can't undo `--no-supply-chain`), and config isn't mutated so `scan.hasCustomConfig` telemetry stays accurate. The enabled state also rides the per-scan wide event as `scan.supplyChain`.

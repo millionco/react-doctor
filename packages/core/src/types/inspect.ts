@@ -112,6 +112,13 @@ export interface InspectOptions {
   lint?: boolean;
   /** See `ReactDoctorConfig.deadCode`. Ignored in diff / staged mode. */
   deadCode?: boolean;
+  /**
+   * Whether to run the Socket.dev supply-chain scan. Resolves against
+   * `ReactDoctorConfig.supplyChain.enabled` (this wins when set), defaulting
+   * to `true`. Kept as an option — not folded into the config — so it takes
+   * precedence over per-project config on every scan, like `lint`/`deadCode`.
+   */
+  supplyChain?: boolean;
   includePaths?: string[];
   configOverride?: ReactDoctorConfig | null;
   /**

@@ -5,8 +5,7 @@
 export interface InspectFlags {
   lint?: boolean;
   deadCode?: boolean;
-  // Folds into `supplyChain.enabled` in the effective config (not a top-level
-  // InspectOption like lint/deadCode); undefined when unset so config decides.
+  // Resolved against `supplyChain.enabled` (this flag wins), like lint/deadCode.
   supplyChain?: boolean;
   verbose?: boolean;
   // Forces a Sentry trace and prints its id at the end. Conflicts with

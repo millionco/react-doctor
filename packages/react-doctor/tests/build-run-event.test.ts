@@ -73,6 +73,7 @@ const baseInput = (overrides: Partial<RunEventInput> = {}): RunEventInput => ({
   maxDurationMs: null,
   lint: true,
   deadCode: true,
+  supplyChain: true,
   scoreOnly: false,
   noScore: false,
   respectInlineDisables: true,
@@ -535,5 +536,19 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["scan.workerCount"]).toBeUndefined();
     expect(attributes["scan.fileCount"]).toBeUndefined();
     expect(attributes["timing.scanMs"]).toBeUndefined();
+  });
+
+  it("records each scan phase's enabled state, including supply-chain", () => {
+    const enabled = buildRunEventAttributes(baseInput());
+    expect(enabled["scan.lint"]).toBe(true);
+    expect(enabled["scan.deadCode"]).toBe(true);
+    expect(enabled["scan.supplyChain"]).toBe(true);
+
+    const disabled = buildRunEventAttributes(
+      baseInput({ lint: false, deadCode: false, supplyChain: false }),
+    );
+    expect(disabled["scan.lint"]).toBe(false);
+    expect(disabled["scan.deadCode"]).toBe(false);
+    expect(disabled["scan.supplyChain"]).toBe(false);
   });
 });

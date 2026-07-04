@@ -267,6 +267,9 @@ const buildRunEventConfig = (
     maxDurationMs: options.maxDurationMs,
     lint: options.lint,
     deadCode: options.deadCode,
+    // Config-derived (supply-chain has no top-level InspectOption): enabled
+    // unless the merged config — where `--no-supply-chain` was folded — opts out.
+    supplyChain: userConfig?.supplyChain?.enabled !== false,
     scoreOnly: options.scoreOnly,
     noScore: options.noScore,
     respectInlineDisables: options.respectInlineDisables,

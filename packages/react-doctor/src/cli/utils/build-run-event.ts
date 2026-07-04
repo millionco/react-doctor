@@ -44,6 +44,9 @@ export interface RunEventInput {
   readonly maxDurationMs: number | null;
   readonly lint: boolean;
   readonly deadCode: boolean;
+  // Whether the supply-chain scan is enabled by config/flag (the config analog
+  // of `lint`/`deadCode`) — not whether it ran; diff/staged mode skips it anyway.
+  readonly supplyChain: boolean;
   readonly scoreOnly: boolean;
   readonly noScore: boolean;
   readonly respectInlineDisables: boolean;
@@ -443,6 +446,7 @@ const buildScanAttributes = (input: RunEventInput): RunEventAttributes => {
     maxDurationMs: input.maxDurationMs,
     lint: input.lint,
     deadCode: input.deadCode,
+    supplyChain: input.supplyChain,
     scoreOnly: input.scoreOnly,
     noScore: input.noScore,
     respectInlineDisables: input.respectInlineDisables,

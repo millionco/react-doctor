@@ -271,7 +271,15 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     });
 
     const scanTarget = await resolveScanTarget(requestedDirectory, { allowAmbiguous: true });
-    const userConfig = scanTarget.userConfig;
+    // `--supply-chain` / `--no-supply-chain` folds into `supplyChain.enabled` so
+    // every downstream reader (runtime layer selector, diff-mode manifest gate,
+    // per-project merges) inherits it from one config source; the flag wins.
+    const userConfig =
+      flags.supplyChain === undefined
+        ? scanTarget.userConfig
+        : mergeReactDoctorConfigs(scanTarget.userConfig, {
+            supplyChain: { enabled: flags.supplyChain },
+          });
     const resolvedDirectory = scanTarget.resolvedDirectory;
     setJsonReportDirectory(resolvedDirectory);
     warnDeprecatedFailOn(flags, userConfig);

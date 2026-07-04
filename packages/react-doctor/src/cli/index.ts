@@ -145,6 +145,11 @@ const program = new Command()
     "--no-dead-code",
     "skip dead-code analysis (unused files / exports / dependencies, circular imports)",
   )
+  .option("--supply-chain", "enable the dependency supply-chain scan (default)")
+  .option(
+    "--no-supply-chain",
+    "skip the dependency supply-chain scan (Socket.dev dependency health checks)",
+  )
   .option("--verbose", "show every rule and per-file details (default shows top 3 rules)")
   .option(
     "--debug",

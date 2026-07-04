@@ -1041,6 +1041,23 @@ describe("discoverProject without a package.json", () => {
     expect(projectInfo.rootDirectory).toBe(subdirectory);
   });
 
+  it("does not escape a boundary scan directory to an ancestor package.json", () => {
+    const outsideDirectory = path.join(tempDirectory, "boundary-escape-outside");
+    const repositoryRoot = path.join(outsideDirectory, "repo");
+    fs.mkdirSync(path.join(repositoryRoot, ".git"), { recursive: true });
+    // An unrelated React package.json ABOVE the repo boundary.
+    fs.writeFileSync(
+      path.join(outsideDirectory, "package.json"),
+      JSON.stringify({ name: "outside", dependencies: { react: "^19.0.0" } }),
+    );
+    // The repo root is a git boundary with no package.json of its own, just source.
+    fs.writeFileSync(path.join(repositoryRoot, "index.ts"), "export const ok = true;\n");
+
+    const projectInfo = discoverProject(repositoryRoot);
+    expect(projectInfo.reactVersion).toBeNull();
+    expect(projectInfo.rootDirectory).toBe(repositoryRoot);
+  });
+
   it("throws PackageJsonNotFoundError for an empty directory with nothing to scan", () => {
     const emptyDirectory = path.join(tempDirectory, "truly-empty");
     fs.mkdirSync(emptyDirectory, { recursive: true });

@@ -19,6 +19,11 @@ import { isFile } from "./utils/is-file.js";
  * boundary (a loose tree of files, or a subfolder of a package-less repo).
  */
 export const findNearestAncestorPackageJson = (startDirectory: string): string | null => {
+  // The scan directory itself has no `package.json` (the caller checked). If it
+  // is already the project boundary — the git root or a monorepo root — don't
+  // walk above it and adopt an unrelated `package.json` from outside the repo.
+  if (isProjectBoundary(startDirectory)) return null;
+
   for (const directory of ancestorDirectories(startDirectory, { includeStart: false })) {
     if (isFile(path.join(directory, "package.json"))) return directory;
     if (isProjectBoundary(directory)) return null;

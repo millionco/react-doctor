@@ -207,3 +207,28 @@ export class PerFileLintCacheEnabled extends Context.Reference<boolean>(
     },
   },
 ) {}
+
+/**
+ * Whether the whole-project dead-code result cache
+ * (`dead-code/dead-code-result-cache.ts`) is active. Defaults ON — a rescan
+ * whose inputs (source tree, manifests, configs, analyzer version) are
+ * unchanged replays the stored diagnostics instead of re-running the
+ * analysis worker. Opt-OUT, two knobs (matching the per-file lint cache):
+ *
+ *   - `REACT_DOCTOR_NO_CACHE` — the global off-switch.
+ *   - `REACT_DOCTOR_NO_DEAD_CODE_CACHE` — granular: bust only this cache.
+ *
+ * Tests override via `Layer.succeed(DeadCodeResultCacheEnabled, false)`.
+ */
+export class DeadCodeResultCacheEnabled extends Context.Reference<boolean>(
+  "react-doctor/DeadCodeResultCacheEnabled",
+  {
+    defaultValue: () => {
+      const noCache = process.env["REACT_DOCTOR_NO_CACHE"]?.toLowerCase() ?? "";
+      const noDeadCodeCache = process.env["REACT_DOCTOR_NO_DEAD_CODE_CACHE"]?.toLowerCase() ?? "";
+      if (CACHE_DISABLED_VALUES.has(noCache)) return false;
+      if (CACHE_DISABLED_VALUES.has(noDeadCodeCache)) return false;
+      return true;
+    },
+  },
+) {}

@@ -49,6 +49,14 @@ export interface InspectResult {
   lintCacheHitFileCount?: number | null;
   lintCacheTotalFileCount?: number | null;
   /**
+   * Dead-code result cache outcome: `true` when the pass replayed a cached
+   * result (the analysis never ran), `false` on a fresh analysis. Absent when
+   * the pass never consulted the cache — dead-code skipped, the cache
+   * disabled, or a whole-repo cache replay where no analysis ran. The CLI
+   * projects it onto the Sentry wide event as `deadCode.cacheHit`.
+   */
+  deadCodeCacheHit?: boolean | null;
+  /**
    * Present only for a baseline run (`InspectOptions.baseline` set). The
    * `diagnostics` above are then the *introduced* findings only; this
    * carries the comparison totals for Codecov-style delta reporting.

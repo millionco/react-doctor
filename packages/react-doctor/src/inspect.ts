@@ -792,6 +792,7 @@ const runInspectWithRuntime = async (
     baselineDegraded,
     lintCacheHitFileCount: output.lintCacheHitFileCount,
     lintCacheTotalFileCount: output.lintCacheTotalFileCount,
+    deadCodeCacheHit: output.deadCodeCacheHit,
   });
   recordOnboardingCompletion(options);
   return result;
@@ -815,6 +816,7 @@ interface FinalizeInput {
   scanElapsedMilliseconds: number;
   lintCacheHitFileCount: number | null;
   lintCacheTotalFileCount: number | null;
+  deadCodeCacheHit: boolean | null;
   baselineDelta: InspectResult["baselineDelta"];
 }
 
@@ -842,6 +844,13 @@ interface RenderAndRecordScanInput {
    */
   readonly lintCacheHitFileCount?: number | null;
   readonly lintCacheTotalFileCount?: number | null;
+  /**
+   * Dead-code result cache outcome for THIS scan's dead-code pass. Threaded
+   * outside `CachedScanPayload` for the same reason as the lint cache stats
+   * above: a whole-repo cache replay (where no analysis ran) correctly
+   * leaves it absent.
+   */
+  readonly deadCodeCacheHit?: boolean | null;
 }
 
 const runMaybeSilent = <A, E, R>(
@@ -887,6 +896,7 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     scanElapsedMilliseconds: input.payload.scanElapsedMilliseconds,
     lintCacheHitFileCount: input.lintCacheHitFileCount ?? null,
     lintCacheTotalFileCount: input.lintCacheTotalFileCount ?? null,
+    deadCodeCacheHit: input.deadCodeCacheHit ?? null,
     baselineDelta: input.payload.baselineDelta,
   };
   const result = await Effect.runPromise(
@@ -959,6 +969,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       scanElapsedMilliseconds,
       lintCacheHitFileCount,
       lintCacheTotalFileCount,
+      deadCodeCacheHit,
       baselineDelta,
     } = input;
 
@@ -986,6 +997,7 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       ...(lintCacheTotalFileCount !== null
         ? { lintCacheHitFileCount, lintCacheTotalFileCount }
         : {}),
+      ...(deadCodeCacheHit !== null ? { deadCodeCacheHit } : {}),
       ...(baselineDelta ? { baselineDelta } : {}),
     });
 

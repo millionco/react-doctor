@@ -239,6 +239,16 @@ export interface InspectOutput {
   readonly lintCacheHitFileCount: number | null;
   readonly lintCacheTotalFileCount: number | null;
   /**
+   * Dead-code result cache outcome for this scan's dead-code pass: `true`
+   * when the cached result was replayed (the analysis worker never spawned),
+   * `false` on a miss (fresh analysis). `null` when the pass never consulted
+   * the cache — dead-code skipped/disabled, the cache off
+   * (`REACT_DOCTOR_NO_CACHE` / `REACT_DOCTOR_NO_DEAD_CODE_CACHE`), or the
+   * pass discarded by a lint failure. Fed to the Sentry wide event as
+   * `deadCode.cacheHit`.
+   */
+  readonly deadCodeCacheHit: boolean | null;
+  /**
    * Per-rule tallies of diagnostics the pipeline dropped because the user
    * explicitly silenced the rule (config off switches, per-path overrides,
    * inline disable comments) — see `DiagnosticPipeline.summarizeSuppressions`.
@@ -673,6 +683,9 @@ export const runInspect = <HooksR = never>(
               rootDirectory: scanDirectory,
               parseConcurrency: deadCodeParseConcurrency,
               workerTimeoutMs: deadCodeTimeout.workerTimeoutMs,
+              onCacheOutcome: (didHitCache) => {
+                deadCodeCacheHit = didHitCache;
+              },
             })
             .pipe(
               Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
@@ -736,6 +749,7 @@ export const runInspect = <HooksR = never>(
     // or bypassed so the wide event can tell "no cache" from "0% hit".
     let lintCacheHitFileCount: number | null = null;
     let lintCacheTotalFileCount: number | null = null;
+    let deadCodeCacheHit: boolean | null = null;
 
     const baseLintStream = linterService
       .run({
@@ -985,6 +999,9 @@ export const runInspect = <HooksR = never>(
       securityScanFailed,
       lintCacheHitFileCount,
       lintCacheTotalFileCount,
+      // Lint failure discards the dead-code pass entirely (see
+      // `deadCodeFailureState` above), so its cache outcome must not leak.
+      deadCodeCacheHit: lintFailureState.didFail ? null : deadCodeCacheHit,
       suppressedRuleCounts: transform.summarizeSuppressions(),
     };
   }).pipe(

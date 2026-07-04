@@ -284,6 +284,9 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     ...withNamespace("deadCode", {
       failed: input.didDeadCodeFail ?? null,
       overlapped: input.deadCodeOverlapped ?? null,
+      // Dead-code result cache outcome; `null` when the pass never consulted
+      // the cache, so "no cache" reads distinctly from a miss.
+      cacheHit: result.deadCodeCacheHit ?? null,
     }),
     ...withNamespace("supplyChain", {
       overlapTimedOut: input.supplyChainOverlapTimedOut ?? null,

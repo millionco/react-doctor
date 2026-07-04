@@ -6,6 +6,11 @@ import {
   collectDeadCodeEntryPatterns,
   collectDeadCodeIgnorePatterns,
 } from "./dead-code/collect-dead-code-patterns.js";
+import {
+  computeDeadCodeCacheKey,
+  lookupDeadCodeResultCache,
+  storeDeadCodeResultCache,
+} from "./dead-code/dead-code-result-cache.js";
 import { withDeadCodeWorkerSlot } from "./dead-code/dead-code-worker-slots.js";
 import {
   DEAD_CODE_WORKER_MAX_OLD_SPACE_MB,
@@ -14,6 +19,7 @@ import {
   TSCONFIG_FILENAMES,
 } from "./constants.js";
 import { isRecord } from "./utils/is-record.js";
+import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
 import { toCanonicalPath } from "./utils/to-canonical-path.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
 
@@ -57,6 +63,21 @@ interface CheckDeadCodeOptions {
    * `DEAD_CODE_WORKER_TIMEOUT_MS`.
    */
   readonly abortSignal?: AbortSignal;
+  /**
+   * Whether to consult the whole-project dead-code result cache. Defaults
+   * OFF so direct callers (and existing tests) keep their fresh-analysis
+   * semantics; the `DeadCode` service passes the `DeadCodeResultCacheEnabled`
+   * Reference here. A hit replays the stored diagnostics without spawning
+   * the analysis worker; a fresh COMPLETE pass is stored on success (a
+   * crashed, timed-out, or aborted worker rejects before the store).
+   */
+  readonly cacheEnabled?: boolean;
+  /**
+   * Reports the cache outcome (`true` = hit, `false` = miss) once per call.
+   * Not invoked when `cacheEnabled` is off, so the orchestrator's telemetry
+   * distinguishes "no cache" from a miss.
+   */
+  readonly onCacheOutcome?: (didHitCache: boolean) => void;
 }
 
 interface DeadCodeWorkerInput {
@@ -498,6 +519,32 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
 
   const entryPatterns = collectDeadCodeEntryPatterns(rootDirectory);
   const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory);
+  const tsConfigPath = resolveTsConfigPath(rootDirectory);
+  const deslopJsModuleSpecifier =
+    options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js");
+
+  // Result cache: replay the last complete pass when nothing the analysis
+  // reads changed. The key snapshot is taken BEFORE the (long) analysis so a
+  // stored result is keyed by the tree it started from — an edit racing the
+  // analysis lands a stale key that the next run's fresh snapshot misses.
+  const cacheKey = options.cacheEnabled
+    ? computeDeadCodeCacheKey({
+        rootDirectory,
+        entryPatterns,
+        ignorePatterns,
+        tsConfigPath,
+        deslopJsModuleSpecifier,
+      })
+    : null;
+  if (cacheKey !== null) {
+    const cachedDiagnostics = lookupDeadCodeResultCache(
+      resolveReactDoctorCacheDir(rootDirectory),
+      cacheKey,
+    );
+    options.onCacheOutcome?.(cachedDiagnostics !== null);
+    if (cachedDiagnostics !== null) return [...cachedDiagnostics];
+  }
+
   // `runDeadCodeWorkerWithTimeout` owns the abort wiring: when the surrounding
   // Effect fiber is interrupted (lint failed / dead-code phase timeout / scan
   // cancelled), `Effect.tryPromise` aborts `options.abortSignal`, which its
@@ -507,9 +554,9 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
     const workerHandle = (options.createWorker ?? createDeadCodeWorker)({
       rootDirectory,
       entryPatterns,
-      tsConfigPath: resolveTsConfigPath(rootDirectory),
+      tsConfigPath,
       ignorePatterns,
-      deslopJsModuleSpecifier: options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js"),
+      deslopJsModuleSpecifier,
       parseConcurrency: options.parseConcurrency,
     });
     return runDeadCodeWorkerWithTimeout(
@@ -598,6 +645,13 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
       column: 0,
       category: DEAD_CODE_CATEGORY,
     });
+  }
+
+  // Only a COMPLETE successful pass reaches this line — a crashed, timed-out,
+  // or aborted worker rejects above — so a stored entry never replays a
+  // truncated result (mirroring `shouldStoreScanPayload`).
+  if (cacheKey !== null) {
+    storeDeadCodeResultCache(resolveReactDoctorCacheDir(rootDirectory), cacheKey, diagnostics);
   }
 
   return diagnostics;

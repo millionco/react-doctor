@@ -631,6 +631,13 @@ export const FILE_LINT_CACHE_MAX_FILE_COUNT = 50_000;
 // fallback when a project has no `node_modules` to host `.cache/react-doctor`.
 export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
 
+// Whole-project dead-code result cache (`dead-code/dead-code-result-cache.ts`).
+// Replays deslop's diagnostics — skipping the analysis worker entirely — when
+// nothing the analysis reads has changed since the stored run.
+export const DEAD_CODE_CACHE_SCHEMA_VERSION = 1;
+
+export const DEAD_CODE_CACHE_FILENAME = "dead-code-cache.json";
+
 // Plugin / rule / category identity for the diagnostics the supply-chain
 // check emits. `plugin: "socket"` keeps Socket findings visually distinct
 // from the `react-doctor` lint surface in the printed list and JSON report.

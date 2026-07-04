@@ -77,7 +77,7 @@ export const iframeMissingSandbox = defineRule({
   recommendation:
     'Add `sandbox=""` or a curated value so embedded pages cannot get full access to your site by default.',
   category: "Security",
-  structuralFinding: true,
+  matchByOccurrence: true,
   create: skipNonProductionFiles((context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "iframe") return;

@@ -32,6 +32,7 @@ export class Diagnostic extends Schema.Class<Diagnostic>("Diagnostic")({
   endLine: Schema.optional(Schema.Number),
   endColumn: Schema.optional(Schema.Number),
   category: Schema.String,
+  matchByOccurrence: Schema.optional(Schema.Boolean),
   fileContext: Schema.optional(Schema.Literals(["test", "story"])),
   suppressionHint: Schema.optional(Schema.String),
   relatedLocations: Schema.optional(Schema.Array(DiagnosticRelatedLocation)),

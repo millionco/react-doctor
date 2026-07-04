@@ -458,13 +458,14 @@ export const DIAGNOSTIC_CATEGORY_BUCKETS = [
   "Maintainability",
 ] as const;
 
-// Categories whose findings are structural — the finding's identity is the
-// flagged element (a missing attribute, a wrong element), not the flagged
-// line's text — so the CI baseline delta matches them by `(file, rule)`
-// occurrence count instead of a line-text hash. Every Accessibility rule is
-// element-level; structural rules in other categories opt in individually
-// via the per-rule `structuralFinding` flag (see `isStructuralFinding`).
-export const STRUCTURAL_FINDING_CATEGORIES: ReadonlySet<string> = new Set(["Accessibility"]);
+// Categories whose findings are matched by occurrence in the CI baseline
+// delta — the finding's identity is the flagged element (a missing
+// attribute, a wrong element), not the flagged line's text — so the delta
+// matches them by `(file, rule)` occurrence count instead of a line-text
+// hash. Every Accessibility rule is element-level; rules in other
+// categories opt in individually via their per-rule `matchByOccurrence`
+// flag (see `resolveMatchByOccurrence` in `runners/oxlint/parse-output`).
+export const OCCURRENCE_MATCHED_CATEGORIES: ReadonlySet<string> = new Set(["Accessibility"]);
 
 // Rules whose heuristic only makes sense in application code. A published
 // library deliberately exposes flexible primitives (components built in

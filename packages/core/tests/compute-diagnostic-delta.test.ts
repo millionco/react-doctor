@@ -91,12 +91,13 @@ describe("computeDiagnosticDelta", () => {
     expect(delta.fixedCount).toBe(1);
   });
 
-  it("matches a pre-existing structural (Accessibility) finding whose flagged line was reformatted", () => {
+  it("matches a pre-existing occurrence-matched finding whose flagged line was reformatted", () => {
     const base = [
       makeDiagnostic({
         plugin: "react-doctor",
         rule: "iframe-has-title",
         category: "Accessibility",
+        matchByOccurrence: true,
         line: 10,
       }),
     ];
@@ -105,6 +106,7 @@ describe("computeDiagnosticDelta", () => {
         plugin: "react-doctor",
         rule: "iframe-has-title",
         category: "Accessibility",
+        matchByOccurrence: true,
         line: 12,
       }),
     ];
@@ -120,12 +122,13 @@ describe("computeDiagnosticDelta", () => {
     expect(delta.fixedCount).toBe(0);
   });
 
-  it("matches a rule flagged structuralFinding by occurrence even when the line text changed", () => {
+  it("matches a non-Accessibility rule carrying matchByOccurrence even when the line text changed", () => {
     const base = [
       makeDiagnostic({
         plugin: "react-doctor",
         rule: "iframe-missing-sandbox",
         category: "Security",
+        matchByOccurrence: true,
         line: 10,
       }),
     ];
@@ -134,6 +137,7 @@ describe("computeDiagnosticDelta", () => {
         plugin: "react-doctor",
         rule: "iframe-missing-sandbox",
         category: "Security",
+        matchByOccurrence: true,
         line: 10,
       }),
     ];
@@ -147,17 +151,18 @@ describe("computeDiagnosticDelta", () => {
     expect(delta.fixedCount).toBe(0);
   });
 
-  it("still surfaces a genuinely new extra occurrence of a structural finding", () => {
-    const structural = (line: number): Diagnostic =>
+  it("still surfaces a genuinely new extra occurrence of an occurrence-matched finding", () => {
+    const occurrenceMatched = (line: number): Diagnostic =>
       makeDiagnostic({
         plugin: "react-doctor",
         rule: "iframe-has-title",
         category: "Accessibility",
+        matchByOccurrence: true,
         line,
       });
     const delta = computeDiagnosticDelta({
-      headDiagnostics: [structural(10), structural(42)],
-      baseDiagnostics: [structural(10)],
+      headDiagnostics: [occurrenceMatched(10), occurrenceMatched(42)],
+      baseDiagnostics: [occurrenceMatched(10)],
       readHeadLine: lineReaderFrom({
         "src/App.tsx:10": "<iframe src={a} />",
         "src/App.tsx:42": "<iframe src={b} />",

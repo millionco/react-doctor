@@ -65,10 +65,11 @@ export interface Rule {
   // baseline delta (`computeDiagnosticDelta` in @react-doctor/core)
   // then matches these by `(file, rule)` occurrence count instead of a
   // line-text hash. Rules in the `Accessibility` category get this
-  // behavior implicitly; set the flag only on structural rules outside
-  // that category. Leave unset for expression-level rules, where the
-  // flagged expression IS the finding and a text change means a new one.
-  structuralFinding?: boolean;
+  // behavior implicitly; set the flag only on element-level rules
+  // outside that category. Leave unset for expression-level rules, where
+  // the flagged expression IS the finding and a text change means a new
+  // one.
+  matchByOccurrence?: boolean;
   // When `false`, the rule is registered in the plugin (importable,
   // configurable, testable) but NOT enabled by default — users must
   // opt in via `severityControls.rules["react-doctor/<id>"]`. Used for

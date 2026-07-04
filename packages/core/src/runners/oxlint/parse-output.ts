@@ -7,7 +7,7 @@ import type {
   OxlintOutput,
   ProjectInfo,
 } from "../../types/index.js";
-import { ERROR_PREVIEW_LENGTH_CHARS } from "../../constants.js";
+import { ERROR_PREVIEW_LENGTH_CHARS, OCCURRENCE_MATCHED_CATEGORIES } from "../../constants.js";
 import { isLintableSourceFile } from "../../utils/is-lintable-source-file.js";
 import { isMinifiedSource } from "../../utils/is-minified-source.js";
 import { OxlintOutputUnparseable, ReactDoctorError } from "../../errors.js";
@@ -201,6 +201,17 @@ const parseRuleCode = (code: string): { plugin: string; rule: string } => {
 const resolveDiagnosticCategory = (plugin: string, rule: string): string =>
   getRuleCategory(rule) ?? lookupOwnString(PLUGIN_CATEGORY_MAP, plugin) ?? "Bugs";
 
+// Whether the finding's identity is the flagged element rather than the
+// flagged line's text, so `computeDiagnosticDelta` matches it by
+// `(file, rule)` occurrence count. Resolved here — the one place that
+// already consults rule metadata — so the delta stays a pure function of
+// its `Diagnostic` inputs. Every Accessibility-category finding qualifies
+// (element-level by nature, including adopted third-party a11y rules);
+// rules in other categories opt in via their `matchByOccurrence` flag.
+const resolveMatchByOccurrence = (rule: string, category: string): boolean =>
+  OCCURRENCE_MATCHED_CATEGORIES.has(category) ||
+  Boolean(reactDoctorPlugin.rules[rule]?.matchByOccurrence);
+
 /**
  * Maps oxlint's non-primary labels (`labels[1..]`) into related source
  * locations. Editors surface these as a diagnostic's
@@ -328,6 +339,7 @@ export const parseOxlintOutput = (
       // for everything else; offset / length are additive.
       const primarySpan = primaryLabel?.span;
       const relatedLocations = buildRelatedLocations(diagnostic.labels, normalizedFilePath);
+      const category = resolveDiagnosticCategory(plugin, rule);
       return {
         filePath: normalizedFilePath,
         plugin,
@@ -340,7 +352,8 @@ export const parseOxlintOutput = (
         line: primarySpan?.line ?? 0,
         column: primarySpan?.column ?? 0,
         ...(primarySpan ? { offset: primarySpan.offset, length: primarySpan.length } : {}),
-        category: resolveDiagnosticCategory(plugin, rule),
+        category,
+        ...(resolveMatchByOccurrence(rule, category) ? { matchByOccurrence: true } : {}),
         ...(relatedLocations.length > 0 ? { relatedLocations } : {}),
       };
     });

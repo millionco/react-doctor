@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import type { Diagnostic } from "./types/index.js";
-import { isStructuralFinding } from "./utils/is-structural-finding.js";
 
 export interface DiagnosticDelta {
   /** Diagnostics present in head with no base match — introduced by the change. */
@@ -27,7 +26,7 @@ export interface ComputeDiagnosticDeltaInput {
 const fingerprintDiagnostic = (diagnostic: Diagnostic, lineText: string | null): string => {
   const ruleKey = `${diagnostic.plugin}/${diagnostic.rule}`;
   const snippet =
-    lineText === null || isStructuralFinding(diagnostic)
+    lineText === null || diagnostic.matchByOccurrence
       ? ""
       : createHash("sha1").update(lineText.trim()).digest("hex");
   return `${diagnostic.filePath}\u0000${ruleKey}\u0000${snippet}`;
@@ -41,15 +40,16 @@ const fingerprintDiagnostic = (diagnostic: Diagnostic, lineText: string | null):
  * look new, while a genuinely new occurrence (new line text, or one more of
  * the same) surfaces. Identical repeated findings are matched by count.
  *
- * Structural findings (`isStructuralFinding`: every Accessibility-category
- * finding, plus rules opting in via the `structuralFinding` metadata flag)
- * drop the line-text snippet and match by `(filePath, plugin/rule)`
- * occurrence count alone. Their identity is the flagged element, not the
- * line's text, so editing the line (reindentation, prettier reflow,
- * collapsing a multi-line JSX element) doesn't reclassify a pre-existing
- * finding as new — while one MORE occurrence of the same rule in the file
- * still surfaces. Expression-level rules keep the line-text snippet: there
- * the flagged expression IS the finding, so changed text means new + fixed.
+ * Diagnostics carrying `matchByOccurrence` (resolved at diagnostic creation:
+ * every Accessibility-category finding, plus rules opting in via their
+ * `matchByOccurrence` metadata flag) drop the line-text snippet and match by
+ * `(filePath, plugin/rule)` occurrence count alone. Their identity is the
+ * flagged element, not the line's text, so editing the line (reindentation,
+ * prettier reflow, collapsing a multi-line JSX element) doesn't reclassify a
+ * pre-existing finding as new — while one MORE occurrence of the same rule in
+ * the file still surfaces. Expression-level rules keep the line-text snippet:
+ * there the flagged expression IS the finding, so changed text means new +
+ * fixed.
  *
  * v1 limitation: the fingerprint keys on the head-relative `filePath`, and base
  * content is read at that same path. A file renamed by the change therefore has

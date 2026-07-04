@@ -80,6 +80,17 @@ export interface Diagnostic {
   endColumn?: number;
   category: string;
   /**
+   * Set when the finding's identity is the flagged element itself (a missing
+   * attribute, a wrong element) rather than the flagged line's text — every
+   * Accessibility-category finding, plus rules that opt in via their
+   * `matchByOccurrence` metadata flag. `computeDiagnosticDelta` matches these
+   * by `(filePath, plugin/rule)` occurrence count, so reformatting the flagged
+   * line doesn't reclassify a pre-existing finding as new. Resolved at
+   * diagnostic creation, where rule metadata is available. Absent means
+   * line-text-sensitive matching (the default).
+   */
+  matchByOccurrence?: boolean;
+  /**
    * Set when the file never ships to users (`"test"` / `"story"`), so
    * renderers can label the site instead of implying production impact.
    * Omitted for production files (the default).

@@ -330,7 +330,16 @@ const writePersistedCache = (cacheFilePath: string, cache: PersistedScanResultCa
   }
 };
 
-const isScanResultCacheDisabled = (): boolean =>
+/**
+ * The global cache off-switch (`REACT_DOCTOR_NO_CACHE`), which disables every
+ * cache subsystem: this whole-repo scan cache plus core's per-file lint,
+ * sidecar, and dead-code caches (their `Context.Reference` defaults read the
+ * same variable). Exported for the wide event's `cache.temperature`
+ * derivation, which reports `"disabled"` instead of `"cold"` when the switch
+ * is on. Granular knobs (`REACT_DOCTOR_NO_FILE_CACHE`, …) are deliberately
+ * not consulted — they leave the other subsystems live.
+ */
+export const isCacheGloballyDisabled = (): boolean =>
   CACHE_DISABLED_VALUES.has(process.env.REACT_DOCTOR_NO_CACHE?.toLowerCase() ?? "");
 
 const resolveProjectIdentity = (projectDirectory: string): string => {
@@ -369,7 +378,7 @@ const resolveToolchainFingerprint = (nodeBinaryPath: string | null): ReadonlyArr
 };
 
 export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string | null => {
-  if (isScanResultCacheDisabled()) return null;
+  if (isCacheGloballyDisabled()) return null;
   // Assume-unchanged / skip-worktree hide tracked-file state from `git
   // status`, so no fingerprint built from it can see those changes.
   if (hasHiddenTrackedFileState(input.projectDirectory)) return null;

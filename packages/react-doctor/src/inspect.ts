@@ -570,6 +570,7 @@ const runInspectWithRuntime = async (
       rootSentrySpan,
       scanMode: cachedPayload.baselineDelta ? "baseline" : isDiffMode ? "diff" : "full",
       baselineDegraded,
+      wholeRepoCacheHit: true,
     });
     recordOnboardingCompletion(options);
     return result;
@@ -790,6 +791,7 @@ const runInspectWithRuntime = async (
     rootSentrySpan,
     scanMode: baselineDelta ? "baseline" : isDiffMode ? "diff" : "full",
     baselineDegraded,
+    wholeRepoCacheHit: false,
     lintCacheHitFileCount: output.lintCacheHitFileCount,
     lintCacheTotalFileCount: output.lintCacheTotalFileCount,
     lintSidecarReplayedFileCount: output.lintSidecarReplayedFileCount,
@@ -844,6 +846,14 @@ interface RenderAndRecordScanInput {
   readonly rootSentrySpan: SentryRootSpan;
   readonly scanMode: "full" | "diff" | "baseline";
   readonly baselineDegraded: boolean;
+  /**
+   * `true` only on the whole-repo scan-result replay path (the exact-key
+   * `cachedPayload` branch, where no lint / dead-code / score work ran).
+   * Required so both call sites state it explicitly — the wide event's
+   * `cache.temperature = "turbo"` derives from this flag, never from the
+   * execution dims below happening to be null.
+   */
+  readonly wholeRepoCacheHit: boolean;
   /**
    * Per-file lint cache outcome for THIS scan's lint pass. Threaded outside
    * `CachedScanPayload` on purpose — it's telemetry about the lint that ran in
@@ -960,6 +970,7 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     result,
     mode: input.scanMode,
     gateExempt: input.baselineDegraded,
+    wholeRepoCacheHit: input.wholeRepoCacheHit,
     didLintFail: input.payload.didLintFail,
     lintFailureReasonKind: input.payload.lintFailureReasonKind,
     lintPartialFailureCount: input.payload.lintPartialFailures.length,

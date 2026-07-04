@@ -416,6 +416,11 @@ export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string 
     engineOptions: {
       lint: input.options.lint,
       deadCode: input.options.deadCode,
+      // Resolved supply-chain enablement (the `--supply-chain` flag over
+      // config). Keyed here — not just via `userConfig` — because the flag can
+      // flip it without touching the config blob, so a `--no-supply-chain`
+      // lookup must not serve a supply-chain-on payload at the same commit.
+      supplyChain: input.options.supplyChain,
       includePaths: [...input.options.includePaths].sort(),
       customRulesOnly: input.options.customRulesOnly,
       respectInlineDisables: input.options.respectInlineDisables,

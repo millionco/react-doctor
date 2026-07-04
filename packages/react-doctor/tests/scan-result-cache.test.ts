@@ -21,6 +21,7 @@ let tempDirectory: string;
 const baseOptions = (overrides: Partial<ResolvedInspectOptions> = {}): ResolvedInspectOptions => ({
   lint: false,
   deadCode: false,
+  supplyChain: true,
   verbose: false,
   scoreOnly: false,
   noScore: true,
@@ -222,6 +223,9 @@ describe("scan result cache", () => {
     expect(cacheKey(projectDirectory, baseOptions({ includePaths: ["src/App.tsx"] }))).not.toBe(
       originalKey,
     );
+    // `--no-supply-chain` must not share a key with a supply-chain-on run at the
+    // same commit — the flag no longer rides the keyed `userConfig` blob.
+    expect(cacheKey(projectDirectory, baseOptions({ supplyChain: false }))).not.toBe(originalKey);
     const alternateNodeBinaryPath = path.join(tempDirectory, "fake-node");
     fs.writeFileSync(alternateNodeBinaryPath, "node-a");
     expect(cacheKey(projectDirectory, options, VERSION, alternateNodeBinaryPath)).not.toBe(

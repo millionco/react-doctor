@@ -3,6 +3,19 @@ import { TIMER_AND_SCHEDULER_DIRECT_CALLEE_NAMES } from "./dom.js";
 
 export const INDEX_PARAMETER_NAMES = new Set(["index", "idx", "i"]);
 
+// Module specifiers whose exports are React's own runtime symbols. Effect-event
+// rules match `useEffectEvent` by NAME (to stay in parity with
+// eslint-plugin-react-hooks, whose fixtures call a bare global), so a same-named
+// hook imported from another package — e.g. `@rocket.chat/fuselage-hooks`, whose
+// `useEffectEvent` is a stable-callback helper meant to be stored and passed as
+// props — is disambiguated by import source before React's semantics apply.
+export const REACT_RUNTIME_MODULE_SOURCES = new Set([
+  "react",
+  "react-dom",
+  "preact/compat",
+  "preact/hooks",
+]);
+
 export const LOADING_STATE_PATTERN = /^(?:isLoading|isPending)$/;
 
 export const STABLE_HOOK_WRAPPERS = new Set(["useState", "useMemo", "useRef"]);

@@ -341,3 +341,49 @@ describe("react-builtins/rules-of-hooks — regressions: local non-hook use* cal
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("react-builtins/rules-of-hooks — regressions: same-named non-React useEffectEvent", () => {
+  it("does not flag a useEffectEvent imported from a non-React package passed as a prop", () => {
+    const result = runTsx(`
+      import { useEffectEvent } from "@rocket.chat/fuselage-hooks";
+      const MyComponent = ({ onDone }) => {
+        const handleChange = useEffectEvent(() => onDone());
+        return <Child onChange={handleChange} />;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a non-React useEffectEvent stored in a variable and referenced later", () => {
+    const result = runTsx(`
+      import { useEffectEvent } from "@rocket.chat/fuselage-hooks";
+      const MyComponent = ({ value }) => {
+        const handler = useEffectEvent(() => value);
+        const wrapped = handler;
+        return <button onClick={wrapped}>go</button>;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags React's useEffectEvent when passed around", () => {
+    const result = runTsx(`
+      import { useEffectEvent } from "react";
+      const MyComponent = ({ onDone }) => {
+        const handleChange = useEffectEvent(() => onDone());
+        return <Child onChange={handleChange} />;
+      };
+    `);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a bare/unimported useEffectEvent when passed around (parity)", () => {
+    const result = runTsx(`
+      const MyComponent = ({ onDone }) => {
+        const handleChange = useEffectEvent(() => onDone());
+        return <Child onChange={handleChange} />;
+      };
+    `);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});

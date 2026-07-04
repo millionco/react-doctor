@@ -31,6 +31,8 @@ import { buildDependencyGraph, type ModuleLinkInput } from "./linker/build.js";
 import { traceReachability } from "./linker/reachability.js";
 import { resolveReExportChains } from "./linker/re-exports.js";
 import { generateReport } from "./report/generate.js";
+import { resolveEntriesInWorker } from "./collect/entries-in-worker.js";
+import { loadSummaryCache } from "./summary-cache.js";
 import { findMonorepoRoot } from "./utils/find-monorepo-root.js";
 import { collectGitIgnoredPaths } from "./utils/collect-git-ignored-paths.js";
 
@@ -268,6 +270,7 @@ export const defineConfig = (
   includeExtensions: options.includeExtensions ?? DEFAULT_EXTENSIONS,
   tsConfigPath: options.tsConfigPath,
   paths: options.paths,
+  incrementalCachePath: options.incrementalCachePath,
   reportTypes: options.reportTypes ?? false,
   includeEntryExports: options.includeEntryExports ?? false,
   reportRedundancy: options.reportRedundancy ?? true,
@@ -428,44 +431,52 @@ export const analyze = async (config: DeslopConfig): Promise<ScanResult> => {
         }
       : config;
 
-  let files: Awaited<ReturnType<typeof collectSourceFiles>>;
-  let discoveredEntries: Awaited<ReturnType<typeof resolveEntries>>;
-  try {
-    const [collectedFiles, resolvedEntries] = await Promise.all([
-      collectSourceFiles(configWithExclusions),
-      resolveEntries(configWithExclusions).catch((entriesError: unknown) => {
-        setupErrors.push(
-          new WorkspaceError({
-            code: "workspace-discovery-failed",
-            message: "resolveEntries failed — defaulting to empty entry set",
-            path: config.rootDir,
-            detail: describeUnknownError(entriesError),
-          }),
-        );
-        return {
-          productionEntries: [] as string[],
-          testEntries: [] as string[],
-          alwaysUsedFiles: [] as string[],
-        };
-      }),
-    ]);
-    files = collectedFiles;
-    discoveredEntries = resolvedEntries;
-  } catch (collectError) {
+  // Entry resolution always runs live — it reads config/doc/sibling-source
+  // CONTENT that no name-based fingerprint can validate — but its result is
+  // not needed until graph assembly. Uncached, it overlaps collection and the
+  // parse pool on the main thread's awaits; with the incremental cache a warm
+  // run has no parse window left to hide its mostly-synchronous work, so it
+  // moves to a dedicated worker thread (spawned before the cache's tree walk,
+  // which would otherwise serialize ahead of it).
+  const entriesPromise = (
+    configWithExclusions.incrementalCachePath
+      ? resolveEntriesInWorker(configWithExclusions)
+      : resolveEntries(configWithExclusions)
+  ).catch((entriesError: unknown): Awaited<ReturnType<typeof resolveEntries>> => {
     setupErrors.push(
       new WorkspaceError({
         code: "workspace-discovery-failed",
-        severity: "fatal",
-        message: "collectSourceFiles failed",
+        message: "resolveEntries failed — defaulting to empty entry set",
         path: config.rootDir,
-        detail: describeUnknownError(collectError),
+        detail: describeUnknownError(entriesError),
       }),
     );
-    return buildEmptyScanResult(setupErrors, performance.now() - pipelineStartTime);
+    return { productionEntries: [], testEntries: [], alwaysUsedFiles: [] };
+  });
+
+  const summaryCache = loadSummaryCache(configWithExclusions);
+
+  let files: Awaited<ReturnType<typeof collectSourceFiles>>;
+  const cachedFileList = summaryCache?.lookupFileList() ?? null;
+  if (cachedFileList !== null) {
+    files = cachedFileList;
+  } else {
+    try {
+      files = await collectSourceFiles(configWithExclusions);
+      summaryCache?.storeFileList(files);
+    } catch (collectError) {
+      setupErrors.push(
+        new WorkspaceError({
+          code: "workspace-discovery-failed",
+          severity: "fatal",
+          message: "collectSourceFiles failed",
+          path: config.rootDir,
+          detail: describeUnknownError(collectError),
+        }),
+      );
+      return buildEmptyScanResult(setupErrors, performance.now() - pipelineStartTime);
+    }
   }
-  const productionEntrySet = new Set(discoveredEntries.productionEntries);
-  const testEntrySet = new Set(discoveredEntries.testEntries);
-  const alwaysUsedFileSet = new Set(discoveredEntries.alwaysUsedFiles);
   const gitIgnoreResult = collectGitIgnoredPaths(
     resolve(config.rootDir),
     files.map((file) => file.path),
@@ -509,7 +520,47 @@ export const analyze = async (config: DeslopConfig): Promise<ScanResult> => {
     );
     return buildEmptyScanResult(setupErrors, performance.now() - pipelineStartTime);
   }
-  const parsedModules = await parseFilesInParallel(files);
+  const resolveModuleThroughCache = (
+    specifier: string,
+    fromFile: string,
+  ): ReturnType<typeof moduleResolver.resolveModule> => {
+    if (summaryCache === null) return moduleResolver.resolveModule(specifier, fromFile);
+    const cachedResolution = summaryCache.lookupResolution(specifier, fromFile);
+    if (cachedResolution !== null) return cachedResolution;
+    const resolved = moduleResolver.resolveModule(specifier, fromFile);
+    summaryCache.storeResolution(specifier, fromFile, resolved);
+    return resolved;
+  };
+
+  let parsedModules: Awaited<ReturnType<typeof parseFilesInParallel>>;
+  let summaryMissCount = 0;
+  if (summaryCache === null) {
+    parsedModules = await parseFilesInParallel(files);
+  } else {
+    parsedModules = new Array(files.length);
+    const missedFiles: typeof files = [];
+    const missedPositions: number[] = [];
+    for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
+      const cachedSummary = summaryCache.lookupSummary(files[fileIndex].path);
+      if (cachedSummary !== null) {
+        parsedModules[fileIndex] = cachedSummary;
+        continue;
+      }
+      missedFiles.push(files[fileIndex]);
+      missedPositions.push(fileIndex);
+    }
+    summaryMissCount = missedFiles.length;
+    const parsedMissedModules = await parseFilesInParallel(missedFiles);
+    for (let missIndex = 0; missIndex < missedFiles.length; missIndex++) {
+      parsedModules[missedPositions[missIndex]] = parsedMissedModules[missIndex];
+      summaryCache.storeSummary(missedFiles[missIndex].path, parsedMissedModules[missIndex]);
+    }
+  }
+
+  const discoveredEntries = await entriesPromise;
+  const productionEntrySet = new Set(discoveredEntries.productionEntries);
+  const testEntrySet = new Set(discoveredEntries.testEntries);
+  const alwaysUsedFileSet = new Set(discoveredEntries.alwaysUsedFiles);
 
   const graphInputs: ModuleLinkInput[] = [];
 
@@ -522,7 +573,7 @@ export const analyze = async (config: DeslopConfig): Promise<ScanResult> => {
       specifier: string,
     ): ReturnType<typeof moduleResolver.resolveModule> => {
       try {
-        return moduleResolver.resolveModule(specifier, file.path);
+        return resolveModuleThroughCache(specifier, file.path);
       } catch (resolveError) {
         setupErrors.push(
           new ResolverError({
@@ -626,7 +677,7 @@ export const analyze = async (config: DeslopConfig): Promise<ScanResult> => {
     for (const importInfo of parsedStyleModule.imports) {
       let resolvedImport: ReturnType<typeof moduleResolver.resolveModule>;
       try {
-        resolvedImport = moduleResolver.resolveModule(importInfo.specifier, styleFilePath);
+        resolvedImport = resolveModuleThroughCache(importInfo.specifier, styleFilePath);
       } catch (styleResolveError) {
         setupErrors.push(
           new ResolverError({
@@ -705,7 +756,7 @@ export const analyze = async (config: DeslopConfig): Promise<ScanResult> => {
 
   let analysisResult: ScanResult;
   try {
-    analysisResult = generateReport(moduleGraph, config);
+    analysisResult = generateReport(moduleGraph, config, summaryCache ?? undefined);
   } catch (reportError) {
     setupErrors.push(
       new DetectorError({
@@ -716,6 +767,15 @@ export const analyze = async (config: DeslopConfig): Promise<ScanResult> => {
       }),
     );
     return buildEmptyScanResult(setupErrors, performance.now() - pipelineStartTime);
+  }
+
+  summaryCache?.save();
+
+  if (summaryCache !== null) {
+    analysisResult.incrementalCacheStats = {
+      summaryHits: files.length - summaryMissCount,
+      summaryMisses: summaryMissCount,
+    };
   }
 
   if (setupErrors.length > 0) {

@@ -126,6 +126,21 @@ describe("buildRunEventAttributes", () => {
     ).toBeUndefined();
   });
 
+  it("records the incremental summary-cache outcome, and drops it when no analysis consulted it", () => {
+    const attributes = buildRunEventAttributes(
+      baseInput({
+        result: buildResult({ deadCodeSummaryCacheHits: 8900, deadCodeSummaryCacheMisses: 3 }),
+      }),
+    );
+    expect(attributes["deadCode.summaryCacheHits"]).toBe(8900);
+    expect(attributes["deadCode.summaryCacheMisses"]).toBe(3);
+    // Whole-result hit / cache off / dead-code skipped: absent, so "no cache"
+    // reads distinctly from a 0% hit rate.
+    const absentAttributes = buildRunEventAttributes(baseInput({ result: buildResult() }));
+    expect(absentAttributes["deadCode.summaryCacheHits"]).toBeUndefined();
+    expect(absentAttributes["deadCode.summaryCacheMisses"]).toBeUndefined();
+  });
+
   it("marks a finding-free run clean and drops absent CI signals", () => {
     const attributes = buildRunEventAttributes(baseInput({ result: buildResult() }));
     expect(attributes["outcome.status"]).toBe("clean");

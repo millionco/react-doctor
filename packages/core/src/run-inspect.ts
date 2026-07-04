@@ -249,6 +249,17 @@ export interface InspectOutput {
    */
   readonly deadCodeCacheHit: boolean | null;
   /**
+   * deslop's incremental summary-cache outcome for this scan's dead-code
+   * ANALYSIS: collected files served from cached parse summaries vs freshly
+   * parsed. Both `null` whenever no analysis consulted the incremental store —
+   * a whole-result cache hit (no analysis ran), the cache off, dead-code
+   * skipped/disabled, or the pass discarded by a lint failure. Fed to the
+   * Sentry wide event as `deadCode.summaryCacheHits` /
+   * `deadCode.summaryCacheMisses`.
+   */
+  readonly deadCodeSummaryCacheHits: number | null;
+  readonly deadCodeSummaryCacheMisses: number | null;
+  /**
    * Per-rule tallies of diagnostics the pipeline dropped because the user
    * explicitly silenced the rule (config off switches, per-path overrides,
    * inline disable comments) — see `DiagnosticPipeline.summarizeSuppressions`.
@@ -686,6 +697,10 @@ export const runInspect = <HooksR = never>(
               onCacheOutcome: (didHitCache) => {
                 deadCodeCacheHit = didHitCache;
               },
+              onSummaryCacheStats: (stats) => {
+                deadCodeSummaryCacheHits = stats.hits;
+                deadCodeSummaryCacheMisses = stats.misses;
+              },
             })
             .pipe(
               Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
@@ -750,6 +765,8 @@ export const runInspect = <HooksR = never>(
     let lintCacheHitFileCount: number | null = null;
     let lintCacheTotalFileCount: number | null = null;
     let deadCodeCacheHit: boolean | null = null;
+    let deadCodeSummaryCacheHits: number | null = null;
+    let deadCodeSummaryCacheMisses: number | null = null;
 
     const baseLintStream = linterService
       .run({
@@ -1000,8 +1017,10 @@ export const runInspect = <HooksR = never>(
       lintCacheHitFileCount,
       lintCacheTotalFileCount,
       // Lint failure discards the dead-code pass entirely (see
-      // `deadCodeFailureState` above), so its cache outcome must not leak.
+      // `deadCodeFailureState` above), so its cache outcomes must not leak.
       deadCodeCacheHit: lintFailureState.didFail ? null : deadCodeCacheHit,
+      deadCodeSummaryCacheHits: lintFailureState.didFail ? null : deadCodeSummaryCacheHits,
+      deadCodeSummaryCacheMisses: lintFailureState.didFail ? null : deadCodeSummaryCacheMisses,
       suppressedRuleCounts: transform.summarizeSuppressions(),
     };
   }).pipe(

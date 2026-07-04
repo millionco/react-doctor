@@ -626,6 +626,17 @@ export interface ScanResult {
   totalFiles: number;
   totalExports: number;
   analysisTimeMs: number;
+  /**
+   * Incremental-cache outcome for this run's per-file parse phase: how many
+   * collected files were served from cached summaries vs freshly parsed.
+   * Present only when `incrementalCachePath` was set and the cache loaded.
+   */
+  incrementalCacheStats?: IncrementalCacheStats;
+}
+
+export interface IncrementalCacheStats {
+  summaryHits: number;
+  summaryMisses: number;
 }
 
 export interface ResolvedEntries {
@@ -652,6 +663,18 @@ export interface DeslopConfig {
   includeExtensions: string[];
   tsConfigPath: string | undefined;
   paths: Record<string, string[]> | undefined;
+  /**
+   * Path of the on-disk incremental analysis cache (per-file parse summaries,
+   * the collected file list, the module-resolution map, and
+   * `detectStalePackages`' per-file package-reference facts; entry resolution
+   * always runs live). Unset (the default) means no caching — every run
+   * analyzes from scratch. The file is created on first use, validated
+   * stat-by-stat against the current tree on every run, and fails open on any
+   * corruption or version mismatch; results are byte-identical to an uncached
+   * run. Point it OUTSIDE the analyzed tree (e.g. `node_modules/.cache/...`)
+   * so its own writes don't churn the file fingerprint.
+   */
+  incrementalCachePath: string | undefined;
   reportTypes: boolean;
   includeEntryExports: boolean;
   reportRedundancy: boolean;

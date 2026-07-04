@@ -29,6 +29,7 @@ import { runSemanticAnalysis } from "../semantic/index.js";
 import { DetectorError, describeUnknownError } from "../errors.js";
 import { MAX_ANALYSIS_ERRORS } from "../constants.js";
 import { runSafeDetector } from "../utils/run-safe-detector.js";
+import type { SummaryCache } from "../summary-cache.js";
 
 const safeReportDetector = <ResultType>(
   detectorName: string,
@@ -45,7 +46,11 @@ const safeReportDetector = <ResultType>(
     contextDescription: "while building findings",
   });
 
-export const generateReport = (graph: DependencyGraph, config: DeslopConfig): ScanResult => {
+export const generateReport = (
+  graph: DependencyGraph,
+  config: DeslopConfig,
+  summaryCache?: SummaryCache,
+): ScanResult => {
   const analysisStartTime = performance.now();
   const errorSink: DeslopError[] = [];
 
@@ -71,7 +76,7 @@ export const generateReport = (graph: DependencyGraph, config: DeslopConfig): Sc
   );
   const unusedDependencies = safeReportDetector(
     "detectStalePackages",
-    () => detectStalePackages(graph, config),
+    () => detectStalePackages(graph, config, summaryCache),
     [],
     errorSink,
   );

@@ -374,6 +374,101 @@ describe("checkDeadCode result cache", () => {
     });
     expect(spyWorker.callCount()).toBe(2);
   });
+
+  it("threads deslop's incremental cache path into the worker when caching is enabled", async () => {
+    const directory = setupProject("incremental-path-threaded", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    let capturedInput: { incrementalCachePath?: string } | null = null;
+    await checkDeadCode({
+      rootDirectory: directory,
+      cacheEnabled: true,
+      createWorker: (input) => {
+        capturedInput = input;
+        return {
+          result: Promise.resolve({
+            unusedFiles: [],
+            unusedExports: [],
+            unusedDependencies: [],
+            circularDependencies: [],
+          }),
+        };
+      },
+    });
+    // Same per-project cache directory as the whole-result cache, distinct file.
+    expect(capturedInput?.incrementalCachePath).toBe(
+      path.join(directory, "node_modules", ".cache", "react-doctor", "dead-code-summaries.json"),
+    );
+  });
+
+  it("reports the worker's summary-cache stats through onSummaryCacheStats", async () => {
+    const directory = setupProject("summary-stats-reported", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    let reportedStats: { hits: number; misses: number } | null = null;
+    await checkDeadCode({
+      rootDirectory: directory,
+      cacheEnabled: true,
+      onSummaryCacheStats: (stats) => {
+        reportedStats = stats;
+      },
+      createWorker: () => ({
+        result: Promise.resolve({
+          unusedFiles: [],
+          unusedExports: [],
+          unusedDependencies: [],
+          circularDependencies: [],
+          summaryCacheStats: { hits: 41, misses: 2 },
+        }),
+      }),
+    });
+    expect(reportedStats).toEqual({ hits: 41, misses: 2 });
+  });
+
+  it("leaves onSummaryCacheStats uninvoked when the worker reports no stats", async () => {
+    const directory = setupProject("summary-stats-absent", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    let didReportStats = false;
+    await checkDeadCode({
+      rootDirectory: directory,
+      onSummaryCacheStats: () => {
+        didReportStats = true;
+      },
+      createWorker: () => ({
+        result: Promise.resolve({
+          unusedFiles: [],
+          unusedExports: [],
+          unusedDependencies: [],
+          circularDependencies: [],
+        }),
+      }),
+    });
+    expect(didReportStats).toBe(false);
+  });
+
+  it("omits deslop's incremental cache path when caching is off (default)", async () => {
+    const directory = setupProject("incremental-path-omitted", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    let capturedInput: { incrementalCachePath?: string } | null = null;
+    await checkDeadCode({
+      rootDirectory: directory,
+      createWorker: (input) => {
+        capturedInput = input;
+        return {
+          result: Promise.resolve({
+            unusedFiles: [],
+            unusedExports: [],
+            unusedDependencies: [],
+            circularDependencies: [],
+          }),
+        };
+      },
+    });
+    expect(capturedInput).not.toBeNull();
+    expect(capturedInput?.incrementalCachePath).toBeUndefined();
+  });
 });
 
 describe("DeadCodeResultCacheEnabled", () => {

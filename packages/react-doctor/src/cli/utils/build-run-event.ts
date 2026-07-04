@@ -287,6 +287,13 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
       // Dead-code result cache outcome; `null` when the pass never consulted
       // the cache, so "no cache" reads distinctly from a miss.
       cacheHit: result.deadCodeCacheHit ?? null,
+      // Incremental summary-cache outcome for the analysis that ran (the
+      // kill-criterion metric for the fill overhead: if warm scans are rare,
+      // hits stay near zero). Numeric so Sentry can aggregate; `null` when no
+      // analysis consulted the incremental store (whole-result hit, cache
+      // off, or dead-code skipped).
+      summaryCacheHits: result.deadCodeSummaryCacheHits ?? null,
+      summaryCacheMisses: result.deadCodeSummaryCacheMisses ?? null,
     }),
     ...withNamespace("supplyChain", {
       overlapTimedOut: input.supplyChainOverlapTimedOut ?? null,

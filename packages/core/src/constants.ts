@@ -645,6 +645,12 @@ export const DEAD_CODE_CACHE_SCHEMA_VERSION = 1;
 
 export const DEAD_CODE_CACHE_FILENAME = "dead-code-cache.json";
 
+// deslop's incremental analysis store (`DeslopConfig.incrementalCachePath`) —
+// per-file parse summaries + collect/resolution/package-fact layers, written
+// by the analysis WORKER for the changed-files case the whole-result cache
+// above can't serve. Lives in the same per-project cache directory.
+export const DEAD_CODE_SUMMARY_CACHE_FILENAME = "dead-code-summaries.json";
+
 // Plugin / rule / category identity for the diagnostics the supply-chain
 // check emits. `plugin: "socket"` keeps Socket findings visually distinct
 // from the `react-doctor` lint surface in the printed list and JSON report.

@@ -28,6 +28,17 @@ interface DeadCodeInput {
    * distinguishes "no cache" from a miss.
    */
   readonly onCacheOutcome?: (didHitCache: boolean) => void;
+  /**
+   * Reports deslop's incremental summary-cache outcome (cached vs freshly
+   * parsed file counts) when the analysis ran with the incremental store.
+   * Not invoked on a whole-result cache hit or when caching is off.
+   */
+  readonly onSummaryCacheStats?: (stats: DeadCodeSummaryCacheStatsInput) => void;
+}
+
+interface DeadCodeSummaryCacheStatsInput {
+  readonly hits: number;
+  readonly misses: number;
 }
 
 /**
@@ -69,6 +80,7 @@ export class DeadCode extends Context.Service<
                   abortSignal: signal,
                   cacheEnabled,
                   onCacheOutcome: input.onCacheOutcome,
+                  onSummaryCacheStats: input.onSummaryCacheStats,
                 }),
               catch: (cause) =>
                 new ReactDoctorError({ reason: new DeadCodeAnalysisFailed({ cause }) }),

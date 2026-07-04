@@ -10,26 +10,82 @@ import { matchesPackageImportReference } from "../utils/matches-package-import-r
 import { matchesPackageTokenReference } from "../utils/matches-package-token-reference.js";
 import { findMonorepoRoot } from "../utils/find-monorepo-root.js";
 import { extractExpoConfigPluginEntries } from "../collect/expo-config-plugin-entries.js";
+import type { PackageFactKind, SummaryCache } from "../summary-cache.js";
 
 interface OverrideMapping {
   fromPackage: string;
   toPackage: string;
 }
 
+interface PackageFileGlobOptions {
+  readonly ignore: ReadonlyArray<string>;
+  readonly deep: number;
+  readonly dot?: boolean;
+}
+
+// The stale-package file scans, answered from the summary cache's shared tree
+// walk when one is live (verified byte-identical against fg on real corpora)
+// and by a real fast-glob scan otherwise — including when the search root is
+// not the walk root (a monorepo root above the scanned project).
+const globPackageFiles = (
+  cwd: string,
+  patterns: ReadonlyArray<string>,
+  options: PackageFileGlobOptions,
+  summaryCache: SummaryCache | undefined,
+): string[] =>
+  summaryCache?.matchWalkedFiles({ cwd, patterns, ...options }) ??
+  fg.sync([...patterns], {
+    cwd,
+    absolute: true,
+    onlyFiles: true,
+    ignore: [...options.ignore],
+    deep: options.deep,
+    ...(options.dot === undefined ? {} : { dot: options.dot }),
+  });
+
+const containsPackageName = (content: string, packageName: string): boolean =>
+  content.includes(packageName);
+
+// The per-file content predicates behind the config/docs/rescue scans, served
+// from the summary cache's fact layer when available (a fresh `readFileSync`
+// otherwise). Read failures throw exactly like the raw loops this replaces.
+const matchPackageNamesInFile = (
+  filePath: string,
+  kind: PackageFactKind,
+  names: ReadonlySet<string>,
+  matcher: (content: string, packageName: string) => boolean,
+  summaryCache: SummaryCache | undefined,
+): string[] => {
+  if (summaryCache !== undefined) {
+    return summaryCache.matchPackageNames(filePath, kind, names, matcher);
+  }
+  const content = readFileSync(filePath, "utf-8");
+  const matchedNames: string[] = [];
+  for (const packageName of names) {
+    if (matcher(content, packageName)) matchedNames.push(packageName);
+  }
+  return matchedNames;
+};
+
 interface PackageJsonDependencies {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
 }
 
-const discoverAllPackageJsonPaths = (rootDir: string): string[] => {
+const discoverAllPackageJsonPaths = (
+  rootDir: string,
+  summaryCache: SummaryCache | undefined,
+): string[] => {
   const paths = [join(rootDir, "package.json")];
-  const workspacePackageJsons = fg.sync("**/package.json", {
-    cwd: rootDir,
-    absolute: true,
-    onlyFiles: true,
-    ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**"],
-    deep: 5,
-  });
+  const workspacePackageJsons = globPackageFiles(
+    rootDir,
+    ["**/package.json"],
+    {
+      ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**"],
+      deep: 5,
+    },
+    summaryCache,
+  );
   for (const workspacePath of workspacePackageJsons) {
     if (workspacePath !== paths[0] && !paths.includes(workspacePath)) {
       paths.push(workspacePath);
@@ -41,6 +97,7 @@ const discoverAllPackageJsonPaths = (rootDir: string): string[] => {
 export const detectStalePackages = (
   graph: DependencyGraph,
   config: DeslopConfig,
+  summaryCache?: SummaryCache,
 ): UnusedDependency[] => {
   const packageJsonPath = resolve(config.rootDir, "package.json");
   let packageJson: PackageJsonDependencies;
@@ -72,7 +129,7 @@ export const detectStalePackages = (
       ? [config.rootDir, monorepoRoot]
       : [config.rootDir];
 
-  const allPackageJsonPaths = discoverAllPackageJsonPaths(config.rootDir);
+  const allPackageJsonPaths = discoverAllPackageJsonPaths(config.rootDir, summaryCache);
   if (monorepoRoot) {
     const monorepoPackageJson = join(monorepoRoot, "package.json");
     if (!allPackageJsonPaths.includes(monorepoPackageJson) && existsSync(monorepoPackageJson)) {
@@ -108,6 +165,7 @@ export const detectStalePackages = (
     config.rootDir,
     declaredNames,
     binToPackage,
+    summaryCache,
   );
   for (const packageName of nxProjectReferenced) usedPackageNames.add(packageName);
 
@@ -120,10 +178,11 @@ export const detectStalePackages = (
       configSearchRoot,
       graph,
       declaredNames,
+      summaryCache,
     );
     for (const packageName of configReferenced) usedPackageNames.add(packageName);
 
-    const tsconfigReferenced = collectTsconfigReferencedPackages(configSearchRoot);
+    const tsconfigReferenced = collectTsconfigReferencedPackages(configSearchRoot, summaryCache);
     for (const packageName of tsconfigReferenced) usedPackageNames.add(packageName);
 
     const { packageNames: expoPluginPackageNames } = extractExpoConfigPluginEntries(
@@ -208,7 +267,11 @@ export const detectStalePackages = (
   }
 
   if (candidateUnused.size > 0) {
-    const sourceFileRescued = scanSourceFilesForPackageImports(config.rootDir, candidateUnused);
+    const sourceFileRescued = scanSourceFilesForPackageImports(
+      config.rootDir,
+      candidateUnused,
+      summaryCache,
+    );
     for (const packageName of sourceFileRescued) {
       usedPackageNames.add(packageName);
       candidateUnused.delete(packageName);
@@ -468,64 +531,58 @@ const collectConfigReferencedPackages = (
   rootDir: string,
   graph: DependencyGraph,
   declaredNames: Set<string>,
+  summaryCache: SummaryCache | undefined,
 ): Set<string> => {
   const referenced = new Set<string>();
 
+  const addMatchesFromFile = (
+    filePath: string,
+    kind: PackageFactKind,
+    matcher: (content: string, packageName: string) => boolean,
+  ): void => {
+    try {
+      for (const packageName of matchPackageNamesInFile(
+        filePath,
+        kind,
+        declaredNames,
+        matcher,
+        summaryCache,
+      )) {
+        referenced.add(packageName);
+      }
+    } catch {
+      return;
+    }
+  };
+
   for (const module of graph.modules) {
     if (!module.isConfigFile) continue;
-    try {
-      const content = readFileSync(module.fileId.path, "utf-8");
-      for (const packageName of declaredNames) {
-        if (content.includes(packageName)) {
-          referenced.add(packageName);
-        }
-      }
-    } catch {
-      continue;
-    }
+    addMatchesFromFile(module.fileId.path, "substring", containsPackageName);
   }
 
-  const configFiles = fg.sync(CONFIG_FILE_GLOBS, {
-    cwd: rootDir,
-    absolute: true,
-    onlyFiles: true,
-    ignore: ["**/node_modules/**"],
-    dot: true,
-    deep: 3,
-  });
+  const configFiles = globPackageFiles(
+    rootDir,
+    CONFIG_FILE_GLOBS,
+    { ignore: ["**/node_modules/**"], dot: true, deep: 3 },
+    summaryCache,
+  );
 
   for (const configPath of configFiles) {
-    try {
-      const content = readFileSync(configPath, "utf-8");
-      for (const packageName of declaredNames) {
-        if (content.includes(packageName)) {
-          referenced.add(packageName);
-        }
-      }
-    } catch {
-      continue;
-    }
+    addMatchesFromFile(configPath, "substring", containsPackageName);
   }
 
-  const documentationFiles = fg.sync(["**/*.{mdx,md}"], {
-    cwd: rootDir,
-    absolute: true,
-    onlyFiles: true,
-    ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/CHANGELOG.md"],
-    deep: 6,
-  });
+  const documentationFiles = globPackageFiles(
+    rootDir,
+    ["**/*.{mdx,md}"],
+    {
+      ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/CHANGELOG.md"],
+      deep: 6,
+    },
+    summaryCache,
+  );
 
   for (const documentationPath of documentationFiles) {
-    try {
-      const content = readFileSync(documentationPath, "utf-8");
-      for (const packageName of declaredNames) {
-        if (matchesPackageImportReference(content, packageName)) {
-          referenced.add(packageName);
-        }
-      }
-    } catch {
-      continue;
-    }
+    addMatchesFromFile(documentationPath, "importReference", matchesPackageImportReference);
   }
 
   return referenced;
@@ -635,16 +692,16 @@ const collectNxProjectJsonReferences = (
   rootDir: string,
   declaredNames: Set<string>,
   binToPackage: Map<string, string>,
+  summaryCache: SummaryCache | undefined,
 ): Set<string> => {
   const referenced = new Set<string>();
 
-  const projectJsonPaths = fg.sync(["project.json", "**/project.json"], {
-    cwd: rootDir,
-    absolute: true,
-    onlyFiles: true,
-    ignore: ["**/node_modules/**", "**/dist/**", "**/build/**"],
-    deep: 5,
-  });
+  const projectJsonPaths = globPackageFiles(
+    rootDir,
+    ["project.json", "**/project.json"],
+    { ignore: ["**/node_modules/**", "**/dist/**", "**/build/**"], deep: 5 },
+    summaryCache,
+  );
 
   for (const projectJsonPath of projectJsonPaths) {
     try {
@@ -688,17 +745,18 @@ const TSCONFIG_GLOBS = [
   "**/tsconfig.*.json",
 ];
 
-const collectTsconfigReferencedPackages = (rootDir: string): Set<string> => {
+const collectTsconfigReferencedPackages = (
+  rootDir: string,
+  summaryCache: SummaryCache | undefined,
+): Set<string> => {
   const referenced = new Set<string>();
 
-  const tsconfigFiles = fg.sync(TSCONFIG_GLOBS, {
-    cwd: rootDir,
-    absolute: true,
-    onlyFiles: true,
-    ignore: ["**/node_modules/**"],
-    dot: false,
-    deep: 4,
-  });
+  const tsconfigFiles = globPackageFiles(
+    rootDir,
+    TSCONFIG_GLOBS,
+    { ignore: ["**/node_modules/**"], dot: false, deep: 4 },
+    summaryCache,
+  );
 
   for (const tsconfigPath of tsconfigFiles) {
     try {
@@ -764,17 +822,39 @@ const SOURCE_FILE_IGNORES = [
 const scanSourceFilesForPackageImports = (
   rootDir: string,
   candidatePackages: Set<string>,
+  summaryCache: SummaryCache | undefined,
 ): Set<string> => {
   const found = new Set<string>();
   if (candidatePackages.size === 0) return found;
 
-  const sourceFiles = fg.sync(SOURCE_FILE_GLOBS, {
-    cwd: rootDir,
-    absolute: true,
-    onlyFiles: true,
-    ignore: SOURCE_FILE_IGNORES,
-    deep: 15,
-  });
+  const sourceFiles = globPackageFiles(
+    rootDir,
+    SOURCE_FILE_GLOBS,
+    { ignore: SOURCE_FILE_IGNORES, deep: 15 },
+    summaryCache,
+  );
+
+  if (summaryCache !== undefined) {
+    // Cached mode queries the FULL candidate set against every file (no
+    // early-shrink) so the per-file fact key stays stable across runs. The
+    // found-set is identical — a candidate is found iff any file matches it.
+    for (const filePath of sourceFiles) {
+      try {
+        for (const packageName of summaryCache.matchPackageNames(
+          filePath,
+          "importReference",
+          candidatePackages,
+          matchesPackageImportReference,
+        )) {
+          found.add(packageName);
+        }
+      } catch {
+        continue;
+      }
+    }
+    for (const packageName of found) candidatePackages.delete(packageName);
+    return found;
+  }
 
   for (const filePath of sourceFiles) {
     if (candidatePackages.size === 0) break;

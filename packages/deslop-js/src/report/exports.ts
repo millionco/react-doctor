@@ -1,5 +1,6 @@
 import type {
   DependencyGraph,
+  Edge,
   SourceModule,
   ExportReference,
   UnusedExport,
@@ -59,11 +60,24 @@ const buildUsageMap = (graph: DependencyGraph): Set<string> => {
   const usedExportKeys = new Set<string>();
   const sourceToTargetMap = buildSourceToTargetsMap(graph);
 
+  // Indexed by source so the entry-point pass is O(edges), not
+  // O(entry points × edges) — on a large repo with thousands of entry
+  // modules the unindexed scan dominated this detector.
+  const reExportEdgesBySource = new Map<number, Edge[]>();
+  for (const edge of graph.edges) {
+    if (!edge.isReExportEdge) continue;
+    const existingEdges = reExportEdgesBySource.get(edge.source);
+    if (existingEdges) {
+      existingEdges.push(edge);
+    } else {
+      reExportEdgesBySource.set(edge.source, [edge]);
+    }
+  }
+
   for (const module of graph.modules) {
     if (!module.isEntryPoint) continue;
 
-    for (const edge of graph.edges) {
-      if (edge.source !== module.fileId.index || !edge.isReExportEdge) continue;
+    for (const edge of reExportEdgesBySource.get(module.fileId.index) ?? []) {
       const targetModule = graph.modules[edge.target];
       if (!targetModule) continue;
 

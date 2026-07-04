@@ -1,11 +1,11 @@
-import { Worker } from "node:worker_threads";
-import { fileURLToPath } from "node:url";
+import type { Worker } from "node:worker_threads";
 import type { SourceFile } from "../types.js";
 import type { ParsedSource } from "./parse.js";
 import { parseSourceFile } from "./parse.js";
 import { DeslopError, type DeslopErrorJson, ParseError } from "../errors.js";
 import { PARALLEL_PARSE_FILE_THRESHOLD } from "../constants.js";
 import { resolveAvailableConcurrency } from "../utils/resolve-available-concurrency.js";
+import { launchSiblingWorker } from "./launch-worker.js";
 
 interface ParseResultMessage {
   readonly type: "result";
@@ -68,21 +68,6 @@ const deserializeParsedSource = (serialized: ParseResultMessage["parsed"]): Pars
   errors: deserializeErrors(serialized.errors),
 });
 
-const resolveWorkerPath = (): string => {
-  const currentUrl = import.meta.url;
-  if (currentUrl.endsWith(".ts")) {
-    return fileURLToPath(new URL("./parse-worker.ts", currentUrl));
-  }
-  return fileURLToPath(new URL("./parse-worker.mjs", currentUrl));
-};
-
-const createWorker = (workerPath: string): Worker => {
-  const isTypeScript = workerPath.endsWith(".ts");
-  return new Worker(workerPath, {
-    ...(isTypeScript ? { execArgv: ["--import", "tsx"] } : {}),
-  });
-};
-
 const waitForReady = (worker: Worker): Promise<void> =>
   new Promise((resolve, reject) => {
     const onMessage = (message: WorkerResponse): void => {
@@ -105,13 +90,12 @@ const parseFilesWithWorkerPool = async (
   files: ReadonlyArray<SourceFile>,
   workerCount: number,
 ): Promise<ParsedSource[]> => {
-  const workerPath = resolveWorkerPath();
   const results: ParsedSource[] = new Array(files.length);
   const workers: Worker[] = [];
 
   try {
     for (let workerIndex = 0; workerIndex < workerCount; workerIndex++) {
-      workers.push(createWorker(workerPath));
+      workers.push(launchSiblingWorker(import.meta.url, "parse-worker"));
     }
     await Promise.all(workers.map(waitForReady));
   } catch {

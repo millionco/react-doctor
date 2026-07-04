@@ -57,6 +57,16 @@ export interface InspectResult {
    */
   deadCodeCacheHit?: boolean | null;
   /**
+   * deslop's incremental summary-cache outcome for the dead-code analysis:
+   * collected files served from cached parse summaries vs freshly parsed.
+   * Both absent whenever no analysis consulted the incremental store — a
+   * whole-result cache hit, the cache disabled, or dead-code skipped. The CLI
+   * projects them onto the Sentry wide event as `deadCode.summaryCacheHits` /
+   * `deadCode.summaryCacheMisses`.
+   */
+  deadCodeSummaryCacheHits?: number | null;
+  deadCodeSummaryCacheMisses?: number | null;
+  /**
    * Present only for a baseline run (`InspectOptions.baseline` set). The
    * `diagnostics` above are then the *introduced* findings only; this
    * carries the comparison totals for Codecov-style delta reporting.

@@ -793,6 +793,8 @@ const runInspectWithRuntime = async (
     lintCacheHitFileCount: output.lintCacheHitFileCount,
     lintCacheTotalFileCount: output.lintCacheTotalFileCount,
     deadCodeCacheHit: output.deadCodeCacheHit,
+    deadCodeSummaryCacheHits: output.deadCodeSummaryCacheHits,
+    deadCodeSummaryCacheMisses: output.deadCodeSummaryCacheMisses,
   });
   recordOnboardingCompletion(options);
   return result;
@@ -817,6 +819,8 @@ interface FinalizeInput {
   lintCacheHitFileCount: number | null;
   lintCacheTotalFileCount: number | null;
   deadCodeCacheHit: boolean | null;
+  deadCodeSummaryCacheHits: number | null;
+  deadCodeSummaryCacheMisses: number | null;
   baselineDelta: InspectResult["baselineDelta"];
 }
 
@@ -851,6 +855,13 @@ interface RenderAndRecordScanInput {
    * leaves it absent.
    */
   readonly deadCodeCacheHit?: boolean | null;
+  /**
+   * deslop's incremental summary-cache outcome for THIS scan's dead-code
+   * analysis (files served from cached parse summaries vs freshly parsed).
+   * Same outside-the-payload contract as the fields above.
+   */
+  readonly deadCodeSummaryCacheHits?: number | null;
+  readonly deadCodeSummaryCacheMisses?: number | null;
 }
 
 const runMaybeSilent = <A, E, R>(
@@ -897,6 +908,8 @@ const renderAndRecordScan = async (input: RenderAndRecordScanInput): Promise<Ins
     lintCacheHitFileCount: input.lintCacheHitFileCount ?? null,
     lintCacheTotalFileCount: input.lintCacheTotalFileCount ?? null,
     deadCodeCacheHit: input.deadCodeCacheHit ?? null,
+    deadCodeSummaryCacheHits: input.deadCodeSummaryCacheHits ?? null,
+    deadCodeSummaryCacheMisses: input.deadCodeSummaryCacheMisses ?? null,
     baselineDelta: input.payload.baselineDelta,
   };
   const result = await Effect.runPromise(
@@ -970,6 +983,8 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
       lintCacheHitFileCount,
       lintCacheTotalFileCount,
       deadCodeCacheHit,
+      deadCodeSummaryCacheHits,
+      deadCodeSummaryCacheMisses,
       baselineDelta,
     } = input;
 
@@ -998,6 +1013,9 @@ const finalizeAndRender = (input: FinalizeInput): Effect.Effect<InspectResult> =
         ? { lintCacheHitFileCount, lintCacheTotalFileCount }
         : {}),
       ...(deadCodeCacheHit !== null ? { deadCodeCacheHit } : {}),
+      ...(deadCodeSummaryCacheHits !== null && deadCodeSummaryCacheMisses !== null
+        ? { deadCodeSummaryCacheHits, deadCodeSummaryCacheMisses }
+        : {}),
       ...(baselineDelta ? { baselineDelta } : {}),
     });
 

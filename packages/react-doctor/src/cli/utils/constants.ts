@@ -27,7 +27,9 @@ export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
 // Bumped to 2: `CachedScanPayload` gained the required `supplyChainOverlapTimedOut`
 // (supply-chain overlap) and `deadCodeOverlapped` (dead-code overlap) fields.
 // Bumped to 3: gained the required `suppressedRuleCounts` field (suppression telemetry).
-export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 3;
+// Bumped to 4: gained the `manifestContentHash` replay guard, which every
+// `lookup` verifies — pre-bump entries without it would never hit again.
+export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 4;
 export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
 export const SCAN_RESULT_CACHE_FILENAME = "scan-cache.json";
 // The dirty-worktree cache-key fingerprint content-hashes every path `git

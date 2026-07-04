@@ -306,6 +306,74 @@ describe("scan result cache", () => {
     expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
   });
 
+  it("does not cache a .git-less checkout git resolves to an enclosing repository", () => {
+    // The mining/benchmark layout: an enclosing "runner" repo gitignores a
+    // clones/ directory into which different projects are materialized at the
+    // same path with .git stripped. Every git probe from the clone resolves
+    // the runner repo — whose HEAD and worktree state cannot see the clone's
+    // contents — so without the tracking-state gate two different projects at
+    // this path key identically and replay each other's diagnostics.
+    const runnerDirectory = path.join(tempDirectory, "runner");
+    fs.mkdirSync(runnerDirectory, { recursive: true });
+    fs.writeFileSync(path.join(runnerDirectory, ".gitignore"), "clones/\n");
+    initGitRepo(runnerDirectory, { commit: true });
+    const projectDirectory = setupReactProject(runnerDirectory, "clones/app", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+
+    expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
+  });
+
+  it("still caches a tracked workspace-member subdirectory", () => {
+    const repositoryDirectory = path.join(tempDirectory, "workspace");
+    fs.mkdirSync(repositoryDirectory, { recursive: true });
+    const projectDirectory = setupReactProject(repositoryDirectory, "packages/app", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(repositoryDirectory, { commit: true });
+
+    expect(cacheKey(projectDirectory, baseOptions())).not.toBeNull();
+  });
+
+  describe("replay verification", () => {
+    it("misses when the manifest content changed since the payload was stored", () => {
+      const projectDirectory = setupReactProject(tempDirectory, "manifest-drift", {
+        files: { "src/App.tsx": "export const App = () => <div />;\n" },
+      });
+      initGitRepo(projectDirectory, { commit: true });
+      const key = cacheKey(projectDirectory, baseOptions());
+      expect(key).not.toBeNull();
+      if (key === null) return;
+      createScanResultCache(projectDirectory).store(key, basePayload(projectDirectory));
+      expect(createScanResultCache(projectDirectory).lookup(key)).not.toBeNull();
+
+      // A different project materialized at the same path (same cache key by
+      // hypothesis of a keying bug) must read as a miss, not a replay.
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        JSON.stringify({ name: "different-project", dependencies: { react: "^19.0.0" } }),
+      );
+      expect(createScanResultCache(projectDirectory).lookup(key)).toBeNull();
+    });
+
+    it("misses when the stored payload describes another directory", () => {
+      const projectDirectory = setupReactProject(tempDirectory, "directory-drift", {
+        files: { "src/App.tsx": "export const App = () => <div />;\n" },
+      });
+      initGitRepo(projectDirectory, { commit: true });
+      const key = cacheKey(projectDirectory, baseOptions());
+      expect(key).not.toBeNull();
+      if (key === null) return;
+      const cache = createScanResultCache(projectDirectory);
+      cache.store(
+        key,
+        basePayload(projectDirectory, { directory: path.join(tempDirectory, "elsewhere") }),
+      );
+
+      expect(cache.lookup(key)).toBeNull();
+    });
+  });
+
   it("handles git output larger than Node's default maxBuffer", () => {
     // `git ls-files -v` exceeds execFileSync's 1 MiB default on repos with
     // ~15-25k tracked files (getsentry/sentry: 1.25 MB); the resulting ENOBUFS

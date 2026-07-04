@@ -23,7 +23,7 @@ import {
   SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES,
   SCAN_RESULT_CACHE_SCHEMA_VERSION,
 } from "./constants.js";
-import { isRecord, runGit } from "./git-hook-shared.js";
+import { getPackageJsonPath, isRecord, runGit } from "./git-hook-shared.js";
 import type { ResolvedInspectOptions } from "../../inspect.js";
 
 export interface CachedScanPayload {
@@ -63,6 +63,14 @@ export interface CachedScanPayload {
    * suppression telemetry the fresh scan emitted.
    */
   readonly suppressedRuleCounts: ReadonlyArray<SuppressedRuleCount>;
+  /**
+   * Content hash of the project's `package.json` when the payload was stored
+   * (`null` when the project has none). Stamped by `store` and re-checked by
+   * `lookup` independently of the cache key, so any keying bug of the
+   * same-path-different-project class surfaces as a miss instead of silently
+   * replaying another project's diagnostics.
+   */
+  readonly manifestContentHash?: string | null;
 }
 
 interface PersistedScanResultCacheEntry {
@@ -282,10 +290,20 @@ const resolveDotenvFingerprint = (projectDirectory: string): ReadonlyArray<strin
   }
 };
 
-const hasHiddenTrackedFileState = (projectDirectory: string): boolean => {
+// Whether the repository git resolves for the project directory can be
+// trusted as cache-key identity. `git ls-files -v` (restricted to the project
+// directory by cwd) refutes that two ways: zero entries means the repository
+// tracks nothing here — the project directory is a gitignored or untracked
+// checkout (e.g. a .git-less clone nested inside an unrelated repository), so
+// HEAD and `git status` describe a repository that cannot see the project's
+// files and different project contents would key identically; a non-"H"
+// entry means assume-unchanged / skip-worktree bits hide tracked-file changes
+// from every fingerprint built on `git status`.
+const isGitIdentityTrustworthy = (projectDirectory: string): boolean => {
   const output = runGit(projectDirectory, ["ls-files", "-v"]);
-  if (output === null) return true;
-  return output.split("\n").some((line) => line.length > 0 && line[0] !== "H");
+  if (output === null) return false;
+  const entryLines = output.split("\n").filter((line) => line.length > 0);
+  return entryLines.length > 0 && entryLines.every((line) => line[0] === "H");
 };
 
 // Sits beside the per-file lint / sidecar / dead-code caches under the shared
@@ -354,6 +372,9 @@ const resolveProjectIdentity = (projectDirectory: string): string => {
   }
 };
 
+const resolveManifestContentHash = (projectDirectory: string): string | null =>
+  hashFileContents(getPackageJsonPath(projectDirectory));
+
 const fileFingerprint = (filePath: string): string | null => {
   try {
     const stat = fs.statSync(filePath);
@@ -391,9 +412,7 @@ const resolveToolchainFingerprint = (nodeBinaryPath: string | null): ReadonlyArr
 
 export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string | null => {
   if (isCacheGloballyDisabled()) return null;
-  // Assume-unchanged / skip-worktree hide tracked-file state from `git
-  // status`, so no fingerprint built from it can see those changes.
-  if (hasHiddenTrackedFileState(input.projectDirectory)) return null;
+  if (!isGitIdentityTrustworthy(input.projectDirectory)) return null;
   const worktreeFingerprint = buildWorktreeFingerprint(input.projectDirectory);
   if (worktreeFingerprint === null) return null;
   const headSha = readHeadSha(input.projectDirectory);
@@ -466,9 +485,24 @@ export const createScanResultCache = (projectDirectory: string): ScanResultCache
   };
 
   return {
-    lookup: (key) => entries.get(key)?.payload ?? null,
+    lookup: (key) => {
+      const payload = entries.get(key)?.payload;
+      if (payload === undefined) return null;
+      // Replay guard, independent of the key: a served payload must describe
+      // THIS project — same directory identity and same manifest content as
+      // when it was stored — so a keying bug degrades to a miss, never to
+      // another project's diagnostics.
+      const describesThisProject =
+        resolveProjectIdentity(payload.directory) === resolveProjectIdentity(projectDirectory) &&
+        (payload.manifestContentHash ?? null) === resolveManifestContentHash(projectDirectory);
+      return describesThisProject ? payload : null;
+    },
     store: (key, payload) => {
-      entries.set(key, { key, createdAtMs: Date.now(), payload });
+      entries.set(key, {
+        key,
+        createdAtMs: Date.now(),
+        payload: { ...payload, manifestContentHash: resolveManifestContentHash(projectDirectory) },
+      });
       persist();
     },
   };

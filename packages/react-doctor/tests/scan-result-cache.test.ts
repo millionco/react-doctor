@@ -11,6 +11,7 @@ import {
   shouldStoreScanPayload,
   type CachedScanPayload,
 } from "../src/cli/utils/scan-result-cache.js";
+import { SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT } from "../src/cli/utils/constants.js";
 import { runGit } from "../src/cli/utils/git-hook-shared.js";
 import { VERSION } from "../src/cli/utils/version.js";
 import { commitAll, initGitRepo, setupReactProject } from "./regressions/_helpers.js";
@@ -187,7 +188,10 @@ describe("scan result cache", () => {
       path.join(projectDirectory, "doctor.config.json"),
       JSON.stringify({ rules: {} }),
     );
-    expect(cacheKey(projectDirectory, options)).toBeNull();
+    // An uncommitted config no longer bails the key — the dirty-worktree
+    // fingerprint folds it in, so the key exists but differs from clean.
+    expect(cacheKey(projectDirectory, options)).not.toBeNull();
+    expect(cacheKey(projectDirectory, options)).not.toBe(originalKey);
 
     commitAll(projectDirectory, "config");
     const configCommitKey = cacheKey(projectDirectory, options);
@@ -278,6 +282,127 @@ describe("scan result cache", () => {
       "emit-large-output",
     ]);
     expect(output?.length).toBe(outputSizeChars);
+  });
+
+  describe("dirty worktree fingerprint", () => {
+    const setupCleanProject = (caseId: string): string => {
+      const projectDirectory = setupReactProject(tempDirectory, caseId, {
+        files: { "src/App.tsx": "export const App = () => <div />;\n" },
+      });
+      initGitRepo(projectDirectory, { commit: true });
+      return projectDirectory;
+    };
+
+    it("keys a clean tree identically across runs", () => {
+      const projectDirectory = setupCleanProject("clean-stable");
+      const firstKey = cacheKey(projectDirectory, baseOptions());
+      expect(firstKey).not.toBeNull();
+      expect(cacheKey(projectDirectory, baseOptions())).toBe(firstKey);
+    });
+
+    it("keys an untracked file distinctly from clean, stably across identical states", () => {
+      const projectDirectory = setupCleanProject("untracked");
+      const cleanKey = cacheKey(projectDirectory, baseOptions());
+      fs.writeFileSync(path.join(projectDirectory, "scratch.txt"), "x\n");
+      const dirtyKey = cacheKey(projectDirectory, baseOptions());
+      expect(dirtyKey).not.toBeNull();
+      expect(dirtyKey).not.toBe(cleanKey);
+      expect(cacheKey(projectDirectory, baseOptions())).toBe(dirtyKey);
+    });
+
+    it("misses when dirty content is edited, and rejoins the clean key when reverted", () => {
+      const projectDirectory = setupCleanProject("edited");
+      const cleanKey = cacheKey(projectDirectory, baseOptions());
+      const appPath = path.join(projectDirectory, "src", "App.tsx");
+      const committedSource = fs.readFileSync(appPath, "utf8");
+      fs.writeFileSync(appPath, "export const App = () => <main />;\n");
+      const firstDirtyKey = cacheKey(projectDirectory, baseOptions());
+      expect(firstDirtyKey).not.toBeNull();
+      expect(firstDirtyKey).not.toBe(cleanKey);
+      fs.writeFileSync(appPath, "export const App = () => <section />;\n");
+      const secondDirtyKey = cacheKey(projectDirectory, baseOptions());
+      expect(secondDirtyKey).not.toBe(firstDirtyKey);
+      expect(secondDirtyKey).not.toBe(cleanKey);
+      fs.writeFileSync(appPath, committedSource);
+      expect(cacheKey(projectDirectory, baseOptions())).toBe(cleanKey);
+    });
+
+    it("keys staged and unstaged states of the same content differently", () => {
+      const projectDirectory = setupCleanProject("staged");
+      fs.writeFileSync(
+        path.join(projectDirectory, "src", "App.tsx"),
+        "export const App = () => <main />;\n",
+      );
+      const unstagedKey = cacheKey(projectDirectory, baseOptions());
+      spawnSync("git", ["add", "src/App.tsx"], { cwd: projectDirectory });
+      const stagedKey = cacheKey(projectDirectory, baseOptions());
+      expect(unstagedKey).not.toBeNull();
+      expect(stagedKey).not.toBeNull();
+      expect(stagedKey).not.toBe(unstagedKey);
+    });
+
+    it("keys a deleted file distinctly from clean and from a modified one", () => {
+      const projectDirectory = setupCleanProject("deleted");
+      const cleanKey = cacheKey(projectDirectory, baseOptions());
+      const appPath = path.join(projectDirectory, "src", "App.tsx");
+      fs.writeFileSync(appPath, "export const App = () => <main />;\n");
+      const modifiedKey = cacheKey(projectDirectory, baseOptions());
+      fs.rmSync(appPath);
+      const deletedKey = cacheKey(projectDirectory, baseOptions());
+      expect(deletedKey).not.toBeNull();
+      expect(deletedKey).not.toBe(cleanKey);
+      expect(deletedKey).not.toBe(modifiedKey);
+      expect(cacheKey(projectDirectory, baseOptions())).toBe(deletedKey);
+    });
+
+    it("parses rename records (including paths with spaces) into a stable key", () => {
+      const projectDirectory = setupCleanProject("renamed");
+      const cleanKey = cacheKey(projectDirectory, baseOptions());
+      spawnSync("git", ["mv", "src/App.tsx", "src/My App.tsx"], { cwd: projectDirectory });
+      const renamedKey = cacheKey(projectDirectory, baseOptions());
+      expect(renamedKey).not.toBeNull();
+      expect(renamedKey).not.toBe(cleanKey);
+      expect(cacheKey(projectDirectory, baseOptions())).toBe(renamedKey);
+    });
+
+    it("fingerprints files inside untracked directories individually", () => {
+      const projectDirectory = setupCleanProject("untracked-dir");
+      fs.mkdirSync(path.join(projectDirectory, "notes"));
+      fs.writeFileSync(path.join(projectDirectory, "notes", "todo.txt"), "a\n");
+      const firstKey = cacheKey(projectDirectory, baseOptions());
+      expect(firstKey).not.toBeNull();
+      fs.writeFileSync(path.join(projectDirectory, "notes", "todo.txt"), "b\n");
+      expect(cacheKey(projectDirectory, baseOptions())).not.toBe(firstKey);
+    });
+
+    it("bails to null when the dirty set exceeds the entry bound", () => {
+      const projectDirectory = setupCleanProject("oversized");
+      const scratchDirectory = path.join(projectDirectory, "scratch");
+      fs.mkdirSync(scratchDirectory);
+      for (
+        let fileIndex = 0;
+        fileIndex <= SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT;
+        fileIndex += 1
+      ) {
+        fs.writeFileSync(path.join(scratchDirectory, `file-${fileIndex}.txt`), String(fileIndex));
+      }
+      expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
+    });
+
+    it("keys gitignored dotenv files the security scan reads", () => {
+      const projectDirectory = setupReactProject(tempDirectory, "dotenv", {
+        files: {
+          "src/App.tsx": "export const App = () => <div />;\n",
+          ".gitignore": ".env\n",
+          ".env": "API_KEY=first\n",
+        },
+      });
+      initGitRepo(projectDirectory, { commit: true });
+      const firstKey = cacheKey(projectDirectory, baseOptions());
+      expect(firstKey).not.toBeNull();
+      fs.writeFileSync(path.join(projectDirectory, ".env"), "API_KEY=second-value\n");
+      expect(cacheKey(projectDirectory, baseOptions())).not.toBe(firstKey);
+    });
   });
 
   it("reuses diagnostics when rerendering with verbose enabled", async () => {

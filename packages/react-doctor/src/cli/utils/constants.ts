@@ -30,6 +30,15 @@ export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
 export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 3;
 export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
 export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
+// The dirty-worktree cache-key fingerprint content-hashes every path `git
+// status` reports; past this many entries the hashing could cost more than a
+// cache hit saves, so the key builder bails to null (cache off) — the same
+// worst case as the old clean-tree-only gate.
+export const SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT = 300;
+// Dirty files larger than this are fingerprinted by `mtimeMs:size` (the same
+// stat identity `computeConfigFingerprint` trusts for config files) instead of
+// a content hash, bounding the key builder's read cost and memory.
+export const SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 // Stdout cap for `runGit` (git-hook-shared.ts). Node's default `maxBuffer`
 // is 1 MiB, and `git ls-files -v` alone exceeds that on repos with ~15-25k

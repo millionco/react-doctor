@@ -87,6 +87,7 @@ export * from "./utils/dedupe-diagnostics.js";
 export * from "./utils/define-config.js";
 export * from "./utils/detect-ai-training-environment.js";
 export * from "./utils/group-by.js";
+export * from "./utils/hash-file-contents.js";
 export * from "./utils/has-published-fix-recipe.js";
 export * from "./utils/is-errno-exception.js";
 export * from "./utils/is-large-minified-file.js";

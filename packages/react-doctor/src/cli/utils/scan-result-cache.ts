@@ -3,7 +3,11 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { computeConfigFingerprint, resolveLintBatchOrdering } from "@react-doctor/core";
+import {
+  computeConfigFingerprint,
+  hashFileContents,
+  resolveLintBatchOrdering,
+} from "@react-doctor/core";
 import type {
   Diagnostic,
   InspectOutput,
@@ -14,7 +18,9 @@ import type {
 } from "@react-doctor/core";
 import {
   CACHE_FILENAME_HASH_LENGTH_CHARS,
+  SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT,
   SCAN_RESULT_CACHE_MAX_ENTRY_COUNT,
+  SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES,
   SCAN_RESULT_CACHE_SCHEMA_VERSION,
 } from "./constants.js";
 import { isRecord, runGit } from "./git-hook-shared.js";
@@ -135,9 +141,140 @@ const hashString = (value: string): string => crypto.createHash("sha1").update(v
 const readHeadSha = (projectDirectory: string): string | null =>
   runGit(projectDirectory, ["rev-parse", "HEAD"]);
 
-const isWorktreeClean = (projectDirectory: string): boolean => {
-  const status = runGit(projectDirectory, ["status", "--porcelain=v1", "--untracked-files=normal"]);
-  return status !== null && status.length === 0;
+interface WorktreeStatusEntry {
+  readonly statusCode: string;
+  readonly path: string;
+  readonly originPath?: string;
+}
+
+interface WorktreeDirtyEntry extends WorktreeStatusEntry {
+  readonly contentFingerprint: string;
+}
+
+const parseWorktreeStatusRecords = (statusOutput: string): WorktreeStatusEntry[] | null => {
+  const entries: WorktreeStatusEntry[] = [];
+  const tokens = statusOutput.split("\0");
+  for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex += 1) {
+    let record = tokens[tokenIndex];
+    if (record.length === 0) continue;
+    // HACK: `runGit` trims subprocess output, which strips the leading space
+    // of the FIRST record's two-character status code (e.g. " M"). A valid
+    // porcelain v1 record always has the separator space at index 2, and X/Y
+    // are never both spaces, so a first record missing that separator lost
+    // exactly one leading space — restore it. Any later malformed record
+    // means the parse desynced: bail rather than fingerprint garbage.
+    if (record.length < 3 || record[2] !== " ") {
+      if (tokenIndex !== 0) return null;
+      record = ` ${record}`;
+    }
+    if (record.length < 4 || record[2] !== " ") return null;
+    const statusCode = record.slice(0, 2);
+    const recordPath = record.slice(3);
+    if (statusCode.includes("R") || statusCode.includes("C")) {
+      // Rename/copy records carry a second NUL-terminated field: the origin
+      // path (`XY to NUL from NUL`).
+      tokenIndex += 1;
+      const originPath: string | undefined = tokens[tokenIndex];
+      if (originPath === undefined || originPath.length === 0) return null;
+      entries.push({ statusCode, path: recordPath, originPath });
+      continue;
+    }
+    entries.push({ statusCode, path: recordPath });
+  }
+  return entries;
+};
+
+const buildDirtyPathContentFingerprint = (
+  absolutePath: string,
+  statusCode: string,
+): string | null => {
+  let stats: fs.Stats;
+  try {
+    stats = fs.lstatSync(absolutePath);
+  } catch {
+    // A deleted path has no content to hash; the status code in the entry
+    // already distinguishes a deletion from every other state at that path.
+    return statusCode.includes("D") ? "deleted" : null;
+  }
+  if (stats.isSymbolicLink()) {
+    try {
+      return `link:${fs.readlinkSync(absolutePath)}`;
+    } catch {
+      return null;
+    }
+  }
+  // A non-regular file (a dirty submodule shows as a directory) has no
+  // cheaply-hashable content — bail so the cache stays off rather than risk
+  // serving a stale payload for an unfingerprintable state.
+  if (!stats.isFile()) return null;
+  if (stats.size > SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES) {
+    return `stat:${stats.mtimeMs}:${stats.size}`;
+  }
+  return hashFileContents(absolutePath);
+};
+
+// Fingerprints every divergence of the worktree from HEAD as
+// (status code, path[, origin path], content fingerprint), so identical dirty
+// states key identically and any content or index change shifts the key.
+// Returns [] for a clean tree and null when the state cannot be fingerprinted
+// (git failure, oversized dirty set, unfingerprintable path) — the caller
+// treats null exactly like the old dirty-tree bail: cache off.
+const buildWorktreeFingerprint = (
+  projectDirectory: string,
+): ReadonlyArray<WorktreeDirtyEntry> | null => {
+  const statusOutput = runGit(projectDirectory, [
+    "status",
+    "--porcelain=v1",
+    "-z",
+    // `all` expands untracked directories into their contained files so each
+    // one is content-fingerprinted; the entry-count bound below caps the cost.
+    "--untracked-files=all",
+  ]);
+  if (statusOutput === null) return null;
+  if (statusOutput.length === 0) return [];
+  const statusEntries = parseWorktreeStatusRecords(statusOutput);
+  if (statusEntries === null) return null;
+  if (statusEntries.length > SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT) return null;
+  // Porcelain paths are relative to the repository root, not the (possibly
+  // nested workspace-member) project directory.
+  const repositoryRoot = runGit(projectDirectory, ["rev-parse", "--show-toplevel"]);
+  if (repositoryRoot === null) return null;
+  const dirtyEntries: WorktreeDirtyEntry[] = [];
+  for (const statusEntry of statusEntries) {
+    const contentFingerprint = buildDirtyPathContentFingerprint(
+      path.join(repositoryRoot, statusEntry.path),
+      statusEntry.statusCode,
+    );
+    if (contentFingerprint === null) return null;
+    dirtyEntries.push({ ...statusEntry, contentFingerprint });
+  }
+  // Codepoint compare (not localeCompare) so the ordering — and therefore the
+  // key — never varies with the process locale or ICU version.
+  return dirtyEntries.sort((firstEntry, secondEntry) => {
+    const firstSortKey = `${firstEntry.path}${firstEntry.statusCode}`;
+    const secondSortKey = `${secondEntry.path}${secondEntry.statusCode}`;
+    return firstSortKey < secondSortKey ? -1 : firstSortKey > secondSortKey ? 1 : 0;
+  });
+};
+
+const DOTENV_FILE_NAME_PATTERN = /^\.env(\.|$)/;
+
+// The security scan reads dotenv files even when they're gitignored — a state
+// `git status` can never surface — so their stat identity is keyed explicitly,
+// the same coverage `computeConfigFingerprint` gives gitignored config files.
+const resolveDotenvFingerprint = (projectDirectory: string): ReadonlyArray<string> => {
+  try {
+    return fs
+      .readdirSync(projectDirectory)
+      .filter((entryName) => DOTENV_FILE_NAME_PATTERN.test(entryName))
+      .sort()
+      .map(
+        (entryName) =>
+          `${entryName}=${fileFingerprint(path.join(projectDirectory, entryName)) ?? "unreadable"}`,
+      );
+  } catch {
+    return [];
+  }
 };
 
 const hasHiddenTrackedFileState = (projectDirectory: string): boolean => {
@@ -233,8 +370,11 @@ const resolveToolchainFingerprint = (nodeBinaryPath: string | null): ReadonlyArr
 
 export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string | null => {
   if (isScanResultCacheDisabled()) return null;
-  if (!isWorktreeClean(input.projectDirectory)) return null;
+  // Assume-unchanged / skip-worktree hide tracked-file state from `git
+  // status`, so no fingerprint built from it can see those changes.
   if (hasHiddenTrackedFileState(input.projectDirectory)) return null;
+  const worktreeFingerprint = buildWorktreeFingerprint(input.projectDirectory);
+  if (worktreeFingerprint === null) return null;
   const headSha = readHeadSha(input.projectDirectory);
   if (headSha === null) return null;
   const userConfigJson = stringifyStableJson(input.userConfig);
@@ -243,6 +383,8 @@ export const buildScanResultCacheKey = (input: ScanResultCacheKeyInput): string 
     schemaVersion: SCAN_RESULT_CACHE_SCHEMA_VERSION,
     projectIdentity: resolveProjectIdentity(input.projectDirectory),
     headSha,
+    worktreeFingerprint,
+    dotenvFingerprint: resolveDotenvFingerprint(input.projectDirectory),
     reactDoctorVersion: input.version,
     nodeVersion: process.version,
     toolchainFingerprint: resolveToolchainFingerprint(input.nodeBinaryPath),

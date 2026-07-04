@@ -1,5 +1,5 @@
 export { diagnose } from "./diagnose.js";
-export { defineConfig } from "@react-doctor/core";
+export { defineConfig, hasReactRuntime } from "@react-doctor/core";
 
 export type {
   DiagnoseOptions,

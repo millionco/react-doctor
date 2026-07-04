@@ -34,6 +34,17 @@ export interface DiagnoseResult {
   /** See `InspectResult.skippedCheckReasons`. */
   skippedCheckReasons?: Record<string, string>;
   project: ProjectInfo;
+  /**
+   * Whether the scanned project resolved a React-compatible runtime (React
+   * or Preact). `false` means every React-runtime rule family was gated
+   * off, so an empty `diagnostics` array is vacuous — NOT the same as a
+   * clean React scan. Consumers gating on the result should treat
+   * `reactDetected === false` as "wrong scan target", not "all clear".
+   * Mirrors `JsonReport.reactDetected`; same predicate as
+   * `hasReactRuntime(result.project)`. Always set by `diagnose()`;
+   * optional so hand-constructed results keep compiling.
+   */
+  reactDetected?: boolean;
   elapsedMilliseconds: number;
 }
 
@@ -89,5 +100,12 @@ export interface DiagnoseProjectsResult {
   projects: ProjectResult[];
   diagnostics: Diagnostic[];
   score: ScoreResult | null;
+  /**
+   * Whether any successfully scanned project resolved a React-compatible
+   * runtime (React or Preact). Absent when no project scanned successfully.
+   * See `DiagnoseResult.reactDetected` for gating guidance; per-project
+   * detail is on each `ProjectResultOk.reactDetected`.
+   */
+  reactDetected?: boolean;
   elapsedMilliseconds: number;
 }

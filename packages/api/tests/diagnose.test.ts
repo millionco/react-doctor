@@ -69,6 +69,32 @@ describe("diagnose", () => {
     }
   });
 
+  it("sets reactDetected true on a React project and false on a non-React one", async () => {
+    const reactResult = await diagnose(path.join(FIXTURES_DIRECTORY, "basic-react"), {
+      deadCode: false,
+      lint: false,
+    });
+    expect(reactResult.reactDetected).toBe(true);
+
+    const nonReactDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rdc-nonreact-"));
+    fs.writeFileSync(
+      path.join(nonReactDirectory, "package.json"),
+      JSON.stringify({ name: "non-react-tool", dependencies: { lodash: "^4.0.0" } }),
+    );
+    fs.mkdirSync(path.join(nonReactDirectory, "src"));
+    fs.writeFileSync(
+      path.join(nonReactDirectory, "src", "index.ts"),
+      "export const add = (firstNumber: number, secondNumber: number): number => firstNumber + secondNumber;\n",
+    );
+    try {
+      const nonReactResult = await diagnose(nonReactDirectory, { deadCode: false, lint: false });
+      expect(nonReactResult.reactDetected).toBe(false);
+      expect(nonReactResult.project.reactVersion).toBeNull();
+    } finally {
+      fs.rmSync(nonReactDirectory, { recursive: true, force: true });
+    }
+  });
+
   it("elapsedMilliseconds is non-negative", async () => {
     const result = await diagnose(path.join(FIXTURES_DIRECTORY, "basic-react"), {
       deadCode: false,
@@ -201,7 +227,23 @@ describe("diagnose({ projects })", () => {
     expect(result.projects).toHaveLength(0);
     expect(result.diagnostics).toHaveLength(0);
     expect(result.score).toBeNull();
+    expect(result.reactDetected).toBeUndefined();
     expect(result.elapsedMilliseconds).toBeGreaterThanOrEqual(0);
+  });
+
+  it("aggregates reactDetected across succeeded projects", async () => {
+    const result = await diagnose({
+      projects: [
+        { directory: path.join(FIXTURES_DIRECTORY, "basic-react") },
+        { directory: noReactTempDirectory },
+      ],
+      deadCode: false,
+      lint: false,
+    });
+
+    expect(result.reactDetected).toBe(true);
+    const succeeded = result.projects.find((projectResult) => projectResult.ok);
+    expect(succeeded?.ok && succeeded.reactDetected).toBe(true);
   });
 
   it("clamps concurrency: 0 to 1 without hanging", async () => {

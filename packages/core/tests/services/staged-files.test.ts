@@ -162,7 +162,7 @@ describe("StagedFiles.layerNode regression — monorepo subdirectory (#1064)", (
     );
     fs.writeFileSync(
       path.join(projectDir, "src", "App.tsx"),
-      'export function App() { return <div>Hello</div>; }\n',
+      "export function App() { return <div>Hello</div>; }\n",
     );
 
     const { spawnSync } = require("node:child_process");
@@ -197,7 +197,7 @@ describe("StagedFiles.layerNode regression — monorepo subdirectory (#1064)", (
 
     expect(snapshot.stagedFiles).toEqual(["src/App.tsx"]);
     const materializedContent = fs.readFileSync(path.join(tempDirectory3, "src/App.tsx"), "utf8");
-    expect(materializedContent).toBe('export function App() { return <div>Hello</div>; }\n');
+    expect(materializedContent).toBe("export function App() { return <div>Hello</div>; }\n");
   });
 });
 

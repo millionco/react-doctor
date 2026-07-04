@@ -774,6 +774,16 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
               boundedSidecarRuleIds,
               probeAnswers,
             });
+      // Replayed files are completed work: without them in the numerator the
+      // spinner stalls at missFiles + sidecarLintFiles of candidateFiles, and
+      // an all-replayed pass (empty sidecarLintFiles) would never tick at all.
+      const sidecarReplayedFileCount = hitFiles.length - sidecarLintFiles.length;
+      if (sidecarReplayedFileCount > 0) {
+        options.onFileProgress?.(
+          missFiles.length + sidecarReplayedFileCount,
+          candidateFiles.length,
+        );
+      }
       const boundedSidecarResult = await runConfigOverFiles(
         () =>
           buildConfig({
@@ -785,7 +795,10 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         sidecarLintFiles,
         options.onFileProgress &&
           ((scannedFileCount) =>
-            options.onFileProgress?.(missFiles.length + scannedFileCount, candidateFiles.length)),
+            options.onFileProgress?.(
+              missFiles.length + sidecarReplayedFileCount + scannedFileCount,
+              candidateFiles.length,
+            )),
       );
       const unboundedSidecarResult =
         useSidecarCache && unboundedSidecarRuleIds.length > 0

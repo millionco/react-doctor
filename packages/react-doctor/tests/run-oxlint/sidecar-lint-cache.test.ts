@@ -43,6 +43,7 @@ interface ScanOptions {
   perFileLintCacheEnabled?: boolean;
   sidecarLintCacheEnabled?: boolean;
   onSidecarStats?: (replayedFileCount: number, consideredFileCount: number) => void;
+  onFileProgress?: (scannedFileCount: number, totalFileCount: number) => void;
 }
 
 const setupFixture = (caseId: string): string => {
@@ -70,6 +71,7 @@ const scan = (projectDir: string, options: ScanOptions = {}): Promise<Diagnostic
     perFileLintCacheEnabled: options.perFileLintCacheEnabled ?? true,
     sidecarLintCacheEnabled: options.sidecarLintCacheEnabled ?? true,
     onSidecarStats: options.onSidecarStats,
+    onFileProgress: options.onFileProgress,
   });
 
 const scanFull = (projectDir: string): Promise<Diagnostic[]> =>
@@ -92,6 +94,21 @@ const ruleHitsOn = (
   diagnostics.filter((diagnostic) => diagnostic.rule === rule && diagnostic.filePath === filePath);
 
 describe("sidecar lint cache", () => {
+  it("reports file progress through to the full total when the sidecar replays files", async () => {
+    const projectDir = setupFixture("progress-completes");
+    await scan(projectDir);
+    const progressReports: Array<readonly [number, number]> = [];
+    await scan(projectDir, {
+      onFileProgress: (scannedFileCount, totalFileCount) => {
+        progressReports.push([scannedFileCount, totalFileCount]);
+      },
+    });
+
+    const lastReport = progressReports.at(-1);
+    expect(lastReport).toBeDefined();
+    expect(lastReport?.[0]).toBe(lastReport?.[1]);
+  });
+
   it("replays a fully unchanged tree and stays byte-identical to a full scan", async () => {
     const projectDir = setupFixture("unchanged-replay");
     const full = await scanFull(projectDir);

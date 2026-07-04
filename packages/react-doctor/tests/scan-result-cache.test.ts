@@ -11,6 +11,7 @@ import {
   shouldStoreScanPayload,
   type CachedScanPayload,
 } from "../src/cli/utils/scan-result-cache.js";
+import { runGit } from "../src/cli/utils/git-hook-shared.js";
 import { VERSION } from "../src/cli/utils/version.js";
 import { commitAll, initGitRepo, setupReactProject } from "./regressions/_helpers.js";
 
@@ -255,6 +256,28 @@ describe("scan result cache", () => {
     });
 
     expect(cacheKey(projectDirectory, baseOptions())).toBeNull();
+  });
+
+  it("handles git output larger than Node's default maxBuffer", () => {
+    // `git ls-files -v` exceeds execFileSync's 1 MiB default on repos with
+    // ~15-25k tracked files (getsentry/sentry: 1.25 MB); the resulting ENOBUFS
+    // surfaced as `null`, which the cache gates read as hidden tracked state —
+    // silently disabling the whole-repo cache on exactly the largest repos.
+    // A shell alias emits 2 MiB through the production helper without needing
+    // a giant fixture repo.
+    const projectDirectory = setupReactProject(tempDirectory, "large-output", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+
+    const outputSizeChars = 2 * 1024 * 1024;
+    const nodeBinaryForShell = process.execPath.replaceAll("\\", "/");
+    const output = runGit(projectDirectory, [
+      "-c",
+      `alias.emit-large-output=!"${nodeBinaryForShell}" -e "process.stdout.write('x'.repeat(${outputSizeChars}))"`,
+      "emit-large-output",
+    ]);
+    expect(output?.length).toBe(outputSizeChars);
   });
 
   it("reuses diagnostics when rerendering with verbose enabled", async () => {

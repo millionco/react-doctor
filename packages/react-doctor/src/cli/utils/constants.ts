@@ -31,6 +31,15 @@ export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 3;
 export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
 export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
 
+// Stdout cap for `runGit` (git-hook-shared.ts). Node's default `maxBuffer`
+// is 1 MiB, and `git ls-files -v` alone exceeds that on repos with ~15-25k
+// tracked files (getsentry/sentry: 1.25 MB) — execFileSync then throws
+// ENOBUFS, runGit swallows it into `null`, and the whole-repo scan-result
+// cache silently never stores or serves on exactly the large repos it helps
+// most. 64 MiB clears monorepos with hundreds of thousands of files while
+// still bounding a pathological child.
+export const RUN_GIT_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+
 export const GIT_HOOK_EXECUTABLE_MODE = 0o755;
 
 export const AGENT_HOOK_TIMEOUT_SECONDS = 120;

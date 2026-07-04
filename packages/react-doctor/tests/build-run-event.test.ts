@@ -217,6 +217,22 @@ describe("buildRunEventAttributes", () => {
     expect(attributes["score.available"]).toBe(true);
   });
 
+  it("rolls up diagnostics by impact class (hazard axis)", () => {
+    process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.blocking] = "none";
+    const result = buildResult({
+      diagnostics: [
+        buildDiagnostic({ rule: "no-derived-state", filePath: "src/A.tsx" }),
+        buildDiagnostic({ rule: "no-chain-state-updates", filePath: "src/B.tsx" }),
+        buildDiagnostic({ rule: "js-early-exit", filePath: "src/C.tsx" }),
+        buildDiagnostic({ rule: "alt-text", filePath: "src/D.tsx" }),
+      ],
+    });
+    const attributes = buildRunEventAttributes(baseInput({ result }));
+    expect(attributes["diag.impact.behavior"]).toBe(2);
+    expect(attributes["diag.impact.perf"]).toBe(1);
+    expect(attributes["diag.impact.a11y"]).toBe(1);
+  });
+
   it("flags a blocking run when the action blocking gate would trip", () => {
     process.env[ACTION_INPUT_ENVIRONMENT_VARIABLES.blocking] = "error";
     const result = buildResult({ diagnostics: [buildDiagnostic({ severity: "error" })] });

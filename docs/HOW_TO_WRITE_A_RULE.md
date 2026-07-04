@@ -88,6 +88,19 @@ Required questions:
 - What similar-looking code is valid?
 - What should v1 intentionally skip?
 
+## Classify the Rule
+
+Every rule declares three required classification fields in its `defineRule` call, each from a closed vocabulary. Codegen refuses to emit a rule that omits or misspells any of them, and projects each into the registry entry's `tags` as `impact:<v>` / `confidence:<v>` / `fix:<v>`. **Never hand-write those tag forms in a rule's `tags` array** — the generator rejects it; set the field and let codegen project it.
+
+- `impact` — what a violation means for the app. The load-bearing axis (external gates key on `impact:behavior`).
+  - `behavior` — wrong runtime behavior: broken logic, wrong/stale data, crashes, loops, broken memoization, hooks-order violations, leaks. A wasted re-render counts here only when the pattern is a correctness footgun (e.g. a constructed context value), not pure micro-perf.
+  - `perf` — slower but correct. `a11y` — accessibility gap. `security` — vulnerability / data exposure.
+  - `style` — taste/convention/maintainability; correct app, just not idiomatic. Framework-convention rules whose failure mode is "not idiomatic" rather than "broken" are `style`.
+- `confidence` — detector precision. `high` (AST-precise, safe to gate CI on) or `heuristic` (name/regex/pattern matching with known false-positive classes; advisory).
+- `fix` — remediation scope. `mechanical` (deterministic codemod), `local` (confined site, small judgment), or `structural` (cross-cutting refactor).
+
+`design`-tagged rules must be `impact:style` (enforced by a test). The vocabulary and enforcement live in `packages/oxlint-plugin-react-doctor/src/plugin/utils/rule.ts` (`RuleImpact` / `RuleConfidence` / `RuleFix` / `RuleTag`) and `packages/react-doctor/tests/rule-metadata.test.ts`.
+
 ## Research the Problem
 
 Inspect existing React Doctor rule patterns before implementation.
@@ -279,7 +292,7 @@ The scan contract:
 Registration, tags, and severity flow identically to normal rules:
 
 - Codegen picks the rule up like any other: the `security-scan` bucket auto-applies the `Security` category and the `security-scan` tag.
-- `id:` and `severity:` must stay literal fields in the rule file — `scripts/generate-rule-registry.mjs` regex-parses them.
+- `id:`, `severity:`, `impact:`, `confidence:`, and `fix:` must stay literal fields in the rule file — `scripts/generate-rule-registry.mjs` regex-parses them (see "Classify the Rule").
 - Capability gating, `disabledBy`, user severity overrides, inline disables, and `ignore.tags` apply the same as for AST rules.
 
 Execution is different: scan rules never appear in generated oxlint configs or ESLint presets. `@react-doctor/core`'s `check-security-scan` environment check runs every registered `scan` over one bounded whole-tree walk; diff/staged scans skip it like the other whole-project checks.

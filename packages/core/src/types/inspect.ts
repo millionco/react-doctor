@@ -113,6 +113,14 @@ export interface InspectOptions {
   /** See `ReactDoctorConfig.deadCode`. Ignored in diff / staged mode. */
   deadCode?: boolean;
   includePaths?: string[];
+  /**
+   * Additional behavioral / classification tags to drop from this scan,
+   * unioned with `config.ignore.tags`. Any rule carrying an ignored tag
+   * is disabled before linting (same gate as the config option). The CLI
+   * threads its repeatable `--ignore-tag` flag here so a tag family (e.g.
+   * `impact:style`) can be silenced without editing a config file.
+   */
+  ignoredTags?: string[];
   configOverride?: ReactDoctorConfig | null;
   /**
    * Directory of the config file that supplied `configOverride`, when it was

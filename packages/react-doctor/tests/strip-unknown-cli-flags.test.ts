@@ -42,6 +42,12 @@ describe("stripUnknownCliFlags", () => {
     ]);
   });
 
+  it("keeps repeatable --ignore-tag and consumes each value (no value leaks as a positional)", () => {
+    expect(
+      stripUserArguments([".", "--ignore-tag", "impact:style", "--ignore-tag", "design"]),
+    ).toEqual([".", "--ignore-tag", "impact:style", "--ignore-tag", "design"]);
+  });
+
   it("keeps --scope / --base and consumes their values (no value leaks as a positional)", () => {
     // Regression: the action invokes `react-doctor . --scope changed --changed-files-from <f>`.
     // If --scope isn't a known value-taking flag, its value `changed` leaks as a 2nd

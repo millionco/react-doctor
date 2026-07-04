@@ -34,9 +34,10 @@ If the user asked for direct implementation, keep the plan short and proceed.
 3. Write detector pseudocode before editing files.
 4. Write or update adversarial tests first when practical.
 5. Implement the detector to match the rule contract exactly.
-6. Add or reuse focused utilities only when they remove real duplication or encode subtle AST semantics.
-7. Update generated registry or metadata using the repository's existing commands.
-8. Run focused tests, then package checks as appropriate.
+6. Classify the rule: set the required `impact` / `confidence` / `fix` fields (closed vocabularies; see "Classify the Rule" in `docs/HOW_TO_WRITE_A_RULE.md`). Never hand-write `impact:*` / `confidence:*` / `fix:*` in `tags` — codegen projects them.
+7. Add or reuse focused utilities only when they remove real duplication or encode subtle AST semantics.
+8. Update generated registry or metadata using the repository's existing commands.
+9. Run focused tests, then package checks as appropriate.
 
 Use `@antfu/ni` commands in this repo:
 

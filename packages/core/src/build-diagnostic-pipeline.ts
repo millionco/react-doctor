@@ -13,7 +13,10 @@ import {
 import { restampSeverity } from "./apply-severity-controls.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { evaluateSuppression } from "./evaluate-suppression.js";
-import { getDiagnosticRuleIdentity } from "./get-diagnostic-rule-identity.js";
+import {
+  getDiagnosticRuleIdentity,
+  resolveDiagnosticTags,
+} from "./get-diagnostic-rule-identity.js";
 import { compileIgnoredFilePatterns, isFileIgnoredByPatterns } from "./is-ignored-file.js";
 import { classifyFileContext } from "./classify-file-context.js";
 import { resolveRuleSeverityOverride } from "./resolve-rule-severity-override.js";
@@ -114,7 +117,19 @@ export const buildDiagnosticPipeline = (
   const fileLinesCache = new Map<string, string[] | null>();
   const fileContextCache = new Map<string, DiagnosticFileContext>();
   const libraryFileCache = new Map<string, boolean>();
+  const tagsCache = new Map<string, ReadonlyArray<string>>();
   const suppressions = new Map<string, SuppressedRuleCount>();
+
+  // Tags depend only on `<plugin>/<rule>`, so resolve once per rule key.
+  const getTags = (diagnostic: Diagnostic): ReadonlyArray<string> => {
+    const ruleKey = `${diagnostic.plugin}/${diagnostic.rule}`;
+    let cached = tagsCache.get(ruleKey);
+    if (cached === undefined) {
+      cached = resolveDiagnosticTags(diagnostic);
+      tagsCache.set(ruleKey, cached);
+    }
+    return cached;
+  };
 
   const suppress = (diagnostic: Diagnostic, source: SuppressedRuleCount["source"]): null => {
     const { ruleKey } = getDiagnosticRuleIdentity(diagnostic);
@@ -289,6 +304,13 @@ export const buildDiagnosticPipeline = (
       const fileContext = getFileContext(current.filePath);
       if (fileContext !== "production") {
         current = { ...current, fileContext };
+      }
+
+      // Stamp classification tags (incl. the projected `impact:*`) onto
+      // every survivor so the JSON report carries them per-finding.
+      const tags = getTags(current);
+      if (tags.length > 0) {
+        current = { ...current, tags: [...tags] };
       }
 
       return current;

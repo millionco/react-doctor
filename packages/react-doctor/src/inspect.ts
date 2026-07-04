@@ -190,10 +190,18 @@ export interface ResolvedInspectOptions {
   supplyChainManifestChanged: boolean;
 }
 
-const buildIgnoredTags = (userConfig: ReactDoctorConfig | null): ReadonlySet<string> => {
+const buildIgnoredTags = (
+  userConfig: ReactDoctorConfig | null,
+  optionTags: ReadonlyArray<string> | undefined,
+): ReadonlySet<string> => {
   const tags = new Set<string>();
   if (userConfig?.ignore?.tags) {
     for (const tag of userConfig.ignore.tags) tags.add(tag);
+  }
+  // CLI `--ignore-tag` (via `InspectOptions.ignoredTags`) unions with the
+  // config list rather than replacing it.
+  if (optionTags) {
+    for (const tag of optionTags) tags.add(tag);
   }
   return tags;
 };
@@ -220,7 +228,7 @@ const mergeInspectOptions = (
   warnings: inputOptions.warnings ?? userConfig?.warnings ?? DEFAULT_SHOW_WARNINGS,
   categoryFilters: new Set(resolveCliCategories(inputOptions.categoryFilters) ?? []),
   adoptExistingLintConfig: userConfig?.adoptExistingLintConfig ?? true,
-  ignoredTags: buildIgnoredTags(userConfig),
+  ignoredTags: buildIgnoredTags(userConfig, inputOptions.ignoredTags),
   outputSurface: inputOptions.outputSurface ?? "cli",
   suppressRendering: inputOptions.suppressRendering ?? false,
   concurrentScan: inputOptions.concurrentScan ?? false,

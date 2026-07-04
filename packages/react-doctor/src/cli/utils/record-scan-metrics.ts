@@ -13,8 +13,16 @@ export interface RuleFiring {
   readonly plugin: string;
   readonly category: string;
   readonly severity: string;
+  // The finding's `impact:*` axis (`behavior` | `style` | … | `none` for
+  // producers without a projected impact tag), so `rule.fired` can be
+  // grouped by hazard class in Sentry, not just category.
+  readonly impact: string;
   readonly count: number;
 }
+
+const IMPACT_TAG_PREFIX = "impact:";
+const impactFromTags = (tags: ReadonlyArray<string> | undefined): string =>
+  tags?.find((tag) => tag.startsWith(IMPACT_TAG_PREFIX))?.slice(IMPACT_TAG_PREFIX.length) ?? "none";
 
 /**
  * Aggregates diagnostics into per-`(rule, severity)` firing counts, reusing the
@@ -29,7 +37,7 @@ export const summarizeRuleFirings = (diagnostics: ReadonlyArray<Diagnostic>): Ru
   // a `<plugin>/<rule>` id or a severity, so distinct pairs never collide.
   const firings = new Map<string, RuleFiring>();
   for (const diagnostic of diagnostics) {
-    const { ruleKey, category } = getDiagnosticRuleIdentity(diagnostic);
+    const { ruleKey, category, tags } = getDiagnosticRuleIdentity(diagnostic);
     const firingKey = `${ruleKey}\u0000${diagnostic.severity}`;
     const existing = firings.get(firingKey);
     firings.set(
@@ -41,6 +49,10 @@ export const summarizeRuleFirings = (diagnostics: ReadonlyArray<Diagnostic>): Ru
             plugin: diagnostic.plugin,
             category,
             severity: diagnostic.severity,
+            // Resolve impact from the rule identity (not the stamped
+            // `diagnostic.tags`) so it's correct even for diagnostics that
+            // never passed through the stamping pipeline.
+            impact: impactFromTags(tags),
             count: 1,
           },
     );
@@ -154,6 +166,7 @@ export const recordScanMetrics = (input: ScanMetricsInput): void => {
       plugin: firing.plugin,
       category: firing.category,
       severity: firing.severity,
+      impact: firing.impact,
     });
   }
   for (const disabled of summarizeDisabledRules(input.userConfig)) {

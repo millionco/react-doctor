@@ -51,5 +51,6 @@ export const resolveCliInspectOptions = (
     concurrency: resolveParallelFlag(flags.parallel),
     maxDurationMs: resolveMaxDurationFlag(flags.maxDuration),
     categoryFilters: resolveCliCategories(flags.category),
+    ignoredTags: flags.ignoreTag,
   };
 };

@@ -23,6 +23,10 @@ export interface InspectFlags {
   respectInlineDisables?: boolean;
   warnings?: boolean;
   category?: string | string[];
+  // Repeatable `--ignore-tag <tag>`: rule tags to drop, unioned with
+  // config `ignore.tags`. Commander yields a string[] via the collector
+  // (a single value still arrives as a one-element array).
+  ignoreTag?: string[];
   project?: string;
   scope?: string;
   base?: string;

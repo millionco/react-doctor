@@ -50,6 +50,13 @@ describe("resolveCliInspectOptions: CI behavior (issue #302)", () => {
     expect(resolveCliInspectOptions({}, null).isCi).toBe(false);
   });
 
+  it("maps the repeatable --ignore-tag flag to ignoredTags", () => {
+    expect(
+      resolveCliInspectOptions({ ignoreTag: ["impact:style", "design"] }, null).ignoredTags,
+    ).toEqual(["impact:style", "design"]);
+    expect(resolveCliInspectOptions({}, null).ignoredTags).toBeUndefined();
+  });
+
   it("detects GITHUB_ACTIONS, GITLAB_CI, and CIRCLECI", () => {
     for (const envVariable of ["GITHUB_ACTIONS", "GITLAB_CI", "CIRCLECI"] as const) {
       process.env[envVariable] = "true";

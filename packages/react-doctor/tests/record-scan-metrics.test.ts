@@ -30,6 +30,7 @@ describe("summarizeRuleFirings", () => {
       plugin: "react-doctor",
       category: "Correctness",
       severity: "warning",
+      impact: "behavior",
       count: 2,
     });
   });
@@ -55,6 +56,7 @@ describe("summarizeRuleFirings", () => {
       plugin: "custom",
       category: "Performance",
       severity: "warning",
+      impact: "none",
       count: 1,
     });
   });

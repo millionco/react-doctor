@@ -80,6 +80,14 @@ export interface Diagnostic {
   endColumn?: number;
   category: string;
   /**
+   * Classification/behavioral tags carried per-finding — the stable
+   * `impact:*` / `confidence:*` / `fix:*` axes projected from rule
+   * metadata, plus any behavioral tags (`design`, `test-noise`, …).
+   * Absent for producers without registered tags (third-party plugin
+   * rules, untagged project checks). See `resolveDiagnosticTags`.
+   */
+  tags?: string[];
+  /**
    * Set when the finding's identity is the flagged element itself (a missing
    * attribute, a wrong element) rather than the flagged line's text — every
    * Accessibility-category finding, plus rules that opt in via their

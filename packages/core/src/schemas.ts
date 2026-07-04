@@ -32,6 +32,11 @@ export class Diagnostic extends Schema.Class<Diagnostic>("Diagnostic")({
   endLine: Schema.optional(Schema.Number),
   endColumn: Schema.optional(Schema.Number),
   category: Schema.String,
+  // Classification/behavioral tags carried per-finding, including the
+  // stable `impact:*` / `confidence:*` / `fix:*` axes projected from
+  // rule metadata. Absent for producers without registered tags (e.g.
+  // third-party plugin rules).
+  tags: Schema.optional(Schema.Array(Schema.String)),
   matchByOccurrence: Schema.optional(Schema.Boolean),
   fileContext: Schema.optional(Schema.Literals(["test", "story"])),
   suppressionHint: Schema.optional(Schema.String),

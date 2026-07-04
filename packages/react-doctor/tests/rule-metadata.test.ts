@@ -13,6 +13,32 @@ import reactDoctorPlugin from "oxlint-plugin-react-doctor";
 const TITLE_MAX_LENGTH_CHARS = 60;
 const DASH_PATTERN = /[—–]/; // em dash / en dash used as separators
 
+const IMPACTS = new Set(["behavior", "style", "perf", "a11y", "security"]);
+const CONFIDENCES = new Set(["high", "heuristic"]);
+const FIXES = new Set(["mechanical", "local", "structural"]);
+const BARE_TAGS = new Set([
+  "design",
+  "migration-hint",
+  "react-jsx-only",
+  "react-native",
+  "security-scan",
+  "server-action",
+  "test-noise",
+]);
+
+// A handful of react-bench GENUINE footguns as tripwires — if any of these
+// silently drops out of `impact:behavior`, an external reward gate shifts.
+// Deliberately a small subset, NOT the full list (pinning all 27 would
+// re-create the brittle external whitelist this feature exists to kill).
+const BEHAVIOR_SENTINELS = [
+  "no-derived-state",
+  "no-chain-state-updates",
+  "no-array-index-as-key",
+  "no-adjust-state-on-prop-change",
+  "exhaustive-deps",
+  "rules-of-hooks",
+];
+
 const ruleEntries = Object.entries(reactDoctorPlugin.rules);
 
 describe("rule metadata conventions", () => {
@@ -47,6 +73,52 @@ describe("rule metadata conventions", () => {
       offenders,
       `rules outside ${DIAGNOSTIC_CATEGORY_BUCKETS.join(" / ")}: ${offenders.join(", ")}`,
     ).toEqual([]);
+  });
+
+  it("classifies every rule with exactly one impact/confidence/fix, all from the closed vocabulary", () => {
+    for (const [id, rule] of ruleEntries) {
+      expect(IMPACTS.has(rule.impact ?? ""), `${id} impact: ${rule.impact}`).toBe(true);
+      expect(CONFIDENCES.has(rule.confidence ?? ""), `${id} confidence: ${rule.confidence}`).toBe(
+        true,
+      );
+      expect(FIXES.has(rule.fix ?? ""), `${id} fix: ${rule.fix}`).toBe(true);
+    }
+  });
+
+  it("keeps every rule tag inside the closed vocabulary and projects each axis exactly once", () => {
+    for (const [id, rule] of ruleEntries) {
+      const tags = rule.tags ?? [];
+      for (const tag of tags) {
+        const isKnown =
+          BARE_TAGS.has(tag) ||
+          tag.startsWith("impact:") ||
+          tag.startsWith("confidence:") ||
+          tag.startsWith("fix:");
+        expect(isKnown, `${id} carries unknown tag "${tag}"`).toBe(true);
+      }
+      const perAxis = (prefix: string) => tags.filter((tag) => tag.startsWith(prefix));
+      expect(perAxis("impact:"), `${id} impact tags`).toEqual([`impact:${rule.impact}`]);
+      expect(perAxis("confidence:"), `${id} confidence tags`).toEqual([
+        `confidence:${rule.confidence}`,
+      ]);
+      expect(perAxis("fix:"), `${id} fix tags`).toEqual([`fix:${rule.fix}`]);
+    }
+  });
+
+  it("keeps every design-tagged rule classified as impact:style", () => {
+    for (const [id, rule] of ruleEntries) {
+      if ((rule.tags ?? []).includes("design")) {
+        expect(rule.impact, `${id} is design-tagged so must be impact:style`).toBe("style");
+      }
+    }
+  });
+
+  it("keeps the behavior-footgun sentinels classified as impact:behavior", () => {
+    for (const sentinel of BEHAVIOR_SENTINELS) {
+      const rule = reactDoctorPlugin.rules[sentinel];
+      expect(rule, `sentinel rule "${sentinel}" is missing from the registry`).toBeDefined();
+      expect(rule?.impact, `sentinel "${sentinel}" must stay impact:behavior`).toBe("behavior");
+    }
   });
 
   it("uses no em/en dashes in titles or recommendations", () => {

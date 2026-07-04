@@ -679,6 +679,27 @@ export const SUPPLY_CHAIN_PLUGIN = "socket";
 export const SUPPLY_CHAIN_RULE = "low-supply-chain-score";
 export const SUPPLY_CHAIN_CATEGORY = "Security";
 
+// Classification tags for first-party diagnostics produced OUTSIDE the
+// oxlint rule registry, so consumers see the same impact/confidence/fix
+// axis carried by registry rules. `NON_REGISTRY_PLUGIN_TAGS` covers whole
+// plugins whose rule ids vary (dead-code, supply-chain);
+// `NON_REGISTRY_DIAGNOSTIC_TAGS` covers specific `<plugin>/<rule>` project
+// checks. Producers absent from both (the Expo / Metro project advisories)
+// carry no tags — same as third-party plugin diagnostics.
+export const NON_REGISTRY_PLUGIN_TAGS: Record<string, ReadonlyArray<string>> = {
+  deslop: ["impact:style", "confidence:heuristic", "fix:mechanical"],
+  socket: ["impact:security", "confidence:heuristic", "fix:local"],
+};
+export const NON_REGISTRY_DIAGNOSTIC_TAGS: Record<string, ReadonlyArray<string>> = {
+  "react-doctor/require-pnpm-hardening": ["impact:security", "confidence:high", "fix:mechanical"],
+  "react-doctor/require-reduced-motion": ["impact:a11y", "confidence:high", "fix:local"],
+  "react-doctor/no-vulnerable-react-server-components": [
+    "impact:security",
+    "confidence:high",
+    "fix:mechanical",
+  ],
+};
+
 // Default minimum acceptable Socket score (0..100), applied to the security
 // axes (supply chain, vulnerability) — a dependency whose worst security
 // axis scores below this fails the check. Tuned to Socket's own "needs

@@ -251,12 +251,14 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   const firings = summarizeRuleFirings(result.diagnostics);
   const countByRule = new Map<string, number>();
   const countByCategory = new Map<string, number>();
+  const countByImpact = new Map<string, number>();
   for (const firing of firings) {
     countByRule.set(firing.rule, (countByRule.get(firing.rule) ?? 0) + firing.count);
     countByCategory.set(
       firing.category,
       (countByCategory.get(firing.category) ?? 0) + firing.count,
     );
+    countByImpact.set(firing.impact, (countByImpact.get(firing.impact) ?? 0) + firing.count);
   }
   let topRule: string | null = null;
   let topRuleCount = 0;
@@ -300,6 +302,14 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
     categoryRollup[`category.${toCategoryKey(category)}`] = count;
   }
 
+  // Per-impact diagnostic counts (`diag.impact.<behavior|style|…|none>`),
+  // the hazard-class breakdown alongside the reporter-category one. Impact
+  // values are already safe attribute-key tokens.
+  const impactRollup: RunEventAttributes = {};
+  for (const [impact, count] of countByImpact) {
+    impactRollup[`impact.${impact}`] = count;
+  }
+
   // Findings the user explicitly silenced, by mechanism — the per-scan
   // complement of the `rule.suppressed` counter (which carries rule identity).
   // Absent (not zero) when the caller couldn't supply the tallies.
@@ -337,6 +347,7 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
       fixGroups: findingsPerFixGroup.size,
       fixGroupedFindings,
       ...categoryRollup,
+      ...impactRollup,
       ...suppressionRollup,
     }),
     ...withNamespace("score", {

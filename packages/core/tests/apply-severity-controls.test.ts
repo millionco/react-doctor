@@ -14,10 +14,13 @@ const applySeverityControls = (
   diagnostics: Diagnostic[],
   config: ReactDoctorConfig | null,
 ): Diagnostic[] =>
+  // The pipeline now also stamps classification `tags` (impact:*, …) on
+  // survivors; drop them here so these assertions stay focused on
+  // severity behavior. Tag stamping is covered by its own tests.
   mergeAndFilterDiagnostics(diagnostics, SEVERITY_TEST_ROOT, config, noopReadFileLines, {
     respectInlineDisables: false,
     warnings: true,
-  });
+  }).map(({ tags: _tags, ...rest }) => rest);
 
 const designDiagnostic: Diagnostic = {
   filePath: "src/App.tsx",

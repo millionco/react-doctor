@@ -37,6 +37,7 @@ const ROOT_FLAG_SPEC: CliFlagSpec = {
     "--category",
     "--changed-files-from",
     "--blocking",
+    "--ignore-tag",
     "--json-out",
     "--max-duration",
     "--output-dir",

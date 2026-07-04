@@ -128,7 +128,7 @@ ${highlighter.dim("Learn more:")}
   ${highlighter.info(CI_URL)}
 `;
 
-const collectCategoryOption = (value: string, previousValues: string[] | undefined): string[] => [
+const collectRepeatableOption = (value: string, previousValues: string[] | undefined): string[] => [
   ...(previousValues ?? []),
   value,
 ];
@@ -192,7 +192,13 @@ const program = new Command()
     new Option(
       "--category <category>",
       "only show diagnostics in a category (repeatable; e.g. Security)",
-    ).argParser(collectCategoryOption),
+    ).argParser(collectRepeatableOption),
+  )
+  .addOption(
+    new Option(
+      "--ignore-tag <tag>",
+      "disable rules carrying a tag (repeatable; e.g. impact:style, design); unions with config ignore.tags",
+    ).argParser(collectRepeatableOption),
   )
   .option(
     "--no-telemetry",

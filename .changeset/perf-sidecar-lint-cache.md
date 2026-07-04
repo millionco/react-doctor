@@ -1,5 +1,0 @@
----
-"react-doctor": patch
----
-
-Warm rescans now skip the cross-file lint sidecar for files whose dependencies are unchanged. Previously the per-file lint cache replayed most rules but re-linted EVERY file with the cross-file ruleset (`no-barrel-import`, the Next.js metadata/Suspense rules, `no-mutating-reducer-state`, the React Native text rules) on every scan, because a sibling edit can flip an unchanged file's verdict. Each file now carries a dependency fingerprint — the exact set of filesystem probes (resolved import targets, barrel chains, ancestor layouts, nearest package.json/tsconfig, and the negative resolution candidates that catch shadowing) its cross-file rules consulted — and the sidecar replays the stored diagnostics when every probe still answers the same, re-linting only files whose dependency set changed. Every entry fails open (corrupt store, unparseable file, partial lint → fresh re-lint), a cross-file rule without a registered dependency collector re-lints everywhere, and `REACT_DOCTOR_NO_CACHE` (or the granular `REACT_DOCTOR_NO_SIDECAR_CACHE`) disables it.

@@ -41,10 +41,15 @@ export const resolveInstalledReactVersion = (directory: string): string | null =
       path.join(directory, "package.json"),
     ).resolve("react/package.json");
 
+    // Canonicalize BOTH paths through the same realpath so the containment
+    // check compares like with like — on Windows `realpathSync.native` can
+    // emit an extended-length (`\\?\`) or re-cased path that a raw resolver
+    // path won't match, which would spuriously reject an in-repo install.
+    const reactPackageJsonPath = fs.realpathSync.native(resolvedReactPackageJsonPath);
     const containmentRoot = fs.realpathSync.native(findContainmentRoot(directory));
-    if (!isPathInsideDirectory(resolvedReactPackageJsonPath, containmentRoot)) return null;
+    if (!isPathInsideDirectory(reactPackageJsonPath, containmentRoot)) return null;
 
-    const installedVersion = readPackageJson(resolvedReactPackageJsonPath).version;
+    const installedVersion = readPackageJson(reactPackageJsonPath).version;
     return typeof installedVersion === "string" ? installedVersion : null;
   } catch {
     // Fail safe: any resolution / realpath failure leaves React undetected

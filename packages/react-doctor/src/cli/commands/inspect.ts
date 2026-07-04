@@ -8,6 +8,7 @@ import {
   DEFAULT_PROJECT_SCAN_CONCURRENCY,
   getChangedLineRanges,
   getDiffInfo,
+  hasReactRuntime,
   highlighter,
   mapWithConcurrency,
   mergeReactDoctorConfigs,
@@ -155,6 +156,13 @@ const finalizeScans = (input: FinalizeScansInput): void => {
     input.completedScans.every((scan) => scan.result.baselineDelta !== undefined);
   const baselineDegraded = input.baselineIntended && !baselineComputed;
   const mode: JsonReportMode = baselineDegraded ? "diff" : input.mode;
+  const isReactDetected = input.completedScans.some((scan) => hasReactRuntime(scan.result.project));
+  if (input.completedScans.length > 0 && !isReactDetected) {
+    recordCount(METRIC.scanNoReactDetected, 1);
+    logger.warn(
+      `No React project detected at ${input.resolvedDirectory} — React rules were gated off; this is not the same as a clean scan.`,
+    );
+  }
   const jsonCompletedScans = filterCompletedScansByCategories(
     input.completedScans,
     input.categoryFilters,

@@ -78,6 +78,99 @@ describe("buildJsonReport", () => {
     expect(report.baselineDegraded).toBe(true);
   });
 
+  it("marks reactDetected true on a scan that resolved a React runtime", () => {
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [{ directory: "/repo", result: result() }],
+      totalElapsedMilliseconds: 1200,
+    });
+    expect(report.reactDetected).toBe(true);
+  });
+
+  it("marks reactDetected false when no scanned project resolved React or Preact", () => {
+    const nonReactProject: ProjectInfo = {
+      ...projectInfo,
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: null,
+      preactMajorVersion: null,
+      framework: "unknown",
+    };
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [
+        { directory: "/repo", result: result({ diagnostics: [], project: nonReactProject }) },
+      ],
+      totalElapsedMilliseconds: 1200,
+    });
+    expect(report.reactDetected).toBe(false);
+    expect(report.ok).toBe(true);
+    expect(report.diagnostics).toHaveLength(0);
+  });
+
+  it("marks reactDetected true in a workspace where only some roots are React", () => {
+    const nonReactProject: ProjectInfo = {
+      ...projectInfo,
+      rootDirectory: "/repo/packages/tooling",
+      reactVersion: null,
+      reactMajorVersion: null,
+      framework: "unknown",
+    };
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [
+        {
+          directory: "/repo/packages/tooling",
+          result: result({ diagnostics: [], project: nonReactProject }),
+        },
+        { directory: "/repo/packages/app", result: result() },
+      ],
+      totalElapsedMilliseconds: 1200,
+    });
+    expect(report.reactDetected).toBe(true);
+  });
+
+  it("marks reactDetected true when a Preact runtime satisfies the react capability", () => {
+    const preactProject: ProjectInfo = {
+      ...projectInfo,
+      reactVersion: null,
+      reactMajorVersion: null,
+      preactVersion: "10.19.2",
+      preactMajorVersion: 10,
+      framework: "vite",
+    };
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [{ directory: "/repo", result: result({ project: preactProject }) }],
+      totalElapsedMilliseconds: 1200,
+    });
+    expect(report.reactDetected).toBe(true);
+  });
+
+  it("omits reactDetected when nothing was scanned", () => {
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "staged",
+      diff: null,
+      scans: [],
+      totalElapsedMilliseconds: 1200,
+    });
+    expect("reactDetected" in report).toBe(false);
+  });
+
   it("emits a v2 baseline report carrying the new/fixed delta and head score", () => {
     const report = buildJsonReport({
       version: "1.2.3",

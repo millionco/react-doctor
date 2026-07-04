@@ -120,6 +120,16 @@ export class JsonReportV1 extends Schema.Class<JsonReportV1>("JsonReportV1")({
    * successful `baseline` run (`schemaVersion: 2`) and on non-compare scopes.
    */
   baselineDegraded: Schema.optional(Schema.Boolean),
+  /**
+   * Whether any scanned project resolved a React-compatible runtime (React
+   * or Preact). `false` means every React-runtime rule family was gated off,
+   * so an empty `diagnostics` array is vacuous — NOT the same as a clean
+   * React scan. Consumers gating on the report (CI, verifiers, hooks) should
+   * treat `reactDetected === false` as "wrong scan target", not "all clear".
+   * Absent when nothing was scanned (`projects` is empty), on error reports,
+   * and on reports from older CLI versions.
+   */
+  reactDetected: Schema.optional(Schema.Boolean),
   diff: Schema.NullOr(JsonReportDiffInfo),
   projects: Schema.Array(JsonReportProjectEntry),
   diagnostics: Schema.Array(Diagnostic),
@@ -147,6 +157,8 @@ export class JsonReportV2 extends Schema.Class<JsonReportV2>("JsonReportV2")({
   ok: Schema.Boolean,
   directory: Schema.String,
   mode: JsonReportMode,
+  /** See `JsonReportV1.reactDetected`. */
+  reactDetected: Schema.optional(Schema.Boolean),
   diff: Schema.NullOr(JsonReportDiffInfo),
   baseline: JsonReportBaseline,
   projects: Schema.Array(JsonReportProjectEntry),

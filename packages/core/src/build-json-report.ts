@@ -7,6 +7,7 @@ import type {
   InspectResult,
 } from "./types/index.js";
 import { summarizeDiagnostics } from "./summarize-diagnostics.js";
+import { hasReactRuntime } from "./utils/has-react-runtime.js";
 
 interface BuildJsonReportInput {
   version: string;
@@ -81,6 +82,9 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReport => {
   );
 
   const shared = {
+    ...(input.scans.length > 0
+      ? { reactDetected: input.scans.some((scan) => hasReactRuntime(scan.result.project)) }
+      : {}),
     version: input.version,
     ok: true as const,
     directory: input.directory,

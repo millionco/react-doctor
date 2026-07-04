@@ -184,6 +184,11 @@ export const METRIC = {
   scanScore: "scan.score",
   scanClean: "scan.clean",
   scanCheckSkipped: "scan.check_skipped",
+  // One count per completed scan where no project resolved a React /
+  // Preact runtime — the JSON report's `reactDetected: false` case. The
+  // kill metric for the vacuous-clean-scan signal: if it never fires,
+  // nobody points react-doctor at non-React targets and the surface can go.
+  scanNoReactDetected: "scan.no_react_detected",
   baselineDegraded: "baseline.degraded",
   ruleFired: "rule.fired",
   // Rule-rejection telemetry, both keyed by `rule` + `source` attributes:

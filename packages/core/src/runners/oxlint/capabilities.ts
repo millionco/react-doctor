@@ -5,6 +5,7 @@ import {
   LATEST_KNOWN_PREACT_MAJOR,
   LATEST_KNOWN_REACT_MAJOR,
 } from "../../constants.js";
+import { hasReactRuntime } from "../../utils/has-react-runtime.js";
 import {
   isReactAtLeast,
   isTailwindAtLeast,
@@ -25,7 +26,7 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
   // React-family rules are equally applicable there. Framework-agnostic
   // rules (security, architecture, bundle-size, js-performance, zod, …)
   // never require this and keep running on non-React codebases.
-  if (project.reactVersion !== null || project.preactVersion !== null) {
+  if (hasReactRuntime(project)) {
     capabilities.add("react");
   }
   if (

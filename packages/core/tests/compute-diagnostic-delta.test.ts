@@ -91,6 +91,83 @@ describe("computeDiagnosticDelta", () => {
     expect(delta.fixedCount).toBe(1);
   });
 
+  it("matches a pre-existing structural (Accessibility) finding whose flagged line was reformatted", () => {
+    const base = [
+      makeDiagnostic({
+        plugin: "react-doctor",
+        rule: "iframe-has-title",
+        category: "Accessibility",
+        line: 10,
+      }),
+    ];
+    const head = [
+      makeDiagnostic({
+        plugin: "react-doctor",
+        rule: "iframe-has-title",
+        category: "Accessibility",
+        line: 12,
+      }),
+    ];
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: head,
+      baseDiagnostics: base,
+      // Prettier reflowed the multi-line <iframe> onto one line; the iframe
+      // still lacks a title, so the finding is pre-existing, not new.
+      readHeadLine: lineReaderFrom({ "src/App.tsx:12": '<iframe src={url} className="embed" />' }),
+      readBaseLine: lineReaderFrom({ "src/App.tsx:10": "<iframe" }),
+    });
+    expect(delta.newDiagnostics).toHaveLength(0);
+    expect(delta.fixedCount).toBe(0);
+  });
+
+  it("matches a rule flagged structuralFinding by occurrence even when the line text changed", () => {
+    const base = [
+      makeDiagnostic({
+        plugin: "react-doctor",
+        rule: "iframe-missing-sandbox",
+        category: "Security",
+        line: 10,
+      }),
+    ];
+    const head = [
+      makeDiagnostic({
+        plugin: "react-doctor",
+        rule: "iframe-missing-sandbox",
+        category: "Security",
+        line: 10,
+      }),
+    ];
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: head,
+      baseDiagnostics: base,
+      readHeadLine: lineReaderFrom({ "src/App.tsx:10": '<iframe src={url} title="Embed" />' }),
+      readBaseLine: lineReaderFrom({ "src/App.tsx:10": "<iframe src={url} />" }),
+    });
+    expect(delta.newDiagnostics).toHaveLength(0);
+    expect(delta.fixedCount).toBe(0);
+  });
+
+  it("still surfaces a genuinely new extra occurrence of a structural finding", () => {
+    const structural = (line: number): Diagnostic =>
+      makeDiagnostic({
+        plugin: "react-doctor",
+        rule: "iframe-has-title",
+        category: "Accessibility",
+        line,
+      });
+    const delta = computeDiagnosticDelta({
+      headDiagnostics: [structural(10), structural(42)],
+      baseDiagnostics: [structural(10)],
+      readHeadLine: lineReaderFrom({
+        "src/App.tsx:10": "<iframe src={a} />",
+        "src/App.tsx:42": "<iframe src={b} />",
+      }),
+      readBaseLine: lineReaderFrom({ "src/App.tsx:10": "<iframe src={a} />" }),
+    });
+    expect(delta.newDiagnostics).toHaveLength(1);
+    expect(delta.fixedCount).toBe(0);
+  });
+
   it("falls back to (file, rule) order matching when line text is unreadable", () => {
     const base = [makeDiagnostic({ line: 10 })];
     const head = [makeDiagnostic({ line: 99 })];

@@ -59,6 +59,16 @@ export interface Rule {
   // `--ignore-tag` / `shouldEnableRule` to opt families of rules in
   // or out of a scan independently of the framework gate.
   tags?: ReadonlyArray<string>;
+  // When `true`, a finding's identity is the flagged element itself (a
+  // missing attribute, a wrong element) rather than the flagged line's
+  // text, so reformatting the line doesn't change the finding. The CI
+  // baseline delta (`computeDiagnosticDelta` in @react-doctor/core)
+  // then matches these by `(file, rule)` occurrence count instead of a
+  // line-text hash. Rules in the `Accessibility` category get this
+  // behavior implicitly; set the flag only on structural rules outside
+  // that category. Leave unset for expression-level rules, where the
+  // flagged expression IS the finding and a text change means a new one.
+  structuralFinding?: boolean;
   // When `false`, the rule is registered in the plugin (importable,
   // configurable, testable) but NOT enabled by default — users must
   // opt in via `severityControls.rules["react-doctor/<id>"]`. Used for

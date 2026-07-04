@@ -769,7 +769,7 @@ export class Git extends Context.Service<
         showStagedContent: (directory, relativePath, options) =>
           runCommand({
             command: "git",
-            args: ["show", `:${relativePath}`],
+            args: ["show", `:./${relativePath}`],
             directory,
             maxStdoutBytes: options?.maxBufferBytes,
           }).pipe(Effect.map((result) => (result.status === 0 ? result.stdout : null))),

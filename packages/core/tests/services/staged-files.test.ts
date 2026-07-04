@@ -144,6 +144,63 @@ describe("StagedFiles.layerNode — Zip-Slip defense (path traversal)", () => {
   });
 });
 
+describe("StagedFiles.layerNode regression — monorepo subdirectory (#1064)", () => {
+  let monorepoRoot: string;
+  let tempDirectory3: string;
+
+  beforeEach(() => {
+    monorepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-staged-monorepo-"));
+    tempDirectory3 = fs.mkdtempSync(path.join(os.tmpdir(), "rd-staged-materialize-"));
+
+    const projectDir = path.join(monorepoRoot, "apps", "webui");
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.mkdirSync(path.join(projectDir, "src"), { recursive: true });
+
+    fs.writeFileSync(
+      path.join(projectDir, "package.json"),
+      JSON.stringify({ name: "webui", dependencies: { react: "^19.0.0" } }),
+    );
+    fs.writeFileSync(
+      path.join(projectDir, "src", "App.tsx"),
+      'export function App() { return <div>Hello</div>; }\n',
+    );
+
+    const { spawnSync } = require("node:child_process");
+    spawnSync("git", ["init"], { cwd: monorepoRoot });
+    spawnSync("git", ["config", "user.email", "test@test.com"], { cwd: monorepoRoot });
+    spawnSync("git", ["config", "user.name", "Test"], { cwd: monorepoRoot });
+    spawnSync("git", ["add", "apps/webui/package.json", "apps/webui/src/App.tsx"], {
+      cwd: monorepoRoot,
+    });
+  });
+
+  afterEach(() => {
+    fs.rmSync(monorepoRoot, { recursive: true, force: true });
+    fs.rmSync(tempDirectory3, { recursive: true, force: true });
+  });
+
+  it("reads staged content from a project subdirectory using cwd-relative pathspec", async () => {
+    const projectDir = path.join(monorepoRoot, "apps", "webui");
+    const layer = StagedFiles.layerNode.pipe(Layer.provide(Git.layerNode));
+
+    const snapshot = await Effect.runPromise(
+      Effect.gen(function* () {
+        const staged = yield* StagedFiles;
+        const sourceFiles = yield* staged.discoverSourceFiles(projectDir);
+        return yield* staged.materialize({
+          directory: projectDir,
+          stagedFiles: sourceFiles,
+          tempDirectory: tempDirectory3,
+        });
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(snapshot.stagedFiles).toEqual(["src/App.tsx"]);
+    const materializedContent = fs.readFileSync(path.join(tempDirectory3, "src/App.tsx"), "utf8");
+    expect(materializedContent).toBe('export function App() { return <div>Hello</div>; }\n');
+  });
+});
+
 describe("StagedFiles.layerOf (deterministic test layer)", () => {
   it("returns the snapshot's source files unchanged", async () => {
     const layer = StagedFiles.layerOf({

@@ -334,7 +334,8 @@ export const MAX_ANALYSIS_ERRORS = 5000;
 
 export const MAX_ERROR_DETAIL_LENGTH = 1000;
 
-export const SUMMARY_CACHE_SCHEMA_VERSION = 1;
+// Bumped to 2: per-file entries carry a content-hash repair witness (`h`).
+export const SUMMARY_CACHE_SCHEMA_VERSION = 2;
 
 export const SUMMARY_CACHE_MAX_BYTES = 256 * 1024 * 1024;
 

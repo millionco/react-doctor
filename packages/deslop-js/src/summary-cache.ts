@@ -1,19 +1,25 @@
 // The incremental analysis cache behind `DeslopConfig.incrementalCachePath`.
 // One tree walk per run is the single change detector; from it four layers are
 // validated independently:
-//   1. per-file parse summaries (`ParsedSource`) keyed by (mtimeMs, size);
+//   1. per-file parse summaries (`ParsedSource`) keyed by (mtimeMs, size) with
+//      a content-hash REPAIR path: a stat mismatch over identical bytes (a
+//      fresh CI checkout bumps every mtime) re-hashes the file, accepts the
+//      entry, and refreshes the stored stat — so the hash cost is paid once
+//      per checkout, not once per run (the ninja/restat pattern);
 //   2. the collected file LIST keyed by `collectHash` (sorted file names, with
-//      manifest-like files stat-fingerprinted). Entry RESOLUTION is
+//      manifest-like files content-hashed so a re-clone of identical content
+//      keys identically). Entry RESOLUTION is
 //      deliberately NOT cached: `resolveEntries` reads an unbounded content
 //      set (bundler/test-runner config strings, workflow yml, HTML, tsconfig
 //      contents, even sibling-workspace sources), so no name-based fingerprint
 //      can validate it — it re-runs live every scan, overlapped with parsing;
 //   3. the `fromDir::specifier → ResolvedImport` map keyed by `resolutionHash`
-//      (`collectHash` ⊕ bundler-config stats — module resolution depends on the
-//      file SET, so summaries cache raw specifiers only and any add/delete/
-//      rename drops the whole resolution map);
+//      (`collectHash` ⊕ bundler-config content hashes — module resolution
+//      depends on the file SET, so summaries cache raw specifiers only and any
+//      add/delete/rename drops the whole resolution map);
 //   4. per-file package-reference facts for `detectStalePackages`' content
-//      scans, keyed by (mtimeMs, size, queried-name-set hash).
+//      scans, keyed by (mtimeMs, size, queried-name-set hash), with the same
+//      content-hash repair as the summaries.
 // Every read fails open (corrupt / missing / version- or scope-mismatched data
 // degrades to a fresh computation, never a wrong result), saves are atomic
 // (temp file + rename) and skipped when nothing changed. The accepted blind
@@ -119,6 +125,8 @@ interface PersistedParsedSource {
 }
 
 interface PersistedSummaryEntry extends FileStatFingerprint {
+  /** SHA-1 of the file's bytes at store time — the mtime-repair witness. */
+  h: string;
   p: PersistedParsedSource;
 }
 
@@ -128,6 +136,8 @@ interface PersistedPackageFactMatch {
 }
 
 interface PersistedPackageFactEntry extends FileStatFingerprint {
+  /** SHA-1 of the file's decoded content at store time — the mtime-repair witness. */
+  h: string;
   substring?: PersistedPackageFactMatch;
   importReference?: PersistedPackageFactMatch;
 }
@@ -183,6 +193,14 @@ const isResolverConfigFileName = (fileName: string): boolean =>
   fileName.startsWith("jest.config.");
 
 const sha1Hex = (text: string): string => crypto.createHash("sha1").update(text).digest("hex");
+
+const sha1OfFileBytes = (filePath: string): string | null => {
+  try {
+    return crypto.createHash("sha1").update(readFileSync(filePath)).digest("hex");
+  } catch {
+    return null;
+  }
+};
 
 const fileNameOfPosixPath = (posixPath: string): string =>
   posixPath.slice(posixPath.lastIndexOf("/") + 1);
@@ -272,12 +290,20 @@ const countPathSegments = (relativePath: string): number => {
   return segmentCount;
 };
 
+// Content identity for the few files whose CONTENT feeds a layer hash
+// (manifests, bundler configs). Hashed — not stat-fingerprinted — so a fresh
+// CI checkout of identical content keys identically; the set is small, so the
+// per-run hash cost is milliseconds. An unreadable file falls back to the
+// conservative stat identity (it can never spuriously match a hash).
+const contentFingerprintOf = (filePath: string, fileStat: FileStatFingerprint): string =>
+  `${filePath}:${fileStat.s}:${sha1OfFileBytes(filePath) ?? `stat-${fileStat.m}`}`;
+
 const computeCollectHash = (walkedStats: Map<string, FileStatFingerprint>): string => {
   const fingerprintLines: string[] = [];
   for (const [filePath, fileStat] of walkedStats) {
     fingerprintLines.push(
       isManifestLikeFileName(fileNameOfPosixPath(filePath))
-        ? `${filePath}:${fileStat.m}:${fileStat.s}`
+        ? contentFingerprintOf(filePath, fileStat)
         : filePath,
     );
   }
@@ -292,7 +318,7 @@ const computeResolutionHash = (
   const fingerprintLines: string[] = [];
   for (const [filePath, fileStat] of walkedStats) {
     if (isResolverConfigFileName(fileNameOfPosixPath(filePath))) {
-      fingerprintLines.push(`${filePath}:${fileStat.m}:${fileStat.s}`);
+      fingerprintLines.push(contentFingerprintOf(filePath, fileStat));
     }
   }
   fingerprintLines.sort();
@@ -501,9 +527,7 @@ const createSummaryCache = (cachePath: string, config: DeslopConfig): SummaryCac
   const activeFactPaths = new Set<string>();
   const sortedNameSetMemo = new WeakMap<ReadonlySet<string>, SortedNameSet>();
 
-  const statOf = (filePath: string): FileStatFingerprint | null => {
-    const walked = walkedStats.get(filePath);
-    if (walked) return walked;
+  const statOfLive = (filePath: string): FileStatFingerprint | null => {
     try {
       const fileStat = statSync(filePath);
       return { m: fileStat.mtimeMs, s: fileStat.size };
@@ -511,6 +535,9 @@ const createSummaryCache = (cachePath: string, config: DeslopConfig): SummaryCac
       return null;
     }
   };
+
+  const statOf = (filePath: string): FileStatFingerprint | null =>
+    walkedStats.get(filePath) ?? statOfLive(filePath);
 
   return {
     lookupFileList: () => {
@@ -540,8 +567,18 @@ const createSummaryCache = (cachePath: string, config: DeslopConfig): SummaryCac
       const cachedSummary = store.summaries[filePath];
       if (!isRecordValue(cachedSummary)) return null;
       const fileStat = statOf(filePath);
-      if (!fileStat || fileStat.m !== cachedSummary.m || fileStat.s !== cachedSummary.s) {
-        return null;
+      if (!fileStat) return null;
+      if (fileStat.m !== cachedSummary.m || fileStat.s !== cachedSummary.s) {
+        // Mtime repair: a fresh checkout bumps every mtime over identical
+        // bytes. A size change is a content change (skip the read); a
+        // same-size stat mismatch re-hashes, and a hash match accepts the
+        // entry and refreshes the stored stat so the next run stats through.
+        if (fileStat.s !== cachedSummary.s || typeof cachedSummary.h !== "string") return null;
+        const contentHash = sha1OfFileBytes(filePath);
+        if (contentHash === null || contentHash !== cachedSummary.h) return null;
+        cachedSummary.m = fileStat.m;
+        cachedSummary.s = fileStat.s;
+        isDirty = true;
       }
       const revived = reviveParsedSource(cachedSummary.p);
       if (revived === null) return null;
@@ -550,11 +587,21 @@ const createSummaryCache = (cachePath: string, config: DeslopConfig): SummaryCac
     },
 
     storeSummary: (filePath, parsed) => {
-      const fileStat = statOf(filePath);
-      if (!fileStat) return;
+      const walkStat = statOf(filePath);
+      if (!walkStat) return;
+      // Hash first, then re-stat: an edit racing the parse either changed the
+      // stat (skip the store) or landed after the hash captured the parsed
+      // content (the next lookup's hash check misses on it). Without the
+      // re-verification, a racing edit could pair walk-time stats with
+      // post-edit content and mint a repairable stale entry.
+      const contentHash = sha1OfFileBytes(filePath);
+      if (contentHash === null) return;
+      const liveStat = statOfLive(filePath);
+      if (liveStat === null || liveStat.m !== walkStat.m || liveStat.s !== walkStat.s) return;
       store.summaries[filePath] = {
-        m: fileStat.m,
-        s: fileStat.s,
+        m: walkStat.m,
+        s: walkStat.s,
+        h: contentHash,
         p: serializeParsedSource(parsed, shouldPersistDryPatternFields),
       };
       activeSummaryPaths.add(filePath);
@@ -595,10 +642,12 @@ const createSummaryCache = (cachePath: string, config: DeslopConfig): SummaryCac
       }
       activeFactPaths.add(filePath);
       const fileStat = statOf(filePath);
-      const existingEntry = store.packageFacts[filePath];
-      const validEntry =
+      const existingEntry = isRecordValue(store.packageFacts[filePath])
+        ? store.packageFacts[filePath]
+        : null;
+      let validEntry =
         fileStat !== null &&
-        isRecordValue(existingEntry) &&
+        existingEntry !== null &&
         existingEntry.m === fileStat.m &&
         existingEntry.s === fileStat.s
           ? existingEntry
@@ -612,11 +661,28 @@ const createSummaryCache = (cachePath: string, config: DeslopConfig): SummaryCac
         return existingMatch.matched;
       }
       const content = readFileSync(filePath, "utf-8");
+      const contentHash = sha1Hex(content);
+      if (validEntry === null && fileStat !== null && existingEntry?.h === contentHash) {
+        // Mtime repair: the fact-scan read the content anyway, so a hash match
+        // revalidates the whole entry (both kinds) under the fresh stat.
+        existingEntry.m = fileStat.m;
+        existingEntry.s = fileStat.s;
+        isDirty = true;
+        validEntry = existingEntry;
+        const repairedMatch = validEntry[kind];
+        if (
+          isRecordValue(repairedMatch) &&
+          repairedMatch.h === nameSet.hash &&
+          isStringArray(repairedMatch.matched)
+        ) {
+          return repairedMatch.matched;
+        }
+      }
       const matchedNames = nameSet.sortedNames.filter((packageName) =>
         matcher(content, packageName),
       );
       if (fileStat !== null) {
-        const factEntry = validEntry ?? { m: fileStat.m, s: fileStat.s };
+        const factEntry = validEntry ?? { m: fileStat.m, s: fileStat.s, h: contentHash };
         factEntry[kind] = { h: nameSet.hash, matched: matchedNames };
         store.packageFacts[filePath] = factEntry;
         isDirty = true;

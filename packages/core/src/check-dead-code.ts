@@ -7,6 +7,7 @@ import {
   collectDeadCodeIgnorePatterns,
 } from "./dead-code/collect-dead-code-patterns.js";
 import {
+  collectAnalyzedFileStats,
   computeDeadCodeCacheKey,
   lookupDeadCodeResultCache,
   storeDeadCodeResultCache,
@@ -575,24 +576,30 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
     options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js");
 
   // Result cache: replay the last complete pass when nothing the analysis
-  // reads changed. The key snapshot is taken BEFORE the (long) analysis so a
-  // stored result is keyed by the tree it started from — an edit racing the
-  // analysis lands a stale key that the next run's fresh snapshot misses.
-  const cacheKey = options.cacheEnabled
-    ? computeDeadCodeCacheKey({
-        rootDirectory,
-        entryPatterns,
-        ignorePatterns,
-        tsConfigPath,
-        deslopJsModuleSpecifier,
-        coreVersion: CORE_PACKAGE_VERSION,
-      })
-    : null;
-  if (cacheKey !== null) {
-    const cachedDiagnostics = lookupDeadCodeResultCache(
-      resolveReactDoctorCacheDir(rootDirectory),
+  // reads changed. The stat snapshot is taken BEFORE the (long) analysis so a
+  // stored result is verified — and stored — against the tree it started
+  // from; `storeDeadCodeResultCache` re-verifies the stats at store time so
+  // an edit racing the analysis skips the store instead of landing a stale
+  // entry.
+  const fileStatsSnapshot = options.cacheEnabled ? collectAnalyzedFileStats(rootDirectory) : null;
+  const cacheKey =
+    fileStatsSnapshot === null
+      ? null
+      : computeDeadCodeCacheKey({
+          rootDirectory,
+          entryPatterns,
+          ignorePatterns,
+          tsConfigPath,
+          deslopJsModuleSpecifier,
+          coreVersion: CORE_PACKAGE_VERSION,
+        });
+  if (cacheKey !== null && fileStatsSnapshot !== null) {
+    const cachedDiagnostics = lookupDeadCodeResultCache({
+      cacheDirectory: resolveReactDoctorCacheDir(rootDirectory),
       cacheKey,
-    );
+      rootDirectory,
+      currentFileStats: fileStatsSnapshot,
+    });
     options.onCacheOutcome?.(cachedDiagnostics !== null);
     if (cachedDiagnostics !== null) return [...cachedDiagnostics];
   }
@@ -717,8 +724,14 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
   // Only a COMPLETE successful pass reaches this line — a crashed, timed-out,
   // or aborted worker rejects above — so a stored entry never replays a
   // truncated result (mirroring `shouldStoreScanPayload`).
-  if (cacheKey !== null) {
-    storeDeadCodeResultCache(resolveReactDoctorCacheDir(rootDirectory), cacheKey, diagnostics);
+  if (cacheKey !== null && fileStatsSnapshot !== null) {
+    storeDeadCodeResultCache({
+      cacheDirectory: resolveReactDoctorCacheDir(rootDirectory),
+      cacheKey,
+      rootDirectory,
+      snapshotFileStats: fileStatsSnapshot,
+      diagnostics,
+    });
   }
 
   return diagnostics;

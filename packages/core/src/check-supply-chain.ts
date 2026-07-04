@@ -405,6 +405,30 @@ const writeCachedSocketBody = (cacheFile: string, body: string): void => {
   }
 };
 
+// Drops cache files past the TTL. A live dependency's expired entry would
+// re-fetch anyway; without this, entries for purls that stop being looked up
+// (version bumps, removed dependencies) accumulate forever — a slow monotonic
+// leak in CI, where the whole cache directory is persisted and restored across
+// runs. File mtime stands in for `fetchedAtMs` (same clock: the file is
+// written when the entry is fetched, and both local disks and the CI cache's
+// tar round-trip preserve it), so pruning stats instead of parsing every file.
+const pruneExpiredSocketCache = (cacheDirectory: string): void => {
+  try {
+    const supplyChainCacheDirectory = path.join(cacheDirectory, SUPPLY_CHAIN_CACHE_SUBDIR);
+    const expiryThresholdMs = Date.now() - SUPPLY_CHAIN_CACHE_TTL_MS;
+    for (const entryName of fs.readdirSync(supplyChainCacheDirectory)) {
+      const entryPath = path.join(supplyChainCacheDirectory, entryName);
+      try {
+        if (fs.statSync(entryPath).mtimeMs < expiryThresholdMs) fs.rmSync(entryPath);
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    // A prune failure must never sink the scan.
+  }
+};
+
 // Fetches the free, keyless Socket artifact (score + alerts) for one
 // dependency — the same `firewall-api.socket.dev/purl/<encoded-purl>` endpoint
 // Socket Firewall's free tier hits. `Effect.tryPromise` hands `fetch` an
@@ -676,6 +700,7 @@ export const checkSupplyChain = (input: SupplyChainCheckInput): Effect.Effect<Di
     const cacheDirectory = isSupplyChainCacheDisabled()
       ? null
       : resolveReactDoctorCacheDir(input.rootDirectory);
+    if (cacheDirectory !== null) pruneExpiredSocketCache(cacheDirectory);
 
     const artifacts = yield* Effect.forEach(
       dependencies,

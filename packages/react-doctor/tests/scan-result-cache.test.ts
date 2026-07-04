@@ -146,6 +146,50 @@ describe("scan result cache", () => {
     expect(cache.lookup(key)?.diagnostics).toEqual([diagnostic(projectDirectory)]);
   });
 
+  it("honors REACT_DOCTOR_CACHE_DIR so the action-persisted dir carries the scan cache", () => {
+    const projectDirectory = setupReactProject(tempDirectory, "cache-dir-override", {
+      files: { "src/App.tsx": "export const App = () => <div />;\n" },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const overrideDirectory = path.join(tempDirectory, "ci-cache");
+    const previousValue = process.env.REACT_DOCTOR_CACHE_DIR;
+    try {
+      process.env.REACT_DOCTOR_CACHE_DIR = overrideDirectory;
+      const key = cacheKey(projectDirectory, baseOptions());
+      expect(key).not.toBeNull();
+      if (key === null) return;
+      createScanResultCache(projectDirectory).store(key, basePayload(projectDirectory));
+
+      const persistedFiles = fs.readdirSync(overrideDirectory, { recursive: true });
+      expect(persistedFiles.some((entry) => String(entry).endsWith("scan-cache.json"))).toBe(true);
+      expect(createScanResultCache(projectDirectory).lookup(key)).not.toBeNull();
+    } finally {
+      if (previousValue === undefined) delete process.env.REACT_DOCTOR_CACHE_DIR;
+      else process.env.REACT_DOCTOR_CACHE_DIR = previousValue;
+    }
+  });
+
+  it("keys identically across a fresh-checkout mtime bump of config and dotenv files", () => {
+    const projectDirectory = setupReactProject(tempDirectory, "fresh-checkout", {
+      files: {
+        "src/App.tsx": "export const App = () => <div />;\n",
+        "doctor.config.json": JSON.stringify({ warnings: true }),
+        ".gitignore": ".env\n",
+        ".env": "API_KEY=value\n",
+      },
+    });
+    initGitRepo(projectDirectory, { commit: true });
+    const keyBefore = cacheKey(projectDirectory, baseOptions());
+    expect(keyBefore).not.toBeNull();
+
+    // A fresh CI checkout re-creates every file: same bytes, new mtimes.
+    const bumpedDate = new Date(Date.now() + 60_000);
+    for (const fileName of ["package.json", "doctor.config.json", ".env"]) {
+      fs.utimesSync(path.join(projectDirectory, fileName), bumpedDate, bumpedDate);
+    }
+    expect(cacheKey(projectDirectory, baseOptions())).toBe(keyBefore);
+  });
+
   // The cache is deliberately NOT keyed on `--max-duration`: it's safe to serve
   // a stored payload to a budgeted run because only COMPLETE scans are ever
   // stored. A budget-truncated run (lint partial or dead-code skipped) must be

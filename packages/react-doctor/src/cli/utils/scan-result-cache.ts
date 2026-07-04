@@ -1,12 +1,12 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
-import os from "node:os";
 import path from "node:path";
 import {
   computeConfigFingerprint,
   hashFileContents,
   resolveLintBatchOrdering,
+  resolveReactDoctorCacheDir,
 } from "@react-doctor/core";
 import type {
   Diagnostic,
@@ -17,7 +17,7 @@ import type {
   SuppressedRuleCount,
 } from "@react-doctor/core";
 import {
-  CACHE_FILENAME_HASH_LENGTH_CHARS,
+  SCAN_RESULT_CACHE_FILENAME,
   SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT,
   SCAN_RESULT_CACHE_MAX_ENTRY_COUNT,
   SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES,
@@ -93,13 +93,16 @@ interface ScanResultCacheKeyInput {
 
 const CACHE_DISABLED_VALUES = new Set(["1", "true"]);
 const TOOLCHAIN_PACKAGE_SPECIFIERS = [
-  "oxlint",
   "oxlint/package.json",
-  "oxlint-plugin-react-doctor",
+  "oxlint-plugin-react-doctor/package.json",
   "deslop-js/package.json",
   "eslint-plugin-react-hooks/package.json",
 ] as const;
 const bundledRequire = createRequire(import.meta.url);
+
+interface PackageVersionView {
+  readonly version?: unknown;
+}
 
 const normalizeForStableJson = (value: unknown): unknown => {
   if (value === null) return null;
@@ -260,8 +263,10 @@ const buildWorktreeFingerprint = (
 const DOTENV_FILE_NAME_PATTERN = /^\.env(\.|$)/;
 
 // The security scan reads dotenv files even when they're gitignored — a state
-// `git status` can never surface — so their stat identity is keyed explicitly,
-// the same coverage `computeConfigFingerprint` gives gitignored config files.
+// `git status` can never surface — so their content is keyed explicitly, the
+// same coverage `computeConfigFingerprint` gives gitignored config files.
+// Content-hashed (dotenv files are tiny) rather than stat-fingerprinted so a
+// fresh CI checkout of identical content keys identically.
 const resolveDotenvFingerprint = (projectDirectory: string): ReadonlyArray<string> => {
   try {
     return fs
@@ -270,7 +275,7 @@ const resolveDotenvFingerprint = (projectDirectory: string): ReadonlyArray<strin
       .sort()
       .map(
         (entryName) =>
-          `${entryName}=${fileFingerprint(path.join(projectDirectory, entryName)) ?? "unreadable"}`,
+          `${entryName}=${hashFileContents(path.join(projectDirectory, entryName)) ?? "unreadable"}`,
       );
   } catch {
     return [];
@@ -283,14 +288,13 @@ const hasHiddenTrackedFileState = (projectDirectory: string): boolean => {
   return output.split("\n").some((line) => line.length > 0 && line[0] !== "H");
 };
 
-const resolveCacheFilePath = (projectDirectory: string): string => {
-  const nodeModulesDirectory = path.join(projectDirectory, "node_modules");
-  if (fs.existsSync(nodeModulesDirectory)) {
-    return path.join(nodeModulesDirectory, ".cache", "react-doctor", "scan-cache.json");
-  }
-  const projectHash = hashString(projectDirectory).slice(0, CACHE_FILENAME_HASH_LENGTH_CHARS);
-  return path.join(os.tmpdir(), "react-doctor-cache", `scan-${projectHash}.json`);
-};
+// Sits beside the per-file lint / sidecar / dead-code caches under the shared
+// cache root, so the `REACT_DOCTOR_CACHE_DIR` override the GitHub Action sets
+// (a `${runner.temp}` path persisted by `actions/cache`) carries the whole-repo
+// scan cache across CI runs too — the project-local `node_modules/.cache`
+// default never survives a fresh, SHA-scoped checkout.
+const resolveCacheFilePath = (projectDirectory: string): string =>
+  path.join(resolveReactDoctorCacheDir(projectDirectory), SCAN_RESULT_CACHE_FILENAME);
 
 const readPersistedCache = (cacheFilePath: string): PersistedScanResultCache => {
   try {
@@ -359,19 +363,27 @@ const fileFingerprint = (filePath: string): string | null => {
   }
 };
 
+// Versioned (not file-fingerprinted) like the lint ruleset hash, so the key
+// survives a restored/re-extracted install in CI — extraction mtimes are an
+// implementation detail of the installer, not toolchain identity. The one
+// exception: a foreign oxlint Node (the nvm fallback) keeps the conservative
+// stat identity rather than paying a version-probe subprocess here.
 const resolveToolchainFingerprint = (nodeBinaryPath: string | null): ReadonlyArray<string> => {
   const fingerprints: string[] = [];
   if (nodeBinaryPath !== null) {
-    const fingerprint = fileFingerprint(nodeBinaryPath);
-    if (fingerprint !== null) fingerprints.push(`node=${fingerprint}`);
+    fingerprints.push(
+      nodeBinaryPath === process.execPath
+        ? `node=${process.version}`
+        : `node=${fileFingerprint(nodeBinaryPath) ?? "unreadable"}`,
+    );
   }
   for (const specifier of TOOLCHAIN_PACKAGE_SPECIFIERS) {
     try {
-      const resolvedPath = bundledRequire.resolve(specifier);
-      const fingerprint = fileFingerprint(resolvedPath);
-      if (fingerprint !== null) fingerprints.push(`${specifier}=${fingerprint}`);
+      const packageJson = bundledRequire(specifier) as PackageVersionView;
+      const version = typeof packageJson.version === "string" ? packageJson.version : "unknown";
+      fingerprints.push(`${specifier}=${version}`);
     } catch {
-      continue;
+      fingerprints.push(`${specifier}=missing`);
     }
   }
   return fingerprints;

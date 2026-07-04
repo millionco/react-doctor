@@ -11,9 +11,11 @@ import {
   filterDiagnosticsForSurface,
   highlighter,
   OXLINT_NODE_REQUIREMENT,
+  PerFileLintCacheEnabled,
   resolveScanTarget,
   restoreLegacyThrow,
   runInspect as runInspectEffect,
+  SidecarLintCacheEnabled,
 } from "@react-doctor/core";
 import { applyObservability } from "./cli/utils/apply-observability.js";
 import { buildRuntimeLayers } from "./cli/utils/build-runtime-layers.js";
@@ -482,6 +484,12 @@ const runBaselineComparison = async (
       restoreLegacyThrow(
         baseProgram.pipe(
           Effect.provide(baseLayers),
+          // The base snapshot lints in a per-run-unique temp dir, so its
+          // on-disk cache identity can never hit — writing would only mint an
+          // orphan per-run subdir inside the CI-persisted cache directory
+          // (unbounded growth across the action's restore→save cycles).
+          Effect.provideService(PerFileLintCacheEnabled, false),
+          Effect.provideService(SidecarLintCacheEnabled, false),
           Effect.provideService(Console.Console, silentConsole),
         ),
       ),

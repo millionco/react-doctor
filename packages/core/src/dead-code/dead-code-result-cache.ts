@@ -9,27 +9,36 @@ import { DEAD_CODE_CACHE_FILENAME, DEAD_CODE_CACHE_SCHEMA_VERSION } from "../con
 import { Diagnostic as DiagnosticSchema } from "../schemas.js";
 import { atomicWriteJson } from "../utils/atomic-write-json.js";
 import { failOpenReadJson } from "../utils/fail-open-read-json.js";
+import { hashFileContents } from "../utils/hash-file-contents.js";
 import { isRecord } from "../utils/is-record.js";
 import { walkSourceTreeFiles } from "../utils/walk-source-tree-files.js";
 
 /**
  * Whole-project dead-code result cache. Dead-code reachability is a
  * whole-project property, so the cache holds ONE entry: the diagnostics of the
- * last complete, successful pass, keyed by a fingerprint over everything the
- * analysis reads. Any input change mints a new key, which makes the stored
- * entry unreachable — so there is nothing to gain from keeping history.
+ * last complete, successful pass, keyed by everything the analysis reads. Any
+ * input change makes the stored entry unreachable — so there is nothing to
+ * gain from keeping history.
  *
- * The key fingerprints files by (path, mtime, size) — the same stat-based
- * invalidation the plugin's `parse-source-file` cache uses — rather than
- * content-hashing the whole tree, because statting ~9k files costs
- * ~100-200 ms while hashing them costs seconds. The accepted tradeoff, shared
- * with that precedent: an edit that preserves BOTH a file's byte size and its
- * mtime is invisible to the fingerprint. Additions and deletions always
- * invalidate — the sorted path list itself is part of the hash.
+ * The entry records every analyzed file as (mtime, size, content hash). A
+ * lookup verifies files by stat first — ~100-200 ms to stat ~9k files versus
+ * seconds to hash them — and REPAIRS a stat mismatch by hashing the file's
+ * current content: identical content accepts the entry and refreshes the
+ * stored stat (the ninja/restat pattern), so a fresh CI checkout — where every
+ * mtime is checkout time but content is unchanged — pays the hash once per
+ * checkout, not a full re-analysis (and not once per run). Additions and
+ * deletions always invalidate — path-set equality is checked both ways. The
+ * accepted blind spot, shared with deslop's summary cache: an edit DURING the
+ * analysis that lands between store-time hash and stat re-verification.
  *
  * Every operation fails open: a missing or corrupt cache degrades to a fresh
  * analysis, never to a wrong result.
  */
+
+interface AnalyzedFileStat {
+  readonly mtimeMs: number;
+  readonly size: number;
+}
 
 interface DeadCodeCacheKeyInput {
   /** Canonicalized project root (`checkDeadCode` realpaths it first). */
@@ -47,9 +56,13 @@ interface DeadCodeCacheKeyInput {
   readonly coreVersion: string;
 }
 
+/** Persisted per-file identity: `[mtimeMs, size, contentHash]`. */
+type PersistedFileIdentity = readonly [number, number, string];
+
 interface PersistedDeadCodeResultCache {
   readonly version: number;
   readonly key: string;
+  readonly files: Record<string, PersistedFileIdentity>;
   readonly diagnostics: ReadonlyArray<unknown>;
 }
 
@@ -84,19 +97,26 @@ const isFingerprintedFile = (fileName: string): boolean =>
   ANALYZED_MANIFEST_NAMES.has(fileName) ||
   isTsConfigLikeFile(fileName);
 
-const collectAnalyzedFileFingerprints = (rootDirectory: string): string[] => {
-  const fingerprints: string[] = [];
+/**
+ * Stat snapshot of every file the analysis reads, keyed by root-relative
+ * `/`-separated path. Taken BEFORE the (long) analysis so a stored result is
+ * verified against the tree it started from.
+ */
+export const collectAnalyzedFileStats = (
+  rootDirectory: string,
+): ReadonlyMap<string, AnalyzedFileStat> => {
+  const statByRelativePath = new Map<string, AnalyzedFileStat>();
   for (const { absolutePath, name } of walkSourceTreeFiles(rootDirectory)) {
     if (!isFingerprintedFile(name)) continue;
     try {
       const fileStat = fs.statSync(absolutePath);
       const relativePath = path.relative(rootDirectory, absolutePath).replace(/\\/g, "/");
-      fingerprints.push(`${relativePath}:${fileStat.mtimeMs}:${fileStat.size}`);
+      statByRelativePath.set(relativePath, { mtimeMs: fileStat.mtimeMs, size: fileStat.size });
     } catch {
-      // Vanished between walk and stat — same key contribution as deleted.
+      // Vanished between walk and stat — same contribution as deleted.
     }
   }
-  return fingerprints.sort();
+  return statByRelativePath;
 };
 
 const bundledRequire = createRequire(import.meta.url);
@@ -114,6 +134,9 @@ const resolveDeslopVersion = (): string => {
   }
 };
 
+// Everything that changes what a stored entry MEANS besides the analyzed
+// files themselves, which are carried per-entry (see `files`) so they can be
+// verified — and mtime-repaired — file by file.
 export const computeDeadCodeCacheKey = (input: DeadCodeCacheKeyInput): string =>
   crypto
     .createHash("sha1")
@@ -125,13 +148,12 @@ export const computeDeadCodeCacheKey = (input: DeadCodeCacheKeyInput): string =>
         deslopJsModuleSpecifier: input.deslopJsModuleSpecifier,
         entryPatterns: input.entryPatterns,
         ignorePatterns: input.ignorePatterns,
-        // Which tsconfig filename resolved (its CONTENT rides in the file
-        // fingerprints below; existence/choice is what this captures).
+        // Which tsconfig filename resolved (its CONTENT rides in the per-file
+        // identities; existence/choice is what this captures).
         tsConfigFile:
           input.tsConfigPath === undefined
             ? null
             : path.relative(input.rootDirectory, input.tsConfigPath).replace(/\\/g, "/"),
-        files: collectAnalyzedFileFingerprints(input.rootDirectory),
       }),
     )
     .digest("hex");
@@ -151,34 +173,110 @@ const decodeCachedDiagnostics = (raw: ReadonlyArray<unknown>): ReadonlyArray<Dia
   }
 };
 
+const isPersistedFileIdentity = (value: unknown): value is PersistedFileIdentity =>
+  Array.isArray(value) &&
+  value.length === 3 &&
+  typeof value[0] === "number" &&
+  typeof value[1] === "number" &&
+  typeof value[2] === "string";
+
+export interface DeadCodeResultCacheLookupInput {
+  readonly cacheDirectory: string;
+  readonly cacheKey: string;
+  readonly rootDirectory: string;
+  /** The pre-analysis stat snapshot (`collectAnalyzedFileStats`). */
+  readonly currentFileStats: ReadonlyMap<string, AnalyzedFileStat>;
+}
+
 export const lookupDeadCodeResultCache = (
-  cacheDirectory: string,
-  cacheKey: string,
+  input: DeadCodeResultCacheLookupInput,
 ): ReadonlyArray<Diagnostic> | null => {
-  const persisted = failOpenReadJson<PersistedDeadCodeResultCache | null>(
-    path.join(cacheDirectory, DEAD_CODE_CACHE_FILENAME),
-    null,
-  );
+  const cacheFilePath = path.join(input.cacheDirectory, DEAD_CODE_CACHE_FILENAME);
+  const persisted = failOpenReadJson<PersistedDeadCodeResultCache | null>(cacheFilePath, null);
   if (
     persisted === null ||
     !isRecord(persisted) ||
     persisted.version !== DEAD_CODE_CACHE_SCHEMA_VERSION ||
-    persisted.key !== cacheKey ||
+    persisted.key !== input.cacheKey ||
+    !isRecord(persisted.files) ||
     !Array.isArray(persisted.diagnostics)
   ) {
     return null;
   }
-  return decodeCachedDiagnostics(persisted.diagnostics);
+  const storedFileEntries = Object.entries(persisted.files);
+  // Path-set equality both ways: equal counts plus every stored path present
+  // means neither additions nor deletions can slip through.
+  if (storedFileEntries.length !== input.currentFileStats.size) return null;
+  const repairedFiles: Record<string, PersistedFileIdentity> = {};
+  let repairedCount = 0;
+  for (const [relativePath, storedIdentity] of storedFileEntries) {
+    if (!isPersistedFileIdentity(storedIdentity)) return null;
+    const currentStat = input.currentFileStats.get(relativePath);
+    if (currentStat === undefined) return null;
+    const [storedMtimeMs, storedSize, storedContentHash] = storedIdentity;
+    if (currentStat.mtimeMs === storedMtimeMs && currentStat.size === storedSize) {
+      repairedFiles[relativePath] = storedIdentity;
+      continue;
+    }
+    // A size change is a content change; only a same-size stat mismatch (the
+    // fresh-checkout case) is worth the hash-and-repair read.
+    if (currentStat.size !== storedSize) return null;
+    const currentContentHash = hashFileContents(path.join(input.rootDirectory, relativePath));
+    if (currentContentHash === null || currentContentHash !== storedContentHash) return null;
+    repairedFiles[relativePath] = [currentStat.mtimeMs, currentStat.size, storedContentHash];
+    repairedCount += 1;
+  }
+  const diagnostics = decodeCachedDiagnostics(persisted.diagnostics);
+  if (diagnostics === null) return null;
+  if (repairedCount > 0) {
+    // Persist the refreshed stats so the repair cost is paid once per
+    // checkout: the next lookup takes the stat fast path.
+    atomicWriteJson(cacheFilePath, {
+      version: DEAD_CODE_CACHE_SCHEMA_VERSION,
+      key: input.cacheKey,
+      files: repairedFiles,
+      diagnostics: persisted.diagnostics,
+    });
+  }
+  return diagnostics;
 };
 
-export const storeDeadCodeResultCache = (
-  cacheDirectory: string,
-  cacheKey: string,
-  diagnostics: ReadonlyArray<Diagnostic>,
-): void => {
-  atomicWriteJson(path.join(cacheDirectory, DEAD_CODE_CACHE_FILENAME), {
+export interface DeadCodeResultCacheStoreInput {
+  readonly cacheDirectory: string;
+  readonly cacheKey: string;
+  readonly rootDirectory: string;
+  /** The pre-analysis stat snapshot (`collectAnalyzedFileStats`). */
+  readonly snapshotFileStats: ReadonlyMap<string, AnalyzedFileStat>;
+  readonly diagnostics: ReadonlyArray<Diagnostic>;
+}
+
+export const storeDeadCodeResultCache = (input: DeadCodeResultCacheStoreInput): void => {
+  const persistedFiles: Record<string, PersistedFileIdentity> = {};
+  for (const [relativePath, snapshotStat] of input.snapshotFileStats) {
+    const absolutePath = path.join(input.rootDirectory, relativePath);
+    // Hash first, stat second: a file edited during the analysis either fails
+    // the stat re-verification below (edit before the hash) or changed after
+    // the hash captured it — in which case the recorded hash matches the
+    // pre-edit content and the next lookup misses on it. Either way a racing
+    // edit can't produce a repairable stale entry. (Files added during the
+    // analysis need no handling: they miss the lookup's path-set equality.)
+    const contentHash = hashFileContents(absolutePath);
+    if (contentHash === null) return;
+    let currentStat: fs.Stats;
+    try {
+      currentStat = fs.statSync(absolutePath);
+    } catch {
+      return;
+    }
+    if (currentStat.mtimeMs !== snapshotStat.mtimeMs || currentStat.size !== snapshotStat.size) {
+      return;
+    }
+    persistedFiles[relativePath] = [snapshotStat.mtimeMs, snapshotStat.size, contentHash];
+  }
+  atomicWriteJson(path.join(input.cacheDirectory, DEAD_CODE_CACHE_FILENAME), {
     version: DEAD_CODE_CACHE_SCHEMA_VERSION,
-    key: cacheKey,
-    diagnostics,
+    key: input.cacheKey,
+    files: persistedFiles,
+    diagnostics: input.diagnostics,
   });
 };

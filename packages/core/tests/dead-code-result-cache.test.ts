@@ -6,7 +6,10 @@ import { ANALYZED_MANIFEST_FILENAMES, DEFAULT_EXTENSIONS } from "deslop-js/analy
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic } from "../src/types/index.js";
 import { checkDeadCode } from "../src/check-dead-code.js";
-import { computeDeadCodeCacheKey } from "../src/dead-code/dead-code-result-cache.js";
+import {
+  collectAnalyzedFileStats,
+  computeDeadCodeCacheKey,
+} from "../src/dead-code/dead-code-result-cache.js";
 import { DeadCodeResultCacheEnabled } from "../src/refs.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-dead-code-cache-"));
@@ -90,49 +93,13 @@ describe("computeDeadCodeCacheKey", () => {
     );
   });
 
-  it("changes when a source file is touched (mtime)", () => {
-    const directory = setupProject("key-touch", {
-      "src/index.ts": "export const used = 1;\n",
-    });
-    const keyBefore = computeDeadCodeCacheKey(keyInput(directory));
-    const later = new Date(Date.now() + 5_000);
-    fs.utimesSync(path.join(directory, "src", "index.ts"), later, later);
-    expect(computeDeadCodeCacheKey(keyInput(directory))).not.toBe(keyBefore);
-  });
-
-  it("changes when a source file is added", () => {
-    const directory = setupProject("key-add", {
+  it("is unaffected by file changes (files are verified per-entry, not keyed)", () => {
+    const directory = setupProject("key-file-independent", {
       "src/index.ts": "export const used = 1;\n",
     });
     const keyBefore = computeDeadCodeCacheKey(keyInput(directory));
     fs.writeFileSync(path.join(directory, "src", "added.ts"), "export const added = 1;\n");
-    expect(computeDeadCodeCacheKey(keyInput(directory))).not.toBe(keyBefore);
-  });
-
-  it("changes when a source file is deleted", () => {
-    const directory = setupProject("key-delete", {
-      "src/index.ts": "export const used = 1;\n",
-      "src/doomed.ts": "export const doomed = 1;\n",
-    });
-    const keyBefore = computeDeadCodeCacheKey(keyInput(directory));
-    fs.rmSync(path.join(directory, "src", "doomed.ts"));
-    expect(computeDeadCodeCacheKey(keyInput(directory))).not.toBe(keyBefore);
-  });
-
-  it("changes when a manifest (package.json) changes", () => {
-    const directory = setupProject("key-manifest", {
-      "src/index.ts": "export const used = 1;\n",
-    });
-    const keyBefore = computeDeadCodeCacheKey(keyInput(directory));
-    fs.writeFileSync(
-      path.join(directory, "package.json"),
-      JSON.stringify({
-        name: "key-manifest",
-        type: "module",
-        dependencies: { react: "^19.0.0", "left-pad": "^1.0.0" },
-      }),
-    );
-    expect(computeDeadCodeCacheKey(keyInput(directory))).not.toBe(keyBefore);
+    expect(computeDeadCodeCacheKey(keyInput(directory))).toBe(keyBefore);
   });
 
   it("changes with entry / ignore patterns and the resolved tsconfig", () => {
@@ -154,15 +121,6 @@ describe("computeDeadCodeCacheKey", () => {
     ).not.toBe(baseKey);
   });
 
-  it("ignores files the analysis never reads (scratch text files)", () => {
-    const directory = setupProject("key-scratch", {
-      "src/index.ts": "export const used = 1;\n",
-    });
-    const keyBefore = computeDeadCodeCacheKey(keyInput(directory));
-    fs.writeFileSync(path.join(directory, "scratch.txt"), "not part of the graph\n");
-    expect(computeDeadCodeCacheKey(keyInput(directory))).toBe(keyBefore);
-  });
-
   it("changes when the core package version changes", () => {
     const directory = setupProject("key-core-version", {
       "src/index.ts": "export const used = 1;\n",
@@ -174,32 +132,43 @@ describe("computeDeadCodeCacheKey", () => {
 });
 
 describe("fingerprinted file sets (imported from deslop-js/analyzed-inputs)", () => {
-  it("fingerprints a file for every extension deslop's walk parses", () => {
-    const directory = setupProject("key-extension-coverage", {
+  it("stats a file for every extension deslop's walk parses", () => {
+    const directory = setupProject("stat-extension-coverage", {
       "src/index.ts": "export const used = 1;\n",
     });
-    const keyBefore = computeDeadCodeCacheKey(keyInput(directory));
     for (const extension of DEFAULT_EXTENSIONS) {
       const probePath = path.join(directory, "probe", `probe${extension}`);
       fs.mkdirSync(path.dirname(probePath), { recursive: true });
       fs.writeFileSync(probePath, "probe\n");
-      expect(computeDeadCodeCacheKey(keyInput(directory)), extension).not.toBe(keyBefore);
+      expect(collectAnalyzedFileStats(directory).has(`probe/probe${extension}`), extension).toBe(
+        true,
+      );
       fs.rmSync(probePath);
     }
   });
 
-  it("fingerprints every manifest name deslop's analysis reads", () => {
-    const directory = setupProject("key-manifest-coverage", {
+  it("stats every manifest name deslop's analysis reads", () => {
+    const directory = setupProject("stat-manifest-coverage", {
       "src/index.ts": "export const used = 1;\n",
     });
-    const keyBefore = computeDeadCodeCacheKey(keyInput(directory));
     for (const manifestName of ANALYZED_MANIFEST_FILENAMES) {
       const probePath = path.join(directory, "probe", manifestName);
       fs.mkdirSync(path.dirname(probePath), { recursive: true });
       fs.writeFileSync(probePath, "probe\n");
-      expect(computeDeadCodeCacheKey(keyInput(directory)), manifestName).not.toBe(keyBefore);
+      expect(collectAnalyzedFileStats(directory).has(`probe/${manifestName}`), manifestName).toBe(
+        true,
+      );
       fs.rmSync(probePath);
     }
+  });
+
+  it("ignores files the analysis never reads (scratch text files)", () => {
+    const directory = setupProject("stat-scratch", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    fs.writeFileSync(path.join(directory, "scratch.txt"), "not part of the graph\n");
+    expect(collectAnalyzedFileStats(directory).has("scratch.txt")).toBe(false);
+    expect(collectAnalyzedFileStats(directory).has("src/index.ts")).toBe(true);
   });
 
   // Not a redundant copy: a NEW extension or manifest in a deslop-js upgrade
@@ -277,7 +246,7 @@ describe("checkDeadCode result cache", () => {
     expect(secondRun).toEqual(firstRun);
   });
 
-  it("misses after a source file changes, and re-analyzes", async () => {
+  it("misses after a source file's content changes, and re-analyzes", async () => {
     const directory = setupProject("miss-on-change", {
       "src/index.ts": "export const used = 1;\n",
     });
@@ -293,8 +262,7 @@ describe("checkDeadCode result cache", () => {
       cacheEnabled: true,
       onCacheOutcome,
     });
-    const later = new Date(Date.now() + 5_000);
-    fs.utimesSync(path.join(directory, "src", "index.ts"), later, later);
+    fs.writeFileSync(path.join(directory, "src", "index.ts"), "export const used = 12;\n");
     await checkDeadCode({
       rootDirectory: directory,
       createWorker: spyWorker.factory,
@@ -303,6 +271,106 @@ describe("checkDeadCode result cache", () => {
     });
     expect(spyWorker.callCount()).toBe(2);
     expect(cacheOutcomes).toEqual([false, false]);
+  });
+
+  it("misses when content changes but the byte size is preserved", async () => {
+    const directory = setupProject("miss-on-same-size-change", {
+      "src/index.ts": "export const used = 1;\n",
+    });
+    const spyWorker = createSpyWorker(path.join(directory, "src", "index.ts"));
+    const cacheOutcomes: boolean[] = [];
+
+    await checkDeadCode({
+      rootDirectory: directory,
+      createWorker: spyWorker.factory,
+      cacheEnabled: true,
+      onCacheOutcome: (didHitCache) => {
+        cacheOutcomes.push(didHitCache);
+      },
+    });
+    // Same length, different bytes, and a bumped mtime: the repair path must
+    // reject it on the content hash, not accept it on the size.
+    fs.writeFileSync(path.join(directory, "src", "index.ts"), "export const used = 2;\n");
+    const later = new Date(Date.now() + 5_000);
+    fs.utimesSync(path.join(directory, "src", "index.ts"), later, later);
+    await checkDeadCode({
+      rootDirectory: directory,
+      createWorker: spyWorker.factory,
+      cacheEnabled: true,
+      onCacheOutcome: (didHitCache) => {
+        cacheOutcomes.push(didHitCache);
+      },
+    });
+    expect(spyWorker.callCount()).toBe(2);
+    expect(cacheOutcomes).toEqual([false, false]);
+  });
+
+  it("misses when a file is added or deleted", async () => {
+    const directory = setupProject("miss-on-add-delete", {
+      "src/index.ts": "export const used = 1;\n",
+      "src/doomed.ts": "export const doomed = 1;\n",
+    });
+    const spyWorker = createSpyWorker(path.join(directory, "src", "index.ts"));
+    const cacheOutcomes: boolean[] = [];
+    const runOnce = (): Promise<Diagnostic[]> =>
+      checkDeadCode({
+        rootDirectory: directory,
+        createWorker: spyWorker.factory,
+        cacheEnabled: true,
+        onCacheOutcome: (didHitCache) => {
+          cacheOutcomes.push(didHitCache);
+        },
+      });
+
+    await runOnce();
+    fs.writeFileSync(path.join(directory, "src", "added.ts"), "export const added = 1;\n");
+    await runOnce();
+    fs.rmSync(path.join(directory, "src", "doomed.ts"));
+    await runOnce();
+    expect(spyWorker.callCount()).toBe(3);
+    expect(cacheOutcomes).toEqual([false, false, false]);
+  });
+
+  it("repairs an mtime-only bump over identical content and replays (fresh CI checkout)", async () => {
+    const directory = setupProject("repair-mtime-bump", {
+      "src/index.ts": "export const used = 1;\n",
+      "src/orphan.ts": "export const orphan = 1;\n",
+    });
+    const spyWorker = createSpyWorker(path.join(directory, "src", "orphan.ts"));
+    const cacheOutcomes: boolean[] = [];
+    const runOnce = (): Promise<Diagnostic[]> =>
+      checkDeadCode({
+        rootDirectory: directory,
+        createWorker: spyWorker.factory,
+        cacheEnabled: true,
+        onCacheOutcome: (didHitCache) => {
+          cacheOutcomes.push(didHitCache);
+        },
+      });
+
+    const coldRun = await runOnce();
+
+    // Simulate a fresh checkout: every fingerprinted file's mtime changes,
+    // content stays byte-identical.
+    const bumpedDate = new Date(Date.now() + 60_000);
+    for (const relativePath of collectAnalyzedFileStats(directory).keys()) {
+      fs.utimesSync(path.join(directory, relativePath), bumpedDate, bumpedDate);
+    }
+    const repairedRun = await runOnce();
+    expect(spyWorker.callCount()).toBe(1);
+    expect(cacheOutcomes).toEqual([false, true]);
+    expect(repairedRun).toEqual(coldRun);
+
+    // The repair must persist the refreshed stats so the next lookup takes
+    // the stat fast path (no re-hash, and a hit even if hashing broke).
+    const persisted = JSON.parse(fs.readFileSync(cacheFilePath(directory), "utf8"));
+    const storedIndexEntry = persisted.files["src/index.ts"];
+    expect(storedIndexEntry[0]).toBe(fs.statSync(path.join(directory, "src", "index.ts")).mtimeMs);
+
+    const fastPathRun = await runOnce();
+    expect(spyWorker.callCount()).toBe(1);
+    expect(cacheOutcomes).toEqual([false, true, true]);
+    expect(fastPathRun).toEqual(coldRun);
   });
 
   it("never stores a failed pass", async () => {

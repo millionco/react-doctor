@@ -486,6 +486,68 @@ describe("summary cache", () => {
     assert.ok(unusedExportNames(control).includes("ab"), "an uncached run sees the edit");
   });
 
+  it("repairs a fresh-checkout mtime bump over identical content and persists the refreshed stats", async () => {
+    const workspace = buildFixture();
+    const cold = await scan(workspace, { cached: true });
+
+    // Simulate a fresh CI checkout: every file's mtime is checkout time,
+    // content is byte-identical.
+    const bumpedTime = new Date(Date.now() + 60_000);
+    const bumpTreeMtimes = (directory: string): void => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const entryPath = join(directory, entry.name);
+        if (entry.isDirectory()) bumpTreeMtimes(entryPath);
+        else utimesSync(entryPath, bumpedTime, bumpedTime);
+      }
+    };
+    bumpTreeMtimes(workspace.projectDirectory);
+
+    const repaired = await scan(workspace, { cached: true });
+    assert.deepEqual(
+      repaired.incrementalCacheStats,
+      { summaryHits: 4, summaryMisses: 0 },
+      "every summary must repair-hit, none re-parse",
+    );
+    assert.equal(
+      resultSignature(repaired, workspace.projectDirectory),
+      resultSignature(cold, workspace.projectDirectory),
+    );
+
+    // The repair run persists the refreshed stats, so the next run takes the
+    // stat fast path end to end — nothing dirties, and the save is skipped.
+    const cacheBytesAfterRepair = readFileSync(workspace.cachePath, "utf-8");
+    const cacheMtimeAfterRepair = statSync(workspace.cachePath).mtimeMs;
+    const fastPath = await scan(workspace, { cached: true });
+    assert.deepEqual(fastPath.incrementalCacheStats, { summaryHits: 4, summaryMisses: 0 });
+    assert.equal(readFileSync(workspace.cachePath, "utf-8"), cacheBytesAfterRepair);
+    assert.equal(statSync(workspace.cachePath).mtimeMs, cacheMtimeAfterRepair);
+  });
+
+  it("misses an mtime-bumped file whose content changed at the same byte size", async () => {
+    const workspace = buildFixture();
+    const cold = await scan(workspace, { cached: true });
+    assert.ok(unusedExportNames(cold).includes("staleExport"));
+
+    // Same byte length, different content, new mtime: the repair path must
+    // reject on the content hash and re-parse.
+    const editedPath = join(workspace.projectDirectory, "src/used.ts");
+    writeFileSync(
+      editedPath,
+      readFileSync(editedPath, "utf-8").replace("staleExport", "staleXport2"),
+    );
+    utimesSync(editedPath, new Date(Date.now() + 60_000), new Date(Date.now() + 60_000));
+
+    const warm = await scan(workspace, { cached: true });
+    assert.deepEqual(warm.incrementalCacheStats, { summaryHits: 3, summaryMisses: 1 });
+    assert.ok(unusedExportNames(warm).includes("staleXport2"));
+    assert.ok(!unusedExportNames(warm).includes("staleExport"));
+    const control = await scan(workspace, { cached: false });
+    assert.equal(
+      resultSignature(warm, workspace.projectDirectory),
+      resultSignature(control, workspace.projectDirectory),
+    );
+  });
+
   it("round-trips redundancy findings at full fidelity, and slims them when disabled", async () => {
     const duplicateTypeFiles = {
       "src/shape-a.ts":

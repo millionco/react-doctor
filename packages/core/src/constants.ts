@@ -650,7 +650,10 @@ export const CORE_PACKAGE_VERSION = process.env.REACT_DOCTOR_CORE_VERSION ?? "0.
 // Whole-project dead-code result cache (`dead-code/dead-code-result-cache.ts`).
 // Replays deslop's diagnostics — skipping the analysis worker entirely — when
 // nothing the analysis reads has changed since the stored run.
-export const DEAD_CODE_CACHE_SCHEMA_VERSION = 1;
+// Bumped to 2: entries carry a per-file `files` map (mtime, size, content
+// hash) instead of folding the file stats into the key, so a fresh checkout's
+// bumped mtimes can be repaired against unchanged content.
+export const DEAD_CODE_CACHE_SCHEMA_VERSION = 2;
 
 export const DEAD_CODE_CACHE_FILENAME = "dead-code-cache.json";
 

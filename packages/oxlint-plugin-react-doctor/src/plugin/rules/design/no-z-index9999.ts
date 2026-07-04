@@ -14,6 +14,9 @@ export const noZIndex9999 = defineRule({
   title: "Excessively high z-index",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Default off: subjective design / house-style preference, not a
   // correctness, performance, or accessibility issue. Opt in to enforce it.
   defaultEnabled: false,

@@ -14,6 +14,9 @@ export const renderingHydrationNoFlicker = defineRule({
   title: "useEffect setState flashes on mount",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)` or add `suppressHydrationWarning` to the element",
   create: (context: RuleContext) => ({

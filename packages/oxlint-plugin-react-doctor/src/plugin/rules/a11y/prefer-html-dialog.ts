@@ -71,6 +71,9 @@ export const preferHtmlDialog = defineRule({
   id: "prefer-html-dialog",
   title: "Custom modal instead of dialog",
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     'Replace the wrapper with `<dialog>` and open it with `dialog.showModal()`. For the trigger, prefer `<button commandfor="id" command="show-modal">` (Chrome 135+), or a `useRef` with `dialogRef.current?.showModal()`.',
   create: (context) => ({

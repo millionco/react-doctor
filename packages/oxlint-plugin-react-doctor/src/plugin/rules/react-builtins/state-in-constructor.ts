@@ -71,6 +71,9 @@ export const stateInConstructor = defineRule({
   id: "state-in-constructor",
   title: "State initialized in constructor",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Pure stylistic — class field initializers (`state = {...}`) and
   // explicit constructor assignment are equivalent at runtime. The
   // class-field form is idiomatic modern TypeScript. Default off.

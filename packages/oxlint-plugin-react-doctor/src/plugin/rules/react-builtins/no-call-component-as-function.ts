@@ -78,6 +78,9 @@ export const noCallComponentAsFunction = defineRule({
   id: "no-call-component-as-function",
   title: "Component called as a function",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   // Test/story files routinely call hookless wrapper components as functions
   // and pass the result to `render(...)` — harmless there, and the dominant
   // real-world firing surface (verified via an OSS eval sweep). `test-noise`

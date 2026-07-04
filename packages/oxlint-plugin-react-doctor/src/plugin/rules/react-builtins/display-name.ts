@@ -368,6 +368,9 @@ export const displayName = defineRule({
   id: "display-name",
   title: "Component missing display name",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Minor debug-helper rule — modern bundlers preserve function names
   // so React DevTools shows meaningful names without explicit
   // `displayName` in most cases. Off-by-default in upstream

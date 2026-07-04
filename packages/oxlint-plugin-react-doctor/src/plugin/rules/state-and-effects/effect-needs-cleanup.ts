@@ -213,6 +213,9 @@ export const effectNeedsCleanup = defineRule({
   id: "effect-needs-cleanup",
   title: "Effect subscription or timer never cleaned up",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation:
     "Return a cleanup function that stops the subscription or timer: `return () => target.removeEventListener(name, handler)` for listeners, `return () => clearInterval(id)` or `clearTimeout(id)` for timers, or `return unsubscribe` if the subscribe call already gave you one.",

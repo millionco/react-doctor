@@ -118,6 +118,9 @@ export const nextjsNoUseSearchParamsWithoutSuspense = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Wrap the component using `useSearchParams` in `<Suspense>` so the rest of the page can stay statically rendered.",
   create: (context: RuleContext) => {

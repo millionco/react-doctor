@@ -57,6 +57,9 @@ export const supabaseRlsPolicyRisk = defineRule({
   id: "supabase-rls-policy-risk",
   title: "Permissive Supabase RLS policy",
   severity: "error",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Keep public-read policies explicit, but gate inserts, updates, deletes, and service-role bypasses behind `auth.uid()` plus trusted tenant membership.",
   // Statement-scoped: a `TO service_role` hardening policy in the same file as a

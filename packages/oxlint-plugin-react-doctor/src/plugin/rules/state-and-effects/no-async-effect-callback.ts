@@ -16,6 +16,9 @@ export const noAsyncEffectCallback = defineRule({
   id: "no-async-effect-callback",
   title: "Async effect callback",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Don't make the effect callback `async`. Define an async function inside the effect and call it, then return a real cleanup function if you need one.",
   create: (context) => ({

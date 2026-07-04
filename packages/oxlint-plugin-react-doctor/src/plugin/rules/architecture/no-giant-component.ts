@@ -12,6 +12,9 @@ export const noGiantComponent = defineRule({
   id: "no-giant-component",
   title: "Large component is hard to read and change",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "structural",
   tags: ["test-noise", "react-jsx-only"],
   recommendation:
     "Pull each section into its own component so the parent is easier to read, test, and change.",

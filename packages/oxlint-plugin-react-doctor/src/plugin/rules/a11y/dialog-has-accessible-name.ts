@@ -20,6 +20,9 @@ export const dialogHasAccessibleName = defineRule({
   id: "dialog-has-accessible-name",
   title: "Dialog without accessible name",
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation:
     'Give every `<dialog>` / `role="dialog"` an accessible name with `aria-label` or `aria-labelledby` (referencing the dialog\'s title element).',
   create: (context) => ({

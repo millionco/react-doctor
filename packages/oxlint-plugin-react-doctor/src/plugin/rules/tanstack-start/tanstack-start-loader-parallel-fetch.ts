@@ -70,6 +70,9 @@ export const tanstackStartLoaderParallelFetch = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   category: "Performance",
   recommendation:
     "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` to avoid request waterfalls in route loaders",

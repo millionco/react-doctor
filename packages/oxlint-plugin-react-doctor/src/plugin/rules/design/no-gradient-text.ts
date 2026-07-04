@@ -11,6 +11,9 @@ export const noGradientText = defineRule({
   title: "Gradient text is hard to read",
   tags: ["design", "test-noise"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Default off: subjective design / house-style preference, not a
   // correctness, performance, or accessibility issue. Opt in to enforce it.
   defaultEnabled: false,

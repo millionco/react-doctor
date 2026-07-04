@@ -44,6 +44,9 @@ export const rnListMissingEstimatedItemSize = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Without `estimatedItemSize` the list guesses row height and can flash blank cells on fast scroll. Add `estimatedItemSize={<avg-row-height-in-px>}` so it matches your rows.",
   create: (context: RuleContext) => {

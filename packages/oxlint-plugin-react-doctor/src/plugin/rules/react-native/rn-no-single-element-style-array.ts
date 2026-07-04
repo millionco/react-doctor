@@ -9,6 +9,9 @@ export const rnNoSingleElementStyleArray = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Use `style={value}` instead of `style={[value]}`. A one-item array just adds extra work for nothing.",
   create: (context: RuleContext) => ({

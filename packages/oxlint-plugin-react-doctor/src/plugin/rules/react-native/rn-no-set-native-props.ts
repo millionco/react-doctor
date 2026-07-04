@@ -25,6 +25,9 @@ export const rnNoSetNativeProps = defineRule({
   title: "Imperative setNativeProps (no-op under Fabric)",
   requires: ["react-native"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Drive the prop through React state, an `Animated.Value` (with `useNativeDriver: true`), or a Reanimated shared value. `setNativeProps` is a silent no-op under the New Architecture.",
   create: (context: RuleContext) => ({

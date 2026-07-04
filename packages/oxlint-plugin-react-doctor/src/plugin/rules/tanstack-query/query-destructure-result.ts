@@ -96,6 +96,9 @@ export const queryDestructureResult = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Destructure only the fields you need, like `const { data, isLoading } = useQuery(...)`. Assigning the whole object bypasses TanStack Query's tracked-property optimization and subscribes to every field.",
   create: (context: RuleContext) => ({

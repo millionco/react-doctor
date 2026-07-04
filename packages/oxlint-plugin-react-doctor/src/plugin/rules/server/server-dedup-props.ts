@@ -24,6 +24,9 @@ export const serverDedupProps = defineRule({
   title: "Duplicate data in server props",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Pass the source array once and build the other version on the client. Sending both ships the data twice to the browser.",
   create: (context: RuleContext) => ({

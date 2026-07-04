@@ -60,6 +60,9 @@ export const jsCachePropertyAccess = defineRule({
   title: "Repeated property access in a loop",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Read the value once into a variable at the top of the loop: `const { x, y } = obj.deeply.nested`",
   create: (context: RuleContext) => {

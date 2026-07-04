@@ -157,6 +157,9 @@ export const noEffectEventHandler = defineRule({
   title: "Effect used as an event handler",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move event logic into the handler that starts it so the side effect does not run late after an extra render.",
   create: (context: RuleContext) => {

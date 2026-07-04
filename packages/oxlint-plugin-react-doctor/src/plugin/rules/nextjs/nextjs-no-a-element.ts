@@ -26,6 +26,9 @@ export const nextjsNoAElement = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "`import Link from 'next/link'` for client-side navigation, prefetching, and preserved scroll position",
   create: (context: RuleContext) => ({

@@ -12,6 +12,9 @@ export const rnNoDeprecatedModules = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "These modules were removed from react-native core. Import them from the community package instead.",
   create: (context: RuleContext) => ({

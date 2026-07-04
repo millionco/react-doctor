@@ -80,6 +80,9 @@ export const noJsonParseStringifyClone = defineRule({
   id: "no-json-parse-stringify-clone",
   title: "JSON parse/stringify deep clone",
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Replace `JSON.parse(JSON.stringify(value))` with `structuredClone(value)`. It is faster and preserves Dates, Maps, Sets, and cyclic references.",
   create: (context) => ({

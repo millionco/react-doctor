@@ -184,6 +184,9 @@ export const noPreventDefault = defineRule({
   id: "no-prevent-default",
   title: "preventDefault on a form or link",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation:
     "Use `<form action>` where your framework supports it (it works without JS), or use a `<button>` instead of an `<a>` with preventDefault.",

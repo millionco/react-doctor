@@ -122,6 +122,9 @@ export const noManyBooleanProps = defineRule({
   id: "no-many-boolean-props",
   title: "Boolean prop combinations are hard to test",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "structural",
   tags: ["test-noise", "react-jsx-only"],
   recommendation:
     "Split boolean-heavy APIs into smaller components or named variants so combinations stay testable.",

@@ -29,6 +29,9 @@ export const secretInFallback = defineRule({
   id: "secret-in-fallback",
   title: "Hardcoded secret fallback for env var",
   severity: "error",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Remove the literal fallback and fail closed (throw when the variable is unset). The hardcoded value is a committed secret, and the `??`/`||` default makes the app run with it in any environment that forgot to set the var.",
   scan: scanByPattern({

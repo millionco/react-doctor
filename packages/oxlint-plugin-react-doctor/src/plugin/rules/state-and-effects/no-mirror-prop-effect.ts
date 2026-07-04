@@ -59,6 +59,9 @@ export const noMirrorPropEffect = defineRule({
   title: "Prop mirrored into state via effect",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Delete both the `useState` and the `useEffect` and read the prop directly while rendering. Copying a prop into state shows the old value on the first render before the effect catches up.",
   create: (context: RuleContext) => {

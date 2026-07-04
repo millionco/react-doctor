@@ -152,6 +152,9 @@ export const serverHoistStaticIo = defineRule({
   title: "Static file read on every request",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move the read to module scope so it runs once at load: `const FONT_DATA = await fetch(new URL('./fonts/Inter.ttf', import.meta.url)).then(r => r.arrayBuffer())`.",
   create: (context: RuleContext) => ({

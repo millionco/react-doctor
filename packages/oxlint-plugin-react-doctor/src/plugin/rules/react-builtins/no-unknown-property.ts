@@ -78,6 +78,9 @@ export const noUnknownProperty = defineRule({
   id: "no-unknown-property",
   title: "Unknown DOM property",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use the prop name React expects, like `className`, `htmlFor`, or `tabIndex`, so the attribute is applied correctly.",
   create: (context) => {

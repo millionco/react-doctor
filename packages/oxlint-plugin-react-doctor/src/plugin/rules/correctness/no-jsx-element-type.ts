@@ -42,6 +42,9 @@ export const noJsxElementType = defineRule({
   id: "no-jsx-element-type",
   title: "No JSX.Element",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Replace `JSX.Element` with `React.ReactNode`. `JSX.Element` is too narrow: it excludes `null`, strings, numbers, and fragments that components commonly return.",
   create: (context: RuleContext) => ({

@@ -61,6 +61,9 @@ export const noDirectMutationState = defineRule({
   id: "no-direct-mutation-state",
   title: "Direct mutation of this.state",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Don't change `this.state` by hand. `setState()` overwrites it anyway, so always go through `setState()`.",
   create: (context) => ({

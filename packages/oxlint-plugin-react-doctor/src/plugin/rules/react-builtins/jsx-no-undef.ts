@@ -58,6 +58,9 @@ export const jsxNoUndef = defineRule({
   id: "jsx-no-undef",
   title: "Undefined JSX component",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Import the component or fix the typo so React can resolve the JSX identifier at runtime.",
   create: (context) => ({

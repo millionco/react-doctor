@@ -106,6 +106,9 @@ export const jsAsyncReduceWithoutAwaitedAcc = defineRule({
   id: "js-async-reduce-without-awaited-acc",
   title: "Async reduce drops its accumulator",
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Await the accumulator first: `const acc = await previous; ...; return acc;`. Seed it with `Promise.resolve(initial)` so the first run also gets a Promise",
   create: (context: RuleContext) => ({

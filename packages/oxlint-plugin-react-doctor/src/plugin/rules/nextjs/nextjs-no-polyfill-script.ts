@@ -11,6 +11,9 @@ export const nextjsNoPolyfillScript = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Next.js includes polyfills for fetch, Promise, Object.assign, Array.from, and 50+ others automatically",
   create: (context: RuleContext) => ({

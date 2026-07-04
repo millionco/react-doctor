@@ -67,6 +67,9 @@ export const rnPressableSharedValueMutation = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "This press animation runs on the JS thread, so it can stutter. Wrap it in <GestureDetector gesture={Gesture.Tap()...}> to run it on the UI thread.",
   create: (context: RuleContext) => {

@@ -64,6 +64,9 @@ export const reduxUseselectorReturnsNewCollection = defineRule({
   id: "redux-useselector-returns-new-collection",
   title: "useSelector returns a new collection",
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   category: "Performance",
   disabledBy: ["react-compiler"],
   recommendation:

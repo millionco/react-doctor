@@ -155,6 +155,9 @@ export const serverSequentialIndependentAwait = defineRule({
   id: "server-sequential-independent-await",
   title: "Sequential independent awaits",
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation:
     "These two awaits don't depend on each other. Wrap them in `Promise.all([...])` so they run at the same time.",

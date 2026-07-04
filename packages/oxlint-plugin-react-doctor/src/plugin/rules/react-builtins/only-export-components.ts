@@ -406,6 +406,9 @@ export const onlyExportComponents = defineRule({
   id: "only-export-components",
   title: "Non-component export in component file",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move non-component exports out of component files so Fast Refresh can preserve component state instead of full-reloading.",
   category: "Architecture",

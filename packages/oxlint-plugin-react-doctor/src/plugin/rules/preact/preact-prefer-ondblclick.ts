@@ -28,6 +28,9 @@ export const preactPreferOndblclick = defineRule({
   title: "onDoubleClick instead of onDblClick",
   requires: ["pure-preact"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Rename `onDoubleClick` to `onDblClick` because Preact core listens for the DOM `dblclick` event name and `onDoubleClick` never fires.",
   create: (context) => ({

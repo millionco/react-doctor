@@ -93,6 +93,9 @@ export const noEffectEventInDeps = defineRule({
   title: "Effect Event listed in effect deps",
   tags: ["test-noise"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Call the useEffectEvent function inside the effect body and don't list it in the deps. It changes on every render on purpose.",
   create: (context: RuleContext) => {

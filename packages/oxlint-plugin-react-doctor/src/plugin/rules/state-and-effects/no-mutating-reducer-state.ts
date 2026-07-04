@@ -805,6 +805,9 @@ export const noMutatingReducerState = defineRule({
   id: "no-mutating-reducer-state",
   title: "Reducer mutates its state",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Return a new state object from the reducer instead of changing the old one and returning it. React only notices the change when the object is new.",
   create: (context: RuleContext) => {

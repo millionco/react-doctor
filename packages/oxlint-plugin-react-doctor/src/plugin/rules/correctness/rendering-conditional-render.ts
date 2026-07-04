@@ -24,6 +24,9 @@ export const renderingConditionalRender = defineRule({
   id: "rendering-conditional-render",
   title: "Number before && renders stray 0",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `{items.length > 0 && <List />}`, or a ternary like `{items.length ? <List /> : null}`.",
   create: (context: RuleContext) => ({

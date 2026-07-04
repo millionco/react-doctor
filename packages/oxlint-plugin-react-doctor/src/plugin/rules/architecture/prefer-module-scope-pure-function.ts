@@ -76,6 +76,9 @@ export const preferModuleScopePureFunction = defineRule({
   title: "Pure function rebuilt every render",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "structural",
   category: "Architecture",
   recommendation:
     "Move the function above the component, at the top of the file. It doesn't use local state, so rebuilding it each update is wasted work.",

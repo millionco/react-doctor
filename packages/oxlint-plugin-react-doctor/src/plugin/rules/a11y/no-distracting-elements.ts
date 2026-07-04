@@ -32,6 +32,9 @@ export const noDistractingElements = defineRule({
   title: "Distracting marquee or blink element",
   tags: ["react-jsx-only"],
   severity: "error",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Replace `<marquee>` and `<blink>` with normal markup so motion does not distract or disorient users.",
   category: "Accessibility",

@@ -11,6 +11,9 @@ export const queryNoVoidQueryFn = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "queryFn must return a value for the cache. Use the `enabled` option to conditionally disable the query instead of returning undefined",
   create: (context: RuleContext) => ({

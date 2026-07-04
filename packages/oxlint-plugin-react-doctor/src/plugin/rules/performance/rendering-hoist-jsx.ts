@@ -49,6 +49,9 @@ export const renderingHoistJsx = defineRule({
   title: "Constant JSX rebuilt each render",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move the static JSX out to the top of the file: `const ICON = <svg>...</svg>`, so it isn't rebuilt on every render",
   create: (context: RuleContext) => {

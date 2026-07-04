@@ -10,6 +10,9 @@ export const renderingAnimateSvgWrapper = defineRule({
   title: "Animating an SVG directly",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Wrap the SVG in a motion element so animation props apply to a stable wrapper instead of the SVG node itself.",
   create: (context: RuleContext) => ({

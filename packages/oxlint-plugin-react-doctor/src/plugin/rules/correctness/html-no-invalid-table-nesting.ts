@@ -119,6 +119,9 @@ export const htmlNoInvalidTableNesting = defineRule({
   id: "html-no-invalid-table-nesting",
   title: "Invalid table element nesting",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Put each table element in its required parent: `<thead>`/`<tbody>`/`<tfoot>` directly inside `<table>`, `<tr>` inside a row group, `<td>`/`<th>` inside `<tr>`. Browsers quietly fix broken table markup, so write it to spec.",
   create: (context) => ({

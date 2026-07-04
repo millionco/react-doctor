@@ -120,6 +120,9 @@ export const mediaHasCaption = defineRule({
   title: "Media missing captions",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: 'Add `<track kind="captions">` inside every `<audio>` / `<video>`.',
   category: "Accessibility",
   create: (context) => {

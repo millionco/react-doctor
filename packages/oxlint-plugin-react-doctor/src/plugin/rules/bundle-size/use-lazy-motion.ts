@@ -11,6 +11,9 @@ export const useLazyMotion = defineRule({
   title: "Full Framer Motion import",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     'Use `import { LazyMotion, m } from "framer-motion"` with `domAnimation` features. Saves about 30kb.',
   create: (context: RuleContext) => ({

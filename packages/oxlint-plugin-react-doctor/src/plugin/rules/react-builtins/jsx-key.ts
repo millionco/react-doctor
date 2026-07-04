@@ -301,6 +301,9 @@ export const jsxKey = defineRule({
   id: "jsx-key",
   title: "Missing key in list",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Add a stable `key` prop so React can keep list items matched to the right data when the list changes.",
   create: (context) => {

@@ -56,6 +56,9 @@ export const rnScrollviewDynamicPadding = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `contentInset={{ bottom: dynamicValue }}` so the OS shifts the content instead of relaying it out, which avoids the jump.",
   create: (context: RuleContext) => ({

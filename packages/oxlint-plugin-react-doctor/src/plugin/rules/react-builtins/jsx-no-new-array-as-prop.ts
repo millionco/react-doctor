@@ -138,6 +138,9 @@ export const jsxNoNewArrayAsProp = defineRule({
   title: "New array passed as a prop",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   // React Compiler auto-memoizes prop allocations. The perf footgun this
   // rule guards against doesn't exist in compiler-enabled projects.
   disabledBy: ["react-compiler"],

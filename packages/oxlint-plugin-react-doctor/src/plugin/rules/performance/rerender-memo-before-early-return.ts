@@ -99,6 +99,9 @@ export const rerenderMemoBeforeEarlyReturn = defineRule({
   title: "useMemo before an early return",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move the JSX into a child component wrapped in memo, so the parent's early return skips it",
   create: (context: RuleContext) => {

@@ -72,6 +72,9 @@ export const jsxNoCommentTextnodes = defineRule({
   id: "jsx-no-comment-textnodes",
   title: "Comment rendered as JSX text",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Wrap JSX comments in `{/* … */}` so users do not see comment text rendered as children.",
   create: (context) => ({

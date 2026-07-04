@@ -103,6 +103,9 @@ export const anchorAmbiguousText = defineRule({
   title: "Ambiguous link text",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: "Name where a link goes. Avoid 'click here', 'learn more', and 'link'.",
   category: "Accessibility",
   create: (context) => {

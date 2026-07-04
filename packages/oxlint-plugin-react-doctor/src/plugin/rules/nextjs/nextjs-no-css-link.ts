@@ -11,6 +11,9 @@ export const nextjsNoCssLink = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Import CSS directly or use CSS Modules so Next.js can bundle, order, and optimize the stylesheet.",
   create: (context: RuleContext) => ({

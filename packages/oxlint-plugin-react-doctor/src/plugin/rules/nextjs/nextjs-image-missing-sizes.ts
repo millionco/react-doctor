@@ -28,6 +28,9 @@ export const nextjsImageMissingSizes = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Add `sizes` matching your layout so `next/image` does not assume the largest candidate and make users download oversized images.",
   create: (context: RuleContext) => ({

@@ -260,6 +260,9 @@ export const jsCombineIterations = defineRule({
   title: "Chained array iterations",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Combine `.map().filter()` style chains into one pass with `.reduce()` or a `for...of` loop, so you only loop over the list once",
   create: (context: RuleContext) => {

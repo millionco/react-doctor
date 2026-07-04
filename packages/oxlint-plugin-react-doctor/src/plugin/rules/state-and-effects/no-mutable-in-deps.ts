@@ -100,6 +100,9 @@ export const noMutableInDeps = defineRule({
   id: "no-mutable-in-deps",
   title: "Mutable value in effect dependencies",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Read mutable values like `location.pathname` or `ref.current` inside the effect body, or subscribe with `useSyncExternalStore`. Changing them doesn't redraw the screen, so listing them in deps won't make the effect run again.",
   create: (context: RuleContext) => {

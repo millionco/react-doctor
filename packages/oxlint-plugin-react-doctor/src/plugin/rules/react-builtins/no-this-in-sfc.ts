@@ -126,6 +126,9 @@ export const noThisInSfc = defineRule({
   id: "no-this-in-sfc",
   title: "this used in function component",
   severity: "warn",
+  impact: "behavior",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Read from the `props` argument because function components do not have a React instance `this`.",
   create: (context) => {

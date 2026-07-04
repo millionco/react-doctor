@@ -33,6 +33,9 @@ export const noGrayOnColoredBackground = defineRule({
   title: "Gray text on colored background",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   category: "Accessibility",
   recommendation:
     "Use white or near-white text, or a darker shade of the background color. Gray text on colored backgrounds looks washed out.",

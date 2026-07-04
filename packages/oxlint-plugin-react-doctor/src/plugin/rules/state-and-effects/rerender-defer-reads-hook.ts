@@ -53,6 +53,9 @@ export const rerenderDeferReadsHook = defineRule({
   title: "URL hook value only read in handlers",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   category: "Performance",
   recommendation:
     "Read the URL inside the handler (e.g. `new URL(window.location.href).searchParams`) so the component doesn't redraw every time the URL changes.",

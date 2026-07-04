@@ -70,6 +70,9 @@ export const tanstackStartMissingHeadContent = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Add `<HeadContent />` inside `<head>` in your __root route. Without it, route `head()` meta tags are dropped.",
   create: (context: RuleContext): RuleVisitors => {

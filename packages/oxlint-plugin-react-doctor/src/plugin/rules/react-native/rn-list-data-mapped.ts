@@ -142,6 +142,9 @@ export const rnListDataMapped = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "This builds a new array each time the parent redraws, so every row redraws too. Wrap it in `useMemo(() => items.map(...), [items])` to keep the same array.",
   create: (context: RuleContext) => ({

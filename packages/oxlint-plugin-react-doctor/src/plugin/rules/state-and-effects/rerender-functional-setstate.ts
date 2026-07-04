@@ -94,6 +94,9 @@ export const rerenderFunctionalSetstate = defineRule({
   id: "rerender-functional-setstate",
   title: "setState reads a stale value",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   category: "Performance",
   recommendation:

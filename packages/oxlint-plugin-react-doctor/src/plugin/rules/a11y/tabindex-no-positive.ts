@@ -15,6 +15,9 @@ export const tabindexNoPositive = defineRule({
   title: "Positive tabindex value",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `tabIndex={0}` (focusable in source order) or `tabIndex={-1}` (focus only in code).",
   category: "Accessibility",

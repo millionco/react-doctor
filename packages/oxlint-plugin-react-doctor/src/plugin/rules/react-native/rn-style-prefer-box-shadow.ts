@@ -37,6 +37,9 @@ export const rnStylePreferBoxShadow = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     'These shadow keys only work on one platform. On RN v7+, use the CSS `boxShadow` string instead, like `boxShadow: "0 2px 8px rgba(0,0,0,0.1)"`, which works on both.',
   create: (context: RuleContext) => ({

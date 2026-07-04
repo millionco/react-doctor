@@ -38,6 +38,9 @@ export const jsCacheStorage = defineRule({
   title: "Repeated localStorage reads",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Read `localStorage`/`sessionStorage` once and reuse the value. Every read has to parse the data again, which is slow",
   create: (context: RuleContext) => {

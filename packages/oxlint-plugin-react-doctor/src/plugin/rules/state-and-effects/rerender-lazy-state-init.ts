@@ -11,6 +11,9 @@ export const rerenderLazyStateInit = defineRule({
   title: "State initializer runs on every render",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   category: "Performance",
   recommendation:
     "Wrap expensive initial state in an arrow function so the initializer does not rerun and get thrown away on every render.",

@@ -16,6 +16,9 @@ export const queryNoQueryInEffect = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `queryKey` changes or `enabled` so React Query schedules the fetch once instead of refetching again from `useEffect`.",
   create: (context: RuleContext) => ({

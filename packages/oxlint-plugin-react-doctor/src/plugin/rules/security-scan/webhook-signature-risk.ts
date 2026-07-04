@@ -53,6 +53,9 @@ export const webhookSignatureRisk = defineRule({
   id: "webhook-signature-risk",
   title: "Webhook handler lacks signature verification",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Verify provider signatures before parsing or acting on webhook bodies. Use provider SDK helpers or HMAC verification with timing-safe comparison.",
   scan: scanByPattern({

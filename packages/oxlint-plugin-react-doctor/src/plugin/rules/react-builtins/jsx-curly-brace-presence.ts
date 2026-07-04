@@ -168,6 +168,9 @@ export const jsxCurlyBracePresence = defineRule({
   id: "jsx-curly-brace-presence",
   title: "Unnecessary curly braces in JSX",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Pure stylistic rule — `{'string'}` vs `"string"` is a formatter
   // concern, not a bug class. Default off.
   defaultEnabled: false,

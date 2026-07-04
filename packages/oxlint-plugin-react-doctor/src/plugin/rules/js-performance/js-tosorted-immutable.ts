@@ -79,6 +79,9 @@ export const jsTosortedImmutable = defineRule({
   title: "Spread copy before sort()",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "mechanical",
   // Hermes (the default React Native / Expo JS engine) hasn't shipped
   // the ES2023 change-array-by-copy methods, so `array.toSorted()`
   // throws `undefined is not a function` at runtime. Recommending it in

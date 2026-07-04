@@ -75,6 +75,9 @@ export const reactCompilerDestructureMethod = defineRule({
   title: "Hook method called without destructuring",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "structural",
   recommendation:
     "Pull the method out first: `const { push } = useRouter()`, then call `push(...)` directly. It's clearer and easier for React Compiler to optimize.",
   create: (context: RuleContext) => {

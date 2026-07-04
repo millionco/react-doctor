@@ -6,6 +6,9 @@ export const artifactSecretLeak = defineRule({
   id: "artifact-secret-leak",
   title: "Secret shipped in browser artifact",
   severity: "error",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Remove the secret from client bundles/static assets, rotate it, and route privileged service calls through server-only code.",
   scan: (file) =>

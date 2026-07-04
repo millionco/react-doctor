@@ -48,6 +48,9 @@ export const serverAfterNonblocking = defineRule({
   title: "Blocking side effect before response",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "`import { after } from 'next/server'`, then wrap it: `after(() => analytics.track(...))`. The response sends right away.",
   create: (context: RuleContext) => {

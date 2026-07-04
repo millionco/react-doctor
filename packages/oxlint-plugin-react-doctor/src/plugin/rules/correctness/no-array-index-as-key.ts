@@ -531,6 +531,9 @@ export const noArrayIndexAsKey = defineRule({
   id: "no-array-index-as-key",
   title: "Array index used as a key",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Use a stable id from the item, like `key={item.id}` or `key={item.slug}`. Index keys break when the list reorders or filters.",
   create: (context: RuleContext) => ({

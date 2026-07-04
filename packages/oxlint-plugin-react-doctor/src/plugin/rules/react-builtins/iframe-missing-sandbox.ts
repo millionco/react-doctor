@@ -74,6 +74,9 @@ export const iframeMissingSandbox = defineRule({
   id: "iframe-missing-sandbox",
   title: "iframe missing sandbox attribute",
   severity: "warn",
+  impact: "security",
+  confidence: "high",
+  fix: "local",
   recommendation:
     'Add `sandbox=""` or a curated value so embedded pages cannot get full access to your site by default.',
   category: "Security",

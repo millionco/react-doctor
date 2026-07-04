@@ -27,6 +27,9 @@ export const noDynamicImportPath = defineRule({
   title: "Non-static dynamic import path",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use a plain string path: `import('./feature/heavy.js')` so the bundler can split this into its own chunk.",
   create: (context: RuleContext) => ({

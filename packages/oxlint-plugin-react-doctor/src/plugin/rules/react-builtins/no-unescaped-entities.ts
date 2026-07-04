@@ -19,6 +19,9 @@ export const noUnescapedEntities = defineRule({
   id: "no-unescaped-entities",
   title: "Unescaped entities in JSX",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Pure stylistic rule — replacing `'` with `&apos;` etc. is a
   // cosmetic preference that doesn't catch bugs (modern JSX
   // compilers + browsers handle bare entities fine). Default off.

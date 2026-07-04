@@ -169,6 +169,9 @@ export const zodV4NoDeprecatedSchemaApis = defineRule({
   requires: ["zod:4"],
   tags: ["migration-hint"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Switch to the Zod 4 versions: top-level factories like `z.enum()`, object helpers like `z.strictObject()`, the new `z.function({ input, output })` form, and explicit key/value schemas for `z.record()`.",
   create: (context: RuleContext) => {

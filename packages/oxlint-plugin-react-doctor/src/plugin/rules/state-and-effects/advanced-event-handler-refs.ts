@@ -80,6 +80,9 @@ export const advancedEventHandlerRefs = defineRule({
   title: "Listener re-subscribes on every handler change",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   category: "Performance",
   recommendation:
     "Store the handler in a ref and have the listener read `handlerRef.current()`. The subscription stays put while the latest handler still runs.",

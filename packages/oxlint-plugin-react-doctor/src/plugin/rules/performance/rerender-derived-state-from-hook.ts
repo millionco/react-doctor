@@ -113,6 +113,9 @@ export const rerenderDerivedStateFromHook = defineRule({
   title: "Continuous hook value over-renders",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     'Use a threshold hook like `useMediaQuery("(max-width: 767px)")`, so the screen only redraws when the answer changes, not on every pixel',
   create: (context: RuleContext) => {

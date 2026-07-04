@@ -51,6 +51,9 @@ export const renderingSvgPrecision = defineRule({
   id: "rendering-svg-precision",
   title: "Overly precise SVG path values",
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   category: "Performance",
   tags: ["test-noise"],
   recommendation:

@@ -19,6 +19,9 @@ export const noSyncXhr = defineRule({
   id: "no-sync-xhr",
   title: "Synchronous XMLHttpRequest",
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Never open an XMLHttpRequest synchronously (`async` = `false`). It blocks the main thread. Use `fetch()` or pass `true` and handle the response asynchronously.",
   create: (context: RuleContext) => ({

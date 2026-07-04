@@ -11,6 +11,9 @@ export const nextjsNoImgElement = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `next/image` so users get optimized formats, responsive srcsets, and lazy loading instead of oversized image downloads.",
   create: (context: RuleContext): RuleVisitors => {

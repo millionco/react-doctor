@@ -37,6 +37,9 @@ export const headingHasContent = defineRule({
   title: "Heading has no content",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: "Put readable text in every heading.",
   category: "Accessibility",
   create: (context) => {

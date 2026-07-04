@@ -11,6 +11,9 @@ export const rerenderMemoWithDefaultValue = defineRule({
   title: "Empty default prop breaks memo",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move it to the top of the file: `const EMPTY_ITEMS: Item[] = []`, then use that as the default value",
   create: (context: RuleContext) => {

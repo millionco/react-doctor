@@ -33,6 +33,9 @@ export const untrustedRedirectFollowing = defineRule({
   id: "untrusted-redirect-following",
   title: "Server fetch follows redirects for caller-shaped URL",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     'Use `redirect: "manual"` or equivalent and re-validate every redirect target before following it to avoid SSRF redirect bypasses.',
   scan: (file) => {

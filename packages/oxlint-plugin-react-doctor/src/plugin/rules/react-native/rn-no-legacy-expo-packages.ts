@@ -10,6 +10,9 @@ export const rnNoLegacyExpoPackages = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Switch to the maintained replacement package so users are not stuck with unfixed bugs in deprecated Expo packages.",
   create: (context: RuleContext) => ({

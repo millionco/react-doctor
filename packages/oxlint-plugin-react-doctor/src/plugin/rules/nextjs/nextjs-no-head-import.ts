@@ -9,6 +9,9 @@ export const nextjsNoHeadImport = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use the Metadata API because `next/head` is ignored in the App Router and meta tags will not render.",
   create: (context: RuleContext) => ({

@@ -82,6 +82,9 @@ export const reactCompilerNoManualMemoization = defineRule({
   // it ships as a warning (hidden in the default report). Opt back into
   // errors with the `compiler-cleanup` severity bucket.
   severity: "warn",
+  impact: "style",
+  confidence: "heuristic",
+  fix: "structural",
   requires: ["react-compiler"],
   recommendation:
     "Delete the `useMemo` / `useCallback` / `memo` call and use the plain value or component. React Compiler caches it for you.",

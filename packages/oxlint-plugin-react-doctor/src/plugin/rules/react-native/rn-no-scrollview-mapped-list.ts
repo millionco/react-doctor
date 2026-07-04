@@ -39,6 +39,9 @@ export const rnNoScrollviewMappedList = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "structural",
   recommendation:
     "`<ScrollView>{items.map(...)}</ScrollView>` builds every row at once, which slows scrolling. Use FlashList, LegendList, or FlatList instead.",
   create: (context: RuleContext) => ({

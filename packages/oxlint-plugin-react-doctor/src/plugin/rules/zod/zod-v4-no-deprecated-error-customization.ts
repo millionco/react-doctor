@@ -93,6 +93,9 @@ export const zodV4NoDeprecatedErrorCustomization = defineRule({
   requires: ["zod:4"],
   tags: ["migration-hint"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "In Zod 4, use the single `{ error }` option instead of message strings, `invalid_type_error`, `required_error`, or `errorMap`.",
   create: (context: RuleContext) => ({

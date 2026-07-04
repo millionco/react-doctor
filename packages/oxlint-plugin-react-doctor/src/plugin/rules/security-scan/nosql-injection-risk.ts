@@ -10,6 +10,9 @@ export const nosqlInjectionRisk = defineRule({
   id: "nosql-injection-risk",
   title: "NoSQL query accepts operator-shaped input",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Coerce scalar fields before querying, reject operator keys from client input, and avoid `$where` or request-derived regexes.",
   scan: scanByPattern({

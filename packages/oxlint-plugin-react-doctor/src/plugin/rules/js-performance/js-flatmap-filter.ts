@@ -10,6 +10,9 @@ export const jsFlatmapFilter = defineRule({
   title: ".map().filter(Boolean) loops twice",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `.flatMap(item => condition ? [value] : [])` to change and drop items in one pass, instead of building a throwaway array in between",
   create: (context: RuleContext) => ({

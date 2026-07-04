@@ -31,6 +31,9 @@ export const noReact19DeprecatedApis = defineRule({
   // BOTH tags — migration-hint wins, see no-react-dom-deprecated-apis.
   tags: ["test-noise", "migration-hint"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "structural",
   recommendation:
     "Pass `ref` as a normal prop on function components, since `forwardRef` isn't needed in React 19. Replace `useContext(X)` with `use(X)`. Only runs on React 19+ projects.",
   ...createDeprecatedReactImportRule({

@@ -23,6 +23,9 @@ export const artifactBaasAuthoritySurface = defineRule({
   id: "artifact-baas-authority-surface",
   title: "BaaS authority map shipped in browser artifact",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Client BaaS config is often public, but shipped collection names plus owner, role, tenant, or admin fields give attackers a precise authorization map. Verify rules/RLS enforce every boundary server-side.",
   scan: scanByPattern({

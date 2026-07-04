@@ -68,6 +68,9 @@ export const noCreateContextInRender = defineRule({
   id: "no-create-context-in-render",
   title: "createContext called during render",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   category: "Correctness",
   recommendation:
     "Move `createContext(...)` outside the component, to the top level of the file, so it stays the same on every render.",

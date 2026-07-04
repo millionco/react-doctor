@@ -67,6 +67,9 @@ export const noStaticElementInteractions = defineRule({
   title: "Interaction on static element",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: "Give clickable static elements a `role`, or use a button or link.",
   category: "Accessibility",
   create: (context) => {

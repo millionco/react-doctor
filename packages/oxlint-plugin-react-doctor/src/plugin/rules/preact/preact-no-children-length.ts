@@ -194,6 +194,9 @@ export const preactNoChildrenLength = defineRule({
   title: "Array methods on Preact children can crash",
   requires: ["preact"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Wrap with `toChildArray(children)` because Preact's `props.children` is not always an array and array methods can crash.",
   create: (context) => ({

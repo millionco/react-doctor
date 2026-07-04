@@ -360,6 +360,9 @@ export const controlHasAssociatedLabel = defineRule({
   title: "Control missing accessible label",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: "Give every interactive control a label screen readers can read.",
   category: "Accessibility",
   create: (context) => {

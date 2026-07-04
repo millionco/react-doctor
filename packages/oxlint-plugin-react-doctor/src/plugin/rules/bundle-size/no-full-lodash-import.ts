@@ -8,6 +8,9 @@ export const noFullLodashImport = defineRule({
   title: "Full lodash import",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Import just the function you need: `import debounce from 'lodash/debounce'`. Saves about 70kb.",
   create: (context: RuleContext) => ({

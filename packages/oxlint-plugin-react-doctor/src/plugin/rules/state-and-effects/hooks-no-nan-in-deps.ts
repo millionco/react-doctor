@@ -61,6 +61,9 @@ export const hooksNoNanInDeps = defineRule({
   id: "hooks-no-nan-in-deps",
   title: "NaN in a hook dependency array",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Remove `NaN` (or `Number.NaN`) from the dependency array. If a value can be NaN at runtime, normalise it (`Number.isNaN(x) ? 0 : x`) before passing it.",
   create: (context) => ({

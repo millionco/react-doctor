@@ -22,6 +22,9 @@ export const noCreateRefInFunctionComponent = defineRule({
   id: "no-create-ref-in-function-component",
   title: "createRef in function component",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Replace `createRef()` with the `useRef()` hook inside function components and hooks. `createRef` is only for class components.",
   create: (context) => ({

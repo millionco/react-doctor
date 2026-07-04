@@ -110,6 +110,9 @@ export const noDerivedState = defineRule({
   id: "no-derived-state",
   title: "Derived value copied into state",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "structural",
   tags: ["test-noise"],
   recommendation:
     "Work out the value while rendering (or with useMemo if it's expensive) instead of copying it into useState through a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#updating-state-based-on-props-or-state",

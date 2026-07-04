@@ -11,6 +11,9 @@ export const nextjsInlineScriptMissingId = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     'Add `id="descriptive-name"` so Next.js can track, deduplicate, and re-execute the script correctly',
   create: (context: RuleContext) => ({

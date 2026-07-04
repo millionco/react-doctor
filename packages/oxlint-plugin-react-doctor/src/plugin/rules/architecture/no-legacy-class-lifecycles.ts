@@ -58,6 +58,9 @@ export const noLegacyClassLifecycles = defineRule({
   id: "no-legacy-class-lifecycles",
   title: "Legacy class lifecycle methods",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "structural",
   category: "Correctness",
   // Matches purely on the class-member NAME (`componentWillMount`, …) with
   // no React-import/component guard, so on a non-React project an ordinary

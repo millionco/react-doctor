@@ -8,6 +8,9 @@ export const noMoment = defineRule({
   title: "Using moment.js",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Switch to `import { format } from 'date-fns'` or `import dayjs from 'dayjs'` (2kb).",
   create: (context: RuleContext) => ({

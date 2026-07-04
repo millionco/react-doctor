@@ -84,6 +84,9 @@ export const noReactDomDeprecatedApis = defineRule({
   // surface) while keeping the rule self-documenting as test-noisy.
   tags: ["test-noise", "migration-hint"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "structural",
   recommendation:
     "Switch the old `react-dom` root API (`render` / `hydrate` / `unmountComponentAtNode`) to `createRoot` / `hydrateRoot` / `root.unmount()` from `react-dom/client`. Replace `findDOMNode` with a ref. `react-dom/test-utils` is gone in React 19, so use `act` from `react` and `fireEvent` / `render` from `@testing-library/react`. Only runs on React 18+ projects.",
   ...createDeprecatedReactImportRule({

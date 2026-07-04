@@ -46,6 +46,9 @@ export const mouseEventsHaveKeyEvents = defineRule({
   title: "Mouse handler missing focus handler",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: "Pair mouse events with keyboard ones so keyboard users are not left out.",
   category: "Accessibility",
   create: (context) => {

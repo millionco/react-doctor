@@ -744,6 +744,9 @@ export const exhaustiveDeps = defineRule({
   id: "exhaustive-deps",
   title: "Missing effect dependencies",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation: `Don't blindly add missing dependencies. Read the hook callback first.
 

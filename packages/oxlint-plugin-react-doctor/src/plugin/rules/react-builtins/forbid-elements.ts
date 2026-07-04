@@ -47,6 +47,9 @@ export const forbidElements = defineRule({
   id: "forbid-elements",
   title: "Blocked element bypasses approved UI primitives",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   recommendation: "Configure blocked elements so code stays on the approved UI primitives.",
   category: "Architecture",
   create: (context) => {

@@ -42,6 +42,9 @@ export const noLegacyContextApi = defineRule({
   id: "no-legacy-context-api",
   title: "Legacy context API",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "structural",
   category: "Correctness",
   // Matches purely on the member NAME (`contextTypes`, `getChildContext`,
   // `childContextTypes`) with no React guard, so a same-named method on a

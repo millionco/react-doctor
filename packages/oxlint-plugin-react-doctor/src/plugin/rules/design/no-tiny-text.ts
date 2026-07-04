@@ -11,6 +11,9 @@ export const noTinyText = defineRule({
   id: "no-tiny-text",
   title: "Text is too small",
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   category: "Accessibility",
   recommendation:

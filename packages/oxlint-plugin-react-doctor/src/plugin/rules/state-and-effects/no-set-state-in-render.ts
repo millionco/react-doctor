@@ -38,6 +38,9 @@ export const noSetStateInRender = defineRule({
   id: "no-set-state-in-render",
   title: "setState called during render",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move the setter into a `useEffect` or an event handler, or compute the value while rendering. Calling a setter during render starts another render that calls it again, looping forever.",
   create: (context: RuleContext) => {

@@ -115,6 +115,9 @@ export const rnNoDeepImports = defineRule({
   title: "Deep import into react-native internals",
   requires: ["react-native"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Import the symbol from `react-native` (the package root) instead of the deprecated `react-native/Libraries/...` subpath, which RFC 0894 removes on upgrade.",
   create: (context: RuleContext) => {

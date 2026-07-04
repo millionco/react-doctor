@@ -42,6 +42,9 @@ export const jsxBooleanValue = defineRule({
   id: "jsx-boolean-value",
   title: "Inconsistent boolean prop notation",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Pure stylistic rule — `attr={true}` vs `attr` is a formatter
   // concern, not a bug class. Default off.
   defaultEnabled: false,

@@ -8,6 +8,9 @@ export const artifactEnvLeak = defineRule({
   id: "artifact-env-leak",
   title: "Server env leaked to browser artifact",
   severity: "error",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Treat public env prefixes as publication, not secrecy; keep secret env vars server-only and rebuild after rotating leaked keys.",
   scan: (file) =>

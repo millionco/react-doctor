@@ -73,6 +73,9 @@ export const noPropTypes = defineRule({
   requires: ["react:19"],
   tags: ["test-noise"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "structural",
   // Default off: `propTypes` are dead in a TypeScript codebase, where types
   // are the source of truth. Opt in to enforce it.
   defaultEnabled: false,

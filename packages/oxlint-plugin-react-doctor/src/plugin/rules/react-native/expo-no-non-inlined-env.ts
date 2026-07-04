@@ -51,6 +51,9 @@ export const expoNoNonInlinedEnv = defineRule({
   title: "Non-inlinable process.env access (Expo)",
   requires: ["expo"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Read env vars with static dotted access (`process.env.EXPO_PUBLIC_NAME`). Computed access and destructuring aren't inlined by babel-preset-expo and resolve to `undefined` at runtime.",
   create: (context: RuleContext) => {

@@ -28,6 +28,9 @@ export const noLayoutPropertyAnimation = defineRule({
   title: "Animating a layout property",
   tags: ["test-noise"],
   severity: "error",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `transform: translateX()` or `scale()` instead. They animate smoothly without making the browser redo layout or repaint",
   create: (context: RuleContext) => ({

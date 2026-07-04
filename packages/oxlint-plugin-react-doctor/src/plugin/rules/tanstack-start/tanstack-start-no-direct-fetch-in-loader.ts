@@ -13,6 +13,9 @@ export const tanstackStartNoDirectFetchInLoader = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `createServerFn()` from @tanstack/react-start for type-safe RPC, input validation, and proper server/client code splitting",
   create: (context: RuleContext) => ({

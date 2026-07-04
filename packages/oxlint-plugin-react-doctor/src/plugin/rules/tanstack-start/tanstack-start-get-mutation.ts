@@ -14,6 +14,9 @@ export const tanstackStartGetMutation = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
+  impact: "security",
+  confidence: "high",
+  fix: "local",
   category: "Security",
   recommendation:
     "Use `createServerFn({ method: 'POST' })` for data changes. GET requests can be prefetched and are open to CSRF.",

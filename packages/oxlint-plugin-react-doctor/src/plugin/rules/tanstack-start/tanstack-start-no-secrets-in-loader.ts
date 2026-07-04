@@ -37,6 +37,9 @@ export const tanstackStartNoSecretsInLoader = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "error",
+  impact: "security",
+  confidence: "high",
+  fix: "local",
   category: "Security",
   recommendation:
     "Loaders are isomorphic (run on both server and client). Wrap secret access in `createServerFn()` so it stays server-only",

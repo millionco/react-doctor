@@ -6,6 +6,9 @@ export const localRpcNativeBridgeRisk = defineRule({
   id: "local-rpc-native-bridge-risk",
   title: "Weak localhost native bridge boundary",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Use exact origin allowlists after URL parsing, per-request nonces, narrow methods, and never expose install/update commands to arbitrary web pages.",
   // Generic verbs (includes/indexOf/install/update) match dev-server helpers

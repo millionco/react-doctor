@@ -6,6 +6,9 @@ export const tenantStaticProxyRisk = defineRule({
   id: "tenant-static-proxy-risk",
   title: "Tenant-controlled static asset proxy",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Bind tenant identity to the trusted host or authenticated org, canonicalize after decoding, reject traversal, and never let one tenant choose another tenant's asset prefix.",
   // `params` near `fetch` matched every dynamic route handler; the tenant

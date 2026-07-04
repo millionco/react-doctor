@@ -29,6 +29,9 @@ export const noDidUpdateSetState = defineRule({
   id: "no-did-update-set-state",
   title: "setState in componentDidUpdate",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Setting state in `componentDidUpdate` causes another render and can loop. Use `getDerivedStateFromProps` instead.",
   create: (context) => {

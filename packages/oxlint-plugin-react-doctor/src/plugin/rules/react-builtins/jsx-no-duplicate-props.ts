@@ -11,6 +11,9 @@ export const jsxNoDuplicateProps = defineRule({
   id: "jsx-no-duplicate-props",
   title: "Duplicate props on element",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Remove or rename one of the duplicate props so the later value does not silently override the earlier one.",
   create: (context) => ({

@@ -123,6 +123,9 @@ export const activityWrapsEffectHeavySubtree = defineRule({
   id: "activity-wraps-effect-heavy-subtree",
   title: "Activity wraps an effect-heavy subtree",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   // `<Activity>` shipped in React 19.2; gate on the minor-version
   // capability so the rule stays inert on 19.0 / 19.1 projects.
   requires: ["react:19.2"],

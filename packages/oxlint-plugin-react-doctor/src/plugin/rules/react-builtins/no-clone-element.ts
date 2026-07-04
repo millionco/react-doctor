@@ -16,6 +16,9 @@ export const noCloneElement = defineRule({
   id: "no-clone-element",
   title: "cloneElement makes child props fragile",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // `React.cloneElement` is a valid React API still used in HOCs,
   // headless-UI libraries (Radix, Headless UI), and child-prop
   // injection patterns. Discouraging it is an opinion, not a bug

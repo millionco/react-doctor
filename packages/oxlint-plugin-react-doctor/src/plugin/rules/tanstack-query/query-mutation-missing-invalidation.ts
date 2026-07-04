@@ -52,6 +52,9 @@ export const queryMutationMissingInvalidation = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Add `onSuccess: () => queryClient.invalidateQueries({ queryKey: ['...'] })` so cached data stays in sync after the mutation",
   create: (context: RuleContext) => ({

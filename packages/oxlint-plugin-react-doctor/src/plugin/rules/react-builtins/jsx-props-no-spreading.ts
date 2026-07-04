@@ -41,6 +41,9 @@ export const jsxPropsNoSpreading = defineRule({
   id: "jsx-props-no-spreading",
   title: "Props spread onto element",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Default off because `{...props}` is the canonical composition
   // pattern: forwardRef wrappers, shadcn-ui components, Radix /
   // Headless UI consumers, polymorphic components, etc. all spread.

@@ -124,6 +124,9 @@ export const rerenderStateOnlyInHandlers = defineRule({
   id: "rerender-state-only-in-handlers",
   title: "State only used in handlers",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   category: "Performance",
   recommendation:

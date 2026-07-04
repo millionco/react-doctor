@@ -149,6 +149,9 @@ export const jsIndexMaps = defineRule({
   title: "array.find() inside a loop",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Build a `Map` once before the loop instead of calling `array.find(...)` inside it",
   create: (context: RuleContext) =>

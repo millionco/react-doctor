@@ -41,6 +41,9 @@ export const noRenderPropChildren = defineRule({
   title: "Render-prop slots make this component hard to extend",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "structural",
   recommendation:
     "Swap `renderXxx` props for child components like `<Modal.Header>` or plain `children`, so the parent doesn't control every slot.",
   create: (context: RuleContext) => ({

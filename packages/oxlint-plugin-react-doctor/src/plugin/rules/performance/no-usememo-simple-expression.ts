@@ -55,6 +55,9 @@ export const noUsememoSimpleExpression = defineRule({
   title: "useMemo on a cheap value",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Remove the useMemo. Property reads, math, and ternaries are already fast, so wrapping them doesn't help",
   create: (context: RuleContext) => ({

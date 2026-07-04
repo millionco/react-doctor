@@ -75,6 +75,9 @@ export const jsBatchDomCss = defineRule({
   title: "Repeated inline style writes",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Do all your reads first, then all your writes. Mixing them inside a loop makes the browser recalculate the layout again and again, which is slow",
   create: (context: RuleContext) => {

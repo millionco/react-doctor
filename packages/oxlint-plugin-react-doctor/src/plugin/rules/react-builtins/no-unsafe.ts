@@ -77,6 +77,9 @@ export const noUnsafe = defineRule({
   id: "no-unsafe",
   title: "Unsafe legacy lifecycle method",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move setup to `constructor` or `componentDidMount`, prop-derived state to `getDerivedStateFromProps`, and update side effects to `componentDidUpdate` so React does not rely on deprecated unsafe lifecycles.",
   create: (context) => {

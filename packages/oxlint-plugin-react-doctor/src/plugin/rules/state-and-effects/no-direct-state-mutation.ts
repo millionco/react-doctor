@@ -184,6 +184,9 @@ export const noDirectStateMutation = defineRule({
   id: "no-direct-state-mutation",
   title: "State mutated in place",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Call the setter with a brand new value instead: `setItems([...items, newItem])`, `setItems(items.filter(x => x !== target))`, or `setItems(items.toSorted(...))`. React only redraws when the value is new, so changing it in place does nothing.",
   create: (context: RuleContext) => {

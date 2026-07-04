@@ -117,6 +117,9 @@ export const forbidComponentProps = defineRule({
   id: "forbid-component-props",
   title: "Blocked component prop bypasses API contract",
   severity: "warn",
+  impact: "style",
+  confidence: "heuristic",
+  fix: "local",
   // Default off because the upstream-default forbidden list `["className",
   // "style"]` flags the canonical Tailwind/shadcn/Radix customization
   // pattern (`<Component className="..." />`) — which is how most modern

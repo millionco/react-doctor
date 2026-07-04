@@ -203,6 +203,9 @@ export const asyncDeferAwait = defineRule({
   id: "async-defer-await",
   title: "await before an early-return guard",
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation:
     "Move the `await` below the early-return guard so the skip path stays fast and avoids unnecessary async work.",

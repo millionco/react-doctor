@@ -17,6 +17,9 @@ export const tanstackStartNoUseEffectFetch = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Fetch data in the route `loader` instead. The router loads it before rendering and avoids waterfalls.",
   create: (context: RuleContext): RuleVisitors => {

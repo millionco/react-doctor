@@ -19,6 +19,9 @@ export const rnNoPanresponder = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `react-native-gesture-handler` (`Gesture.Pan()`) instead of `PanResponder`. It runs gestures on the native UI thread, so they stay smooth even when the JS thread is busy.",
   create: (context: RuleContext) => ({

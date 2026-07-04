@@ -11,6 +11,9 @@ export const noImgLazyWithHighFetchpriority = defineRule({
   id: "no-img-lazy-with-high-fetchpriority",
   title: "Lazy image with high fetchPriority",
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     'Don\'t combine `loading="lazy"` with `fetchPriority="high"`. A high-priority image (usually the LCP) should load eagerly; a lazy image is by definition not high priority.',
   create: (context) => ({

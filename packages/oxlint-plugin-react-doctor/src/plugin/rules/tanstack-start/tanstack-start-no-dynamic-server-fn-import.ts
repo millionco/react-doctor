@@ -10,6 +10,9 @@ export const tanstackStartNoDynamicServerFnImport = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "error",
+  impact: "security",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `import { myFn } from '~/utils/my.functions'`. The bundler only swaps server code for RPC stubs on static imports.",
   create: (context: RuleContext) => ({

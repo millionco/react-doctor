@@ -63,6 +63,9 @@ export const preferFunctionComponent = defineRule({
   id: "prefer-function-component",
   title: "Class component instead of function",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "mechanical",
   // Class components are still valid React — required for error
   // boundaries (no hook equivalent), used widely in legacy code and
   // third-party libraries. Forcing rewrites by default is too

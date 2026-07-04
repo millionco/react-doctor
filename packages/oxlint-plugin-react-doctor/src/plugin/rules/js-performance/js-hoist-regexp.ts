@@ -21,6 +21,9 @@ export const jsHoistRegexp = defineRule({
   title: "RegExp built inside a loop",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move `new RegExp(...)` (or large regex literals) to a constant outside the loop so it isn't rebuilt on every pass",
   create: (context: RuleContext) =>

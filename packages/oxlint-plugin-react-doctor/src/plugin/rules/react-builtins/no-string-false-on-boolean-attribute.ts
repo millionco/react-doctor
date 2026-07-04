@@ -34,6 +34,9 @@ export const noStringFalseOnBooleanAttribute = defineRule({
   id: "no-string-false-on-boolean-attribute",
   title: "String true/false on a boolean attribute",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     'Use the boolean form on boolean attributes: `disabled` / `disabled={true}` / `disabled={false}`, not `disabled="false"`. A non-empty string is truthy, so `="false"` actually turns the attribute ON.',
   create: (context) => ({

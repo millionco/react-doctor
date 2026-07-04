@@ -35,6 +35,9 @@ export const zodV4PreferTopLevelStringFormats = defineRule({
   requires: ["zod:4"],
   tags: ["migration-hint"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use the Zod 4 top-level format checks like `z.email()`, `z.uuid()`, or `z.ipv4()` instead of `z.string().<format>()`.",
   create: (context: RuleContext) => {

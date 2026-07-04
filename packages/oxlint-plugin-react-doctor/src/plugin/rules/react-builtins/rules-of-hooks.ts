@@ -705,6 +705,9 @@ export const rulesOfHooks = defineRule({
   id: "rules-of-hooks",
   title: "Hook called conditionally",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation:
     "Call hooks at the top level of a React function component or custom Hook so React sees the same hook order on every render.",

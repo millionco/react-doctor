@@ -35,6 +35,9 @@ export const noSecretsInClientCode = defineRule({
   id: "no-secrets-in-client-code",
   title: "Secret in client code",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Move secrets to server-only code. Anything in client env variables gets shipped to the browser, so it can't hold secrets.",
   create: (context: RuleContext) => {

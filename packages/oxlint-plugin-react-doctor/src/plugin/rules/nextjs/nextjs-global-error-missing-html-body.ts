@@ -14,6 +14,9 @@ export const nextjsGlobalErrorMissingHtmlBody = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Wrap your error UI in `<html><body>...</body></html>`. The root layout is unmounted when global-error renders",
   create: (context: RuleContext) => ({

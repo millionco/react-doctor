@@ -13,6 +13,9 @@ export const queryNoRestDestructuring = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Destructure only the fields you need, like `const { data, isLoading } = useQuery(...)`. Rest destructuring subscribes to every field and adds re-renders.",
   create: (context: RuleContext) => ({

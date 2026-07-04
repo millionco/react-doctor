@@ -141,6 +141,9 @@ export const rnScrollviewFlexInContentContainer = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "In RN, `flex: 1` on `contentContainerStyle` sets `flexBasis: 0` and can collapse the container on small screens. Use `flexGrow: 1` instead.",
   create: (context: RuleContext) => ({

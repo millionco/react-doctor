@@ -28,6 +28,9 @@ export const tanstackStartNoAnchorElement = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `Link` from `@tanstack/react-router` so internal navigation keeps client state, preloading, and typed routes.",
   create: (context: RuleContext): RuleVisitors => {

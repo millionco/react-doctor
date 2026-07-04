@@ -29,6 +29,9 @@ export const noInlineBounceEasing = defineRule({
   id: "no-inline-bounce-easing",
   title: "Bouncy easing animation",
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   category: "Performance",
   recommendation:

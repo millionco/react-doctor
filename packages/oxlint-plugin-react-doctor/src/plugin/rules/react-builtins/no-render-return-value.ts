@@ -42,6 +42,9 @@ export const noRenderReturnValue = defineRule({
   id: "no-render-return-value",
   title: "Using ReactDOM.render return value",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Don't use `ReactDOM.render`'s return value. It's legacy and was removed in React 19.",
   create: (context) => ({

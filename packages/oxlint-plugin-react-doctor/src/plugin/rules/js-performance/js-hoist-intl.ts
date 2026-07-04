@@ -208,6 +208,9 @@ export const jsHoistIntl = defineRule({
   title: "Intl formatter rebuilt each call",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move `new Intl.NumberFormat(...)` to the top of the file or wrap it in `useMemo`. Building one is slow, so don't redo it on every call",
   create: (context: RuleContext) => ({

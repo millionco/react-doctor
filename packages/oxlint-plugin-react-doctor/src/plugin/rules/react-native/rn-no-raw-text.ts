@@ -103,6 +103,9 @@ export const rnNoRawText = defineRule({
   title: "Raw text outside a Text component",
   requires: ["react-native"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation:
     "Text outside a `<Text>` component crashes on React Native. Wrap it like `<Text>{value}</Text>`.",

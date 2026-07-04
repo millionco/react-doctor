@@ -19,6 +19,9 @@ export const noAccessKey = defineRule({
   title: "accessKey attribute used",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: "Do not use `accessKey`. It conflicts with assistive tech shortcuts.",
   category: "Accessibility",
   create: (context) => ({

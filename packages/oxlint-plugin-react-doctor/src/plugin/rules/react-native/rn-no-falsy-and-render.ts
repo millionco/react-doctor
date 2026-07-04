@@ -207,6 +207,9 @@ export const rnNoFalsyAndRender = defineRule({
   title: "Numeric && renders bare zero",
   requires: ["react-native"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "When the number is 0, this shows a bare `0` as text, which crashes on RN. Use `{value > 0 && <X />}`, `{Boolean(value) && <X />}`, or `{value ? <X /> : null}`.",
   create: (context: RuleContext) => {

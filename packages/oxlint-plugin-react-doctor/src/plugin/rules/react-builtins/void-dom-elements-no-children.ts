@@ -47,6 +47,9 @@ export const voidDomElementsNoChildren = defineRule({
   id: "void-dom-elements-no-children",
   title: "Children on a void element",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Remove the children or use a non-void tag so React does not drop content the element cannot render.",
   create: (context) => ({

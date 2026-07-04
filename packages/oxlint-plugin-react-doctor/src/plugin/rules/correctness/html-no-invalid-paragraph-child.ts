@@ -112,6 +112,9 @@ export const htmlNoInvalidParagraphChild = defineRule({
   id: "html-no-invalid-paragraph-child",
   title: "Block element inside a paragraph",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation: "Swap the `<p>` for a `<div>`, or move the child outside the paragraph.",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

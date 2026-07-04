@@ -11,6 +11,9 @@ export const rnNoInlineFlatlistRenderitem = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   // React Compiler auto-memoizes inline functions/objects in list rows, so the
   // perf footgun this rule guards against doesn't exist in compiler-enabled
   // projects (#723).

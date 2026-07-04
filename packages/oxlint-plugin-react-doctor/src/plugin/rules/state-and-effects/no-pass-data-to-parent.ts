@@ -71,6 +71,9 @@ export const noPassDataToParent = defineRule({
   id: "no-pass-data-to-parent",
   title: "Data passed to parent via effect",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation:
     "Fetch the data in the parent and pass it down as a prop (or return it from the hook), instead of handing it back up through a prop callback in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#passing-data-to-the-parent",

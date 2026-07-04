@@ -111,6 +111,9 @@ export const renderingHydrationMismatchTime = defineRule({
   id: "rendering-hydration-mismatch-time",
   title: "Time or random value in JSX",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   category: "Correctness",
   recommendation:
     "Move time or random values into useEffect+useState so they only run in the browser, or add suppressHydrationWarning to the parent if it's intentional",

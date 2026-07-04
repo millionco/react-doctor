@@ -68,6 +68,9 @@ export const noWideLetterSpacing = defineRule({
   id: "no-wide-letter-spacing",
   title: "Wide letter spacing on body text",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Default off: subjective design / house-style preference, not a
   // correctness, performance, or accessibility issue. Opt in to enforce it.
   defaultEnabled: false,

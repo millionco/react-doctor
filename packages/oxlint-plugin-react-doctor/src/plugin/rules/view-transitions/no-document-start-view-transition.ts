@@ -33,6 +33,9 @@ export const noDocumentStartViewTransition = defineRule({
   title: "Direct document.startViewTransition call",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Render a <ViewTransition> component and update inside startTransition or useDeferredValue, and React calls startViewTransition for you.",
   create: (context: RuleContext) => ({

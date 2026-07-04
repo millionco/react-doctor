@@ -47,6 +47,9 @@ export const noWillUpdateSetState = defineRule({
   id: "no-will-update-set-state",
   title: "setState in componentWillUpdate",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Avoid setState in componentWillUpdate because it can loop forever; derive state before render or move guarded updates to componentDidUpdate.",
   create: (context) => {

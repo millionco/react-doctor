@@ -6,6 +6,9 @@ export const mdxSsrExecutionRisk = defineRule({
   id: "mdx-ssr-execution-risk",
   title: "Server-rendered MDX can execute code",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Use a constrained compiler for untrusted content, disable expressions/raw HTML, sandbox renderers, and avoid caching attacker-controlled output across tenants.",
   // Bare `evaluate`/`compile` triggers match webpack compiles, page.evaluate,

@@ -14,6 +14,9 @@ export const scope = defineRule({
   title: "scope attribute on non-th element",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: "Remove `scope` from this element or move it to the related `<th>` cell.",
   category: "Accessibility",
   create: (context) => ({

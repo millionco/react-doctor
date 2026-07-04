@@ -25,6 +25,9 @@ export const noPropCallbackInEffect = defineRule({
   id: "no-prop-callback-in-effect",
   title: "Parent kept in sync with a callback effect",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation:
     "Move the shared state into a Provider so both sides read the same value. Then you don't need a useEffect to keep them in sync.",

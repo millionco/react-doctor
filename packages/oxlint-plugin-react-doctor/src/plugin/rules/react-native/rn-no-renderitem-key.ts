@@ -80,6 +80,9 @@ export const rnNoRenderitemKey = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "A `key` on the JSX from renderItem does nothing, since lists get row keys from `keyExtractor` (or `item.key`). Remove it and set `keyExtractor` on the list instead.",
   create: (context: RuleContext) => ({

@@ -19,6 +19,9 @@ export const rnAnimationReactionAsDerived = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "This useAnimatedReaction just copies one value to another. Replace it with `useDerivedValue(() => ..., [deps])`, which is shorter and tracks changes for you.",
   create: (context: RuleContext) => ({

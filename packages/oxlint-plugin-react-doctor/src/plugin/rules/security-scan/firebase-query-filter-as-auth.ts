@@ -6,6 +6,9 @@ export const firebaseQueryFilterAsAuth = defineRule({
   id: "firebase-query-filter-as-auth",
   title: "Firestore query filter used as authorization",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Make sure Firestore rules compare the requested document against `request.auth.uid` and trusted membership data.",
   scan: scanByPattern({

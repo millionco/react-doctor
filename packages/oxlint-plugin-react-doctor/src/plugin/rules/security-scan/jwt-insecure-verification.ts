@@ -66,6 +66,9 @@ export const jwtInsecureVerification = defineRule({
   id: "jwt-insecure-verification",
   title: "JWT verified with the 'none' algorithm",
   severity: "error",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Never accept the `none` algorithm; it disables signature verification and lets any forged token through. Pin the real algorithm(s) explicitly (`jwt.verify(token, key, { algorithms: ['RS256'] })`).",
   scan: (file) => {

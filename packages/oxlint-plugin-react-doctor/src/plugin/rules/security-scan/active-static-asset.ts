@@ -16,6 +16,9 @@ export const activeStaticAsset = defineRule({
   id: "active-static-asset",
   title: "Executable SVG exposure",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Prefer `<img>` for SVG images; if SVG must be served directly, use attachment disposition and a CSP that blocks scripts and objects.",
   scan: (file) => {

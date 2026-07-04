@@ -25,6 +25,9 @@ export const rnNoNonNativeNavigator = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `@react-navigation/native-stack` (or `native-tabs` in v7+) for real native transitions and gestures.",
   create: (context: RuleContext) => ({

@@ -11,6 +11,9 @@ export const nextjsNoEdgeOgRuntime = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Remove `export const runtime = 'edge'` from OG image files. The default Node.js runtime supports more fonts and APIs",
   create: (context: RuleContext) => {

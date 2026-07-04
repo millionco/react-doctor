@@ -40,6 +40,9 @@ export const noLongTransitionDuration = defineRule({
   title: "Transition duration too long",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   category: "Performance",
   recommendation:
     "Keep UI transitions under 1s. Use about 100 to 150ms for instant feedback, 200 to 300ms for state changes, and 300 to 500ms for layout. Save longer ones for big page-load animations.",

@@ -208,6 +208,9 @@ export const serverNoMutableModuleState = defineRule({
   id: "server-no-mutable-module-state",
   title: "Mutable module state on the server",
   severity: "error",
+  impact: "security",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Keep per-request data inside the action, or in headers, cookies, or `React.cache`. Module-scope `let`/`var` is shared by every request.",
   create: (context: RuleContext) => {

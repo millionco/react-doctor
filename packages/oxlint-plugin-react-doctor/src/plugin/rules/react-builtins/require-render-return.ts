@@ -75,6 +75,9 @@ export const requireRenderReturn = defineRule({
   id: "require-render-return",
   title: "Render method does not return",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Return JSX or `null` from `render` so the component intentionally shows something or nothing.",
   create: (context) => {

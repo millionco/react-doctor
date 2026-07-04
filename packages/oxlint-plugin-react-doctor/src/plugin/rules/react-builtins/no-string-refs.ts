@@ -58,6 +58,9 @@ export const noStringRefs = defineRule({
   id: "no-string-refs",
   title: "String refs are legacy and fragile",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use a callback ref or `useRef` so ref ownership is explicit and not tied to legacy string lookup.",
   create: (context) => {

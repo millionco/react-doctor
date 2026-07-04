@@ -8,6 +8,9 @@ export const nextjsNoVercelOgImport = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   recommendation:
     'Use `import { ImageResponse } from "next/og"`; do not import `@vercel/og` directly because Next.js already bundles it.',
   create: (context: RuleContext) => ({

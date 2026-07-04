@@ -42,6 +42,9 @@ export const rawSqlInjectionRisk = defineRule({
   id: "raw-sql-injection-risk",
   title: "Raw SQL built outside parameter binding",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Keep user input in driver parameters or ORM bind variables. Avoid unsafe/raw SQL helpers and string interpolation for queries.",
   scan: scanByPattern({

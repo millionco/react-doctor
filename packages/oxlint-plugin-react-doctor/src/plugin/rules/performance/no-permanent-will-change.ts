@@ -8,6 +8,9 @@ export const noPermanentWillChange = defineRule({
   title: "Permanent will-change wastes GPU",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Add will-change when the animation starts (`onMouseEnter`) and remove it when it ends (`onAnimationEnd`). Leaving it on all the time wastes GPU memory and can slow things down",
   create: (context: RuleContext) => ({

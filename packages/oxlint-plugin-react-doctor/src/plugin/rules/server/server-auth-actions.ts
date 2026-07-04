@@ -218,6 +218,9 @@ export const serverAuthActions = defineRule({
   id: "server-auth-actions",
   title: "Unauthenticated server action can be called directly",
   severity: "error",
+  impact: "security",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Check auth before touching data because exported server actions can be called directly by unauthenticated clients.",
   create: (context: RuleContext) => {

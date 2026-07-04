@@ -21,6 +21,9 @@ export const noChainStateUpdates = defineRule({
   id: "no-chain-state-updates",
   title: "State updates chained through effects",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "structural",
   tags: ["test-noise"],
   recommendation:
     "Set all the related state together in the event handler that starts it, instead of having one useEffect react to a state change and set more state. See https://react.dev/learn/you-might-not-need-an-effect#chains-of-computations",

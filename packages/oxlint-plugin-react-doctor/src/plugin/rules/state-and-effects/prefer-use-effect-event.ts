@@ -194,6 +194,9 @@ export const preferUseEffectEvent = defineRule({
   requires: ["react:19"],
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Wrap the callback with `useEffectEvent(callback)` (React 19+) and call it inside the sub-handler. An Effect Event always sees the latest props and state but isn't a dependency, so the effect won't re-subscribe every time the parent redraws. See https://react.dev/reference/react/useEffectEvent",
   create: (context: RuleContext) => {

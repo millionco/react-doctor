@@ -62,6 +62,9 @@ export const jsMinMaxLoop = defineRule({
   title: "sort() to find min or max",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `Math.min(...array)` or `Math.max(...array)` instead of sorting the whole list just to read the first or last item",
   create: (context: RuleContext) => ({

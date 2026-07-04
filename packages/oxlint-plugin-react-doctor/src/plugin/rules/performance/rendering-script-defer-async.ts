@@ -10,6 +10,9 @@ export const renderingScriptDeferAsync = defineRule({
   title: "Script without defer or async",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     'Add `defer` for scripts that need the page, or `async` for standalone ones like analytics. In Next.js, use `<Script strategy="afterInteractive" />`',
   create: (context: RuleContext) => ({

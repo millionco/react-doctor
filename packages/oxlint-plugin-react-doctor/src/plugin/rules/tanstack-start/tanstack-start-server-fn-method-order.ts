@@ -19,6 +19,9 @@ export const tanstackStartServerFnMethodOrder = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Chain methods in order: .middleware() → .validator() → .client() → .server() → .handler(). Types depend on this sequence.",
   create: (context: RuleContext) => ({

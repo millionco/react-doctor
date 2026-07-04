@@ -16,6 +16,9 @@ export const nextjsMissingMetadata = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Add metadata or `generateMetadata()` so search engines and social previews get a title and description.",
   create: (context: RuleContext) => ({

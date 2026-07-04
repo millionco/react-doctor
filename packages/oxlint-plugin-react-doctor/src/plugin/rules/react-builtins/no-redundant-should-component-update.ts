@@ -43,6 +43,9 @@ export const noRedundantShouldComponentUpdate = defineRule({
   id: "no-redundant-should-component-update",
   title: "Redundant shouldComponentUpdate",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Drop `shouldComponentUpdate` (PureComponent already shallow-compares) or extend `React.Component` if custom logic is needed.",
   category: "Architecture",

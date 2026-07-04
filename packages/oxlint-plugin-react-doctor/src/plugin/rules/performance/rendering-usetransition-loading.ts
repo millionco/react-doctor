@@ -133,6 +133,9 @@ export const renderingUsetransitionLoading = defineRule({
   title: "Loading useState forces extra render",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Replace with `const [isPending, startTransition] = useTransition()`, which skips the extra render for the loading flag",
   create: (context: RuleContext) => ({

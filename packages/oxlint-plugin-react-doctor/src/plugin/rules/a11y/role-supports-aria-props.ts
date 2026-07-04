@@ -25,6 +25,9 @@ export const roleSupportsAriaProps = defineRule({
   title: "Unsupported ARIA prop for role",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: "Only use `aria-*` attributes that the element's role supports.",
   category: "Accessibility",
   create: (context) => ({

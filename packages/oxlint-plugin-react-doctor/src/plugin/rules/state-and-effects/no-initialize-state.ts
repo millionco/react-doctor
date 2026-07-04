@@ -190,6 +190,9 @@ export const noInitializeState = defineRule({
   id: "no-initialize-state",
   title: "State initialized from a mount effect",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation:
     "Pass the initial value directly to useState() instead of setting it from a mount-only useEffect. For SSR hydration, prefer useSyncExternalStore().",

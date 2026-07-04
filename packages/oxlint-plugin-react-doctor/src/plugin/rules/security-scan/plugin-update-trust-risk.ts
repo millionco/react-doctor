@@ -28,6 +28,9 @@ export const pluginUpdateTrustRisk = defineRule({
   id: "plugin-update-trust-risk",
   title: "Plugin or updater trust boundary risk",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Require signed updates/plugins, pin trusted repositories, verify hashes before execution, and keep custom repository installs behind explicit warnings.",
   scan: (file) => {

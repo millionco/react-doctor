@@ -117,6 +117,9 @@ export const noDerivedUseState = defineRule({
   title: "Prop derived into useState",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Compute the value inline so prop changes do not leave `useState` holding a stale copy.",
   create: (context: RuleContext) => {

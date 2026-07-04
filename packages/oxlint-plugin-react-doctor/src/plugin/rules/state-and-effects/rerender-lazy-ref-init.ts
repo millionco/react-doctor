@@ -38,6 +38,9 @@ export const rerenderLazyRefInit = defineRule({
   title: "Ref initializer runs on every render",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   category: "Performance",
   recommendation:
     "Initialize the ref lazily so expensive values are not rebuilt and discarded on every render.",

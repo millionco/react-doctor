@@ -311,6 +311,9 @@ export const preferModuleScopeStaticValue = defineRule({
   title: "Static value rebuilt every render",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "structural",
   category: "Architecture",
   // React Compiler hoists/caches these per-render allocations itself, so
   // both halves of the recommendation (avoid the re-allocation, preserve

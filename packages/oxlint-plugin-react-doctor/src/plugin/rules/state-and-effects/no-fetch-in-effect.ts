@@ -10,6 +10,9 @@ export const noFetchInEffect = defineRule({
   id: "no-fetch-in-effect",
   title: "Data fetching inside an effect",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use a data-fetching layer or Server Component so fetches do not race, double-fire, or leak from `useEffect`.",
   create: (context: RuleContext) => ({

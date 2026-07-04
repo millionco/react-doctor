@@ -39,6 +39,9 @@ export const noLayoutTransitionInline = defineRule({
   title: "Animating layout properties",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   category: "Performance",
   recommendation:
     "Animate `transform` and `opacity` instead, since they're cheap for the browser. For height, animate `grid-template-rows` from `0fr` to `1fr`.",

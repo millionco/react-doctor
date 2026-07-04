@@ -378,6 +378,9 @@ export const asyncAwaitInLoop = defineRule({
   id: "async-await-in-loop",
   title: "await inside a loop",
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation:
     "Collect the items, then use `await Promise.all(items.map(...))` so independent work runs at the same time",

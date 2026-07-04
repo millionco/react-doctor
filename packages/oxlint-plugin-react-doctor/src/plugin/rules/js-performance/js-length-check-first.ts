@@ -205,6 +205,9 @@ export const jsLengthCheckFirst = defineRule({
   title: "Array compare without length check",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Check `a.length === b.length && a.every((x, i) => x === b[i])` so arrays of different sizes stop right away",
   create: (context: RuleContext) => ({

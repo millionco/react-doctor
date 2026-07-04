@@ -31,6 +31,9 @@ export const jsxFragments = defineRule({
   id: "jsx-fragments",
   title: "Inconsistent fragment syntax",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Pure stylistic — `<>` vs `<Fragment>` is a formatter concern,
   // not a bug class. Default off.
   defaultEnabled: false,

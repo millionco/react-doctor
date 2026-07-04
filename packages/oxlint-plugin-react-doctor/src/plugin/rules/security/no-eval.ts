@@ -8,6 +8,9 @@ export const noEval = defineRule({
   id: "no-eval",
   title: "eval() runs untrusted code strings",
   severity: "error",
+  impact: "security",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `JSON.parse` for data, or rewrite the code so it doesn't build and run code from strings.",
   create: skipNonProductionFiles((context: RuleContext) => ({

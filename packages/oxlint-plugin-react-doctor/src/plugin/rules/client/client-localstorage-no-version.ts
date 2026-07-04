@@ -43,6 +43,9 @@ export const clientLocalstorageNoVersion = defineRule({
   title: "Unversioned localStorage key",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   category: "Correctness",
   recommendation:
     'Put a version in the storage key (e.g. "myKey:v1"). If you change the data shape later, old saved data can be ignored instead of crashing the app.',

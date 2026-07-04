@@ -31,6 +31,9 @@ export const importMetadataExecutionRisk = defineRule({
   id: "import-metadata-execution-risk",
   title: "Imported metadata reaches code execution",
   severity: "error",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Parse imported metadata as data with strict schemas; do not evaluate EXIF, manifests, presets, dropped files, or archives.",
   // The taint word must sit inside the execution call's own statement —

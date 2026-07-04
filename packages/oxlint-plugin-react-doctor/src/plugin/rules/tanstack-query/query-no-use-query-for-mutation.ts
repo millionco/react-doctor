@@ -108,6 +108,9 @@ export const queryNoUseQueryForMutation = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `useMutation()` for POST/PUT/DELETE. It gives onSuccess/onError callbacks, doesn't auto-refetch, and models writes correctly.",
   create: (context: RuleContext) => ({

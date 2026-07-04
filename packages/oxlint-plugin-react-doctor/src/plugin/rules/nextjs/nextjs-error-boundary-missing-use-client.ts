@@ -12,6 +12,9 @@ export const nextjsErrorBoundaryMissingUseClient = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Add `'use client'` at the top of this file. Error boundaries must be Client Components to catch and render fallback UI",
   create: (context: RuleContext) => ({

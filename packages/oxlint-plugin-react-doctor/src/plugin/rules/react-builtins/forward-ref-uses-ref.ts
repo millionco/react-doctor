@@ -15,6 +15,9 @@ export const forwardRefUsesRef = defineRule({
   id: "forward-ref-uses-ref",
   title: "forwardRef without ref parameter",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Accept the `ref` parameter or drop `forwardRef` so parents are not promised a ref that never reaches the node.",
   category: "Architecture",

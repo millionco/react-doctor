@@ -14,6 +14,9 @@ export const noFlushSync = defineRule({
   title: "flushSync skips View Transitions",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "mechanical",
   category: "Performance",
   recommendation:
     "flushSync forces an immediate update that skips View Transitions and concurrent rendering. Use startTransition for updates that are not urgent.",

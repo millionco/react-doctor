@@ -12,6 +12,9 @@ export const noGlobalCssVariableAnimation = defineRule({
   title: "Animating a global CSS variable",
   tags: ["test-noise"],
   severity: "error",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Set the variable on the element that needs it instead of a parent, or use `@property` with `inherits: false`. Better yet, update `element.style.transform` directly",
   create: (context: RuleContext) => ({

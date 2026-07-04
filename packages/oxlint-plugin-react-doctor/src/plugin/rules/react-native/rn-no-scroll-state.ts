@@ -110,6 +110,9 @@ export const rnNoScrollState = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "error",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "`setState` on every scroll event redraws the screen dozens of times a second. Track the position with a Reanimated shared value (`useAnimatedScrollHandler`) or a ref.",
   create: (context: RuleContext) => {

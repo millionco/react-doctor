@@ -8,6 +8,9 @@ export const noScaleFromZero = defineRule({
   title: "Animating scale from zero",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `initial={{ scale: 0.95, opacity: 0 }}`. Elements should gently shrink and fade, not vanish into a point",
   create: (context: RuleContext) => ({

@@ -30,6 +30,9 @@ export const nextjsNoScriptInHead = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move `<Script>` outside of `<Head>`. next/script manages its own placement and ignores head context",
   create: (context: RuleContext) => ({

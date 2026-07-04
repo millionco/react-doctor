@@ -117,6 +117,9 @@ export const insecureSessionCookie = defineRule({
   id: "insecure-session-cookie",
   title: "Auth cookie missing HttpOnly protection",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Set auth/session cookies server-side with `httpOnly: true`, `secure: true`, and `sameSite`. Cookies set via `document.cookie` or with `httpOnly: false` are readable by any XSS payload and can be stolen.",
   scan: (file) => {

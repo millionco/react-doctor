@@ -492,6 +492,9 @@ export const lang = defineRule({
   title: "Invalid lang attribute value",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use a valid language code like `en` or `en-US` so screen readers choose the right pronunciation rules.",
   category: "Accessibility",

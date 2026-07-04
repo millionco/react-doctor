@@ -15,6 +15,9 @@ export const ariaProps = defineRule({
   title: "Invalid ARIA attribute",
   tags: ["react-jsx-only"],
   severity: "error",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: "Only use `aria-*` attributes that actually exist.",
   category: "Accessibility",
   create: (context) => ({

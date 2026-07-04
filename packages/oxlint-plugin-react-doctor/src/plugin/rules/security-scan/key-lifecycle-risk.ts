@@ -9,6 +9,9 @@ export const keyLifecycleRisk = defineRule({
   id: "key-lifecycle-risk",
   title: "Long-lived key material in repository",
   severity: "error",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   committedFilesOnly: true,
   recommendation:
     "Remove private keys from source, rotate exposed credentials, prefer short-lived deploy credentials, and document revocation/expiry for release keys.",

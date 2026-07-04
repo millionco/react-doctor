@@ -94,6 +94,9 @@ export const noOutlineNone = defineRule({
   id: "no-outline-none",
   title: "outline:none removes focus ring",
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   category: "Accessibility",
   recommendation:

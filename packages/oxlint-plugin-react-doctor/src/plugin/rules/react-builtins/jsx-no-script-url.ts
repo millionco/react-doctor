@@ -57,6 +57,9 @@ export const jsxNoScriptUrl = defineRule({
   id: "jsx-no-script-url",
   title: "javascript: URL in JSX",
   severity: "error",
+  impact: "security",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use real event handlers instead of `javascript:` URLs so injected URL text cannot execute as code.",
   category: "Security",

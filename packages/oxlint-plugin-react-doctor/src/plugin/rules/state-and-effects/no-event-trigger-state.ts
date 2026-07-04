@@ -126,6 +126,9 @@ export const noEventTriggerState = defineRule({
   title: "State exists only to trigger an effect",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Delete the trigger state (`useState(null)` plus the `useEffect` that watches it) and call the side effect like `post(...)`, `navigate(...)`, or `track(...)` directly in the event handler that set it. State shouldn't exist just to kick off an effect.",
   create: (context: RuleContext) => {

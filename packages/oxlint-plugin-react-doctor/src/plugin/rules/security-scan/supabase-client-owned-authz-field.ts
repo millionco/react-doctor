@@ -12,6 +12,9 @@ export const supabaseClientOwnedAuthzField = defineRule({
   id: "supabase-client-owned-authz-field",
   title: "Client writes Supabase authorization field",
   severity: "error",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Use RLS policies based on `auth.uid()` and server-owned membership rows; do not trust client-provided owner, org, or role columns.",
   scan: scanByPattern({

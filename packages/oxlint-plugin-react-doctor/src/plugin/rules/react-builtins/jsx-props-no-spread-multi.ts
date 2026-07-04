@@ -37,6 +37,9 @@ export const jsxPropsNoSpreadMulti = defineRule({
   id: "jsx-props-no-spread-multi",
   title: "Same prop spread multiple times",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Spread each value at most once so later props cannot silently override earlier props from the same object.",
   create: (context) => ({

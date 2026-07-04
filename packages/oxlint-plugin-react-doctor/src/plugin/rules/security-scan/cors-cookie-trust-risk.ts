@@ -7,6 +7,9 @@ export const corsCookieTrustRisk = defineRule({
   id: "cors-cookie-trust-risk",
   title: "Broad cookie or credentialed CORS trust",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Keep auth cookies host-only and HttpOnly, avoid credentialed CORS for less-trusted docs/vendor origins, and isolate documentation domains from app sessions.",
   scan: scanByPattern({

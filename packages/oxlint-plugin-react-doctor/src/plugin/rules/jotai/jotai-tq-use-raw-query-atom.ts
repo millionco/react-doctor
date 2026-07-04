@@ -138,6 +138,9 @@ export const jotaiTqUseRawQueryAtom = defineRule({
   id: "jotai-tq-use-raw-query-atom",
   title: "Subscribing to raw query atom",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Derive the field you read: `const dataAtom = atom((get) => get(queryAtom).data)`. Subscribing to the whole query atom re-renders on every refetch, focus, or no-op cache hit.",
   create: (context: RuleContext) => {

@@ -19,6 +19,9 @@ export const mcpToolCapabilityRisk = defineRule({
   id: "mcp-tool-capability-risk",
   title: "MCP tool exposes dangerous capability",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "MCP tool calls run with the connecting client's authority. Validate inputs, enforce per-tool authorization, and avoid raw filesystem/shell/network access where possible.",
   scan: scanByPattern({

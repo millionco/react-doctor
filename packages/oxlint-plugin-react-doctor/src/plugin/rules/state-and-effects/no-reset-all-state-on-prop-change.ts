@@ -95,6 +95,9 @@ export const noResetAllStateOnPropChange = defineRule({
   id: "no-reset-all-state-on-prop-change",
   title: "All state reset on prop change",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation:
     "Pass the prop as `key` so React resets the component for you when the prop changes, instead of clearing every state value by hand in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#resetting-all-state-when-a-prop-changes",

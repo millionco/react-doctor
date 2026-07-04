@@ -6,6 +6,9 @@ export const svgFilterClickjackingRisk = defineRule({
   id: "svg-filter-clickjacking-risk",
   title: "SVG-filtered iframe clickjacking primitive",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Avoid filtering cross-origin iframes. Use `frame-ancestors` on sensitive pages and keep SVG filters away from embedded privileged UI.",
   // The middle branch's window starts right after `url(#` — an extra `.*`

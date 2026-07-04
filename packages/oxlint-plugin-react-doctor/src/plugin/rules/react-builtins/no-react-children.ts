@@ -31,6 +31,9 @@ export const noReactChildren = defineRule({
   id: "no-react-children",
   title: "React.Children is fragile when child shape changes",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // `React.Children.only` / `React.Children.map` are valid React APIs
   // still used for legitimate runtime invariants (e.g. tooltips that
   // need exactly one child element). Discouraging them is an opinion,

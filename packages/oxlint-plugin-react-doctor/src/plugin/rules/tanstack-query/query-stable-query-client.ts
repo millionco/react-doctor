@@ -54,6 +54,9 @@ export const queryStableQueryClient = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-query"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move `new QueryClient()` to module scope, or wrap it in `useState(() => new QueryClient())`. Recreating it each render wipes the cache.",
   create: (context: RuleContext) => ({

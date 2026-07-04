@@ -17,6 +17,9 @@ export const nextjsNoClientFetchForServerData = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Remove 'use client' and fetch directly in the Server Component. No API round-trip, and secrets stay on the server.",
   create: (context: RuleContext): RuleVisitors => {

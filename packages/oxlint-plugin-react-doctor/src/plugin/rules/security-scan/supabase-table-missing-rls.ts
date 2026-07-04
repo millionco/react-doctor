@@ -37,6 +37,9 @@ export const supabaseTableMissingRls = defineRule({
   id: "supabase-table-missing-rls",
   title: "Supabase table created without Row Level Security",
   severity: "error",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Enable RLS in the same migration (`alter table <name> enable row level security;`) and add `auth.uid()`-scoped policies for select/insert/update/delete. A public table without RLS is fully readable and writable with the public anon key.",
   scan: (file) => {

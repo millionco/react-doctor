@@ -10,6 +10,9 @@ export const rerenderDependencies = defineRule({
   title: "Unstable value recreated every render",
   tags: ["test-noise"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move it into a useMemo, useRef, or a constant outside the component so it stays the same between renders.",
   create: (context: RuleContext) => ({

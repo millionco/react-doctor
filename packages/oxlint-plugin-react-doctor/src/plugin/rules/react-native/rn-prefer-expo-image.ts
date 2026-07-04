@@ -20,6 +20,9 @@ export const rnPreferExpoImage = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `<Image>` from `expo-image` instead of `react-native`. Same props, plus caching, placeholders, and crossfades for faster image loading.",
   create: (context: RuleContext) => {

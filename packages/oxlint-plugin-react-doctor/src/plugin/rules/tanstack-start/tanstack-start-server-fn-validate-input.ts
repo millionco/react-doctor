@@ -22,6 +22,9 @@ export const tanstackStartServerFnValidateInput = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "warn",
+  impact: "security",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Add `.validator(schema)` before `.handler()`. This data crosses the network and must be validated at runtime.",
   create: (context: RuleContext) => ({

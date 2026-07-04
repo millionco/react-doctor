@@ -18,6 +18,9 @@ export const urlPrefilledPrivilegedAction = defineRule({
   id: "url-prefilled-privileged-action",
   title: "URL pre-fills a privileged action",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Require server-side validation and explicit confirmation for URL-sourced invite, role, permission, redirect, or sharing parameters.",
   scan: scanByPattern({

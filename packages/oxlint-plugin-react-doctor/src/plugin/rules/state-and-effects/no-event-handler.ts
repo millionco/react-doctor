@@ -212,6 +212,9 @@ export const noEventHandler = defineRule({
   title: "Event logic handled in an effect",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Run the side effect in the event handler that triggers it, instead of watching its state from a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#sharing-logic-between-event-handlers",
   create: (context: RuleContext) => ({

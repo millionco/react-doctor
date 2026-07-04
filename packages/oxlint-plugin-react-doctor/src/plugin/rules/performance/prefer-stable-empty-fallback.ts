@@ -97,6 +97,9 @@ export const preferStableEmptyFallback = defineRule({
   title: "Empty fallback rebuilt each render",
   tags: ["react-jsx-only", "test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "mechanical",
   category: "Performance",
   disabledBy: ["react-compiler"],
   recommendation:

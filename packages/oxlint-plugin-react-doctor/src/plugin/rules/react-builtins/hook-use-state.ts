@@ -65,6 +65,9 @@ export const hookUseState = defineRule({
   id: "hook-use-state",
   title: "useState not destructured",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Stylistic naming rule — flags `const [count, _setCount]` (the
   // unused-marker underscore convention) and `const [instance] =
   // useState(() => new Foo())` (the create-once initializer pattern

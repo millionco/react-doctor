@@ -58,6 +58,9 @@ export const noInlinePropOnMemoComponent = defineRule({
   title: "Inline prop defeats memo()",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move the inline `() => ...` / `[]` / `{}` to a stable value with useMemo, useCallback, or module scope, so the memoized child stops redrawing on every parent render",
   create: (context: RuleContext) => {

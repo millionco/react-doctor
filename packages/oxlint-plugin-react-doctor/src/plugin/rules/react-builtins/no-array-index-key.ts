@@ -360,6 +360,9 @@ export const noArrayIndexKey = defineRule({
   id: "no-array-index-key",
   title: "Array index used as a key",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "mechanical",
   // Default off: duplicate of `no-array-index-as-key`, which is the
   // canonical rule (Bugs category, friendlier message). Both fire on the
   // same `key={index}` JSX, so keeping both double-reports. This oxc port

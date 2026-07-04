@@ -645,6 +645,9 @@ export const noSelfUpdatingEffect = defineRule({
   id: "no-self-updating-effect",
   title: "Effect updates its own dependency",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation:
     "Break the loop: work the value out while rendering, set it in an event handler, or guard the update so it stops changing. See https://react.dev/learn/you-might-not-need-an-effect",

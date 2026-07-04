@@ -96,6 +96,9 @@ export const noDangerWithChildren = defineRule({
   id: "no-danger-with-children",
   title: "dangerouslySetInnerHTML with children",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use either `children` or `dangerouslySetInnerHTML` so React does not ignore one source of content.",
   category: "Correctness",

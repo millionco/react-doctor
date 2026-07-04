@@ -41,6 +41,9 @@ export const rnNoImageChildren = defineRule({
   title: "Children inside react-native <Image>",
   requires: ["react-native"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "React Native's `<Image>` can't render children. Use `<ImageBackground>` (same `source`/`style` props) to layer content over an image.",
   create: (context: RuleContext) => ({

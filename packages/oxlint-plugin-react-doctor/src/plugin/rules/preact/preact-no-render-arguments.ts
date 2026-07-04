@@ -93,6 +93,9 @@ export const preactNoRenderArguments = defineRule({
   title: "render() reads props from arguments",
   requires: ["preact"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Read from `this.props` and `this.state` because `preact/compat` uses React's parameterless `render()` and positional props/state become undefined.",
   create: (context) => ({

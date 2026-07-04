@@ -14,6 +14,9 @@ export const noFindDomNode = defineRule({
   id: "no-find-dom-node",
   title: "findDOMNode breaks component encapsulation",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use a ref to reach DOM nodes because `findDOMNode` was removed in React 19 and can crash the app.",
   create: (context) => ({

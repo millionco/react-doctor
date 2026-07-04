@@ -10,6 +10,9 @@ export const jsEarlyExit = defineRule({
   title: "Deeply nested if statements",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Add an early `return` or `continue` so the deep nesting flattens out and you bail as soon as the answer is known",
   create: (context: RuleContext) => ({

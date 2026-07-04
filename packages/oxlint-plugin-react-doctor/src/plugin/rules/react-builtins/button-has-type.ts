@@ -213,6 +213,9 @@ export const buttonHasType = defineRule({
   id: "button-has-type",
   title: "Button missing explicit type",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     'Set an explicit button `type` so plain buttons do not submit forms by accident: `type="button"`, `"submit"`, or `"reset"`.',
   create: (context) => {

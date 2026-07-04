@@ -70,6 +70,9 @@ export const zodV4NoDeprecatedErrorApis = defineRule({
   requires: ["zod:4"],
   tags: ["migration-hint"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Use the Zod 4 helpers instead: `z.treeifyError()`, `z.flattenError()`, `z.prettifyError()`, or read `error.issues` directly.",
   create: (context: RuleContext) => {

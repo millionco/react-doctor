@@ -109,6 +109,9 @@ export const checkedRequiresOnchangeOrReadonly = defineRule({
   id: "checked-requires-onchange-or-readonly",
   title: "Checked input without onChange",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Add `onChange`, `readOnly`, or `defaultChecked` so React knows whether the checkbox is editable, display-only, or uncontrolled.",
   category: "Correctness",

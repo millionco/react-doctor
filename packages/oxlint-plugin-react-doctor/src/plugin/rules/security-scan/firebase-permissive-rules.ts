@@ -6,6 +6,9 @@ export const firebasePermissiveRules = defineRule({
   id: "firebase-permissive-rules",
   title: "Permissive Firebase security rule",
   severity: "error",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Bind every read/write to `request.auth.uid`, immutable ownership, and tenant membership instead of treating sign-in as authorization.",
   scan: scanByPattern({

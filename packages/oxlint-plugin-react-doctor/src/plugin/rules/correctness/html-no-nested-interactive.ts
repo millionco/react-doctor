@@ -67,6 +67,9 @@ export const htmlNoNestedInteractive = defineRule({
   id: "html-no-nested-interactive",
   title: "Nested interactive elements",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move the inner `<a>` or `<button>` so it's a sibling, or change the outer one to a plain `<div>` or `<span>`.",
   create: (context) => ({

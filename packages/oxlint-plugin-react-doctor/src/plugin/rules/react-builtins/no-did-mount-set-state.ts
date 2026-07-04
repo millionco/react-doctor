@@ -31,6 +31,9 @@ export const noDidMountSetState = defineRule({
   id: "no-did-mount-set-state",
   title: "setState in componentDidMount",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Setting state in `componentDidMount` triggers an extra render. Use `getDerivedStateFromProps` or initial state instead.",
   create: (context) => {

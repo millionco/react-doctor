@@ -13,6 +13,9 @@ export const noIsMounted = defineRule({
   id: "no-is-mounted",
   title: "isMounted lets async callbacks update after unmount",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "`isMounted` doesn't work in modern React. Track mount state with a ref, or cancel the async work instead.",
   create: (context) => ({

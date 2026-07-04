@@ -71,6 +71,9 @@ export const postmessageOriginRisk = defineRule({
   id: "postmessage-origin-risk",
   title: "postMessage handler without origin check",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Validate `event.origin` against an exact allowlist before using `event.data`, especially when an iframe or parent window can be attacker-controlled.",
   scan: (file) => {

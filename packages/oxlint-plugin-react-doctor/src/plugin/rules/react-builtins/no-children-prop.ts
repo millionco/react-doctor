@@ -15,6 +15,9 @@ export const noChildrenProp = defineRule({
   id: "no-children-prop",
   title: "Children passed as a prop",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Nest children between the tags so the rendered content is visible in JSX and cannot be hidden inside a props object.",
   create: (context) => ({

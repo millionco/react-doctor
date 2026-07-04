@@ -96,6 +96,9 @@ export const noUncontrolledInput = defineRule({
   id: "no-uncontrolled-input",
   title: "Uncontrolled input value",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation:
     'Give `useState` a starting value (e.g. `useState("")` instead of `useState()`), add `onChange` (or `readOnly`) whenever you set `value`, and drop `defaultValue` on controlled inputs since React ignores it.',

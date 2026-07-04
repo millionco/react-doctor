@@ -148,6 +148,9 @@ export const reduxUseselectorInlineDerivation = defineRule({
   id: "redux-useselector-inline-derivation",
   title: "useSelector derives data inline",
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   category: "Performance",
   disabledBy: ["react-compiler"],
   recommendation:

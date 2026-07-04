@@ -71,6 +71,9 @@ export const noBarrelImport = defineRule({
   title: "Import from a barrel file",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Import from the direct path: `import { Button } from './components/Button'` instead of `./components`",
   create: (context: RuleContext) => {

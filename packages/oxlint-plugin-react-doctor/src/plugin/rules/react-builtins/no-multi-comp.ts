@@ -570,6 +570,9 @@ export const noMultiComp = defineRule({
   id: "no-multi-comp",
   title: "Multiple components in one file",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Move secondary components into their own files so each component stays easier to find, test, and change.",
   category: "Architecture",

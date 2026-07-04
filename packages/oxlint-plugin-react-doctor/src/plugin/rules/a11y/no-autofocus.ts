@@ -96,6 +96,9 @@ export const noAutofocus = defineRule({
   title: "Autofocus on an element",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: "Do not use `autoFocus`. It disorients users on load.",
   category: "Accessibility",
   create: (context) => {

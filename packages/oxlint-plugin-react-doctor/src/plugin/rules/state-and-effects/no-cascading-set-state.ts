@@ -262,6 +262,9 @@ export const noCascadingSetState = defineRule({
   id: "no-cascading-set-state",
   title: "Multiple setState calls in one effect",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "structural",
   tags: ["test-noise"],
   recommendation:
     "Combine related updates in `useReducer` so one effect does not redraw the screen once per `setState` call.",

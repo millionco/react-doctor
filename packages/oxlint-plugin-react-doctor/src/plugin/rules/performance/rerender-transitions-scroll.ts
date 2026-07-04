@@ -58,6 +58,9 @@ export const rerenderTransitionsScroll = defineRule({
   title: "setState in a scroll handler",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Wrap the setState in startTransition, use useDeferredValue, or keep the value in a ref and throttle with requestAnimationFrame, so these events don't redraw the screen every time",
   create: (context: RuleContext) => ({

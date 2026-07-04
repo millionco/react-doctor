@@ -14,6 +14,9 @@ export const noDocumentWrite = defineRule({
   id: "no-document-write",
   title: "document.write/writeln",
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Don't use `document.write()`/`document.writeln()`. Append DOM nodes or set `innerHTML`/`textContent` on a specific element instead.",
   create: (context: RuleContext) => ({

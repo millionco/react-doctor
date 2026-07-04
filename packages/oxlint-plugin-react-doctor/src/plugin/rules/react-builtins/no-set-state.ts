@@ -13,6 +13,9 @@ export const noSetState = defineRule({
   id: "no-set-state",
   title: "Local class state forbidden",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Effectively a "no class components" rule — `this.setState` is the
   // canonical class-component API and class components remain valid
   // React. Real codebases still use them for error boundaries,

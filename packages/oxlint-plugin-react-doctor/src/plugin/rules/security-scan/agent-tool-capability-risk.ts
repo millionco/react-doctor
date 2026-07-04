@@ -13,6 +13,9 @@ export const agentToolCapabilityRisk = defineRule({
   id: "agent-tool-capability-risk",
   title: "Agent tool exposes dangerous capability",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Treat tool inputs as prompt-injection controlled. Validate arguments, scope permissions per call, and avoid exposing shell/file/network primitives directly to agents.",
   scan: scanByPattern({

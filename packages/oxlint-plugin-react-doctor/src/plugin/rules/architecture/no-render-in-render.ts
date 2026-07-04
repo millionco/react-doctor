@@ -89,6 +89,9 @@ export const noRenderInRender = defineRule({
   id: "no-render-in-render",
   title: "Component rendered by inline function call",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "structural",
   tags: ["test-noise"],
   recommendation:
     "Make it a named component rendered as JSX so React can track it and preserve its state.",

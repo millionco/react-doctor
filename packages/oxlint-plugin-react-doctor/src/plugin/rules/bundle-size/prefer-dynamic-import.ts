@@ -9,6 +9,9 @@ export const preferDynamicImport = defineRule({
   title: "Heavy library loaded eagerly",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Load it only when needed: `const Component = dynamic(() => import('library'), { ssr: false })` from next/dynamic, or React.lazy().",
   create: (context: RuleContext) => ({

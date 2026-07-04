@@ -100,6 +100,9 @@ export const rnDetoxMissingAwait = defineRule({
   title: "Un-awaited Detox action",
   requires: ["react-native"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Prepend `await` to Detox actions, `waitFor(...)` chains, and `expect(element(...))` assertions. They return promises tied to Detox's synchronization, so a missing await runs steps out of order.",
   create: (context: RuleContext) => {

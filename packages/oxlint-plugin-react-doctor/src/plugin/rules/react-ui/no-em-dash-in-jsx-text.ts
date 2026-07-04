@@ -10,6 +10,9 @@ export const noEmDashInJsxText = defineRule({
   title: "Em dash in JSX text",
   tags: ["design", "test-noise"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Default off: subjective design / house-style preference, not a
   // correctness, performance, or accessibility issue. Opt in to enforce it.
   defaultEnabled: false,

@@ -6,6 +6,9 @@ export const rnAnimateLayoutProperty = defineRetiredRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Retired: Reanimated `useAnimatedStyle` can safely drive layout-affecting properties on the UI thread, so this pattern should not be flagged.",
 });

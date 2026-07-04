@@ -14,6 +14,9 @@ export const tanstackStartRoutePropertyOrder = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Follow the route property order because TanStack Router's type inference depends on earlier properties feeding later ones.",
   create: (context: RuleContext) => ({

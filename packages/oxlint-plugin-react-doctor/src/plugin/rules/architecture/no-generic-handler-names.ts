@@ -8,6 +8,9 @@ export const noGenericHandlerNames = defineRule({
   id: "no-generic-handler-names",
   title: "Vague event handler name",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "structural",
   // Default off: naming-convention preference, not a correctness issue.
   // Opt in via config to enforce the handler naming style.
   defaultEnabled: false,

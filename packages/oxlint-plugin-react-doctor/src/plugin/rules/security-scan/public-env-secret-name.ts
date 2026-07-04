@@ -10,6 +10,9 @@ export const publicEnvSecretName = defineRule({
   id: "public-env-secret-name",
   title: "Secret-like public env variable",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Public env prefixes are inlined into browser bundles. Rename public values to non-secret names, and keep tokens, passwords, private keys, and service-role credentials server-only.",
   scan: (file) => {

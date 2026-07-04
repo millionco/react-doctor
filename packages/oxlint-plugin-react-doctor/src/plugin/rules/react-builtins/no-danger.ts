@@ -14,6 +14,9 @@ export const noDanger = defineRule({
   id: "no-danger",
   title: "Raw HTML injection can run unsafe markup",
   severity: "warn",
+  impact: "security",
+  confidence: "high",
+  fix: "local",
   category: "Security",
   // Default off: this is the absolutist oxc port — it flags EVERY
   // `dangerouslySetInnerHTML` with zero content awareness, so it fires on the

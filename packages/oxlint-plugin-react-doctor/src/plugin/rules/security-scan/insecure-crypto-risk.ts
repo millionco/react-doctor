@@ -123,6 +123,9 @@ export const insecureCryptoRisk = defineRule({
   id: "insecure-crypto-risk",
   title: "Weak cryptography in security context",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Use modern primitives, `crypto.randomBytes` / Web Crypto randomness, and timing-safe comparisons for signatures, digests, tokens, and auth material.",
   scan: (file) => {

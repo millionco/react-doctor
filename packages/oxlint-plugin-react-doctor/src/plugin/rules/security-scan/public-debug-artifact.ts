@@ -7,6 +7,9 @@ export const publicDebugArtifact = defineRule({
   id: "public-debug-artifact",
   title: "Public debug artifact",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Remove debug artifacts from public output; logs and dumps often reveal source paths, internal routes, tokens, or environment snapshots.",
   scan: (file) => {

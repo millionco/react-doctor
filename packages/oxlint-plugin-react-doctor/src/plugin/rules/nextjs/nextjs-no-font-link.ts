@@ -11,6 +11,9 @@ export const nextjsNoFontLink = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     '`import { Inter } from "next/font/google"` for self-hosting, zero layout shift, and no render-blocking requests',
   create: (context: RuleContext) => ({

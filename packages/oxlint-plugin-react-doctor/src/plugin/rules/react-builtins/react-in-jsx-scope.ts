@@ -19,6 +19,9 @@ export const reactInJsxScope = defineRule({
   id: "react-in-jsx-scope",
   title: "React not in scope for JSX",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   // Default off because the rule is obsolete for any project on React 17+
   // with the automatic JSX runtime (`jsx: "react-jsx"` in tsconfig, or
   // `runtime: "automatic"` in Babel/SWC) — which is the configuration

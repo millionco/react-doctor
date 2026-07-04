@@ -38,6 +38,9 @@ export const selfClosingComp = defineRule({
   id: "self-closing-comp",
   title: "Element not self-closing",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "mechanical",
   // Pure stylistic rule — `<X></X>` vs `<X/>` is a formatter concern,
   // not a bug class. Default off.
   defaultEnabled: false,

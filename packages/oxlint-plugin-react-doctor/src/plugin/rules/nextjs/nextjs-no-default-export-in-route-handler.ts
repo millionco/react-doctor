@@ -46,6 +46,9 @@ export const nextjsNoDefaultExportInRouteHandler = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Replace `export default` with named HTTP method exports because Next.js ignores default exports in `route.ts`.",
   create: (context: RuleContext) => {

@@ -68,6 +68,9 @@ export const authTokenInWebStorage = defineRule({
   id: "auth-token-in-web-storage",
   title: "Auth token in web storage",
   severity: "warn",
+  impact: "security",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Don't persist auth tokens (JWTs, access/refresh tokens, secrets) in `localStorage`/`sessionStorage`; they're readable by any XSS. Use an `HttpOnly` cookie set by the server.",
   create: skipNonProductionFiles((context) => ({

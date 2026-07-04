@@ -24,6 +24,9 @@ export const gitProviderUrlInjectionRisk = defineRule({
   id: "git-provider-url-injection-risk",
   title: "Git provider URL built from interpolation",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Validate owner, repo, org, and branch identifiers against strict slugs and build URLs with URL/path encoders instead of raw interpolation.",
   scan: (file) => {

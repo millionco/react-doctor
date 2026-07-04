@@ -34,6 +34,9 @@ export const rnNoLegacyShadowStyles = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Use `boxShadow` for shadows that work on both platforms on the new architecture, instead of platform-specific shadow properties.",
   create: (context: RuleContext) => ({

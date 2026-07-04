@@ -500,6 +500,9 @@ export const jsxNoNewFunctionAsProp = defineRule({
   title: "New function passed as a prop",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   // React Compiler auto-memoizes inline callbacks. The perf footgun this
   // rule guards against doesn't exist in compiler-enabled projects.
   disabledBy: ["react-compiler"],

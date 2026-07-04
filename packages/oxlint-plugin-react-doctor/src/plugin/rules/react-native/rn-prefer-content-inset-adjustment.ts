@@ -6,6 +6,9 @@ export const rnPreferContentInsetAdjustment = defineRetiredRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Retired: SafeAreaView wrappers are valid; prefer native content inset adjustment only when manual inset plumbing causes scroll jumps or duplicated safe-area offsets.",
 });

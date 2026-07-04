@@ -73,6 +73,9 @@ export const anchorIsValid = defineRule({
   title: "Anchor used as a button",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: "Give links a real destination. Use `<button>` for in-page actions.",
   category: "Accessibility",
   create: (context) => {

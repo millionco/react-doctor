@@ -9,6 +9,9 @@ export const noThreePeriodEllipsis = defineRule({
   title: "Three dots instead of ellipsis",
   tags: ["design", "test-noise"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Default off: subjective design / house-style preference, not a
   // correctness, performance, or accessibility issue. Opt in to enforce it.
   defaultEnabled: false,

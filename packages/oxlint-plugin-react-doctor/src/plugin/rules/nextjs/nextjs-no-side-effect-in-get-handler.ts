@@ -221,6 +221,9 @@ export const nextjsNoSideEffectInGetHandler = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "error",
+  impact: "security",
+  confidence: "high",
+  fix: "local",
   category: "Security",
   recommendation:
     "GET requests can be prefetched and are open to CSRF. Move the side effect to a POST handler.",

@@ -10,6 +10,9 @@ export const tanstackStartNoUseServerInHandler = defineRule({
   tags: ["test-noise"],
   requires: ["tanstack-start"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     'TanStack Start handles server boundaries automatically via the Vite plugin. "use server" inside createServerFn causes compile errors.',
   create: (context: RuleContext) => ({

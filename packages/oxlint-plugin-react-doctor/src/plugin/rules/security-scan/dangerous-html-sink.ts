@@ -268,6 +268,9 @@ export const dangerousHtmlSink = defineRule({
   id: "dangerous-html-sink",
   title: "HTML injection sink with dynamic content",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Prefer rendering structured React nodes. If HTML is required, sanitize with a well-reviewed sanitizer and keep the trust boundary close to the sink.",
   scan: (file) => {

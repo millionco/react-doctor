@@ -128,6 +128,9 @@ export const noEffectWithFreshDeps = defineRule({
   id: "no-effect-with-fresh-deps",
   title: "Effect dependency recreated every render",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   category: "State & Effects",
   recommendation:
     "Move the value inside the hook body and depend on its simple inputs instead, or wrap it in useMemo / useCallback so it stays the same between renders.",

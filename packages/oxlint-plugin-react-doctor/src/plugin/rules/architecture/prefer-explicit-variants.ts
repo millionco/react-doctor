@@ -141,6 +141,9 @@ export const preferExplicitVariants = defineRule({
   id: "prefer-explicit-variants",
   title: "Prefer explicit variant components",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "structural",
   tags: ["test-noise", "react-jsx-only"],
   recommendation:
     "Replace boolean props that switch whole subtrees with explicit variant components, like `<ThreadComposer />` and `<EditMessageComposer />`, so each variant renders one clear path.",

@@ -42,6 +42,9 @@ export const preactNoReactHooksImport = defineRule({
   title: "React hook imports break pure Preact hook state",
   requires: ["pure-preact"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Import hooks from `preact/hooks` so they share Preact's renderer state instead of loading a second hook implementation.",
   create: (context) => ({

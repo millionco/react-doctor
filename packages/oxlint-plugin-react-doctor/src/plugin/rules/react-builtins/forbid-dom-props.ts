@@ -57,6 +57,9 @@ export const forbidDomProps = defineRule({
   id: "forbid-dom-props",
   title: "Blocked DOM prop bypasses project contract",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Configure blocked DOM props so plain HTML tags stay on the agreed DOM API surface.",
   category: "Architecture",

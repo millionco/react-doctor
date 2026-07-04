@@ -7,6 +7,9 @@ export const clickjackingRedirectRisk = defineRule({
   id: "clickjacking-redirect-risk",
   title: "Redirect or frame boundary risk",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Allowlist redirect origins/paths, set `frame-ancestors` for privileged pages, and avoid URL-prefilled privileged dialogs.",
   // `[^)'"\n]*` keeps redirect keywords inside string literals

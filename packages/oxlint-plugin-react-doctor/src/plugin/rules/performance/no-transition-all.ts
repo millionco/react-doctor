@@ -8,6 +8,9 @@ export const noTransitionAll = defineRule({
   title: "transition: all animates everything",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     'List the specific properties: `transition: "opacity 200ms, transform 200ms"`. In Tailwind, use `transition-colors`, `transition-opacity`, or `transition-transform`',
   create: (context: RuleContext) => ({

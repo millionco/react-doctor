@@ -19,6 +19,9 @@ export const rnBottomSheetPreferNative = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   recommendation:
     'On RN v7+, use `<Modal presentationStyle="formSheet">` so the sheet uses platform-native gestures, detents, accessibility, and presentation behavior.',
   create: (context: RuleContext) => ({

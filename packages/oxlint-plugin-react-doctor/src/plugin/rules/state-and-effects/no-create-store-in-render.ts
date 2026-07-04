@@ -128,6 +128,9 @@ export const noCreateStoreInRender = defineRule({
   id: "no-create-store-in-render",
   title: "Store created during render",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   category: "Correctness",
   recommendation:
     "Create stores at module scope so subscribers are not cut off and saved state does not reset every render.",

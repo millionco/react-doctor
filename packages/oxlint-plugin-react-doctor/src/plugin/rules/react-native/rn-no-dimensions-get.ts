@@ -42,6 +42,9 @@ export const rnNoDimensionsGet = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `const { width, height } = useWindowDimensions()` so the size updates automatically on rotation and resize.",
   create: (context: RuleContext) => ({

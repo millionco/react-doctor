@@ -225,6 +225,9 @@ export const jotaiDerivedAtomReturnsFreshObject = defineRule({
   id: "jotai-derived-atom-returns-fresh-object",
   title: "Derived atom returns fresh object",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Split it into one derived atom per field (each compares cleanly with Object.is), or wrap with `selectAtom(source, fn, shallow)` from jotai/utils if you really need one object.",
   create: (context: RuleContext) => ({

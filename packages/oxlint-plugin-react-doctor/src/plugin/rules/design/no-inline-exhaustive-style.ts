@@ -12,6 +12,9 @@ export const noInlineExhaustiveStyle = defineRule({
   id: "no-inline-exhaustive-style",
   title: "Large inline style object rebuilds every render",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise", "react-jsx-only"],
   recommendation:
     "Move the styles to a CSS class, CSS module, Tailwind utilities, or a styled component. Big inline objects are hard to read and rebuild on every update.",

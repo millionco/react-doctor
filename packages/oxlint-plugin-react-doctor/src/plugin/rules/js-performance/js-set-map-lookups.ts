@@ -355,6 +355,9 @@ export const jsSetMapLookups = defineRule({
   title: "Array lookup inside a loop",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use a `Set` or `Map` when you check for the same items over and over. `Array.includes`/`find` scans the whole list each time",
   create: (context: RuleContext) =>

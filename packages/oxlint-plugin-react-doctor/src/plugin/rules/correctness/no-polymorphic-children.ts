@@ -70,6 +70,9 @@ export const noPolymorphicChildren = defineRule({
   id: "no-polymorphic-children",
   title: "Children type checked at runtime",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   category: "Architecture",
   recommendation:
     "Add clear subcomponents like `<Button.Text>` and `<Button.Icon>` so callers don't have to check `typeof children`.",

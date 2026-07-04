@@ -51,6 +51,9 @@ export const commandExecutionInputRisk = defineRule({
   id: "command-execution-input-risk",
   title: "Command execution uses caller-shaped input",
   severity: "error",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Avoid shell execution for caller-controlled values. Use fixed commands, argument arrays, strict allowlists, and no shell interpolation.",
   scan: scanByPattern({

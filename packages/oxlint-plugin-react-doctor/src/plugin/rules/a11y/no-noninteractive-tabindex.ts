@@ -79,6 +79,9 @@ export const noNoninteractiveTabindex = defineRule({
   title: "Tabindex on non-interactive element",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: "Only add `tabIndex` to interactive elements or interactive roles.",
   category: "Accessibility",
   create: (context) => {

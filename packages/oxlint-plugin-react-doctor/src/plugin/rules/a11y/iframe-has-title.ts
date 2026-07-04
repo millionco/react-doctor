@@ -48,6 +48,9 @@ export const iframeHasTitle = defineRule({
   title: "iframe missing title",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Add a descriptive `title` so screen reader users know what the embedded frame contains.",
   category: "Accessibility",

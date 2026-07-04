@@ -169,6 +169,9 @@ export const preferUseSyncExternalStore = defineRule({
   title: "Hand-rolled external store subscription",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Replace the `useState(getSnapshot())` + `useEffect(() => store.subscribe(() => setSnapshot(getSnapshot())))` pair with `useSyncExternalStore(store.subscribe, getSnapshot)`. The hook gets this right during concurrent rendering and on the server; the hand-rolled version doesn't.",
   create: (context: RuleContext) => {

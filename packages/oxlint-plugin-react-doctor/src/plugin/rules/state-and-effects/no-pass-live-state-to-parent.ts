@@ -76,6 +76,9 @@ export const noPassLiveStateToParent = defineRule({
   id: "no-pass-live-state-to-parent",
   title: "Live state pushed to parent via effect",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   recommendation:
     "Move the state up to the parent (or return it from the hook), instead of handing it back up through a prop callback in a useEffect. See https://react.dev/learn/you-might-not-need-an-effect#notifying-parent-components-about-state-changes",

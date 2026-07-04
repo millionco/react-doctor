@@ -9,6 +9,9 @@ export const buildPipelineSecretBoundary = defineRule({
   id: "build-pipeline-secret-boundary",
   title: "Build pipeline runs code near secrets",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Run dependency installs with scripts disabled before exposing secrets, isolate untrusted build code, and move signing/deploy authority into a narrow privileged step.",
   scan: scanByPattern({

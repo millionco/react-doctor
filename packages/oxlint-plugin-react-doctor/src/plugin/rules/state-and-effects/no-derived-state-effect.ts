@@ -78,6 +78,9 @@ export const noDerivedStateEffect = defineRule({
   id: "no-derived-state-effect",
   title: "Derived state stored in an effect",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "structural",
   tags: ["test-noise"],
   recommendation:
     "Work out derived values while rendering: `const x = fn(dep)`. To reset a component's state when a prop changes, give it a key prop: `<Component key={prop} />`. See https://react.dev/learn/you-might-not-need-an-effect",

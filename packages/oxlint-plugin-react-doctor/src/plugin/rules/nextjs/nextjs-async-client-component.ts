@@ -13,6 +13,9 @@ export const nextjsAsyncClientComponent = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Fetch data in a parent Server Component and pass it as props, or use useQuery/useSWR in the client component",
   create: (context: RuleContext) => {

@@ -64,6 +64,9 @@ export const roleHasRequiredAriaProps = defineRule({
   title: "Role missing required ARIA props",
   tags: ["react-jsx-only"],
   severity: "error",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Add every required `aria-*` attribute so assistive tech can expose the role's state correctly.",
   category: "Accessibility",

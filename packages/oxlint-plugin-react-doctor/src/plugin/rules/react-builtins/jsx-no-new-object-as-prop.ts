@@ -129,6 +129,9 @@ export const jsxNoNewObjectAsProp = defineRule({
   title: "New object passed as a prop",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   // React Compiler auto-memoizes prop allocations, so the perf footgun
   // this rule guards against doesn't exist in compiler-enabled projects.
   disabledBy: ["react-compiler"],

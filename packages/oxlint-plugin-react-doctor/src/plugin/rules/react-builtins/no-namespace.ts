@@ -13,6 +13,9 @@ export const noNamespace = defineRule({
   id: "no-namespace",
   title: "Namespaced JSX element",
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use a plain component or DOM tag because React cannot render JSX namespaced names like `ns:Foo`.",
   create: (context) => ({

@@ -14,6 +14,9 @@ export const repositorySecretFile = defineRule({
   id: "repository-secret-file",
   title: "Secret file checked into repository",
   severity: "error",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   committedFilesOnly: true,
   recommendation:
     "Remove committed env files, service-account credentials, npm auth tokens, and webhook URLs; rotate exposed values and keep only redacted examples in source.",

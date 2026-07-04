@@ -68,6 +68,9 @@ export const preferUseReducer = defineRule({
   title: "Many related useState calls",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Group state that always changes together into `useReducer` so one dispatched action describes the whole transition instead of a list of setter calls.",
   create: (context: RuleContext) => {

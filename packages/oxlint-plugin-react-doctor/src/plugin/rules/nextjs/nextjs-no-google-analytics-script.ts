@@ -11,6 +11,9 @@ export const nextjsNoGoogleAnalyticsScript = defineRule({
   tags: ["test-noise"],
   requires: ["nextjs"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `import { GoogleAnalytics } from '@next/third-parties/google'` for automatic optimization and smaller bundles.",
   create: (context: RuleContext) => ({

@@ -103,6 +103,9 @@ export const rnPreferPressableOverGestureDetector = defineRule({
   tags: ["test-noise"],
   requires: ["react-native"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Every GestureDetector sets up a native handler when it appears, which slows the screen. For a plain tap, use `<Pressable>` (or `createCSSAnimatedComponent(Pressable)` from react-native-reanimated/css for animated press feedback).",
   create: (context: RuleContext) => ({

@@ -26,6 +26,9 @@ export const requestBodyMassAssignment = defineRule({
   id: "request-body-mass-assignment",
   title: "Request input spread without field allowlist",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Assign explicit, allowlisted fields (or validate with a strict schema and no `.passthrough()`) instead of spreading/merging request input. Otherwise the client can set ownership, role, or price columns (mass assignment) or pollute the prototype.",
   scan: scanByPattern({

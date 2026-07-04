@@ -18,6 +18,9 @@ export const pathTraversalRisk = defineRule({
   id: "path-traversal-risk",
   title: "Filesystem path uses caller input",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Resolve paths against a fixed base directory, reject traversal after normalization, and map user-visible identifiers to server-owned paths.",
   scan: scanByPattern({

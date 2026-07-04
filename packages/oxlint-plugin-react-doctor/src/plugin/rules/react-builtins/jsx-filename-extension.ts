@@ -47,6 +47,9 @@ export const jsxFilenameExtension = defineRule({
   id: "jsx-filename-extension",
   title: "JSX in disallowed file extension",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Pure file-naming convention — Next.js / Docusaurus / Vite all
   // accept JSX in `.js` files out of the box. Forcing `.jsx` /
   // `.tsx` is a project-specific style choice. Default off.

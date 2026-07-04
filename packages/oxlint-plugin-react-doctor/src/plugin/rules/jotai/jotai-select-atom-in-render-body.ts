@@ -167,6 +167,9 @@ export const jotaiSelectAtomInRenderBody = defineRule({
   id: "jotai-select-atom-in-render-body",
   title: "selectAtom called during render",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Lift `selectAtom(base, fn)` to module scope, or wrap it: `const atom = useMemo(() => selectAtom(base, fn), [deps])`. Calling it during render makes a new atom every time and re-subscribes forever.",
   create: (context: RuleContext) => {

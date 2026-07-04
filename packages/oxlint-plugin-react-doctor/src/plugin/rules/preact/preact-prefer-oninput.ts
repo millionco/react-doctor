@@ -47,6 +47,9 @@ export const preactPreferOninput = defineRule({
   title: "onChange instead of onInput",
   requires: ["pure-preact"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "mechanical",
   recommendation:
     "Replace `onChange` with `onInput` on text-like inputs, or use `preact/compat` which remaps `onChange` automatically.",
   create: (context) => ({

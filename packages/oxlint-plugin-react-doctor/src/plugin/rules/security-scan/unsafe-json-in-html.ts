@@ -34,6 +34,9 @@ export const unsafeJsonInHtml = defineRule({
   id: "unsafe-json-in-html",
   title: "Unescaped JSON in HTML or script sink",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     'JSON.stringify does not HTML-escape, so a `</script>` (or `<`) in the data breaks out and becomes XSS. Use an HTML-safe serializer (serialize-javascript, devalue) or escape `<`, `>`, and `&`, or pass data via a JSON `<script type="application/json">` read with JSON.parse.',
   scan: (file) => {

@@ -100,6 +100,9 @@ export const jsxNoUselessFragment = defineRule({
   id: "jsx-no-useless-fragment",
   title: "Unnecessary React fragment",
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "local",
   // Single-child fragments are often intentional — they force the
   // return type to `ReactNode` rather than `ReactElement` (broader and
   // safer for callers), and they keep conditional renders symmetric

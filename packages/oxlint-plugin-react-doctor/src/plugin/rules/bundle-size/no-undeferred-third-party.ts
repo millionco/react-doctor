@@ -11,6 +11,9 @@ export const noUndeferredThirdParty = defineRule({
   title: "Render-blocking third-party script",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation: 'Use `next/script` with `strategy="lazyOnload"`, or add the `defer` attribute.',
   create: (context: RuleContext) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

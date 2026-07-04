@@ -10,6 +10,9 @@ export const noJustifiedText = defineRule({
   title: "Justified text without hyphens",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   // Default off: subjective design / house-style preference, not a
   // correctness, performance, or accessibility issue. Opt in to enforce it.
   defaultEnabled: false,

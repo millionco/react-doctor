@@ -8,6 +8,9 @@ export const noDisabledZoom = defineRule({
   id: "no-disabled-zoom",
   title: "Zoom disabled on viewport",
   severity: "error",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   tags: ["test-noise"],
   category: "Accessibility",
   recommendation:

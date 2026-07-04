@@ -116,6 +116,9 @@ export const asyncParallel = defineRule({
   // inline `// react-doctor-disable-next-line` opt-out.
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Use `const [a, b] = await Promise.all([fetchA(), fetchB()])` so independent calls run at the same time",
   create: (context: RuleContext) => {

@@ -49,6 +49,9 @@ export const noInteractiveElementToNoninteractiveRole = defineRule({
   title: "Interactive element given noninteractive role",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: "Do not give an interactive element a role that says it is not interactive.",
   category: "Accessibility",
   create: (context) => {

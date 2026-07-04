@@ -148,6 +148,9 @@ export const noRandomKey = defineRule({
   id: "no-random-key",
   title: "Random value used as a key",
   severity: "error",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   category: "Correctness",
   recommendation:
     "Use a stable id from the item itself, like `item.id`, a content hash, or the index when the order never changes. Don't build the key from something that changes every time.",

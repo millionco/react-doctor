@@ -53,6 +53,9 @@ export const interactiveSupportsFocus = defineRule({
   title: "Interactive element not focusable",
   tags: ["react-jsx-only"],
   severity: "warn",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Add keyboard focus support so users can reach interactive elements without a pointer.",
   category: "Accessibility",

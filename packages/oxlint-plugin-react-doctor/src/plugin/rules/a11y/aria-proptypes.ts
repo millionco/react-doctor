@@ -298,6 +298,9 @@ export const ariaProptypes = defineRule({
   title: "Invalid ARIA attribute value",
   tags: ["react-jsx-only"],
   severity: "error",
+  impact: "a11y",
+  confidence: "high",
+  fix: "local",
   recommendation: "Give each `aria-*` attribute the kind of value it expects.",
   category: "Accessibility",
   create: (context) => ({

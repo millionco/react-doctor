@@ -18,6 +18,9 @@ export const noDefaultProps = defineRule({
   requires: ["react:19"],
   tags: ["test-noise"],
   severity: "warn",
+  impact: "style",
+  confidence: "high",
+  fix: "structural",
   // Default off: legacy `defaultProps` pattern superseded by ES default
   // parameters in function components. Opt in to enforce it.
   defaultEnabled: false,

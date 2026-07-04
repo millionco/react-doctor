@@ -12,6 +12,9 @@ export const firebaseClientOwnedAuthzField = defineRule({
   id: "firebase-client-owned-authz-field",
   title: "Client writes authorization field",
   severity: "error",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Derive authority fields on the server or enforce them in Firebase/Supabase rules; never trust client-provided owner, org, or role values.",
   scan: scanByPattern({

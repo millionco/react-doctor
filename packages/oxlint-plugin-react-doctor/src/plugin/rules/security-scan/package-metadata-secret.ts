@@ -19,6 +19,9 @@ export const packageMetadataSecret = defineRule({
   id: "package-metadata-secret",
   title: "Secret-like package metadata",
   severity: "warn",
+  impact: "security",
+  confidence: "heuristic",
+  fix: "local",
   recommendation:
     "Keep secrets out of package metadata and generated reports; they are often published to registries, logs, or browser artifacts.",
   scan: (file) => {

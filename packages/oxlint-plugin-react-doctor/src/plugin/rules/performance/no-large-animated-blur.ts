@@ -13,6 +13,9 @@ export const noLargeAnimatedBlur = defineRule({
   title: "Large animated blur",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "perf",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Keep the blur under 10px, or blur a smaller element. Big blurs use a lot more GPU memory as the element grows",
   create: (context: RuleContext) => ({

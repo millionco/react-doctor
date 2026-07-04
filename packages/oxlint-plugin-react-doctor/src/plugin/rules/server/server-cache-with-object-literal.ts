@@ -14,6 +14,9 @@ export const serverCacheWithObjectLiteral = defineRule({
   title: "React.cache with object literal",
   tags: ["test-noise"],
   severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
   recommendation:
     "Pass plain values like strings or numbers, not an object. React.cache() matches the exact value, so a new `{}` each render misses the cache.",
   create: (context: RuleContext) => {

@@ -4,6 +4,25 @@ import type { RuleVisitors } from "./rule-visitors.js";
 
 export type RuleSeverity = "error" | "warn";
 
+// What a finding of this rule represents for the user's app. `behavior`
+// is the load-bearing value — external gates (react-bench's footgun
+// verifier) key on it — so classify a rule `behavior` only when
+// violating it produces wrong runtime behavior: broken logic, wrong
+// data, stale UI, crashes. Framework-convention rules whose failure
+// mode is degradation rather than breakage are `style`.
+export type RuleImpact = "behavior" | "style" | "perf" | "a11y" | "security";
+
+// Detector precision tier. `high` = AST-precise detection that is safe
+// to gate/block on; `heuristic` = pattern-matching with known
+// false-positive classes, better treated as advisory.
+export type RuleConfidence = "high" | "heuristic";
+
+// Scope of the remediation a finding demands. `mechanical` = a
+// deterministic rewrite a codemod could apply; `local` = confined to
+// the flagged site but needs small judgment; `structural` = a
+// cross-cutting refactor beyond the flagged site.
+export type RuleFix = "mechanical" | "local" | "structural";
+
 // `global` rules are enabled on every project; the other buckets only
 // activate when the project actually uses that framework (detected by
 // `detectProject`). The framework name doubles as the ESLint flat-config
@@ -55,9 +74,19 @@ export interface Rule {
   // `jsx-no-new-*-as-prop` perf rules unnecessary, for example). If
   // ANY listed capability is present the rule is skipped.
   disabledBy?: ReadonlyArray<string>;
+  // Classification axes, projected by codegen into the registry entry's
+  // `tags` as `impact:<v>` / `confidence:<v>` / `fix:<v>` — never
+  // hand-write those tag forms in `tags`. Optional on the interface
+  // until every rule declares them; codegen enforces presence.
+  impact?: RuleImpact;
+  confidence?: RuleConfidence;
+  fix?: RuleFix;
   // Behavioral tags (e.g. `"test-noise"`, `"design"`) consumed by
   // `--ignore-tag` / `shouldEnableRule` to opt families of rules in
-  // or out of a scan independently of the framework gate.
+  // or out of a scan independently of the framework gate. `design` is
+  // a narrower surface-semantics tag than `impact:style` (default-
+  // excluded from prComment/score/ciFailure); every `design` rule is
+  // also `impact:style`.
   tags?: ReadonlyArray<string>;
   // When `true`, a finding's identity is the flagged element itself (a
   // missing attribute, a wrong element) rather than the flagged line's

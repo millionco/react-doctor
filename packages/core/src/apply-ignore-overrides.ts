@@ -75,6 +75,8 @@ export const isDiagnosticIgnoredByOverrides = (
     (override) =>
       override.filePatterns.some((pattern) => pattern.test(relativeFilePath)) &&
       (override.ruleIds.size === 0 ||
-        [...override.ruleIds].some((ignoredRuleId) => isSameRuleKey(ignoredRuleId, ruleIdentifier))),
+        [...override.ruleIds].some((ignoredRuleId) =>
+          isSameRuleKey(ignoredRuleId, ruleIdentifier),
+        )),
   );
 };

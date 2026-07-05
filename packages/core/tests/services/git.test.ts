@@ -17,7 +17,11 @@ const runWith = <Value>(
 ): Value => Effect.runSync(program.pipe(Effect.provide(layer)));
 
 const runGit = (directory: string, args: string[]): string =>
-  execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  execFileSync("git", args, {
+    cwd: directory,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 
 describe("Git.layerOf", () => {
   it("returns the snapshot's current branch and default branch", () => {
@@ -316,8 +320,14 @@ describe("Git.diffSelection — branch scope", () => {
       runGit(repositoryDirectory, ["config", "user.name", "React Doctor"]);
       runGit(repositoryDirectory, ["config", "commit.gpgsign", "false"]);
       fs.mkdirSync(path.join(repositoryDirectory, "src"));
-      fs.writeFileSync(path.join(repositoryDirectory, "src", "dirty.ts"), "export const dirty = 1;\n");
-      fs.writeFileSync(path.join(repositoryDirectory, "src", "base.ts"), "export const base = 1;\n");
+      fs.writeFileSync(
+        path.join(repositoryDirectory, "src", "dirty.ts"),
+        "export const dirty = 1;\n",
+      );
+      fs.writeFileSync(
+        path.join(repositoryDirectory, "src", "base.ts"),
+        "export const base = 1;\n",
+      );
       runGit(repositoryDirectory, ["add", "."]);
       runGit(repositoryDirectory, ["commit", "-q", "-m", "base"]);
       runGit(repositoryDirectory, ["checkout", "-q", "-b", "feature"]);
@@ -327,7 +337,10 @@ describe("Git.diffSelection — branch scope", () => {
       );
       runGit(repositoryDirectory, ["add", "src/feature.ts"]);
       runGit(repositoryDirectory, ["commit", "-q", "-m", "feature"]);
-      fs.writeFileSync(path.join(repositoryDirectory, "src", "dirty.ts"), "export const dirty = 2;\n");
+      fs.writeFileSync(
+        path.join(repositoryDirectory, "src", "dirty.ts"),
+        "export const dirty = 2;\n",
+      );
 
       const selection = await Effect.runPromise(
         Effect.gen(function* () {

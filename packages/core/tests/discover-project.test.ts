@@ -969,6 +969,75 @@ describe("discoverProject — node-resolution React fallback", () => {
     expect(projectInfo.reactVersion).toBe("^18.0.0 || ^19.0.0");
     expect(projectInfo.reactMajorVersion).toBe(18);
   });
+
+  it("does not override a concrete declared version with a different install", () => {
+    const projectDirectory = path.join(tempDirectory, "concrete-not-overridden");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "app", dependencies: { react: "18.2.0" } }),
+    );
+    writeInstalledReact(projectDirectory, "19.9.9");
+
+    // The declared concrete version parses to a major, so the fallback stays out.
+    expect(discoverProject(projectDirectory).reactVersion).toBe("18.2.0");
+  });
+
+  it("detects React when the project's node_modules is symlinked outside the repo", () => {
+    // Docker-volume / shared-store shape: node_modules is a symlink to a
+    // directory outside the working tree, but it is still the project's install.
+    const storeDirectory = path.join(tempDirectory, "symlink-store");
+    const reactInStore = path.join(storeDirectory, "react");
+    fs.mkdirSync(reactInStore, { recursive: true });
+    fs.writeFileSync(
+      path.join(reactInStore, "package.json"),
+      JSON.stringify({ name: "react", version: "19.0.0" }),
+    );
+    const repositoryRoot = path.join(tempDirectory, "symlink-repo");
+    fs.mkdirSync(path.join(repositoryRoot, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(repositoryRoot, "package.json"),
+      JSON.stringify({ name: "repo", dependencies: { react: "*" } }),
+    );
+    fs.symlinkSync(storeDirectory, path.join(repositoryRoot, "node_modules"));
+
+    expect(discoverProject(repositoryRoot).reactVersion).toBe("19.0.0");
+  });
+
+  it("does not walk to a global node_modules when the scan tree has no boundary", () => {
+    // No git root and no workspace marker: the search floors at the scanned
+    // package, so a React hoisted above it isn't adopted.
+    const parentDirectory = path.join(tempDirectory, "no-boundary-parent");
+    fs.mkdirSync(parentDirectory, { recursive: true });
+    writeInstalledReact(parentDirectory, "18.0.0");
+    const packageDirectory = path.join(parentDirectory, "pkg");
+    fs.mkdirSync(packageDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(packageDirectory, "package.json"),
+      JSON.stringify({ name: "pkg", dependencies: { react: "*" } }),
+    );
+
+    // The fallback fires (`*` has no major) but floors at the package, so the
+    // hoisted `18.0.0` is not adopted — the declared `*` is left in place.
+    const projectInfo = discoverProject(packageDirectory);
+    expect(projectInfo.reactVersion).toBe("*");
+    expect(projectInfo.reactMajorVersion).toBeNull();
+  });
+
+  it("ignores an installed React whose package.json has no usable version", () => {
+    const projectDirectory = path.join(tempDirectory, "installed-no-version");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "app", dependencies: { react: "*" } }),
+    );
+    const reactDirectory = path.join(projectDirectory, "node_modules", "react");
+    fs.mkdirSync(reactDirectory, { recursive: true });
+    fs.writeFileSync(path.join(reactDirectory, "package.json"), JSON.stringify({ name: "react" }));
+
+    // `react: "*"` parses to no major and the install has no version → stays as-is.
+    expect(discoverProject(projectDirectory).reactVersion).toBe("*");
+  });
 });
 
 const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-discover-test-"));

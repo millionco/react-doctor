@@ -17,6 +17,8 @@ interface SpanRecord {
   ended: boolean;
 }
 
+const HR_TIME_CLOCK_SKEW_TOLERANCE_SECONDS = 1;
+
 // Minimal stand-in for a Sentry span: records the lifecycle calls the bridge
 // makes and structurally satisfies the SDK's `Span` interface (so no casts).
 const buildFakeSpan = (record: SpanRecord) => {
@@ -149,11 +151,15 @@ describe("makeSentryTracer", () => {
     await Effect.runPromise(
       Effect.succeed("ok").pipe(Effect.withSpan("timed"), Effect.withTracer(tracer)),
     );
+    const afterSeconds = Math.floor(Date.now() / 1000);
 
     const [record] = created;
     expect(Array.isArray(record?.startTime)).toBe(true);
     const startTime = record?.startTime as [number, number];
-    expect(startTime[0]).toBeGreaterThanOrEqual(beforeSeconds);
+    expect(startTime[0]).toBeGreaterThanOrEqual(
+      beforeSeconds - HR_TIME_CLOCK_SKEW_TOLERANCE_SECONDS,
+    );
+    expect(startTime[0]).toBeLessThanOrEqual(afterSeconds + HR_TIME_CLOCK_SKEW_TOLERANCE_SECONDS);
     expect(startTime[1]).toBeGreaterThanOrEqual(0);
     expect(startTime[1]).toBeLessThan(1_000_000_000);
     expect(Array.isArray(record?.endTime)).toBe(true);

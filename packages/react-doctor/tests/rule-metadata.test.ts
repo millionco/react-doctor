@@ -26,10 +26,10 @@ const BARE_TAGS = new Set([
   "test-noise",
 ]);
 
-// A handful of react-bench GENUINE footguns as tripwires — if any of these
-// silently drops out of `impact:behavior`, an external reward gate shifts.
-// Deliberately a small subset, NOT the full list (pinning all 27 would
-// re-create the brittle external whitelist this feature exists to kill).
+// A handful of high-signal behavior-correctness rules as tripwires — if
+// any silently drops out of `impact:behavior`, a downstream reward gate
+// shifts. Deliberately a small subset, not an exhaustive whitelist (which
+// would re-create the brittle external rule-name list this feature replaces).
 const BEHAVIOR_SENTINELS = [
   "no-derived-state",
   "no-chain-state-updates",

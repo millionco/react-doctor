@@ -5,11 +5,11 @@ import type { RuleVisitors } from "./rule-visitors.js";
 export type RuleSeverity = "error" | "warn";
 
 // What a finding of this rule represents for the user's app. `behavior`
-// is the load-bearing value — external gates (react-bench's footgun
-// verifier) key on it — so classify a rule `behavior` only when
-// violating it produces wrong runtime behavior: broken logic, wrong
-// data, stale UI, crashes. Framework-convention rules whose failure
-// mode is degradation rather than breakage are `style`.
+// is the load-bearing value — external reward gates key on it — so
+// classify a rule `behavior` only when violating it produces wrong
+// runtime behavior: broken logic, wrong data, stale UI, crashes.
+// Framework-convention rules whose failure mode is degradation rather
+// than breakage are `style`.
 export type RuleImpact = "behavior" | "style" | "perf" | "a11y" | "security";
 
 // Detector precision tier. `high` = AST-precise detection that is safe

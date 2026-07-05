@@ -1,5 +1,6 @@
 import type { Diagnostic, ReactDoctorConfig, ReactDoctorIgnoreOverride } from "./types/index.js";
 import { isPlainObject } from "./project-info/index.js";
+import { isSameRuleKey } from "./rule-key-aliases.js";
 import { compileGlobPatternsLenient } from "./utils/match-glob-pattern.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
 import { warnConfigIssue } from "./utils/warn-config-issue.js";
@@ -73,6 +74,7 @@ export const isDiagnosticIgnoredByOverrides = (
   return overrides.some(
     (override) =>
       override.filePatterns.some((pattern) => pattern.test(relativeFilePath)) &&
-      (override.ruleIds.size === 0 || override.ruleIds.has(ruleIdentifier)),
+      (override.ruleIds.size === 0 ||
+        [...override.ruleIds].some((ignoredRuleId) => isSameRuleKey(ignoredRuleId, ruleIdentifier))),
   );
 };

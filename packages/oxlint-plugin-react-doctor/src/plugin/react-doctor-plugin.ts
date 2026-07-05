@@ -1,7 +1,6 @@
 import { ruleRegistry } from "./rule-registry.js";
 import type { Rule } from "./utils/rule.js";
-import type { HostRule } from "./utils/rule-plugin.js";
-import type { RulePlugin } from "./utils/rule-plugin.js";
+import type { HostRule, RulePlugin } from "./utils/rule-plugin.js";
 import { wrapReactNativeRule } from "./utils/wrap-react-native-rule.js";
 import { wrapWithSemanticContext } from "./utils/wrap-with-semantic-context.js";
 
@@ -25,8 +24,8 @@ const applyFrameworkRuleWrappers = (registry: Record<string, Rule>): Record<stri
   return wrapped;
 };
 
-// The plugin object loaded by oxlint (via `dist/react-doctor-plugin.js`)
-// and by `eslint-plugin.ts`. Rules are sourced from the codegen-built
+// The plugin object loaded by oxlint and by eslint-plugin-react-doctor.
+// Rules are sourced from the codegen-built
 // `rule-registry.ts`, which scans every `defineRule({ id: "...", ... })`
 // declaration under `src/plugin/rules/<bucket>/<rule>.ts`. Adding a new
 // rule is a single-file operation: create the rule, set its `id`, run

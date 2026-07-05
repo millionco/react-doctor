@@ -366,6 +366,7 @@ export interface JsonReportV1 {
   summary: JsonReportSummary;
   elapsedMilliseconds: number;
   error: JsonReportError | null;
+  baselineDegraded?: boolean;
 }
 
 /**

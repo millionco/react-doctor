@@ -224,11 +224,11 @@ export const buildDiagnosticPipeline = (
 
       let current = diagnostic;
       let explicitSeverityOverride: RuleSeverityOverride | undefined;
+      const { ruleKey, category } = getDiagnosticRuleIdentity(current);
       // A *per-rule* override (vs. a broad `categories` bump) — the only signal
       // that should re-enable an app-only rule on a library file.
       let explicitRuleOverride: RuleSeverityOverride | undefined;
       if (severityControls) {
-        const { ruleKey, category } = getDiagnosticRuleIdentity(current);
         // No `category` → resolves against `rules` (+ aliases) only, ignoring
         // any matching `categories` entry.
         explicitRuleOverride = resolveRuleSeverityOverride({ ruleKey }, severityControls);
@@ -248,7 +248,6 @@ export const buildDiagnosticPipeline = (
       // deliberate "I want static-components in my library" and must not leak
       // these rules back into published packages.
       if (explicitRuleOverride === undefined) {
-        const ruleKey = `${current.plugin}/${current.rule}`;
         if (isAppOnlyRule(ruleKey) && isLibraryFile(current.filePath)) return null;
       }
 
@@ -261,8 +260,7 @@ export const buildDiagnosticPipeline = (
       }
 
       if (userConfig) {
-        const ruleIdentifier = `${current.plugin}/${current.rule}`;
-        if (isRuleIgnored(ruleIdentifier)) return suppress(current, "config");
+        if (isRuleIgnored(ruleKey)) return suppress(current, "config");
         if (isFileIgnoredByPatterns(current.filePath, rootDirectory, ignoredFilePatterns)) {
           return null;
         }
@@ -276,9 +274,8 @@ export const buildDiagnosticPipeline = (
       if (respectInlineDisables && current.line > 0) {
         const lines = getFileLines(current.filePath);
         if (lines) {
-          const ruleIdentifier = `${current.plugin}/${current.rule}`;
           const diagnosticLineIndex = current.line - 1;
-          const evaluation = evaluateSuppression(lines, diagnosticLineIndex, ruleIdentifier);
+          const evaluation = evaluateSuppression(lines, diagnosticLineIndex, ruleKey);
           if (evaluation.isSuppressed) return suppress(current, "inline");
           if (evaluation.nearMissHint) {
             current = { ...current, suppressionHint: evaluation.nearMissHint };

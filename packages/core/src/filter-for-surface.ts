@@ -6,6 +6,7 @@ import type {
 } from "./types/index.js";
 import { DEFAULT_SURFACE_EXCLUDED_TAGS } from "./diagnostic-surface.js";
 import { getDiagnosticRuleIdentity } from "./get-diagnostic-rule-identity.js";
+import { isSameRuleKey } from "./rule-key-aliases.js";
 
 interface ResolvedSurfaceControls {
   includeTags: ReadonlySet<string>;
@@ -43,30 +44,43 @@ const buildResolvedControls = (
 const intersects = (values: ReadonlyArray<string>, candidates: ReadonlySet<string>): boolean =>
   values.some((value) => candidates.has(value));
 
-export const isDiagnosticOnSurface = (
+const containsRuleKey = (ruleKeys: ReadonlySet<string>, ruleKey: string): boolean =>
+  [...ruleKeys].some((candidateRuleKey) => isSameRuleKey(candidateRuleKey, ruleKey));
+
+const isDiagnosticOnResolvedSurface = (
   diagnostic: Diagnostic,
-  surface: DiagnosticSurface,
-  config: ReactDoctorConfig | null,
+  resolved: ResolvedSurfaceControls,
 ): boolean => {
-  const resolved = buildResolvedControls(surface, config?.surfaces?.[surface]);
   const { ruleKey, category, tags } = getDiagnosticRuleIdentity(diagnostic);
 
   // Include wins over exclude — checked first so a single rule can be
   // promoted back into a surface even when its tag / category is hidden.
-  if (resolved.includeRuleKeys.has(ruleKey)) return true;
+  if (containsRuleKey(resolved.includeRuleKeys, ruleKey)) return true;
   if (resolved.includeCategories.has(category)) return true;
   if (intersects(tags, resolved.includeTags)) return true;
 
-  if (resolved.excludeRuleKeys.has(ruleKey)) return false;
+  if (containsRuleKey(resolved.excludeRuleKeys, ruleKey)) return false;
   if (resolved.excludeCategories.has(category)) return false;
   if (intersects(tags, resolved.excludeTags)) return false;
 
   return true;
 };
 
+export const isDiagnosticOnSurface = (
+  diagnostic: Diagnostic,
+  surface: DiagnosticSurface,
+  config: ReactDoctorConfig | null,
+): boolean =>
+  isDiagnosticOnResolvedSurface(
+    diagnostic,
+    buildResolvedControls(surface, config?.surfaces?.[surface]),
+  );
+
 export const filterDiagnosticsForSurface = (
   diagnostics: Diagnostic[],
   surface: DiagnosticSurface,
   config: ReactDoctorConfig | null,
-): Diagnostic[] =>
-  diagnostics.filter((diagnostic) => isDiagnosticOnSurface(diagnostic, surface, config));
+): Diagnostic[] => {
+  const resolved = buildResolvedControls(surface, config?.surfaces?.[surface]);
+  return diagnostics.filter((diagnostic) => isDiagnosticOnResolvedSurface(diagnostic, resolved));
+};

@@ -742,6 +742,7 @@ export class Git extends Context.Service<
               "--diff-filter=ACMR",
               "--relative",
               mergeBaseRef,
+              "HEAD",
             ]);
             if (diff.status !== 0) return null;
             return {
@@ -832,7 +833,7 @@ export class Git extends Context.Service<
               "--diff-filter=ACMR",
               "--relative",
               ...(cached ? ["--cached"] : []),
-              ...(baseRef !== undefined ? [baseRef] : []),
+              ...(baseRef !== undefined ? [baseRef, "HEAD"] : []),
               "--",
               ...files,
             ]);

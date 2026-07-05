@@ -4,22 +4,13 @@ import * as Layer from "effect/Layer";
 import {
   AmbiguousProjectError,
   discoverProject as discoverProjectSync,
-  NoReactDependencyError,
   PackageJsonNotFoundError,
   ProjectNotFoundError,
 } from "../project-info/index.js";
 import type { ProjectInfo } from "../types/index.js";
-import {
-  AmbiguousProject,
-  NoReactDependency,
-  ProjectNotFound,
-  ReactDoctorError,
-} from "../errors.js";
+import { AmbiguousProject, ProjectNotFound, ReactDoctorError } from "../errors.js";
 
 const translateProjectInfoError = (cause: unknown, directory: string): ReactDoctorError => {
-  if (cause instanceof NoReactDependencyError) {
-    return new ReactDoctorError({ reason: new NoReactDependency({ directory: cause.directory }) });
-  }
   if (cause instanceof ProjectNotFoundError) {
     return new ReactDoctorError({ reason: new ProjectNotFound({ directory: cause.directory }) });
   }

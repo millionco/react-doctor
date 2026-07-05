@@ -160,7 +160,7 @@ const isRefLikeReceiver = (
 // query API, or `.current` / a layout measure on a ref-like receiver
 // (`viewportRef.current`, `ref.current.offsetWidth`). Plain-data lookalikes
 // (`pagination.current`) do NOT match.
-export const isPostMountMemberRead = (node: EsTreeNode): boolean => {
+const isPostMountMemberRead = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "MemberExpression") || !isNodeOfType(node.property, "Identifier")) {
     return false;
   }

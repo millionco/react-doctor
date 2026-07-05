@@ -108,6 +108,14 @@ describe("filterDiagnosticsForSurface — user overrides", () => {
     expect(filterDiagnosticsForSurface(diagnostics, "cli", config)).toEqual([designDiagnostic]);
   });
 
+  it("`excludeRules` accepts legacy and bare aliases", () => {
+    const config: ReactDoctorConfig = {
+      surfaces: { cli: { excludeRules: ["no-array-index-as-key"] } },
+    };
+    const diagnostics = [designDiagnostic, correctnessDiagnostic];
+    expect(filterDiagnosticsForSurface(diagnostics, "cli", config)).toEqual([designDiagnostic]);
+  });
+
   it("`includeRules` overrides excludeTags for a single rule (include wins)", () => {
     const config: ReactDoctorConfig = {
       surfaces: {
@@ -117,6 +125,23 @@ describe("filterDiagnosticsForSurface — user overrides", () => {
       },
     };
     expect(isDiagnosticOnSurface(designDiagnostic, "prComment", config)).toBe(true);
+  });
+
+  it("`includeRules` accepts legacy aliases", () => {
+    const legacyJsxKeyDiagnostic: Diagnostic = {
+      ...correctnessDiagnostic,
+      rule: "jsx-key",
+    };
+    const config: ReactDoctorConfig = {
+      surfaces: {
+        prComment: {
+          excludeCategories: ["Correctness"],
+          includeRules: ["react/jsx-key"],
+        },
+      },
+    };
+
+    expect(isDiagnosticOnSurface(legacyJsxKeyDiagnostic, "prComment", config)).toBe(true);
   });
 });
 

@@ -40,8 +40,9 @@ fastest startup and version pinning.
 
 ## Configuration
 
-The server honors your project's `react-doctor.config.json` — the same
-configuration the CLI uses. No editor-specific config is required.
+The server honors your project's `doctor.config.*` or `package.json#reactDoctor`
+configuration — the same configuration the CLI uses. No editor-specific config
+is required.
 
 ## Packaging
 

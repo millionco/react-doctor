@@ -2,7 +2,7 @@
 
 Diagnose React codebase health. Scans for security, performance, correctness, and architecture issues, then outputs a 0–100 score with actionable diagnostics.
 
-Note: dead-code detection was removed in v0.2 (previously powered by knip). For dead-code analysis, run `npx knip` directly.
+Dead-code analysis runs by default via deslop-js. Use `--no-dead-code` to skip unused files / exports / dependencies and circular import checks.
 
 ## Usage
 
@@ -94,15 +94,24 @@ Options:
   -v, --version      display the version number
   --lint             enable linting (default: on)
   --no-lint          skip linting
+  --dead-code        enable dead-code analysis (default)
+  --no-dead-code     skip dead-code analysis
+  --supply-chain     enable supply-chain checks (default)
+  --no-supply-chain  skip supply-chain checks
   --verbose          show file details per rule
   --output-dir <dir>  directory for the full diagnostics dump (default: a temp folder)
   --score            output only the score
   --json             output a single structured JSON report (suppresses other output)
+  --json-compact     output compact JSON
+  --json-out <file>  write the JSON report to a file instead of stdout
   -y, --yes          skip prompts, scan all workspace projects
   --project <name>   select projects: workspace names or directory paths (comma-separated for multiple); set `projects` in doctor.config.* to make the selection persistent (the flag wins)
   --scope <value>    how much to scan/report: full (default), files, changed (only new issues vs base), or lines
   --base <ref>       base git ref for files/changed/lines scope (auto-detected when omitted)
-  --no-score         skip the score API and share URL
+  --warnings         show warning diagnostics (default)
+  --no-warnings      hide warning diagnostics
+  --no-score         skip the score API, share URL, and crash reporting
+  --no-telemetry     alias for --no-score
   --staged           scan only staged (git index) files for pre-commit hooks
   --max-duration <seconds>  scan time budget for the whole run, shared across workspace projects: past it, remaining lint batches and dead-code are skipped and partial results are reported (skipped files are listed in the JSON report)
   --blocking <level>  severity that fails CI: error (default), warning, none

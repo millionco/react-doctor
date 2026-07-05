@@ -12,6 +12,7 @@ import {
 import type { HandleErrorOptions } from "@react-doctor/core";
 import { VERSION } from "./version.js";
 import { METRIC } from "./constants.js";
+import { anonymizeText } from "./anonymize-text.js";
 import { formatEnvironmentError, isEnvironmentError } from "./is-environment-error.js";
 import { recordCount } from "./record-metric.js";
 
@@ -41,8 +42,8 @@ const formatErrorForReport = (error: unknown): string =>
 const formatSingleLine = (text: string): string => text.replaceAll(/\s+/g, " ").trim();
 
 const getErrorReportContext = (): ErrorReportContext => ({
-  cwd: process.cwd(),
-  command: process.argv.join(" "),
+  cwd: anonymizeText(process.cwd()),
+  command: anonymizeText(process.argv.join(" ")),
   nodeVersion: process.version,
   platform: process.platform,
   architecture: process.arch,
@@ -57,7 +58,7 @@ const buildErrorIssueBody = (
   context: ErrorReportContext,
   sentryEventId: string | undefined,
 ): string => {
-  const formattedError = formatErrorForReport(error) || "(empty error)";
+  const formattedError = anonymizeText(formatErrorForReport(error) || "(empty error)");
   const isOtlpExporterEnabled =
     context.isOtlpEndpointConfigured && context.isOtlpAuthHeaderConfigured;
 
@@ -91,7 +92,7 @@ const buildErrorIssueBody = (
 };
 
 export const buildErrorIssueUrl = (error: unknown, sentryEventId?: string): string => {
-  const formattedError = formatSingleLine(formatErrorForReport(error));
+  const formattedError = formatSingleLine(anonymizeText(formatErrorForReport(error)));
   const issueUrl = new URL(`${CANONICAL_GITHUB_URL}/issues/new`);
   issueUrl.searchParams.set("title", formattedError ? `CLI error: ${formattedError}` : "CLI error");
   issueUrl.searchParams.set("labels", "bug");
@@ -145,8 +146,9 @@ export const handleError = (error: unknown, options: CliHandleErrorOptions = {})
   Effect.runSync(handleErrorEffect(error, options.sentryEventId));
   if (options.shouldExit !== false) {
     process.exit(1);
+  } else {
+    process.exitCode = 1;
   }
-  process.exitCode = 1;
 };
 
 /**
@@ -178,6 +180,7 @@ export const handleUserError = (error: unknown, options: { shouldExit?: boolean 
   );
   if (options.shouldExit !== false) {
     process.exit(1);
+  } else {
+    process.exitCode = 1;
   }
-  process.exitCode = 1;
 };

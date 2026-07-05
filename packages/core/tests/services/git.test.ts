@@ -1,3 +1,7 @@
+import * as fs from "node:fs";
+import os from "node:os";
+import * as path from "node:path";
+import { execFileSync } from "node:child_process";
 import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vite-plus/test";
 import {
@@ -11,6 +15,9 @@ const runWith = <Value>(
   layer: ReturnType<typeof Git.layerOf>,
   program: Effect.Effect<Value, ReactDoctorError, Git>,
 ): Value => Effect.runSync(program.pipe(Effect.provide(layer)));
+
+const runGit = (directory: string, args: string[]): string =>
+  execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
 describe("Git.layerOf", () => {
   it("returns the snapshot's current branch and default branch", () => {
@@ -297,5 +304,44 @@ describe("Git.diffSelection — git-flag injection (CVE-2018-17456 shape)", () =
 
   it("rejects empty refnames (legacy contract)", async () => {
     await expectInvalidReason("");
+  });
+});
+
+describe("Git.diffSelection — branch scope", () => {
+  it("compares the merge base to HEAD instead of including dirty working-tree edits", async () => {
+    const repositoryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-git-diff-selection-"));
+    try {
+      runGit(repositoryDirectory, ["init", "-q", "-b", "main"]);
+      runGit(repositoryDirectory, ["config", "user.email", "doctor@example.com"]);
+      runGit(repositoryDirectory, ["config", "user.name", "React Doctor"]);
+      runGit(repositoryDirectory, ["config", "commit.gpgsign", "false"]);
+      fs.mkdirSync(path.join(repositoryDirectory, "src"));
+      fs.writeFileSync(path.join(repositoryDirectory, "src", "dirty.ts"), "export const dirty = 1;\n");
+      fs.writeFileSync(path.join(repositoryDirectory, "src", "base.ts"), "export const base = 1;\n");
+      runGit(repositoryDirectory, ["add", "."]);
+      runGit(repositoryDirectory, ["commit", "-q", "-m", "base"]);
+      runGit(repositoryDirectory, ["checkout", "-q", "-b", "feature"]);
+      fs.writeFileSync(
+        path.join(repositoryDirectory, "src", "feature.ts"),
+        "export const feature = 1;\n",
+      );
+      runGit(repositoryDirectory, ["add", "src/feature.ts"]);
+      runGit(repositoryDirectory, ["commit", "-q", "-m", "feature"]);
+      fs.writeFileSync(path.join(repositoryDirectory, "src", "dirty.ts"), "export const dirty = 2;\n");
+
+      const selection = await Effect.runPromise(
+        Effect.gen(function* () {
+          const git = yield* Git;
+          return yield* git.diffSelection({
+            directory: repositoryDirectory,
+            explicitBaseBranch: "main",
+          });
+        }).pipe(Effect.provide(Git.layerNode)),
+      );
+
+      expect(selection?.changedFiles).toEqual(["src/feature.ts"]);
+    } finally {
+      fs.rmSync(repositoryDirectory, { recursive: true, force: true });
+    }
   });
 });

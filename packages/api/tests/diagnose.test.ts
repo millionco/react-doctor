@@ -43,6 +43,34 @@ describe("diagnose", () => {
     expect(Array.isArray(result.diagnostics)).toBe(true);
   });
 
+  it("honors lint: false by skipping lint diagnostics", async () => {
+    const projectDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rdc-lint-false-"));
+    try {
+      fs.writeFileSync(
+        path.join(projectDirectory, "package.json"),
+        JSON.stringify({ name: "lint-false", dependencies: { react: "^19.0.0" } }),
+      );
+      fs.mkdirSync(path.join(projectDirectory, "src"));
+      fs.writeFileSync(
+        path.join(projectDirectory, "src", "items.tsx"),
+        [
+          "export const Items = ({ items }: { items: string[] }) => (",
+          "  <ul>",
+          "    {items.map((item, index) => <li key={index}>{item}</li>)}",
+          "  </ul>",
+          ");",
+          "",
+        ].join("\n"),
+      );
+
+      const result = await diagnose(projectDirectory, { deadCode: false, lint: false });
+
+      expect(result.diagnostics).toEqual([]);
+    } finally {
+      fs.rmSync(projectDirectory, { recursive: true, force: true });
+    }
+  });
+
   it("throws NoReactDependencyError when the directory has package.json without react", async () => {
     await expect(diagnose(noReactTempDirectory, { lint: false })).rejects.toThrow(
       NoReactDependencyError,

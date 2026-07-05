@@ -8,6 +8,7 @@ import { findOwningProjectDirectory } from "./find-owning-project.js";
 import { indentMultilineText } from "./indent-multiline-text.js";
 import { parseFileLineArgument } from "./parse-file-line-argument.js";
 import { selectProjects } from "./select-projects.js";
+import { CliInputError } from "./cli-input-error.js";
 
 export interface ExplainContext {
   resolvedDirectory: string;
@@ -31,7 +32,7 @@ const resolveExplainTargetDirectory = async (
     );
     if (matchedDirectories.length === 0) return context.resolvedDirectory;
     if (matchedDirectories.length > 1) {
-      throw new Error(
+      throw new CliInputError(
         `--explain takes a single project; --project resolved to ${matchedDirectories.length} projects.`,
       );
     }

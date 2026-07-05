@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { GitBaseBranchInvalid, ReactDoctorError } from "@react-doctor/core";
 import { buildErrorIssueUrl, handleError, handleUserError } from "../src/cli/utils/handle-error.js";
+import { formatEnvironmentError } from "../src/cli/utils/is-environment-error.js";
 
 const OTLP_ENDPOINT_ENVIRONMENT_VARIABLE = "REACT_DOCTOR_OTLP_ENDPOINT";
 const OTLP_AUTH_HEADER_ENVIRONMENT_VARIABLE = "REACT_DOCTOR_OTLP_AUTH_HEADER";
@@ -57,6 +58,20 @@ describe("handleError", () => {
     expect(body).toContain("Sentry reference: evt-abc123");
   });
 
+  it("scrubs sensitive paths and tokens from the prefilled issue", () => {
+    const token = `ghp_${"a".repeat(36)}`;
+    const error = new Error(`failed at /home/alice/app/src/index.ts with token ${token}`);
+    const issueUrl = new URL(buildErrorIssueUrl(error));
+    const title = issueUrl.searchParams.get("title") ?? "";
+    const body = issueUrl.searchParams.get("body") ?? "";
+
+    expect(title).not.toContain("/home/alice");
+    expect(body).not.toContain("/home/alice");
+    expect(body).toContain("~/app/src/index.ts");
+    expect(title).not.toContain(token);
+    expect(body).not.toContain(token);
+  });
+
   it("omits the Sentry reference line when no event id is provided", () => {
     const body = new URL(buildErrorIssueUrl(new Error("boom"))).searchParams.get("body") ?? "";
     expect(body).not.toContain("Sentry reference:");
@@ -95,6 +110,20 @@ describe("handleError", () => {
       "You can also ask for help in Discord: https://react.doctor/discord",
     );
     expect(process.exitCode).toBe(1);
+  });
+});
+
+describe("formatEnvironmentError", () => {
+  it("scrubs absolute paths from permission errors", () => {
+    const error = Object.assign(new Error("permission denied"), {
+      code: "EACCES",
+      path: "/home/alice/private/project",
+    });
+
+    const message = formatEnvironmentError(error);
+
+    expect(message).toContain("~/private/project");
+    expect(message).not.toContain("/home/alice");
   });
 });
 

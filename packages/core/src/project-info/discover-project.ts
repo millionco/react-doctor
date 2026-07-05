@@ -24,7 +24,7 @@ import { getPreactVersion } from "./get-preact-version.js";
 import { hasTanStackQuery } from "./has-tanstack-query.js";
 import { someWorkspacePackageJson } from "./some-workspace-package-json.js";
 import { isPackageJsonReanimatedAware } from "./utils/is-package-json-reanimated-aware.js";
-import { readPackageJson } from "./read-package-json.js";
+import { clearPackageJsonCache, readPackageJson } from "./read-package-json.js";
 import { getLowestDependencyMajor } from "./utils/dependency-version-spec.js";
 import { isCatalogReference, resolveCatalogVersion } from "./resolve-catalog-version.js";
 import { parseReactMajor } from "./parse-react-major.js";
@@ -43,6 +43,7 @@ const cachedProjectInfos = new Map<string, ProjectInfo>();
 // tsconfig.json / monorepo manifests change between diagnose() calls.
 export const clearProjectCache = (): void => {
   cachedProjectInfos.clear();
+  clearPackageJsonCache();
 };
 
 /**

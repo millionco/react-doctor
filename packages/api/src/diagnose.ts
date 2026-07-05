@@ -58,6 +58,7 @@ const warnIfAiTrainingEnvironment = (): void => {
 // stack is built once here rather than duplicated per variant.
 const buildDiagnoseLayer = (
   config: ReactDoctorConfig | null,
+  shouldSkipLint: boolean,
   configOverrideTarget?: Pick<ResolvedScanTarget, "resolvedDirectory" | "configSourceDirectory">,
 ) => {
   const configLayer =
@@ -68,13 +69,14 @@ const buildDiagnoseLayer = (
           resolvedDirectory: configOverrideTarget.resolvedDirectory,
           configSourceDirectory: configOverrideTarget.configSourceDirectory,
         });
+  const linterLayer = shouldSkipLint ? Linter.layerOf([]) : Linter.layerOxlint;
   return Layer.mergeAll(
     Project.layerNode,
     configLayer,
     DeadCode.layerNode,
     Files.layerNode,
     Git.layerNode,
-    Linter.layerOxlint,
+    linterLayer,
     LintPartialFailures.layerLive,
     Progress.layerNoop,
     Reporter.layerNoop,
@@ -105,6 +107,9 @@ const buildInspectProgram = (
     resolveLocalGithubViewerPermission: true,
   });
 };
+
+const shouldSkipLint = (options: DiagnoseOptions, config: ReactDoctorConfig | null): boolean =>
+  (options.lint ?? config?.lint ?? true) === false;
 
 const outputToDiagnoseResult = (
   output: InspectOutput,
@@ -139,11 +144,12 @@ const diagnoseDirectory = async (
   const startTime = globalThis.performance.now();
   const scanTarget = await resolveScanTarget(directory);
   const program = buildInspectProgram(scanTarget, options);
+  const skipLint = shouldSkipLint(options, scanTarget.userConfig);
 
   const output: InspectOutput = await Effect.runPromise(
     restoreLegacyThrow(
       program.pipe(
-        Effect.provide(buildDiagnoseLayer(scanTarget.userConfig)),
+        Effect.provide(buildDiagnoseLayer(scanTarget.userConfig, skipLint)),
         Effect.provide(layerOtlp),
       ),
     ),
@@ -190,6 +196,7 @@ const diagnoseProject = async (
       { ...baseOptions, ...perProjectOptions },
       effectiveConfig ?? undefined,
     );
+    const mergedOptions = { ...baseOptions, ...perProjectOptions };
     // `plugins` is override-wins in the merge: when a caller layer supplies
     // it, relative entries resolve against the scan root (caller configs
     // have no file location); otherwise the on-disk config's directory.
@@ -197,6 +204,7 @@ const diagnoseProject = async (
       batchConfig?.plugins !== undefined || projectConfig?.plugins !== undefined;
     const layer = buildDiagnoseLayer(
       effectiveConfig,
+      shouldSkipLint(mergedOptions, effectiveConfig),
       didOverrideConfig
         ? {
             resolvedDirectory: scanTarget.resolvedDirectory,

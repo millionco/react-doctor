@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { ancestorDirectories } from "../utils/ancestor-directories.js";
 import { isFile } from "./utils/is-file.js";
 import { readPackageJson } from "./read-package-json.js";
 
@@ -12,11 +13,8 @@ export const isMonorepoRoot = (directory: string): boolean => {
 };
 
 export const findMonorepoRoot = (startDirectory: string): string | null => {
-  let currentDirectory = path.dirname(startDirectory);
-
-  while (currentDirectory !== path.dirname(currentDirectory)) {
-    if (isMonorepoRoot(currentDirectory)) return currentDirectory;
-    currentDirectory = path.dirname(currentDirectory);
+  for (const directory of ancestorDirectories(startDirectory, { includeStart: false })) {
+    if (isMonorepoRoot(directory)) return directory;
   }
 
   return null;

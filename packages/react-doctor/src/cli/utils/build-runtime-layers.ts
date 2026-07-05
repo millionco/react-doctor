@@ -37,6 +37,14 @@ export interface BuildRuntimeLayersInput {
   readonly shouldSkipLint: boolean;
   readonly shouldRunDeadCode: boolean;
   /**
+   * Whether the Socket.dev supply-chain scan should run. Resolved by
+   * `inspect()` from the `--supply-chain` / `--no-supply-chain` flag over
+   * `supplyChain.enabled` (the flag wins), so a per-project config can't
+   * undo the CLI choice. `false` swaps `SupplyChain.layerNode` for the
+   * no-op `layerOf([])`.
+   */
+  readonly shouldRunSupplyChain: boolean;
+  /**
    * Whether the run should request a score from the hosted API.
    * `false` swaps `Score.layerHttp` for `Score.layerOf(null)` so the
    * orchestrator's Score service is a no-op for `--no-score` runs.
@@ -105,12 +113,11 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
   const deadCodeLayer = input.shouldRunDeadCode ? DeadCode.layerNode : DeadCode.layerOf([]);
   const scoreLayer = input.shouldComputeScore ? Score.layerHttp : Score.layerOf(null);
   // Socket.dev supply-chain score gate runs by default (the keyless HTTP
-  // layer); a no-op empty layer only when the user explicitly opts out via
-  // `supplyChain.enabled: false`.
-  const supplyChainLayer =
-    input.userConfig?.supplyChain?.enabled === false
-      ? SupplyChain.layerOf([])
-      : SupplyChain.layerNode;
+  // layer); a no-op empty layer when the user opts out via
+  // `--no-supply-chain` or `supplyChain.enabled: false`.
+  const supplyChainLayer = input.shouldRunSupplyChain
+    ? SupplyChain.layerNode
+    : SupplyChain.layerOf([]);
   const projectLayer =
     input.projectInfoOverride === undefined
       ? Project.layerNode

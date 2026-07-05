@@ -153,6 +153,7 @@ export interface ReactDoctorInspectOptions extends InspectOptions {
 export interface ResolvedInspectOptions {
   lint: boolean;
   deadCode: boolean;
+  supplyChain: boolean;
   verbose: boolean;
   /** See `InspectOptions.outputDirectory`. `null` keeps the temp-dir default. */
   outputDirectory: string | null;
@@ -212,6 +213,7 @@ const mergeInspectOptions = (
 ): ResolvedInspectOptions => ({
   lint: inputOptions.lint ?? userConfig?.lint ?? true,
   deadCode: inputOptions.deadCode ?? userConfig?.deadCode ?? true,
+  supplyChain: inputOptions.supplyChain ?? userConfig?.supplyChain?.enabled ?? true,
   verbose: inputOptions.verbose ?? userConfig?.verbose ?? false,
   outputDirectory: inputOptions.outputDirectory || null,
   scoreOnly: inputOptions.scoreOnly ?? false,
@@ -275,6 +277,7 @@ const buildRunEventConfig = (
     maxDurationMs: options.maxDurationMs,
     lint: options.lint,
     deadCode: options.deadCode,
+    supplyChain: options.supplyChain,
     scoreOnly: options.scoreOnly,
     noScore: options.noScore,
     respectInlineDisables: options.respectInlineDisables,
@@ -459,6 +462,7 @@ const runBaselineComparison = async (
       projectInfoOverride: params.headProjectInfo,
       shouldSkipLint: !params.options.lint || !params.resolvedNodeBinaryPath,
       shouldRunDeadCode: false,
+      shouldRunSupplyChain: params.options.supplyChain,
       shouldComputeScore: false,
       shouldShowProgressSpinners: false,
       oxlintConcurrency: params.options.concurrency,
@@ -613,6 +617,7 @@ const runInspectWithRuntime = async (
     configSourceDirectory,
     shouldSkipLint: !options.lint || lintBindingMissing,
     shouldRunDeadCode: options.deadCode,
+    shouldRunSupplyChain: options.supplyChain,
     shouldComputeScore: !options.noScore,
     shouldShowProgressSpinners,
     oxlintConcurrency: options.concurrency,

@@ -899,6 +899,147 @@ describe("listWorkspacePackages", () => {
   });
 });
 
+describe("discoverProject — node-resolution React fallback", () => {
+  const writeInstalledReact = (rootDirectory: string, version: string): void => {
+    const reactDirectory = path.join(rootDirectory, "node_modules", "react");
+    fs.mkdirSync(reactDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(reactDirectory, "package.json"),
+      JSON.stringify({ name: "react", version, main: "index.js" }),
+    );
+    fs.writeFileSync(path.join(reactDirectory, "index.js"), "module.exports = {};\n");
+  };
+
+  it("resolves the installed React version when the declaration is version-less", () => {
+    const projectDirectory = path.join(tempDirectory, "react-workspace-protocol-installed");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "widget", dependencies: { react: "workspace:*" } }),
+    );
+    writeInstalledReact(projectDirectory, "19.1.0");
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactVersion).toBe("19.1.0");
+    expect(projectInfo.reactMajorVersion).toBe(19);
+  });
+
+  it("detects React hoisted into an enclosing node_modules with no declaration", () => {
+    const repositoryRoot = path.join(tempDirectory, "hoisted-react-repo");
+    const packageDirectory = path.join(repositoryRoot, "packages", "widget");
+    fs.mkdirSync(path.join(repositoryRoot, ".git"), { recursive: true });
+    fs.mkdirSync(packageDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(packageDirectory, "package.json"),
+      JSON.stringify({ name: "widget" }),
+    );
+    writeInstalledReact(repositoryRoot, "18.3.1");
+
+    const projectInfo = discoverProject(packageDirectory);
+    expect(projectInfo.reactVersion).toBe("18.3.1");
+    expect(projectInfo.reactMajorVersion).toBe(18);
+  });
+
+  it("does not adopt a React installed outside the enclosing repo boundary", () => {
+    const outsideDirectory = path.join(tempDirectory, "containment-outside");
+    const repositoryRoot = path.join(outsideDirectory, "repo");
+    fs.mkdirSync(path.join(repositoryRoot, ".git"), { recursive: true });
+    fs.writeFileSync(path.join(repositoryRoot, "package.json"), JSON.stringify({ name: "repo" }));
+    // React lives one level ABOVE the git root, so the guard rejects it.
+    writeInstalledReact(outsideDirectory, "18.0.0");
+
+    const projectInfo = discoverProject(repositoryRoot);
+    expect(projectInfo.reactVersion).toBeNull();
+    expect(projectInfo.reactMajorVersion).toBeNull();
+  });
+
+  it("leaves a parseable peer range untouched even when a different React is installed", () => {
+    const projectDirectory = path.join(tempDirectory, "peer-range-installed");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({
+        name: "component-lib",
+        peerDependencies: { react: "^18.0.0 || ^19.0.0" },
+      }),
+    );
+    writeInstalledReact(projectDirectory, "19.5.0");
+
+    const projectInfo = discoverProject(projectDirectory);
+    expect(projectInfo.reactVersion).toBe("^18.0.0 || ^19.0.0");
+    expect(projectInfo.reactMajorVersion).toBe(18);
+  });
+
+  it("does not override a concrete declared version with a different install", () => {
+    const projectDirectory = path.join(tempDirectory, "concrete-not-overridden");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "app", dependencies: { react: "18.2.0" } }),
+    );
+    writeInstalledReact(projectDirectory, "19.9.9");
+
+    // The declared concrete version parses to a major, so the fallback stays out.
+    expect(discoverProject(projectDirectory).reactVersion).toBe("18.2.0");
+  });
+
+  it("detects React when the project's node_modules is symlinked outside the repo", () => {
+    // Docker-volume / shared-store shape: node_modules is a symlink to a
+    // directory outside the working tree, but it is still the project's install.
+    const storeDirectory = path.join(tempDirectory, "symlink-store");
+    const reactInStore = path.join(storeDirectory, "react");
+    fs.mkdirSync(reactInStore, { recursive: true });
+    fs.writeFileSync(
+      path.join(reactInStore, "package.json"),
+      JSON.stringify({ name: "react", version: "19.0.0" }),
+    );
+    const repositoryRoot = path.join(tempDirectory, "symlink-repo");
+    fs.mkdirSync(path.join(repositoryRoot, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(repositoryRoot, "package.json"),
+      JSON.stringify({ name: "repo", dependencies: { react: "*" } }),
+    );
+    fs.symlinkSync(storeDirectory, path.join(repositoryRoot, "node_modules"));
+
+    expect(discoverProject(repositoryRoot).reactVersion).toBe("19.0.0");
+  });
+
+  it("does not walk to a global node_modules when the scan tree has no boundary", () => {
+    // No git root and no workspace marker: the search floors at the scanned
+    // package, so a React hoisted above it isn't adopted.
+    const parentDirectory = path.join(tempDirectory, "no-boundary-parent");
+    fs.mkdirSync(parentDirectory, { recursive: true });
+    writeInstalledReact(parentDirectory, "18.0.0");
+    const packageDirectory = path.join(parentDirectory, "pkg");
+    fs.mkdirSync(packageDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(packageDirectory, "package.json"),
+      JSON.stringify({ name: "pkg", dependencies: { react: "*" } }),
+    );
+
+    // The fallback fires (`*` has no major) but floors at the package, so the
+    // hoisted `18.0.0` is not adopted — the declared `*` is left in place.
+    const projectInfo = discoverProject(packageDirectory);
+    expect(projectInfo.reactVersion).toBe("*");
+    expect(projectInfo.reactMajorVersion).toBeNull();
+  });
+
+  it("ignores an installed React whose package.json has no usable version", () => {
+    const projectDirectory = path.join(tempDirectory, "installed-no-version");
+    fs.mkdirSync(projectDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDirectory, "package.json"),
+      JSON.stringify({ name: "app", dependencies: { react: "*" } }),
+    );
+    const reactDirectory = path.join(projectDirectory, "node_modules", "react");
+    fs.mkdirSync(reactDirectory, { recursive: true });
+    fs.writeFileSync(path.join(reactDirectory, "package.json"), JSON.stringify({ name: "react" }));
+
+    // `react: "*"` parses to no major and the install has no version → stays as-is.
+    expect(discoverProject(projectDirectory).reactVersion).toBe("*");
+  });
+});
+
 const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-discover-test-"));
 
 afterAll(() => {
@@ -950,6 +1091,40 @@ describe("discoverProject without a package.json", () => {
     const projectInfo = discoverProject(subdirectory);
     expect(projectInfo.reactVersion).toBe("^19.0.0");
     expect(projectInfo.rootDirectory).toBe(subdirectory);
+  });
+
+  it("inherits React detection from a plain (non-monorepo) enclosing app root", () => {
+    const appRoot = path.join(tempDirectory, "plain-react-app");
+    const subdirectory = path.join(appRoot, "src", "components");
+    fs.mkdirSync(subdirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(appRoot, "package.json"),
+      JSON.stringify({ name: "plain-react-app", dependencies: { react: "^19.0.0" } }),
+    );
+    fs.writeFileSync(path.join(subdirectory, "button.tsx"), "export const ok = true;\n");
+
+    // `src/components` has no package.json and the app is not a workspace root,
+    // so the nearest-ancestor walk adopts the app root to keep React on.
+    const projectInfo = discoverProject(subdirectory);
+    expect(projectInfo.reactVersion).toBe("^19.0.0");
+    expect(projectInfo.rootDirectory).toBe(subdirectory);
+  });
+
+  it("does not escape a boundary scan directory to an ancestor package.json", () => {
+    const outsideDirectory = path.join(tempDirectory, "boundary-escape-outside");
+    const repositoryRoot = path.join(outsideDirectory, "repo");
+    fs.mkdirSync(path.join(repositoryRoot, ".git"), { recursive: true });
+    // An unrelated React package.json ABOVE the repo boundary.
+    fs.writeFileSync(
+      path.join(outsideDirectory, "package.json"),
+      JSON.stringify({ name: "outside", dependencies: { react: "^19.0.0" } }),
+    );
+    // The repo root is a git boundary with no package.json of its own, just source.
+    fs.writeFileSync(path.join(repositoryRoot, "index.ts"), "export const ok = true;\n");
+
+    const projectInfo = discoverProject(repositoryRoot);
+    expect(projectInfo.reactVersion).toBeNull();
+    expect(projectInfo.rootDirectory).toBe(repositoryRoot);
   });
 
   it("throws PackageJsonNotFoundError for an empty directory with nothing to scan", () => {

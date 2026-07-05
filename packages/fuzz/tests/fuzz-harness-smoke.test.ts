@@ -8,7 +8,14 @@ import { createSeededRandom } from "../src/seeded-random.js";
 import { runRule } from "../../oxlint-plugin-react-doctor/src/test-utils/run-rule.js";
 import type { Rule } from "../../oxlint-plugin-react-doctor/src/plugin/utils/rule.js";
 
-const NOOP_RULE: Rule = { id: "fuzz-smoke-noop", severity: "warn", create: () => ({}) };
+const NOOP_RULE: Rule = {
+  id: "fuzz-smoke-noop",
+  severity: "warn",
+  impact: "behavior",
+  confidence: "high",
+  fix: "local",
+  create: () => ({}),
+};
 
 describe("fuzz harness oracles", () => {
   // Generator health: every unmutated program must parse — a snippet-pool
@@ -53,6 +60,9 @@ describe("fuzz harness oracles", () => {
     const crashingRule: Rule = {
       id: "fuzz-smoke-crash",
       severity: "warn",
+      impact: "behavior",
+      confidence: "high",
+      fix: "local",
       create: () => ({
         JSXOpeningElement: () => {
           throw new Error("boom");
@@ -67,6 +77,9 @@ describe("fuzz harness oracles", () => {
     const commentSensitiveRule: Rule = {
       id: "fuzz-smoke-invariant",
       severity: "warn",
+      impact: "behavior",
+      confidence: "high",
+      fix: "local",
       create: (context) => ({
         Program: (node) => {
           context.report({ message: `range ${JSON.stringify(node.range)}`, node });

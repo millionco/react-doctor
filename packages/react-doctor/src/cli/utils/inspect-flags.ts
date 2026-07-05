@@ -5,6 +5,8 @@
 export interface InspectFlags {
   lint?: boolean;
   deadCode?: boolean;
+  // Resolved against `supplyChain.enabled` (this flag wins), like lint/deadCode.
+  supplyChain?: boolean;
   verbose?: boolean;
   // Forces a Sentry trace and prints its id at the end. Conflicts with
   // --no-score / --no-telemetry, which disable the telemetry it needs.

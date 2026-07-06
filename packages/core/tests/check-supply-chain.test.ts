@@ -1,433 +1,412 @@
 import * as fs from "node:fs";
-import os from "node:os";
+import * as os from "node:os";
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { checkSupplyChain } from "@react-doctor/core";
-import type { Diagnostic } from "@react-doctor/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { checkSupplyChain } from "../src/check-supply-chain.js";
+import type { ReactDoctorConfig } from "../src/types/index.js";
 
-// Per-axis Socket scores in the API's normalized 0..1 range. `overall` is
-// Socket's lowest axis, mirroring how the real endpoint computes it.
-interface AxisScores {
-  readonly supplyChain: number;
-  readonly vulnerability: number;
-  readonly maintenance: number;
-  readonly quality: number;
-  readonly license: number;
+interface OsvDetailInput {
+  readonly id: string;
+  readonly summary?: string;
+  readonly details?: string;
+  readonly databaseSpecificSeverity?: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+  readonly cvssVector?: string;
 }
 
-// A Socket alert in the shape the endpoint attaches to high-signal threats:
-// the `note` rides `props.note`, mirroring the real artifact.
-interface AlertInput {
-  readonly type: string;
-  readonly severity: string;
-  readonly file?: string;
-  readonly note?: string;
+interface StubOsvResult {
+  readonly fetchMock: ReturnType<typeof vi.fn>;
+  readonly queryBatchRequests: Array<
+    ReadonlyArray<{ readonly name: string; readonly version: string }>
+  >;
+  readonly vulnerabilityRequests: string[];
 }
 
-const socketArtifactLine = (axes: AxisScores, alerts: ReadonlyArray<AlertInput>): string =>
-  JSON.stringify({
-    id: "test-artifact",
-    type: "npm",
-    score: { ...axes, overall: Math.min(...Object.values(axes)) },
-    alerts: alerts.map((alert) => ({
-      key: `${alert.type}-key`,
-      type: alert.type,
-      severity: alert.severity,
-      ...(alert.file ? { file: alert.file } : {}),
-      ...(alert.note ? { props: { note: alert.note } } : {}),
-    })),
-  });
+const createProjectDirectory = (): string =>
+  fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-osv-"));
 
-// Stubs the free Socket PURL endpoint with one canned artifact per package
-// name (the NDJSON body shape the real endpoint streams). Alerts are optional
-// — the free endpoint omits them for metric-driven (CVE-only) low scores.
-const stubSocketApi = (
-  scoresByPackageName: Record<string, AxisScores>,
-  alertsByPackageName: Record<string, ReadonlyArray<AlertInput>> = {},
+const writePackageJson = (
+  rootDirectory: string,
+  packageJson: {
+    readonly dependencies?: Record<string, string>;
+    readonly devDependencies?: Record<string, string>;
+  },
 ): void => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
-      const requestUrl = decodeURIComponent(String(input));
-      const matched = Object.entries(scoresByPackageName).find(([name]) =>
-        requestUrl.includes(`pkg:npm/${name}@`),
-      );
-      const body = matched
-        ? socketArtifactLine(matched[1], alertsByPackageName[matched[0]] ?? [])
-        : "";
-      return new Response(body, { status: 200 });
+  fs.writeFileSync(
+    path.join(rootDirectory, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "test-project",
+        private: true,
+        version: "1.0.0",
+        ...packageJson,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+};
+
+const runCheckSupplyChain = async (
+  rootDirectory: string,
+  userConfig: ReactDoctorConfig | null = null,
+  totalTimeoutMs?: number,
+) =>
+  Effect.runPromise(
+    checkSupplyChain({
+      rootDirectory,
+      userConfig,
+      totalTimeoutMs,
     }),
   );
-};
 
-let projectDirectory: string;
-
-const writePackageJson = (dependencies: Record<string, string>): void => {
-  fs.writeFileSync(
-    path.join(projectDirectory, "package.json"),
-    `${JSON.stringify({ name: "fixture", version: "1.0.0", dependencies }, null, 2)}\n`,
-  );
-};
-
-const runCheck = async (): Promise<Diagnostic[]> =>
-  Effect.runPromise(checkSupplyChain({ rootDirectory: projectDirectory, userConfig: null }));
-
-describe("checkSupplyChain — security-axis gating", () => {
-  beforeEach(() => {
-    projectDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-supply-chain-"));
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-    fs.rmSync(projectDirectory, { recursive: true, force: true });
-  });
-
-  it("fails open ([]) when sockets ignore the per-fetch abort and the whole-check budget elapses", async () => {
-    writePackageJson({ "left-pad": "^1.3.0", "is-odd": "^3.0.0" });
-    // Sockets that never tear down on abort: every fetch hangs forever, so
-    // the per-fetch 10s timeout would otherwise keep the whole `forEach`
-    // pending. The whole-check cap must short-circuit to "no artifacts".
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => new Promise<Response>(() => {})),
-    );
-
-    const diagnostics = await Effect.runPromise(
-      checkSupplyChain({ rootDirectory: projectDirectory, userConfig: null, totalTimeoutMs: 20 }),
-    );
-
-    expect(diagnostics).toEqual([]);
-  });
-
-  it("does not flag a package whose security axes are healthy but quality drags `overall` below the minimum (issue #770, @types/bun)", async () => {
-    writePackageJson({ "@types/bun": "^1.3.14" });
-    stubSocketApi({
-      "@types/bun": {
-        supplyChain: 1,
-        vulnerability: 1,
-        maintenance: 0.92,
-        quality: 0.48,
-        license: 1,
-      },
-    });
-
-    expect(await runCheck()).toEqual([]);
-  });
-
-  it("flags a vulnerability-driven low score and names the vulnerability axis (event-stream@3.3.6 shape)", async () => {
-    writePackageJson({ "event-stream": "3.3.6" });
-    stubSocketApi({
-      "event-stream": {
-        supplyChain: 1,
-        vulnerability: 0.25,
-        maintenance: 1,
-        quality: 1,
-        license: 1,
-      },
-    });
-
-    const diagnostics = await runCheck();
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0].rule).toBe("low-supply-chain-score");
-    expect(diagnostics[0].message).toContain("scored 25/100 on Socket's vulnerability axis");
-    expect(diagnostics[0].message).not.toContain("supply chain axis");
-    // With no alerts, the message explains what the failing axis means.
-    expect(diagnostics[0].message).toContain("known security vulnerabilities (CVEs)");
-    // The remaining axes follow as context (the failing one already leads).
-    expect(diagnostics[0].message).toContain("Other axes — supply chain 100, maintenance 100");
-    // Vulnerability remediation is "upgrade", not the generic "update/replace".
-    expect(diagnostics[0].help).toContain("npm audit");
-  });
-
-  it("flags a supplyChain-driven low score and names the supply chain axis", async () => {
-    writePackageJson({ "evil-typosquat": "1.0.0" });
-    stubSocketApi({
-      "evil-typosquat": {
-        supplyChain: 0.2,
-        vulnerability: 1,
-        maintenance: 1,
-        quality: 1,
-        license: 1,
-      },
-    });
-
-    const diagnostics = await runCheck();
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0].message).toContain("scored 20/100 on Socket's supply chain axis");
-  });
-
-  it("headlines the worst security axis when both gate below the minimum", async () => {
-    writePackageJson({ "doubly-bad": "2.0.0" });
-    stubSocketApi({
-      "doubly-bad": {
-        supplyChain: 0.4,
-        vulnerability: 0.1,
-        maintenance: 1,
-        quality: 1,
-        license: 1,
-      },
-    });
-
-    const diagnostics = await runCheck();
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0].message).toContain("scored 10/100 on Socket's vulnerability axis");
-  });
-
-  it("does not flag a security axis exactly at the minimum score", async () => {
-    writePackageJson({ "borderline-pkg": "1.0.0" });
-    stubSocketApi({
-      "borderline-pkg": {
-        supplyChain: 0.5,
-        vulnerability: 1,
-        maintenance: 0.1,
-        quality: 0.1,
-        license: 0.1,
-      },
-    });
-
-    expect(await runCheck()).toEqual([]);
-  });
-
-  it("names Socket's concrete alert and tells you to remove a malware package", async () => {
-    writePackageJson({ "evil-pkg": "1.0.0" });
-    stubSocketApi(
-      {
-        "evil-pkg": { supplyChain: 0, vulnerability: 1, maintenance: 1, quality: 1, license: 1 },
-      },
-      {
-        "evil-pkg": [
+const createOsvDetail = (input: OsvDetailInput): Record<string, unknown> => ({
+  id: input.id,
+  summary: input.summary ?? input.id,
+  ...(input.details !== undefined ? { details: input.details } : {}),
+  ...(input.databaseSpecificSeverity !== undefined
+    ? { database_specific: { severity: input.databaseSpecificSeverity } }
+    : {}),
+  ...(input.cvssVector !== undefined
+    ? {
+        severity: [
           {
-            type: "malware",
-            severity: "critical",
-            file: "package/index.js",
-            note: "Concealed remote-code-execution payload that exfiltrates environment variables.",
+            type: "CVSS_V3",
+            score: input.cvssVector,
           },
         ],
-      },
-    );
+      }
+    : {}),
+});
 
-    const diagnostics = await runCheck();
-    expect(diagnostics).toHaveLength(1);
-    // The message names the alert, the offending file, and the note instead of
-    // leaving the user to guess what a "0/100" means.
-    expect(diagnostics[0].message).toContain("scored 0/100 on Socket's supply chain axis");
-    expect(diagnostics[0].message).toContain("critical known malware alert");
-    expect(diagnostics[0].message).toContain("`package/index.js`");
-    expect(diagnostics[0].message).toContain(
-      "Concealed remote-code-execution payload that exfiltrates environment variables",
-    );
-    // A critical alert escalates the help from "update/replace" to "remove".
-    expect(diagnostics[0].help).toContain("do not ship it");
-    expect(diagnostics[0].help).toContain("Remove");
-    expect(diagnostics[0].help).toContain("supplyChain.enabled: false");
+const stubOsvFetch = (
+  packageIdsByName: Record<string, ReadonlyArray<string>>,
+  detailById: Record<string, Record<string, unknown>>,
+): StubOsvResult => {
+  const queryBatchRequests: Array<
+    ReadonlyArray<{ readonly name: string; readonly version: string }>
+  > = [];
+  const vulnerabilityRequests: string[] = [];
+
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const requestUrl = String(input);
+    if (requestUrl.endsWith("/v1/querybatch")) {
+      const payload: unknown = JSON.parse(String(init?.body ?? "{}"));
+      const queries = Array.isArray((payload as Record<string, unknown>).queries)
+        ? ((payload as Record<string, unknown>).queries as ReadonlyArray<Record<string, unknown>>)
+        : [];
+      queryBatchRequests.push(
+        queries.map((query) => ({
+          name:
+            typeof query.package === "object" &&
+            query.package !== null &&
+            typeof query.package.name === "string"
+              ? query.package.name
+              : "",
+          version: typeof query.version === "string" ? query.version : "",
+        })),
+      );
+      return new Response(
+        JSON.stringify({
+          results: queries.map((query) => {
+            const packageName =
+              typeof query.package === "object" &&
+              query.package !== null &&
+              typeof query.package.name === "string"
+                ? query.package.name
+                : "";
+            const vulnerabilityIds = packageIdsByName[packageName] ?? [];
+            return vulnerabilityIds.length > 0
+              ? { vulns: vulnerabilityIds.map((id) => ({ id })) }
+              : {};
+          }),
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    if (requestUrl.includes("/v1/vulns/")) {
+      const id = decodeURIComponent(requestUrl.slice(requestUrl.lastIndexOf("/") + 1));
+      vulnerabilityRequests.push(id);
+      const detail = detailById[id];
+      if (detail === undefined) return new Response("not found", { status: 404 });
+      return new Response(JSON.stringify(detail), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response("not found", { status: 404 });
   });
 
-  it("names the scored version as the floor of a range spec", async () => {
-    writePackageJson({ "ranged-pkg": "^2.1.0" });
-    stubSocketApi({
-      "ranged-pkg": { supplyChain: 0.2, vulnerability: 1, maintenance: 1, quality: 1, license: 1 },
-    });
+  vi.stubGlobal("fetch", fetchMock);
 
-    const diagnostics = await runCheck();
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0].message).toContain('`ranged-pkg@2.1.0 (lowest version "^2.1.0" allows)`');
-  });
+  return {
+    fetchMock,
+    queryBatchRequests,
+    vulnerabilityRequests,
+  };
+};
 
-  it("names the exact scored version for a `v`-prefixed pin instead of a range", async () => {
-    writePackageJson({ "v-pinned": "v1.2.3" });
-    stubSocketApi({
-      "v-pinned": { supplyChain: 0.2, vulnerability: 1, maintenance: 1, quality: 1, license: 1 },
-    });
+const stubHangingOsvFetch = (): ReturnType<typeof vi.fn> => {
+  const fetchMock = vi.fn(() => new Promise<Response>(() => {}));
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+};
 
-    const diagnostics = await runCheck();
-    expect(diagnostics).toHaveLength(1);
-    // `v1.2.3` is an exact pin, so it must not be mislabeled as a range floor.
-    expect(diagnostics[0].message).toContain("`v-pinned@1.2.3` scored");
-    expect(diagnostics[0].message).not.toContain("lowest version");
-  });
+afterEach(() => {
+  vi.unstubAllGlobals();
+  delete process.env["REACT_DOCTOR_CACHE_DIR"];
+  delete process.env["REACT_DOCTOR_NO_CACHE"];
+});
 
-  // `semver.minVersion` throws (rather than returning null) on a dist-tag like
-  // `latest`/`next`, and resolves a wildcard to a synthetic `0.0.0`. Each of
-  // these specs has no concrete floor to score, so it must be skipped — never
-  // crash the scan (issue #807) and never fetch a fabricated version.
+describe("checkSupplyChain (OSV)", () => {
   it.each([
-    ["a dist-tag", "latest"],
-    ["the `next` dist-tag", "next"],
-    ["a bare wildcard", "*"],
-    ["an `x` wildcard", "x"],
-    ["a `workspace:` protocol", "workspace:*"],
-    ["a `file:` protocol", "file:../local"],
-    ["an `npm:` alias", "npm:other-pkg@1.2.3"],
-    ["a git URL", "git+https://example.com/owner/repo.git"],
-    ["a tarball URL", "https://example.com/pkg/foo-1.2.3.tgz"],
-  ])("skips %s spec without crashing or scoring it", async (_label, spec) => {
-    writePackageJson({ "unresolvable-pkg": spec });
-    // Stub a failing score: if the spec were (mis)resolved to a concrete
-    // version it would flag here. An empty result proves it was skipped.
-    stubSocketApi({
-      "unresolvable-pkg": {
-        supplyChain: 0,
-        vulnerability: 1,
-        maintenance: 1,
-        quality: 1,
-        license: 1,
-      },
-    });
-
-    expect(await runCheck()).toEqual([]);
-  });
-
-  it("does not crash on a dist-tag and still scores resolvable siblings (issue #807, trigger.dev@latest)", async () => {
-    // The exact regression shape: a real dep beside an npm dist-tag. PR #804
-    // made this throw `TypeError: Invalid comparator: latest` on every scan.
-    writePackageJson({ react: "^19.0.0", "trigger.dev": "latest" });
-    stubSocketApi({
-      react: { supplyChain: 0.2, vulnerability: 1, maintenance: 1, quality: 1, license: 1 },
-      "trigger.dev": { supplyChain: 0, vulnerability: 1, maintenance: 1, quality: 1, license: 1 },
-    });
-
-    const diagnostics = await runCheck();
-    // The dist-tag is skipped (not crashed on); the resolvable sibling still scores.
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0].message).toContain("`react@19.0.0");
-  });
-
-  it("keeps the score-driven diagnostic when alerts are malformed or null (no fail-open)", async () => {
-    writePackageJson({ "null-alert-pkg": "1.0.0" });
-    // A real Socket line where optional alert fields are explicitly `null`
-    // (JSON APIs send `null`, not an absent key) and one alert is malformed
-    // (missing `type`). Neither must sink the score that gates the check.
-    const body = JSON.stringify({
-      id: "test-artifact",
-      type: "npm",
-      score: {
-        supplyChain: 0.1,
-        vulnerability: 1,
-        maintenance: 1,
-        quality: 1,
-        license: 1,
-        overall: 0.1,
-      },
-      alerts: [
-        { key: "a", type: "malware", severity: "critical", file: null, props: null },
-        { key: "b", severity: "high" },
-      ],
-    });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(body, { status: 200 })),
-    );
-
-    const diagnostics = await runCheck();
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0].message).toContain("scored 10/100 on Socket's supply chain axis");
-    // The valid alert (with null fields) is still named; the malformed one is dropped.
-    expect(diagnostics[0].message).toContain("critical known malware alert");
-  });
-
-  it("strips terminal escape sequences and backticks from remote alert strings", async () => {
-    writePackageJson({ "ansi-pkg": "1.0.0" });
-    stubSocketApi(
-      { "ansi-pkg": { supplyChain: 0, vulnerability: 1, maintenance: 1, quality: 1, license: 1 } },
-      {
-        "ansi-pkg": [
-          {
-            type: "malware",
-            severity: "critical",
-            file: "pkg/\u001b[31mhidden\u001b[0m`whoami`.js",
-            note: "Payload \u001b[2Kspoofs output and runs `rm -rf`.",
+    { threshold: "low", detailSeverity: "LOW", expectDiagnostic: true },
+    { threshold: "moderate", detailSeverity: "LOW", expectDiagnostic: false },
+    { threshold: "moderate", detailSeverity: "MODERATE", expectDiagnostic: true },
+    { threshold: "high", detailSeverity: "MODERATE", expectDiagnostic: false },
+    { threshold: "high", detailSeverity: "HIGH", expectDiagnostic: true },
+    { threshold: "critical", detailSeverity: "HIGH", expectDiagnostic: false },
+    { threshold: "critical", detailSeverity: "CRITICAL", expectDiagnostic: true },
+  ] as const)(
+    "gates $detailSeverity advisories at failOn=$threshold",
+    async ({ threshold, detailSeverity, expectDiagnostic }) => {
+      const rootDirectory = createProjectDirectory();
+      try {
+        writePackageJson(rootDirectory, {
+          dependencies: {
+            "left-pad": "1.0.0",
           },
-        ],
-      },
-    );
+        });
+        stubOsvFetch(
+          { "left-pad": ["GHSA-test-1"] },
+          {
+            "GHSA-test-1": createOsvDetail({
+              id: "GHSA-test-1",
+              databaseSpecificSeverity: detailSeverity,
+            }),
+          },
+        );
 
-    const diagnostics = await runCheck();
-    expect(diagnostics).toHaveLength(1);
-    const { message } = diagnostics[0];
-    // No raw ESC reaches terminal-bound output, and backticks in remote strings
-    // are neutralized so they can't break the `code` / "quote" framing.
-    expect(message).not.toContain("\u001b");
-    expect(message).toContain("pkg/[31mhidden[0m'whoami'.js");
-    expect(message).toContain("Payload [2Kspoofs output and runs 'rm -rf'");
+        const diagnostics = await runCheckSupplyChain(rootDirectory, {
+          supplyChain: {
+            failOn: threshold,
+          },
+        });
+
+        expect(diagnostics).toHaveLength(expectDiagnostic ? 1 : 0);
+        if (expectDiagnostic) {
+          expect(diagnostics[0].plugin).toBe("osv");
+          expect(diagnostics[0].rule).toBe("known-vulnerability");
+          expect(diagnostics[0].category).toBe("Security");
+          expect(diagnostics[0].filePath).toBe("package.json");
+          expect(diagnostics[0].message).toContain(`${threshold}-severity`);
+        }
+      } finally {
+        fs.rmSync(rootDirectory, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("names the worst severity and lists every matching advisory id", async () => {
+    const rootDirectory = createProjectDirectory();
+    try {
+      writePackageJson(rootDirectory, {
+        dependencies: {
+          lodash: "4.17.11",
+        },
+      });
+      stubOsvFetch(
+        { lodash: ["GHSA-high", "GHSA-moderate"] },
+        {
+          "GHSA-high": createOsvDetail({
+            id: "GHSA-high",
+            databaseSpecificSeverity: "HIGH",
+          }),
+          "GHSA-moderate": createOsvDetail({
+            id: "GHSA-moderate",
+            databaseSpecificSeverity: "MODERATE",
+          }),
+        },
+      );
+
+      const diagnostics = await runCheckSupplyChain(rootDirectory, {
+        supplyChain: {
+          failOn: "moderate",
+        },
+      });
+
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0].message).toContain(
+        "2 high-severity known vulnerabilities: GHSA-high, GHSA-moderate.",
+      );
+      expect(diagnostics[0].url).toBe("https://osv.dev/vulnerability/GHSA-high");
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
   });
 
-  it("uses the axis remediation and gentler escape hatch for a non-critical alert", async () => {
-    writePackageJson({ "high-not-critical": "1.0.0" });
-    stubSocketApi(
-      {
-        "high-not-critical": {
-          supplyChain: 0.1,
-          vulnerability: 1,
-          maintenance: 1,
-          quality: 1,
-          license: 1,
+  it.each([
+    { id: "MAL-2025-0001", summary: "A malicious package", label: "MAL prefix" },
+    { id: "GHSA-malicious", summary: "Malicious Package", label: "GHSA malicious summary" },
+  ] as const)("always flags malware advisories from $label", async ({ id, summary }) => {
+    const rootDirectory = createProjectDirectory();
+    try {
+      writePackageJson(rootDirectory, {
+        dependencies: {
+          "event-stream": "4.0.0",
         },
-      },
-      {
-        "high-not-critical": [
-          { type: "obfuscatedCode", severity: "high", note: "Heavily obfuscated bundle." },
-        ],
-      },
-    );
+      });
+      stubOsvFetch(
+        { "event-stream": [id] },
+        {
+          [id]: createOsvDetail({
+            id,
+            summary,
+          }),
+        },
+      );
 
-    const diagnostics = await runCheck();
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0].message).toContain("high obfuscated code alert");
-    // A non-critical alert must not escalate to the "remove / do not ship" help.
-    expect(diagnostics[0].help).not.toContain("do not ship it");
-    expect(diagnostics[0].help).toContain("prefer a more established, audited alternative");
-    expect(diagnostics[0].help).toContain("supplyChain.minScore");
+      const diagnostics = await runCheckSupplyChain(rootDirectory, {
+        supplyChain: {
+          failOn: "critical",
+        },
+      });
+
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0].message).toContain("known malicious package advisory");
+      expect(diagnostics[0].message).toContain(id);
+      expect(diagnostics[0].help).toContain("package.json and your lockfile");
+      expect(diagnostics[0].help).toContain("supplyChain.enabled: false");
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
   });
 
-  it("summarizes multiple alerts with a +N more tail and the worst severity", async () => {
-    writePackageJson({ "many-alerts": "1.0.0" });
-    stubSocketApi(
-      {
-        "many-alerts": {
-          supplyChain: 0.1,
-          vulnerability: 1,
-          maintenance: 1,
-          quality: 1,
-          license: 1,
+  it("parses CVSS vectors when database_specific severity is absent", async () => {
+    const rootDirectory = createProjectDirectory();
+    try {
+      writePackageJson(rootDirectory, {
+        dependencies: {
+          semver: "7.7.4",
         },
-      },
-      {
-        "many-alerts": [
-          { type: "malware", severity: "critical" },
-          { type: "installScript", severity: "high" },
-          { type: "networkAccess", severity: "medium" },
-          { type: "envVars", severity: "low" },
-        ],
-      },
-    );
+      });
+      stubOsvFetch(
+        { semver: ["GHSA-cvss"] },
+        {
+          "GHSA-cvss": createOsvDetail({
+            id: "GHSA-cvss",
+            cvssVector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+          }),
+        },
+      );
 
-    const diagnostics = await runCheck();
-    expect(diagnostics).toHaveLength(1);
-    // Four alerts: the top three are named, the remainder collapses to "+N more".
-    expect(diagnostics[0].message).toContain("Socket flagged 4 alerts");
-    expect(diagnostics[0].message).toContain("(+1 more)");
-    expect(diagnostics[0].message).toContain("most severe: critical");
+      const diagnostics = await runCheckSupplyChain(rootDirectory, {
+        supplyChain: {
+          failOn: "high",
+        },
+      });
+
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0].message).toContain("critical-severity known vulnerability");
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
   });
 
-  it('normalizes Socket\'s "middle" severity to "medium"', async () => {
-    writePackageJson({ "middle-sev": "1.0.0" });
-    stubSocketApi(
-      {
-        "middle-sev": {
-          supplyChain: 0.1,
-          vulnerability: 1,
-          maintenance: 1,
-          quality: 1,
-          license: 1,
+  it("skips dist-tags, wildcards, and protocol specs, and honors includeDevDependencies: false", async () => {
+    const rootDirectory = createProjectDirectory();
+    try {
+      writePackageJson(rootDirectory, {
+        dependencies: {
+          "scored-package": "1.2.3",
+          "tagged-package": "latest",
+          "wildcard-package": "*",
+          "protocol-package": "file:../local",
         },
-      },
-      { "middle-sev": [{ type: "troll", severity: "middle", note: "Protestware." }] },
-    );
+        devDependencies: {
+          "dev-only": "2.0.0",
+        },
+      });
+      const stub = stubOsvFetch(
+        { "scored-package": ["GHSA-score"] },
+        {
+          "GHSA-score": createOsvDetail({
+            id: "GHSA-score",
+            databaseSpecificSeverity: "LOW",
+          }),
+        },
+      );
 
-    const diagnostics = await runCheck();
-    expect(diagnostics).toHaveLength(1);
-    expect(diagnostics[0].message).toContain("medium protestware alert");
+      const diagnostics = await runCheckSupplyChain(rootDirectory, {
+        supplyChain: {
+          includeDevDependencies: false,
+          failOn: "low",
+        },
+      });
+
+      expect(diagnostics).toHaveLength(1);
+      expect(stub.queryBatchRequests).toHaveLength(1);
+      expect(stub.queryBatchRequests[0].map((query) => query.name)).toEqual(["scored-package"]);
+      expect(stub.vulnerabilityRequests).toEqual(["GHSA-score"]);
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("fails open when OSV returns an error", async () => {
+    const rootDirectory = createProjectDirectory();
+    try {
+      writePackageJson(rootDirectory, {
+        dependencies: {
+          "left-pad": "1.0.0",
+        },
+      });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const requestUrl = String(input);
+          if (requestUrl.endsWith("/v1/querybatch")) return new Response("error", { status: 500 });
+          return new Response("not found", { status: 404 });
+        }),
+      );
+
+      const diagnostics = await runCheckSupplyChain(rootDirectory, {
+        supplyChain: {
+          failOn: "low",
+        },
+      });
+
+      expect(diagnostics).toEqual([]);
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("fails open when the whole check exceeds its timeout budget", async () => {
+    const rootDirectory = createProjectDirectory();
+    try {
+      writePackageJson(rootDirectory, {
+        dependencies: {
+          "left-pad": "1.0.0",
+        },
+      });
+      stubHangingOsvFetch();
+
+      const diagnostics = await runCheckSupplyChain(
+        rootDirectory,
+        {
+          supplyChain: {
+            failOn: "low",
+          },
+        },
+        20,
+      );
+
+      expect(diagnostics).toEqual([]);
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
   });
 });

@@ -104,11 +104,11 @@ const baseInput: InspectInput = {
 
 const supplyChainDiagnostic: Diagnostic = {
   filePath: "package.json",
-  plugin: "socket",
-  rule: "low-supply-chain-score",
+  plugin: "osv",
+  rule: "known-vulnerability",
   severity: "error",
-  message: "`event-stream` has a Socket supply-chain score of 25/100.",
-  help: "Review it on Socket.",
+  message: "`event-stream` has 1 high-severity known vulnerability: GHSA-event-stream.",
+  help: "Review it on OSV.",
   line: 8,
   column: 5,
   category: "Security",
@@ -146,7 +146,7 @@ const layersOf = (config: {
 
 describe("runInspect — phase timeouts & overall deadline", () => {
   // A never-completing analyzer stream stands in for a wedged phase (a
-  // pathological file / hung socket); the Effect-level caps must fire.
+  // pathological file / hung network); the Effect-level caps must fire.
   const baseTimeoutLayers = (overrides: {
     linter: Layer.Layer<Linter>;
     deadCode: Layer.Layer<DeadCode>;
@@ -939,7 +939,7 @@ describe("runInspect — supply-chain in diff mode", () => {
         Effect.provide(layersOf({ supplyChain: [supplyChainDiagnostic] })),
       ),
     );
-    expect(output.diagnostics.map((d) => d.rule)).toContain("low-supply-chain-score");
+    expect(output.diagnostics.map((d) => d.rule)).toContain("known-vulnerability");
   });
 
   it("skips supply-chain in a plain diff scan (no manifest change)", async () => {
@@ -948,7 +948,7 @@ describe("runInspect — supply-chain in diff mode", () => {
         Effect.provide(layersOf({ supplyChain: [supplyChainDiagnostic] })),
       ),
     );
-    expect(output.diagnostics.map((d) => d.rule)).not.toContain("low-supply-chain-score");
+    expect(output.diagnostics.map((d) => d.rule)).not.toContain("known-vulnerability");
   });
 
   it("runs supply-chain in a diff scan when the manifest changed", async () => {
@@ -959,7 +959,7 @@ describe("runInspect — supply-chain in diff mode", () => {
         supplyChainManifestChanged: true,
       }).pipe(Effect.provide(layersOf({ supplyChain: [supplyChainDiagnostic] }))),
     );
-    expect(output.diagnostics.map((d) => d.rule)).toContain("low-supply-chain-score");
+    expect(output.diagnostics.map((d) => d.rule)).toContain("known-vulnerability");
   });
 });
 
@@ -980,10 +980,10 @@ describe("runInspect — supply-chain lint overlap", () => {
     // `sortDiagnosticsStable`-ordered by (filePath, line, …) — deterministic
     // regardless of which fiber settled first. filePath order:
     // "/repo/src/App.tsx" (no-derived-state) < "package.json"
-    // (low-supply-chain-score) < "src/Unused.tsx" (unused-file).
+    // (known-vulnerability) < "src/Unused.tsx" (unused-file).
     expect(output.diagnostics.map((d) => d.rule)).toEqual([
       "no-derived-state",
-      "low-supply-chain-score",
+      "known-vulnerability",
       "unused-file",
     ]);
     expect(output.supplyChainOverlapTimedOut).toBe(false);
@@ -1044,7 +1044,7 @@ describe("runInspect — supply-chain lint overlap", () => {
       ),
     );
     expect(output.supplyChainOverlapTimedOut).toBe(false);
-    expect(output.diagnostics.map((d) => d.rule)).toContain("low-supply-chain-score");
+    expect(output.diagnostics.map((d) => d.rule)).toContain("known-vulnerability");
   });
 
   it("never invokes supply-chain run in a plain diff scan (fork takes the empty branch)", async () => {
@@ -1067,7 +1067,7 @@ describe("runInspect — supply-chain lint overlap", () => {
       ),
     );
     expect(supplyChainRunCount).toBe(0);
-    expect(output.diagnostics.map((d) => d.rule)).not.toContain("low-supply-chain-score");
+    expect(output.diagnostics.map((d) => d.rule)).not.toContain("known-vulnerability");
     expect(output.supplyChainOverlapTimedOut).toBe(false);
   });
 
@@ -1095,7 +1095,7 @@ describe("runInspect — supply-chain lint overlap", () => {
       ),
     );
     expect(supplyChainRunCount).toBe(1);
-    expect(output.diagnostics.map((d) => d.rule)).toContain("low-supply-chain-score");
+    expect(output.diagnostics.map((d) => d.rule)).toContain("known-vulnerability");
   });
 
   it("fails open on a supply-chain timeout while a folded lint failure nulls the score", async () => {

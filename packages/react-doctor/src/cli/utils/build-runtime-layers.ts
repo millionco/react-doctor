@@ -37,7 +37,7 @@ export interface BuildRuntimeLayersInput {
   readonly shouldSkipLint: boolean;
   readonly shouldRunDeadCode: boolean;
   /**
-   * Whether the Socket.dev supply-chain scan should run. Resolved by
+   * Whether the OSV supply-chain scan should run. Resolved by
    * `inspect()` from the `--supply-chain` / `--no-supply-chain` flag over
    * `supplyChain.enabled` (the flag wins), so a per-project config can't
    * undo the CLI choice. `false` swaps `SupplyChain.layerNode` for the
@@ -112,9 +112,9 @@ export const buildRuntimeLayers = (input: BuildRuntimeLayersInput) => {
   const linterLayer = input.shouldSkipLint ? Linter.layerOf([]) : Linter.layerOxlint;
   const deadCodeLayer = input.shouldRunDeadCode ? DeadCode.layerNode : DeadCode.layerOf([]);
   const scoreLayer = input.shouldComputeScore ? Score.layerHttp : Score.layerOf(null);
-  // Socket.dev supply-chain score gate runs by default (the keyless HTTP
-  // layer); a no-op empty layer when the user opts out via
-  // `--no-supply-chain` or `supplyChain.enabled: false`.
+  // OSV supply-chain gate runs by default (the keyless HTTP layer); a no-op
+  // empty layer when the user opts out via `--no-supply-chain` or
+  // `supplyChain.enabled: false`.
   const supplyChainLayer = input.shouldRunSupplyChain
     ? SupplyChain.layerNode
     : SupplyChain.layerOf([]);

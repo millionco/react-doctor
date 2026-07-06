@@ -12,11 +12,9 @@ interface SupplyChainInput {
 }
 
 /**
- * `SupplyChain` scores the project's direct dependencies against Socket.dev's
- * free, keyless PURL endpoint — the same lookup Socket Firewall's free tier
- * (`sfw`) performs — and streams a diagnostic for each dependency whose
- * worst Socket security axis (supply chain or vulnerability) falls below
- * the configured `supplyChain.minScore`.
+ * `SupplyChain` scores the project's direct dependencies against OSV's free,
+ * unauthenticated npm API and streams a diagnostic for each dependency whose
+ * known vulnerabilities meet the configured `supplyChain.failOn` threshold.
  *
  * Runs by default (one network request per dependency); the orchestrator
  * provides `layerOf([])` only when the user opts out via
@@ -27,7 +25,7 @@ interface SupplyChainInput {
  * fails, mirroring `DeadCode`'s stream shape so the two compose the same way.
  * The orchestrator (`run-inspect.ts`) consumes this stream on a background
  * fiber whose network time overlaps the lint pass, joined under a generous
- * wall-clock budget; a budget expiry is the same fail-open outcome as a Socket
+ * wall-clock budget; a budget expiry is the same fail-open outcome as an OSV
  * outage.
  */
 export class SupplyChain extends Context.Service<

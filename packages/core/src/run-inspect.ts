@@ -218,7 +218,7 @@ export interface InspectOutput {
   /**
    * `true` when the background supply-chain fiber hit its overlap budget
    * (`SupplyChainOverlapTimeoutMs`) and failed open to no diagnostics — a
-   * rare hung-socket guard, surfaced for telemetry. `false` on the healthy
+   * rare hung-network guard, surfaced for telemetry. `false` on the healthy
    * path and whenever supply-chain was skipped (diff/staged scans).
    */
   readonly supplyChainOverlapTimedOut: boolean;
@@ -359,13 +359,13 @@ const formatLintFailText = (
  *      content-regex security scan is forked instead (like supply-chain
  *      below) and joined before the concat, so its CPU overlaps lint
  *      rather than blocking the event loop before it.
- *   4. The supply-chain check (Socket.dev) is forked onto a background
+ *   4. The supply-chain check (OSV) is forked onto a background
  *      fiber so its ~100% network-bound time overlaps the ~100%
  *      CPU/subprocess-bound lint pass below, collapsing two serial
  *      phases into roughly `max(supplyChain, lint)`. It is capped by
  *      `SupplyChainOverlapTimeoutMs` (measured from fork) so a hung
- *      socket can't drag out its join; on timeout it fails open to no
- *      diagnostics — the same outcome class as a Socket outage.
+ *      network can't drag out its join; on timeout it fails open to no
+ *      diagnostics — the same outcome class as an OSV outage.
  *   5. Linter.run runs; DeadCode.run runs concurrently (forked child
  *      fiber) ONLY when the memory gate has headroom to run the 8 GB
  *      dead-code child alongside the oxlint workers — or when overlap is
@@ -556,7 +556,7 @@ export const runInspect = <HooksR = never>(
       ).pipe(Effect.withSpan("SecurityScan.run")),
     );
 
-    // ── Phase: supply-chain score check (Socket.dev, opt-in) ───────
+    // ── Phase: supply-chain check (OSV, opt-in) ───────────────────
     // Whole-project (package.json) property, so a plain diff/staged scan
     // skips it like the environment checks above — but a diff that edits
     // the scanned project's `package.json` (e.g. a PR adding/bumping a
@@ -564,7 +564,7 @@ export const runInspect = <HooksR = never>(
     // change is scored where it matters. Enablement is decided by the
     // provided layer (`SupplyChain.layerOf([])` when disabled). The stream
     // is fail-open — per-package timeouts / network failures are recovered
-    // to "skip" inside the check — so a Socket API outage never sinks the scan.
+    // to "skip" inside the check — so an OSV API outage never sinks the scan.
     //
     // The check is ~100% network-bound and the lint pass below is ~100%
     // CPU/subprocess-bound, so we fork it onto a child fiber here and join it
@@ -573,9 +573,9 @@ export const runInspect = <HooksR = never>(
     // error/interrupt in the orchestrator tears this fiber down with it, so it
     // never leaks. The collect can't fail (the stream has no error channel), so
     // the only failure is the `Effect.timeout` deadline, which we fold into a
-    // fail-open `[]` + a `timedOut` marker — the same outcome class as a Socket
+    // fail-open `[]` + a `timedOut` marker — the same outcome class as an OSV
     // outage. The deadline is measured FROM FORK (before lint), so it bounds a
-    // hung undici socket without depending on how long lint takes. (On the rare
+    // hung undici network request without depending on how long lint takes. (On the rare
     // timeout, a stateful `Reporter` — only `layerNdjson`, which has no in-tree
     // consumer — may hold supply-chain emits from before the deadline that the
     // returned `[]` omits; production `Reporter.layerNoop` makes emit a no-op,
@@ -947,7 +947,7 @@ export const runInspect = <HooksR = never>(
     // forked stream has flushed before a stateful reporter (e.g. NDJSON) closes
     // its sink. Fail-open + the fork-relative timeout are already folded into
     // the fiber result, so the join never fails; `timedOut` records whether the
-    // overlap budget fired (the rare hung-socket guard) for telemetry.
+    // overlap budget fired (the rare hung-network guard) for telemetry.
     const supplyChainResult = yield* Fiber.join(supplyChainFiber);
     const supplyChainCollected = supplyChainResult.diagnostics;
     // Join the forked security scan (it overlapped lint). Its diagnostics are

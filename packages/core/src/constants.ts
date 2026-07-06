@@ -601,24 +601,12 @@ export const OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT = 3;
 // updates smoothly instead of jumping by the batch size on completion.
 export const PROGRESS_TICK_INTERVAL_MS = 50;
 
-// Socket.dev package-score check (the `SupplyChain` service). Mirrors how
-// Socket Firewall's free tier (`sfw`) talks to Socket: the keyless,
-// no-API-token endpoint `GET <base>/{encodeURIComponent(purl)}`, where the
-// PURL is `pkg:npm/<name>@<version>` (scope kept inline, e.g.
-// `pkg:npm/@vue/reactivity@3.4.0`). The response is newline-delimited JSON,
-// one Socket artifact per line, each carrying a `score` object with an
-// `overall` plus per-category values in the 0..1 range. Unknown
-// package/version pairs come back as a `synthetic:notFound:*` artifact with
-// no `score`, which the check skips.
-export const SOCKET_FREE_PURL_API_BASE = "https://firewall-api.socket.dev/purl";
-
-// Public socket.dev package page, linked from each diagnostic's `help`/`url`
-// so a developer can see the full alert + score breakdown for the version.
-export const SOCKET_PACKAGE_PAGE_BASE = "https://socket.dev/npm/package";
-
-// Sent as the `User-Agent` on the free score lookups, matching how `sfw`
-// identifies itself to the same endpoint.
-export const SOCKET_FREE_USER_AGENT = "react-doctor-supply-chain";
+// OSV's free, unauthenticated API (the `SupplyChain` service). Direct
+// dependency PURLs are queried against `api.osv.dev` as
+// `pkg:npm/<name>@<version>`, and matching advisories are expanded to their
+// canonical OSV pages.
+export const OSV_API_BASE = "https://api.osv.dev";
+export const OSV_VULN_PAGE_BASE = "https://osv.dev/vulnerability";
 
 // Per-file lint cache (`runners/oxlint/file-lint-cache.ts`). Caches the raw
 // oxlint diagnostics of unchanged files keyed by content hash + ruleset hash,
@@ -673,26 +661,15 @@ export const DEAD_CODE_CACHE_FILENAME = "dead-code-cache.json";
 export const DEAD_CODE_SUMMARY_CACHE_FILENAME = "dead-code-summaries.json";
 
 // Plugin / rule / category identity for the diagnostics the supply-chain
-// check emits. `plugin: "socket"` keeps Socket findings visually distinct
-// from the `react-doctor` lint surface in the printed list and JSON report.
-export const SUPPLY_CHAIN_PLUGIN = "socket";
-export const SUPPLY_CHAIN_RULE = "low-supply-chain-score";
+// check emits.
+export const SUPPLY_CHAIN_PLUGIN = "osv";
+export const SUPPLY_CHAIN_RULE = "known-vulnerability";
 export const SUPPLY_CHAIN_CATEGORY = "Security";
 
-// Default minimum acceptable Socket score (0..100), applied to the security
-// axes (supply chain, vulnerability) — a dependency whose worst security
-// axis scores below this fails the check. Tuned to Socket's own "needs
-// review" band — most healthy, widely-used packages sit comfortably above
-// it. Overridable per project via `supplyChain.minScore`.
-export const SUPPLY_CHAIN_DEFAULT_MIN_SCORE = 50;
+export const SUPPLY_CHAIN_DEFAULT_FAIL_ON = "high";
 
-// Socket scores arrive normalized 0..1; multiply by this to present the
-// familiar 0..100 scale users see on socket.dev.
-export const SOCKET_SCORE_SCALE = 100;
-
-// How many free Socket score lookups to keep in flight at once. Bounded so a
-// large dependency list doesn't open hundreds of sockets or trip Socket's
-// per-route rate limit.
+// How many free OSV lookups to keep in flight at once. Bounded so a large
+// dependency list doesn't open hundreds of sockets or trip rate limits.
 export const SUPPLY_CHAIN_FETCH_CONCURRENCY = 8;
 
 // Belt-and-suspenders wall-clock cap on the supply-chain check while it runs on
@@ -702,30 +679,17 @@ export const SUPPLY_CHAIN_FETCH_CONCURRENCY = 8;
 // ceil(~45 deps / SUPPLY_CHAIN_FETCH_CONCURRENCY) ≈ 60s) to avoid cutting a
 // slow-but-working scan, while still bounding a hung undici socket instead of
 // letting it drag out the join. On expiry the check fails open to no
-// diagnostics — the same outcome class as the per-package Socket fail-open.
+// diagnostics — the same outcome class as the per-package OSV fail-open.
 export const SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS = 90_000;
 
-// On-disk TTL for a cached Socket artifact. A dependency's score/alerts are
-// stable day-to-day and advisory, so a cached lookup within 24h skips the
-// network entirely (the recurring CI win + faster repeated local scans);
-// after expiry it re-fetches. Disabled by `REACT_DOCTOR_NO_CACHE`.
+// On-disk TTL for a cached OSV vulnerability summary. A dependency's advisories
+// are stable day-to-day and advisory, so a cached lookup within 24h skips the
+// network entirely (the recurring CI win + faster repeated local scans); after
+// expiry it re-fetches. Disabled by `REACT_DOCTOR_NO_CACHE`.
 export const SUPPLY_CHAIN_CACHE_TTL_MS = 86_400_000;
 
-// Subdirectory of the react-doctor cache dir holding per-PURL Socket responses.
+// Subdirectory of the react-doctor cache dir holding per-PURL OSV summaries.
 export const SUPPLY_CHAIN_CACHE_SUBDIR = "supply-chain";
 
-// Most severe Socket alerts to name in one supply-chain diagnostic before
-// collapsing the remainder into a "+N more" count, so a noisy package
-// doesn't flood the message.
-export const SUPPLY_CHAIN_MAX_ALERTS_SHOWN = 3;
-
-// Cap for the first-sentence Socket alert note woven into a diagnostic, so a
-// paragraph-long malware description doesn't blow out the message line.
-export const SUPPLY_CHAIN_ALERT_NOTE_MAX_CHARS = 160;
-
-// Packages excluded from the Socket supply-chain check (the score gate).
-// react-doctor already covers these frameworks' specific
-// risks through dedicated rules — e.g. Next.js via the server-components /
-// Next rule family — so a low Socket score would be redundant noise rather
-// than an actionable, distinct supply-chain signal.
+// Packages excluded from the OSV supply-chain check.
 export const SUPPLY_CHAIN_IGNORED_PACKAGES: ReadonlySet<string> = new Set(["next"]);

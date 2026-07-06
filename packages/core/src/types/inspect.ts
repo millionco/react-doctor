@@ -113,7 +113,7 @@ export interface InspectOptions {
   /** See `ReactDoctorConfig.deadCode`. Ignored in diff / staged mode. */
   deadCode?: boolean;
   /**
-   * Whether to run the Socket.dev supply-chain scan. Resolves against
+   * Whether to run the OSV supply-chain scan. Resolves against
    * `ReactDoctorConfig.supplyChain.enabled` (this wins when set), defaulting
    * to `true`. Kept as an option — not folded into the config — so it takes
    * precedence over per-project config on every scan, like `lint`/`deadCode`.
@@ -131,7 +131,7 @@ export interface InspectOptions {
   respectInlineDisables?: boolean;
   /**
    * Whether the scanned project's `package.json` changed in this diff /
-   * staged scan. Forwarded to the orchestrator so the Socket supply-chain
+   * staged scan. Forwarded to the orchestrator so the OSV supply-chain
    * check still runs in diff mode when the manifest changed (a PR that
    * adds or bumps a dependency), instead of being skipped like the other
    * whole-project checks. Ignored on full scans. Defaults to `false`.

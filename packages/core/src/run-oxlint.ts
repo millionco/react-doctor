@@ -504,7 +504,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     // cache-hash burst below. The orchestrator forked the security-scan and
     // supply-chain fibers just before lint, but a forked fiber only runs when
     // the current one suspends — this is their first chance to start (fire the
-    // Socket.dev requests, begin the scan walk) instead of stalling until the
+    // network requests, begin the scan walk) instead of stalling until the
     // first oxlint spawn.
     await yieldToEventLoop();
     // Only a full scan pays the walk — diff / staged scans pass

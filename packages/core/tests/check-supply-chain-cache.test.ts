@@ -1,134 +1,269 @@
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
-import os from "node:os";
+import * as os from "node:os";
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { checkSupplyChain } from "@react-doctor/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  CACHE_FILENAME_HASH_LENGTH_CHARS,
+  SUPPLY_CHAIN_CACHE_SUBDIR,
+  SUPPLY_CHAIN_CACHE_TTL_MS,
+} from "../src/constants.js";
+import { checkSupplyChain } from "../src/check-supply-chain.js";
+import type { ReactDoctorConfig } from "../src/types/index.js";
+import { resolveReactDoctorCacheDir } from "../src/utils/resolve-react-doctor-cache-dir.js";
 
-// A low-score artifact so the check emits a diagnostic (lets us assert the
-// cached run reproduces it). NDJSON line shape the free Socket endpoint streams.
-const lowScoreArtifactBody = (): string =>
-  JSON.stringify({
-    id: "test-artifact",
-    type: "npm",
-    score: {
-      supplyChain: 0.1,
-      vulnerability: 0.1,
-      maintenance: 0.1,
-      quality: 0.1,
-      license: 0.1,
-      overall: 0.1,
-    },
-    alerts: [],
-  });
+interface OsvDetailInput {
+  readonly id: string;
+  readonly summary?: string;
+  readonly databaseSpecificSeverity?: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+}
 
-// The on-disk cache nests under a per-project hash subdir (and a `supply-chain`
-// subdir), so collect every cache `.json` by walking rather than guessing.
-const walkCacheFiles = (directory: string): string[] =>
-  fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) return walkCacheFiles(entryPath);
-    return entry.name.endsWith(".json") ? [entryPath] : [];
-  });
+const createProjectDirectory = (): string =>
+  fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-osv-cache-"));
 
-let projectDirectory: string;
-let cacheDirectory: string;
-const originalCacheDirEnv = process.env["REACT_DOCTOR_CACHE_DIR"];
-const originalNoCacheEnv = process.env["REACT_DOCTOR_NO_CACHE"];
-
-beforeEach(() => {
-  projectDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-sc-cache-proj-"));
-  cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-sc-cache-dir-"));
+const writePackageJson = (rootDirectory: string): void => {
   fs.writeFileSync(
-    path.join(projectDirectory, "package.json"),
-    JSON.stringify({ name: "fixture", version: "1.0.0", dependencies: { "left-pad": "1.3.0" } }),
+    path.join(rootDirectory, "package.json"),
+    `${JSON.stringify(
+      {
+        name: "test-project",
+        private: true,
+        version: "1.0.0",
+        dependencies: {
+          "left-pad": "1.0.0",
+        },
+      },
+      null,
+      2,
+    )}\n`,
   );
-  // Point the cache at an isolated dir; ensure the cache isn't globally disabled.
-  process.env["REACT_DOCTOR_CACHE_DIR"] = cacheDirectory;
-  delete process.env["REACT_DOCTOR_NO_CACHE"];
+};
+
+const runCheckSupplyChain = async (
+  rootDirectory: string,
+  userConfig: ReactDoctorConfig | null = null,
+) =>
+  Effect.runPromise(
+    checkSupplyChain({
+      rootDirectory,
+      userConfig,
+    }),
+  );
+
+const createOsvDetail = (input: OsvDetailInput): Record<string, unknown> => ({
+  id: input.id,
+  summary: input.summary ?? input.id,
+  ...(input.databaseSpecificSeverity !== undefined
+    ? { database_specific: { severity: input.databaseSpecificSeverity } }
+    : {}),
 });
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-  fs.rmSync(projectDirectory, { recursive: true, force: true });
-  fs.rmSync(cacheDirectory, { recursive: true, force: true });
-  if (originalCacheDirEnv === undefined) delete process.env["REACT_DOCTOR_CACHE_DIR"];
-  else process.env["REACT_DOCTOR_CACHE_DIR"] = originalCacheDirEnv;
-  if (originalNoCacheEnv === undefined) delete process.env["REACT_DOCTOR_NO_CACHE"];
-  else process.env["REACT_DOCTOR_NO_CACHE"] = originalNoCacheEnv;
-});
+const stubOsvFetch = (
+  detailById: Record<string, Record<string, unknown>>,
+): ReturnType<typeof vi.fn> => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const requestUrl = String(input);
+    if (requestUrl.endsWith("/v1/querybatch")) {
+      const payload: unknown = JSON.parse(String(init?.body ?? "{}"));
+      const queries = Array.isArray((payload as Record<string, unknown>).queries)
+        ? ((payload as Record<string, unknown>).queries as ReadonlyArray<Record<string, unknown>>)
+        : [];
+      return new Response(
+        JSON.stringify({
+          results: queries.map((query) => {
+            const packageName =
+              typeof query.package === "object" &&
+              query.package !== null &&
+              typeof query.package.name === "string"
+                ? query.package.name
+                : "";
+            return packageName === "left-pad" ? { vulns: [{ id: "GHSA-cache" }] } : {};
+          }),
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
 
-const stubSocketFetch = () => {
-  const fetchMock = vi.fn(async () => new Response(lowScoreArtifactBody(), { status: 200 }));
+    if (requestUrl.includes("/v1/vulns/")) {
+      const id = decodeURIComponent(requestUrl.slice(requestUrl.lastIndexOf("/") + 1));
+      const detail = detailById[id];
+      if (detail === undefined) return new Response("not found", { status: 404 });
+      return new Response(JSON.stringify(detail), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response("not found", { status: 404 });
+  });
+
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 };
 
-const runCheck = () =>
-  Effect.runPromise(checkSupplyChain({ rootDirectory: projectDirectory, userConfig: null }));
+const cacheFileFor = (rootDirectory: string): string => {
+  const purlHash = crypto
+    .createHash("sha256")
+    .update("pkg:npm/left-pad@1.0.0")
+    .digest("hex")
+    .slice(0, CACHE_FILENAME_HASH_LENGTH_CHARS);
+  return path.join(
+    resolveReactDoctorCacheDir(rootDirectory),
+    SUPPLY_CHAIN_CACHE_SUBDIR,
+    `${purlHash}.json`,
+  );
+};
 
-describe("supply-chain on-disk cache", () => {
-  it("skips the network on a repeat scan within the TTL (cache hit), reproducing the diagnostic", async () => {
-    const fetchMock = stubSocketFetch();
-    const first = await runCheck();
-    const callsAfterFirst = fetchMock.mock.calls.length;
-    expect(callsAfterFirst).toBeGreaterThan(0); // the first scan fetched
-    expect(first.length).toBeGreaterThan(0); // low score ⇒ a diagnostic
+const writeCacheEntry = (cacheFile: string, entry: unknown): void => {
+  fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
+  fs.writeFileSync(cacheFile, JSON.stringify(entry));
+};
 
-    const second = await runCheck();
-    expect(fetchMock.mock.calls.length).toBe(callsAfterFirst); // no new network calls
-    expect(second).toEqual(first); // identical diagnostics, served from cache
-  });
+afterEach(() => {
+  vi.unstubAllGlobals();
+  delete process.env["REACT_DOCTOR_CACHE_DIR"];
+  delete process.env["REACT_DOCTOR_NO_CACHE"];
+});
 
-  it("treats an unparseable cached body as a miss and re-fetches (corruption / schema drift)", async () => {
-    const fetchMock = stubSocketFetch();
-    const first = await runCheck();
-    const callsAfterFirst = fetchMock.mock.calls.length;
-    expect(first.length).toBeGreaterThan(0);
+describe("checkSupplyChain cache", () => {
+  it("reuses the cached vulnerability summary on a repeat scan", async () => {
+    const rootDirectory = createProjectDirectory();
+    const cacheDirectory = path.join(rootDirectory, "cache");
+    process.env["REACT_DOCTOR_CACHE_DIR"] = cacheDirectory;
+    try {
+      writePackageJson(rootDirectory);
+      const fetchMock = stubOsvFetch({
+        "GHSA-cache": createOsvDetail({
+          id: "GHSA-cache",
+          databaseSpecificSeverity: "HIGH",
+        }),
+      });
 
-    // Corrupt the cached body in place while keeping a fresh, in-TTL envelope —
-    // the read still returns a string, but it no longer parses to an artifact.
-    // This is the corrupted-restore / Socket-schema-drift case: it must fall
-    // through to the network, not silently skip the advisory for the whole TTL.
-    // The cache nests under a per-project subdir, so walk for the `.json` files.
-    const cacheFiles = walkCacheFiles(cacheDirectory);
-    expect(cacheFiles.length).toBeGreaterThan(0); // the first scan populated it
-    for (const cacheFile of cacheFiles) {
-      fs.writeFileSync(
-        cacheFile,
-        JSON.stringify({ fetchedAtMs: Date.now(), body: "not-valid-json\n{partial" }),
-      );
+      const firstDiagnostics = await runCheckSupplyChain(rootDirectory, {
+        supplyChain: {
+          failOn: "low",
+        },
+      });
+      expect(firstDiagnostics).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalled();
+
+      fetchMock.mockClear();
+
+      const secondDiagnostics = await runCheckSupplyChain(rootDirectory, {
+        supplyChain: {
+          failOn: "low",
+        },
+      });
+      expect(secondDiagnostics).toHaveLength(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
     }
-
-    const second = await runCheck();
-    expect(fetchMock.mock.calls.length).toBeGreaterThan(callsAfterFirst); // re-fetched
-    expect(second).toEqual(first); // advisory still produced from the fresh fetch
   });
 
-  it("prunes cache files past the TTL so stale purls don't accumulate across CI restores", async () => {
-    stubSocketFetch();
-    await runCheck();
-    const cacheFiles = walkCacheFiles(cacheDirectory);
-    expect(cacheFiles.length).toBeGreaterThan(0);
+  it("re-fetches when the cached body is malformed", async () => {
+    const rootDirectory = createProjectDirectory();
+    const cacheDirectory = path.join(rootDirectory, "cache");
+    process.env["REACT_DOCTOR_CACHE_DIR"] = cacheDirectory;
+    try {
+      writePackageJson(rootDirectory);
+      const cacheFile = cacheFileFor(rootDirectory);
+      writeCacheEntry(cacheFile, {
+        fetchedAtMs: Date.now(),
+        body: "old OSV cache body",
+      });
+      const fetchMock = stubOsvFetch({
+        "GHSA-cache": createOsvDetail({
+          id: "GHSA-cache",
+          databaseSpecificSeverity: "HIGH",
+        }),
+      });
 
-    // Simulate an entry for a purl no run looks up anymore (a bumped or
-    // removed dependency) whose mtime is past the 24h TTL.
-    const staleFile = path.join(path.dirname(cacheFiles[0]), "stale-purl.json");
-    fs.writeFileSync(staleFile, JSON.stringify({ fetchedAtMs: 0, body: "{}" }));
-    const expiredDate = new Date(Date.now() - 48 * 60 * 60 * 1_000);
-    fs.utimesSync(staleFile, expiredDate, expiredDate);
+      const diagnostics = await runCheckSupplyChain(rootDirectory, {
+        supplyChain: {
+          failOn: "low",
+        },
+      });
 
-    await runCheck();
-    expect(fs.existsSync(staleFile)).toBe(false);
-    expect(walkCacheFiles(cacheDirectory).length).toBeGreaterThan(0); // live entries survive
+      expect(diagnostics).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalled();
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
   });
 
-  it("re-fetches every run when REACT_DOCTOR_NO_CACHE is set (cache bypassed)", async () => {
+  it("prunes stale cache files before scanning", async () => {
+    const rootDirectory = createProjectDirectory();
+    const cacheDirectory = path.join(rootDirectory, "cache");
+    process.env["REACT_DOCTOR_CACHE_DIR"] = cacheDirectory;
+    try {
+      writePackageJson(rootDirectory);
+      const resolvedCacheDirectory = resolveReactDoctorCacheDir(rootDirectory);
+      const staleFile = path.join(resolvedCacheDirectory, SUPPLY_CHAIN_CACHE_SUBDIR, "stale.json");
+      writeCacheEntry(staleFile, {
+        fetchedAtMs: Date.now() - 2 * SUPPLY_CHAIN_CACHE_TTL_MS,
+        vulns: [],
+      });
+      fs.utimesSync(
+        staleFile,
+        new Date(Date.now() - 2 * SUPPLY_CHAIN_CACHE_TTL_MS),
+        new Date(Date.now() - 2 * SUPPLY_CHAIN_CACHE_TTL_MS),
+      );
+      stubOsvFetch({
+        "GHSA-cache": createOsvDetail({
+          id: "GHSA-cache",
+          databaseSpecificSeverity: "HIGH",
+        }),
+      });
+
+      await runCheckSupplyChain(rootDirectory, {
+        supplyChain: {
+          failOn: "low",
+        },
+      });
+
+      expect(fs.existsSync(staleFile)).toBe(false);
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores cache entries when REACT_DOCTOR_NO_CACHE is enabled", async () => {
+    const rootDirectory = createProjectDirectory();
+    const cacheDirectory = path.join(rootDirectory, "cache");
+    process.env["REACT_DOCTOR_CACHE_DIR"] = cacheDirectory;
     process.env["REACT_DOCTOR_NO_CACHE"] = "1";
-    const fetchMock = stubSocketFetch();
-    await runCheck();
-    const callsAfterFirst = fetchMock.mock.calls.length;
-    await runCheck();
-    expect(fetchMock.mock.calls.length).toBeGreaterThan(callsAfterFirst);
+    try {
+      writePackageJson(rootDirectory);
+      writeCacheEntry(cacheFileFor(rootDirectory), {
+        fetchedAtMs: Date.now(),
+        vulns: [
+          {
+            id: "GHSA-cache",
+            severity: "high",
+            summary: "cached",
+            pageUrl: "https://osv.dev/vulnerability/GHSA-cache",
+          },
+        ],
+      });
+      const fetchMock = stubOsvFetch({
+        "GHSA-cache": createOsvDetail({
+          id: "GHSA-cache",
+          databaseSpecificSeverity: "HIGH",
+        }),
+      });
+
+      const diagnostics = await runCheckSupplyChain(rootDirectory, {
+        supplyChain: {
+          failOn: "low",
+        },
+      });
+
+      expect(diagnostics).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalled();
+    } finally {
+      fs.rmSync(rootDirectory, { recursive: true, force: true });
+    }
   });
 });

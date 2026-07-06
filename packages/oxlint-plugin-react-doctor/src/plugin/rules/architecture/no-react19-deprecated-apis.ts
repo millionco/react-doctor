@@ -1,5 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { createDeprecatedReactImportRule } from "./utils/create-deprecated-react-import-rule.js";
+import type { ReportDescriptor } from "../../utils/report-descriptor.js";
+import type { RuleContext } from "../../utils/rule-context.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
 // HACK: React 19+ deprecated `forwardRef` (refs are now regular props on
 // function components) and `useContext` (replaced by the more flexible
@@ -24,6 +27,52 @@ const REACT_19_DEPRECATED_MESSAGES = new Map<string, string>([
   ],
 ]);
 
+// shadcn/ui vendors generated components under `components/ui/` — code the
+// user copied in, not authored. Those files use `forwardRef` heavily (5-8×
+// per file across dozens of files), and the actionable fix is regenerating
+// from shadcn's React-19 registry, not hand-editing each callsite — so the
+// per-callsite migration hint is pure noise there.
+const isVendoredShadcnUiFilename = (rawFilename: string | undefined): boolean => {
+  if (!rawFilename) return false;
+  const filename = rawFilename.replaceAll("\\", "/");
+  const rootedFilename = filename.startsWith("/") ? filename : `/${filename}`;
+  return rootedFilename.includes("/components/ui/");
+};
+
+const deprecatedReactImportRule = createDeprecatedReactImportRule({
+  source: "react",
+  messages: REACT_19_DEPRECATED_MESSAGES,
+});
+
+// Each deprecated API maps to exactly one message string, so keying the
+// dedupe on `descriptor.message` caps reporting at one diagnostic per
+// deprecated API per file. Fixing the file fixes every occurrence at once;
+// repeating the identical hint 5× in one file is density, not signal.
+// Getter delegation (not spread) keeps the host context's lazy `scopes` /
+// `cfg` getters lazy.
+const buildOncePerApiContext = (context: RuleContext): RuleContext => {
+  const reportedMessages = new Set<string>();
+  return {
+    report: (descriptor: ReportDescriptor) => {
+      if (reportedMessages.has(descriptor.message)) return;
+      reportedMessages.add(descriptor.message);
+      context.report(descriptor);
+    },
+    get filename() {
+      return context.filename;
+    },
+    get settings() {
+      return context.settings;
+    },
+    get scopes() {
+      return context.scopes;
+    },
+    get cfg() {
+      return context.cfg;
+    },
+  };
+};
+
 export const noReact19DeprecatedApis = defineRule({
   id: "no-react19-deprecated-apis",
   title: "React 19 API migration can break callers",
@@ -33,8 +82,8 @@ export const noReact19DeprecatedApis = defineRule({
   severity: "warn",
   recommendation:
     "Pass `ref` as a normal prop on function components, since `forwardRef` isn't needed in React 19. Replace `useContext(X)` with `use(X)`. Only runs on React 19+ projects.",
-  ...createDeprecatedReactImportRule({
-    source: "react",
-    messages: REACT_19_DEPRECATED_MESSAGES,
-  }),
+  create: (context: RuleContext): RuleVisitors => {
+    if (isVendoredShadcnUiFilename(context.filename)) return {};
+    return deprecatedReactImportRule.create(buildOncePerApiContext(context));
+  },
 });

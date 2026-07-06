@@ -9,6 +9,8 @@ import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-str
 import { walkAst } from "../../utils/walk-ast.js";
 import { findTriggeredSideEffectCalleeName } from "./utils/find-triggered-side-effect-callee-name.js";
 import { hasDocumentClassListMutation } from "./utils/has-document-class-list-mutation.js";
+import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { hasCleanup } from "./utils/effect/react.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -169,6 +171,14 @@ export const noEffectEventHandler = defineRule({
 
         const callback = getEffectCallback(node);
         if (!callback) return;
+
+        // An effect that returns a cleanup is synchronizing with an
+        // external system (body scroll lock, abortable fetch, cancellable
+        // subscription) — the cleanup half CANNOT live in an event
+        // handler, so the effect is not simulating one. Every corpus FP
+        // for this rule (prod telemetry review 2026-07) had a cleanup.
+        const analysis = getProgramAnalysis(node);
+        if (analysis && hasCleanup(analysis, node)) return;
 
         const depsNode = node.arguments[1];
         if (!isNodeOfType(depsNode, "ArrayExpression") || !depsNode.elements?.length) return;

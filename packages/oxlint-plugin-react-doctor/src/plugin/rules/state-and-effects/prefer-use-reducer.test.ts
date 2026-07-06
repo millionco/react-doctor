@@ -189,14 +189,100 @@ const Panel = () => {
   const [c, setC] = useState(0);
   const [d, setD] = useState(0);
   const [e, setE] = useState(0);
-  const reset = () => {
-    setA(0);
-    setB(0);
-    setC(0);
-    setD(0);
-    return setE(0);
+  const apply = (snapshot) => {
+    setA(snapshot.a);
+    setB(snapshot.b);
+    setC(snapshot.c);
+    setD(snapshot.d);
+    return setE(snapshot.e);
   };
-  return reset;
+  return apply;
+};
+`;
+      const result = runRule(preferUseReducer, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
+  describe("regressions — corpus-mined FP classes (prod telemetry review 2026-07)", () => {
+    // Mined FP class: dialog components whose ONLY co-update site is a
+    // reset handler / close-dialog effect writing every state back to its
+    // useState initial value (frontend-panel TagLibraryManagerDialog,
+    // GlobalSearchDialog, PdfPreview, cloudscape reset-all button, …).
+    // Resetting N independent states is not "state that changes together".
+    it("does not flag a reset handler that writes every state back to its initial value", () => {
+      const code = `
+import { useCallback, useState } from "react";
+const TagManagerDialog = () => {
+  const [tags, setTags] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+  const resetDialogState = useCallback(() => {
+    setTags([]);
+    setTotal(0);
+    setQuery("");
+    setLoading(false);
+    setBusyId(null);
+  }, []);
+  return resetDialogState;
+};
+`;
+      const result = runRule(preferUseReducer, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag a close-dialog effect that resets every state to its initial value", () => {
+      const code = `
+import { useEffect, useState } from "react";
+const GlobalSearchDialog = ({ open }) => {
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState(null);
+  const [tags, setTags] = useState([]);
+  const [tagLoading, setTagLoading] = useState(false);
+  useEffect(() => {
+    if (!open) {
+      setQuery("");
+      setFilter("all");
+      setCategoryFilter(null);
+      setTags([]);
+      setTagLoading(false);
+      return;
+    }
+  }, [open]);
+  return null;
+};
+`;
+      const result = runRule(preferUseReducer, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    // TP shape retained: a block mixing reset writes with data-carrying
+    // writes is a real transition (cloudscape table Resizer VO+Space
+    // click sets isPointerDown/isDragging back to false while latching
+    // three other states to true).
+    it("still flags a handler mixing reset writes with data-carrying writes", () => {
+      const code = `
+import { useState } from "react";
+const Resizer = () => {
+  const [isPointerDown, setIsPointerDown] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [showUapButtons, setShowUapButtons] = useState(false);
+  const [resizerHasFocus, setResizerHasFocus] = useState(false);
+  const [isKeyboardDragging, setIsKeyboardDragging] = useState(false);
+  const onClick = () => {
+    setIsPointerDown(false);
+    setIsDragging(false);
+    setShowUapButtons(true);
+    setResizerHasFocus(true);
+    setIsKeyboardDragging(true);
+  };
+  return onClick;
 };
 `;
       const result = runRule(preferUseReducer, code);

@@ -13,15 +13,16 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
-// Two message strengths: the harm — a defeated `React.memo` bailout —
-// is only PROVEN when the receiving component is visibly memoised in
-// this file. For imported components (unresolvable in oxlint's
-// single-file model) the claim must stay conditional; a plain function
-// child redraws with its parent no matter what the prop holds.
+// The harm — a defeated `React.memo` bailout — is only PROVEN when the
+// receiving component is visibly memoised in this file. A plain
+// function child redraws with its parent no matter what the prop
+// holds, and for imported components (unresolvable in oxlint's
+// single-file model) JSX-as-prop is overwhelmingly a design-system
+// slot (corpus review 2026-07: 40/40 production hits were slots on
+// imported components). Like `jsx-no-new-function-as-prop` and
+// `jsx-no-new-object-as-prop`, only proven-memoised consumers fire.
 const MESSAGE_MEMOISED =
   "This child redraws every render because the prop gets brand new JSX each time.";
-const MESSAGE_UNKNOWN =
-  "If this child is memoized, it still redraws every render because the prop gets brand new JSX each time.";
 
 // Prop names that conventionally receive single JSX elements (icons,
 // slot content, fallbacks, render props). For these the inline JSX
@@ -357,15 +358,16 @@ export const jsxNoJsxAsProp = defineRule({
         // passed as a prop on them is unactionable. See
         // `jsx-no-new-function-as-prop` for the full rationale.
         if (isJsxAttributeOnIntrinsicHtmlElement(node)) return;
-        // Same-file plain-function consumer — `React.memo` rationale
-        // doesn't apply.
+        // Only fire when same-file analysis PROVES the consumer is
+        // memoised. "unknown" (imported) and "not-memoised" both
+        // short-circuit — same gate as the sibling react_perf ports.
         const parentJsxOpening = node.parent;
         const openingName =
           parentJsxOpening && isNodeOfType(parentJsxOpening, "JSXOpeningElement")
             ? (parentJsxOpening.name as EsTreeNode)
             : null;
         const memoStatus = memoStatusForJsxOpeningName(memoRegistry, openingName);
-        if (memoStatus === "not-memoised") return;
+        if (memoStatus !== "memoised") return;
         // Known slot prop names (icon, tooltip, fallback, header, etc.)
         // and slot suffixes (*Button, *Icon, *Component, *Element, ...)
         // are designed to receive JSX. Flagging them is unactionable.
@@ -386,7 +388,7 @@ export const jsxNoJsxAsProp = defineRule({
         }
         context.report({
           node,
-          message: memoStatus === "memoised" ? MESSAGE_MEMOISED : MESSAGE_UNKNOWN,
+          message: MESSAGE_MEMOISED,
         });
       },
     };

@@ -8,6 +8,25 @@ import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
+// Only properties whose values are compile-time constants can move to a CSS
+// class — values computed from props/state (floating-ui coordinates, editor
+// font sizes, conditional cursors) must stay inline, so they don't count
+// toward the "move this to CSS" threshold.
+const isStaticStyleValue = (value: EsTreeNode): boolean => {
+  if (isNodeOfType(value, "Literal")) return true;
+  if (isNodeOfType(value, "TemplateLiteral")) return value.expressions.length === 0;
+  if (isNodeOfType(value, "UnaryExpression")) {
+    return value.operator === "-" && isNodeOfType(value.argument, "Literal");
+  }
+  return false;
+};
+
+const isStaticStyleProperty = (property: EsTreeNode): boolean => {
+  if (!isNodeOfType(property, "Property")) return false;
+  if (property.computed) return false;
+  return isStaticStyleValue(property.value);
+};
+
 export const noInlineExhaustiveStyle = defineRule({
   id: "no-inline-exhaustive-style",
   title: "Large inline style object rebuilds every render",
@@ -23,10 +42,7 @@ export const noInlineExhaustiveStyle = defineRule({
         const expression = getInlineStyleExpression(node);
         if (!expression) return;
 
-        const propertyCount =
-          expression.properties?.filter((property: EsTreeNode) =>
-            isNodeOfType(property, "Property"),
-          ).length ?? 0;
+        const propertyCount = expression.properties?.filter(isStaticStyleProperty).length ?? 0;
 
         if (propertyCount < INLINE_STYLE_PROPERTY_THRESHOLD) return;
 

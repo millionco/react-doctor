@@ -265,6 +265,14 @@ export const jsCombineIterations = defineRule({
   create: (context: RuleContext) => {
     let programNode: EsTreeNode | null = null;
     let generatorNamesInFile: ReadonlySet<string> | null = null;
+    // One report per fluent chain. `a.filter(x).map(y).filter(z)` has two
+    // adjacent chainable pairs and used to report both — the advice
+    // ("combine into one pass") is identical, so the second diagnostic is
+    // pure noise (prod telemetry review 2026-07: same chain, same line,
+    // reported twice). Pre-order traversal reaches the outermost pair
+    // first; once it reports (or is itself covered), every inner call of
+    // the same chain is marked covered.
+    const coveredChainCalls = new WeakSet<EsTreeNode>();
     // Collecting generator names walks the whole program, and the set only
     // matters once a chained-iteration candidate survives the guards below —
     // most files never get that far, so the walk is deferred to first use.
@@ -297,6 +305,11 @@ export const jsCombineIterations = defineRule({
 
         const innerMethod = innerCall.callee.property.name;
         if (!CHAINABLE_ITERATION_METHODS.has(innerMethod)) return;
+
+        if (coveredChainCalls.has(node as EsTreeNode)) {
+          coveredChainCalls.add(innerCall as EsTreeNode);
+          return;
+        }
 
         if (
           outerMethod === "filter" &&
@@ -335,6 +348,7 @@ export const jsCombineIterations = defineRule({
         if (isSmallLiteralArrayRootedChain(innerCall.callee.object)) return;
         if (isStringSplitRootedChain(innerCall.callee.object)) return;
 
+        coveredChainCalls.add(innerCall as EsTreeNode);
         context.report({
           node,
           message: `This loops over your list twice because .${innerMethod}().${outerMethod}() makes two passes, so do it in one pass with .reduce() or a for...of loop`,

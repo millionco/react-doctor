@@ -270,6 +270,86 @@ describe("no-chain-state-updates — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  // Guarded self-sync exemption (prod telemetry review 2026-07): effects
+  // that react to a state AND write that same state back with a simple
+  // re-derivation are clamp/normalize/latch patterns, not chains — the
+  // write converges in one pass and has no event handler to move into.
+  it("does not flag a clamp effect that re-derives its own state dep with Math builtins (PDFThumbnails)", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `export const PDFThumbnails = ({ currentPage, numPages }) => {
+        const [visibleRange, setVisibleRange] = useState({ start: 1, end: 10 });
+        useEffect(() => {
+          if (currentPage < visibleRange.start) {
+            setVisibleRange({
+              start: Math.max(1, currentPage - 2),
+              end: Math.min(numPages, currentPage + 7),
+            });
+          }
+        }, [currentPage, numPages, visibleRange]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a controlled-prop sync effect that mirrors the prop into its own state dep (brainly Checkbox)", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `export const Checkbox = ({ checked, defaultChecked }) => {
+        const isControlled = checked !== undefined;
+        const [isChecked, setIsChecked] = useState(isControlled ? checked : defaultChecked);
+        useEffect(() => {
+          if (isControlled && checked !== isChecked) {
+            setIsChecked(checked);
+          }
+        }, [checked, isControlled, isChecked]);
+        return <input type="checkbox" checked={isChecked} />;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a latch effect that flips its own boolean state dep to a literal (brainly RadioGroup)", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `export const RadioGroup = ({ value }) => {
+        const initialValue = value;
+        const [selectedValue, setSelectedValue] = useState(value || null);
+        const [isPristine, setIsPristine] = useState(true);
+        useEffect(() => {
+          if (selectedValue !== initialValue && isPristine) setIsPristine(false);
+        }, [selectedValue, initialValue, isPristine]);
+        const updateValue = (event, next) => setSelectedValue(next);
+        return updateValue;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // Self-targeting setters fed by a non-builtin call result still chain —
+  // they create an external instance in the effect (wangeditor shape,
+  // anchored above) rather than re-deriving from in-scope values.
+  it("still fires when a self-targeting setter's argument comes from a local call result", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `function Editor() {
+        const [editor, setEditor] = useState(null);
+        useEffect(() => {
+          if (editor != null) return;
+          const newEditor = createEditor({ selector: "#editor" });
+          setEditor(newEditor);
+        }, [editor]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("stays silent when the triggering state is set only inside a .then continuation", () => {
     const result = runRule(
       noChainStateUpdates,

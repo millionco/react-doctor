@@ -139,15 +139,22 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     reason: "Intentional: skip intrinsic HTML elements + non-memoised consumers (memo-gated rule).",
   },
   "jsx-no-jsx-as-prop": {
-    // OXC flags any JSX passed as a prop. We skip well-known "slot"
-    // prop names (`icon`, `tooltip`, `header`, `fallback`, `render*`,
-    // etc.) because these props are designed to receive single JSX
-    // elements — every design system (shadcn, Radix, MUI, Mantine,
-    // Chakra) has them, and the inline-JSX form is the canonical
-    // usage. fail[4] (`<IconButton icon={Icon}/>`) exercises the
-    // `icon` slot.
-    failSkips: [4],
-    reason: "Intentional: skip known slot-prop names (icon, tooltip, fallback, render*, etc.).",
+    // Two skips merged:
+    // (1) known slot-prop names (fail[4], `<IconButton icon={Icon}/>`) —
+    //     `icon`, `tooltip`, `header`, `fallback`, `render*`, etc. are
+    //     designed to receive single JSX elements; every design system
+    //     (shadcn, Radix, MUI, Mantine, Chakra) has them and the
+    //     inline-JSX form is the canonical usage.
+    // (2) non-memoised consumers (fail[0-3]) — like the other
+    //     react_perf ports, we only fire when same-file analysis PROVES
+    //     the consumer is `memo`-wrapped. OXC's fixtures pass
+    //     plain/unknown consumers (`<Item jsx={<SubItem/>}/>`), so the
+    //     memo gate suppresses them. Prod telemetry review 2026-07:
+    //     40/40 corpus hits were slots on memo-unknown imported
+    //     components. The gated path is covered by
+    //     `jsx-no-jsx-as-prop.regressions.test.ts`.
+    failSkips: [0, 1, 2, 3, 4],
+    reason: "Intentional: skip slot-prop names + non-memoised consumers (memo-gated rule).",
   },
   "jsx-no-new-object-as-prop": {
     // Three skips merged:

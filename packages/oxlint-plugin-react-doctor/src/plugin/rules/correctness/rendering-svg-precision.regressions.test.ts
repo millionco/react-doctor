@@ -56,6 +56,79 @@ describe("correctness/rendering-svg-precision — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("stays silent on Sketch-export transforms whose decimals are all trailing zeros", () => {
+    const result = runRule(
+      renderingSvgPrecision,
+      `
+      const ArrowLeft = () => (
+        <svg viewBox="0 0 44 44">
+          <g transform="translate(-495.000000, -71.000000)">
+            <g transform="translate(495.000000, 71.000000)">
+              <g transform="translate(15.000000, 15.000000) scale(-1, -1) translate(-15.000000, -15.000000)">
+                <path d="M 10 10 L 20 20 Z" />
+              </g>
+            </g>
+          </g>
+        </svg>
+      );
+      `,
+      { filename: "/repo/src/components/arrow-left.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on tokens whose precision past 2 decimals is only zeros", () => {
+    const result = runRule(
+      renderingSvgPrecision,
+      `
+      const Glyph = () => (
+        <svg>
+          <path d="M 12.500000 24.250000 L 8.750000 16.000000 Z" />
+        </svg>
+      );
+      `,
+      { filename: "/repo/src/glyph.tsx" },
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still fires on a transform with genuine sub-pixel precision", () => {
+    const result = runRule(
+      renderingSvgPrecision,
+      `
+      const CheckMark = () => (
+        <svg viewBox="0 0 17 13">
+          <g transform="translate(179.177408, 36.687816)">
+            <polyline points="34.2767388 22 24.797043 31.4796958 21 27.6826527" />
+          </g>
+        </svg>
+      );
+      `,
+      { filename: "/repo/src/check-mark.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports once per file even when several attributes are over-precise", () => {
+    const result = runRule(
+      renderingSvgPrecision,
+      `
+      const SpinIcon = () => (
+        <svg viewBox="0 0 28 28">
+          <path d="${CODEPEN_ICON_D}" />
+          <path d="${CODEPEN_ICON_D}" />
+          <polyline points="34.2767388 22 24.797043 31.4796958 21 27.6826527" />
+        </svg>
+      );
+      `,
+      { filename: "/repo/src/spin-icon.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent on a single stray over-precise token in a hand-written glyph", () => {
     const result = runRule(
       renderingSvgPrecision,

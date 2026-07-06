@@ -49,17 +49,15 @@ const warnIfAiTrainingEnvironment = (): void => {
   );
 };
 
-// The production layer stack for the programmatic API. The only axis that
-// varies across calls is `Config`: with no override we load from disk
-// (`Config.layerNode`); with a per-project override the caller's already
-// resolved config drives `Config.layerOf(...)`. The supply-chain gate reads
-// `supplyChain.enabled` from that same effective config (default on), so the
-// one config input decides both. Every other service is identical, so the
-// stack is built once here rather than duplicated per variant.
+// The production layer stack for the programmatic API. Config still decides
+// supply-chain gating, while the existing `lint` option swaps oxlint for the
+// no-op layer so API callers get the same skip behavior as the CLI.
 const buildDiagnoseLayer = (
   config: ReactDoctorConfig | null,
+  options: DiagnoseOptions,
   configOverrideTarget?: Pick<ResolvedScanTarget, "resolvedDirectory" | "configSourceDirectory">,
 ) => {
+  const shouldSkipLint = options.lint === false || config?.lint === false;
   const configLayer =
     configOverrideTarget === undefined
       ? Config.layerNode
@@ -74,7 +72,7 @@ const buildDiagnoseLayer = (
     DeadCode.layerNode,
     Files.layerNode,
     Git.layerNode,
-    Linter.layerOxlint,
+    shouldSkipLint ? Linter.layerOf([]) : Linter.layerOxlint,
     LintPartialFailures.layerLive,
     Progress.layerNoop,
     Reporter.layerNoop,
@@ -143,7 +141,7 @@ const diagnoseDirectory = async (
   const output: InspectOutput = await Effect.runPromise(
     restoreLegacyThrow(
       program.pipe(
-        Effect.provide(buildDiagnoseLayer(scanTarget.userConfig)),
+        Effect.provide(buildDiagnoseLayer(scanTarget.userConfig, options)),
         Effect.provide(layerOtlp),
       ),
     ),
@@ -197,6 +195,7 @@ const diagnoseProject = async (
       batchConfig?.plugins !== undefined || projectConfig?.plugins !== undefined;
     const layer = buildDiagnoseLayer(
       effectiveConfig,
+      { ...baseOptions, ...perProjectOptions },
       didOverrideConfig
         ? {
             resolvedDirectory: scanTarget.resolvedDirectory,

@@ -2,7 +2,7 @@
 
 Diagnose React codebase health. Scans for security, performance, correctness, and architecture issues, then outputs a 0–100 score with actionable diagnostics.
 
-Note: dead-code detection was removed in v0.2 (previously powered by knip). For dead-code analysis, run `npx knip` directly.
+Dead-code detection runs by default through deslop-js. Disable it with `--no-dead-code` or `deadCode: false` when you need a faster advisory scan.
 
 ## Usage
 

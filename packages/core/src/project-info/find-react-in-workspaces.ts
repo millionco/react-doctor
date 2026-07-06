@@ -70,7 +70,7 @@ export const findReactInWorkspaces = (
   const result: DependencyInfo = { ...EMPTY_DEPENDENCY_INFO };
 
   for (const pattern of patterns) {
-    const directories = resolveWorkspaceDirectories(rootDirectory, pattern);
+    const directories = resolveWorkspaceDirectories(rootDirectory, pattern).sort();
 
     for (const workspaceDirectory of directories) {
       const workspacePackageJson = readPackageJson(path.join(workspaceDirectory, "package.json"));

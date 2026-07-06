@@ -12,7 +12,11 @@ import {
   EXIT_CODE_RUNTIME_ERROR,
   EXIT_CODE_SUCCESS,
 } from "../src/constants.js";
-import { hasCircularIssues, hasUnusedIssues } from "../src/format-result.js";
+import {
+  formatHumanReadableResult,
+  hasCircularIssues,
+  hasUnusedIssues,
+} from "../src/format-result.js";
 import { resolveAnalyzeExitCode, runAnalyze } from "../src/run-analyze.js";
 import { validateRootDirectory } from "../src/utils/validate-root-directory.js";
 import { FIXTURES_DIR } from "./helpers/fixtures-dir.js";
@@ -42,6 +46,18 @@ const emptyScanResult: ScanResult = {
   simplifiableFunctions: [],
   simplifiableExpressions: [],
   duplicateConstants: [],
+  crossFileDuplicateExports: [],
+  duplicateBlocks: [],
+  duplicateBlockClusters: [],
+  shadowedDirectoryPairs: [],
+  reExportCycles: [],
+  featureFlags: [],
+  complexFunctions: [],
+  privateTypeLeaks: [],
+  unnecessaryAssertions: [],
+  lazyImportsAtTopLevel: [],
+  commonjsInEsm: [],
+  typeScriptEscapeHatches: [],
   analysisErrors: [],
   totalFiles: 0,
   totalExports: 0,
@@ -160,6 +176,39 @@ describe("hasUnusedIssues / hasCircularIssues", () => {
     };
     assert.equal(hasUnusedIssues(result), false);
     assert.equal(hasCircularIssues(result), true);
+  });
+
+  it("should treat code-quality findings as unused issues for CI gating", () => {
+    const result: ScanResult = {
+      ...emptyScanResult,
+      duplicateBlocks: [
+        {
+          instances: [
+            {
+              path: "src/a.ts",
+              startLine: 1,
+              endLine: 4,
+              startColumn: 1,
+              endColumn: 1,
+            },
+            {
+              path: "src/b.ts",
+              startLine: 1,
+              endLine: 4,
+              startColumn: 1,
+              endColumn: 1,
+            },
+          ],
+          tokenCount: 40,
+          lineCount: 4,
+          confidence: "high",
+          reason: "Repeated implementation",
+        },
+      ],
+    };
+    assert.equal(hasUnusedIssues(result), true);
+    assert.match(formatHumanReadableResult(result), /1 duplicate block/);
+    assert.doesNotMatch(formatHumanReadableResult(result), /No findings/);
   });
 });
 

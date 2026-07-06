@@ -5,6 +5,48 @@ const formatIssueCount = (count: number, singularLabel: string, pluralLabel: str
   return `${count} unused ${label}`;
 };
 
+const formatFindingCount = (
+  count: number,
+  singularLabel: string,
+  pluralLabel: string,
+  prefix: string,
+): string => {
+  const prefixText = prefix.length > 0 ? `${prefix} ` : "";
+  return `${count} ${prefixText}${count === 1 ? singularLabel : pluralLabel}`;
+};
+
+const countReportFindings = (result: ScanResult): number =>
+  result.unusedFiles.length +
+  result.unusedExports.length +
+  result.unusedDependencies.length +
+  result.circularDependencies.length +
+  result.unusedTypes.length +
+  result.unusedEnumMembers.length +
+  result.unusedClassMembers.length +
+  result.misclassifiedDependencies.length +
+  result.redundantAliases.length +
+  result.duplicateExports.length +
+  result.duplicateImports.length +
+  result.redundantTypePatterns.length +
+  result.identityWrappers.length +
+  result.duplicateTypeDefinitions.length +
+  result.duplicateInlineTypes.length +
+  result.simplifiableFunctions.length +
+  result.simplifiableExpressions.length +
+  result.duplicateConstants.length +
+  result.crossFileDuplicateExports.length +
+  result.duplicateBlocks.length +
+  result.duplicateBlockClusters.length +
+  result.shadowedDirectoryPairs.length +
+  result.reExportCycles.length +
+  result.featureFlags.length +
+  result.complexFunctions.length +
+  result.privateTypeLeaks.length +
+  result.unnecessaryAssertions.length +
+  result.lazyImportsAtTopLevel.length +
+  result.commonjsInEsm.length +
+  result.typeScriptEscapeHatches.length;
+
 export const formatHumanReadableResult = (result: ScanResult): string => {
   const lines: string[] = [];
 
@@ -241,28 +283,168 @@ export const formatHumanReadableResult = (result: ScanResult): string => {
     lines.push("");
   }
 
-  const totalIssues =
-    result.unusedFiles.length +
-    result.unusedExports.length +
-    result.unusedDependencies.length +
-    result.circularDependencies.length +
-    result.unusedTypes.length +
-    result.unusedEnumMembers.length +
-    result.unusedClassMembers.length +
-    result.misclassifiedDependencies.length +
-    result.redundantAliases.length +
-    result.duplicateExports.length +
-    result.duplicateImports.length +
-    result.redundantTypePatterns.length +
-    result.identityWrappers.length +
-    result.duplicateTypeDefinitions.length +
-    result.duplicateInlineTypes.length +
-    result.simplifiableFunctions.length +
-    result.simplifiableExpressions.length +
-    result.duplicateConstants.length;
+  if (result.crossFileDuplicateExports.length > 0) {
+    lines.push(
+      formatFindingCount(
+        result.crossFileDuplicateExports.length,
+        "cross-file duplicate export",
+        "cross-file duplicate exports",
+        "",
+      ),
+    );
+    for (const finding of result.crossFileDuplicateExports) {
+      lines.push(`  ${finding.name} (${finding.locations.length} files, ${finding.confidence})`);
+    }
+    lines.push("");
+  }
 
-  if (totalIssues === 0) {
-    lines.push("No unused files, exports, dependencies, or circular imports found.");
+  if (result.duplicateBlocks.length > 0) {
+    lines.push(
+      formatFindingCount(result.duplicateBlocks.length, "block", "blocks", "duplicate"),
+    );
+    for (const finding of result.duplicateBlocks) {
+      const firstInstance = finding.instances[0];
+      const location = firstInstance
+        ? `${firstInstance.path}:${firstInstance.startLine}-${firstInstance.endLine}`
+        : "unknown";
+      lines.push(
+        `  ${location}  ${finding.instances.length} copies, ${finding.lineCount} lines (${finding.confidence})`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (result.duplicateBlockClusters.length > 0) {
+    lines.push(
+      formatFindingCount(
+        result.duplicateBlockClusters.length,
+        "block cluster",
+        "block clusters",
+        "duplicate",
+      ),
+    );
+    for (const finding of result.duplicateBlockClusters) {
+      lines.push(
+        `  ${finding.files.join(", ")}  ${finding.totalDuplicatedLines} duplicated lines`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (result.shadowedDirectoryPairs.length > 0) {
+    lines.push(
+      formatFindingCount(
+        result.shadowedDirectoryPairs.length,
+        "directory pair",
+        "directory pairs",
+        "shadowed",
+      ),
+    );
+    for (const finding of result.shadowedDirectoryPairs) {
+      lines.push(
+        `  ${finding.directoryA} ↔ ${finding.directoryB} (${finding.sharedFiles.length} shared files)`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (result.reExportCycles.length > 0) {
+    lines.push(formatFindingCount(result.reExportCycles.length, "cycle", "cycles", "re-export"));
+    for (const finding of result.reExportCycles) {
+      lines.push(`  ${finding.files.join(" → ")} (${finding.kind}, ${finding.confidence})`);
+    }
+    lines.push("");
+  }
+
+  if (result.featureFlags.length > 0) {
+    lines.push(formatFindingCount(result.featureFlags.length, "feature flag", "feature flags", ""));
+    for (const finding of result.featureFlags) {
+      lines.push(`  ${finding.path}:${finding.line}  ${finding.name} [${finding.kind}]`);
+    }
+    lines.push("");
+  }
+
+  if (result.complexFunctions.length > 0) {
+    lines.push(formatFindingCount(result.complexFunctions.length, "function", "functions", "complex"));
+    for (const finding of result.complexFunctions) {
+      lines.push(
+        `  ${finding.path}:${finding.line}  ${finding.functionName} (cyclomatic ${finding.cyclomatic}, cognitive ${finding.cognitive})`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (result.privateTypeLeaks.length > 0) {
+    lines.push(
+      formatFindingCount(result.privateTypeLeaks.length, "type leak", "type leaks", "private"),
+    );
+    for (const finding of result.privateTypeLeaks) {
+      lines.push(`  ${finding.path}:${finding.line}  ${finding.exportName} leaks ${finding.typeName}`);
+    }
+    lines.push("");
+  }
+
+  if (result.unnecessaryAssertions.length > 0) {
+    lines.push(
+      formatFindingCount(
+        result.unnecessaryAssertions.length,
+        "assertion",
+        "assertions",
+        "unnecessary",
+      ),
+    );
+    for (const finding of result.unnecessaryAssertions) {
+      lines.push(
+        `  ${finding.path}:${finding.line}  [${finding.kind}, ${finding.confidence}] ${finding.suggestion}`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (result.lazyImportsAtTopLevel.length > 0) {
+    lines.push(
+      formatFindingCount(
+        result.lazyImportsAtTopLevel.length,
+        "top-level lazy import",
+        "top-level lazy imports",
+        "",
+      ),
+    );
+    for (const finding of result.lazyImportsAtTopLevel) {
+      lines.push(`  ${finding.path}:${finding.line}  ${finding.specifier} [${finding.kind}]`);
+    }
+    lines.push("");
+  }
+
+  if (result.commonjsInEsm.length > 0) {
+    lines.push(formatFindingCount(result.commonjsInEsm.length, "CommonJS use", "CommonJS uses", ""));
+    for (const finding of result.commonjsInEsm) {
+      lines.push(`  ${finding.path}:${finding.line}  [${finding.kind}] ${finding.snippet}`);
+    }
+    lines.push("");
+  }
+
+  if (result.typeScriptEscapeHatches.length > 0) {
+    lines.push(
+      formatFindingCount(
+        result.typeScriptEscapeHatches.length,
+        "TypeScript escape hatch",
+        "TypeScript escape hatches",
+        "",
+      ),
+    );
+    for (const finding of result.typeScriptEscapeHatches) {
+      lines.push(
+        `  ${finding.path}:${finding.line}  [${finding.kind}, ${finding.confidence}] ${finding.suggestion}`,
+      );
+    }
+    lines.push("");
+  }
+
+  const totalIssues = countReportFindings(result);
+
+  if (totalIssues === 0 && result.analysisErrors.length === 0) {
+    lines.push("No findings.");
   }
 
   return lines.join("\n").trimEnd() + "\n";
@@ -285,7 +467,19 @@ export const hasUnusedIssues = (result: ScanResult): boolean =>
   result.duplicateInlineTypes.length > 0 ||
   result.simplifiableFunctions.length > 0 ||
   result.simplifiableExpressions.length > 0 ||
-  result.duplicateConstants.length > 0;
+  result.duplicateConstants.length > 0 ||
+  result.crossFileDuplicateExports.length > 0 ||
+  result.duplicateBlocks.length > 0 ||
+  result.duplicateBlockClusters.length > 0 ||
+  result.shadowedDirectoryPairs.length > 0 ||
+  result.reExportCycles.length > 0 ||
+  result.featureFlags.length > 0 ||
+  result.complexFunctions.length > 0 ||
+  result.privateTypeLeaks.length > 0 ||
+  result.unnecessaryAssertions.length > 0 ||
+  result.lazyImportsAtTopLevel.length > 0 ||
+  result.commonjsInEsm.length > 0 ||
+  result.typeScriptEscapeHatches.length > 0;
 
 export const hasCircularIssues = (result: ScanResult): boolean =>
   result.circularDependencies.length > 0;

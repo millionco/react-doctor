@@ -45,6 +45,11 @@ const externalPluginDiagnostic: Diagnostic = {
   category: "Security",
 };
 
+const nativeNoDangerDiagnostic: Diagnostic = {
+  ...externalPluginDiagnostic,
+  plugin: "react-doctor",
+};
+
 describe("filterDiagnosticsForSurface defaults", () => {
   it("strips `design`-tagged rules from PR comment, score, and CI failure surfaces by default", () => {
     const diagnostics = [designDiagnostic, correctnessDiagnostic];
@@ -108,11 +113,29 @@ describe("filterDiagnosticsForSurface — user overrides", () => {
     expect(filterDiagnosticsForSurface(diagnostics, "cli", config)).toEqual([designDiagnostic]);
   });
 
+  it("`excludeRules` accepts legacy rule aliases", () => {
+    const config: ReactDoctorConfig = {
+      surfaces: { cli: { excludeRules: ["react/no-danger"] } },
+    };
+    expect(filterDiagnosticsForSurface([nativeNoDangerDiagnostic], "cli", config)).toEqual([]);
+  });
+
   it("`includeRules` overrides excludeTags for a single rule (include wins)", () => {
     const config: ReactDoctorConfig = {
       surfaces: {
         prComment: {
           includeRules: ["react-doctor/design-no-redundant-size-axes"],
+        },
+      },
+    };
+    expect(isDiagnosticOnSurface(designDiagnostic, "prComment", config)).toBe(true);
+  });
+
+  it("`includeRules` accepts bare react-doctor rule ids", () => {
+    const config: ReactDoctorConfig = {
+      surfaces: {
+        prComment: {
+          includeRules: ["design-no-redundant-size-axes"],
         },
       },
     };

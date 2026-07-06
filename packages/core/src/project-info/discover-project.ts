@@ -111,13 +111,14 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
 };
 
 export const discoverProject = (directory: string): ProjectInfo => {
-  const cached = cachedProjectInfos.get(directory);
+  const absoluteDirectory = path.resolve(directory);
+  const cached = cachedProjectInfos.get(absoluteDirectory);
   if (cached !== undefined) return cached;
 
-  const packageJsonPath = path.join(directory, "package.json");
+  const packageJsonPath = path.join(absoluteDirectory, "package.json");
   if (!isFile(packageJsonPath)) {
-    const synthesized = discoverProjectWithoutPackageJson(directory);
-    cachedProjectInfos.set(directory, synthesized);
+    const synthesized = discoverProjectWithoutPackageJson(absoluteDirectory);
+    cachedProjectInfos.set(absoluteDirectory, synthesized);
     return synthesized;
   }
 
@@ -144,7 +145,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     reactVersion = resolveCatalogVersion(
       packageJson,
       "react",
-      directory,
+      absoluteDirectory,
       reactDeclaration.catalogReference,
     );
   }
@@ -153,7 +154,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     tailwindVersion = resolveCatalogVersion(
       packageJson,
       "tailwindcss",
-      directory,
+      absoluteDirectory,
       tailwindDeclaration.catalogReference,
     );
   }
@@ -162,7 +163,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     zodVersion = resolveCatalogVersion(
       packageJson,
       "zod",
-      directory,
+      absoluteDirectory,
       zodDeclaration.catalogReference,
     );
   }
@@ -171,7 +172,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
   // pnpm-workspace catalogs). The expensive workspace walks below still key
   // off React/framework misses; if we walk anyway, they can fill Zod too.
   if (!reactVersion || !tailwindVersion || !zodVersion) {
-    const monorepoRoot = findMonorepoRoot(directory);
+    const monorepoRoot = findMonorepoRoot(absoluteDirectory);
     if (monorepoRoot) {
       const monorepoPackageJsonPath = path.join(monorepoRoot, "package.json");
       if (isFile(monorepoPackageJsonPath)) {
@@ -205,7 +206,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
   }
 
   if (!reactVersion || framework === "unknown") {
-    const workspaceInfo = findReactInWorkspaces(directory, packageJson);
+    const workspaceInfo = findReactInWorkspaces(absoluteDirectory, packageJson);
     if (!reactVersion && workspaceInfo.reactVersion) {
       reactVersion = workspaceInfo.reactVersion;
     }
@@ -220,8 +221,8 @@ export const discoverProject = (directory: string): ProjectInfo => {
     }
   }
 
-  if ((!reactVersion || framework === "unknown") && !isMonorepoRoot(directory)) {
-    const monorepoInfo = findDependencyInfoFromMonorepoRoot(directory);
+  if ((!reactVersion || framework === "unknown") && !isMonorepoRoot(absoluteDirectory)) {
+    const monorepoInfo = findDependencyInfoFromMonorepoRoot(absoluteDirectory);
     if (!reactVersion) {
       reactVersion = monorepoInfo.reactVersion;
     }
@@ -257,12 +258,12 @@ export const discoverProject = (directory: string): ProjectInfo => {
   // a dist-tag) whose major can't be parsed; a concrete peer range like
   // `^18 || ^19` already parsed above and is left untouched.
   if (!reactVersion || parseReactMajor(reactVersion) === null) {
-    reactVersion = resolveInstalledReactVersion(directory) ?? reactVersion;
+    reactVersion = resolveInstalledReactVersion(absoluteDirectory) ?? reactVersion;
   }
 
-  const projectName = packageJson.name ?? path.basename(directory);
-  const hasTypeScript = fs.existsSync(path.join(directory, "tsconfig.json"));
-  const sourceFileCount = countSourceFiles(directory);
+  const projectName = packageJson.name ?? path.basename(absoluteDirectory);
+  const hasTypeScript = fs.existsSync(path.join(absoluteDirectory, "tsconfig.json"));
+  const sourceFileCount = countSourceFiles(absoluteDirectory);
 
   // The capability gate in `buildCapabilities` keys off this bit so
   // `rn-*` rules also load on web-rooted monorepos (a `next` root
@@ -272,23 +273,23 @@ export const discoverProject = (directory: string): ProjectInfo => {
   const hasReactNativeWorkspace =
     framework === "expo" ||
     framework === "react-native" ||
-    hasReactNativeWorkspaceAnywhere(directory, packageJson);
+    hasReactNativeWorkspaceAnywhere(absoluteDirectory, packageJson);
 
   const expoVersion = hasReactNativeWorkspace
     ? resolveCatalogBackedDependencyVersion({
-        rootDirectory: directory,
+        rootDirectory: absoluteDirectory,
         rootPackageJson: packageJson,
         packageName: "expo",
-        version: findExpoVersion(directory, packageJson),
+        version: findExpoVersion(absoluteDirectory, packageJson),
       })
     : null;
 
   const shopifyFlashListVersion = hasReactNativeWorkspace
     ? resolveCatalogBackedDependencyVersion({
-        rootDirectory: directory,
+        rootDirectory: absoluteDirectory,
         rootPackageJson: packageJson,
         packageName: SHOPIFY_FLASH_LIST_PACKAGE_NAME,
-        version: findShopifyFlashListVersion(directory, packageJson),
+        version: findShopifyFlashListVersion(absoluteDirectory, packageJson),
       })
     : null;
 
@@ -297,22 +298,22 @@ export const discoverProject = (directory: string): ProjectInfo => {
   // it, and this skips the workspace walk entirely for web monorepos.
   const hasReanimated =
     hasReactNativeWorkspace &&
-    someWorkspacePackageJson(directory, packageJson, isPackageJsonReanimatedAware);
+    someWorkspacePackageJson(absoluteDirectory, packageJson, isPackageJsonReanimatedAware);
 
   const nextjsVersion =
     framework === "nextjs"
       ? resolveCatalogBackedDependencyVersion({
-          rootDirectory: directory,
+          rootDirectory: absoluteDirectory,
           rootPackageJson: packageJson,
           packageName: "next",
-          version: findNextjsVersion(directory, packageJson),
+          version: findNextjsVersion(absoluteDirectory, packageJson),
         })
       : null;
   const preactVersion = getPreactVersion(packageJson);
-  const isPreES2023Target = hasTypeScript && detectPreES2023Target(directory);
+  const isPreES2023Target = hasTypeScript && detectPreES2023Target(absoluteDirectory);
 
   const projectInfo: ProjectInfo = {
-    rootDirectory: directory,
+    rootDirectory: absoluteDirectory,
     projectName,
     reactVersion,
     reactMajorVersion: resolveEffectiveReactMajor(reactVersion, packageJson),
@@ -321,7 +322,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     zodMajorVersion: parseZodMajor(zodVersion),
     framework,
     hasTypeScript,
-    hasReactCompiler: detectReactCompiler(directory, packageJson),
+    hasReactCompiler: detectReactCompiler(absoluteDirectory, packageJson),
     hasTanStackQuery: hasTanStackQuery(packageJson),
     preactVersion,
     preactMajorVersion: parseReactMajor(preactVersion),
@@ -336,6 +337,6 @@ export const discoverProject = (directory: string): ProjectInfo => {
     isPreES2023Target,
     sourceFileCount,
   };
-  cachedProjectInfos.set(directory, projectInfo);
+  cachedProjectInfos.set(absoluteDirectory, projectInfo);
   return projectInfo;
 };

@@ -33,7 +33,7 @@ Output JSON for programmatic consumption:
 deslop ./my-app --json
 ```
 
-Fail CI when unused code is found (files, exports, or dependencies, not circular imports):
+Fail CI when dead-code, redundancy, or code-quality findings are found (not circular imports):
 
 ```bash
 deslop ./my-app --fail-on-issues
@@ -65,9 +65,21 @@ The default scan emits the following finding categories (each grouped in human o
 | `simplifiableFunctions`    | `(x) => { return f(x) }`, `await x; return x;`, useless `async`               |
 | `simplifiableExpressions`  | `!!x`, `x ? x : y`, `cond ? true : false`, `x !== null && x !== undefined`    |
 | `duplicateConstants`       | Same literal value used in N files under different names                      |
+| `crossFileDuplicateExports`| Same export name repeated across files                                        |
+| `duplicateBlocks`          | Copy-pasted code blocks                                                       |
+| `duplicateBlockClusters`   | Related duplicated block groups across files                                  |
+| `shadowedDirectoryPairs`   | Directories with overlapping file trees                                       |
+| `reExportCycles`           | Re-export chains that point back to themselves                                |
+| `featureFlags`             | Feature-flag branches that may guard stale code                               |
+| `complexFunctions`         | Functions over complexity, parameter, or line-count thresholds                |
+| `privateTypeLeaks`         | Public exports that expose private/internal types                             |
+| `unnecessaryAssertions`    | Redundant or broad TypeScript assertions                                      |
+| `lazyImportsAtTopLevel`    | Lazy imports kicked off at module load                                        |
+| `commonjsInEsm`            | CommonJS patterns inside ESM modules                                          |
+| `typeScriptEscapeHatches`  | `@ts-ignore`, unexplained `@ts-expect-error`, and similar escapes             |
 | `analysisErrors`           | Structured info / warning / error notes (parse failures, skipped files, etc.) |
 
-Type-aware findings (`unusedTypes`, `unusedClassMembers`, `misclassifiedDependencies`, etc.) require enabling the semantic layer programmatically. See the [`deslop-js` README](https://github.com/aidenybai/deslop-js#semantic-type-aware-analysis). They are not exposed via CLI flags yet.
+Type-aware findings (`unusedTypes`, `unusedClassMembers`, `misclassifiedDependencies`, etc.) are included by default when the project has enough TypeScript context for semantic analysis.
 
 ### Options
 
@@ -82,7 +94,7 @@ Type-aware findings (`unusedTypes`, `unusedClassMembers`, `misclassifiedDependen
 | `--report-types`          | Include type-only exports in results                           |
 | `--include-entry-exports` | Report unused exports from entry files                         |
 | `--json`                  | Output results as JSON                                         |
-| `--fail-on-issues`        | Exit 1 when unused files, exports, or dependencies are found   |
+| `--fail-on-issues`        | Exit 1 when non-cycle findings are found                       |
 | `--fail-on-cycles`        | Exit 1 when circular imports are found                         |
 
 ### Exit codes

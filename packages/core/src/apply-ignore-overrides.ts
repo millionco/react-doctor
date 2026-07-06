@@ -1,5 +1,7 @@
 import type { Diagnostic, ReactDoctorConfig, ReactDoctorIgnoreOverride } from "./types/index.js";
+import { getDiagnosticRuleIdentity } from "./get-diagnostic-rule-identity.js";
 import { isPlainObject } from "./project-info/index.js";
+import { isRuleKeyInSet } from "./rule-key-aliases.js";
 import { compileGlobPatternsLenient } from "./utils/match-glob-pattern.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
 import { warnConfigIssue } from "./utils/warn-config-issue.js";
@@ -68,11 +70,11 @@ export const isDiagnosticIgnoredByOverrides = (
 ): boolean => {
   if (overrides.length === 0) return false;
   const relativeFilePath = toRelativePath(diagnostic.filePath, rootDirectory);
-  const ruleIdentifier = `${diagnostic.plugin}/${diagnostic.rule}`;
+  const { ruleKey } = getDiagnosticRuleIdentity(diagnostic);
 
   return overrides.some(
     (override) =>
       override.filePatterns.some((pattern) => pattern.test(relativeFilePath)) &&
-      (override.ruleIds.size === 0 || override.ruleIds.has(ruleIdentifier)),
+      (override.ruleIds.size === 0 || isRuleKeyInSet(ruleKey, override.ruleIds)),
   );
 };

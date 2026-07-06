@@ -6,6 +6,7 @@ import type {
 } from "./types/index.js";
 import { DEFAULT_SURFACE_EXCLUDED_TAGS } from "./diagnostic-surface.js";
 import { getDiagnosticRuleIdentity } from "./get-diagnostic-rule-identity.js";
+import { isRuleKeyInSet } from "./rule-key-aliases.js";
 
 interface ResolvedSurfaceControls {
   includeTags: ReadonlySet<string>;
@@ -53,11 +54,11 @@ export const isDiagnosticOnSurface = (
 
   // Include wins over exclude — checked first so a single rule can be
   // promoted back into a surface even when its tag / category is hidden.
-  if (resolved.includeRuleKeys.has(ruleKey)) return true;
+  if (isRuleKeyInSet(ruleKey, resolved.includeRuleKeys)) return true;
   if (resolved.includeCategories.has(category)) return true;
   if (intersects(tags, resolved.includeTags)) return true;
 
-  if (resolved.excludeRuleKeys.has(ruleKey)) return false;
+  if (isRuleKeyInSet(ruleKey, resolved.excludeRuleKeys)) return false;
   if (resolved.excludeCategories.has(category)) return false;
   if (intersects(tags, resolved.excludeTags)) return false;
 

@@ -191,6 +191,16 @@ export const isSameRuleKey = (candidateRuleKey: string, targetRuleKey: string): 
   );
 };
 
+export const isRuleKeyInSet = (
+  ruleKey: string,
+  configuredRuleKeys: ReadonlySet<string>,
+): boolean => {
+  for (const configuredRuleKey of configuredRuleKeys) {
+    if (isSameRuleKey(configuredRuleKey, ruleKey)) return true;
+  }
+  return false;
+};
+
 export const getEquivalentRuleKeys = (ruleKey: string): ReadonlyArray<string> => {
   const nativeRuleKey = canonicalizeRuleKey(ruleKey);
   return [nativeRuleKey, ...getLegacyRuleKeysForNative(nativeRuleKey)];

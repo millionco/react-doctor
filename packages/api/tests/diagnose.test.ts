@@ -28,6 +28,20 @@ afterAll(() => {
   fs.rmSync(noReactTempDirectory, { recursive: true, force: true });
 });
 
+const createReactProjectWithListKeyIssue = (): string => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "rdc-api-react-"));
+  fs.mkdirSync(path.join(directory, "src"));
+  fs.writeFileSync(
+    path.join(directory, "package.json"),
+    JSON.stringify({ name: "react-with-list-key", dependencies: { react: "^19.0.0" } }),
+  );
+  fs.writeFileSync(
+    path.join(directory, "src", "App.tsx"),
+    "export const App = () => [1, 2].map((item, index) => <div key={index}>{item}</div>);\n",
+  );
+  return directory;
+};
+
 describe("diagnose", () => {
   it("returns a DiagnoseResult with the expected shape on basic-react", async () => {
     const result = await diagnose(path.join(FIXTURES_DIRECTORY, "basic-react"), {
@@ -41,6 +55,18 @@ describe("diagnose", () => {
     expect(result).toHaveProperty("elapsedMilliseconds");
     expect(result.project.reactMajorVersion).toBe(19);
     expect(Array.isArray(result.diagnostics)).toBe(true);
+  });
+
+  it("honors lint: false by skipping oxlint diagnostics", async () => {
+    const directory = createReactProjectWithListKeyIssue();
+    try {
+      const result = await diagnose(directory, { deadCode: false, lint: false });
+      expect(
+        result.diagnostics.some((diagnostic) => diagnostic.rule === "no-array-index-as-key"),
+      ).toBe(false);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("throws NoReactDependencyError when the directory has package.json without react", async () => {

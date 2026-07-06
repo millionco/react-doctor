@@ -52,7 +52,7 @@ const DIAGNOSTICS: RuleDiagnostic[] = [
     location: "src/components/Dashboard.tsx:42",
   },
   {
-    ruleKey: "react-doctor/no-server-action-auth",
+    ruleKey: "react-doctor/server-auth-actions",
     severity: "error",
     message: 'Server action "deleteUser" has no auth check, so any caller could run it',
     help: "Add an authentication check at the top of every server action.",
@@ -60,7 +60,7 @@ const DIAGNOSTICS: RuleDiagnostic[] = [
     location: "src/app/actions/users.ts:18",
   },
   {
-    ruleKey: "react/no-array-index-key",
+    ruleKey: "react-doctor/no-array-index-as-key",
     severity: "error",
     message: "Array index is used as a key, so reordered items can keep the wrong state",
     help: "Use a unique, stable identifier from each item as the key prop.",

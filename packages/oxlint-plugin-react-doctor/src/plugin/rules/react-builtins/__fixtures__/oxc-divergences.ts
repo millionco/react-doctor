@@ -48,6 +48,18 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     failSkips: [3, 4],
     reason: "Intentional: bare findDOMNode must be imported from react-dom (locals are FPs).",
   },
+  "forbid-component-props": {
+    // OXC applies a default forbid list `["className", "style"]` when the
+    // rule is enabled without options, flagging the canonical Tailwind /
+    // shadcn customization pattern on every component usage (prod
+    // telemetry: avg 639 firings per affected run). React Doctor keeps
+    // the rule inert until the project names the props to block, so
+    // fail[0] (`<Foo className/>`) and fail[1] (`<Foo style/>`), which
+    // pass no options, no longer report. Every configured fixture still
+    // fires — see `forbid-component-props.regressions.test.ts`.
+    failSkips: [0, 1],
+    reason: "Intentional: no implicit className/style default — explicit `forbid` config required.",
+  },
   "no-this-in-sfc": {
     // OXC decides "is an SFC" from the PascalCase name alone, so a plain
     // ES5 constructor (`function Stack() { this.items = []; }`) or a
@@ -201,18 +213,20 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
       "Intentional: flag only 3+ components (OXC flags 2+); idiomatic 2-component co-location is allowed.",
   },
   "no-array-index-key": {
-    // OXC flags any key expression that incorporates the array index,
-    // including arithmetic. React Doctor's composite-key heuristic
-    // deliberately skips `<expr> + index` shapes because an offset is
-    // often a stable global scheme (`key={page * pageSize + index}`,
-    // which produces a unique-across-pages key). fail[2] (`key={1 +
-    // index}`) is the degenerate constant-offset case that the same
-    // heuristic also skips — a minor accepted false-negative on a
-    // default-OFF rule. The direct `key={index}` cases (fail[0-1,
-    // 3-20]) still fire.
-    failSkips: [2],
+    // OXC's rule covers both the JSX `key={index}` attribute and the
+    // `React.cloneElement(child, { key: index })` shape. React Doctor's
+    // canonical index-key rule is `no-array-index-as-key` (Bugs
+    // category, default-on, richer exemptions), which owns the JSX
+    // attribute path — keeping a second JSX path in this opt-in port
+    // double-reported every hit when both rules were enabled (prod
+    // telemetry 2026-07). This port is therefore scoped to the
+    // cloneElement coverage the canonical rule doesn't have, so every
+    // JSX-attribute fail fixture (fail[0-3, 8-18]) is delegated. The
+    // cloneElement fixtures (fail[4-7, 19-20]) still fire — see
+    // `no-array-index-key.regressions.test.ts`.
+    failSkips: [0, 1, 2, 3, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
     reason:
-      "Intentional: composite-key heuristic skips `<expr> + index`, incl. the constant `1 + index`.",
+      "Intentional: JSX `key={index}` is owned by no-array-index-as-key; this port only covers React.cloneElement.",
   },
   "style-prop-object": {
     // OXC flags `style="..."` on any JSX element. We only flag it on

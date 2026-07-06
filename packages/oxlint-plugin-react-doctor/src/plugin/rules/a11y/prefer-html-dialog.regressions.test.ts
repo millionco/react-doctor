@@ -97,4 +97,37 @@ describe("a11y/prefer-html-dialog regressions", () => {
     const result = runRule(preferHtmlDialog, `<div aria-modal="true" />`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it('still flags a modal in a file with an unrelated "trap"-containing identifier', () => {
+    const source = `
+      const trapezoidArea = (a, b, height) => ((a + b) / 2) * height;
+      const Modal = ({ children }) => (
+        <div role="dialog" aria-modal="true">{children}</div>
+      );
+    `;
+    const result = runRule(preferHtmlDialog, source);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it('still flags a modal in a file with a bare "Tab" string (tab-bar label)', () => {
+    const source = `
+      const labels = ["Tab", "Settings"];
+      const Modal = ({ children }) => (
+        <div role="dialog" aria-modal="true">{children}</div>
+      );
+    `;
+    const result = runRule(preferHtmlDialog, source);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still suppresses via a trapFocus helper identifier", () => {
+    const source = `
+      const Modal = ({ children }) => {
+        useEffect(() => trapFocus(ref.current), []);
+        return <div role="dialog" aria-modal="true">{children}</div>;
+      };
+    `;
+    const result = runRule(preferHtmlDialog, source);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

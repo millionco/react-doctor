@@ -25,7 +25,28 @@ const ROLE_DIALOG_NONMODAL_MESSAGE =
 const ARIA_MODAL_MESSAGE =
   'Keyboard users can tab out of this modal because `aria-modal="true"` only hints to screen readers without trapping focus or blocking the page, so use the native `<dialog>` with `dialog.showModal()` instead.';
 
-const FOCUS_TRAP_NAME_PATTERN = /trap/i;
+// "trap" must appear next to a focus/a11y word: `FocusTrap`, `useFocusTrap`,
+// `trapFocus`, `a11yTrap` — but not `trapezoid` or `calculateTrap`.
+const FOCUS_TRAP_NAME_PATTERN = /focus[-_]?trap|trap[-_]?focus|a11y[-_]?trap/i;
+
+const isTabKeyLiteral = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "Literal") && node.value === "Tab";
+
+// `event.key === "Tab"` (either operand order) — the shape of a manual
+// focus-trap keydown handler. A bare `"Tab"` string elsewhere (tab-bar
+// labels, `<Tab>` components) is not a trapping signal.
+const isTabKeyComparison = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "BinaryExpression")) return false;
+  if (
+    node.operator !== "===" &&
+    node.operator !== "==" &&
+    node.operator !== "!==" &&
+    node.operator !== "!="
+  ) {
+    return false;
+  }
+  return isTabKeyLiteral(node.left) || isTabKeyLiteral(node.right);
+};
 
 // The diagnostic's core claim is "keyboard users can tab out because there
 // is no focus trapping". When the file demonstrably manages focus trapping —
@@ -44,7 +65,7 @@ const fileManagesFocusTrapping = (program: EsTreeNode): boolean => {
       found = true;
       return false;
     }
-    if (isNodeOfType(node, "Literal") && node.value === "Tab") {
+    if (isTabKeyComparison(node)) {
       found = true;
       return false;
     }

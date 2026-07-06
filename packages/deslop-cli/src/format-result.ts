@@ -299,9 +299,7 @@ export const formatHumanReadableResult = (result: ScanResult): string => {
   }
 
   if (result.duplicateBlocks.length > 0) {
-    lines.push(
-      formatFindingCount(result.duplicateBlocks.length, "block", "blocks", "duplicate"),
-    );
+    lines.push(formatFindingCount(result.duplicateBlocks.length, "block", "blocks", "duplicate"));
     for (const finding of result.duplicateBlocks) {
       const firstInstance = finding.instances[0];
       const location = firstInstance
@@ -324,9 +322,7 @@ export const formatHumanReadableResult = (result: ScanResult): string => {
       ),
     );
     for (const finding of result.duplicateBlockClusters) {
-      lines.push(
-        `  ${finding.files.join(", ")}  ${finding.totalDuplicatedLines} duplicated lines`,
-      );
+      lines.push(`  ${finding.files.join(", ")}  ${finding.totalDuplicatedLines} duplicated lines`);
     }
     lines.push("");
   }
@@ -365,7 +361,9 @@ export const formatHumanReadableResult = (result: ScanResult): string => {
   }
 
   if (result.complexFunctions.length > 0) {
-    lines.push(formatFindingCount(result.complexFunctions.length, "function", "functions", "complex"));
+    lines.push(
+      formatFindingCount(result.complexFunctions.length, "function", "functions", "complex"),
+    );
     for (const finding of result.complexFunctions) {
       lines.push(
         `  ${finding.path}:${finding.line}  ${finding.functionName} (cyclomatic ${finding.cyclomatic}, cognitive ${finding.cognitive})`,
@@ -379,7 +377,9 @@ export const formatHumanReadableResult = (result: ScanResult): string => {
       formatFindingCount(result.privateTypeLeaks.length, "type leak", "type leaks", "private"),
     );
     for (const finding of result.privateTypeLeaks) {
-      lines.push(`  ${finding.path}:${finding.line}  ${finding.exportName} leaks ${finding.typeName}`);
+      lines.push(
+        `  ${finding.path}:${finding.line}  ${finding.exportName} leaks ${finding.typeName}`,
+      );
     }
     lines.push("");
   }
@@ -417,7 +417,9 @@ export const formatHumanReadableResult = (result: ScanResult): string => {
   }
 
   if (result.commonjsInEsm.length > 0) {
-    lines.push(formatFindingCount(result.commonjsInEsm.length, "CommonJS use", "CommonJS uses", ""));
+    lines.push(
+      formatFindingCount(result.commonjsInEsm.length, "CommonJS use", "CommonJS uses", ""),
+    );
     for (const finding of result.commonjsInEsm) {
       lines.push(`  ${finding.path}:${finding.line}  [${finding.kind}] ${finding.snippet}`);
     }

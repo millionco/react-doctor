@@ -49,35 +49,35 @@ deslop ./my-app --fail-on-cycles
 
 The default scan emits the following finding categories (each grouped in human output, fully detailed in `--json`):
 
-| Category                   | What it catches                                                               |
-| -------------------------- | ----------------------------------------------------------------------------- |
-| `unusedFiles`              | Files unreachable from any entry point                                        |
-| `unusedExports`            | Exported symbols never imported anywhere                                      |
-| `unusedDependencies`       | `package.json` deps not imported                                              |
-| `circularDependencies`     | Import cycles                                                                 |
-| `redundantAliases`         | `import { x as x }`, useless re-export renames                                |
-| `duplicateExports`         | Same name exported twice from one module                                      |
-| `duplicateImports`         | Same specifier imported on multiple lines (merge them)                        |
-| `redundantTypePatterns`    | `T & {}`, `Partial<Partial<T>>`, `Pick<T, keyof T>`, empty `extends`          |
-| `identityWrappers`         | `const wrap = (x) => fn(x)`, calls without transforming                       |
-| `duplicateTypeDefinitions` | Same structural type declared in multiple files                               |
-| `duplicateInlineTypes`     | Anonymous `{ a, b, c }` shapes repeated across modules                        |
-| `simplifiableFunctions`    | `(x) => { return f(x) }`, `await x; return x;`, useless `async`               |
-| `simplifiableExpressions`  | `!!x`, `x ? x : y`, `cond ? true : false`, `x !== null && x !== undefined`    |
-| `duplicateConstants`       | Same literal value used in N files under different names                      |
-| `crossFileDuplicateExports`| Same export name repeated across files                                        |
-| `duplicateBlocks`          | Copy-pasted code blocks                                                       |
-| `duplicateBlockClusters`   | Related duplicated block groups across files                                  |
-| `shadowedDirectoryPairs`   | Directories with overlapping file trees                                       |
-| `reExportCycles`           | Re-export chains that point back to themselves                                |
-| `featureFlags`             | Feature-flag branches that may guard stale code                               |
-| `complexFunctions`         | Functions over complexity, parameter, or line-count thresholds                |
-| `privateTypeLeaks`         | Public exports that expose private/internal types                             |
-| `unnecessaryAssertions`    | Redundant or broad TypeScript assertions                                      |
-| `lazyImportsAtTopLevel`    | Lazy imports kicked off at module load                                        |
-| `commonjsInEsm`            | CommonJS patterns inside ESM modules                                          |
-| `typeScriptEscapeHatches`  | `@ts-ignore`, unexplained `@ts-expect-error`, and similar escapes             |
-| `analysisErrors`           | Structured info / warning / error notes (parse failures, skipped files, etc.) |
+| Category                    | What it catches                                                               |
+| --------------------------- | ----------------------------------------------------------------------------- |
+| `unusedFiles`               | Files unreachable from any entry point                                        |
+| `unusedExports`             | Exported symbols never imported anywhere                                      |
+| `unusedDependencies`        | `package.json` deps not imported                                              |
+| `circularDependencies`      | Import cycles                                                                 |
+| `redundantAliases`          | `import { x as x }`, useless re-export renames                                |
+| `duplicateExports`          | Same name exported twice from one module                                      |
+| `duplicateImports`          | Same specifier imported on multiple lines (merge them)                        |
+| `redundantTypePatterns`     | `T & {}`, `Partial<Partial<T>>`, `Pick<T, keyof T>`, empty `extends`          |
+| `identityWrappers`          | `const wrap = (x) => fn(x)`, calls without transforming                       |
+| `duplicateTypeDefinitions`  | Same structural type declared in multiple files                               |
+| `duplicateInlineTypes`      | Anonymous `{ a, b, c }` shapes repeated across modules                        |
+| `simplifiableFunctions`     | `(x) => { return f(x) }`, `await x; return x;`, useless `async`               |
+| `simplifiableExpressions`   | `!!x`, `x ? x : y`, `cond ? true : false`, `x !== null && x !== undefined`    |
+| `duplicateConstants`        | Same literal value used in N files under different names                      |
+| `crossFileDuplicateExports` | Same export name repeated across files                                        |
+| `duplicateBlocks`           | Copy-pasted code blocks                                                       |
+| `duplicateBlockClusters`    | Related duplicated block groups across files                                  |
+| `shadowedDirectoryPairs`    | Directories with overlapping file trees                                       |
+| `reExportCycles`            | Re-export chains that point back to themselves                                |
+| `featureFlags`              | Feature-flag branches that may guard stale code                               |
+| `complexFunctions`          | Functions over complexity, parameter, or line-count thresholds                |
+| `privateTypeLeaks`          | Public exports that expose private/internal types                             |
+| `unnecessaryAssertions`     | Redundant or broad TypeScript assertions                                      |
+| `lazyImportsAtTopLevel`     | Lazy imports kicked off at module load                                        |
+| `commonjsInEsm`             | CommonJS patterns inside ESM modules                                          |
+| `typeScriptEscapeHatches`   | `@ts-ignore`, unexplained `@ts-expect-error`, and similar escapes             |
+| `analysisErrors`            | Structured info / warning / error notes (parse failures, skipped files, etc.) |
 
 Type-aware findings (`unusedTypes`, `unusedClassMembers`, `misclassifiedDependencies`, etc.) are included by default when the project has enough TypeScript context for semantic analysis.
 

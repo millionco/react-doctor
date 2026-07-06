@@ -64,6 +64,41 @@ describe("tanstack-query/query-mutation-missing-invalidation — regressions", (
     expect(diagnostics).toHaveLength(0);
   });
 
+  it("flags a single-mutation wrapper file that imports useMutation from @tanstack/react-query", () => {
+    const { diagnostics } = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      export const useCreateTodo = () =>
+        useMutation({ mutationFn: (todo) => api.createTodo(todo) });`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent for a single-mutation wrapper file that invalidates in onSuccess", () => {
+    const { diagnostics } = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation, useQueryClient } from "@tanstack/react-query";
+      export const useCreateTodo = () => {
+        const queryClient = useQueryClient();
+        return useMutation({
+          mutationFn: (todo) => api.createTodo(todo),
+          onSuccess: () => queryClient.invalidateQueries({ queryKey: ["todos"] }),
+        });
+      };`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent for a useMutation imported from a non-TanStack library", () => {
+    const { diagnostics } = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "some-graphql-lib";
+      export const useSignMessage = () =>
+        useMutation({ mutationFn: (message) => wallet.sign(message) });`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
   it("stays silent when a local invalidate() helper only touches unrelated state", () => {
     const { diagnostics } = runRule(
       queryMutationMissingInvalidation,

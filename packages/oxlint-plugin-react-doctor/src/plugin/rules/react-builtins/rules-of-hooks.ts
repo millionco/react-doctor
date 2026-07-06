@@ -5,7 +5,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
-import { REACT_HOC_NAMES, REACT_RUNTIME_MODULE_SOURCES } from "../../constants/react.js";
+import {
+  REACT_ECOSYSTEM_PACKAGE_NAMES,
+  REACT_HOC_NAMES,
+  REACT_RUNTIME_MODULE_SOURCES,
+} from "../../constants/react.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isImportedFromNonReactModule } from "../../utils/is-imported-from-non-react-module.js";
@@ -526,21 +530,42 @@ const isLocalNonHookFunctionCallee = (
 // are as likely to hold genuine React hooks as relative imports are.
 const PATH_ALIAS_IMPORT_PATTERN = /^[@~]\//;
 
-// A use*-named function imported from a third-party PACKAGE that is not a
-// React runtime — WebdriverIO's `useBrowser` from
+// Bare package name of an import specifier: `@tanstack/react-query/foo`
+// → `@tanstack/react-query`, `next/navigation` → `next`.
+const getPackageNameFromImportSource = (importSource: string): string => {
+  const pathSegments = importSource.split("/");
+  return importSource.startsWith("@")
+    ? pathSegments.slice(0, 2).join("/")
+    : (pathSegments[0] ?? importSource);
+};
+
+// A use* export from one of these sources is a REAL React hook the rule
+// must keep enforcing: the React runtimes themselves, anything whose
+// specifier carries "react" (react-redux, @tanstack/react-query,
+// react-hook-form, react-router, preact), or a known React-ecosystem
+// package that doesn't self-identify by name (next, swr, zustand, …).
+const isReactEcosystemImportSource = (importSource: string): boolean =>
+  REACT_RUNTIME_MODULE_SOURCES.has(importSource) ||
+  importSource.toLowerCase().includes("react") ||
+  REACT_ECOSYSTEM_PACKAGE_NAMES.has(getPackageNameFromImportSource(importSource));
+
+// A use*-named function imported from a third-party PACKAGE that is not
+// React-ecosystem — WebdriverIO's `useBrowser` from
 // `@cloudscape-design/browser-test-tools/use-browser`, DI/middleware
 // helpers, codegen utilities. These follow the use* naming convention
 // without being React hooks, so "called outside a component" reports on
 // them are noise. Relative / path-alias imports stay eligible — a
-// project's own `./useFoo` is usually a real hook.
+// project's own `./useFoo` is usually a real hook — and so do imports
+// from React-ecosystem packages (`useSelector` from react-redux at
+// module top level is a genuine Rules-of-Hooks violation).
 const isPackageImportedNonReactHookCallee = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
   const callee = call.callee;
   if (!isNodeOfType(callee, "Identifier")) return false;
   const importSource = getImportSourceForName(call, callee.name);
   if (importSource === null) return false;
-  if (REACT_RUNTIME_MODULE_SOURCES.has(importSource)) return false;
   if (importSource.startsWith(".")) return false;
-  return !PATH_ALIAS_IMPORT_PATTERN.test(importSource);
+  if (PATH_ALIAS_IMPORT_PATTERN.test(importSource)) return false;
+  return !isReactEcosystemImportSource(importSource);
 };
 
 const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {

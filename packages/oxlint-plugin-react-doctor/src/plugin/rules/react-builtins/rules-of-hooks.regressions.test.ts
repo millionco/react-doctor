@@ -501,6 +501,47 @@ describe("react-builtins/rules-of-hooks — regressions: use*-named functions im
     `);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags react-redux useSelector called at module top level", () => {
+    const result = runTsx(`
+      import { useSelector } from "react-redux";
+      const user = useSelector((state) => state.user);
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a @tanstack/react-query useQuery called in a plain utility function", () => {
+    const result = runTsx(`
+      import { useQuery } from "@tanstack/react-query";
+      const loadPosts = () => {
+        return useQuery({ queryKey: ["posts"] });
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags next/navigation useRouter called in a plain utility function", () => {
+    const result = runTsx(`
+      import { useRouter } from "next/navigation";
+      const redirectHome = () => {
+        const router = useRouter();
+        router.push("/");
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a webdriverio-style useBrowser called in a plain function", () => {
+    const result = runTsx(`
+      import { useBrowser } from "webdriverio";
+      const runInBrowser = (testFn) => {
+        return useBrowser(async (browser) => {
+          await testFn(browser);
+        });
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
 });
 
 describe("react-builtins/rules-of-hooks — regressions: hooks in destructuring defaults", () => {

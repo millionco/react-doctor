@@ -118,6 +118,20 @@ export const isCustomHook = (node: EsTreeNode | null | undefined): boolean => {
   return false;
 };
 
+// A bare (non-destructured) parameter of a CUSTOM HOOK is a positional
+// argument (`useRunLayout(cy)`), not a component's props object —
+// method calls on it (`cy.batch(...)`) drive an external instance.
+export const isCustomHookParameter = (ref: Reference): boolean =>
+  Boolean(
+    ref.resolved?.defs.some((def) => {
+      if (def.type !== "Parameter") return false;
+      const functionNode = def.node as unknown as EsTreeNode;
+      if (isCustomHook(functionNode)) return true;
+      const parent = (functionNode as unknown as { parent?: EsTreeNode | null }).parent;
+      return Boolean(parent && isCustomHook(parent));
+    }),
+  );
+
 const isReactNamedImportReference = (ref: Reference | null, importedName: string): boolean =>
   Boolean(
     ref?.resolved?.defs.some((def) => {

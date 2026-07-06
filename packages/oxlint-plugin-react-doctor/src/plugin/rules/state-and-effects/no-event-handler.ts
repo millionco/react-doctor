@@ -2,6 +2,7 @@ import type { Reference } from "eslint-scope";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import {
@@ -16,7 +17,7 @@ import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getEffectFnRefs,
   hasCleanup,
-  isCustomHook,
+  isCustomHookParameter,
   isProp,
   isState,
   isStateSetter,
@@ -359,20 +360,6 @@ const getInvokedMemberName = (callee: EsTreeNode): string | null => {
   return null;
 };
 
-// A bare (non-destructured) parameter of a CUSTOM HOOK is a positional
-// argument (`useManageConfigChanges(config, cy)`), not a component's props
-// object — method calls on it (`cy.zoom(...)`) drive an external instance.
-const isCustomHookParameter = (ref: Reference): boolean =>
-  Boolean(
-    ref.resolved?.defs.some((def) => {
-      if (def.type !== "Parameter") return false;
-      const functionNode = def.node as unknown as EsTreeNode;
-      if (isCustomHook(functionNode)) return true;
-      const parent = (functionNode as unknown as { parent?: EsTreeNode | null }).parent;
-      return Boolean(parent && isCustomHook(parent));
-    }),
-  );
-
 const isCustomHookInstanceBinding = (ref: Reference): boolean =>
   Boolean(
     ref.resolved?.defs.some((def) => {
@@ -458,15 +445,6 @@ const isImperativeSyncConsequent = (
   );
 };
 
-const isNodeWithin = (node: EsTreeNode, ancestor: EsTreeNode): boolean => {
-  let current: EsTreeNode | null | undefined = node;
-  while (current) {
-    if (current === ancestor) return true;
-    current = (current as unknown as { parent?: EsTreeNode | null }).parent;
-  }
-  return false;
-};
-
 // A setter usage that can actually flip the state: invoked directly,
 // handed by reference to another call (`then(setX)`), or passed as a JSX
 // prop (`onChange={setX}`). A bare mention in a deps array is not one.
@@ -509,7 +487,7 @@ const isStateSetterUsedOutsideEffect = (
     if (!setterVariable) continue;
     return setterVariable.references.some((reference) => {
       const identifier = reference.identifier as unknown as EsTreeNode;
-      if (isNodeWithin(identifier, effectNode)) return false;
+      if (isAstDescendant(identifier, effectNode)) return false;
       return isSetterInvocationUsage(identifier);
     });
   }

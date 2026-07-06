@@ -358,5 +358,14 @@ export const parseOxlintOutput = (
         ...(relatedLocations.length > 0 ? { relatedLocations } : {}),
       };
     });
+  // This suppression is only sound under two invariants:
+  //   1. The `react-hooks-js` bail-out diagnostics and the
+  //      `react-compiler-no-manual-memoization` diagnostics for a file
+  //      always arrive in the SAME parseOxlintOutput batch — the
+  //      suppression can't see a bail-out reported in another batch.
+  //   2. `run-oxlint.ts` disables the per-file lint cache when
+  //      `project.hasReactCompiler` is true (see `useFileLintCache`), so
+  //      cached, unsuppressed memoization diagnostics can never replay
+  //      around this call.
   return suppressMemoizationInBailedOutFunctions(mappedDiagnostics, rootDirectory);
 };

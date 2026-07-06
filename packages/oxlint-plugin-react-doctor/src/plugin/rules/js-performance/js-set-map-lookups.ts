@@ -420,33 +420,10 @@ const getResolvedInitializer = (receiver: EsTreeNode): EsTreeNode | null => {
   return initializer;
 };
 
-const RECEIVER_WRAPPER_TYPES: ReadonlySet<string> = new Set([
-  "TSAsExpression",
-  "TSSatisfiesExpression",
-  "TSNonNullExpression",
-  "ParenthesizedExpression",
-  "ChainExpression",
-]);
-
-const stripReceiverWrappers = (receiver: EsTreeNode): EsTreeNode => {
-  let current = receiver;
-  while (RECEIVER_WRAPPER_TYPES.has(current.type)) {
-    const inner = (current as { expression?: EsTreeNode }).expression;
-    if (!inner) return current;
-    current = inner;
-  }
-  return current;
-};
-
 const getReceiverRootIdentifierName = (receiver: EsTreeNode): string | null => {
-  let current: EsTreeNode | null | undefined = receiver;
-  while (
-    current &&
-    (isNodeOfType(current, "MemberExpression") || RECEIVER_WRAPPER_TYPES.has(current.type))
-  ) {
-    current = isNodeOfType(current, "MemberExpression")
-      ? current.object
-      : (current as { expression?: EsTreeNode }).expression;
+  let current = stripParenExpression(receiver);
+  while (isNodeOfType(current, "MemberExpression")) {
+    current = stripParenExpression(current.object);
   }
   return isNodeOfType(current, "Identifier") ? current.name : null;
 };
@@ -708,7 +685,7 @@ export const jsSetMapLookups = defineRule({
       if (methodName === "indexOf" && !isIndexOfResultUsedAsMembershipTest(node)) return;
       const rawReceiver = node.callee.object;
       if (!rawReceiver) return;
-      const receiver = stripReceiverWrappers(rawReceiver);
+      const receiver = stripParenExpression(rawReceiver);
       if (isLikelyStringReceiver(receiver)) return;
       if (isSmallInlineLiteralArray(receiver)) return;
       if (isScreamingSnakeCaseConstantReceiver(receiver)) return;

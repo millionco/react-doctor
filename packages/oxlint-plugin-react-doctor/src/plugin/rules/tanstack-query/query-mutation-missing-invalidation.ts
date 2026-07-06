@@ -2,6 +2,7 @@ import {
   QUERY_CACHE_UPDATE_METHODS,
   QUERY_CLIENT_HOOK_NAME,
   TANSTACK_MUTATION_HOOKS,
+  TANSTACK_QUERY_MODULE_PATTERN,
   TRPC_UTILS_HOOK_PATTERN,
   TRPC_UTILS_INVALIDATE_METHOD,
 } from "../../constants/tanstack.js";
@@ -30,10 +31,11 @@ const MUTATION_LIFECYCLE_CALLBACK_NAMES = new Set([
 const FULL_PAGE_NAVIGATION_METHODS = new Set(["assign", "reload", "replace"]);
 const MAX_HELPER_RESOLUTION_DEPTH = 3;
 
-// Read-side tanstack-query usage that proves this file has cached data a
-// mutation could leave stale. Mutations in files with no query in sight
-// (analytics posts, connection tests, message signing) have nothing to
-// invalidate.
+// Read-side tanstack-query usage that proves a `useMutation` structural
+// match really is TanStack's. Only consulted when the file has no
+// TanStack Query import to prove it directly (the common one-hook-per-file
+// mutation wrapper always imports `useMutation` from @tanstack/*query*,
+// so it stays in scope even though the stale useQuery lives elsewhere).
 const QUERY_READ_HOOK_NAMES = new Set([
   "useQuery",
   "useInfiniteQuery",
@@ -218,8 +220,15 @@ export const queryMutationMissingInvalidation = defineRule({
   create: (context: RuleContext) => {
     const mutationsWithoutCacheUpdate: EsTreeNodeOfType<"CallExpression">[] = [];
     let hasQueryReadUsage = false;
+    let hasTanstackQueryImport = false;
 
     return {
+      ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
+        const importSource = node.source?.value;
+        if (typeof importSource === "string" && TANSTACK_QUERY_MODULE_PATTERN.test(importSource)) {
+          hasTanstackQueryImport = true;
+        }
+      },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (!hasQueryReadUsage) {
           const callName = getCalleeName(node);
@@ -255,7 +264,12 @@ export const queryMutationMissingInvalidation = defineRule({
         }
       },
       "Program:exit"() {
-        if (!hasQueryReadUsage) return;
+        // Suppress only when nothing ties the `useMutation` match to
+        // TanStack Query: no @tanstack/*query* import AND no query-read
+        // call in the file. A real useMutation file always imports the
+        // hook, so this narrows out same-named exports from other
+        // libraries without losing single-mutation wrapper files.
+        if (!hasTanstackQueryImport && !hasQueryReadUsage) return;
         for (const mutationNode of mutationsWithoutCacheUpdate) {
           context.report({
             node: mutationNode,

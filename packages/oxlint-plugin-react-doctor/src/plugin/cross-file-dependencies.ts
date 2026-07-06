@@ -304,22 +304,14 @@ const collectRnNoRawTextDependencies: CrossFileDependencyCollector = ({
   }
 };
 
-// rn-prefer-expo-image's only cross-file input is the package-platform
-// classification (`isExpoManagedFileActive` + the `wrapReactNativeRule`
-// gate): the ancestor package.json walk plus the nearest manifest's content.
-const collectRnPreferExpoImageDependencies: CrossFileDependencyCollector = ({
-  absoluteFilePath,
-}) => {
-  classifyPackagePlatform(absoluteFilePath);
-};
-
 // no-dynamic-import-path / no-full-lodash-import (`is-inside-node-cli-package`),
-// prefer-dynamic-import (`is-published-library-package`), and
-// rendering-hydration-mismatch-time (`classifyReactNativeFileTarget`) all read
-// only the nearest manifest: the same ancestor package.json existence walk
-// plus that one manifest's content. `classifyPackagePlatform` records exactly
-// that probe set, and the rules gate the read on in-file conditions the
-// collector deliberately skips (probing more is always safe).
+// prefer-dynamic-import (`is-published-library-package`),
+// rendering-hydration-mismatch-time (`classifyReactNativeFileTarget`), and
+// rn-prefer-expo-image (`isExpoManagedFileActive` + the `wrapReactNativeRule`
+// gate) all read only the nearest manifest: the same ancestor package.json
+// existence walk plus that one manifest's content. `classifyPackagePlatform`
+// records exactly that probe set, and the rules gate the read on in-file
+// conditions the collector deliberately skips (probing more is always safe).
 const collectNearestManifestDependencies: CrossFileDependencyCollector = ({ absoluteFilePath }) => {
   classifyPackagePlatform(absoluteFilePath);
 };
@@ -335,7 +327,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["prefer-dynamic-import", collectNearestManifestDependencies],
     ["rendering-hydration-mismatch-time", collectNearestManifestDependencies],
     ["rn-no-raw-text", collectRnNoRawTextDependencies],
-    ["rn-prefer-expo-image", collectRnPreferExpoImageDependencies],
+    ["rn-prefer-expo-image", collectNearestManifestDependencies],
   ]);
 
 /**

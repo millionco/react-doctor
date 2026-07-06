@@ -1,4 +1,4 @@
-import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import { BUILTIN_HOOK_NAMES, EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
@@ -90,25 +90,6 @@ const collectEffectDependencyInfos = (
   return effectInfos;
 };
 
-const CUSTOM_HOOK_NAME_PATTERN = /^use[A-Z0-9]/;
-const BUILTIN_HOOK_NAMES: ReadonlySet<string> = new Set([
-  "useState",
-  "useRef",
-  "useMemo",
-  "useCallback",
-  "useReducer",
-  "useContext",
-  "useEffect",
-  "useLayoutEffect",
-  "useInsertionEffect",
-  "useImperativeHandle",
-  "useSyncExternalStore",
-  "useDeferredValue",
-  "useTransition",
-  "useId",
-  "useDebugValue",
-]);
-
 // State handed to a CUSTOM hook call (`useKeyboardNav({ pendingFocus })`)
 // escapes into foreign reactive logic — the hook re-runs on every render
 // and reads the fresh value, so the state is consumed beyond handlers.
@@ -121,7 +102,7 @@ const collectCustomHookArgumentNames = (componentBody: EsTreeNode): Set<string> 
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isNodeOfType(child.callee, "Identifier")) return;
     const calleeName = child.callee.name;
-    if (!CUSTOM_HOOK_NAME_PATTERN.test(calleeName)) return;
+    if (!isReactHookName(calleeName)) return;
     if (BUILTIN_HOOK_NAMES.has(calleeName)) return;
     if (EFFECT_HOOK_NAMES.has(calleeName)) return;
     for (const argument of child.arguments ?? []) {

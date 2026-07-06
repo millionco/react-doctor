@@ -4,6 +4,7 @@ import { containsDirectAwait } from "../../utils/contains-direct-await.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -517,22 +518,12 @@ const CHAINED_ARRAY_METHOD_NAMES = new Set([
   "toSorted",
 ]);
 
-const TRANSPARENT_EXPRESSION_WRAPPER_TYPES: ReadonlySet<string> = new Set([
-  "TSAsExpression",
-  "TSSatisfiesExpression",
-  "TSNonNullExpression",
-  "ParenthesizedExpression",
-  "ChainExpression",
-]);
-
 const resolvePromiseFlowNode = (mapCall: EsTreeNode): EsTreeNode => {
   let current: EsTreeNode = mapCall;
-  while (current.parent) {
+  while (true) {
+    current = findTransparentExpressionRoot(current);
     const parent = current.parent;
-    if (TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type)) {
-      current = parent;
-      continue;
-    }
+    if (!parent) return current;
     if (isNodeOfType(parent, "SpreadElement") || isNodeOfType(parent, "ArrayExpression")) {
       current = parent;
       continue;
@@ -560,7 +551,6 @@ const resolvePromiseFlowNode = (mapCall: EsTreeNode): EsTreeNode => {
     }
     return current;
   }
-  return current;
 };
 
 const findEnclosingFunctionOrProgram = (node: EsTreeNode): EsTreeNode => {

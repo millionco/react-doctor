@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxKeyAttribute } from "../../utils/has-jsx-key-attribute.js";
@@ -39,23 +40,11 @@ const resolveSettings = (
   };
 };
 
-const UPWARD_TS_WRAPPER_TYPES = new Set<string>([
-  "ParenthesizedExpression",
-  "TSAsExpression",
-  "TSSatisfiesExpression",
-  "TSTypeAssertion",
-  "TSNonNullExpression",
-]);
-
 const findArrayVariableDeclarator = (
   arrayExpression: EsTreeNode,
 ): EsTreeNodeOfType<"VariableDeclarator"> | null => {
-  let wrapped: EsTreeNode = arrayExpression;
-  let ancestor: EsTreeNode | null | undefined = arrayExpression.parent;
-  while (ancestor && UPWARD_TS_WRAPPER_TYPES.has(ancestor.type)) {
-    wrapped = ancestor;
-    ancestor = ancestor.parent;
-  }
+  const wrapped = findTransparentExpressionRoot(arrayExpression);
+  const ancestor = wrapped.parent;
   if (
     ancestor &&
     isNodeOfType(ancestor, "VariableDeclarator") &&

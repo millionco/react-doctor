@@ -1,30 +1,15 @@
 import type { Reference } from "eslint-scope";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../../utils/find-enclosing-function.js";
+import { getFunctionBindingName } from "../../../utils/get-function-binding-name.js";
 import { getJsxAttributeName } from "../../../utils/get-jsx-attribute-name.js";
+import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isEventHandlerName } from "./event-handler-reference.js";
 import { isSetterWiredToJsxHandler } from "./is-controlled-prop-mirror.js";
 
 const HANDLER_BINDING_NAME_PATTERN = /^(on|handle)[A-Z_]/;
-
-const isWithinRange = (identifier: EsTreeNode, container: EsTreeNode): boolean => {
-  const identifierRange = (identifier as unknown as { range?: [number, number] }).range;
-  const containerRange = (container as unknown as { range?: [number, number] }).range;
-  if (!identifierRange || !containerRange) return false;
-  return containerRange[0] <= identifierRange[0] && identifierRange[1] <= containerRange[1];
-};
-
-const getFunctionBindingName = (functionNode: EsTreeNode): string | null => {
-  if (isNodeOfType(functionNode, "FunctionDeclaration")) return functionNode.id?.name ?? null;
-  let owner: EsTreeNode | null | undefined = functionNode.parent;
-  if (owner && isNodeOfType(owner, "CallExpression")) owner = owner.parent;
-  if (owner && isNodeOfType(owner, "VariableDeclarator") && isNodeOfType(owner.id, "Identifier")) {
-    return owner.id.name;
-  }
-  return null;
-};
 
 const isEventHandlerPropertyKey = (property: EsTreeNode): boolean =>
   isNodeOfType(property, "Property") &&
@@ -112,7 +97,7 @@ export const hasUserInputSetterWriter = (
   for (const reference of setterRef.resolved.references) {
     if (reference.init) continue;
     const identifier = reference.identifier as unknown as EsTreeNode;
-    if (isWithinRange(identifier, effectNode)) continue;
+    if (isAstDescendant(identifier, effectNode)) continue;
     if (isIndependentWriterIdentifier(componentFunction, identifier, includeDeferredWriters)) {
       return true;
     }

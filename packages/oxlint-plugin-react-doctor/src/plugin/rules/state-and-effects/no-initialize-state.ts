@@ -9,6 +9,7 @@ import {
   isPostMountGlobalRead,
 } from "../../utils/reads-post-mount-value.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { getCallExpr, getRef, isSynchronous, resolveToFunction } from "./utils/effect/ast.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
@@ -189,21 +190,10 @@ const cleanupDisposesArgumentSource = (argument: EsTreeNode, effectFn: EsTreeNod
   return referencesSource;
 };
 
-const unwrapTransparentExpression = (node: EsTreeNode | null | undefined): EsTreeNode | null => {
-  if (!node) return null;
-  if (isNodeOfType(node, "ChainExpression")) {
-    return unwrapTransparentExpression(node.expression as EsTreeNode);
-  }
-  if (isNodeOfType(node, "TSNonNullExpression") || isNodeOfType(node, "TSAsExpression")) {
-    return unwrapTransparentExpression(node.expression as EsTreeNode);
-  }
-  return node;
-};
-
 const isSameValueExpression = (leftNode: EsTreeNode, rightNode: EsTreeNode): boolean => {
-  const left = unwrapTransparentExpression(leftNode);
-  const right = unwrapTransparentExpression(rightNode);
-  if (!left || !right || left.type !== right.type) return false;
+  const left = stripParenExpression(leftNode);
+  const right = stripParenExpression(rightNode);
+  if (left.type !== right.type) return false;
   if (isNodeOfType(left, "Identifier") && isNodeOfType(right, "Identifier")) {
     return left.name === right.name;
   }
@@ -280,8 +270,7 @@ const isUseStateWithoutArgument = (useStateDecl: EsTreeNode): boolean =>
   (useStateDecl.init.arguments ?? []).length === 0;
 
 const isUndefinedExpression = (node: EsTreeNode): boolean => {
-  const unwrapped = unwrapTransparentExpression(node);
-  if (!unwrapped) return false;
+  const unwrapped = stripParenExpression(node);
   if (isNodeOfType(unwrapped, "Identifier")) return unwrapped.name === "undefined";
   return isNodeOfType(unwrapped, "UnaryExpression") && unwrapped.operator === "void";
 };

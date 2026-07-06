@@ -25,7 +25,7 @@ import {
   getEffectFnRefs,
   hasCleanup,
   isConstant,
-  isCustomHook,
+  isCustomHookParameter,
   isProp,
   isRefCall,
   isRefCurrent,
@@ -113,20 +113,6 @@ const isDirectParentCallbackRef = (analysis: ProgramAnalysis, ref: Reference): b
     }),
   );
 };
-
-// A bare (non-destructured) parameter of a CUSTOM HOOK is a positional
-// argument (`useRunLayout(cy)`), not a component's props object —
-// method calls on it (`cy.batch(...)`) drive an external instance.
-const isCustomHookParameter = (ref: Reference): boolean =>
-  Boolean(
-    ref.resolved?.defs.some((def) => {
-      if (def.type !== "Parameter") return false;
-      const functionNode = def.node as unknown as EsTreeNode;
-      if (isCustomHook(functionNode)) return true;
-      const parent = (functionNode as unknown as { parent?: EsTreeNode | null }).parent;
-      return Boolean(parent && isCustomHook(parent));
-    }),
-  );
 
 const isImportBindingRef = (ref: Reference): boolean =>
   Boolean(ref.resolved?.defs.some((def) => def.type === "ImportBinding"));

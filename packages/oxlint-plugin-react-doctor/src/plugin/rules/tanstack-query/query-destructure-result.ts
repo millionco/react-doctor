@@ -5,22 +5,8 @@ import { isTanstackQuerySource } from "../../utils/is-tanstack-query-source.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-
-const TRANSPARENT_EXPRESSION_WRAPPER_TYPES = new Set<string>([
-  "ParenthesizedExpression",
-  "TSAsExpression",
-  "TSSatisfiesExpression",
-  "TSNonNullExpression",
-]);
-
-const findWrappedExpressionRoot = (identifier: EsTreeNode): EsTreeNode => {
-  let current = identifier;
-  while (current.parent && TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(current.parent.type)) {
-    current = current.parent;
-  }
-  return current;
-};
 
 // TanStack Query result objects track field access through property getters,
 // so `query.data` subscribes to exactly `data` — identical to destructuring.
@@ -30,7 +16,7 @@ const findWrappedExpressionRoot = (identifier: EsTreeNode): EsTreeNode => {
 // else (field reads, forwarding, dependency arrays) is field-tracked or
 // tracked at the eventual read site, and must stay silent.
 const classifyEveryFieldRead = (identifier: EsTreeNode): "spread" | "rest-destructuring" | null => {
-  const expressionRoot = findWrappedExpressionRoot(identifier);
+  const expressionRoot = findTransparentExpressionRoot(identifier);
   const parent = expressionRoot.parent;
   if (isNodeOfType(parent, "JSXSpreadAttribute")) return "spread";
   if (isNodeOfType(parent, "SpreadElement") && isNodeOfType(parent.parent, "ObjectExpression")) {

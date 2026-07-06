@@ -273,4 +273,57 @@ describe("react-builtins/only-export-components — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  // Production FP sweep: re-exports (`export { x } from './x'`) forward
+  // bindings declared in ANOTHER module — there is nothing in this file
+  // to move, so the mixed-export diagnostic is unactionable here. Pure
+  // barrels and convenience re-exports were the dominant FP shape.
+  it("does not flag pure re-export barrels", () => {
+    const barrelFile = `
+      export { default } from './FlexBasic';
+      export { default as Flexbox } from './FlexBasic';
+    `;
+    const result = runRule(onlyExportComponents, barrelFile, {
+      filename: "src/Flex/Flexbox.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag non-component re-exports mixed with component re-exports", () => {
+    const imperativeBarrel = `
+      export { ContextMenuHost } from './ContextMenuHost';
+      export { closeContextMenu, showContextMenu } from './store';
+    `;
+    const result = runRule(onlyExportComponents, imperativeBarrel, {
+      filename: "src/base-ui/ContextMenu/imperative.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a convenience re-export alongside a local component", () => {
+    const componentWithReExport = `
+      export { parseTrigger } from '@/utils/parseTrigger';
+      export const Popover = () => <div />;
+    `;
+    const result = runRule(onlyExportComponents, componentWithReExport, {
+      filename: "src/base-ui/Popover/Popover.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags locally-declared non-components exported via a specifier block", () => {
+    const localSpecifierFile = `
+      const formatLabel = (value) => value.trim();
+      export const Card = () => <div />;
+      export { formatLabel };
+    `;
+    const result = runRule(onlyExportComponents, localSpecifierFile, {
+      filename: "src/components/card.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -210,7 +210,7 @@ const isRestParameter = (identifier: EsTreeNodeOfType<"Identifier">): boolean =>
           isNodeOfType(patternAncestor, "FunctionExpression") ||
           isNodeOfType(patternAncestor, "FunctionDeclaration")
         ) {
-          return patternAncestor.params.includes(restParent as EsTreeNode);
+          return patternAncestor.params.some((param) => param === restParent);
         }
         if (isNodeOfType(patternAncestor, "VariableDeclarator")) {
           return false;

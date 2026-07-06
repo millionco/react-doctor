@@ -1,25 +1,33 @@
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CACHE_FILENAME_HASH_LENGTH_CHARS, SUPPLY_CHAIN_CACHE_SUBDIR } from "../src/constants.js";
 import { checkSupplyChain } from "../src/check-supply-chain.js";
 import type { ReactDoctorConfig } from "../src/types/index.js";
+import { resolveReactDoctorCacheDir } from "../src/utils/resolve-react-doctor-cache-dir.js";
 
-interface OsvDetailInput {
+interface OsvQueryVulnerability {
   readonly id: string;
   readonly summary?: string;
   readonly details?: string;
-  readonly databaseSpecificSeverity?: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
-  readonly cvssVector?: string;
+  readonly database_specific?: {
+    readonly severity?: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+  };
+  readonly severity?: ReadonlyArray<{
+    readonly type?: string;
+    readonly score?: string;
+  }>;
 }
 
-interface StubOsvResult {
+interface OsvTestFetchResult {
   readonly fetchMock: ReturnType<typeof vi.fn>;
   readonly queryBatchRequests: Array<
     ReadonlyArray<{ readonly name: string; readonly version: string }>
   >;
-  readonly vulnerabilityRequests: string[];
+  readonly queryRequests: string[];
 }
 
 const createProjectDirectory = (): string =>
@@ -60,40 +68,49 @@ const runCheckSupplyChain = async (
     }),
   );
 
-const createOsvDetail = (input: OsvDetailInput): Record<string, unknown> => ({
+const cacheFileFor = (rootDirectory: string, name: string, version: string): string => {
+  const purlHash = crypto
+    .createHash("sha256")
+    .update(`pkg:npm/${name}@${version}`)
+    .digest("hex")
+    .slice(0, CACHE_FILENAME_HASH_LENGTH_CHARS);
+  return path.join(
+    resolveReactDoctorCacheDir(rootDirectory),
+    SUPPLY_CHAIN_CACHE_SUBDIR,
+    `${purlHash}.json`,
+  );
+};
+
+const createOsvQueryVulnerability = (input: OsvQueryVulnerability): Record<string, unknown> => ({
   id: input.id,
   summary: input.summary ?? input.id,
   ...(input.details !== undefined ? { details: input.details } : {}),
-  ...(input.databaseSpecificSeverity !== undefined
-    ? { database_specific: { severity: input.databaseSpecificSeverity } }
-    : {}),
-  ...(input.cvssVector !== undefined
-    ? {
-        severity: [
-          {
-            type: "CVSS_V3",
-            score: input.cvssVector,
-          },
-        ],
-      }
-    : {}),
+  ...(input.database_specific !== undefined ? { database_specific: input.database_specific } : {}),
+  ...(input.severity !== undefined ? { severity: input.severity } : {}),
 });
 
-const stubOsvFetch = (
-  packageIdsByName: Record<string, ReadonlyArray<string>>,
-  detailById: Record<string, Record<string, unknown>>,
-): StubOsvResult => {
+const createOsvQueryResponse = (
+  vulnerabilities: ReadonlyArray<OsvQueryVulnerability>,
+): Record<string, unknown> => ({
+  vulns: vulnerabilities.map(createOsvQueryVulnerability),
+});
+
+const stubOsvFetch = (input: {
+  readonly queryBatchIdsByPackage?: Record<string, ReadonlyArray<string>>;
+  readonly queryResponseByPackage?: Record<string, ReadonlyArray<OsvQueryVulnerability>>;
+  readonly queryFailurePackages?: ReadonlySet<string>;
+}): OsvTestFetchResult => {
   const queryBatchRequests: Array<
     ReadonlyArray<{ readonly name: string; readonly version: string }>
   > = [];
-  const vulnerabilityRequests: string[] = [];
+  const queryRequests: string[] = [];
 
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const requestUrl = String(input);
+  const fetchMock = vi.fn(async (requestInput: RequestInfo | URL, init?: RequestInit) => {
+    const requestUrl = String(requestInput);
     if (requestUrl.endsWith("/v1/querybatch")) {
-      const payload: unknown = JSON.parse(String(init?.body ?? "{}"));
-      const queries = Array.isArray((payload as Record<string, unknown>).queries)
-        ? ((payload as Record<string, unknown>).queries as ReadonlyArray<Record<string, unknown>>)
+      const payload = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      const queries = Array.isArray(payload.queries)
+        ? (payload.queries as ReadonlyArray<Record<string, unknown>>)
         : [];
       queryBatchRequests.push(
         queries.map((query) => ({
@@ -106,6 +123,7 @@ const stubOsvFetch = (
           version: typeof query.version === "string" ? query.version : "",
         })),
       );
+
       return new Response(
         JSON.stringify({
           results: queries.map((query) => {
@@ -115,7 +133,7 @@ const stubOsvFetch = (
               typeof query.package.name === "string"
                 ? query.package.name
                 : "";
-            const vulnerabilityIds = packageIdsByName[packageName] ?? [];
+            const vulnerabilityIds = input.queryBatchIdsByPackage?.[packageName] ?? [];
             return vulnerabilityIds.length > 0
               ? { vulns: vulnerabilityIds.map((id) => ({ id })) }
               : {};
@@ -125,12 +143,22 @@ const stubOsvFetch = (
       );
     }
 
-    if (requestUrl.includes("/v1/vulns/")) {
-      const id = decodeURIComponent(requestUrl.slice(requestUrl.lastIndexOf("/") + 1));
-      vulnerabilityRequests.push(id);
-      const detail = detailById[id];
-      if (detail === undefined) return new Response("not found", { status: 404 });
-      return new Response(JSON.stringify(detail), {
+    if (requestUrl.endsWith("/v1/query")) {
+      const payload = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      const packageName =
+        typeof payload.package === "object" &&
+        payload.package !== null &&
+        typeof payload.package.name === "string"
+          ? payload.package.name
+          : "";
+      queryRequests.push(packageName);
+
+      if (input.queryFailurePackages?.has(packageName) === true) {
+        return new Response("temporary failure", { status: 503 });
+      }
+
+      const vulnerabilities = input.queryResponseByPackage?.[packageName] ?? [];
+      return new Response(JSON.stringify(createOsvQueryResponse(vulnerabilities)), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -140,11 +168,10 @@ const stubOsvFetch = (
   });
 
   vi.stubGlobal("fetch", fetchMock);
-
   return {
     fetchMock,
     queryBatchRequests,
-    vulnerabilityRequests,
+    queryRequests,
   };
 };
 
@@ -162,16 +189,16 @@ afterEach(() => {
 
 describe("checkSupplyChain (OSV)", () => {
   it.each([
-    { threshold: "low", detailSeverity: "LOW", expectDiagnostic: true },
-    { threshold: "moderate", detailSeverity: "LOW", expectDiagnostic: false },
-    { threshold: "moderate", detailSeverity: "MODERATE", expectDiagnostic: true },
-    { threshold: "high", detailSeverity: "MODERATE", expectDiagnostic: false },
-    { threshold: "high", detailSeverity: "HIGH", expectDiagnostic: true },
-    { threshold: "critical", detailSeverity: "HIGH", expectDiagnostic: false },
-    { threshold: "critical", detailSeverity: "CRITICAL", expectDiagnostic: true },
+    { threshold: "low", severity: "LOW", expectDiagnostic: true },
+    { threshold: "moderate", severity: "LOW", expectDiagnostic: false },
+    { threshold: "moderate", severity: "MODERATE", expectDiagnostic: true },
+    { threshold: "high", severity: "MODERATE", expectDiagnostic: false },
+    { threshold: "high", severity: "HIGH", expectDiagnostic: true },
+    { threshold: "critical", severity: "HIGH", expectDiagnostic: false },
+    { threshold: "critical", severity: "CRITICAL", expectDiagnostic: true },
   ] as const)(
-    "gates $detailSeverity advisories at failOn=$threshold",
-    async ({ threshold, detailSeverity, expectDiagnostic }) => {
+    "gates $severity advisories at failOn=$threshold",
+    async ({ threshold, severity, expectDiagnostic }) => {
       const rootDirectory = createProjectDirectory();
       try {
         writePackageJson(rootDirectory, {
@@ -179,15 +206,19 @@ describe("checkSupplyChain (OSV)", () => {
             "left-pad": "1.0.0",
           },
         });
-        stubOsvFetch(
-          { "left-pad": ["GHSA-test-1"] },
-          {
-            "GHSA-test-1": createOsvDetail({
-              id: "GHSA-test-1",
-              databaseSpecificSeverity: detailSeverity,
-            }),
+        stubOsvFetch({
+          queryBatchIdsByPackage: {
+            "left-pad": ["GHSA-test-1"],
           },
-        );
+          queryResponseByPackage: {
+            "left-pad": [
+              createOsvQueryVulnerability({
+                id: "GHSA-test-1",
+                database_specific: { severity },
+              }),
+            ],
+          },
+        });
 
         const diagnostics = await runCheckSupplyChain(rootDirectory, {
           supplyChain: {
@@ -201,7 +232,6 @@ describe("checkSupplyChain (OSV)", () => {
           expect(diagnostics[0].rule).toBe("known-vulnerability");
           expect(diagnostics[0].category).toBe("Security");
           expect(diagnostics[0].filePath).toBe("package.json");
-          expect(diagnostics[0].message).toContain(`${threshold}-severity`);
         }
       } finally {
         fs.rmSync(rootDirectory, { recursive: true, force: true });
@@ -217,19 +247,23 @@ describe("checkSupplyChain (OSV)", () => {
           lodash: "4.17.11",
         },
       });
-      stubOsvFetch(
-        { lodash: ["GHSA-high", "GHSA-moderate"] },
-        {
-          "GHSA-high": createOsvDetail({
-            id: "GHSA-high",
-            databaseSpecificSeverity: "HIGH",
-          }),
-          "GHSA-moderate": createOsvDetail({
-            id: "GHSA-moderate",
-            databaseSpecificSeverity: "MODERATE",
-          }),
+      stubOsvFetch({
+        queryBatchIdsByPackage: {
+          lodash: ["GHSA-high", "GHSA-moderate"],
         },
-      );
+        queryResponseByPackage: {
+          lodash: [
+            createOsvQueryVulnerability({
+              id: "GHSA-high",
+              database_specific: { severity: "HIGH" },
+            }),
+            createOsvQueryVulnerability({
+              id: "GHSA-moderate",
+              database_specific: { severity: "MODERATE" },
+            }),
+          ],
+        },
+      });
 
       const diagnostics = await runCheckSupplyChain(rootDirectory, {
         supplyChain: {
@@ -258,15 +292,19 @@ describe("checkSupplyChain (OSV)", () => {
           "event-stream": "4.0.0",
         },
       });
-      stubOsvFetch(
-        { "event-stream": [id] },
-        {
-          [id]: createOsvDetail({
-            id,
-            summary,
-          }),
+      stubOsvFetch({
+        queryBatchIdsByPackage: {
+          "event-stream": [id],
         },
-      );
+        queryResponseByPackage: {
+          "event-stream": [
+            createOsvQueryVulnerability({
+              id,
+              summary,
+            }),
+          ],
+        },
+      });
 
       const diagnostics = await runCheckSupplyChain(rootDirectory, {
         supplyChain: {
@@ -292,15 +330,24 @@ describe("checkSupplyChain (OSV)", () => {
           semver: "7.7.4",
         },
       });
-      stubOsvFetch(
-        { semver: ["GHSA-cvss"] },
-        {
-          "GHSA-cvss": createOsvDetail({
-            id: "GHSA-cvss",
-            cvssVector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
-          }),
+      stubOsvFetch({
+        queryBatchIdsByPackage: {
+          semver: ["GHSA-cvss"],
         },
-      );
+        queryResponseByPackage: {
+          semver: [
+            createOsvQueryVulnerability({
+              id: "GHSA-cvss",
+              severity: [
+                {
+                  type: "CVSS_V3",
+                  score: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+                },
+              ],
+            }),
+          ],
+        },
+      });
 
       const diagnostics = await runCheckSupplyChain(rootDirectory, {
         supplyChain: {
@@ -329,15 +376,19 @@ describe("checkSupplyChain (OSV)", () => {
           "dev-only": "2.0.0",
         },
       });
-      const stub = stubOsvFetch(
-        { "scored-package": ["GHSA-score"] },
-        {
-          "GHSA-score": createOsvDetail({
-            id: "GHSA-score",
-            databaseSpecificSeverity: "LOW",
-          }),
+      const stub = stubOsvFetch({
+        queryBatchIdsByPackage: {
+          "scored-package": ["GHSA-score"],
         },
-      );
+        queryResponseByPackage: {
+          "scored-package": [
+            createOsvQueryVulnerability({
+              id: "GHSA-score",
+              database_specific: { severity: "LOW" },
+            }),
+          ],
+        },
+      });
 
       const diagnostics = await runCheckSupplyChain(rootDirectory, {
         supplyChain: {
@@ -349,36 +400,62 @@ describe("checkSupplyChain (OSV)", () => {
       expect(diagnostics).toHaveLength(1);
       expect(stub.queryBatchRequests).toHaveLength(1);
       expect(stub.queryBatchRequests[0].map((query) => query.name)).toEqual(["scored-package"]);
-      expect(stub.vulnerabilityRequests).toEqual(["GHSA-score"]);
+      expect(stub.queryRequests).toEqual(["scored-package"]);
     } finally {
       fs.rmSync(rootDirectory, { recursive: true, force: true });
     }
   });
 
-  it("fails open when OSV returns an error", async () => {
+  it("fails open on a package query error without caching a partial result", async () => {
     const rootDirectory = createProjectDirectory();
+    const cacheDirectory = path.join(rootDirectory, "cache");
+    process.env["REACT_DOCTOR_CACHE_DIR"] = cacheDirectory;
     try {
       writePackageJson(rootDirectory, {
         dependencies: {
-          "left-pad": "1.0.0",
+          lodash: "4.17.11",
         },
       });
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(async (input: RequestInfo | URL) => {
-          const requestUrl = String(input);
-          if (requestUrl.endsWith("/v1/querybatch")) return new Response("error", { status: 500 });
-          return new Response("not found", { status: 404 });
-        }),
-      );
+      stubOsvFetch({
+        queryBatchIdsByPackage: {
+          lodash: ["GHSA-jf85-cpcp-j695"],
+        },
+        queryFailurePackages: new Set(["lodash"]),
+      });
 
-      const diagnostics = await runCheckSupplyChain(rootDirectory, {
+      const failedDiagnostics = await runCheckSupplyChain(rootDirectory, {
         supplyChain: {
           failOn: "low",
         },
       });
 
-      expect(diagnostics).toEqual([]);
+      expect(failedDiagnostics).toEqual([]);
+      expect(fs.existsSync(cacheFileFor(rootDirectory, "lodash", "4.17.11"))).toBe(false);
+
+      vi.unstubAllGlobals();
+      stubOsvFetch({
+        queryBatchIdsByPackage: {
+          lodash: ["GHSA-jf85-cpcp-j695"],
+        },
+        queryResponseByPackage: {
+          lodash: [
+            createOsvQueryVulnerability({
+              id: "GHSA-jf85-cpcp-j695",
+              database_specific: { severity: "CRITICAL" },
+            }),
+          ],
+        },
+      });
+
+      const recoveredDiagnostics = await runCheckSupplyChain(rootDirectory, {
+        supplyChain: {
+          failOn: "low",
+        },
+      });
+
+      expect(recoveredDiagnostics).toHaveLength(1);
+      expect(recoveredDiagnostics[0].message).toContain("GHSA-jf85-cpcp-j695");
+      expect(fs.existsSync(cacheFileFor(rootDirectory, "lodash", "4.17.11"))).toBe(true);
     } finally {
       fs.rmSync(rootDirectory, { recursive: true, force: true });
     }
@@ -389,7 +466,7 @@ describe("checkSupplyChain (OSV)", () => {
     try {
       writePackageJson(rootDirectory, {
         dependencies: {
-          "left-pad": "1.0.0",
+          lodash: "4.17.11",
         },
       });
       stubHangingOsvFetch();

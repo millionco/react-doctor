@@ -672,6 +672,10 @@ export const SUPPLY_CHAIN_DEFAULT_FAIL_ON = "high";
 // dependency list doesn't open hundreds of sockets or trip rate limits.
 export const SUPPLY_CHAIN_FETCH_CONCURRENCY = 8;
 
+export const SUPPLY_CHAIN_FETCH_MAX_RETRIES = 2;
+
+export const SUPPLY_CHAIN_FETCH_RETRY_BASE_MS = 100;
+
 // Belt-and-suspenders wall-clock cap on the supply-chain check while it runs on
 // a background fiber overlapping the lint pass. `Effect.timeout` measures from
 // when the forked effect STARTS (at fork, before lint) — NOT from the join — so

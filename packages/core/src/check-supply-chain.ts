@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Schedule from "effect/Schedule";
 import * as semver from "semver";
 import {
   CACHE_FILENAME_HASH_LENGTH_CHARS,
@@ -14,6 +15,8 @@ import {
   SUPPLY_CHAIN_CATEGORY,
   SUPPLY_CHAIN_DEFAULT_FAIL_ON,
   SUPPLY_CHAIN_FETCH_CONCURRENCY,
+  SUPPLY_CHAIN_FETCH_MAX_RETRIES,
+  SUPPLY_CHAIN_FETCH_RETRY_BASE_MS,
   SUPPLY_CHAIN_IGNORED_PACKAGES,
   SUPPLY_CHAIN_OVERLAP_TIMEOUT_MS,
   SUPPLY_CHAIN_PLUGIN,
@@ -244,6 +247,10 @@ const resolveVulnerabilitySeverity = (vulnerability: OsvVulnerabilityRecord): Os
   return highestSeverity ?? "moderate";
 };
 
+const SUPPLY_CHAIN_FETCH_RETRY_SCHEDULE = Schedule.exponential(
+  SUPPLY_CHAIN_FETCH_RETRY_BASE_MS,
+).pipe(Schedule.take(SUPPLY_CHAIN_FETCH_MAX_RETRIES));
+
 const resolveOptions = (config: ReactDoctorConfig | null): ResolvedSupplyChainOptions => ({
   severity: config?.supplyChain?.severity === "warning" ? "warning" : "error",
   includeDevDependencies: config?.supplyChain?.includeDevDependencies !== false,
@@ -368,6 +375,24 @@ const parseOsvQueryBatchResponse = (
   return Array.from({ length: dependencyCount }, (_, index) =>
     parseOsvQueryBatchResult(results[index]),
   );
+};
+
+const parseOsvQueryResponse = (payload: unknown): ReadonlyArray<CachedOsvVulnerability> | null => {
+  if (!isRecord(payload)) return null;
+  const vulns = payload["vulns"];
+  if (!Array.isArray(vulns)) return null;
+
+  const parsedVulnerabilities: CachedOsvVulnerability[] = [];
+  for (const vuln of vulns) {
+    if (!isRecord(vuln) || typeof vuln["id"] !== "string" || vuln["id"].trim().length === 0) {
+      return null;
+    }
+    const parsedVulnerability = parseOsvVulnerabilityRecord(vuln["id"], vuln);
+    if (parsedVulnerability === null) return null;
+    parsedVulnerabilities.push(parsedVulnerability);
+  }
+
+  return parsedVulnerabilities;
 };
 
 const buildCachedVulnerability = (
@@ -505,18 +530,17 @@ const isSupplyChainCacheDisabled = (): boolean => {
 };
 
 const fetchJson = (url: string, init?: RequestInit): Effect.Effect<unknown | null> =>
-  Effect.tryPromise(async (signal) => {
-    const response = await fetch(url, { ...init, signal });
-    if (!response.ok) return null;
-    try {
-      return await response.json();
-    } catch {
-      return null;
-    }
-  }).pipe(
-    Effect.timeout(FETCH_TIMEOUT_MS),
-    Effect.orElseSucceed(() => null),
-  );
+  Effect.retry(
+    Effect.tryPromise(async (signal) => {
+      const response = await fetch(url, { ...init, signal });
+      if (!response.ok) {
+        throw new Error(`OSV request failed with status ${response.status}`);
+      }
+
+      return response.json();
+    }).pipe(Effect.timeout(FETCH_TIMEOUT_MS)),
+    SUPPLY_CHAIN_FETCH_RETRY_SCHEDULE,
+  ).pipe(Effect.orElseSucceed(() => null));
 
 const fetchOsvQueryBatch = (
   dependencies: ReadonlyArray<DependencyToScore>,
@@ -537,10 +561,22 @@ const fetchOsvQueryBatch = (
     }),
   }).pipe(Effect.map((payload) => parseOsvQueryBatchResponse(payload, dependencies.length)));
 
-const fetchOsvVulnerability = (id: string): Effect.Effect<CachedOsvVulnerability | null> =>
-  fetchJson(`${OSV_API_BASE}/v1/vulns/${encodeURIComponent(id)}`).pipe(
-    Effect.map((payload) => parseOsvVulnerabilityRecord(id, payload)),
-  );
+const fetchOsvQuery = (
+  dependency: DependencyToScore,
+): Effect.Effect<ReadonlyArray<CachedOsvVulnerability> | null> =>
+  fetchJson(`${OSV_API_BASE}/v1/query`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      version: dependency.version,
+      package: {
+        name: dependency.name,
+        ecosystem: "npm",
+      },
+    }),
+  }).pipe(Effect.map((payload) => parseOsvQueryResponse(payload)));
 
 const selectMatchingVulnerabilities = (
   vulnerabilities: ReadonlyArray<CachedOsvVulnerability>,
@@ -640,6 +676,10 @@ export const checkSupplyChain = (input: SupplyChainCheckInput): Effect.Effect<Di
     const vulnerabilitiesByPurl = new Map<string, ReadonlyArray<CachedOsvVulnerability>>();
     const cacheEntriesByPurl = new Map<string, string>();
     const missedDependencies: DependencyToScore[] = [];
+    const queryableMissedDependencies: Array<{
+      readonly dependency: DependencyToScore;
+      readonly cacheFile?: string;
+    }> = [];
 
     for (const dependency of dependencies) {
       const purl = toPurl(dependency);
@@ -658,32 +698,6 @@ export const checkSupplyChain = (input: SupplyChainCheckInput): Effect.Effect<Di
     if (missedDependencies.length > 0) {
       const batchResults = yield* fetchOsvQueryBatch(missedDependencies);
       if (batchResults !== null) {
-        const uniqueVulnerabilityIds = new Set<string>();
-        for (
-          let dependencyIndex = 0;
-          dependencyIndex < missedDependencies.length;
-          dependencyIndex += 1
-        ) {
-          for (const vulnerabilityId of getVulnerabilityIdsForDependency(
-            batchResults,
-            dependencyIndex,
-          )) {
-            uniqueVulnerabilityIds.add(vulnerabilityId);
-          }
-        }
-
-        const vulnerabilityDetails = yield* Effect.forEach(
-          [...uniqueVulnerabilityIds],
-          (vulnerabilityId) => fetchOsvVulnerability(vulnerabilityId),
-          { concurrency: SUPPLY_CHAIN_FETCH_CONCURRENCY },
-        );
-
-        const detailsById = new Map<string, CachedOsvVulnerability>();
-        for (const vulnerability of vulnerabilityDetails) {
-          if (vulnerability === null) continue;
-          detailsById.set(vulnerability.id, vulnerability);
-        }
-
         for (
           let dependencyIndex = 0;
           dependencyIndex < missedDependencies.length;
@@ -691,20 +705,41 @@ export const checkSupplyChain = (input: SupplyChainCheckInput): Effect.Effect<Di
         ) {
           const dependency = missedDependencies[dependencyIndex];
           const purl = toPurl(dependency);
-          const dependencyVulnerabilities = getVulnerabilityIdsForDependency(
-            batchResults,
-            dependencyIndex,
-          )
-            .map((vulnerabilityId) => detailsById.get(vulnerabilityId))
-            .filter(
-              (vulnerability): vulnerability is CachedOsvVulnerability =>
-                vulnerability !== undefined,
-            );
+          const vulnerabilityIds = getVulnerabilityIdsForDependency(batchResults, dependencyIndex);
+          if (vulnerabilityIds.length === 0) {
+            vulnerabilitiesByPurl.set(purl, []);
+            const cacheFile = cacheEntriesByPurl.get(purl);
+            if (cacheFile !== undefined) writeCachedOsvVulns(cacheFile, []);
+            continue;
+          }
 
-          vulnerabilitiesByPurl.set(purl, dependencyVulnerabilities);
-          const cacheFile = cacheEntriesByPurl.get(purl);
-          if (cacheFile !== undefined) writeCachedOsvVulns(cacheFile, dependencyVulnerabilities);
+          queryableMissedDependencies.push({
+            dependency,
+            cacheFile: cacheEntriesByPurl.get(purl),
+          });
         }
+      }
+    }
+
+    if (queryableMissedDependencies.length > 0) {
+      const queryResults = yield* Effect.forEach(
+        queryableMissedDependencies,
+        ({ dependency }) => fetchOsvQuery(dependency),
+        { concurrency: SUPPLY_CHAIN_FETCH_CONCURRENCY },
+      );
+
+      for (
+        let dependencyIndex = 0;
+        dependencyIndex < queryableMissedDependencies.length;
+        dependencyIndex += 1
+      ) {
+        const queryResult = queryResults[dependencyIndex];
+        if (queryResult === null) continue;
+
+        const { dependency, cacheFile } = queryableMissedDependencies[dependencyIndex];
+        const purl = toPurl(dependency);
+        vulnerabilitiesByPurl.set(purl, queryResult);
+        if (cacheFile !== undefined) writeCachedOsvVulns(cacheFile, queryResult);
       }
     }
 

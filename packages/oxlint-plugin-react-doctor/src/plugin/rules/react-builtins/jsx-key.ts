@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxKeyAttribute } from "../../utils/has-jsx-key-attribute.js";
 import { isNonChildrenJsxAttributeValue } from "../../utils/is-non-children-jsx-attribute-value.js";
@@ -193,15 +194,43 @@ const isWithinChildrenToArray = (jsxNode: EsTreeNode): boolean => {
   return false;
 };
 
-// A spread can only clobber an explicit `key` when it could carry a `key` of
-// its own. A spread of an object literal whose members are all statically
-// known and none is `key` (e.g. `{...{}}`, `{...{ className }}`) provably
-// cannot, so it never overwrites the key. Every other spread (an identifier,
-// a call, a computed/nested member) is treated as capable of supplying one.
+const isRestParameter = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
+  const binding = findVariableInitializer(identifier, identifier.name);
+  if (!binding) return false;
+  const bindingIdentifier = binding.bindingIdentifier;
+  let current: EsTreeNode | null | undefined = bindingIdentifier.parent;
+  while (current) {
+    if (isNodeOfType(current, "RestElement")) {
+      const restParent = current.parent;
+      if (!restParent || !isNodeOfType(restParent, "ObjectPattern")) return false;
+      let patternAncestor: EsTreeNode | null | undefined = restParent.parent;
+      while (patternAncestor) {
+        if (
+          isNodeOfType(patternAncestor, "ArrowFunctionExpression") ||
+          isNodeOfType(patternAncestor, "FunctionExpression") ||
+          isNodeOfType(patternAncestor, "FunctionDeclaration")
+        ) {
+          return patternAncestor.params.includes(restParent as EsTreeNode);
+        }
+        if (isNodeOfType(patternAncestor, "VariableDeclarator")) {
+          return false;
+        }
+        patternAncestor = patternAncestor.parent ?? null;
+      }
+      return false;
+    }
+    current = current.parent ?? null;
+  }
+  return false;
+};
+
 const spreadCanOverwriteKey = (
   spreadAttribute: EsTreeNodeOfType<"JSXSpreadAttribute">,
 ): boolean => {
   const argument = spreadAttribute.argument;
+  if (isNodeOfType(argument, "Identifier") && isRestParameter(argument)) {
+    return false;
+  }
   if (!isNodeOfType(argument, "ObjectExpression")) return true;
   for (const property of argument.properties) {
     if (!isNodeOfType(property, "Property")) return true;

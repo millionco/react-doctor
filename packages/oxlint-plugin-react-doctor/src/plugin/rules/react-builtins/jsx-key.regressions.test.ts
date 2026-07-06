@@ -185,4 +185,49 @@ describe("react-builtins/jsx-key — regressions", () => {
       ));
     `);
   });
+
+  it("does not flag key before a rest parameter spread from component props", () => {
+    expectPass(`
+      const Component = ({className, ...rest}) => (
+        items.map((item) => (
+          <div key={item.id} className={className} {...rest} />
+        ))
+      );
+    `);
+  });
+
+  it("does not flag key before a rest parameter spread in arrow function", () => {
+    expectPass(`
+      const Checkboxes = ({options, ...rest}) => (
+        <div>
+          {options.map((option) => (
+            <input key={option.name} type="checkbox" {...rest} />
+          ))}
+        </div>
+      );
+    `);
+  });
+
+  it("does not flag key before a rest parameter spread in function expression", () => {
+    expectPass(`
+      const List = function({items, ...props}) {
+        return items.map((item) => <li key={item.id} {...props} />);
+      };
+    `);
+  });
+
+  it("still flags key before an arbitrary identifier spread", () => {
+    expectFail(`
+      const Component = () => {
+        const dynamicProps = {};
+        return items.map((item) => <div key={item.id} {...dynamicProps} />);
+      };
+    `);
+  });
+
+  it("still flags key before a call result spread", () => {
+    expectFail(`
+      items.map((item) => <div key={item.id} {...getProps()} />);
+    `);
+  });
 });

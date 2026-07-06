@@ -4,6 +4,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const buildMessage = (name: string): string =>
   `\`${name}\` crashes at runtime because it isn't defined here.`;
@@ -20,6 +21,51 @@ const KNOWN_GLOBALS = new Set([
   // rule needs to verify (e.g. `<this.props.tag />`).
   "this",
 ]);
+
+const MODULE_SYNTAX_TYPES = new Set<string>([
+  "ImportDeclaration",
+  "ExportNamedDeclaration",
+  "ExportDefaultDeclaration",
+  "ExportAllDeclaration",
+  "TSExportAssignment",
+]);
+
+const reactLiveScriptCache = new WeakMap<EsTreeNode, boolean>();
+
+// react-live / playground snippets (react-datepicker docs, MDX playgrounds)
+// are bare scripts — no imports or exports — that end in a top-level
+// `render(<App />)` call, with every component injected into the runtime
+// scope by the host (`LiveProvider scope={{ DatePicker, ... }}`). Module
+// scope analysis is meaningless there: everything looks undefined but
+// nothing crashes. Detect the convention (non-module file + bare top-level
+// `render(...)` call that has no in-file binding) and stay silent.
+const isReactLiveStyleScript = (programRoot: EsTreeNodeOfType<"Program">): boolean => {
+  const cached = reactLiveScriptCache.get(programRoot);
+  if (cached !== undefined) return cached;
+  let bareRenderCallee: EsTreeNode | null = null;
+  let hasModuleSyntax = false;
+  for (const statement of programRoot.body) {
+    if (MODULE_SYNTAX_TYPES.has(statement.type)) {
+      hasModuleSyntax = true;
+      break;
+    }
+    if (!isNodeOfType(statement, "ExpressionStatement")) continue;
+    const expression = stripParenExpression(statement.expression);
+    if (
+      isNodeOfType(expression, "CallExpression") &&
+      isNodeOfType(expression.callee, "Identifier") &&
+      expression.callee.name === "render"
+    ) {
+      bareRenderCallee = expression.callee;
+    }
+  }
+  const isReactLiveScript =
+    !hasModuleSyntax &&
+    bareRenderCallee !== null &&
+    findVariableInitializer(bareRenderCallee, "render") === null;
+  reactLiveScriptCache.set(programRoot, isReactLiveScript);
+  return isReactLiveScript;
+};
 
 const getRootIdentifier = (elementName: EsTreeNode): string | null => {
   if (isNodeOfType(elementName, "JSXIdentifier")) {
@@ -67,6 +113,7 @@ export const jsxNoUndef = defineRule({
       if (KNOWN_GLOBALS.has(rootIdentifier)) return;
       const programRoot = findProgramRoot(node);
       if (!programRoot) return;
+      if (isReactLiveStyleScript(programRoot)) return;
       // Scope-aware lookup first — finds bindings whose scope owner is
       // an ancestor of the JSX site (respects let/const block scoping
       // AND TS declarations like enum / type / interface / module).

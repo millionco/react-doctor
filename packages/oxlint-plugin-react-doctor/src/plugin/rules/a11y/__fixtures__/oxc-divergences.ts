@@ -15,6 +15,19 @@ export interface OxcDivergence {
 }
 
 export const DIVERGENCES: Record<string, OxcDivergence> = {
+  // control-has-associated-label: OXC inherits jsx-a11y's DOM map and
+  // treats td/th/option as interactive elements and any role=separator
+  // as a widget. Real-world verification shows these fire almost
+  // exclusively on skeleton/spacer table cells, value-only datalist
+  // options, and decorative non-focusable dividers — none of which is
+  // an operable control needing a label. Elements that opt into a real
+  // widget role (`<td role="button">`) or a focusable separator
+  // (`tabIndex`) are still flagged.
+  "control-has-associated-label": {
+    failSkips: [10, 11, 12, 27],
+    reason:
+      '`<option/>`, `<th/>`, `<td/>`, and non-focusable `role="separator"` are not operable controls; flagging them is noise on skeleton cells, datalist options, and dividers.',
+  },
   // alt-text: OXC's port has extensive aria-hidden / role / fallback
   // child-content checks. Our port handles the common img / area /
   // input[type=image] / object shapes only.
@@ -39,6 +52,16 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     failSkips: [21, 22],
     reason:
       '`<ul|ol role="list">` is the Safari/VoiceOver list-semantics-preservation idiom, exempt by default.',
+  },
+  // no-static-element-interactions: keyboard handlers on a div that has
+  // no tabIndex/contentEditable and no pointer handler only fire for
+  // events BUBBLING from focusable descendants — the composite-widget /
+  // Escape-shortcut delegation pattern (confirmed benign at scale in the
+  // verify run), not an undiscoverable control.
+  "no-static-element-interactions": {
+    failSkips: [8, 64, 65],
+    reason:
+      "Keyboard-only handlers on a non-focusable element are bubbled-event delegation, not a control needing a role.",
   },
   // role-has-required-aria-props: `<input type='checkbox' role='switch' />`
   // (failCases[14]) is the recommended native switch pattern — the input's

@@ -7,6 +7,8 @@ import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js"
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isPresentationRole } from "../../utils/is-presentation-role.js";
+import { isPureEventBlockerHandler } from "../../utils/is-pure-event-blocker-handler.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { NON_INTERACTIVE_ELEMENTS } from "../../constants/html-tags.js";
 import { INTERACTIVE_ROLES } from "../../constants/aria-roles.js";
@@ -101,13 +103,28 @@ const collectRoleBranches = (expression: EsTreeNode, out: RoleExpressionBranches
 const buildMessage = (tag: string): string =>
   `Keyboard & screen reader users can't trigger this \`<${tag}>\` because it isn't interactive, so use a button or link or add an interactive role.`;
 
-// Mouse / pointer / keyboard events that imply interaction, keyed by
-// lowercased form for a single case-insensitive pass over the attributes.
-const INTERACTIVE_HANDLERS_LOWER: ReadonlySet<string> = new Set(
-  ["onClick", "onMouseDown", "onMouseUp", "onKeyDown", "onKeyPress", "onKeyUp"].map((handlerName) =>
-    handlerName.toLowerCase(),
-  ),
+// Mouse events that imply the element itself is a pointer-interaction
+// target. Keyboard handlers (onKeyDown/onKeyPress/onKeyUp) alone don't
+// count: on a non-interactive element they only ever fire via events
+// bubbling from focusable descendants (roving-focus / Enter-and-Escape
+// delegation), so keyboard users are exactly who they serve.
+const MOUSE_HANDLERS_LOWER: ReadonlySet<string> = new Set(
+  ["onClick", "onMouseDown", "onMouseUp"].map((handlerName) => handlerName.toLowerCase()),
 );
+
+const isContentEditableTrue = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  const attribute = hasJsxPropIgnoreCase(node.attributes, "contenteditable");
+  if (!attribute) return false;
+  if (!attribute.value) return true;
+  const stringValue = getJsxPropStringValue(attribute);
+  if (stringValue !== null) return stringValue === "true" || stringValue === "";
+  const value = attribute.value as EsTreeNode;
+  return (
+    isNodeOfType(value, "JSXExpressionContainer") &&
+    isNodeOfType(value.expression as EsTreeNode, "Literal") &&
+    (value.expression as { value: unknown }).value === true
+  );
+};
 
 // Port of `oxc_linter::rules::jsx_a11y::no_noninteractive_element_interactions`.
 // Reports interactive event handlers attached to non-interactive HTML
@@ -130,17 +147,26 @@ export const noNoninteractiveElementInteractions = defineRule({
         // ARIA role, and clicking a label forwards activation to its nested
         // keyboard-accessible input.
         if (tag === "label") return;
-        let hasHandler = false;
+        // Pure event-blocker handlers (`onClick={(e) => e.stopPropagation()}`,
+        // the modal-content shield idiom) don't make the element an
+        // interaction target, so they don't count.
+        let hasActionableMouseHandler = false;
         for (const attribute of node.attributes) {
           if (!isNodeOfType(attribute, "JSXAttribute")) continue;
           const attributeName = getJsxAttributeName(attribute.name);
-          if (attributeName && INTERACTIVE_HANDLERS_LOWER.has(attributeName.toLowerCase())) {
-            hasHandler = true;
-            break;
-          }
+          if (!attributeName || !MOUSE_HANDLERS_LOWER.has(attributeName.toLowerCase())) continue;
+          if (isPureEventBlockerHandler(attribute)) continue;
+          hasActionableMouseHandler = true;
+          break;
         }
-        if (!hasHandler) return;
+        if (!hasActionableMouseHandler) return;
         if (isHiddenFromScreenReader(node, context.settings)) return;
+        // Upstream jsx-a11y parity: `role="presentation"`/`"none"` is an
+        // intentional signal that the element is not meant to be
+        // perceivable (delegation wrappers in composite widgets), and
+        // contentEditable elements are keyboard-editable already.
+        if (isPresentationRole(node)) return;
+        if (isContentEditableTrue(node)) return;
         const roleAttr = hasJsxPropIgnoreCase(node.attributes, "role");
         if (roleAttr) {
           const role = getJsxPropStringValue(roleAttr);
@@ -162,13 +188,28 @@ export const noNoninteractiveElementInteractions = defineRule({
               hasOpaqueBranch: false,
             };
             collectRoleBranches(roleValue.expression as EsTreeNode, branches);
-            const everyBranchIsInteractiveRole =
+            const everyStringBranchIsInteractiveRole =
               branches.stringValues.length > 0 &&
-              !branches.hasNonRoleBranch &&
-              !branches.hasOpaqueBranch &&
               branches.stringValues.every((branch) => INTERACTIVE_ROLES.has(branch));
-            if (everyBranchIsInteractiveRole) return;
+            if (
+              everyStringBranchIsInteractiveRole &&
+              !branches.hasNonRoleBranch &&
+              !branches.hasOpaqueBranch
+            ) {
+              return;
+            }
             if (branches.stringValues.length === 0 && !branches.hasNonRoleBranch) return;
+            // Conditional interactivity: `role={x ? "button" : undefined}`
+            // alongside a tabIndex means the element toggles between a
+            // proper widget and an inert item — the role-less branch is
+            // the state where the handler does nothing.
+            if (
+              everyStringBranchIsInteractiveRole &&
+              branches.hasNonRoleBranch &&
+              hasJsxPropIgnoreCase(node.attributes, "tabindex")
+            ) {
+              return;
+            }
           }
         }
         context.report({ node: node.name, message: buildMessage(tag) });

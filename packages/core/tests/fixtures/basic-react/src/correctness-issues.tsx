@@ -18,14 +18,15 @@ const ConditionalRenderBug = ({ items }: { items: string[] }) => (
   </div>
 );
 
-const PreventDefaultForm = () => (
-  <form
-    onSubmit={(event) => {
+const PreventDefaultLink = () => (
+  <a
+    href="#"
+    onClick={(event) => {
       event.preventDefault();
     }}
   >
-    <button type="submit">Submit</button>
-  </form>
+    Next
+  </a>
 );
 
-export { IndexKeyList, ConditionalRenderBug, PreventDefaultForm };
+export { IndexKeyList, ConditionalRenderBug, PreventDefaultLink };

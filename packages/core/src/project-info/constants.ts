@@ -38,6 +38,14 @@ export const MINIFIED_MIN_SIZE_BYTES = 20_000;
 
 export const GIT_LS_FILES_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
 
+// Hidden (dot-)directories are excluded from source discovery by default:
+// they hold tool state and agent/editor tooling (`.codex`, `.claude`,
+// `.cursor`, `.agents`, `.vscode`, `.github`, …) whose scripts are not app
+// code — scanning them surfaces noise like `no-console` on Node CLI
+// helpers. These are the deliberate exceptions: dot-directories that hold
+// real React source (docs frameworks, Storybook config components).
+export const SCANNED_DOT_DIRECTORIES = new Set([".dumi", ".storybook"]);
+
 export const IGNORED_DIRECTORIES = new Set([
   ".angular",
   ".astro",

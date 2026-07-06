@@ -22,7 +22,7 @@ const USER_CONFIG = {
   },
 } as const;
 
-const BARREL_INDEX = "export { Button } from './Button';\n";
+const BARREL_INDEX = "export { Button } from './Button';\nexport { Card } from './Card';\n";
 const NON_BARREL_INDEX = "export const Button = () => null;\n";
 const APP_SOURCE = `import { Button } from "./components";
 export const App = () => {
@@ -43,6 +43,7 @@ const setupFixture = (caseId: string, indexSource: string): string => {
   const projectDir = setupReactProject(tempRoot, caseId, {
     files: {
       "src/components/Button.tsx": "export const Button = () => null;\n",
+      "src/components/Card.tsx": "export const Card = () => null;\n",
       "src/components/index.ts": indexSource,
       "src/App.tsx": APP_SOURCE,
       "src/clean.tsx": "export const Clean = () => <div>ok</div>;\n",

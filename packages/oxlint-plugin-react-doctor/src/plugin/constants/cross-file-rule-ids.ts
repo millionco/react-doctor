@@ -13,10 +13,15 @@
 //     `no-mutating-reducer-state`, and `rn-no-raw-text`, which resolves an
 //     imported component to see whether it forwards its children into a
 //     `<Text>` or a non-text host).
-//   - Project-config readers — `rn-prefer-expo-image` classifies the owning
-//     package by reading the nearest `package.json`. That input is not folded
-//     into the ruleset hash, so it is carved here too (conservative, and only
-//     active on React Native / Expo projects).
+//   - Project-config readers — these classify the owning package by reading
+//     the nearest `package.json`. That input is not folded into the ruleset
+//     hash, so they are carved here too. `rn-prefer-expo-image` reads the
+//     package-platform classification; `no-dynamic-import-path` and
+//     `no-full-lodash-import` read the manifest's `bin` field
+//     (`is-inside-node-cli-package.ts`); `prefer-dynamic-import` reads the
+//     publishable-library shape (`is-published-library-package.ts`);
+//     `rendering-hydration-mismatch-time` reads the package-platform
+//     classification to skip React Native files.
 //
 // `cross-file-rule-ids.test.ts` reproduces the transitive import-graph
 // analysis and fails if a rule reaching a cross-file primitive is missing from
@@ -27,7 +32,11 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "no-barrel-import",
   "nextjs-missing-metadata",
   "nextjs-no-use-search-params-without-suspense",
+  "no-dynamic-import-path",
+  "no-full-lodash-import",
   "no-mutating-reducer-state",
+  "prefer-dynamic-import",
+  "rendering-hydration-mismatch-time",
   "rn-no-raw-text",
   "rn-prefer-expo-image",
 ]);

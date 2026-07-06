@@ -433,7 +433,7 @@ describe("async-defer-await", () => {
     expect(hits).toHaveLength(3);
   });
 
-  it("flags bare-await statements when followed by an unrelated guard", async () => {
+  it("stays silent on bare side-effect awaits followed by an unrelated guard", async () => {
     const projectDir = setupReactProject(tempRoot, "async-defer-await-bare-await", {
       files: {
         "src/flush.ts": `
@@ -450,7 +450,7 @@ describe("async-defer-await", () => {
     });
 
     const hits = await collectRuleHits(projectDir, "async-defer-await");
-    expect(hits).toHaveLength(1);
+    expect(hits).toHaveLength(0);
   });
 
   it("flags the earliest of multiple consecutive awaits before an unrelated guard", async () => {

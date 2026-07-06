@@ -380,3 +380,213 @@ describe("no-initialize-state — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+// Verify-run FP clusters (118-case dossier): same-value re-writes of the
+// useState initializer, helper-function indirection hiding measurement /
+// async-only writes, and destructured layout reads.
+describe("no-initialize-state — same-value re-writes of the initializer stay quiet", () => {
+  it("stays silent when the effect re-sets the exact useState identifier", () => {
+    const result = runRule(
+      noInitializeState,
+      `function Field({ initialValue }) {
+        const [value, setValue] = useState(initialValue ?? '');
+        useEffect(() => {
+          if (initialValue) {
+            setValue(initialValue);
+          }
+        }, []);
+        return <input value={value} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the effect re-sets the same literal the state starts as", () => {
+    const result = runRule(
+      noInitializeState,
+      `function Avatar() {
+        const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
+        useEffect(() => {
+          setAvatarLoadFailed(false);
+        }, []);
+        return <img data-failed={avatarLoadFailed} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a subscribe-then-resync re-reading the initializer source", () => {
+    const result = runRule(
+      noInitializeState,
+      `function ConnectionBadge({ socket }) {
+        const [connected, setConnected] = useState(socket.connected);
+        useEffect(() => {
+          setConnected(socket.connected);
+          socket.on('connect', () => setConnected(true));
+          return () => socket.off('connect');
+        }, []);
+        return <span>{String(connected)}</span>;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a mount effect writes undefined into argless useState", () => {
+    const result = runRule(
+      noInitializeState,
+      `function Popup({ getContainer }) {
+        const [minHeight, setMinHeight] = useState();
+        useEffect(() => {
+          if (!getContainer) {
+            setMinHeight(undefined);
+          }
+        }, []);
+        return <div style={{ minHeight }} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a mount write whose value differs from the initializer", () => {
+    const result = runRule(
+      noInitializeState,
+      `function C() {
+        const [count, setCount] = useState(0);
+        useEffect(() => {
+          setCount(42);
+        }, []);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("no-initialize-state — helper-function indirection", () => {
+  // freecut compact-navigator: the mount effect calls an effect-local
+  // helper that measures a ref'd element; ResizeObserver re-invokes it.
+  it("stays silent when a helper invoked at mount writes a DOM measurement", () => {
+    const result = runRule(
+      noInitializeState,
+      `function CompactNavigator() {
+        const trackRef = useRef(null);
+        const [trackWidth, setTrackWidth] = useState(0);
+        useEffect(() => {
+          const track = trackRef.current;
+          if (!track) return;
+          const updateWidth = () => {
+            setTrackWidth(track.clientWidth);
+          };
+          updateWidth();
+          const observer = new ResizeObserver(updateWidth);
+          observer.observe(track);
+          return () => observer.disconnect();
+        }, []);
+        return <div ref={trackRef} style={{ width: trackWidth }} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // internxt UsageBar: listener() measures via getBoundingClientRect.
+  it("stays silent when a mount-invoked listener measures getBoundingClientRect", () => {
+    const result = runRule(
+      noInitializeState,
+      `function UsageBar() {
+        const barRef = useRef(null);
+        const [barWidth, setBarWidth] = useState(0);
+        useEffect(() => {
+          const bar = barRef.current;
+          if (bar) {
+            const listener = () => {
+              setBarWidth(bar.getBoundingClientRect().width);
+            };
+            bar.addEventListener('resize', listener);
+            listener();
+            return () => bar.removeEventListener('resize', listener);
+          }
+        }, []);
+        return <div ref={barRef} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // Async data loading through a component-body helper: the setter only
+  // runs in the fetch continuation, so nothing is hoistable to useState.
+  it("stays silent when the mount-invoked helper only sets state after a fetch", () => {
+    const result = runRule(
+      noInitializeState,
+      `function Backends() {
+        const [regenInfo, setRegenInfo] = useState(null);
+        const reloadBackends = () => {
+          fetchAvailability().then((availability) => {
+            setRegenInfo(availability);
+          });
+        };
+        useEffect(() => {
+          reloadBackends();
+        }, []);
+        return <div>{regenInfo}</div>;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a helper that synchronously writes a hoistable literal", () => {
+    const result = runRule(
+      noInitializeState,
+      `function C() {
+        const [count, setCount] = useState(0);
+        useEffect(() => {
+          const applyDefault = () => {
+            setCount(42);
+          };
+          applyDefault();
+        }, []);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+describe("no-initialize-state — destructured layout reads", () => {
+  // catho quantum Breadcrumbs: measurement properties destructured off a
+  // ref's `.current` before feeding the setter.
+  it("stays silent when the setter argument uses destructured ref measurements", () => {
+    const result = runRule(
+      noInitializeState,
+      `function Breadcrumbs({ items }) {
+        const breadcrumbsItemsEl = useRef(null);
+        const [collapsed, setCollapsed] = useState(false);
+        useEffect(() => {
+          if (items.length > 2 && breadcrumbsItemsEl.current) {
+            const { scrollWidth, clientWidth } = breadcrumbsItemsEl.current;
+            setCollapsed(clientWidth < scrollWidth);
+          }
+        }, []);
+        return <nav ref={breadcrumbsItemsEl} data-collapsed={collapsed} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+});

@@ -1,8 +1,11 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
+import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
@@ -87,6 +90,48 @@ const isFalseAttributeValue = (value: EsTreeNode): boolean => {
   return false;
 };
 
+// An element marked as a modal dialog: `aria-modal`, the native
+// `<dialog>` tag, or a `role` of dialog/alertdialog. Kept deliberately
+// to EXPLICIT dialog semantics — broader signals (component names like
+// `*Modal`, conditional rendering, popover/menu roles) all traded true
+// positives near 1:1 in the verify corpus.
+const MODAL_DIALOG_ROLES: ReadonlySet<string> = new Set(["dialog", "alertdialog"]);
+
+const isModalDialogElement = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  settings: Readonly<Record<string, unknown>> | undefined,
+): boolean => {
+  if (flattenJsxName(openingElement.name as EsTreeNode) === "dialog") return true;
+  if (hasJsxPropIgnoreCase(openingElement.attributes, "aria-modal")) return true;
+  const roleAttribute = hasJsxPropIgnoreCase(openingElement.attributes, "role");
+  if (roleAttribute) {
+    const roleValue = getJsxPropStringValue(roleAttribute);
+    if (roleValue && MODAL_DIALOG_ROLES.has(roleValue.toLowerCase())) return true;
+  }
+  return getElementType(openingElement, settings) === "dialog";
+};
+
+// Moving focus into a just-opened modal dialog is the WAI-ARIA APG
+// recommendation ("focus moves to an element inside the dialog"), not
+// an on-load focus steal — dialogs only mount in response to a user
+// action, so `autoFocus` there is correct focus management.
+const isInsideModalDialog = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  settings: Readonly<Record<string, unknown>> | undefined,
+): boolean => {
+  let current: EsTreeNode | null | undefined = node.parent;
+  while (current) {
+    if (
+      isNodeOfType(current, "JSXElement") &&
+      isModalDialogElement(current.openingElement, settings)
+    ) {
+      return true;
+    }
+    current = current.parent ?? null;
+  }
+  return false;
+};
+
 // Port of `oxc_linter::rules::jsx_a11y::no_autofocus`. Reports any
 // case-sensitive `autoFocus=` attribute on JSX elements whose value
 // isn't statically `false`. With `ignoreNonDOM: true`, only HTML
@@ -121,6 +166,7 @@ export const noAutofocus = defineRule({
           const tag = getElementType(node, context.settings);
           if (!HTML_TAGS.has(tag)) return;
         }
+        if (isInsideModalDialog(node, context.settings)) return;
         context.report({ node: autoFocusAttribute as EsTreeNode, message: MESSAGE });
       },
     };

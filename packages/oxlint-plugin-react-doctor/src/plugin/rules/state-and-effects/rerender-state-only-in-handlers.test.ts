@@ -58,7 +58,7 @@ describe("rerender-state-only-in-handlers", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags state echoed in an effect dep array when the effect reads its payload", () => {
+  it("does not flag state read by an effect that lists it in deps (the re-render drives the effect)", () => {
     const result = runRule(
       rerenderStateOnlyInHandlers,
       `
@@ -73,8 +73,25 @@ describe("rerender-state-only-in-handlers", () => {
     `,
     );
 
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags state that a dep-listing effect synchronously writes back (self-echo loop)", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `
+      function Widget({ value }) {
+        const [copied, setCopied] = useState(value);
+        useEffect(() => {
+          if (copied !== value) setCopied(value);
+        }, [copied, value]);
+        return <button onClick={() => setCopied(null)}>reset</button>;
+      }
+    `,
+    );
+
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("dirty");
+    expect(result.diagnostics[0].message).toContain("copied");
   });
 
   it("does not flag a guard-only effect dep when a same-named local shadows it elsewhere in the effect", () => {
@@ -114,7 +131,7 @@ describe("rerender-state-only-in-handlers", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags a payload-read effect dep when a nested helper shadows its name", () => {
+  it("does not flag a payload-read effect dep even when a nested helper shadows its name", () => {
     const result = runRule(
       rerenderStateOnlyInHandlers,
       `
@@ -130,7 +147,6 @@ describe("rerender-state-only-in-handlers", () => {
     `,
     );
 
-    expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("count");
+    expect(result.diagnostics).toEqual([]);
   });
 });

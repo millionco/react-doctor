@@ -222,7 +222,14 @@ const computeExternallyDriven = (
   for (const setterReference of setterVariable.references) {
     const identifier = setterReference.identifier as unknown as EsTreeNode;
     const parent = parentOf(identifier);
-    if (!parent || !isNodeOfType(parent, "CallExpression")) continue;
+    if (!parent) continue;
+    // `load(id).then(setValue)` / `emitter.on('x', setValue)` — the setter
+    // handed BY REFERENCE to a deferring API is a deferred call site too.
+    if (isDeferredCallbackPosition(identifier)) {
+      hasDeferredCallSite = true;
+      continue;
+    }
+    if (!isNodeOfType(parent, "CallExpression")) continue;
     if (parent.callee !== (identifier as unknown)) continue;
     if (!isInsideDeferredCallback(analysis, parent, declarator)) return false;
     hasDeferredCallSite = true;

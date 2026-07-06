@@ -144,6 +144,175 @@ describe("no-pass-data-to-parent — regressions", () => {
     });
   });
 
+  describe("local utilities misidentified as parent callbacks (verification run)", () => {
+    it("stays silent on setValue destructured from useForm (hyperdx DBDashboardImportPage)", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function ImportPage({ initialConfig }) {
+          const { setValue, watch } = useForm({ defaultValues: initialConfig });
+          const source = watch('source');
+          useEffect(() => {
+            if (source) {
+              setValue('table', source.table);
+              setValue('where', '');
+            }
+          }, [source]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on a setter returned by a sibling hook (jumper MultiSelect)", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const MultiSelect = ({ selected }) => {
+          const { setValue, value } = useSelect({ initial: selected });
+          useEffect(() => {
+            setValue(selected);
+          }, [selected]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on a local wrapper that calls a prop internally (jumper useTransactionFlow)", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function Flow({ onSuccess }) {
+          const [step, setStep] = useState(0);
+          const executeAction = useCallback(async () => {
+            const result = await run(step);
+            onSuccess?.(result);
+          }, [step, onSuccess]);
+          useEffect(() => {
+            executeAction();
+          }, [step]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on a useState setter seeded from a prop (cloudscape pagination)", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function Pagination({ currentPageIndex }) {
+          const [jumpToPageValue, setJumpToPageValue] = useState(currentPageIndex);
+          const [dirty, setDirty] = useState(false);
+          useEffect(() => {
+            setJumpToPageValue(computeJump(dirty));
+          }, [dirty]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+  });
+
+  describe("registration / subscription and external instances (verification run)", () => {
+    it("stays silent on sensor subscription with a concise-body cleanup (lightbox usePointerEvents)", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `export function usePointerEvents(subscribeSensors, onPointerDown, onPointerMove, onPointerUp, disabled) {
+          React.useEffect(
+            () =>
+              !disabled
+                ? cleanup(
+                    subscribeSensors(EVENT_ON_POINTER_DOWN, onPointerDown),
+                    subscribeSensors(EVENT_ON_POINTER_MOVE, onPointerMove),
+                    subscribeSensors(EVENT_ON_POINTER_UP, onPointerUp),
+                  )
+                : () => {},
+            [subscribeSensors, onPointerDown, onPointerMove, onPointerUp, disabled],
+          );
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on registration of a prop key plus a local callback (data flows down)", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function Field({ register, name }) {
+          const validate = useCallback(() => true, []);
+          useEffect(() => {
+            register(name, validate);
+          }, [register, name]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on method calls on a positional custom-hook parameter (aws graph-explorer cy.batch)", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `export function useRunLayout(cy, layoutName, nodes) {
+          useEffect(() => {
+            cy.batch(() => {
+              nodes.forEach((n) => n.lock());
+            });
+          }, [cy, layoutName]);
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on redux fetch-dispatch props (jaeger ServicesView)", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function ServicesView({ fetchAllServiceMetrics, selectedService }) {
+          const [range, setRange] = useState(null);
+          useEffect(() => {
+            fetchAllServiceMetrics(selectedService, range);
+          }, [selectedService, range]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+  });
+
+  it("still flags a custom-hook callback parameter receiving hook data", () => {
+    const result = runRule(
+      noPassDataToParent,
+      `function useThing(onResult) {
+        const value = useSomeAPI();
+        useEffect(() => {
+          onResult(value);
+        }, [value]);
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a prop alias destructured from the props object", () => {
+    const result = runRule(
+      noPassDataToParent,
+      `const Child = (props) => {
+        const { onChange } = props;
+        const computed = useSomeAPI();
+        useEffect(() => {
+          onChange(computed);
+        }, [onChange, computed]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags handing hook-fetched data back to the parent", () => {
     const result = runRule(
       noPassDataToParent,

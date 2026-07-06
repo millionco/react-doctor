@@ -432,4 +432,363 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // Cloudscape's use-split-panel-focus-control: a const object whose
+  // properties are useRef() calls holds the SAME ref objects every
+  // render, so `refs.slider` etc. can never be stale.
+  it("does not flag member paths into a const object of useRef calls", () => {
+    const code = `
+      function useSplitPanelFocusControl(dependencies) {
+        const refs = {
+          toggle: useRef(null),
+          slider: useRef(null),
+          preferences: useRef(null),
+        };
+        const lastInteraction = useRef(null);
+        useEffect(() => {
+          switch (lastInteraction.current?.type) {
+            case 'open':
+              refs.slider.current?.focus();
+              break;
+            case 'close':
+              refs.toggle.current?.focus();
+              break;
+            default:
+              refs.preferences.current?.focus();
+          }
+          lastInteraction.current = null;
+        }, dependencies);
+        return refs;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a non-ref property read from a per-render object literal", () => {
+    const code = `
+      function MyComponent({ value }) {
+        const container = { data: value, ref: useRef(null) };
+        useEffect(() => {
+          console.log(container.data);
+        }, []);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("container.data");
+  });
+
+  // Stable-identity wrapper hooks (ahooks useMemoizedFn, MUI
+  // useEventCallback, useStableCallback, …) return a callback whose
+  // identity never changes and which always invokes the latest closure.
+  it("does not flag a useMemoizedFn handler omitted from effect deps", () => {
+    const code = `
+      import { useMemoizedFn } from 'ahooks';
+      function NativeInput(props) {
+        const inputRef = useRef(null);
+        const handleClick = useMemoizedFn((event) => {
+          props.onChange(event.target.checked);
+        });
+        useEffect(() => {
+          const input = inputRef.current;
+          if (!input) return;
+          input.addEventListener('click', handleClick);
+          return () => {
+            input.removeEventListener('click', handleClick);
+          };
+        }, [props.disabled]);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).not.toContain("handleClick");
+  });
+
+  it("does not flag a useStableCallback prop omitted from effect deps", () => {
+    const code = `
+      function useAppLayout({ onToggle }) {
+        const onNavigationToggle = useStableCallback(onToggle);
+        useEffect(() => {
+          onNavigationToggle(false);
+        }, []);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).not.toContain("onNavigationToggle");
+  });
+
+  // `useCallback(fn, [])` returns the same function forever — omitting
+  // it from another hook's deps cannot produce a stale value. Staleness
+  // inside the frozen closure is reported at its own definition.
+  it("does not flag a useCallback with empty deps omitted from effect deps", () => {
+    const code = `
+      function CustomSelect({ open, portal }) {
+        const buttonRef = useRef(null);
+        const [position, setPosition] = useState(null);
+        const updatePosition = useCallback(() => {
+          if (!buttonRef.current) return;
+          setPosition(buttonRef.current.getBoundingClientRect());
+        }, []);
+        useEffect(() => {
+          if (!portal) return;
+          if (open) updatePosition();
+        }, [open, portal]);
+        return position;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).not.toContain("updatePosition");
+  });
+
+  it("still flags a useCallback with reactive deps omitted from effect deps", () => {
+    const code = `
+      function MyComponent({ query }) {
+        const search = useCallback(() => {
+          fetch(query);
+        }, [query]);
+        useEffect(() => {
+          search();
+        }, []);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("search");
+  });
+
+  it("does not flag a useCallback whose deps are all stable omitted from effect deps", () => {
+    const code = `
+      function Legend({ items }) {
+        const [filterMode, setFilterMode] = useState(false);
+        const onExitFilterMode = useCallback(() => {
+          setFilterMode(false);
+        }, [setFilterMode]);
+        useEffect(() => {
+          onExitFilterMode();
+        }, [items]);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).not.toContain("onExitFilterMode");
+  });
+
+  // A module-scope value listed in deps AND read by the callback is
+  // redundant (it never changes), but the report must not claim the
+  // callback "never uses it".
+  it("describes a used module-scope dep accurately instead of claiming it is unused", () => {
+    const code = `
+      import { navigate } from './router';
+      function MyComponent({ id }) {
+        const handleNewConversation = useCallback(() => {
+          navigate('/conversations/' + id);
+        }, [id, navigate]);
+        return handleNewConversation;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).not.toContain("never uses it");
+    expect(messages).toContain("defined outside the component");
+  });
+
+  it("still claims unused for a dep the callback genuinely never reads", () => {
+    const code = `
+      function MyComponent({ label, unusedProp }) {
+        const format = useCallback(() => {
+          return label.trim();
+        }, [label, unusedProp]);
+        return format;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("never uses it");
+  });
+
+  // Reusable hooks that mirror useEffect's API forward the caller's
+  // deps list (a DependencyList parameter) straight through — the
+  // caller owns that array, so there is nothing to statically verify.
+  it("does not flag a deps list forwarded from a function parameter", () => {
+    const code = `
+      function useDebounceEffect(effect, deps, delay) {
+        const effectRef = useRef(effect);
+        effectRef.current = effect;
+        useEffect(() => {
+          const timeout = setTimeout(() => effectRef.current(), delay);
+          return () => clearTimeout(timeout);
+        }, deps);
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).not.toContain("isn't an inline array");
+  });
+
+  it("still flags a non-array deps list built from a local variable", () => {
+    const code = `
+      function MyComponent() {
+        const dependencies = [];
+        useEffect(() => {}, dependencies);
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("isn't an inline array");
+  });
+
+  it("does not flag a spread of a caller-supplied deps parameter", () => {
+    const code = `
+      function useClientSliceInfiniteScroll({ pageSize }, resetDeps) {
+        const [visibleCount, setVisibleCount] = useState(pageSize);
+        useEffect(() => {
+          setVisibleCount(pageSize);
+        }, [pageSize, ...resetDeps]);
+        return visibleCount;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).not.toContain("A spread");
+  });
+
+  it("still flags a spread of a local array in deps", () => {
+    const code = `
+      function MyComponent() {
+        const local = {};
+        const dependencies = [local];
+        useEffect(() => {
+          console.log(local);
+        }, [...dependencies]);
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("A spread");
+  });
+
+  // A module-scope callback (usually an import) cannot close over
+  // render-scoped values, so passing it by name is safe.
+  it("does not flag a module-scope imported function passed as the callback", () => {
+    const code = `
+      import { subscribeCommands } from './commands';
+      function Builder() {
+        useEffect(subscribeCommands, []);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a prop function passed as the callback", () => {
+    const code = `
+      function MyComponent({ myEffect }) {
+        useEffect(myEffect, []);
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("defined elsewhere");
+  });
+
+  // A ref seeded with a real value is a mutable data cell, not a handle to
+  // a React-rendered DOM node — the "wrong node" cleanup warning doesn't apply.
+  it("does not flag cleanup reads of a ref seeded with a data value", () => {
+    const code = `
+      function TabBar() {
+        const timeouts = useRef(new Set());
+        useEffect(() => {
+          return () => {
+            for (const timeoutId of timeouts.current) clearTimeout(timeoutId);
+            timeouts.current.clear();
+          };
+        }, []);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).not.toContain("cleanup");
+  });
+
+  it("does not flag cleanup mutation of a counter ref via ++/--", () => {
+    const code = `
+      function InternalButton({ loading, loadingButtonCount }) {
+        useEffect(() => {
+          if (loading) {
+            loadingButtonCount.current++;
+            return () => {
+              loadingButtonCount.current--;
+            };
+          }
+        }, [loading, loadingButtonCount]);
+        return null;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).not.toContain("cleanup");
+  });
+
+  it("still flags cleanup reads of an unseeded DOM ref", () => {
+    const code = `
+      function MyComponent() {
+        const myRef = useRef();
+        useEffect(() => {
+          const handleMove = () => {};
+          myRef.current.addEventListener('mousemove', handleMove);
+          return () => myRef.current.removeEventListener('mousemove', handleMove);
+        }, []);
+        return <div ref={myRef} />;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("cleanup");
+  });
+
+  it("still flags cleanup reads of a ref seeded with null", () => {
+    const code = `
+      function MyComponent() {
+        const myRef = useRef(null);
+        useEffect(() => {
+          const handleMove = () => {};
+          myRef.current.addEventListener('mousemove', handleMove);
+          return () => myRef.current.removeEventListener('mousemove', handleMove);
+        }, []);
+        return <div ref={myRef} />;
+      }
+    `;
+    const result = runRule(exhaustiveDeps, code);
+    expect(result.parseErrors).toEqual([]);
+    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    expect(messages).toContain("cleanup");
+  });
 });

@@ -16,6 +16,26 @@ export interface OxcDivergence {
 }
 
 export const DIVERGENCES: Record<string, OxcDivergence> = {
+  "no-unknown-property": {
+    // fp-review: 1110 unique false positives vs 28 true positives (1%
+    // precision) drove three narrowings, each encoded by a fixture:
+    // (1) fail[2] (`<div abc="…"/>`) — since React 16, unknown
+    //     all-lowercase attributes are rendered to the DOM verbatim
+    //     (Electron `<webview partition>`, `<iframe credentialless>`,
+    //     library hooks like `frimousse-list`), so "React ignores this
+    //     prop" is false. Only names with a known camel form, uppercase
+    //     chars, or malformed `aria-*`/`data-*` still report.
+    // (2) fail[19-20] (`<div onLoad/>`, `<div onAbort … onError/>`) —
+    //     React attaches synthetic events to any host element; the
+    //     per-tag whitelist only applies to non-event attributes.
+    // (3) fail[38] (`<t onChñnge/>`) — lowercase intrinsics that aren't
+    //     real HTML/SVG tags (react-three-fiber `<mesh>`, `<webview>`)
+    //     are custom-reconciler elements, not DOM elements, and are
+    //     skipped entirely.
+    failSkips: [2, 19, 20, 38],
+    reason:
+      "Intentional: skip verbatim-rendered lowercase attrs, tag-restricted event handlers, and non-HTML/SVG lowercase intrinsics (R3F-style FPs).",
+  },
   "no-find-dom-node": {
     // OXC flags a bare `findDOMNode(...)` purely by name. A locally
     // defined `function findDOMNode(...)` (or any same-name helper) is

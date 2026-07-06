@@ -30,6 +30,7 @@ import {
   buildMissingCallbackMessage,
   buildMissingDepArrayMessage,
   buildMissingDepMessage,
+  buildModuleScopeDepMessage,
   buildNonArrayDepsMessage,
   buildRefCleanupMessage,
   buildRefCurrentDepMessage,
@@ -43,6 +44,7 @@ import { resolveExhaustiveDepsSettings } from "./exhaustive-deps-settings.js";
 import {
   getFunctionValueNode,
   isRecursiveInitializerCapture,
+  isStableRefContainerCapture,
   symbolHasStableHookOrigin,
   symbolHasStableValue,
   symbolHasUseEffectEventOrigin,
@@ -321,6 +323,10 @@ interface CaptureCollection {
   // These are valid-but-redundant deps — flagging them as unnecessary
   // would diverge from upstream's policy.
   stableCapturedNames: Set<string>;
+  // Module-scope bindings the callback actually reads. Listing one in
+  // deps is still redundant (upstream policy), but the report must not
+  // claim the callback "never uses it".
+  moduleScopeCapturedNames: Set<string>;
 }
 
 // Walks captures grouping by "dep key" (the canonical name of the
@@ -328,6 +334,7 @@ interface CaptureCollection {
 const collectCaptureDepKeys = (callback: EsTreeNode, scopes: ScopeAnalysis): CaptureCollection => {
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
+  const moduleScopeCapturedNames = new Set<string>();
   const componentOrHookFunction = findEnclosingComponentOrHookFunction(callback);
   const componentOrHookScope = componentOrHookFunction
     ? scopes.ownScopeFor(componentOrHookFunction)
@@ -346,10 +353,17 @@ const collectCaptureDepKeys = (callback: EsTreeNode, scopes: ScopeAnalysis): Cap
     // (especially imports) can technically be mutated externally —
     // upstream still flags them as unnecessary if the user lists them
     // in deps.
-    if (isOutsideAllFunctions(symbol)) continue;
+    if (isOutsideAllFunctions(symbol)) {
+      moduleScopeCapturedNames.add(symbol.name);
+      continue;
+    }
     if (componentOrHookScope && !isDescendantScope(symbol.scope, componentOrHookScope)) continue;
     const depKey = computeDepKey(reference);
     if (!depKey) continue;
+    if (isStableRefContainerCapture(symbol, depKey)) {
+      stableCapturedNames.add(depKey);
+      continue;
+    }
     keys.add(depKey);
   }
   // Parameter default values and computed destructuring keys are now
@@ -359,7 +373,7 @@ const collectCaptureDepKeys = (callback: EsTreeNode, scopes: ScopeAnalysis): Cap
   // param walk used to live here and added every default-value name
   // unconditionally — which mis-reported module constants like
   // `(opts = SOME_CONST) => …` as missing deps.
-  return { keys, stableCapturedNames };
+  return { keys, stableCapturedNames, moduleScopeCapturedNames };
 };
 
 const isLiteralOrEmptyTemplate = (node: EsTreeNode): boolean =>
@@ -631,8 +645,37 @@ const hasRefCurrentAssignmentInComponent = (refSymbol: SymbolDescriptor | null):
     ) {
       return true;
     }
+    // `ref.current++` / `ref.current--` marks a mutable counter ref the
+    // component owns, not a React-managed DOM node.
+    if (
+      assignmentParent &&
+      isNodeOfType(assignmentParent, "UpdateExpression") &&
+      assignmentParent.argument === memberParent
+    ) {
+      return true;
+    }
   }
   return false;
+};
+
+// A ref seeded with a real value (`useRef(new Set())`, `useRef(0)`,
+// `useRef({ timer: null })`) is a mutable data cell, not a handle to a
+// React-rendered DOM node — the "cleanup may read the wrong node"
+// warning doesn't apply. `useRef()` / `useRef(null)` stay eligible:
+// that's the DOM-ref idiom the warning exists for.
+const isSeededDataRefSymbol = (refSymbol: SymbolDescriptor | null): boolean => {
+  if (!refSymbol) return false;
+  const initializer = refSymbol.initializer ? unwrapExpression(refSymbol.initializer) : null;
+  if (!initializer || !isNodeOfType(initializer, "CallExpression")) return false;
+  if (getHookName(initializer.callee) !== "useRef") return false;
+  const firstArgument = initializer.arguments[0];
+  if (!firstArgument || !isAstNode(firstArgument)) return false;
+  const strippedArgument = unwrapExpression(firstArgument);
+  if (isNodeOfType(strippedArgument, "Literal") && strippedArgument.value === null) return false;
+  if (isNodeOfType(strippedArgument, "Identifier") && strippedArgument.name === "undefined") {
+    return false;
+  }
+  return true;
 };
 
 const hasRefCurrentAssignment = (callback: EsTreeNode, refCurrentName: string): boolean => {
@@ -802,6 +845,10 @@ If the missing value is recreated every render, move it inside the hook or stabi
           const functionValueNode = callbackSymbol ? getFunctionValueNode(callbackSymbol) : null;
           if (functionValueNode) {
             callbackToAnalyze = functionValueNode;
+          } else if (callbackSymbol && isOutsideAllFunctions(callbackSymbol) && depsArgumentRaw) {
+            // A module-scope callback (usually an import) cannot close
+            // over render-scoped values, so nothing in it can be stale.
+            return;
           } else if (
             callbackSymbol?.initializer &&
             isNodeOfType(unwrapExpression(callbackSymbol.initializer), "CallExpression")
@@ -860,7 +907,8 @@ If the missing value is recreated every render, move it inside the hook or stabi
             refCurrentInCleanup &&
             shouldCheckRefCleanup &&
             !hasRefCurrentAssignment(callbackToAnalyze, refCurrentInCleanup.refCurrentName) &&
-            !hasRefCurrentAssignmentInComponent(refCurrentInCleanup.refSymbol)
+            !hasRefCurrentAssignmentInComponent(refCurrentInCleanup.refSymbol) &&
+            !isSeededDataRefSymbol(refCurrentInCleanup.refSymbol)
           ) {
             context.report({
               node: callbackToAnalyze,
@@ -917,6 +965,14 @@ If the missing value is recreated every render, move it inside the hook or stabi
         }
 
         if (!isNodeOfType(depsArgument, "ArrayExpression")) {
+          // A deps list forwarded from a function parameter is the
+          // documented API of reusable custom hooks (`useCustomEffect(cb,
+          // deps)` mirrors useEffect's own contract) — the caller owns
+          // the array, so there is nothing to verify here.
+          const depsSymbol = isNodeOfType(depsArgument, "Identifier")
+            ? context.scopes.symbolFor(depsArgument)
+            : null;
+          if (depsSymbol?.kind === "parameter") return;
           context.report({ node: depsArgument, message: buildNonArrayDepsMessage(hookName) });
           const nonArrayCaptureKeys =
             callbackToAnalyze !== null
@@ -933,10 +989,11 @@ If the missing value is recreated every render, move it inside the hook or stabi
           return;
         }
 
-        const { keys: captureKeys, stableCapturedNames } = collectCaptureDepKeys(
-          callbackToAnalyze ?? callbackArgument,
-          context.scopes,
-        );
+        const {
+          keys: captureKeys,
+          stableCapturedNames,
+          moduleScopeCapturedNames,
+        } = collectCaptureDepKeys(callbackToAnalyze ?? callbackArgument, context.scopes);
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
 
         // Pre-scan: emit a single "literal deps" warning when the
@@ -967,7 +1024,13 @@ If the missing value is recreated every render, move it inside the hook or stabi
           if (!element) continue;
           const elementNode = element as EsTreeNode;
           if (isNodeOfType(elementNode, "SpreadElement")) {
-            context.report({ node: elementNode, message: buildSpreadDepMessage(hookName) });
+            // Spreading a caller-supplied deps parameter (`[...resetDeps]`,
+            // `[...options.deps]`) is the deliberate forwarding API of a
+            // reusable hook, not a hidden-deps mistake.
+            const spreadRootSymbol = getRootSymbol(elementNode.argument, context.scopes);
+            if (spreadRootSymbol?.kind !== "parameter") {
+              context.report({ node: elementNode, message: buildSpreadDepMessage(hookName) });
+            }
             continue;
           }
           const stripped = unwrapExpression(elementNode);
@@ -1164,7 +1227,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           if (isUsed) continue;
           if (didReportRefCurrentDep) continue;
           const rootName = declaredKey.split(".")[0]!;
-          if (stableCapturedNames.has(rootName)) continue;
+          if (stableCapturedNames.has(rootName) || stableCapturedNames.has(declaredKey)) continue;
           const reportNode = declaredKeyToReportNode.get(declaredKey) ?? depsArgument;
           if (
             EFFECT_HOOKS_ALLOWING_EXTRA_REACTIVE_DEPS.has(hookName) &&
@@ -1202,9 +1265,17 @@ If the missing value is recreated every render, move it inside the hook or stabi
           unnecessaryReportNode = reportNode;
         }
         if (unnecessaryDeclaredKeys.length > 0) {
+          // When every redundant dep IS read by the callback but lives at
+          // module scope, the "never uses it" wording would be factually
+          // wrong — say why the dep is redundant instead.
+          const areAllModuleScopeCaptured = unnecessaryDeclaredKeys.every((declaredKey) =>
+            moduleScopeCapturedNames.has(declaredKey.split(".")[0]!),
+          );
           context.report({
             node: unnecessaryReportNode,
-            message: buildUnnecessaryDepMessage(hookName, unnecessaryDeclaredKeys.join(", ")),
+            message: areAllModuleScopeCaptured
+              ? buildModuleScopeDepMessage(hookName, unnecessaryDeclaredKeys.join(", "))
+              : buildUnnecessaryDepMessage(hookName, unnecessaryDeclaredKeys.join(", ")),
           });
         }
       },

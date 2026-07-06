@@ -45,7 +45,7 @@ const WEB_FRAMEWORK_DEPENDENCY_NAMES: ReadonlySet<string> = new Set([
 const cachedPlatformByPackageDirectory = new Map<string, PackagePlatform>();
 const cachedPackageDirectoryByFilename = new Map<string, string | null>();
 
-const findNearestPackageDirectory = (filename: string): string | null => {
+export const findNearestPackageDirectory = (filename: string): string | null => {
   if (!filename) return null;
 
   // The walk's outcome depends on EVERY ancestor probe (a package.json
@@ -161,7 +161,13 @@ const isWebFrameworkOnly = (packageJson: PackageJsonDependencyView): boolean => 
   return false;
 };
 
-export type PackagePlatform = "expo" | "react-native" | "web" | "unknown";
+const declaresAnyDependency = (packageJson: PackageJsonDependencyView): boolean =>
+  DEPENDENCY_SECTION_NAMES.some((sectionName) => {
+    const section = packageJson[sectionName];
+    return typeof section === "object" && section !== null && Object.keys(section).length > 0;
+  });
+
+export type PackagePlatform = "expo" | "react-native" | "web" | "neutral" | "unknown";
 
 // Classifies the package owning `filename`:
 //
@@ -182,9 +188,19 @@ export type PackagePlatform = "expo" | "react-native" | "web" | "unknown";
 //                    without any RN indicator. React Native rules MUST
 //                    skip files in this bucket.
 //
+//   "neutral"      — the nearest `package.json` declares its own
+//                    dependency surface (at least one dependency in any
+//                    section) but neither an RN nor a web-framework
+//                    signal. The manifest is authoritative for a nested
+//                    workspace package: a monorepo package that depends
+//                    on `react-markdown` + `react` but never on
+//                    `react-native` is not an RN package even when a
+//                    sibling workspace is (see is-react-native-file.ts).
+//
 //   "unknown"      — no nearest `package.json`, the manifest is
-//                    unparseable, or the package declares neither
-//                    cohort. Callers fall back to the project-level
+//                    unparseable, or the manifest declares no
+//                    dependencies at all (`{}`, `{"type":"module"}`
+//                    markers). Callers fall back to the project-level
 //                    framework setting (see is-react-native-file.ts).
 export const classifyPackagePlatform = (filename: string): PackagePlatform => {
   const packageDirectory = findNearestPackageDirectory(filename);
@@ -211,6 +227,8 @@ export const classifyPackagePlatform = (filename: string): PackagePlatform => {
     result = "react-native";
   } else if (isWebFrameworkOnly(packageJson)) {
     result = "web";
+  } else if (declaresAnyDependency(packageJson)) {
+    result = "neutral";
   } else {
     result = "unknown";
   }

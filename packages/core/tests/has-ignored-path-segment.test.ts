@@ -29,4 +29,25 @@ describe("hasIgnoredPathSegment", () => {
     expect(hasIgnoredPathSegment("src/builder/app.tsx")).toBe(false);
     expect(hasIgnoredPathSegment(".dumi/hooks/use-local-storage.ts")).toBe(false);
   });
+
+  // Issue: `git ls-files` listed tracked agent-tooling scripts under
+  // `.codex/skills/**`, so oxlint flagged them (83 `no-console` FPs on one
+  // repo) even though hidden tool directories are not app code.
+  it("flags hidden dot-directories that are not on the scanned allowlist", () => {
+    expect(hasIgnoredPathSegment(".codex/skills/translate/scripts/check.mjs")).toBe(true);
+    expect(hasIgnoredPathSegment(".claude/commands/review.mjs")).toBe(true);
+    expect(hasIgnoredPathSegment(".cursor/rules/generate.mjs")).toBe(true);
+    expect(hasIgnoredPathSegment(".github/scripts/release.mjs")).toBe(true);
+    expect(hasIgnoredPathSegment("packages/app/.agents/skills/run.mjs")).toBe(true);
+  });
+
+  it("keeps allowlisted dot-directories scannable", () => {
+    expect(hasIgnoredPathSegment(".dumi/pages/banner.tsx")).toBe(false);
+    expect(hasIgnoredPathSegment(".storybook/preview.tsx")).toBe(false);
+  });
+
+  it("does not flag hidden files at any level (only directories)", () => {
+    expect(hasIgnoredPathSegment(".eslintrc.js")).toBe(false);
+    expect(hasIgnoredPathSegment("src/.hidden-helper.ts")).toBe(false);
+  });
 });

@@ -493,7 +493,11 @@ describe("no-event-handler — must-detect regressions", () => {
 });
 
 describe("no-event-handler — regressions", () => {
-  it("fires on a mount effect syncing storage into state (digitalocean sea-notes Theme)", () => {
+  // Flipped by the 67k-diagnostic verification run: a `[]`-deps effect whose
+  // tested state is only ever set by the mount effect itself is one-time
+  // initialization (no-initialize-state territory), not a faked event
+  // handler. Handler-set state tested under `[]` deps still fires.
+  it("stays silent on a []-deps mount effect syncing storage into state (digitalocean sea-notes Theme)", () => {
     const result = runRule(
       noEventHandler,
       `function MaterialThemeProvider({ children }) {
@@ -511,7 +515,7 @@ describe("no-event-handler — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("fires on a true positive despite an incidental window read in the effect", () => {
@@ -680,5 +684,175 @@ describe("no-event-handler — regressions", () => {
       forceJsx: true,
     });
     expect(productionResult.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when the guard reads state from an opaque custom hook (cloudscape useFilterProps)", () => {
+    const result = runRule(
+      noEventHandler,
+      `export default function useFilterProps(series, controlledVisibleSeries, controlledOnVisibleChange) {
+        const [visibleSeries = [], setVisibleSeriesState] = useControllable(
+          controlledVisibleSeries,
+          controlledOnVisibleChange,
+          series,
+          { componentName: 'AreaChart', controlledProp: 'visibleSeries', changeHandler: 'onFilterChange' },
+        );
+        const setVisibleSeries = useCallback((selectedSeries) => {
+          setVisibleSeriesState(selectedSeries);
+          fireNonCancelableEvent(controlledOnVisibleChange, { visibleSeries: selectedSeries });
+        }, [controlledOnVisibleChange, setVisibleSeriesState]);
+        useEffect(() => {
+          const newVisibleSeries = visibleSeries.filter(s => series.indexOf(s) !== -1);
+          if (newVisibleSeries.length !== visibleSeries.length) {
+            setVisibleSeries(newVisibleSeries);
+          }
+        }, [series, visibleSeries, setVisibleSeries]);
+        return [visibleSeries, setVisibleSeries];
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a null-guard-tested external instance sync (aws graph-explorer cy.zoom)", () => {
+    const result = runRule(
+      noEventHandler,
+      `export const useManageConfigChanges = (config, cy) => {
+        const { zoom } = config;
+        useEffect(() => {
+          if (cy && cy.zoom() !== zoom) {
+            cy.zoom(zoom);
+          }
+        }, [cy, zoom]);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a ref-rooted DOM focus consequent", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Grid({ focusedDate }) {
+        const [gridHasFocus, setGridHasFocus] = useState(false);
+        const elementRef = useRef(null);
+        useEffect(() => {
+          if (focusedDate && gridHasFocus) {
+            elementRef.current?.focus();
+          }
+        }, [focusedDate, gridHasFocus]);
+        return <div ref={elementRef} onFocus={() => setGridHasFocus(true)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a window.scrollTo consequent", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Page({ step }) {
+        const [submitted, setSubmitted] = useState(false);
+        useEffect(() => {
+          if (submitted) {
+            window.scrollTo(0, 0);
+          }
+        }, [submitted, step]);
+        return <button onClick={() => setSubmitted(true)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the consequent syncs a custom-hook service instance", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Layer({ visible }) {
+        const layerService = useLayerState();
+        useEffect(() => {
+          if (visible) {
+            layerService.show();
+          }
+        }, [visible]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a ref-rooted animation play call (lottie)", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Icon({ active }) {
+        const animationRef = useRef(null);
+        useEffect(() => {
+          if (active) {
+            animationRef.current?.play();
+          }
+        }, [active]);
+        return <Lottie ref={animationRef} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the tested state's setter is handed by reference to a promise", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Preview({ fileId, onReady }) {
+        const [blobUrl, setBlobUrl] = useState(null);
+        useEffect(() => {
+          resolveBlobUrl(fileId).then(setBlobUrl);
+        }, [fileId]);
+        useEffect(() => {
+          if (blobUrl) {
+            onReady(blobUrl);
+          }
+        }, [blobUrl]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a redirect reacting to async-driven auth state", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Guard({ children }) {
+        const [user, setUser] = useState(null);
+        useEffect(() => {
+          fetchSession().then(setUser);
+        }, []);
+        useEffect(() => {
+          if (!user) {
+            router.push('/login');
+          }
+        }, [user]);
+        return children;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a []-deps mount effect restoring persisted state", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Checkout() {
+        const [error, setError] = useState(null);
+        useEffect(() => {
+          const sessionStorageError = sessionStorage.getItem('checkout-error');
+          if (sessionStorageError) {
+            setError(sessionStorageError);
+          }
+        }, []);
+        return error ? <Banner>{error}</Banner> : null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 });

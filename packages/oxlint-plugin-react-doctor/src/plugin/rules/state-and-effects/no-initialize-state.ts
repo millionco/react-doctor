@@ -1,3 +1,4 @@
+import type { Reference } from "eslint-scope";
 import { containsNonDeterministicSource } from "../../utils/contains-non-deterministic-source.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -9,8 +10,8 @@ import {
 } from "../../utils/reads-post-mount-value.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
-import { getCallExpr } from "./utils/effect/ast.js";
-import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { getCallExpr, getRef, isSynchronous, resolveToFunction } from "./utils/effect/ast.js";
+import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getEffectDepsRefs,
   getEffectFn,
@@ -27,15 +28,25 @@ import {
 // genuinely cannot exist before mount.
 const MEASUREMENT_GLOBAL_NAMES: ReadonlySet<string> = new Set(["window", "document", "navigator"]);
 
+const objectPatternBindsName = (pattern: EsTreeNode, name: string): boolean => {
+  if (!isNodeOfType(pattern, "ObjectPattern")) return false;
+  return (pattern.properties ?? []).some((property) => {
+    if (!isNodeOfType(property, "Property")) return false;
+    const bound = property.value;
+    return Boolean(bound && isNodeOfType(bound, "Identifier") && bound.name === name);
+  });
+};
+
 const findEffectLocalInitializer = (effectFn: EsTreeNode, name: string): EsTreeNode | null => {
   let initializer: EsTreeNode | null = null;
   walkAst(effectFn, (child: EsTreeNode): boolean | void => {
     if (initializer) return false;
+    if (!isNodeOfType(child, "VariableDeclarator") || !child.init) return;
     if (
-      isNodeOfType(child, "VariableDeclarator") &&
-      isNodeOfType(child.id, "Identifier") &&
-      child.id.name === name &&
-      child.init
+      (isNodeOfType(child.id, "Identifier") && child.id.name === name) ||
+      // `const { scrollWidth, clientWidth } = breadcrumbsRef.current;` —
+      // a destructured measurement read carries the same post-mount source.
+      objectPatternBindsName(child.id as EsTreeNode, name)
     ) {
       initializer = child.init as EsTreeNode;
       return false;
@@ -178,6 +189,160 @@ const cleanupDisposesArgumentSource = (argument: EsTreeNode, effectFn: EsTreeNod
   return referencesSource;
 };
 
+const unwrapTransparentExpression = (node: EsTreeNode | null | undefined): EsTreeNode | null => {
+  if (!node) return null;
+  if (isNodeOfType(node, "ChainExpression")) {
+    return unwrapTransparentExpression(node.expression as EsTreeNode);
+  }
+  if (isNodeOfType(node, "TSNonNullExpression") || isNodeOfType(node, "TSAsExpression")) {
+    return unwrapTransparentExpression(node.expression as EsTreeNode);
+  }
+  return node;
+};
+
+const isSameValueExpression = (leftNode: EsTreeNode, rightNode: EsTreeNode): boolean => {
+  const left = unwrapTransparentExpression(leftNode);
+  const right = unwrapTransparentExpression(rightNode);
+  if (!left || !right || left.type !== right.type) return false;
+  if (isNodeOfType(left, "Identifier") && isNodeOfType(right, "Identifier")) {
+    return left.name === right.name;
+  }
+  if (isNodeOfType(left, "Literal") && isNodeOfType(right, "Literal")) {
+    return left.value === right.value;
+  }
+  if (isNodeOfType(left, "MemberExpression") && isNodeOfType(right, "MemberExpression")) {
+    if (left.computed !== right.computed) return false;
+    return (
+      isSameValueExpression(left.property as EsTreeNode, right.property as EsTreeNode) &&
+      isSameValueExpression(left.object as EsTreeNode, right.object as EsTreeNode)
+    );
+  }
+  if (isNodeOfType(left, "CallExpression") && isNodeOfType(right, "CallExpression")) {
+    const leftArguments = left.arguments ?? [];
+    const rightArguments = right.arguments ?? [];
+    if (leftArguments.length !== rightArguments.length) return false;
+    if (!isSameValueExpression(left.callee as EsTreeNode, right.callee as EsTreeNode)) {
+      return false;
+    }
+    return leftArguments.every((leftArgument, argumentIndex) =>
+      isSameValueExpression(
+        leftArgument as EsTreeNode,
+        rightArguments[argumentIndex] as EsTreeNode,
+      ),
+    );
+  }
+  if (isNodeOfType(left, "UnaryExpression") && isNodeOfType(right, "UnaryExpression")) {
+    return (
+      left.operator === right.operator &&
+      isSameValueExpression(left.argument as EsTreeNode, right.argument as EsTreeNode)
+    );
+  }
+  return false;
+};
+
+const unwrapLazyInitializer = (initializer: EsTreeNode): EsTreeNode => {
+  if (!isNodeOfType(initializer, "ArrowFunctionExpression")) return initializer;
+  const body = initializer.body;
+  if (!isNodeOfType(body, "BlockStatement")) return body as EsTreeNode;
+  const statements = body.body ?? [];
+  if (statements.length === 1 && isNodeOfType(statements[0], "ReturnStatement")) {
+    const returned = statements[0].argument;
+    if (returned) return returned as EsTreeNode;
+  }
+  return initializer;
+};
+
+// Every value the state can start as: the `useState` argument itself plus,
+// for `useState(a ?? b)` / `useState(a || b)`, each operand.
+const collectInitializerValueExpressions = (useStateDecl: EsTreeNode): EsTreeNode[] => {
+  if (!isNodeOfType(useStateDecl, "VariableDeclarator")) return [];
+  if (!isNodeOfType(useStateDecl.init, "CallExpression")) return [];
+  const initialArgument = useStateDecl.init.arguments?.[0];
+  if (!initialArgument) return [];
+  const expressions: EsTreeNode[] = [];
+  const expand = (node: EsTreeNode): void => {
+    expressions.push(node);
+    if (
+      isNodeOfType(node, "LogicalExpression") &&
+      (node.operator === "??" || node.operator === "||")
+    ) {
+      expand(node.left as EsTreeNode);
+      expand(node.right as EsTreeNode);
+    }
+  };
+  expand(unwrapLazyInitializer(initialArgument as EsTreeNode));
+  return expressions;
+};
+
+const isUseStateWithoutArgument = (useStateDecl: EsTreeNode): boolean =>
+  isNodeOfType(useStateDecl, "VariableDeclarator") &&
+  isNodeOfType(useStateDecl.init, "CallExpression") &&
+  (useStateDecl.init.arguments ?? []).length === 0;
+
+const isUndefinedExpression = (node: EsTreeNode): boolean => {
+  const unwrapped = unwrapTransparentExpression(node);
+  if (!unwrapped) return false;
+  if (isNodeOfType(unwrapped, "Identifier")) return unwrapped.name === "undefined";
+  return isNodeOfType(unwrapped, "UnaryExpression") && unwrapped.operator === "void";
+};
+
+// `useState(socket.connected)` + `setConnected(socket.connected)` — the
+// mount effect rewrites the value the state already starts as (React
+// bails out or renders the same output), so there is no "extra render
+// with an empty value" to report. Common in subscribe-then-resync and
+// `useState(initialValue ?? '')` + `setValue(initialValue)` shapes.
+const isSameValueAsInitializer = (callExpr: EsTreeNode, useStateDecl: EsTreeNode): boolean => {
+  if (!isNodeOfType(callExpr, "CallExpression")) return false;
+  const args = callExpr.arguments ?? [];
+  if (args.length !== 1) return false;
+  const setterArgument = args[0] as EsTreeNode;
+  if (isUseStateWithoutArgument(useStateDecl) && isUndefinedExpression(setterArgument)) {
+    return true;
+  }
+  return collectInitializerValueExpressions(useStateDecl).some((initializerValue) =>
+    isSameValueExpression(setterArgument, initializerValue),
+  );
+};
+
+interface InnerSetterCall {
+  ref: Reference;
+  callExpr: EsTreeNode;
+  isSyncWithinFunction: boolean;
+}
+
+// State-setter calls inside a helper function the mount effect invokes
+// (`const updateWidth = () => setTrackWidth(track.clientWidth); updateWidth();`).
+// The outer call's argument list is empty, so the measurement /
+// non-determinism guards must inspect the INNER setter calls instead.
+const collectInnerStateSetterCalls = (
+  analysis: ProgramAnalysis,
+  helperFn: EsTreeNode,
+): InnerSetterCall[] => {
+  const innerCalls: InnerSetterCall[] = [];
+  const helperBody = (helperFn as unknown as { body?: EsTreeNode }).body;
+  if (!helperBody) return innerCalls;
+  walkAst(helperBody, (child: EsTreeNode): void => {
+    if (!isNodeOfType(child, "Identifier")) return;
+    const innerRef = getRef(analysis, child);
+    if (!innerRef || !isStateSetter(analysis, innerRef)) return;
+    const innerCallExpr = getCallExpr(innerRef);
+    if (!innerCallExpr) return;
+    innerCalls.push({
+      ref: innerRef,
+      callExpr: innerCallExpr,
+      isSyncWithinFunction: isSynchronous(child, helperFn),
+    });
+  });
+  return innerCalls;
+};
+
+const isNodeWithinRange = (inner: EsTreeNode, outer: EsTreeNode): boolean => {
+  const innerRange = (inner as unknown as { range?: [number, number] }).range;
+  const outerRange = (outer as unknown as { range?: [number, number] }).range;
+  if (!innerRange || !outerRange) return false;
+  return outerRange[0] <= innerRange[0] && innerRange[1] <= outerRange[1];
+};
+
 // 1:1 port of upstream `src/rules/no-initialize-state.js`.
 // Difference vs upstream: upstream uses `context.sourceCode.getText`
 // for the diagnostic's "arguments" field; we use
@@ -238,8 +403,54 @@ export const noInitializeState = defineRule({
         ) {
           continue;
         }
+        // An INDIRECT setter call (`updateWidth()` where updateWidth's body
+        // does the setState) hides the real arguments from the guards above.
+        // Re-run them against the inner setter calls: skip when every
+        // synchronous inner write is measurement/non-deterministic-exempt,
+        // and skip entirely when the helper only writes state from async
+        // continuations (`fetch().then(setX)`) — that is data loading, not a
+        // hoistable initial value.
+        if (!isStateSetter(analysis, ref)) {
+          const helperFn = resolveToFunction(ref);
+          if (helperFn) {
+            const innerSetterCalls = collectInnerStateSetterCalls(
+              analysis,
+              helperFn as unknown as EsTreeNode,
+            );
+            if (innerSetterCalls.length > 0) {
+              const syncInnerCalls = innerSetterCalls.filter(
+                (innerCall) => innerCall.isSyncWithinFunction,
+              );
+              if (syncInnerCalls.length === 0) continue;
+              const measurementLookupFn = isNodeWithinRange(
+                helperFn as unknown as EsTreeNode,
+                effectFn,
+              )
+                ? effectFn
+                : (helperFn as unknown as EsTreeNode);
+              const isEverySyncInnerCallExempt = syncInnerCalls.every((innerCall) => {
+                if (!isNodeOfType(innerCall.callExpr, "CallExpression")) return false;
+                const innerUseStateDecl = getUseStateDecl(analysis, innerCall.ref);
+                if (
+                  innerUseStateDecl &&
+                  isSameValueAsInitializer(innerCall.callExpr, innerUseStateDecl)
+                ) {
+                  return true;
+                }
+                return (innerCall.callExpr.arguments ?? []).some(
+                  (argument) =>
+                    Boolean(argument) &&
+                    (containsNonDeterministicSource(argument) ||
+                      argumentReadsPostMountMeasurement(argument, measurementLookupFn)),
+                );
+              });
+              if (isEverySyncInnerCallExempt) continue;
+            }
+          }
+        }
         const useStateDecl = getUseStateDecl(analysis, ref);
         if (!useStateDecl || !isNodeOfType(useStateDecl, "VariableDeclarator")) continue;
+        if (isSameValueAsInitializer(callExpr, useStateDecl)) continue;
         if (!isNodeOfType(useStateDecl.id, "ArrayPattern")) continue;
         const elements = useStateDecl.id.elements ?? [];
         const stateBinding = elements[0] ?? elements[1];

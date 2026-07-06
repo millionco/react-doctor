@@ -1,9 +1,123 @@
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
+import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
+import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { RuleVisitors } from "../../utils/rule-visitors.js";
-import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
+
+const NON_OPTIMIZABLE_SRC_PREFIX_PATTERN = /^\s*(data:|blob:)/i;
+const GENERATED_URL_NAME_PATTERN = /(data|object|blob)_?url/i;
+const LOCAL_IMAGE_URL_FACTORY_METHODS = new Set<string>([
+  "createObjectURL",
+  "revokeObjectURL",
+  "toDataURL",
+]);
+
+const localImageUrlFactoryCache = new WeakMap<EsTreeNodeOfType<"Program">, boolean>();
+
+const usesLocalImageUrlFactory = (programRoot: EsTreeNodeOfType<"Program">): boolean => {
+  const cached = localImageUrlFactoryCache.get(programRoot);
+  if (cached !== undefined) return cached;
+  let found = false;
+  walkAst(programRoot, (descendantNode) => {
+    if (found) return false;
+    if (!isNodeOfType(descendantNode, "MemberExpression")) return;
+    const property = descendantNode.property;
+    if (!isNodeOfType(property, "Identifier")) return;
+    if (!LOCAL_IMAGE_URL_FACTORY_METHODS.has(property.name)) return;
+    found = true;
+    return false;
+  });
+  localImageUrlFactoryCache.set(programRoot, found);
+  return found;
+};
+
+const isNonOptimizableSrcString = (srcValue: string): boolean => {
+  if (NON_OPTIMIZABLE_SRC_PREFIX_PATTERN.test(srcValue)) return true;
+  const pathname = srcValue.split(/[?#]/)[0] ?? "";
+  return pathname.toLowerCase().endsWith(".svg");
+};
+
+const referencesGeneratedUrlName = (expression: EsTreeNode): boolean => {
+  const unwrapped = stripParenExpression(expression);
+  if (isNodeOfType(unwrapped, "Identifier")) {
+    return GENERATED_URL_NAME_PATTERN.test(unwrapped.name);
+  }
+  if (isNodeOfType(unwrapped, "MemberExpression")) {
+    const property = unwrapped.property;
+    return isNodeOfType(property, "Identifier") && GENERATED_URL_NAME_PATTERN.test(property.name);
+  }
+  if (isNodeOfType(unwrapped, "ConditionalExpression")) {
+    return (
+      referencesGeneratedUrlName(unwrapped.consequent) ||
+      referencesGeneratedUrlName(unwrapped.alternate)
+    );
+  }
+  if (isNodeOfType(unwrapped, "LogicalExpression")) {
+    return (
+      referencesGeneratedUrlName(unwrapped.left) || referencesGeneratedUrlName(unwrapped.right)
+    );
+  }
+  if (isNodeOfType(unwrapped, "CallExpression")) {
+    const callee = stripParenExpression(unwrapped.callee);
+    if (isNodeOfType(callee, "Identifier")) {
+      return GENERATED_URL_NAME_PATTERN.test(callee.name);
+    }
+    if (isNodeOfType(callee, "MemberExpression")) {
+      const property = callee.property;
+      return isNodeOfType(property, "Identifier") && GENERATED_URL_NAME_PATTERN.test(property.name);
+    }
+  }
+  return false;
+};
+
+const getStaticSrcValue = (expression: EsTreeNode): string | null => {
+  const unwrapped = stripParenExpression(expression);
+  if (isNodeOfType(unwrapped, "Literal") && typeof unwrapped.value === "string") {
+    return unwrapped.value;
+  }
+  if (isNodeOfType(unwrapped, "TemplateLiteral")) {
+    return getStaticTemplateLiteralValue(unwrapped);
+  }
+  return null;
+};
+
+const isNonOptimizableTemplateSrc = (expression: EsTreeNode): boolean => {
+  const unwrapped = stripParenExpression(expression);
+  if (!isNodeOfType(unwrapped, "TemplateLiteral")) return false;
+  const firstQuasiValue = unwrapped.quasis[0]?.value.cooked ?? "";
+  if (NON_OPTIMIZABLE_SRC_PREFIX_PATTERN.test(firstQuasiValue)) return true;
+  const lastQuasiValue = unwrapped.quasis[unwrapped.quasis.length - 1]?.value.cooked ?? "";
+  const trailingPathname = lastQuasiValue.split(/[?#]/)[0] ?? "";
+  return trailingPathname.toLowerCase().endsWith(".svg");
+};
+
+const isNonOptimizableSrcAttribute = (
+  srcAttribute: EsTreeNodeOfType<"JSXAttribute">,
+  programRoot: EsTreeNodeOfType<"Program"> | null,
+): boolean => {
+  const literalValue = getJsxPropStringValue(srcAttribute);
+  if (literalValue !== null) return isNonOptimizableSrcString(literalValue);
+
+  const value = srcAttribute.value;
+  if (!value || !isNodeOfType(value, "JSXExpressionContainer")) return false;
+  const expression = value.expression;
+
+  const staticValue = getStaticSrcValue(expression);
+  if (staticValue !== null) return isNonOptimizableSrcString(staticValue);
+
+  if (isNonOptimizableTemplateSrc(expression)) return true;
+  if (referencesGeneratedUrlName(expression)) return true;
+  return Boolean(programRoot && usesLocalImageUrlFactory(programRoot));
+};
 
 export const nextjsNoImgElement = defineRule({
   id: "nextjs-no-img-element",
@@ -18,13 +132,20 @@ export const nextjsNoImgElement = defineRule({
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "img") return;
         if (isGeneratedImageRenderContext(context, node)) return;
-        if (isNodeOfType(node.name, "JSXIdentifier") && node.name.name === "img") {
-          context.report({
-            node,
-            message: "Plain <img> ships unoptimized, oversized images.",
-          });
-        }
+
+        const programRoot = findProgramRoot(node);
+        if (programRoot && hasEmailTemplateImport(programRoot)) return;
+
+        const srcAttribute = findJsxAttribute(node.attributes, "src");
+        if (srcAttribute && isNonOptimizableSrcAttribute(srcAttribute, programRoot)) return;
+        if (!srcAttribute && findJsxAttribute(node.attributes, "ref")) return;
+
+        context.report({
+          node,
+          message: "Plain <img> ships unoptimized, oversized images.",
+        });
       },
     };
   },

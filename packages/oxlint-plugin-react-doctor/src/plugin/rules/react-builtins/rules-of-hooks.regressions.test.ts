@@ -387,3 +387,193 @@ describe("react-builtins/rules-of-hooks — regressions: same-named non-React us
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 });
+
+describe("react-builtins/rules-of-hooks — regressions: underscore-prefixed component bindings", () => {
+  it("does not flag hooks in an underscore-prefixed component exported under an alias", () => {
+    const result = runTsx(`
+      import { useState } from "react";
+      const _Calendar = (props) => {
+        const [month] = useState(0);
+        return <div>{month}</div>;
+      };
+      export { _Calendar as Calendar };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag hooks in an underscore-prefixed function declaration component", () => {
+    const result = runTsx(`
+      import { useEffect } from "react";
+      function _Menu(props) {
+        useEffect(() => {}, []);
+        return <ul>{props.children}</ul>;
+      }
+      export const Menu = _Menu;
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags hooks in an underscore-prefixed lowercase helper", () => {
+    const result = runTsx(`
+      import { useState } from "react";
+      const _computeLayout = () => {
+        const [value] = useState(0);
+        return value;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags conditional hooks inside an underscore-prefixed component", () => {
+    const result = runTsx(`
+      import { useState } from "react";
+      const _Calendar = ({ visible }) => {
+        if (visible) {
+          const [month] = useState(0);
+          return <div>{month}</div>;
+        }
+        return null;
+      };
+      export { _Calendar as Calendar };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("react-builtins/rules-of-hooks — regressions: plugin-registration .use([...]) calls", () => {
+  it("does not flag SwiperCore.use([...]) at module top level", () => {
+    const result = runTsx(`
+      import SwiperCore, { Navigation, Pagination, Autoplay } from "swiper";
+      SwiperCore.use([Navigation, Pagination, Autoplay]);
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags Hook.use() with non-array arguments at top level (upstream parity)", () => {
+    const result = runTsx(`
+      Hook.use();
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("react-builtins/rules-of-hooks — regressions: use*-named functions imported from non-React packages", () => {
+  it("does not flag a package-imported use* function called in a plain helper", () => {
+    const result = runTsx(`
+      import useBrowser from "@cloudscape-design/browser-test-tools/use-browser";
+      const setupTest = (testFn) => {
+        return useBrowser(async (browser) => {
+          await testFn(browser);
+        });
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a package-imported use* function called at module top level", () => {
+    const result = runTsx(`
+      import { useRegistry } from "some-di-library";
+      useRegistry("token");
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a relative-imported use* hook called in a plain helper", () => {
+    const result = runTsx(`
+      import { useData } from "./use-data";
+      const setupTest = () => {
+        return useData();
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a package-imported use* hook called conditionally inside a component", () => {
+    const result = runTsx(`
+      import { useQuery } from "@tanstack/react-query";
+      const MyComponent = ({ enabled }) => {
+        if (enabled) {
+          const result = useQuery({ queryKey: ["x"] });
+          return <div>{result.data}</div>;
+        }
+        return null;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("react-builtins/rules-of-hooks — regressions: hooks in destructuring defaults", () => {
+  it("flags a hook call used as a destructuring default value", () => {
+    const result = runTsx(`
+      import * as React from "react";
+      export const useCheckbox = (props) => {
+        const { id = React.useId() } = props;
+        return id;
+      };
+    `);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("called conditionally");
+  });
+
+  it("does not flag a hook whose RESULT feeds a destructuring default", () => {
+    const result = runTsx(`
+      import { useId } from "react";
+      export const useCheckbox = (props) => {
+        const generatedId = useId();
+        const { id = generatedId } = props;
+        return id;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+});
+
+describe("react-builtins/rules-of-hooks — regressions: local hook-free use*-named helpers", () => {
+  it("does not flag a local hook-free use* helper called conditionally inside a component", () => {
+    const result = runTsx(`
+      import { useState } from "react";
+      const List = ({ deleteItemID, dialogMessage }) => {
+        const [name] = useState("");
+        const useDelete = (message) => ({ component: message, props: { name } });
+        let dialogBox;
+        if (deleteItemID) {
+          const { component } = useDelete(dialogMessage);
+          dialogBox = <div>{component}</div>;
+        }
+        return dialogBox;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a local hook-free async use* helper called from an event handler", () => {
+    const result = runTsx(`
+      const HomeView = ({ plugins }) => {
+        const usePlugin = async (plugin) => {
+          await plugin.apply();
+        };
+        return <button onClick={() => usePlugin(plugins[0])}>apply</button>;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a local use* helper that itself calls hooks when called conditionally", () => {
+    const result = runTsx(`
+      import { useState } from "react";
+      const MyComponent = ({ enabled }) => {
+        const useToggle = () => {
+          const [on] = useState(false);
+          return on;
+        };
+        if (enabled) {
+          const on = useToggle();
+          return <div>{String(on)}</div>;
+        }
+        return null;
+      };
+    `);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});

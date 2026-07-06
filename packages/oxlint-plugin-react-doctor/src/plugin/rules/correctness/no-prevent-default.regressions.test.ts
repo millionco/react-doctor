@@ -2,6 +2,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noPreventDefault } from "./no-prevent-default.js";
 
+const remixSettings = { "react-doctor": { framework: "remix" } };
+const nextjsSettings = { "react-doctor": { framework: "nextjs" } };
+
 describe("correctness/no-prevent-default regressions", () => {
   describe("href-less anchors (anchor-as-button, mined ant-design Dropdown trigger FP)", () => {
     it("stays silent on a concise-arrow bare preventDefault trigger with no href", () => {
@@ -490,8 +493,8 @@ export const DeadLink = () => (
     });
   });
 
-  describe("the <form> path is unchanged by the anchor gates", () => {
-    it("still flags an action-attribute-less <form> whose onSubmit calls preventDefault", () => {
+  describe("the <form> path fires only with a confirmed server-mutation story", () => {
+    it("still flags an action-attribute-less <form> in a server-capable framework", () => {
       const result = runRule(
         noPreventDefault,
         `export const SignUp = () => (
@@ -504,7 +507,7 @@ export const DeadLink = () => (
   </form>
 );
 `,
-        { filename: "src/sign-up.tsx" },
+        { filename: "app/routes/sign-up.tsx", settings: remixSettings },
       );
       expect(result.diagnostics).toHaveLength(1);
     });
@@ -525,7 +528,7 @@ export const Toggle = () => (
   </form>
 );
 `,
-        { filename: "app/page.tsx" },
+        { filename: "app/routes/page.tsx", settings: remixSettings },
       );
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toHaveLength(1);
@@ -549,10 +552,239 @@ export const Enhanced = () => (
   </form>
 );
 `,
-        { filename: "app/page.tsx" },
+        { filename: "app/routes/page.tsx", settings: remixSettings },
       );
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toEqual([]);
+    });
+  });
+
+  describe("client-only form contexts (mined SPA / component-library FP cluster)", () => {
+    const CONTROLLED_FORM_SOURCE = `declare const submitSearch: () => void;
+
+export const SearchForm = () => (
+  <form
+    onSubmit={(event) => {
+      event.preventDefault();
+      submitSearch();
+    }}
+  >
+    <input name="q" />
+  </form>
+);
+`;
+
+    it("stays silent when the framework is unknown (component library / demo page)", () => {
+      const result = runRule(noPreventDefault, CONTROLLED_FORM_SOURCE, {
+        filename: "pages/prompt-input/prompt-input-integ.page.tsx",
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent in Next.js when the module does not declare 'use client' (pages-router shape)", () => {
+      const result = runRule(noPreventDefault, CONTROLLED_FORM_SOURCE, {
+        filename: "src/ClickhousePage.tsx",
+        settings: nextjsSettings,
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a Next.js 'use client' module (app-router client component)", () => {
+      const result = runRule(noPreventDefault, `"use client";\n\n${CONTROLLED_FORM_SOURCE}`, {
+        filename: "app/register/register-form.tsx",
+        settings: nextjsSettings,
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0].message).toContain("server action");
+    });
+
+    it("still flags the anchor variant regardless of framework", () => {
+      const result = runRule(
+        noPreventDefault,
+        `export const Pager = () => (
+  <a href="#" onClick={(event) => event.preventDefault()}>
+    Next
+  </a>
+);
+`,
+        { filename: "src/pager.tsx" },
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
+  describe("disabled-link guards (mined conditional preventDefault FP cluster)", () => {
+    it("stays silent when preventDefault only fires behind a readiness guard", () => {
+      const result = runRule(
+        noPreventDefault,
+        `export const PdfLink = ({ pdfReady, href }: { pdfReady: boolean; href?: string }) => (
+  <a
+    href={href}
+    aria-disabled={!pdfReady}
+    onClick={(event) => {
+      if (!pdfReady) event.preventDefault();
+    }}
+  >
+    Compile volume PDF
+  </a>
+);
+`,
+        { filename: "src/pdf-link.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when the guard uses a logical-and expression", () => {
+      const result = runRule(
+        noPreventDefault,
+        `export const PdfLink = ({ isDisabled }: { isDisabled: boolean }) => (
+  <a
+    href="/report.pdf"
+    onClick={(event) => {
+      isDisabled && event.preventDefault();
+    }}
+  >
+    Download
+  </a>
+);
+`,
+        { filename: "src/pdf-link.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags an unconditional preventDefault after an unrelated guard statement", () => {
+      const result = runRule(
+        noPreventDefault,
+        `declare const log: (name: string) => void;
+
+export const DeadLink = ({ tracked }: { tracked: boolean }) => (
+  <a
+    href="/checkout"
+    onClick={(event) => {
+      if (tracked) log("click");
+      event.preventDefault();
+    }}
+  >
+    Checkout
+  </a>
+);
+`,
+        { filename: "src/dead-link.tsx" },
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
+  describe("fragment-target anchors (mined skip-link / smooth-scroll FP cluster)", () => {
+    it("stays silent on a skip link that focuses its fragment target", () => {
+      const result = runRule(
+        noPreventDefault,
+        `export const SkipToTableLink = ({ tableId }: { tableId: string }) => (
+  <a
+    href={\`#\${tableId}\`}
+    onClick={(event) => {
+      event.preventDefault();
+      const target = document.getElementById(tableId);
+      if (target) target.focus();
+    }}
+  >
+    Skip to data table
+  </a>
+);
+`,
+        { filename: "src/skip-link.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on a smooth-scroll table-of-contents anchor", () => {
+      const result = runRule(
+        noPreventDefault,
+        `declare const scrollToDocsAnchor: (id: string) => void;
+
+export const TocEntry = ({ id, label }: { id: string; label: string }) => (
+  <a
+    href={\`#\${id}\`}
+    onClick={(event) => {
+      event.preventDefault();
+      scrollToDocsAnchor(id);
+    }}
+  >
+    {label}
+  </a>
+);
+`,
+        { filename: "src/toc-entry.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on a static fragment href with scrollIntoView", () => {
+      const result = runRule(
+        noPreventDefault,
+        `export const StatLink = () => (
+  <a
+    href="#quiz-results"
+    onClick={(event) => {
+      event.preventDefault();
+      document.getElementById("quiz-results")?.scrollIntoView({ behavior: "smooth" });
+    }}
+  >
+    Attempts
+  </a>
+);
+`,
+        { filename: "src/stat-link.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it('still flags a bare href="#" even when the handler scrolls', () => {
+      const result = runRule(
+        noPreventDefault,
+        `export const TopLink = () => (
+  <a
+    href="#"
+    onClick={(event) => {
+      event.preventDefault();
+      window.scrollTo(0, 0);
+    }}
+  >
+    Top
+  </a>
+);
+`,
+        { filename: "src/top-link.tsx" },
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags a fragment href whose handler never scrolls or focuses", () => {
+      const result = runRule(
+        noPreventDefault,
+        `export const DeadFragment = () => (
+  <a
+    href="#section"
+    onClick={(event) => {
+      event.preventDefault();
+    }}
+  >
+    Section
+  </a>
+);
+`,
+        { filename: "src/dead-fragment.tsx" },
+      );
+      expect(result.diagnostics).toHaveLength(1);
     });
   });
 });

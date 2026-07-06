@@ -185,4 +185,165 @@ describe("react-builtins/jsx-key — regressions", () => {
       ));
     `);
   });
+
+  // cloudscape property-filter permutations: the spread resolves to a local
+  // `const` object literal that provably carries no `key`, so it cannot
+  // overwrite the explicit one.
+  it("does not flag a spread of a keyless local const object literal after the key", () => {
+    expectPass(`
+      const tokenProps = { text: "token", onDismiss: () => {} };
+      const App = () => (
+        <div>
+          {[
+            <Token key="1" {...tokenProps} />,
+            <Token key="2" {...tokenProps} />,
+          ]}
+        </div>
+      );
+    `);
+  });
+
+  it("flags a spread of a local const object literal that carries a key", () => {
+    expectFail(`
+      const withKey = { key: "boom", text: "token" };
+      items.map((item) => <Token key={item.id} {...withKey} />);
+    `);
+  });
+
+  it("flags a spread of a const object literal mutated via Object.assign", () => {
+    expectFail(`
+      const common = { text: "token" };
+      Object.assign(common, extra);
+      items.map((item) => <Token key={item.id} {...common} />);
+    `);
+  });
+
+  it("flags a spread of a const object literal mutated via member assignment", () => {
+    expectFail(`
+      const common = { text: "token" };
+      common.key = "boom";
+      items.map((item) => <Token key={item.id} {...common} />);
+    `);
+  });
+
+  // nexu-io PreviewModal: `{...(item.testId ? { 'data-testid': item.testId } : {})}`
+  // — both branches are provably keyless literals.
+  it("does not flag a conditional spread whose branches are keyless literals", () => {
+    expectPass(`
+      items.map((item) => (
+        <li key={item.id} {...(item.testId ? { "data-testid": item.testId } : {})} />
+      ));
+    `);
+  });
+
+  it("flags a conditional spread with an unprovable call branch", () => {
+    expectFail(`
+      items.map((item, i) => (
+        <li key={i} {...(item.disabled ? {} : getAnalyticsAttributes(item))} />
+      ));
+    `);
+  });
+
+  it("does not flag a logical-and spread whose object side is keyless", () => {
+    expectPass(`items.map((item) => <li key={item.id} {...(item.wide && { colSpan: 2 })} />);`);
+  });
+
+  // React strips `key` before props reach a class component, so
+  // `{...this.props}` can never overwrite an explicit key.
+  it("does not flag a this.props spread after the key", () => {
+    expectPass(`
+      class Dropdown extends Component {
+        render() {
+          return [<Menu key="dropdown" {...this.props} />];
+        }
+      }
+    `);
+  });
+
+  it("does not flag a rest spread whose pattern destructured the key away", () => {
+    expectPass(`
+      const Row = (rowInput) => {
+        const { key, ...rest } = rowInput;
+        return items.map((item) => <li key={item.id} {...rest} />);
+      };
+    `);
+  });
+
+  it("flags a rest spread whose pattern did not extract the key", () => {
+    expectFail(`
+      const Row = (rowInput) => {
+        const { label, ...rest } = rowInput;
+        return items.map((item) => <li key={item.id} {...rest} />);
+      };
+    `);
+  });
+
+  // catho-quantum test fixtures: a JSX array bound to a variable that is
+  // only consumed element-by-element (forEach + render, positional lookup,
+  // re-wrapped in keyed elements) never renders the raw elements as
+  // siblings, so their keys are inert.
+  it("does not flag a fixture array iterated with forEach and rendered one at a time", () => {
+    expectPass(`
+      const INPUTS = [<TextInput label="a" />, <TextInput label="b" />];
+      INPUTS.forEach((input) => {
+        render(input);
+      });
+    `);
+  });
+
+  it("does not flag a positional lookup array rendered one element at a time", () => {
+    expectPass(`
+      const icons = [<IconA />, <IconB />];
+      const Card = ({ index }) => <div>{icons[index]}</div>;
+    `);
+  });
+
+  it("does not flag an element array re-wrapped in keyed elements via map", () => {
+    expectPass(`
+      const exampleIcons = [<Icon name="a" />, <Icon name="b" />];
+      export const Examples = () =>
+        exampleIcons.map((icon, index) => <Wrapper key={index}>{icon}</Wrapper>);
+    `);
+  });
+
+  it("still flags a variable-bound array rendered directly as children", () => {
+    expectFail(`
+      const badges = [<Badge type="a" />, <Badge type="b" />];
+      const App = () => <div>{badges}</div>;
+    `);
+  });
+
+  it("still flags a variable-bound array rendered through an identity map", () => {
+    expectFail(`
+      const badges = [<Badge type="a" />, <Badge type="b" />];
+      const App = () => <div>{badges.map((badge) => badge)}</div>;
+    `);
+  });
+
+  it("still flags an array literal returned straight from a function", () => {
+    expectFail(`
+      export const carouselNodes = () => {
+        return [<Slide id={1} />, <Slide id={2} />];
+      };
+    `);
+  });
+
+  // react-table v7 / MUI / prism prop getters deliver the key through the
+  // returned props object, so a call-expression spread makes "missing key"
+  // unprovable.
+  it("does not flag a list element keyed through a prop-getter call spread", () => {
+    expectPass(`
+      headerGroups.map((headerGroup) => (
+        <tr {...headerGroup.getHeaderGroupProps()}>
+          {headerGroup.headers.map((column) => (
+            <th {...column.getHeaderProps()}>{column.render("Header")}</th>
+          ))}
+        </tr>
+      ));
+    `);
+  });
+
+  it("does not flag a MUI getTagProps call spread in a map", () => {
+    expectPass(`tags.map((tag, index) => <Chip {...getTagProps({ index })} label={tag} />);`);
+  });
 });

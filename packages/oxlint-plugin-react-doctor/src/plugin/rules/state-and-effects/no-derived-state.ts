@@ -23,9 +23,11 @@ import {
   hasCleanup,
   isProp,
   isState,
+  isStateSetter,
   isSyncStateSetterCall,
   isUseEffect,
 } from "./utils/effect/react.js";
+import { hasUserInputSetterWriter } from "./utils/has-user-input-setter-writer.js";
 
 // 1:1 port of upstream
 // `eslint-plugin-react-you-might-not-need-an-effect/src/rules/no-derived-state.js`.
@@ -97,13 +99,130 @@ const isAccumulatingFunctionalUpdater = (
   return !readsParameterOnlyViaObjectSpread(parameterReads);
 };
 
+// `setDateTime` -> "dateTime". Fallback for a destructured state slot
+// (`const [{ date, time }, setState] = useState(...)`) that has no single
+// identifier to name — keeps the diagnostic from rendering a literal
+// "<state>" placeholder.
+const deriveStateNameFromSetterName = (setterName: string): string => {
+  if (setterName.length > 3 && setterName.startsWith("set")) {
+    return setterName[3].toLowerCase() + setterName.slice(4);
+  }
+  return setterName;
+};
+
 const getStateNameForUseStateDecl = (useStateNode: EsTreeNode | null): string | null => {
   if (!useStateNode || !isNodeOfType(useStateNode, "VariableDeclarator")) return null;
   if (!isNodeOfType(useStateNode.id, "ArrayPattern")) return null;
   const elements = useStateNode.id.elements ?? [];
-  const candidate = elements[0] ?? elements[1];
-  if (!candidate) return null;
-  return isNodeOfType(candidate, "Identifier") ? candidate.name : null;
+  const stateSlot = elements[0];
+  if (stateSlot && isNodeOfType(stateSlot, "Identifier")) return stateSlot.name;
+  const setterSlot = elements[1];
+  if (setterSlot && isNodeOfType(setterSlot, "Identifier")) {
+    return deriveStateNameFromSetterName(setterSlot.name);
+  }
+  return null;
+};
+
+const isPlainValueReadExpression = (node: EsTreeNode): boolean => {
+  if (isNodeOfType(node, "Identifier")) return true;
+  if (isNodeOfType(node, "MemberExpression")) {
+    if (node.computed && !isNodeOfType(node.property, "Literal")) return false;
+    return isPlainValueReadExpression(node.object as EsTreeNode);
+  }
+  return false;
+};
+
+// `setMirror(someProp)` / `setMirror(props.value)` — the sole argument is
+// an untransformed read of an existing value. The canonical mirror
+// positive from react.dev's "you might not need an effect": even when
+// handlers also write the state, the whole-value verbatim copy is
+// derivable by definition, so the report stands.
+const isWholeValueMirrorArgument = (callExpr: EsTreeNode): boolean => {
+  if (!isNodeOfType(callExpr, "CallExpression")) return false;
+  const args = callExpr.arguments ?? [];
+  if (args.length !== 1) return false;
+  return isPlainValueReadExpression(args[0] as EsTreeNode);
+};
+
+const collectEarlyReturnGuardTests = (
+  block: EsTreeNode,
+  beforeStatement: EsTreeNode,
+): EsTreeNode[] => {
+  const tests: EsTreeNode[] = [];
+  if (!isNodeOfType(block, "BlockStatement")) return tests;
+  for (const statement of block.body ?? []) {
+    if ((statement as unknown as EsTreeNode) === beforeStatement) break;
+    if (!isNodeOfType(statement, "IfStatement")) continue;
+    const consequent = statement.consequent;
+    const isEarlyReturn =
+      isNodeOfType(consequent, "ReturnStatement") ||
+      (isNodeOfType(consequent, "BlockStatement") &&
+        (consequent.body ?? []).some((inner) => isNodeOfType(inner, "ReturnStatement")));
+    if (isEarlyReturn) tests.push(statement.test as EsTreeNode);
+  }
+  return tests;
+};
+
+const collectGuardTestsOnPath = (callExpr: EsTreeNode, effectFn: EsTreeNode): EsTreeNode[] => {
+  const guardTests: EsTreeNode[] = [];
+  let child: EsTreeNode = callExpr;
+  let parent: EsTreeNode | null | undefined = callExpr.parent;
+  while (parent && child !== effectFn) {
+    if (isNodeOfType(parent, "IfStatement") && (parent.test as unknown as EsTreeNode) !== child) {
+      guardTests.push(parent.test as EsTreeNode);
+    } else if (
+      isNodeOfType(parent, "ConditionalExpression") &&
+      (parent.test as unknown as EsTreeNode) !== child
+    ) {
+      guardTests.push(parent.test as EsTreeNode);
+    } else if (
+      isNodeOfType(parent, "LogicalExpression") &&
+      (parent.right as unknown as EsTreeNode) === child
+    ) {
+      guardTests.push(parent.left as EsTreeNode);
+    } else if (isNodeOfType(parent, "BlockStatement")) {
+      guardTests.push(...collectEarlyReturnGuardTests(parent, child));
+    }
+    child = parent;
+    parent = parent.parent ?? null;
+  }
+  return guardTests;
+};
+
+// A guard reading some useState value marks a state-conditioned write —
+// the `if (!items.some((item) => item.id === selectedId)) setSelectedId(first)`
+// fallback shape. That write IS replaceable by a render-time derivation
+// (`isValid ? selected : fallback`), so it stays reported even when the
+// state has independent user-input writers.
+const someGuardReadsState = (
+  analysis: ProgramAnalysis,
+  guardTests: ReadonlyArray<EsTreeNode>,
+): boolean =>
+  guardTests.some((test) =>
+    getDownstreamRefs(analysis, test).some(
+      (testRef) =>
+        isState(analysis, testRef) ||
+        getUpstreamRefs(analysis, testRef).some((upRef) => isState(analysis, upRef)),
+    ),
+  );
+
+// A setter with any reference outside this effect (a handler call, a
+// subscription callback, the setter passed as a value) is not "only set
+// here" — the second diagnostic's premise. `countSetterCallSites` only
+// sees call parents, so `onDraftChange={setDraft}` slipped through.
+const hasReferenceOutsideEffect = (ref: Reference, effectNode: EsTreeNode): boolean => {
+  if (!ref.resolved) return false;
+  const effectRange = (effectNode as unknown as { range?: [number, number] }).range;
+  if (!effectRange) return false;
+  for (const reference of ref.resolved.references) {
+    if (reference.init) continue;
+    const identifier = reference.identifier as unknown as { range?: [number, number] };
+    if (!identifier.range) continue;
+    const isInsideEffect =
+      effectRange[0] <= identifier.range[0] && identifier.range[1] <= effectRange[1];
+    if (!isInsideEffect) return true;
+  }
+  return false;
 };
 
 export const noDerivedState = defineRule({
@@ -160,6 +279,27 @@ export const noDerivedState = defineRule({
 
         if (isAccumulatingFunctionalUpdater(analysis, callExpr)) continue;
 
+        // User-editable state that a GUARDED effect merely re-syncs from
+        // props on specific changes (edit-form drafts, keyboard-navigation
+        // indexes, toggled selections): the state carries user input that
+        // no render-time derivation could reproduce, so "derive it" is
+        // wrong. Three derived-write shapes stay reported despite user
+        // writers: the unguarded write (it clobbers the user's edits on
+        // EVERY dep change — the classic mirror bug), the whole-value
+        // prop/state mirror, and the state-conditioned fallback
+        // (`if (!isValid(selected)) setSelected(first)` — replaceable by a
+        // render-time clamp).
+        const guardTestsOnPath = collectGuardTestsOnPath(callExpr, effectFn);
+        if (
+          guardTestsOnPath.length > 0 &&
+          isStateSetter(analysis, ref) &&
+          hasUserInputSetterWriter(ref, node, true) &&
+          !isWholeValueMirrorArgument(callExpr) &&
+          !someGuardReadsState(analysis, guardTestsOnPath)
+        ) {
+          continue;
+        }
+
         const isSomeArgsInternal = argsUpstreamRefs.some(
           (argRef) => isState(analysis, argRef) || isProp(analysis, argRef),
         );
@@ -169,7 +309,10 @@ export const noDerivedState = defineRule({
           argsUpstreamRefs.every((argRef) =>
             depsUpstreamRefs.some((depRef) => argRef.resolved === depRef.resolved),
           );
-        const isValueAlwaysInSync = isAllArgsInDeps && countSetterCallSites(ref) === 1;
+        const isValueAlwaysInSync =
+          isAllArgsInDeps &&
+          countSetterCallSites(ref) === 1 &&
+          !hasReferenceOutsideEffect(ref, node);
 
         if (isSomeArgsInternal) {
           context.report({

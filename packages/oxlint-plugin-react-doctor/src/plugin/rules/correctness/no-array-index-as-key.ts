@@ -6,7 +6,6 @@ import { findProgramRoot } from "../../utils/find-program-root.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
-import { isAllLiteralArrayExpression } from "../../utils/is-all-literal-array-expression.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
@@ -20,79 +19,91 @@ import {
 
 const STRING_COERCION_FUNCTIONS = new Set(["String", "Number"]);
 
-const extractIndexName = (node: EsTreeNode): string | null => {
-  if (isNodeOfType(node, "Identifier") && INDEX_PARAMETER_NAMES.has(node.name)) return node.name;
+const ITERATOR_METHOD_NAMES = new Set(["map", "flatMap", "forEach"]);
+
+const MUTATING_ARRAY_METHOD_NAMES = new Set([
+  "copyWithin",
+  "fill",
+  "pop",
+  "push",
+  "reverse",
+  "shift",
+  "sort",
+  "splice",
+  "unshift",
+]);
+
+const TYPE_RESOLUTION_DEPTH_LIMIT = 4;
+
+// The identifiers a key expression could get its value from — the bare
+// identifier, template-literal slots, `x.toString()`, `String(x)` /
+// `Number(x)`, and `x + ""` / `"" + x` coercions.
+const extractCandidateIdentifiers = (
+  expression: EsTreeNode,
+): Array<EsTreeNodeOfType<"Identifier">> => {
+  const node = stripParenExpression(expression);
+  if (isNodeOfType(node, "Identifier")) return [node];
 
   if (isNodeOfType(node, "TemplateLiteral")) {
-    for (const expression of node.expressions ?? []) {
-      if (isNodeOfType(expression, "Identifier") && INDEX_PARAMETER_NAMES.has(expression.name)) {
-        return expression.name;
-      }
+    const identifiers: Array<EsTreeNodeOfType<"Identifier">> = [];
+    for (const templateExpression of node.expressions ?? []) {
+      if (isNodeOfType(templateExpression, "Identifier")) identifiers.push(templateExpression);
+    }
+    return identifiers;
+  }
+
+  if (isNodeOfType(node, "CallExpression")) {
+    if (
+      isNodeOfType(node.callee, "MemberExpression") &&
+      isNodeOfType(node.callee.object, "Identifier") &&
+      isNodeOfType(node.callee.property, "Identifier") &&
+      node.callee.property.name === "toString"
+    ) {
+      return [node.callee.object];
+    }
+    if (
+      isNodeOfType(node.callee, "Identifier") &&
+      STRING_COERCION_FUNCTIONS.has(node.callee.name) &&
+      isNodeOfType(node.arguments?.[0], "Identifier")
+    ) {
+      return [node.arguments[0]];
+    }
+    return [];
+  }
+
+  if (isNodeOfType(node, "BinaryExpression") && node.operator === "+") {
+    if (
+      isNodeOfType(node.left, "Identifier") &&
+      isNodeOfType(node.right, "Literal") &&
+      node.right.value === ""
+    ) {
+      return [node.left];
+    }
+    if (
+      isNodeOfType(node.right, "Identifier") &&
+      isNodeOfType(node.left, "Literal") &&
+      node.left.value === ""
+    ) {
+      return [node.right];
     }
   }
 
-  if (
-    isNodeOfType(node, "CallExpression") &&
-    isNodeOfType(node.callee, "MemberExpression") &&
-    isNodeOfType(node.callee.object, "Identifier") &&
-    INDEX_PARAMETER_NAMES.has(node.callee.object.name) &&
-    isNodeOfType(node.callee.property, "Identifier") &&
-    node.callee.property.name === "toString"
-  )
-    return node.callee.object.name;
+  return [];
+};
 
+// `Array(count)` / `new Array(count)` with at most one argument is a
+// placeholder construction: a numeric argument makes N identityless
+// holes, and any other single value makes a one-element list that
+// cannot reorder. Two-plus arguments build a real element list instead.
+const isArrayConstructorPlaceholderCall = (node: EsTreeNode | null | undefined): boolean => {
+  if (!node) return false;
   if (
-    isNodeOfType(node, "CallExpression") &&
+    (isNodeOfType(node, "CallExpression") || isNodeOfType(node, "NewExpression")) &&
     isNodeOfType(node.callee, "Identifier") &&
-    STRING_COERCION_FUNCTIONS.has(node.callee.name) &&
-    isNodeOfType(node.arguments?.[0], "Identifier") &&
-    INDEX_PARAMETER_NAMES.has(node.arguments[0].name)
-  )
-    return node.arguments[0].name;
-
-  if (
-    isNodeOfType(node, "BinaryExpression") &&
-    node.operator === "+" &&
-    ((isNodeOfType(node.left, "Identifier") &&
-      INDEX_PARAMETER_NAMES.has(node.left.name) &&
-      isNodeOfType(node.right, "Literal") &&
-      node.right.value === "") ||
-      (isNodeOfType(node.right, "Identifier") &&
-        INDEX_PARAMETER_NAMES.has(node.right.name) &&
-        isNodeOfType(node.left, "Literal") &&
-        node.left.value === ""))
+    node.callee.name === "Array"
   ) {
-    if (isNodeOfType(node.left, "Identifier")) return node.left.name;
-    if (isNodeOfType(node.right, "Identifier")) return node.right.name;
-    return null;
+    return (node.arguments?.length ?? 0) <= 1;
   }
-
-  return null;
-};
-
-const isNumericLiteralOrUndefined = (node: EsTreeNode | null | undefined): boolean => {
-  if (!node) return false;
-  if (isNodeOfType(node, "Literal") && typeof node.value === "number") return true;
-  if (isNodeOfType(node, "Identifier") && node.name === "undefined") return true;
-  return false;
-};
-
-const isArrayConstructorCallWithNumericLength = (node: EsTreeNode | null | undefined): boolean => {
-  if (!node) return false;
-  if (
-    isNodeOfType(node, "CallExpression") &&
-    isNodeOfType(node.callee, "Identifier") &&
-    node.callee.name === "Array" &&
-    isNumericLiteralOrUndefined(node.arguments?.[0])
-  )
-    return true;
-  if (
-    isNodeOfType(node, "NewExpression") &&
-    isNodeOfType(node.callee, "Identifier") &&
-    node.callee.name === "Array" &&
-    isNumericLiteralOrUndefined(node.arguments?.[0])
-  )
-    return true;
   return false;
 };
 
@@ -109,47 +120,58 @@ const isArrayFromCall = (node: EsTreeNode | null | undefined): boolean => {
   );
 };
 
-/**
- * True if every element of an ArrayExpression is a primitive constant
- * (number/string/boolean literal) — `[1, 2, 3]`, `['a', 'b']`. Such arrays
- * have a fixed order at every render, so an index key is stable.
- */
-/**
- * True if the call expression looks like a placeholder constructor whose
- * elements have no identity beyond their position — i.e. `Array.from(...)`,
- * `Array(N)`, `new Array(N)`, `Array(N).fill(...)`, `[...Array(N)]`, or
- * a literal-only array `[1, 2, 3]` / `['a', 'b']`.
- *
- * Used both for `<receiver>.map(...)` and for `Array.from(<length>, fn)`.
- */
-const isBindingReassigned = (referenceNode: EsTreeNode, bindingName: string): boolean => {
+const isBindingReassignedOrMutated = (referenceNode: EsTreeNode, bindingName: string): boolean => {
   const programRoot = findProgramRoot(referenceNode);
   if (!programRoot) return false;
-  let didFindReassignment = false;
+  let didFindWrite = false;
   walkAst(programRoot, (child: EsTreeNode): boolean | void => {
-    if (didFindReassignment) return false;
+    if (didFindWrite) return false;
     if (
       isNodeOfType(child, "AssignmentExpression") &&
       isNodeOfType(child.left, "Identifier") &&
       child.left.name === bindingName
     ) {
-      didFindReassignment = true;
+      didFindWrite = true;
+      return false;
+    }
+    if (
+      isNodeOfType(child, "UpdateExpression") &&
+      isNodeOfType(child.argument, "Identifier") &&
+      child.argument.name === bindingName
+    ) {
+      didFindWrite = true;
+      return false;
+    }
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "MemberExpression") &&
+      isNodeOfType(child.callee.object, "Identifier") &&
+      child.callee.object.name === bindingName &&
+      isNodeOfType(child.callee.property, "Identifier") &&
+      MUTATING_ARRAY_METHOD_NAMES.has(child.callee.property.name)
+    ) {
+      didFindWrite = true;
       return false;
     }
   });
-  return didFindReassignment;
+  return didFindWrite;
 };
 
+/**
+ * True if the receiver looks like a placeholder constructor whose
+ * elements have no identity beyond their position — i.e. `Array.from(...)`,
+ * `Array(N)`, `new Array(N)`, `<placeholder>.fill(...)`, or
+ * `[...<placeholder>]`.
+ */
 const isStaticPlaceholderReceiver = (receiver: EsTreeNode, depth = 0): boolean => {
   if (isArrayFromCall(receiver)) return true;
-  if (isArrayConstructorCallWithNumericLength(receiver)) return true;
-  if (isAllLiteralArrayExpression(receiver)) return true;
+  if (isArrayConstructorPlaceholderCall(receiver)) return true;
 
   if (isNodeOfType(receiver, "Identifier")) {
     if (depth >= TYPE_RESOLUTION_DEPTH_LIMIT) return false;
     const binding = findVariableInitializer(receiver, receiver.name);
     if (!binding?.initializer) return false;
-    if (isBindingReassigned(receiver, receiver.name)) return false;
+    if (isBindingReassignedOrMutated(receiver, receiver.name)) return false;
     return isStaticPlaceholderReceiver(binding.initializer, depth + 1);
   }
 
@@ -159,20 +181,111 @@ const isStaticPlaceholderReceiver = (receiver: EsTreeNode, depth = 0): boolean =
       isNodeOfType(callee, "MemberExpression") &&
       isNodeOfType(callee.property, "Identifier") &&
       callee.property.name === "fill" &&
-      isArrayConstructorCallWithNumericLength(callee.object)
+      depth < TYPE_RESOLUTION_DEPTH_LIMIT &&
+      isStaticPlaceholderReceiver(callee.object, depth + 1)
     )
       return true;
   }
 
   if (isNodeOfType(receiver, "ArrayExpression") && receiver.elements?.length === 1) {
     const only = receiver.elements[0];
-    if (only && isNodeOfType(only, "SpreadElement")) {
-      const arg = only.argument;
-      if (isArrayConstructorCallWithNumericLength(arg)) return true;
-      if (isArrayFromCall(arg)) return true;
+    if (only && isNodeOfType(only, "SpreadElement") && depth < TYPE_RESOLUTION_DEPTH_LIMIT) {
+      return isStaticPlaceholderReceiver(only.argument, depth + 1);
     }
   }
 
+  return false;
+};
+
+const isSpreadFreeArrayLiteral = (node: EsTreeNode): boolean => {
+  const stripped = stripParenExpression(node);
+  if (!isNodeOfType(stripped, "ArrayExpression")) return false;
+  const elements = stripped.elements ?? [];
+  if (elements.length === 0) return false;
+  for (const element of elements) {
+    if (!element || isNodeOfType(element, "SpreadElement")) return false;
+  }
+  return true;
+};
+
+const isUseMemoCall = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = node.callee;
+  if (isNodeOfType(callee, "Identifier")) return callee.name === "useMemo";
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === "useMemo"
+  );
+};
+
+// `useMemo(factory, [])` computes the list exactly once for the
+// component's lifetime — it can never reorder or filter afterwards.
+const hasEmptyDependencyArray = (useMemoCall: EsTreeNode): boolean => {
+  if (!isNodeOfType(useMemoCall, "CallExpression")) return false;
+  const dependencies = useMemoCall.arguments?.[1];
+  return Boolean(
+    dependencies &&
+    isNodeOfType(dependencies, "ArrayExpression") &&
+    (dependencies.elements ?? []).length === 0,
+  );
+};
+
+// `useMemo(() => [ … ], deps)` where every return is a spread-free
+// array literal — the memoized list is rebuilt positionally each time,
+// so it can never reorder or filter.
+const useMemoReturnsArrayLiteral = (useMemoCall: EsTreeNode): boolean => {
+  if (!isNodeOfType(useMemoCall, "CallExpression")) return false;
+  const factory = useMemoCall.arguments?.[0];
+  if (!factory || !isFunctionLike(factory)) return false;
+  const body = factory.body;
+  if (!isNodeOfType(body, "BlockStatement")) return isSpreadFreeArrayLiteral(body);
+  let didFindReturn = false;
+  let allReturnsAreFixedArrays = true;
+  walkAst(body, (child: EsTreeNode): boolean | void => {
+    if (isFunctionLike(child)) return false;
+    if (isNodeOfType(child, "ReturnStatement")) {
+      didFindReturn = true;
+      if (!child.argument || !isSpreadFreeArrayLiteral(child.argument)) {
+        allReturnsAreFixedArrays = false;
+      }
+      return false;
+    }
+  });
+  return didFindReturn && allReturnsAreFixedArrays;
+};
+
+/**
+ * A spread-free array literal (directly, via a never-reassigned,
+ * never-mutated binding, or via a `useMemo` factory returning one) has
+ * a fixed length and fixed positional meaning at every render — the
+ * list can never reorder or filter, so an index key cannot
+ * misassociate entries.
+ */
+const isStaticArrayLiteralReceiver = (receiver: EsTreeNode, depth = 0): boolean => {
+  const node = stripParenExpression(receiver);
+  if (isSpreadFreeArrayLiteral(node)) return true;
+  if (isNodeOfType(node, "Identifier")) {
+    if (depth >= TYPE_RESOLUTION_DEPTH_LIMIT) return false;
+    const binding = findVariableInitializer(node, node.name);
+    if (!binding?.initializer) return false;
+    // Only a direct declarator init proves the value — a destructuring
+    // default only applies when the source is undefined.
+    const declarator = binding.bindingIdentifier.parent;
+    if (
+      !declarator ||
+      !isNodeOfType(declarator, "VariableDeclarator") ||
+      declarator.init !== binding.initializer
+    ) {
+      return false;
+    }
+    if (isBindingReassignedOrMutated(node, node.name)) return false;
+    const initializer = stripParenExpression(binding.initializer);
+    if (isUseMemoCall(initializer)) {
+      return useMemoReturnsArrayLiteral(initializer) || hasEmptyDependencyArray(initializer);
+    }
+    return isStaticArrayLiteralReceiver(initializer, depth + 1);
+  }
   return false;
 };
 
@@ -188,7 +301,8 @@ const isArrayFromLengthObjectCall = (node: EsTreeNode): boolean => {
       (isNodeOfType(key, "Identifier") && key.name === "length") ||
       (isNodeOfType(key, "Literal") && key.value === "length");
     if (!isLengthKey) continue;
-    if (isNumericLiteralOrUndefined(prop.value)) return true;
+    if (isNodeOfType(prop.value, "Literal") && typeof prop.value.value === "number") return true;
+    if (isNodeOfType(prop.value, "Identifier") && prop.value.name === "undefined") return true;
     // also accept simple identifier — `{length: count}` — assume it's a numeric
     // constant; almost always is in placeholder constructions.
     if (isNodeOfType(prop.value, "Identifier")) return true;
@@ -202,8 +316,6 @@ const isArrayFromLengthObjectCall = (node: EsTreeNode): boolean => {
   }
   return false;
 };
-
-const TYPE_RESOLUTION_DEPTH_LIMIT = 4;
 
 const isStringKeywordAnnotation = (typeAnnotation: EsTreeNode | null | undefined): boolean =>
   Boolean(
@@ -362,52 +474,250 @@ const isStringDerivedReceiver = (receiver: EsTreeNode, depth = 0): boolean => {
   return isArrayFromCall(node) && hasProvablyStringFirstArgument(node);
 };
 
-// We must inspect only the INNERMOST iterator callback enclosing the
-// keyed JSX — that's the one whose index parameter actually feeds the
-// `key=` binding. Outer `Array.from({length: N}, ...)` ancestors are
-// irrelevant when there's a nested `items.map(...)` between them and
-// the JSX (the inner index is from the dynamic map, not the placeholder).
-const isInsideIteratorMapMatching = (
-  node: EsTreeNode,
-  matchesMethodReceiver: (receiver: EsTreeNode) => boolean,
-  matchesArrayFromCall: (arrayFromCall: EsTreeNode) => boolean,
-): boolean => {
-  let current = node;
-  while (current.parent) {
-    const parent = current.parent;
-    if (
-      isFunctionLike(current) &&
-      isNodeOfType(parent, "CallExpression") &&
-      parent.arguments.includes(current as never)
-    ) {
-      const callee = parent.callee;
-      if (
-        isNodeOfType(callee, "MemberExpression") &&
-        isNodeOfType(callee.property, "Identifier") &&
-        (callee.property.name === "map" ||
-          callee.property.name === "flatMap" ||
-          callee.property.name === "forEach")
-      ) {
-        return matchesMethodReceiver(callee.object);
-      }
-      if (
-        isArrayFromCall(parent) &&
-        parent.arguments.length >= 2 &&
-        parent.arguments[1] === current
-      ) {
-        return matchesArrayFromCall(parent);
-      }
-    }
-    current = parent;
+// The call this function is an iterator callback of — `items.map(fn)`,
+// `items.flatMap(fn)`, `items.forEach(fn)`, `Array.from(src, fn)` —
+// or null when the function is not directly such a callback.
+const findIteratorCallOfCallback = (
+  functionNode: EsTreeNode,
+): EsTreeNodeOfType<"CallExpression"> | null => {
+  const parent = functionNode.parent;
+  if (!parent || !isNodeOfType(parent, "CallExpression")) return null;
+  if (!parent.arguments.includes(functionNode as never)) return null;
+  const callee = parent.callee;
+  if (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier") &&
+    ITERATOR_METHOD_NAMES.has(callee.property.name)
+  ) {
+    return parent;
   }
-  return false;
+  if (isArrayFromCall(parent) && parent.arguments[1] === functionNode) return parent;
+  return null;
 };
 
-const isInsideStringDerivedMap = (node: EsTreeNode): boolean =>
-  isInsideIteratorMapMatching(node, isStringDerivedReceiver, hasProvablyStringFirstArgument);
+interface EnclosingParameterInfo {
+  functionNode: EsTreeNode;
+  parameterPosition: number;
+  parameterRoot: EsTreeNode;
+}
 
-const isInsideStaticPlaceholderMap = (node: EsTreeNode): boolean =>
-  isInsideIteratorMapMatching(node, isStaticPlaceholderReceiver, isArrayFromLengthObjectCall);
+// If the binding identifier is declared inside a function's parameter
+// list, return the function, the parameter slot it sits in, and the
+// top-level pattern node of that slot.
+const findEnclosingParameter = (bindingIdentifier: EsTreeNode): EnclosingParameterInfo | null => {
+  let current: EsTreeNode = bindingIdentifier;
+  while (current.parent) {
+    const parent = current.parent;
+    if (isFunctionLike(parent)) {
+      const parameters = parent.params ?? [];
+      const parameterPosition = parameters.indexOf(current as never);
+      return parameterPosition >= 0
+        ? { functionNode: parent, parameterPosition, parameterRoot: current }
+        : null;
+    }
+    if (isNodeOfType(parent, "VariableDeclarator") || isNodeOfType(parent, "Program")) return null;
+    current = parent;
+  }
+  return null;
+};
+
+// `.entries()` on anything except `Object` — an Array `entries()` tuple
+// leads with the positional index. (`Object.entries` tuples lead with a
+// stable property key instead.)
+const isArrayEntriesCall = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "CallExpression") &&
+  isNodeOfType(node.callee, "MemberExpression") &&
+  isNodeOfType(node.callee.property, "Identifier") &&
+  node.callee.property.name === "entries" &&
+  !(isNodeOfType(node.callee.object, "Identifier") && node.callee.object.name === "Object");
+
+const containsArrayEntriesCall = (node: EsTreeNode): boolean => {
+  let didFindEntriesCall = false;
+  walkAst(node, (child: EsTreeNode): boolean | void => {
+    if (didFindEntriesCall) return false;
+    if (isArrayEntriesCall(child)) {
+      didFindEntriesCall = true;
+      return false;
+    }
+  });
+  return didFindEntriesCall;
+};
+
+// `[...items.entries()].map(([index, item]) => …)` — the first tuple
+// element of an array `entries()` destructure IS the positional index.
+// Name-gated: a `Map#entries()` tuple leads with a stable key instead,
+// and the two receivers are indistinguishable statically.
+const isEntriesTupleIndexParameter = (
+  bindingIdentifier: EsTreeNode,
+  indexName: string,
+  parameterInfo: EnclosingParameterInfo,
+): boolean => {
+  if (!INDEX_PARAMETER_NAMES.has(indexName)) return false;
+  const arrayPattern = bindingIdentifier.parent;
+  if (!arrayPattern || !isNodeOfType(arrayPattern, "ArrayPattern")) return false;
+  if (arrayPattern !== parameterInfo.parameterRoot) return false;
+  if (arrayPattern.elements?.[0] !== bindingIdentifier) return false;
+  const iteratorCall = findIteratorCallOfCallback(parameterInfo.functionNode);
+  if (!iteratorCall) return false;
+  const source = isArrayFromCall(iteratorCall)
+    ? iteratorCall.arguments?.[0]
+    : isNodeOfType(iteratorCall.callee, "MemberExpression")
+      ? iteratorCall.callee.object
+      : null;
+  return Boolean(source && containsArrayEntriesCall(source));
+};
+
+// `for (const [index, item] of items.entries()) { … }` — same tuple
+// shape as above, bound by a for-of instead of a callback.
+const isForOfEntriesTupleBinding = (bindingIdentifier: EsTreeNode): boolean => {
+  const arrayPattern = bindingIdentifier.parent;
+  if (!arrayPattern || !isNodeOfType(arrayPattern, "ArrayPattern")) return false;
+  if (arrayPattern.elements?.[0] !== bindingIdentifier) return false;
+  const declarator = arrayPattern.parent;
+  if (!declarator || !isNodeOfType(declarator, "VariableDeclarator")) return false;
+  const declaration = declarator.parent;
+  if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) return false;
+  const forOfStatement = declaration.parent;
+  if (!forOfStatement || !isNodeOfType(forOfStatement, "ForOfStatement")) return false;
+  if (forOfStatement.left !== declaration) return false;
+  return isArrayEntriesCall(stripParenExpression(forOfStatement.right));
+};
+
+// A numeric-literal declarator is a positional counter only when it
+// drives a `for(;;)` loop or is incremented / reassigned somewhere —
+// a plain `const index = 5` is a fixed value, not an array index.
+const isLoopCounterDeclarator = (
+  declarator: EsTreeNode,
+  referenceNode: EsTreeNode,
+  indexName: string,
+): boolean => {
+  const declaration = declarator.parent;
+  if (declaration && isNodeOfType(declaration, "VariableDeclaration")) {
+    const forStatement = declaration.parent;
+    if (
+      forStatement &&
+      isNodeOfType(forStatement, "ForStatement") &&
+      forStatement.init === declaration
+    ) {
+      return true;
+    }
+  }
+  return isBindingReassignedOrMutated(referenceNode, indexName);
+};
+
+interface PositionalIndexBinding {
+  // The `.map` / `.flatMap` / `.forEach` / `Array.from` call whose
+  // callback binds the index, when the index came from one.
+  iteratorCall: EsTreeNodeOfType<"CallExpression"> | null;
+}
+
+interface PositionalIndexUse {
+  identifier: EsTreeNodeOfType<"Identifier">;
+  binding: PositionalIndexBinding;
+}
+
+/**
+ * Resolves whether an identifier is PROVABLY the positional array
+ * index, by classifying its binding:
+ *   - second-or-later direct parameter of an iterator callback → index
+ *     (any name — `.map((item, key) => …)` still positions `key` as
+ *     the index);
+ *   - second-or-later direct parameter of any other function → index
+ *     only when the name matches (`index` / `idx` / `i`), since render
+ *     props usually forward the map index;
+ *   - anything bound inside the FIRST parameter (the item itself, or a
+ *     property destructured from it) → NOT the index;
+ *   - array `entries()` tuple destructures → index (name-gated);
+ *   - numeric-literal loop counters → index;
+ *   - a variable laundered from any of the above (`const key = index`,
+ *     `const key = \`item-\${i}\``) → index, resolved transitively.
+ * Unprovable bindings (state values, props, imports) stay silent —
+ * precision over recall.
+ */
+const resolvePositionalIndexBinding = (
+  identifierNode: EsTreeNodeOfType<"Identifier">,
+  depth: number,
+): PositionalIndexBinding | null => {
+  if (depth > TYPE_RESOLUTION_DEPTH_LIMIT) return null;
+  const binding = findVariableInitializer(identifierNode, identifierNode.name);
+  if (!binding) return null;
+
+  const parameterInfo = findEnclosingParameter(binding.bindingIdentifier);
+  if (parameterInfo) {
+    if (parameterInfo.parameterPosition >= 1) {
+      const isDirectIdentifierParameter =
+        parameterInfo.parameterRoot === binding.bindingIdentifier ||
+        (isNodeOfType(parameterInfo.parameterRoot, "AssignmentPattern") &&
+          parameterInfo.parameterRoot.left === binding.bindingIdentifier);
+      if (!isDirectIdentifierParameter) return null;
+      const iteratorCall = findIteratorCallOfCallback(parameterInfo.functionNode);
+      if (iteratorCall) return { iteratorCall };
+      return INDEX_PARAMETER_NAMES.has(identifierNode.name) ? { iteratorCall: null } : null;
+    }
+    return isEntriesTupleIndexParameter(
+      binding.bindingIdentifier,
+      identifierNode.name,
+      parameterInfo,
+    )
+      ? { iteratorCall: null }
+      : null;
+  }
+
+  const declarator = binding.bindingIdentifier.parent;
+  if (
+    declarator &&
+    isNodeOfType(declarator, "VariableDeclarator") &&
+    declarator.id === binding.bindingIdentifier &&
+    declarator.init
+  ) {
+    const initializer = stripParenExpression(declarator.init);
+    if (isNodeOfType(initializer, "Literal") && typeof initializer.value === "number") {
+      return isLoopCounterDeclarator(declarator, identifierNode, identifierNode.name)
+        ? { iteratorCall: null }
+        : null;
+    }
+    return findPositionalIndexUse(initializer, depth + 1)?.binding ?? null;
+  }
+
+  if (
+    INDEX_PARAMETER_NAMES.has(identifierNode.name) &&
+    isForOfEntriesTupleBinding(binding.bindingIdentifier)
+  ) {
+    return { iteratorCall: null };
+  }
+
+  return null;
+};
+
+const findPositionalIndexUse = (
+  expression: EsTreeNode,
+  depth: number,
+): PositionalIndexUse | null => {
+  for (const candidate of extractCandidateIdentifiers(expression)) {
+    const binding = resolvePositionalIndexBinding(candidate, depth);
+    if (binding) return { identifier: candidate, binding };
+  }
+  return null;
+};
+
+// Receiver-level exemptions applied to the exact iterator call whose
+// callback binds the index (not a walk-up guess): placeholder arrays,
+// static array literals, and string-sliced fragments all have position
+// as the entry's identity.
+const iteratorCallExemptsIndexKey = (iteratorCall: EsTreeNodeOfType<"CallExpression">): boolean => {
+  if (isArrayFromCall(iteratorCall)) {
+    return (
+      isArrayFromLengthObjectCall(iteratorCall) || hasProvablyStringFirstArgument(iteratorCall)
+    );
+  }
+  if (!isNodeOfType(iteratorCall.callee, "MemberExpression")) return false;
+  const receiver = iteratorCall.callee.object;
+  return (
+    isStaticPlaceholderReceiver(receiver) ||
+    isStaticArrayLiteralReceiver(receiver) ||
+    isStringDerivedReceiver(receiver)
+  );
+};
 
 /**
  * Walk up from a JSXAttribute node looking for the enclosing iterator
@@ -432,9 +742,7 @@ const findIteratorItemNames = (node: EsTreeNode): Set<string> | null => {
       const isIteratorMethodCall =
         isNodeOfType(callee, "MemberExpression") &&
         isNodeOfType(callee.property, "Identifier") &&
-        (callee.property.name === "map" ||
-          callee.property.name === "flatMap" ||
-          callee.property.name === "forEach");
+        ITERATOR_METHOD_NAMES.has(callee.property.name);
       const isArrayFromCallback =
         isArrayFromCall(parent) && parent.arguments.length >= 2 && parent.arguments[1] === current;
 
@@ -458,7 +766,16 @@ const templateLiteralHasIteratorIdentity = (
   itemNames: ReadonlySet<string>,
 ): boolean => {
   for (const expression of template.expressions ?? []) {
-    const rootName = getRootIdentifierName(expression, { followCallChains: true });
+    // `${String(option.value)}-${index}` — the coercion wrapper hides
+    // the item read from root-identifier resolution; unwrap it.
+    const unwrapped =
+      isNodeOfType(expression, "CallExpression") &&
+      isNodeOfType(expression.callee, "Identifier") &&
+      STRING_COERCION_FUNCTIONS.has(expression.callee.name) &&
+      expression.arguments?.[0]
+        ? expression.arguments[0]
+        : expression;
+    const rootName = getRootIdentifierName(unwrapped, { followCallChains: true });
     if (rootName !== null && itemNames.has(rootName)) return true;
   }
   return false;
@@ -527,6 +844,16 @@ const isNumericForLoopCounter = (attributeNode: EsTreeNode, indexName: string): 
   return true;
 };
 
+// A fragment has no DOM identity of its own, but its CHILDREN inherit
+// the key's identity — reordering an index-keyed fragment wrapping an
+// input loses that input's state just like a keyed div would.
+const fragmentHasStatefulChildren = (openingElement: EsTreeNode): boolean => {
+  const jsxElement = openingElement.parent;
+  if (!jsxElement || !isNodeOfType(jsxElement, "JSXElement")) return false;
+  const children = jsxElement.children ?? [];
+  return children.some((child) => containsStatefulDescendant(child));
+};
+
 export const noArrayIndexAsKey = defineRule({
   id: "no-array-index-as-key",
   title: "Array index used as a key",
@@ -538,28 +865,33 @@ export const noArrayIndexAsKey = defineRule({
       if (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "key") return;
       if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
 
-      const indexName = extractIndexName(node.value.expression);
-      if (!indexName) return;
+      const indexUse = findPositionalIndexUse(node.value.expression, 0);
+      if (!indexUse) return;
+      const indexName = indexUse.identifier.name;
       if (isNumericForLoopCounter(node, indexName)) return;
-      if (isInsideStaticPlaceholderMap(node)) return;
-      if (isInsideStringDerivedMap(node)) return;
+      if (
+        indexUse.binding.iteratorCall &&
+        iteratorCallExemptsIndexKey(indexUse.binding.iteratorCall)
+      ) {
+        return;
+      }
       if (isCompositeKeyWithIteratorIdentity(node.value.expression, node)) return;
 
-      // Fragment / React.Fragment has no DOM identity or state — even
-      // when the key is the index, a misidentification has no
-      // observable consequence (there's nothing to lose). Same for
-      // pure SVG primitives (`<g>`, `<path>`, …) which only re-diff
-      // attributes on reorder.
+      // Pure SVG primitives (`<g>`, `<path>`, …) only re-diff
+      // attributes on reorder — a misidentification has no observable
+      // consequence (there's nothing to lose).
       const openingElement = node.parent;
       if (openingElement && isNodeOfType(openingElement, "JSXOpeningElement")) {
         const elementName = openingElement.name as EsTreeNode;
         if (isNodeOfType(elementName, "JSXIdentifier")) {
-          if (elementName.name === "Fragment") return;
-          if (PURE_SVG_PRIMITIVE_TAGS.has(elementName.name)) return;
-          // Stateless HTML leaf element whose subtree contains no
-          // form controls, no media, no custom components, no
-          // function-call children — reorder hazard doesn't apply.
-          if (STATELESS_HTML_LEAF_TAGS.has(elementName.name)) {
+          if (elementName.name === "Fragment") {
+            if (!fragmentHasStatefulChildren(openingElement)) return;
+          } else if (PURE_SVG_PRIMITIVE_TAGS.has(elementName.name)) {
+            return;
+          } else if (STATELESS_HTML_LEAF_TAGS.has(elementName.name)) {
+            // Stateless HTML leaf element whose subtree contains no
+            // form controls, no media, no custom components, no
+            // function-call children — reorder hazard doesn't apply.
             const jsxElement = openingElement.parent;
             if (jsxElement && isNodeOfType(jsxElement, "JSXElement")) {
               if (!containsStatefulDescendant(jsxElement as EsTreeNode)) return;
@@ -571,7 +903,8 @@ export const noArrayIndexAsKey = defineRule({
           isNodeOfType(elementName.object, "JSXIdentifier") &&
           isNodeOfType(elementName.property, "JSXIdentifier") &&
           elementName.object.name === "React" &&
-          elementName.property.name === "Fragment"
+          elementName.property.name === "Fragment" &&
+          !fragmentHasStatefulChildren(openingElement)
         ) {
           return;
         }

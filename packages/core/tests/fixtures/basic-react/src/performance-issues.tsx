@@ -21,12 +21,16 @@ const ScaleFromZeroComponent = () => <div initial={{ scale: 0 }}>scale</div>;
 
 const PermanentWillChangeComponent = () => <div style={{ willChange: "transform" }}>permanent</div>;
 
-const DefaultPropComponent = ({ items = [] }: { items?: string[] }) => (
+const MemoItemList = memo(({ items }: { items: string[] }) => (
   <ul>
     {items.map((item) => (
       <li key={item}>{item}</li>
     ))}
   </ul>
+));
+
+const DefaultPropComponent = ({ items = [] }: { items?: string[] }) => (
+  <MemoItemList items={items} />
 );
 
 const SvgAnimationComponent = () => (

@@ -1,9 +1,13 @@
 import { HTML_TAGS } from "../../constants/html-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 const ROLE_DIALOG_VALUES = new Set(["dialog", "alertdialog"]);
 
@@ -20,6 +24,41 @@ const ROLE_DIALOG_NONMODAL_MESSAGE =
 
 const ARIA_MODAL_MESSAGE =
   'Keyboard users can tab out of this modal because `aria-modal="true"` only hints to screen readers without trapping focus or blocking the page, so use the native `<dialog>` with `dialog.showModal()` instead.';
+
+const FOCUS_TRAP_NAME_PATTERN = /trap/i;
+
+// The diagnostic's core claim is "keyboard users can tab out because there
+// is no focus trapping". When the file demonstrably manages focus trapping —
+// a focus-trap library (focus-trap-react's `<FocusTrap>`, `createFocusTrap`,
+// a `useFocusTrap` hook, ally.js' `a11yTrap`) or a manual `Tab`-key handler
+// (`event.key === "Tab"` wrapping) — that claim is false and the hand-rolled
+// dialog is a deliberate, working implementation, so stay quiet.
+const fileManagesFocusTrapping = (program: EsTreeNode): boolean => {
+  let found = false;
+  walkAst(program, (node) => {
+    if (found) return false;
+    if (
+      (isNodeOfType(node, "Identifier") || isNodeOfType(node, "JSXIdentifier")) &&
+      FOCUS_TRAP_NAME_PATTERN.test(node.name)
+    ) {
+      found = true;
+      return false;
+    }
+    if (isNodeOfType(node, "Literal") && node.value === "Tab") {
+      found = true;
+      return false;
+    }
+    if (
+      isNodeOfType(node, "ImportDeclaration") &&
+      typeof node.source.value === "string" &&
+      FOCUS_TRAP_NAME_PATTERN.test(node.source.value)
+    ) {
+      found = true;
+      return false;
+    }
+  });
+  return found;
+};
 
 const isAriaModalTrue = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   const stringValue = getJsxPropStringValue(attribute);
@@ -73,44 +112,52 @@ export const preferHtmlDialog = defineRule({
   severity: "warn",
   recommendation:
     'Replace the wrapper with `<dialog>` and open it with `dialog.showModal()`. For the trigger, prefer `<button commandfor="id" command="show-modal">` (Chrome 135+), or a `useRef` with `dialogRef.current?.showModal()`.',
-  create: (context) => ({
-    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      if (!isNodeOfType(node.name, "JSXIdentifier")) return;
-      const tagName = node.name.name;
-      // Native `<dialog>` is the destination, not the source — never flag.
-      if (tagName === "dialog") return;
-      // Capitalised names are user components: a custom `<Dialog>` is
-      // exactly the wrapper authors should be replacing, but we can't
-      // know whether it itself renders a `<dialog>` underneath. Static
-      // checks stay on lowercase host elements.
-      if (tagName.length === 0 || tagName[0] !== tagName[0].toLowerCase()) return;
-      // Custom web components (`<ui-modal>`) are opaque host elements we
-      // can't reason about — only lint real HTML tags, matching the
-      // sibling `scope` / `no-static-element-interactions` rules.
-      if (!HTML_TAGS.has(tagName)) return;
+  create: (context): RuleVisitors => {
+    if (isTestlikeFilename(context.filename)) return {};
+    let managesFocusTrapping = false;
+    return {
+      Program(node: EsTreeNodeOfType<"Program">) {
+        managesFocusTrapping = fileManagesFocusTrapping(node);
+      },
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (managesFocusTrapping) return;
+        if (!isNodeOfType(node.name, "JSXIdentifier")) return;
+        const tagName = node.name.name;
+        // Native `<dialog>` is the destination, not the source — never flag.
+        if (tagName === "dialog") return;
+        // Capitalised names are user components: a custom `<Dialog>` is
+        // exactly the wrapper authors should be replacing, but we can't
+        // know whether it itself renders a `<dialog>` underneath. Static
+        // checks stay on lowercase host elements.
+        if (tagName.length === 0 || tagName[0] !== tagName[0].toLowerCase()) return;
+        // Custom web components (`<ui-modal>`) are opaque host elements we
+        // can't reason about — only lint real HTML tags, matching the
+        // sibling `scope` / `no-static-element-interactions` rules.
+        if (!HTML_TAGS.has(tagName)) return;
 
-      // Per-attribute reporting: when both `role` and `aria-modal` are
-      // on the same element, the role is the more direct signal of a
-      // hand-rolled modal — flag it and stop, so the user sees one
-      // diagnostic per offending element instead of two.
-      const roleAttribute = findJsxAttribute(node.attributes, "role");
-      if (roleAttribute) {
-        const roleValue = getJsxPropStringValue(roleAttribute);
-        if (roleValue !== null && ROLE_DIALOG_VALUES.has(roleValue)) {
-          const ariaModalAttribute = findJsxAttribute(node.attributes, "aria-modal");
-          const isModal = ariaModalAttribute ? isAriaModalTrue(ariaModalAttribute) : false;
-          context.report({
-            node: roleAttribute,
-            message: isModal ? ROLE_DIALOG_MODAL_MESSAGE : ROLE_DIALOG_NONMODAL_MESSAGE,
-          });
-          return;
+        // Per-attribute reporting: when both `role` and `aria-modal` are
+        // on the same element, the role is the more direct signal of a
+        // hand-rolled modal — flag it and stop, so the user sees one
+        // diagnostic per offending element instead of two.
+        const roleAttribute = findJsxAttribute(node.attributes, "role");
+        if (roleAttribute) {
+          const roleValue = getJsxPropStringValue(roleAttribute);
+          if (roleValue !== null && ROLE_DIALOG_VALUES.has(roleValue)) {
+            const ariaModalAttribute = findJsxAttribute(node.attributes, "aria-modal");
+            const isModal = ariaModalAttribute ? isAriaModalTrue(ariaModalAttribute) : false;
+            context.report({
+              node: roleAttribute,
+              message: isModal ? ROLE_DIALOG_MODAL_MESSAGE : ROLE_DIALOG_NONMODAL_MESSAGE,
+            });
+            return;
+          }
         }
-      }
 
-      const ariaModalAttribute = findJsxAttribute(node.attributes, "aria-modal");
-      if (ariaModalAttribute && isAriaModalTrue(ariaModalAttribute)) {
-        context.report({ node: ariaModalAttribute, message: ARIA_MODAL_MESSAGE });
-      }
-    },
-  }),
+        const ariaModalAttribute = findJsxAttribute(node.attributes, "aria-modal");
+        if (ariaModalAttribute && isAriaModalTrue(ariaModalAttribute)) {
+          context.report({ node: ariaModalAttribute, message: ARIA_MODAL_MESSAGE });
+        }
+      },
+    };
+  },
 });

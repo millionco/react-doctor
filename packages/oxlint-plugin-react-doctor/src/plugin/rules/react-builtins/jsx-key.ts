@@ -1,11 +1,17 @@
+import { SPREAD_KEY_RESOLUTION_DEPTH } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxKeyAttribute } from "../../utils/has-jsx-key-attribute.js";
+import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isNonChildrenJsxAttributeValue } from "../../utils/is-non-children-jsx-attribute-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { Rule } from "../../utils/rule.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 const ITERATOR_METHOD_NAMES = new Set(["map", "flatMap", "from"]);
 const MISSING_KEY_ARRAY = "Your users can see the wrong data when this array reorders.";
@@ -31,6 +37,145 @@ const resolveSettings = (
     checkKeyMustBeforeSpread: ruleSettings.checkKeyMustBeforeSpread ?? true,
     warnOnDuplicates: ruleSettings.warnOnDuplicates ?? false,
   };
+};
+
+const UPWARD_TS_WRAPPER_TYPES = new Set<string>([
+  "ParenthesizedExpression",
+  "TSAsExpression",
+  "TSSatisfiesExpression",
+  "TSTypeAssertion",
+  "TSNonNullExpression",
+]);
+
+const findArrayVariableDeclarator = (
+  arrayExpression: EsTreeNode,
+): EsTreeNodeOfType<"VariableDeclarator"> | null => {
+  let wrapped: EsTreeNode = arrayExpression;
+  let ancestor: EsTreeNode | null | undefined = arrayExpression.parent;
+  while (ancestor && UPWARD_TS_WRAPPER_TYPES.has(ancestor.type)) {
+    wrapped = ancestor;
+    ancestor = ancestor.parent;
+  }
+  if (
+    ancestor &&
+    isNodeOfType(ancestor, "VariableDeclarator") &&
+    ancestor.init === wrapped &&
+    isNodeOfType(ancestor.id, "Identifier")
+  ) {
+    return ancestor;
+  }
+  return null;
+};
+
+// `.map(x => x)` returns the raw elements, so their keys still matter.
+// A callback that builds NEW elements (wrapping each item) makes the raw
+// elements' keys irrelevant — the map output is what renders as siblings,
+// and the iterator check covers that output separately.
+const isIdentityIteratorCallback = (callback: EsTreeNode): boolean => {
+  const callbackFunction = stripParenExpression(callback);
+  if (
+    !isNodeOfType(callbackFunction, "ArrowFunctionExpression") &&
+    !isNodeOfType(callbackFunction, "FunctionExpression")
+  ) {
+    // A named function reference — can't see the body, assume identity.
+    return true;
+  }
+  const firstParam = callbackFunction.params[0];
+  if (!firstParam || !isNodeOfType(firstParam, "Identifier")) return false;
+  const itemName = firstParam.name;
+  if (
+    isNodeOfType(callbackFunction, "ArrowFunctionExpression") &&
+    callbackFunction.body &&
+    callbackFunction.body.type !== "BlockStatement"
+  ) {
+    const bodyExpression = stripParenExpression(callbackFunction.body);
+    return isNodeOfType(bodyExpression, "Identifier") && bodyExpression.name === itemName;
+  }
+  let doesReturnItem = false;
+  walkAst(callbackFunction.body, (node) => {
+    if (isNodeOfType(node, "ReturnStatement") && node.argument) {
+      const returned = stripParenExpression(node.argument);
+      if (isNodeOfType(returned, "Identifier") && returned.name === itemName) doesReturnItem = true;
+    }
+  });
+  return doesReturnItem;
+};
+
+const isListRenderingReference = (reference: EsTreeNode): boolean => {
+  const parent = reference.parent;
+  if (!parent) return false;
+  if (isNodeOfType(parent, "JSXExpressionContainer")) {
+    const containerParent = parent.parent;
+    if (
+      containerParent &&
+      (isNodeOfType(containerParent, "JSXElement") || isNodeOfType(containerParent, "JSXFragment"))
+    ) {
+      return true;
+    }
+    if (
+      containerParent &&
+      isNodeOfType(containerParent, "JSXAttribute") &&
+      isNodeOfType(containerParent.name, "JSXIdentifier") &&
+      containerParent.name.name === "children"
+    ) {
+      return true;
+    }
+    return false;
+  }
+  if (isNodeOfType(parent, "ReturnStatement")) return true;
+  if (isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === reference) return true;
+  if (
+    isNodeOfType(parent, "MemberExpression") &&
+    parent.object === reference &&
+    isNodeOfType(parent.property, "Identifier") &&
+    ITERATOR_METHOD_NAMES.has(parent.property.name)
+  ) {
+    const callExpression = parent.parent;
+    if (
+      callExpression &&
+      isNodeOfType(callExpression, "CallExpression") &&
+      callExpression.callee === parent
+    ) {
+      const callback = callExpression.arguments[0];
+      return callback ? isIdentityIteratorCallback(callback) : true;
+    }
+  }
+  return false;
+};
+
+const renderedAsListCache = new WeakMap<EsTreeNode, boolean>();
+
+// A JSX array literal bound to a variable is only a keyed-list hazard when
+// some reference actually renders the array as sibling children (`{items}`,
+// `children={items}`, `return items`, or an identity `.map`). Test fixtures
+// iterated with `forEach(render)`, positional lookup tables (`{icons[i]}`),
+// and arrays whose elements are re-wrapped in keyed elements never render
+// the raw elements as a list, so their keys are inert.
+const isArrayVariableRenderedAsList = (
+  declarator: EsTreeNodeOfType<"VariableDeclarator">,
+): boolean => {
+  const cached = renderedAsListCache.get(declarator);
+  if (cached !== undefined) return cached;
+  const bindingIdentifier = declarator.id;
+  if (!isNodeOfType(bindingIdentifier, "Identifier")) return true;
+  const programRoot = findProgramRoot(declarator);
+  if (!programRoot) return true;
+  let didFindRenderingUse = false;
+  walkAst(programRoot, (node) => {
+    if (didFindRenderingUse) return false;
+    if (!isNodeOfType(node, "Identifier") || node === bindingIdentifier) return;
+    if (node.name !== bindingIdentifier.name) return;
+    const parent = node.parent;
+    if (parent && isNodeOfType(parent, "MemberExpression") && parent.property === node) return;
+    if (parent && isNodeOfType(parent, "Property") && parent.key === node && !parent.computed) {
+      return;
+    }
+    const resolved = findVariableInitializer(node, node.name);
+    if (!resolved || resolved.bindingIdentifier !== bindingIdentifier) return;
+    if (isListRenderingReference(node)) didFindRenderingUse = true;
+  });
+  renderedAsListCache.set(declarator, didFindRenderingUse);
+  return didFindRenderingUse;
 };
 
 interface IteratorContextArray {
@@ -83,6 +228,8 @@ const findEnclosingIteratorContext = (jsxNode: EsTreeNode): IteratorContext | nu
       // Element array handed to a non-`children` prop (`<Tabs items={[...]} />`).
       // React never key-validates props, so the receiving component owns keying.
       if (isNonChildrenJsxAttributeValue(parent)) return null;
+      const arrayDeclarator = findArrayVariableDeclarator(parent);
+      if (arrayDeclarator && !isArrayVariableRenderedAsList(arrayDeclarator)) return null;
       return { kind: "array" };
     } else if (isNodeOfType(parent, "CallExpression")) {
       const callee = parent.callee;
@@ -162,6 +309,21 @@ const spreadsIterationItem = (
   return false;
 };
 
+// Prop-getter APIs deliver the key through the returned props object:
+// react-table v7 (`{...row.getRowProps()}`), prism-react-renderer
+// (`{...getLineProps({ line, key: i })}`), MUI Autocomplete
+// (`{...getTagProps({ index })}`). Static analysis can't see inside the
+// call, so a call-expression spread makes "missing key" unprovable.
+const hasCallExpressionSpread = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean => {
+  for (const attribute of openingElement.attributes) {
+    if (!isNodeOfType(attribute, "JSXSpreadAttribute")) continue;
+    if (isNodeOfType(stripParenExpression(attribute.argument), "CallExpression")) return true;
+  }
+  return false;
+};
+
 const isWithinChildrenToArray = (jsxNode: EsTreeNode): boolean => {
   let current: EsTreeNode | null | undefined = jsxNode.parent;
   while (current) {
@@ -193,25 +355,127 @@ const isWithinChildrenToArray = (jsxNode: EsTreeNode): boolean => {
   return false;
 };
 
-// A spread can only clobber an explicit `key` when it could carry a `key` of
-// its own. A spread of an object literal whose members are all statically
-// known and none is `key` (e.g. `{...{}}`, `{...{ className }}`) provably
-// cannot, so it never overwrites the key. Every other spread (an identifier,
-// a call, a computed/nested member) is treated as capable of supplying one.
-const spreadCanOverwriteKey = (
-  spreadAttribute: EsTreeNodeOfType<"JSXSpreadAttribute">,
-): boolean => {
-  const argument = spreadAttribute.argument;
-  if (!isNodeOfType(argument, "ObjectExpression")) return true;
-  for (const property of argument.properties) {
-    if (!isNodeOfType(property, "Property")) return true;
-    if (property.computed) return true;
-    const propertyKey = property.key;
-    if (isNodeOfType(propertyKey, "Identifier") && propertyKey.name === "key") return true;
-    if (isNodeOfType(propertyKey, "Literal") && String(propertyKey.value) === "key") return true;
+const isKeyPropertyName = (propertyKey: EsTreeNode): boolean => {
+  if (isNodeOfType(propertyKey, "Identifier")) return propertyKey.name === "key";
+  if (isNodeOfType(propertyKey, "Literal")) return String(propertyKey.value) === "key";
+  return true;
+};
+
+// `this.props` inside a class component can never carry `key` — React
+// strips it before props reach the component.
+const isThisPropsMember = (expression: EsTreeNode): boolean =>
+  isNodeOfType(expression, "MemberExpression") &&
+  !expression.computed &&
+  isNodeOfType(expression.object, "ThisExpression") &&
+  isNodeOfType(expression.property, "Identifier") &&
+  expression.property.name === "props";
+
+// `const { key, ...rest } = anything` — `key` is destructured away, so
+// `rest` provably cannot carry one.
+const isRestBindingWithKeyExtracted = (bindingIdentifier: EsTreeNode): boolean => {
+  const restElement = bindingIdentifier.parent;
+  if (!restElement || !isNodeOfType(restElement, "RestElement")) return false;
+  const objectPattern = restElement.parent;
+  if (!objectPattern || !isNodeOfType(objectPattern, "ObjectPattern")) return false;
+  for (const property of objectPattern.properties) {
+    if (!isNodeOfType(property, "Property") || property.computed) continue;
+    if (isKeyPropertyName(property.key)) return true;
   }
   return false;
 };
+
+const isBindingObjectMutated = (scopeOwner: EsTreeNode, bindingName: string): boolean => {
+  let didFindMutation = false;
+  walkAst(scopeOwner, (node) => {
+    if (didFindMutation) return false;
+    if (isNodeOfType(node, "AssignmentExpression") && isNodeOfType(node.left, "MemberExpression")) {
+      const assignedObject = stripParenExpression(node.left.object);
+      if (isNodeOfType(assignedObject, "Identifier") && assignedObject.name === bindingName) {
+        didFindMutation = true;
+        return false;
+      }
+    }
+    if (isNodeOfType(node, "CallExpression")) {
+      const callee = node.callee;
+      if (
+        isNodeOfType(callee, "MemberExpression") &&
+        isNodeOfType(callee.object, "Identifier") &&
+        callee.object.name === "Object" &&
+        isNodeOfType(callee.property, "Identifier") &&
+        callee.property.name === "assign"
+      ) {
+        const firstArgument = node.arguments[0];
+        if (
+          firstArgument &&
+          isNodeOfType(firstArgument, "Identifier") &&
+          firstArgument.name === bindingName
+        ) {
+          didFindMutation = true;
+          return false;
+        }
+      }
+    }
+  });
+  return didFindMutation;
+};
+
+// A spread can only clobber an explicit `key` when it could carry a `key` of
+// its own. Provably-keyless shapes stay silent:
+//   - object literals with only statically-known non-`key` members
+//   - conditional / logical expressions whose reachable results are keyless
+//   - `const` identifiers whose initializer resolves to a keyless literal
+//   - rest bindings that destructured `key` away, and `this.props`
+// Everything else (a call, an unresolved identifier, a computed member) is
+// treated as capable of supplying one.
+const spreadExpressionCanCarryKey = (expression: EsTreeNode, depth: number): boolean => {
+  const inner = stripParenExpression(expression);
+  if (isNodeOfType(inner, "ObjectExpression")) {
+    for (const property of inner.properties) {
+      if (isNodeOfType(property, "SpreadElement")) {
+        if (depth >= SPREAD_KEY_RESOLUTION_DEPTH) return true;
+        if (spreadExpressionCanCarryKey(property.argument, depth + 1)) return true;
+        continue;
+      }
+      if (!isNodeOfType(property, "Property")) return true;
+      if (property.computed) return true;
+      if (isKeyPropertyName(property.key)) return true;
+    }
+    return false;
+  }
+  if (isNodeOfType(inner, "ConditionalExpression")) {
+    if (depth >= SPREAD_KEY_RESOLUTION_DEPTH) return true;
+    return (
+      spreadExpressionCanCarryKey(inner.consequent, depth + 1) ||
+      spreadExpressionCanCarryKey(inner.alternate, depth + 1)
+    );
+  }
+  if (isNodeOfType(inner, "LogicalExpression")) {
+    if (depth >= SPREAD_KEY_RESOLUTION_DEPTH) return true;
+    // `cond && {…}` — a falsy left side spreads as a no-op, so only the
+    // right side can carry a key. `||` / `??` can surface either side.
+    if (inner.operator === "&&") return spreadExpressionCanCarryKey(inner.right, depth + 1);
+    return (
+      spreadExpressionCanCarryKey(inner.left, depth + 1) ||
+      spreadExpressionCanCarryKey(inner.right, depth + 1)
+    );
+  }
+  if (isNodeOfType(inner, "Literal")) return false;
+  if (isThisPropsMember(inner)) return false;
+  if (isNodeOfType(inner, "Identifier")) {
+    if (inner.name === "undefined") return false;
+    if (depth >= SPREAD_KEY_RESOLUTION_DEPTH) return true;
+    const binding = findVariableInitializer(inner, inner.name);
+    if (!binding) return true;
+    if (isRestBindingWithKeyExtracted(binding.bindingIdentifier)) return false;
+    if (!isConstDeclaredBinding(binding) || !binding.initializer) return true;
+    if (isBindingObjectMutated(binding.scopeOwner, inner.name)) return true;
+    return spreadExpressionCanCarryKey(binding.initializer, depth + 1);
+  }
+  return true;
+};
+
+const spreadCanOverwriteKey = (spreadAttribute: EsTreeNodeOfType<"JSXSpreadAttribute">): boolean =>
+  spreadExpressionCanCarryKey(spreadAttribute.argument, 0);
 
 const checkKeyBeforeSpread = (
   context: Parameters<Rule["create"]>[0],
@@ -330,6 +594,7 @@ export const jsxKey = defineRule({
         if (!enclosingContext) return;
         if (isWithinChildrenToArray(node)) return;
         if (hasJsxKeyAttribute(openingElement)) return;
+        if (hasCallExpressionSpread(openingElement)) return;
         if (enclosingContext.kind === "iterator") {
           const iterationItemName = resolveIterationItemName(enclosingContext.callExpression);
           if (iterationItemName && spreadsIterationItem(openingElement, iterationItemName)) return;

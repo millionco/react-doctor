@@ -3,7 +3,7 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noCascadingSetState } from "./no-cascading-set-state.js";
 
 describe("state-and-effects/no-cascading-set-state — regressions: mined bug shapes stay detected", () => {
-  it("flags a synchronous setter plus a variable-stored handler registered via addEventListener in the same effect (cookiekit CookieConsentContext shape)", () => {
+  it("stays silent when a variable-stored handler registered via addEventListener holds most setters (cookiekit CookieConsentContext shape)", () => {
     const result = runRule(
       noCascadingSetState,
       `
@@ -34,8 +34,7 @@ describe("state-and-effects/no-cascading-set-state — regressions: mined bug sh
       };
     `,
     );
-    expect(result.diagnostics.length).toBeGreaterThan(0);
-    expect(result.diagnostics[0].message).toContain("4 setState calls");
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("flags sequential early-return guard blocks whose setters sum past the threshold (openfootmanager MatchSimulation shape)", () => {
@@ -113,7 +112,7 @@ describe("state-and-effects/no-cascading-set-state — regressions: mined bug sh
 });
 
 describe("state-and-effects/no-cascading-set-state — regressions: FP-fix setter counting stays exact", () => {
-  it("counts setters inside a variable-stored listener handler (stored handlers keep their call sites)", () => {
+  it("does not count setters inside a variable-stored listener handler (handlers fire on their own dispatch)", () => {
     const result = runRule(
       noCascadingSetState,
       `
@@ -135,7 +134,7 @@ describe("state-and-effects/no-cascading-set-state — regressions: FP-fix sette
       };
     `,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not over-count: one synchronous setter plus a one-setter registered handler stays under the threshold", () => {
@@ -186,7 +185,7 @@ describe("state-and-effects/no-cascading-set-state — regressions: FP-fix sette
 });
 
 describe("no-cascading-set-state — regressions", () => {
-  it("flags a stored listener handler beside a guarded setter (cookiekit CookieConsentContext)", () => {
+  it("stays silent on a stored listener handler beside a guarded setter (cookiekit CookieConsentContext)", () => {
     const result = runRule(
       noCascadingSetState,
       `function CookieManager({ enableFloatingButton, detailedConsent }) {
@@ -214,7 +213,7 @@ describe("no-cascading-set-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("flags an if/else setter ladder behind early-return guards (openfootmanager MatchSimulation)", () => {
@@ -346,6 +345,86 @@ describe("no-cascading-set-state — regressions", () => {
           setEmail(defaults.email);
           setPhone(defaults.phone);
         }, []);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a component-level useCallback helper whose post-await setters run as one batch (portos useCityData)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function useCityData({ api }) {
+        const [apps, setApps] = useState([]);
+        const [agents, setAgents] = useState([]);
+        const [status, setStatus] = useState(null);
+        const [loading, setLoading] = useState(true);
+        const fetchAll = useCallback(async () => {
+          const [appsData, agentsData, statusData] = await Promise.all([
+            api.getApps(),
+            api.getAgents(),
+            api.getStatus(),
+          ]);
+          setApps(appsData);
+          setAgents(agentsData);
+          setStatus(statusData);
+          setLoading(false);
+        }, [api]);
+        useEffect(() => {
+          fetchAll();
+        }, [fetchAll, api]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags a helper declared inside the effect and called after an await when its setters run consecutively (psysonic useAlbumDetailData)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function useAlbumDetail({ id, resolveAlbum }) {
+        const [album, setAlbum] = useState(null);
+        const [isStarred, setIsStarred] = useState(false);
+        const [starredSongs, setStarredSongs] = useState(null);
+        const [loading, setLoading] = useState(true);
+        useEffect(() => {
+          const applyAlbumPayload = (data) => {
+            setAlbum(data);
+            setIsStarred(Boolean(data.album.starred));
+            setStarredSongs(data.songs);
+            setLoading(false);
+          };
+          void (async () => {
+            const local = await resolveAlbum(id);
+            if (local) applyAlbumPayload(local);
+          })();
+        }, [id, resolveAlbum]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when async setters are separated by awaits even with several call sites (loading/data/idle straddle)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function useSearch({ query, search, count }) {
+        const [status, setStatus] = useState("idle");
+        const [hits, setHits] = useState([]);
+        const [total, setTotal] = useState(0);
+        useEffect(() => {
+          void (async () => {
+            setStatus("loading");
+            const result = await search(query);
+            setHits(result.hits);
+            const totalCount = await count(query);
+            setTotal(totalCount);
+            setStatus("idle");
+          })();
+        }, [query, search, count]);
         return null;
       }`,
     );

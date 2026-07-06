@@ -10,6 +10,7 @@ export const HEAVY_LIBRARIES = new Set([
   "react-chartjs-2",
   "@toast-ui/editor",
   "draft-js",
+  "mermaid",
 ]);
 
 export const FETCH_CALLEE_NAMES = new Set(["fetch", "ky", "got", "wretch", "ofetch"]);

@@ -25,4 +25,76 @@ describe("a11y/prefer-html-dialog regressions", () => {
     const result = runRule(preferHtmlDialog, `<div role="dialog" />`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not flag a modal that traps focus via a useFocusTrap hook", () => {
+    const source = `
+      const Modal = ({ isOpen, onClose, children }) => {
+        const modalRef = useFocusTrap({ isActive: isOpen, onEscape: onClose });
+        return (
+          <div ref={modalRef} role="dialog" aria-modal="true">
+            {children}
+          </div>
+        );
+      };
+    `;
+    const result = runRule(preferHtmlDialog, source);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a modal wrapped in a focus-trap library component", () => {
+    const source = `
+      import FocusTrap from "focus-trap-react";
+      const Modal = ({ children }) => (
+        <FocusTrap>
+          <div role="dialog" aria-modal="true">{children}</div>
+        </FocusTrap>
+      );
+    `;
+    const result = runRule(preferHtmlDialog, source);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a modal with a manual Tab-key focus trap", () => {
+    const source = `
+      const Modal = ({ onClose, children }) => {
+        const handleKeyDown = (event) => {
+          if (event.key === "Tab") {
+            wrapFocusWithinModal(event);
+          }
+          if (event.key === "Escape") onClose();
+        };
+        return (
+          <div role="dialog" aria-modal="true" onKeyDown={handleKeyDown}>
+            {children}
+          </div>
+        );
+      };
+    `;
+    const result = runRule(preferHtmlDialog, source);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag dialog mocks in testlike files", () => {
+    const result = runRule(preferHtmlDialog, `const Mock = () => <div role="dialog" />;`, {
+      filename: "src/components/settings-dialog.test.tsx",
+    });
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a modal whose file has no focus-trapping signal", () => {
+    const source = `
+      const Modal = ({ onClose, children }) => (
+        <div role="dialog" aria-modal="true" onClick={onClose}>
+          {children}
+        </div>
+      );
+    `;
+    const result = runRule(preferHtmlDialog, source);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it('still flags `aria-modal="true"` without role in a file with no trap signal', () => {
+    const result = runRule(preferHtmlDialog, `<div aria-modal="true" />`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

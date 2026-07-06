@@ -405,6 +405,170 @@ describe("no-pass-live-state-to-parent — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("stays silent on a zero-argument completion ping (onEnd())", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function Animation({ onEnd }) {
+        const [frame, setFrame] = useState(0);
+        useEffect(() => {
+          if (frame > 10) onEnd();
+        }, [frame]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // cloudscape use-app-layout: closeFirstDrawer is a stable callback that
+  // calls onActiveDrawerChange — a binding destructured from useDrawers(...)
+  // whose ARGUMENTS include state. Hook inputs are not provenance of hook
+  // outputs, so no live state reaches the parent.
+  it("stays silent when state only enters a custom hook call that produced the invoked callback", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function AppLayout({ onNavigationToggle, ...rest }) {
+        const [expandedDrawerId, setExpandedDrawerId] = useState(null);
+        const { activeDrawer, drawersOpenQueue, onActiveDrawerChange } = useDrawers({
+          ...rest,
+          expandedDrawerId,
+          setExpandedDrawerId,
+        });
+        const closeFirstDrawer = useCallback(() => {
+          const drawerToClose = drawersOpenQueue.current[drawersOpenQueue.current.length - 1];
+          if (activeDrawer && activeDrawer.id === drawerToClose) {
+            onActiveDrawerChange(null, { initiatedByUserAction: true });
+          }
+        }, [activeDrawer, drawersOpenQueue, onActiveDrawerChange]);
+        useEffect(() => {
+          closeFirstDrawer();
+        }, [closeFirstDrawer]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // cloudscape date-range-picker dropdown: isValidRange is a validator prop
+  // whose result is captured into a local variable — a pure transform read,
+  // not a notification to the parent.
+  it("stays silent when the prop call result is captured into a local variable", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function Dropdown({ isValidRange, formatValue }) {
+        const [applyClicked, setApplyClicked] = useState(false);
+        const [selectedRange, setSelectedRange] = useState(null);
+        const [validationResult, setValidationResult] = useState(null);
+        useEffect(() => {
+          if (applyClicked) {
+            const formattedRange = formatValue(selectedRange);
+            const newValidationResult = isValidRange(formattedRange);
+            setValidationResult(newValidationResult);
+          }
+        }, [applyClicked, selectedRange, isValidRange]);
+        return <div>{String(validationResult)}</div>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // appflowy useDocumentLoader: bindViewSync(doc) returns a sync context the
+  // effect inspects locally — the prop is a factory, not a notification.
+  it("stays silent when a factory prop's captured result gates a local setter", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function useDocumentLoader({ bindViewSync }) {
+        const [doc, setDoc] = useState(null);
+        const [syncBound, setSyncBound] = useState(false);
+        useEffect(() => {
+          if (!doc || !bindViewSync || syncBound) return;
+          const syncContext = bindViewSync(doc);
+          if (syncContext) {
+            setSyncBound(true);
+          }
+        }, [doc, bindViewSync, syncBound]);
+        return doc;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // jaeger ServicesView / hyperdx DBRowTable: fetch-named callbacks pull
+  // data IN (redux thunks, react-query fetchNextPage) — passing state to
+  // them parameterizes a request instead of mirroring state up.
+  it("stays silent when state parameterizes fetch-named data-loading callbacks", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function ServicesView({ fetchAllServiceMetrics, fetchNextPage }) {
+        const [selectedService, setSelectedService] = useState('all');
+        const [selectedTimeFrame, setSelectedTimeFrame] = useState(3600000);
+        useEffect(() => {
+          fetchAllServiceMetrics({ service: selectedService, timeFrame: selectedTimeFrame });
+          fetchNextPage(selectedService);
+        }, [selectedService, selectedTimeFrame]);
+        return <select onChange={(event) => setSelectedService(event.target.value)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // pwa-kit useAddressFields: react-hook-form's setValue('field', '') is a
+  // field-targeting API — a literal first argument hands no state up, so the
+  // setter-named heuristic must not fire on it.
+  it("stays silent on setter-named form APIs with a literal field argument", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function useAddressFields({ form: { setValue }, resetSession }) {
+        const [countryCode, setCountryCode] = useState('US');
+        const clearAddressFields = () => {
+          setValue('address1', '');
+          setValue('city', '');
+          resetSession();
+        };
+        useEffect(() => {
+          clearAddressFields();
+        }, [countryCode]);
+        return countryCode;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // lobe-ui useScrollOverflow: the pushed object is a fresh copy of state
+  // ({ ...scrollState }) overwritten with new DOM measurements before being
+  // handed both to the local setter and the parent — the parent receives the
+  // freshly computed value, not stale live state.
+  it("stays silent when a spread-copied state object is recomputed before the hand-off", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function useScrollOverflow({ domRef, onVisibilityChange }) {
+        const [scrollState, setScrollState] = useState({ top: false, bottom: false });
+        useEffect(() => {
+          const element = domRef.current;
+          if (!element) return;
+          const checkScroll = () => {
+            const newState = { ...scrollState };
+            newState.top = element.scrollTop > 0;
+            newState.bottom = element.scrollTop + element.clientHeight < element.scrollHeight;
+            setScrollState(newState);
+            onVisibilityChange?.(newState);
+          };
+          checkScroll();
+          element.addEventListener('scroll', checkScroll);
+          return () => element.removeEventListener('scroll', checkScroll);
+        }, [domRef, onVisibilityChange]);
+        return scrollState;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags state driven by a frame-callback subscription (victory-animation)", () => {
     const result = runRule(
       noPassLiveStateToParent,

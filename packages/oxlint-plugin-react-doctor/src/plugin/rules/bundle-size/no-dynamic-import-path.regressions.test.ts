@@ -83,4 +83,192 @@ describe("bundle-size/no-dynamic-import-path — regressions", () => {
     );
     expect(diagnostics).toHaveLength(0);
   });
+
+  // Verify wave: Node build tasks / CLI tooling (gulpfiles, gatsby's CLI,
+  // GitHub Action scripts) require() computed paths by design and never ship
+  // in a browser bundle — the "ships in the main bundle" claim is inapplicable.
+  it("stays silent on a dynamic require() in a file importing node builtins", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      `
+        import { join } from "path";
+        import { readFileSync } from "fs";
+        const loadTheme = (themeDirectory) => require(join(themeDirectory, "theme.js"));
+      `,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on a dynamic import() in a file importing node: builtins", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      `
+        import { resolve } from "node:path";
+        const loadAdapter = async (adapterPath) => await import(resolve(adapterPath));
+      `,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on a dynamic require() in a CommonJS gulp task", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      `
+        const { parallel } = require("gulp");
+        const loadTask = (taskPath) => require(taskPath);
+        module.exports = { loadTask };
+      `,
+      { filename: "gulpfile.cjs" },
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on a dynamic require() next to require-cache busting", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      `
+        export const requireUncached = (file) => {
+          delete require.cache[require.resolve(file)];
+          return require(file);
+        };
+      `,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on a dynamic require() in a file using process.cwd()", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      "export const loadManifest = () => require(`${process.cwd()}/manifest.js`);",
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on a dynamic require() in an express middleware module", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      `
+        import { json } from "express";
+        export const loadFunction = (pathToFunction) => require(pathToFunction);
+      `,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  // Verify wave: `const moduleName = "sharp"; import(moduleName)` is the
+  // deliberate indirection that keeps an optional Node-only dependency OUT of
+  // the bundle — telling the author to inline the literal would undo it.
+  it("stays silent on an identifier resolving to a const string literal", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      `
+        const loadSharp = async () => {
+          const sharpName = "sharp";
+          const sharpModule = await import(sharpName);
+          return sharpModule.default ?? sharpModule;
+        };
+      `,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on require() of a const string literal binding", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      `
+        const getDateFnsTz = () => {
+          const dateFnsTzModuleName = "date-fns-tz";
+          return require(dateFnsTzModuleName);
+        };
+      `,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on import() of a const CDN URL binding", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      `
+        const TRANSFORMERS_CDN_URL = "https://esm.sh/@huggingface/transformers@3.8.1?bundle";
+        export const loadTransformers = () => import(TRANSFORMERS_CDN_URL);
+      `,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  // Verify wave: a blob URL created one line above has no module the bundler
+  // could ever split — import(url) is the only way to run an inline script.
+  it("stays silent on import() of a const URL.createObjectURL binding", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      `
+        export const runInlineModule = (sourceText) => {
+          const blob = new Blob([sourceText], { type: "text/javascript" });
+          const url = URL.createObjectURL(blob);
+          return import(url).finally(() => URL.revokeObjectURL(url));
+        };
+      `,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags an identifier resolving to a reassignable let binding", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      `
+        export const load = (feature) => {
+          let modulePath = "./features/base.js";
+          if (feature) modulePath = feature;
+          return import(modulePath);
+        };
+      `,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // Verify wave: interpolating only the query string (`?test=${random}`
+  // cache-busting) leaves the module path itself fully static.
+  it("stays silent when only the query string is interpolated", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      "const loadFresh = () => import(`../useSelectionArea?test=${Math.random()}`);",
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  // Verify wave: `@/`-alias template paths resolve through the same bundler
+  // context-module machinery as `./` relative paths.
+  it("stays silent on an alias-prefixed template with a static directory", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      "const loadMessages = (locale) => import(`@/locales/${locale}/common.json`);",
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a scoped-package template path", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      "const loadI18n = (locale) => import(`@emoji-mart/data/i18n/${locale}.json`);",
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // Verify wave: probing an installed package's manifest version is a Node
+  // idiom (`require(`${pkg}/package.json`).version`), never a bundle concern.
+  it("stays silent on a require() targeting a package.json manifest", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      "const versionOf = (packageName) => require(`${packageName}/package.json`).version;",
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a bare-package template require in browser code", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      "const loadLocale = (locale) => require(`react-intl/locale-data/${locale}`);",
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
 });

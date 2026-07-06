@@ -15,6 +15,7 @@ import { buildNoSecretsRecommendation } from "../../utils/build-no-secrets-recom
 import { appendReanimatedSharedValueHint } from "../../utils/append-reanimated-shared-value-hint.js";
 import { redactSensitiveText } from "../../utils/redact-sensitive-text.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
+import { suppressMemoizationInBailedOutFunctions } from "./suppress-memoization-in-bailed-out-functions.js";
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
 const LEADING_SEVERITY_LABEL_PATTERN = /^(?:Error|Warning):\s*/;
@@ -314,7 +315,7 @@ export const parseOxlintOutput = (
     return minified;
   };
 
-  return parsed.diagnostics
+  const mappedDiagnostics = parsed.diagnostics
     .filter(
       (diagnostic) =>
         diagnostic.code &&
@@ -357,4 +358,5 @@ export const parseOxlintOutput = (
         ...(relatedLocations.length > 0 ? { relatedLocations } : {}),
       };
     });
+  return suppressMemoizationInBailedOutFunctions(mappedDiagnostics, rootDirectory);
 };

@@ -1,11 +1,14 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxA11ySettings } from "../../utils/has-jsx-a11y-settings.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 
 const MESSAGE_MISSING_HREF =
   "Keyboard users can't reach this link because it has no `href`, so add a real `href` (or use `<button>` for actions).";
@@ -38,6 +41,37 @@ const resolveSettings = (
     hrefAttributeNames: a11ySettings.attributes?.href ?? ["href"],
   };
 };
+
+// Next.js `<Link legacyBehavior>` (and the pre-13 default) clones its child
+// `<a>` and injects the `href` at render time, so the anchor is reachable
+// even though the JSX carries no `href`. Any wrapper component named `Link`
+// (or `*Link`) gets the benefit of the doubt — it exists to supply the
+// navigation semantics the bare anchor appears to lack.
+const isDirectChildOfLinkComponent = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean => {
+  const element = openingElement.parent;
+  if (!element || !isNodeOfType(element, "JSXElement")) return false;
+  const wrapper = element.parent;
+  if (!wrapper || !isNodeOfType(wrapper, "JSXElement")) return false;
+  const wrapperName = flattenJsxName(wrapper.openingElement.name);
+  if (!wrapperName) return false;
+  const lastSegment = wrapperName.split(".").at(-1) ?? wrapperName;
+  return lastSegment === "Link" || (lastSegment.endsWith("Link") && lastSegment.length > 4);
+};
+
+// An href-less anchor that carries a widget `role`, is focusable via
+// `tabIndex`, and handles keys is a hand-rolled control, not an unreachable
+// link — the "can't reach this link" claim would be false. (The
+// `prefer-tag-over-role` rule separately suggests the native element for
+// `<a role="button">`.)
+const isKeyboardOperableWidgetAnchor = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean =>
+  Boolean(hasJsxPropIgnoreCase(openingElement.attributes, "role")) &&
+  Boolean(hasJsxPropIgnoreCase(openingElement.attributes, "tabindex")) &&
+  (Boolean(hasJsxPropIgnoreCase(openingElement.attributes, "onkeydown")) ||
+    Boolean(hasJsxPropIgnoreCase(openingElement.attributes, "onkeyup")));
 
 const isInvalidHref = (value: string, validHrefs: ReadonlySet<string>): boolean => {
   if (validHrefs.has(value)) return false;
@@ -78,8 +112,10 @@ export const anchorIsValid = defineRule({
   create: (context) => {
     const settings = resolveSettings(context.settings);
     const fileHasJsxA11ySettings = hasJsxA11ySettings(context.settings);
+    const isTestlikeFile = isTestlikeFilename(context.filename);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (isTestlikeFile) return;
         if (
           !fileHasJsxA11ySettings &&
           (!isNodeOfType(node.name, "JSXIdentifier") || node.name.name !== "a")
@@ -109,10 +145,9 @@ export const anchorIsValid = defineRule({
           return;
         }
         // No href attribute. Skip if there's a spread (could provide href).
-        const hasSpread = node.attributes.some((attribute) =>
-          isNodeOfType(attribute as EsTreeNode, "JSXSpreadAttribute"),
-        );
-        if (hasSpread) return;
+        if (hasJsxSpreadAttribute(node.attributes)) return;
+        if (isDirectChildOfLinkComponent(node)) return;
+        if (isKeyboardOperableWidgetAnchor(node)) return;
         context.report({ node: node.name, message: MESSAGE_MISSING_HREF });
       },
     };

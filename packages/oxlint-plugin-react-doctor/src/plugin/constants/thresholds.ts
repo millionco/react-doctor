@@ -13,6 +13,11 @@ export const RENDER_PROP_PROLIFERATION_THRESHOLD = 3;
 // `isMobile ? <Mobile /> : <Desktop />` switch is legitimate and stays quiet.
 export const BOOLEAN_PROP_VARIANT_BRANCH_THRESHOLD = 2;
 export const GET_HANDLER_BINDING_RESOLUTION_DEPTH = 3;
+// How many identifier→initializer hops jsx-key follows when proving a
+// `{...spread}` after an explicit `key` cannot carry a `key` of its own
+// (`const tokenProps = { ... }` chains). Bounded so a pathological
+// alias chain can't loop.
+export const SPREAD_KEY_RESOLUTION_DEPTH = 3;
 // Chains rooted in a literal array `[a, b, c].map(...).filter(...)` at
 // or below this length are skipped by the iteration-combination rules
 // (js-combine-iterations, js-flatmap-filter) — iterating 8-element-

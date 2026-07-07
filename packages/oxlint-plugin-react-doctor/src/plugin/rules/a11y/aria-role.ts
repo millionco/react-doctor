@@ -23,9 +23,16 @@ const resolveSettings = (
     typeof reactDoctor === "object" && reactDoctor !== null
       ? ((reactDoctor as { ariaRole?: AriaRoleSettings }).ariaRole ?? {})
       : {};
+  // Default to `true`: a `role` prop on a CUSTOM component is very
+  // often a domain prop (chat message role, workspace member role,
+  // hook option), not the DOM ARIA attribute — and `role={undefined}`
+  // on MUI wrappers is the documented pattern for clearing a default
+  // role. When the component does forward `role` to a DOM element,
+  // the rule still fires at that element inside the component. In the
+  // verify corpus every custom-component hit was a false positive.
   return {
     allowedInvalidRoles: ruleSettings.allowedInvalidRoles ?? [],
-    ignoreNonDOM: ruleSettings.ignoreNonDOM ?? false,
+    ignoreNonDOM: ruleSettings.ignoreNonDOM ?? true,
   };
 };
 

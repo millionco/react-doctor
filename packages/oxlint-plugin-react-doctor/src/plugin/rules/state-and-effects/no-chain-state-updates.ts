@@ -9,6 +9,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { Reference } from "eslint-scope";
 import { getArgsUpstreamRefs, getCallExpr, getRef, getUpstreamRefs } from "./utils/effect/ast.js";
+import { readsPostMountValueThroughLocals } from "./utils/reads-post-mount-through-locals.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
@@ -140,6 +141,24 @@ export const noChainStateUpdates = defineRule({
           .filter((declarator): declarator is EsTreeNode => declarator !== null),
       );
 
+      // A state synced from a live DOM read (`document.querySelectorAll`,
+      // a layout measurement) cannot be computed in the upstream event
+      // handler — the DOM is only consistent after commit, so the effect is
+      // required and the doc's "set both in the handler" fix cannot apply.
+      // The whole state is exempt, including its fallback resets in the same
+      // effect (the `catch { setAnchors([]) }` arm of the DOM-sync flow).
+      const domSyncedStateDeclarators = new Set<EsTreeNode>();
+      for (const ref of effectFnRefs) {
+        if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
+        const callExpr = getCallExpr(ref);
+        if (!callExpr) continue;
+        if (!readsPostMountValueThroughLocals(callExpr, effectFn, { ignoreBareRefCurrent: true })) {
+          continue;
+        }
+        const declarator = getUseStateDeclarator(ref);
+        if (declarator) domSyncedStateDeclarators.add(declarator);
+      }
+
       for (const ref of effectFnRefs) {
         if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
         const callExpr = getCallExpr(ref);
@@ -156,6 +175,7 @@ export const noChainStateUpdates = defineRule({
         // simple re-derivations are exempt; a self-targeting setter fed by
         // a call result (editor/instance creation) is still a chain.
         const setterDeclarator = getUseStateDeclarator(ref);
+        if (setterDeclarator && domSyncedStateDeclarators.has(setterDeclarator)) continue;
         const isSelfTargeting =
           setterDeclarator !== null && stateDepDeclarators.has(setterDeclarator);
         const setterArguments = isNodeOfType(callExpr, "CallExpression")

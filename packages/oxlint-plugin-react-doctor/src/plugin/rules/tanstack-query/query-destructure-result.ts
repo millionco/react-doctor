@@ -1,6 +1,9 @@
 import { TANSTACK_QUERY_HOOKS } from "../../constants/tanstack.js";
+import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isTanstackQuerySource } from "../../utils/is-tanstack-query-source.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -15,12 +18,30 @@ import type { RuleContext } from "../../utils/rule-context.js";
 // attributes, or rest-destructuring it through a later binding. Everything
 // else (field reads, forwarding, dependency arrays) is field-tracked or
 // tracked at the eventual read site, and must stay silent.
+// `return { ...query, isLoading: ... }` inside a custom hook forwards the
+// whole result object as the hook's own return value: the spread happens once
+// per hook render, and which fields are SUBSCRIBED to is still decided at the
+// consumer's read site. Destructuring here cannot reduce re-renders, so this
+// forwarding spread must stay silent.
+const isHookReturnForwardingSpread = (objectExpression: EsTreeNode): boolean => {
+  const objectParent = objectExpression.parent;
+  const enclosingFunction = findEnclosingFunction(objectExpression);
+  if (!enclosingFunction) return false;
+  const isReturnedFromEnclosingFunction =
+    isNodeOfType(objectParent, "ReturnStatement") ||
+    (isNodeOfType(enclosingFunction, "ArrowFunctionExpression") &&
+      enclosingFunction.body === objectExpression);
+  if (!isReturnedFromEnclosingFunction) return false;
+  const enclosingName = componentOrHookDisplayNameForFunction(enclosingFunction);
+  return Boolean(enclosingName && isReactHookName(enclosingName));
+};
+
 const classifyEveryFieldRead = (identifier: EsTreeNode): "spread" | "rest-destructuring" | null => {
   const expressionRoot = findTransparentExpressionRoot(identifier);
   const parent = expressionRoot.parent;
   if (isNodeOfType(parent, "JSXSpreadAttribute")) return "spread";
   if (isNodeOfType(parent, "SpreadElement") && isNodeOfType(parent.parent, "ObjectExpression")) {
-    return "spread";
+    return isHookReturnForwardingSpread(parent.parent) ? null : "spread";
   }
   if (
     isNodeOfType(parent, "VariableDeclarator") &&

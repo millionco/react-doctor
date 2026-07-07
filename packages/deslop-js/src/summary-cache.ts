@@ -113,6 +113,7 @@ interface PersistedParsedSource {
   memberAccesses?: ParsedSource["memberAccesses"];
   wholeObjectUses?: string[];
   localIdentifierReferences?: string[];
+  topLevelImportReferences?: string[];
   referencedFilenames?: string[];
   redundantTypePatterns?: ParsedSource["redundantTypePatterns"];
   identityWrappers?: ParsedSource["identityWrappers"];
@@ -422,6 +423,7 @@ const serializeParsedSource = (
   memberAccesses: toPersistedArray(parsed.memberAccesses),
   wholeObjectUses: toPersistedArray(parsed.wholeObjectUses),
   localIdentifierReferences: toPersistedArray(intersectLocalReferencesWithOwnExports(parsed)),
+  topLevelImportReferences: toPersistedArray(parsed.topLevelImportReferences),
   referencedFilenames: toPersistedArray(parsed.referencedFilenames),
   ...(shouldPersistDryPatternFields
     ? {
@@ -449,6 +451,7 @@ const PERSISTED_SOURCE_ARRAY_FIELDS = [
   "memberAccesses",
   "wholeObjectUses",
   "localIdentifierReferences",
+  "topLevelImportReferences",
   "referencedFilenames",
   "redundantTypePatterns",
   "identityWrappers",
@@ -474,6 +477,7 @@ const reviveParsedSource = (persisted: unknown): ParsedSource | null => {
     memberAccesses: source.memberAccesses ?? [],
     wholeObjectUses: source.wholeObjectUses ?? [],
     localIdentifierReferences: source.localIdentifierReferences ?? [],
+    topLevelImportReferences: source.topLevelImportReferences ?? [],
     referencedFilenames: source.referencedFilenames ?? [],
     redundantTypePatterns: source.redundantTypePatterns ?? [],
     identityWrappers: source.identityWrappers ?? [],

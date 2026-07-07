@@ -216,6 +216,86 @@ describe("tanstack-query/query-mutation-missing-invalidation — regressions", (
     expect(diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("stays silent for a download-URL mutation wrapper hook (read-only exemption)", () => {
+    const { diagnostics } = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      export function useBundleDownloadUrlMutation() {
+        return useMutation({
+          mutationFn: (params) => getBundleDownloadUrl({ data: params }),
+        });
+      }`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent for a validate-named mutation binding (read-only exemption)", () => {
+    const { diagnostics } = runRule(
+      queryMutationMissingInvalidation,
+      `const rows = useQuery({ queryKey: ["rows"], queryFn: fetchRows });
+      const validateMutation = useMutation({ mutationFn: (hash) => api.checkHash(hash) });`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent for a sign-message wallet mutation but not a signIn mutation", () => {
+    const signMessage = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      export const useSignMessage = () =>
+        useMutation({ mutationFn: (message) => wallet.sign(message) });`,
+    );
+    expect(signMessage.diagnostics).toHaveLength(0);
+
+    const signIn = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      export const useSignIn = () =>
+        useMutation({ mutationFn: (credentials) => api.login(credentials) });`,
+    );
+    expect(signIn.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent for an OAuth-start and a test-webhook mutation (read-only exemption)", () => {
+    const oauthStart = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      export const useStartSlackOAuth = () =>
+        useMutation({ mutationFn: () => api.startOAuthFlow() });`,
+    );
+    expect(oauthStart.diagnostics).toHaveLength(0);
+
+    const testWebhook = runRule(
+      queryMutationMissingInvalidation,
+      `const hooks = useQuery({ queryKey: ["webhooks"], queryFn: fetchWebhooks });
+      const useTestWebhook = () => useMutation({ mutationFn: (id) => api.fireTestWebhook(id) });`,
+    );
+    expect(testWebhook.diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when onSuccess delegates to a completion callback prop", () => {
+    const { diagnostics } = runRule(
+      queryMutationMissingInvalidation,
+      `import { useMutation } from "@tanstack/react-query";
+      const save = useMutation({
+        mutationFn: (payload) => api.post("/setup/provider", payload),
+        onSuccess: async (result, { summary }) => {
+          await onSaved(summary);
+        },
+      });`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags when onSuccess only calls a UI-only callback prop like onClose", () => {
+    const { diagnostics } = runRule(
+      queryMutationMissingInvalidation,
+      `const posts = useQuery({ queryKey: ["posts"], queryFn: fetchPosts });
+      useMutation({ mutationFn: deletePost, onSuccess: () => onClose() });`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("does not assert stale data as certain when invalidation happens at the mutate() call site", () => {
     const { diagnostics } = runRule(
       queryMutationMissingInvalidation,

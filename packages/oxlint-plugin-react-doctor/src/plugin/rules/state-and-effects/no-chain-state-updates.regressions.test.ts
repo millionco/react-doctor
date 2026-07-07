@@ -369,3 +369,151 @@ describe("no-chain-state-updates — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 });
+
+// docs-validation FP wave (3 TP / 6 FP): effects that must read the live DOM
+// (querySelector results, post-commit measurements) before setting state —
+// the handler cannot compute those values, so the doc's "set both in the
+// handler" fix does not apply. Async continuation setters are excluded per
+// the doc's "synchronously calls" scoping.
+describe("no-chain-state-updates — docs-validation FP wave", () => {
+  it("stays silent on anchors resolved via document.querySelectorAll, including the catch-arm reset (react-tooltip)", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `function Tooltip({ id, anchorSelect }) {
+        const [imperativeOptions, setImperativeOptions] = useState(null);
+        const [anchorsBySelect, setAnchorsBySelect] = useState([]);
+        useEffect(() => {
+          let selector = imperativeOptions?.anchorSelect ?? anchorSelect;
+          if (!selector && id) {
+            selector = "[data-tooltip-id='" + id + "']";
+          }
+          if (!selector) {
+            return;
+          }
+          try {
+            const anchors = Array.from(document.querySelectorAll(selector));
+            setAnchorsBySelect(anchors);
+          } catch {
+            setAnchorsBySelect([]);
+          }
+        }, [id, anchorSelect, imperativeOptions]);
+        return <div data-count={anchorsBySelect.length} onClick={() => setImperativeOptions({ anchorSelect: ".x" })} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a post-commit scrollWidth measurement (react-data-table TableCol)", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `function TableCol({ column }) {
+        const [showTooltip, setShowTooltip] = React.useState(false);
+        const columnRef = React.useRef(null);
+        React.useEffect(() => {
+          if (columnRef.current) {
+            setShowTooltip(columnRef.current.scrollWidth > columnRef.current.clientWidth);
+          }
+        }, [showTooltip]);
+        return <div ref={columnRef} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on focus bookkeeping that inspects live DOM attributes (rad-ui RovingFocusGroup)", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `function RovingFocusGroup() {
+        const [focusItems, setFocusItems] = useState([]);
+        const [focusedItemId, setFocusedItemId] = useState(null);
+        const itemRefsMap = useRef(new Map());
+        const findFirstEnabledItemId = useCallback((items) => {
+          for (const id of items) {
+            const ref = itemRefsMap.current.get(id);
+            if (ref?.current?.getAttribute('data-child-disabled') !== 'true') return id;
+          }
+          return null;
+        }, []);
+        useEffect(() => {
+          if (focusItems.length === 0) {
+            if (focusedItemId !== null) {
+              setFocusedItemId(null);
+            }
+            return;
+          }
+          const focusedItemRef = focusedItemId ? itemRefsMap.current.get(focusedItemId) : null;
+          const focusedItemIsEnabled = focusedItemId != null
+            && focusedItemRef?.current?.getAttribute('data-child-disabled') !== 'true';
+          if (!focusedItemIsEnabled) {
+            const firstEnabledItemId = findFirstEnabledItemId(focusItems);
+            if (firstEnabledItemId !== focusedItemId) {
+              setFocusedItemId(firstEnabledItemId);
+            }
+          }
+        }, [findFirstEnabledItemId, focusItems, focusedItemId]);
+        return <div data-focused={focusedItemId} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a deferred confirm flow re-armed by the effect (jaeger DetailTableDropdown)", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `function DetailTableDropdown({ selectedKeys, setSelectedKeys, confirm }) {
+        const confirmedSelectionRef = useRef(selectedKeys);
+        const [isCancelled, setIsCancelled] = useState(false);
+        const prevSelectedKeysRef = useRef([]);
+        useEffect(() => {
+          const prevKeys = prevSelectedKeysRef.current;
+          if (prevKeys && selectedKeys.length === prevKeys.length) {
+            confirmedSelectionRef.current = selectedKeys;
+          }
+          prevSelectedKeysRef.current = selectedKeys;
+          if (isCancelled) {
+            confirm();
+            setIsCancelled(false);
+          }
+        }, [selectedKeys, isCancelled, confirm]);
+        const cancel = useCallback(() => {
+          setSelectedKeys(confirmedSelectionRef.current);
+          setIsCancelled(true);
+        }, [setSelectedKeys]);
+        return <button onClick={cancel} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a setter fired only inside an async fetch continuation (hightable SelectionProvider)", () => {
+    const result = runRule(
+      noChainStateUpdates,
+      `function SelectionProvider({ dataFrameMethods, numRows, onError }) {
+        const [selection, setSelection] = useState(null);
+        const [allRowsSelected, setAllRowsSelected] = useState(false);
+        useEffect(() => {
+          if (!selection) return undefined;
+          const gesture = startGesture();
+          const { signal } = gesture.controller;
+          fetchAreAllSelected({ dataFrameMethods, numRows, selection, signal })
+            .then((areAllSelected) => { setAllRowsSelected(areAllSelected); })
+            .catch((error) => {
+              onError?.(error);
+            });
+        }, [selection, dataFrameMethods, numRows, onError]);
+        return <div data-all={allRowsSelected} onClick={() => setSelection({ ranges: [] })} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+});

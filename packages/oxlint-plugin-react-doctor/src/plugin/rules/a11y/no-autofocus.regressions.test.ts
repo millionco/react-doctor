@@ -63,11 +63,71 @@ describe("a11y/no-autofocus regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("still flags autoFocus in a conditionally rendered form outside a dialog", () => {
+  it("does not flag autoFocus behind a logical-and state gate", () => {
     const result = runRule(
       noAutofocus,
       `export const List = ({ isAdding }) => (
         <div>{isAdding && <input autoFocus />}</div>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag edit-in-place autoFocus behind a ternary", () => {
+    const result = runRule(
+      noAutofocus,
+      `export const AssetItem = ({ isEditing, name }) => (
+        <div>
+          {isEditing ? <input autoFocus value={name} /> : <span>{name}</span>}
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag autoFocus returned from inside an if statement", () => {
+    const result = runRule(
+      noAutofocus,
+      `export const EditableText = ({ editing, value }) => {
+        if (editing) {
+          return <input autoFocus value={value} />;
+        }
+        return <span>{value}</span>;
+      };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a computed autoFocus value", () => {
+    const result = runRule(
+      noAutofocus,
+      `export const Navigation = ({ disableFocus }) => (
+        <div autoFocus={!disableFocus} />
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag autoFocus forwarding a consumer flag", () => {
+    const result = runRule(
+      noAutofocus,
+      `export const BaseInputTemplate = ({ autofocus }) => (
+        <input autoFocus={autofocus} />
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags autoFocus={undefined}", () => {
+    const result = runRule(noAutofocus, `export const A = () => <input autoFocus={undefined} />;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags autoFocus rendered unconditionally inside a map callback", () => {
+    const result = runRule(
+      noAutofocus,
+      `export const Fields = ({ fields }) => (
+        <div>{fields.map((field) => <input key={field.id} autoFocus />)}</div>
       );`,
     );
     expect(result.diagnostics).toHaveLength(1);

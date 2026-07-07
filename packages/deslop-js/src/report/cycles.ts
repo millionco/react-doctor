@@ -24,6 +24,12 @@ const buildAdjacencyList = (graph: DependencyGraph): number[][] => {
   const targetSets: Set<number>[] = Array.from({ length: graph.modules.length }, () => new Set());
 
   for (const edge of graph.edges) {
+    // A lazy `import()` / `require()` edge only evaluates at call time, after
+    // module init, so it cannot close an initialization-order cycle.
+    if (edge.isDynamic) {
+      continue;
+    }
+
     const isTypeOnlyEdge = edge.importedSymbols.every((symbol) => symbol.isTypeOnly);
     if (isTypeOnlyEdge) {
       continue;
@@ -35,6 +41,35 @@ const buildAdjacencyList = (graph: DependencyGraph): number[][] => {
   }
 
   return targetSets.map((targets) => [...targets]);
+};
+
+// Edges whose source module dereferences an imported binding from the edge's
+// target at MODULE INIT time (top-level value position). A cycle with no such
+// edge can never observe a partially initialized export — every back-edge
+// value is only touched inside function bodies that run after init — so the
+// documented hazard cannot occur and the cycle is suppressed.
+const buildModuleInitAccessEdgeSet = (graph: DependencyGraph): Set<string> => {
+  const initAccessEdges = new Set<string>();
+  for (const edge of graph.edges) {
+    if (edge.isDynamic || edge.isReExportEdge) continue;
+    const sourceModule = graph.modules[edge.source];
+    const topLevelReferences = sourceModule?.topLevelImportReferences;
+    if (!topLevelReferences || topLevelReferences.length === 0) continue;
+    const hasInitAccess = edge.importedSymbols.some(
+      (symbol) => !symbol.isTypeOnly && topLevelReferences.includes(symbol.localName),
+    );
+    if (hasInitAccess) initAccessEdges.add(`${edge.source}:${edge.target}`);
+  }
+  return initAccessEdges;
+};
+
+const cycleHasModuleInitAccess = (cycle: number[], initAccessEdges: Set<string>): boolean => {
+  for (let position = 0; position < cycle.length; position++) {
+    const source = cycle[position];
+    const target = cycle[(position + 1) % cycle.length];
+    if (initAccessEdges.has(`${source}:${target}`)) return true;
+  }
+  return false;
 };
 
 const findStronglyConnectedComponents = (adjacencyList: number[][]): number[][] => {
@@ -206,6 +241,7 @@ const enumerateElementaryCycles = (
 
 export const detectCycles = (graph: DependencyGraph): CircularDependency[] => {
   const adjacencyList = buildAdjacencyList(graph);
+  const initAccessEdges = buildModuleInitAccessEdgeSet(graph);
   const components = findStronglyConnectedComponents(adjacencyList);
   const allCycles: number[][] = [];
   const seenKeys = new Set<string>();
@@ -226,6 +262,7 @@ export const detectCycles = (graph: DependencyGraph): CircularDependency[] => {
     const elementaryCycles = enumerateElementaryCycles(component, adjacencyList, graph);
 
     for (const cycle of elementaryCycles) {
+      if (!cycleHasModuleInitAccess(cycle, initAccessEdges)) continue;
       const key = cycle.join(",");
       if (!seenKeys.has(key)) {
         seenKeys.add(key);

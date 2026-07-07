@@ -2,6 +2,7 @@ import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -26,7 +27,8 @@ const isInitialOnlySeedName = (propName: string): boolean =>
   propName === "autoFocus" ||
   propName === "autoPlay" ||
   propName === "startOpen" ||
-  /^initially[A-Z]/.test(propName);
+  /^initially[A-Z]/.test(propName) ||
+  /Initial([A-Z]|$)/.test(propName);
 
 // State names that announce snapshot / intentional-lag semantics:
 // `previousActiveTabId` stores history, `preservedSelection` deliberately
@@ -58,19 +60,15 @@ const isIntentionalSnapshotState = (useStateCall: EsTreeNodeOfType<"CallExpressi
 };
 
 // The seed expression a useState initializer copies from, seen through
-// defaulting and assertion wrappers: `useState(selectedItem || '')`,
-// `useState(props.type ?? BOXPLOT)`, `useState(providers?.[0])` and
-// `useState(value as string)` all copy the underlying prop once.
+// assertion wrappers: `useState(providers?.[0])` and `useState(value as
+// string)` copy the underlying prop once. Defaulting expressions
+// (`useState(value || null)`, `useState(x ?? fallback)`) are OUT of the
+// rule's documented scope — the doc limits detection to direct Identifier
+// and member-expression initializers, and coalescing seeds mark the
+// intentional "default the user then edits" pattern.
 const unwrapInitializerSeed = (initializer: EsTreeNode): EsTreeNode => {
   let current: EsTreeNode = initializer;
   for (;;) {
-    if (
-      isNodeOfType(current, "LogicalExpression") &&
-      (current.operator === "||" || current.operator === "??")
-    ) {
-      current = current.left as EsTreeNode;
-      continue;
-    }
     if (isNodeOfType(current, "ChainExpression") || isNodeOfType(current, "TSNonNullExpression")) {
       current = current.expression as EsTreeNode;
       continue;
@@ -218,36 +216,12 @@ const getEnclosingEffectHookCallback = (
   return null;
 };
 
-// The genuine mirror is an UNCONDITIONAL top-of-effect `setX(prop)` — the
-// exact shape React docs say to delete. Anything else inside an effect
-// (a guard, a timeout/rAF/listener callback, a computed argument) is a
-// deliberate resync: debounces, animation lag, measurements. Those keep the
-// state fresh, so the "copies it once, goes stale" report is wrong.
-const isUnconditionalPropMirrorCall = (
-  setterCall: EsTreeNode,
-  effectCallback: EsTreeNode,
-  isPropName: IsPropNameFn,
-): boolean => {
-  if (
-    !isNodeOfType(setterCall, "CallExpression") ||
-    !isPropDerivedArgument(setterCall.arguments?.[0], isPropName)
-  ) {
-    return false;
-  }
-  let cursor: EsTreeNode | null = setterCall.parent ?? null;
-  while (cursor && cursor !== effectCallback) {
-    if (!isNodeOfType(cursor, "ExpressionStatement") && !isNodeOfType(cursor, "BlockStatement")) {
-      return false;
-    }
-    cursor = cursor.parent ?? null;
-  }
-  return true;
-};
-
-const isEffectDrivenResync = (
-  useStateCall: EsTreeNodeOfType<"CallExpression">,
-  isPropName: IsPropNameFn,
-): boolean => {
+// Any effect-driven setter call keeps the state re-synced, so the "copies
+// it once, users see a stale value" report is wrong. The unconditional
+// top-of-effect `setX(prop)` mirror is `no-mirror-prop-effect`'s single,
+// more actionable diagnostic — double-reporting it here with a false
+// staleness claim helps nobody.
+const isEffectDrivenResync = (useStateCall: EsTreeNodeOfType<"CallExpression">): boolean => {
   const setterName = getStateSetterName(useStateCall);
   if (!setterName) return false;
   const componentFunction = findEnclosingFunction(useStateCall);
@@ -258,13 +232,92 @@ const isEffectDrivenResync = (
     if (isExempt) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isNodeOfType(child.callee, "Identifier") || child.callee.name !== setterName) return;
-    const effectCallback = getEnclosingEffectHookCallback(child, componentFunction);
-    if (!effectCallback) return;
-    if (isUnconditionalPropMirrorCall(child, effectCallback, isPropName)) return;
+    if (!getEnclosingEffectHookCallback(child, componentFunction)) return;
     isExempt = true;
     return false;
   });
   return isExempt;
+};
+
+// `({ language = 'markdown' }) => useState(language)` — a destructured
+// prop WITH a default is optional config, and seeding local user-editable
+// state from it is the doc's intentionally-uncontrolled "default value the
+// user then edits" pattern.
+const isDefaultedDestructuredProp = (
+  componentFunction: EsTreeNode,
+  propRootName: string,
+): boolean => {
+  let hasDefault = false;
+  for (const param of (componentFunction as { params?: EsTreeNode[] }).params ?? []) {
+    walkAst(param, (node) => {
+      if (hasDefault) return false;
+      if (
+        isNodeOfType(node, "AssignmentPattern") &&
+        isNodeOfType(node.left, "Identifier") &&
+        node.left.name === propRootName
+      ) {
+        hasDefault = true;
+        return false;
+      }
+    });
+  }
+  return hasDefault;
+};
+
+// `handleSubmit = () => onChange(selectedAddress)` — the draft state is
+// committed back to the parent through a prop callback, so the parent stays
+// the source of truth and the local copy is an intentional working buffer.
+const isDraftCommittedToParent = (
+  componentFunction: EsTreeNode,
+  stateValueName: string | null,
+  isPropName: IsPropNameFn,
+): boolean => {
+  if (!stateValueName) return false;
+  let isCommitted = false;
+  walkAst(componentFunction, (child) => {
+    if (isCommitted) return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    if (!isNodeOfType(child.callee, "Identifier")) return;
+    if (!isPropName(child.callee.name, child.callee)) return;
+    for (const argument of child.arguments ?? []) {
+      const argumentRootName = getRootIdentifierName(argument, { followCallChains: true });
+      if (argumentRootName === stateValueName && !isInRenderScope(child, componentFunction)) {
+        isCommitted = true;
+        return false;
+      }
+    }
+  });
+  return isCommitted;
+};
+
+const NEXTJS_PAGE_DATA_EXPORT_NAMES = new Set(["getServerSideProps", "getStaticProps"]);
+
+// A Next.js pages-router page gets its props from getServerSideProps /
+// getStaticProps: they are fixed for the page instance (navigation
+// remounts), so `useState(props.x)` is the canonical
+// initialize-from-server-props capture, never a stale mirror.
+const isNextjsDataFetchingPage = (node: EsTreeNode): boolean => {
+  const program = findProgramRoot(node);
+  if (!program) return false;
+  for (const statement of program.body ?? []) {
+    if (!isNodeOfType(statement, "ExportNamedDeclaration")) continue;
+    const declaration = statement.declaration;
+    if (isNodeOfType(declaration, "FunctionDeclaration")) {
+      if (declaration.id && NEXTJS_PAGE_DATA_EXPORT_NAMES.has(declaration.id.name)) return true;
+      continue;
+    }
+    if (isNodeOfType(declaration, "VariableDeclaration")) {
+      for (const declarator of declaration.declarations ?? []) {
+        if (
+          isNodeOfType(declarator.id, "Identifier") &&
+          NEXTJS_PAGE_DATA_EXPORT_NAMES.has(declarator.id.name)
+        ) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 };
 
 const isNonHandlerHookCallback = (functionNode: EsTreeNode): boolean => {
@@ -404,7 +457,21 @@ export const noDerivedUseState = defineRule({
           if (isIntentionalSnapshotState(node)) return;
           if (hasSessionDismissProp(propStackTracker.getCurrentPropNames())) return;
           if (isDraftReseedOrRenderAdjusted(node, propStackTracker.isPropName)) return;
-          if (isEffectDrivenResync(node, propStackTracker.isPropName)) return;
+          if (isEffectDrivenResync(node)) return;
+          if (isNextjsDataFetchingPage(node)) return;
+          const componentFunction = findEnclosingFunction(node);
+          if (componentFunction) {
+            if (isDefaultedDestructuredProp(componentFunction, propName)) return;
+            if (
+              isDraftCommittedToParent(
+                componentFunction,
+                getStateValueName(node),
+                propStackTracker.isPropName,
+              )
+            ) {
+              return;
+            }
+          }
           context.report({
             node,
             message: `Your users see a stale value when prop "${propName}" changes because useState copies it once.`,

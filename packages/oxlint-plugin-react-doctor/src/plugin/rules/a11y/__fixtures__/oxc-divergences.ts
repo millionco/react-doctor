@@ -15,6 +15,17 @@ export interface OxcDivergence {
 }
 
 export const DIVERGENCES: Record<string, OxcDivergence> = {
+  // aria-role: OXC's `ignoreNonDOM` defaults to false, flagging `role`
+  // props on custom components. Our port defaults it to TRUE: in the
+  // verify corpus every custom-component hit was a domain prop (chat
+  // role, member role, hook option) or a deliberate `role={undefined}`
+  // MUI override — never a real ARIA surface. A forwarded role is still
+  // checked at the DOM element inside the component.
+  "aria-role": {
+    failSkips: [11, 12, 15],
+    reason:
+      "ignoreNonDOM defaults to true; `role` on a custom component is a domain prop, not the DOM ARIA attribute.",
+  },
   // control-has-associated-label: OXC inherits jsx-a11y's DOM map and
   // treats td/th/option as interactive elements and any role=separator
   // as a widget. Real-world verification shows these fire almost

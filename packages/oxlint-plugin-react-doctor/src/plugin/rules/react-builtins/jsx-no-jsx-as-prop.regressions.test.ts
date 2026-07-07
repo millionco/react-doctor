@@ -221,4 +221,56 @@ ${INK_STATUS_BAR_USAGE}
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  // docs-validation 2026-07 FP corpus: every sampled hit passed inline JSX
+  // (or a JSX-defaulted binding) to an UNMEMOIZED consumer — a same-file
+  // plain function (`ProcessNode meta={...}`) or an imported component
+  // (internxt Dropdown, recharts Scatter, ebay EbayIcon). With no memo
+  // boundary to defeat, fresh JSX identity costs nothing.
+  it("does not flag conditional inline JSX on a same-file unmemoized component (ProcessNode shape)", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      const ProcessNode = ({ meta, label }) => (
+        <div>
+          {label}
+          {meta}
+        </div>
+      );
+      const ProcessFlow = ({ isActive }) => (
+        <ProcessNode label="step" meta={isActive ? <ActiveMeta /> : null} />
+      );
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  // docs-validation 2026-07 docMismatch (ebay education-notice): a
+  // parameter binding DEFAULTED to JSX and forwarded to a prop must not
+  // fire on an imported consumer — the flagged `name={educationIcon}`
+  // usually carries a string, and EbayIcon's memo status is unknown.
+  it("does not flag a JSX-defaulted parameter forwarded to an imported component (ebay shape)", () => {
+    const result = runRule(
+      jsxNoJsxAsProp,
+      `
+      import EbayIcon from "../ebay-icon/icon";
+      import { EbayIconLightbulb24 } from "../ebay-icon/icons/ebay-icon-lightbulb-24";
+      const EbayEducationNotice = ({
+        educationIcon = <EbayIconLightbulb24 />,
+        iconClass,
+      }) => (
+        <section>
+          {typeof educationIcon === "string" ? (
+            <EbayIcon name={educationIcon} className={iconClass} />
+          ) : (
+            educationIcon
+          )}
+        </section>
+      );
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
 });

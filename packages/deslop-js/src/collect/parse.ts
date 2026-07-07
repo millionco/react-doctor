@@ -113,6 +113,14 @@ export interface ParsedSource {
   memberAccesses: MemberAccess[];
   wholeObjectUses: string[];
   localIdentifierReferences: string[];
+  /**
+   * Local names of static import bindings referenced in module-init-executed
+   * positions (top-level statements outside function bodies and erased TS
+   * type positions). Cycle detection uses this to tell an initialization-
+   * order hazard from a cycle whose back edges are only dereferenced later,
+   * inside function bodies invoked after every module has initialized.
+   */
+  topLevelImportReferences: string[];
   referencedFilenames: string[];
   redundantTypePatterns: ParsedRedundantTypePattern[];
   identityWrappers: ParsedIdentityWrapper[];
@@ -269,6 +277,7 @@ const parseCssImports = (filePath: string): ParsedSource => {
     memberAccesses: [],
     wholeObjectUses: [],
     localIdentifierReferences: [],
+    topLevelImportReferences: [],
     referencedFilenames: [],
     redundantTypePatterns: [],
     identityWrappers: [],
@@ -308,13 +317,42 @@ const collectLocalIdentifierReferences = (statements: Statement[]): string[] => 
     }
   };
 
+  // Exported declarations are visited through their VALUE side only
+  // (initializers, function/class bodies) — never their binding names —
+  // so a same-file call to another exported symbol counts as a local
+  // reference without every export marking itself referenced.
+  const visitExportedDeclarationValues = (declaration: unknown): void => {
+    if (!declaration || typeof declaration !== "object") return;
+    const record = declaration as Record<string, unknown>;
+    if (record.type === "VariableDeclaration" && Array.isArray(record.declarations)) {
+      for (const declarator of record.declarations) {
+        if (declarator && typeof declarator === "object") {
+          visitNode((declarator as Record<string, unknown>).init);
+        }
+      }
+      return;
+    }
+    if (record.type === "FunctionDeclaration" || record.type === "ClassDeclaration") {
+      visitNode(record.params);
+      visitNode(record.superClass);
+      visitNode(record.body);
+      return;
+    }
+    if (typeof record.type === "string" && !record.type.startsWith("TS")) {
+      visitNode(declaration);
+    }
+  };
+
   for (const statement of statements) {
-    if (
-      statement.type === "ImportDeclaration" ||
-      statement.type === "ExportNamedDeclaration" ||
-      statement.type === "ExportDefaultDeclaration" ||
-      statement.type === "ExportAllDeclaration"
-    ) {
+    if (statement.type === "ImportDeclaration" || statement.type === "ExportAllDeclaration") {
+      continue;
+    }
+    if (statement.type === "ExportNamedDeclaration") {
+      visitExportedDeclarationValues((statement as { declaration?: unknown }).declaration);
+      continue;
+    }
+    if (statement.type === "ExportDefaultDeclaration") {
+      visitExportedDeclarationValues((statement as { declaration?: unknown }).declaration);
       continue;
     }
     visitNode(statement);
@@ -323,12 +361,164 @@ const collectLocalIdentifierReferences = (statements: Statement[]): string[] => 
   return references;
 };
 
+// TS wrapper expressions whose inner `.expression` is still a VALUE evaluated
+// at runtime; every other `TS*` node is an erased type position.
+const TS_VALUE_WRAPPER_NODE_TYPES = new Set([
+  "TSAsExpression",
+  "TSSatisfiesExpression",
+  "TSNonNullExpression",
+  "TSInstantiationExpression",
+  "TSTypeAssertion",
+]);
+
+// TS declarations that survive emit and evaluate at module init.
+const TS_RUNTIME_DECLARATION_NODE_TYPES = new Set([
+  "TSEnumDeclaration",
+  "TSModuleDeclaration",
+  "TSExportAssignment",
+]);
+
+const FUNCTION_NODE_TYPES = new Set([
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
+]);
+
+const collectStaticImportLocalNames = (imports: ImportReference[]): Set<string> => {
+  const localNames = new Set<string>();
+  for (const importInfo of imports) {
+    if (importInfo.isDynamic || importInfo.isTypeOnly) continue;
+    for (const binding of importInfo.importedNames) {
+      if (binding.isTypeOnly) continue;
+      const localName = binding.alias ?? binding.name;
+      if (localName && localName !== "*") localNames.add(localName);
+    }
+  }
+  return localNames;
+};
+
+// Records which static import bindings are dereferenced in code that runs at
+// MODULE INIT time: top-level statements, IIFE bodies, class `extends` /
+// decorators / static members — but not function bodies, method bodies, or
+// erased TS type positions, all of which run (or vanish) after every module
+// in a cycle has finished initializing. Cycle detection uses this to keep the
+// documented initialization-order hazard firing while suppressing cycles whose
+// back edges are only touched lazily.
+const collectTopLevelImportReferences = (
+  bodyNodes: Array<Statement | ModuleDeclaration>,
+  importLocalNames: Set<string>,
+): string[] => {
+  const referencedNames = new Set<string>();
+  if (importLocalNames.size === 0) return [];
+
+  const visitClassBody = (classBody: WalkableNode): void => {
+    const bodyElements = (classBody as unknown as { body?: WalkableNode[] }).body ?? [];
+    for (const element of bodyElements) {
+      if (element.type === "StaticBlock") {
+        visitValueNode((element as unknown as { body: unknown }).body);
+        continue;
+      }
+      const isComputedKey = Boolean((element as unknown as { computed?: boolean }).computed);
+      if (isComputedKey) visitValueNode((element as unknown as { key: unknown }).key);
+      const isStatic = Boolean((element as unknown as { static?: boolean }).static);
+      if (element.type === "PropertyDefinition" && isStatic) {
+        visitValueNode((element as unknown as { value: unknown }).value);
+      }
+      visitValueNode((element as unknown as { decorators: unknown }).decorators);
+    }
+  };
+
+  const visitValueNode = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const element of node) visitValueNode(element);
+      return;
+    }
+    if (!isWalkableNode(node)) return;
+
+    if (node.type === "Identifier" || node.type === "JSXIdentifier") {
+      const identifierName = (node as unknown as { name?: string }).name;
+      if (identifierName && importLocalNames.has(identifierName)) {
+        referencedNames.add(identifierName);
+      }
+      return;
+    }
+
+    if (node.type.startsWith("TS")) {
+      if (TS_VALUE_WRAPPER_NODE_TYPES.has(node.type)) {
+        visitValueNode((node as unknown as { expression: unknown }).expression);
+        return;
+      }
+      if (!TS_RUNTIME_DECLARATION_NODE_TYPES.has(node.type)) return;
+    }
+
+    if (FUNCTION_NODE_TYPES.has(node.type)) return;
+
+    if (node.type === "ClassDeclaration" || node.type === "ClassExpression") {
+      visitValueNode((node as unknown as { superClass: unknown }).superClass);
+      visitValueNode((node as unknown as { decorators: unknown }).decorators);
+      const classBody = (node as unknown as { body?: WalkableNode }).body;
+      if (classBody) visitClassBody(classBody);
+      return;
+    }
+
+    if (node.type === "CallExpression" || node.type === "NewExpression") {
+      const callee = (node as unknown as { callee?: WalkableNode }).callee;
+      if (callee && FUNCTION_NODE_TYPES.has(callee.type)) {
+        visitValueNode((callee as unknown as { body: unknown }).body);
+      }
+    }
+
+    if (node.type === "MemberExpression" || node.type === "JSXMemberExpression") {
+      const memberNode = node as unknown as { object: unknown; property: unknown };
+      visitValueNode(memberNode.object);
+      if ((node as unknown as { computed?: boolean }).computed) {
+        visitValueNode(memberNode.property);
+      }
+      return;
+    }
+
+    if (node.type === "Property") {
+      const propertyNode = node as unknown as { key: unknown; value: unknown };
+      if ((node as unknown as { computed?: boolean }).computed) {
+        visitValueNode(propertyNode.key);
+      }
+      visitValueNode(propertyNode.value);
+      return;
+    }
+
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) {
+        for (const element of value) visitValueNode(element);
+      } else if (value && typeof value === "object") {
+        visitValueNode(value);
+      }
+    }
+  };
+
+  for (const statement of bodyNodes) {
+    if (statement.type === "ImportDeclaration" || statement.type === "ExportAllDeclaration") {
+      continue;
+    }
+    if (
+      statement.type === "ExportNamedDeclaration" ||
+      statement.type === "ExportDefaultDeclaration"
+    ) {
+      visitValueNode((statement as { declaration?: unknown }).declaration);
+      continue;
+    }
+    visitValueNode(statement);
+  }
+
+  return [...referencedNames];
+};
+
 const createEmptyParsedSource = (): ParsedSource => ({
   imports: [],
   exports: [],
   memberAccesses: [],
   wholeObjectUses: [],
   localIdentifierReferences: [],
+  topLevelImportReferences: [],
   referencedFilenames: [],
   redundantTypePatterns: [],
   identityWrappers: [],
@@ -654,6 +844,12 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
     [],
   );
 
+  const topLevelImportReferences = safeWalk(
+    "collectTopLevelImportReferences",
+    () => collectTopLevelImportReferences(program.body, collectStaticImportLocalNames(imports)),
+    [],
+  );
+
   const redundantTypePatterns: ParsedRedundantTypePattern[] = [];
   const identityWrappers: ParsedIdentityWrapper[] = [];
   const typeDefinitionHashes: ParsedTypeDefinitionHash[] = [];
@@ -742,6 +938,7 @@ export const parseSourceFile = (filePath: string): ParsedSource => {
     memberAccesses,
     wholeObjectUses,
     localIdentifierReferences,
+    topLevelImportReferences,
     referencedFilenames,
     redundantTypePatterns,
     identityWrappers,
@@ -970,6 +1167,39 @@ const collectMemberAccesses = (
         namespaceLocalNames.has((spreadArgument as unknown as { name: string }).name)
       ) {
         wholeObjectUses.push((spreadArgument as unknown as { name: string }).name);
+      }
+    }
+
+    // `const { a, b } = ns` — destructuring a namespace import reads those
+    // members without a MemberExpression, so it would otherwise be invisible
+    // to the usage map and the destructured exports reported unused (#875).
+    if (node.type === "VariableDeclarator") {
+      const declarator = node as unknown as { id?: WalkableNode; init?: WalkableNode };
+      if (
+        declarator.init?.type === "Identifier" &&
+        namespaceLocalNames.has((declarator.init as unknown as { name: string }).name) &&
+        declarator.id?.type === "ObjectPattern"
+      ) {
+        const namespaceName = (declarator.init as unknown as { name: string }).name;
+        const patternProperties = (declarator.id as unknown as { properties: WalkableNode[] })
+          .properties;
+        for (const property of patternProperties) {
+          if (property.type === "RestElement") {
+            wholeObjectUses.push(namespaceName);
+            continue;
+          }
+          const propertyKey = (
+            property as unknown as { key?: { type: string; name?: string; value?: unknown } }
+          ).key;
+          const isComputed = Boolean((property as unknown as { computed?: boolean }).computed);
+          if (isComputed) {
+            wholeObjectUses.push(namespaceName);
+          } else if (propertyKey?.type === "Identifier" && propertyKey.name) {
+            memberAccesses.push({ objectName: namespaceName, memberName: propertyKey.name });
+          } else if (propertyKey?.type === "Literal" && typeof propertyKey.value === "string") {
+            memberAccesses.push({ objectName: namespaceName, memberName: propertyKey.value });
+          }
+        }
       }
     }
 

@@ -45,17 +45,34 @@ const SIGNATURE_METADATA_IDENTIFIER_PATTERN =
 // boolean flag, not a digest.
 const BOOLEAN_COMPARAND_PATTERN = /(?:===?|!==?)\s*(?:true|false|null|undefined)\b/;
 
+// `got.length !== state.serverSignature.length` is the public length guard
+// that precedes a constant-time comparison — lengths are not secret, so the
+// comparison leaks nothing.
+const LENGTH_COMPARAND_PATTERN =
+  /\.(?:length|size|byteLength)\s*(?:===?|!==?)|\.(?:length|size|byteLength)\s*$/;
+
+// A variable merely NAMED `signature` is routinely a UI dedup/staleness token
+// (`conditionSignatureRef.current === requestConditionSignature`,
+// `healthSignature(prev) === healthSignature(health)`) — change detection, not
+// verification. Only judge the comparison when the file shows cryptographic
+// provenance: a crypto import/API, hmac/digest derivation, or webhook
+// signature-header handling.
+const CRYPTOGRAPHIC_PROVENANCE_PATTERN =
+  /\bcrypto\b|createH(?:mac|ash)|createSign|createVerify|\bsubtle\b|\bhmac\b|\bdigest\b|\bsha-?(?:1|256|384|512)\b|\bmd5\b|\bwebhook|x-(?:hub-)?signature/i;
+
 // Timing-unsafe comparison is a server-side oracle; a comparison inside a
 // rendered component runs on the attacker's own machine.
 const CLIENT_COMPONENT_FILE_PATTERN = /\.[cm]?[jt]sx$/i;
 
 const TIMING_SAFE_COMPARISON_PATTERN = /timingSafeEqual|timing.?safe/i;
 
-// Gravatar, HTTP Digest auth (RFC 7616), and OAuth 1.0 mandate md5/sha1 by
-// protocol, and `_id`/etag/cache-key derivation hashes for uniqueness, not
-// secrecy; flagging those teaches users to ignore the rule.
+// Gravatar, HTTP Digest auth (RFC 7616), OAuth 1.0, and PKCS#12/S-MIME
+// (RFC 7292 mandates SHA1-based PBE with 3DES/RC2 to decrypt existing
+// certificate files) mandate weak primitives by protocol, and `_id`/etag/
+// cache-key derivation hashes for uniqueness, not secrecy; flagging those
+// teaches users to ignore the rule.
 const PROTOCOL_MANDATED_HASH_CONTEXT_PATTERN =
-  /gravatar|digest[-_ ]?auth|oauth[-_ ]?1|\b_id\b|\betag\b|checksum|cache[-_ ]?key|fingerprint/i;
+  /gravatar|digest[-_ ]?auth|oauth[-_ ]?1|pkcs#?12|smime|\b_id\b|\betag\b|checksum|cache[-_ ]?key|fingerprint/i;
 
 // No bare `key` (React key props) or `hash` (location.hash, hash maps) —
 // both turn every component file with Math.random into a hit. No word
@@ -154,14 +171,16 @@ export const insecureCryptoRisk = defineRule({
     if (
       matchIndex < 0 &&
       !TIMING_SAFE_COMPARISON_PATTERN.test(content) &&
-      !CLIENT_COMPONENT_FILE_PATTERN.test(file.relativePath)
+      !CLIENT_COMPONENT_FILE_PATTERN.test(file.relativePath) &&
+      CRYPTOGRAPHIC_PROVENANCE_PATTERN.test(content)
     ) {
       const comparisonMatch = UNSAFE_SIGNATURE_COMPARISON_PATTERN.exec(content);
       if (
         comparisonMatch !== null &&
         !ENUM_MEMBER_COMPARAND_PATTERN.test(comparisonMatch[0]) &&
         !SIGNATURE_METADATA_IDENTIFIER_PATTERN.test(comparisonMatch[0]) &&
-        !BOOLEAN_COMPARAND_PATTERN.test(comparisonMatch[0])
+        !BOOLEAN_COMPARAND_PATTERN.test(comparisonMatch[0]) &&
+        !LENGTH_COMPARAND_PATTERN.test(comparisonMatch[0])
       ) {
         matchIndex = comparisonMatch.index;
       }

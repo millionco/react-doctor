@@ -108,6 +108,58 @@ function C() {
     expect(diagnostics).toHaveLength(0);
   });
 
+  it("stays silent when a custom hook returns { ...query } with an overridden field", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+export function useMetadata(options) {
+  const query = useQuery({ queryKey: ['metadata'], ...options });
+  return {
+    ...query,
+    isLoading: query.isLoading || isLoadingSources,
+  };
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when an arrow-body custom hook forwards { ...query }", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+export const usePatterns = (config) => {
+  const query = useQuery({ queryKey: ['patterns', config] });
+  return { ...query, patterns: query.data ?? [] };
+};`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags { ...query } spread into a non-returned object inside a hook", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+export function useChartConfig() {
+  const query = useQuery({ queryKey: ['chart'] });
+  const snapshot = { ...query, label: 'chart' };
+  return snapshot.data;
+}`,
+    );
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it("still flags { ...query } returned from a plain component", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+function buildViewModel() {
+  const query = useQuery({ queryKey: ['rows'] });
+  return { ...query, label: 'rows' };
+}`,
+    );
+    expect(diagnostics).toHaveLength(1);
+  });
+
   it("flags a JSX spread behind a TS assertion", () => {
     const { diagnostics } = runRule(
       queryDestructureResult,

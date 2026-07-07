@@ -63,4 +63,83 @@ function useAnswers({ query }) {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // FP anchor (internxt WorkspaceSelectorContainer): the setter is handed
+  // to a child as a prop — the toggling happens off-screen, so the rule
+  // can't claim the flag guards a sync update.
+  it("stays silent when the setter escapes as a JSX prop", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function C() { const [isLoading, setIsLoading] = useState(false); return <Dialog isLoading={isLoading} setIsLoading={setIsLoading} />; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // FP anchor (internxt useGuestSignupState): a form-state hook returns the
+  // setter for its consumer's network submission.
+  it("stays silent when the setter is returned from a custom hook", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function useSignupState() { const [isLoading, setIsLoading] = useState(false); return { isLoading, setIsLoading }; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // FP anchor (kurozenzen Search): setLoading(true) precedes a redux thunk
+  // dispatch — the flag tracks the store's async fetch lifecycle.
+  it("stays silent when the setter is called alongside a redux dispatch", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function Search() { const [isLoading, setLoading] = useState(false); const dispatch = useDispatch(); const loadMore = useCallback(() => { setLoading(true); dispatch(getMoreResults()); }, [dispatch]); return <List loadMore={loadMore} isLoading={isLoading} />; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // FP anchor (internxt ShareWithTeamDialog): a sync starter toggles the
+  // flag and fires local async fetch helpers.
+  it("stays silent when the setter's function calls a local async helper", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function ShareDialog() { const [isLoading, setIsLoading] = useState(false); const getTeams = async () => { const teams = await service.getTeams(); setTeamsState(teams); }; const fetchTeams = () => { setIsLoading(true); getTeams(); }; return <button onClick={fetchTeams}>{isLoading ? "..." : "share"}</button>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // FP anchor (nexu-io DesignBrowserPanel): the flag mirrors a webview's
+  // did-start/did-stop loading events.
+  it("stays silent when the setter is toggled from addEventListener handlers", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function Panel({ node }) { const [isLoading, setIsLoading] = useState(false); useEffect(() => { const onStart = () => { setIsLoading(true); }; const onStop = () => { setIsLoading(false); }; node.addEventListener("did-start-loading", onStart); node.addEventListener("did-stop-loading", onStop); return () => { node.removeEventListener("did-start-loading", onStart); node.removeEventListener("did-stop-loading", onStop); }; }, [node]); return <div>{isLoading ? "..." : "ready"}</div>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // FP anchor (audius ImageField): the flag is cleared by the image's
+  // onLoad — genuinely asynchronous media loading.
+  it("stays silent when the setter is cleared in a resource onLoad attribute", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function ImageField({ url }) { const [isLoading, setIsLoading] = useState(false); const handlePress = () => { pickImage((image) => { setValue(image); setIsLoading(true); }); }; return <img src={url} onLoad={() => setIsLoading(false)} onClick={handlePress} />; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // FP anchor (cloudscape wizard demo page): the flag is only ever flipped
+  // by bare inline JSX handlers — it IS the demoed feature, there is no
+  // update to wrap in a transition.
+  it("stays silent when the flag is only flipped by bare inline JSX handlers", () => {
+    const result = runRule(
+      renderingUsetransitionLoading,
+      `function WizardPage() { const [isLoading, setIsLoading] = useState(false); return <div><button onClick={() => setIsLoading(true)}>Set loading</button><Wizard isLoadingNextStep={isLoading} /></div>; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

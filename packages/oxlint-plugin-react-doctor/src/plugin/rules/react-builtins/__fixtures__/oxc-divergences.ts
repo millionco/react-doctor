@@ -32,9 +32,13 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     //     real HTML/SVG tags (react-three-fiber `<mesh>`, `<webview>`)
     //     are custom-reconciler elements, not DOM elements, and are
     //     skipped entirely.
-    failSkips: [2, 19, 20, 38],
+    // (4) fail[14] (`<rect clip-path="bar"/>`) — docs-validation
+    //     2026-07: hyphenated SVG presentation attributes on SVG
+    //     elements are the real attribute names and render verbatim;
+    //     renaming to camelCase is purely stylistic.
+    failSkips: [2, 14, 19, 20, 38],
     reason:
-      "Intentional: skip verbatim-rendered lowercase attrs, tag-restricted event handlers, and non-HTML/SVG lowercase intrinsics (R3F-style FPs).",
+      "Intentional: skip verbatim-rendered lowercase attrs, hyphenated SVG attrs on SVG hosts, tag-restricted event handlers, and non-HTML/SVG lowercase intrinsics (R3F-style FPs).",
   },
   "no-find-dom-node": {
     // OXC flags a bare `findDOMNode(...)` purely by name. A locally

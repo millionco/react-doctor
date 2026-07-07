@@ -17,7 +17,8 @@ import { walkAst } from "../../utils/walk-ast.js";
 const ITERATOR_METHOD_NAMES = new Set(["map", "flatMap", "from"]);
 const MISSING_KEY_ARRAY = "Your users can see the wrong data when this array reorders.";
 const MISSING_KEY_ITERATOR = "Your users can see the wrong data when this list reorders.";
-const KEY_BEFORE_SPREAD = "The `{...spread}` can overwrite this `key` & break React's tracking.";
+const KEY_AFTER_SPREAD =
+  "Place this `key` before the `{...spread}` so the JSX transform can always extract it.";
 const DUPLICATE_KEY = (keyValue: string): string =>
   `Your users can see the wrong data because two elements share the key "${keyValue}".`;
 
@@ -359,6 +360,35 @@ const isThisPropsMember = (expression: EsTreeNode): boolean =>
   isNodeOfType(expression.property, "Identifier") &&
   expression.property.name === "props";
 
+// `({ prop, ...rest }) => …` — a rest binding in a function parameter's
+// top-level ObjectPattern receives the component's props, and React strips
+// `key` before props reach the component, so `rest` provably cannot carry
+// one (same guarantee as `this.props`). Rest bindings from arbitrary
+// destructured objects (`const { a, ...rest } = obj`) stay key-capable.
+const isFunctionParameterPropsRest = (bindingIdentifier: EsTreeNode): boolean => {
+  const restElement = bindingIdentifier.parent;
+  if (!restElement || !isNodeOfType(restElement, "RestElement")) return false;
+  const objectPattern = restElement.parent;
+  if (!objectPattern || !isNodeOfType(objectPattern, "ObjectPattern")) return false;
+  const patternParent = objectPattern.parent;
+  const parameterNode =
+    patternParent &&
+    isNodeOfType(patternParent, "AssignmentPattern") &&
+    patternParent.left === objectPattern
+      ? patternParent
+      : objectPattern;
+  const functionNode = parameterNode.parent;
+  if (
+    !functionNode ||
+    (!isNodeOfType(functionNode, "ArrowFunctionExpression") &&
+      !isNodeOfType(functionNode, "FunctionExpression") &&
+      !isNodeOfType(functionNode, "FunctionDeclaration"))
+  ) {
+    return false;
+  }
+  return functionNode.params.some((param) => param === parameterNode);
+};
+
 // `const { key, ...rest } = anything` — `key` is destructured away, so
 // `rest` provably cannot carry one.
 const isRestBindingWithKeyExtracted = (bindingIdentifier: EsTreeNode): boolean => {
@@ -414,6 +444,7 @@ const isBindingObjectMutated = (scopeOwner: EsTreeNode, bindingName: string): bo
 //   - conditional / logical expressions whose reachable results are keyless
 //   - `const` identifiers whose initializer resolves to a keyless literal
 //   - rest bindings that destructured `key` away, and `this.props`
+//   - props rest parameters (`({ a, ...rest }) => …`) — React strips `key`
 // Everything else (a call, an unresolved identifier, a computed member) is
 // treated as capable of supplying one.
 const spreadExpressionCanCarryKey = (expression: EsTreeNode, depth: number): boolean => {
@@ -456,6 +487,7 @@ const spreadExpressionCanCarryKey = (expression: EsTreeNode, depth: number): boo
     const binding = findVariableInitializer(inner, inner.name);
     if (!binding) return true;
     if (isRestBindingWithKeyExtracted(binding.bindingIdentifier)) return false;
+    if (isFunctionParameterPropsRest(binding.bindingIdentifier)) return false;
     if (!isConstDeclaredBinding(binding) || !binding.initializer) return true;
     if (isBindingObjectMutated(binding.scopeOwner, inner.name)) return true;
     return spreadExpressionCanCarryKey(binding.initializer, depth + 1);
@@ -470,21 +502,19 @@ const checkKeyBeforeSpread = (
   context: Parameters<Rule["create"]>[0],
   openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
 ): void => {
-  // A `{...spread}` only clobbers an explicit `key` when it sits AFTER the
-  // key. JSX applies attributes left-to-right, so a later spread's `key`
-  // property wins under the classic runtime (`{ key: "x", ...spread }`); the
-  // automatic runtime compiles key-BEFORE-spread to `jsx(type, {...spread},
-  // "x")` where the props object's `key` (from the spread) overrides the
-  // `maybeKey` argument — key-AFTER-spread is the shape that falls back to
-  // `createElement`. Either way the later spread wins. When every spread
-  // precedes the key, the
-  // explicit `key` is applied last and always survives, so there is nothing
-  // to flag. We compare the key against the LAST overwrite-capable spread so
-  // a spread sandwiched after the key — `<App {...a} key="x" {...b} />` —
-  // still reports.
+  // The documented hazard is `key` placed AFTER a `{...spread}` (oxc's
+  // `checkKeyMustBeforeSpread`): the automatic JSX runtime can only extract
+  // the key at compile time when it precedes every spread, so
+  // key-after-spread deopts to `createElement` and which key wins becomes
+  // transform-dependent. Key-BEFORE-spread is the documented FIX shape
+  // (`<App key="x" {...p} />`) and must never fire — the key is extracted
+  // before the spread applies. We compare the key against the FIRST
+  // key-capable spread so `<App {...a} key="x" />` reports while spreads
+  // that provably carry no `key` (`{...{}}`, `{...this.props}`, keyless
+  // literals) create no ambiguity and stay silent.
   let keyIndex: number | null = null;
   let keyAttribute: EsTreeNode | null = null;
-  let lastOverwritingSpreadIndex: number | null = null;
+  let firstKeyCarryingSpreadIndex: number | null = null;
   for (
     let attributeIndex = 0;
     attributeIndex < openingElement.attributes.length;
@@ -496,17 +526,21 @@ const checkKeyBeforeSpread = (
         keyIndex = attributeIndex;
         keyAttribute = attribute;
       }
-    } else if (isNodeOfType(attribute, "JSXSpreadAttribute") && spreadCanOverwriteKey(attribute)) {
-      lastOverwritingSpreadIndex = attributeIndex;
+    } else if (
+      isNodeOfType(attribute, "JSXSpreadAttribute") &&
+      firstKeyCarryingSpreadIndex === null &&
+      spreadCanOverwriteKey(attribute)
+    ) {
+      firstKeyCarryingSpreadIndex = attributeIndex;
     }
   }
   if (
     keyIndex !== null &&
-    lastOverwritingSpreadIndex !== null &&
-    lastOverwritingSpreadIndex > keyIndex &&
+    firstKeyCarryingSpreadIndex !== null &&
+    firstKeyCarryingSpreadIndex < keyIndex &&
     keyAttribute
   ) {
-    context.report({ node: keyAttribute, message: KEY_BEFORE_SPREAD });
+    context.report({ node: keyAttribute, message: KEY_AFTER_SPREAD });
   }
 };
 

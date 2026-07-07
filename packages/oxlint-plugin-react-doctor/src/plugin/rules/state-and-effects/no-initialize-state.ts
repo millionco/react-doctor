@@ -1,10 +1,12 @@
 import type { Reference } from "eslint-scope";
 import { containsNonDeterministicSource } from "../../utils/contains-non-deterministic-source.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getFunctionBindingName } from "../../utils/get-function-binding-name.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import {
+  DOM_QUERY_MEMBER_NAMES,
   isMeasurementMemberRead,
   isPostMountGlobalRead,
 } from "../../utils/reads-post-mount-value.js";
@@ -56,19 +58,31 @@ const findEffectLocalInitializer = (effectFn: EsTreeNode, name: string): EsTreeN
   return initializer;
 };
 
-// A measurement-global identifier only defers state init when it feeds a DOM
-// API CALL (`window.matchMedia(...)`, `document.querySelector(...)`): the call
-// returns a live runtime object that has no render-time equivalent. A plain
-// scalar property read (`window.innerWidth`) is hoistable into a lazy
-// `useState(() => window.innerWidth)` initializer, so it keeps the
-// init-in-an-effect smell.
-const isMeasurementApiCallReceiver = (identifier: EsTreeNode): boolean => {
+// A measurement-global identifier defers state init when it feeds a DOM API
+// CALL (`window.matchMedia(...)`) or a VALUE property read
+// (`window.innerWidth`, `window.location.pathname`, `document.documentElement`):
+// both differ between server and client, so hoisting them into a
+// `useState(initial)` breaks SSR hydration — the doc's named FP carve-out,
+// whose dedicated fix is useSyncExternalStore, not lazy useState. A bare
+// uninvoked method REFERENCE (`!!window.matchMedia`) is feature detection,
+// not a value read, so it keeps the init-in-an-effect smell.
+const isMeasurementGlobalValueRead = (identifier: EsTreeNode): boolean => {
   const memberParent = identifier.parent;
   if (!isNodeOfType(memberParent, "MemberExpression") || memberParent.object !== identifier) {
     return false;
   }
-  const callGrandparent = memberParent.parent;
-  return isNodeOfType(callGrandparent, "CallExpression") && callGrandparent.callee === memberParent;
+  if (
+    isNodeOfType(memberParent.property, "Identifier") &&
+    DOM_QUERY_MEMBER_NAMES.has(memberParent.property.name)
+  ) {
+    const callGrandparent = memberParent.parent;
+    return Boolean(
+      callGrandparent &&
+      isNodeOfType(callGrandparent, "CallExpression") &&
+      callGrandparent.callee === memberParent,
+    );
+  }
+  return true;
 };
 
 // Does the setter argument derive from a DOM/layout measurement — directly
@@ -93,7 +107,7 @@ const argumentReadsPostMountMeasurement = (
     if (
       isPostMountGlobalRead(child) &&
       MEASUREMENT_GLOBAL_NAMES.has(child.name) &&
-      isMeasurementApiCallReceiver(child)
+      isMeasurementGlobalValueRead(child)
     ) {
       found = true;
       return false;
@@ -189,6 +203,59 @@ const cleanupDisposesArgumentSource = (argument: EsTreeNode, effectFn: EsTreeNod
   });
   return referencesSource;
 };
+
+// `useEffect(() => { setMounted(true); return () => setMounted(false); }, [])`
+// — the cleanup resets the very state the effect sets, so the effect owns the
+// state's mount/unmount lifecycle (the SSR-safe portal `mounted` flag).
+// Lazy-initializing the mounted value would break hydration: it must differ
+// between the server render and the post-mount client state.
+const cleanupResetsSameSetter = (effectFn: EsTreeNode, setterName: string): boolean => {
+  const cleanupFunction = findCleanupFunction(effectFn);
+  if (!cleanupFunction) return false;
+  let resets = false;
+  walkAst(cleanupFunction, (child: EsTreeNode): boolean | void => {
+    if (resets) return false;
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      child.callee.name === setterName
+    ) {
+      resets = true;
+      return false;
+    }
+  });
+  return resets;
+};
+
+const TYPEOF_BROWSER_GLOBAL_NAMES: ReadonlySet<string> = new Set(["window", "document"]);
+
+// `useState(typeof document !== "undefined")` /
+// `useState(() => typeof window === "undefined" ? fallback : window.innerWidth)`
+// — a typeof-browser-global initializer is the SSR-hydration seed: the value
+// deliberately differs between server and client, and the mount effect is the
+// hydration completion step, not a hoistable init (doc's SSR carve-out).
+const initializerHasTypeofBrowserGlobalCheck = (useStateDecl: EsTreeNode): boolean => {
+  if (!isNodeOfType(useStateDecl, "VariableDeclarator")) return false;
+  if (!isNodeOfType(useStateDecl.init, "CallExpression")) return false;
+  const initialArgument = useStateDecl.init.arguments?.[0];
+  if (!initialArgument) return false;
+  let found = false;
+  walkAst(initialArgument as EsTreeNode, (child: EsTreeNode): boolean | void => {
+    if (found) return false;
+    if (
+      isNodeOfType(child, "UnaryExpression") &&
+      child.operator === "typeof" &&
+      isNodeOfType(child.argument, "Identifier") &&
+      TYPEOF_BROWSER_GLOBAL_NAMES.has(child.argument.name)
+    ) {
+      found = true;
+      return false;
+    }
+  });
+  return found;
+};
+
+const HANDLER_HELPER_NAME_PATTERN = /^(on|handle)[A-Z_]/;
 
 const isSameValueExpression = (leftNode: EsTreeNode, rightNode: EsTreeNode): boolean => {
   const left = stripParenExpression(leftNode);
@@ -401,6 +468,14 @@ export const noInitializeState = defineRule({
         // hoistable initial value.
         if (!isStateSetter(analysis, ref)) {
           const helperFn = resolveToFunction(ref);
+          // Calling an event-handler-named component function at mount
+          // (`if (defaultIsOpen) handleShow(true)`) triggers an imperative
+          // flow — show delays, DOM anchor queries — not a "load initial
+          // value into state" init, so the lazy-useState fix cannot apply.
+          if (helperFn) {
+            const helperName = getFunctionBindingName(helperFn as unknown as EsTreeNode);
+            if (helperName && HANDLER_HELPER_NAME_PATTERN.test(helperName)) continue;
+          }
           if (helperFn) {
             const innerSetterCalls = collectInnerStateSetterCalls(
               analysis,
@@ -440,6 +515,13 @@ export const noInitializeState = defineRule({
         const useStateDecl = getUseStateDecl(analysis, ref);
         if (!useStateDecl || !isNodeOfType(useStateDecl, "VariableDeclarator")) continue;
         if (isSameValueAsInitializer(callExpr, useStateDecl)) continue;
+        if (initializerHasTypeofBrowserGlobalCheck(useStateDecl)) continue;
+        if (
+          isNodeOfType(callExpr.callee, "Identifier") &&
+          cleanupResetsSameSetter(effectFn, callExpr.callee.name)
+        ) {
+          continue;
+        }
         if (!isNodeOfType(useStateDecl.id, "ArrayPattern")) continue;
         const elements = useStateDecl.id.elements ?? [];
         const stateBinding = elements[0] ?? elements[1];

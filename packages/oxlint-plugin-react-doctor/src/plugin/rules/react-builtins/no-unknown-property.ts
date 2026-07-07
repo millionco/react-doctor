@@ -170,6 +170,21 @@ export const noUnknownProperty = defineRule({
 
           if (DOM_PROPERTY_NAMES.has(normalizedName)) continue;
 
+          // Hyphenated SVG presentation attributes (`stroke-width`,
+          // `clip-rule`, `fill-opacity`, …) on SVG elements are the real
+          // attribute names — React sets unknown lowercase attributes via
+          // `setAttribute`, so they render correctly and "React ignores
+          // this prop" would be false. Renaming to the camelCase form is
+          // purely stylistic; stay silent on SVG hosts.
+          if (
+            SVG_TAGS.has(elementType) &&
+            actualName.includes("-") &&
+            !hasUppercaseChar(actualName) &&
+            DOM_ATTRIBUTES_TO_CAMEL.has(actualName)
+          ) {
+            continue;
+          }
+
           const lowercased = normalizedName.toLowerCase();
           const suggestion =
             DOM_PROPERTY_NAMES_LOWER.get(lowercased) ?? DOM_ATTRIBUTES_TO_CAMEL.get(normalizedName);

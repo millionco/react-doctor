@@ -118,6 +118,7 @@ export interface SourceModule {
   memberAccesses: MemberAccess[];
   wholeObjectUses: string[];
   localIdentifierReferences: string[];
+  topLevelImportReferences: string[];
   referencedFilenames: string[];
   redundantTypePatterns: SourceModuleRedundantTypePattern[];
   identityWrappers: SourceModuleIdentityWrapper[];
@@ -145,6 +146,7 @@ export interface Edge {
   target: number;
   importedSymbols: LinkedSymbol[];
   isReExportEdge: boolean;
+  isDynamic: boolean;
   reExportedNames: string[];
   reExportMappings: ReExportMapping[];
 }

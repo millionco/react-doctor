@@ -196,6 +196,47 @@ describe("react-builtins/no-unknown-property — regressions", () => {
     });
   });
 
+  // docs-validation 2026-07: hyphenated SVG presentation attributes on SVG
+  // elements (`stroke-width` / `clip-rule` on `<path>` in lobe-ui icons)
+  // are the actual SVG attribute names. React sets unknown lowercase
+  // attributes via setAttribute, so the icons render correctly — "React
+  // ignores this prop" was factually wrong (11/12 sampled FPs).
+  describe("hyphenated SVG attributes on SVG elements", () => {
+    for (const [attribute, tag] of [
+      ["stroke-width", "path"],
+      ["clip-rule", "path"],
+      ["fill-rule", "path"],
+      ["stroke-linecap", "line"],
+      ["fill-opacity", "circle"],
+      ["stop-color", "stop"],
+      ["dominant-baseline", "text"],
+    ] as const) {
+      it(`does not flag ${attribute} on <${tag}>`, () => {
+        const result = runRule(noUnknownProperty, `<${tag} ${attribute}="x" />`);
+        expect(result.parseErrors).toEqual([]);
+        expect(result.diagnostics).toHaveLength(0);
+      });
+    }
+
+    it("still flags stroke-width on a non-SVG element", () => {
+      const result = runRule(noUnknownProperty, `<div stroke-width="2" />`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags a camelCase typo on an SVG element", () => {
+      const result = runRule(noUnknownProperty, `<path strokeWidht="2" />`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags hyphenated HTML attribute spellings on HTML elements", () => {
+      const result = runRule(noUnknownProperty, `<meta http-equiv="refresh" />`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
   // fp-review: React attaches synthetic events to any host element —
   // ant-design's Masonry listens for descendant image load/error events
   // on the container div. The per-tag whitelist only applies to

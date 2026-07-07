@@ -43,6 +43,7 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
     memberAccesses: input.parsed.memberAccesses,
     wholeObjectUses: input.parsed.wholeObjectUses,
     localIdentifierReferences: input.parsed.localIdentifierReferences,
+    topLevelImportReferences: input.parsed.topLevelImportReferences,
     referencedFilenames: input.parsed.referencedFilenames,
     redundantTypePatterns: input.parsed.redundantTypePatterns,
     identityWrappers: input.parsed.identityWrappers,
@@ -73,12 +74,14 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
     isReExportEdge: boolean = false,
     reExportedNames: string[] = [],
     reExportMappings: ReExportMapping[] = [],
+    isDynamic: boolean = false,
   ): void => {
     edges.push({
       source: sourceIndex,
       target: targetIndex,
       importedSymbols: symbols,
       isReExportEdge,
+      isDynamic,
       reExportedNames,
       reExportMappings,
     });
@@ -108,7 +111,7 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
           if (minimatch(normalizedRelative, globPattern)) {
             const targetIndex = fileIdMap.get(filePath);
             if (targetIndex !== undefined) {
-              addEdge(sourceIndex, targetIndex, []);
+              addEdge(sourceIndex, targetIndex, [], false, [], [], true);
             }
           }
         }
@@ -129,7 +132,7 @@ export const buildDependencyGraph = (inputs: ModuleLinkInput[]): DependencyGraph
         isDefault: importedName.isDefault,
       }));
 
-      addEdge(sourceIndex, targetIndex, importedSymbols);
+      addEdge(sourceIndex, targetIndex, importedSymbols, false, [], [], importInfo.isDynamic);
     }
 
     const reExportsByTarget = new Map<number, { names: string[]; mappings: ReExportMapping[] }>();

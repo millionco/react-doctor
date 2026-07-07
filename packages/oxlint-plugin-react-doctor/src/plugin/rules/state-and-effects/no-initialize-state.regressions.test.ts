@@ -363,7 +363,11 @@ describe("no-initialize-state — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("still flags a mount effect seeding state from scalar window size reads (react-transliterate shape)", () => {
+  // docs-validation FP wave: the doc's named FP carve-out is "SSR hydration
+  // where the value must differ between server and client (window-only
+  // APIs)". `window.innerWidth` cannot be hoisted into useState without
+  // breaking hydration; the doc routes it to useSyncExternalStore instead.
+  it("stays silent on a mount effect seeding state from scalar window size reads (react-transliterate shape)", () => {
     const result = runRule(
       noInitializeState,
       `function Helper() {
@@ -377,7 +381,7 @@ describe("no-initialize-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 });
 
@@ -564,6 +568,168 @@ describe("no-initialize-state — helper-function indirection", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+// docs-validation FP wave (5 TP / 7 FP): every confirmed FP was an
+// SSR-hydration seed (the doc's named carve-out) — window/document value
+// reads, typeof-guarded initializers, mount flags reset by cleanup — or an
+// imperative handler flow triggered at mount. Each case below failed
+// (fired) before the corresponding guard.
+describe("no-initialize-state — docs-validation FP wave", () => {
+  it("stays silent on windowSize seeded from window.innerWidth (react-transliterate)", () => {
+    const result = runRule(
+      noInitializeState,
+      `function ReactTransliterate() {
+        const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
+        useEffect(() => {
+          setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+        }, []);
+        return <div data-w={windowSize.width} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on the portal mounted flag whose cleanup resets it (yet-another-react-lightbox)", () => {
+    const result = runRule(
+      noInitializeState,
+      `function Portal({ children }) {
+        const [mounted, setMounted] = useState(false);
+        const [visible, setVisible] = useState(false);
+        useEffect(() => {
+          setMounted(true);
+          return () => {
+            setMounted(false);
+            setVisible(false);
+          };
+        }, []);
+        return mounted ? <div>{children}</div> : null;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a handler-named imperative flow triggered at mount (react-tooltip defaultIsOpen)", () => {
+    const result = runRule(
+      noInitializeState,
+      `function Tooltip({ defaultIsOpen, delayShow }) {
+        const [show, setShow] = useState(false);
+        const [rendered, setRendered] = useState(false);
+        const tooltipShowDelayTimerRef = useRef(null);
+        const handleShow = (value) => {
+          setRendered(true);
+          if (delayShow) {
+            tooltipShowDelayTimerRef.current = setTimeout(() => setShow(value), delayShow);
+          } else {
+            setShow(value);
+          }
+        };
+        useEffect(() => {
+          if (defaultIsOpen) {
+            handleShow(true);
+          }
+          return () => {
+            if (tooltipShowDelayTimerRef.current) {
+              clearTimeout(tooltipShowDelayTimerRef.current);
+            }
+          };
+        }, []);
+        return rendered ? <div data-show={show} /> : null;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a typeof-window lazy initializer re-synced after hydration (asterdrive FileGrid)", () => {
+    const result = runRule(
+      noInitializeState,
+      `function FileGrid() {
+        const [viewportWidth, setViewportWidth] = useState(() =>
+          typeof window === "undefined" ? 1280 : window.innerWidth,
+        );
+        useEffect(() => {
+          const handleResize = () => setViewportWidth(window.innerWidth);
+          handleResize();
+          window.addEventListener("resize", handleResize);
+          return () => window.removeEventListener("resize", handleResize);
+        }, []);
+        return <div data-w={viewportWidth} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on docRoot read from document.documentElement (json-edit-react)", () => {
+    const result = runRule(
+      noInitializeState,
+      `function JsonEditor() {
+        const [docRoot, setDocRoot] = useState(null);
+        useEffect(() => {
+          const root = document.documentElement;
+          setDocRoot(root);
+        }, []);
+        if (!docRoot) return null;
+        return <div data-root={docRoot.tagName} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on useIsClient with a typeof-document initializer (lobe-ui)", () => {
+    const result = runRule(
+      noInitializeState,
+      `const useIsClient = () => {
+        const [isClient, setIsClient] = useState(typeof document !== "undefined");
+        useEffect(() => {
+          if (isClient) return;
+          setIsClient(true);
+        }, []);
+        return isClient;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on pathname read from window.location (mezzanine useCurrentPathname)", () => {
+    const result = runRule(
+      noInitializeState,
+      `const useCurrentPathname = () => {
+        const [pathname, setPathname] = useState(null);
+        useEffect(() => {
+          setPathname(window.location.pathname);
+        }, []);
+        return pathname;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a mount write of a literal true with no SSR marker anywhere", () => {
+    const result = runRule(
+      noInitializeState,
+      `function C() {
+        const [ready, setReady] = useState(false);
+        useEffect(() => {
+          setReady(true);
+        }, []);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 });
 

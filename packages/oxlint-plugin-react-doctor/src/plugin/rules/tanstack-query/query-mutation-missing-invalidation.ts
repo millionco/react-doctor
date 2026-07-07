@@ -7,8 +7,10 @@ import {
   TRPC_UTILS_INVALIDATE_METHOD,
 } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
 import { flattenCalleeName } from "../../utils/flatten-callee-name.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -30,6 +32,85 @@ const MUTATION_LIFECYCLE_CALLBACK_NAMES = new Set([
 ]);
 const FULL_PAGE_NAVIGATION_METHODS = new Set(["assign", "reload", "replace"]);
 const MAX_HELPER_RESOLUTION_DEPTH = 3;
+
+// Words that mark a mutation as read-style: it fetches, checks, or produces
+// something ephemeral (a download URL, a validation verdict, a pairing code,
+// an OAuth redirect, a signature) without changing any server data a cached
+// query could go stale on. Matched word-by-word against the enclosing hook
+// name, the result binding, and the mutationFn callee.
+const READ_ONLY_MUTATION_WORDS = new Set([
+  "download",
+  "export",
+  "validate",
+  "validation",
+  "verify",
+  "verification",
+  "test",
+  "preview",
+  "oauth",
+  "pairing",
+  "sign",
+]);
+
+// `sign` followed by one of these is an auth ACTION (signIn / signUp /
+// signOut), which does mutate server-visible state — only a bare `sign`
+// (signMessage, signTransaction) is a read-style wallet operation.
+const SIGN_AUTH_FOLLOWER_WORDS = new Set(["in", "up", "out", "off"]);
+
+const hasReadOnlyMutationWord = (identifierName: string): boolean => {
+  const words = tokenizeIdentifierWords(identifierName);
+  for (let index = 0; index < words.length; index++) {
+    const word = words[index];
+    if (word === "sign") {
+      if (!SIGN_AUTH_FOLLOWER_WORDS.has(words[index + 1] ?? "")) return true;
+      continue;
+    }
+    if (READ_ONLY_MUTATION_WORDS.has(word)) return true;
+    // The tokenizer splits embedded acronyms (`StartSlackOAuth` → "o",
+    // "auth"), so keywords can land as two adjacent words.
+    const nextWord = words[index + 1];
+    if (nextWord && READ_ONLY_MUTATION_WORDS.has(word + nextWord)) return true;
+  }
+  return false;
+};
+
+// `onSuccess: () => onSaved(summary)` — invoking a completion callback prop
+// hands the outcome to the parent, which owns the refetch/invalidation (the
+// doc's delegated-invalidation false positive). Only completion-verb names
+// count: `onClose` / `onOpenChange` are UI-only and still flag.
+const DELEGATED_CALLBACK_NAME_PATTERN = /^on[A-Z]/;
+const COMPLETION_CALLBACK_VERBS = new Set([
+  "save",
+  "saved",
+  "success",
+  "complete",
+  "completed",
+  "done",
+  "finish",
+  "finished",
+  "update",
+  "updated",
+  "create",
+  "created",
+  "delete",
+  "deleted",
+  "remove",
+  "removed",
+  "change",
+  "changed",
+  "submit",
+  "submitted",
+  "refresh",
+  "refetch",
+  "mutate",
+  "mutated",
+  "sync",
+  "synced",
+]);
+
+const isDelegatedCompletionCallbackName = (callableName: string): boolean =>
+  DELEGATED_CALLBACK_NAME_PATTERN.test(callableName) &&
+  tokenizeIdentifierWords(callableName).some((word) => COMPLETION_CALLBACK_VERBS.has(word));
 
 // Read-side tanstack-query usage that proves a `useMutation` structural
 // match really is TanStack's. Only consulted when the file has no
@@ -119,6 +200,58 @@ const isFullPageNavigation = (node: EsTreeNode): boolean => {
   return false;
 };
 
+const mutationResultBindingName = (
+  mutationCall: EsTreeNodeOfType<"CallExpression">,
+): string | null => {
+  const parent = mutationCall.parent;
+  if (
+    parent &&
+    isNodeOfType(parent, "VariableDeclarator") &&
+    isNodeOfType(parent.id, "Identifier")
+  ) {
+    return parent.id.name;
+  }
+  return null;
+};
+
+const findMutationFnProperty = (
+  optionsArgument: EsTreeNodeOfType<"ObjectExpression">,
+): EsTreeNodeOfType<"Property"> | null => {
+  for (const property of optionsArgument.properties ?? []) {
+    if (
+      isNodeOfType(property, "Property") &&
+      isNodeOfType(property.key, "Identifier") &&
+      property.key.name === "mutationFn"
+    ) {
+      return property;
+    }
+  }
+  return null;
+};
+
+// The name of what `mutationFn` actually calls: a direct reference
+// (`mutationFn: getBundleDownloadUrl`) or the callee of a concise arrow body
+// (`mutationFn: (params) => getBundleDownloadUrl({ data: params })`).
+const mutationFnCalleeName = (
+  optionsArgument: EsTreeNodeOfType<"ObjectExpression">,
+): string | null => {
+  const mutationFnProperty = findMutationFnProperty(optionsArgument);
+  if (!mutationFnProperty) return null;
+  const mutationFnValue = mutationFnProperty.value;
+  if (isNodeOfType(mutationFnValue, "Identifier")) return mutationFnValue.name;
+  const functionBody = getFunctionBody(mutationFnValue);
+  if (!functionBody) return null;
+  let bodyExpression: EsTreeNode = functionBody;
+  if (isNodeOfType(bodyExpression, "AwaitExpression") && bodyExpression.argument) {
+    bodyExpression = bodyExpression.argument;
+  }
+  if (!isNodeOfType(bodyExpression, "CallExpression")) return null;
+  const flattenedCallee = flattenCalleeName(bodyExpression.callee);
+  if (!flattenedCallee) return null;
+  const calleeSegments = flattenedCallee.split(".");
+  return calleeSegments[calleeSegments.length - 1] ?? null;
+};
+
 interface CacheUpdateDetector {
   hasCacheUpdateWithin: (root: EsTreeNode) => boolean;
 }
@@ -144,8 +277,12 @@ const createCacheUpdateDetector = (scopes: ScopeAnalysis): CacheUpdateDetector =
         visitedHelperNodes.add(helperBody);
         return hasCacheUpdateWithin(helperBody, remainingDepth - 1);
       }
-      // No same-file body to inspect (import / hook result): trust the name.
-      return CACHE_SYNC_CALLABLE_NAME_PATTERN.test(callableNode.name);
+      // No same-file body to inspect (import / hook result / prop): trust
+      // the name.
+      return (
+        CACHE_SYNC_CALLABLE_NAME_PATTERN.test(callableNode.name) ||
+        isDelegatedCompletionCallbackName(callableNode.name)
+      );
     }
 
     if (
@@ -257,6 +394,21 @@ export const queryMutationMissingInvalidation = defineRule({
         );
 
         if (!hasMutationFn) return;
+
+        // The doc's read-only mutation exemption: a mutation named after a
+        // read/check/ephemeral operation has no cached server data to stale.
+        const readOnlySignalNames = [
+          mutationResultBindingName(node),
+          enclosingComponentOrHookName(node),
+          mutationFnCalleeName(optionsArgument),
+        ];
+        if (
+          readOnlySignalNames.some(
+            (signalName) => signalName !== null && hasReadOnlyMutationWord(signalName),
+          )
+        ) {
+          return;
+        }
 
         const detector = createCacheUpdateDetector(context.scopes);
         if (!detector.hasCacheUpdateWithin(optionsArgument)) {

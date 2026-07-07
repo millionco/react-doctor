@@ -5,14 +5,9 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInitialOnlyPropName } from "../../utils/is-initial-only-prop-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { readsPostMountValue } from "../../utils/reads-post-mount-value.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import {
-  getArgsUpstreamRefs,
-  getCallExpr,
-  getDownstreamRefs,
-  getUpstreamRefs,
-} from "./utils/effect/ast.js";
+import { getCallExpr, getDownstreamRefs, getUpstreamRefs } from "./utils/effect/ast.js";
+import { readsPostMountValueThroughLocals } from "./utils/reads-post-mount-through-locals.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { isControlledPropMirror } from "./utils/is-controlled-prop-mirror.js";
 import {
@@ -123,6 +118,61 @@ const getStateNameForUseStateDecl = (useStateNode: EsTreeNode | null): string | 
   return null;
 };
 
+const isUseStateCallExpression = (callExpr: EsTreeNode): boolean => {
+  if (!isNodeOfType(callExpr, "CallExpression")) return false;
+  const callee = callExpr.callee;
+  if (isNodeOfType(callee, "Identifier")) return callee.name === "useState";
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier") &&
+    callee.property.name === "useState"
+  );
+};
+
+// Like `getArgsUpstreamRefs`, but skips the setter's own `useState(...)`
+// declarator: ascending through the setter binding reaches its definition,
+// and treating the useState INITIALIZER's arguments as "what the setter
+// writes" made `useState(config.defaultLanguage)` + a mount sync from an
+// external store (i18next, a bridge) look prop-derived (docs-validation FP).
+const getSetterArgsUpstreamRefs = (analysis: ProgramAnalysis, ref: Reference): Reference[] => {
+  const result: Reference[] = [];
+  for (const upRef of getUpstreamRefs(analysis, ref)) {
+    const callExpr = getCallExpr(upRef);
+    if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
+    if (isUseStateCallExpression(callExpr)) continue;
+    for (const argument of callExpr.arguments ?? []) {
+      for (const argRef of getDownstreamRefs(analysis, argument as EsTreeNode)) {
+        for (const innerRef of getUpstreamRefs(analysis, argRef)) {
+          result.push(innerRef);
+        }
+      }
+    }
+  }
+  return result;
+};
+
+const refResolvesToDeclarator = (ref: Reference, declarator: EsTreeNode | null): boolean =>
+  Boolean(
+    declarator &&
+    ref.resolved?.defs.some((def) => (def.node as unknown as EsTreeNode) === declarator),
+  );
+
+const isUseContextLocal = (ref: Reference): boolean =>
+  Boolean(
+    ref.resolved?.defs.some((def) => {
+      const node = def.node as unknown as EsTreeNode;
+      if (!isNodeOfType(node, "VariableDeclarator")) return false;
+      if (!isNodeOfType(node.init, "CallExpression")) return false;
+      const callee = node.init.callee;
+      if (isNodeOfType(callee, "Identifier")) return callee.name === "useContext";
+      return (
+        isNodeOfType(callee, "MemberExpression") &&
+        isNodeOfType(callee.property, "Identifier") &&
+        callee.property.name === "useContext"
+      );
+    }),
+  );
+
 const isPlainValueReadExpression = (node: EsTreeNode): boolean => {
   if (isNodeOfType(node, "Identifier")) return true;
   if (isNodeOfType(node, "MemberExpression")) {
@@ -189,22 +239,81 @@ const collectGuardTestsOnPath = (callExpr: EsTreeNode, effectFn: EsTreeNode): Es
   return guardTests;
 };
 
-// A guard reading some useState value marks a state-conditioned write —
+// A guard reading the WRITTEN state marks a state-conditioned write —
 // the `if (!items.some((item) => item.id === selectedId)) setSelectedId(first)`
 // fallback shape. That write IS replaceable by a render-time derivation
 // (`isValid ? selected : fallback`), so it stays reported even when the
-// state has independent user-input writers.
-const someGuardReadsState = (
+// state has independent user-input writers. Guards reading OTHER state
+// (`if (!isEditing) setValue(data)`) condition the re-sync on a mode flag —
+// the edit-buffer idiom the docs-validation pass confirmed as FP.
+const someGuardReadsWrittenState = (
   analysis: ProgramAnalysis,
   guardTests: ReadonlyArray<EsTreeNode>,
+  writtenStateDecl: EsTreeNode | null,
 ): boolean =>
   guardTests.some((test) =>
-    getDownstreamRefs(analysis, test).some(
-      (testRef) =>
-        isState(analysis, testRef) ||
-        getUpstreamRefs(analysis, testRef).some((upRef) => isState(analysis, upRef)),
+    getDownstreamRefs(analysis, test).some((testRef) =>
+      getUpstreamRefs(analysis, testRef).some(
+        (upRef) => isState(analysis, upRef) && refResolvesToDeclarator(upRef, writtenStateDecl),
+      ),
     ),
   );
+
+// The whole-value carve-out below exists for the canonical PROP mirror.
+// When the copied value is itself ANOTHER live useState value (seeding
+// keyboard-highlight state from the selection on an open transition) or
+// derives from useContext (preserving accordion state as memory), the
+// parent-owned-value premise does not hold, so the carve-out is waived
+// and the user-writer exemption may apply.
+const copiesOtherStateOrContextValue = (
+  analysis: ProgramAnalysis,
+  callExpr: EsTreeNode,
+  writtenStateDecl: EsTreeNode | null,
+): boolean => {
+  if (!isNodeOfType(callExpr, "CallExpression")) return false;
+  const argument = callExpr.arguments?.[0];
+  if (!argument) return false;
+  for (const argRef of getDownstreamRefs(analysis, argument as EsTreeNode)) {
+    // Direct read of another useState value — not a transitive derivation
+    // through a useMemo local, which is still the mirror TP shape.
+    if (isState(analysis, argRef) && !refResolvesToDeclarator(argRef, writtenStateDecl)) {
+      return true;
+    }
+    for (const upRef of getUpstreamRefs(analysis, argRef)) {
+      if (isUseContextLocal(upRef)) return true;
+    }
+  }
+  return false;
+};
+
+// The effect consumes an event carried in state: the flagged setter's
+// argument derives from state X, and the SAME effect synchronously resets
+// X through its own setter. X is transient (cleared each pass, e.g. a
+// screen-reader announcement queue), so no render-time derivation could
+// read it — a state-machine step, not derived state.
+const effectResetsArgumentSourceState = (
+  analysis: ProgramAnalysis,
+  effectFnRefs: ReadonlyArray<Reference>,
+  effectFn: EsTreeNode,
+  flaggedRef: Reference,
+  argsUpstreamRefs: ReadonlyArray<Reference>,
+): boolean => {
+  const sourceStateDecls = new Set<EsTreeNode>();
+  for (const argRef of argsUpstreamRefs) {
+    if (!isState(analysis, argRef)) continue;
+    for (const def of argRef.resolved?.defs ?? []) {
+      sourceStateDecls.add(def.node as unknown as EsTreeNode);
+    }
+  }
+  if (sourceStateDecls.size === 0) return false;
+  for (const otherRef of effectFnRefs) {
+    if (otherRef === flaggedRef) continue;
+    if (!isSyncStateSetterCall(analysis, otherRef, effectFn)) continue;
+    const otherDecl = getUseStateDecl(analysis, otherRef);
+    if (otherDecl && sourceStateDecls.has(otherDecl)) return true;
+  }
+  return false;
+};
 
 // A setter with any reference outside this effect (a handler call, a
 // subscription callback, the setter passed as a value) is not "only set
@@ -252,11 +361,13 @@ export const noDerivedState = defineRule({
         // A value measured from the DOM / a ref / a browser global can't be
         // "worked out while rendering" — the element isn't mounted yet. This
         // is a deferred measurement, not a derived value copied into state.
-        if (readsPostMountValue(callExpr)) continue;
+        // The measurement often flows through an effect-local first
+        // (`const { width } = ref.current.getBoundingClientRect()`).
+        if (readsPostMountValueThroughLocals(callExpr, effectFn)) continue;
         const useStateNode = getUseStateDecl(analysis, ref);
         const stateName = getStateNameForUseStateDecl(useStateNode) ?? "<state>";
 
-        const argsUpstreamRefs = getArgsUpstreamRefs(analysis, ref);
+        const argsUpstreamRefs = getSetterArgsUpstreamRefs(analysis, ref);
         const depsUpstreamRefs: Reference[] = depsRefs.flatMap((depRef) =>
           getUpstreamRefs(analysis, depRef),
         );
@@ -279,6 +390,12 @@ export const noDerivedState = defineRule({
 
         if (isAccumulatingFunctionalUpdater(analysis, callExpr)) continue;
 
+        if (
+          effectResetsArgumentSourceState(analysis, effectFnRefs, effectFn, ref, argsUpstreamRefs)
+        ) {
+          continue;
+        }
+
         // User-editable state that a GUARDED effect merely re-syncs from
         // props on specific changes (edit-form drafts, keyboard-navigation
         // indexes, toggled selections): the state carries user input that
@@ -286,16 +403,21 @@ export const noDerivedState = defineRule({
         // wrong. Three derived-write shapes stay reported despite user
         // writers: the unguarded write (it clobbers the user's edits on
         // EVERY dep change — the classic mirror bug), the whole-value
-        // prop/state mirror, and the state-conditioned fallback
+        // PROP mirror, and the written-state-conditioned fallback
         // (`if (!isValid(selected)) setSelected(first)` — replaceable by a
-        // render-time clamp).
+        // render-time clamp). The user-writer lookup resolves through an
+        // indirect call (`revertToData()` whose body does the setState) via
+        // the upstream setter reference.
         const guardTestsOnPath = collectGuardTestsOnPath(callExpr, effectFn);
+        const upstreamSetterRef =
+          getUpstreamRefs(analysis, ref).find((upRef) => isStateSetter(analysis, upRef)) ?? null;
         if (
           guardTestsOnPath.length > 0 &&
-          isStateSetter(analysis, ref) &&
-          hasUserInputSetterWriter(ref, node, true) &&
-          !isWholeValueMirrorArgument(callExpr) &&
-          !someGuardReadsState(analysis, guardTestsOnPath)
+          upstreamSetterRef !== null &&
+          hasUserInputSetterWriter(upstreamSetterRef, node, true) &&
+          (!isWholeValueMirrorArgument(callExpr) ||
+            copiesOtherStateOrContextValue(analysis, callExpr, useStateNode)) &&
+          !someGuardReadsWrittenState(analysis, guardTestsOnPath, useStateNode)
         ) {
           continue;
         }

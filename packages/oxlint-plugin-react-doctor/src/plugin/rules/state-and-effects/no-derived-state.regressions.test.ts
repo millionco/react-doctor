@@ -732,3 +732,189 @@ describe("no-derived-state — diagnostic naming and 'only set here' premise", (
     expect(result.diagnostics).toEqual([]);
   });
 });
+
+// docs-validation FP wave (5 TP / 7 FP): syncs from external stores, transient
+// event-consume steps, context-memory, transition seeding from sibling state,
+// mode-guarded edit buffers, and measurement values routed through effect
+// locals. Each case below failed (fired) before the corresponding guard.
+describe("no-derived-state — docs-validation FP wave", () => {
+  it("stays silent on a mount sync from an external i18n store with a prop-seeded initializer (tasktrove)", () => {
+    const result = runRule(
+      noDerivedState,
+      `import i18next from "i18next";
+      function LanguageProvider({ children, config }) {
+        const [language, setLanguageState] = useState(config.defaultLanguage);
+        useEffect(() => {
+          const resolvedLng = i18next.resolvedLanguage;
+          if (!resolvedLng || resolvedLng === language) return;
+          const isSupported = config.languages.some((supported) => supported === resolvedLng);
+          if (isSupported) {
+            setLanguageState(resolvedLng);
+          }
+        }, []);
+        return <div>{children}</div>;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a bridge-value sync whose lazy initializer reads a hook parameter (skybridge)", () => {
+    const result = runRule(
+      noDerivedState,
+      `function useViewState(defaultState) {
+        const viewStateFromBridge = useHostContext("viewState");
+        const [viewState, _setViewState] = useState(() => {
+          if (viewStateFromBridge !== null) return filterViewContext(viewStateFromBridge);
+          return defaultState ?? null;
+        });
+        useEffect(() => {
+          if (viewStateFromBridge !== null) {
+            _setViewState(filterViewContext(viewStateFromBridge));
+          }
+        }, [viewStateFromBridge]);
+        const setViewState = useCallback((state) => {
+          _setViewState((prevState) => {
+            const newState = typeof state === "function" ? state(prevState) : state;
+            return filterViewContext(newState);
+          });
+        }, []);
+        return [viewState, setViewState];
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on an event-consume step that resets the source state it derived from (vip addStatus)", () => {
+    const result = runRule(
+      noDerivedState,
+      `function FormAutocompleteMultiselect({ options }) {
+        const [selectedOptions, setSelectedOptions] = useState([]);
+        const [currentOption, setCurrentOption] = useState({ action: "NONE", option: null });
+        const [addStatus, setAddStatus] = useState("");
+        useEffect(() => {
+          if (currentOption.action === "ADD") {
+            setAddStatus(currentOption.option + " added to the list.");
+            setCurrentOption({ action: "NONE", option: null });
+          } else if (selectedOptions.length === 0) {
+            global.document.querySelector(".autocomplete__input")?.focus();
+          }
+        }, [currentOption]);
+        return <div onClick={() => setCurrentOption({ action: "ADD", option: "x" })}>{addStatus}</div>;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on context-derived accordion memory with a handler writer (react-pro-sidebar)", () => {
+    const result = runRule(
+      noDerivedState,
+      `function SubMenu({ id, defaultOpen, open: openControlled }) {
+        const parentAccordion = useContext(AccordionContext);
+        const [internalOpen, setInternalOpen] = useState(defaultOpen);
+        const accordionActiveId = parentAccordion ? parentAccordion.activeId : null;
+        const accordionOpen = parentAccordion ? accordionActiveId === id : false;
+        const open = openControlled ?? (parentAccordion ? accordionOpen : internalOpen);
+        useEffect(() => {
+          if (parentAccordion) {
+            setInternalOpen(accordionOpen);
+          }
+        }, [parentAccordion, accordionOpen]);
+        const handleToggle = () => setInternalOpen(!internalOpen);
+        return <div data-open={open} onClick={handleToggle} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on an edit buffer resynced only outside editing mode via an indirect helper (json-edit-react)", () => {
+    const result = runRule(
+      noDerivedState,
+      `function ValueNodeWrapper({ data, customNodeData }) {
+        const [value, setValue] = useState(data);
+        const [dataType, setDataType] = useState(getDataType(data, customNodeData));
+        const [isEditing, setIsEditing] = useState(false);
+        const derivedValues = useMemo(() => ({ isEditing }), [isEditing]);
+        const revertToData = () => {
+          setValue(typeof data === "function" ? "**INVALID**" : data);
+          setDataType(getDataType(data, customNodeData));
+        };
+        useEffect(() => {
+          if (!derivedValues.isEditing) revertToData();
+        }, [data]);
+        const handleEdit = (newValue) => {
+          setIsEditing(true);
+          setValue(newValue);
+        };
+        return <input value={value} onChange={(e) => handleEdit(e.target.value)} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on seeding keyboard-highlight state from sibling selection state on an open transition (clerk)", () => {
+    const result = runRule(
+      noDerivedState,
+      `function AutocompleteRoot({ open }) {
+        const [selectedIndex, setSelectedIndex] = useState(null);
+        const [activeIndex, setActiveIndex] = useState(null);
+        const previousOpenRef = useRef(open);
+        useEffect(() => {
+          if (open && !previousOpenRef.current && selectedIndex != null) {
+            setActiveIndex(selectedIndex);
+          }
+          previousOpenRef.current = open;
+        }, [open, selectedIndex]);
+        const onNavigate = (index) => setActiveIndex(index);
+        return <div onKeyDown={() => onNavigate(0)} data-active={activeIndex} />;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a getBoundingClientRect measurement routed through an effect-local (easy-ui useTriggerWidth)", () => {
+    const result = runRule(
+      noDerivedState,
+      `function useTriggerWidth(triggerRef) {
+        const [triggerWidth, setTriggerWidth] = useState(null);
+        const initialRef = useRef(false);
+        useEffect(() => {
+          if (triggerRef.current && !initialRef.current) {
+            const { width } = triggerRef.current.getBoundingClientRect();
+            setTriggerWidth(width);
+            initialRef.current = true;
+          }
+        }, [triggerRef]);
+        return triggerWidth;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a mount sync when the setter argument itself derives from a prop", () => {
+    const result = runRule(
+      noDerivedState,
+      `function LanguageProvider({ children, config }) {
+        const [language, setLanguageState] = useState("en");
+        useEffect(() => {
+          setLanguageState(config.defaultLanguage.toLowerCase());
+        }, []);
+        return <div>{children}</div>;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

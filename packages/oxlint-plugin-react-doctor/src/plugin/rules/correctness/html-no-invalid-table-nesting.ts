@@ -2,6 +2,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { TRANSPARENT_EXPRESSION_WRAPPER_TYPES } from "../../utils/strip-paren-expression.js";
 
 const TABLE_ELEMENTS = new Set(["table", "thead", "tbody", "tfoot", "tr", "td", "th"]);
 
@@ -39,6 +41,43 @@ interface HostAncestorNone {
 }
 type ClosestHostAncestor = HostAncestorFound | HostAncestorOpaque | HostAncestorNone;
 
+// The lexical JSX ancestor is only the RUNTIME parent while the element
+// flows directly into that ancestor's children: JSX child position,
+// `{…}` containers, fragments, ternary/logical branches, and iteration
+// callbacks (`{rows.map((r) => <tr/>)}`) whose return renders in place.
+// The moment the element detours through data flow — pushed into an
+// array (`columns.push(<td/>)`), bound to a variable, passed as a
+// non-callback call argument, assigned to a prop — the runtime parent is
+// whatever renders that value later, which this walk cannot see
+// (docs-validation 2026-07: eBay calendar builds `<td>`s in a loop and
+// renders them via `<tr>{columns}</tr>`, but the lexical walk
+// misattributed `<tbody>` as the parent).
+const isRenderFlowStep = (parent: EsTreeNode, child: EsTreeNode): boolean => {
+  if (TRANSPARENT_EXPRESSION_WRAPPER_TYPES.has(parent.type)) return true;
+  switch (parent.type) {
+    case "JSXExpressionContainer":
+    case "JSXFragment":
+    case "ConditionalExpression":
+    case "LogicalExpression":
+    case "ReturnStatement":
+    case "BlockStatement":
+    case "IfStatement":
+    case "SwitchStatement":
+    case "SwitchCase":
+    case "ArrayExpression":
+      return true;
+    case "ArrowFunctionExpression":
+    case "FunctionExpression":
+      return (parent as { body?: unknown }).body === child;
+    case "CallExpression":
+      return (
+        isNodeOfType(child, "ArrowFunctionExpression") || isNodeOfType(child, "FunctionExpression")
+      );
+    default:
+      return false;
+  }
+};
+
 // Walks up JSX ancestors and returns the nearest enclosing host (lowercase)
 // JSXElement's tag name. Mirrors preact/debug's
 // `getClosestDomNodeParentName(parent)`, which walks the VNode tree past
@@ -51,6 +90,7 @@ type ClosestHostAncestor = HostAncestorFound | HostAncestorOpaque | HostAncestor
 const findClosestHostAncestor = (
   jsxElement: EsTreeNodeOfType<"JSXElement">,
 ): ClosestHostAncestor => {
+  let previous: EsTreeNode = jsxElement;
   let ancestor: EsTreeNode | null | undefined = jsxElement.parent;
   while (ancestor) {
     if (isNodeOfType(ancestor, "JSXElement")) {
@@ -58,6 +98,7 @@ const findClosestHostAncestor = (
       if (isNodeOfType(opening.name, "JSXIdentifier")) {
         const ancestorTag = opening.name.name;
         if (ancestorTag.length === 0) {
+          previous = ancestor;
           ancestor = ancestor.parent ?? null;
           continue;
         }
@@ -69,6 +110,8 @@ const findClosestHostAncestor = (
       // Member-expression (`<Foo.Bar>`) / namespace (`<svg:circle>`) names.
       return { kind: "opaque" };
     }
+    if (!isRenderFlowStep(ancestor, previous)) return { kind: "opaque" };
+    previous = ancestor;
     ancestor = ancestor.parent ?? null;
   }
   return { kind: "none" };
@@ -123,6 +166,11 @@ export const htmlNoInvalidTableNesting = defineRule({
     "Put each table element in its required parent: `<thead>`/`<tbody>`/`<tfoot>` directly inside `<table>`, `<tr>` inside a row group, `<td>`/`<th>` inside `<tr>`. Browsers quietly fix broken table markup, so write it to spec.",
   create: (context) => ({
     JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
+      // Unit tests deliberately render minimal invalid fixtures
+      // (`<table><th>` null-path probes) where "users see a rearranged
+      // table" is meaningless — docs-validation 2026-07 found 8/10
+      // sampled FPs were jest/vitest fixture markup.
+      if (isTestlikeFilename(context.filename)) return;
       const tagName = getHostTagName(node);
       if (!tagName || !TABLE_ELEMENTS.has(tagName)) return;
 

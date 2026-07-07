@@ -16,6 +16,7 @@ interface SerializedParsedSource {
   readonly memberAccesses: ReturnType<typeof parseSourceFile>["memberAccesses"];
   readonly wholeObjectUses: string[];
   readonly localIdentifierReferences: string[];
+  readonly topLevelImportReferences: string[];
   readonly referencedFilenames: string[];
   readonly redundantTypePatterns: ReturnType<typeof parseSourceFile>["redundantTypePatterns"];
   readonly identityWrappers: ReturnType<typeof parseSourceFile>["identityWrappers"];
@@ -59,6 +60,7 @@ port.on("message", (message: WorkerMessage) => {
           memberAccesses: parsed.memberAccesses,
           wholeObjectUses: parsed.wholeObjectUses,
           localIdentifierReferences: parsed.localIdentifierReferences,
+          topLevelImportReferences: parsed.topLevelImportReferences,
           referencedFilenames: parsed.referencedFilenames,
           redundantTypePatterns: parsed.redundantTypePatterns,
           identityWrappers: parsed.identityWrappers,

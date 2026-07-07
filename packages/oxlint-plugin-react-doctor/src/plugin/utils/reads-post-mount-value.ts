@@ -14,7 +14,7 @@ import { walkAst } from "./walk-ast.js";
 //
 // Unambiguous DOM API method names: these never appear on plain data objects,
 // so a bare name match is safe.
-const DOM_QUERY_MEMBER_NAMES: ReadonlySet<string> = new Set([
+export const DOM_QUERY_MEMBER_NAMES: ReadonlySet<string> = new Set([
   "getBoundingClientRect",
   "getComputedStyle",
   "getElementById",

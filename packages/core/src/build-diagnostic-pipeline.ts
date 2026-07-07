@@ -61,36 +61,18 @@ const collectStringSet = (values: unknown): ReadonlySet<string> => {
   return new Set(values.filter((value): value is string => typeof value === "string"));
 };
 
+const matchesAnyRuleKey = (candidates: Iterable<string>, ruleIdentifier: string): boolean => {
+  for (const candidate of candidates) {
+    if (isSameRuleKey(candidate, ruleIdentifier)) return true;
+  }
+  return false;
+};
+
 // `jsx-no-undef` reports the flagged root identifier as the first backticked
 // token of its message (`` `Foo` crashes at runtime… ``), so the configured
 // `runtimeGlobals` allowlist matches against that token.
 const JSX_NO_UNDEF_IDENTIFIER_PATTERN = /^`([^`]+)`/;
 
-/**
- * Pre-compiles every stateful filter and returns a single
- * `apply(diagnostic)` closure that runs (in order):
- *
- * 1. auto-suppress (test-noise rules in test files; `migration-hint`
- *    wins over `test-noise`)
- * 2. severity overrides (top-level `rules` / `categories`, with
- *    `"off"` dropping)
- * 3. warning suppression (only when `showWarnings` is false: drops every
- *    `"warning"`-severity diagnostic unless a severity override opts a
- *    specific rule / category back in)
- * 4. ignore filters (rules / file patterns / per-file overrides)
- * 5. `rn-no-raw-text` suppression via configured `textComponents` and
- *    `rawTextWrapperComponents` (config-driven JSX enclosure checks)
- * 6. inline suppressions (`// react-doctor-disable-next-line ...`)
- * 7. file-context stamping (`fileContext: "test" | "story"` on
- *    survivors in non-production files, so renderers can label them)
- *
- * Returns `null` when the diagnostic is dropped, the (possibly
- * severity-restamped) diagnostic otherwise.
- *
- * This is the single source of truth for diagnostic filtering — both
- * `runInspect`'s streaming pipeline and the array-shaped
- * `mergeAndFilterDiagnostics` wrapper apply this closure per element.
- */
 export const buildDiagnosticPipeline = (
   input: BuildDiagnosticPipelineInput,
 ): DiagnosticPipeline => {
@@ -98,11 +80,7 @@ export const buildDiagnosticPipeline = (
     input;
 
   const severityControls = buildRuleSeverityControls(userConfig);
-  const ignoredRules = new Set(
-    Array.isArray(userConfig?.ignore?.rules)
-      ? userConfig.ignore.rules.filter((rule): rule is string => typeof rule === "string")
-      : [],
-  );
+  const ignoredRules = collectStringSet(userConfig?.ignore?.rules);
   const ignoredFilePatterns = compileIgnoredFilePatterns(userConfig);
   const compiledOverrides = compileIgnoreOverrides(userConfig);
   const textComponentNames = collectStringSet(userConfig?.textComponents);
@@ -167,22 +145,14 @@ export const buildDiagnosticPipeline = (
     return getFileContext(diagnostic.filePath) !== "production";
   };
 
-  const isRuleIgnored = (ruleIdentifier: string): boolean => {
-    for (const ignored of ignoredRules) {
-      if (isSameRuleKey(ignored, ruleIdentifier)) return true;
-    }
-    return false;
-  };
+  const isRuleIgnored = (ruleIdentifier: string): boolean =>
+    matchesAnyRuleKey(ignoredRules, ruleIdentifier);
 
   // Alias-aware membership for the app-only set (mirrors `isRuleIgnored`): a
   // future alias of `static-components` / `no-render-prop-children` is still
   // caught by the library gate, where a raw `Set.has` would miss it.
-  const isAppOnlyRule = (ruleIdentifier: string): boolean => {
-    for (const appOnlyRuleKey of APP_ONLY_RULE_KEYS) {
-      if (isSameRuleKey(appOnlyRuleKey, ruleIdentifier)) return true;
-    }
-    return false;
-  };
+  const isAppOnlyRule = (ruleIdentifier: string): boolean =>
+    matchesAnyRuleKey(APP_ONLY_RULE_KEYS, ruleIdentifier);
 
   const isRnRawTextSuppressedByConfig = (diagnostic: Diagnostic): boolean => {
     if (diagnostic.rule !== "rn-no-raw-text") return false;

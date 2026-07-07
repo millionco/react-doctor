@@ -6,7 +6,6 @@ import { afterAll, describe, expect, it } from "vite-plus/test";
 import type { Diagnostic, ReactDoctorConfig } from "@react-doctor/core";
 import {
   buildDiagnosticPipeline,
-  clearAutoSuppressionCaches,
   createNodeReadFileLinesSync,
   mergeAndFilterDiagnostics,
 } from "@react-doctor/core";
@@ -101,7 +100,6 @@ describe("mergeAndFilterDiagnostics — test-noise tag auto-suppression for asyn
     });
 
   it("auto-suppresses async-parallel in `*.test.tsx` files", () => {
-    clearAutoSuppressionCaches();
     const filtered = mergeAndFilterDiagnostics(
       [asyncParallelDiagnostic("src/dashboard.test.tsx")],
       projectDir,
@@ -113,7 +111,6 @@ describe("mergeAndFilterDiagnostics — test-noise tag auto-suppression for asyn
   });
 
   it("auto-suppresses async-parallel inside `__tests__/` directories", () => {
-    clearAutoSuppressionCaches();
     const filtered = mergeAndFilterDiagnostics(
       [asyncParallelDiagnostic("src/utils/__tests__/load-data.ts")],
       projectDir,
@@ -125,7 +122,6 @@ describe("mergeAndFilterDiagnostics — test-noise tag auto-suppression for asyn
   });
 
   it("auto-suppresses async-parallel inside Playwright/Cypress/e2e directories", () => {
-    clearAutoSuppressionCaches();
     const filtered = mergeAndFilterDiagnostics(
       [
         asyncParallelDiagnostic("playwright/checkout.spec.ts"),
@@ -141,7 +137,6 @@ describe("mergeAndFilterDiagnostics — test-noise tag auto-suppression for asyn
   });
 
   it("auto-suppresses async-parallel for Windows-slashed test paths", () => {
-    clearAutoSuppressionCaches();
     const filtered = mergeAndFilterDiagnostics(
       [asyncParallelDiagnostic("src\\components\\Button.test.tsx")],
       projectDir,
@@ -153,7 +148,6 @@ describe("mergeAndFilterDiagnostics — test-noise tag auto-suppression for asyn
   });
 
   it("still surfaces async-parallel in plain production files", () => {
-    clearAutoSuppressionCaches();
     const filtered = mergeAndFilterDiagnostics(
       [asyncParallelDiagnostic("src/server/load-dashboard.ts")],
       projectDir,

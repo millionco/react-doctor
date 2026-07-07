@@ -1,7 +1,6 @@
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import * as Filter from "effect/Filter";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -135,16 +134,6 @@ export interface InspectInput {
    */
   readonly supplyChainManifestChanged?: boolean;
   /**
-   * Set when this scan runs concurrently with sibling scans in one process
-   * (the CLI's multi-project pool). Such a scan can't safely reason about the
-   * shared memory budget from its own available-memory reading — N concurrent
-   * scans each reading "plenty available" would each fork a dead-code worker
-   * and sum past the single-scan budget — so the dead-code overlap memory gate
-   * (`"auto"`) stays sequential for concurrent members. An explicit
-   * `REACT_DOCTOR_DEAD_CODE_OVERLAP=on` override still wins. Defaults to `false`.
-   */
-  readonly concurrentScan?: boolean;
-  /**
    * Absolute epoch-millisecond deadline for the scan (the CLI's
    * `--max-duration` budget resolved against the scan start). Past it the
    * scan degrades gracefully: un-started lint batches are skipped (surfaced
@@ -183,12 +172,11 @@ export interface InspectOutput {
   readonly didDeadCodeFail: boolean;
   readonly deadCodeFailureReason: string | null;
   /**
-   * Whether the dead-code pass actually ran concurrently with lint this scan
-   * (the memory gate opened, or overlap was forced via
-   * `REACT_DOCTOR_DEAD_CODE_OVERLAP`). `false` for the strictly-sequential
-   * path: diff/staged/`--no-warnings` runs that skip dead-code, a closed
-   * memory gate, or `overlap=off`. Internal telemetry only (rides the per-scan
-   * wide event); NOT part of the public `inspect()` `InspectResult`.
+   * Whether the dead-code pass actually ran concurrently with lint this scan.
+   * This is true only when `REACT_DOCTOR_DEAD_CODE_OVERLAP=on`; the default
+   * `auto` and explicit `off` modes stay sequential. Internal telemetry only
+   * (rides the per-scan wide event); NOT part of the public `inspect()`
+   * `InspectResult`.
    */
   readonly deadCodeOverlapped: boolean;
   /**
@@ -314,13 +302,7 @@ const NO_HOOKS: Required<InspectHooks<never>> = {
   afterLint: () => Effect.void,
 };
 
-const filterMapNullable = <Input, Output>(
-  transform: (value: Input) => Output | null,
-): Filter.Filter<Input, Output> =>
-  Filter.fromPredicateOption((value) => {
-    const result = transform(value);
-    return result === null ? Option.none() : Option.some(result);
-  });
+const EMPTY_DIAGNOSTIC_STREAM: Stream.Stream<Diagnostic, never> = Stream.empty;
 
 const fileReader =
   (filesService: Files["Service"], rootDirectory: string) =>
@@ -333,16 +315,6 @@ const LINT_FAIL_TEXT = "Scanning failed (lint, non-fatal).";
 const LINT_NATIVE_BINDING_FAIL_TEXT = (nodeVersion: string): string =>
   `Scanning failed — oxlint native binding not found (Node ${nodeVersion}).`;
 const DEAD_CODE_FAIL_TEXT = "Scanning failed (dead-code analysis, non-fatal).";
-
-const formatLintFailText = (
-  reasonTag: ReactDoctorErrorReason["_tag"] | null,
-  nodeVersion: string,
-): string => {
-  if (reasonTag === "OxlintUnavailable" || reasonTag === "OxlintSpawnFailed") {
-    return LINT_NATIVE_BINDING_FAIL_TEXT(nodeVersion);
-  }
-  return LINT_FAIL_TEXT;
-};
 
 /**
  * The full inspect orchestration as a single composable Effect.
@@ -366,17 +338,14 @@ const formatLintFailText = (
  *      `SupplyChainOverlapTimeoutMs` (measured from fork) so a hung
  *      socket can't drag out its join; on timeout it fails open to no
  *      diagnostics — the same outcome class as a Socket outage.
- *   5. Linter.run runs; DeadCode.run runs concurrently (forked child
- *      fiber) ONLY when the memory gate has headroom to run the 8 GB
- *      dead-code child alongside the oxlint workers — or when overlap is
- *      forced via REACT_DOCTOR_DEAD_CODE_OVERLAP. Otherwise dead-code
- *      runs sequentially after lint, exactly as it did pre-overlap. The
- *      fiber is joined (or interrupted, SIGKILLing its worker, on lint
- *      failure) before diagnostics are concatenated. The afterLint hook
- *      fires between lint and dead-code. Progress spinner labels AND the
- *      final diagnostic / score order stay independent of execution
- *      order, so terminal output is identical either way; supply-chain
- *      rides alongside without a spinner.
+ *   5. Linter.run runs; DeadCode.run runs concurrently only when
+ *      `DeadCodeOverlap` is explicitly `"on"`. Otherwise dead-code runs
+ *      sequentially after lint. The fiber is joined (or interrupted,
+ *      SIGKILLing its worker, on lint failure) before diagnostics are
+ *      concatenated. The afterLint hook fires between lint and dead-code.
+ *      Progress spinner labels AND the final diagnostic / score order stay
+ *      independent of execution order, so terminal output is identical
+ *      either way; supply-chain rides alongside without a spinner.
  *   6. Join the supply-chain fiber, then assemble the diagnostics in a
  *      FIXED order (env, security-scan, supply-chain, lint, dead-code) so the output is
  *      byte-identical regardless of which fiber settled first. The
@@ -436,13 +405,9 @@ export const runInspect = <HooksR = never>(
     }
     const [repo, sha, defaultBranch] = yield* Effect.all(
       [
-        gitService
-          .githubRepo(scanDirectory)
-          .pipe(Effect.orElseSucceed(() => null as string | null)),
-        gitService.headSha(scanDirectory).pipe(Effect.orElseSucceed(() => null as string | null)),
-        gitService
-          .defaultBranch(scanDirectory)
-          .pipe(Effect.orElseSucceed(() => null as string | null)),
+        gitService.githubRepo(scanDirectory).pipe(Effect.orElseSucceed(() => null)),
+        gitService.headSha(scanDirectory).pipe(Effect.orElseSucceed(() => null)),
+        gitService.defaultBranch(scanDirectory).pipe(Effect.orElseSucceed(() => null)),
       ],
       { concurrency: 3 },
     );
@@ -451,8 +416,8 @@ export const runInspect = <HooksR = never>(
       input.resolveLocalGithubViewerPermission === true && !input.isCi && repo !== null
         ? gitService
             .githubViewerPermission({ directory: scanDirectory, repo })
-            .pipe(Effect.orElseSucceed(() => null as string | null))
-        : Effect.succeed(null as string | null),
+            .pipe(Effect.orElseSucceed(() => null))
+        : Effect.succeed(null),
     );
 
     const explicitLintIncludePaths = input.skipJsxIncludeFilter
@@ -493,7 +458,10 @@ export const runInspect = <HooksR = never>(
 
     const applyPerElementPipeline = <ToEnv>(rawStream: Stream.Stream<Diagnostic, never, ToEnv>) =>
       rawStream.pipe(
-        Stream.filterMap(filterMapNullable<Diagnostic, Diagnostic>(transform.apply)),
+        Stream.filterMap((diagnostic) => {
+          const filtered = transform.apply(diagnostic);
+          return filtered === null ? Option.none() : Option.some(filtered);
+        }),
         Stream.tap((diagnostic) => reporterService.emit(diagnostic)),
       );
 
@@ -529,7 +497,7 @@ export const runInspect = <HooksR = never>(
       Stream.runCollect(
         applyPerElementPipeline(
           isDiffMode
-            ? (Stream.empty as Stream.Stream<Diagnostic, never>)
+            ? EMPTY_DIAGNOSTIC_STREAM
             : Stream.unwrap(
                 // Fail-open like every other analyzer: a non-ignorable fs
                 // error escaping the cooperative walk (fd exhaustion under
@@ -546,9 +514,7 @@ export const runInspect = <HooksR = never>(
                 ).pipe(
                   Effect.map((diagnostics) => Stream.fromIterable(diagnostics)),
                   Effect.catch(() =>
-                    Ref.set(securityScanFailedRef, true).pipe(
-                      Effect.as(Stream.empty as Stream.Stream<Diagnostic, never>),
-                    ),
+                    Ref.set(securityScanFailedRef, true).pipe(Effect.as(EMPTY_DIAGNOSTIC_STREAM)),
                   ),
                 ),
               ),
@@ -720,7 +686,7 @@ export const runInspect = <HooksR = never>(
                       didFail: true,
                       reason: error.message,
                     });
-                    return Stream.empty as Stream.Stream<Diagnostic, never>;
+                    return EMPTY_DIAGNOSTIC_STREAM;
                   }),
                 ),
               ),
@@ -820,7 +786,7 @@ export const runInspect = <HooksR = never>(
                 reasonTag: error.reason._tag,
                 reasonKind: error.reason._tag === "OxlintUnavailable" ? error.reason.kind : null,
               });
-              return Stream.empty as Stream.Stream<Diagnostic, never>;
+              return EMPTY_DIAGNOSTIC_STREAM;
             }),
           ),
         ),
@@ -859,7 +825,12 @@ export const runInspect = <HooksR = never>(
     yield* afterLint(lintFailureState.didFail);
 
     if (lintFailureState.didFail) {
-      yield* scanProgress.fail(formatLintFailText(lintFailureState.reasonTag, process.version));
+      yield* scanProgress.fail(
+        lintFailureState.reasonTag === "OxlintUnavailable" ||
+          lintFailureState.reasonTag === "OxlintSpawnFailed"
+          ? LINT_NATIVE_BINDING_FAIL_TEXT(process.version)
+          : LINT_FAIL_TEXT,
+      );
     }
 
     // ora throttles renders to its frame interval, so the final `(N, N)`

@@ -95,8 +95,6 @@ export const SCRIPT_EXTENSIONLESS_FILE_PATTERN =
 export const SCRIPT_CONFIG_FILE_PATTERN =
   /--config\s+([\w./@-]+\.(?:ts|tsx|js|jsx|mts|mjs|cts|cjs))/;
 
-export const SCRIPT_ENTRY_PATTERNS: string[] = [];
-
 export const DEFAULT_ENTRY_GLOBS = [
   "src/index.{ts,tsx,js,jsx}",
   "src/main.{ts,tsx,js,jsx}",

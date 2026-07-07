@@ -12,6 +12,7 @@ import {
 import type { HandleErrorOptions } from "@react-doctor/core";
 import { VERSION } from "./version.js";
 import { METRIC } from "./constants.js";
+import { anonymizeText } from "./anonymize-text.js";
 import { formatEnvironmentError, isEnvironmentError } from "./is-environment-error.js";
 import { recordCount } from "./record-metric.js";
 
@@ -35,14 +36,18 @@ interface ErrorReportContext {
   readonly isOtlpAuthHeaderConfigured: boolean;
 }
 
-const formatErrorForReport = (error: unknown): string =>
-  isReactDoctorError(error) ? formatReactDoctorError(error) : formatErrorChain(error);
+const formatErrorForReport = (error: unknown): string => {
+  const formattedError = isReactDoctorError(error)
+    ? formatReactDoctorError(error)
+    : formatErrorChain(error);
+  return anonymizeText(formattedError);
+};
 
 const formatSingleLine = (text: string): string => text.replaceAll(/\s+/g, " ").trim();
 
 const getErrorReportContext = (): ErrorReportContext => ({
-  cwd: process.cwd(),
-  command: process.argv.join(" "),
+  cwd: anonymizeText(process.cwd()),
+  command: anonymizeText(process.argv.join(" ")),
   nodeVersion: process.version,
   platform: process.platform,
   architecture: process.arch,

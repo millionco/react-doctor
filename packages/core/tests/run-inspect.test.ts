@@ -120,8 +120,7 @@ const layersOf = (config: {
   supplyChain?: ReadonlyArray<Diagnostic>;
   githubViewerPermission?: string | null;
   // Pins the dead-code/lint overlap mode. Defaults to "off" so emit-order
-  // assertions stay deterministic regardless of the test box's free memory
-  // (the "auto" gate reads `os.freemem()`); overlap tests opt into "on".
+  // assertions stay deterministic; overlap tests opt into "on".
   deadCodeOverlap?: "auto" | "on" | "off";
 }) =>
   Layer.mergeAll(
@@ -538,9 +537,8 @@ describe("runInspect — mid-stream lint failure", () => {
       SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
-      // Pin the sequential path so this test doesn't fork dead-code on a
-      // high-memory box (the "auto" gate reads os.freemem()); the fork+interrupt
-      // path is covered by the dedicated overlap test below.
+      // Pin the sequential path; the fork+interrupt path is covered by the
+      // dedicated overlap test below.
       Layer.succeed(DeadCodeOverlap, "off"),
     );
     const output = await Effect.runPromise(runInspect(baseInput).pipe(Effect.provide(layers)));
@@ -574,8 +572,7 @@ describe("runInspect — dead-code failure", () => {
       SupplyChain.layerOf([]),
       Progress.layerNoop,
       Reporter.layerNoop,
-      // Pin overlap off so the path under test is deterministic regardless of
-      // the box's free memory (the "auto" gate reads os.freemem()).
+      // Pin overlap off so the path under test is deterministic.
       Layer.succeed(DeadCodeOverlap, "off"),
     );
     const output = await Effect.runPromise(runInspect(baseInput).pipe(Effect.provide(layers)));
@@ -675,13 +672,9 @@ describe("runInspect — dead-code/lint overlap", () => {
     expect(output.didDeadCodeFail).toBe(false);
   });
 
-  it("never takes the gated overlap for a concurrent batch member (shared memory budget)", async () => {
-    // The "auto" gate reads this scan's own os.freemem(), blind to sibling
-    // scans in a concurrent batch, so a concurrent member must stay sequential
-    // regardless of how much memory a CI box reports — otherwise N siblings
-    // would each fork an 8 GB worker and sum past the single-scan budget.
+  it("keeps the auto dead-code overlap mode sequential", async () => {
     const output = await Effect.runPromise(
-      runInspect({ ...baseInput, concurrentScan: true }).pipe(
+      runInspect(baseInput).pipe(
         Effect.provide(
           layersOf({
             diagnostics: [lintDiagnostic],
@@ -699,11 +692,9 @@ describe("runInspect — dead-code/lint overlap", () => {
     ]);
   });
 
-  it("still overlaps a concurrent batch member when overlap is explicitly forced on", async () => {
-    // `"on"` is an operator override ("I own this box"), so it wins over the
-    // concurrent-scan auto-gate guard.
+  it("overlaps when dead-code overlap is explicitly forced on", async () => {
     const output = await Effect.runPromise(
-      runInspect({ ...baseInput, concurrentScan: true }).pipe(
+      runInspect(baseInput).pipe(
         Effect.provide(
           layersOf({
             diagnostics: [lintDiagnostic],

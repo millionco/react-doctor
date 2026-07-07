@@ -12,9 +12,11 @@ interface EnvironmentSnapshot {
 describe("handleError", () => {
   let savedEnvironment: EnvironmentSnapshot;
   let savedExitCode: number | string | undefined;
+  let savedArgv: string[];
 
   beforeEach(() => {
     savedExitCode = process.exitCode;
+    savedArgv = [...process.argv];
     savedEnvironment = {
       [OTLP_ENDPOINT_ENVIRONMENT_VARIABLE]: process.env[OTLP_ENDPOINT_ENVIRONMENT_VARIABLE],
       [OTLP_AUTH_HEADER_ENVIRONMENT_VARIABLE]: process.env[OTLP_AUTH_HEADER_ENVIRONMENT_VARIABLE],
@@ -25,6 +27,7 @@ describe("handleError", () => {
 
   afterEach(() => {
     process.exitCode = savedExitCode;
+    process.argv = savedArgv;
     for (const [environmentVariableName, value] of Object.entries(savedEnvironment)) {
       if (value === undefined) {
         delete process.env[environmentVariableName];
@@ -49,6 +52,25 @@ describe("handleError", () => {
     expect(body).toContain("OTLP exporter enabled: yes");
     expect(body).toContain("trace/span link, if exported:");
     expect(body).not.toContain("secret-token");
+  });
+
+  it("scrubs home-directory paths from prefilled issue context and error text", () => {
+    process.argv = [
+      "node",
+      "/home/alice/app/node_modules/.bin/react-doctor",
+      "--config",
+      "/home/alice/app/doctor.config.ts",
+    ];
+    const issueUrl = new URL(
+      buildErrorIssueUrl(new Error("Failed in /home/alice/app/src/App.tsx")),
+    );
+    const body = issueUrl.searchParams.get("body") ?? "";
+
+    expect(issueUrl.searchParams.get("title")).toContain("~/app/src/App.tsx");
+    expect(body).toContain("~/app/src/App.tsx");
+    expect(body).toContain("~/app/node_modules/.bin/react-doctor");
+    expect(body).toContain("~/app/doctor.config.ts");
+    expect(body).not.toContain("/home/alice");
   });
 
   it("adds the Sentry reference to the issue body when an event id is provided", () => {

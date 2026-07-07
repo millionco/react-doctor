@@ -37,10 +37,8 @@ export const mergeAndFilterDiagnostics = (
     respectInlineDisables: options.respectInlineDisables ?? true,
     showWarnings: options.warnings ?? userConfig?.warnings ?? DEFAULT_SHOW_WARNINGS,
   });
-  const result: Diagnostic[] = [];
-  for (const diagnostic of mergedDiagnostics) {
+  return mergedDiagnostics.flatMap((diagnostic) => {
     const filtered = pipeline.apply(diagnostic);
-    if (filtered !== null) result.push(filtered);
-  }
-  return result;
+    return filtered === null ? [] : [filtered];
+  });
 };

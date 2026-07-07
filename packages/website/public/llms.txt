@@ -2,7 +2,7 @@
 
 Diagnose React codebase health. Scans for security, performance, correctness, and architecture issues, then outputs a 0–100 score with actionable diagnostics.
 
-Note: dead-code detection was removed in v0.2 (previously powered by knip). For dead-code analysis, run `npx knip` directly.
+Dead-code detection runs through React Doctor's built-in `deslop-js` analyzer by default. Use `--no-dead-code` or `deadCode: false` when you only want the lint and environment checks.
 
 ## Usage
 
@@ -54,7 +54,7 @@ react-doctor blocks (exits non-zero) when an error-severity diagnostic is found,
 npx react-doctor@latest --blocking none
 ```
 
-Use `--no-score` to skip the score API and the share URL. Runs with scoring disabled print no score; the rest of the report renders normally:
+Use `--no-score` to skip the score API, share URL, and crash reporting. Runs with scoring disabled print no score; the rest of the report renders normally:
 
 ```bash
 npx react-doctor@latest --no-score
@@ -102,7 +102,7 @@ Options:
   --project <name>   select projects: workspace names or directory paths (comma-separated for multiple); set `projects` in doctor.config.* to make the selection persistent (the flag wins)
   --scope <value>    how much to scan/report: full (default), files, changed (only new issues vs base), or lines
   --base <ref>       base git ref for files/changed/lines scope (auto-detected when omitted)
-  --no-score         skip the score API and share URL
+  --no-score         skip the score API, share URL, and crash reporting
   --staged           scan only staged (git index) files for pre-commit hooks
   --max-duration <seconds>  scan time budget for the whole run, shared across workspace projects: past it, remaining lint batches and dead-code are skipped and partial results are reported (skipped files are listed in the JSON report)
   --blocking <level>  severity that fails CI: error (default), warning, none

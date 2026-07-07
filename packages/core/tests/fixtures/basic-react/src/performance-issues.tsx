@@ -11,7 +11,11 @@ const SimpleMemoComponent = ({ count }: { count: number }) => {
   return <div>{doubled}</div>;
 };
 
-const LayoutAnimationComponent = () => <div animate={{ width: 100, height: 200 }}>animated</div>;
+declare const motion: { div: (props: Record<string, unknown>) => JSX.Element };
+
+const LayoutAnimationComponent = () => (
+  <motion.div animate={{ width: 100, height: 200 }}>animated</motion.div>
+);
 
 const TransitionAllComponent = () => <div style={{ transition: "all 0.3s ease" }}>styled</div>;
 

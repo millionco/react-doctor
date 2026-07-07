@@ -15,7 +15,7 @@ import { buildNoSecretsRecommendation } from "../../utils/build-no-secrets-recom
 import { appendReanimatedSharedValueHint } from "../../utils/append-reanimated-shared-value-hint.js";
 import { redactSensitiveText } from "../../utils/redact-sensitive-text.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
-import { shouldSuppressReanimatedWorkletImmutability } from "./should-suppress-reanimated-worklet-immutability.js";
+import { shouldSuppressCompilerFindingInWorklet } from "./should-suppress-compiler-finding-in-worklet.js";
 import { suppressMemoizationInBailedOutFunctions } from "./suppress-memoization-in-bailed-out-functions.js";
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
@@ -323,7 +323,7 @@ export const parseOxlintOutput = (
         isLintableSourceFile(diagnostic.filename) &&
         !isMinifiedDiagnosticFile(diagnostic.filename) &&
         !shouldSuppressLocalUseHookDiagnostic(diagnostic, rootDirectory) &&
-        !shouldSuppressReanimatedWorkletImmutability(diagnostic, project, rootDirectory),
+        !shouldSuppressCompilerFindingInWorklet(diagnostic, project, rootDirectory),
     )
     .map((diagnostic) => {
       const { plugin, rule } = parseRuleCode(diagnostic.code);

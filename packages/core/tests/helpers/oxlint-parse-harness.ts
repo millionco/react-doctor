@@ -21,6 +21,7 @@ export const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo 
   shopifyFlashListVersion: null,
   shopifyFlashListMajorVersion: null,
   hasReanimated: false,
+  reanimatedVersion: null,
   isPreES2023Target: false,
   preactVersion: null,
   preactMajorVersion: null,

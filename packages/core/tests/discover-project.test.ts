@@ -1535,6 +1535,7 @@ describe("discoverProject — hasReanimated", () => {
 
     const projectInfo = discoverProject(projectDirectory);
     expect(projectInfo.hasReanimated).toBe(true);
+    expect(projectInfo.reanimatedVersion).toBe("~3.16.0");
   });
 
   it("is true when a workspace sibling declares `react-native-reanimated` (web-rooted monorepo)", () => {

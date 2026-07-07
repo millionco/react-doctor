@@ -254,6 +254,10 @@ const guardConsequentPerformsSideEffects = (consequent: EsTreeNode | null | unde
   walkAst(consequent, (child: EsTreeNode): boolean | void => {
     if (performsSideEffects) return false;
     if (isFunctionLike(child)) return false;
+    // Constructing the exception in `throw new Error(...)` is part of the
+    // early exit itself, not ordered work — a throw-exit guard is exactly
+    // the hoistable shape the rule targets.
+    if (isNodeOfType(child, "ThrowStatement")) return false;
     if (
       isNodeOfType(child, "CallExpression") ||
       isNodeOfType(child, "NewExpression") ||

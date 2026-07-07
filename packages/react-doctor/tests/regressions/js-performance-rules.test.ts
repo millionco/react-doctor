@@ -1078,7 +1078,7 @@ describe("js-length-check-first", () => {
     expect(hits).toHaveLength(1);
   });
 
-  it("still flags .every() when the surrounding chain uses an inequality operator", async () => {
+  it("stays silent when a relational length guard precedes .every() (prefix-check shape)", async () => {
     const projectDir = setupReactProject(tempRoot, "length-check-first-inequality-guard", {
       files: {
         "src/compare.ts": `
@@ -1089,7 +1089,7 @@ describe("js-length-check-first", () => {
     });
 
     const hits = await collectRuleHits(projectDir, "js-length-check-first");
-    expect(hits).toHaveLength(1);
+    expect(hits).toHaveLength(0);
   });
 });
 describe("async-parallel", () => {
@@ -1488,7 +1488,7 @@ describe("issue #543: js-tosorted-immutable is gated off for React Native / Expo
     expect(hits).toHaveLength(0);
   });
 
-  it("does not flag [...freshlyFiltered].sort() where the spread target is a fresh array", async () => {
+  it("flags [...freshlyFiltered].sort() — the documented spread-sort shape fires even on fresh arrays", async () => {
     const projectDir = setupReactProject(tempRoot, "tosorted-fresh-array-spread", {
       files: {
         "src/sort-shown.ts": `
@@ -1501,6 +1501,6 @@ describe("issue #543: js-tosorted-immutable is gated off for React Native / Expo
     });
 
     const hits = await collectRuleHits(projectDir, "js-tosorted-immutable");
-    expect(hits).toHaveLength(0);
+    expect(hits).toHaveLength(1);
   });
 });

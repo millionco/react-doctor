@@ -4,7 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { getCallExpr, getDownstreamRefs, getUpstreamRefs } from "./utils/effect/ast.js";
+import { getCallExpr, getDownstreamRefs, getRef, getUpstreamRefs } from "./utils/effect/ast.js";
 import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   findContainingNode,
@@ -36,6 +36,24 @@ const getNodeText = (node: EsTreeNode | null | undefined): string => {
   });
 };
 
+const isLiteralConstantIdentifier = (
+  analysis: ProgramAnalysis,
+  identifier: EsTreeNode,
+): boolean => {
+  const reference = getRef(analysis, identifier);
+  const definitions = reference?.resolved?.defs;
+  if (!definitions || definitions.length !== 1) return false;
+  const definition = definitions[0];
+  if (definition.type !== "Variable") return false;
+  const declarator = definition.node as unknown as EsTreeNode;
+  if (!isNodeOfType(declarator, "VariableDeclarator")) return false;
+  const declaration = declarator.parent;
+  if (!isNodeOfType(declaration, "VariableDeclaration") || declaration.kind !== "const") {
+    return false;
+  }
+  return isNodeOfType(declarator.init, "Literal");
+};
+
 const isSetStateToInitialValue = (analysis: ProgramAnalysis, setterRef: Reference): boolean => {
   const callExpr = getCallExpr(setterRef);
   if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) return false;
@@ -53,10 +71,13 @@ const isSetStateToInitialValue = (analysis: ProgramAnalysis, setterRef: Referenc
   // `useState(value)` seeded from a LIVE binding: `setX(value)` later
   // re-syncs to the binding's CURRENT value, not the mount-time initial —
   // a draft re-sync, not a reset (ant-design-mobile picker, delta audit).
+  // A `const x = <literal>` named constant is NOT live: resetting to it is
+  // resetting to the initial value (upstream parity "shared var" case).
   if (
     stateInitialValue &&
     isNodeOfType(stateInitialValue, "Identifier") &&
-    stateInitialValue.name !== "undefined"
+    stateInitialValue.name !== "undefined" &&
+    !isLiteralConstantIdentifier(analysis, stateInitialValue)
   ) {
     return false;
   }

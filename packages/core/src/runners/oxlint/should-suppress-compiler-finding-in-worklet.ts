@@ -3,15 +3,18 @@ import * as path from "node:path";
 import * as ts from "typescript";
 import type { ProjectInfo } from "../../types/index.js";
 
-// React Compiler's `immutability` rule fires on `sharedValue.value = ...`
-// writes even inside Reanimated worklets. A worklet body is extracted by
-// Reanimated's babel plugin and runs on the UI thread — the React Compiler
-// never memoizes it — so "this component misses automatic memoization"
-// is false and no rewrite exists (`.set()` is the same write). Findings
-// whose flagged span sits inside a worklet are dropped here; `.value`
-// writes in plain render code keep firing (with the `.get()`/`.set()`
-// hint from append-reanimated-shared-value-hint).
-const IMMUTABILITY_CODE = "react-hooks-js(immutability)";
+// React Compiler diagnostics fire on `sharedValue.value` reads/writes even
+// inside Reanimated worklets. A worklet body is extracted by Reanimated's
+// babel plugin and runs on the UI thread — the React Compiler never
+// memoizes it — so "this component misses automatic memoization" is false
+// and no rewrite exists (`.set()` is the same write). Findings whose
+// flagged span sits inside a worklet are dropped here; `.value` access in
+// plain render code keeps firing (with the `.get()`/`.set()` hint from
+// append-reanimated-shared-value-hint). Deliberately NOT suppressed:
+// `set-state-in-render` — calling a React state setter from a worklet is
+// a genuine bug (it needs `runOnJS`), so that finding stays even though
+// the compiler's "in render" framing is off.
+const SUPPRESSED_COMPILER_CODES = new Set(["react-hooks-js(immutability)", "react-hooks-js(refs)"]);
 const WORKLET_DIRECTIVE = "worklet";
 
 // Reanimated APIs whose function argument is implicitly a worklet (no
@@ -131,12 +134,12 @@ const isOffsetInsideWorklet = (sourceFile: ts.SourceFile, targetOffset: number):
   return false;
 };
 
-export const shouldSuppressReanimatedWorkletImmutability = (
+export const shouldSuppressCompilerFindingInWorklet = (
   diagnostic: OxlintDiagnosticCandidate,
   project: ProjectInfo,
   rootDirectory: string,
 ): boolean => {
-  if (diagnostic.code !== IMMUTABILITY_CODE) return false;
+  if (!SUPPRESSED_COMPILER_CODES.has(diagnostic.code)) return false;
   if (!project.hasReanimated) return false;
   const primaryLabel = diagnostic.labels[0];
   if (!primaryLabel) return false;

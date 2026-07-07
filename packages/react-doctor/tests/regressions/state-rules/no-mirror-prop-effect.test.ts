@@ -53,11 +53,10 @@ export const Form = ({ value, theme }: { value: string; theme: string }) => {
     expect(hits).toHaveLength(0);
   });
 
-  it("flags the multi-dep mirror shape `useEffect(setX(value), [value, otherDep])`", async () => {
-    // Regression: previously required EXACTLY one dep, missing the
-    // common case where the mirror effect lists additional deps for
-    // exhaustive-deps compliance. The mirror anti-pattern still
-    // applies — `value` is mirrored even if `otherDep` is co-listed.
+  it("stays silent on the multi-dep shape `useEffect(setX(value), [value, otherDep])`", async () => {
+    // Docs-validation r2: an extra dep beyond the mirrored prop (and its
+    // setter) is a deliberate second re-seed trigger — the doc's stated
+    // exemption — so the rule only fires on pure mirrors now.
     const projectDir = setupReactProject(tempRoot, "no-mirror-prop-effect-multi-deps", {
       files: {
         "src/Form.tsx": `import { useEffect, useState } from "react";
@@ -74,9 +73,7 @@ export const Form = ({ value, theme }: { value: string; theme: string }) => {
     });
 
     const hits = await collectRuleHits(projectDir, "no-mirror-prop-effect");
-    expect(hits).toHaveLength(1);
-    expect(hits[0].message).toContain("draft");
-    expect(hits[0].message).toContain("value");
+    expect(hits).toHaveLength(0);
   });
 
   it("flags the MemberExpression variant `useState(prop.x) + setDraft(prop.x)`", async () => {

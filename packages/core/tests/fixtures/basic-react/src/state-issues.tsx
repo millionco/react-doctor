@@ -65,8 +65,8 @@ const EffectEventHandlerComponent = ({ isOpen }: { isOpen: boolean }) => {
   return <div />;
 };
 
-const DerivedUseStateComponent = ({ initialName }: { initialName: string }) => {
-  const [name, setName] = useState(initialName);
+const DerivedUseStateComponent = ({ selectedName }: { selectedName: string }) => {
+  const [name, setName] = useState(selectedName);
   return <input value={name} onChange={(event) => setName(event.target.value)} />;
 };
 

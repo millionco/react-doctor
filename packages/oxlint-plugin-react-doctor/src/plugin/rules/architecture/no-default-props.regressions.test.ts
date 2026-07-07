@@ -5,12 +5,13 @@ import { noDefaultProps } from "./no-default-props.js";
 describe("architecture/no-default-props — regressions", () => {
   // FN hunt (innovaccer design-system): the rule fired zero times across the
   // whole corpus because `defaultEnabled: false` kept it out of the default
-  // scan set and `requires: ["react:19"]` gated it off pre-19 projects — the
-  // published prompt says "Enabled when: always". Pin the wiring so it can't
-  // silently drop out of the default set again.
-  it("is enabled by default with no capability gate", () => {
+  // scan set ON TOP of the `react:19` gate — double-gated into permanent
+  // silence. The version gate itself is correct (`defaultProps` still works
+  // on React 17/18, so the removal hint is noise there); pin that exact
+  // wiring: on by default, gated to React 19+ and nothing more.
+  it("is enabled by default, gated only by the React 19 capability", () => {
     expect(noDefaultProps.defaultEnabled).not.toBe(false);
-    expect(noDefaultProps.requires).toBeUndefined();
+    expect(noDefaultProps.requires).toEqual(["react:19"]);
   });
 
   it("flags a defaultProps assignment on an arrow function component", () => {

@@ -13,6 +13,13 @@ const DISABLE_LINE_PATTERN =
 interface SuppressionEvaluation {
   isSuppressed: boolean;
   nearMissHint: string | null;
+  /**
+   * Set only when the suppression came from a foreign `eslint-disable*` /
+   * `oxlint-disable*` directive (the React Compiler spelling bridge) rather
+   * than a `react-doctor-disable*` comment, so the pipeline can tally it
+   * under its own telemetry source.
+   */
+  isForeignDirective?: boolean;
 }
 
 const formatLineGap = (gapLineCount: number): string =>
@@ -85,7 +92,7 @@ export const evaluateSuppression = (
   }
 
   if (isCompilerRuleForeignDisabled(lines, diagnosticLineIndex, ruleId)) {
-    return { isSuppressed: true, nearMissHint: null };
+    return { isSuppressed: true, nearMissHint: null, isForeignDirective: true };
   }
 
   const directComments = findStackedDisableCommentsAbove(lines, diagnosticLineIndex);

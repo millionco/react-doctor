@@ -122,6 +122,24 @@ describe("no-reset-all-state-on-prop-change — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("still flags a reset to a const-literal named constant (upstream 'shared var' parity)", () => {
+      const result = runRule(
+        noResetAllStateOnPropChange,
+        `function ProfilePage({ userId }) {
+          const initialState = 'meow meow';
+          const [user, setUser] = useState(null);
+          const [comment, setComment] = useState(initialState);
+          useEffect(() => {
+            setUser(null);
+            setComment(initialState);
+          }, [userId]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("still flags an all-state reset inside a memo(function) component (isProp widening kept)", () => {
       const result = runRule(
         noResetAllStateOnPropChange,

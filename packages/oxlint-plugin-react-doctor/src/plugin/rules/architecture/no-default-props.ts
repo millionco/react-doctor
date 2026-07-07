@@ -15,6 +15,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 export const noDefaultProps = defineRule({
   id: "no-default-props",
   title: "defaultProps removed in React 19",
+  // Gated to React 19+: `defaultProps` still works on 17/18, so the
+  // migration hint is pure noise there. On by default WITHIN the gate —
+  // the old `defaultEnabled: false` stacked on top of this gate meant the
+  // rule never fired anywhere (FN hunt, innovaccer design-system).
+  requires: ["react:19"],
   tags: ["test-noise"],
   severity: "warn",
   recommendation:

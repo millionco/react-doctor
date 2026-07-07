@@ -303,7 +303,9 @@ export const buildDiagnosticPipeline = (
           const ruleIdentifier = `${current.plugin}/${current.rule}`;
           const diagnosticLineIndex = current.line - 1;
           const evaluation = evaluateSuppression(lines, diagnosticLineIndex, ruleIdentifier);
-          if (evaluation.isSuppressed) return suppress(current, "inline");
+          if (evaluation.isSuppressed) {
+            return suppress(current, evaluation.isForeignDirective ? "foreign-inline" : "inline");
+          }
           if (evaluation.nearMissHint) {
             current = { ...current, suppressionHint: evaluation.nearMissHint };
           }

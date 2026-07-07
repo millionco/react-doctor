@@ -3,7 +3,7 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import type { ProjectInfo } from "../src/types/index.js";
-import { shouldSuppressReanimatedWorkletImmutability } from "../src/runners/oxlint/should-suppress-reanimated-worklet-immutability.js";
+import { shouldSuppressCompilerFindingInWorklet } from "../src/runners/oxlint/should-suppress-compiler-finding-in-worklet.js";
 
 let temporaryRoot: string;
 
@@ -30,7 +30,7 @@ const diagnosticAt = (filename: string, contents: string, needle: string) => ({
   labels: [{ span: { offset: Buffer.byteLength(contents.slice(0, contents.indexOf(needle))) } }],
 });
 
-describe("shouldSuppressReanimatedWorkletImmutability", () => {
+describe("shouldSuppressCompilerFindingInWorklet", () => {
   it("suppresses .value writes inside a useAnimatedStyle callback", () => {
     const contents = `import { useAnimatedStyle } from "react-native-reanimated";
 export const useStyle = (offset) => {
@@ -42,7 +42,7 @@ export const useStyle = (offset) => {
 `;
     const filename = writeFixture("animated-style.ts", contents);
     expect(
-      shouldSuppressReanimatedWorkletImmutability(
+      shouldSuppressCompilerFindingInWorklet(
         diagnosticAt(filename, contents, "offset.value ="),
         reanimatedProject,
         temporaryRoot,
@@ -61,7 +61,7 @@ export const useStyle = (offset) => {
 `;
     const filename = writeFixture("worklet-directive.ts", contents);
     expect(
-      shouldSuppressReanimatedWorkletImmutability(
+      shouldSuppressCompilerFindingInWorklet(
         diagnosticAt(filename, contents, "offset.value ="),
         reanimatedProject,
         temporaryRoot,
@@ -78,7 +78,7 @@ export const buildPan = (translation) =>
 `;
     const filename = writeFixture("gesture.ts", contents);
     expect(
-      shouldSuppressReanimatedWorkletImmutability(
+      shouldSuppressCompilerFindingInWorklet(
         diagnosticAt(filename, contents, "translation.value ="),
         reanimatedProject,
         temporaryRoot,
@@ -94,7 +94,7 @@ export const buildPan = (translation) =>
 `;
     const filename = writeFixture("render-write.tsx", contents);
     expect(
-      shouldSuppressReanimatedWorkletImmutability(
+      shouldSuppressCompilerFindingInWorklet(
         diagnosticAt(filename, contents, "shared.value ="),
         reanimatedProject,
         temporaryRoot,
@@ -112,7 +112,7 @@ export const useStyle = (offset) =>
 `;
     const filename = writeFixture("no-reanimated.ts", contents);
     expect(
-      shouldSuppressReanimatedWorkletImmutability(
+      shouldSuppressCompilerFindingInWorklet(
         diagnosticAt(filename, contents, "offset.value ="),
         plainProject,
         temporaryRoot,
@@ -120,12 +120,55 @@ export const useStyle = (offset) =>
     ).toBe(false);
   });
 
-  it("ignores non-immutability diagnostics", () => {
-    const contents = `export const noop = () => {};\n`;
-    const filename = writeFixture("other-rule.ts", contents);
+  it("suppresses refs findings inside worklets", () => {
+    const contents = `import { useDerivedValue } from "react-native-reanimated";
+export const useWidth = (widthRef) =>
+  useDerivedValue(() => {
+    return widthRef.current * 2;
+  });
+`;
+    const filename = writeFixture("refs-in-worklet.ts", contents);
     expect(
-      shouldSuppressReanimatedWorkletImmutability(
-        { code: "react-hooks-js(refs)", filename, labels: [{ span: { offset: 0 } }] },
+      shouldSuppressCompilerFindingInWorklet(
+        {
+          code: "react-hooks-js(refs)",
+          filename,
+          labels: [
+            {
+              span: {
+                offset: Buffer.byteLength(contents.slice(0, contents.indexOf("widthRef.current"))),
+              },
+            },
+          ],
+        },
+        reanimatedProject,
+        temporaryRoot,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps set-state-in-render findings firing inside worklets", () => {
+    const contents = `import { useAnimatedStyle } from "react-native-reanimated";
+export const useStyle = (setCount) =>
+  useAnimatedStyle(() => {
+    setCount(1);
+    return {};
+  });
+`;
+    const filename = writeFixture("set-state-in-worklet.ts", contents);
+    expect(
+      shouldSuppressCompilerFindingInWorklet(
+        {
+          code: "react-hooks-js(set-state-in-render)",
+          filename,
+          labels: [
+            {
+              span: {
+                offset: Buffer.byteLength(contents.slice(0, contents.indexOf("setCount(1)"))),
+              },
+            },
+          ],
+        },
         reanimatedProject,
         temporaryRoot,
       ),

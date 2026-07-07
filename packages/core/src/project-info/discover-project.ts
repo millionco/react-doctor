@@ -23,7 +23,12 @@ import { findNextjsVersion } from "./find-nextjs-version.js";
 import { getPreactVersion } from "./get-preact-version.js";
 import { hasTanStackQuery } from "./has-tanstack-query.js";
 import { someWorkspacePackageJson } from "./some-workspace-package-json.js";
-import { isPackageJsonReanimatedAware } from "./utils/is-package-json-reanimated-aware.js";
+import { findInWorkspacePackageJsons } from "./find-in-workspace-package-jsons.js";
+import { getDependencySpec } from "./utils/get-dependency-spec.js";
+import {
+  isPackageJsonReanimatedAware,
+  REANIMATED_DEPENDENCY_NAME,
+} from "./utils/is-package-json-reanimated-aware.js";
 import { readPackageJson } from "./read-package-json.js";
 import { getLowestDependencyMajor } from "./utils/dependency-version-spec.js";
 import { isCatalogReference, resolveCatalogVersion } from "./resolve-catalog-version.js";
@@ -105,6 +110,7 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     shopifyFlashListVersion: null,
     shopifyFlashListMajorVersion: null,
     hasReanimated: false,
+    reanimatedVersion: null,
     isPreES2023Target: hasOwnTsConfig && detectPreES2023Target(directory),
     sourceFileCount,
   };
@@ -298,6 +304,11 @@ export const discoverProject = (directory: string): ProjectInfo => {
   const hasReanimated =
     hasReactNativeWorkspace &&
     someWorkspacePackageJson(directory, packageJson, isPackageJsonReanimatedAware);
+  const reanimatedVersion = hasReanimated
+    ? findInWorkspacePackageJsons(directory, packageJson, (workspacePackageJson) =>
+        getDependencySpec(workspacePackageJson, REANIMATED_DEPENDENCY_NAME),
+      )
+    : null;
 
   const nextjsVersion =
     framework === "nextjs"
@@ -333,6 +344,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     shopifyFlashListMajorVersion:
       shopifyFlashListVersion === null ? null : getLowestDependencyMajor(shopifyFlashListVersion),
     hasReanimated,
+    reanimatedVersion,
     isPreES2023Target,
     sourceFileCount,
   };

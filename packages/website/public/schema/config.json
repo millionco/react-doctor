@@ -50,7 +50,7 @@
         },
         "supplyChain": {
           "$ref": "#/definitions/SupplyChainConfig",
-          "description": "Socket.dev supply-chain score gate. Runs by default; set `supplyChain: { enabled: false }` to opt out. See  {@link  SupplyChainConfig } . Every direct dependency is scored against Socket's free PURL endpoint and a low score fails the scan (at the default `severity: \"error\"`)."
+          "description": "OSV supply-chain vulnerability gate. Runs by default; set `supplyChain: { enabled: false }` to opt out. See  {@link  SupplyChainConfig } . Every direct dependency is checked against OSV's free API and a known vulnerability at or above the configured threshold fails the scan (at the default `severity: \"error\"`)."
         },
         "deadCode": {
           "type": "boolean",
@@ -216,11 +216,17 @@
       "properties": {
         "enabled": {
           "type": "boolean",
-          "description": "Whether to run the Socket supply-chain score check. Default: `true`. Set to `false` to opt out — the check performs one network request per direct dependency. It is always skipped in `--diff` / `--staged` mode and in editor scans regardless of this setting."
+          "description": "Whether to run the OSV supply-chain vulnerability check. Default: `true`. Set to `false` to opt out — the check performs one network request per direct dependency. It is always skipped in `--diff` / `--staged` mode and in editor scans regardless of this setting."
         },
-        "minScore": {
-          "type": "number",
-          "description": "Minimum acceptable Socket score on a 0–100 scale. A direct dependency whose worst Socket *security* axis — supply chain or vulnerability — is below this is flagged; the quality / maintenance / license axes never gate. Default: `50`. Values outside `0..100` are clamped."
+        "failOn": {
+          "type": "string",
+          "enum": [
+            "low",
+            "moderate",
+            "high",
+            "critical"
+          ],
+          "description": "Lowest known-vulnerability severity that should be reported/gated. Default: `\"high\"`. A package with only lower-severity advisories is skipped; malware advisories are always treated as critical."
         },
         "severity": {
           "type": "string",
@@ -236,7 +242,7 @@
         }
       },
       "additionalProperties": false,
-      "description": "Configuration for the Socket.dev supply-chain score check (the `SupplyChain` service). Runs by default; set `enabled: false` to opt out (it performs one network request per direct dependency).\n\nMirrors how Socket Firewall's free tier (`sfw`) works: each direct dependency's PURL is looked up against Socket's keyless `firewall-api.socket.dev/purl/<purl>` endpoint, which returns per-axis scores (0–100 once normalized). A dependency whose worst security axis (supply chain or vulnerability) scores below `minScore` produces a diagnostic; at the default `severity: \"error\"` it fails the scan (non-zero CI exit), the same way an error-severity lint finding does."
+      "description": "Configuration for the OSV supply-chain vulnerability check (the `SupplyChain` service). Runs by default; set `enabled: false` to opt out (it performs one network request per direct dependency).\n\nMirrors OSV's free, unauthenticated API: each direct dependency's npm package name + concrete version is queried against `api.osv.dev`. A dependency whose known vulnerabilities meet or exceed `failOn` produces a diagnostic; at the default `severity: \"error\"` it fails the scan (non-zero CI exit), the same way an error-severity lint finding does."
     },
     "ScopeValue": {
       "type": "string",

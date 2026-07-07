@@ -549,7 +549,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         projectScanTarget.userConfig?.plugins === undefined
           ? scanTarget.configSourceDirectory
           : projectScanTarget.configSourceDirectory;
-      // The Socket supply-chain check runs by default; opted out by
+      // The OSV supply-chain check runs by default; opted out by
       // `--no-supply-chain` (wins) or per-project config. Off ⇒ a manifest-only
       // diff change shouldn't pull a project into the scan (nothing to report).
       const supplyChainEnabled = flags.supplyChain ?? projectConfig?.supplyChain?.enabled !== false;

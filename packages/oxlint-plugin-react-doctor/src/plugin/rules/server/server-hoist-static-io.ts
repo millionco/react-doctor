@@ -21,17 +21,53 @@ const STATIC_IO_FUNCTIONS = new Set([
   "accessSync",
 ]);
 
+const DIRECTORY_LISTING_FUNCTIONS = new Set(["readdir", "readdirSync"]);
+
+const FS_MUTATION_FUNCTIONS = new Set([
+  "writeFile",
+  "writeFileSync",
+  "appendFile",
+  "appendFileSync",
+  "unlink",
+  "unlinkSync",
+  "rm",
+  "rmSync",
+  "rmdir",
+  "rmdirSync",
+  "rename",
+  "renameSync",
+  "copyFile",
+  "copyFileSync",
+  "mkdir",
+  "mkdirSync",
+]);
+
+const calleeFunctionName = (call: EsTreeNode): string | null => {
+  if (!isNodeOfType(call, "CallExpression")) return null;
+  const callee = call.callee;
+  if (isNodeOfType(callee, "Identifier")) return callee.name;
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    return callee.property.name;
+  }
+  return null;
+};
+
 const isStaticIoCall = (call: EsTreeNode): boolean => {
   // fs.readFileSync(...) / fsPromises.readFile(...) / fs.promises.readFile(...).
-  if (!isNodeOfType(call, "CallExpression")) return false;
-  const callee = call.callee;
-  if (isNodeOfType(callee, "Identifier") && STATIC_IO_FUNCTIONS.has(callee.name)) {
-    return true;
-  }
-  if (!isNodeOfType(callee, "MemberExpression")) return false;
-  const propertyName = isNodeOfType(callee.property, "Identifier") ? callee.property.name : null;
-  if (!propertyName || !STATIC_IO_FUNCTIONS.has(propertyName)) return false;
-  return true;
+  const name = calleeFunctionName(call);
+  return name !== null && STATIC_IO_FUNCTIONS.has(name);
+};
+
+// A handler that writes/unlinks files makes directory listings per-request
+// mutable state — hoisting `readdir` there would serve stale results.
+const handlerMutatesFilesystem = (handlerBody: EsTreeNode): boolean => {
+  let mutates = false;
+  walkAst(handlerBody, (child: EsTreeNode) => {
+    if (mutates) return;
+    const name = calleeFunctionName(child);
+    if (name !== null && FS_MUTATION_FUNCTIONS.has(name)) mutates = true;
+  });
+  return mutates;
 };
 
 const isFetchOfImportMetaUrl = (call: EsTreeNode): boolean => {
@@ -97,6 +133,7 @@ const inspectHandlerBody = (
   handlerParamNames: Set<string>,
 ): void => {
   const requestTaintedNames = collectRequestTaintedNames(handlerBody, handlerParamNames);
+  const mutatesFilesystem = handlerMutatesFilesystem(handlerBody);
   walkAst(handlerBody, (child: EsTreeNode) => {
     let staticCall: EsTreeNode | null = null;
     if (isStaticIoCall(child)) staticCall = child;
@@ -111,6 +148,14 @@ const inspectHandlerBody = (
     if (!staticCall) return;
     if (callReadsHandlerArgs(staticCall, requestTaintedNames)) return;
     if (!isNodeOfType(staticCall, "CallExpression")) return;
+    const staticCallName = calleeFunctionName(staticCall);
+    if (
+      staticCallName !== null &&
+      DIRECTORY_LISTING_FUNCTIONS.has(staticCallName) &&
+      mutatesFilesystem
+    ) {
+      return;
+    }
 
     let calleeText = "io";
     if (

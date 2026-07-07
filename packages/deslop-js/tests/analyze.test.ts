@@ -139,6 +139,9 @@ describe("dependency-tooling", () => {
       // vitest-axe is imported.
       "axe-core",
       "vitest-axe",
+      // imported from the .dumi docs-theme tree, which the module graph
+      // never traverses — credited by the tooling-source content scan.
+      "docs-theme-widgets",
       "babel-eslint",
       "chart.js",
       "chokidar-cli",
@@ -4504,6 +4507,39 @@ describe("cycle-type-only", () => {
   });
 });
 
+describe("cycle-interface-value-import", () => {
+  it("does not report a cycle whose back edge imports only an interface via a value-form import", async () => {
+    const result = await scanFixture("cycle-interface-value-import");
+    assert.equal(
+      result.circularDependencies.length,
+      0,
+      `the interface-only back edge is erased at compile time, got: ${JSON.stringify(result.circularDependencies)}`,
+    );
+  });
+});
+
+describe("default-export-alias-of-used-named", () => {
+  it("does not flag a default export aliasing a named export that is consumed", async () => {
+    const result = await scanFixture("default-export-alias-of-used-named");
+    assert.deepEqual(
+      deadExportNames(result),
+      [],
+      `the named Page usage disproves the default alias being dead, got: ${JSON.stringify(result.unusedExports)}`,
+    );
+  });
+});
+
+describe("github-workflow-script", () => {
+  it("does not flag scripts run via a vendored .github tool package's npm scripts", async () => {
+    const result = await scanFixture("github-workflow-script");
+    assert.deepEqual(
+      result.unusedFiles.map((unusedFile) => unusedFile.path),
+      [],
+      `build.js is executed by the vendored bundle-size package's npm run build`,
+    );
+  });
+});
+
 describe("namespace-destructure-exports", () => {
   it("should track members read via destructuring of a namespace import", async () => {
     const result = await scanFixture("namespace-destructure-exports");
@@ -5157,9 +5193,15 @@ describe("typescript-smells", () => {
 
   it("flags `@ts-ignore` and `@ts-nocheck` comments", async () => {
     const result = await scanFixture("typescript-smells");
-    const tsIgnore = result.typeScriptEscapeHatches.find((finding) => finding.kind === "ts-ignore");
-    assert.ok(tsIgnore, "expected ts-ignore finding");
-    assert.equal(tsIgnore.confidence, "high");
+    const tsIgnoreFindings = result.typeScriptEscapeHatches.filter(
+      (finding) => finding.kind === "ts-ignore",
+    );
+    assert.equal(
+      tsIgnoreFindings.length,
+      2,
+      `expected the bare @ts-ignore and the mid-ternary @ts-ignore-with-trailing-text to both fire, got ${JSON.stringify(tsIgnoreFindings)}`,
+    );
+    for (const finding of tsIgnoreFindings) assert.equal(finding.confidence, "high");
   });
 
   it("flags `@ts-expect-error` without an explanation, but allows it when the comment carries a justification", async () => {

@@ -242,4 +242,71 @@ describe("performance/async-defer-await — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  // bulwarkmail webmail onCancelScheduledForEdit: the awaited call cancels the
+  // scheduled email — a side effect that must run on BOTH branches — and the
+  // guard's consequent performs its own effect calls before returning, so
+  // hoisting the guard above the await changes behavior.
+  it("stays silent when the guard consequent performs side-effect calls", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const cancelScheduledEmailForEdit: (client: unknown, email: unknown) => Promise<unknown>;
+      declare const setComposerMode: (mode: string) => void;
+      declare const setShowComposer: (open: boolean) => void;
+      declare const handleEditDraft: (draft: unknown) => Promise<void>;
+      export const onCancelScheduledForEdit = async (client: unknown, selectedEmail: { isSmimeScheduled: boolean }) => {
+        const restored = await cancelScheduledEmailForEdit(client, selectedEmail);
+        if (selectedEmail.isSmimeScheduled) {
+          setComposerMode("compose");
+          setShowComposer(true);
+          return;
+        }
+        if (restored) await handleEditDraft(restored);
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  // pwa-kit one-click-contact-info: the awaited OTP send mutates the state the
+  // guard re-reads, and the guard hides the continue button before returning.
+  it("stays silent when the guard sets state before its early return", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const handleSendEmailOtp: (email: string) => Promise<{ isRegistered: boolean }>;
+      declare const isOtpModalOpen: boolean;
+      declare const setShowContinueButton: (visible: boolean) => void;
+      export const submitEmail = async (email: string) => {
+        const result = await handleSendEmailOtp(email);
+        if (isOtpModalOpen) {
+          setShowContinueButton(false);
+          return;
+        }
+        return result.isRegistered;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a plain-return guard that ignores the awaited value", () => {
+    const result = runRule(
+      asyncDeferAwait,
+      `
+      declare const fetchRows: () => Promise<string[]>;
+      declare const disabled: boolean;
+      export const load = async () => {
+        const rows = await fetchRows();
+        if (disabled) return null;
+        return rows;
+      };
+    `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

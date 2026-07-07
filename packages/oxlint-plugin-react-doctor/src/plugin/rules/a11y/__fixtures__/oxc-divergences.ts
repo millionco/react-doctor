@@ -15,6 +15,17 @@ export interface OxcDivergence {
 }
 
 export const DIVERGENCES: Record<string, OxcDivergence> = {
+  // anchor-is-valid: `href="#"` WITHOUT a click handler is a working
+  // scroll-to-top link — focusable, keyboard-reachable, and it navigates
+  // (to the top of the page), so the "goes nowhere" message is false
+  // (confirmed FP cluster in the docs-validation run: frimousse's logo
+  // link, cloudscape demo items). `href="#"` WITH onClick (an anchor
+  // abused as a button) still fires.
+  "anchor-is-valid": {
+    failSkips: [4, 5, 6, 13],
+    reason:
+      '`href="#"` without onClick is a functional scroll-to-top link, not an unreachable placeholder.',
+  },
   // aria-role: OXC's `ignoreNonDOM` defaults to false, flagging `role`
   // props on custom components. Our port defaults it to TRUE: in the
   // verify corpus every custom-component hit was a domain prop (chat

@@ -62,4 +62,33 @@ describe("rerender-lazy-state-init — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // atomantic/PortOS MonthView: `useState(now.getMonth())` re-runs a native
+  // Date getter that costs nanoseconds — lazy-wrapping it is pure noise.
+  it("stays silent on trivial native Date getters", () => {
+    const result = runRule(
+      rerenderLazyStateInit,
+      `function MonthView() {
+        const now = new Date();
+        const [year, setYear] = useState(now.getFullYear());
+        const [month, setMonth] = useState(now.getMonth());
+        const [timestamp, setTimestamp] = useState(Date.now());
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a Date getter shadowed by an argument-taking call", () => {
+    const result = runRule(
+      rerenderLazyStateInit,
+      `function C({ range }) {
+        const [rows, setRows] = useState(calendar.getMonth(range));
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

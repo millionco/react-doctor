@@ -7,6 +7,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { hasCustomMemoComparator } from "../../utils/has-custom-memo-comparator.js";
 import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
 import { isJsxAttributeOnIntrinsicHtmlElement } from "../../utils/is-on-intrinsic-html-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -105,6 +106,18 @@ const followsRenderLocalArrayBinding = (
   if (!isNodeOfType(stripped, "Identifier")) return false;
   const binding = findVariableInitializer(stripped, stripped.name);
   if (!binding || !binding.initializer) return false;
+  // A destructuring default of an EMPTY array (`const { fields = [] } =
+  // props` / `({ items = [] }) => …`) only allocates on the rare
+  // undefined path — semantically the `?? []` fallback the rule already
+  // exempts, so the destructure-default spelling must not fire either.
+  const bindingParent = binding.bindingIdentifier.parent;
+  if (
+    bindingParent &&
+    isNodeOfType(bindingParent, "AssignmentPattern") &&
+    isEmptyArrayLiteralExpression(binding.initializer)
+  ) {
+    return false;
+  }
   // Only flag if the binding's scope owner is also an ancestor of the
   // JSX attribute — i.e. the binding lives in the same render call.
   // Hoisted bindings (module-level / outside the render function) are
@@ -171,6 +184,11 @@ export const jsxNoNewArrayAsProp = defineRule({
         // memoised. "unknown" and "not-memoised" both short-circuit —
         // see jsx-no-new-function-as-prop for the audit data.
         if (memoStatusForJsxOpeningName(memoRegistry, openingName) !== "memoised") return;
+        // `memo(fn, arePropsEqual)` compares props with the author's own
+        // function, which routinely ignores reference identity (antd's
+        // MemoInput element-wise childProps compare) — a fresh array
+        // cannot break that bailout.
+        if (hasCustomMemoComparator(openingName)) return;
         // Data-collection slot props (`items`, `data`, `options`,
         // `tabs`, `*Items`, `*Options`, etc.) receive inline array
         // literals by convention — every list/table/menu/chart

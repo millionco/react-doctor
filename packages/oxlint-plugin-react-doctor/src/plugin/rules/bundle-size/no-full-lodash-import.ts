@@ -1,9 +1,23 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { isImportAbsentFromClientBundle } from "../../utils/is-import-absent-from-client-bundle.js";
 import { isOutsideBrowserBundle } from "../../utils/is-outside-browser-bundle.js";
+import { isPublishedLibraryPackage } from "../../utils/is-published-library-package.js";
 import { isTypeOnlyImport } from "../../utils/is-type-only-import.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+// `*.page.tsx` files inside a published component library (react as a peer
+// dependency) are dev/screenshot-test pages served by the library's own dev
+// server — they never reach a consumer bundle. Next.js apps that configure
+// `pageExtensions: ['page.tsx']` are private apps with react as a direct
+// dependency, so they are not exempted.
+const isLibraryDevPage = (filename: string | undefined): boolean => {
+  if (!filename) return false;
+  const normalized = filename.replaceAll("\\", "/");
+  const basename = normalized.slice(normalized.lastIndexOf("/") + 1);
+  if (!basename.includes(".page.")) return false;
+  return isPublishedLibraryPackage(filename);
+};
 
 export const noFullLodashImport = defineRule({
   id: "no-full-lodash-import",
@@ -27,6 +41,7 @@ export const noFullLodashImport = defineRule({
       // functions never reach the client bundle either.
       if (isImportAbsentFromClientBundle(node)) return;
       if (isOutsideBrowserBundle(node, context.filename)) return;
+      if (isLibraryDevPage(context.filename)) return;
       context.report({
         node,
         message:

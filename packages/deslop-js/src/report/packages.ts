@@ -638,6 +638,20 @@ const collectConfigReferencedPackages = (
     addMatchesFromFile(documentationPath, "importReference", matchesPackageImportReference);
   }
 
+  // Dot-directory tooling source trees (a dumi docs theme, storybook config
+  // components) import real dependencies but live outside the module graph's
+  // traversal, so their imports must be credited by content scan.
+  const toolingSourceFiles = globPackageFiles(
+    rootDir,
+    ["**/{.dumi,.storybook,.docz,.styleguidist}/**/*.{ts,tsx,js,jsx,mts,mjs}"],
+    { ignore: ["**/node_modules/**"], dot: true, deep: 8 },
+    summaryCache,
+  );
+
+  for (const toolingSourcePath of toolingSourceFiles) {
+    addMatchesFromFile(toolingSourcePath, "importReference", matchesPackageImportReference);
+  }
+
   return referenced;
 };
 

@@ -52,4 +52,25 @@ describe("security/auth-token-in-web-storage — regressions", () => {
     );
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  // Docs-validation FP wave: E2E scaffolding under `playwright/` seeds tokens
+  // via page.evaluate to simulate login — test tooling, not production
+  // exposure. `/playwright/` was missing from the testlike path segments.
+  it("stays silent in Playwright E2E support helpers", () => {
+    const { diagnostics } = runRule(
+      authTokenInWebStorage,
+      `localStorage.setItem('af_auth_token', tokenData.access_token);\nlocalStorage.setItem('af_refresh_token', tokenData.refresh_token);\nlocalStorage.setItem('token', JSON.stringify(tokenData));`,
+      { filename: "/repo/playwright/support/auth-utils.ts" },
+    );
+    expect(diagnostics).toEqual([]);
+  });
+
+  it("still flags the same writes in production source", () => {
+    const { diagnostics } = runRule(
+      authTokenInWebStorage,
+      `localStorage.setItem('af_auth_token', tokenData.access_token);`,
+      { filename: "/repo/src/services/session.ts" },
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
 });

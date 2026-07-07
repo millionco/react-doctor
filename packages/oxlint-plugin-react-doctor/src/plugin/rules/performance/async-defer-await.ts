@@ -243,6 +243,30 @@ const isNonLiteralComparisonTest = (test: EsTreeNode | null): boolean => {
   return !isLiteralOperand(test.left) && !isLiteralOperand(test.right);
 };
 
+// A guard whose consequent performs its own effect calls (`if (smime) {
+// setComposerMode('compose'); setShowComposer(true); return; }`) is not a
+// cheap skip path — the awaited call's side effects and the consequent's
+// effects have an observable order, so hoisting the guard above the await
+// changes behavior instead of just saving latency.
+const guardConsequentPerformsSideEffects = (consequent: EsTreeNode | null | undefined): boolean => {
+  if (!consequent) return false;
+  let performsSideEffects = false;
+  walkAst(consequent, (child: EsTreeNode): boolean | void => {
+    if (performsSideEffects) return false;
+    if (isFunctionLike(child)) return false;
+    if (
+      isNodeOfType(child, "CallExpression") ||
+      isNodeOfType(child, "NewExpression") ||
+      isNodeOfType(child, "AssignmentExpression") ||
+      isNodeOfType(child, "UpdateExpression")
+    ) {
+      performsSideEffects = true;
+      return false;
+    }
+  });
+  return performsSideEffects;
+};
+
 const findEnclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
   let ancestor: EsTreeNode | null | undefined = node.parent;
   while (ancestor) {
@@ -373,7 +397,8 @@ export const asyncDeferAwait = defineRule({
           isCancellationGuardTest(guardStatement.test) ||
           guardTestReadsMutableEnvironment(guardStatement.test) ||
           isNonLiteralComparisonTest(guardStatement.test) ||
-          guardTestReadsReassignedLocal(guardStatement.test, guardStatement)
+          guardTestReadsReassignedLocal(guardStatement.test, guardStatement) ||
+          guardConsequentPerformsSideEffects(guardStatement.consequent)
         ) {
           statementIndex = window.guardCandidateIndex - 1;
           continue;

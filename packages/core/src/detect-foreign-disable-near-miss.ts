@@ -1,3 +1,8 @@
+import {
+  FOREIGN_BLOCK_DISABLE_PATTERN,
+  FOREIGN_BLOCK_ENABLE_PATTERN,
+  FOREIGN_INLINE_DISABLE_PATTERN,
+} from "./foreign-disable-patterns.js";
 import { isSameRuleKey, REACT_DOCTOR_RULE_KEY_PREFIX } from "./rule-key-aliases.js";
 import { tokenizeRuleList } from "./tokenize-rule-list.js";
 
@@ -9,23 +14,6 @@ import { tokenizeRuleList } from "./tokenize-rule-list.js";
 // plugin-prefixed alias (`react/jsx-key`) silently fails to suppress. We
 // can't change that matching, but when such a directive covers a *firing*
 // react-doctor diagnostic we can tell the user to qualify it.
-
-// Each pattern ends in a single greedy capture of the rest of the line
-// (no trailing `$`-anchored whitespace groups) so there is no ambiguous
-// backtracking on space-heavy input — `tokenizeRuleList` trims the leading
-// whitespace, the ` -- description` tail, and any closing `*/` token. The
-// `(?![\w-])` boundary keeps `eslint-disable-foo` and the `-line` /
-// `-next-line` inline forms from matching the block directives.
-
-// Inline directive, adjacent to the offending line. Captures: 1) the tool
-// (`eslint` | `oxlint`), 2) the scope (`next-line` | `line`), 3) the rule list.
-const FOREIGN_INLINE_DISABLE_PATTERN =
-  /(?:\/\/|\/\*)[ \t]*(eslint|oxlint)-disable-(next-line|line)(?![\w-])([^\r\n]*)/;
-
-// Block (range) directives: `/* eslint-disable rule */` opens a range that
-// holds until a matching `/* eslint-enable rule */` (or end of file).
-const FOREIGN_BLOCK_DISABLE_PATTERN = /\/\*[ \t]*(eslint|oxlint)-disable(?![\w-])([^*\r\n]*)/;
-const FOREIGN_BLOCK_ENABLE_PATTERN = /\/\*[ \t]*(?:eslint|oxlint)-enable(?![\w-])([^*\r\n]*)/;
 
 // "add" (not "change it to"): the misnamed token is often a REAL rule in the
 // user's other linter (`no-eval` is ESLint core; `react/jsx-key` is

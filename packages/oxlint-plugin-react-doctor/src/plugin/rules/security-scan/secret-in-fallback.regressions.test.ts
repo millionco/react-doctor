@@ -78,4 +78,38 @@ describe("security-scan/secret-in-fallback — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  // Docs-validation FP wave: a snake_case literal that ENDS in a secret word
+  // is a name-like dummy placeholder, not a committed credential.
+  it("stays silent on a name-like snake_case placeholder fallback", () => {
+    const findings = runScanRule(secretInFallback, {
+      relativePath: "src/cordova-util.js",
+      content: `const t = process.env.REACT_APP_FACEBOOK_CLIENT_TOKEN || 'cboard_client_token';\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on a zero-filled placeholder key fallback", () => {
+    const findings = runScanRule(secretInFallback, {
+      relativePath: "src/lib/tts.ts",
+      content: `const k = process.env.ELEVENLABS_API_KEY || 'sk_0000000000000000000';\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent in a Playwright test-runner config file", () => {
+    const findings = runScanRule(secretInFallback, {
+      relativePath: "playwright.config.ts",
+      content: `const password = process.env.TEST_USER_PASSWORD || 'lote10mza126';\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags a real secret fallback that merely contains a keyword mid-string", () => {
+    const findings = runScanRule(secretInFallback, {
+      relativePath: "src/lib/auth.ts",
+      content: `const s = process.env.JWT_SIGNING_KEY ?? "hs256_key_9f2c1ab7e3d44521";\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

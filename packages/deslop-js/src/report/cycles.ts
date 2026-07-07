@@ -1,4 +1,4 @@
-import type { DependencyGraph, CircularDependency } from "../types.js";
+import type { DependencyGraph, CircularDependency, Edge } from "../types.js";
 import {
   MAX_CYCLES_PER_SCC,
   MAX_TOTAL_CYCLES,
@@ -20,6 +20,30 @@ interface DfsFrame {
   successorPosition: number;
 }
 
+// A value-form import (`import { Props } from "./barrel"`) whose every
+// symbol resolves to a type-only export (interface / type alias) in the
+// target module is erased by the TS compiler exactly like `import type`,
+// so it cannot participate in a runtime initialization cycle. Symbols the
+// target doesn't list by name (namespace imports, `export *` barrels) stay
+// conservative: the edge is kept.
+const isCompileTimeErasedEdge = (edge: Edge, graph: DependencyGraph): boolean => {
+  if (edge.isReExportEdge) return false;
+  if (edge.importedSymbols.length === 0) return false;
+  const targetModule = graph.modules[edge.target];
+  if (!targetModule) return false;
+  return edge.importedSymbols.every((symbol) => {
+    if (symbol.isTypeOnly) return true;
+    if (symbol.isNamespace) return false;
+    const exportName = symbol.isDefault ? "default" : symbol.importedName;
+    const matchingExports = targetModule.exports.filter(
+      (exportInfo) => exportInfo.name === exportName,
+    );
+    return (
+      matchingExports.length > 0 && matchingExports.every((exportInfo) => exportInfo.isTypeOnly)
+    );
+  });
+};
+
 const buildAdjacencyList = (graph: DependencyGraph): number[][] => {
   const targetSets: Set<number>[] = Array.from({ length: graph.modules.length }, () => new Set());
 
@@ -32,6 +56,10 @@ const buildAdjacencyList = (graph: DependencyGraph): number[][] => {
 
     const isTypeOnlyEdge = edge.importedSymbols.every((symbol) => symbol.isTypeOnly);
     if (isTypeOnlyEdge) {
+      continue;
+    }
+
+    if (isCompileTimeErasedEdge(edge, graph)) {
       continue;
     }
 

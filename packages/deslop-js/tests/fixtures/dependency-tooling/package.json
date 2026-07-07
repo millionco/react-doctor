@@ -41,7 +41,8 @@
     "replace-in-file": "^8.0.0",
     "tsc-alias": "^1.0.0",
     "unused-tool": "^1.0.0",
-    "vitest-axe": "^0.1.0"
+    "vitest-axe": "^0.1.0",
+    "docs-theme-widgets": "^1.0.0"
   },
   "pnpm": {
     "overrides": {

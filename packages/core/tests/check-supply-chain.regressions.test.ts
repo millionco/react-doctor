@@ -82,6 +82,34 @@ describe("checkSupplyChain — regressions", () => {
     expect(await runCheck()).toEqual([]);
   });
 
+  it("scores the classic yarn.lock (v1) resolution instead of the range floor", async () => {
+    writeManifest({ dependencies: { jspdf: "^4.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "yarn.lock"),
+      `# yarn lockfile v1\n\n\njspdf@^4.0.0:\n  version "4.2.1"\n  resolved "https://registry.yarnpkg.com/jspdf/-/jspdf-4.2.1.tgz"\n`,
+    );
+    stubSocketApiByExactVersion({
+      "jspdf@4.0.0": { supplyChain: 1, vulnerability: 0.2, ...HEALTHY_CONTEXT },
+      "jspdf@4.2.1": { supplyChain: 1, vulnerability: 1, ...HEALTHY_CONTEXT },
+    });
+
+    expect(await runCheck()).toEqual([]);
+  });
+
+  it("resolves through a berry yarn.lock header naming several descriptors", async () => {
+    writeManifest({ dependencies: { jspdf: "^4.0.0" } });
+    fs.writeFileSync(
+      path.join(projectDirectory, "yarn.lock"),
+      `"jspdf@npm:^3.0.0, jspdf@npm:^4.0.0":\n  version: 4.2.1\n  resolution: "jspdf@npm:4.2.1"\n`,
+    );
+    stubSocketApiByExactVersion({
+      "jspdf@4.0.0": { supplyChain: 1, vulnerability: 0.2, ...HEALTHY_CONTEXT },
+      "jspdf@4.2.1": { supplyChain: 1, vulnerability: 1, ...HEALTHY_CONTEXT },
+    });
+
+    expect(await runCheck()).toEqual([]);
+  });
+
   it("scores the package-lock.json resolution instead of the range floor (psysonic ^2 shape)", async () => {
     writeManifest({ dependencies: { "@tauri-apps/plugin-shell": "^2" } });
     fs.writeFileSync(

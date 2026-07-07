@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vite-plus/test";
+import * as fs from "node:fs";
+import os from "node:os";
+import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
+import { resetManifestCaches } from "../../utils/read-nearest-package-manifest.js";
 import { noFullLodashImport } from "./no-full-lodash-import.js";
 
 const expectFail = (code: string): void => {
@@ -82,5 +86,68 @@ describe("bundle-size/no-full-lodash-import — regressions", () => {
         return <div>{flatten(rows).join(",")}</div>;
       }
     `);
+  });
+
+  // Verify wave: `pages/*.page.tsx` inside a published component library are
+  // dev/screenshot-test pages never shipped to consumers (cloudscape).
+  describe("library dev pages", () => {
+    let temporaryDirectory: string;
+
+    beforeEach(() => {
+      temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-lodash-devpage-"));
+      resetManifestCaches();
+    });
+
+    afterEach(() => {
+      fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+      resetManifestCaches();
+    });
+
+    const writeFixtureFile = (relativePath: string, contents: string): string => {
+      const absolutePath = path.join(temporaryDirectory, relativePath);
+      fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+      fs.writeFileSync(absolutePath, contents, "utf8");
+      return absolutePath;
+    };
+
+    const devPageCode = `
+      import { range } from "lodash";
+      export default function AsyncPage() {
+        return <div>{range(50).join(",")}</div>;
+      }
+    `;
+
+    it("does not flag a *.page.tsx dev page inside a published library", () => {
+      writeFixtureFile(
+        "package.json",
+        `{ "name": "@scope/components", "peerDependencies": { "react": "^18.0.0" } }`,
+      );
+      const filename = writeFixtureFile("pages/autosuggest/async.page.tsx", devPageCode);
+      const result = runRule(noFullLodashImport, devPageCode, { filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a *.page.tsx file inside a private app (pageExtensions)", () => {
+      writeFixtureFile(
+        "package.json",
+        `{ "name": "my-app", "private": true, "dependencies": { "react": "^18.0.0", "next": "^14.0.0" } }`,
+      );
+      const filename = writeFixtureFile("pages/dashboard/index.page.tsx", devPageCode);
+      const result = runRule(noFullLodashImport, devPageCode, { filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
+
+    it("still flags library source files that are not dev pages", () => {
+      writeFixtureFile(
+        "package.json",
+        `{ "name": "@scope/components", "peerDependencies": { "react": "^18.0.0" } }`,
+      );
+      const filename = writeFixtureFile("src/autosuggest/index.tsx", devPageCode);
+      const result = runRule(noFullLodashImport, devPageCode, { filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
   });
 });

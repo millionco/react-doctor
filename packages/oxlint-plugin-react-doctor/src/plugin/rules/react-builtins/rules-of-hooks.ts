@@ -15,6 +15,7 @@ import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isImportedFromNonReactModule } from "../../utils/is-imported-from-non-react-module.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { isRulesOfHooksSuppressedAt } from "./rules-of-hooks-suppression.js";
 
 // Port of `oxc_linter::rules::react::rules_of_hooks`. Enforces React's
 // Rules of Hooks:
@@ -568,6 +569,20 @@ const isPackageImportedNonReactHookCallee = (call: EsTreeNodeOfType<"CallExpress
   return !isReactEcosystemImportSource(importSource);
 };
 
+// `useMDXComponents` is the MDX/Next.js convention name for a
+// components-map getter (`mdx-components.tsx`): when the project owns it
+// (relative or path-alias import), it is a plain function that merely
+// borrows the `use` prefix — Next.js documents calling it from async
+// Server Components. Imports from React-ecosystem packages (e.g.
+// @mdx-js/react, whose implementation calls useContext) keep firing.
+const isProjectOwnedMdxComponentsGetter = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
+  const callee = call.callee;
+  if (!isNodeOfType(callee, "Identifier") || callee.name !== "useMDXComponents") return false;
+  const importSource = getImportSourceForName(call, callee.name);
+  if (importSource === null) return false;
+  return importSource.startsWith(".") || PATH_ALIAS_IMPORT_PATTERN.test(importSource);
+};
+
 const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
@@ -813,7 +828,33 @@ export const rulesOfHooks = defineRule({
   recommendation:
     "Call hooks at the top level of a React function component or custom Hook so React sees the same hook order on every render.",
   category: "Correctness",
-  create: (context) => {
+  create: (hostContext) => {
+    const nodeStartOffset = (node: EsTreeNode): number | null => {
+      const nodeWithOffsets = node as { start?: number; range?: [number, number] };
+      if (typeof nodeWithOffsets.start === "number") return nodeWithOffsets.start;
+      if (Array.isArray(nodeWithOffsets.range)) return nodeWithOffsets.range[0];
+      return null;
+    };
+    const context: typeof hostContext = {
+      get filename() {
+        return hostContext.filename;
+      },
+      get settings() {
+        return hostContext.settings;
+      },
+      get scopes() {
+        return hostContext.scopes;
+      },
+      get cfg() {
+        return hostContext.cfg;
+      },
+      report: (descriptor) => {
+        if (isRulesOfHooksSuppressedAt(hostContext.filename, nodeStartOffset(descriptor.node))) {
+          return;
+        }
+        hostContext.report(descriptor);
+      },
+    };
     const settings = resolveSettings(context.settings);
     const additionalEffectHooksRegex = buildAdditionalEffectHooksRegex(
       settings.additionalEffectHooks,
@@ -838,6 +879,8 @@ export const rulesOfHooks = defineRule({
         // async apply helpers, `usePromptExample` event handlers) — none of
         // the ordering rules apply to it.
         if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
+
+        if (isProjectOwnedMdxComponentsGetter(node)) return;
 
         const enclosing = findEnclosingFunctionInfo(node);
 

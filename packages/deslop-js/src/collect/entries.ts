@@ -961,6 +961,19 @@ const extractCiWorkflowEntries = (rootDir: string): string[] => {
   const workflowsDir = join(rootDir, ".github", "workflows");
   if (!existsSync(workflowsDir)) return entries;
 
+  // Standalone tool packages vendored under .github (a workflow `cp`s the
+  // directory and runs `npm run build` inside it) reference their scripts
+  // through their own package.json, not the workflow yml.
+  const nestedToolPackageJsonPaths = fg.sync("**/package.json", {
+    cwd: join(rootDir, ".github"),
+    absolute: true,
+    onlyFiles: true,
+    ignore: ["**/node_modules/**"],
+  });
+  for (const nestedPackageJsonPath of nestedToolPackageJsonPaths) {
+    entries.push(...extractScriptEntries(dirname(nestedPackageJsonPath)));
+  }
+
   const workflowFiles = fg.sync("*.{yml,yaml}", {
     cwd: workflowsDir,
     absolute: true,

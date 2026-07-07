@@ -1,5 +1,9 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
+import { clearRulesOfHooksSuppressionCache } from "./rules-of-hooks-suppression.js";
 import { rulesOfHooks } from "./rules-of-hooks.js";
 
 const runTsx = (code: string) => runRule(rulesOfHooks, code, { filename: "fixture.tsx" });
@@ -616,5 +620,117 @@ describe("react-builtins/rules-of-hooks — regressions: local hook-free use*-na
       };
     `);
     expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+// Verify wave: renoun's `useMDXComponents` is the MDX/Next.js convention
+// name for a project-owned components-map getter — a plain function that
+// only borrows the `use` prefix, documented as callable from async Server
+// Components.
+describe("react-builtins/rules-of-hooks — regressions: project-owned useMDXComponents", () => {
+  it("does not flag useMDXComponents imported relatively inside an async Server Component", () => {
+    const result = runTsx(`
+      import { useMDXComponents } from "../mdx/components.tsx";
+      export async function Markdown({ children }) {
+        const defaultComponents = useMDXComponents();
+        return <div>{children}</div>;
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags useMDXComponents imported from a React-ecosystem package in an async component", () => {
+    const result = runTsx(`
+      import { useMDXComponents } from "@mdx-js/react";
+      export async function Markdown({ children }) {
+        const defaultComponents = useMDXComponents();
+        return <div>{children}</div>;
+      }
+    `);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a real React hook inside an async component", () => {
+    const result = runTsx(`
+      import { useState } from "react";
+      export async function Markdown({ children }) {
+        const [value] = useState(0);
+        return <div>{children}{value}</div>;
+      }
+    `);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+// Verify wave: cloudscape guards a dev-only useEffect behind a build-time
+// `isDevelopment` constant and suppresses the upstream rule by name; hook
+// order is identical on every render of a given build, so the author's
+// explicit `eslint-disable-next-line react-hooks/rules-of-hooks` must be
+// honored (oxlint's disable handling only matches our rule id).
+describe("react-builtins/rules-of-hooks — regressions: upstream disable-comment suppression", () => {
+  const withTempFile = (code: string, run: (filename: string) => void): void => {
+    const directory = mkdtempSync(join(tmpdir(), "rules-of-hooks-suppression-"));
+    const filename = join(directory, "fixture.tsx");
+    writeFileSync(filename, code);
+    clearRulesOfHooksSuppressionCache();
+    try {
+      run(filename);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+      clearRulesOfHooksSuppressionCache();
+    }
+  };
+
+  it("honors eslint-disable-next-line react-hooks/rules-of-hooks on a guarded useEffect", () => {
+    const code = [
+      'import { useEffect } from "react";',
+      "function SideNavigation({ items }) {",
+      "  if (isDevelopment) {",
+      "    // eslint-disable-next-line react-hooks/rules-of-hooks",
+      "    useEffect(() => checkDuplicateHrefs(items), [items]);",
+      "  }",
+      "  return <nav />;",
+      "}",
+    ].join("\n");
+    withTempFile(code, (filename) => {
+      const result = runRule(rulesOfHooks, code, { filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+  });
+
+  it("still flags the same guarded useEffect without a disable comment", () => {
+    const code = [
+      'import { useEffect } from "react";',
+      "function SideNavigation({ items }) {",
+      "  if (isDevelopment) {",
+      "    useEffect(() => checkDuplicateHrefs(items), [items]);",
+      "  }",
+      "  return <nav />;",
+      "}",
+    ].join("\n");
+    withTempFile(code, (filename) => {
+      const result = runRule(rulesOfHooks, code, { filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("ignores disable comments naming a different rule", () => {
+    const code = [
+      'import { useEffect } from "react";',
+      "function SideNavigation({ items }) {",
+      "  if (isDevelopment) {",
+      "    // eslint-disable-next-line no-console",
+      "    useEffect(() => checkDuplicateHrefs(items), [items]);",
+      "  }",
+      "  return <nav />;",
+      "}",
+    ].join("\n");
+    withTempFile(code, (filename) => {
+      const result = runRule(rulesOfHooks, code, { filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
   });
 });

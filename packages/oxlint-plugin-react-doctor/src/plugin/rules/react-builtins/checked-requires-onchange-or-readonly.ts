@@ -32,10 +32,26 @@ const resolveSettings = (
 interface AttributePresence {
   checkedNode: EsTreeNode | null;
   defaultCheckedNode: EsTreeNode | null;
+  bothCheckedAndDefaultForwarded: boolean;
   hasOnChangeOrReadOnly: boolean;
   hasSpread: boolean;
   hasTruthyDisabled: boolean;
 }
+
+// `checked={checked} defaultChecked={defaultChecked}` where BOTH values are
+// plain variable/member reads is the standard design-system forwarding
+// pattern: consumers supply exactly one, the other is `undefined` at runtime
+// (which React treats as absent), so no controlled/uncontrolled ambiguity
+// materializes. A literal on either side (`checked`, `checked={true}`) means
+// the author really hard-wired both modes and still fires.
+const isForwardedValueExpression = (expression: EsTreeNode): boolean =>
+  isNodeOfType(expression, "Identifier") ||
+  (isNodeOfType(expression, "MemberExpression") && !expression.computed);
+
+const jsxAttributeForwardsValue = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
+  if (!attribute.value || !isNodeOfType(attribute.value, "JSXExpressionContainer")) return false;
+  return isForwardedValueExpression(attribute.value.expression as EsTreeNode);
+};
 
 const isTruthyDisabledJsxValue = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   if (!attribute.value) return true;
@@ -48,7 +64,9 @@ const isTruthyDisabledJsxValue = (attribute: EsTreeNodeOfType<"JSXAttribute">): 
 
 const collectFromJsxAttributes = (attributes: ReadonlyArray<EsTreeNode>): AttributePresence => {
   let checkedNode: EsTreeNode | null = null;
+  let checkedForwarded = false;
   let defaultCheckedNode: EsTreeNode | null = null;
+  let defaultCheckedForwarded = false;
   let hasOnChangeOrReadOnly = false;
   let hasSpread = false;
   let hasTruthyDisabled = false;
@@ -59,19 +77,32 @@ const collectFromJsxAttributes = (attributes: ReadonlyArray<EsTreeNode>): Attrib
     }
     if (!isNodeOfType(attribute, "JSXAttribute")) continue;
     const name = getJsxAttributeName(attribute.name);
-    if (name === "checked") checkedNode = attribute;
-    else if (name === "defaultChecked" && !defaultCheckedNode) defaultCheckedNode = attribute;
-    else if (name === "onChange" || name === "readOnly") hasOnChangeOrReadOnly = true;
+    if (name === "checked") {
+      checkedNode = attribute;
+      checkedForwarded = jsxAttributeForwardsValue(attribute);
+    } else if (name === "defaultChecked" && !defaultCheckedNode) {
+      defaultCheckedNode = attribute;
+      defaultCheckedForwarded = jsxAttributeForwardsValue(attribute);
+    } else if (name === "onChange" || name === "readOnly") hasOnChangeOrReadOnly = true;
     else if (name === "disabled" && isTruthyDisabledJsxValue(attribute)) hasTruthyDisabled = true;
   }
-  return { checkedNode, defaultCheckedNode, hasOnChangeOrReadOnly, hasSpread, hasTruthyDisabled };
+  return {
+    checkedNode,
+    defaultCheckedNode,
+    bothCheckedAndDefaultForwarded: checkedForwarded && defaultCheckedForwarded,
+    hasOnChangeOrReadOnly,
+    hasSpread,
+    hasTruthyDisabled,
+  };
 };
 
 const collectFromObjectProperties = (
   objectExpression: EsTreeNodeOfType<"ObjectExpression">,
 ): AttributePresence => {
   let checkedNode: EsTreeNode | null = null;
+  let checkedForwarded = false;
   let defaultCheckedNode: EsTreeNode | null = null;
+  let defaultCheckedForwarded = false;
   let hasOnChangeOrReadOnly = false;
   let hasSpread = false;
   let hasTruthyDisabled = false;
@@ -87,10 +118,13 @@ const collectFromObjectProperties = (
     else if (isNodeOfType(key, "Literal") && typeof key.value === "string")
       propertyName = key.value;
     if (!propertyName) continue;
-    if (propertyName === "checked") checkedNode = property;
-    else if (propertyName === "defaultChecked" && !defaultCheckedNode)
+    if (propertyName === "checked") {
+      checkedNode = property;
+      checkedForwarded = isForwardedValueExpression(property.value as EsTreeNode);
+    } else if (propertyName === "defaultChecked" && !defaultCheckedNode) {
       defaultCheckedNode = property;
-    else if (propertyName === "onChange" || propertyName === "readOnly")
+      defaultCheckedForwarded = isForwardedValueExpression(property.value as EsTreeNode);
+    } else if (propertyName === "onChange" || propertyName === "readOnly")
       hasOnChangeOrReadOnly = true;
     else if (propertyName === "disabled") {
       const propertyValue = property.value as EsTreeNode;
@@ -98,7 +132,14 @@ const collectFromObjectProperties = (
         hasTruthyDisabled = true;
     }
   }
-  return { checkedNode, defaultCheckedNode, hasOnChangeOrReadOnly, hasSpread, hasTruthyDisabled };
+  return {
+    checkedNode,
+    defaultCheckedNode,
+    bothCheckedAndDefaultForwarded: checkedForwarded && defaultCheckedForwarded,
+    hasOnChangeOrReadOnly,
+    hasSpread,
+    hasTruthyDisabled,
+  };
 };
 
 // Port of `oxc_linter::rules::react::checked_requires_onchange_or_readonly`.
@@ -119,6 +160,7 @@ export const checkedRequiresOnchangeOrReadonly = defineRule({
       if (
         presence.checkedNode &&
         presence.defaultCheckedNode &&
+        !presence.bothCheckedAndDefaultForwarded &&
         !settings.ignoreExclusiveCheckedAttribute
       ) {
         context.report({ node: presence.checkedNode, message: EXCLUSIVE_MESSAGE });

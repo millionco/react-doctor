@@ -194,6 +194,59 @@ describe("architecture/no-render-in-render — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  // Verify wave: render helpers composing other render helpers at MODULE
+  // scope (lobe-ui renderItems.tsx) run outside any component render — no
+  // component identity, state, or memoization to lose.
+  it("does not flag a render* call inside a module-scope render helper", () => {
+    const result = run(
+      `const renderIcon = (icon) => <span className="icon">{icon}</span>;
+      export const renderDropdownMenuItems = (items) =>
+        items.map((item) => <li key={item.key}>{renderIcon(item.icon)}</li>);`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // Verify wave: a module-scope hook-free formatter (bulwarkmail
+  // renderMessage) cannot close over component state; the inline call is
+  // equivalent to inline JSX.
+  it("does not flag a module-scope hook-free formatter called inside a component", () => {
+    const result = run(
+      `function renderMessage(message) {
+        if (!message) return null;
+        return message.split("**").map((seg, i) =>
+          i % 2 === 1 ? <strong key={i}>{seg}</strong> : <React.Fragment key={i}>{seg}</React.Fragment>,
+        );
+      }
+      export function PluginDialogHost({ current }) {
+        return <p>{renderMessage(current.message)}</p>;
+      }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a module-scope render helper that calls hooks", () => {
+    const result = run(
+      `const renderStatus = () => {
+        const [open] = useState(false);
+        return <div>{String(open)}</div>;
+      };
+      export function Panel() {
+        return <div>{renderStatus()}</div>;
+      }`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a component-local render helper called inline", () => {
+    const result = run(
+      `export function Panel({ items }) {
+        const renderRow = (item) => <li>{item.label}</li>;
+        return <ul>{items.map((item) => renderRow(item))}<li>{renderRow(items[0])}</li></ul>;
+      }`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("does not claim a remount or state loss for a plain render-helper call", () => {
     const result = run(
       `function Page() {

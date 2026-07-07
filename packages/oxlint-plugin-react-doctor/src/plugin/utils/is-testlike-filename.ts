@@ -14,6 +14,7 @@ const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/test-utils/",
   "/testutils/",
   "/cypress/",
+  "/playwright/",
   "/.storybook/",
   "/.dumi/",
   "/stories/",

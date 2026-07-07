@@ -78,6 +78,22 @@ const isInvalidHref = (value: string, validHrefs: ReadonlySet<string>): boolean 
   return value === "" || value === "#" || value === "javascript:void(0)";
 };
 
+const getStaticHrefValue = (value: EsTreeNode): string | null => {
+  if (isNodeOfType(value, "Literal")) {
+    return typeof value.value === "string" ? value.value : null;
+  }
+  if (isNodeOfType(value, "JSXExpressionContainer")) {
+    const expression = value.expression;
+    if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
+      return expression.value;
+    }
+    if (isNodeOfType(expression, "TemplateLiteral")) {
+      return getStaticTemplateLiteralValue(expression);
+    }
+  }
+  return null;
+};
+
 const checkValueIsEmptyOrInvalid = (
   value: EsTreeNode,
   validHrefs: ReadonlySet<string>,
@@ -137,6 +153,12 @@ export const anchorIsValid = defineRule({
           }
           if (checkValueIsEmptyOrInvalid(hrefAttribute.value as EsTreeNode, settings.validHrefs)) {
             const hasOnClick = Boolean(hasJsxPropIgnoreCase(node.attributes, "onClick"));
+            // `href="#"` without a click handler is a working scroll-to-top
+            // link: it is focusable and navigates to the top of the page, so
+            // the "goes nowhere" claim is false (docs-validation FP cluster).
+            if (!hasOnClick && getStaticHrefValue(hrefAttribute.value as EsTreeNode) === "#") {
+              return;
+            }
             context.report({
               node: node.name,
               message: hasOnClick ? MESSAGE_CANT_BE_ANCHOR : MESSAGE_INCORRECT_HREF,

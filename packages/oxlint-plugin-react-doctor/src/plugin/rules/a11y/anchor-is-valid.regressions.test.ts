@@ -57,4 +57,27 @@ describe("a11y/anchor-is-valid regressions", () => {
     const result = runRule(anchorIsValid, `const B = () => <a href="#" onClick={go}>Go</a>;`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  // Docs-validation FP cluster (frimousse logo link, cloudscape demo
+  // items): `href="#"` without a click handler is a working scroll-to-top
+  // link — focusable, keyboard-reachable, and it navigates.
+  it('does not flag a bare `href="#"` scroll-to-top link', () => {
+    const result = runRule(anchorIsValid, `const L = () => <a href="#"><Logo /></a>;`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('does not flag `href={"#"}` without onClick', () => {
+    const result = runRule(anchorIsValid, `const L = () => <a href={"#"}>top</a>;`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('still flags an empty `href=""` without onClick', () => {
+    const result = runRule(anchorIsValid, `const L = () => <a href="">broken</a>;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it('still flags `href="javascript:void(0)"` without onClick', () => {
+    const result = runRule(anchorIsValid, `const L = () => <a href="javascript:void(0)">x</a>;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

@@ -135,4 +135,46 @@ describe("architecture/no-many-boolean-props — regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  // Mined miss (freecut ItemContextMenu): the memo() wrapper hid the inner
+  // function from the VariableDeclarator gate, so boolean-heavy memo-wrapped
+  // components were never counted.
+  it("flags a memo-wrapped named function component with many boolean props", () => {
+    const result = run(
+      `import { memo } from "react";
+      export const ItemContextMenu = memo(function ItemContextMenu({ trackLocked, isSelected, canJoinSelected, hasJoinableLeft, isReversed }) {
+        return <div data-locked={trackLocked} data-selected={isSelected} data-join={canJoinSelected} data-left={hasJoinableLeft} data-reversed={isReversed} />;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a React.memo arrow component with many boolean props", () => {
+    const result = run(
+      `import React from "react";
+      export const Panel = React.memo(({ isOpen, isLoading, hasIcon, canEdit }) => {
+        return <div data-open={isOpen} data-loading={isLoading} data-icon={hasIcon} data-edit={canEdit} />;
+      });`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag memo wrapping an identifier reference", () => {
+    const result = run(
+      `import { memo } from "react";
+      function Panel({ isOpen }) { return <div data-open={isOpen} />; }
+      export const Wrapped = memo(Panel);`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a memo-wrapped component under the boolean-prop threshold", () => {
+    const result = run(
+      `import { memo } from "react";
+      export const Panel = memo(({ isOpen, isLoading }) => {
+        return <div data-open={isOpen} data-loading={isLoading} />;
+      });`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

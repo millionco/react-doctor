@@ -43,6 +43,16 @@ export const detectDeadExports = (graph: DependencyGraph, config: DeslopConfig):
         continue;
       }
 
+      // `export default Page` aliasing a named export that IS consumed:
+      // deleting the default would be busywork the named usage disproves.
+      if (
+        exportInfo.isDefault &&
+        exportInfo.defaultExportLocalName &&
+        usageMap.has(`${module.fileId.path}::${exportInfo.defaultExportLocalName}`)
+      ) {
+        continue;
+      }
+
       unusedExports.push({
         path: module.fileId.path,
         name: exportInfo.name,
@@ -110,6 +120,21 @@ const buildUsageMap = (graph: DependencyGraph): Set<string> => {
     if (!targetModule) continue;
 
     const sourceModule = graph.modules[edge.source];
+
+    // `import()` consumers are opaque: `lazy(() => import("./page"))` takes
+    // the default, `.then((m) => m.X)` takes named members, and neither shows
+    // up as an imported symbol. Treat every export of a dynamically imported
+    // module as used rather than flag exports we cannot trace.
+    if (edge.isDynamic && edge.importedSymbols.length === 0) {
+      markAllExportsUsedRecursive(
+        targetModule,
+        graph,
+        sourceToTargetMap,
+        usedExportKeys,
+        new Set(),
+      );
+      continue;
+    }
 
     for (const symbol of edge.importedSymbols) {
       if (symbol.isNamespace) {

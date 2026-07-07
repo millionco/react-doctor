@@ -1,4 +1,5 @@
 import { detectForeignDisableNearMiss } from "./detect-foreign-disable-near-miss.js";
+import { isCompilerRuleForeignDisabled } from "./is-compiler-rule-foreign-disabled.js";
 import { findEnclosingMultilineJsxOpenerStart } from "./find-enclosing-jsx-opener.js";
 import {
   findStackedDisableCommentsAbove,
@@ -80,6 +81,10 @@ export const evaluateSuppression = (
 ): SuppressionEvaluation => {
   const sameLineMatch = lines[diagnosticLineIndex]?.match(DISABLE_LINE_PATTERN);
   if (sameLineMatch && isRuleListedInComment(sameLineMatch[1], ruleId)) {
+    return { isSuppressed: true, nearMissHint: null };
+  }
+
+  if (isCompilerRuleForeignDisabled(lines, diagnosticLineIndex, ruleId)) {
     return { isSuppressed: true, nearMissHint: null };
   }
 

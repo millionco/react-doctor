@@ -139,4 +139,56 @@ describe("react-builtins/iframe-missing-sandbox — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // Docs-validation FP wave (mapguide task-pane shape): a `ref`-driven frame
+  // with no `src`/`srcDoc` starts as about:blank and is scripted by the
+  // parent itself — no embedded page exists, and an effective sandbox would
+  // break the parent's contentWindow access.
+  it("stays silent on a ref-driven frame with no src (parent-scripted about:blank)", () => {
+    const result = runRule(
+      iframeMissingSandbox,
+      `const Frame = () => <iframe name="taskPaneFrame" ref={handleFrameMounted} onLoad={handleFrameLoaded} style={taskFrameStyle} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a ref-carrying frame that embeds an explicit src", () => {
+    const result = runRule(
+      iframeMissingSandbox,
+      `const Frame = () => <iframe ref={frameRef} src="https://third-party.example" />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // Docs-validation FP wave (glific YouTube-embed shape): the vendor
+  // permissions-policy boilerplate marks a third-party media embed, where a
+  // functioning sandbox would need the banned allow-scripts +
+  // allow-same-origin pair — no compliant configuration exists.
+  it("stays silent on the vendor video-embed allow boilerplate", () => {
+    const result = runRule(
+      iframeMissingSandbox,
+      `const Video = () => (
+        <iframe
+          src={INTRO_VIDEO_URL}
+          title="intro video"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          referrerPolicy="strict-origin-when-cross-origin"
+          allowFullScreen
+        />
+      );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an iframe whose allow value is not media-embed boilerplate", () => {
+    const result = runRule(
+      iframeMissingSandbox,
+      `const Frame = () => <iframe src="https://third-party.example" allow="camera; microphone" />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

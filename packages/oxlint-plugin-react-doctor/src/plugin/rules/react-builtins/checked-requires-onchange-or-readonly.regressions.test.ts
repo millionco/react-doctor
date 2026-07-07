@@ -42,4 +42,54 @@ describe("react-builtins/checked-requires-onchange-or-readonly — regressions",
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // Docs-validation FP (ebay/innovaccer design-system radios): forwarding
+  // BOTH `checked` and `defaultChecked` as pass-through props is the
+  // standard wrapper pattern — consumers supply exactly one, the other is
+  // `undefined` at runtime, so no controlled/uncontrolled ambiguity exists.
+  it("stays silent when checked and defaultChecked are both forwarded props", () => {
+    const result = runRule(
+      checkedRequiresOnchangeOrReadonly,
+      `const Radio = ({ checked, defaultChecked, onChange }) => <input type="radio" checked={checked} defaultChecked={defaultChecked} onChange={onChange} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when checked and defaultChecked are forwarded member reads", () => {
+    const result = runRule(
+      checkedRequiresOnchangeOrReadonly,
+      `const Radio = (props) => <input type="radio" checked={props.checked} defaultChecked={props.defaultChecked} onChange={props.onChange} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for the forwarded pair in createElement props", () => {
+    const result = runRule(
+      checkedRequiresOnchangeOrReadonly,
+      `import React from "react";
+      const Radio = ({ checked, defaultChecked, onChange }) => React.createElement("input", { type: "radio", checked, defaultChecked, onChange });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags when checked is a literal alongside defaultChecked", () => {
+    const result = runRule(
+      checkedRequiresOnchangeOrReadonly,
+      `const C = ({ defaultChecked, onChange }) => <input type="checkbox" checked={true} defaultChecked={defaultChecked} onChange={onChange} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a forwarded pair whose defaultChecked is hard-wired", () => {
+    const result = runRule(
+      checkedRequiresOnchangeOrReadonly,
+      `const C = ({ checked, onChange }) => <input type="checkbox" checked={checked} defaultChecked onChange={onChange} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

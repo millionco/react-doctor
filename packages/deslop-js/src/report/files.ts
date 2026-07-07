@@ -18,7 +18,9 @@ const TEST_FILE_PATTERN = /(?:\.(?:test|spec|stories|story|cy|test-d)\.|(?:^|\/)
 // `public` files are served / `<script src>`-loaded as static assets,
 // consumed without any import edge the graph could see. (`__mocks__` is NOT
 // excluded here: it is a Jest entry-point concern handled by entry discovery,
-// and stays flagged in vitest-only projects.)
+// and stays flagged in vitest-only projects. `.github` scripts are an entry
+// discovery concern too: CI-referenced ones become entries, the rest stay
+// flagged.)
 const EXCLUDED_DIRECTORY_PATTERN =
   /(?:^|\/)(?:e2e|cypress|playwright|__fixtures__|__snapshots__|public|scripts)\/(?!.*node_modules)/;
 

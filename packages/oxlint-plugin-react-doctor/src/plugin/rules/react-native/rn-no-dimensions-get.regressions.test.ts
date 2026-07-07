@@ -120,6 +120,85 @@ describe("react-native/rn-no-dimensions-get — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on a one-shot module-level read feeding style constants", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";\nconst dimensions = Dimensions.get("window");\nexport const MAX_WIDTH = dimensions.width - 48;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a module-level destructured read", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";\nconst { height } = Dimensions.get("screen");\nexport const FULL_DRAWER_HEIGHT = height;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent inside a makeStyles stylesheet-factory callback", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";
+      import { makeStyles } from "app/styles";
+      const useStyles = makeStyles(({ palette }) => ({
+        unfurl: {
+          width: Dimensions.get("window").width - 48,
+          backgroundColor: palette.white,
+        },
+      }));`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent inside a createUseStyles factory callback", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";
+      import { createUseStyles } from "react-jss";
+      const useStyles = createUseStyles(() => ({
+        root: { maxWidth: Dimensions.get("window").width },
+      }));`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags Dimensions.get inside a component body", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";
+      export const Card = () => {
+        const { width } = Dimensions.get("window");
+        return <View style={{ width }} />;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags Dimensions.get inside a hook body", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";
+      export const useCardWidth = () => Dimensions.get("window").width / 2;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags module-level Dimensions.addEventListener", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";\nDimensions.addEventListener("change", () => {});`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("does not claim users see a stale layout for a fresh read in an event handler", () => {
     const result = runRule(
       rnNoDimensionsGet,

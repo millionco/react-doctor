@@ -37,6 +37,30 @@ const isHeadersFunctionCall = (node: EsTreeNode): boolean =>
   isNodeOfType(node.callee, "Identifier") &&
   node.callee.name === "headers";
 
+// `crypto.createHmac("sha256", key).update(secret)` is an in-memory hash
+// builder — `.update`/`.set` on it never touches server state, but the
+// method name collides with the DB-mutation list.
+const CRYPTO_BUILDER_FACTORY_NAMES = new Set([
+  "createHash",
+  "createHmac",
+  "createSign",
+  "createVerify",
+  "createCipheriv",
+  "createDecipheriv",
+]);
+
+const isCryptoBuilderCall = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  if (isNodeOfType(node.callee, "Identifier")) {
+    return CRYPTO_BUILDER_FACTORY_NAMES.has(node.callee.name);
+  }
+  return (
+    isNodeOfType(node.callee, "MemberExpression") &&
+    isNodeOfType(node.callee.property, "Identifier") &&
+    CRYPTO_BUILDER_FACTORY_NAMES.has(node.callee.property.name)
+  );
+};
+
 // HACK: `something.headers` is always a Headers instance, `something.searchParams`
 // is always a URLSearchParams. Catching these by property name lets us
 // short-circuit without resolving the receiver's actual type — handles
@@ -53,6 +77,7 @@ export const isSafeMutableReceiverSource = (initNode: EsTreeNode): boolean => {
   if (isResponseFactoryCall(unwrapped)) return true;
   if (isSafeIntrinsicMemberAccess(unwrapped)) return true;
   if (isHeadersFunctionCall(unwrapped)) return true;
+  if (isCryptoBuilderCall(unwrapped)) return true;
   return false;
 };
 
@@ -64,6 +89,7 @@ export const isSafeReceiverChainNode = (
   if (isResponseFactoryCall(node)) return true;
   if (isSafeIntrinsicMemberAccess(node)) return true;
   if (isHeadersFunctionCall(node)) return true;
+  if (isCryptoBuilderCall(node)) return true;
   if (isNodeOfType(node, "Identifier") && locallyScopedSafeBindings.has(node.name)) return true;
   return false;
 };

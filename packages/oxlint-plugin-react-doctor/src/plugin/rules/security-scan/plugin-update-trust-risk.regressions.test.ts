@@ -51,6 +51,38 @@ describe("security-scan/plugin-update-trust-risk — regressions", () => {
     expect(findings).toHaveLength(0);
   });
 
+  it("stays silent on vendored third-party workflows GitHub never executes (psysonic cpal patch shape)", () => {
+    const findings = runScanRule(pluginUpdateTrustRisk, {
+      relativePath: "src-tauri/patches/cpal-0.15.3/.github/workflows/cpal.yml",
+      content: `    - name: Install ASIO SDK\n      env:\n        LINK: https://www.steinberg.net/asiosdk\n      run: |\n        curl -L -o asio.zip $env:LINK\n        7z x -oasio asio.zip\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent in demo config paths (mapguide docker/demo Dockerfile shape)", () => {
+    const findings = runScanRule(pluginUpdateTrustRisk, {
+      relativePath: "docker/demo/Dockerfile",
+      content: `RUN apt-get install -y --no-install-recommends fontconfig ttf-mscorefonts-installer\nRUN wget https://github.com/jumpinjackie/mapguide-react-layout/releases/download/v0.13.1/viewer.zip -O /tmp/viewer.zip\nRUN unzip /tmp/viewer.zip -d /var/www\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("keeps flagging unverified artifact downloads in root workflows", () => {
+    const findings = runScanRule(pluginUpdateTrustRisk, {
+      relativePath: ".github/workflows/release.yml",
+      content: `      - name: Fetch SDK\n        run: |\n          curl -L -o sdk.zip https://example.com/sdk.zip\n          unzip sdk.zip\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("keeps flagging unverified installer downloads in a production Dockerfile", () => {
+    const findings = runScanRule(pluginUpdateTrustRisk, {
+      relativePath: "Dockerfile",
+      content: `RUN curl -fsSL https://example.com/tool-installer.sh | sh\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("stays silent on healthcheck wget near unrelated chmod (outline Dockerfile shape)", () => {
     const findings = runScanRule(pluginUpdateTrustRisk, {
       relativePath: "Dockerfile",

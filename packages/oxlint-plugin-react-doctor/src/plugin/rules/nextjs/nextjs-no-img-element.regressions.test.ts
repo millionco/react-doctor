@@ -201,6 +201,59 @@ describe("nextjs/no-img-element regressions", () => {
     });
   });
 
+  describe("markdown renderer component overrides", () => {
+    it("skips an img override inside a ReactMarkdown components map", () => {
+      const result = runRule(
+        nextjsNoImgElement,
+        `export const Note = ({ note }) => (
+          <ReactMarkdown
+            components={{
+              img: props => (
+                <img {...props} referrerPolicy="no-referrer" loading="lazy" />
+              ),
+            }}
+          >
+            {note}
+          </ReactMarkdown>
+        );`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags an img inside an unrelated attribute object", () => {
+      const result = runRule(
+        nextjsNoImgElement,
+        `export const Card = () => (
+          <Widget slots={{ img: () => <img src="/hero.png" alt="" /> }} />
+        );`,
+      );
+      expect(result.diagnostics.length).toBe(1);
+    });
+  });
+
+  describe("tracking pixels", () => {
+    it("skips a scarf.sh analytics pixel", () => {
+      const result = runRule(
+        nextjsNoImgElement,
+        `export const Nav = () => (
+          <img
+            referrerPolicy="no-referrer-when-downgrade"
+            src="https://static.scarf.sh/a.png?x-pxid=bbc99c42"
+          />
+        );`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags an ordinary remote photo", () => {
+      const result = runRule(
+        nextjsNoImgElement,
+        `export const Hero = () => <img src="https://cdn.example.com/hero.jpg" alt="hero" />;`,
+      );
+      expect(result.diagnostics.length).toBe(1);
+    });
+  });
+
   describe("email template files", () => {
     it("skips img inside MJML email components", () => {
       const result = runRule(

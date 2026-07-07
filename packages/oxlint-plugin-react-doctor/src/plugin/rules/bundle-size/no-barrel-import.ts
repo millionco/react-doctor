@@ -92,6 +92,27 @@ const isTypeOnlyOrReexportStatement = (statement: EsTreeNode): boolean => {
   return Boolean(statementKind.source);
 };
 
+// A module whose body is nothing but import and export statements is itself
+// an aggregation barrel — typically the package's public entry point. Its
+// imports exist only to be re-exported, so consumers pull the same module
+// graph either way and direct-source imports would save nothing.
+const isAggregationBarrelProgram = (programNode: EsTreeNodeOfType<"Program">): boolean => {
+  let hasExportStatement = false;
+  for (const statement of programNode.body) {
+    if (isNodeOfType(statement, "ImportDeclaration")) continue;
+    if (isNodeOfType(statement, "ExportAllDeclaration")) {
+      hasExportStatement = true;
+      continue;
+    }
+    if (isNodeOfType(statement, "ExportNamedDeclaration") && !statement.declaration) {
+      hasExportStatement = true;
+      continue;
+    }
+    return false;
+  }
+  return hasExportStatement;
+};
+
 const collectValueReferenceNames = (programNode: EsTreeNodeOfType<"Program">): Set<string> => {
   const valueReferenceNames = new Set<string>();
   for (const statement of programNode.body) {
@@ -178,6 +199,7 @@ export const noBarrelImport = defineRule({
       },
       "Program:exit"(node: EsTreeNodeOfType<"Program">) {
         if (candidates.length === 0) return;
+        if (isAggregationBarrelProgram(node)) return;
 
         const valueReferenceNames = collectValueReferenceNames(node);
         for (const candidate of candidates) {

@@ -771,4 +771,29 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  it("flags unsanitized signature HTML in a webmail composer under a singular email/ UI directory (bulwarkmail shape)", () => {
+    const content = [
+      "const composerSignatureHtml = signatureIdentity?.htmlSignature;",
+      "return (",
+      "  <div",
+      '    className="px-4 pb-3 text-sm"',
+      "    dangerouslySetInnerHTML={{ __html: `${signatureSeparatorEnabled ? '<div>-- </div>' : ''}${composerSignatureHtml}` }}",
+      "  />",
+      ");",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "components/email/email-composer.tsx",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent in a singular email/ directory when the value is sanitized at the sink", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "components/email/email-viewer.tsx",
+      content: `return <div dangerouslySetInnerHTML={{ __html: sanitizePlainTextRenderedHtml(renderedBody) }} />;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

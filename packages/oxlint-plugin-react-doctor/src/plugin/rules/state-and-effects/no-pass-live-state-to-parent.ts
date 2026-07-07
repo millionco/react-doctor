@@ -25,6 +25,7 @@ import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-pro
 import {
   getEffectFn,
   getEffectFnRefs,
+  isCustomHookParameter,
   isPropCallbackInvocationRef,
   isState,
   isUseEffect,
@@ -46,8 +47,11 @@ const getCallCalleeName = (callExpr: EsTreeNode): string | null => {
 
 // `const valid = isValidRange(range)` / `const ctx = bindSync(doc)` use the
 // prop as a pure transform whose result stays local — a read, not a
-// notification. Bare statements, guarded calls (`onSync && onSync(x)`),
-// if-test reads and concise arrow bodies all remain notifications.
+// notification. The value may flow through conditional / logical branches
+// (`el.textContent = isMixed ? 'Mixed' : formatDisplay(v)`) or be returned
+// from a helper (`return formatValue(v)`) — the caller consumes it either
+// way. Bare statements, guarded calls (`onSync && onSync(x)`), if-test
+// reads and concise arrow bodies all remain notifications.
 const isCallResultCapturedToLocal = (callExpr: EsTreeNode): boolean => {
   let current: EsTreeNode = callExpr;
   let parent = (current as unknown as { parent?: EsTreeNode | null }).parent;
@@ -56,7 +60,10 @@ const isCallResultCapturedToLocal = (callExpr: EsTreeNode): boolean => {
     (isNodeOfType(parent, "AwaitExpression") ||
       isNodeOfType(parent, "ChainExpression") ||
       isNodeOfType(parent, "TSAsExpression") ||
-      isNodeOfType(parent, "TSNonNullExpression"))
+      isNodeOfType(parent, "TSNonNullExpression") ||
+      (isNodeOfType(parent, "ConditionalExpression") &&
+        parent.test !== (current as unknown as typeof parent.test)) ||
+      isNodeOfType(parent, "LogicalExpression"))
   ) {
     current = parent;
     parent = (current as unknown as { parent?: EsTreeNode | null }).parent;
@@ -68,7 +75,7 @@ const isCallResultCapturedToLocal = (callExpr: EsTreeNode): boolean => {
   if (isNodeOfType(parent, "AssignmentExpression")) {
     return parent.right === (current as unknown as typeof parent.right);
   }
-  return false;
+  return isNodeOfType(parent, "ReturnStatement");
 };
 
 // A prop-callback invocation that actually NOTIFIES the parent: it carries
@@ -170,16 +177,22 @@ const collectPropCallbackBoundStateRefs = (
   return stateRefs;
 };
 
-// `setHasMoreItems(result && !result.finished)` — a setter-named prop
-// callback whose PRIMARY argument is a computed value stores it in the
-// parent's state even when the value isn't the child's own useState (the
-// internxt shape). A literal first argument is a field-targeting API
-// (`setValue('address1', '')` from react-hook-form), not a data hand-back.
+// `setHasMoreItems(result && !result.finished)` — a setter-named callback
+// received as a CUSTOM HOOK's parameter stores the computed value in the
+// caller's state even when the value isn't the hook's own useState (the
+// internxt shape); the hook should return the value instead. The same shape
+// on a component prop is the sanctioned lifted-state contract — the parent
+// owns the state and delegates the write (delta audit: jaeger LayoutSettings,
+// kubetail KubeContextPicker, freecut clip-waveform) — so components require
+// real state provenance via collectPropCallbackBoundStateRefs. A literal
+// first argument is a field-targeting API (`setValue('address1', '')` from
+// react-hook-form), not a data hand-back.
 const isSetterNamedCallbackReceivingData = (callbackRef: Reference): boolean => {
   const callExpr = getCallExpr(callbackRef);
   if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) return false;
   const calleeName = getCallCalleeName(callExpr);
   if (!calleeName || !SETTER_NAMED_CALLBACK_PATTERN.test(calleeName)) return false;
+  if (!isCustomHookParameter(callbackRef)) return false;
   const firstArgument = (callExpr.arguments ?? [])[0];
   if (!firstArgument) return false;
   return (
@@ -206,7 +219,18 @@ const FUNCTION_WRAPPER_HOOK_NAMES: ReadonlySet<string> = new Set([
 
 const getInitializerCalleeName = (init: EsTreeNode): string | null => {
   if (!isNodeOfType(init, "CallExpression")) return null;
-  const callee = init.callee;
+  let callee = init.callee as EsTreeNode;
+  // `(useRapidForm as any)({ fieldEvent })` — see through TS cast wrappers
+  // so the hook-call check still recognises the callee.
+  // ParenthesizedExpression is oxc-only (preserveParens), absent from the
+  // TSESTree union, hence the raw type-string check.
+  while (
+    isNodeOfType(callee, "TSAsExpression") ||
+    isNodeOfType(callee, "TSNonNullExpression") ||
+    callee.type === ("ParenthesizedExpression" as typeof callee.type)
+  ) {
+    callee = (callee as unknown as { expression: EsTreeNode }).expression;
+  }
   if (isNodeOfType(callee, "Identifier")) return callee.name;
   if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
     return callee.property.name;

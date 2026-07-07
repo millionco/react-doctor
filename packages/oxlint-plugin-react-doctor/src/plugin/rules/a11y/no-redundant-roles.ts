@@ -1,6 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { getElementImplicitRoles } from "../../constants/aria-element-roles.js";
@@ -56,6 +58,36 @@ const getTableCellPrimaryRole = (
   return scope === "row" || scope === "rowgroup" ? "rowheader" : "columnheader";
 };
 
+// A `<td>`/`<th>` only carries its document-default role (`cell` /
+// `columnheader` / `rowheader`) inside a plain `<table>`. Inside a
+// `role="grid"`/`"treegrid"` context the implicit role becomes `gridcell`,
+// making an explicit `role="cell"` a deliberate override. The enclosing table
+// is often in another file (a Cell component rendering a bare `<td>`), so the
+// default is only provably redundant when a same-file ancestor establishes a
+// plain-table context.
+type TableContext = "table" | "grid" | "unknown" | "none";
+
+const findSameFileTableContext = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  settings: Readonly<Record<string, unknown>> | undefined,
+): TableContext => {
+  let current = (node as EsTreeNode).parent;
+  while (current) {
+    if (isNodeOfType(current, "JSXElement")) {
+      const opening = current.openingElement as EsTreeNodeOfType<"JSXOpeningElement">;
+      const ancestorRoleAttr = hasJsxPropIgnoreCase(opening.attributes, "role");
+      const ancestorRole = ancestorRoleAttr ? getJsxPropStringValue(ancestorRoleAttr) : null;
+      if (ancestorRole === "grid" || ancestorRole === "treegrid") return "grid";
+      if (ancestorRole === "table") return "table";
+      if (getElementType(opening, settings) === "table") {
+        return ancestorRoleAttr ? "unknown" : "table";
+      }
+    }
+    current = current.parent ?? null;
+  }
+  return "none";
+};
+
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
 ): Required<NoRedundantRolesSettings> => {
@@ -83,6 +115,11 @@ export const noRedundantRoles = defineRule({
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         const roleAttr = hasJsxPropIgnoreCase(node.attributes, "role");
         if (!roleAttr) return;
+        // react-aria's table pattern (marked by `data-rac`) re-applies
+        // explicit roles because CSS-restyled tables lose implicit semantics
+        // in some ATs — the doc's carve-out for roles kept to work around AT
+        // misreporting.
+        if (hasJsxPropIgnoreCase(node.attributes, "data-rac")) return;
         const role = getJsxPropStringValue(roleAttr);
         if (role === null) return;
         const tag = getElementType(node, context.settings);
@@ -94,6 +131,7 @@ export const noRedundantRoles = defineRule({
         // `<a role="link">` without `href` (no implicit role at all).
         let implicitRoles: ReadonlyArray<string>;
         if (tag === "td" || tag === "th") {
+          if (findSameFileTableContext(node, context.settings) !== "table") return;
           implicitRoles = [getTableCellPrimaryRole(node, tag)];
         } else if (ATTRIBUTE_DEPENDENT_IMPLICIT_ROLE_TAGS.has(tag)) {
           implicitRoles = [getImplicitRole(node, tag)].filter(

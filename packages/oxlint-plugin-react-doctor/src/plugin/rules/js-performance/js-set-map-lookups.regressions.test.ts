@@ -158,4 +158,79 @@ describe("js-performance/js-set-map-lookups — regressions", () => {
       `function f(bindings, key){ for (const binding of bindings){ if (splitHotkeyBinding(binding).includes(key)) return binding; } }`,
     );
   });
+
+  it("does not flag an OUTER-loop per-item receiver inside a nested loop", () => {
+    expectPass(
+      `function f(allCountries, regions){ return allCountries.filter((country) => regions.map((region) => country.regions.includes(region)).some((el) => el)); }`,
+    );
+  });
+
+  it("does not flag a constant record indexed by the iteration binding", () => {
+    expectPass(
+      `function f(backends){ return Object.keys(BACKEND_URLS).find((key) => backends && BACKEND_URLS[key].includes(backends[0])); }`,
+    );
+  });
+
+  it("still flags a loop-invariant array indexed by an OUTER constant", () => {
+    expectFail(
+      `function f(groups, ids, bucket){ return ids.filter((id) => groups[bucket].includes(id)); }`,
+    );
+  });
+
+  // Delta-verify new FP (PortOS AppOverrideRow): the enclosing map iterates
+  // AGENT_OPTIONS, a tiny module-constant enum — the lookup runs a fixed
+  // handful of times, so a hoisted Set cannot beat the scan.
+  it("does not flag a lookup whose only enclosing loop iterates a SCREAMING_SNAKE_CASE constant", () => {
+    expectPass(
+      `const Row = ({ managedAgentOptions }) => (
+        <div>
+          {AGENT_OPTIONS.map(({ field, label }) => {
+            const managed = managedAgentOptions?.includes(field);
+            return <button key={field} disabled={managed}>{label}</button>;
+          })}
+        </div>
+      );`,
+    );
+  });
+
+  it("does not flag a lookup inside a map over a small resolved constant array literal", () => {
+    expectPass(
+      `const MODES = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+      const f = (enabled) => MODES.map((mode) => enabled.includes(mode.id));`,
+    );
+  });
+
+  it("still flags when an unbounded outer loop wraps the constant-enum map", () => {
+    expectFail(
+      `function f(rows, enabled){ return rows.map((row) => AGENT_OPTIONS.map((option) => enabled.includes(row.id + option))); }`,
+    );
+  });
+
+  it("still flags a lookup inside a map over unbounded data", () => {
+    expectFail(
+      `function f(items, allowlist){ return items.map((item) => allowlist.includes(item.id)); }`,
+    );
+  });
+
+  // Delta-verify new FP (eBay evo-web filterByType): `[componentType].flat()`
+  // is the normalize-to-array idiom — a 1-2 element list probed per child is
+  // cheaper than building a Set.
+  it("does not flag a receiver resolving to a `.flat()` of a tiny array literal", () => {
+    expectPass(
+      `export function filterByType(nodes = [], componentType) {
+        const elements = Children.toArray(nodes);
+        const types = [componentType].flat();
+        return elements.filter(({ type }) => types.includes(type));
+      }`,
+    );
+  });
+
+  it("still flags a receiver resolving to a `.flat()` of an unbounded array", () => {
+    expectFail(
+      `function f(elements, groups) {
+        const types = groups.flat();
+        return elements.filter((element) => types.includes(element.type));
+      }`,
+    );
+  });
 });

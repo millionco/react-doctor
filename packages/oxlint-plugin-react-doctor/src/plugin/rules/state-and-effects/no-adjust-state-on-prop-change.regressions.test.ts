@@ -301,4 +301,205 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  describe("delta audit vs 0.7.1", () => {
+    it("stays silent on an object-URL lifecycle effect with revoke cleanup (mezzanine UploadPictureCard)", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `const UploadPictureCard = forwardRef(function UploadPictureCard({ file, url, isImage }, ref) {
+          const [imageUrl, setImageUrl] = useState('');
+          useEffect(() => {
+            if (url && isImage) {
+              setImageUrl(url);
+              return undefined;
+            }
+            if (file && isImage) {
+              try {
+                const blobUrl = URL.createObjectURL(file);
+                setImageUrl(blobUrl);
+                return () => {
+                  URL.revokeObjectURL(blobUrl);
+                };
+              } catch (error) {
+                setImageUrl('');
+              }
+            } else {
+              setImageUrl('');
+            }
+            return undefined;
+          }, [file, url, isImage]);
+          return null;
+        });`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on a batch object-URL preview map with revoke cleanup (open-design HomeHero)", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function HomeHero({ stagedFiles }) {
+          const [stagedFilePreviewUrls, setStagedFilePreviewUrls] = useState(new Map());
+          useEffect(() => {
+            const urls = new Map();
+            stagedFiles.forEach((file, index) => {
+              if (isImageFile(file)) urls.set(homeFileKey(file, index), URL.createObjectURL(file));
+            });
+            setStagedFilePreviewUrls(urls);
+            return () => {
+              urls.forEach((url) => URL.revokeObjectURL(url));
+            };
+          }, [stagedFiles]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on a readiness latch whose deps are local state seeded from a prop (mezzanine CropperElement)", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `const CropperElement = forwardRef(function CropperElement({ initialCropArea, src }, ref) {
+          const [cropArea, setCropArea] = useState(initialCropArea || null);
+          const [imageLoaded, setImageLoaded] = useState(false);
+          const [initReady, setInitReady] = useState(false);
+          const lastCanvasSizeRef = useRef(null);
+          useEffect(() => {
+            if (!imageLoaded || !cropArea) return;
+            if (!lastCanvasSizeRef.current) return;
+            setInitReady(true);
+          }, [cropArea, imageLoaded]);
+          return null;
+        });`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on async loading lifecycle behind a scheduler wrapper with cancellation cleanup (freecut compound-clip-waveform)", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function CompoundClipWaveform({ isVisible, mediaIds, sourceDuration }) {
+          const [waveformsByMediaId, setWaveformsByMediaId] = useState(new Map());
+          const [isLoading, setIsLoading] = useState(false);
+          const [hasError, setHasError] = useState(false);
+          const requestTokenRef = useRef(0);
+          useEffect(() => {
+            requestTokenRef.current += 1;
+            const requestToken = requestTokenRef.current;
+            if (!isVisible || mediaIds.length === 0) {
+              setWaveformsByMediaId(new Map());
+              setIsLoading(false);
+              setHasError(false);
+              return;
+            }
+            let cancelled = false;
+            setIsLoading(true);
+            setHasError(false);
+            const cancelScheduledStart = schedulePreviewWork(() => {
+              void Promise.allSettled(
+                mediaIds.map(async (mediaId) => {
+                  const blobUrl = await resolveMediaUrl(mediaId);
+                  return [mediaId, blobUrl];
+                }),
+              ).then((results) => {
+                if (cancelled || requestToken !== requestTokenRef.current) return;
+                setWaveformsByMediaId(new Map(results));
+                setHasError(false);
+                setIsLoading(false);
+              });
+            });
+            return () => {
+              cancelled = true;
+              cancelScheduledStart();
+            };
+          }, [isVisible, mediaIds, sourceDuration]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a constant reset keyed on a prop dep even when another effect uses state deps", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function List({ items }) {
+          const [selection, setSelection] = useState(null);
+          useEffect(() => {
+            setSelection(null);
+          }, [items]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
+
+    it("still flags a two-phase timer toggle even when nested one wrapper deep (no promise flow beneath)", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function Sheet({ isOpen }) {
+          const [isAnimating, setIsAnimating] = useState(false);
+          useEffect(() => {
+            setIsAnimating(true);
+            const cancel = scheduleWork(() => {
+              setTimeout(() => setIsAnimating(false), 300);
+            });
+            return () => cancel();
+          }, [isOpen]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("docs-validation round 2", () => {
+    it("stays silent on an async probe whose on* handler assignments set the same state (psysonic artistHero)", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function ArtistHeroCover({ artistInfo }) {
+          const [externalUrl, setExternalUrl] = useState('');
+          const [externalFailed, setExternalFailed] = useState(false);
+          const candidateUrl = artistInfo?.largeImageUrl ?? '';
+          useEffect(() => {
+            setExternalFailed(false);
+            setExternalUrl('');
+            if (!candidateUrl) return;
+            let cancelled = false;
+            const probe = new Image();
+            probe.onload = () => { if (!cancelled) setExternalUrl(candidateUrl); };
+            probe.onerror = () => { if (!cancelled) setExternalFailed(true); };
+            probe.src = candidateUrl;
+            return () => { cancelled = true; };
+          }, [candidateUrl]);
+          return externalUrl;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a sync reset when the on* handler sets a DIFFERENT state", () => {
+      const result = runRule(
+        noAdjustStateOnPropChange,
+        `function Cover({ url }) {
+          const [failed, setFailed] = useState(false);
+          const [cleared, setCleared] = useState(false);
+          useEffect(() => {
+            setCleared(false);
+            const probe = new Image();
+            probe.onerror = () => setFailed(true);
+            probe.src = url;
+          }, [url]);
+          return failed || cleared;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
 });

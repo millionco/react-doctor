@@ -129,6 +129,16 @@ describe("dependency-tooling", () => {
       "@tauri-apps/cli",
       "@tinacms/cli",
       "@typescript/native-preview",
+      // static bin fallback (no node_modules entry): `copy-styles` runs the
+      // `cpy` bin that cpy-cli ships.
+      "cpy-cli",
+      // static bin fallback: `test:browser` runs `playwright test`, which
+      // drives the browser that playwright-chromium downloads at install.
+      "playwright-chromium",
+      // static peer fallback: axe-core is vitest-axe's peer dependency and
+      // vitest-axe is imported.
+      "axe-core",
+      "vitest-axe",
       "babel-eslint",
       "chart.js",
       "chokidar-cli",

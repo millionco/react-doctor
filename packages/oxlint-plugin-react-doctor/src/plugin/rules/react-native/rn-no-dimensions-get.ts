@@ -1,9 +1,12 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findDeclaratorForBinding } from "../../utils/find-declarator-for-binding.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { flattenCalleeName } from "../../utils/flatten-callee-name.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { getInitializerModuleSource } from "../../utils/get-initializer-module-source.js";
+import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -36,6 +39,22 @@ const isBindingReactNativeDimensions = (node: EsTreeNode, binding: BindingInfo):
   return getInitializerModuleSource(node, declaratorInitializer) === "react-native";
 };
 
+// Theme-aware stylesheet factories (`makeStyles`, `createStyles`,
+// `createUseStyles`) evaluate their callback once and cache the result, so a
+// Dimensions.get() inside one behaves like a module-level static style
+// constant — the doc's explicit false-positive carve-out.
+const STYLE_FACTORY_CALLEE_PATTERN = /(?:^|\.)(?:make|create)(?:Use)?Styles$/;
+
+const isInsideStyleFactoryCallback = (node: EsTreeNode): boolean => {
+  const enclosingFunction = findEnclosingFunction(node);
+  if (!enclosingFunction) return false;
+  const callExpression = enclosingFunction.parent;
+  if (!callExpression || !isNodeOfType(callExpression, "CallExpression")) return false;
+  if (!callExpression.arguments?.some((argument) => argument === enclosingFunction)) return false;
+  const calleeName = flattenCalleeName(callExpression.callee);
+  return calleeName !== null && STYLE_FACTORY_CALLEE_PATTERN.test(calleeName);
+};
+
 export const rnNoDimensionsGet = defineRule({
   id: "rn-no-dimensions-get",
   title: "Dimensions.get over useWindowDimensions",
@@ -60,6 +79,12 @@ export const rnNoDimensionsGet = defineRule({
       if (binding !== null && !isBindingReactNativeDimensions(node, binding)) return;
 
       if (isMemberProperty(node.callee, "get")) {
+        // One-shot module-level reads (static style constants) are the doc's
+        // FP carve-out; the staleness claim only holds inside code that runs
+        // per render. `addEventListener` below stays unguarded — the removed
+        // API crashes regardless of where it's called.
+        if (!isInsideFunctionScope(node)) return;
+        if (isInsideStyleFactoryCallback(node)) return;
         context.report({
           node,
           message:

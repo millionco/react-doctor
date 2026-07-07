@@ -637,6 +637,100 @@ describe("rerender-state-only-in-handlers — verified FP regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  // portos VideoGen (delta audit): `runningQueueId` marks the busy slot of an
+  // effect-driven dequeue loop. The effect guards on it, claims it
+  // synchronously, and releases it from async continuations (`.finally`, a
+  // BUSY-retry timer) — each release re-renders and re-runs the effect to
+  // dispatch the next queued item. A ref would freeze the queue.
+  it("stays silent on an async dequeue loop whose setter is also cleared from nested callbacks (portos VideoGen)", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `function VideoGen() {
+        const [queue, setQueue] = useState([]);
+        const [generating, setGenerating] = useState(false);
+        const [runningQueueId, setRunningQueueId] = useState(null);
+        useEffect(() => {
+          if (generating || runningQueueId) return;
+          const next = queue.find((item) => item.status === 'pending');
+          if (!next) return;
+          setRunningQueueId(next.id);
+          setQueue((q) => q.map((item) => item.id === next.id ? { ...item, status: 'running' } : item));
+          let busyRetry = false;
+          let busyRetryTimer = null;
+          runGeneration(next.params).then((res) => {
+            setQueue((q) => q.map((item) => item.id === next.id ? { ...item, status: 'complete', result: res } : item));
+          }).catch((err) => {
+            if (isBusyError(err)) {
+              busyRetry = true;
+              busyRetryTimer = setTimeout(() => setRunningQueueId((curr) => (curr === next.id ? null : curr)), 1500);
+              return;
+            }
+            setQueue((q) => q.map((item) => item.id === next.id ? { ...item, status: 'error' } : item));
+          }).finally(() => {
+            if (!busyRetry) setRunningQueueId(null);
+          });
+          return () => { if (busyRetryTimer) clearTimeout(busyRetryTimer); };
+        }, [queue, generating, runningQueueId]);
+        return <div>{queue.length} queued{generating ? ' (generating)' : ''}</div>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // lumina-note PDFThumbnails (delta audit recall regression): visibleRange
+  // is never rendered; its only reads are \`currentPage < visibleRange.start\`
+  // comparisons inside the guard of the very effect that sets it. A guard
+  // read is not payload consumption — the self-echo must stay flagged.
+  it("still flags state whose member reads live only in its own effect's guard tests (lumina PDFThumbnails)", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `function PDFThumbnails({ numPages, currentPage, onPageClick }) {
+        const [visibleRange, setVisibleRange] = useState({ start: 1, end: 10 });
+        useEffect(() => {
+          if (currentPage < visibleRange.start) {
+            setVisibleRange({
+              start: Math.max(1, currentPage - 2),
+              end: Math.min(numPages, currentPage + 7),
+            });
+          } else if (currentPage > visibleRange.end) {
+            setVisibleRange({
+              start: Math.max(1, currentPage - 7),
+              end: Math.min(numPages, currentPage + 2),
+            });
+          }
+        }, [currentPage, numPages, visibleRange]);
+        return (
+          <div>
+            {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
+              <div key={pageNum} onClick={() => onPageClick(pageNum)}>{pageNum}</div>
+            ))}
+          </div>
+        );
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("visibleRange");
+  });
+
+  it("stays silent when the effect consumes the payload outside its guard even with a sync self-write", () => {
+    const result = runRule(
+      rerenderStateOnlyInHandlers,
+      `function HandoffPane({ plugins }) {
+        const [pendingHandoff, setPendingHandoff] = useState(null);
+        useEffect(() => {
+          if (!pendingHandoff) return;
+          routePluginUse(pendingHandoff.pluginId, pendingHandoff.action);
+          setPendingHandoff(null);
+        }, [pendingHandoff, plugins]);
+        return <button onClick={() => setPendingHandoff({ pluginId: 'a', action: 'run' })}>go</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent when reads inside a rendered nested component consume the state (innovaccer StoryComp)", () => {
     const result = runRule(
       rerenderStateOnlyInHandlers,

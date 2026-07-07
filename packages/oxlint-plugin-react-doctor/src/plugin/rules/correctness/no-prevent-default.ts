@@ -229,6 +229,69 @@ const containsScrollOrFocusCall = (handlerExpression: EsTreeNode): boolean => {
   return didFindScrollOrFocus;
 };
 
+// A controlled form — a native <input>/<textarea>/<select> with both
+// `value` and `onChange` inside the same <form> — keeps every field in
+// React state; that is react.dev's own documented client-form pattern,
+// and rewriting it as `<form action={serverAction}>` means abandoning
+// controlled inputs entirely, not just moving the handler. When the
+// inline onSubmit is additionally SYNCHRONOUS (no async/await/.then),
+// there is no network mutation in the handler to move into a server
+// action — the submit only forwards client state — so the advice
+// cannot apply. Async submit handlers on controlled forms (a real
+// mutation awaited inline) keep firing.
+// Controlled means "carries both value and onChange" — the attribute
+// pair defines the pattern whether the field is a native <input> or a
+// design-system wrapper (<Input>, <TextField>). Form-library fields
+// (TanStack's <form.AppField name=...>) carry neither, so library-driven
+// forms are NOT exempted by this check.
+const containsControlledInput = (formOpeningElement: EsTreeNode): boolean => {
+  const formElement = formOpeningElement.parent;
+  if (!formElement || !isNodeOfType(formElement, "JSXElement")) return false;
+  let didFindControlledInput = false;
+  walkAst(formElement, (child) => {
+    if (didFindControlledInput) return;
+    if (!isNodeOfType(child, "JSXOpeningElement")) return;
+    if ((child as unknown) === (formOpeningElement as unknown)) return;
+    const attributes = child.attributes ?? [];
+    if (findJsxAttribute(attributes, "value") && findJsxAttribute(attributes, "onChange")) {
+      didFindControlledInput = true;
+    }
+  });
+  return didFindControlledInput;
+};
+
+const containsAsynchronousWork = (handlerExpression: EsTreeNode): boolean => {
+  if (isFunctionLike(handlerExpression) && handlerExpression.async === true) return true;
+  let didFindAsynchronousWork = false;
+  walkAst(handlerExpression, (child) => {
+    if (didFindAsynchronousWork) return;
+    if (isNodeOfType(child, "AwaitExpression")) {
+      didFindAsynchronousWork = true;
+      return;
+    }
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "MemberExpression") &&
+      isNodeOfType(child.callee.property, "Identifier") &&
+      child.callee.property.name === "then"
+    ) {
+      didFindAsynchronousWork = true;
+    }
+  });
+  return didFindAsynchronousWork;
+};
+
+// An `<a role="button">` declares itself an anchor-as-button: the
+// preventDefault is part of emulating button semantics (with keyboard
+// handling), so "your users click this <a> & nothing navigates" is the
+// intended behavior, not a dead link. Semantics belong to the a11y
+// rules (prefer-tag-over-role), not this one.
+const hasLiteralRoleButton = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  const roleAttribute = findJsxAttribute(node.attributes ?? [], "role");
+  if (!roleAttribute?.value) return false;
+  return isNodeOfType(roleAttribute.value, "Literal") && roleAttribute.value.value === "button";
+};
+
 export const noPreventDefault = defineRule({
   id: "no-prevent-default",
   title: "preventDefault on a form or link",
@@ -284,6 +347,8 @@ export const noPreventDefault = defineRule({
         // without JS" advice is false here — only flag action-less forms.
         if (elementName === "form" && findJsxAttribute(node.attributes ?? [], "action")) return;
 
+        if (elementName === "a" && hasLiteralRoleButton(node)) return;
+
         for (const targetEventProp of targetEventProps) {
           const eventAttribute = findJsxAttribute(node.attributes ?? [], targetEventProp);
           if (
@@ -297,6 +362,14 @@ export const noPreventDefault = defineRule({
 
           const preventDefaultCalls = collectPreventDefaultCalls(expression);
           if (preventDefaultCalls.length === 0) continue;
+
+          if (
+            elementName === "form" &&
+            !containsAsynchronousWork(expression) &&
+            containsControlledInput(node)
+          ) {
+            continue;
+          }
 
           if (elementName === "a") {
             // Every preventDefault() sits behind a condition — a

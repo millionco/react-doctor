@@ -386,11 +386,17 @@ export const isSyncStateSetterCall = (
 export const isPropCall = (analysis: ProgramAnalysis, ref: Reference): boolean =>
   isEventualCallTo(analysis, ref, (innerRef) => isPropAlias(analysis, innerRef));
 
+const HANDLER_NAMED_METHOD_PATTERN = /^(on|handle)[A-Z]/;
+
 // A prop reference invoked AS a callback: `onEnd(x)`, an alias call, or a
 // method called on a whole (non-destructured) parameter object
 // (`props.onSave(x)`, `colorModel.equal(x)`). A data method on a destructured
 // prop value (`hrefs.find(...)`) READS the prop — it never calls back to the
 // parent, so eventual-call chains through it must not count as parent pushes.
+// A handler-bag prop is the exception: `handlers.handleUpdateProgress(x)` /
+// `callbacks.onProgress(x)` invoke a parent-supplied callback grouped under
+// an object prop, so `on[A-Z]` / `handle[A-Z]` method names stay callbacks
+// (internxt FileVideoViewer, caught by the 0.7.1→sweep delta audit).
 export const isPropCallbackInvocationRef = (analysis: ProgramAnalysis, ref: Reference): boolean => {
   if (!isPropAlias(analysis, ref)) return false;
   const identifier = ref.identifier as unknown as EsTreeNode;
@@ -400,6 +406,13 @@ export const isPropCallbackInvocationRef = (analysis: ProgramAnalysis, ref: Refe
   if (isNodeOfType(parent, "MemberExpression") && parent.object === identifier) {
     const memberParent = (parent as unknown as { parent?: EsTreeNode | null }).parent;
     if (isNodeOfType(memberParent, "CallExpression") && memberParent.callee === parent) {
+      if (
+        !parent.computed &&
+        isNodeOfType(parent.property, "Identifier") &&
+        HANDLER_NAMED_METHOD_PATTERN.test(parent.property.name)
+      ) {
+        return true;
+      }
       return isWholePropsObjectReference(analysis, ref);
     }
   }

@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noDynamicImportPath } from "./no-dynamic-import-path.js";
@@ -246,12 +249,16 @@ describe("bundle-size/no-dynamic-import-path — regressions", () => {
     expect(diagnostics).toHaveLength(0);
   });
 
-  it("still flags a scoped-package template path", () => {
+  // Docs-validation wave: a scoped-package specifier with a static directory
+  // before the hole gets the same webpack context-module treatment as
+  // `./locales/${lang}` — a plain-string path is impossible for runtime locale
+  // loading (lobe-ui EmojiPicker shape), so it must not be flagged.
+  it("stays silent on a scoped-package template path with a static directory", () => {
     const { diagnostics } = runRule(
       noDynamicImportPath,
       "const loadI18n = (locale) => import(`@emoji-mart/data/i18n/${locale}.json`);",
     );
-    expect(diagnostics.length).toBeGreaterThan(0);
+    expect(diagnostics).toHaveLength(0);
   });
 
   // Verify wave: probing an installed package's manifest version is a Node
@@ -264,11 +271,60 @@ describe("bundle-size/no-dynamic-import-path — regressions", () => {
     expect(diagnostics).toHaveLength(0);
   });
 
-  it("still flags a bare-package template require in browser code", () => {
+  // Docs-validation wave: same context-module carve-out for a bare package
+  // specifier — `require(\`react-intl/locale-data/${locale}\`)` resolves to a
+  // context over the locale-data dir, and plain-string paths would ship the
+  // exact same bytes (cboard i18n shape).
+  it("stays silent on a bare-package template require with a static directory", () => {
     const { diagnostics } = runRule(
       noDynamicImportPath,
       "const loadLocale = (locale) => require(`react-intl/locale-data/${locale}`);",
     );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a package-root template whose hole immediately follows the package name", () => {
+    const { diagnostics } = runRule(
+      noDynamicImportPath,
+      "const loadPlugin = (name) => import(`some-pkg/${name}`);",
+    );
     expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // Docs-validation wave: `/* webpackIgnore: true */` + `/* @vite-ignore */`
+  // explicitly opt the import out of bundling — runtime plugin scripts have no
+  // chunk the bundler could ever split (react-cosmos playground shape).
+  it("stays silent on an import annotated with webpackIgnore/@vite-ignore", () => {
+    const directory = mkdtempSync(join(tmpdir(), "no-dynamic-import-path-annotation-"));
+    const filename = join(directory, "playground.tsx");
+    const code = `async function loadPluginScript(scriptPath: string) {
+  const normalizedPath = scriptPath.startsWith("/") ? scriptPath : \`/\${scriptPath}\`;
+  await import(
+    /* webpackIgnore: true */
+    /* @vite-ignore */
+    \`./_plugin\${normalizedPath}\`
+  );
+}`;
+    writeFileSync(filename, code);
+    try {
+      const { diagnostics } = runRule(noDynamicImportPath, code, { filename });
+      expect(diagnostics).toHaveLength(0);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("still flags an unannotated import in a file that annotates a different import", () => {
+    const directory = mkdtempSync(join(tmpdir(), "no-dynamic-import-path-annotation-"));
+    const filename = join(directory, "loader.tsx");
+    const code = `export const loadRemote = (url: string) => import(/* @vite-ignore */ url);
+export const loadLocal = (name: string) => import(\`./\${name}/index.js\`);`;
+    writeFileSync(filename, code);
+    try {
+      const { diagnostics } = runRule(noDynamicImportPath, code, { filename });
+      expect(diagnostics).toHaveLength(1);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

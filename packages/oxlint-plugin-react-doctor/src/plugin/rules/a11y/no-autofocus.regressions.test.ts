@@ -132,4 +132,26 @@ describe("a11y/no-autofocus regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  // glific Variables/InlineInput: `autoFocus` on a design-system
+  // wrapper (MUI TextField). The default `ignoreNonDOM: true` skips
+  // PascalCase components deliberately — the wrapper owns how/when to
+  // focus, and its internal `<input autoFocus />` is where the rule
+  // enforces. Matches jsx-a11y's multi-year default.
+  it("does not flag autoFocus on a PascalCase design-system component (glific corpus shape)", () => {
+    const result = runRule(
+      noAutofocus,
+      `export const InlineInput = ({ label, setInputVal }) => (
+        <div>
+          <TextField
+            label={label}
+            fullWidth
+            onChange={(event) => setInputVal(event.target.value)}
+            autoFocus
+          />
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

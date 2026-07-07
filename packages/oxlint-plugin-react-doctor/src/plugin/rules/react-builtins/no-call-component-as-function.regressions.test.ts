@@ -112,6 +112,88 @@ describe("react-builtins/no-call-component-as-function — regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  // BoldedText(text, highlight) — a PascalCase formatter taking positional
+  // args is not a component; there is no props object to render with.
+  it("stays silent on a multi-parameter PascalCase helper called positionally (glific BoldedText)", () => {
+    const result = runRule(
+      noCallComponentAsFunction,
+      `
+      const BoldedText = (text, highlight) => <span>{text}{highlight}</span>;
+      const Row = ({ body, term }) => <div>{BoldedText(body, term)}</div>;
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  // Direct-calling an async server component is the deliberate RSC pattern;
+  // async components cannot own hooks or fiber state.
+  it("stays silent on a direct call of an async component (renoun TokensAsync)", () => {
+    const result = runRule(
+      noCallComponentAsFunction,
+      `
+      import { Suspense } from "react";
+      async function TokensAsync(props) {
+        return <code>{props.children}</code>;
+      }
+      export function Tokens(props) {
+        if (process.env.NODE_ENV === "production") {
+          return TokensAsync(props);
+        }
+        return <Suspense><TokensAsync {...props} /></Suspense>;
+      }
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  // useCallback(() => MenuIcon({ isChildrenVisible }), [deps]) builds an
+  // adapter component — the call runs during the adapter's render, inside
+  // React, so hook-free callees are safe there.
+  it("stays silent on hook-free components called inside useCallback adapters (innovaccer MenuItem)", () => {
+    const result = runRule(
+      noCallComponentAsFunction,
+      `
+      import * as React from "react";
+      const MenuIcon = ({ open }) => <i>{open ? "up" : "down"}</i>;
+      const MenuPills = ({ count }) => <b>{count}</b>;
+      export const MenuItem = ({ menu, isChildrenVisible, customItemRenderer }) => {
+        const MenuIconFn = React.useCallback(() => MenuIcon({ open: isChildrenVisible }), [isChildrenVisible]);
+        const MenuPillsFn = React.useCallback(
+          () => (menu.count !== undefined ? MenuPills({ count: menu.count }) : <></>),
+          [menu.count],
+        );
+        if (customItemRenderer) {
+          return customItemRenderer({ MenuIcon: MenuIconFn, MenuPills: MenuPillsFn });
+        }
+        return <div><MenuIcon open={isChildrenVisible} /><MenuPills count={menu.count} /></div>;
+      };
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a hook-owning component called inside a useCallback adapter", () => {
+    const result = runRule(
+      noCallComponentAsFunction,
+      `
+      import * as React from "react";
+      const Counter = () => {
+        const [count, setCount] = React.useState(0);
+        return <button onClick={() => setCount(count + 1)}>{count}</button>;
+      };
+      export const Panel = () => {
+        const CounterFn = React.useCallback(() => Counter(), []);
+        return <div><Counter />{CounterFn()}</div>;
+      };
+      `,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent on a hook-free component nested in a module-scope IIFE and never rendered", () => {
     const result = runRule(
       noCallComponentAsFunction,

@@ -2,8 +2,10 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isInteractiveElement } from "../../utils/is-interactive-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -98,6 +100,128 @@ const isFocusForwardingHandler = (attribute: EsTreeNodeOfType<"JSXAttribute">): 
   return isFocusForwardingFunctionBody((handlerFunction as { body?: EsTreeNode }).body ?? null);
 };
 
+// Items of ARIA composite widgets receive keyboard interaction from the
+// composite container (roving tabindex or aria-activedescendant per the
+// APG), not from their own key handlers — the doc's
+// keyboard-handled-elsewhere FP shape.
+const COMPOSITE_ITEM_ROLES: ReadonlySet<string> = new Set([
+  "option",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "treeitem",
+  "tab",
+  "gridcell",
+  "row",
+]);
+
+const hasCompositeItemRole = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
+  if (!roleAttribute) return false;
+  const roleValue = roleAttribute.value as EsTreeNode | null;
+  if (!roleValue || !isNodeOfType(roleValue, "Literal") || typeof roleValue.value !== "string") {
+    return false;
+  }
+  const firstRole = roleValue.value.split(/\s+/)[0];
+  return Boolean(firstRole && COMPOSITE_ITEM_ROLES.has(firstRole.toLowerCase()));
+};
+
+// Natively keyboard-activatable tags: Enter/Space on them dispatches a
+// click that bubbles to the wrapper's onClick.
+const NATIVE_ACTIVATABLE_TAGS: ReadonlySet<string> = new Set([
+  "a",
+  "button",
+  "input",
+  "select",
+  "textarea",
+  "summary",
+]);
+
+const INTERACTIVE_COMPONENT_NAME_PATTERN = /button|link|nav|anchor/i;
+
+// The doc's FP example: a wrapper whose onClick only catches clicks
+// bubbling from an inner control that already handles keyboard —
+// keyboard activation of the inner button/link dispatches a click that
+// bubbles to the wrapper, so the handler IS keyboard-reachable.
+const containsKeyboardActivatableDescendant = (element: EsTreeNode | null | undefined): boolean => {
+  if (!element || !isNodeOfType(element, "JSXElement")) return false;
+  for (const child of element.children) {
+    const childNode = child as EsTreeNode;
+    if (!isNodeOfType(childNode, "JSXElement")) continue;
+    const name = flattenJsxName(childNode.openingElement.name as EsTreeNode);
+    if (name) {
+      if (NATIVE_ACTIVATABLE_TAGS.has(name)) return true;
+      if (/^[A-Z]/.test(name) && INTERACTIVE_COMPONENT_NAME_PATTERN.test(name)) return true;
+    }
+    if (containsKeyboardActivatableDescendant(childNode)) return true;
+  }
+  return false;
+};
+
+const isTargetCurrentTargetComparison = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "BinaryExpression")) return false;
+  if (node.operator !== "===" && node.operator !== "==" && node.operator !== "!==") return false;
+  const propertyNames = [node.left as EsTreeNode, node.right as EsTreeNode].map((side) => {
+    if (!isNodeOfType(side, "MemberExpression")) return null;
+    const property = side.property as EsTreeNode;
+    return isNodeOfType(property, "Identifier") ? property.name : null;
+  });
+  return propertyNames.includes("target") && propertyNames.includes("currentTarget");
+};
+
+const containsBackdropDismissComparison = (node: EsTreeNode | null | undefined): boolean => {
+  if (!node || typeof node !== "object") return false;
+  if (isTargetCurrentTargetComparison(node)) return true;
+  const record = node as unknown as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (key === "parent") continue;
+    const value = record[key];
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (
+          item &&
+          typeof item === "object" &&
+          typeof (item as { type?: unknown }).type === "string" &&
+          containsBackdropDismissComparison(item as EsTreeNode)
+        ) {
+          return true;
+        }
+      }
+    } else if (
+      value &&
+      typeof value === "object" &&
+      typeof (value as { type?: unknown }).type === "string" &&
+      containsBackdropDismissComparison(value as EsTreeNode)
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+// A handler gated on `e.target === e.currentTarget` is the
+// click-outside/backdrop-dismiss idiom: it only reacts to clicks on the
+// backdrop itself, an action keyboard users perform via Escape instead
+// (the backdrop is never focusable).
+const isBackdropDismissHandler = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
+  const handlerFunction = resolveHandlerFunction(attribute);
+  if (!handlerFunction) return false;
+  return containsBackdropDismissComparison((handlerFunction as { body?: EsTreeNode }).body ?? null);
+};
+
+// A list item wired with hover-highlight (`onMouseEnter`) plus
+// click-select is the mouse path of a combobox/suggestion list — the
+// paired text input handles ArrowUp/Down/Enter selection.
+const isHoverSelectionListItem = (
+  tag: string,
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean =>
+  tag === "li" &&
+  Boolean(
+    hasJsxPropIgnoreCase(node.attributes, "onMouseEnter") ||
+    hasJsxPropIgnoreCase(node.attributes, "onMouseOver"),
+  );
+
 // Port of `oxc_linter::rules::jsx_a11y::click_events_have_key_events`.
 // Flags elements with `onClick` that lack a keyboard handler — only
 // applies to non-interactive HTML elements (interactive ones already
@@ -126,6 +250,14 @@ export const clickEventsHaveKeyEvents = defineRule({
         if (!onClick) return;
         if (isPureEventBlockerHandler(onClick)) return;
         if (isFocusForwardingHandler(onClick)) return;
+        // A spread can carry keyboard handlers the static check can't
+        // see (react-aria's `{...buttonProps}` from useCalendarCell,
+        // `{...rest}` on design-system options).
+        if (hasJsxSpreadAttribute(node.attributes)) return;
+        if (hasCompositeItemRole(node)) return;
+        if (isHoverSelectionListItem(tag, node)) return;
+        if (isBackdropDismissHandler(onClick)) return;
+        if (containsKeyboardActivatableDescendant(node.parent)) return;
 
         if (isHiddenFromScreenReader(node, context.settings)) return;
         // Presentational role (presentation / none) → not perceivable by AT.

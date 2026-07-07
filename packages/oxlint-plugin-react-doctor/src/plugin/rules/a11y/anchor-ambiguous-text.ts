@@ -7,6 +7,8 @@ import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-l
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
 const buildMessage = (text: string): string =>
   `Screen reader users can't tell where \`${text}\` goes, so name the destination, like "View pricing details".`;
@@ -105,7 +107,8 @@ export const anchorAmbiguousText = defineRule({
   severity: "warn",
   recommendation: "Name where a link goes. Avoid 'click here', 'learn more', and 'link'.",
   category: "Accessibility",
-  create: (context) => {
+  create: (context): RuleVisitors => {
+    if (isTestlikeFilename(context.filename)) return {};
     const settings = resolveSettings(context.settings);
     const ambiguousSet = new Set(settings.words.map((word) => word.toLowerCase()));
     return {

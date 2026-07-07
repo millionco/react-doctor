@@ -787,4 +787,136 @@ export const TocEntry = ({ id, label }: { id: string; label: string }) => (
       expect(result.diagnostics).toHaveLength(1);
     });
   });
+
+  describe('anchor-as-button with role="button" (mined cloudscape wizard-step-list FP)', () => {
+    it("stays silent on a spread anchor declaring role=button with full keyboard handling", () => {
+      const result = runRule(
+        noPreventDefault,
+        `export const StepLink = ({ status, handleInteraction }) => (
+  <a
+    role="button"
+    tabIndex={0}
+    onClick={(event) => {
+      event.preventDefault();
+      handleInteraction();
+    }}
+    onKeyDown={(event) => {
+      if (event.key === "Enter") handleInteraction();
+    }}
+    {...(status === "unvisited" ? { onClick: undefined } : {})}
+  >
+    Step
+  </a>
+);
+`,
+        { filename: "src/step-link.tsx" },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+  });
+
+  describe("controlled client forms with synchronous submit (mined openflipbook / bulwarkmail / gini FPs)", () => {
+    it("stays silent on a controlled form forwarding to a parent callback (openflipbook HintPrompt)", () => {
+      const result = runRule(
+        noPreventDefault,
+        `"use client";
+export const HintPrompt = ({ onSubmit }) => {
+  const [value, setValue] = useState("");
+  const submit = () => onSubmit(value.trim());
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <input type="text" value={value} onChange={(e) => setValue(e.target.value)} />
+      <button type="submit">Add</button>
+    </form>
+  );
+};
+`,
+        { filename: "app/components/hint-prompt.tsx", settings: nextjsSettings },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on a controlled form appending to client settings state (bulwarkmail keywords)", () => {
+      const result = runRule(
+        noPreventDefault,
+        `"use client";
+export const KeywordForm = ({ keywords, updateSetting }) => {
+  const [newKeyword, setNewKeyword] = useState("");
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const trimmed = newKeyword.trim().toLowerCase();
+        if (trimmed && !keywords.includes(trimmed)) {
+          updateSetting("keywords", [...keywords, trimmed]);
+        }
+        setNewKeyword("");
+      }}
+    >
+      <input type="text" value={newKeyword} onChange={(e) => setNewKeyword(e.target.value)} />
+      <button type="submit">Add</button>
+    </form>
+  );
+};
+`,
+        { filename: "app/components/keyword-form.tsx", settings: nextjsSettings },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a controlled form whose inline submit awaits a mutation (tracecat service accounts)", () => {
+      const result = runRule(
+        noPreventDefault,
+        `"use client";
+export const ServiceAccountForm = ({ handleSave }) => {
+  const [name, setName] = useState("");
+  return (
+    <form
+      onSubmit={async (event) => {
+        event.preventDefault();
+        await handleSave();
+      }}
+    >
+      <input value={name} onChange={(event) => setName(event.target.value)} />
+      <button type="submit">Save</button>
+    </form>
+  );
+};
+`,
+        { filename: "app/components/service-account-form.tsx", settings: nextjsSettings },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags a form-library submit without controlled inputs (umamin register form)", () => {
+      const result = runRule(
+        noPreventDefault,
+        `"use client";
+export const RegisterForm = ({ form }) => (
+  <form
+    onSubmit={(e) => {
+      e.preventDefault();
+      form.handleSubmit();
+    }}
+  >
+    <form.AppField name="username" />
+    <button type="submit">Register</button>
+  </form>
+);
+`,
+        { filename: "app/components/register-form.tsx", settings: nextjsSettings },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
 });

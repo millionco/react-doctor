@@ -89,4 +89,71 @@ describe("js-performance/js-length-check-first — regressions", () => {
       return check(x);
     }`);
   });
+
+  it("stays silent behind a De Morgan `mismatch || !every` guard", () => {
+    expectPass(`function applyUrls(oldUrls, newUrls) {
+      if (oldUrls.length !== newUrls.length || !oldUrls.every((url, index) => url === newUrls[index])) {
+        setUrls(newUrls);
+      }
+    }`);
+  });
+
+  it("stays silent behind a De Morgan guard through optional chaining", () => {
+    expectPass(`function sync(products, _products) {
+      if (
+        products.length !== _products?.length ||
+        !products.every((val, index) => val === _products?.[index])
+      ) {
+        setProducts(products);
+      }
+    }`);
+  });
+
+  it("stays silent when guarded sources are compared via sorted copies", () => {
+    expectPass(`function sameTypes(a, b) {
+      if (!a || a.length !== b.length) return false;
+      const sortedA = [...a].sort();
+      const sortedB = [...b].sort();
+      return sortedA.every((t, i) => t === sortedB[i]);
+    }`);
+  });
+
+  it("stays silent behind a relational prefix guard in the same expression", () => {
+    expectPass(`const isDescendantOf = (node, ancestor) =>
+      node.length >= ancestor.length && ancestor.every((k, i) => k === node[i]);`);
+  });
+
+  it("stays silent inside a prefix-named function", () => {
+    expectPass(`const isPrefix = (chain, other) =>
+      chain.every((id, index) => other[index] === id);`);
+  });
+
+  it("stays silent when iterating and indexing the same array", () => {
+    expectPass(`function format(strings) {
+      strings.every((string, index) => strings[index].length > 0);
+    }`);
+  });
+
+  it("stays silent when the receiver is a map of the indexed array", () => {
+    expectPass(`function unchanged(state) {
+      const updatedServers = state.servers.map((s) => update(s));
+      if (updatedServers.every((s, i) => s === state.servers[i])) return state;
+      return { servers: updatedServers };
+    }`);
+  });
+
+  it("flags a sorted copy of an UNGUARDED source", () => {
+    expectFail(`function sameTypes(a, b) {
+      const sortedA = [...a].sort();
+      const sortedB = [...b].sort();
+      return sortedA.every((t, i) => t === sortedB[i]);
+    }`);
+  });
+
+  it("flags a bounded slice of the indexed array (length not preserved)", () => {
+    expectFail(`function compare(a, b) {
+      const head = a.slice(2);
+      return head.every((value, index) => value === b[index]);
+    }`);
+  });
 });

@@ -373,6 +373,16 @@ const isSmallInlineLiteralArray = (receiver: EsTreeNode | null | undefined): boo
   if (isNodeOfType(receiver, "TSAsExpression") || isNodeOfType(receiver, "TSSatisfiesExpression")) {
     return isSmallInlineLiteralArray(receiver.expression);
   }
+  // `[componentType].flat()` — the normalize-to-array idiom: the flattened
+  // result's size is bounded by the tiny literal it started from.
+  if (
+    isNodeOfType(receiver, "CallExpression") &&
+    isNodeOfType(receiver.callee, "MemberExpression") &&
+    isNodeOfType(receiver.callee.property, "Identifier") &&
+    receiver.callee.property.name === "flat"
+  ) {
+    return isSmallInlineLiteralArray(receiver.callee.object);
+  }
   if (!isNodeOfType(receiver, "ArrayExpression")) return false;
   const elements = receiver.elements ?? [];
   if (elements.length === 0 || elements.length > SMALL_LITERAL_ARRAY_MAX_ELEMENTS) return false;
@@ -622,37 +632,107 @@ const isReceiverDeclaredInNearestLoop = (receiver: EsTreeNode, lookupCall: EsTre
 // `for (const [id, viewIds] of Object.entries(map)) { viewIds.includes(x) }`
 // or `.filter(col => col.parentGroupIds.includes(id))` — the scanned array
 // is a DIFFERENT array on every iteration and is queried once, so there is
-// no repeated lookup to hoist into a Set.
-const collectNearestLoopIterationBindingNames = (lookupCall: EsTreeNode): Set<string> => {
+// no repeated lookup to hoist into a Set. The owning loop may be an OUTER
+// one (`items.filter((country) => regions.map((r) => country.regions
+// .includes(r)))`), so every enclosing loop's bindings count.
+const collectEnclosingLoopIterationBindingNames = (lookupCall: EsTreeNode): Set<string> => {
   const iterationNames = new Set<string>();
-  const nearestLoop = findNearestLoopContext(lookupCall);
-  if (!nearestLoop) return iterationNames;
-  if (isNodeOfType(nearestLoop, "ForOfStatement") || isNodeOfType(nearestLoop, "ForInStatement")) {
-    const left = nearestLoop.left;
-    if (isNodeOfType(left, "VariableDeclaration")) {
-      for (const declarator of left.declarations ?? []) {
-        if (declarator.id) collectPatternNames(declarator.id, iterationNames);
-      }
-    } else if (left) {
-      collectPatternNames(left, iterationNames);
-    }
-    return iterationNames;
-  }
-  if (isNodeOfType(nearestLoop, "CallExpression")) {
-    const callback = nearestLoop.arguments?.[0];
-    if (isInlineFunctionExpression(callback)) {
-      for (const param of callback.params ?? []) {
-        collectPatternNames(param, iterationNames);
+  let ancestor: EsTreeNode | null | undefined = lookupCall.parent;
+  while (ancestor) {
+    if (isNodeOfType(ancestor, "ForOfStatement") || isNodeOfType(ancestor, "ForInStatement")) {
+      const left = ancestor.left;
+      if (isNodeOfType(left, "VariableDeclaration")) {
+        for (const declarator of left.declarations ?? []) {
+          if (declarator.id) collectPatternNames(declarator.id, iterationNames);
+        }
+      } else if (left) {
+        collectPatternNames(left, iterationNames);
       }
     }
+    if (isNodeOfType(ancestor, "CallExpression") && isIterationCallbackCall(ancestor)) {
+      const callback = ancestor.arguments?.[0];
+      if (isInlineFunctionExpression(callback)) {
+        for (const param of callback.params ?? []) {
+          collectPatternNames(param, iterationNames);
+        }
+      }
+    }
+    ancestor = ancestor.parent;
   }
   return iterationNames;
 };
 
+// Root identifier plus every computed-index identifier along the member
+// chain: `BACKEND_URLS[key]` depends on both `BACKEND_URLS` and `key`.
+const collectReceiverDependencyNames = (receiver: EsTreeNode): Set<string> => {
+  const dependencyNames = new Set<string>();
+  let current = stripParenExpression(receiver);
+  while (isNodeOfType(current, "MemberExpression")) {
+    if (current.computed && isNodeOfType(current.property, "Identifier")) {
+      dependencyNames.add(current.property.name);
+    }
+    current = stripParenExpression(current.object);
+  }
+  if (isNodeOfType(current, "Identifier")) dependencyNames.add(current.name);
+  return dependencyNames;
+};
+
 const isPerIterationReceiver = (receiver: EsTreeNode, lookupCall: EsTreeNode): boolean => {
-  const rootName = getReceiverRootIdentifierName(receiver);
-  if (!rootName) return false;
-  return collectNearestLoopIterationBindingNames(lookupCall).has(rootName);
+  const dependencyNames = collectReceiverDependencyNames(receiver);
+  if (dependencyNames.size === 0) return false;
+  const iterationNames = collectEnclosingLoopIterationBindingNames(lookupCall);
+  for (const dependencyName of dependencyNames) {
+    if (iterationNames.has(dependencyName)) return true;
+  }
+  return false;
+};
+
+const getIteratedCollection = (loopContext: EsTreeNode): EsTreeNode | null => {
+  if (isNodeOfType(loopContext, "ForOfStatement") || isNodeOfType(loopContext, "ForInStatement")) {
+    return loopContext.right as EsTreeNode;
+  }
+  if (
+    isNodeOfType(loopContext, "CallExpression") &&
+    isNodeOfType(loopContext.callee, "MemberExpression")
+  ) {
+    return loopContext.callee.object as EsTreeNode;
+  }
+  return null;
+};
+
+const isBoundedConstantCollection = (collection: EsTreeNode): boolean => {
+  const stripped = stripParenExpression(collection);
+  if (isScreamingSnakeCaseConstantReceiver(stripped)) return true;
+  if (isSmallInlineLiteralArray(stripped)) return true;
+  if (isNodeOfType(stripped, "Identifier")) {
+    const initializer = getResolvedInitializer(stripped);
+    if (initializer && isSmallInlineLiteralArray(initializer)) return true;
+  }
+  return false;
+};
+
+// `AGENT_OPTIONS.map(({ field }) => managed?.includes(field))` — when EVERY
+// enclosing loop iterates a fixed module constant (SCREAMING_SNAKE_CASE
+// name or a small array literal), the lookup runs a small bounded number of
+// times: total work is O(k·n) for constant k, which a hoisted Set cannot
+// beat — building it already costs O(n). Any unbounded enclosing loop
+// (plain for/while, or iteration over data) voids the bound and keeps the
+// diagnostic.
+const isLookupBoundedByConstantIteration = (lookupCall: EsTreeNode): boolean => {
+  let sawBoundedLoop = false;
+  let ancestor: EsTreeNode | null | undefined = lookupCall.parent;
+  while (ancestor) {
+    const isLoopStatement = LOOP_CONTEXT_STATEMENT_TYPES.has(ancestor.type);
+    const isCallbackLoop =
+      isNodeOfType(ancestor, "CallExpression") && isIterationCallbackCall(ancestor);
+    if (isLoopStatement || isCallbackLoop) {
+      const collection = getIteratedCollection(ancestor);
+      if (!collection || !isBoundedConstantCollection(collection)) return false;
+      sawBoundedLoop = true;
+    }
+    ancestor = ancestor.parent;
+  }
+  return sawBoundedLoop;
 };
 
 export const jsSetMapLookups = defineRule({
@@ -707,6 +787,7 @@ export const jsSetMapLookups = defineRule({
       if (isStringElementOfSplitIteration(receiver)) return;
       if (isReceiverDeclaredInNearestLoop(receiver, node)) return;
       if (isPerIterationReceiver(receiver, node)) return;
+      if (isLookupBoundedByConstantIteration(node)) return;
       // `splitHotkeyBinding(b).includes(k)` — the array is rebuilt on
       // every call, so there is nothing to hoist into a Set.
       if (

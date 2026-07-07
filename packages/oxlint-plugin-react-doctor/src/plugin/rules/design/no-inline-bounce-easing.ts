@@ -6,6 +6,7 @@ import { getStylePropertyStringValue } from "./utils/get-style-property-string-v
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 const isOvershootCubicBezier = (value: string): boolean => {
   const match = value.match(
@@ -21,6 +22,26 @@ const hasBounceAnimationName = (value: string): boolean => {
   const lowerValue = value.toLowerCase();
   for (const name of BOUNCE_ANIMATION_NAMES) {
     if (lowerValue.includes(name)) return true;
+  }
+  return false;
+};
+
+// The staggered-dots typing/loading indicator: sibling dots each carry
+// `animate-bounce` plus an `animation-delay` offset (Tailwind arbitrary
+// class or inline style). The bounce wave IS the affordance — the doc's
+// fix prompt reserves bounce for playful loading idioms and only forbids
+// it for "default form, toast, or modal feedback" — so replacing it with
+// an ease-out transform would erase the component's purpose
+// (docs-validation r2: StreamingMessage / BlockPhase / ThinkingIndicator
+// three-dot indicators, flagged consistently across FP and TP reviews).
+const hasAnimationDelayStagger = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  for (const attribute of node.attributes ?? []) {
+    if (!isNodeOfType(attribute, "JSXAttribute")) continue;
+    const styleExpression = getInlineStyleExpression(attribute);
+    if (!styleExpression) continue;
+    for (const property of styleExpression.properties ?? []) {
+      if (getStylePropertyKey(property) === "animationDelay") return true;
+    }
   }
   return false;
 };
@@ -73,6 +94,8 @@ export const noInlineBounceEasing = defineRule({
       if (!classStr) return;
 
       if (/\banimate-bounce\b/.test(classStr)) {
+        if (/\[animation-delay:/.test(classStr)) return;
+        if (hasAnimationDelayStagger(node)) return;
         context.report({
           node,
           message:

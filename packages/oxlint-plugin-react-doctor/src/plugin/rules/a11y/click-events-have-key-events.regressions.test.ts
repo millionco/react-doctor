@@ -95,4 +95,93 @@ describe("a11y/click-events-have-key-events regressions", () => {
     );
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not flag a div spreading react-aria buttonProps", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const CalendarCell = ({ buttonProps, navigate }) => (
+        <div {...buttonProps} onClick={navigate} />
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a role=option item of a listbox composite", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Option = ({ selected, select, children }) => (
+        <div className="option" role="option" aria-selected={selected} onClick={select}>
+          {children}
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a hover-highlighted suggestion list item", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Suggestion = ({ index, setSelection, handleSelection, item }) => (
+        <li
+          onMouseEnter={() => setSelection(index)}
+          onClick={() => handleSelection(index)}
+        >
+          {item}
+        </li>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a backdrop dismiss handler gated on target === currentTarget", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Modal = ({ close }) => {
+        const handleBackdropClick = (e) => {
+          if (e.target === e.currentTarget) {
+            close();
+          }
+        };
+        return <div role="dialog" className="backdrop" onClick={handleBackdropClick} />;
+      };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a wrapper li bubbling clicks from an inner nav link", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Category = ({ item, path, setIsDocsNavOpen }) => (
+        <li onClick={() => setIsDocsNavOpen(false)}>
+          <NavItem item={item} path={path} />
+        </li>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a clickable cell wrapping an edit Button", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const EditableCell = ({ setOpen, children }) => (
+        <div className="editable-cell" onClick={() => setOpen(true)}>
+          <span>{children}</span>
+          <Button aria-label="edit">Edit</Button>
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a plain clickable div with static content", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `export const Card = ({ open }) => (
+        <div className="card" onClick={open}>
+          <span>Details</span>
+        </div>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

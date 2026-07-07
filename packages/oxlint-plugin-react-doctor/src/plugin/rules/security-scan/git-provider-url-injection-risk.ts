@@ -18,6 +18,13 @@ const EXTERNAL_INPUT_PATTERN =
 
 const ENCODED_INTERPOLATION_PATTERN = /encodeURIComponent\s*\(/;
 
+// `${params.toString()}` is the URLSearchParams query-string idiom — the
+// output is percent-encoded by construction (the fix this rule recommends),
+// but the bare identifier is often named `params` and trips the
+// request-shaped marker. A whole-expression `x.toString()` reads no member
+// off request input, so it is safe to skip.
+const SEARCH_PARAMS_TO_STRING_PATTERN = /^\s*[\w$]+\.toString\(\)\s*$/;
+
 const INTERPOLATION_LOOKAHEAD_CHARS = 200;
 
 export const gitProviderUrlInjectionRisk = defineRule({
@@ -39,11 +46,14 @@ export const gitProviderUrlInjectionRisk = defineRule({
       const urlTail = templateEndIndex >= 0 ? rawTail.slice(0, templateEndIndex) : rawTail;
       const hasTaintedInterpolation = Array.from(
         urlTail.matchAll(TEMPLATE_INTERPOLATION_PATTERN),
-      ).some(
-        (interpolation) =>
-          EXTERNAL_INPUT_PATTERN.test(interpolation[1] ?? "") &&
-          !ENCODED_INTERPOLATION_PATTERN.test(interpolation[1] ?? ""),
-      );
+      ).some((interpolation) => {
+        const expression = interpolation[1] ?? "";
+        return (
+          EXTERNAL_INPUT_PATTERN.test(expression) &&
+          !ENCODED_INTERPOLATION_PATTERN.test(expression) &&
+          !SEARCH_PARAMS_TO_STRING_PATTERN.test(expression)
+        );
+      });
       if (!hasTaintedInterpolation) continue;
 
       const location = getLocationAtIndex(file.content, hostMatch.index);

@@ -58,4 +58,47 @@ describe("a11y/anchor-has-content regressions", () => {
     });
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("exempts an empty `<a>` template inside Trans components", () => {
+    const result = runRule(
+      anchorHasContent,
+      `const Desc = () => (
+        <Trans
+          i18nKey="settings.audiomuseDesc"
+          components={{
+            pluginLink: (
+              <a href={AUDIOMUSE_NV_PLUGIN_URL} style={{ textDecoration: 'underline' }} />
+            ),
+          }}
+        />
+      );`,
+      { filename: "/repo/src/components/settings/ServersTab.tsx" },
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("exempts an empty `<a>` template in a Trans components value with attributes", () => {
+    const result = runRule(
+      anchorHasContent,
+      `const Answer = () => (
+        <Trans
+          i18nKey="projects.landing.faq.shoutout.answerP1"
+          components={{
+            link: <a href="https://mediabunny.dev/" target="_blank" rel="noopener noreferrer" />,
+          }}
+        />
+      );`,
+      { filename: "/repo/src/routes/index.tsx" },
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an empty `<a>` passed as a prop of a non-Trans component", () => {
+    const result = runRule(
+      anchorHasContent,
+      `const Card = () => <Widget slot={<a href="/p" />} />;`,
+      { filename: "/repo/src/components/card.tsx" },
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

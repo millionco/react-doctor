@@ -23,15 +23,41 @@ interface EffectDependencyInfo {
   dependencyNames: Set<string>;
   synchronouslyCalledFunctionNames: Set<string>;
   payloadReadNames: Set<string>;
+  nestedCallbackCalledFunctionNames: Set<string>;
 }
+
+// A read whose enclosing expression is the TEST of a conditional — the
+// `currentPage < visibleRange.start` in `if (currentPage < visibleRange.start)`
+// — feeds control flow, not a value that leaves the effect. Member reads
+// inside a guard are still guard reads (lumina PDFThumbnails, delta audit).
+const isInsideConditionTest = (identifier: EsTreeNode, stopAt: EsTreeNode): boolean => {
+  let current: EsTreeNode | null | undefined = identifier;
+  let parent = current.parent;
+  while (parent && current !== stopAt) {
+    if (
+      (isNodeOfType(parent, "IfStatement") ||
+        isNodeOfType(parent, "ConditionalExpression") ||
+        isNodeOfType(parent, "WhileStatement") ||
+        isNodeOfType(parent, "DoWhileStatement")) &&
+      (parent as { test?: EsTreeNode }).test === current
+    ) {
+      return true;
+    }
+    current = parent;
+    parent = current.parent;
+  }
+  return false;
+};
 
 // One entry per effect hook call: the root names listed in its dependency
 // array, the functions its callback invokes SYNCHRONOUSLY (nested
 // callbacks like `.then(...)` or timers are excluded — a setter called there
-// is an async trigger for the next re-run, not a same-pass echo), and the
+// is an async trigger for the next re-run, not a same-pass echo), the
 // names whose VALUE the callback actually consumes (member access or a call
-// argument, anywhere in the body). A guard-only read (`if (closing && ...)`)
-// is not a payload read.
+// argument outside guard tests), and the functions invoked from NESTED
+// callbacks (promise continuations, timers) — a setter called there
+// re-triggers the effect later, so the state drives an async loop.
+// A guard-only read (`if (closing && ...)`) is not a payload read.
 const collectEffectDependencyInfos = (
   componentBody: EsTreeNode,
   setterNames: ReadonlySet<string>,
@@ -51,6 +77,7 @@ const collectEffectDependencyInfos = (
     }
     const synchronouslyCalledFunctionNames = new Set<string>();
     const payloadReadNames = new Set<string>();
+    const nestedCallbackCalledFunctionNames = new Set<string>();
     const effectCallback = child.arguments?.[0];
     if (
       isNodeOfType(effectCallback, "ArrowFunctionExpression") ||
@@ -66,10 +93,23 @@ const collectEffectDependencyInfos = (
         }
       });
       walkAst(effectCallback.body, (bodyNode: EsTreeNode): void => {
+        if (!isNodeOfType(bodyNode, "CallExpression")) return;
+        if (!isNodeOfType(bodyNode.callee, "Identifier")) return;
+        let ancestor: EsTreeNode | null | undefined = bodyNode.parent;
+        while (ancestor && ancestor !== effectCallback.body) {
+          if (isFunctionLike(ancestor)) {
+            nestedCallbackCalledFunctionNames.add(bodyNode.callee.name);
+            return;
+          }
+          ancestor = ancestor.parent;
+        }
+      });
+      walkAst(effectCallback.body, (bodyNode: EsTreeNode): void => {
         if (!isNodeOfType(bodyNode, "Identifier")) return;
         const parent = bodyNode.parent;
         if (!parent) return;
         if (isNodeOfType(parent, "MemberExpression") && parent.object === bodyNode) {
+          if (isInsideConditionTest(bodyNode, effectCallback.body as EsTreeNode)) return;
           payloadReadNames.add(bodyNode.name);
           return;
         }
@@ -85,7 +125,12 @@ const collectEffectDependencyInfos = (
         }
       });
     }
-    effectInfos.push({ dependencyNames, synchronouslyCalledFunctionNames, payloadReadNames });
+    effectInfos.push({
+      dependencyNames,
+      synchronouslyCalledFunctionNames,
+      payloadReadNames,
+      nestedCallbackCalledFunctionNames,
+    });
   });
   return effectInfos;
 };
@@ -200,11 +245,17 @@ export const rerenderStateOnlyInHandlers = defineRule({
       const effectInfos = collectEffectDependencyInfos(componentBody, setterNames);
       const selfEchoValueNames = new Set<string>();
       for (const binding of bindings) {
+        // A setter also invoked from a NESTED callback of the same effect
+        // (`.finally(() => setRunningQueueId(null))`, a retry timer) clears
+        // the slot later and re-triggers the effect — the state drives an
+        // async dequeue loop, so the re-render is load-bearing, not an echo
+        // (portos VideoGen, delta audit).
         const hasGuardOnlySynchronousSelfWrite = effectInfos.some(
           (effectInfo) =>
             effectInfo.dependencyNames.has(binding.valueName) &&
             effectInfo.synchronouslyCalledFunctionNames.has(binding.setterName) &&
-            !effectInfo.payloadReadNames.has(binding.valueName),
+            !effectInfo.payloadReadNames.has(binding.valueName) &&
+            !effectInfo.nestedCallbackCalledFunctionNames.has(binding.setterName),
         );
         if (hasGuardOnlySynchronousSelfWrite) selfEchoValueNames.add(binding.valueName);
       }

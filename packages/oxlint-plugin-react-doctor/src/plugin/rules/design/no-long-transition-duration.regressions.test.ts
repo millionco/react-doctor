@@ -51,4 +51,50 @@ describe("design/no-long-transition-duration — regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not flag animationDuration tuning a Tailwind animate-ping loop", () => {
+    const result = run(
+      `const S = () => (
+        <span
+          className="absolute inline-flex h-full w-full animate-ping rounded-full"
+          style={{ animationDuration: '2s', animationDelay: '0.5s' }}
+        />
+      );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a one-shot `forwards` animation (auto-dismiss countdown)", () => {
+    const result = run(
+      `const S = () => <div style={{ animation: 'shrink 8s linear forwards' }} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a `forwards` status fade shorthand", () => {
+    const result = run(
+      `const S = () => <div style={{ animation: 'thinking-phase-done 2.5s ease-out forwards' }} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a long one-shot animation without forwards or infinite", () => {
+    const result = run(`const S = () => <div style={{ animation: 'slide 3s ease-out' }} />;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a long transition next to an animate-ping className", () => {
+    const result = run(
+      `const S = () => <div className="animate-ping" style={{ transition: 'opacity 2s' }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a long animationDuration without any loop signal", () => {
+    const result = run(
+      `const S = () => <div className="rounded-full" style={{ animationDuration: '2s' }} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

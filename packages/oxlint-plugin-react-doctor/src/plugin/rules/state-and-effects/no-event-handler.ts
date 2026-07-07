@@ -15,6 +15,7 @@ import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
+  getEffectFn,
   getEffectFnRefs,
   hasCleanup,
   isCustomHookParameter,
@@ -26,7 +27,15 @@ import {
 } from "./utils/effect/react.js";
 
 const SETTER_NAME_PATTERN = /^set[A-Z]/;
+// A `useReducer` dispatch preamble (`focusDispatch({ type: 'X' }); return;`)
+// is the same state-hop-then-exit shape as a setter preamble — dispatch IS
+// the reducer's setter — so early-exit consequents built from dispatches
+// are state sync, not faked event handlers.
+const DISPATCH_NAME_PATTERN = /^dispatch$|Dispatch$/;
 const HOOK_NAME_PATTERN = /^use[A-Z0-9]/;
+
+const isSetterLikeName = (name: string): boolean =>
+  SETTER_NAME_PATTERN.test(name) || DISPATCH_NAME_PATTERN.test(name);
 
 // True for the preamble forms allowed inside a pure-early-exit
 // consequent block: `setX(value)`, `setX?.(value)`, `props.onChange(value)`,
@@ -41,12 +50,12 @@ const isSetterCallExpressionStatement = (node: EsTreeNode): boolean => {
   if (isNodeOfType(expression, "CallExpression")) {
     const callee = expression.callee;
     if (isNodeOfType(callee, "Identifier")) {
-      return SETTER_NAME_PATTERN.test(callee.name);
+      return isSetterLikeName(callee.name);
     }
     if (
       isNodeOfType(callee, "MemberExpression") &&
       isNodeOfType(callee.property, "Identifier") &&
-      SETTER_NAME_PATTERN.test(callee.property.name)
+      isSetterLikeName(callee.property.name)
     ) {
       return true;
     }
@@ -106,6 +115,95 @@ const containsRefGuard = (testNode: EsTreeNode): boolean => {
   return false;
 };
 
+// A guard comparing a PREVIOUS-value holder (a `useRef` `.current` read or
+// a `usePrevious`-style opaque-hook result) against a current value is
+// transition detection — "did the prop/state change since last render" —
+// which no local event handler can observe (the parent or an external
+// source drives the change). Comparisons against literals stay reportable:
+// `state.status === 'SUBMIT'` is a plain state watch, not a prev/current
+// diff. The scan mirrors `containsRefGuard`'s traversal and deliberately
+// does NOT descend into call arguments, so comparisons inside `.some(...)`
+// callbacks (appflowy) keep firing.
+const COMPARISON_OPERATORS: ReadonlySet<string> = new Set([
+  "==",
+  "===",
+  "!=",
+  "!==",
+  "<",
+  "<=",
+  ">",
+  ">=",
+]);
+
+const isLiteralLikeNode = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "Literal") ||
+  isNodeOfType(node, "TemplateLiteral") ||
+  (isNodeOfType(node, "UnaryExpression") && isNodeOfType(node.argument, "Literal"));
+
+const isPreviousValueComparisonSide = (analysis: ProgramAnalysis, side: EsTreeNode): boolean => {
+  let current: EsTreeNode = side;
+  for (;;) {
+    if (isNodeOfType(current, "ChainExpression")) {
+      current = current.expression as EsTreeNode;
+    } else if (isNodeOfType(current, "TSNonNullExpression")) {
+      current = current.expression as EsTreeNode;
+    } else if (isNodeOfType(current, "MemberExpression")) {
+      if (
+        !current.computed &&
+        isNodeOfType(current.property, "Identifier") &&
+        current.property.name === "current" &&
+        isNodeOfType(current.object, "Identifier")
+      ) {
+        const objectRef = getRef(analysis, current.object);
+        if (objectRef && isUseRefBinding(objectRef)) return true;
+      }
+      current = current.object as EsTreeNode;
+    } else {
+      break;
+    }
+  }
+  if (!isNodeOfType(current, "Identifier")) return false;
+  const baseRef = getRef(analysis, current);
+  return Boolean(baseRef && isOpaqueHookResultBinding(baseRef));
+};
+
+const containsPreviousValueComparison = (
+  analysis: ProgramAnalysis,
+  testNode: EsTreeNode,
+): boolean => {
+  const stack: EsTreeNode[] = [testNode];
+  let budget = REF_GUARD_SCAN_BUDGET;
+  while (stack.length > 0 && budget-- > 0) {
+    const node = stack.pop()!;
+    if (isNodeOfType(node, "BinaryExpression")) {
+      if (COMPARISON_OPERATORS.has(node.operator)) {
+        const left = node.left as EsTreeNode;
+        const right = node.right as EsTreeNode;
+        if (isPreviousValueComparisonSide(analysis, left) && !isLiteralLikeNode(right)) {
+          return true;
+        }
+        if (isPreviousValueComparisonSide(analysis, right) && !isLiteralLikeNode(left)) {
+          return true;
+        }
+      }
+      stack.push(node.left as EsTreeNode, node.right as EsTreeNode);
+    } else if (isNodeOfType(node, "LogicalExpression")) {
+      stack.push(node.left as EsTreeNode, node.right as EsTreeNode);
+    } else if (isNodeOfType(node, "UnaryExpression")) {
+      stack.push(node.argument as EsTreeNode);
+    } else if (isNodeOfType(node, "ConditionalExpression")) {
+      stack.push(
+        node.test as EsTreeNode,
+        node.consequent as EsTreeNode,
+        node.alternate as EsTreeNode,
+      );
+    } else if (isNodeOfType(node, "ChainExpression")) {
+      stack.push(node.expression as EsTreeNode);
+    }
+  }
+  return false;
+};
+
 // Values returned by React's own value-producing hooks are transparent
 // derivations of their arguments (`useMemo(() => f(a), [a])` computes from
 // `a`; `useState(a)` seeds from `a`), so the upstream walk may descend into
@@ -137,6 +235,55 @@ const isOpaqueCustomHookInit = (init: EsTreeNode): boolean => {
     calleeName !== null &&
     HOOK_NAME_PATTERN.test(calleeName) &&
     !TRANSPARENT_HOOK_NAMES.has(calleeName)
+  );
+};
+
+const getDeclaratorInit = (ref: Reference): EsTreeNode | null => {
+  for (const def of ref.resolved?.defs ?? []) {
+    const node = def.node as unknown as EsTreeNode;
+    if (isNodeOfType(node, "VariableDeclarator") && node.init) return node.init as EsTreeNode;
+  }
+  return null;
+};
+
+const isOpaqueHookResultBinding = (ref: Reference): boolean => {
+  const init = getDeclaratorInit(ref);
+  return Boolean(init && isOpaqueCustomHookInit(init));
+};
+
+const isUseRefBinding = (ref: Reference): boolean => {
+  const init = getDeclaratorInit(ref);
+  return Boolean(init && getHookCalleeName(init) === "useRef");
+};
+
+const REACT_BUILTIN_HOOK_NAMES: ReadonlySet<string> = new Set([
+  "useState",
+  "useReducer",
+  "useContext",
+  "useMemo",
+  "useCallback",
+  "useRef",
+  "useDeferredValue",
+  "useTransition",
+  "useSyncExternalStore",
+  "useImperativeHandle",
+  "useLayoutEffect",
+  "useEffect",
+  "useInsertionEffect",
+  "useId",
+  "useOptimistic",
+  "useActionState",
+  "useDebugValue",
+]);
+
+const isCustomHookReturnedBinding = (ref: Reference): boolean => {
+  const init = getDeclaratorInit(ref);
+  if (!init) return false;
+  const calleeName = getHookCalleeName(init);
+  return (
+    calleeName !== null &&
+    HOOK_NAME_PATTERN.test(calleeName) &&
+    !REACT_BUILTIN_HOOK_NAMES.has(calleeName)
   );
 };
 
@@ -276,6 +423,96 @@ const isPureEarlyExitConsequent = (consequent: EsTreeNode): boolean => {
   return false;
 };
 
+const isEffectLocalBinding = (ref: Reference, effectFn: EsTreeNode): boolean =>
+  Boolean(
+    ref.resolved &&
+    ref.resolved.defs.length > 0 &&
+    ref.resolved.defs.every((def) => isAstDescendant(def.node as unknown as EsTreeNode, effectFn)),
+  );
+
+// A consequent that only declares or reassigns effect-LOCAL bindings
+// (`if (initialValue) { payload = {...} }`, `if (matches(path, cmd))
+// lastMatching = cmd`) selects a value for work that happens
+// unconditionally elsewhere in the effect. The guard is pure computation,
+// not "when X becomes truthy, do the side effect".
+const isEffectLocalWriteStatement = (
+  analysis: ProgramAnalysis,
+  statement: EsTreeNode,
+  effectFn: EsTreeNode,
+): boolean => {
+  if (isSideEffectFreeExit(statement)) return true;
+  if (isNodeOfType(statement, "VariableDeclaration")) return true;
+  if (!isNodeOfType(statement, "ExpressionStatement")) return false;
+  const expression = statement.expression as EsTreeNode;
+  if (!isNodeOfType(expression, "AssignmentExpression")) return false;
+  const left = expression.left as EsTreeNode;
+  if (!isNodeOfType(left, "Identifier")) return false;
+  const leftRef = getRef(analysis, left);
+  return Boolean(leftRef && isEffectLocalBinding(leftRef, effectFn));
+};
+
+const isLocalComputationConsequent = (
+  analysis: ProgramAnalysis,
+  ifNode: EsTreeNodeOfType<"IfStatement">,
+  effectFn: EsTreeNode,
+): boolean => {
+  const statements = getConsequentStatements(ifNode.consequent as EsTreeNode);
+  if (statements.length === 0) return false;
+  return statements.every((statement) =>
+    isEffectLocalWriteStatement(analysis, statement, effectFn),
+  );
+};
+
+// A test whose every reference resolves to a binding declared INSIDE the
+// effect (`const idx = routes.findIndex(...); if (idx >= 0) setCursor(idx)`)
+// is internal control flow over a value computed on every run — the effect
+// is not watching state through the guard, so the documented shape ("test
+// reads state or a prop") does not apply. A test mixing locals with
+// component-level state (`currPagerHeight !== pagerHeight`) still fires.
+const isEffectLocalOnlyTest = (
+  analysis: ProgramAnalysis,
+  ifNode: EsTreeNodeOfType<"IfStatement">,
+  effectFn: EsTreeNode,
+): boolean => {
+  const testRefs = getDownstreamRefs(analysis, ifNode.test as EsTreeNode);
+  if (testRefs.length === 0) return false;
+  return testRefs.every((ref) => isEffectLocalBinding(ref, effectFn));
+};
+
+// `if (leavesOnly) goToNearestLeaf()` where `goToNearestLeaf` is a
+// deps-listed useCallback: the effect re-runs on the callback's closure
+// (state, other callbacks), so the guarded call is invariant enforcement
+// across many trigger paths — no single event handler can host it. The
+// exemption is deliberately exact: one statement, zero arguments, callee
+// declared via useCallback AND named in the effect's own deps array.
+const isDepsListedCallbackInvocationConsequent = (
+  analysis: ProgramAnalysis,
+  ifNode: EsTreeNodeOfType<"IfStatement">,
+  effectNode: EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  const statements = getConsequentStatements(ifNode.consequent as EsTreeNode);
+  if (statements.length !== 1) return false;
+  const statement = statements[0];
+  if (!isNodeOfType(statement, "ExpressionStatement")) return false;
+  let expression = statement.expression as EsTreeNode;
+  if (isNodeOfType(expression, "ChainExpression")) {
+    expression = expression.expression as EsTreeNode;
+  }
+  if (!isNodeOfType(expression, "CallExpression")) return false;
+  if ((expression.arguments ?? []).length !== 0) return false;
+  const callee = expression.callee;
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const calleeRef = getRef(analysis, callee);
+  if (!calleeRef) return false;
+  const init = getDeclaratorInit(calleeRef);
+  if (!init || getHookCalleeName(init) !== "useCallback") return false;
+  const deps = effectNode.arguments?.[1];
+  if (!deps || !isNodeOfType(deps, "ArrayExpression")) return false;
+  return (deps.elements ?? []).some(
+    (element) => isNodeOfType(element, "Identifier") && element.name === callee.name,
+  );
+};
+
 // A guarded consequent that ONLY drives an imperative interface — DOM nodes
 // held in refs (`inputRef.current.focus()`), the window/document globals
 // (`window.scrollTo(0, 0)`), a service instance returned by a custom hook
@@ -406,7 +643,21 @@ const isImperativeSyncStatement = (
   }
 
   const chain = getImperativeTargetChain(target);
-  if (!chain.baseIdentifier || chain.memberDepth === 0) return false;
+  if (!chain.baseIdentifier) return false;
+  // A DIRECT call of a function returned by an opaque custom hook
+  // (`goToCell?.({...})` from `useInputState(...)`) is the same
+  // external-instance sync as a method call on a hook-returned service
+  // (`layerService.show()`) — the hook owns the semantics. useState
+  // setters and useReducer dispatches never take this path: React
+  // builtins are excluded, so state hops keep firing.
+  if (chain.memberDepth === 0) {
+    if (!isNodeOfType(expression, "CallExpression")) return false;
+    const calleeRef = getRef(analysis, chain.baseIdentifier);
+    if (!calleeRef?.resolved) return false;
+    if (isState(analysis, calleeRef) || isStateSetter(analysis, calleeRef)) return false;
+    if (PARENT_CALLBACK_NAME_PATTERN.test(chain.baseIdentifier.name)) return false;
+    return isCustomHookReturnedBinding(calleeRef);
+  }
   const baseName = chain.baseIdentifier.name;
   if (IMPERATIVE_ROOT_GLOBAL_NAMES.has(baseName)) return true;
   if (chain.passesThroughRefCurrent) return true;
@@ -527,6 +778,8 @@ export const noEventHandler = defineRule({
       if (hasCleanup(analysis, node)) return;
       const effectFnRefs = getEffectFnRefs(analysis, node);
       if (!effectFnRefs) return;
+      const effectFn = getEffectFn(analysis, node);
+      if (!effectFn) return;
 
       const ifStatementsNoElse = findDownstreamNodes(node, "IfStatement").filter(
         (ifNode) =>
@@ -535,34 +788,57 @@ export const noEventHandler = defineRule({
           !isPureEarlyExitConsequent(ifNode.consequent as EsTreeNode) &&
           !isControlledPropMirrorConsequent(analysis, ifNode) &&
           !containsRefGuard(ifNode.test as EsTreeNode) &&
+          !containsPreviousValueComparison(analysis, ifNode.test as EsTreeNode) &&
+          !isLocalComputationConsequent(analysis, ifNode, effectFn) &&
+          !isEffectLocalOnlyTest(analysis, ifNode, effectFn) &&
+          !isDepsListedCallbackInvocationConsequent(analysis, ifNode, node) &&
           !isImperativeSyncConsequent(analysis, ifNode),
       );
-      const ifTestRefs = ifStatementsNoElse.flatMap((ifNode) => {
+      const ifTestRefEntries = ifStatementsNoElse.flatMap((ifNode) => {
         if (!isNodeOfType(ifNode, "IfStatement")) return [];
+        const directTestRefs = getDownstreamRefs(analysis, ifNode.test as EsTreeNode);
+        // A guard that directly tests data returned by an opaque custom
+        // hook (`if (isEditMode && existingTask)` with `existingTask` from
+        // an SWR-style fetch hook) fires when ASYNC DATA ARRIVES — the
+        // doc's external-source carve-out. Props tested alongside are
+        // gating config the parent owns, not values a handler flipped, so
+        // prop reports from such guards are suppressed. Handler-set STATE
+        // tested by the same guard still fires.
+        const isAsyncDataGated = directTestRefs.some((ref) => isOpaqueHookResultBinding(ref));
         // A tested state driven EXCLUSIVELY by a timer / listener / observer /
         // subscription is reacting to an imperative browser event — drop that
         // ref (and the seeds only reachable through it), but keep reporting
         // the other props / handler-driven state tested by the same guard.
-        return getDownstreamRefs(analysis, ifNode.test as EsTreeNode)
+        return directTestRefs
           .filter((ref) => !(isState(analysis, ref) && isExternallyDrivenState(analysis, ref)))
-          .flatMap((ref) => getGuardUpstreamRefs(analysis, ref));
+          .flatMap((ref) => getGuardUpstreamRefs(analysis, ref))
+          .map((ref) => ({ ref, isAsyncDataGated }));
       });
 
       // Dedupe by resolved binding (not identifier identity) so a
       // single useEffect use of a prop doesn't emit one diagnostic per
-      // reference site in the file.
-      const seenBindings = new Set<unknown>();
+      // reference site in the file. A binding reached from BOTH an
+      // async-data-gated guard and a plain guard stays prop-reportable.
+      const seenBindings = new Map<unknown, { isAsyncDataGated: boolean }>();
       const seenIdentifiers = new Set<EsTreeNode>();
-      const dedupedRefs = ifTestRefs.filter((ref) => {
-        const identifier = ref.identifier as unknown as EsTreeNode;
-        if (!identifier) return false;
-        const resolved = (ref as unknown as { resolved?: unknown }).resolved;
-        if (resolved && seenBindings.has(resolved)) return false;
-        if (resolved) seenBindings.add(resolved);
-        if (seenIdentifiers.has(identifier)) return false;
+      const dedupedEntries: Array<{ ref: Reference; isAsyncDataGated: boolean }> = [];
+      for (const entry of ifTestRefEntries) {
+        const identifier = entry.ref.identifier as unknown as EsTreeNode;
+        if (!identifier) continue;
+        const resolved = (entry.ref as unknown as { resolved?: unknown }).resolved;
+        if (resolved) {
+          const seen = seenBindings.get(resolved);
+          if (seen) {
+            if (!entry.isAsyncDataGated) seen.isAsyncDataGated = false;
+            continue;
+          }
+          seenBindings.set(resolved, entry);
+        }
+        if (seenIdentifiers.has(identifier)) continue;
         seenIdentifiers.add(identifier);
-        return true;
-      });
+        dedupedEntries.push(entry);
+      }
+      const dedupedRefs = dedupedEntries.map((entry) => entry.ref);
 
       for (const ref of dedupedRefs) {
         if (isState(analysis, ref)) {
@@ -580,13 +856,14 @@ export const noEventHandler = defineRule({
           });
         }
       }
-      for (const ref of dedupedRefs) {
-        if (isProp(analysis, ref)) {
+      for (const entry of dedupedEntries) {
+        if (isProp(analysis, entry.ref)) {
           // A prop read once in a mount effect is initialization input —
           // the parent cannot re-trigger a `[]`-deps effect by changing it.
           if (isMountOnlyEffect) continue;
+          if (entry.isAsyncDataGated) continue;
           context.report({
-            node: ref.identifier as unknown as EsTreeNode,
+            node: entry.ref.identifier as unknown as EsTreeNode,
             message:
               "Faking an event handler with a prop plus a useEffect costs an extra render & runs late.",
           });

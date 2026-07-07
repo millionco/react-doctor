@@ -210,6 +210,36 @@ export const makeCard = () => Card;
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  // Delta-verify new FP (Automattic vip-design-system src/system/index.ts):
+  // the package's own public barrel imports members from child barrels only
+  // to re-export them for the library entry — consumers pull the same module
+  // graph either way, so direct-source imports save nothing.
+  it("does not flag a barrel import inside the package's own aggregation barrel", () => {
+    const result = runOnFile(
+      "index.ts",
+      `import { Button, Card } from "./components";
+import { Flex } from "./Flex";
+export { Button, Card, Flex };
+`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a file that re-exports barrel imports but also uses them at runtime", () => {
+    const result = runOnFile(
+      "index.tsx",
+      `import { Button } from "./components";
+export { Button };
+export const App = () => <Button />;
+`,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags a mixed import when the value specifier is used at runtime", () => {
     const result = runOnFile(
       "App.tsx",

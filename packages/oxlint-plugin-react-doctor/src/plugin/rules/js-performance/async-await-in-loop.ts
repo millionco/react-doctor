@@ -333,23 +333,35 @@ const isExitAwaitDependent = (
   block: EsTreeNode,
   awaitAssignedNames: ReadonlySet<string>,
 ): boolean => {
+  // `return dataUrl` / `return await op()` — an exit that carries an
+  // awaited value out of the loop is conditioned on the await by data flow.
+  if (
+    isNodeOfType(exitStatement, "ReturnStatement") &&
+    exitStatement.argument &&
+    isAwaitDependentTest(exitStatement.argument, awaitAssignedNames)
+  ) {
+    return true;
+  }
+  let isExitGuardedByAwaitIndependentCondition = false;
   let childOfAncestor: EsTreeNode = exitStatement;
   let ancestor: EsTreeNode | null | undefined = exitStatement;
   while (ancestor) {
-    if (
-      isNodeOfType(ancestor, "IfStatement") &&
-      isAwaitDependentTest(ancestor.test, awaitAssignedNames)
-    ) {
-      return true;
+    if (isNodeOfType(ancestor, "IfStatement")) {
+      if (isAwaitDependentTest(ancestor.test, awaitAssignedNames)) return true;
+      isExitGuardedByAwaitIndependentCondition = true;
     }
     // `try { return await op(); } catch { … }` — the exit only happens when
     // the awaited call succeeds, so this is a retry-until-success loop: the
-    // exit is conditioned on the await through exception control flow.
+    // exit is conditioned on the await through exception control flow. A
+    // bare exit guarded by an await-INDEPENDENT condition inside the try
+    // (`if (cancelled) return;`) is a cancellation check, not a success
+    // exit, so it doesn't make the awaits order-dependent.
     if (
       isNodeOfType(ancestor, "TryStatement") &&
       ancestor.handler &&
       childOfAncestor === ancestor.block &&
-      containsDirectAwait(ancestor.block)
+      containsDirectAwait(ancestor.block) &&
+      !isExitGuardedByAwaitIndependentCondition
     ) {
       return true;
     }

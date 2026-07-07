@@ -333,7 +333,7 @@ describe("a11y/control-has-associated-label regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("accepts a control named by its own title attribute", () => {
+  it("reports controls named only by their title attribute (doc: title is not an accepted label)", () => {
     const result = runRule(
       controlHasAssociatedLabel,
       `
@@ -346,7 +346,106 @@ describe("a11y/control-has-associated-label regressions", () => {
       `,
     );
 
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(2);
+  });
+
+  it("reports an icon-only delete button carrying only a title (PortOS corpus shape)", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        import { Trash2 } from 'lucide-react';
+
+        const ListRow = ({ onDelete, idx, disabled }) => (
+          <button
+            type="button"
+            onClick={() => onDelete(idx)}
+            disabled={disabled}
+            title="Remove row"
+            className="shrink-0 text-gray-500"
+          >
+            <Trash2 size={12} />
+          </button>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports an icon-only toggle button with a conditional title and conditional icons (Lumina-Note corpus shape)", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+
+        const ConversationList = ({ isExpanded, setIsExpanded, t }) => (
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="p-1.5 rounded-md"
+            title={isExpanded ? t.conversationList.collapseList : t.conversationList.expandList}
+          >
+            {isExpanded ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+          </button>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a conditionally rendered title-only delete button (MediaCollections corpus shape)", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        import { Trash2 } from 'lucide-react';
+
+        const MediaCollections = ({ collections, handleDelete }) => (
+          <div>
+            {collections.map((c) => (
+              <div key={c.id}>
+                {!c.synthetic && (
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(c)}
+                    className="px-1.5 py-1 rounded flex items-center gap-1"
+                    title="Delete collection"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports a title-only close button behind a logical guard (SplitEditor corpus shape)", () => {
+    const result = runRule(
+      controlHasAssociatedLabel,
+      `
+        import { X } from "lucide-react";
+
+        const SplitEditor = ({ onClose, t }) => (
+          <div className="h-9 flex items-center px-3 justify-between">
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-1 rounded transition-colors"
+                title={t.layout.closePanel}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still reports a button whose only title lives on a child span", () => {
@@ -619,7 +718,7 @@ describe("a11y/control-has-associated-label regressions", () => {
     expect(result.diagnostics).toHaveLength(3);
   });
 
-  it("still accepts icon buttons that carry an aria-label or title", () => {
+  it("still accepts icon buttons that carry an aria-label, but reports title-only ones", () => {
     const result = runRule(
       controlHasAssociatedLabel,
       `
@@ -634,7 +733,7 @@ describe("a11y/control-has-associated-label regressions", () => {
       `,
     );
 
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("still treats unknown self-closing components as potential label text", () => {

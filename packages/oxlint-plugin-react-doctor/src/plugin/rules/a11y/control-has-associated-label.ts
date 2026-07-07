@@ -792,10 +792,11 @@ export const controlHasAssociatedLabel = defineRule({
           }
         }
 
-        // `title` is a valid (last-resort) accessible-name source per
-        // the accname algorithm — only on the control itself, never
-        // via a child's title.
-        if (hasNonEmptyPropValue(hasJsxPropIgnoreCase(opening.attributes, "title"))) return;
+        // `title` is deliberately NOT accepted as a label (matching
+        // upstream jsx-a11y/oxc and the rule doc): a title-only name is
+        // invisible to sighted keyboard users and unreliable on touch
+        // screen readers, so icon-only buttons named solely by `title`
+        // must still be reported.
         if (
           supportsPlaceholderNameFallback(tagName, opening) &&
           hasNonEmptyPropValue(hasJsxPropIgnoreCase(opening.attributes, "placeholder"))

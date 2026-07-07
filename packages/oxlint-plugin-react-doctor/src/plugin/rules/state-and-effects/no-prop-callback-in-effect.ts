@@ -1,6 +1,8 @@
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { createComponentPropStackTracker } from "../../utils/create-component-prop-stack-tracker.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
@@ -13,6 +15,69 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getRef } from "./utils/effect/ast.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+
+// The ref-latch shape: the effect reads a `<ref>.current` in an
+// if-guard AND writes that same `<ref>.current`. That is the one-shot
+// completion-signal idiom (docs-validation r2: AlbumRow
+// notifyRestoreCompletePendingRef, CanonCard settledRef) — the latch
+// blocks every run but the first, so the "parent re-renders on every
+// local state change" premise is false and a Provider cannot replace a
+// completion event.
+const isRefLatchGuardedEffect = (callbackBody: EsTreeNode): boolean => {
+  const refNamesReadInGuards = new Set<string>();
+  const refNamesWritten = new Set<string>();
+  const collectCurrentReads = (expression: EsTreeNode, out: Set<string>): void => {
+    walkInsideStatementBlocks(expression, (child: EsTreeNode) => {
+      if (
+        isNodeOfType(child, "MemberExpression") &&
+        isNodeOfType(child.property, "Identifier") &&
+        child.property.name === "current" &&
+        isNodeOfType(child.object, "Identifier")
+      ) {
+        out.add(child.object.name);
+      }
+    });
+  };
+  walkInsideStatementBlocks(callbackBody, (child: EsTreeNode) => {
+    if (isNodeOfType(child, "IfStatement") && child.test) {
+      collectCurrentReads(child.test as EsTreeNode, refNamesReadInGuards);
+    }
+    if (
+      isNodeOfType(child, "AssignmentExpression") &&
+      isNodeOfType(child.left, "MemberExpression") &&
+      isNodeOfType(child.left.property, "Identifier") &&
+      child.left.property.name === "current" &&
+      isNodeOfType(child.left.object, "Identifier")
+    ) {
+      refNamesWritten.add(child.left.object.name);
+    }
+  });
+  for (const refName of refNamesReadInGuards) {
+    if (refNamesWritten.has(refName)) return true;
+  }
+  return false;
+};
+
+// An edge-triggered transition detector: one of the deps is a
+// `usePrevious(...)` binding, so the effect compares previous vs
+// current and fires the parent callback only on the transition
+// (docs-validation r2: LocalSetupPanel prevHadMissing). That is a
+// one-shot notification, not a continuous state mirror.
+const PREVIOUS_VALUE_HOOK_PATTERN = /^usePrev/i;
+
+const hasPreviousValueDep = (
+  effectNode: EsTreeNode,
+  depElements: readonly EsTreeNode[],
+): boolean => {
+  for (const element of depElements) {
+    if (!isNodeOfType(element, "Identifier")) continue;
+    const binding = findVariableInitializer(effectNode, element.name);
+    if (!binding?.initializer || !isNodeOfType(binding.initializer, "CallExpression")) continue;
+    const calleeName = getCalleeName(binding.initializer);
+    if (calleeName && PREVIOUS_VALUE_HOOK_PATTERN.test(calleeName)) return true;
+  }
+  return false;
+};
 
 // HACK: `useEffect(() => parentCallback(state.x), [state.x])` is the
 // "lift state up via callback" anti-pattern: the child owns state, then
@@ -53,6 +118,9 @@ export const noPropCallbackInEffect = defineRule({
             isNodeOfType(element, "Identifier") && !propStackTracker.isPropName(element.name),
         );
         if (stateLikeDeps.length === 0) return;
+
+        if (isRefLatchGuardedEffect(callback.body as EsTreeNode)) return;
+        if (hasPreviousValueDep(node, (depsNode.elements ?? []) as readonly EsTreeNode[])) return;
 
         // When every state-shape dep is driven by a timer / listener /
         // observer / subscription, the parent callback bridges an imperative

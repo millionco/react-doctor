@@ -68,4 +68,44 @@ describe("design/no-tiny-text — regressions", () => {
     const result = run(`const C = () => <span style={{ fontSize: '0.7rem' }}>Source label</span>;`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not flag a checkmark HTML entity glyph", () => {
+    const result = run(
+      `const C = () => <span style={{ fontWeight: 700, fontSize: 7, lineHeight: 1 }}>&#x2713;</span>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag children resolving only to an icon binding", () => {
+    const result = run(
+      `const C = ({ icon, isHovered }) => (
+        <button style={{ width: 10, height: 10, fontSize: 7 }}>
+          {isHovered ? icon : null}
+        </button>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a childless react-icons component sized via fontSize", () => {
+    const result = run(
+      `const C = () => <FaPlay className="text-white" style={{ fontSize: 8 }} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag an *Icon-named component sized via fontSize", () => {
+    const result = run(`const C = () => <ChevronIcon style={{ fontSize: 9 }} />;`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a numeric-entity DIGIT as real text", () => {
+    const result = run(`const C = () => <span style={{ fontSize: 8 }}>&#x31;&#x32;</span>;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags tiny text inside a non-icon component with children", () => {
+    const result = run(`const C = ({ label }) => <Badge style={{ fontSize: 8 }}>{label}</Badge>;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

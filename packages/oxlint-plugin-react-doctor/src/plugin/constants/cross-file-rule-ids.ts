@@ -21,7 +21,11 @@
 //     (`is-inside-node-cli-package.ts`); `prefer-dynamic-import` reads the
 //     publishable-library shape (`is-published-library-package.ts`);
 //     `rendering-hydration-mismatch-time` reads the package-platform
-//     classification to skip React Native files.
+//     classification to skip React Native files;
+//     `rn-no-legacy-shadow-styles` and `rn-style-prefer-boxshadow` read the
+//     manifest's react-native version plus `android/gradle.properties` and
+//     static Expo app configs (`is-legacy-arch-react-native-file.ts`) to stay
+//     silent on legacy-architecture apps where `boxShadow` is unsupported.
 //
 // `cross-file-rule-ids.test.ts` reproduces the transitive import-graph
 // analysis and fails if a rule reaching a cross-file primitive is missing from
@@ -37,6 +41,8 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "no-mutating-reducer-state",
   "prefer-dynamic-import",
   "rendering-hydration-mismatch-time",
+  "rn-no-legacy-shadow-styles",
   "rn-no-raw-text",
   "rn-prefer-expo-image",
+  "rn-style-prefer-boxshadow",
 ]);

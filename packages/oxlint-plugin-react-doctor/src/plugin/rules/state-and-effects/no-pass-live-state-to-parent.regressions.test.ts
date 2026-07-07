@@ -569,6 +569,198 @@ describe("no-pass-live-state-to-parent — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("flags live state handed to a handler-bag prop method (internxt FileVideoViewer, delta audit)", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `const FileVideoViewer = ({ disableVideoStream, handlersForSpecialItems }) => {
+        const [canPlay, setCanPlay] = useState(false);
+        const [simulatedProgress, setSimulatedProgress] = useState(0);
+        useEffect(() => {
+          if (!disableVideoStream && !canPlay && simulatedProgress > 0) {
+            handlersForSpecialItems?.handleUpdateProgress(simulatedProgress);
+          }
+        }, [simulatedProgress, canPlay, disableVideoStream, handlersForSpecialItems]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when a setter prop is hydrated from localStorage on mount (jaeger LayoutSettings, delta audit)", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `const LayoutSettings = ({ density, setDensity }) => {
+        useEffect(() => {
+          const storedDensity = localStorage.getItem("ddg.layout.density");
+          if (storedDensity && storedDensity !== density) {
+            setDensity(storedDensity);
+          }
+        }, [setDensity]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a setter prop is defaulted from async hook data (kubetail KubeContextPicker, delta audit)", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `const KubeContextPicker = ({ value, setValue }) => {
+        const { data } = useKubeConfig();
+        const currentContext = data?.currentContext ?? null;
+        useEffect(() => {
+          if (value !== null) return;
+          if (currentContext) setValue(currentContext);
+        }, [value, currentContext, setValue]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a field-targeting form API with a variable field name and literal payload (hyperdx AlertScheduleFields, delta audit)", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function AlertScheduleFields({ setValue, scheduleOffsetName, scheduleOffsetMinutes, maxScheduleOffsetMinutes }) {
+        const showScheduleOffsetInput = maxScheduleOffsetMinutes > 0;
+        useEffect(() => {
+          const normalizedOffset = scheduleOffsetMinutes ?? 0;
+          if (!showScheduleOffsetInput && normalizedOffset !== 0) {
+            setValue(scheduleOffsetName, 0, { shouldValidate: true });
+          }
+        }, [scheduleOffsetMinutes, scheduleOffsetName, setValue, showScheduleOffsetInput]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a prop transform's result feeds a DOM write through a conditional (freecut SliderInput, delta audit)", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function SliderInput({ formatValueProp, unit }) {
+        const [localValue, setLocalValue] = useState(null);
+        const [isInteracting, setIsInteracting] = useState(false);
+        const valueSpanRef = useRef(null);
+        const localValueRef = useRef(null);
+        const formatDisplay = useCallback((v) => {
+          if (formatValueProp) return formatValueProp(v);
+          return unit ? String(v) + unit : String(v);
+        }, [formatValueProp, unit]);
+        const updateDisplayedValue = useCallback((nextLocalValue) => {
+          localValueRef.current = nextLocalValue;
+          if (!valueSpanRef.current) return;
+          valueSpanRef.current.textContent =
+            nextLocalValue === null ? "Mixed" : formatDisplay(nextLocalValue);
+        }, [formatDisplay]);
+        useEffect(() => {
+          localValueRef.current = localValue;
+          if (!isInteracting) {
+            updateDisplayedValue(localValue);
+          }
+        }, [isInteracting, localValue, updateDisplayedValue]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a prop (not state) is registered upward once per value (jaeger VirtualizedTraceView, delta audit)", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function VirtualizedTraceView({ trace, uiFind, setTrace }) {
+        const prevTraceRef = useRef(null);
+        useEffect(() => {
+          if (prevTraceRef.current !== trace) {
+            prevTraceRef.current = trace;
+            setTrace(trace, uiFind);
+          }
+        }, [trace, uiFind, setTrace]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an async fetch result is handed to a parent-owned setter prop (freecut clip-waveform, delta audit)", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function ClipWaveform({ mediaId, setBlobUrl }) {
+        useEffect(() => {
+          let mounted = true;
+          const loadBlobUrl = async () => {
+            const url = await resolveMediaUrl(mediaId);
+            if (mounted && url) {
+              setBlobUrl(url);
+            }
+          };
+          loadBlobUrl();
+          return () => {
+            mounted = false;
+          };
+        }, [mediaId, setBlobUrl]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when a form-library setter destructured from a cast hook call receives validation errors (commercelayer BillingAddressForm, delta audit)", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `function BillingAddressForm({ fieldEvent, customFieldMessageError, children }) {
+        const { errors, setError: setErrorForm } = (useRapidForm as any)({ fieldEvent });
+        useEffect(() => {
+          if (customFieldMessageError != null) {
+            const customMessage = customFieldMessageError({ field: "name", value: "x" });
+            if (typeof customMessage === "string") {
+              setErrorForm({ name: "field", code: "VALIDATION_ERROR", message: customMessage });
+            }
+          }
+        });
+        return children;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when an effect only kicks off mutations whose deferred onCompleted hands server data up (glific TranslateButton, delta audit)", () => {
+    const result = runRule(
+      noPassLiveStateToParent,
+      `export const TranslateButton = ({ setStates, templateId, saveClicked }) => {
+        const [translateOption, setTranslateOption] = useState("translate");
+        const [translateInteractiveMessage] = useMutation(TRANSLATE_INTERACTIVE_TEMPLATE, {
+          onCompleted: ({ translateInteractiveTemplate }) => {
+            setStates(translateInteractiveTemplate.interactiveTemplate);
+          },
+        });
+        const handleTranslateOptions = () => {
+          if (translateOption === "translate") {
+            translateInteractiveMessage({
+              variables: { translateInteractiveTemplateId: templateId },
+            });
+          }
+        };
+        useEffect(() => {
+          if (templateId && saveClicked) {
+            handleTranslateOptions();
+          }
+        }, [saveClicked, templateId]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags state driven by a frame-callback subscription (victory-animation)", () => {
     const result = runRule(
       noPassLiveStateToParent,

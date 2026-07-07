@@ -202,6 +202,66 @@ const List = ({ items = [], groups }) => (
     expect(result.diagnostics.length).toBe(1);
   });
 
+  // FN hunt (semiotic QuadrantChart / ForceDirectedGraph): the component is
+  // a forwardRef-wrapped function expression that destructures props IN THE
+  // BODY (`const { frameProps = {} } = props`) and lists the defaulted
+  // binding in a useMemo dependency array.
+  it("flags a body-destructured empty default inside a forwardRef component", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { useMemo, forwardRef } from "react";
+export const QuadrantChart = forwardRef(function QuadrantChart(props, ref) {
+  const { data, centerlineStyle = {}, frameProps = {} } = props;
+  const preRenderers = useMemo(() => buildRenderers(centerlineStyle, frameProps), [centerlineStyle, frameProps]);
+  return <div>{preRenderers.length}{data.length}</div>;
+});`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(2);
+    expect(result.diagnostics[0]?.message).toContain("dependency array");
+  });
+
+  it("flags a body-destructured empty default in a plain function component", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { useMemo } from "react";
+function Chart(props) {
+  const { rows = [] } = props;
+  const total = useMemo(() => rows.length, [rows]);
+  return <div>{total}</div>;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBe(1);
+  });
+
+  it("stays silent for a body destructure of a non-props local object", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `import { useMemo } from "react";
+function Chart(props) {
+  const config = loadConfig();
+  const { rows = [] } = config;
+  const total = useMemo(() => rows.length, [rows]);
+  return <div>{total}</div>;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a body-destructured default that is only used locally", () => {
+    const result = runRule(
+      rerenderMemoWithDefaultValue,
+      `export const Chart = forwardRef(function Chart(props, ref) {
+  const { frameProps = {} } = props;
+  return <div style={{ ...frameProps }} />;
+});`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags a defaulted object with a non-empty default only when it is empty", () => {
     const result = runRule(
       rerenderMemoWithDefaultValue,

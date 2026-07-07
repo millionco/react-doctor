@@ -3,6 +3,8 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 
 const MESSAGE =
   "Screen reader users can lose their shortcuts because `accessKey` clashes with them, so remove it.";
@@ -21,24 +23,27 @@ export const noAccessKey = defineRule({
   severity: "warn",
   recommendation: "Do not use `accessKey`. It conflicts with assistive tech shortcuts.",
   category: "Accessibility",
-  create: (context) => ({
-    JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      const accessKey = hasJsxPropIgnoreCase(node.attributes, "accessKey");
-      if (!accessKey) return;
-      const attributeValue = accessKey.value as EsTreeNode | null;
-      // No value → bare `accessKey` attribute. OXC's tests don't
-      // include this case; we conservatively don't flag.
-      if (!attributeValue) return;
-      if (isNodeOfType(attributeValue, "Literal") && typeof attributeValue.value === "string") {
-        context.report({ node: accessKey, message: MESSAGE });
-        return;
-      }
-      if (isNodeOfType(attributeValue, "JSXExpressionContainer")) {
-        const expression = attributeValue.expression;
-        if (!expression || expression.type === "JSXEmptyExpression") return;
-        if (isUndefinedIdentifier(expression as EsTreeNode)) return;
-        context.report({ node: accessKey, message: MESSAGE });
-      }
-    },
-  }),
+  create: (context): RuleVisitors => {
+    if (isTestlikeFilename(context.filename)) return {};
+    return {
+      JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        const accessKey = hasJsxPropIgnoreCase(node.attributes, "accessKey");
+        if (!accessKey) return;
+        const attributeValue = accessKey.value as EsTreeNode | null;
+        // No value → bare `accessKey` attribute. OXC's tests don't
+        // include this case; we conservatively don't flag.
+        if (!attributeValue) return;
+        if (isNodeOfType(attributeValue, "Literal") && typeof attributeValue.value === "string") {
+          context.report({ node: accessKey, message: MESSAGE });
+          return;
+        }
+        if (isNodeOfType(attributeValue, "JSXExpressionContainer")) {
+          const expression = attributeValue.expression;
+          if (!expression || expression.type === "JSXEmptyExpression") return;
+          if (isUndefinedIdentifier(expression as EsTreeNode)) return;
+          context.report({ node: accessKey, message: MESSAGE });
+        }
+      },
+    };
+  },
 });

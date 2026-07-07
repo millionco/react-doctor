@@ -40,8 +40,14 @@ const usesLocalImageUrlFactory = (programRoot: EsTreeNodeOfType<"Program">): boo
   return found;
 };
 
+// Analytics tracking pixels must be fetched by the visitor's browser from
+// the vendor host; proxying through the next/image optimizer server-side
+// destroys the tracking semantics (the doc's third-party-embed carve-out).
+const TRACKING_PIXEL_HOST_PATTERN = /^https:\/\/[^/]*\bscarf\.sh\//i;
+
 const isNonOptimizableSrcString = (srcValue: string): boolean => {
   if (NON_OPTIMIZABLE_SRC_PREFIX_PATTERN.test(srcValue)) return true;
+  if (TRACKING_PIXEL_HOST_PATTERN.test(srcValue)) return true;
   const pathname = srcValue.split(/[?#]/)[0] ?? "";
   return pathname.toLowerCase().endsWith(".svg");
 };
@@ -119,6 +125,36 @@ const isNonOptimizableSrcAttribute = (
   return Boolean(programRoot && usesLocalImageUrlFactory(programRoot));
 };
 
+// An <img> returned from the `img:` entry of a renderer's `components` map
+// (ReactMarkdown, MDXProvider) must stay a native img: the renderer feeds it
+// arbitrary author-supplied URLs that next/image's loader cannot resolve —
+// the doc's markdown-renderer carve-out.
+const isMarkdownImgComponentOverride = (node: EsTreeNode): boolean => {
+  let cursor: EsTreeNode | null | undefined = node.parent;
+  while (cursor) {
+    if (isNodeOfType(cursor, "Property")) {
+      const key = cursor.key;
+      const keyName = isNodeOfType(key, "Identifier")
+        ? key.name
+        : isNodeOfType(key, "Literal") && typeof key.value === "string"
+          ? key.value
+          : null;
+      if (keyName === "img") {
+        let outer: EsTreeNode | null | undefined = cursor.parent;
+        while (outer) {
+          if (isNodeOfType(outer, "JSXAttribute")) {
+            return isNodeOfType(outer.name, "JSXIdentifier") && outer.name.name === "components";
+          }
+          outer = outer.parent ?? null;
+        }
+        return false;
+      }
+    }
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
 export const nextjsNoImgElement = defineRule({
   id: "nextjs-no-img-element",
   title: "Plain img ships unoptimized images",
@@ -141,6 +177,7 @@ export const nextjsNoImgElement = defineRule({
         const srcAttribute = findJsxAttribute(node.attributes, "src");
         if (srcAttribute && isNonOptimizableSrcAttribute(srcAttribute, programRoot)) return;
         if (!srcAttribute && findJsxAttribute(node.attributes, "ref")) return;
+        if (isMarkdownImgComponentOverride(node)) return;
 
         context.report({
           node,

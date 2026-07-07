@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { getCallMethodName } from "../../utils/get-call-method-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { readsPostMountValue } from "../../utils/reads-post-mount-value.js";
@@ -22,6 +23,7 @@ import {
   getEffectFnRefs,
   isConstant,
   isProp,
+  isState,
   isStateSetterCall,
   isSyncStateSetterCall,
   isUseEffect,
@@ -46,6 +48,16 @@ const isLiteralOnlyExpression = (node: EsTreeNode | null | undefined): boolean =
   }
   if (isNodeOfType(node, "ArrayExpression")) {
     return (node.elements ?? []).every((element) => isLiteralOnlyExpression(element as EsTreeNode));
+  }
+  // `new Map()` / `new Set()` with no arguments is a cleared bucket, same
+  // as `{}` / `[]`.
+  if (isNodeOfType(node, "NewExpression")) {
+    const callee = node.callee;
+    return (
+      isNodeOfType(callee, "Identifier") &&
+      (callee.name === "Map" || callee.name === "Set") &&
+      (node.arguments ?? []).length === 0
+    );
   }
   return false;
 };
@@ -125,9 +137,45 @@ const isCallArgumentOf = (parent: EsTreeNode, node: EsTreeNode): boolean => {
   return (parent.arguments ?? []).some((argument) => (argument as unknown) === (node as unknown));
 };
 
+const EVENT_HANDLER_PROPERTY_PATTERN = /^on[a-z]/;
+
+// `probe.onload = () => setUrl(...)` — assigning a handler to an `on*`
+// event property registers a callback with an external event source the
+// same way `addEventListener` does (psysonic ArtistHeroCover's `Image()`
+// probe in the docs-validation round 2).
+const collectEventPropertyHandlerFunctions = (
+  analysis: ProgramAnalysis,
+  effectFn: EsTreeNode,
+): EsTreeNode[] => {
+  const handlerFunctions: EsTreeNode[] = [];
+  for (const assignment of findDownstreamNodes(effectFn, "AssignmentExpression")) {
+    if (!isNodeOfType(assignment, "AssignmentExpression") || assignment.operator !== "=") continue;
+    const target = assignment.left as EsTreeNode;
+    if (
+      !isNodeOfType(target, "MemberExpression") ||
+      !isNodeOfType(target.property, "Identifier") ||
+      !EVENT_HANDLER_PROPERTY_PATTERN.test(target.property.name)
+    ) {
+      continue;
+    }
+    const assigned = assignment.right as EsTreeNode;
+    if (isFunctionLike(assigned)) {
+      handlerFunctions.push(assigned);
+      continue;
+    }
+    if (isNodeOfType(assigned, "Identifier")) {
+      const assignedRef = getRef(analysis, assigned);
+      const resolvedFunction = assignedRef ? resolveToFunction(assignedRef) : null;
+      if (resolvedFunction) handlerFunctions.push(resolvedFunction);
+    }
+  }
+  return handlerFunctions;
+};
+
 // Every function the effect registers with an external event source: inline
-// callbacks (`source.on("change", () => ...)`) and named local callbacks
-// (`const onScroll = () => ...; window.addEventListener("scroll", onScroll)`).
+// callbacks (`source.on("change", () => ...)`), named local callbacks
+// (`const onScroll = () => ...; window.addEventListener("scroll", onScroll)`),
+// and `on*` event-property handler assignments.
 const collectSubscriptionCallbackFunctions = (
   analysis: ProgramAnalysis,
   effectFn: EsTreeNode,
@@ -136,7 +184,7 @@ const collectSubscriptionCallbackFunctions = (
     ...findDownstreamNodes(effectFn, "CallExpression"),
     ...findDownstreamNodes(effectFn, "NewExpression"),
   ].filter((call) => isSubscriptionRegistrationCall(call));
-  const callbackFunctions: EsTreeNode[] = [];
+  const callbackFunctions: EsTreeNode[] = collectEventPropertyHandlerFunctions(analysis, effectFn);
   for (const registrationCall of registrationCalls) {
     if (
       !isNodeOfType(registrationCall, "CallExpression") &&
@@ -233,9 +281,14 @@ const isPromiseFlowFunction = (fn: EsTreeNode): boolean => {
 };
 
 // The setter call sits behind the effect's await / `.then` flow — every
-// function between the call and the effect body is async or a promise
-// continuation. This is the async data-fetch signature whose leading sync
-// `setLoading(true)` toggle must not be mislabelled as a prop→state mirror.
+// function between the call and the FIRST promise-flow ancestor is async or
+// a promise continuation. Outer wrappers beyond that (a scheduler callback
+// like `schedulePreviewWork(() => Promise.allSettled(...).then(commit))`,
+// freecut compound-clip-waveform in the delta audit) don't change that the
+// value arrives from awaited work. This is the async data-fetch signature
+// whose leading sync `setLoading(true)` toggle must not be mislabelled as a
+// prop→state mirror. A setter whose INNER enclosing callback is a timer /
+// listener (no promise flow beneath) still counts as sync.
 const isPromiseFlowStateSetterCall = (
   analysis: ProgramAnalysis,
   ref: Reference,
@@ -245,13 +298,26 @@ const isPromiseFlowStateSetterCall = (
   let current = (ref.identifier as unknown as EsTreeNode).parent;
   let sawPromiseFlowFunction = false;
   while (current && current !== effectFn) {
-    if (isFunctionLike(current)) {
+    if (isFunctionLike(current) && !sawPromiseFlowFunction) {
       if (!isPromiseFlowFunction(current)) return false;
       sawPromiseFlowFunction = true;
     }
     current = current.parent;
   }
   return sawPromiseFlowFunction;
+};
+
+// An effect that creates object URLs and revokes them in cleanup manages an
+// external browser resource — the state exists to hold the resource handle,
+// and deriving it during render would leak the URL. Not a prop→state mirror
+// (mezzanine UploadPictureCard, open-design HomeHero in the delta audit).
+const isObjectUrlLifecycleEffect = (effectFn: EsTreeNode): boolean => {
+  const callMethodNames = findDownstreamNodes(effectFn, "CallExpression")
+    .map((call) =>
+      getCallMethodName((call as EsTreeNodeOfType<"CallExpression">).callee as EsTreeNode),
+    )
+    .filter((name): name is string => Boolean(name));
+  return callMethodNames.includes("createObjectURL") && callMethodNames.includes("revokeObjectURL");
 };
 
 // Detector logic is a port of upstream `src/rules/no-adjust-state-on-prop-change.js`
@@ -276,10 +342,17 @@ export const noAdjustStateOnPropChange = defineRule({
       const effectFn = getEffectFn(analysis, node);
       if (!effectFn) return;
 
+      // A dep that is itself local useState is a STATE dep even when its
+      // initial value was seeded from a prop (`useState(initialCropArea)`) —
+      // the effect reacts to state changes, not prop changes (mezzanine
+      // CropperElement in the delta audit), so the upstream chase must not
+      // cross the useState binding into the seed.
       const isSomeDepsProps = depsRefs
-        .flatMap((ref) => getUpstreamRefs(analysis, ref))
+        .flatMap((ref) => (isState(analysis, ref) ? [] : getUpstreamRefs(analysis, ref)))
         .some((ref) => isProp(analysis, ref));
       if (!isSomeDepsProps) return;
+
+      if (isObjectUrlLifecycleEffect(effectFn)) return;
 
       // A fetch effect sets a loading flag / clears a bucket synchronously
       // up top, then awaits the request and sets the real result behind the

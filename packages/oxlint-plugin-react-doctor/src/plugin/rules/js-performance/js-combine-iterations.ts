@@ -204,25 +204,32 @@ const isStringSplitRootedChain = (receiverNode: EsTreeNode | null | undefined): 
   return false;
 };
 
-const isSmallLiteralArrayRootedChain = (receiverNode: EsTreeNode | null | undefined): boolean => {
+const isSmallLiteralArray = (node: EsTreeNode): boolean => {
+  if (!isNodeOfType(node, "ArrayExpression")) return false;
+  const elements = node.elements ?? [];
+  if (elements.length === 0 || elements.length > SMALL_LITERAL_ARRAY_MAX_ELEMENTS) {
+    return false;
+  }
+  // No spread elements — those could expand to arbitrary length.
+  for (const element of elements) {
+    if (!element) continue;
+    if (isNodeOfType(element, "SpreadElement")) return false;
+  }
+  return true;
+};
+
+const isSmallLiteralArrayRootedChain = (
+  receiverNode: EsTreeNode | null | undefined,
+  smallConstArrayNames: ReadonlySet<string>,
+): boolean => {
   let cursor: EsTreeNode | null | undefined = receiverNode;
   while (cursor) {
     if (isNodeOfType(cursor, "ChainExpression")) {
       cursor = cursor.expression;
       continue;
     }
-    if (isNodeOfType(cursor, "ArrayExpression")) {
-      const elements = cursor.elements ?? [];
-      if (elements.length === 0 || elements.length > SMALL_LITERAL_ARRAY_MAX_ELEMENTS) {
-        return false;
-      }
-      // No spread elements — those could expand to arbitrary length.
-      for (const element of elements) {
-        if (!element) continue;
-        if (isNodeOfType(element, "SpreadElement")) return false;
-      }
-      return true;
-    }
+    if (isNodeOfType(cursor, "ArrayExpression")) return isSmallLiteralArray(cursor);
+    if (isNodeOfType(cursor, "Identifier")) return smallConstArrayNames.has(cursor.name);
     if (!isNodeOfType(cursor, "CallExpression")) return false;
     if (!isChainPassThroughCall(cursor)) return false;
     const nextCallee = cursor.callee;
@@ -230,6 +237,28 @@ const isSmallLiteralArrayRootedChain = (receiverNode: EsTreeNode | null | undefi
     cursor = nextCallee.object;
   }
   return false;
+};
+
+// `const OPTIONS = [{…}, {…}, {…}]` at module scope, then
+// `OPTIONS.filter(…).map(…)` — the receiver is provably a fixed
+// small array, same tiny-N carve-out as an inline literal.
+const collectSmallConstArrayNames = (programNode: EsTreeNode): Set<string> => {
+  const names = new Set<string>();
+  const statements = (programNode as EsTreeNodeOfType<"Program">).body ?? [];
+  for (const statement of statements) {
+    const declaration = isNodeOfType(statement, "ExportNamedDeclaration")
+      ? statement.declaration
+      : statement;
+    if (!declaration || !isNodeOfType(declaration, "VariableDeclaration")) continue;
+    if (declaration.kind !== "const") continue;
+    for (const declarator of declaration.declarations ?? []) {
+      if (!isNodeOfType(declarator, "VariableDeclarator")) continue;
+      if (!isNodeOfType(declarator.id, "Identifier")) continue;
+      if (!declarator.init || !isSmallLiteralArray(declarator.init as EsTreeNode)) continue;
+      names.add(declarator.id.name);
+    }
+  }
+  return names;
 };
 
 const collectGeneratorNames = (programNode: EsTreeNode): Set<string> => {
@@ -265,6 +294,7 @@ export const jsCombineIterations = defineRule({
   create: (context: RuleContext) => {
     let programNode: EsTreeNode | null = null;
     let generatorNamesInFile: ReadonlySet<string> | null = null;
+    let smallConstArrayNames: ReadonlySet<string> | null = null;
     // One report per fluent chain. `a.filter(x).map(y).filter(z)` has two
     // adjacent chainable pairs and used to report both — the advice
     // ("combine into one pass") is identical, so the second diagnostic is
@@ -279,6 +309,10 @@ export const jsCombineIterations = defineRule({
     const getGeneratorNamesInFile = (): ReadonlySet<string> => {
       generatorNamesInFile ??= programNode ? collectGeneratorNames(programNode) : new Set();
       return generatorNamesInFile;
+    };
+    const getSmallConstArrayNames = (): ReadonlySet<string> => {
+      smallConstArrayNames ??= programNode ? collectSmallConstArrayNames(programNode) : new Set();
+      return smallConstArrayNames;
     };
 
     return {
@@ -345,7 +379,8 @@ export const jsCombineIterations = defineRule({
 
         if (isReceiverChainIteratorRooted(innerCall.callee.object, getGeneratorNamesInFile()))
           return;
-        if (isSmallLiteralArrayRootedChain(innerCall.callee.object)) return;
+        if (isSmallLiteralArrayRootedChain(innerCall.callee.object, getSmallConstArrayNames()))
+          return;
         if (isStringSplitRootedChain(innerCall.callee.object)) return;
 
         coveredChainCalls.add(innerCall as EsTreeNode);

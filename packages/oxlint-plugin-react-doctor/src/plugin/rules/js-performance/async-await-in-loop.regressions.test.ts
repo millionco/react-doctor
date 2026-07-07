@@ -196,6 +196,55 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  // Delta-verify recall regression (bulwarkmail email-composer): a bare
+  // `if (cancelled) return;` inside a per-item try/catch is a cancellation
+  // check, not a retry-until-success exit — the independent per-attachment
+  // fetches must still be flagged.
+  it("still flags independent per-item fetches whose try block only exits on a cancellation flag", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function hydrate(inlineAtts, composerClient, updates) {
+        let cancelled = false;
+        for (const att of inlineAtts) {
+          if (!att.cid) continue;
+          try {
+            const buffer = await composerClient.fetchBlobArrayBuffer(att.blobId);
+            if (cancelled) return;
+            const blob = new Blob([buffer]);
+            const dataUrl = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = () => reject(reader.error);
+              reader.readAsDataURL(blob);
+            });
+            if (cancelled) return;
+            updates.set(att.cid, dataUrl);
+          } catch (err) { report(err); }
+        }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a first-success search whose guarded return carries the awaited value", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function firstMirror(urls) { for (const url of urls) { try { const response = await fetch(url); if (response.ok) return response; } catch (error) { log(error); } } return null; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a guarded bare return whose exit carries an awaited value later", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function pick(ids) { for (const id of ids) { try { const item = await load(id); if (!item) continue; return item; } catch (error) { log(error); } } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("stays silent on a stream pump whose while-test reads body-assigned state", () => {
     const result = runRule(
       asyncAwaitInLoop,

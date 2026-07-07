@@ -224,4 +224,196 @@ describe("react-builtins/button-has-type — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  // FP wave 2b (suomifi HtmlButton): `type={!!type ? type : 'button'}` is
+  // the ternary spelling of the documented `type={type ?? 'button'}`
+  // defaulted forward — the consumer's literal lives at the call site.
+  it("stays silent on a ternary-guarded type prop forward", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = ({ type, ...rest }) => <button {...rest} type={!!type ? type : "button"} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // FP wave 2b (innovaccer Button): a const bound to a guarded conditional
+  // forward (`cond ? 'button' : type`) is the same defaulted forward one
+  // hop away — resolve the const and re-test the forwarding shape.
+  it("stays silent on a const bound to a guarded conditional type forward", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = ({ type, disabled }) => {
+        const renderedType = disabled && (type === "submit" || !type) ? "button" : type;
+        return <button type={renderedType}>x</button>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // …but a ternary whose fallback is INVALID is not a safe forward.
+  it("still flags a ternary type forward with an invalid fallback", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = ({ type }) => <button type={type ? type : "banana"} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // …and a ternary between two non-forward unknowns keeps firing — no
+  // branch carries the consumer's `type` prop.
+  it("still flags a ternary between unknown identifiers", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = ({ kind, fallback }) => <button type={kind ? kind : fallback} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // FP wave 2b (ant-design / classicy): a RENAMED prop forward whose
+  // destructuring default is a valid literal (`({ htmlType = 'button' })`)
+  // renders the consumer's value or the safe default — never undefined.
+  it("stays silent on a renamed prop forward with a valid destructuring default", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = ({ htmlType = "button", ...rest }) => <button {...rest} type={htmlType} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a renamed prop forward defaulted from a nested props destructure", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = (props) => {
+        const { buttonType = "submit" } = props;
+        return <button type={buttonType}>x</button>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // …a renamed prop with NO default can be undefined at render — the
+  // implicit-submit hazard the rule exists for.
+  it("still flags a renamed prop forward without a default", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = ({ htmlType }) => <button type={htmlType} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // …and an invalid default is no safer than none.
+  it("still flags a renamed prop forward with an invalid default", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = ({ htmlType = "banana" }) => <button type={htmlType} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // FN hunt (easy-ui UnstyledPressButton / PressableButton): a spread of
+  // react-aria's `pressProps` provably cannot carry `type` — the button
+  // defaults to submit and must be flagged despite the spread.
+  it("flags <button {...pressProps}> from react-aria usePress", () => {
+    const result = runRule(
+      buttonHasType,
+      `import React, { forwardRef } from "react";
+       import { usePress } from "react-aria";
+       export const UnstyledPressButton = forwardRef((props, ref) => {
+         const { pressProps } = usePress(props);
+         return <button {...pressProps} ref={ref} className={pressProps.className} />;
+       });`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // FN hunt (easy-ui CopyButton): the spread bag comes from a same-file
+  // hook returning `mergeProps(hoverProps, focusProps)` — every input is a
+  // type-free react-aria bag, so the button still lacks a `type`.
+  it("flags <button {...triggerProps}> from a local hook merging react-aria bags", () => {
+    const result = runRule(
+      buttonHasType,
+      `import React from "react";
+       import { mergeProps, useFocus, useHover } from "react-aria";
+       export function CopyButton({ text }) {
+         const { tooltipState, triggerProps } = useCopyButtonTooltipState();
+         return <button className="x" onClick={() => {}} {...triggerProps}>copy</button>;
+       }
+       function useCopyButtonTooltipState() {
+         const tooltipState = { open() {}, close() {} };
+         const { hoverProps } = useHover({});
+         const { focusProps } = useFocus({});
+         return { triggerProps: mergeProps(hoverProps, focusProps), tooltipState };
+       }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags a spread of a local object literal without a type key", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = ({ onClick }) => {
+        const handlers = { onClick };
+        return <button {...handlers}>x</button>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when the spread object literal carries a type key", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = () => {
+        const handlers = { type: "button", onClick: () => {} };
+        return <button {...handlers}>x</button>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a spread of an unknown call result", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = () => <button {...getButtonProps()}>x</button>;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a destructured bag from an unknown hook", () => {
+    const result = runRule(
+      buttonHasType,
+      `import { useButton } from "react-aria";
+       const Button = (props) => {
+         const { buttonProps } = useButton(props);
+         return <button {...buttonProps}>x</button>;
+       };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // …a local destructure of a non-param object is not a consumer prop.
+  it("still flags a defaulted destructure of a local object", () => {
+    const result = runRule(
+      buttonHasType,
+      `const Button = () => {
+        const { htmlType = "button" } = JSON.parse(localStorage.getItem("cfg") ?? "{}");
+        return <button type={htmlType}>x</button>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

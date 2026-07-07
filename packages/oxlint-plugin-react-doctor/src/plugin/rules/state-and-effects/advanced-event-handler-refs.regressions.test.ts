@@ -91,6 +91,61 @@ describe("advanced-event-handler-refs — regressions", () => {
     }
   });
 
+  // Docs-validation r2: tracecat use-window-size (useThrottledCallback with
+  // internal useMemo) and cloudscape collapsible-flashbar (useThrottleCallback
+  // with `.cancel()` cleanup) — throttle/debounce wrapper hooks memoize
+  // internally, so the handler identity doesn't churn per render, and the
+  // ref-wrapper refactor would break the cancel lifecycle.
+  it("stays silent for a useThrottledCallback-wrapped handler", () => {
+    const result = runRule(
+      advancedEventHandlerRefs,
+      `function useWindowSize() {
+        const handleViewportChange = useThrottledCallback(() => syncState(), 200);
+        useEffect(() => {
+          window.visualViewport.addEventListener('resize', handleViewportChange);
+          return () => window.visualViewport.removeEventListener('resize', handleViewportChange);
+        }, [handleViewportChange]);
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a useThrottleCallback handler with cancel() cleanup", () => {
+    const result = runRule(
+      advancedEventHandlerRefs,
+      `function Flashbar({ isExpanded }) {
+        const updateBottomSpacing = useThrottleCallback(() => sync(isExpanded), 100, [isExpanded]);
+        useLayoutEffect(() => {
+          window.addEventListener('resize', updateBottomSpacing);
+          return () => {
+            window.removeEventListener('resize', updateBottomSpacing);
+            updateBottomSpacing.cancel();
+          };
+        }, [updateBottomSpacing]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a useDebouncedCallback-wrapped handler", () => {
+    const result = runRule(
+      advancedEventHandlerRefs,
+      `function C() {
+        const onScroll = useDebouncedCallback(() => syncState(), 150);
+        useEffect(() => {
+          window.addEventListener('scroll', onScroll);
+          return () => window.removeEventListener('scroll', onScroll);
+        }, [onScroll]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags a handler built by a plain (non-stable-hook) call each render", () => {
     const result = runRule(
       advancedEventHandlerRefs,

@@ -2,10 +2,39 @@ import { RENDER_PROP_PROLIFERATION_THRESHOLD } from "../../constants/thresholds.
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const RENDER_PROP_PATTERN = /^render[A-Z]/;
+
+// First-party sources: relative/absolute paths and the common `@/`, `~/`,
+// `#` path aliases. Everything else (bare package specifiers, `@scope/pkg`,
+// webpack-convention `~pkg`) resolves to a dependency whose props API the
+// call site cannot restructure — the fix (compound components / children)
+// only exists for the component's author.
+const isExternalModuleSource = (source: string): boolean =>
+  !source.startsWith(".") &&
+  !source.startsWith("/") &&
+  !source.startsWith("@/") &&
+  !source.startsWith("~/") &&
+  !source.startsWith("#");
+
+const getRootJsxIdentifierName = (name: EsTreeNode): string | null => {
+  let current = name;
+  while (isNodeOfType(current, "JSXMemberExpression")) {
+    current = current.object as EsTreeNode;
+  }
+  return isNodeOfType(current, "JSXIdentifier") ? current.name : null;
+};
+
+const isThirdPartyComponent = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  const rootName = getRootJsxIdentifierName(node.name as EsTreeNode);
+  if (!rootName) return false;
+  const importSource = getImportSourceForName(node as EsTreeNode, rootName);
+  if (!importSource) return false;
+  return isExternalModuleSource(importSource);
+};
 
 // A render prop hands a render slot (a function/JSX node) to the child. Two
 // `render*`-prefixed shapes are NOT render slots and must not inflate the count:
@@ -55,6 +84,7 @@ export const noRenderPropChildren = defineRule({
         renderPropAttrs.push({ name, node: attr });
       }
       if (renderPropAttrs.length < RENDER_PROP_PROLIFERATION_THRESHOLD) return;
+      if (isThirdPartyComponent(node)) return;
 
       const propList = renderPropAttrs
         .slice(0, 3)

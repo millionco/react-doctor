@@ -5,6 +5,8 @@ import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxA11ySettings } from "../../utils/has-jsx-a11y-settings.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
+import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { objectHasAccessibleChild } from "../../utils/object-has-accessible-child.js";
@@ -221,9 +223,16 @@ export const altText = defineRule({
           }
         }
         if (isGeneratedImageRenderContext(context, node)) return;
+        // A spread (`{...props}`) can carry `alt` — wrapper components
+        // typed as ImgHTMLAttributes forward it from callers, so the
+        // element can't be proven unlabeled.
+        if (hasJsxSpreadAttribute(node.attributes)) return;
         const tag = getElementType(node, context.settings);
 
         if (checkImg && (tag === "img" || imgAliases.has(tag))) {
+          // aria-hidden imgs are removed from the accessibility tree —
+          // the decorative-image pattern; alt would never be announced.
+          if (isHiddenFromScreenReader(node, context.settings)) return;
           imgRule(node, node, context);
           return;
         }

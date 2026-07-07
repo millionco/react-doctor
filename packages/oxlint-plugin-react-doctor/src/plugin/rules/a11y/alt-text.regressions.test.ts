@@ -312,4 +312,53 @@ describe("a11y/alt-text regressions", () => {
       expect(result.diagnostics.length).toBeGreaterThan(0);
     });
   });
+
+  describe("spread props can carry alt", () => {
+    it("skips a wrapper img spreading caller props", () => {
+      const result = runRule(
+        altText,
+        `
+          export const CImage = forwardRef(({ align, className, ...rest }, ref) => (
+            <img className={className} {...rest} ref={ref} />
+          ));
+        `,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("skips an img whose spread follows explicit handlers", () => {
+      const result = runRule(
+        altText,
+        `
+          export const CachedImage = ({ style, onLoad, ...props }) => (
+            <img src={finalSrc} style={style} onLoad={onLoad} {...props} />
+          );
+        `,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a spread-free img without alt", () => {
+      const result = runRule(altText, `export const Hero = () => <img src="/hero.png" />;`);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
+  describe("aria-hidden decorative images", () => {
+    it("skips an aria-hidden background blur image", () => {
+      const result = runRule(
+        altText,
+        `export const Preview = ({ src }) => <img aria-hidden className="blur-2xl" src={src} />;`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a visible img without alt", () => {
+      const result = runRule(
+        altText,
+        `export const Preview = ({ src }) => <img className="blur-2xl" src={src} />;`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
 });

@@ -117,8 +117,11 @@ const STYLE_TAG_LOOKBEHIND_LINES = 5;
 // Also exempt email components by filename (e.g. RawHtml.tsx or *Email.tsx)
 // even when scan rootDir is a monorepo subpackage like packages/emails (so
 // the relativePath never contains an "emails/" segment).
+// Only the PLURAL `emails/` directory (the react-email convention) is a
+// template dir; a singular `email/` directory in a webmail app holds
+// browser UI (composer, viewer) whose sinks render into the live page.
 const EMAIL_TEMPLATE_PATH_PATTERN =
-  /(?:^|\/)emails?(?:\/|$)|email[-_.]templates?(?:\/|$)|RawHtml|[A-Za-z]*[Ee]mail[A-Za-z]*\.(?:t|j)sx?/i;
+  /(?:^|\/)emails(?:\/|$)|email[-_.]templates?(?:\/|$)|RawHtml|[A-Za-z]*[Ee]mail[A-Za-z]*\.(?:t|j)sx?/i;
 
 // Files under hidden tool directories (`.dumi/theme/`, `.storybook/`) are
 // docs-site/tooling themes rendering repository-authored content, not

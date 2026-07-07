@@ -72,6 +72,84 @@ describe("a11y/label-has-associated-control regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays quiet for a wrapper label whose spread props may carry htmlFor", () => {
+    const result = runRule(
+      labelHasAssociatedControl,
+      `
+        const DefaultLabel = React.forwardRef((props, ref) => (
+          <label {...props} ref={ref} />
+        ));
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays quiet for a floating-label hook spreading label props over text", () => {
+    const result = runRule(
+      labelHasAssociatedControl,
+      `
+        const Label = ({ className, ...props }) => (
+          <label {...props} className={className}>
+            {text}
+          </label>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays quiet for a label nesting a control-named custom component", () => {
+    const result = runRule(
+      labelHasAssociatedControl,
+      `
+        const SelectSort = ({ sortBy, handleSortChange }) => (
+          <label>
+            Sort:{" "}
+            <SearchableSelect value={sortBy} onChange={handleSortChange}>
+              <Option value="recent">Most Recent</Option>
+            </SearchableSelect>
+          </label>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays quiet for a label wrapping a design-system Input", () => {
+    const result = runRule(
+      labelHasAssociatedControl,
+      `
+        const Demo = ({ value, setValue }) => (
+          <label className="grid gap-1.5 text-sm">
+            <span>Property name</span>
+            <Input value={value} onChange={(event) => setValue(event.target.value)} />
+          </label>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still reports a text-only label with no control and no htmlFor", () => {
+    const result = runRule(
+      labelHasAssociatedControl,
+      `
+        const Demo = () => (
+          <div>
+            <label>Surname</label>
+            <input type="text" />
+          </div>
+        );
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays quiet for labels rendering a helper call or conditional control", () => {
     const result = runRule(
       labelHasAssociatedControl,

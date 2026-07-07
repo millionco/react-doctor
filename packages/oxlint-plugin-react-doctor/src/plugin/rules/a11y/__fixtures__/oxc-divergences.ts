@@ -26,6 +26,25 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     reason:
       "ignoreNonDOM defaults to true; `role` on a custom component is a domain prop, not the DOM ARIA attribute.",
   },
+  // alt-text: OXC flags `<img {...this.props} />` (and the area / input /
+  // alias variants), but a spread routinely carries `alt` — wrapper
+  // components typed as ImgHTMLAttributes forward it from callers
+  // (confirmed FP cluster in the docs-validation run: CImage,
+  // CachedImage, PaymentSourceBrandIcon all spread caller props).
+  "alt-text": {
+    failSkips: [5, 25, 34, 43, 48, 56, 61],
+    reason:
+      "A spread attribute can supply `alt`/`aria-label` at runtime; the element can't be proven unlabeled.",
+  },
+  // click-events-have-key-events: OXC flags `<div onClick {...props} />`,
+  // but a spread can carry keyboard handlers the static check can't see
+  // (react-aria's `{...buttonProps}`, design-system `{...rest}`) —
+  // confirmed FP shape in the docs-validation run.
+  "click-events-have-key-events": {
+    failSkips: [2],
+    reason:
+      "A spread attribute can supply onKeyDown/onKeyUp at runtime; the element can't be proven keyboard-inaccessible.",
+  },
   // control-has-associated-label: OXC inherits jsx-a11y's DOM map and
   // treats td/th/option as interactive elements and any role=separator
   // as a widget. Real-world verification shows these fire almost
@@ -59,10 +78,16 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
   // list-semantics workaround (`list-style: none` drops list semantics in
   // WebKit), so we exempt them by default — an intentional a11y idiom, not
   // redundant noise.
+  // failCases[27] is a bare `<td role="cell" />` with no same-file
+  // `<table>`: the component may be composed into a `<table role="grid">`
+  // elsewhere, where the implicit role is gridcell and `role="cell"` is a
+  // deliberate override (confirmed FP cluster: hightable's Cell.tsx inside
+  // a cross-file grid). We only flag td/th defaults under a same-file
+  // plain-table ancestor.
   "no-redundant-roles": {
-    failSkips: [21, 22],
+    failSkips: [21, 22, 27],
     reason:
-      '`<ul|ol role="list">` is the Safari/VoiceOver list-semantics-preservation idiom, exempt by default.',
+      '`<ul|ol role="list">` is the Safari/VoiceOver idiom; a bare `<td role="cell">` may sit in a cross-file `role="grid"` table where cell is an override.',
   },
   // no-static-element-interactions: keyboard handlers on a div that has
   // no tabIndex/contentEditable and no pointer handler only fire for

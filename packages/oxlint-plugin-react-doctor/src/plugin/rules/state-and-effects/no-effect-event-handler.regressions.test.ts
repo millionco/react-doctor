@@ -82,6 +82,48 @@ const RecentDays = ({ liveRefreshKey }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  // Mined glific FP (Auth): `if (mode === 'x') return;` excludes ONE prop
+  // value and loads data on every other value including mount — default-path
+  // data loading keyed to a route-derived prop, not "fire when prop flips".
+  it("does not flag an equality-excluding early return before default-path data loading", () => {
+    const code = `
+import { useEffect, useState } from "react";
+const Auth = ({ mode }) => {
+  const [orgName, setOrgName] = useState('Glific');
+  useEffect(() => {
+    if (mode === 'trialregistration') {
+      return;
+    }
+    axios.post(ORGANIZATION_NAME).then(({ data }) => setOrgName(data.name));
+  }, [mode]);
+  return orgName;
+};
+`;
+    const result = runRule(noEffectEventHandler, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  // The mirrored TP: `!==` + early return runs the side effect only when
+  // the prop REACHES a specific value — the event-simulation shape.
+  it("still flags an inequality early return gating a one-shot side effect", () => {
+    const code = `
+import { useEffect } from "react";
+const Checkout = ({ status }) => {
+  useEffect(() => {
+    if (status !== 'submitted') {
+      return;
+    }
+    toast('Order submitted!');
+  }, [status]);
+  return null;
+};
+`;
+    const result = runRule(noEffectEventHandler, code);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   // TP shape retained: the canonical You-Might-Not-Need-an-Effect §6
   // example — a prop-guarded, cleanup-free effect firing a one-shot
   // user-visible side effect that belongs in the event handler.

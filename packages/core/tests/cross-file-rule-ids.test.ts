@@ -133,7 +133,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
     expect(detected).toEqual(declared);
   });
 
-  it("contains the verified ten and nothing the analysis can't justify", () => {
+  it("contains the verified twelve and nothing the analysis can't justify", () => {
     expect([...CROSS_FILE_RULE_IDS].sort()).toEqual([
       "nextjs-missing-metadata",
       "nextjs-no-use-search-params-without-suspense",
@@ -143,8 +143,10 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-mutating-reducer-state",
       "prefer-dynamic-import",
       "rendering-hydration-mismatch-time",
+      "rn-no-legacy-shadow-styles",
       "rn-no-raw-text",
       "rn-prefer-expo-image",
+      "rn-style-prefer-boxshadow",
     ]);
   });
 

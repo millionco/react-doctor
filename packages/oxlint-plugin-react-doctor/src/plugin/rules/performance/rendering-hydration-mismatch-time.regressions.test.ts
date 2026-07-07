@@ -150,6 +150,101 @@ describe("performance/rendering-hydration-mismatch-time — regressions", () => 
     });
   });
 
+  describe("falsy-initial useState gates", () => {
+    it("does not flag new Date() inside JSX gated by a useState(false) flag", () => {
+      expectPass(`
+        export const EventModal = () => {
+          const [showRecurrenceEditor, setShowRecurrenceEditor] = useState(false);
+          return (
+            <div>
+              {showRecurrenceEditor && (
+                <RecurrenceEditor
+                  eventStart={(() => {
+                    const d = new Date(startDate);
+                    return isNaN(d.getTime()) ? new Date() : d;
+                  })()}
+                />
+              )}
+            </div>
+          );
+        };
+      `);
+    });
+
+    it("does not flag Date.now() inside JSX gated by a useState(null) toast", () => {
+      expectPass(`
+        export const Panel = () => {
+          const [undoToast, setUndoToast] = useState(null);
+          return (
+            <div>
+              {undoToast && onMutate && (
+                <span>{Math.ceil((undoToast.expiresAt - Date.now()) / 1000)}s</span>
+              )}
+            </div>
+          );
+        };
+      `);
+    });
+
+    it("still flags when the gating state starts truthy", () => {
+      expectFail(`
+        export const Panel = () => {
+          const [visible, setVisible] = useState(true);
+          return <div>{visible && <span>{Date.now()}</span>}</div>;
+        };
+      `);
+    });
+
+    it("still flags when the gate is a prop, not local state", () => {
+      expectFail(`
+        export const Banner = ({ open }) => (
+          <div>{open && <span>{Date.now()}</span>}</div>
+        );
+      `);
+    });
+  });
+
+  describe("copyright-year idiom", () => {
+    it("does not flag new Date().getFullYear()", () => {
+      expectPass(`
+        export const Footer = () => (
+          <footer>© {new Date().getFullYear()} Example</footer>
+        );
+      `);
+    });
+
+    it("still flags new Date().toLocaleDateString()", () => {
+      expectFail(`export const Footer = () => <footer>{new Date().toLocaleDateString()}</footer>;`);
+    });
+  });
+
+  describe("framer-motion transition config", () => {
+    it("does not flag Math.random() inside a motion element's transition prop", () => {
+      expectPass(`
+        export const FloatingCard = () => (
+          <motion.div
+            animate={{ y: [0, -12, 0] }}
+            transition={{ duration: 5 + Math.random() * 3, repeat: Infinity }}
+          />
+        );
+      `);
+    });
+
+    it("still flags Math.random() in a motion element's initial prop", () => {
+      expectFail(`
+        export const FloatingCard = () => (
+          <motion.div initial={{ opacity: Math.random() }} />
+        );
+      `);
+    });
+
+    it("still flags Math.random() in a transition prop on a non-motion element", () => {
+      expectFail(`
+        export const Card = () => <Widget transition={{ duration: Math.random() }} />;
+      `);
+    });
+  });
+
   describe("email templates", () => {
     it("does not flag new Date().getFullYear() in an MJML email footer", () => {
       expectPass(`

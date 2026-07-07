@@ -1,8 +1,10 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { parseJsxValue } from "../../utils/parse-jsx-value.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js";
 import { getStringFromClassNameAttr } from "./utils/get-string-from-class-name-attr.js";
@@ -90,6 +92,77 @@ const isNotKeyboardFocusable = (styleAttribute: EsTreeNode): boolean => {
   return tabIndexValue !== null && tabIndexValue < 0;
 };
 
+const hasJsxAttributeNamed = (openingElement: EsTreeNode, attributeName: string): boolean =>
+  Boolean(
+    isNodeOfType(openingElement, "JSXOpeningElement") &&
+    findJsxAttribute(openingElement.attributes, attributeName),
+  );
+
+// A dialog/drawer surface (`aria-modal`) or an element whose own
+// focus/blur handlers toggle a custom indicator manages focus visuals
+// deliberately — the doc's managed-focus and replacement-ring carve-outs.
+const isManagedFocusSurface = (styleAttribute: EsTreeNode): boolean => {
+  const openingElement = styleAttribute.parent;
+  if (!openingElement || !isNodeOfType(openingElement, "JSXOpeningElement")) return false;
+  if (hasJsxAttributeNamed(openingElement, "aria-modal")) return true;
+  if (
+    hasJsxAttributeNamed(openingElement, "onFocus") &&
+    hasJsxAttributeNamed(openingElement, "onBlur")
+  ) {
+    return true;
+  }
+  return false;
+};
+
+// `<SkipNavContent style={{ outline: 0 }}>` — skip-navigation targets
+// (chakra / reach-ui) are programmatically focused with tabIndex=-1 set
+// inside the component, so suppressing their outline is the established
+// accessible pattern.
+const SKIP_NAV_COMPONENT_NAME_PATTERN = /skipnav/i;
+
+const isSkipNavComponent = (styleAttribute: EsTreeNode): boolean => {
+  const openingElement = styleAttribute.parent;
+  return Boolean(
+    openingElement &&
+    isNodeOfType(openingElement, "JSXOpeningElement") &&
+    isNodeOfType(openingElement.name, "JSXIdentifier") &&
+    SKIP_NAV_COMPONENT_NAME_PATTERN.test(openingElement.name.name),
+  );
+};
+
+// A component that also renders a `*FocusManager*` (floating-ui / Floater)
+// is trapping focus programmatically; the surface it styles with
+// `outline: none` is a managed container, not a Tab-reachable control.
+const getJsxNameText = (name: EsTreeNode | null | undefined): string | null => {
+  if (!name) return null;
+  if (isNodeOfType(name, "JSXIdentifier")) return name.name;
+  if (isNodeOfType(name, "JSXMemberExpression")) {
+    return isNodeOfType(name.property, "JSXIdentifier") ? name.property.name : null;
+  }
+  return null;
+};
+
+const rendersFocusManagerInSameFunction = (styleAttribute: EsTreeNode): boolean => {
+  let scopeOwner: EsTreeNode = styleAttribute;
+  let ancestor: EsTreeNode | null | undefined = styleAttribute.parent;
+  while (ancestor) {
+    scopeOwner = ancestor;
+    if (isFunctionLike(ancestor)) break;
+    ancestor = ancestor.parent ?? null;
+  }
+  let didFindFocusManager = false;
+  walkAst(scopeOwner, (child: EsTreeNode) => {
+    if (didFindFocusManager) return false;
+    if (!isNodeOfType(child, "JSXOpeningElement")) return;
+    const nameText = getJsxNameText(child.name);
+    if (nameText && nameText.includes("FocusManager")) {
+      didFindFocusManager = true;
+      return false;
+    }
+  });
+  return didFindFocusManager;
+};
+
 export const noOutlineNone = defineRule({
   id: "no-outline-none",
   title: "outline:none removes focus ring",
@@ -104,6 +177,9 @@ export const noOutlineNone = defineRule({
       if (!expression) return;
 
       if (isNotKeyboardFocusable(node)) return;
+      if (isManagedFocusSurface(node)) return;
+      if (isSkipNavComponent(node)) return;
+      if (rendersFocusManagerInSameFunction(node)) return;
 
       let hasOutlineNone = false;
       let outlineProperty: EsTreeNode | null = null;

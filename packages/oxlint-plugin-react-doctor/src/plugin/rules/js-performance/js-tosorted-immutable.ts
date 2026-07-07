@@ -1,8 +1,10 @@
 import { ITERATOR_PRODUCING_METHOD_NAMES } from "../../constants/js.js";
+import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-structurally-equal.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -39,39 +41,51 @@ const isFreshOrIteratorAllocation = (node: EsTreeNode | null | undefined): boole
   );
 };
 
-// A binding is a private throwaway only when it is declared with a fresh
-// allocation as a direct `VariableDeclarator` init (a parameter DEFAULT is
-// only allocated when the caller passes undefined — see the BindingInfo
-// contract in find-variable-initializer) AND the spread is its ONLY other
-// reference. Any additional read, write, or reassignment means the array
-// is shared at the sort site, so the spread copy protects it and
-// `toSorted()` is exactly the right rewrite.
-const isSpreadOfSingleUseFreshBinding = (spreadArgument: EsTreeNode): boolean => {
+// A `new Set(…)` / `new Map(…)` construction or an iterator-producing call:
+// values with no `toSorted()` at all, so `[...x].sort()` is a mandatory
+// conversion no matter how many other references the binding has.
+const isNonArrayIterableAllocation = (node: EsTreeNode | null | undefined): boolean => {
+  if (!node) return false;
+  if (isNodeOfType(node, "NewExpression")) {
+    return !(isNodeOfType(node.callee, "Identifier") && node.callee.name === "Array");
+  }
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = node.callee;
+  return (
+    isNodeOfType(callee, "MemberExpression") &&
+    isNodeOfType(callee.property, "Identifier") &&
+    ITERATOR_PRODUCING_METHOD_NAMES.has(callee.property.name)
+  );
+};
+
+const isSpreadOfNonArrayIterableBinding = (spreadArgument: EsTreeNode): boolean => {
   if (!isNodeOfType(spreadArgument, "Identifier")) return false;
   const binding = findVariableInitializer(spreadArgument, spreadArgument.name);
   if (!binding?.initializer) return false;
   if (!isNodeOfType(binding.bindingIdentifier.parent, "VariableDeclarator")) return false;
-  if (!isFreshOrIteratorAllocation(binding.initializer)) return false;
-  let otherReferenceCount = 0;
-  walkAst(binding.scopeOwner, (child: EsTreeNode) => {
-    if (!isNodeOfType(child, "Identifier")) return;
-    if (child.name !== spreadArgument.name) return;
-    if (child === spreadArgument || child === binding.bindingIdentifier) return;
-    const parent = child.parent;
-    if (isNodeOfType(parent, "MemberExpression") && parent.property === child && !parent.computed) {
-      return;
+  return isNonArrayIterableAllocation(binding.initializer);
+};
+
+// `.size` is a Set/Map property (arrays have `.length`): a `x.size` read on
+// the spread source anywhere in the enclosing function proves the spread is
+// a Set/Map-to-array conversion, not a wasteful array copy.
+const hasSizeReadOnSameExpression = (spreadArgument: EsTreeNode): boolean => {
+  let scopeOwner: EsTreeNode = spreadArgument;
+  let ancestor: EsTreeNode | null | undefined = spreadArgument.parent;
+  while (ancestor) {
+    scopeOwner = ancestor;
+    if (isFunctionLike(ancestor)) break;
+    ancestor = ancestor.parent ?? null;
+  }
+  let didFindSizeRead = false;
+  walkAst(scopeOwner, (child: EsTreeNode) => {
+    if (didFindSizeRead) return false;
+    if (!isMemberProperty(child, "size")) return;
+    if (areExpressionsStructurallyEqual(child.object, spreadArgument)) {
+      didFindSizeRead = true;
     }
-    if (
-      isNodeOfType(parent, "Property") &&
-      parent.key === child &&
-      parent.value !== child &&
-      !parent.computed
-    ) {
-      return;
-    }
-    otherReferenceCount += 1;
   });
-  return otherReferenceCount === 0;
+  return didFindSizeRead;
 };
 
 export const jsTosortedImmutable = defineRule({
@@ -102,7 +116,8 @@ export const jsTosortedImmutable = defineRule({
       ) {
         const spreadArgument = receiver.elements[0].argument as EsTreeNode;
         if (isFreshOrIteratorAllocation(spreadArgument)) return;
-        if (isSpreadOfSingleUseFreshBinding(spreadArgument)) return;
+        if (isSpreadOfNonArrayIterableBinding(spreadArgument)) return;
+        if (hasSizeReadOnSameExpression(spreadArgument)) return;
         context.report({
           node,
           message:

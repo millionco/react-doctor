@@ -41,6 +41,7 @@ import {
   buildUnstableDepMessage,
 } from "./exhaustive-deps-messages.js";
 import { resolveExhaustiveDepsSettings } from "./exhaustive-deps-settings.js";
+import { isExhaustiveDepsSuppressedAt } from "./exhaustive-deps-suppression.js";
 import {
   getFunctionValueNode,
   isRecursiveInitializerCapture,
@@ -327,6 +328,13 @@ interface CaptureCollection {
   // deps is still redundant (upstream policy), but the report must not
   // claim the callback "never uses it".
   moduleScopeCapturedNames: Set<string>;
+  // Bindings the callback reads from a function scope OUTSIDE the
+  // nearest component/hook function (e.g. a custom hook nested inside
+  // another custom hook reading the outer hook's parameter). They are
+  // excluded from the required-deps diff, but the callback DOES read
+  // them — an "unnecessary, never uses it" report would be factually
+  // wrong.
+  outerFunctionCapturedNames: Set<string>;
 }
 
 // Walks captures grouping by "dep key" (the canonical name of the
@@ -335,6 +343,7 @@ const collectCaptureDepKeys = (callback: EsTreeNode, scopes: ScopeAnalysis): Cap
   const keys = new Set<string>();
   const stableCapturedNames = new Set<string>();
   const moduleScopeCapturedNames = new Set<string>();
+  const outerFunctionCapturedNames = new Set<string>();
   const componentOrHookFunction = findEnclosingComponentOrHookFunction(callback);
   const componentOrHookScope = componentOrHookFunction
     ? scopes.ownScopeFor(componentOrHookFunction)
@@ -357,7 +366,10 @@ const collectCaptureDepKeys = (callback: EsTreeNode, scopes: ScopeAnalysis): Cap
       moduleScopeCapturedNames.add(symbol.name);
       continue;
     }
-    if (componentOrHookScope && !isDescendantScope(symbol.scope, componentOrHookScope)) continue;
+    if (componentOrHookScope && !isDescendantScope(symbol.scope, componentOrHookScope)) {
+      outerFunctionCapturedNames.add(symbol.name);
+      continue;
+    }
     const depKey = computeDepKey(reference);
     if (!depKey) continue;
     if (isStableRefContainerCapture(symbol, depKey)) {
@@ -373,7 +385,7 @@ const collectCaptureDepKeys = (callback: EsTreeNode, scopes: ScopeAnalysis): Cap
   // param walk used to live here and added every default-value name
   // unconditionally — which mis-reported module constants like
   // `(opts = SOME_CONST) => …` as missing deps.
-  return { keys, stableCapturedNames, moduleScopeCapturedNames };
+  return { keys, stableCapturedNames, moduleScopeCapturedNames, outerFunctionCapturedNames };
 };
 
 const isLiteralOrEmptyTemplate = (node: EsTreeNode): boolean =>
@@ -412,11 +424,29 @@ const hasComputedMemberExpression = (node: EsTreeNode): boolean => {
   return hasComputedMemberExpression(stripped.object);
 };
 
+// Extra (unused) deps in effect hooks are allowed as intentional
+// re-run triggers (upstream blesses `useEffect(() => scrollTo(0, 0),
+// [activeTab])`). A `useCallback(...)` binding is the one shape that
+// can't be a meaningful trigger: its identity is a pure artifact of
+// its own deps array, so an author wanting a trigger would list those
+// deps directly — an unused memoized callback in effect deps is a
+// refactoring leftover.
+const isUseCallbackResultDep = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  const rootSymbol = getRootSymbol(node, scopes);
+  const initializer = rootSymbol?.initializer ? unwrapExpression(rootSymbol.initializer) : null;
+  return Boolean(
+    initializer &&
+    isNodeOfType(initializer, "CallExpression") &&
+    getHookName(initializer.callee) === "useCallback",
+  );
+};
+
 const isExtraEffectDepAllowed = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const rootIdentifier = getMemberRootIdentifier(node);
   if (!rootIdentifier) return false;
   const symbol = scopes.symbolFor(rootIdentifier);
-  return Boolean(symbol && !isOutsideAllFunctions(symbol));
+  if (!symbol || isOutsideAllFunctions(symbol)) return false;
+  return !isUseCallbackResultDep(node, scopes);
 };
 
 const getRootSymbol = (node: EsTreeNode, scopes: ScopeAnalysis): SymbolDescriptor | null => {
@@ -802,7 +832,33 @@ useEffect(() => {
 
 If the missing value is recreated every render, move it inside the hook or stabilize it before adding it to deps.`,
   category: "Correctness",
-  create: (context) => {
+  create: (hostContext) => {
+    const nodeStartOffset = (node: EsTreeNode): number | null => {
+      const nodeWithOffsets = node as { start?: number; range?: [number, number] };
+      if (typeof nodeWithOffsets.start === "number") return nodeWithOffsets.start;
+      if (Array.isArray(nodeWithOffsets.range)) return nodeWithOffsets.range[0];
+      return null;
+    };
+    const context: typeof hostContext = {
+      get filename() {
+        return hostContext.filename;
+      },
+      get settings() {
+        return hostContext.settings;
+      },
+      get scopes() {
+        return hostContext.scopes;
+      },
+      get cfg() {
+        return hostContext.cfg;
+      },
+      report: (descriptor) => {
+        if (isExhaustiveDepsSuppressedAt(hostContext.filename, nodeStartOffset(descriptor.node))) {
+          return;
+        }
+        hostContext.report(descriptor);
+      },
+    };
     const settings = resolveExhaustiveDepsSettings(context.settings);
     const additionalHooksRegex = buildAdditionalHooksRegex(settings.additionalHooks);
     const isHookOfInterest = (hookName: string, callee: EsTreeNode): boolean => {
@@ -993,6 +1049,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           keys: captureKeys,
           stableCapturedNames,
           moduleScopeCapturedNames,
+          outerFunctionCapturedNames,
         } = collectCaptureDepKeys(callbackToAnalyze ?? callbackArgument, context.scopes);
         for (const forcedCaptureKey of forcedCaptureKeys) captureKeys.add(forcedCaptureKey);
 
@@ -1228,6 +1285,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
           if (didReportRefCurrentDep) continue;
           const rootName = declaredKey.split(".")[0]!;
           if (stableCapturedNames.has(rootName) || stableCapturedNames.has(declaredKey)) continue;
+          if (outerFunctionCapturedNames.has(rootName)) continue;
           const reportNode = declaredKeyToReportNode.get(declaredKey) ?? depsArgument;
           if (
             EFFECT_HOOKS_ALLOWING_EXTRA_REACTIVE_DEPS.has(hookName) &&

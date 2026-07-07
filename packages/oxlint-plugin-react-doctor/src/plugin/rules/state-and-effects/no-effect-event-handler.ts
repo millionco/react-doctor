@@ -102,6 +102,20 @@ const hasDependencyMatch = (
     doesGuardMatchDependency(guardExpression, dependencyExpression),
   );
 
+// `if (mode === 'trialregistration') return;` followed by the side effect
+// excludes ONE prop value and runs the effect for every other value —
+// including the initial render. That is default-path data loading keyed to
+// a programmatic prop (the doc's routing FP case), not "fire when the prop
+// flips". Negated equality (`!==`) still gates on reaching a specific
+// value, so it keeps firing.
+const isEqualityToLiteralGuard = (guardExpression: GuardExpression): boolean => {
+  const parent = guardExpression.expression.parent;
+  if (!isNodeOfType(parent, "BinaryExpression")) return false;
+  if (parent.operator !== "===" && parent.operator !== "==") return false;
+  const otherSide = parent.left === guardExpression.expression ? parent.right : parent.left;
+  return isNodeOfType(otherSide, "Literal") || isNodeOfType(otherSide, "TemplateLiteral");
+};
+
 const isStandaloneIdentifier = (node: EsTreeNode): node is EsTreeNodeOfType<"Identifier"> =>
   isNodeOfType(node, "Identifier") &&
   !(
@@ -208,6 +222,17 @@ export const noEffectEventHandler = defineRule({
           isReturnOnlyStatement(soleStatement.consequent) &&
           hasEventLikeRemainingStatements(statements.slice(1));
         if (!isSingleGuardedEventLikeStatement && !isEarlyReturnGuardedEventLikeBody) return;
+        // Only the early-return shape: there the equality guard EXCLUDES a
+        // value and the side effect is the default path (runs on mount).
+        // In the single-guarded shape an equality test gates ENTERING the
+        // side effect, which is the true-positive "when prop becomes X".
+        if (
+          isEarlyReturnGuardedEventLikeBody &&
+          !isSingleGuardedEventLikeStatement &&
+          matchingPropGuardExpressions.every(isEqualityToLiteralGuard)
+        ) {
+          return;
+        }
 
         const hasUnmatchedGuardExpression = guardExpressions.some(
           (guardExpression) =>

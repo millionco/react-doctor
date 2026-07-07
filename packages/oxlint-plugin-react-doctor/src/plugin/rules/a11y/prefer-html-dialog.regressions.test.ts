@@ -130,4 +130,60 @@ describe("a11y/prefer-html-dialog regressions", () => {
     const result = runRule(preferHtmlDialog, source);
     expect(result.diagnostics).toEqual([]);
   });
+
+  // Delta-verify recall regression (bulwarkmail email-composer): the file's
+  // useFocusTrap refs are wired to OTHER dialogs, so a dialog that attaches
+  // none of them can still leak focus — the trap suppression must be scoped
+  // to the element, not the file.
+  it("still flags a dialog whose file's focus-trap refs are attached to a different dialog", () => {
+    const source = `
+      const Composer = () => {
+        const saveTemplateModalRef = useFocusTrap({ isActive: showSave, onEscape: close });
+        return (
+          <>
+            <div ref={saveTemplateModalRef} role="dialog" aria-modal="true">save as template</div>
+            <div role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+              <input type="password" onKeyDown={(e) => { if (e.key === "Enter") resolve(); }} />
+            </div>
+          </>
+        );
+      };
+    `;
+    const result = runRule(preferHtmlDialog, source);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("focus trapping");
+  });
+
+  it("suppresses a dialog whose trap ref sits on an ancestor wrapper", () => {
+    const source = `
+      const Modal = ({ children }) => {
+        const overlayRef = useFocusTrap({ isActive: true });
+        return (
+          <div ref={overlayRef} className="overlay">
+            <div role="dialog" aria-modal="true">{children}</div>
+          </div>
+        );
+      };
+    `;
+    const result = runRule(preferHtmlDialog, source);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("suppresses a dialog that references a named Tab-trapping handler while a sibling without one is flagged", () => {
+    const source = `
+      const Dialogs = () => {
+        const handleTrapKeyDown = (event) => {
+          if (event.key === "Tab") wrapFocus(event);
+        };
+        return (
+          <>
+            <div role="dialog" aria-modal="true" onKeyDown={handleTrapKeyDown}>trapped</div>
+            <div role="dialog" aria-modal="true">untrapped</div>
+          </>
+        );
+      };
+    `;
+    const result = runRule(preferHtmlDialog, source);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

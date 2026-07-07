@@ -82,4 +82,42 @@ describe("js-performance/js-index-maps — regressions", () => {
       `function f(rows, groups){ for (const row of rows){ const m = groups[0].links.find((l)=> l.id === row.linkId); use(m); } }`,
     );
   });
+
+  // Docs-validation r2 (cloudscape drilldown, freecut transcription):
+  // the `.find()` target is push()ed / sort()ed inside the same loop, so
+  // the searched array changes per iteration — the doc's explicit FP
+  // ("a pre-built index can't be reused").
+  it("does not flag a receiver that is push()ed inside the same loop", () => {
+    expectPass(
+      `function f(series){ const acc = []; for (const s of series){ let d = acc.find((i)=> i.x === s.x); if (d) { d.y += s.y; } else { acc.push({ x: s.x, y: s.y }); } } return acc; }`,
+    );
+  });
+
+  it("does not flag a receiver that is sort()ed inside the same loop", () => {
+    expectPass(
+      `function f(clips, tracks){ for (const clip of clips){ const t = tracks.find((tr)=> tr.id === clip.trackId); if (!t) { tracks.push(make(clip)); tracks.sort((a,b)=> a.order - b.order); } } }`,
+    );
+  });
+
+  it("still flags when a different array is mutated inside the loop", () => {
+    expectFail(
+      `function f(rows, users){ const out = []; for (const row of rows){ const u = users.find((x)=> x.id === row.userId); out.push(u); } return out; }`,
+    );
+  });
+
+  // Docs-validation r2 (tracecat case-durations-table):
+  // `CASE_EVENT_FILTER_OPTIONS[type].options.find(...)` — a receiver
+  // rooted at a SCREAMING_SNAKE constant is an enum-sized config table,
+  // the doc's tiny-N carve-out.
+  it("does not flag a receiver rooted at a SCREAMING_SNAKE module constant", () => {
+    expectPass(
+      `function f(values, type){ const labels = []; for (const value of values){ const opt = CASE_EVENT_FILTER_OPTIONS[type].options.find((o)=> o.value === value); labels.push(opt?.label ?? value); } return labels; }`,
+    );
+  });
+
+  it("still flags a lowercase-named receiver of the same shape", () => {
+    expectFail(
+      `function f(values, options){ const labels = []; for (const value of values){ const opt = options.find((o)=> o.value === value); labels.push(opt?.label ?? value); } return labels; }`,
+    );
+  });
 });

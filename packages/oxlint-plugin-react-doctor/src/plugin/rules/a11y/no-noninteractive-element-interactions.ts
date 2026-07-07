@@ -1,11 +1,13 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
+import { isInteractiveElement } from "../../utils/is-interactive-element.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isPresentationRole } from "../../utils/is-presentation-role.js";
 import { isPureEventBlockerHandler } from "../../utils/is-pure-event-blocker-handler.js";
@@ -112,6 +114,29 @@ const MOUSE_HANDLERS_LOWER: ReadonlySet<string> = new Set(
   ["onClick", "onMouseDown", "onMouseUp"].map((handlerName) => handlerName.toLowerCase()),
 );
 
+// A presentation-role element is a passive delegation wrapper only when
+// the real interaction target lives inside it: a native interactive
+// element or a descendant with an interactive role. Without one, the
+// wrapper's own click handler IS the interaction, and role="presentation"
+// hides it from assistive tech instead of marking delegation.
+const hasInteractiveDescendant = (element: EsTreeNode | null | undefined): boolean => {
+  if (!element || !isNodeOfType(element, "JSXElement")) return false;
+  for (const child of element.children) {
+    const childNode = child as EsTreeNode;
+    if (!isNodeOfType(childNode, "JSXElement")) continue;
+    const opening = childNode.openingElement as EsTreeNodeOfType<"JSXOpeningElement">;
+    const name = flattenJsxName(opening.name as EsTreeNode);
+    if (name && isInteractiveElement(name, opening)) return true;
+    const roleAttribute = hasJsxPropIgnoreCase(opening.attributes, "role");
+    if (roleAttribute) {
+      const role = getJsxPropStringValue(roleAttribute);
+      if (role && INTERACTIVE_ROLES.has(role)) return true;
+    }
+    if (hasInteractiveDescendant(childNode)) return true;
+  }
+  return false;
+};
+
 const isContentEditableTrue = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
   const attribute = hasJsxPropIgnoreCase(node.attributes, "contenteditable");
   if (!attribute) return false;
@@ -161,11 +186,15 @@ export const noNoninteractiveElementInteractions = defineRule({
         }
         if (!hasActionableMouseHandler) return;
         if (isHiddenFromScreenReader(node, context.settings)) return;
-        // Upstream jsx-a11y parity: `role="presentation"`/`"none"` is an
-        // intentional signal that the element is not meant to be
-        // perceivable (delegation wrappers in composite widgets), and
+        // `role="presentation"`/`"none"` marks a delegation wrapper in a
+        // composite widget only when an interactive descendant exists to
+        // receive the interaction. A presentation-role element whose click
+        // handler is the sole interaction target is the keyboard-
+        // inaccessibility hazard this rule documents, so it still fires.
         // contentEditable elements are keyboard-editable already.
-        if (isPresentationRole(node)) return;
+        if (isPresentationRole(node) && hasInteractiveDescendant(node.parent)) {
+          return;
+        }
         if (isContentEditableTrue(node)) return;
         const roleAttr = hasJsxPropIgnoreCase(node.attributes, "role");
         if (roleAttr) {

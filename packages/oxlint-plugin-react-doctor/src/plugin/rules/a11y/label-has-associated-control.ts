@@ -80,9 +80,17 @@ const resolveSettings = (
   };
 };
 
+// Custom (uppercase) components whose name marks them as form controls —
+// `<SearchableSelect>`, `<Input>`, `<Combobox>` — render a native control
+// at runtime; without `controlComponents` configured the static walk
+// can't see through them, the doc's documented FP case.
+const CONTROL_NAMED_COMPONENT_PATTERN =
+  /input|select|textarea|checkbox|radio|switch|slider|combobox|autocomplete|picker|dropdown|toggle/i;
+
 // Glob match used by OXC for `controlComponents` entries (supports `*`).
 const isControlComponent = (tagName: string, controlComponents: ReadonlyArray<string>): boolean => {
   if (DEFAULT_CONTROL_COMPONENTS.has(tagName)) return true;
+  if (isReactComponentName(tagName) && CONTROL_NAMED_COMPONENT_PATTERN.test(tagName)) return true;
   return controlComponents.some((pattern) => compileGlob(pattern).test(tagName));
 };
 
@@ -295,9 +303,17 @@ export const labelHasAssociatedControl = defineRule({
         const opening = node.openingElement;
         const tagName = getElementType(opening, context.settings);
         if (!settings.labelComponents.has(tagName)) return;
-        const hasHtmlFor = settings.forAttributes.some((attributeName) =>
-          Boolean(hasJsxPropIgnoreCase(opening.attributes, attributeName)),
+        // A spread on the label itself (`<label {...props}>`) can carry
+        // `htmlFor` invisibly — wrapper components like a design-system
+        // `<Label>` forward it from callers, the doc's documented FP case.
+        const hasSpreadProps = opening.attributes.some((attribute) =>
+          isNodeOfType(attribute as EsTreeNode, "JSXSpreadAttribute"),
         );
+        const hasHtmlFor =
+          hasSpreadProps ||
+          settings.forAttributes.some((attributeName) =>
+            Boolean(hasJsxPropIgnoreCase(opening.attributes, attributeName)),
+          );
         const searchContext: SearchContext = {
           depth: settings.depth,
           labelAttributes: settings.labelAttributes,

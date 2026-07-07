@@ -50,6 +50,16 @@ const isSetStateToInitialValue = (analysis: ProgramAnalysis, setterRef: Referenc
   if ((setStateToValue && !stateInitialValue) || (!setStateToValue && stateInitialValue)) {
     return false;
   }
+  // `useState(value)` seeded from a LIVE binding: `setX(value)` later
+  // re-syncs to the binding's CURRENT value, not the mount-time initial —
+  // a draft re-sync, not a reset (ant-design-mobile picker, delta audit).
+  if (
+    stateInitialValue &&
+    isNodeOfType(stateInitialValue, "Identifier") &&
+    stateInitialValue.name !== "undefined"
+  ) {
+    return false;
+  }
   return getNodeText(setStateToValue) === getNodeText(stateInitialValue);
 };
 
@@ -80,8 +90,27 @@ const findPropUsedToResetAllState = (
   const allResetToInitial = stateSetterRefs.every((ref) => isSetStateToInitialValue(analysis, ref));
   if (!allResetToInitial) return null;
 
+  // The sync reset is the loading phase of a fetch lifecycle when the SAME
+  // state is set again from an async continuation inside this effect (the
+  // real value arrives later; cleanup cancels stale requests) — freecut
+  // inline-source-preview / inline-composition-preview in the delta audit.
+  const isEveryResetReloadedAsync = stateSetterRefs.every((setterRef) =>
+    effectFnRefs.some(
+      (otherRef) =>
+        otherRef !== setterRef &&
+        otherRef.resolved === setterRef.resolved &&
+        Boolean(getCallExpr(otherRef)) &&
+        !isSyncStateSetterCall(analysis, otherRef, effectFn),
+    ),
+  );
+  if (isEveryResetReloadedAsync) return null;
+
   const containing = findContainingNode(analysis, useEffectNode);
-  if (stateSetterRefs.length !== countUseStates(analysis, containing)) return null;
+  // Distinct state VARIABLES reset — two call sites of one setter must not
+  // satisfy a two-useState component (freecut inline-composition-preview,
+  // delta audit).
+  const resetStateVariables = new Set(stateSetterRefs.map((setterRef) => setterRef.resolved));
+  if (resetStateVariables.size !== countUseStates(analysis, containing)) return null;
 
   for (const depRef of depsRefs) {
     for (const upRef of getUpstreamRefs(analysis, depRef)) {

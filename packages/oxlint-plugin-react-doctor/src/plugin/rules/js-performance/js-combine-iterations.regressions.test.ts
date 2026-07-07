@@ -94,6 +94,49 @@ describe("js-performance/js-combine-iterations — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  // Docs-validation r2: PortOS JobsTab `BRIEFING_CONFIG_OPTIONS.filter().map()`
+  // — the receiver is a module-scope const literal of 3 entries, the doc's
+  // tiny-N carve-out, but the inline-literal guard missed the named form.
+  it("does not flag a chain rooted at a small module-scope const array literal", () => {
+    expectPass(`
+      const BRIEFING_CONFIG_OPTIONS = [
+        { key: 'dailyJoke', label: 'Daily Joke' },
+        { key: 'dailyQuote', label: 'Daily Quote' },
+        { key: 'dailyImage', label: 'Daily Image' },
+      ];
+      const badges = BRIEFING_CONFIG_OPTIONS.filter(o => config[o.key]).map(o => o.label);
+    `);
+  });
+
+  it("does not flag an exported small const array literal chain", () => {
+    expectPass(`
+      export const SIZES = ['sm', 'md', 'lg'];
+      const labels = SIZES.filter(s => s !== 'md').map(s => s.toUpperCase());
+    `);
+  });
+
+  it("still flags a chain rooted at a large module-scope const array literal", () => {
+    expectFail(`
+      const ROWS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+      const r = ROWS.filter(x => x > 2).map(x => x * 2);
+    `);
+  });
+
+  it("still flags a chain rooted at a let-declared array literal", () => {
+    expectFail(`
+      let rows = [1, 2, 3];
+      rows = load();
+      const r = rows.filter(x => x > 2).map(x => x * 2);
+    `);
+  });
+
+  it("still flags a chain rooted at a const array with spread", () => {
+    expectFail(`
+      const ROWS = [...loaded];
+      const r = ROWS.filter(x => x > 2).map(x => x * 2);
+    `);
+  });
+
   it("reports two independent chains in one file twice", () => {
     const result = runRule(
       jsCombineIterations,

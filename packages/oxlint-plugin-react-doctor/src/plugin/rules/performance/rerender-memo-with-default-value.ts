@@ -1,4 +1,4 @@
-import { HOOKS_WITH_DEPS } from "../../constants/react.js";
+import { COMPONENT_HOC_WRAPPER_NAMES, HOOKS_WITH_DEPS } from "../../constants/react.js";
 import {
   buildSameFileMemoRegistry,
   memoStatusForJsxOpeningName,
@@ -40,26 +40,80 @@ const emptyLiteralKindOf = (expression: EsTreeNode): EmptyLiteralKind | null => 
   return null;
 };
 
+const collectFromObjectPattern = (
+  pattern: EsTreeNode,
+  bindings: Map<string, DefaultedEmptyBinding>,
+): void => {
+  if (!isNodeOfType(pattern, "ObjectPattern")) return;
+  for (const property of pattern.properties ?? []) {
+    if (!isNodeOfType(property, "Property") || !isNodeOfType(property.value, "AssignmentPattern"))
+      continue;
+    const boundName = property.value.left;
+    if (!isNodeOfType(boundName, "Identifier")) continue;
+    const literalKind = emptyLiteralKindOf(property.value.right);
+    if (!literalKind) continue;
+    bindings.set(boundName.name, {
+      defaultValueNode: property.value.right,
+      literalKind,
+    });
+  }
+};
+
+// Defaulted empty literals live either in the parameter pattern
+// (`({ items = [] }) => …`) or in a body destructure of the props param
+// (`const { items = [] } = props`) — both allocate a fresh reference per
+// render.
 const collectDefaultedEmptyBindings = (
-  params: EsTreeNode[],
+  functionNode: EsTreeNode,
 ): Map<string, DefaultedEmptyBinding> => {
   const bindings = new Map<string, DefaultedEmptyBinding>();
+  const params = (functionNode as { params?: EsTreeNode[] }).params ?? [];
   for (const param of params) {
-    if (!isNodeOfType(param, "ObjectPattern")) continue;
-    for (const property of param.properties ?? []) {
-      if (!isNodeOfType(property, "Property") || !isNodeOfType(property.value, "AssignmentPattern"))
+    collectFromObjectPattern(param, bindings);
+  }
+  const propsParam = params[0];
+  const body = (functionNode as { body?: EsTreeNode }).body;
+  if (!propsParam || !isNodeOfType(propsParam, "Identifier") || !body) return bindings;
+  if (!isNodeOfType(body, "BlockStatement")) return bindings;
+  for (const statement of body.body ?? []) {
+    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
+    for (const declarator of statement.declarations ?? []) {
+      if (!isNodeOfType(declarator, "VariableDeclarator") || !declarator.init) continue;
+      const initializer = stripParenExpression(declarator.init as EsTreeNode);
+      if (!isNodeOfType(initializer, "Identifier") || initializer.name !== propsParam.name)
         continue;
-      const boundName = property.value.left;
-      if (!isNodeOfType(boundName, "Identifier")) continue;
-      const literalKind = emptyLiteralKindOf(property.value.right);
-      if (!literalKind) continue;
-      bindings.set(boundName.name, {
-        defaultValueNode: property.value.right,
-        literalKind,
-      });
+      collectFromObjectPattern(declarator.id as EsTreeNode, bindings);
     }
   }
   return bindings;
+};
+
+const isFunctionExpressionLike = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "FunctionDeclaration") ||
+  isNodeOfType(node, "FunctionExpression") ||
+  isNodeOfType(node, "ArrowFunctionExpression");
+
+const hocCalleeName = (callee: EsTreeNode): string | null => {
+  if (isNodeOfType(callee, "Identifier")) return callee.name;
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    return callee.property.name;
+  }
+  return null;
+};
+
+// `const Chart = forwardRef(function Chart(props, ref) {…})` (and
+// memo/observer chains) still render through the inner function — unwrap
+// wrapper calls down to it so its props defaults get checked.
+const unwrapHocWrappedFunction = (expression: EsTreeNode): EsTreeNode | null => {
+  let current = stripParenExpression(expression);
+  while (isNodeOfType(current, "CallExpression")) {
+    const calleeName = hocCalleeName(current.callee as EsTreeNode);
+    if (!calleeName || !COMPONENT_HOC_WRAPPER_NAMES.has(calleeName)) return null;
+    const firstArgument = current.arguments?.[0];
+    if (!firstArgument || isNodeOfType(firstArgument, "SpreadElement")) return null;
+    current = stripParenExpression(firstArgument as EsTreeNode);
+  }
+  return isFunctionExpressionLike(current) ? current : null;
 };
 
 const isIntrinsicJsxElementName = (openingName: EsTreeNode | null | undefined): boolean => {
@@ -196,7 +250,7 @@ export const rerenderMemoWithDefaultValue = defineRule({
         !isNodeOfType(functionNode, "ArrowFunctionExpression")
       )
         return;
-      const defaultedBindings = collectDefaultedEmptyBindings(functionNode.params ?? []);
+      const defaultedBindings = collectDefaultedEmptyBindings(functionNode);
       if (defaultedBindings.size === 0) return;
       if (!functionNode.body) return;
 
@@ -228,8 +282,14 @@ export const rerenderMemoWithDefaultValue = defineRule({
         checkComponentFunction(node as EsTreeNode);
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
-        if (!isComponentAssignment(node)) return;
-        checkComponentFunction(node.init as EsTreeNode);
+        if (isComponentAssignment(node)) {
+          checkComponentFunction(node.init as EsTreeNode);
+          return;
+        }
+        if (!isNodeOfType(node.id, "Identifier") || !isUppercaseName(node.id.name) || !node.init)
+          return;
+        const wrappedFunction = unwrapHocWrappedFunction(node.init as EsTreeNode);
+        if (wrappedFunction) checkComponentFunction(wrappedFunction);
       },
     };
   },

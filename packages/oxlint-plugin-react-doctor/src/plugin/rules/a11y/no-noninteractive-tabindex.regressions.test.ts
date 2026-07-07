@@ -170,6 +170,141 @@ describe("a11y/no-noninteractive-tabindex regressions", () => {
     });
   });
 
+  describe("tooltip/popover triggers", () => {
+    it("stays silent on a focusable span that is a Tooltip's direct child", () => {
+      expect(
+        runRule(
+          noNoninteractiveTabindex,
+          `
+            const SelectorErrorTooltip = (props) => (
+              <Tooltip {...props}>
+                <span tabIndex={0} className={styles.SelectorErrorTooltip}>
+                  <Text visuallyHidden>Error</Text>
+                  <Icon symbol={ErrorIcon} />
+                </span>
+              </Tooltip>
+            );
+          `,
+        ).diagnostics,
+      ).toEqual([]);
+    });
+
+    it("stays silent on a focusable div assigned to a `trigger` variable", () => {
+      expect(
+        runRule(
+          noNoninteractiveTabindex,
+          `
+            const trigger = (
+              <div className={rightIconClass} tabIndex={0}>
+                <Icon name="info" />
+              </div>
+            );
+          `,
+        ).diagnostics,
+      ).toEqual([]);
+    });
+
+    it("stays silent on a focusable div wrapping a Popover", () => {
+      expect(
+        runRule(
+          noNoninteractiveTabindex,
+          `
+            const Demo = () => (
+              <div tabIndex={0}>
+                <Popover size="medium" header="Memory error" content={content}>
+                  sj-45ab8k
+                </Popover>
+              </div>
+            );
+          `,
+        ).diagnostics,
+      ).toEqual([]);
+    });
+  });
+
+  describe("focusable scroll containers", () => {
+    it("stays silent on an overflow-auto preview container", () => {
+      expect(
+        runRule(
+          noNoninteractiveTabindex,
+          `<div tabIndex={0} className="z-10 flex max-h-full overflow-auto outline-none">{children}</div>`,
+        ).diagnostics,
+      ).toEqual([]);
+    });
+
+    it("stays silent on an overflow-y-scroll container", () => {
+      expect(
+        runRule(
+          noNoninteractiveTabindex,
+          `<div tabIndex={0} className="overflow-y-scroll h-64">{rows}</div>`,
+        ).diagnostics,
+      ).toEqual([]);
+    });
+
+    it("still flags a non-scrollable styled div", () => {
+      expect(
+        runRule(
+          noNoninteractiveTabindex,
+          `<div tabIndex={0} className="flex flex-col gap-2">static text</div>`,
+        ).diagnostics,
+      ).toHaveLength(1);
+    });
+  });
+
+  describe("library-managed interactive surfaces", () => {
+    it("stays silent on a map container with a ref and mouse handlers", () => {
+      expect(
+        runRule(
+          noNoninteractiveTabindex,
+          `
+            const Viewer = () => (
+              <div
+                className="map-viewer-component"
+                ref={mapViewerRef}
+                tabIndex={0}
+                onContextMenu={onContextMenu}
+                onMouseDown={onMouseDown}
+                onMouseUp={onMouseUp}
+              >
+                <MapLoadIndicator />
+              </div>
+            );
+          `,
+        ).diagnostics,
+      ).toEqual([]);
+    });
+  });
+
+  describe("focus-trap sentinels", () => {
+    it("stays silent on bare sentinel divs bracketing dialog content", () => {
+      expect(
+        runRule(
+          noNoninteractiveTabindex,
+          `
+            const Dialog = () => (
+              <div className={overlayClass}>
+                <div tabIndex={0} />
+                <div role="dialog" ref={containerRef}>{children}</div>
+                <div tabIndex={0} />
+              </div>
+            );
+          `,
+        ).diagnostics,
+      ).toEqual([]);
+    });
+  });
+
+  describe("focusable dialog containers", () => {
+    it("stays silent on a role=dialog calendar popup", () => {
+      expect(
+        runRule(
+          noNoninteractiveTabindex,
+          `<div tabIndex={0} className={styles.calendar} role="dialog"><InternalCalendar /></div>`,
+        ).diagnostics,
+      ).toEqual([]);
+    });
+  });
+
   describe("testlike files are skipped", () => {
     it("stays silent in a unit test file", () => {
       expect(

@@ -1,0 +1,51 @@
+[
+  {
+    "name": "Taxonomy (Next.js app)",
+    "slug": "shadcn-ui/taxonomy",
+    "url": "https://github.com/shadcn-ui/taxonomy.git",
+    "sha": "298a8857c7128a0d121e7f699dfd729f23b3966d"
+  },
+  {
+    "name": "Bulletproof React (Vite SPA, TanStack Query)",
+    "slug": "alan2207/bulletproof-react",
+    "url": "https://github.com/alan2207/bulletproof-react.git",
+    "sha": "9506629ed003a561c6627735480cce4994244bb4",
+    "subdirectory": "apps/react-vite"
+  },
+  {
+    "name": "shadcn/ui (component library monorepo)",
+    "slug": "shadcn-ui/ui",
+    "url": "https://github.com/shadcn-ui/ui.git",
+    "sha": "68e1f171aa8c6ce2e38cb9a7d1463d6bcf357e91"
+  },
+  {
+    "name": "Excalidraw (Vite SPA)",
+    "slug": "excalidraw/excalidraw",
+    "url": "https://github.com/excalidraw/excalidraw.git",
+    "sha": "ba0387d186b361d8d9a2390f396cb17527073442"
+  },
+  {
+    "name": "Chain React 2023 (React Native / Expo app)",
+    "slug": "infinitered/ChainReactApp2023",
+    "url": "https://github.com/infinitered/ChainReactApp2023.git",
+    "sha": "cb1c2b9e6225dbfbe4077f6ddfbca3d5c9629237"
+  },
+  {
+    "name": "Pierre Diffs (Next.js monorepo)",
+    "slug": "pierrecomputer/pierre",
+    "url": "https://github.com/pierrecomputer/pierre.git",
+    "sha": "66562caf7305dff1392d4c3c2964d9cabfdcf09f"
+  },
+  {
+    "name": "Outline (classic MobX React SPA)",
+    "slug": "outline/outline",
+    "url": "https://github.com/outline/outline.git",
+    "sha": "25e8b6f518d1bfce912433af6201131d22fe3559"
+  },
+  {
+    "name": "Bluesky (React Native + web hybrid)",
+    "slug": "bluesky-social/social-app",
+    "url": "https://github.com/bluesky-social/social-app.git",
+    "sha": "ea3d6827c75c2c2063bdb8d3240c62d8f041c7fa"
+  }
+]

@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Filter from "effect/Filter";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -302,6 +303,14 @@ const NO_HOOKS: Required<InspectHooks<never>> = {
   afterLint: () => Effect.void,
 };
 
+const filterMapNullable = <Input, Output>(
+  transform: (value: Input) => Output | null,
+): Filter.Filter<Input, Output> =>
+  Filter.fromPredicateOption((value) => {
+    const result = transform(value);
+    return result === null ? Option.none() : Option.some(result);
+  });
+
 const EMPTY_DIAGNOSTIC_STREAM: Stream.Stream<Diagnostic, never> = Stream.empty;
 
 const fileReader =
@@ -458,10 +467,7 @@ export const runInspect = <HooksR = never>(
 
     const applyPerElementPipeline = <ToEnv>(rawStream: Stream.Stream<Diagnostic, never, ToEnv>) =>
       rawStream.pipe(
-        Stream.filterMap((diagnostic) => {
-          const filtered = transform.apply(diagnostic);
-          return filtered === null ? Option.none() : Option.some(filtered);
-        }),
+        Stream.filterMap(filterMapNullable<Diagnostic, Diagnostic>(transform.apply)),
         Stream.tap((diagnostic) => reporterService.emit(diagnostic)),
       );
 

@@ -13,11 +13,13 @@ import type { RuleContext } from "../../utils/rule-context.js";
 
 // TanStack Query result objects track field access through property getters,
 // so `query.data` subscribes to exactly `data` — identical to destructuring.
-// The only consumptions that genuinely subscribe to every field are the ones
-// that ENUMERATE the object: spreading it into an object literal or JSX
-// attributes, or rest-destructuring it through a later binding. Everything
-// else (field reads, forwarding, dependency arrays) is field-tracked or
-// tracked at the eventual read site, and must stay silent.
+// The only consumption that genuinely subscribes to every field AND is not
+// covered elsewhere is a SPREAD of the whole object into an object literal or
+// JSX attributes. Everything else (field reads, forwarding, dependency
+// arrays) is field-tracked or tracked at the eventual read site, and must
+// stay silent. Rest-destructuring — direct or through a later binding — is
+// `query-no-rest-destructuring`'s territory; classifying it here too would
+// double-report the same line.
 // `return { ...query, isLoading: ... }` inside a custom hook forwards the
 // whole result object as the hook's own return value: the spread happens once
 // per hook render, and which fields are SUBSCRIBED to is still decided at the
@@ -36,22 +38,14 @@ const isHookReturnForwardingSpread = (objectExpression: EsTreeNode): boolean => 
   return Boolean(enclosingName && isReactHookName(enclosingName));
 };
 
-const classifyEveryFieldRead = (identifier: EsTreeNode): "spread" | "rest-destructuring" | null => {
+const isEnumeratingSpread = (identifier: EsTreeNode): boolean => {
   const expressionRoot = findTransparentExpressionRoot(identifier);
   const parent = expressionRoot.parent;
-  if (isNodeOfType(parent, "JSXSpreadAttribute")) return "spread";
+  if (isNodeOfType(parent, "JSXSpreadAttribute")) return true;
   if (isNodeOfType(parent, "SpreadElement") && isNodeOfType(parent.parent, "ObjectExpression")) {
-    return isHookReturnForwardingSpread(parent.parent) ? null : "spread";
+    return !isHookReturnForwardingSpread(parent.parent);
   }
-  if (
-    isNodeOfType(parent, "VariableDeclarator") &&
-    parent.init === expressionRoot &&
-    isNodeOfType(parent.id, "ObjectPattern") &&
-    parent.id.properties.some((property) => isNodeOfType(property, "RestElement"))
-  ) {
-    return "rest-destructuring";
-  }
-  return null;
+  return false;
 };
 
 export const queryDestructureResult = defineRule({
@@ -61,7 +55,7 @@ export const queryDestructureResult = defineRule({
   requires: ["tanstack-query"],
   severity: "warn",
   recommendation:
-    "TanStack Query only subscribes to the fields you actually read, so `query.data` is as targeted as destructuring. Spreading or rest-destructuring the whole result reads every field and re-renders on each change; pick out only the fields you need.",
+    "TanStack Query only subscribes to the fields you actually read, so `query.data` is as targeted as destructuring. Spreading the whole result reads every field and re-renders on each change; pick out only the fields you need.",
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!isNodeOfType(node.id, "Identifier")) return;
@@ -89,14 +83,10 @@ export const queryDestructureResult = defineRule({
       for (const reference of bindingSymbol.references) {
         const referenceIdentifier = reference.identifier;
         if (referenceIdentifier === node.id) continue;
-        const everyFieldRead = classifyEveryFieldRead(referenceIdentifier);
-        if (!everyFieldRead) continue;
+        if (!isEnumeratingSpread(referenceIdentifier)) continue;
         context.report({
           node: referenceIdentifier,
-          message:
-            everyFieldRead === "spread"
-              ? `Spreading the whole ${calleeName}() result reads every field, so TanStack Query subscribes to all of them and re-renders on each change. Spread only the fields you need.`
-              : `Rest-destructuring the ${calleeName}() result reads every field, so TanStack Query subscribes to all of them and re-renders on each change.`,
+          message: `Spreading the whole ${calleeName}() result reads every field, so TanStack Query subscribes to all of them and re-renders on each change. Spread only the fields you need.`,
         });
       }
     },

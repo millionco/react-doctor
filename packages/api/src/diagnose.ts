@@ -217,17 +217,21 @@ const diagnoseProject = async (
     // have no file location); otherwise the on-disk config's directory.
     const didOverridePlugins =
       batchConfig?.plugins !== undefined || projectConfig?.plugins !== undefined;
-    const diagnoseLayerInput: DiagnoseLayerInput = {
-      config: effectiveConfig,
-      shouldRunLint,
-      shouldRunDeadCode,
-    };
-    if (didOverrideConfig) {
-      diagnoseLayerInput.configOverrideTarget = {
-        resolvedDirectory: scanTarget.resolvedDirectory,
-        configSourceDirectory: didOverridePlugins ? null : scanTarget.configSourceDirectory,
-      };
-    }
+    const diagnoseLayerInput: DiagnoseLayerInput = didOverrideConfig
+      ? {
+          config: effectiveConfig,
+          shouldRunLint,
+          shouldRunDeadCode,
+          configOverrideTarget: {
+            resolvedDirectory: scanTarget.resolvedDirectory,
+            configSourceDirectory: didOverridePlugins ? null : scanTarget.configSourceDirectory,
+          },
+        }
+      : {
+          config: effectiveConfig,
+          shouldRunLint,
+          shouldRunDeadCode,
+        };
     const layer = buildDiagnoseLayer(diagnoseLayerInput);
 
     const output: InspectOutput = await Effect.runPromise(

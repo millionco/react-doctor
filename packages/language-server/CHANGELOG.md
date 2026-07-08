@@ -1,5 +1,12 @@
 # @react-doctor/language-server
 
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies [[`9cb4149`](https://github.com/millionco/react-doctor/commit/9cb414905de7b360d728ca08d45167116a94ee90), [`d353dad`](https://github.com/millionco/react-doctor/commit/d353dadf988c52e3037dff52eec9cf8923145364), [`5d2f17f`](https://github.com/millionco/react-doctor/commit/5d2f17f71c9fb8e0d8d649da1b26de8f5cfe6c34), [`9cb4149`](https://github.com/millionco/react-doctor/commit/9cb414905de7b360d728ca08d45167116a94ee90), [`ce9dabf`](https://github.com/millionco/react-doctor/commit/ce9dabf1103f4f989bb8f9c1783a24674ba163e7)]:
+  - @react-doctor/core@0.7.2
+
 ## 0.7.1
 
 ### Patch Changes

@@ -1,5 +1,26 @@
 # @react-doctor/core
 
+## 0.7.2
+
+### Patch Changes
+
+- [#1077](https://github.com/millionco/react-doctor/pull/1077) [`9cb4149`](https://github.com/millionco/react-doctor/commit/9cb414905de7b360d728ca08d45167116a94ee90) Thanks [@aidenybai](https://github.com/aidenybai)! - Align 30+ rules with their documented behavior, fixing the false-positive clusters confirmed by a validation pass of 2,143 sampled diagnostics against the official rule prompts. Highlights: `jsx-key` now flags key-after-spread (the documented hazard) instead of the safe key-before-spread shape and exempts props rest parameters; `no-did-update-set-state` honors the prop-comparison guard exemption; `no-console` skips Node CLI scripts; `circular-dependency` skips type-only, lazy-import, and render-time-only cycles; `query-mutation-missing-invalidation` exempts read-only mutations; `insecure-crypto-risk` requires cryptographic context instead of matching identifier names; `no-unknown-property` allows valid hyphenated SVG attributes; `no-aria-hidden-on-focusable` verifies the element is actually focusable; `no-flush-sync` implements the documented DOM-measurement carve-out.
+
+- [#1071](https://github.com/millionco/react-doctor/pull/1071) [`d353dad`](https://github.com/millionco/react-doctor/commit/d353dadf988c52e3037dff52eec9cf8923145364) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Detect React when scanning a package subdirectory of a monorepo, so React rules no longer gate off silently. Two additions at the `discoverProject` seam:
+
+  - **Nearest-ancestor discovery.** A scan target with no `package.json` of its own now adopts the nearest enclosing package (a leaf workspace, a plain app root, or a monorepo root — whichever is closest, bounded by the git root) instead of only workspace-configured monorepo roots. Scanning `app/src/components` in a plain React app now inherits the app's React detection rather than synthesizing an empty, React-blind project.
+  - **Node-resolution React version fallback.** When declarations yield no usable React version (a version-less spec like `workspace:*` / `*` / a dist-tag, or React living only in a hoisted `node_modules` the declaration walks never reach), the version is resolved the way Node itself would — `require.resolve("react/package.json")` — making "React is installed and importable" ⇒ "React is detected" an invariant. Guarded to installations physically inside the enclosing repo so a globally installed React can't leak in, and it never overrides a parseable peer range (`^18 || ^19` still floors to the lowest supported major).
+
+- [#1083](https://github.com/millionco/react-doctor/pull/1083) [`5d2f17f`](https://github.com/millionco/react-doctor/commit/5d2f17f71c9fb8e0d8d649da1b26de8f5cfe6c34) Thanks [@skoshx](https://github.com/skoshx)! - `query-destructure-result` no longer classifies rest-destructuring (`const { data, ...rest } = query`) — that shape is `query-no-rest-destructuring`'s territory, and claiming it in both rules reported the same line twice ([#1082](https://github.com/millionco/react-doctor/issues/1082)). The rule now fires only on the consumption it uniquely owns: spreading the whole TanStack Query result into JSX (`<Inner {...query} />`) or an object literal, which enumerates every field and subscribes the component to all of them.
+
+- [#1077](https://github.com/millionco/react-doctor/pull/1077) [`9cb4149`](https://github.com/millionco/react-doctor/commit/9cb414905de7b360d728ca08d45167116a94ee90) Thanks [@aidenybai](https://github.com/aidenybai)! - Second-round FP/FN sweep: restore delta-audit recall regressions, wire confirmed false-negative clusters (jsx-no-target-blank, button-has-type, no-default-props), repair the never-firing no-layout-property-animation rule, reconcile no-array-index-as-key, gate RN boxShadow rules on new-architecture provenance, and skip the vulnerability axis for devDependencies in the supply-chain check.
+
+- [#1067](https://github.com/millionco/react-doctor/pull/1067) [`ce9dabf`](https://github.com/millionco/react-doctor/commit/ce9dabf1103f4f989bb8f9c1783a24674ba163e7) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Fix `--staged` silently scanning nothing when the project is a subdirectory of the git repo (the standard monorepo layout, e.g. `apps/webui`). Staged paths are collected project-relative (`git diff --cached --relative`), but the staged-content read used a bare `git show :<path>` index pathspec, which git resolves against the repo root — so in a subproject every read missed, the file was silently skipped, and the scan "passed" with `scannedFileCount: 0` (particularly dangerous in a pre-commit hook). The index read now uses the cwd-relative `git show :./<path>` form, matching how baseline `<ref>:<path>` reads were already resolved.
+
+- Updated dependencies [[`9cb4149`](https://github.com/millionco/react-doctor/commit/9cb414905de7b360d728ca08d45167116a94ee90), [`1880b15`](https://github.com/millionco/react-doctor/commit/1880b152e4d6aedd5c06cf2ca51783e53cfb4004), [`5d2f17f`](https://github.com/millionco/react-doctor/commit/5d2f17f71c9fb8e0d8d649da1b26de8f5cfe6c34), [`9cb4149`](https://github.com/millionco/react-doctor/commit/9cb414905de7b360d728ca08d45167116a94ee90)]:
+  - oxlint-plugin-react-doctor@0.7.2
+  - deslop-js@0.7.2
+
 ## 0.7.1
 
 ### Patch Changes

@@ -2,10 +2,65 @@ import { TANSTACK_QUERY_HOOKS } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getImportBindingForName } from "../../utils/find-import-source-for-name.js";
+import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
 import { isTanstackQuerySource } from "../../utils/is-tanstack-query-source.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+
+// Canonical TanStack hook name for a call expression, or null when the call
+// is not a TanStack Query hook. Resolves renamed imports
+// (`import { useQuery as useTodosQuery }`) to their exported name and accepts
+// namespace calls (`ReactQuery.useQuery(...)`). Only a hook that actually
+// comes from TanStack Query qualifies: a same-named hook from another library
+// (e.g. Convex's `useQuery` from `convex/react`) returns the data directly,
+// so rest-destructuring it is normal. No import in the file at all still
+// counts, preserving prior behavior.
+const resolveTanstackQueryHookName = (
+  callExpression: EsTreeNodeOfType<"CallExpression">,
+): string | null => {
+  const callee = callExpression.callee;
+  if (isNodeOfType(callee, "Identifier")) {
+    const importBinding = getImportBindingForName(callExpression, callee.name);
+    if (importBinding === null) {
+      return TANSTACK_QUERY_HOOKS.has(callee.name) ? callee.name : null;
+    }
+    if (importBinding.isNamespace || !isTanstackQuerySource(importBinding.source)) return null;
+    return importBinding.exportedName !== null &&
+      TANSTACK_QUERY_HOOKS.has(importBinding.exportedName)
+      ? importBinding.exportedName
+      : null;
+  }
+  if (
+    isNodeOfType(callee, "MemberExpression") &&
+    !callee.computed &&
+    isNodeOfType(callee.property, "Identifier") &&
+    TANSTACK_QUERY_HOOKS.has(callee.property.name) &&
+    isNodeOfType(callee.object, "Identifier")
+  ) {
+    const namespaceBinding = getImportBindingForName(callExpression, callee.object.name);
+    if (namespaceBinding?.isNamespace && isTanstackQuerySource(namespaceBinding.source)) {
+      return callee.property.name;
+    }
+  }
+  return null;
+};
+
+// Hook name behind a destructure initializer: a direct hook call, or a
+// `const` binding to one (`const result = useQuery(...); const { ...rest } =
+// result`). Reassignable bindings (`let`) stay exempt — the destructured
+// value may no longer be the query result.
+const resolveHookNameFromInitializer = (initializer: EsTreeNode): string | null => {
+  if (isNodeOfType(initializer, "CallExpression")) {
+    return resolveTanstackQueryHookName(initializer);
+  }
+  if (!isNodeOfType(initializer, "Identifier")) return null;
+  const binding = findVariableInitializer(initializer, initializer.name);
+  if (!binding?.initializer || !isConstDeclaredBinding(binding)) return null;
+  if (!isNodeOfType(binding.initializer, "CallExpression")) return null;
+  return resolveTanstackQueryHookName(binding.initializer);
+};
 
 export const queryNoRestDestructuring = defineRule({
   id: "query-no-rest-destructuring",
@@ -18,31 +73,20 @@ export const queryNoRestDestructuring = defineRule({
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!isNodeOfType(node.id, "ObjectPattern")) return;
-      if (!node.init || !isNodeOfType(node.init, "CallExpression")) return;
-
-      const calleeName = isNodeOfType(node.init.callee, "Identifier")
-        ? node.init.callee.name
-        : null;
-
-      if (!calleeName || !TANSTACK_QUERY_HOOKS.has(calleeName)) return;
-
-      // Only flag a hook that actually comes from TanStack Query. A same-named
-      // hook from another library (e.g. Convex's `useQuery` from `convex/react`)
-      // returns the data directly, so rest-destructuring it is normal. `null`
-      // (no import in this file) still fires, preserving prior behavior.
-      const importSource = getImportSourceForName(node, calleeName);
-      if (importSource !== null && !isTanstackQuerySource(importSource)) return;
+      if (!node.init) return;
 
       const hasRestElement = node.id.properties?.some((property: EsTreeNode) =>
         isNodeOfType(property, "RestElement"),
       );
+      if (!hasRestElement) return;
 
-      if (hasRestElement) {
-        context.report({
-          node: node.id,
-          message: `Rest-destructuring ${calleeName}() subscribes to every field, so it re-renders on each change.`,
-        });
-      }
+      const hookName = resolveHookNameFromInitializer(node.init);
+      if (!hookName) return;
+
+      context.report({
+        node: node.id,
+        message: `Rest-destructuring ${hookName}() subscribes to every field, so it re-renders on each change.`,
+      });
     },
   }),
 });

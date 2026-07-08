@@ -1,0 +1,8 @@
+{
+  "name": "bundle-size-test-project",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.js"
+  }
+}

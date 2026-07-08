@@ -21,16 +21,24 @@ const GRAPHQL_SANCTIONED_HTTP_METHOD = "POST";
 // keyword — a POST carrying one is a write, not a read.
 const GRAPHQL_MUTATION_TEXT_PATTERN = /^\s*mutation\b/;
 
-// True when the static text of a URL expression names a GraphQL endpoint.
-// Recognizes a string literal, a template literal with a static `/graphql`
-// segment (`\`${BASE}/graphql\``), and a const-resolved identifier
+// A path segment announcing an RPC-style read (`/zaps/get-zap-data`,
+// `/search`, a `/quote` endpoint): POST-as-read APIs name their read
+// endpoints this way because the query parameters ride in the body.
+const READ_NAMED_URL_SEGMENT_PATTERN = /(^|\/)(get|list|search|query|quote)([-_.]|\/|\?|#|$)/i;
+
+// True when any static text of a URL expression matches the pattern.
+// Recognizes a string literal, a template literal's static segments
+// (`\`${BASE}/graphql\``), and a const-resolved identifier
 // (`const GRAPHQL_URL = "/graphql"`).
-const isGraphqlUrl = (urlArgument: EsTreeNode | null | undefined): boolean => {
+const urlStaticTextMatches = (
+  urlArgument: EsTreeNode | null | undefined,
+  pattern: RegExp,
+): boolean => {
   if (!urlArgument) return false;
   if (
     isNodeOfType(urlArgument, "Literal") &&
     typeof urlArgument.value === "string" &&
-    GRAPHQL_URL_SEGMENT_PATTERN.test(urlArgument.value)
+    pattern.test(urlArgument.value)
   ) {
     return true;
   }
@@ -39,15 +47,40 @@ const isGraphqlUrl = (urlArgument: EsTreeNode | null | undefined): boolean => {
       (quasi) =>
         isNodeOfType(quasi, "TemplateElement") &&
         typeof quasi.value?.raw === "string" &&
-        GRAPHQL_URL_SEGMENT_PATTERN.test(quasi.value.raw),
+        pattern.test(quasi.value.raw),
     );
   }
   if (isNodeOfType(urlArgument, "Identifier")) {
     const binding = findVariableInitializer(urlArgument, urlArgument.name);
-    if (binding?.initializer) return isGraphqlUrl(binding.initializer);
+    if (binding?.initializer) return urlStaticTextMatches(binding.initializer, pattern);
   }
   return false;
 };
+
+const isGraphqlUrl = (urlArgument: EsTreeNode | null | undefined): boolean =>
+  urlStaticTextMatches(urlArgument, GRAPHQL_URL_SEGMENT_PATTERN);
+
+// A query configured with a live `refetchInterval` is deliberate polling —
+// the author wants the request re-fired on a timer, which is incompatible
+// with "this is a mutation" (a POST-as-read RPC being re-read). Literal
+// `false` / `0` disable polling and don't vouch for anything.
+const hasPollingRefetchInterval = (
+  optionsArgument: EsTreeNodeOfType<"ObjectExpression">,
+): boolean =>
+  (optionsArgument.properties ?? []).some((property: EsTreeNode) => {
+    if (
+      !isNodeOfType(property, "Property") ||
+      !isNodeOfType(property.key, "Identifier") ||
+      property.key.name !== "refetchInterval" ||
+      !property.value
+    ) {
+      return false;
+    }
+    if (isNodeOfType(property.value, "Literal")) {
+      return property.value.value !== false && property.value.value !== 0;
+    }
+    return true;
+  });
 
 const getStaticFetchMethod = (
   fetchOptions: EsTreeNodeOfType<"ObjectExpression">,
@@ -129,6 +162,8 @@ export const queryNoUseQueryForMutation = defineRule({
       if (!queryFnProperty || !isNodeOfType(queryFnProperty, "Property") || !queryFnProperty.value)
         return;
 
+      if (hasPollingRefetchInterval(optionsArgument)) return;
+
       let hasMutatingFetch = false;
       walkAst(queryFnProperty.value, (child: EsTreeNode) => {
         if (hasMutatingFetch) return;
@@ -148,6 +183,17 @@ export const queryNoUseQueryForMutation = defineRule({
           resolvedMethod === GRAPHQL_SANCTIONED_HTTP_METHOD &&
           isGraphqlUrl(child.arguments?.[0]) &&
           !hasInlineGraphqlMutationBody(fetchOptionsArgument)
+        ) {
+          return;
+        }
+
+        // A POST to a read-named RPC endpoint (`/zaps/get-zap-data`, a
+        // `/quote` API) is a read whose parameters ride in the body, not a
+        // write. Only POST gets this pass — DELETE/PUT/PATCH stay writes
+        // whatever the path says.
+        if (
+          resolvedMethod === "POST" &&
+          urlStaticTextMatches(child.arguments?.[0], READ_NAMED_URL_SEGMENT_PATTERN)
         ) {
           return;
         }

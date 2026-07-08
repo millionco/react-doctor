@@ -50,7 +50,9 @@ const setupFixture = (caseId: string): string => {
   const projectDir = setupReactProject(tempRoot, caseId, {
     files: {
       "src/components/Button.tsx": "export const Button = () => null;\n",
-      "src/components/index.ts": "export { Button } from './Button';\n",
+      "src/components/Card.tsx": "export const Card = () => null;\n",
+      "src/components/index.ts":
+        "export { Button } from './Button';\nexport { Card } from './Card';\n",
       "src/App.tsx": APP_SOURCE,
       "src/listReducer.ts": MUTATING_REDUCER,
       "src/Store.tsx": STORE_SOURCE,
@@ -168,7 +170,7 @@ describe("sidecar lint cache", () => {
     );
     writeFile(
       path.join(projectDir, "src/components/index.ts"),
-      "export { Button } from './ButtonAlt';\n",
+      "export { Button } from './ButtonAlt';\nexport { Card } from './Card';\n",
     );
     const incremental = await scan(projectDir);
     const full = await scanFull(projectDir);

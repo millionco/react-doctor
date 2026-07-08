@@ -1,3 +1,4 @@
+import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
@@ -188,6 +189,71 @@ const isInsideCacheMemo = (node: EsTreeNode): boolean => {
   return false;
 };
 
+// `try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); } catch { … }`
+// constructs purely to throw on invalid input — the value is discarded, so
+// there is nothing to hoist or memoize.
+const isDiscardedProbeInsideTry = (node: EsTreeNode): boolean => {
+  const statement = node.parent;
+  if (!isNodeOfType(statement, "ExpressionStatement")) return false;
+  let child: EsTreeNode = statement;
+  let cursor: EsTreeNode | null = statement.parent ?? null;
+  while (cursor && !isFunctionLike(cursor)) {
+    if (isNodeOfType(cursor, "TryStatement") && cursor.block === child) return true;
+    child = cursor;
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
+const isComponentOrHookName = (name: string): boolean =>
+  /^[A-Z]/.test(name) || /^use[A-Z0-9]/.test(name);
+
+const getFunctionName = (functionNode: EsTreeNode): string | null => {
+  if (
+    isNodeOfType(functionNode, "FunctionDeclaration") &&
+    isNodeOfType(functionNode.id, "Identifier")
+  ) {
+    return functionNode.id.name;
+  }
+  const holder = functionNode.parent;
+  if (
+    holder &&
+    isNodeOfType(holder, "VariableDeclarator") &&
+    isNodeOfType(holder.id, "Identifier")
+  ) {
+    return holder.id.name;
+  }
+  return null;
+};
+
+// A named plain utility that MERGES a caller-supplied options parameter
+// into the Intl config (`new Intl.NumberFormat(locale, { …defaults,
+// ...options })`): the arbitrary options object cannot be used as a cache
+// key, so neither hoisting nor a keyed memo applies — the doc's "per-call
+// dynamic input that can't be cached" false-positive condition. A bare
+// locale parameter stays flagged: a `Map` keyed by locale is the
+// documented fix for that shape.
+const isUncacheableOptionsMergeUtility = (node: EsTreeNodeOfType<"NewExpression">): boolean => {
+  const enclosingFunction = findEnclosingFunction(node);
+  if (!enclosingFunction || !isFunctionLike(enclosingFunction)) return false;
+  const functionName = getFunctionName(enclosingFunction);
+  if (!functionName || isComponentOrHookName(functionName)) return false;
+  const parameterNames = new Set<string>();
+  for (const parameter of enclosingFunction.params ?? []) {
+    collectPatternNames(parameter, parameterNames);
+  }
+  if (parameterNames.size === 0) return false;
+  return (node.arguments ?? []).some((argument) => {
+    if (!isNodeOfType(argument, "ObjectExpression")) return false;
+    return (argument.properties ?? []).some(
+      (property) =>
+        isNodeOfType(property, "SpreadElement") &&
+        isNodeOfType(property.argument, "Identifier") &&
+        parameterNames.has(property.argument.name),
+    );
+  });
+};
+
 const isIntlNewExpression = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "NewExpression")) return false;
   const callee = node.callee;
@@ -259,6 +325,8 @@ export const jsHoistIntl = defineRule({
       }
       if (!inFunctionBody) return;
       if (isInsideCacheMemo(node)) return;
+      if (isDiscardedProbeInsideTry(node)) return;
+      if (isUncacheableOptionsMergeUtility(node)) return;
 
       const className =
         isNodeOfType(node.callee, "MemberExpression") &&

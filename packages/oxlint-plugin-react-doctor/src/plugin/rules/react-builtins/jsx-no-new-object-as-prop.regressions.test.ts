@@ -64,4 +64,28 @@ describe("react-builtins/jsx-no-new-object-as-prop — regressions", () => {
       `import { lazy } from "react";\nconst Item = lazy(() => import("./item.js"));\nconst Foo = () => <Item foo={{ a: 1 }} />;`,
     );
   });
+
+  // Verify wave: `memo(fn, arePropsEqual)` compares props with the
+  // author's own function, which routinely ignores reference identity
+  // (antd MemoInput, json-edit-react CollectionNode) — a fresh object
+  // cannot break that bailout.
+  it("does not flag when the memo consumer has a custom comparator", () => {
+    expectPass(
+      `import { memo } from "react";
+      const Item = memo((props) => props.children, (prev, next) => isSimilar(prev.foo, next.foo));
+      const Foo = ({ base }) => <Item foo={{ ...base, extra: 1 }} />;`,
+    );
+  });
+
+  it("does not flag a React.memo consumer with a custom comparator", () => {
+    expectPass(
+      `import React from "react";
+      const CollectionNode = React.memo(CollectionNodeBase, areNodePropsEqual);
+      const Foo = ({ value }) => <CollectionNode foo={{ value }} />;`,
+    );
+  });
+
+  it("still flags a memo consumer without a comparator", () => {
+    expectFail(memoised(`const Foo = ({ base }) => <Item foo={{ ...base }} />;`));
+  });
 });

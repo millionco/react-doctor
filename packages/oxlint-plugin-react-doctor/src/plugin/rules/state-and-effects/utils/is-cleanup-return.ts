@@ -5,6 +5,7 @@ import {
   GLOBAL_RELEASE_METHOD_NAMES,
 } from "../../../constants/react.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import type { EsTreeNodeOfType } from "../../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { walkAst } from "../../../utils/walk-ast.js";
@@ -55,6 +56,28 @@ const isListenerRemovalViaNullHandler = (callNode: EsTreeNode): boolean => {
   );
 };
 
+// `off` / `removeEventListener` / `removeListener` remove by handler
+// REFERENCE. Passing a fresh inline function (`emitter.off("x", () =>
+// setVisible(true))`) can never match the registered handler, so the
+// "cleanup" releases nothing and the listener leaks.
+const REFERENCE_BASED_REMOVAL_METHOD_NAMES = new Set([
+  "off",
+  "removeEventListener",
+  "removeListener",
+]);
+
+const isNoOpInlineHandlerRemoval = (
+  callNode: EsTreeNodeOfType<"CallExpression">,
+  methodName: string,
+): boolean => {
+  if (!REFERENCE_BASED_REMOVAL_METHOD_NAMES.has(methodName)) return false;
+  const handlerArgument = callNode.arguments?.[1];
+  return (
+    isNodeOfType(handlerArgument, "ArrowFunctionExpression") ||
+    isNodeOfType(handlerArgument, "FunctionExpression")
+  );
+};
+
 const isReleaseLikeCall = (
   node: EsTreeNode,
   knownCleanupFunctionNames: ReadonlySet<string>,
@@ -71,6 +94,7 @@ const isReleaseLikeCall = (
     return false;
   }
   if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    if (isNoOpInlineHandlerRemoval(callNode, callee.property.name)) return false;
     if (
       BOUND_RESOURCE_RELEASE_METHOD_NAMES.has(callee.property.name) &&
       // Generic release verbs need a known subscription receiver.
@@ -135,6 +159,33 @@ export const isCleanupFunctionLike = (
   return containsReleaseLikeCall(node.body, knownCleanupFunctionNames, knownBoundSubscriptionNames);
 };
 
+// A returned inline cleanup whose ONLY calls are reference-based removals
+// with fresh inline handlers releases nothing — every removal is a provable
+// no-op. Bodies with any other call keep the opaque-return benefit of the
+// doubt (the release may happen through an untracked helper).
+const isProvablyNoOpCleanupFunction = (node: EsTreeNode): boolean => {
+  if (!isFunctionLike(node)) return false;
+  let sawNoOpRemoval = false;
+  let sawOtherCall = false;
+  walkAst(node.body, (child: EsTreeNode) => {
+    if (sawOtherCall) return false;
+    if (isFunctionLike(child)) return false;
+    const callNode = unwrapChainExpression(child);
+    if (!isNodeOfType(callNode, "CallExpression")) return;
+    const callee = unwrapChainExpression(callNode.callee);
+    if (
+      isNodeOfType(callee, "MemberExpression") &&
+      isNodeOfType(callee.property, "Identifier") &&
+      isNoOpInlineHandlerRemoval(callNode, callee.property.name)
+    ) {
+      sawNoOpRemoval = true;
+      return;
+    }
+    sawOtherCall = true;
+  });
+  return sawNoOpRemoval && !sawOtherCall;
+};
+
 export const isCleanupReturn = (
   returnedValue: EsTreeNode | null | undefined,
   knownCleanupFunctionNames: ReadonlySet<string>,
@@ -154,6 +205,7 @@ export const isCleanupReturn = (
     );
   }
   if (isCleanupReturningSubscribeLikeCallExpression(unwrappedValue)) return true;
+  if (isProvablyNoOpCleanupFunction(unwrappedValue)) return false;
   if (options.allowOpaqueReturn === true && !isSubscribeLikeCallExpression(unwrappedValue)) {
     return true;
   }

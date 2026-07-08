@@ -52,6 +52,28 @@ describe("appendReanimatedSharedValueHint", () => {
     );
     expect(help).toBe(REACT_COMPILER_IMMUTABILITY_HELP);
   });
+
+  it("skips the hint when reanimated predates the 3.15 accessors", () => {
+    for (const tooOldVersion of ["^3.8.0", "~3.14.1", "2.17.0"]) {
+      const help = appendReanimatedSharedValueHint(
+        REACT_COMPILER_IMMUTABILITY_HELP,
+        "immutability",
+        buildProject({ hasReanimated: true, reanimatedVersion: tooOldVersion }),
+      );
+      expect(help).toBe(REACT_COMPILER_IMMUTABILITY_HELP);
+    }
+  });
+
+  it("keeps the hint for 3.15+ ranges and unresolvable tags", () => {
+    for (const newEnoughVersion of ["^3.15.0", "~3.16.7", "4.0.0", "latest", null]) {
+      const help = appendReanimatedSharedValueHint(
+        REACT_COMPILER_IMMUTABILITY_HELP,
+        "immutability",
+        buildProject({ hasReanimated: true, reanimatedVersion: newEnoughVersion }),
+      );
+      expect(help).toContain(REANIMATED_DOCS_ANCHOR);
+    }
+  });
 });
 
 describe("parseOxlintOutput react-hooks-js immutability messaging", () => {

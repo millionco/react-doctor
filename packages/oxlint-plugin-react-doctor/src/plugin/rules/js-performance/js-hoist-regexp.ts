@@ -16,6 +16,24 @@ const isStaticPattern = (argument: EsTreeNode | null | undefined): boolean => {
   return isNodeOfType(argument, "TemplateLiteral") && (argument.expressions?.length ?? 0) === 0;
 };
 
+// `RegExp(...)` without `new` constructs a fresh regex exactly like
+// `new RegExp(...)` does, so both call forms get the same treatment.
+const isStaticRegExpConstruction = (
+  node: EsTreeNodeOfType<"NewExpression"> | EsTreeNodeOfType<"CallExpression">,
+): boolean => {
+  const patternArgument = node.arguments?.[0] as EsTreeNode | undefined;
+  const flagsArgument = node.arguments?.[1] as EsTreeNode | undefined;
+  return (
+    isNodeOfType(node.callee, "Identifier") &&
+    node.callee.name === "RegExp" &&
+    isStaticPattern(patternArgument) &&
+    (flagsArgument === undefined || isStaticPattern(flagsArgument))
+  );
+};
+
+const MESSAGE =
+  "`new RegExp()` rebuilds the pattern on every loop pass. Move it to a constant outside the loop.";
+
 export const jsHoistRegexp = defineRule({
   id: "js-hoist-regexp",
   title: "RegExp built inside a loop",
@@ -24,22 +42,19 @@ export const jsHoistRegexp = defineRule({
   recommendation:
     "Move `new RegExp(...)` (or large regex literals) to a constant outside the loop so it isn't rebuilt on every pass",
   create: (context: RuleContext) =>
-    createLoopAwareVisitors({
-      NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
-        const patternArgument = node.arguments?.[0] as EsTreeNode | undefined;
-        const flagsArgument = node.arguments?.[1] as EsTreeNode | undefined;
-        if (
-          isNodeOfType(node.callee, "Identifier") &&
-          node.callee.name === "RegExp" &&
-          isStaticPattern(patternArgument) &&
-          (flagsArgument === undefined || isStaticPattern(flagsArgument))
-        ) {
-          context.report({
-            node,
-            message:
-              "`new RegExp()` rebuilds the pattern on every loop pass. Move it to a constant outside the loop.",
-          });
-        }
+    createLoopAwareVisitors(
+      {
+        NewExpression(node: EsTreeNodeOfType<"NewExpression">) {
+          if (isStaticRegExpConstruction(node)) {
+            context.report({ node, message: MESSAGE });
+          }
+        },
+        CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+          if (isStaticRegExpConstruction(node)) {
+            context.report({ node, message: MESSAGE });
+          }
+        },
       },
-    }),
+      { treatIteratorCallbacksAsLoops: true },
+    ),
 });

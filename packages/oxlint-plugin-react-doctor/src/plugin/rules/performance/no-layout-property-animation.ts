@@ -35,7 +35,7 @@ export const noLayoutPropertyAnimation = defineRule({
       if (!isNodeOfType(node.name, "JSXIdentifier") || !MOTION_ANIMATE_PROPS.has(node.name.name))
         return;
       if (!node.value || !isNodeOfType(node.value, "JSXExpressionContainer")) return;
-      if (isMotionElement(node)) return;
+      if (!isMotionElement(node)) return;
 
       const expression = node.value.expression;
       if (!isNodeOfType(expression, "ObjectExpression")) return;

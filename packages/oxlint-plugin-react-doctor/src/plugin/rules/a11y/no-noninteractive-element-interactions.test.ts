@@ -3,10 +3,19 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noNoninteractiveElementInteractions } from "./no-noninteractive-element-interactions.js";
 
 describe("a11y/no-noninteractive-element-interactions", () => {
-  it("reports handlers on non-interactive elements with presentation roles", () => {
+  it("allows handlers on presentation-role delegation wrappers with an interactive descendant", () => {
     const result = runRule(
       noNoninteractiveElementInteractions,
-      `<article role="presentation" onClick={() => {}}>Open</article>`,
+      `<article role="presentation" onClick={() => {}}><button>Open</button></article>`,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports handlers on non-interactive elements with non-interactive roles", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<article role="article" onClick={() => {}}>Open</article>`,
     );
 
     expect(result.diagnostics).toHaveLength(1);

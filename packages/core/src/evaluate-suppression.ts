@@ -1,4 +1,5 @@
 import { detectForeignDisableNearMiss } from "./detect-foreign-disable-near-miss.js";
+import { isCompilerRuleForeignDisabled } from "./is-compiler-rule-foreign-disabled.js";
 import { findEnclosingMultilineJsxOpenerStart } from "./find-enclosing-jsx-opener.js";
 import {
   findStackedDisableCommentsAbove,
@@ -12,6 +13,13 @@ const DISABLE_LINE_PATTERN =
 interface SuppressionEvaluation {
   isSuppressed: boolean;
   nearMissHint: string | null;
+  /**
+   * Set only when the suppression came from a foreign `eslint-disable*` /
+   * `oxlint-disable*` directive (the React Compiler spelling bridge) rather
+   * than a `react-doctor-disable*` comment, so the pipeline can tally it
+   * under its own telemetry source.
+   */
+  isForeignDirective?: boolean;
 }
 
 const formatLineGap = (gapLineCount: number): string =>
@@ -81,6 +89,10 @@ export const evaluateSuppression = (
   const sameLineMatch = lines[diagnosticLineIndex]?.match(DISABLE_LINE_PATTERN);
   if (sameLineMatch && isRuleListedInComment(sameLineMatch[1], ruleId)) {
     return { isSuppressed: true, nearMissHint: null };
+  }
+
+  if (isCompilerRuleForeignDisabled(lines, diagnosticLineIndex, ruleId)) {
+    return { isSuppressed: true, nearMissHint: null, isForeignDirective: true };
   }
 
   const directComments = findStackedDisableCommentsAbove(lines, diagnosticLineIndex);

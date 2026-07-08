@@ -314,6 +314,15 @@ const hasJsxFiles = (graph: DependencyGraph): boolean =>
     return filePath.endsWith(".tsx") || filePath.endsWith(".jsx");
   });
 
+// Peer relationships knowable WITHOUT an installed node_modules tree, for
+// the same uninstalled-checkout reason as `KNOWN_PACKAGE_BIN_NAMES`: the
+// host app must install these peers for the consumer package to work, so
+// flagging them breaks the consumer.
+const KNOWN_PEER_DEPENDENCY_NAMES = new Map<string, ReadonlyArray<string>>([
+  ["vitest-axe", ["axe-core"]],
+  ["jest-axe", ["axe-core"]],
+]);
+
 const collectPeerSatisfiedPackages = (
   nodeModulesSearchRoots: string[],
   declaredNames: Set<string>,
@@ -323,6 +332,12 @@ const collectPeerSatisfiedPackages = (
 
   for (const installedName of declaredNames) {
     if (!confirmedUsedNames.has(installedName)) continue;
+
+    for (const knownPeerName of KNOWN_PEER_DEPENDENCY_NAMES.get(installedName) ?? []) {
+      if (declaredNames.has(knownPeerName)) {
+        peerSatisfied.add(knownPeerName);
+      }
+    }
 
     const installedPackageJsonPath = findInstalledPackageJsonPath(
       installedName,
@@ -367,17 +382,54 @@ const SHELL_SPLIT_PATTERN = /\s*(?:&&|\|\||[;&|])\s*/;
 const INLINE_ENV_VAR_PATTERN = /^[A-Z_][A-Z0-9_]*=/;
 
 interface BinaryPackageIndex {
-  binToPackage: Map<string, string>;
+  binToPackage: Map<string, Set<string>>;
   packagesProvidingBinary: Set<string>;
 }
+
+// Bin names knowable WITHOUT an installed node_modules tree. Scanned
+// checkouts are frequently uninstalled, so the installed-metadata pass below
+// finds nothing and a script-invoked CLI whose bin differs from its package
+// name gets flagged as unused. These packages' bins can't be derived from
+// their names; the `<name>-cli` → `<name>` convention is derived generically
+// in `staticBinNamesForPackage`. Statically-inferred bins only feed the
+// bin→package lookup (credited when a script actually invokes the bin) — they
+// do NOT mark the package as used by mere presence the way installed bin
+// metadata does, so a genuinely unreferenced CLI dep stays flagged.
+const KNOWN_PACKAGE_BIN_NAMES = new Map<string, ReadonlyArray<string>>([
+  ["@tauri-apps/cli", ["tauri"]],
+  ["@typescript/native-preview", ["tsgo"]],
+  // The browser-flavor packages exist to be driven by the `playwright` CLI
+  // (they download their browser at install time); a `playwright test`
+  // script is their use.
+  ["playwright-chromium", ["playwright"]],
+  ["playwright-firefox", ["playwright"]],
+  ["playwright-webkit", ["playwright"]],
+]);
+
+const staticBinNamesForPackage = (packageName: string): string[] => {
+  const binNames = [...(KNOWN_PACKAGE_BIN_NAMES.get(packageName) ?? [])];
+  const unscopedName = packageName.split("/").pop()!;
+  if (unscopedName.endsWith("-cli") && unscopedName.length > "-cli".length) {
+    binNames.push(unscopedName.slice(0, -"-cli".length));
+  }
+  return binNames;
+};
 
 const buildBinaryPackageIndex = (
   nodeModulesSearchRoots: string[],
   declaredNames: Set<string>,
 ): BinaryPackageIndex => {
-  const binToPackage = new Map<string, string>();
+  const binToPackage = new Map<string, Set<string>>();
   const packagesProvidingBinary = new Set<string>();
+  const addBinMapping = (binaryName: string, packageName: string): void => {
+    const mappedPackages = binToPackage.get(binaryName) ?? new Set<string>();
+    mappedPackages.add(packageName);
+    binToPackage.set(binaryName, mappedPackages);
+  };
   for (const packageName of declaredNames) {
+    for (const staticBinName of staticBinNamesForPackage(packageName)) {
+      addBinMapping(staticBinName, packageName);
+    }
     const packageBinJsonPath = findInstalledPackageJsonPath(packageName, nodeModulesSearchRoots);
     if (!packageBinJsonPath) continue;
     try {
@@ -385,13 +437,13 @@ const buildBinaryPackageIndex = (
       const binPackageJson = JSON.parse(binContent);
       const binField = binPackageJson.bin;
       if (typeof binField === "string" && binField.length > 0) {
-        binToPackage.set(packageName.split("/").pop()!, packageName);
+        addBinMapping(packageName.split("/").pop()!, packageName);
         packagesProvidingBinary.add(packageName);
       } else if (typeof binField === "object" && binField !== null) {
         const binaryNames = Object.keys(binField);
         if (binaryNames.length === 0) continue;
         for (const binaryName of binaryNames) {
-          binToPackage.set(binaryName, packageName);
+          addBinMapping(binaryName, packageName);
         }
         packagesProvidingBinary.add(packageName);
       }
@@ -405,7 +457,7 @@ const buildBinaryPackageIndex = (
 const collectScriptReferencedPackages = (
   packageJsonPath: string,
   declaredNames: Set<string>,
-  binToPackage: Map<string, string>,
+  binToPackage: Map<string, Set<string>>,
 ): Set<string> => {
   const referenced = new Set<string>();
 
@@ -445,7 +497,7 @@ const collectScriptReferencedPackages = (
 const collectCommandReferencedPackages = (
   command: string,
   declaredNames: Set<string>,
-  binToPackage: Map<string, string>,
+  binToPackage: Map<string, Set<string>>,
 ): Set<string> => {
   const referenced = new Set<string>();
 
@@ -468,9 +520,10 @@ const collectCommandReferencedPackages = (
 
     for (const candidateBinary of [binaryToken, effectiveBinary]) {
       if (!candidateBinary) continue;
-      const mappedPackage = binToPackage.get(candidateBinary);
-      if (mappedPackage && declaredNames.has(mappedPackage)) {
-        referenced.add(mappedPackage);
+      for (const mappedPackage of binToPackage.get(candidateBinary) ?? []) {
+        if (declaredNames.has(mappedPackage)) {
+          referenced.add(mappedPackage);
+        }
       }
       if (declaredNames.has(candidateBinary)) {
         referenced.add(candidateBinary);
@@ -585,6 +638,20 @@ const collectConfigReferencedPackages = (
     addMatchesFromFile(documentationPath, "importReference", matchesPackageImportReference);
   }
 
+  // Dot-directory tooling source trees (a dumi docs theme, storybook config
+  // components) import real dependencies but live outside the module graph's
+  // traversal, so their imports must be credited by content scan.
+  const toolingSourceFiles = globPackageFiles(
+    rootDir,
+    ["**/{.dumi,.storybook,.docz,.styleguidist}/**/*.{ts,tsx,js,jsx,mts,mjs}"],
+    { ignore: ["**/node_modules/**"], dot: true, deep: 8 },
+    summaryCache,
+  );
+
+  for (const toolingSourcePath of toolingSourceFiles) {
+    addMatchesFromFile(toolingSourcePath, "importReference", matchesPackageImportReference);
+  }
+
   return referenced;
 };
 
@@ -691,7 +758,7 @@ const collectPackageJsonConfigReferences = (
 const collectNxProjectJsonReferences = (
   rootDir: string,
   declaredNames: Set<string>,
-  binToPackage: Map<string, string>,
+  binToPackage: Map<string, Set<string>>,
   summaryCache: SummaryCache | undefined,
 ): Set<string> => {
   const referenced = new Set<string>();

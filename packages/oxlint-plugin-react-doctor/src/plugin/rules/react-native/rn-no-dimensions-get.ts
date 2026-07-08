@@ -1,9 +1,18 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findDeclaratorForBinding } from "../../utils/find-declarator-for-binding.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import type { BindingInfo } from "../../utils/find-variable-initializer.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
-import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { flattenCalleeName } from "../../utils/flatten-callee-name.js";
+import {
+  getImportBindingForName,
+  getImportSourceForName,
+  getImportedNameFromModule,
+} from "../../utils/find-import-source-for-name.js";
 import { getInitializerModuleSource } from "../../utils/get-initializer-module-source.js";
+import { getRequireCallSource } from "../../utils/get-require-call-source.js";
+import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
+import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
 import { isMemberProperty } from "../../utils/is-member-property.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -16,24 +25,92 @@ const IMPORT_SPECIFIER_TYPES = new Set([
   "ImportNamespaceSpecifier",
 ]);
 
-// Classifies the in-scope `Dimensions` binding. An import is React Native's
-// module only when its source is "react-native"; a variable declarator is
-// React Native when initialized from `require("react-native")` (including
-// destructures and `require("react-native").Dimensions`) or from a
-// react-native namespace import (`const { Dimensions } = RN` / the member
-// alias `const Dimensions = RN.Dimensions`). An initializer-less declaration
-// (`let Dimensions;` later assigned) keeps reporting — detection wins. Any
-// other initializer (`new Map()`, another module's require) is an unrelated
-// local binding.
-const isBindingReactNativeDimensions = (node: EsTreeNode, binding: BindingInfo): boolean => {
+const REACT_NATIVE_MODULE = "react-native";
+
+// Classifies an in-scope binding as React Native's `Dimensions` export —
+// direct import, renamed import, namespace member, or require destructuring.
+const isBindingReactNativeDimensions = (
+  node: EsTreeNode,
+  binding: BindingInfo,
+  localName: string,
+): boolean => {
   if (binding.initializer && IMPORT_SPECIFIER_TYPES.has(binding.initializer.type)) {
-    return getImportSourceForName(node, "Dimensions") === "react-native";
+    const importSource = getImportSourceForName(node, localName);
+    if (importSource !== REACT_NATIVE_MODULE) return false;
+    const importedName = getImportedNameFromModule(node, localName, REACT_NATIVE_MODULE);
+    return importedName === null || importedName === "Dimensions";
   }
   const declarator = findDeclaratorForBinding(binding.bindingIdentifier);
   if (declarator === null) return false;
   const declaratorInitializer = declarator.init;
   if (!declaratorInitializer) return true;
-  return getInitializerModuleSource(node, declaratorInitializer) === "react-native";
+  if (getInitializerModuleSource(node, declaratorInitializer) === REACT_NATIVE_MODULE) return true;
+  if (
+    isNodeOfType(declaratorInitializer, "MemberExpression") &&
+    !declaratorInitializer.computed &&
+    isNodeOfType(declaratorInitializer.property, "Identifier") &&
+    declaratorInitializer.property.name === "Dimensions"
+  ) {
+    return getInitializerModuleSource(node, declaratorInitializer.object) === REACT_NATIVE_MODULE;
+  }
+  return false;
+};
+
+const isReactNativeDimensionsCallee = (node: EsTreeNode, callee: EsTreeNode): boolean => {
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+
+  if (isNodeOfType(callee.object, "Identifier")) {
+    const localName = callee.object.name;
+    const binding = findVariableInitializer(node, localName);
+    if (binding !== null) return isBindingReactNativeDimensions(node, binding, localName);
+    return localName === "Dimensions";
+  }
+
+  if (
+    isNodeOfType(callee.object, "MemberExpression") &&
+    !callee.object.computed &&
+    isNodeOfType(callee.object.property, "Identifier") &&
+    callee.object.property.name === "Dimensions"
+  ) {
+    const moduleSource = getInitializerModuleSource(node, callee.object.object);
+    if (moduleSource === REACT_NATIVE_MODULE) return true;
+    const rootName = getRootIdentifierName(callee.object.object);
+    if (rootName === null) return false;
+    const importBinding = getImportBindingForName(node, rootName);
+    return (
+      importBinding !== null &&
+      importBinding.isNamespace &&
+      importBinding.source === REACT_NATIVE_MODULE
+    );
+  }
+
+  const requireSource = getRequireCallSource(callee.object);
+  if (requireSource === REACT_NATIVE_MODULE) {
+    return (
+      isNodeOfType(callee.object, "MemberExpression") &&
+      !callee.object.computed &&
+      isNodeOfType(callee.object.property, "Identifier") &&
+      callee.object.property.name === "Dimensions"
+    );
+  }
+
+  return false;
+};
+
+// Theme-aware stylesheet factories (`makeStyles`, `createStyles`,
+// `createUseStyles`) evaluate their callback once and cache the result, so a
+// Dimensions.get() inside one behaves like a module-level static style
+// constant — the doc's explicit false-positive carve-out.
+const STYLE_FACTORY_CALLEE_PATTERN = /(?:^|\.)(?:make|create)(?:Use)?Styles$/;
+
+const isInsideStyleFactoryCallback = (node: EsTreeNode): boolean => {
+  const enclosingFunction = findEnclosingFunction(node);
+  if (!enclosingFunction) return false;
+  const callExpression = enclosingFunction.parent;
+  if (!callExpression || !isNodeOfType(callExpression, "CallExpression")) return false;
+  if (!callExpression.arguments?.some((argument) => argument === enclosingFunction)) return false;
+  const calleeName = flattenCalleeName(callExpression.callee);
+  return calleeName !== null && STYLE_FACTORY_CALLEE_PATTERN.test(calleeName);
 };
 
 export const rnNoDimensionsGet = defineRule({
@@ -46,20 +123,15 @@ export const rnNoDimensionsGet = defineRule({
     "Use `const { width, height } = useWindowDimensions()` so the size updates automatically on rotation and resize.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isNodeOfType(node.callee, "MemberExpression")) return;
-      if (
-        !isNodeOfType(node.callee.object, "Identifier") ||
-        node.callee.object.name !== "Dimensions"
-      )
-        return;
-
-      // Binding-first so lexical scoping wins: a function-local
-      // `const Dimensions = new Map()` shadows a module-level react-native
-      // import. No binding at all is an ambient/global reference — report.
-      const binding = findVariableInitializer(node, "Dimensions");
-      if (binding !== null && !isBindingReactNativeDimensions(node, binding)) return;
+      if (!isReactNativeDimensionsCallee(node, node.callee)) return;
 
       if (isMemberProperty(node.callee, "get")) {
+        // One-shot module-level reads (static style constants) are the doc's
+        // FP carve-out; the staleness claim only holds inside code that runs
+        // per render. `addEventListener` below stays unguarded — the removed
+        // API crashes regardless of where it's called.
+        if (!isInsideFunctionScope(node)) return;
+        if (isInsideStyleFactoryCallback(node)) return;
         context.report({
           node,
           message:

@@ -87,9 +87,13 @@ describe("no-prevent-default — prototype-pollution defense", () => {
   });
 
   it("STILL flags preventDefault on a real `<form>` onSubmit handler", async () => {
+    // The form variant only fires in server-capable frameworks (the
+    // unknown-framework suppression is a mined FP cluster pinned in
+    // no-prevent-default.test.ts), so the Map-lookup positive path is
+    // asserted under `remix`.
     const projectDir = setupReactProject(tempRoot, "prevent-default-real-form", {
       files: {
-        "src/SignUp.tsx": `export const SignUp = () => (
+        "app/routes/sign-up.tsx": `export const SignUp = () => (
   <form onSubmit={(event) => { event.preventDefault(); }}>
     <input />
   </form>
@@ -98,7 +102,7 @@ describe("no-prevent-default — prototype-pollution defense", () => {
       },
     });
 
-    const hits = await collectRuleHits(projectDir, "no-prevent-default");
+    const hits = await collectRuleHits(projectDir, "no-prevent-default", { framework: "remix" });
     expect(hits.length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -24,7 +24,10 @@ const getChildKeys = (node: EsTreeNode): ReadonlyArray<string> =>
 // Bare identifier arguments (`const debounced = debounce(setN)`) still do.
 const HOOK_NAME_PATTERN = /^use[A-Z0-9]/;
 
-const isInsideCallbackArgumentOf = (identifier: EsTreeNode, initializer: EsTreeNode): boolean => {
+export const isInsideCallbackArgumentOf = (
+  identifier: EsTreeNode,
+  initializer: EsTreeNode,
+): boolean => {
   if (!isNodeOfType(initializer, "CallExpression") && !isNodeOfType(initializer, "NewExpression")) {
     return false;
   }
@@ -303,4 +306,22 @@ export const isEventualCallTo = (
     }
   });
   return callExprRefs.some(predicate);
+};
+
+// Like `isEventualCallTo`, but returns every matching call-site reference so
+// callers can inspect the matched call expressions (e.g. their arguments).
+export const getEventualCallRefsTo = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+  predicate: (ref: Reference) => boolean,
+): Reference[] => {
+  const callExprRefs: Reference[] = [];
+  ascend(analysis, ref, (upRef) => {
+    if (getCallExpr(upRef)) {
+      callExprRefs.push(upRef);
+    } else {
+      return false;
+    }
+  });
+  return callExprRefs.filter(predicate);
 };

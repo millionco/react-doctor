@@ -10,9 +10,11 @@ import { scanByPattern } from "./utils/scan-by-pattern.js";
 // infix (`getRelativeNextPath`, `resolveSafeAuthCallbackURL`), and the
 // `(?:[\w$]+\s*\.\s*){0,4}` segment allows a receiver chain between the
 // helper's `(` and the read (`sanitizeNext(url.searchParams.get(...))`,
-// `validateNext(request.nextUrl.searchParams.get(...))`).
+// `validateNext(request.nextUrl.searchParams.get(...))`). `parse`/`normaliz`
+// helpers (`parseRoleSearchParam(searchParams.get("role"))`) validate the
+// value the same way the doc's named validators do.
 const PRIVILEGED_QUERY_PARAM_PATTERN =
-  /(?<!(?:safe|valid|sanitiz|relativ|allowlist|whitelist)[\w$]*\(\s*(?:new\s+)?(?:[\w$]+\s*\.\s*){0,4})\b(?:searchParams|useSearchParams\s*\(\s*\)|URLSearchParams\s*\([^)]{0,120}\))(?:[?!])?\.get(?:All)?\s*\(\s*["'](?:userstoinvite|role|permission|sharingaction|invite|admin|next|continue|returnTo|redirect_uri|callbackUrl)["']|\bsearchParams\.(?:userstoinvite|role|permission|sharingaction|invite|admin|returnTo|redirect_uri|callbackUrl)\b/i;
+  /(?<!(?:safe|valid|sanitiz|relativ|allowlist|whitelist|parse|normaliz)[\w$]*\(\s*(?:new\s+)?(?:[\w$]+\s*\.\s*){0,4})\b(?:searchParams|useSearchParams\s*\(\s*\)|URLSearchParams\s*\([^)]{0,120}\))(?:[?!])?\.get(?:All)?\s*\(\s*["'](?:userstoinvite|role|permission|sharingaction|invite|admin|next|continue|returnTo|redirect_uri|callbackUrl)["']|\bsearchParams\.(?:userstoinvite|role|permission|sharingaction|invite|admin|returnTo|redirect_uri|callbackUrl)\b/i;
 
 export const urlPrefilledPrivilegedAction = defineRule({
   id: "url-prefilled-privileged-action",

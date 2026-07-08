@@ -1,9 +1,9 @@
 import { GIANT_COMPONENT_LINE_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { functionContainsReactRenderOutput } from "../../utils/function-contains-react-render-output.js";
-import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
+import { unwrapReactHocFunction } from "../../utils/unwrap-react-hoc-function.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -42,11 +42,12 @@ export const noGiantComponent = defineRule({
         reportOversizedComponent(node.id, node.id.name, lineCount);
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
-        if (!isComponentAssignment(node)) return;
-        if (!isNodeOfType(node.id, "Identifier") || !node.init) return;
-        const lineCount = getOversizedComponentLineCount(node.init);
+        if (!isNodeOfType(node.id, "Identifier") || !isUppercaseName(node.id.name)) return;
+        const functionNode = unwrapReactHocFunction(node.init);
+        if (!functionNode) return;
+        const lineCount = getOversizedComponentLineCount(functionNode);
         if (lineCount === null) return;
-        if (!functionContainsReactRenderOutput(node.init, context.scopes)) return;
+        if (!functionContainsReactRenderOutput(functionNode, context.scopes)) return;
         reportOversizedComponent(node.id, node.id.name, lineCount);
       },
     };

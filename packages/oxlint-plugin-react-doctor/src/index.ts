@@ -29,6 +29,12 @@ export {
 } from "./plugin/cross-file-dependencies.js";
 export type { CrossFileProbeTrace } from "./plugin/utils/cross-file-probe-recorder.js";
 
+// Per-scan invalidation for the nearest-package.json memos. The memos are
+// sound while a scan's filesystem is frozen, but a long-lived host (the LSP
+// server) must drop them between scans — core's `runOxlint` calls this at
+// every scan start.
+export { resetManifestCaches } from "./plugin/utils/read-nearest-package-manifest.js";
+
 export {
   classifySecurityScanFile,
   shouldReadSecurityScanContent,

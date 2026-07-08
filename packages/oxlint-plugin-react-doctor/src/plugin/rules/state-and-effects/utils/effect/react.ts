@@ -118,6 +118,20 @@ export const isCustomHook = (node: EsTreeNode | null | undefined): boolean => {
   return false;
 };
 
+// A bare (non-destructured) parameter of a CUSTOM HOOK is a positional
+// argument (`useRunLayout(cy)`), not a component's props object —
+// method calls on it (`cy.batch(...)`) drive an external instance.
+export const isCustomHookParameter = (ref: Reference): boolean =>
+  Boolean(
+    ref.resolved?.defs.some((def) => {
+      if (def.type !== "Parameter") return false;
+      const functionNode = def.node as unknown as EsTreeNode;
+      if (isCustomHook(functionNode)) return true;
+      const parent = (functionNode as unknown as { parent?: EsTreeNode | null }).parent;
+      return Boolean(parent && isCustomHook(parent));
+    }),
+  );
+
 const isReactNamedImportReference = (ref: Reference | null, importedName: string): boolean =>
   Boolean(
     ref?.resolved?.defs.some((def) => {
@@ -259,13 +273,17 @@ export const isProp = (analysis: ProgramAnalysis, ref: Reference): boolean =>
       if (def.type !== "Parameter") return false;
       const defNode = def.node as unknown as EsTreeNode;
       let declaringNode: EsTreeNode | null | undefined = defNode;
-      if (isNodeOfType(defNode, "ArrowFunctionExpression")) {
-        const parent = (defNode as unknown as { parent?: EsTreeNode | null }).parent;
-        if (parent && isNodeOfType(parent, "CallExpression")) {
-          declaringNode = (parent as unknown as { parent?: EsTreeNode | null }).parent;
-        } else {
-          declaringNode = parent;
+      if (
+        isNodeOfType(defNode, "ArrowFunctionExpression") ||
+        isNodeOfType(defNode, "FunctionExpression")
+      ) {
+        let parent = (defNode as unknown as { parent?: EsTreeNode | null }).parent;
+        // `memo(forwardRef((props, ref) => ...))` nests pure HOC calls, so
+        // ascend through every CallExpression wrapper to the declarator.
+        while (parent && isNodeOfType(parent, "CallExpression")) {
+          parent = (parent as unknown as { parent?: EsTreeNode | null }).parent;
         }
+        declaringNode = parent;
       }
       if (!declaringNode) return false;
       return (
@@ -368,6 +386,39 @@ export const isSyncStateSetterCall = (
 export const isPropCall = (analysis: ProgramAnalysis, ref: Reference): boolean =>
   isEventualCallTo(analysis, ref, (innerRef) => isPropAlias(analysis, innerRef));
 
+const HANDLER_NAMED_METHOD_PATTERN = /^(on|handle)[A-Z]/;
+
+// A prop reference invoked AS a callback: `onEnd(x)`, an alias call, or a
+// method called on a whole (non-destructured) parameter object
+// (`props.onSave(x)`, `colorModel.equal(x)`). A data method on a destructured
+// prop value (`hrefs.find(...)`) READS the prop — it never calls back to the
+// parent, so eventual-call chains through it must not count as parent pushes.
+// A handler-bag prop is the exception: `handlers.handleUpdateProgress(x)` /
+// `callbacks.onProgress(x)` invoke a parent-supplied callback grouped under
+// an object prop, so `on[A-Z]` / `handle[A-Z]` method names stay callbacks
+// (internxt FileVideoViewer, caught by the 0.7.1→sweep delta audit).
+export const isPropCallbackInvocationRef = (analysis: ProgramAnalysis, ref: Reference): boolean => {
+  if (!isPropAlias(analysis, ref)) return false;
+  const identifier = ref.identifier as unknown as EsTreeNode;
+  const parent = (identifier as unknown as { parent?: EsTreeNode | null }).parent;
+  if (!parent) return false;
+  if (isNodeOfType(parent, "CallExpression") && parent.callee === identifier) return true;
+  if (isNodeOfType(parent, "MemberExpression") && parent.object === identifier) {
+    const memberParent = (parent as unknown as { parent?: EsTreeNode | null }).parent;
+    if (isNodeOfType(memberParent, "CallExpression") && memberParent.callee === parent) {
+      if (
+        !parent.computed &&
+        isNodeOfType(parent.property, "Identifier") &&
+        HANDLER_NAMED_METHOD_PATTERN.test(parent.property.name)
+      ) {
+        return true;
+      }
+      return isWholePropsObjectReference(analysis, ref);
+    }
+  }
+  return false;
+};
+
 export const isRefCall = (analysis: ProgramAnalysis, ref: Reference): boolean =>
   isEventualCallTo(
     analysis,
@@ -434,7 +485,11 @@ const hasCleanupReturn = (
 export const hasCleanup = (analysis: ProgramAnalysis, node: EsTreeNode): boolean => {
   const fn = getEffectFn(analysis, node);
   if (!isFunctionLike(fn)) return false;
-  if (!isNodeOfType(fn.body, "BlockStatement")) return false;
+  // A concise arrow body IS the returned value:
+  // `useEffect(() => subscribe(cb), deps)` returns the disposer.
+  if (!isNodeOfType(fn.body, "BlockStatement")) {
+    return isCleanupReturnArgument(analysis, fn.body as EsTreeNode);
+  }
   return hasCleanupReturn(analysis, fn.body as EsTreeNode);
 };
 

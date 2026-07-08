@@ -80,6 +80,7 @@ describe("inspect — score surface filter", () => {
   it("strips `design`-tagged diagnostics before they are sent to the score API", async () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const { captured } = stubScoreFetchAndCapture();
+    vi.stubEnv("REACT_DOCTOR_NO_CACHE", "1");
 
     try {
       const result = await inspect(path.join(FIXTURES_DIRECTORY, "basic-react"), {

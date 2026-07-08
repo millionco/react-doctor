@@ -1,8 +1,11 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
+import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
@@ -44,27 +47,25 @@ const innerExpression = (expression: EsTreeNode): EsTreeNode => {
   return expression;
 };
 
-// `autoFocus={autoFocus}` — the component is just forwarding the
-// consumer's prop value. The consumer site is where the rule should
-// fire, not the trampoline. (Without this, every well-behaved input
-// wrapper that exposes `autoFocus` to its caller gets flagged.)
-const isSameNameIdentifierForward = (attributeName: string, value: EsTreeNode | null): boolean => {
+// `autoFocus={anything computed}` — a non-literal value means the
+// component decides at runtime whether to focus (`autoFocus={!disable
+// Focus}`) or forwards the consumer's flag (`autoFocus={autofocus}`).
+// Both are deliberate focus management, not an unconditional page-load
+// focus steal; assume them valid like `role={role}` in aria-role. The
+// `undefined` identifier stays flagged to match the documented
+// contract (`autoFocus={undefined}` triggers).
+const isDynamicAttributeValue = (value: EsTreeNode | null): boolean => {
   if (!value || !isNodeOfType(value, "JSXExpressionContainer")) return false;
   const expression = innerExpression(value.expression as EsTreeNode);
-  if (isNodeOfType(expression, "Identifier") && expression.name === attributeName) {
-    return true;
-  }
-  // `autoFocus={props.autoFocus}` — same shape, just destructured at
-  // the call site.
+  if (isNodeOfType(expression, "Literal")) return false;
+  if (isNodeOfType(expression, "Identifier") && expression.name === "undefined") return false;
   if (
-    isNodeOfType(expression, "MemberExpression") &&
-    !expression.computed &&
-    isNodeOfType(expression.property, "Identifier") &&
-    expression.property.name === attributeName
+    isNodeOfType(expression, "TemplateLiteral") &&
+    getStaticTemplateLiteralValue(expression) !== null
   ) {
-    return true;
+    return false;
   }
-  return false;
+  return true;
 };
 
 // Returns true when an attribute value is statically equivalent to
@@ -83,6 +84,81 @@ const isFalseAttributeValue = (value: EsTreeNode): boolean => {
     if (isNodeOfType(expression, "TemplateLiteral")) {
       return getStaticTemplateLiteralValue(expression) === "false";
     }
+  }
+  return false;
+};
+
+// An element marked as a modal dialog: `aria-modal`, the native
+// `<dialog>` tag, or a `role` of dialog/alertdialog. Kept deliberately
+// to EXPLICIT dialog semantics — broader signals (component names like
+// `*Modal`, popover/menu roles) traded true positives near 1:1 in the
+// verify corpus. Conditional rendering is handled separately by
+// `isConditionallyRendered` below: the docs-validation pass confirmed
+// state-gated `autoFocus` (edit-in-place, user-opened panels) as the
+// dominant false-positive cluster.
+const MODAL_DIALOG_ROLES: ReadonlySet<string> = new Set(["dialog", "alertdialog"]);
+
+const isModalDialogElement = (
+  openingElement: EsTreeNodeOfType<"JSXOpeningElement">,
+  settings: Readonly<Record<string, unknown>> | undefined,
+): boolean => {
+  if (flattenJsxName(openingElement.name as EsTreeNode) === "dialog") return true;
+  if (hasJsxPropIgnoreCase(openingElement.attributes, "aria-modal")) return true;
+  const roleAttribute = hasJsxPropIgnoreCase(openingElement.attributes, "role");
+  if (roleAttribute) {
+    const roleValue = getJsxPropStringValue(roleAttribute);
+    if (roleValue && MODAL_DIALOG_ROLES.has(roleValue.toLowerCase())) return true;
+  }
+  return getElementType(openingElement, settings) === "dialog";
+};
+
+// Moving focus into a just-opened modal dialog is the WAI-ARIA APG
+// recommendation ("focus moves to an element inside the dialog"), not
+// an on-load focus steal — dialogs only mount in response to a user
+// action, so `autoFocus` there is correct focus management.
+const isInsideModalDialog = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  settings: Readonly<Record<string, unknown>> | undefined,
+): boolean => {
+  let current: EsTreeNode | null | undefined = node.parent;
+  while (current) {
+    if (
+      isNodeOfType(current, "JSXElement") &&
+      isModalDialogElement(current.openingElement, settings)
+    ) {
+      return true;
+    }
+    current = current.parent ?? null;
+  }
+  return false;
+};
+
+const FUNCTION_BOUNDARY_TYPES: ReadonlySet<string> = new Set([
+  "ArrowFunctionExpression",
+  "FunctionExpression",
+  "FunctionDeclaration",
+]);
+
+const CONDITIONAL_RENDER_TYPES: ReadonlySet<string> = new Set([
+  "ConditionalExpression",
+  "LogicalExpression",
+  "IfStatement",
+]);
+
+// An element whose mount is gated on component state (`{isEditing &&
+// <input autoFocus/>}`, `isSearching ? <input autoFocus/> : …`,
+// `if (editing) return <input autoFocus/>`) focuses in response to a
+// state change — the edit-in-place / user-opened-panel pattern, i.e.
+// the doc's deliberate-focus carve-out — not on page load. Only an
+// element rendered unconditionally within its component (the walk
+// stops at the enclosing function) can steal focus when the page or
+// route mounts, so only that shape keeps firing.
+const isConditionallyRendered = (node: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  let current: EsTreeNode | null | undefined = node.parent;
+  while (current) {
+    if (FUNCTION_BOUNDARY_TYPES.has(current.type)) return false;
+    if (CONDITIONAL_RENDER_TYPES.has(current.type)) return true;
+    current = current.parent ?? null;
   }
   return false;
 };
@@ -116,11 +192,13 @@ export const noAutofocus = defineRule({
         const attributeValue = (autoFocusAttribute as EsTreeNodeOfType<"JSXAttribute">)
           .value as EsTreeNode | null;
         if (attributeValue && isFalseAttributeValue(attributeValue)) return;
-        if (isSameNameIdentifierForward("autoFocus", attributeValue)) return;
+        if (isDynamicAttributeValue(attributeValue)) return;
         if (settings.ignoreNonDOM) {
           const tag = getElementType(node, context.settings);
           if (!HTML_TAGS.has(tag)) return;
         }
+        if (isInsideModalDialog(node, context.settings)) return;
+        if (isConditionallyRendered(node)) return;
         context.report({ node: autoFocusAttribute as EsTreeNode, message: MESSAGE });
       },
     };

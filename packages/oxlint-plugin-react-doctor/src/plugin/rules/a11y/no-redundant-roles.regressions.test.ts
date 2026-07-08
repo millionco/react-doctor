@@ -65,7 +65,46 @@ describe("a11y/no-redundant-roles regressions", () => {
     });
   }
 
-  it('still flags `<td role="cell">` (cell is the primary default role of `<td>`)', () => {
-    expect(runRule(noRedundantRoles, `<td role="cell" />`).diagnostics).toHaveLength(1);
+  it('still flags `<td role="cell">` inside a plain same-file `<table>`', () => {
+    const result = runRule(
+      noRedundantRoles,
+      `const T = () => <table><tbody><tr><td role="cell" /></tr></tbody></table>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // A component rendering a bare `<td>` may be composed into a
+  // `<table role="grid">` in another file, where the implicit role is
+  // gridcell — `role="cell"` there is a deliberate override, not redundant.
+  it('does not flag `<td role="cell">` when no same-file table establishes the context', () => {
+    expect(runRule(noRedundantRoles, `const C = () => <td role="cell" />;`).diagnostics).toEqual(
+      [],
+    );
+  });
+
+  it('does not flag `<td role="cell">` inside `<table role="grid">`', () => {
+    const result = runRule(
+      noRedundantRoles,
+      `const G = () => <table role="grid"><tbody><tr><td role="cell" /></tr></tbody></table>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // react-aria markup (data-rac) re-applies explicit roles because
+  // CSS-restyled tables lose implicit semantics in some ATs.
+  it('does not flag `<tr role="row" data-rac>` (react-aria table pattern)', () => {
+    const result = runRule(
+      noRedundantRoles,
+      `const R = () => <tr className={classNames?.row} role="row" data-rac />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('still flags `<tr role="row">` without react-aria markers', () => {
+    const result = runRule(
+      noRedundantRoles,
+      `const R = ({ children }) => <tr role="row">{children}</tr>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 });

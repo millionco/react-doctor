@@ -5,11 +5,17 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
-import { REACT_HOC_NAMES } from "../../constants/react.js";
+import {
+  REACT_ECOSYSTEM_PACKAGE_NAMES,
+  REACT_HOC_NAMES,
+  REACT_RUNTIME_MODULE_SOURCES,
+} from "../../constants/react.js";
+import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isImportedFromNonReactModule } from "../../utils/is-imported-from-non-react-module.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { isRulesOfHooksSuppressedAt } from "./rules-of-hooks-suppression.js";
 
 // Port of `oxc_linter::rules::react::rules_of_hooks`. Enforces React's
 // Rules of Hooks:
@@ -68,6 +74,23 @@ const EFFECT_HOOK_NAMES: ReadonlySet<string> = new Set([
 const isPascalCaseIdentifier = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
   const firstCharCode = identifier.name.charCodeAt(0);
   return firstCharCode >= ASCII_UPPERCASE_A && firstCharCode <= ASCII_UPPERCASE_Z;
+};
+
+// `_Calendar` / `__Menu` — the "private component exported under a public
+// alias" convention (`const _Calendar = ...; export { _Calendar as Calendar }`)
+// is a real component whose name just fails the PascalCase first-letter check.
+// Underscore-prefixed HOOK names (`_useNotAHook`) deliberately do NOT qualify:
+// upstream treats them as non-hooks and so do we. The relaxation only applies
+// to functions that own their name DIRECTLY (declaration id / variable
+// binding) — a callback argument inheriting the binding's name through a
+// wrapper call (`memo(render, comparator)` naming the comparator
+// `_Memoized`) is not the component itself.
+const UNDERSCORE_PREFIXED_COMPONENT_NAME_PATTERN = /^_+[A-Z]/;
+
+const isComponentOrHookDisplayName = (name: string, functionNode: EsTreeNode): boolean => {
+  if (isReactComponentOrHookName(name)) return true;
+  if (!UNDERSCORE_PREFIXED_COMPONENT_NAME_PATTERN.test(name)) return false;
+  return !isNodeOfType(functionNode.parent, "CallExpression");
 };
 
 const buildAdditionalEffectHooksRegex = (additionalEffectHooks: string): RegExp | null => {
@@ -184,6 +207,18 @@ const isHookCall = (
     if (isNodeOfType(callObject, "Identifier")) {
       if (settings.allowedPascalCaseHookNamespaces.includes(callObject.name)) return null;
       if (!isPascalCaseIdentifier(callObject)) return null;
+      // `X.use([plugins])` is the plugin-registration idiom
+      // (`SwiperCore.use([Navigation, Pagination])`) — `.use` is the
+      // ecosystem's registration verb, and React 19's `use(...)` never
+      // takes an array literal (it takes a promise or a context). Bare
+      // `Hook.use()` stays a hook to match upstream's fixtures.
+      if (
+        propertyName === "use" &&
+        callObject.name !== "React" &&
+        isNodeOfType(call.arguments[0], "ArrayExpression")
+      ) {
+        return null;
+      }
       return { hookName: propertyName };
     }
     // Chained-call hooks (`<callExpr>.useFoo(...)`) are vanishingly
@@ -492,6 +527,62 @@ const isLocalNonHookFunctionCallee = (
   return countOwnScopeHookCalls(localFunction, scopes, settings, countedFunctionNodes) === 0;
 };
 
+// Path-alias prefixes (`@/`, `~/`) resolve to project-local files, which
+// are as likely to hold genuine React hooks as relative imports are.
+const PATH_ALIAS_IMPORT_PATTERN = /^[@~]\//;
+
+// Bare package name of an import specifier: `@tanstack/react-query/foo`
+// → `@tanstack/react-query`, `next/navigation` → `next`.
+const getPackageNameFromImportSource = (importSource: string): string => {
+  const pathSegments = importSource.split("/");
+  return importSource.startsWith("@")
+    ? pathSegments.slice(0, 2).join("/")
+    : (pathSegments[0] ?? importSource);
+};
+
+// A use* export from one of these sources is a REAL React hook the rule
+// must keep enforcing: the React runtimes themselves, anything whose
+// specifier carries "react" (react-redux, @tanstack/react-query,
+// react-hook-form, react-router, preact), or a known React-ecosystem
+// package that doesn't self-identify by name (next, swr, zustand, …).
+const isReactEcosystemImportSource = (importSource: string): boolean =>
+  REACT_RUNTIME_MODULE_SOURCES.has(importSource) ||
+  importSource.toLowerCase().includes("react") ||
+  REACT_ECOSYSTEM_PACKAGE_NAMES.has(getPackageNameFromImportSource(importSource));
+
+// A use*-named function imported from a third-party PACKAGE that is not
+// React-ecosystem — WebdriverIO's `useBrowser` from
+// `@cloudscape-design/browser-test-tools/use-browser`, DI/middleware
+// helpers, codegen utilities. These follow the use* naming convention
+// without being React hooks, so "called outside a component" reports on
+// them are noise. Relative / path-alias imports stay eligible — a
+// project's own `./useFoo` is usually a real hook — and so do imports
+// from React-ecosystem packages (`useSelector` from react-redux at
+// module top level is a genuine Rules-of-Hooks violation).
+const isPackageImportedNonReactHookCallee = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
+  const callee = call.callee;
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  const importSource = getImportSourceForName(call, callee.name);
+  if (importSource === null) return false;
+  if (importSource.startsWith(".")) return false;
+  if (PATH_ALIAS_IMPORT_PATTERN.test(importSource)) return false;
+  return !isReactEcosystemImportSource(importSource);
+};
+
+// `useMDXComponents` is the MDX/Next.js convention name for a
+// components-map getter (`mdx-components.tsx`): when the project owns it
+// (relative or path-alias import), it is a plain function that merely
+// borrows the `use` prefix — Next.js documents calling it from async
+// Server Components. Imports from React-ecosystem packages (e.g.
+// @mdx-js/react, whose implementation calls useContext) keep firing.
+const isProjectOwnedMdxComponentsGetter = (call: EsTreeNodeOfType<"CallExpression">): boolean => {
+  const callee = call.callee;
+  if (!isNodeOfType(callee, "Identifier") || callee.name !== "useMDXComponents") return false;
+  const importSource = getImportSourceForName(call, callee.name);
+  if (importSource === null) return false;
+  return importSource.startsWith(".") || PATH_ALIAS_IMPORT_PATTERN.test(importSource);
+};
+
 const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
@@ -509,7 +600,7 @@ const findEnclosingFunctionInfo = (node: EsTreeNode): FunctionInfo | null => {
         isAsync: Boolean(current.async),
         isComponentOrHook:
           isReactHocCallbackArgument(current) ||
-          (resolvedName === null ? false : isReactComponentOrHookName(displayName)),
+          (resolvedName === null ? false : isComponentOrHookDisplayName(displayName, current)),
       };
     }
     current = current.parent ?? null;
@@ -563,6 +654,12 @@ const hasShortCircuitAncestor = (descendant: EsTreeNode, ancestor: EsTreeNode): 
       (current.operator === "&&" || current.operator === "||" || current.operator === "??") &&
       isWithinRange(descendant, current.right)
     ) {
+      return true;
+    }
+    // Destructuring default (`const { id = useId() } = props`) only
+    // evaluates its right side when the property is undefined — a
+    // conditional hook call in disguise.
+    if (isNodeOfType(current, "AssignmentPattern") && isWithinRange(descendant, current.right)) {
       return true;
     }
     current = current.parent ?? null;
@@ -652,7 +749,9 @@ const findEnclosingComponentOrHookFunction = (node: EsTreeNode): EsTreeNode | nu
     if (isFunctionLike(current)) {
       if (isReactHocCallbackArgument(current)) return current;
       const resolvedName = inferFunctionName(current);
-      if (resolvedName !== null && isReactComponentOrHookName(resolvedName)) return current;
+      if (resolvedName !== null && isComponentOrHookDisplayName(resolvedName, current)) {
+        return current;
+      }
     }
     current = current.parent ?? null;
   }
@@ -729,7 +828,33 @@ export const rulesOfHooks = defineRule({
   recommendation:
     "Call hooks at the top level of a React function component or custom Hook so React sees the same hook order on every render.",
   category: "Correctness",
-  create: (context) => {
+  create: (hostContext) => {
+    const nodeStartOffset = (node: EsTreeNode): number | null => {
+      const nodeWithOffsets = node as { start?: number; range?: [number, number] };
+      if (typeof nodeWithOffsets.start === "number") return nodeWithOffsets.start;
+      if (Array.isArray(nodeWithOffsets.range)) return nodeWithOffsets.range[0];
+      return null;
+    };
+    const context: typeof hostContext = {
+      get filename() {
+        return hostContext.filename;
+      },
+      get settings() {
+        return hostContext.settings;
+      },
+      get scopes() {
+        return hostContext.scopes;
+      },
+      get cfg() {
+        return hostContext.cfg;
+      },
+      report: (descriptor) => {
+        if (isRulesOfHooksSuppressedAt(hostContext.filename, nodeStartOffset(descriptor.node))) {
+          return;
+        }
+        hostContext.report(descriptor);
+      },
+    };
     const settings = resolveSettings(context.settings);
     const additionalEffectHooksRegex = buildAdditionalEffectHooksRegex(
       settings.additionalEffectHooks,
@@ -749,9 +874,18 @@ export const rulesOfHooks = defineRule({
           return;
         }
 
+        // A use*-named callee that resolves to a LOCAL function whose body
+        // issues zero hook calls is not a React hook at all (`usePlugin`
+        // async apply helpers, `usePromptExample` event handlers) — none of
+        // the ordering rules apply to it.
+        if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
+
+        if (isProjectOwnedMdxComponentsGetter(node)) return;
+
         const enclosing = findEnclosingFunctionInfo(node);
 
         if (!enclosing) {
+          if (isPackageImportedNonReactHookCallee(node)) return;
           context.report({ node: node.callee, message: buildTopLevelMessage(hookName) });
           return;
         }
@@ -799,7 +933,7 @@ export const rulesOfHooks = defineRule({
           }
           if (!isInsideComponentOrHook) {
             if (!enclosing.hasResolvedName) return;
-            if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
+            if (isPackageImportedNonReactHookCallee(node)) return;
             context.report({
               node: node.callee,
               message: buildNonComponentMessage(hookName, enclosing.name),
@@ -838,7 +972,7 @@ export const rulesOfHooks = defineRule({
             return;
           }
 
-          if (isLocalNonHookFunctionCallee(node, context.scopes, settings)) return;
+          if (isPackageImportedNonReactHookCallee(node)) return;
           context.report({
             node: node.callee,
             message: buildNonComponentMessage(hookName, enclosing.name),

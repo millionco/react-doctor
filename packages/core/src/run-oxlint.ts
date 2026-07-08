@@ -5,6 +5,7 @@ import {
   CROSS_FILE_DEPENDENCY_COLLECTORS,
   CROSS_FILE_RULE_IDS,
   collectCrossFileDependencyProbes,
+  resetManifestCaches,
 } from "oxlint-plugin-react-doctor";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "./types/index.js";
 import { batchIncludePaths } from "./batch-include-paths.js";
@@ -383,6 +384,13 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   const severityControls = buildRuleSeverityControls(userConfig);
 
   validateRuleRegistration();
+
+  // A new scan starts here: drop the plugin's nearest-package.json memos so
+  // the in-process sidecar probe collection (`collectSidecarProbesForFiles`)
+  // never replays a previous scan's package-directory walk or manifest
+  // verdict in a long-lived host (LSP server). Within this scan the memos
+  // are sound — the filesystem is treated as frozen while the scan runs.
+  resetManifestCaches();
 
   if (includePaths !== undefined && includePaths.length === 0) {
     return [];

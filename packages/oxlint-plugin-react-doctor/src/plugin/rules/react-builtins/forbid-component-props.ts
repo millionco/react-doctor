@@ -20,8 +20,6 @@ interface ForbidComponentPropsSettings {
   forbid?: ReadonlyArray<string | ForbidEntry>;
 }
 
-const DEFAULT_FORBID_PROPS: ReadonlyArray<string> = ["className", "style"];
-
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
 ): Required<ForbidComponentPropsSettings> => {
@@ -31,11 +29,14 @@ const resolveSettings = (
       ? ((reactDoctor as { forbidComponentProps?: ForbidComponentPropsSettings })
           .forbidComponentProps ?? {})
       : {};
-  const forbid = ruleSettings.forbid;
-  // Match OXC: when no `forbid` (or empty array) is provided the
-  // default list [className, style] is applied.
-  if (!forbid || forbid.length === 0) return { forbid: DEFAULT_FORBID_PROPS };
-  return { forbid };
+  // Divergence from OXC: upstream defaults `forbid` to [className,
+  // style] when unconfigured, which flags the canonical Tailwind /
+  // shadcn / Radix customization pattern (`<Component className=… />`)
+  // on EVERY component usage — prod telemetry showed hundreds of
+  // firings per run from exactly this. The rule's premise ("YOUR
+  // project blocks this prop") is inherently project-specific, so
+  // without an explicit `forbid` list it stays inert.
+  return { forbid: ruleSettings.forbid ?? [] };
 };
 
 // Convert a glob like `Foo*` / `*Foo` / `Foo*Bar` into a RegExp.
@@ -117,11 +118,10 @@ export const forbidComponentProps = defineRule({
   id: "forbid-component-props",
   title: "Blocked component prop bypasses API contract",
   severity: "warn",
-  // Default off because the upstream-default forbidden list `["className",
-  // "style"]` flags the canonical Tailwind/shadcn/Radix customization
-  // pattern (`<Component className="..." />`) — which is how most modern
-  // React UIs are written. Opt in via config when you want to enforce a
-  // strict design-system API on a specific component.
+  // Default off AND inert without an explicit `forbid` list (see
+  // `resolveSettings`): enforcing a blocked-prop contract only makes
+  // sense when the project names the props to block. Opt in via config
+  // when you want to enforce a strict design-system API.
   defaultEnabled: false,
   recommendation:
     "Configure blocked component props so callers cannot bypass the component API contract.",

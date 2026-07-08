@@ -308,15 +308,19 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   // Absent (not zero) when the caller couldn't supply the tallies.
   const suppressionRollup: RunEventAttributes = {};
   if (input.suppressedRuleCounts) {
-    const countBySource = { config: 0, override: 0, inline: 0 };
+    const countBySource = { config: 0, override: 0, inline: 0, "foreign-inline": 0 };
     for (const suppression of input.suppressedRuleCounts) {
       countBySource[suppression.source] += suppression.count;
     }
     suppressionRollup.suppressed =
-      countBySource.config + countBySource.override + countBySource.inline;
+      countBySource.config +
+      countBySource.override +
+      countBySource.inline +
+      countBySource["foreign-inline"];
     suppressionRollup.suppressedConfig = countBySource.config;
     suppressionRollup.suppressedOverride = countBySource.override;
     suppressionRollup.suppressedInline = countBySource.inline;
+    suppressionRollup.suppressedForeignInline = countBySource["foreign-inline"];
   }
 
   const attributes: RunEventAttributes = {

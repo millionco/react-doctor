@@ -118,17 +118,19 @@ describe("mixed RN + web monorepo: rn-* rules respect package boundaries", () =>
     expect(storybookDiagnostics).toHaveLength(0);
   });
 
-  it("falls back to the project-level framework hint on shared packages that declare neither RN nor a web framework (rule stays ACTIVE)", () => {
-    // The shared package has only `react` listed — neither
-    // `react-native`/`expo` nor a web framework. Without a clear local
-    // signal we fall back to the project-level framework setting (here
-    // forced to "react-native" by buildTestProject), so the rule should
-    // remain active. This pins the conservative fallback behavior.
+  it("does not fire rn-* rules on a nested shared package whose own manifest declares dependencies but none of them RN (manifest is authoritative)", () => {
+    // The shared package declares its own dependency surface (`react`)
+    // and none of it is `react-native`/`expo`. In a monorepo the
+    // package's own manifest is the authority: RN rules must not leak
+    // in from the project-level framework hint just because a sibling
+    // workspace targets RN. (Real-world FP source: a web-only
+    // `packages/shared` full of div/span components inside a monorepo
+    // with an Expo `apps/mobile` sibling.)
     const sharedDiagnostics = findDiagnosticsByFile(
-      findDiagnosticsByRule(allDiagnostics, "rn-no-raw-text"),
+      findRnDiagnostics(allDiagnostics),
       "packages/shared/src/Shared.tsx",
     );
-    expect(sharedDiagnostics.length).toBeGreaterThan(0);
+    expect(sharedDiagnostics).toHaveLength(0);
   });
 });
 
@@ -536,6 +538,108 @@ describe("React Native rules in nested files (file-level package detection)", ()
     );
     expect(innerHits).toHaveLength(0);
     expect(outerHits.length).toBeGreaterThan(0);
+  });
+});
+
+describe("neutral nested packages: the package's own manifest is authoritative", () => {
+  it("does not fire rn-* rules on a nested shared package whose manifest declares web-leaning dependencies and no RN signal", async () => {
+    // Real-world shape (tombelieber/claude-view): a monorepo with an Expo
+    // `apps/mobile` workspace and a `packages/shared` full of react-dom
+    // components. The shared manifest declares its own dependency surface
+    // (react-markdown, lucide-react, clsx, a `react` peer) and none of it
+    // is RN — so RN rules must not leak in from the project-level
+    // framework hint. The file uses `<View>` raw text (an RN host) so the
+    // assertion isolates the package gate, not any element heuristic.
+    const projectDir = setupReactProject(tempRoot, "neutral-shared-subpackage", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0", "react-native": "0.76.0", expo: "^51.0.0" },
+        workspaces: ["packages/*"],
+      },
+      files: {
+        "src/Screen.tsx": `import { View } from "react-native";\nexport const Screen = () => <View>RN root raw</View>;\n`,
+      },
+    });
+    writeJson(path.join(projectDir, "packages", "shared", "package.json"), {
+      name: "shared",
+      dependencies: {
+        "react-markdown": "^10.1.0",
+        "lucide-react": "^0.575.0",
+        clsx: "^2.1.1",
+      },
+      peerDependencies: { react: ">=18" },
+    });
+    writeFile(
+      path.join(projectDir, "packages", "shared", "src", "Card.tsx"),
+      `export const Card = () => <View>Domain:</View>;\n`,
+    );
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+
+    const rnHits = findRnDiagnostics(diagnostics);
+    const normalizedPaths = rnHits.map((diagnostic) => diagnostic.filePath.replaceAll("\\", "/"));
+    expect(
+      normalizedPaths.filter((filePath) => filePath.includes("packages/shared/")),
+    ).toHaveLength(0);
+    expect(normalizedPaths.some((filePath) => filePath.endsWith("src/Screen.tsx"))).toBe(true);
+  });
+
+  it("does not fire rn-* rules on a nested package whose manifest declares only a `react` peer dependency", async () => {
+    const projectDir = setupReactProject(tempRoot, "neutral-peer-only-subpackage", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0", "react-native": "0.76.0" },
+      },
+      files: {
+        "src/Screen.tsx": `import { View } from "react-native";\nexport const Screen = () => <View>RN root raw</View>;\n`,
+      },
+    });
+    writeJson(path.join(projectDir, "packages", "ui", "package.json"), {
+      name: "ui",
+      peerDependencies: { react: ">=18" },
+    });
+    writeFile(
+      path.join(projectDir, "packages", "ui", "src", "Widget.tsx"),
+      `export const Widget = () => <View>raw</View>;\n`,
+    );
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    const uiHits = findRnDiagnostics(diagnostics).filter((diagnostic) =>
+      diagnostic.filePath.replaceAll("\\", "/").includes("packages/ui/"),
+    );
+    expect(uiHits).toHaveLength(0);
+  });
+
+  it("keeps rn-* rules active below a nested marker package.json that declares no dependencies", async () => {
+    // A `{"type": "module"}`-style marker manifest is not a dependency
+    // boundary — files below it still belong to the surrounding RN app,
+    // so the project-level framework fallback must stay in charge.
+    const projectDir = setupReactProject(tempRoot, "marker-manifest-subfolder", {
+      packageJsonExtras: {
+        dependencies: { react: "^19.0.0", "react-native": "0.76.0" },
+      },
+      files: {
+        "src/App.tsx": `import { View } from "react-native";\nexport const App = () => <View>root raw</View>;\n`,
+      },
+    });
+    writeJson(path.join(projectDir, "legacy", "package.json"), { type: "module" });
+    writeFile(
+      path.join(projectDir, "legacy", "src", "Screen.tsx"),
+      `import { View } from "react-native";\nexport const Screen = () => <View>nested raw</View>;\n`,
+    );
+
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: buildTestProject({ rootDirectory: projectDir, framework: "react-native" }),
+    });
+    const nestedHits = findDiagnosticsByRule(diagnostics, "rn-no-raw-text").filter((diagnostic) =>
+      diagnostic.filePath.replaceAll("\\", "/").includes("legacy/"),
+    );
+    expect(nestedHits.length).toBeGreaterThan(0);
   });
 });
 

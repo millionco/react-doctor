@@ -32,4 +32,24 @@ describe("a11y/anchor-ambiguous-text regressions", () => {
       expect(runRule(anchorAmbiguousText, code).diagnostics).toHaveLength(1);
     });
   }
+
+  for (const filename of [
+    "src/test/tab_loop.test.tsx",
+    "src/components/focus-trap/__tests__/CFocusTrap.spec.tsx",
+    "src/alert/alert.stories.tsx",
+    "src/components/divider/demos/demo1.tsx",
+    "src/__mocks__/emails-js/previews/Reservation.jsx",
+  ]) {
+    it(`does not flag test/story/demo scaffolding in ${filename}`, () => {
+      const result = runRule(anchorAmbiguousText, `<a href="#">Link</a>`, { filename });
+      expect(result.diagnostics).toEqual([]);
+    });
+  }
+
+  it("still flags ambiguous anchor text in production code", () => {
+    const result = runRule(anchorAmbiguousText, `<a href="/pricing">click here</a>`, {
+      filename: "src/components/pricing-banner.tsx",
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

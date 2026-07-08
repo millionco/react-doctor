@@ -6,10 +6,11 @@ import {
   DOM_PROPERTY_NAMES_LOWER,
 } from "../../constants/dom-property-names.js";
 import { DOM_PROPERTY_TO_ALLOWED_TAGS } from "../../constants/dom-property-tags.js";
+import { HTML_TAGS } from "../../constants/html-tags.js";
+import { SVG_TAGS } from "../../constants/svg-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
-import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { fileImportsNonReactJsxDialect } from "../../utils/non-react-jsx-dialect.js";
 
@@ -36,13 +37,16 @@ const isValidDataAttribute = (attributeName: string): boolean => {
   return !dataName.includes(":");
 };
 
-const matchesHtmlTagConventions = (tagName: string): boolean => {
-  if (tagName.length === 0) return false;
-  const firstCharacter = tagName.charCodeAt(0);
-  const isAsciiLowercase = firstCharacter >= 97 && firstCharacter <= 122;
-  if (!isAsciiLowercase) return false;
-  return !tagName.includes("-");
-};
+// Only real HTML/SVG/MathML elements go through DOM-property validation.
+// Lowercase JSX intrinsics from custom reconcilers (react-three-fiber
+// `<mesh>`, `<meshStandardMaterial>`, Electron `<webview>`, …) accept
+// arbitrary props that React never sees as DOM attributes.
+const isKnownDomTag = (tagName: string): boolean => HTML_TAGS.has(tagName) || SVG_TAGS.has(tagName);
+
+// React attaches synthetic events (`onLoad`, `onError`, media events, …)
+// to any host element, so per-tag restrictions never apply to handlers.
+const isSyntheticEventHandlerName = (propertyName: string): boolean =>
+  /^on[A-Z]/.test(propertyName);
 
 const normalizeAttributeCase = (name: string): string =>
   DOM_PROPERTIES_IGNORE_CASE_BY_LOWER.get(name.toLowerCase()) ?? name;
@@ -57,19 +61,24 @@ const UNKNOWN_PROP_WITH_STANDARD_NAME = (): string =>
   `React ignores this prop because it doesn't recognize the name.`;
 const UNKNOWN_PROP_GENERIC = "React ignores this prop because it doesn't recognize the name.";
 
-// Port of `oxc_linter::rules::react::no_unknown_property`. Validates JSX
-// attributes against React's recognized DOM/SVG attribute set:
+// Port of `oxc_linter::rules::react::no_unknown_property`, narrowed to
+// fire only when React genuinely drops or renames the prop:
 //   - `aria-*` must be a valid ARIA property name.
 //   - `data-*` must follow the kebab-case lowercase convention; with
 //     `requireDataLowercase` setting, uppercase chars are also flagged.
-//   - Non-data, non-aria attrs on a known HTML tag must be in
-//     `DOM_PROPERTY_NAMES`. Unknown ones get suggestions when the
+//   - Unknown attrs on a known HTML/SVG tag are flagged when the
 //     lowercase form maps back to a known camelCase name (`onclick` →
-//     `onClick`) or when an HTML attribute has a known camel form
-//     (`class` → `className`).
-//   - Tag-restricted attrs (`fetchPriority`, `viewBox`, `download`, …)
-//     are flagged on tags outside their allowed set.
-// Custom elements (`<my-elem>`, anything with `is="..."`) are skipped.
+//     `onClick`, `class` → `className`) or when the name contains
+//     uppercase chars React would warn about and lowercase. All-lowercase
+//     names with no known camel form (`<div frimousse-list>`) render to
+//     the DOM verbatim since React 16 and are never reported.
+//   - Tag-restricted non-event attrs (`fetchPriority`, `viewBox`,
+//     `download`, …) are flagged on tags outside their allowed set;
+//     event handlers (`onLoad`, `onError`, media events) attach anywhere
+//     via React's synthetic event system and are never tag-restricted.
+// Custom elements (`<my-elem>`, anything with `is="..."`) and lowercase
+// intrinsics that aren't real HTML/SVG tags (react-three-fiber `<mesh>`,
+// Electron `<webview>`) are skipped.
 // Non-React JSX dialect detection — see
 // `utils/non-react-jsx-dialect.ts` for the canonical package list +
 // the import / attribute markers we recognise.
@@ -83,9 +92,6 @@ export const noUnknownProperty = defineRule({
   create: (context) => {
     const { ignore = [], requireDataLowercase = false } = resolveSettings(context.settings);
     const ignoreSet = new Set(ignore);
-    if (isGeneratedImageRenderContext(context)) {
-      ignoreSet.add("tw");
-    }
     let fileIsNonReactJsx = false;
 
     return {
@@ -118,7 +124,7 @@ export const noUnknownProperty = defineRule({
         const isLowercaseStart = firstCharacter >= 97 && firstCharacter <= 122;
         if (!isLowercaseStart || elementType === "fbt" || elementType === "fbs") return;
 
-        let isValidHtmlTag = matchesHtmlTagConventions(elementType);
+        let isValidHtmlTag = isKnownDomTag(elementType);
         if (isValidHtmlTag) {
           for (const attribute of node.attributes) {
             if (!isNodeOfType(attribute, "JSXAttribute")) continue;
@@ -134,7 +140,6 @@ export const noUnknownProperty = defineRule({
           if (!isNodeOfType(attribute, "JSXAttribute")) continue;
           const actualName = getJsxAttributeName(attribute.name);
           if (!actualName) continue;
-          if (actualName === "tw" && isGeneratedImageRenderContext(context, node)) continue;
           if (ignoreSet.has(actualName)) continue;
 
           if (isValidDataAttribute(actualName)) {
@@ -153,6 +158,7 @@ export const noUnknownProperty = defineRule({
           const normalizedName = normalizeAttributeCase(actualName);
           const allowedTags = DOM_PROPERTY_TO_ALLOWED_TAGS.get(normalizedName);
           if (allowedTags) {
+            if (isSyntheticEventHandlerName(normalizedName)) continue;
             if (!allowedTags.has(elementType)) {
               context.report({
                 node: attribute.name,
@@ -164,6 +170,21 @@ export const noUnknownProperty = defineRule({
 
           if (DOM_PROPERTY_NAMES.has(normalizedName)) continue;
 
+          // Hyphenated SVG presentation attributes (`stroke-width`,
+          // `clip-rule`, `fill-opacity`, …) on SVG elements are the real
+          // attribute names — React sets unknown lowercase attributes via
+          // `setAttribute`, so they render correctly and "React ignores
+          // this prop" would be false. Renaming to the camelCase form is
+          // purely stylistic; stay silent on SVG hosts.
+          if (
+            SVG_TAGS.has(elementType) &&
+            actualName.includes("-") &&
+            !hasUppercaseChar(actualName) &&
+            DOM_ATTRIBUTES_TO_CAMEL.has(actualName)
+          ) {
+            continue;
+          }
+
           const lowercased = normalizedName.toLowerCase();
           const suggestion =
             DOM_PROPERTY_NAMES_LOWER.get(lowercased) ?? DOM_ATTRIBUTES_TO_CAMEL.get(normalizedName);
@@ -172,9 +193,22 @@ export const noUnknownProperty = defineRule({
               node: attribute.name,
               message: UNKNOWN_PROP_WITH_STANDARD_NAME(),
             });
-          } else {
-            context.report({ node: attribute.name, message: UNKNOWN_PROP_GENERIC });
+            continue;
           }
+
+          // Since React 16, unknown all-lowercase attributes are rendered
+          // to the DOM verbatim (`<div frimousse-list>`, `<iframe
+          // credentialless>`), so "React ignores this prop" would be
+          // false. Only malformed `aria-*` / `data-*` names and
+          // uppercase-containing props (which React warns about and
+          // lowercases) are genuine mistakes worth reporting.
+          const isRenderedVerbatimByReact =
+            !hasUppercaseChar(actualName) &&
+            !actualName.startsWith("aria-") &&
+            !actualName.startsWith("data-");
+          if (isRenderedVerbatimByReact) continue;
+
+          context.report({ node: attribute.name, message: UNKNOWN_PROP_GENERIC });
         }
       },
     };

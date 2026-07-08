@@ -88,6 +88,13 @@ export const QUERY_CACHE_UPDATE_METHODS = new Set([
 // above (`session.invalidate()` is a stale-cache true positive), so it only
 // counts when the receiver chain is rooted in a binding created by one of
 // these hooks.
+// Any TanStack Query entry point (`@tanstack/react-query`,
+// `@tanstack/query-core`, `@tanstack/vue-query`, devtools subpaths, …).
+// An import matching this proves a file's `useMutation` / `useQuery`
+// call really is TanStack's, not a same-named export from another
+// library.
+export const TANSTACK_QUERY_MODULE_PATTERN = /^@tanstack\/[^/]*query/;
+
 export const TRPC_UTILS_INVALIDATE_METHOD = "invalidate";
 export const TRPC_UTILS_HOOK_PATTERN = /^use\w*Utils$/;
 export const QUERY_CLIENT_HOOK_NAME = "useQueryClient";

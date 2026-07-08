@@ -101,17 +101,21 @@ const NamespacePreferUseReducer = () => {
   const [d, setD] = React.useState("");
   const [e, setE] = React.useState("");
 
-  const resetForm = () => {
-    setA("");
-    setB("");
-    setC(0);
-    setD("");
-    setE("");
+  // Data-carrying co-update (not a reset-to-initial-values block, which
+  // `prefer-useReducer` intentionally skips as of the precision sweep).
+  const populateForm = (user: { name: string; email: string; age: number; city: string }) => {
+    setA(user.name);
+    setB(user.email);
+    setC(user.age);
+    setD(user.city);
+    setE(`${user.name} <${user.email}>`);
   };
 
   return (
     <div>
-      <button onClick={resetForm}>Reset</button>
+      <button onClick={() => populateForm({ name: "a", email: "b", age: 1, city: "c" })}>
+        Load
+      </button>
       <input value={a} onChange={(event) => setA(event.target.value)} />
       <input value={b} onChange={(event) => setB(event.target.value)} />
       <input value={c} type="number" onChange={(event) => setC(Number(event.target.value))} />

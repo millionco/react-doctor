@@ -54,6 +54,26 @@ interface MirrorBinding {
   propRootName: string;
 }
 
+// Docs-validation r2 FP (EditorialCheckCard):
+// `useEffect(() => setDraft(value), [value, resetNonce])` — the extra
+// dep is a deliberate second re-seed trigger (revert-after-failed-save
+// nonce), which is the doc's stated exemption: "a transient local edit
+// that is intentionally re-synced to the prop on a separate trigger".
+// A pure mirror re-syncs only when the mirrored prop changes; an
+// unused extra dep is never demanded by exhaustive-deps, so its
+// presence means the author wired a separate trigger. The setter
+// itself is exempt (`[value, setValue]` is lint appeasement, not a
+// trigger).
+const hasOnlyMirrorDeps = (
+  depIdentifierNames: ReadonlySet<string>,
+  binding: MirrorBinding,
+): boolean => {
+  for (const depName of depIdentifierNames) {
+    if (depName !== binding.propRootName && depName !== binding.setterName) return false;
+  }
+  return true;
+};
+
 export const noMirrorPropEffect = defineRule({
   id: "no-mirror-prop-effect",
   title: "Prop mirrored into state via effect",
@@ -115,11 +135,6 @@ export const noMirrorPropEffect = defineRule({
 
         const depsNode = effectCall.arguments[1];
         if (!isNodeOfType(depsNode, "ArrayExpression")) continue;
-        // HACK: previously required EXACTLY one dep, which silently
-        // missed the legitimate `useEffect(() => setX(value), [value, otherDep])`
-        // mirror shape. Now we accept any deps array as long as the
-        // prop root we mirror IS one of the deps — `otherDep` being
-        // unused inside the body is a separate (exhaustive-deps) concern.
         const depIdentifierNames = new Set<string>();
         for (const element of depsNode.elements ?? []) {
           if (isNodeOfType(element, "Identifier")) depIdentifierNames.add(element.name);
@@ -145,6 +160,7 @@ export const noMirrorPropEffect = defineRule({
           (binding) =>
             binding.setterName === calleeName &&
             depIdentifierNames.has(binding.propRootName) &&
+            hasOnlyMirrorDeps(depIdentifierNames, binding) &&
             areExpressionsStructurallyEqual(binding.initializer, setterArgument),
         );
         if (!matchedBinding) continue;

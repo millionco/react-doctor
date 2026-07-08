@@ -97,4 +97,78 @@ const Panel = ({ loading, children }) => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  // FP anchor (shadcn field.tsx FieldError): the early-return TEST reads
+  // the memo value — the memo must run to decide the bailout, so nothing
+  // is wasted.
+  it("stays silent when the early-return condition reads the memoized value", () => {
+    const result = runRule(
+      rerenderMemoBeforeEarlyReturn,
+      `
+function FieldError({ children, errors }) {
+  const content = useMemo(() => {
+    if (children) {
+      return children;
+    }
+    if (!errors?.length) {
+      return null;
+    }
+    return <ul>{errors.map((error, index) => <li key={index}>{error.message}</li>)}</ul>;
+  }, [children, errors]);
+
+  if (!content) {
+    return null;
+  }
+
+  return <div role="alert">{content}</div>;
+}
+`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // FP anchor (AppFlowy ViewItem): the memo callback's leading guard
+  // repeats the component's bailout condition, so a bailout render pays a
+  // single comparison, not the JSX build.
+  it("stays silent when the callback's leading guard mirrors the early-return test", () => {
+    const result = runRule(
+      rerenderMemoBeforeEarlyReturn,
+      `
+function ViewItem({ view, aiEnabled }) {
+  const renderItem = useMemo(() => {
+    if (!view) return null;
+    if (!aiEnabled && view.layout === ViewLayout.AIChat) return null;
+    return <div data-testid={view.view_id}><Heavy view={view} /></div>;
+  }, [view, aiEnabled]);
+
+  if (!aiEnabled && view.layout === ViewLayout.AIChat) return null;
+
+  return <div>{renderItem}</div>;
+}
+`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags when the callback guard differs from the early-return test", () => {
+    const result = runRule(
+      rerenderMemoBeforeEarlyReturn,
+      `
+function Panel({ view, loading }) {
+  const content = useMemo(() => {
+    if (!view) return null;
+    return <Heavy view={view} />;
+  }, [view]);
+
+  if (loading) return <Spinner />;
+
+  return <div>{content}</div>;
+}
+`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

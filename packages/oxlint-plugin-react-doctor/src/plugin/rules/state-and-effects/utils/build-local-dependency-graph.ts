@@ -8,8 +8,19 @@ import {
   createBlockBindingScope,
   createComponentBindingScope,
   getVariableDeclarationScope,
+  resolveBindingName,
   type BindingScope,
 } from "./scope-aware-reference-names.js";
+import { getStaticMemberPropertyName } from "./static-member-property-name.js";
+
+const MUTATING_COLLECTION_METHOD_NAMES = new Set(["push", "unshift", "splice", "set", "add"]);
+
+const getMemberRootBindingName = (node: EsTreeNode, scope: BindingScope): string | null => {
+  let currentNode = node;
+  while (isNodeOfType(currentNode, "MemberExpression")) currentNode = currentNode.object;
+  if (!isNodeOfType(currentNode, "Identifier")) return null;
+  return resolveBindingName(scope, currentNode.name);
+};
 
 const addDependencies = (
   graph: Map<string, Set<string>>,
@@ -83,9 +94,40 @@ const addAssignmentExpressionDependencies = (
     );
   }
   const assignedNames = collectPatternAssignmentNames(expression.left, scope);
+  if (isNodeOfType(expression.left, "MemberExpression")) {
+    const memberRootName = getMemberRootBindingName(expression.left, scope);
+    if (memberRootName) assignedNames.add(memberRootName);
+  }
   for (const assignedName of assignedNames) {
     addDependencies(graph, assignedName, dependencyNames);
   }
+};
+
+// `rows.push(row)` / `bySlug.set(key, value)` mutate the receiver with the
+// argument values, so the receiver depends on them just like `rows = [...rows,
+// row]` would.
+const addMutatingCollectionCallDependencies = (
+  graph: Map<string, Set<string>>,
+  expression: EsTreeNode,
+  scope: BindingScope,
+  eventHandlerReferenceNames: Set<string>,
+  controlDependencyNames: Set<string>,
+): void => {
+  if (!isNodeOfType(expression, "CallExpression")) return;
+  if (!isNodeOfType(expression.callee, "MemberExpression")) return;
+  const methodName = getStaticMemberPropertyName(expression.callee);
+  if (!methodName || !MUTATING_COLLECTION_METHOD_NAMES.has(methodName)) return;
+  const receiverRootName = getMemberRootBindingName(expression.callee.object, scope);
+  if (!receiverRootName) return;
+  const dependencyNames = new Set<string>();
+  for (const argument of expression.arguments ?? []) {
+    addDependencyNames(
+      dependencyNames,
+      collectScopedReferenceNames(argument, scope, eventHandlerReferenceNames),
+    );
+  }
+  addDependencyNames(dependencyNames, controlDependencyNames);
+  addDependencies(graph, receiverRootName, dependencyNames);
 };
 
 const collectExpressionDependencies = (
@@ -97,6 +139,17 @@ const collectExpressionDependencies = (
 ): void => {
   if (isNodeOfType(expression, "AssignmentExpression")) {
     addAssignmentExpressionDependencies(
+      graph,
+      expression,
+      scope,
+      eventHandlerReferenceNames,
+      controlDependencyNames,
+    );
+    return;
+  }
+
+  if (isNodeOfType(expression, "CallExpression")) {
+    addMutatingCollectionCallDependencies(
       graph,
       expression,
       scope,

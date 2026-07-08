@@ -137,29 +137,65 @@ const collectFunctionLocalBindings = (functionNode: EsTreeNode): Set<string> => 
   return localBindings;
 };
 
+// `const books = []` inside a `for`/`if` block (or a `for (const book of
+// ...)` binding) shadows the state name for everything nested in that
+// block, exactly like a function-body declaration does.
+const collectBlockScopedBindings = (node: EsTreeNode): Set<string> => {
+  const blockBindings = new Set<string>();
+  if (isNodeOfType(node, "BlockStatement")) {
+    for (const statement of node.body ?? []) {
+      if (!isNodeOfType(statement, "VariableDeclaration")) continue;
+      for (const declarator of statement.declarations ?? []) {
+        collectPatternNames(declarator.id, blockBindings);
+      }
+    }
+    return blockBindings;
+  }
+  if (isNodeOfType(node, "ForStatement") && isNodeOfType(node.init, "VariableDeclaration")) {
+    for (const declarator of node.init.declarations ?? []) {
+      collectPatternNames(declarator.id, blockBindings);
+    }
+    return blockBindings;
+  }
+  if (
+    (isNodeOfType(node, "ForOfStatement") || isNodeOfType(node, "ForInStatement")) &&
+    isNodeOfType(node.left, "VariableDeclaration")
+  ) {
+    for (const declarator of node.left.declarations ?? []) {
+      collectPatternNames(declarator.id, blockBindings);
+    }
+  }
+  return blockBindings;
+};
+
 // HACK: walks the component AST while tracking which state names are
 // SHADOWED in the current scope by a nested function's params or
 // var/let/const declarations. Without this, a handler that locally
 // re-binds the state name (e.g. `const items = raw.split(",")` then
 // `items.push(x)`) gets falsely flagged. We don't do real scope
 // analysis (would need eslint-utils' ScopeManager) — just lexical
-// param + top-level binding collection per function, which covers the
-// >99% of real-world shadowing cases without false positives.
+// param + per-block binding collection, which covers the >99% of
+// real-world shadowing cases without false positives.
 const walkComponentRespectingShadows = (
   node: EsTreeNode,
   shadowedStateNames: ReadonlySet<string>,
   visit: (child: EsTreeNode, currentlyShadowed: ReadonlySet<string>) => void,
+  isComponentBodyRoot = false,
 ): void => {
   if (!node || typeof node !== "object") return;
 
   let nextShadowedStateNames = shadowedStateNames;
-  if (isFunctionLike(node)) {
-    const localBindings = collectFunctionLocalBindings(node);
-    if (localBindings.size > 0) {
-      const merged = new Set(shadowedStateNames);
-      for (const localName of localBindings) merged.add(localName);
-      nextShadowedStateNames = merged;
-    }
+  // The component body's own declarations ARE the state bindings, not
+  // shadows of them — only nested blocks/functions can shadow.
+  const localBindings = isComponentBodyRoot
+    ? new Set<string>()
+    : isFunctionLike(node)
+      ? collectFunctionLocalBindings(node)
+      : collectBlockScopedBindings(node);
+  if (localBindings.size > 0) {
+    const merged = new Set(shadowedStateNames);
+    for (const localName of localBindings) merged.add(localName);
+    nextShadowedStateNames = merged;
   }
 
   visit(node, shadowedStateNames);
@@ -210,40 +246,41 @@ export const noDirectStateMutation = defineRule({
         }
       }
 
-      walkComponentRespectingShadows(
-        componentBody,
-        new Set(),
-        (child: EsTreeNode, currentlyShadowed: ReadonlySet<string>) => {
-          if (isNodeOfType(child, "AssignmentExpression")) {
-            if (!isNodeOfType(child.left, "MemberExpression")) return;
-            const rootName = getRootIdentifierName(child.left);
-            if (!rootName || !stateValueToSetter.has(rootName)) return;
-            if (!plainObjectStateValueNames.has(rootName)) return;
-            if (currentlyShadowed.has(rootName)) return;
-            context.report({
-              node: child,
-              message: `React can't tell you changed "${rootName}" in place, so this update can be skipped or lost.`,
-            });
-            return;
-          }
+      const visitMutationCandidate = (
+        child: EsTreeNode,
+        currentlyShadowed: ReadonlySet<string>,
+      ): void => {
+        if (isNodeOfType(child, "AssignmentExpression")) {
+          if (!isNodeOfType(child.left, "MemberExpression")) return;
+          const rootName = getRootIdentifierName(child.left);
+          if (!rootName || !stateValueToSetter.has(rootName)) return;
+          if (!plainObjectStateValueNames.has(rootName)) return;
+          if (currentlyShadowed.has(rootName)) return;
+          context.report({
+            node: child,
+            message: `React can't tell you changed "${rootName}" in place, so this update can be skipped or lost.`,
+          });
+          return;
+        }
 
-          if (isNodeOfType(child, "CallExpression")) {
-            const callee = child.callee;
-            if (!isNodeOfType(callee, "MemberExpression")) return;
-            if (!isNodeOfType(callee.property, "Identifier")) return;
-            const methodName = callee.property.name;
-            if (!MUTATING_ARRAY_METHODS.has(methodName)) return;
-            const rootName = getRootIdentifierName(callee.object);
-            if (!rootName || !stateValueToSetter.has(rootName)) return;
-            if (!plainObjectStateValueNames.has(rootName)) return;
-            if (currentlyShadowed.has(rootName)) return;
-            context.report({
-              node: child,
-              message: `React can't tell .${methodName}() changed "${rootName}" in place, so this update can be skipped or lost.`,
-            });
-          }
-        },
-      );
+        if (isNodeOfType(child, "CallExpression")) {
+          const callee = child.callee;
+          if (!isNodeOfType(callee, "MemberExpression")) return;
+          if (!isNodeOfType(callee.property, "Identifier")) return;
+          const methodName = callee.property.name;
+          if (!MUTATING_ARRAY_METHODS.has(methodName)) return;
+          const rootName = getRootIdentifierName(callee.object);
+          if (!rootName || !stateValueToSetter.has(rootName)) return;
+          if (!plainObjectStateValueNames.has(rootName)) return;
+          if (currentlyShadowed.has(rootName)) return;
+          context.report({
+            node: child,
+            message: `React can't tell .${methodName}() changed "${rootName}" in place, so this update can be skipped or lost.`,
+          });
+        }
+      };
+
+      walkComponentRespectingShadows(componentBody, new Set(), visitMutationCandidate, true);
     };
 
     return {

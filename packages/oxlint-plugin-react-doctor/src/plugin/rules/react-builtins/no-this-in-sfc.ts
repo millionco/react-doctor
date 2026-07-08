@@ -5,6 +5,7 @@ import { functionContainsReactRenderOutput } from "../../utils/function-contains
 import { isEs5Component } from "../../utils/is-es5-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
+import { walkAst } from "../../utils/walk-ast.js";
 
 const MESSAGE = "This value is `undefined` because function components have no `this`.";
 
@@ -74,6 +75,41 @@ const hasExplicitThisParameter = (
   if (!firstParameter) return false;
   if (!isNodeOfType(firstParameter, "Identifier")) return false;
   return firstParameter.name === "this";
+};
+
+const isThisMemberExpression = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "MemberExpression") && node.object.type === "ThisExpression";
+
+// A function component never WRITES to `this` — a `this.<member> = …`
+// (or `this.count++`) in the function's own body marks it as an ES5
+// constructor / factory, even when JSX flows through it (e.g. a
+// PascalCase constructor registering a JSX-returning callback:
+// `function Tooltip(el) { this.el = el; mount(() => <div/>); }`).
+// Nested functions/classes rebind `this`, so their writes don't count;
+// arrows share the enclosing `this`, so theirs do.
+const functionHasOwnThisMemberWrite = (fn: EsTreeNode): boolean => {
+  let didFindThisWrite = false;
+  walkAst(fn, (child: EsTreeNode): boolean | void => {
+    if (didFindThisWrite) return false;
+    if (
+      child !== fn &&
+      (isNodeOfType(child, "FunctionDeclaration") ||
+        isNodeOfType(child, "FunctionExpression") ||
+        isNodeOfType(child, "ClassDeclaration") ||
+        isNodeOfType(child, "ClassExpression"))
+    ) {
+      return false;
+    }
+    if (isNodeOfType(child, "AssignmentExpression") && isThisMemberExpression(child.left)) {
+      didFindThisWrite = true;
+      return false;
+    }
+    if (isNodeOfType(child, "UpdateExpression") && isThisMemberExpression(child.argument)) {
+      didFindThisWrite = true;
+      return false;
+    }
+  });
+  return didFindThisWrite;
 };
 
 const looksLikeFunctionComponent = (
@@ -157,6 +193,7 @@ export const noThisInSfc = defineRule({
         // convention. Require the function to actually render JSX /
         // createElement so prototype-based helpers keep their real `this`.
         if (!functionContainsReactRenderOutput(enclosingFunction, context.scopes)) return;
+        if (functionHasOwnThisMemberWrite(enclosingFunction)) return;
         context.report({ node, message: MESSAGE });
       },
     };

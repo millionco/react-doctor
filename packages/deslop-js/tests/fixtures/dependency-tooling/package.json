@@ -4,11 +4,13 @@
   "main": "src/index.ts",
   "scripts": {
     "build": "babel src --out-dir lib && tsc-alias",
+    "copy-styles": "cpy 'src/**/*.css' dist",
     "e2e": "tauri build",
     "extract": "formatjs extract src/index.ts",
     "prompt": "prompt",
     "replace": "replace-in-file old new src/index.ts",
     "test": "jest --config jest.config.js",
+    "test:browser": "playwright test",
     "watch": "chokidar 'src/**' -c 'echo changed'",
     "cms": "tinacms dev -c 'next dev'"
   },
@@ -29,13 +31,18 @@
     "@tauri-apps/cli": "^2.0.0",
     "@tinacms/cli": "^1.0.0",
     "@typescript/native-preview": "^7.0.0-dev",
+    "axe-core": "^4.11.0",
     "babel-eslint": "^10.0.0",
     "chokidar-cli": "^3.0.0",
+    "cpy-cli": "^5.0.0",
     "jest-cli": "^29.0.0",
+    "playwright-chromium": "^1.60.0",
     "prompt": "^1.0.0",
     "replace-in-file": "^8.0.0",
     "tsc-alias": "^1.0.0",
-    "unused-tool": "^1.0.0"
+    "unused-tool": "^1.0.0",
+    "vitest-axe": "^0.1.0",
+    "docs-theme-widgets": "^1.0.0"
   },
   "pnpm": {
     "overrides": {

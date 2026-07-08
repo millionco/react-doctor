@@ -52,6 +52,42 @@ ${buildBodyExceedingThreshold()}
     );
   });
 
+  it("flags an oversized memo-wrapped named function component (freecut TimelineTrack shape)", () => {
+    expectDiagnosticCount(
+      `import { memo } from "react";
+
+export const TimelineTrack = memo(function TimelineTrack({ track }) {
+${buildBodyExceedingThreshold()}
+  return <main />;
+});`,
+      1,
+    );
+  });
+
+  it("flags an oversized React.memo arrow component (obby UserSettings shape)", () => {
+    expectDiagnosticCount(
+      `import React from "react";
+
+export const UserSettings: React.FC = React.memo(() => {
+${buildBodyExceedingThreshold()}
+  return <main />;
+});`,
+      1,
+    );
+  });
+
+  it("flags an oversized memo(forwardRef(...)) component", () => {
+    expectDiagnosticCount(
+      `import { memo, forwardRef } from "react";
+
+export const Input = memo(forwardRef((props, ref) => {
+${buildBodyExceedingThreshold()}
+  return <main />;
+}));`,
+      1,
+    );
+  });
+
   it("flags an oversized TypeScript component using aliased createElement from react", () => {
     expectDiagnosticCount(
       `import { createElement as h } from "react";
@@ -177,6 +213,42 @@ ${buildBodyExceedingThreshold()}
 }`,
       0,
       "example.service.ts",
+    );
+  });
+
+  it("does not flag memo wrapping an identifier (no inline function to measure)", () => {
+    expectDiagnosticCount(
+      `import { memo } from "react";
+
+function Giant() {
+  return <main />;
+}
+
+export const Wrapped = memo(Giant);`,
+      0,
+    );
+  });
+
+  it("does not flag an oversized non-HOC call wrapper", () => {
+    expectDiagnosticCount(
+      `import { styledFactory } from "./factory";
+
+export const GiantWidget = styledFactory(() => {
+${buildBodyExceedingThreshold()}
+  return <main />;
+});`,
+      0,
+    );
+  });
+
+  it("does not flag a small memo-wrapped component", () => {
+    expectDiagnosticCount(
+      `import { memo } from "react";
+
+export const Small = memo(() => {
+  return <main />;
+});`,
+      0,
     );
   });
 });

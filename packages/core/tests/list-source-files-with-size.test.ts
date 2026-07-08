@@ -67,8 +67,9 @@ describe("listSourceFilesWithSize", () => {
   // Issue: ant-design scans covered `.dumi/**` only when git discovery ran —
   // the filesystem walk skipped EVERY dot-directory, so the two paths
   // enumerated different sets for the same tree.
-  it("filesystem walk descends into non-ignored dot-directories", () => {
+  it("filesystem walk descends into allowlisted dot-directories", () => {
     writeNestedFile(".dumi/hooks/use-local-storage.ts", "export const useLs = () => null;\n");
+    writeNestedFile(".storybook/preview.tsx", "export const decorators = [];\n");
     writeNestedFile("src/app.tsx", "export const App = () => null;\n");
     writeNestedFile(".next/server/page.js", "module.exports = {};\n");
     writeNestedFile(".git/hooks/sample.js", "module.exports = {};\n");
@@ -76,9 +77,25 @@ describe("listSourceFilesWithSize", () => {
     const filePaths = listSourceFiles(temporaryDirectory);
 
     expect(filePaths).toContain(".dumi/hooks/use-local-storage.ts");
+    expect(filePaths).toContain(".storybook/preview.tsx");
     expect(filePaths).toContain("src/app.tsx");
     expect(filePaths).not.toContain(".next/server/page.js");
     expect(filePaths).not.toContain(".git/hooks/sample.js");
+  });
+
+  // Issue: a repo's `.codex/skills/**/scripts/*.mjs` agent-tooling scripts
+  // were scanned as app code, producing 83 `no-console` false positives —
+  // hidden directories outside the allowlist must be excluded by default.
+  it("filesystem walk skips non-allowlisted hidden directories", () => {
+    writeNestedFile(".codex/skills/translate/scripts/check.mjs", "console.log(1);\n");
+    writeNestedFile(".github/scripts/release.mjs", "console.log(1);\n");
+    writeNestedFile("src/app.tsx", "export const App = () => null;\n");
+
+    const filePaths = listSourceFiles(temporaryDirectory);
+
+    expect(filePaths).toContain("src/app.tsx");
+    expect(filePaths).not.toContain(".codex/skills/translate/scripts/check.mjs");
+    expect(filePaths).not.toContain(".github/scripts/release.mjs");
   });
 
   it("filesystem walk returns a sorted, repeatable listing", () => {
@@ -105,6 +122,7 @@ describe("listSourceFilesWithSize", () => {
     writeNestedFile("dist/index.js", "module.exports = 1;\n");
     writeNestedFile("src/app.tsx", "export const App = () => null;\n");
     writeNestedFile(".dumi/pages/banner.tsx", "export const Banner = () => null;\n");
+    writeNestedFile(".codex/skills/translate/scripts/check.mjs", "console.log(1);\n");
     runGit("init", "--quiet");
     runGit("add", "-A");
     runGit(
@@ -122,6 +140,7 @@ describe("listSourceFilesWithSize", () => {
 
     expect(gitListing).not.toContain("ai/dist/mcp-server.js");
     expect(gitListing).not.toContain("dist/index.js");
+    expect(gitListing).not.toContain(".codex/skills/translate/scripts/check.mjs");
     expect(gitListing).toContain("src/app.tsx");
     expect(gitListing).toContain(".dumi/pages/banner.tsx");
 

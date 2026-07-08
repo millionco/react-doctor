@@ -3,8 +3,9 @@ import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 
 // The Identifier a function is bound to: its own id (`function foo() {}`),
-// the variable it initializes (`const foo = () => {}`), or the identifier it
-// is assigned to (`foo = () => {}`). Null for anonymous positions.
+// the variable it initializes (`const foo = () => {}`), the identifier it
+// is assigned to (`foo = () => {}`), or the variable initialized by a
+// wrapping call (`const foo = memo(() => {})`). Null for anonymous positions.
 export const getFunctionBindingIdentifier = (
   functionNode: EsTreeNode,
 ): EsTreeNodeOfType<"Identifier"> | null => {
@@ -24,6 +25,15 @@ export const getFunctionBindingIdentifier = (
     isNodeOfType(parent.left, "Identifier")
   ) {
     return parent.left;
+  }
+  if (isNodeOfType(parent, "CallExpression")) {
+    const callParent = parent.parent;
+    if (
+      isNodeOfType(callParent, "VariableDeclarator") &&
+      isNodeOfType(callParent.id, "Identifier")
+    ) {
+      return callParent.id;
+    }
   }
   return null;
 };

@@ -88,4 +88,35 @@ describe("a11y/role-has-required-aria-props regressions", () => {
     const result = runRule(roleHasRequiredAriaProps, `const H = () => <div role="heading" />;`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  // Docs-validation FP (mapguide test mock): a native `<select>` already
+  // carries the implicit combobox role with built-in expansion semantics,
+  // so a redundant explicit role doesn't need aria-controls/aria-expanded.
+  it('exempts a native `<select role="combobox">`', () => {
+    const result = runRule(
+      roleHasRequiredAriaProps,
+      `const S = ({ value, onChange }) => <select role="combobox" value={value} onChange={onChange} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('still flags a custom `<div role="combobox">` missing its required props', () => {
+    const result = runRule(roleHasRequiredAriaProps, `const C = () => <div role="combobox" />;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // The doc's named native-backing FP: a native `<option>` supplies
+  // selectedness from its DOM `selected` state.
+  it('exempts a native `<option role="option">`', () => {
+    const result = runRule(
+      roleHasRequiredAriaProps,
+      `const O = () => <option role="option" value="a">A</option>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('still flags a custom `<div role="option">` missing aria-selected', () => {
+    const result = runRule(roleHasRequiredAriaProps, `const O = () => <div role="option" />;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

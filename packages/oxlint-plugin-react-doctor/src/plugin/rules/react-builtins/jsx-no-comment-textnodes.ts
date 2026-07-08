@@ -35,6 +35,37 @@ const hasCommentLikePattern = (text: string, followsExpressionContainer: boolean
   return false;
 };
 
+// Syntax-highlight previews and terminal-aesthetic UI render a comment
+// token as the SOLE text of a styled element —
+// `<span style={{ color: p.comment }}>// comment</span>`,
+// `<div className="text-gray-500">// event_log</div>`. When the whole
+// text IS the comment-like line and the wrapping element is explicitly
+// styled, the author is displaying it on purpose; a mistyped comment
+// sits among other children or in an unstyled wrapper.
+const STYLING_ATTRIBUTE_NAMES: ReadonlySet<string> = new Set(["className", "class", "style"]);
+
+const isDeliberateStyledCommentToken = (node: EsTreeNodeOfType<"JSXText">): boolean => {
+  const trimmed = node.value.trim();
+  if (!trimmed.startsWith("//") && !trimmed.startsWith("/*")) return false;
+  const parent = node.parent;
+  if (!parent || !isNodeOfType(parent, "JSXElement")) return false;
+  for (const sibling of parent.children) {
+    if (sibling === node) continue;
+    if (isNodeOfType(sibling, "JSXText") && sibling.value.trim().length === 0) continue;
+    return false;
+  }
+  for (const attribute of parent.openingElement.attributes) {
+    if (!isNodeOfType(attribute, "JSXAttribute")) continue;
+    if (
+      isNodeOfType(attribute.name, "JSXIdentifier") &&
+      STYLING_ATTRIBUTE_NAMES.has(attribute.name.name)
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const followsExpressionContainerSibling = (node: EsTreeNodeOfType<"JSXText">): boolean => {
   const parent = node.parent;
   if (!parent || (!isNodeOfType(parent, "JSXElement") && !isNodeOfType(parent, "JSXFragment"))) {
@@ -78,6 +109,7 @@ export const jsxNoCommentTextnodes = defineRule({
     JSXText(node: EsTreeNodeOfType<"JSXText">) {
       if (!hasCommentLikePattern(node.value, followsExpressionContainerSibling(node))) return;
       if (isInsideLiteralTextTag(node)) return;
+      if (isDeliberateStyledCommentToken(node)) return;
       context.report({ node, message: MESSAGE });
     },
   }),

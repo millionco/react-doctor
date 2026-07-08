@@ -11,7 +11,11 @@ const SimpleMemoComponent = ({ count }: { count: number }) => {
   return <div>{doubled}</div>;
 };
 
-const LayoutAnimationComponent = () => <div animate={{ width: 100, height: 200 }}>animated</div>;
+declare const motion: { div: (props: Record<string, unknown>) => JSX.Element };
+
+const LayoutAnimationComponent = () => (
+  <motion.div animate={{ width: 100, height: 200 }}>animated</motion.div>
+);
 
 const TransitionAllComponent = () => <div style={{ transition: "all 0.3s ease" }}>styled</div>;
 
@@ -21,12 +25,16 @@ const ScaleFromZeroComponent = () => <div initial={{ scale: 0 }}>scale</div>;
 
 const PermanentWillChangeComponent = () => <div style={{ willChange: "transform" }}>permanent</div>;
 
-const DefaultPropComponent = ({ items = [] }: { items?: string[] }) => (
+const MemoItemList = memo(({ items }: { items: string[] }) => (
   <ul>
     {items.map((item) => (
       <li key={item}>{item}</li>
     ))}
   </ul>
+));
+
+const DefaultPropComponent = ({ items = [] }: { items?: string[] }) => (
+  <MemoItemList items={items} />
 );
 
 const SvgAnimationComponent = () => (

@@ -12,6 +12,7 @@ import type { EsTreeNode } from "./utils/es-tree-node.js";
 import { hasAncestorMetadataLayout } from "./utils/find-ancestor-metadata-layout.js";
 import { hasAncestorSuspenseLayout } from "./utils/find-ancestor-suspense-layout.js";
 import { isBarrelIndexModule } from "./utils/is-barrel-index-module.js";
+import { isLegacyArchReactNativeFile } from "./utils/is-legacy-arch-react-native-file.js";
 import { normalizeFilename } from "./utils/normalize-filename.js";
 import { resolveLang } from "./utils/parse-source-file.js";
 import { resolveBarrelExportFilePath } from "./utils/resolve-barrel-export-file-path.js";
@@ -304,13 +305,25 @@ const collectRnNoRawTextDependencies: CrossFileDependencyCollector = ({
   }
 };
 
-// rn-prefer-expo-image's only cross-file input is the package-platform
-// classification (`isExpoManagedFileActive` + the `wrapReactNativeRule`
-// gate): the ancestor package.json walk plus the nearest manifest's content.
-const collectRnPreferExpoImageDependencies: CrossFileDependencyCollector = ({
-  absoluteFilePath,
-}) => {
+// no-dynamic-import-path / no-full-lodash-import (`is-inside-node-cli-package`),
+// prefer-dynamic-import (`is-published-library-package`),
+// rendering-hydration-mismatch-time (`classifyReactNativeFileTarget`), and
+// rn-prefer-expo-image (`isExpoManagedFileActive` + the `wrapReactNativeRule`
+// gate) all read only the nearest manifest: the same ancestor package.json
+// existence walk plus that one manifest's content. `classifyPackagePlatform`
+// records exactly that probe set, and the rules gate the read on in-file
+// conditions the collector deliberately skips (probing more is always safe).
+const collectNearestManifestDependencies: CrossFileDependencyCollector = ({ absoluteFilePath }) => {
   classifyPackagePlatform(absoluteFilePath);
+};
+
+// rn-no-legacy-shadow-styles / rn-style-prefer-boxshadow gate on
+// `isLegacyArchReactNativeFile`, which reads the nearest manifest plus
+// `android/gradle.properties` and the Expo app-config files. The helper
+// records its own probe set (`recordFilesystemProbes`), so re-running it is
+// the exact dependency collection.
+const collectLegacyArchDependencies: CrossFileDependencyCollector = ({ absoluteFilePath }) => {
+  isLegacyArchReactNativeFile(absoluteFilePath);
 };
 
 export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDependencyCollector> =
@@ -318,9 +331,15 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-barrel-import", collectNoBarrelImportDependencies],
     ["nextjs-missing-metadata", collectNextjsMissingMetadataDependencies],
     ["nextjs-no-use-search-params-without-suspense", collectNextjsSearchParamsDependencies],
+    ["no-dynamic-import-path", collectNearestManifestDependencies],
+    ["no-full-lodash-import", collectNearestManifestDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
+    ["prefer-dynamic-import", collectNearestManifestDependencies],
+    ["rendering-hydration-mismatch-time", collectNearestManifestDependencies],
+    ["rn-no-legacy-shadow-styles", collectLegacyArchDependencies],
     ["rn-no-raw-text", collectRnNoRawTextDependencies],
-    ["rn-prefer-expo-image", collectRnPreferExpoImageDependencies],
+    ["rn-prefer-expo-image", collectNearestManifestDependencies],
+    ["rn-style-prefer-boxshadow", collectLegacyArchDependencies],
   ]);
 
 /**

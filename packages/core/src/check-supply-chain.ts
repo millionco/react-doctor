@@ -42,12 +42,17 @@ interface ResolvedSupplyChainOptions {
   readonly includeDevDependencies: boolean;
 }
 
+/** How the scored `version` was derived from the declared `spec`. */
+type VersionResolution = "pin" | "locked" | "floor";
+
 interface DependencyToScore {
   readonly name: string;
   /** Concrete version queried against Socket (resolved from the spec). */
   readonly version: string;
   /** The range/spec exactly as declared in package.json (e.g. `^16.2.4`). */
   readonly spec: string;
+  readonly section: DependencySection;
+  readonly resolution: VersionResolution;
   /** 1-based line of the dependency's key in package.json; `0` if not located. */
   readonly line: number;
   /** 1-based column of the dependency's key in package.json; `0` if not located. */
@@ -156,7 +161,11 @@ interface ScoreAxis {
 // Security-category check — e.g. `@types/bun@1.3.14` scores quality 48 with
 // every security axis at 100 (issue #770). `supplyChain` covers typosquats /
 // install scripts / compromised maintainers; `vulnerability` covers known
-// CVEs (what flags the compromised `event-stream@3.3.6`).
+// CVEs (what flags the compromised `event-stream@3.3.6`). For
+// devDependencies the vulnerability axis does NOT gate: a CVE in a dev-only
+// tool (a vitest dev-server advisory) never ships to users, while the
+// supply-chain axis (malware, typosquats, install scripts) still executes on
+// dev machines and CI and keeps gating.
 const GATED_AXES: ReadonlyArray<GatedAxis> = [
   {
     key: "supplyChain",
@@ -191,11 +200,16 @@ const CONTEXT_AXES: ReadonlyArray<ScoreAxis> = [
 // and the fetch span attributes.
 const SCORE_AXES: ReadonlyArray<ScoreAxis> = [...GATED_AXES, ...CONTEXT_AXES];
 
+const gatedAxesForSection = (section: DependencySection): ReadonlyArray<GatedAxis> =>
+  section === "devDependencies"
+    ? GATED_AXES.filter((axis) => axis.key !== "vulnerability")
+    : GATED_AXES;
+
 // The axis that decides the gate for one score: the lowest of the gated
 // axes. A tie keeps `supplyChain`, matching the rule's name.
-const worstGatedAxis = (score: SocketScore): GatedAxis => {
-  let worst = GATED_AXES[0];
-  for (const axis of GATED_AXES) {
+const worstGatedAxis = (score: SocketScore, gatedAxes: ReadonlyArray<GatedAxis>): GatedAxis => {
+  let worst = gatedAxes[0];
+  for (const axis of gatedAxes) {
     if (score[axis.key] < score[worst.key]) worst = axis;
   }
   return worst;
@@ -247,6 +261,106 @@ const resolveConcreteVersion = (spec: string): string | null => {
 
 type DependencySection = "dependencies" | "devDependencies";
 
+/** Looks up the version the project's lockfile resolves `name@spec` to. */
+type LockedVersionLookup = (name: string, spec: string) => string | null;
+
+const readTextFileOrNull = (filePath: string): string | null => {
+  try {
+    return fs.readFileSync(filePath, "utf-8");
+  } catch {
+    return null;
+  }
+};
+
+// npm lockfile v2/v3: the hoisted root entry `packages["node_modules/<name>"]`
+// is the resolution a direct dependency gets; v1 keeps the same shape under
+// `dependencies`.
+const buildNpmLockLookup = (lockText: string): LockedVersionLookup | null => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(lockText);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const lock = parsed as {
+    packages?: Record<string, { version?: unknown }>;
+    dependencies?: Record<string, { version?: unknown }>;
+  };
+  return (name) => {
+    const entry = lock.packages?.[`node_modules/${name}`] ?? lock.dependencies?.[name];
+    return typeof entry?.version === "string" ? entry.version : null;
+  };
+};
+
+// yarn.lock, classic and berry: an entry header names the descriptors it
+// resolves (`"jspdf@npm:^4.0.0":` / `jspdf@^4.0.0, jspdf@^3:`) and the body
+// carries `version "4.2.1"` (classic) or `version: 4.2.1` (berry).
+const buildYarnLockLookup = (lockText: string): LockedVersionLookup => {
+  const lines = lockText.split(/\r?\n/);
+  return (name, spec) => {
+    const descriptor = `${name}@${spec}`;
+    const berryDescriptor = `${name}@npm:${spec}`;
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      const line = lines[lineIndex];
+      if (line.startsWith(" ") || line.startsWith("#") || !line.includes(":")) continue;
+      const header = line.replace(/:\s*$/, "");
+      const descriptors = header.split(",").map((part) => part.trim().replace(/^"|"$/g, ""));
+      if (!descriptors.includes(descriptor) && !descriptors.includes(berryDescriptor)) continue;
+      for (
+        let bodyIndex = lineIndex + 1;
+        bodyIndex < lines.length && (lines[bodyIndex].startsWith(" ") || lines[bodyIndex] === "");
+        bodyIndex += 1
+      ) {
+        const versionMatch = /^\s+version:?\s+"?([^"\s]+)"?/.exec(lines[bodyIndex]);
+        if (versionMatch) return versionMatch[1];
+      }
+      return null;
+    }
+    return null;
+  };
+};
+
+// pnpm-lock.yaml v6/v9 importer entry: the bare dependency name (4-space
+// indent in a single-package lock, 6 with a root importer), then
+// `specifier:` / `version:` at deeper indent. The `packages:` section can't
+// collide: its keys carry an `@<version>` suffix. The version may carry a
+// peer-resolution suffix (`1.2.3(react@19.0.0)`) that is stripped.
+const buildPnpmLockLookup = (lockText: string): LockedVersionLookup => {
+  return (name) => {
+    const entryPattern = new RegExp(
+      `^ {4,8}['"]?${name.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}['"]?:\\s*$`,
+    );
+    const lines = lockText.split(/\r?\n/);
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+      if (!entryPattern.test(lines[lineIndex])) continue;
+      for (
+        let bodyIndex = lineIndex + 1;
+        bodyIndex < lines.length && /^ {5,}\S/.test(lines[bodyIndex]);
+        bodyIndex += 1
+      ) {
+        const versionMatch = /^\s+version:\s+['"]?([^'"\s(]+)/.exec(lines[bodyIndex]);
+        if (versionMatch) return versionMatch[1];
+      }
+    }
+    return null;
+  };
+};
+
+// The lockfile is what the project actually installs; scoring the range floor
+// when the lockfile resolves higher anchors the finding to a version the
+// project doesn't run (the doc's stale-floor false positive). One lookup per
+// scan; fail-open to null (floor scoring) when no lockfile parses.
+const buildLockedVersionLookup = (rootDirectory: string): LockedVersionLookup | null => {
+  const npmLockText = readTextFileOrNull(path.join(rootDirectory, "package-lock.json"));
+  if (npmLockText !== null) return buildNpmLockLookup(npmLockText);
+  const yarnLockText = readTextFileOrNull(path.join(rootDirectory, "yarn.lock"));
+  if (yarnLockText !== null) return buildYarnLockLookup(yarnLockText);
+  const pnpmLockText = readTextFileOrNull(path.join(rootDirectory, "pnpm-lock.yaml"));
+  if (pnpmLockText !== null) return buildPnpmLockLookup(pnpmLockText);
+  return null;
+};
+
 // Locates the 1-based line/column of a dependency's key *within its declaring
 // section* in the raw package.json text, so the diagnostic anchors to the
 // exact entry the user must edit rather than the top of the file — and never
@@ -293,6 +407,7 @@ const collectDependenciesToScore = (
   packageJson: PackageJson,
   packageJsonText: string,
   includeDevDependencies: boolean,
+  lockedVersionLookup: LockedVersionLookup | null,
 ): DependencyToScore[] => {
   const sectionByName = new Map<string, DependencySection>();
   for (const name of Object.keys(packageJson.dependencies ?? {})) {
@@ -308,13 +423,26 @@ const collectDependenciesToScore = (
   for (const [name, section] of sectionByName) {
     if (SUPPLY_CHAIN_IGNORED_PACKAGES.has(name)) continue;
     const spec = (packageJson[section] ?? {})[name] ?? "";
-    const version = resolveConcreteVersion(spec);
-    if (version === null) continue;
+    const floorVersion = resolveConcreteVersion(spec);
+    if (floorVersion === null) continue;
+
+    // Prefer the lockfile resolution over the range floor, but only when it
+    // actually satisfies the declared range — a mismatched lockfile entry
+    // (stale lock, aliased descriptor) must not swap in an unrelated version.
+    const lockedVersion = lockedVersionLookup?.(name, spec) ?? null;
+    const lockSatisfiesSpec =
+      lockedVersion !== null &&
+      semver.valid(lockedVersion) !== null &&
+      semver.satisfies(lockedVersion, spec);
+
+    const isExactPin = semver.valid(spec.trim()) !== null;
     const location = locateDependencyKey(packageJsonText, section, name);
     dependencies.push({
       name,
-      version,
+      version: lockSatisfiesSpec ? lockedVersion : floorVersion,
       spec,
+      section,
+      resolution: isExactPin ? "pin" : lockSatisfiesSpec ? "locked" : "floor",
       line: location?.line ?? 0,
       column: location?.column ?? 0,
     });
@@ -594,14 +722,15 @@ const formatAlertReason = (topAlerts: ReadonlyArray<SocketAlert>, totalCount: nu
 };
 
 // "react@18.2.0" for an exact pin; for a range, names the scored version and
-// makes clear it's the floor the range allows — we score the lowest permitted
-// version, which may differ from what's installed. `semver.valid` is the
-// exact-pin test: it returns non-null only for a single concrete version, so a
-// `v`-prefixed pin like `v1.2.3` reads as a pin instead of a mislabeled range.
-const formatDependencyIdentity = (dependency: DependencyToScore): string =>
-  semver.valid(dependency.spec) !== null
-    ? `${dependency.name}@${dependency.version}`
-    : `${dependency.name}@${dependency.version} (lowest version "${dependency.spec}" allows)`;
+// how it was derived — the lockfile's resolution when one exists, otherwise
+// the floor the range allows (which may differ from what's installed).
+const formatDependencyIdentity = (dependency: DependencyToScore): string => {
+  if (dependency.resolution === "pin") return `${dependency.name}@${dependency.version}`;
+  if (dependency.resolution === "locked") {
+    return `${dependency.name}@${dependency.version} (lockfile resolution of "${dependency.spec}")`;
+  }
+  return `${dependency.name}@${dependency.version} (lowest version "${dependency.spec}" allows)`;
+};
 
 // Axis-aware remediation. A critical alert (active malware) overrides the
 // axis's generic advice with "treat as compromised"; otherwise the failing
@@ -693,6 +822,7 @@ export const checkSupplyChain = (input: SupplyChainCheckInput): Effect.Effect<Di
       packageJson,
       readPackageJsonText(packageJsonPath),
       options.includeDevDependencies,
+      buildLockedVersionLookup(input.rootDirectory),
     );
     if (dependencies.length === 0) return [];
 
@@ -718,7 +848,10 @@ export const checkSupplyChain = (input: SupplyChainCheckInput): Effect.Effect<Di
     for (let index = 0; index < dependencies.length; index += 1) {
       const artifact = artifacts[index];
       if (!artifact) continue;
-      const worstAxis = worstGatedAxis(artifact.score);
+      const worstAxis = worstGatedAxis(
+        artifact.score,
+        gatedAxesForSection(dependencies[index].section),
+      );
       if (toHundred(artifact.score[worstAxis.key]) >= options.minScore) continue;
       diagnostics.push(buildLowScoreDiagnostic(dependencies[index], artifact, worstAxis, options));
     }

@@ -7,10 +7,12 @@ import {
   EXTERNAL_SYNC_MEMBER_METHOD_NAMES,
 } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isSetterIdentifier } from "../../utils/is-setter-identifier.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { walkInsideStatementBlocks } from "../../utils/walk-inside-statement-blocks.js";
@@ -128,6 +130,76 @@ const isFunctionShapedReturn = (returnedValue: EsTreeNode): boolean => {
   return false;
 };
 
+// `localStorage.setItem(...)` / `sessionStorage.getItem(...)` — browser
+// storage IS an external system (react.dev's own external-sync example),
+// but the member-method constants missed it (docs-validation r2
+// docMismatch: Security.jsx device-preference persistence). Covers the
+// bare global and the `window.localStorage` spelling.
+const STORAGE_GLOBAL_NAMES = new Set(["localStorage", "sessionStorage"]);
+
+const isBrowserStorageReceiver = (receiver: EsTreeNode | null | undefined): boolean => {
+  if (!receiver) return false;
+  if (isNodeOfType(receiver, "Identifier")) return STORAGE_GLOBAL_NAMES.has(receiver.name);
+  if (isNodeOfType(receiver, "MemberExpression")) {
+    return (
+      isNodeOfType(receiver.property, "Identifier") &&
+      STORAGE_GLOBAL_NAMES.has(receiver.property.name)
+    );
+  }
+  return false;
+};
+
+// `const [tableState, setTableState] = useLocalStorage(...)` — the
+// setter persists to browser storage, so an effect whose job is calling
+// it synchronizes with an external system exactly like a direct
+// `localStorage.setItem` (docs-validation r2: tracecat data-table
+// persistence effect).
+const STORAGE_HOOK_PATTERN = /^use\w*Storage/i;
+
+const collectStorageHookSetterNames = (componentBody: EsTreeNode): Set<string> => {
+  const setterNames = new Set<string>();
+  if (!isNodeOfType(componentBody, "BlockStatement")) return setterNames;
+  for (const statement of componentBody.body ?? []) {
+    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
+    for (const declarator of statement.declarations ?? []) {
+      if (!isNodeOfType(declarator.id, "ArrayPattern")) continue;
+      if (!isNodeOfType(declarator.init, "CallExpression")) continue;
+      const calleeName = getCalleeName(declarator.init);
+      if (!calleeName || !STORAGE_HOOK_PATTERN.test(calleeName)) continue;
+      for (const element of declarator.id.elements ?? []) {
+        if (isNodeOfType(element, "Identifier") && isSetterIdentifier(element.name)) {
+          setterNames.add(element.name);
+        }
+      }
+    }
+  }
+  return setterNames;
+};
+
+const callsStorageHookSetter = (
+  effectCallback: EsTreeNode,
+  storageSetterNames: ReadonlySet<string>,
+): boolean => {
+  if (storageSetterNames.size === 0) return false;
+  if (
+    !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
+    !isNodeOfType(effectCallback, "FunctionExpression")
+  ) {
+    return false;
+  }
+  let didFindStorageSetterCall = false;
+  walkInsideStatementBlocks(effectCallback.body, (child: EsTreeNode) => {
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      storageSetterNames.has(child.callee.name)
+    ) {
+      didFindStorageSetterCall = true;
+    }
+  });
+  return didFindStorageSetterCall;
+};
+
 const isExternalSyncEffect = (effectCallback: EsTreeNode): boolean => {
   if (
     !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
@@ -196,6 +268,10 @@ const isExternalSyncEffect = (effectCallback: EsTreeNode): boolean => {
         didFindExternalCall = true;
         return;
       }
+      if (isBrowserStorageReceiver(child.callee.object)) {
+        didFindExternalCall = true;
+        return;
+      }
       // HACK: `get` / `head` / `options` are HTTP verbs but also names
       // of universal data-structure methods (Map.get, URLSearchParams.get,
       // etc.). Only count them when the receiver looks like an HTTP
@@ -240,6 +316,8 @@ export const noEffectChain = defineRule({
         setterToStateName.set(binding.setterName, binding.valueName);
       }
 
+      const storageSetterNames = collectStorageHookSetterNames(componentBody);
+
       const effectInfos: EffectInfo[] = [];
       for (const effectCall of findTopLevelEffectCalls(componentBody)) {
         const callback = getEffectCallback(effectCall);
@@ -248,7 +326,8 @@ export const noEffectChain = defineRule({
           node: effectCall,
           depNames: collectDepIdentifierNames(effectCall),
           writtenStateNames: collectWrittenStateNamesInEffect(callback, setterToStateName),
-          isExternalSync: isExternalSyncEffect(callback),
+          isExternalSync:
+            isExternalSyncEffect(callback) || callsStorageHookSetter(callback, storageSetterNames),
         });
       }
       if (effectInfos.length < 2) return;

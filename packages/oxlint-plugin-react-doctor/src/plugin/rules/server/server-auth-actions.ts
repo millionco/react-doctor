@@ -11,6 +11,7 @@ import { hasUseServerDirective } from "../../utils/has-use-server-directive.js";
 import { isAuthGuardName } from "../../utils/is-auth-guard-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNonPrivilegedServerAction } from "../../utils/is-non-privileged-server-action.js";
+import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -155,6 +156,76 @@ interface ServerActionCandidate {
   reportNode: EsTreeNode;
 }
 
+// `signIn` / `logIn` / `signUp` tokenize as two words; merge them so the
+// standalone-token check reads them as one credential phrase.
+const CREDENTIAL_MERGE_TAIL_TOKENS: Readonly<Record<string, ReadonlySet<string>>> = {
+  sign: new Set(["in", "up", "on"]),
+  log: new Set(["in"]),
+};
+
+const mergeCredentialPhraseTokens = (tokens: string[]): string[] => {
+  const mergedTokens: string[] = [];
+  for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex += 1) {
+    const currentToken = tokens[tokenIndex];
+    const tailTokens = CREDENTIAL_MERGE_TAIL_TOKENS[currentToken];
+    const nextToken = tokens[tokenIndex + 1];
+    if (tailTokens && nextToken && tailTokens.has(nextToken)) {
+      mergedTokens.push(`${currentToken}${nextToken}`);
+      tokenIndex += 1;
+      continue;
+    }
+    mergedTokens.push(currentToken);
+  }
+  return mergedTokens;
+};
+
+const CREDENTIAL_STANDALONE_TOKENS: ReadonlySet<string> = new Set([
+  "login",
+  "signin",
+  "signup",
+  "signon",
+  "register",
+  "registration",
+  "oauth",
+  "otp",
+]);
+
+const CREDENTIAL_FLOW_VERB_TOKENS: ReadonlySet<string> = new Set([
+  "verify",
+  "confirm",
+  "reset",
+  "forgot",
+  "recover",
+]);
+
+const CREDENTIAL_FLOW_NOUN_TOKENS: ReadonlySet<string> = new Set(["password", "email", "code"]);
+
+// A credential-establishing action (login, signup, OAuth callback, OTP /
+// email verify, password reset) legitimately runs for anonymous callers —
+// no prior session can exist, so demanding an auth() gate on it is wrong.
+const isCredentialEstablishingActionName = (actionName: string): boolean => {
+  const tokens = mergeCredentialPhraseTokens(tokenizeIdentifierWords(actionName));
+  let hasCredentialFlowVerb = false;
+  let hasCredentialFlowNoun = false;
+  let hasMagicToken = false;
+  let hasLinkToken = false;
+  for (const token of tokens) {
+    if (CREDENTIAL_STANDALONE_TOKENS.has(token)) return true;
+    if (CREDENTIAL_FLOW_VERB_TOKENS.has(token)) hasCredentialFlowVerb = true;
+    if (CREDENTIAL_FLOW_NOUN_TOKENS.has(token)) hasCredentialFlowNoun = true;
+    if (token === "magic") hasMagicToken = true;
+    if (token === "link") hasLinkToken = true;
+  }
+  if (hasCredentialFlowVerb && hasCredentialFlowNoun) return true;
+  return hasMagicToken && hasLinkToken;
+};
+
+// Naming an exported action "public" (`getPostPublicAction`) declares the
+// no-auth exposure on purpose; flagging it asks the author to gate an
+// endpoint they deliberately opened.
+const hasPublicNameToken = (actionName: string): boolean =>
+  tokenizeIdentifierWords(actionName).includes("public");
+
 const inspectServerAction = (
   candidate: ServerActionCandidate,
   fileHasUseServerDirective: boolean,
@@ -163,6 +234,9 @@ const inspectServerAction = (
 ): void => {
   const isServerAction = fileHasUseServerDirective || hasUseServerDirective(candidate.functionNode);
   if (!isServerAction) return;
+
+  if (isCredentialEstablishingActionName(candidate.displayName)) return;
+  if (hasPublicNameToken(candidate.displayName)) return;
 
   const rootNodes = getAuthScanRoots(candidate.functionNode);
   if (containsAuthCheck(rootNodes, allowedFunctionNames, GENERIC_AUTH_METHOD_NAMES)) return;

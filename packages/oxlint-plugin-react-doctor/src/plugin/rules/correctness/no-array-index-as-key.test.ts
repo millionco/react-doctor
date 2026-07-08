@@ -109,14 +109,14 @@ const MatchedName = ({ name, matchedIndices, isSelected }: MatchedNameProps) => 
       expect(result.diagnostics).toHaveLength(0);
     });
 
-    it("does not flag index keys on .split() fragments", () => {
+    it("flags index keys on .split() fragments (bulwarkmail/tracecat FN sweep)", () => {
       const code = `const Paragraphs = ({ body }) => (
   <div>{body.split("\\n").map((line, index) => <p key={index}>{line}</p>)}</div>
 );
 `;
       const result = runRule(noArrayIndexAsKey, code);
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toHaveLength(0);
+      expect(result.diagnostics).toHaveLength(1);
     });
 
     it("does not flag index keys on Array.from of a template literal", () => {
@@ -129,7 +129,7 @@ const MatchedName = ({ name, matchedIndices, isSelected }: MatchedNameProps) => 
       expect(result.diagnostics).toHaveLength(0);
     });
 
-    it("does not flag index keys when the mapped binding is initialized from a split (openreplay regression)", () => {
+    it("flags index keys when the mapped binding is initialized from a split (fn-hunt sweep)", () => {
       const code = `const Lines = ({ line }) => {
   const parts = line.split(" ");
   return <div>{parts.map((part, index) => <b key={index}>{part}</b>)}</div>;
@@ -137,7 +137,7 @@ const MatchedName = ({ name, matchedIndices, isSelected }: MatchedNameProps) => 
 `;
       const result = runRule(noArrayIndexAsKey, code);
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toHaveLength(0);
+      expect(result.diagnostics).toHaveLength(1);
     });
 
     it("still flags when the mapped binding is initialized from a call that is not string-derived", () => {
@@ -181,24 +181,24 @@ const MatchedName = ({ name, matchedIndices, isSelected }: MatchedNameProps) => 
       expect(result.diagnostics).toHaveLength(1);
     });
 
-    it("does not flag a composite key mixing the index with a destructured item field", () => {
+    it("flags a composite key mixing the index with a same-map item field (fn-hunt sweep)", () => {
       const code = `const Console = ({ messages }) => (
   <div>{messages.map(({ message, time }, index) => <Entry key={\`\${message} \${index}\`} time={time} />)}</div>
 );
 `;
       const result = runRule(noArrayIndexAsKey, code);
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
     });
 
-    it("does not flag a composite key mixing the index with a method call on the item", () => {
+    it("flags a composite key mixing the index with a method call on the same-map item (fn-hunt sweep)", () => {
       const code = `const Presets = ({ colors }) => (
   <div>{colors.map((presetColor, index) => <Swatch key={\`preset-\${index}-\${presetColor.toHexString()}\`} />)}</div>
 );
 `;
       const result = runRule(noArrayIndexAsKey, code);
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
     });
 
     it("does not flag Array.from({length: values.length}) placeholder index keys", () => {

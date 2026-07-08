@@ -72,6 +72,35 @@ describe("architecture/prefer-module-scope-static-value — regressions", () => 
     expect(result.diagnostics).toEqual([]);
   });
 
+  // cloudscape link/internal.tsx: `.indexOf(x) > -1` membership test —
+  // same scalar-lookup shape as `.includes`, the value never escapes.
+  it("does not flag a static array consumed only by .indexOf (cloudscape corpus shape)", () => {
+    const result = run(`
+      import React from "react";
+      const InternalLink = React.forwardRef(({ variant }, ref) => {
+        const specialStyles = ["top-navigation", "link", "recovery"];
+        const hasSpecialStyle = specialStyles.indexOf(variant) > -1;
+        return <a ref={ref} data-special={hasSpecialStyle} />;
+      });
+      export default InternalLink;
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // evo-web menu-item.tsx: typed static array read only via .includes.
+  it("does not flag a typed static array consumed only by .includes (evo-web corpus shape)", () => {
+    const result = run(`
+      const EbayMenuItem = ({ type, children }) => {
+        const checkable: EbayMenuType[] = ["radio", "checkbox"];
+        const role = checkable.includes(type) ? \`menuitem\${type}\` : "menuitem";
+        return <div role={role}>{children}</div>;
+      };
+    `);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags a static array consumed via .map into JSX", () => {
     const result = run(`
       function Tabs() {

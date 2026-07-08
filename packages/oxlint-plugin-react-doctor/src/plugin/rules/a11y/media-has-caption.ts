@@ -2,6 +2,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -75,6 +76,51 @@ const trackKindMightBeCaptions = (
   return kindValue.value.toLowerCase() === "captions";
 };
 
+const getSrcStaticValue = (
+  attribute: EsTreeNodeOfType<"JSXAttribute">,
+): string | null | undefined => {
+  const value = attribute.value as EsTreeNode | null;
+  if (!value) return undefined;
+  if (isNodeOfType(value, "Literal")) {
+    return typeof value.value === "string" ? value.value : undefined;
+  }
+  if (!isNodeOfType(value, "JSXExpressionContainer")) return undefined;
+  const expression = value.expression as EsTreeNode;
+  if (isNodeOfType(expression, "Literal")) {
+    return typeof expression.value === "string" ? expression.value : undefined;
+  }
+  if (isNodeOfType(expression, "TemplateLiteral")) {
+    return getStaticTemplateLiteralValue(expression);
+  }
+  return null;
+};
+
+// Docs-validation FP cluster: media whose every playable source is a runtime
+// expression (blob/object URLs, user-uploaded attachments, generated media
+// paths) has no static asset the author could pair a captions file with, so
+// the documented fix (add `<track kind="captions">`) is inapplicable. Media
+// with a statically-known src — or with no src at all — still fires.
+const hasOnlyDynamicPlayableSources = (
+  node: EsTreeNodeOfType<"JSXOpeningElement">,
+  settings: Readonly<Record<string, unknown>> | undefined,
+): boolean => {
+  const srcAttributes: Array<EsTreeNodeOfType<"JSXAttribute">> = [];
+  const ownSrc = hasJsxPropIgnoreCase(node.attributes, "src");
+  if (ownSrc) srcAttributes.push(ownSrc);
+  const parent = (node as EsTreeNode).parent;
+  if (parent && isNodeOfType(parent, "JSXElement")) {
+    for (const child of parent.children) {
+      if (!isNodeOfType(child as EsTreeNode, "JSXElement")) continue;
+      const opening = (child as EsTreeNodeOfType<"JSXElement">).openingElement;
+      if (getElementType(opening, settings) !== "source") continue;
+      const sourceSrc = hasJsxPropIgnoreCase(opening.attributes, "src");
+      if (sourceSrc) srcAttributes.push(sourceSrc);
+    }
+  }
+  if (srcAttributes.length === 0) return false;
+  return srcAttributes.every((attribute) => getSrcStaticValue(attribute) === null);
+};
+
 // A `{tracks.map(...)}` / `{cond && <track/>}` / `{cond ? <track/> : null}`
 // child can render `<track>` elements the static scan can't see into. When
 // such a dynamic source produces a track that MIGHT be a caption track, treat
@@ -131,6 +177,7 @@ export const mediaHasCaption = defineRule({
         if (!isAudioOrVideo) return;
         const mutedAttribute = hasJsxPropIgnoreCase(node.attributes, "muted");
         if (evaluateMuted(mutedAttribute) === true) return;
+        if (hasOnlyDynamicPlayableSources(node, context.settings)) return;
 
         const parent = (node as EsTreeNode).parent;
         if (!parent || !isNodeOfType(parent, "JSXElement")) {

@@ -1,0 +1,50 @@
+name: Delta Audit
+
+# Corpus delta audit: scans a pinned corpus of OSS React repos with the
+# locally built CLI and compares per-rule finding counts against the
+# checked-in baseline. Nightly + manual only — too slow for PR CI.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * *"
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+
+jobs:
+  delta-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22.18.0"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile --prefer-offline
+
+      - run: pnpm build
+
+      - name: Run delta audit against baseline
+        shell: bash
+        run: |
+          set +e
+          node --experimental-strip-types --no-warnings \
+            scripts/delta-audit/run-delta-audit.ts \
+            --compare scripts/delta-audit/baseline.json \
+            | tee delta-audit-output.md
+          audit_status=${PIPESTATUS[0]}
+          set -e
+
+          cat delta-audit-output.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$audit_status"

@@ -1,0 +1,4 @@
+{
+  "name": "local-use-in-exported-declaration",
+  "main": "src/index.ts"
+}

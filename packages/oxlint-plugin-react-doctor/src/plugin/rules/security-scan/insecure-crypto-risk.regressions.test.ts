@@ -140,6 +140,57 @@ describe("security-scan/insecure-crypto-risk — regressions", () => {
     expect(findings).toHaveLength(0);
   });
 
+  // Docs-validation FP wave: a variable merely NAMED `signature` is routinely
+  // a UI dedup/staleness token; without cryptographic provenance in the file
+  // the comparison is change detection, not verification.
+  it("stays silent on a staleness-token ref comparison without crypto context (AppFlowy shape)", () => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath: "src/application/database-yjs/selector.ts",
+      content: `const requestConditionSignature = conditionSignatureRef.current;\nif (conditionSignatureRef.current === requestConditionSignature && shouldMarkUnavailable) {\n  markConditionRowsUnavailable([{ id: rowId, height: 0 }]);\n}\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on change-detection signature comparisons in plain .js hooks (PortOS shape)", () => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath: "src/hooks/use-city-data.js",
+      content: `setSystemHealth(prev => {\n  if (prev && healthSignature(prev) === healthSignature(health)) return prev;\n  return health;\n});\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on plugin reload-dedup signature comparisons (Lumina-Note shape)", () => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath: "src/services/plugins/runtime.ts",
+      content: `const signature = this.signatureOf(plugin);\nconst existing = this.loaded.get(plugin.id);\nif (existing && existing.signature === signature) continue;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on the public length guard before a constant-time XOR compare (SCRAM shape)", () => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath: "src/lib/sasl/scram.ts",
+      content: `const storedKey = await sha256(clientKey);\nstate.serverSignature = await hmacSha256(serverKey, authMessageBytes);\nconst got = b64ToBytes(v);\nif (got.length !== state.serverSignature.length) return false;\nlet diff = 0;\nfor (let i = 0; i < got.length; i++) diff |= got[i] ^ state.serverSignature[i];\nreturn diff === 0;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on PKCS#12/S-MIME legacy PBE ciphers (RFC 7292 interop shape)", () => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath: "lib/smime/crypto-engine.ts",
+      content: `function pbeConfig(oid: string) {\n  switch (oid) {\n    case PBE_SHA1_3DES_3KEY: return { keyLen: 24, ivLen: 8, algName: 'DES-EDE3-CBC' };\n    default: throw new Error('Unsupported legacy PBE OID');\n  }\n}\nconst decrypted = await decryptEncryptedContentInfo(parameters);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags timing-unsafe signature comparisons with cryptographic provenance", () => {
+    const findings = runScanRule(insecureCryptoRisk, {
+      relativePath: "src/server/verify-payload.ts",
+      content: `import { createHmac } from "node:crypto";\nconst expectedSignature = createHmac("sha256", secret).update(payload).digest("hex");\nif (expectedSignature !== providedSignature) return unauthorized();\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("stays silent on sha1-derived deterministic ids", () => {
     const findings = runScanRule(insecureCryptoRisk, {
       relativePath: "src/services/cookie-jar.ts",

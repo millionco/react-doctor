@@ -30,9 +30,11 @@ const RULES_DIRECTORY = path.join(PLUGIN_SOURCE_DIRECTORY, "rules");
 // Primitives that read the content / existence of files OTHER than the one
 // being linted. A rule reaching any of these is cross-file. Project-config
 // readers (tsconfig) are included because resolving an alias walks to a real
-// source file via `resolve-relative-import-path`; `classify-package-platform`
-// (package.json) is the lone config-only reader, kept here so the lone rule
-// reaching it (`rn-prefer-expo-image`) is detected.
+// source file via `resolve-relative-import-path`; `read-nearest-package-manifest`
+// (package.json — reached through `classify-package-platform` and the
+// bundle-size package predicates) is the lone config-only reader, kept here
+// so the rules reaching it (`rn-prefer-expo-image`, `no-full-lodash-import`,
+// …) are detected.
 const CROSS_FILE_PRIMITIVE_FILES = [
   "utils/parse-source-file.ts",
   "utils/does-module-export-name.ts",
@@ -44,7 +46,7 @@ const CROSS_FILE_PRIMITIVE_FILES = [
   "utils/find-ancestor-suspense-layout.ts",
   "utils/find-ancestor-metadata-layout.ts",
   "utils/is-barrel-index-module.ts",
-  "utils/classify-package-platform.ts",
+  "utils/read-nearest-package-manifest.ts",
 ].map((relativePath) => path.resolve(PLUGIN_SOURCE_DIRECTORY, relativePath));
 const primitiveFileSet = new Set(CROSS_FILE_PRIMITIVE_FILES);
 
@@ -131,14 +133,20 @@ describe("CROSS_FILE_RULE_IDS", () => {
     expect(detected).toEqual(declared);
   });
 
-  it("contains the verified six and nothing the analysis can't justify", () => {
+  it("contains the verified twelve and nothing the analysis can't justify", () => {
     expect([...CROSS_FILE_RULE_IDS].sort()).toEqual([
       "nextjs-missing-metadata",
       "nextjs-no-use-search-params-without-suspense",
       "no-barrel-import",
+      "no-dynamic-import-path",
+      "no-full-lodash-import",
       "no-mutating-reducer-state",
+      "prefer-dynamic-import",
+      "rendering-hydration-mismatch-time",
+      "rn-no-legacy-shadow-styles",
       "rn-no-raw-text",
       "rn-prefer-expo-image",
+      "rn-style-prefer-boxshadow",
     ]);
   });
 

@@ -9,6 +9,12 @@ interface UpstreamCase {
   name: string;
   code: string;
   todo: boolean;
+  /**
+   * Set when react-doctor deliberately diverges from the upstream verdict
+   * (with the corpus evidence for why). Skipped like `todo`, but the flag
+   * documents that the divergence is a decision, not a gap.
+   */
+  divergence?: string;
   errors?: number;
 }
 
@@ -95,7 +101,7 @@ export const runUpstreamParity = (
 
   describe(`${fixtureName} parity (port of eslint-plugin-react-you-might-not-need-an-effect)`, () => {
     for (const validCase of fixture.valid) {
-      const itFn = validCase.todo ? it.skip : it;
+      const itFn = validCase.todo || validCase.divergence ? it.skip : it;
       itFn(`valid #${validCase.idx} "${validCase.name}"`, async () => {
         const projectDir = setupReactProject(
           tempRoot,
@@ -133,7 +139,7 @@ export const runUpstreamParity = (
     }
 
     for (const invalidCase of fixture.invalid) {
-      const itFn = invalidCase.todo ? it.skip : it;
+      const itFn = invalidCase.todo || invalidCase.divergence ? it.skip : it;
       itFn(`invalid #${invalidCase.idx} "${invalidCase.name}"`, async () => {
         const projectDir = setupReactProject(
           tempRoot,

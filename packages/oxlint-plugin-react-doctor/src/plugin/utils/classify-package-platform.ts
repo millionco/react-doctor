@@ -1,14 +1,11 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
 import {
   isExpoManagedDependencyName,
   isReactNativeDependencyName,
 } from "../../react-native-dependency-names.js";
-import {
-  isProbeRecorderActive,
-  recordContentProbe,
-  recordExistenceProbe,
-} from "./cross-file-probe-recorder.js";
+import { readNearestPackageManifest } from "./read-nearest-package-manifest.js";
+import type { PackageManifest } from "./read-nearest-package-manifest.js";
+
+export { findNearestPackageDirectory } from "./read-nearest-package-manifest.js";
 
 // Packages that mark the manifest as a web-only React target. If a manifest
 // contains one of these AND has no React Native indicator, every React
@@ -36,102 +33,16 @@ const WEB_FRAMEWORK_DEPENDENCY_NAMES: ReadonlySet<string> = new Set([
   "@vitejs/plugin-react-swc",
 ]);
 
-// The lookup is read-only: we walk the directory tree from the file's
-// location up to the filesystem root, look for the nearest `package.json`,
-// and cache the resulting classification by package directory. Memoizing
-// by directory (NOT filename) is essential — every file inside a package
-// shares the same answer, and oxlint visits many files per package per
-// run.
-const cachedPlatformByPackageDirectory = new Map<string, PackagePlatform>();
-const cachedPackageDirectoryByFilename = new Map<string, string | null>();
-
-const findNearestPackageDirectory = (filename: string): string | null => {
-  if (!filename) return null;
-
-  // The walk's outcome depends on EVERY ancestor probe (a package.json
-  // appearing closer to the file re-anchors the classification), so a memo
-  // hit regenerates the walk's existence probes LEXICALLY — the exact
-  // candidate list is derivable from the filename and the memoized stop
-  // directory without touching the filesystem
-  // (see cross-file-probe-recorder.ts).
-  const fromCache = cachedPackageDirectoryByFilename.get(filename);
-  if (fromCache !== undefined) {
-    if (isProbeRecorderActive()) {
-      let probedDirectory = path.dirname(filename);
-      while (true) {
-        recordExistenceProbe(path.join(probedDirectory, "package.json"));
-        if (probedDirectory === fromCache) break;
-        const parentDirectory = path.dirname(probedDirectory);
-        if (parentDirectory === probedDirectory) break;
-        probedDirectory = parentDirectory;
-      }
-    }
-    return fromCache;
-  }
-
-  let currentDirectory = path.dirname(filename);
-  while (true) {
-    const candidatePackageJsonPath = path.join(currentDirectory, "package.json");
-    recordExistenceProbe(candidatePackageJsonPath);
-    let hasPackageJson = false;
-    try {
-      hasPackageJson = fs.statSync(candidatePackageJsonPath).isFile();
-    } catch {
-      hasPackageJson = false;
-    }
-    if (hasPackageJson) {
-      cachedPackageDirectoryByFilename.set(filename, currentDirectory);
-      return currentDirectory;
-    }
-    const parentDirectory = path.dirname(currentDirectory);
-    if (parentDirectory === currentDirectory) {
-      cachedPackageDirectoryByFilename.set(filename, null);
-      return null;
-    }
-    currentDirectory = parentDirectory;
-  }
-};
-
-interface PackageJsonDependencyView {
-  dependencies?: Record<string, unknown>;
-  devDependencies?: Record<string, unknown>;
-  peerDependencies?: Record<string, unknown>;
-  optionalDependencies?: Record<string, unknown>;
-  // Metro's resolution key — libraries that ship an RN-only entry
-  // point declare this field at the manifest root (string path) so
-  // Metro picks it over `main` / `module`. Treated as a strong
-  // RN-only signal for the owning package.
-  "react-native"?: unknown;
-}
-
-const readPackageJsonSafe = (packageJsonPath: string): PackageJsonDependencyView | null => {
-  let rawContents: string;
-  try {
-    rawContents = fs.readFileSync(packageJsonPath, "utf-8");
-  } catch {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(rawContents);
-    if (typeof parsed === "object" && parsed !== null) return parsed as PackageJsonDependencyView;
-    return null;
-  } catch {
-    return null;
-  }
-};
-
 const DEPENDENCY_SECTION_NAMES = [
   "dependencies",
   "devDependencies",
   "peerDependencies",
   "optionalDependencies",
-] as const satisfies ReadonlyArray<keyof PackageJsonDependencyView>;
+] as const satisfies ReadonlyArray<keyof PackageManifest>;
 
-const iterateDependencyNames = function* (
-  packageJson: PackageJsonDependencyView,
-): Generator<string> {
+const iterateDependencyNames = function* (manifest: PackageManifest): Generator<string> {
   for (const sectionName of DEPENDENCY_SECTION_NAMES) {
-    const section = packageJson[sectionName];
+    const section = manifest[sectionName];
     if (!section) continue;
     for (const dependencyName of Object.keys(section)) {
       yield dependencyName;
@@ -139,29 +50,42 @@ const iterateDependencyNames = function* (
   }
 };
 
-const isReactNativeAware = (packageJson: PackageJsonDependencyView): boolean => {
-  if (typeof packageJson["react-native"] === "string") return true;
-  for (const dependencyName of iterateDependencyNames(packageJson)) {
+const isReactNativeAware = (manifest: PackageManifest): boolean => {
+  if (typeof manifest["react-native"] === "string") return true;
+  for (const dependencyName of iterateDependencyNames(manifest)) {
     if (isReactNativeDependencyName(dependencyName)) return true;
   }
   return false;
 };
 
-const isExpoManaged = (packageJson: PackageJsonDependencyView): boolean => {
-  for (const dependencyName of iterateDependencyNames(packageJson)) {
+const isExpoManaged = (manifest: PackageManifest): boolean => {
+  for (const dependencyName of iterateDependencyNames(manifest)) {
     if (isExpoManagedDependencyName(dependencyName)) return true;
   }
   return false;
 };
 
-const isWebFrameworkOnly = (packageJson: PackageJsonDependencyView): boolean => {
-  for (const dependencyName of iterateDependencyNames(packageJson)) {
+const isWebFrameworkOnly = (manifest: PackageManifest): boolean => {
+  for (const dependencyName of iterateDependencyNames(manifest)) {
     if (WEB_FRAMEWORK_DEPENDENCY_NAMES.has(dependencyName)) return true;
   }
   return false;
 };
 
-export type PackagePlatform = "expo" | "react-native" | "web" | "unknown";
+const declaresAnyDependency = (manifest: PackageManifest): boolean =>
+  DEPENDENCY_SECTION_NAMES.some((sectionName) => {
+    const section = manifest[sectionName];
+    return typeof section === "object" && section !== null && Object.keys(section).length > 0;
+  });
+
+export type PackagePlatform = "expo" | "react-native" | "web" | "neutral" | "unknown";
+
+// The classification is a pure function of one parsed manifest, so memoizing
+// by manifest OBJECT identity (the reader returns the same cached object for
+// every file in a package) keeps the per-file cost at a WeakMap hit — and the
+// memo dies with the manifest entry when `resetManifestCaches` drops it, so
+// there is no second cache to invalidate.
+const cachedPlatformByManifest = new WeakMap<PackageManifest, PackagePlatform>();
 
 // Classifies the package owning `filename`:
 //
@@ -182,38 +106,39 @@ export type PackagePlatform = "expo" | "react-native" | "web" | "unknown";
 //                    without any RN indicator. React Native rules MUST
 //                    skip files in this bucket.
 //
+//   "neutral"      — the nearest `package.json` declares its own
+//                    dependency surface (at least one dependency in any
+//                    section) but neither an RN nor a web-framework
+//                    signal. The manifest is authoritative for a nested
+//                    workspace package: a monorepo package that depends
+//                    on `react-markdown` + `react` but never on
+//                    `react-native` is not an RN package even when a
+//                    sibling workspace is (see is-react-native-file.ts).
+//
 //   "unknown"      — no nearest `package.json`, the manifest is
-//                    unparseable, or the package declares neither
-//                    cohort. Callers fall back to the project-level
+//                    unparseable, or the manifest declares no
+//                    dependencies at all (`{}`, `{"type":"module"}`
+//                    markers). Callers fall back to the project-level
 //                    framework setting (see is-react-native-file.ts).
 export const classifyPackagePlatform = (filename: string): PackagePlatform => {
-  const packageDirectory = findNearestPackageDirectory(filename);
-  if (!packageDirectory) return "unknown";
+  const manifest = readNearestPackageManifest(filename);
+  if (!manifest) return "unknown";
 
-  // Recorded BEFORE the memo lookup — the classification is a pure function
-  // of this one manifest's content, so the probe alone captures the
-  // dependency while the memo stays warm (see cross-file-probe-recorder.ts).
-  recordContentProbe(path.join(packageDirectory, "package.json"));
-  const cached = cachedPlatformByPackageDirectory.get(packageDirectory);
+  const cached = cachedPlatformByManifest.get(manifest);
   if (cached !== undefined) return cached;
 
-  const packageJsonPath = path.join(packageDirectory, "package.json");
-  const packageJson = readPackageJsonSafe(packageJsonPath);
-  if (!packageJson) {
-    cachedPlatformByPackageDirectory.set(packageDirectory, "unknown");
-    return "unknown";
-  }
-
   let result: PackagePlatform;
-  if (isExpoManaged(packageJson)) {
+  if (isExpoManaged(manifest)) {
     result = "expo";
-  } else if (isReactNativeAware(packageJson)) {
+  } else if (isReactNativeAware(manifest)) {
     result = "react-native";
-  } else if (isWebFrameworkOnly(packageJson)) {
+  } else if (isWebFrameworkOnly(manifest)) {
     result = "web";
+  } else if (declaresAnyDependency(manifest)) {
+    result = "neutral";
   } else {
     result = "unknown";
   }
-  cachedPlatformByPackageDirectory.set(packageDirectory, result);
+  cachedPlatformByManifest.set(manifest, result);
   return result;
 };

@@ -4,6 +4,7 @@ import { getInlineStyleExpression } from "./utils/get-inline-style-expression.js
 import { getStylePropertyStringValue } from "./utils/get-style-property-string-value.js";
 import { getStylePropertyKey } from "./utils/get-style-property-key.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 
 // Exact property names that trigger reflow when animated. Matching whole
 // tokens (not substrings) keeps non-layout lookalikes like `stroke-width`
@@ -34,6 +35,45 @@ const LAYOUT_TRANSITION_PROPERTIES = new Set([
   "column-width",
 ]);
 
+// SVG geometry elements: transitioning `height` / `y` on a `<rect>`
+// repaints the SVG region but never reflows the document, so the
+// layout-thrash warning does not apply.
+const SVG_GEOMETRY_ELEMENT_NAMES = new Set([
+  "svg",
+  "g",
+  "rect",
+  "circle",
+  "ellipse",
+  "line",
+  "path",
+  "polygon",
+  "polyline",
+  "text",
+  "tspan",
+  "textPath",
+  "use",
+  "marker",
+  "mask",
+  "pattern",
+  "symbol",
+  "defs",
+  "clipPath",
+  "linearGradient",
+  "radialGradient",
+  "stop",
+  "filter",
+]);
+
+const isSvgElementAttribute = (node: EsTreeNodeOfType<"JSXAttribute">): boolean => {
+  const openingElement = node.parent;
+  return Boolean(
+    openingElement &&
+    isNodeOfType(openingElement, "JSXOpeningElement") &&
+    isNodeOfType(openingElement.name, "JSXIdentifier") &&
+    SVG_GEOMETRY_ELEMENT_NAMES.has(openingElement.name.name),
+  );
+};
+
 export const noLayoutTransitionInline = defineRule({
   id: "no-layout-transition-inline",
   title: "Animating layout properties",
@@ -46,6 +86,7 @@ export const noLayoutTransitionInline = defineRule({
     JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
       const expression = getInlineStyleExpression(node);
       if (!expression) return;
+      if (isSvgElementAttribute(node)) return;
 
       for (const property of expression.properties ?? []) {
         const key = getStylePropertyKey(property);

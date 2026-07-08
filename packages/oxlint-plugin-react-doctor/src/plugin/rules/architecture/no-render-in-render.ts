@@ -1,6 +1,12 @@
 import { RENDER_FUNCTION_PATTERN } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
+import { isComponentFunction } from "../../utils/is-component-function.js";
 import { isComponentParameterSymbol } from "../../utils/is-component-parameter-symbol.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -85,6 +91,62 @@ const rootsInProps = (
   return false;
 };
 
+// A render* call in a module of render HELPERS (`renderItems.tsx` composing
+// `renderIcon(Check)` inside `renderDropdownMenuItems`) happens outside any
+// component render: there is no component identity, state, or memoization to
+// lose, and extracting a component would change nothing observable. Class
+// bodies count as component context so `this.renderX()` class-field helpers
+// keep firing.
+const isInsideComponentContext = (node: EsTreeNode): boolean => {
+  let cursor: EsTreeNode | null | undefined = node.parent;
+  while (cursor) {
+    if (isNodeOfType(cursor, "ClassDeclaration") || isNodeOfType(cursor, "ClassExpression")) {
+      return true;
+    }
+    if (isFunctionLike(cursor) && isComponentFunction(cursor)) return true;
+    cursor = cursor.parent ?? null;
+  }
+  return false;
+};
+
+const functionBodyOf = (node: EsTreeNode): EsTreeNode | null => {
+  if (isFunctionLike(node)) return node.body ?? null;
+  if (isNodeOfType(node, "VariableDeclarator") && node.init && isFunctionLike(node.init)) {
+    return node.init.body ?? null;
+  }
+  return null;
+};
+
+const containsHookCall = (body: EsTreeNode): boolean => {
+  let found = false;
+  walkAst(body, (child: EsTreeNode) => {
+    if (found) return;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const name = getCalleeName(child);
+    if (name && isReactHookName(name)) found = true;
+  });
+  return found;
+};
+
+// `renderMessage` declared at MODULE scope with no hook calls is a pure
+// formatter: it cannot close over component state, so calling it inline is
+// byte-for-byte equivalent to writing its JSX in place — nothing for an
+// extracted component to preserve.
+const isModuleScopeHookFreeHelper = (symbol: SymbolDescriptor | null): boolean => {
+  if (!symbol) return false;
+  const declaration = symbol.declarationNode;
+  if (
+    !isNodeOfType(declaration, "FunctionDeclaration") &&
+    !isNodeOfType(declaration, "VariableDeclarator")
+  ) {
+    return false;
+  }
+  const body = functionBodyOf(declaration);
+  if (!body) return false;
+  if (findEnclosingFunction(declaration) !== null) return false;
+  return !containsHookCall(body);
+};
+
 export const noRenderInRender = defineRule({
   id: "no-render-in-render",
   title: "Component rendered by inline function call",
@@ -109,10 +171,12 @@ export const noRenderInRender = defineRule({
 
       if (!calleeName || !RENDER_FUNCTION_PATTERN.test(calleeName)) return;
 
+      if (!isInsideComponentContext(node)) return;
+
       if (isNodeOfType(expression.callee, "Identifier")) {
-        if (tracesToPropOrParameter(context.scopes.symbolFor(expression.callee), context.scopes)) {
-          return;
-        }
+        const calleeSymbol = context.scopes.symbolFor(expression.callee);
+        if (tracesToPropOrParameter(calleeSymbol, context.scopes)) return;
+        if (isModuleScopeHookFreeHelper(calleeSymbol)) return;
       } else if (isNodeOfType(expression.callee, "MemberExpression")) {
         if (rootsInProps(expression.callee.object, context.scopes)) return;
       }

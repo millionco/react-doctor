@@ -384,13 +384,15 @@ describe("buildRunEventAttributes", () => {
           { rule: "react-doctor/no-danger", source: "config", count: 3 },
           { rule: "react-doctor/jsx-key", source: "inline", count: 2 },
           { rule: "react-doctor/alt-text", source: "inline", count: 1 },
+          { rule: "react-hooks-js/refs", source: "foreign-inline", count: 2 },
         ],
       }),
     );
-    expect(attributes["diag.suppressed"]).toBe(6);
+    expect(attributes["diag.suppressed"]).toBe(8);
     expect(attributes["diag.suppressedConfig"]).toBe(3);
     expect(attributes["diag.suppressedOverride"]).toBe(0);
     expect(attributes["diag.suppressedInline"]).toBe(3);
+    expect(attributes["diag.suppressedForeignInline"]).toBe(2);
 
     // Absent tallies (e.g. the failure path) read as "unknown", not zero.
     const withoutTallies = buildRunEventAttributes(baseInput({ result: buildResult() }));

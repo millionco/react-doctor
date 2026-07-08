@@ -49,6 +49,70 @@ describe("react-builtins/jsx-no-undef regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  // react-datepicker docs: react-live snippets are bare scripts ending in a
+  // top-level `render(...)` whose components (`DatePicker`, `useState`, the
+  // `render` itself) are injected into the runtime scope by LiveProvider.
+  it("does not flag components in a react-live style script", () => {
+    const result = runRule(
+      jsxNoUndef,
+      `
+        const CustomCalendarContainer = () => {
+          const [selectedDate, setSelectedDate] = useState(new Date());
+          const MyContainer = ({ className, children }) => (
+            <CalendarContainer className={className}>{children}</CalendarContainer>
+          );
+          return (
+            <DatePicker
+              selected={selectedDate}
+              onChange={setSelectedDate}
+              calendarContainer={MyContainer}
+            />
+          );
+        };
+        render(CustomCalendarContainer);
+      `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag inline JSX passed to a bare top-level render call", () => {
+    const result = runRule(jsxNoUndef, `render(<DatePicker />);`);
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags undefined components when the file has module syntax", () => {
+    const result = runRule(
+      jsxNoUndef,
+      `
+        import { render } from "react-dom";
+        render(<DatePicker />, document.body);
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags undefined components when render resolves to a local binding", () => {
+    const result = runRule(
+      jsxNoUndef,
+      `
+        var React;
+        const render = (element) => React.render(element);
+        render(<DatePicker />);
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags undefined components in scripts without a bare render call", () => {
+    const result = runRule(jsxNoUndef, `var React; React.render(<App />);`);
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a JSX element referencing a block-scoped binding from a sibling block", () => {
     const result = runRule(
       jsxNoUndef,

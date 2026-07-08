@@ -162,6 +162,31 @@ export const Multi = () => {
     });
     expect(await collectRuleHits(projectDir, "no-cascading-set-state")).toHaveLength(0);
   });
+
+  it("no-cascading-set-state: does not count setters inside a stored handler the effect only registers", async () => {
+    const projectDir = setupReactProject(tempRoot, "cascade-stored-listener", {
+      files: {
+        "src/Multi.tsx": `import { useEffect, useState } from "react";
+export const Multi = () => {
+  const [a, setA] = useState(0);
+  const [b, setB] = useState(0);
+  const [c, setC] = useState(0);
+  useEffect(() => {
+    const onResize = () => {
+      setA(1);
+      setB(2);
+      setC(3);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  });
+  return <div>{a}{b}{c}</div>;
+};
+`,
+      },
+    });
+    expect(await collectRuleHits(projectDir, "no-cascading-set-state")).toHaveLength(0);
+  });
 });
 
 describe("effect-family rules: genuine smells still fire", () => {
@@ -249,23 +274,31 @@ export const Sync = ({ items }: { items: number[] }) => {
     expect((await collectRuleHits(projectDir, "no-cascading-set-state")).length).toBeGreaterThan(0);
   });
 
-  it("no-cascading-set-state: flags a stored listener handler that fans out over 3 setters", async () => {
-    const projectDir = setupReactProject(tempRoot, "tp-cascade-stored-listener", {
+  // A stored handler registered via addEventListener used to be asserted here
+  // as a genuine smell. The FP verification corpus judged that exact shape a
+  // false positive (the dossier's largest cluster): the effect only registers
+  // the handler, its setters fire later per event, and React batches them into
+  // one render — so no cascade occurs on effect execution. That shape is now
+  // pinned as silent in no-cascading-set-state.regressions.test.ts and in the
+  // suppression suite above. The genuine-smell coverage moved to a stored
+  // helper the effect body CALLS synchronously, where the fan-out really does
+  // run on the effect's own dispatch.
+  it("no-cascading-set-state: flags a stored helper invoked synchronously that fans out over 3 setters", async () => {
+    const projectDir = setupReactProject(tempRoot, "tp-cascade-stored-helper", {
       files: {
         "src/Multi.tsx": `import { useEffect, useState } from "react";
-export const Multi = () => {
+export const Multi = ({ id }: { id: string }) => {
   const [a, setA] = useState(0);
   const [b, setB] = useState(0);
   const [c, setC] = useState(0);
   useEffect(() => {
-    const onResize = () => {
+    const applyAll = () => {
       setA(1);
       setB(2);
       setC(3);
     };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  });
+    applyAll();
+  }, [id]);
   return <div>{a}{b}{c}</div>;
 };
 `,

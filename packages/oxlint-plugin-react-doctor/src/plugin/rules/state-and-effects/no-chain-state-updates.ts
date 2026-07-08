@@ -1,9 +1,18 @@
+import { BUILTIN_GLOBAL_NAMESPACE_NAMES } from "../../constants/js.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { walkAst } from "../../utils/walk-ast.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { getArgsUpstreamRefs, getCallExpr, getUpstreamRefs } from "./utils/effect/ast.js";
+import type { Reference } from "eslint-scope";
+import { getArgsUpstreamRefs, getCallExpr, getRef, getUpstreamRefs } from "./utils/effect/ast.js";
+import { readsPostMountValueThroughLocals } from "./utils/reads-post-mount-through-locals.js";
 import { isExternallyDrivenState } from "./utils/effect/external-state.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import type { ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getEffectDepsRefs,
   getEffectFn,
@@ -14,8 +23,89 @@ import {
   isUseEffect,
 } from "./utils/effect/react.js";
 
-// 1:1 port of upstream
-// `src/rules/no-chain-state-updates.js`.
+// Port of upstream `src/rules/no-chain-state-updates.js`, plus the
+// guarded-self-sync exemption below (prod telemetry review 2026-07).
+
+const getUseStateDeclarator = (ref: Reference): EsTreeNode | null =>
+  (ref.resolved?.defs ?? [])
+    .map((def) => def.node as unknown as EsTreeNode)
+    .find(
+      (node) => isNodeOfType(node, "VariableDeclarator") && isNodeOfType(node.id, "ArrayPattern"),
+    ) ?? null;
+
+const isDeclaredWithin = (node: EsTreeNode, container: EsTreeNode): boolean => {
+  let walker: EsTreeNode | null | undefined = node;
+  while (walker) {
+    if (walker === container) return true;
+    walker = (walker as unknown as { parent?: EsTreeNode | null }).parent;
+  }
+  return false;
+};
+
+const isBuiltinNamespaceCallee = (callee: EsTreeNode | null | undefined): boolean => {
+  if (!callee) return false;
+  if (isNodeOfType(callee, "Identifier")) return BUILTIN_GLOBAL_NAMESPACE_NAMES.has(callee.name);
+  if (isNodeOfType(callee, "MemberExpression")) {
+    const rootName = getRootIdentifierName(callee);
+    return rootName !== null && BUILTIN_GLOBAL_NAMESPACE_NAMES.has(rootName);
+  }
+  return false;
+};
+
+// A "simple" setter argument only re-derives from values already in the
+// render scope: no calls (built-in namespace calls like `Math.max` are
+// allowed), no `new`, no `await`, no function expressions (functional
+// updaters read current state). Identifiers declared inside the effect
+// must themselves have call-free initializers — `setEditor(newEditor)`
+// where `newEditor = createEditor(...)` creates an external system in
+// the effect and stays a chain.
+const isSimpleExpression = (
+  analysis: ProgramAnalysis,
+  expression: EsTreeNode,
+  effectFn: EsTreeNode,
+  visitedDeclarators: WeakSet<object>,
+): boolean => {
+  let isSimple = true;
+  walkAst(expression, (child: EsTreeNode) => {
+    if (!isSimple) return false;
+    if (
+      isFunctionLike(child) ||
+      isNodeOfType(child, "AwaitExpression") ||
+      isNodeOfType(child, "NewExpression")
+    ) {
+      isSimple = false;
+      return false;
+    }
+    if (isNodeOfType(child, "CallExpression") && !isBuiltinNamespaceCallee(child.callee)) {
+      isSimple = false;
+      return false;
+    }
+    if (isNodeOfType(child, "Identifier")) {
+      const ref = getRef(analysis, child);
+      const declarator = (ref?.resolved?.defs ?? [])
+        .map((def) => def.node as unknown as EsTreeNode)
+        .find((node) => isNodeOfType(node, "VariableDeclarator"));
+      if (
+        declarator &&
+        isDeclaredWithin(declarator, effectFn) &&
+        !visitedDeclarators.has(declarator)
+      ) {
+        visitedDeclarators.add(declarator);
+        const initializer = isNodeOfType(declarator, "VariableDeclarator")
+          ? (declarator.init as EsTreeNode | null)
+          : null;
+        if (
+          initializer &&
+          !isSimpleExpression(analysis, initializer, effectFn, visitedDeclarators)
+        ) {
+          isSimple = false;
+          return false;
+        }
+      }
+    }
+  });
+  return isSimple;
+};
 
 export const noChainStateUpdates = defineRule({
   id: "no-chain-state-updates",
@@ -45,6 +135,30 @@ export const noChainStateUpdates = defineRule({
       // related state together, so the chain is the correct shape here.
       if (stateDeps.every((ref) => isExternallyDrivenState(analysis, ref))) return;
 
+      const stateDepDeclarators = new Set(
+        stateDeps
+          .map((ref) => getUseStateDeclarator(ref))
+          .filter((declarator): declarator is EsTreeNode => declarator !== null),
+      );
+
+      // A state synced from a live DOM read (`document.querySelectorAll`,
+      // a layout measurement) cannot be computed in the upstream event
+      // handler — the DOM is only consistent after commit, so the effect is
+      // required and the doc's "set both in the handler" fix cannot apply.
+      // The whole state is exempt, including its fallback resets in the same
+      // effect (the `catch { setAnchors([]) }` arm of the DOM-sync flow).
+      const domSyncedStateDeclarators = new Set<EsTreeNode>();
+      for (const ref of effectFnRefs) {
+        if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
+        const callExpr = getCallExpr(ref);
+        if (!callExpr) continue;
+        if (!readsPostMountValueThroughLocals(callExpr, effectFn, { ignoreBareRefCurrent: true })) {
+          continue;
+        }
+        const declarator = getUseStateDeclarator(ref);
+        if (declarator) domSyncedStateDeclarators.add(declarator);
+      }
+
       for (const ref of effectFnRefs) {
         if (!isSyncStateSetterCall(analysis, ref, effectFn)) continue;
         const callExpr = getCallExpr(ref);
@@ -54,6 +168,27 @@ export const noChainStateUpdates = defineRule({
           isState(analysis, argRef),
         );
         if (isSomeArgsState) continue;
+        // Guarded self-sync: the setter writes the SAME state the effect
+        // depends on (clamp/normalize/latch patterns — `setPage(max)` when
+        // `page` is a dep). These converge in one pass and re-derive from
+        // in-scope values, so there is no handler to hoist them into. Only
+        // simple re-derivations are exempt; a self-targeting setter fed by
+        // a call result (editor/instance creation) is still a chain.
+        const setterDeclarator = getUseStateDeclarator(ref);
+        if (setterDeclarator && domSyncedStateDeclarators.has(setterDeclarator)) continue;
+        const isSelfTargeting =
+          setterDeclarator !== null && stateDepDeclarators.has(setterDeclarator);
+        const setterArguments = isNodeOfType(callExpr, "CallExpression")
+          ? ((callExpr.arguments ?? []) as EsTreeNode[])
+          : [];
+        if (
+          isSelfTargeting &&
+          setterArguments.every((argument) =>
+            isSimpleExpression(analysis, argument, effectFn, new WeakSet()),
+          )
+        ) {
+          continue;
+        }
         context.report({
           node: callExpr,
           message: "Chaining state updates triggers an extra render each step.",

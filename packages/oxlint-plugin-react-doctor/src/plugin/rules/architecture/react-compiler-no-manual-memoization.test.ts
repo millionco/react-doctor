@@ -121,7 +121,13 @@ const Component = () => {
   });
 
   it("flags transpiled `_react.useMemo` even without an import declaration", () => {
-    expectFlaggedApiNames(`_react.useMemo(() => 1, []);`, ["useMemo"]);
+    expectFlaggedApiNames(
+      `const Component = () => {
+  const cachedValue = _react.useMemo(() => 1, []);
+  return <span>{cachedValue}</span>;
+};`,
+      ["useMemo"],
+    );
   });
 
   it("emits one diagnostic per manual-memoization call in the file", () => {

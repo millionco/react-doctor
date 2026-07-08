@@ -568,6 +568,15 @@ export const onlyExportComponents = defineRule({
                 }
               }
             }
+            // Re-exports (`export { x } from './x'`) forward bindings
+            // declared in ANOTHER module — this file holds no value to
+            // move, so "move non-component exports out" is unactionable
+            // here. Pure barrels (`export { default } from './FlexBasic'`)
+            // and convenience re-exports (`export { styles as switchStyles }
+            // from './style'`) were the dominant FP shape in production.
+            // Component-named re-exports still count toward hasReactExport
+            // so local-component analysis stays accurate.
+            const isReExportFromSource = Boolean((child as { source?: unknown }).source);
             for (const specifier of child.specifiers ?? []) {
               if (!isNodeOfType(specifier, "ExportSpecifier")) continue;
               const exported = (specifier as { exported?: EsTreeNode }).exported;
@@ -581,13 +590,16 @@ export const onlyExportComponents = defineRule({
               // identifier — match that semantics.
               const localName = local && isNodeOfType(local, "Identifier") ? local.name : null;
               const reportNode = specifier as EsTreeNode;
+              let entry: ExportType;
               if (exportedName === "default" && localName) {
-                exports.push(classifyExport(localName, reportNode, false, null, state));
+                entry = classifyExport(localName, reportNode, false, null, state);
               } else if (exportedName) {
-                exports.push(classifyExport(exportedName, reportNode, false, null, state));
+                entry = classifyExport(exportedName, reportNode, false, null, state);
               } else {
-                exports.push({ kind: "non-component", reportNode });
+                entry = { kind: "non-component", reportNode };
               }
+              if (isReExportFromSource && entry.kind !== "react-component") continue;
+              exports.push(entry);
             }
           }
         }

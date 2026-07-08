@@ -12,6 +12,7 @@
  *                router type: Pages Router users should NOT be told to
  *                use `next/navigation` (which they don't have access to);
  *                App Router users SHOULD see that suggestion.
+ *   #976 — static export Next.js must not get server-action advice.
  */
 
 import * as fs from "node:fs";
@@ -138,6 +139,76 @@ export const AppGuard = () => {
     );
     expect(appIssue, "expected a diagnostic on app/guard.tsx").toBeDefined();
     expect(appIssue?.message).toContain("flashes the wrong page before redirecting");
+  });
+});
+
+describe("issue #976: Next.js static export gates server-only recommendations", () => {
+  const setupStaticExportProject = (caseId: string, outputExport: boolean): string =>
+    setupReactProject(tempRoot, caseId, {
+      packageJsonExtras: {
+        dependencies: { next: "^15.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
+      },
+      files: {
+        "next.config.ts": `import type { NextConfig } from 'next';
+const nextConfig: NextConfig = ${outputExport ? `{ output: 'export' }` : `{}`};
+export default nextConfig;
+`,
+        "src/app/guard.tsx": `"use client";
+import { useEffect } from "react";
+declare const router: { replace: (path: string) => void };
+export const AuthGuard = () => {
+  useEffect(() => {
+    router.replace("/login");
+  }, []);
+  return null;
+};
+`,
+        "src/app/form.tsx": `"use client";
+declare const mut: { mutate: () => void };
+export const ContactForm = () => {
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        mut.mutate();
+      }}
+    >
+      <button type="submit">Send</button>
+    </form>
+  );
+};
+`,
+      },
+    });
+
+  it("stays silent on static-export Next.js for server-only recommendations", async () => {
+    const projectDir = setupStaticExportProject("issue-976-static-export", true);
+    const { discoverProject } = await import("@react-doctor/core");
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: discoverProject(projectDir),
+    });
+
+    expect(
+      diagnostics.filter((diagnostic) => diagnostic.rule === "nextjs-no-client-side-redirect"),
+    ).toHaveLength(0);
+    expect(
+      diagnostics.filter((diagnostic) => diagnostic.rule === "no-prevent-default"),
+    ).toHaveLength(0);
+  });
+
+  it("still flags the same code when Next.js is not static-export", async () => {
+    const projectDir = setupStaticExportProject("issue-976-non-static", false);
+    const { discoverProject } = await import("@react-doctor/core");
+    const diagnostics = await runOxlint({
+      rootDirectory: projectDir,
+      project: discoverProject(projectDir),
+    });
+
+    expect(
+      diagnostics.some((diagnostic) => diagnostic.rule === "nextjs-no-client-side-redirect"),
+    ).toBe(true);
+    expect(diagnostics.some((diagnostic) => diagnostic.rule === "no-prevent-default")).toBe(true);
   });
 });
 

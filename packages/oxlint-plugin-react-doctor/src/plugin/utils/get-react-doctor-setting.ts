@@ -48,6 +48,16 @@ export const getReactDoctorNumberSetting = (
     : undefined;
 };
 
+export const getReactDoctorBooleanSetting = (
+  settings: RuleContext["settings"],
+  settingName: string,
+): boolean | undefined => {
+  const bag = readReactDoctorSettingsBag(settings);
+  if (!bag) return undefined;
+  const settingValue = readOwnPropertyValue(bag, settingName);
+  return typeof settingValue === "boolean" ? settingValue : undefined;
+};
+
 export const getReactDoctorStringArraySetting = (
   settings: RuleContext["settings"],
   settingName: string,

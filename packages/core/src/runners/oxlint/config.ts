@@ -237,6 +237,7 @@ export const createOxlintConfig = ({
       "react-doctor": {
         framework: project.framework,
         rootDirectory: resolveSettingsRootDirectory(project.rootDirectory),
+        ...(project.hasNextjsStaticExport ? { hasNextjsStaticExport: true } : {}),
         ...(project.shopifyFlashListMajorVersion !== null
           ? { shopifyFlashListMajorVersion: project.shopifyFlashListMajorVersion }
           : {}),

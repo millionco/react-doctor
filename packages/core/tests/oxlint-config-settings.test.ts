@@ -16,6 +16,7 @@ const buildProject = (overrides: Partial<ProjectInfo> = {}): ProjectInfo => ({
   hasTanStackQuery: false,
   nextjsVersion: null,
   nextjsMajorVersion: null,
+  hasNextjsStaticExport: false,
   hasReactNativeWorkspace: true,
   expoVersion: null,
   shopifyFlashListVersion: null,
@@ -41,6 +42,30 @@ describe("createOxlintConfig settings", () => {
     });
 
     expect(config.settings["react-doctor"].shopifyFlashListMajorVersion).toBe(2);
+  });
+
+  it("forwards the Next.js static-export boolean when present", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        framework: "nextjs",
+        hasNextjsStaticExport: true,
+      }),
+    });
+
+    expect(config.settings["react-doctor"].hasNextjsStaticExport).toBe(true);
+  });
+
+  it("omits the Next.js static-export boolean when absent", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        framework: "nextjs",
+        hasNextjsStaticExport: false,
+      }),
+    });
+
+    expect(config.settings["react-doctor"]).not.toHaveProperty("hasNextjsStaticExport");
   });
 
   it("omits the FlashList setting when the dependency is absent or unparseable", () => {

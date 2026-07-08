@@ -18,6 +18,7 @@ const baseProject: ProjectInfo = {
   preactMajorVersion: null,
   nextjsVersion: null,
   nextjsMajorVersion: null,
+  hasNextjsStaticExport: false,
   hasReactNativeWorkspace: false,
   expoVersion: null,
   shopifyFlashListVersion: null,

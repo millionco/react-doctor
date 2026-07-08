@@ -21,6 +21,7 @@ const nextProject = (rootDirectory: string): ProjectInfo => ({
   hasTanStackQuery: false,
   nextjsVersion: "^16.0.0",
   nextjsMajorVersion: 16,
+  hasNextjsStaticExport: false,
   hasReactNativeWorkspace: false,
   expoVersion: null,
   shopifyFlashListVersion: null,

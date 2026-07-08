@@ -231,6 +231,7 @@ describe("runOxlint", () => {
           framework: "nextjs",
           nextjsVersion: "^14.2.0",
           nextjsMajorVersion: 14,
+          hasNextjsStaticExport: false,
         }),
       });
       const hits = diagnostics.filter(

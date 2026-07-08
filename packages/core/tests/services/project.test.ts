@@ -20,6 +20,7 @@ const sampleProject: ProjectInfo = {
   hasTanStackQuery: false,
   nextjsVersion: null,
   nextjsMajorVersion: null,
+  hasNextjsStaticExport: false,
   hasReactNativeWorkspace: false,
   expoVersion: null,
   shopifyFlashListVersion: null,

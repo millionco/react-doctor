@@ -115,6 +115,7 @@ export interface CollectRuleHitsOptions {
   framework?: ProjectInfo["framework"];
   hasReactCompiler?: boolean;
   hasTanStackQuery?: boolean;
+  hasNextjsStaticExport?: boolean;
 }
 
 export interface BuildTestProjectOptions {
@@ -128,6 +129,7 @@ export interface BuildTestProjectOptions {
   tailwindVersion?: string | null;
   nextjsVersion?: string | null;
   nextjsMajorVersion?: number | null;
+  hasNextjsStaticExport?: boolean;
   shopifyFlashListVersion?: string | null;
   shopifyFlashListMajorVersion?: number | null;
 }
@@ -166,6 +168,7 @@ export const buildTestProject = (options: BuildTestProjectOptions): ProjectInfo 
     hasTanStackQuery: options.hasTanStackQuery ?? false,
     nextjsVersion,
     nextjsMajorVersion,
+    hasNextjsStaticExport: options.hasNextjsStaticExport ?? false,
     hasReactNativeWorkspace: framework === "expo" || framework === "react-native",
     expoVersion: framework === "expo" ? "~51.0.0" : null,
     shopifyFlashListVersion: options.shopifyFlashListVersion ?? null,

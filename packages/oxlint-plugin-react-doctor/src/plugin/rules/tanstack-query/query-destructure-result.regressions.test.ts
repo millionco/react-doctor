@@ -3,6 +3,17 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { queryDestructureResult } from "./query-destructure-result.js";
 
 describe("tanstack-query/query-destructure-result — regressions", () => {
+  // Issue #1082 repro: field access should not trigger the query-result
+  // whole-object subscription warning.
+  it("stays silent on the issue #1082 field-access repro", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+function C(){ const query = useQuery({queryKey:['x']}); return <div>{query.data}</div>; }`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
   it("stays silent when the result is assigned and consumed field-by-field in render", () => {
     const { diagnostics } = runRule(
       queryDestructureResult,

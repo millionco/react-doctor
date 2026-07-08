@@ -17,6 +17,7 @@ const makeProject = (rootDirectory: string): ProjectInfo => ({
   hasTanStackQuery: false,
   nextjsVersion: "^15.0.0",
   nextjsMajorVersion: 15,
+  hasNextjsStaticExport: false,
   hasReactNativeWorkspace: false,
   expoVersion: null,
   shopifyFlashListVersion: null,

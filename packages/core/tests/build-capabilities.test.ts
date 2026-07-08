@@ -16,6 +16,7 @@ const baseProject: ProjectInfo = {
   hasTanStackQuery: false,
   nextjsVersion: null,
   nextjsMajorVersion: null,
+  hasNextjsStaticExport: false,
   hasReactNativeWorkspace: false,
   expoVersion: null,
   shopifyFlashListVersion: null,
@@ -218,6 +219,24 @@ describe("buildCapabilities", () => {
     });
     expect(capabilities.has("nextjs")).toBe(true);
     expect(capabilities.has("nextjs:15")).toBe(false);
+  });
+
+  it("emits `nextjs:static-export` when `hasNextjsStaticExport` is true", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "nextjs",
+      hasNextjsStaticExport: true,
+    });
+    expect(capabilities.has("nextjs:static-export")).toBe(true);
+  });
+
+  it("omits `nextjs:static-export` when `hasNextjsStaticExport` is false", () => {
+    const capabilities = buildCapabilities({
+      ...baseProject,
+      framework: "nextjs",
+      hasNextjsStaticExport: false,
+    });
+    expect(capabilities.has("nextjs:static-export")).toBe(false);
   });
 
   it("omits `nextjs:15` when the Next.js version is unparseable", () => {

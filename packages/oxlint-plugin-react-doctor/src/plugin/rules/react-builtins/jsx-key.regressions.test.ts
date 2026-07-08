@@ -15,6 +15,20 @@ const expectPass = (code: string): void => {
 };
 
 describe("react-builtins/jsx-key — regressions", () => {
+  // Issue #1078 repro: key-before-spread stays valid even when props are spread
+  // afterward.
+  it("stays silent on the issue #1078 checkbox map repro", () =>
+    expectPass(
+      `const Checkboxes = ({className, ...rest}) => (<>{options.map((option) => (<Checkbox key={option.name} label={option.label} name={option.name} {...rest} />))}</>);`,
+    ));
+
+  // Issue #1078 repro: the radio-button variant has the same key-before-spread
+  // shape and must remain silent.
+  it("stays silent on the issue #1078 radio-button map repro", () =>
+    expectPass(
+      `const BaseRadioButtons = ({children, className, classNameLabel, isHorizontal, options, ...props}) => (<CheckboxRadioGroup>{options.map((option) => (<InputRadio key={option.value} className={classNameLabel} option={option} {...props} />))}{children}</CheckboxRadioGroup>);`,
+    ));
+
   // docs-validation 2026-07: the documented hazard (and oxc's
   // `checkKeyMustBeforeSpread`) is `key` placed AFTER a `{...spread}` —
   // key-BEFORE-spread is the documented fix shape and must never fire.

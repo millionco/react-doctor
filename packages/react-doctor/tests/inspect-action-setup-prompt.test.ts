@@ -66,6 +66,7 @@ vi.mock("../src/inspect.js", () => ({
         hasTanStackQuery: false,
         nextjsVersion: null,
         nextjsMajorVersion: null,
+        hasNextjsStaticExport: false,
         hasReactNativeWorkspace: false,
         expoVersion: null,
         shopifyFlashListVersion: null,

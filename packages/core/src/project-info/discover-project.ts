@@ -5,6 +5,7 @@ import type { ProjectInfo } from "../types/index.js";
 import { isFile } from "./utils/is-file.js";
 import { countSourceFiles } from "./count-source-files.js";
 import { detectReactCompiler } from "./detect-react-compiler.js";
+import { detectNextjsStaticExport } from "./detect-nextjs-static-export.js";
 import { extractDependencyInfo } from "./extract-dependency-info.js";
 import { findDependencyInfoFromMonorepoRoot } from "./find-dependency-info-from-monorepo-root.js";
 import { findMonorepoRoot, isMonorepoRoot } from "./find-monorepo-root.js";
@@ -106,6 +107,7 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     hasReactNativeWorkspace: false,
     nextjsVersion: null,
     nextjsMajorVersion: null,
+    hasNextjsStaticExport: false,
     expoVersion: null,
     shopifyFlashListVersion: null,
     shopifyFlashListMajorVersion: null,
@@ -319,6 +321,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
           version: findNextjsVersion(directory, packageJson),
         })
       : null;
+  const hasNextjsStaticExport = framework === "nextjs" && detectNextjsStaticExport(directory);
   const preactVersion = getPreactVersion(packageJson);
   const isPreES2023Target = hasTypeScript && detectPreES2023Target(directory);
 
@@ -339,6 +342,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     hasReactNativeWorkspace,
     nextjsVersion,
     nextjsMajorVersion: nextjsVersion === null ? null : getLowestDependencyMajor(nextjsVersion),
+    hasNextjsStaticExport,
     expoVersion,
     shopifyFlashListVersion,
     shopifyFlashListMajorVersion:

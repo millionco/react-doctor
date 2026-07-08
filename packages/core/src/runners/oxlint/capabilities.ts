@@ -54,6 +54,7 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
   if (project.nextjsMajorVersion !== null && project.nextjsMajorVersion >= 15) {
     capabilities.add("nextjs:15");
   }
+  if (project.hasNextjsStaticExport) capabilities.add("nextjs:static-export");
 
   const reactMajor = project.reactMajorVersion;
   if (reactMajor !== null) {

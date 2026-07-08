@@ -173,6 +173,7 @@ export const nextjsNoClientSideRedirect = defineRule({
   title: "Client-side redirect for navigation",
   tags: ["test-noise"],
   requires: ["nextjs"],
+  disabledBy: ["nextjs:static-export"],
   severity: "warn",
   recommendation:
     "Avoid redirects inside useEffect. Use an event handler, middleware, or server-side redirect (App Router: redirect() from next/navigation; Pages Router: getServerSideProps redirect)",

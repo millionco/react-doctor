@@ -31,6 +31,7 @@ const buildProject = (
   hasTanStackQuery: false,
   nextjsVersion,
   nextjsMajorVersion: null,
+  hasNextjsStaticExport: false,
   hasReactNativeWorkspace: false,
   expoVersion: null,
   shopifyFlashListVersion: null,

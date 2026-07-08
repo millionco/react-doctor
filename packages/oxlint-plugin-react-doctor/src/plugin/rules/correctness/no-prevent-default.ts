@@ -3,7 +3,10 @@ import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { findProgramRoot } from "../../utils/find-program-root.js";
-import { getReactDoctorStringSetting } from "../../utils/get-react-doctor-setting.js";
+import {
+  getReactDoctorBooleanSetting,
+  getReactDoctorStringSetting,
+} from "../../utils/get-react-doctor-setting.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
@@ -301,8 +304,14 @@ export const noPreventDefault = defineRule({
     "Use `<form action>` where your framework supports it (it works without JS), or use a `<button>` instead of an `<a>` with preventDefault.",
   create: (context: RuleContext) => {
     const framework = getReactDoctorStringSetting(context.settings, "framework");
+    const hasNextjsStaticExport = getReactDoctorBooleanSetting(
+      context.settings,
+      "hasNextjsStaticExport",
+    );
     const isServerCapableFramework =
-      framework !== undefined && SERVER_CAPABLE_FRAMEWORKS.has(framework);
+      framework !== undefined &&
+      SERVER_CAPABLE_FRAMEWORKS.has(framework) &&
+      !(framework === "nextjs" && hasNextjsStaticExport);
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

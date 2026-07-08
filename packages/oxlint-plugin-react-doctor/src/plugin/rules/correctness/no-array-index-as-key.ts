@@ -67,14 +67,27 @@ const MUTATING_ARRAY_METHOD_NAMES = new Set([
 
 const TYPE_RESOLUTION_DEPTH_LIMIT = 4;
 
+const ARITHMETIC_KEY_OPERATORS = new Set(["+", "-", "*", "/", "%"]);
+
 // The identifiers a key expression could get its value from — the bare
 // identifier, template-literal slots, `x.toString()`, `String(x)` /
-// `Number(x)`, and `x + ""` / `"" + x` coercions.
+// `Number(x)`, `x + ""` / `"" + x` coercions, arithmetic offsets
+// (`x + 1`, `x * 2`), and unary negation (`-x`).
 const extractCandidateIdentifiers = (
   expression: EsTreeNode,
 ): Array<EsTreeNodeOfType<"Identifier">> => {
   const node = stripParenExpression(expression);
   if (isNodeOfType(node, "Identifier")) return [node];
+
+  // `-index` / `+index` / `~index` — still index-derived: the mapping
+  // from position to key is injective, so reorders remint keys.
+  if (
+    isNodeOfType(node, "UnaryExpression") &&
+    (node.operator === "-" || node.operator === "+" || node.operator === "~") &&
+    isNodeOfType(node.argument, "Identifier")
+  ) {
+    return [node.argument];
+  }
 
   if (isNodeOfType(node, "TemplateLiteral")) {
     const identifiers: Array<EsTreeNodeOfType<"Identifier">> = [];
@@ -103,20 +116,40 @@ const extractCandidateIdentifiers = (
     return [];
   }
 
-  if (isNodeOfType(node, "BinaryExpression") && node.operator === "+") {
-    if (
-      isNodeOfType(node.left, "Identifier") &&
-      isNodeOfType(node.right, "Literal") &&
-      node.right.value === ""
-    ) {
-      return [node.left];
+  if (isNodeOfType(node, "BinaryExpression")) {
+    if (node.operator === "+") {
+      if (
+        isNodeOfType(node.left, "Identifier") &&
+        isNodeOfType(node.right, "Literal") &&
+        node.right.value === ""
+      ) {
+        return [node.left];
+      }
+      if (
+        isNodeOfType(node.right, "Identifier") &&
+        isNodeOfType(node.left, "Literal") &&
+        node.left.value === ""
+      ) {
+        return [node.right];
+      }
     }
-    if (
-      isNodeOfType(node.right, "Identifier") &&
-      isNodeOfType(node.left, "Literal") &&
-      node.left.value === ""
-    ) {
-      return [node.right];
+    // `index + 1` / `index - 1` / `index * 2` — a numeric-literal offset
+    // keeps the key index-derived (injective in the position).
+    if (ARITHMETIC_KEY_OPERATORS.has(node.operator)) {
+      if (
+        isNodeOfType(node.left, "Identifier") &&
+        isNodeOfType(node.right, "Literal") &&
+        typeof node.right.value === "number"
+      ) {
+        return [node.left];
+      }
+      if (
+        isNodeOfType(node.right, "Identifier") &&
+        isNodeOfType(node.left, "Literal") &&
+        typeof node.left.value === "number"
+      ) {
+        return [node.right];
+      }
     }
   }
 

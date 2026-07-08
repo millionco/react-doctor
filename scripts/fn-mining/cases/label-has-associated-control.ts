@@ -16,7 +16,9 @@ export const labelHasAssociatedControlCases: FnMiningCase[] = [
     description: "label text plus {children} expression (may be assumed to render a control)",
     filePath: "src/form.tsx",
     code: `const Field = ({ children }: FieldProps) => <label>Name{children}</label>;`,
-    shouldFire: true,
+    shouldFire: false,
+    carveOutReason:
+      "`{children}` matches the rule's CONTROL_RENDERING_NAME_PATTERN — a renderable-named expression may hold the control (`<label>Name<input/></label>` composed by the caller), so the rule stays conservative.",
   },
   {
     ruleId: "label-has-associated-control",
@@ -37,7 +39,9 @@ export const labelHasAssociatedControlCases: FnMiningCase[] = [
     description: "same bad label inside a .stories.tsx file (file-based skip)",
     filePath: "src/form.stories.tsx",
     code: `const Field = () => <label>Name</label>;`,
-    shouldFire: true,
+    shouldFire: false,
+    carveOutReason:
+      "Testlike-filename skip (`isTestlikeFilename`): Storybook/test surfaces are non-production code where a11y findings are unactionable noise — deliberate file-based gate.",
   },
   {
     ruleId: "label-has-associated-control",

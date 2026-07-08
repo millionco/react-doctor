@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
+import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
@@ -309,11 +310,16 @@ export const labelHasAssociatedControl = defineRule({
         const hasSpreadProps = opening.attributes.some((attribute) =>
           isNodeOfType(attribute as EsTreeNode, "JSXSpreadAttribute"),
         );
+        // `htmlFor=""` points at no id — it associates nothing, exactly
+        // like an absent htmlFor. Dynamic values stay trusted.
         const hasHtmlFor =
           hasSpreadProps ||
-          settings.forAttributes.some((attributeName) =>
-            Boolean(hasJsxPropIgnoreCase(opening.attributes, attributeName)),
-          );
+          settings.forAttributes.some((attributeName) => {
+            const forAttribute = hasJsxPropIgnoreCase(opening.attributes, attributeName);
+            if (!forAttribute) return false;
+            const stringValue = getJsxPropStringValue(forAttribute);
+            return stringValue === null || stringValue.length > 0;
+          });
         const searchContext: SearchContext = {
           depth: settings.depth,
           labelAttributes: settings.labelAttributes,

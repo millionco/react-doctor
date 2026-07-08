@@ -168,4 +168,29 @@ describe("a11y/label-has-associated-control regressions", () => {
 
     expect(result.diagnostics).toEqual([]);
   });
+
+  // FN mining: an empty htmlFor associates nothing.
+  it("flags a label with an empty-string htmlFor and no nested control", () => {
+    const result = runRule(
+      labelHasAssociatedControl,
+      `const Field = () => <label htmlFor="">Name</label>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still trusts a non-empty htmlFor", () => {
+    const result = runRule(
+      labelHasAssociatedControl,
+      `const Field = () => <label htmlFor="name">Name</label>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still trusts a dynamic htmlFor expression", () => {
+    const result = runRule(
+      labelHasAssociatedControl,
+      `const Field = ({ id }) => <label htmlFor={id}>Name</label>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

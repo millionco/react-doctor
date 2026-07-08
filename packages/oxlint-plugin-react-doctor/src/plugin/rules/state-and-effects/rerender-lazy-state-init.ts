@@ -1,5 +1,6 @@
 import { TRIVIAL_INITIALIZER_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";

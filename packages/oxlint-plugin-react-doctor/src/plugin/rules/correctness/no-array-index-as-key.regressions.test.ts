@@ -357,6 +357,57 @@ const Table = () => (
       expect(result.diagnostics).toHaveLength(1);
     });
 
+    // fn-mining sweep: an arithmetic offset keeps the key index-derived.
+    it("flags an index offset by a numeric literal", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const List = ({ items }) => (
+  <ul>
+    {items.map((item, index) => (
+      <Row key={index + 1} data={item} />
+    ))}
+  </ul>
+);
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    // fn-mining sweep: unary negation is still an injective function of
+    // the position.
+    it("flags an index negated by a unary expression", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const List = ({ items }) => (
+  <ul>
+    {items.map((item, index) => (
+      <Row key={-index} data={item} />
+    ))}
+  </ul>
+);
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent on an arithmetic key whose identifier is not a positional index", () => {
+      const result = runRule(
+        noArrayIndexAsKey,
+        `const Pager = ({ page, items }) => (
+  <ul>
+    {items.map((item) => (
+      <Row key={page + 1} data={item} />
+    ))}
+  </ul>
+);
+`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
     it("flags an index laundered through a template-literal variable", () => {
       const result = runRule(
         noArrayIndexAsKey,

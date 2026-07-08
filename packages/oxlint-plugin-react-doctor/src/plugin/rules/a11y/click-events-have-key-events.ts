@@ -17,7 +17,14 @@ import { HTML_TAGS } from "../../constants/html-tags.js";
 const MESSAGE =
   "Keyboard users can't trigger this click handler because there's no keyboard one, so add `onKeyUp`, `onKeyDown`, or `onKeyPress`.";
 
-const KEY_HANDLERS = ["onKeyUp", "onKeyDown", "onKeyPress"] as const;
+const KEY_HANDLERS = [
+  "onKeyUp",
+  "onKeyDown",
+  "onKeyPress",
+  "onKeyUpCapture",
+  "onKeyDownCapture",
+  "onKeyPressCapture",
+] as const;
 
 // OXC's `is_interactive_element` treats these as interactive, but none
 // of them takes focus or has native activation semantics — a
@@ -25,13 +32,21 @@ const KEY_HANDLERS = ["onKeyUp", "onKeyDown", "onKeyPress"] as const;
 // `<div onClick>` (confirmed false negatives in the verify run).
 const FOCUSLESS_CONTAINER_TAGS: ReadonlySet<string> = new Set(["tr", "td", "th", "canvas"]);
 
-// framer-motion's `motion.div` etc. deterministically render the
-// underlying DOM tag.
-const resolveMotionTag = (node: EsTreeNodeOfType<"JSXOpeningElement">): string | null => {
+// Member-element factories that deterministically render the underlying
+// DOM tag: framer-motion's `motion.div`, and `styled.div`-style JSX
+// factories (Panda CSS, Chakra-style styled systems).
+const MEMBER_ELEMENT_FACTORY_NAMES: ReadonlySet<string> = new Set(["motion", "styled"]);
+
+const resolveMemberElementTag = (node: EsTreeNodeOfType<"JSXOpeningElement">): string | null => {
   const name = node.name as EsTreeNode;
   if (!isNodeOfType(name, "JSXMemberExpression")) return null;
   const objectName = name.object as EsTreeNode;
-  if (!isNodeOfType(objectName, "JSXIdentifier") || objectName.name !== "motion") return null;
+  if (
+    !isNodeOfType(objectName, "JSXIdentifier") ||
+    !MEMBER_ELEMENT_FACTORY_NAMES.has(objectName.name)
+  ) {
+    return null;
+  }
   const tag = name.property.name;
   return tag && HTML_TAGS.has(tag) ? tag : null;
 };
@@ -239,14 +254,18 @@ export const clickEventsHaveKeyEvents = defineRule({
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
         if (isTestlikeFile) return;
-        const tag = resolveMotionTag(node) ?? getElementType(node, context.settings);
+        const tag = resolveMemberElementTag(node) ?? getElementType(node, context.settings);
         if (!HTML_TAGS.has(tag)) return;
         // Clicking a <label> forwards activation to its control, which
         // keyboard users operate directly (Space on the native input
         // also dispatches a click that bubbles to the label).
         if (tag === "label") return;
         if (!FOCUSLESS_CONTAINER_TAGS.has(tag) && isInteractiveElement(tag, node)) return;
-        const onClick = hasJsxPropIgnoreCase(node.attributes, "onClick");
+        // `onClickCapture` is the same click affordance on the capture
+        // phase — equally unreachable from the keyboard.
+        const onClick =
+          hasJsxPropIgnoreCase(node.attributes, "onClick") ??
+          hasJsxPropIgnoreCase(node.attributes, "onClickCapture");
         if (!onClick) return;
         if (isPureEventBlockerHandler(onClick)) return;
         if (isFocusForwardingHandler(onClick)) return;

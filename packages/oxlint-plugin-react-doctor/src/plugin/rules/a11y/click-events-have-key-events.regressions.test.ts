@@ -184,4 +184,39 @@ describe("a11y/click-events-have-key-events regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  // FN mining: click affordances the onClick-only lookup missed.
+  it("flags a capture-phase-only click handler", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `const Cell = ({ id }) => <div onClickCapture={() => selectRow(id)}>Open</div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag onClickCapture paired with a capture-phase key handler", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `const Cell = ({ id }) => (
+        <div onClickCapture={() => selectRow(id)} onKeyDownCapture={() => selectRow(id)}>Open</div>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a styled.div member element with onClick and no key handler", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `const Cell = ({ id }) => <styled.div onClick={() => selectRow(id)}>Open</styled.div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag styled.button — the underlying tag is interactive", () => {
+    const result = runRule(
+      clickEventsHaveKeyEvents,
+      `const Cell = ({ id }) => <styled.button onClick={() => selectRow(id)}>Open</styled.button>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

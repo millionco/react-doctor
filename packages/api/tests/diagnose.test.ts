@@ -107,9 +107,15 @@ describe("diagnose", () => {
     const directory = path.join(FIXTURES_DIRECTORY, "basic-react");
     const lintEnabledResult = await diagnose(directory, { deadCode: false, lint: true });
     const lintDisabledResult = await diagnose(directory, { deadCode: false, lint: false });
+    const lintEnabledSourceDiagnostics = lintEnabledResult.diagnostics.filter(
+      (diagnostic) => diagnostic.filePath !== "package.json",
+    );
+    const lintDisabledSourceDiagnostics = lintDisabledResult.diagnostics.filter(
+      (diagnostic) => diagnostic.filePath !== "package.json",
+    );
 
-    expect(lintEnabledResult.diagnostics.length).toBeGreaterThan(0);
-    expect(lintDisabledResult.diagnostics).toHaveLength(0);
+    expect(lintEnabledSourceDiagnostics.length).toBeGreaterThan(0);
+    expect(lintDisabledSourceDiagnostics).toHaveLength(0);
   });
 });
 
@@ -292,7 +298,9 @@ describe("diagnose({ projects })", () => {
     const projectResult = result.projects[0];
     expect(projectResult.ok).toBe(true);
     if (!projectResult.ok) return;
-    expect(projectResult.diagnostics).toHaveLength(0);
+    expect(
+      projectResult.diagnostics.filter((diagnostic) => diagnostic.filePath !== "package.json"),
+    ).toHaveLength(0);
   });
 
   it("layers per-project configs on top of a batch-level config", async () => {

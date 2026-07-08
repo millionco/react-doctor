@@ -4,6 +4,7 @@ import {
   EARLIEST_GATED_REACT_MAJOR,
   LATEST_KNOWN_PREACT_MAJOR,
   LATEST_KNOWN_REACT_MAJOR,
+  SERVER_CAPABLE_FRAMEWORKS,
 } from "../../constants.js";
 import { hasReactRuntime } from "../../utils/has-react-runtime.js";
 import {
@@ -55,6 +56,9 @@ export const buildCapabilities = (project: ProjectInfo): ReadonlySet<string> => 
     capabilities.add("nextjs:15");
   }
   if (project.hasNextjsStaticExport) capabilities.add("nextjs:static-export");
+  if (SERVER_CAPABLE_FRAMEWORKS.has(project.framework) && !project.hasNextjsStaticExport) {
+    capabilities.add("server-runtime");
+  }
 
   const reactMajor = project.reactMajorVersion;
   if (reactMajor !== null) {

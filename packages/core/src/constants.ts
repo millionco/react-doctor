@@ -23,6 +23,8 @@ export const DEFAULT_SHOW_WARNINGS = true;
 
 export const MILLISECONDS_PER_SECOND = 1000;
 
+export const SERVER_CAPABLE_FRAMEWORKS = new Set(["nextjs", "tanstack-start", "remix"]);
+
 // Upper bound for the `react:<major>` capability loop in
 // `buildCapabilities`, clamping an unvalidated package.json spec like
 // `"react": "20240101"` that would otherwise drive the loop to tens of

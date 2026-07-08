@@ -221,6 +221,29 @@ describe("buildCapabilities", () => {
     expect(capabilities.has("nextjs:15")).toBe(false);
   });
 
+  it("emits `server-runtime` for server-capable frameworks that are not static-export Next.js", () => {
+    const serverRuntime = buildCapabilities({
+      ...baseProject,
+      framework: "remix",
+    });
+    expect(serverRuntime.has("server-runtime")).toBe(true);
+
+    const staticExportNextjs = buildCapabilities({
+      ...baseProject,
+      framework: "nextjs",
+      nextjsVersion: "^15.0.0",
+      nextjsMajorVersion: 15,
+      hasNextjsStaticExport: true,
+    });
+    expect(staticExportNextjs.has("server-runtime")).toBe(false);
+
+    const viteProject = buildCapabilities({
+      ...baseProject,
+      framework: "vite",
+    });
+    expect(viteProject.has("server-runtime")).toBe(false);
+  });
+
   it("emits `nextjs:static-export` when `hasNextjsStaticExport` is true", () => {
     const capabilities = buildCapabilities({
       ...baseProject,

@@ -32,17 +32,6 @@ const PREVENT_DEFAULT_ELEMENTS = new Map<string, string[]>([
   ["a", ["onClick"]],
 ]);
 
-// Frameworks that ship a first-class server-mutation story tied to
-// plain `<form>` elements — Next.js Server Actions, TanStack Server
-// Functions, Remix loader/action handlers. Recommending
-// `<form action={serverAction}>` is honest progressive-enhancement
-// advice in these projects. Everywhere else (SPA bundlers, component
-// libraries, Electron shells, unknown classifications) calling
-// `preventDefault()` inside onSubmit IS the canonical controlled-form
-// pattern, so the form variant only fires when the framework is a
-// confirmed member of this set.
-const SERVER_CAPABLE_FRAMEWORKS = new Set<string>(["nextjs", "tanstack-start", "remix"]);
-
 const FORM_MESSAGE_SERVER_CAPABLE =
   "Your users can't submit this <form> without JavaScript because onSubmit calls preventDefault(), so use a server action like `<form action={serverAction}>` to make it work either way.";
 
@@ -304,14 +293,9 @@ export const noPreventDefault = defineRule({
     "Use `<form action>` where your framework supports it (it works without JS), or use a `<button>` instead of an `<a>` with preventDefault.",
   create: (context: RuleContext) => {
     const framework = getReactDoctorStringSetting(context.settings, "framework");
-    const hasNextjsStaticExport = getReactDoctorBooleanSetting(
-      context.settings,
-      "hasNextjsStaticExport",
+    const isServerCapableFramework = Boolean(
+      getReactDoctorBooleanSetting(context.settings, "hasServerRuntime"),
     );
-    const isServerCapableFramework =
-      framework !== undefined &&
-      SERVER_CAPABLE_FRAMEWORKS.has(framework) &&
-      !(framework === "nextjs" && hasNextjsStaticExport);
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {

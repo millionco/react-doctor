@@ -44,7 +44,7 @@ describe("createOxlintConfig settings", () => {
     expect(config.settings["react-doctor"].shopifyFlashListMajorVersion).toBe(2);
   });
 
-  it("forwards the Next.js static-export boolean when present", () => {
+  it("does not forward server-runtime for static-export Next.js", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
       project: buildProject({
@@ -53,19 +53,31 @@ describe("createOxlintConfig settings", () => {
       }),
     });
 
-    expect(config.settings["react-doctor"].hasNextjsStaticExport).toBe(true);
+    expect(config.settings["react-doctor"].hasServerRuntime).toBeUndefined();
   });
 
-  it("omits the Next.js static-export boolean when absent", () => {
+  it("forwards the derived server-runtime boolean for server-capable projects", () => {
     const config = createOxlintConfig({
       pluginPath: "/tmp/plugin.js",
       project: buildProject({
-        framework: "nextjs",
-        hasNextjsStaticExport: false,
+        framework: "remix",
       }),
     });
 
-    expect(config.settings["react-doctor"]).not.toHaveProperty("hasNextjsStaticExport");
+    expect(config.settings["react-doctor"].hasServerRuntime).toBe(true);
+  });
+
+  it("omits the server-runtime boolean when absent", () => {
+    const config = createOxlintConfig({
+      pluginPath: "/tmp/plugin.js",
+      project: buildProject({
+        framework: "vite",
+        hasNextjsStaticExport: false,
+        hasReactNativeWorkspace: false,
+      }),
+    });
+
+    expect(config.settings["react-doctor"]).not.toHaveProperty("hasServerRuntime");
   });
 
   it("omits the FlashList setting when the dependency is absent or unparseable", () => {

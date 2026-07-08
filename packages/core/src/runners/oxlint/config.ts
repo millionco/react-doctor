@@ -6,8 +6,12 @@ import reactDoctorPlugin, {
 } from "oxlint-plugin-react-doctor";
 import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor";
 import type { ProjectInfo, RuleSeverityControls } from "../../types/index.js";
+import {
+  COMPILER_CLEANUP_BUCKET,
+  COMPILER_CLEANUP_RULE_KEYS,
+  SERVER_CAPABLE_FRAMEWORKS,
+} from "../../constants.js";
 import { resolveRuleSeverityOverride } from "../../resolve-rule-severity-override.js";
-import { COMPILER_CLEANUP_BUCKET, COMPILER_CLEANUP_RULE_KEYS } from "../../constants.js";
 import { buildCapabilities, shouldEnableRule } from "./capabilities.js";
 import { filterRulesToAvailable, resolveReactHooksJsPlugin } from "./plugin-resolution.js";
 import type { JsPluginEntry, ResolvedUserPlugin } from "./plugin-resolution.js";
@@ -62,6 +66,9 @@ const resolveSettingsRootDirectory = (rootDirectory: string): string => {
   if (!fs.existsSync(rootDirectory)) return rootDirectory;
   return fs.realpathSync(rootDirectory);
 };
+
+const hasServerRuntime = (project: ProjectInfo): boolean =>
+  SERVER_CAPABLE_FRAMEWORKS.has(project.framework) && !project.hasNextjsStaticExport;
 
 // The `compiler-cleanup` bucket override applies to its rule family only when
 // the user hasn't pinned that exact rule individually (a per-rule override
@@ -237,7 +244,7 @@ export const createOxlintConfig = ({
       "react-doctor": {
         framework: project.framework,
         rootDirectory: resolveSettingsRootDirectory(project.rootDirectory),
-        ...(project.hasNextjsStaticExport ? { hasNextjsStaticExport: true } : {}),
+        ...(hasServerRuntime(project) ? { hasServerRuntime: true } : {}),
         ...(project.shopifyFlashListMajorVersion !== null
           ? { shopifyFlashListMajorVersion: project.shopifyFlashListMajorVersion }
           : {}),

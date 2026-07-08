@@ -2,8 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noPreventDefault } from "./no-prevent-default.js";
 
-const remixSettings = { "react-doctor": { framework: "remix" } };
-const nextjsSettings = { "react-doctor": { framework: "nextjs" } };
+const remixSettings = { "react-doctor": { framework: "remix", hasServerRuntime: true } };
+const nextjsSettings = { "react-doctor": { framework: "nextjs", hasServerRuntime: true } };
 
 describe("correctness/no-prevent-default regressions", () => {
   describe("href-less anchors (anchor-as-button, mined ant-design Dropdown trigger FP)", () => {

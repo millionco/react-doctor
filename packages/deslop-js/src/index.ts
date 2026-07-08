@@ -664,9 +664,14 @@ export const analyze = async (config: DeslopConfig): Promise<ScanResult> => {
     }
   }
 
-  const sortedStyleFiles = [...styleFilesToAdd].sort();
+  const styleFileQueue = [...styleFilesToAdd].sort();
   let nextFileIndex = files.length;
-  for (const styleFilePath of sortedStyleFiles) {
+  let styleFileQueueIndex = 0;
+  while (styleFileQueueIndex < styleFileQueue.length) {
+    const styleFilePath = styleFileQueue[styleFileQueueIndex];
+    styleFileQueueIndex++;
+    if (discoveredFilePaths.has(styleFilePath)) continue;
+
     const styleSourceFile = { index: nextFileIndex, path: styleFilePath };
     const parsedStyleModule = parseSourceFile(styleFilePath);
     const resolvedStyleImportMap = new Map<
@@ -694,8 +699,13 @@ export const analyze = async (config: DeslopConfig): Promise<ScanResult> => {
         const isNestedStyle = STYLE_EXTENSIONS.some((ext) =>
           resolvedImport.resolvedPath!.endsWith(ext),
         );
-        if (isNestedStyle && existsSync(resolvedImport.resolvedPath)) {
+        if (
+          isNestedStyle &&
+          !styleFilesToAdd.has(resolvedImport.resolvedPath) &&
+          existsSync(resolvedImport.resolvedPath)
+        ) {
           styleFilesToAdd.add(resolvedImport.resolvedPath);
+          styleFileQueue.push(resolvedImport.resolvedPath);
         }
       }
     }

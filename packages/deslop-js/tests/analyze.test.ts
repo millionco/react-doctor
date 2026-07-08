@@ -1069,6 +1069,16 @@ describe("reexport-mixed", () => {
   });
 });
 
+describe("reexport-neighbor-import", () => {
+  it("does not credit same-name exports from imported-only neighbors", async () => {
+    const result = await scanFixture("reexport-neighbor-import");
+    const fixtureDir = resolve(FIXTURES_DIR, "reexport-neighbor-import");
+    const exportsByFile = deadExportsByFile(result, fixtureDir);
+
+    assert.deepEqual(exportsByFile["src/imported-only.ts"], ["alsoUnused", "used"]);
+  });
+});
+
 describe("alias-paths", () => {
   it("should resolve @/ alias and not flag helper as unused", async () => {
     const result = await scanFixture("alias-paths");

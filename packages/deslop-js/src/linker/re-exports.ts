@@ -59,6 +59,7 @@ const buildSourceTargetMap = (graph: DependencyGraph): Map<number, number[]> => 
   const sourceTargets = new Map<number, number[]>();
 
   for (const edge of graph.edges) {
+    if (!edge.isReExportEdge) continue;
     const existing = sourceTargets.get(edge.source);
     if (existing) {
       if (!existing.includes(edge.target)) {

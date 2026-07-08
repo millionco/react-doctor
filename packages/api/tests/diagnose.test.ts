@@ -102,6 +102,15 @@ describe("diagnose", () => {
     });
     expect(result.elapsedMilliseconds).toBeGreaterThanOrEqual(0);
   });
+
+  it("respects lint: false by providing a no-op linter layer", async () => {
+    const directory = path.join(FIXTURES_DIRECTORY, "basic-react");
+    const lintEnabledResult = await diagnose(directory, { deadCode: false, lint: true });
+    const lintDisabledResult = await diagnose(directory, { deadCode: false, lint: false });
+
+    expect(lintEnabledResult.diagnostics.length).toBeGreaterThan(0);
+    expect(lintDisabledResult.diagnostics).toHaveLength(0);
+  });
 });
 
 describe("diagnose({ projects })", () => {
@@ -271,6 +280,19 @@ describe("diagnose({ projects })", () => {
 
     expect(result.projects).toHaveLength(1);
     expect(result.projects[0].ok).toBe(true);
+  });
+
+  it("respects batch config lint: false", async () => {
+    const result = await diagnose({
+      projects: [{ directory: path.join(FIXTURES_DIRECTORY, "basic-react") }],
+      config: { lint: false },
+      deadCode: false,
+    });
+
+    const projectResult = result.projects[0];
+    expect(projectResult.ok).toBe(true);
+    if (!projectResult.ok) return;
+    expect(projectResult.diagnostics).toHaveLength(0);
   });
 
   it("layers per-project configs on top of a batch-level config", async () => {

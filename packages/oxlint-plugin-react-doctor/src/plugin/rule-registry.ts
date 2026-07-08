@@ -284,6 +284,7 @@ import { preferUseSyncExternalStore } from "./rules/state-and-effects/prefer-use
 import { preferUseReducer } from "./rules/state-and-effects/prefer-use-reducer.js";
 import { publicDebugArtifact } from "./rules/security-scan/public-debug-artifact.js";
 import { publicEnvSecretName } from "./rules/security-scan/public-env-secret-name.js";
+import { queryDestructureResult } from "./rules/tanstack-query/query-destructure-result.js";
 import { queryMutationMissingInvalidation } from "./rules/tanstack-query/query-mutation-missing-invalidation.js";
 import { queryNoQueryInEffect } from "./rules/tanstack-query/query-no-query-in-effect.js";
 import { queryNoRestDestructuring } from "./rules/tanstack-query/query-no-rest-destructuring.js";
@@ -3617,6 +3618,17 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Security",
       tags: [...new Set(["security-scan", ...(publicEnvSecretName.tags ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/query-destructure-result",
+    id: "query-destructure-result",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...queryDestructureResult,
+      framework: "tanstack-query",
+      category: "Bugs",
     },
   },
   {

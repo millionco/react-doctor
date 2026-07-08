@@ -49,6 +49,11 @@ export const myRuleCases: FnMiningCase[] = [
 ```
 
 3. Register the array in `cases/index.ts`.
+   When triage concludes a silent variant is deliberate rule scoping, keep
+   the case but set `shouldFire: false` and explain the gate in
+   `carveOutReason` — the runner then prints it as `[carved]` instead of
+   re-flagging it as an FN candidate, and warns if it ever starts firing
+   (a precision regression).
 4. Include one or two canonical "must fire" variants as a baseline — if
    those go silent, the case itself is broken (wrong file path hitting a
    testlike-filename gate, a missing import a rule's import check needs,

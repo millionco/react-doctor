@@ -55,21 +55,24 @@ const resultsByRule = groupByRule(results);
 let firedCount = 0;
 let silentCount = 0;
 const silentResults: VariantResult[] = [];
+const firedCarveOuts: VariantResult[] = [];
 
 for (const [ruleId, ruleResults] of resultsByRule) {
   const ruleFiredCount = ruleResults.filter((result) => result.didFire).length;
   console.log(`\n${ruleId} — ${ruleFiredCount}/${ruleResults.length} variants fired`);
   for (const result of ruleResults) {
-    const marker = result.didFire ? "  [fired]  " : "  [SILENT] ";
+    const isCarveOut = !result.miningCase.shouldFire;
+    const marker = result.didFire ? "  [fired]  " : isCarveOut ? "  [carved] " : "  [SILENT] ";
     console.log(`${marker}${result.miningCase.description}`);
     for (const parseError of result.parseErrors) {
       console.log(`             parse error: ${parseError}`);
     }
     if (result.didFire) {
       firedCount += 1;
+      if (isCarveOut) firedCarveOuts.push(result);
     } else {
       silentCount += 1;
-      silentResults.push(result);
+      if (!isCarveOut) silentResults.push(result);
     }
   }
 }
@@ -79,6 +82,15 @@ console.log(
   `Total: ${results.length} variants across ${resultsByRule.size} rules — ` +
     `${firedCount} fired, ${silentCount} silent`,
 );
+
+if (firedCarveOuts.length > 0) {
+  console.log(
+    `\nCarve-out variants that FIRED (possible precision regression — recheck the gate):`,
+  );
+  for (const result of firedCarveOuts) {
+    console.log(`  - [${result.miningCase.ruleId}] ${result.miningCase.description}`);
+  }
+}
 
 if (silentResults.length > 0) {
   console.log(`\nFN candidates (silent variants — need human triage):`);

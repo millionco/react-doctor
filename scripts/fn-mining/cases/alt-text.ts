@@ -48,7 +48,9 @@ export const altTextCases: FnMiningCase[] = [
     description: "spread props on the <img> (deliberate carve-out: spread may carry alt)",
     filePath: "src/avatar.tsx",
     code: `const Avatar = (imageProps: ImageProps) => <img {...imageProps} />;`,
-    shouldFire: true,
+    shouldFire: false,
+    carveOutReason:
+      "A spread can carry `alt` — wrapper components typed as ImgHTMLAttributes forward it from callers, so the element can't be proven unlabeled (documented gate in the rule's JSXOpeningElement visitor).",
   },
   {
     ruleId: "alt-text",

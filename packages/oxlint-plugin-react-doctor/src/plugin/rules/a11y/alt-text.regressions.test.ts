@@ -344,6 +344,49 @@ describe("a11y/alt-text regressions", () => {
     });
   });
 
+  describe("FN mining: value shapes that hide a missing alt", () => {
+    it("flags an alt conditional with an undefined branch", () => {
+      const result = runRule(
+        altText,
+        `const Avatar = ({ src, label, isDecorative }) => (
+          <img src={src} alt={isDecorative ? undefined : label} />
+        );`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("does not flag an alt conditional whose branches are both strings", () => {
+      const result = runRule(
+        altText,
+        `const Avatar = ({ src, label, isDecorative }) => (
+          <img src={src} alt={isDecorative ? "" : label} />
+        );`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("flags an empty-string aria-label inside an expression container", () => {
+      const result = runRule(
+        altText,
+        `const Avatar = ({ src }) => <img src={src} aria-label={""} />;`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("does not flag a non-empty aria-label inside an expression container", () => {
+      const result = runRule(
+        altText,
+        `const Avatar = ({ src }) => <img src={src} aria-label={"User avatar"} />;`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it('flags an image button with uppercase type="IMAGE" and no alt', () => {
+      const result = runRule(altText, `const Submit = () => <input type="IMAGE" src="/go.png" />;`);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
   describe("aria-hidden decorative images", () => {
     it("skips an aria-hidden background blur image", () => {
       const result = runRule(

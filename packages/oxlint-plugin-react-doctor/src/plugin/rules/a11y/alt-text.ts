@@ -53,14 +53,27 @@ const isUndefinedOrNullExpression = (expression: EsTreeNode): boolean => {
   return false;
 };
 
+// `alt={cond ? undefined : label}` renders with no alt attribute at all
+// when the branch is taken — same failure as `alt={undefined}`.
+const mayEvaluateToUndefinedOrNull = (expression: EsTreeNode): boolean => {
+  if (isUndefinedOrNullExpression(expression)) return true;
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    return (
+      mayEvaluateToUndefinedOrNull(expression.consequent as EsTreeNode) ||
+      mayEvaluateToUndefinedOrNull(expression.alternate as EsTreeNode)
+    );
+  }
+  return false;
+};
+
 // Mirrors `is_valid_alt_prop` — alt is valid when present and not
-// {undefined} / {null}.
+// {undefined} / {null} (directly or via a conditional branch).
 const isValidAltProp = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   if (!attribute.value) return false;
   if (isNodeOfType(attribute.value, "JSXExpressionContainer")) {
     const expression = attribute.value.expression;
     if (expression && expression.type !== "JSXEmptyExpression") {
-      return !isUndefinedOrNullExpression(expression as EsTreeNode);
+      return !mayEvaluateToUndefinedOrNull(expression as EsTreeNode);
     }
     return true;
   }
@@ -73,7 +86,8 @@ const isPresentationRole = (attribute: EsTreeNodeOfType<"JSXAttribute"> | undefi
   return value === "presentation" || value === "none";
 };
 
-// Mirrors `aria_label_has_value` — string literal must be non-empty,
+// Mirrors `aria_label_has_value` — string literal must be non-empty
+// (whether written directly or inside an expression container),
 // expression container must not be `undefined`.
 const ariaLabelHasValue = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   if (!attribute.value) return false;
@@ -89,6 +103,12 @@ const ariaLabelHasValue = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean
       (expression as { name: string }).name === "undefined"
     ) {
       return false;
+    }
+    if (
+      isNodeOfType(expression as EsTreeNode, "Literal") &&
+      typeof (expression as { value: unknown }).value === "string"
+    ) {
+      return (expression as { value: string }).value.length > 0;
     }
     return true;
   }
@@ -253,7 +273,9 @@ export const altText = defineRule({
             (() => {
               const typeAttribute = hasJsxPropIgnoreCase(node.attributes, "type");
               if (!typeAttribute) return false;
-              return getJsxPropStringValue(typeAttribute) === "image";
+              // HTML attribute values for `type` are case-insensitive —
+              // `type="IMAGE"` is the same image button.
+              return getJsxPropStringValue(typeAttribute)?.toLowerCase() === "image";
             })();
           if (isInputImage || inputImageAliases.has(tag)) {
             inputTypeImageRule(node, node, context);

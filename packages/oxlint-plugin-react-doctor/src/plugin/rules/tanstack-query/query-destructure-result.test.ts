@@ -22,13 +22,13 @@ describe("tanstack-query/query-destructure-result", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags rest-destructuring the result through a later binding", () => {
+  it("leaves rest-destructuring through a later binding to query-no-rest-destructuring", () => {
     const result = runRule(
       queryDestructureResult,
       `import { useQuery } from "@tanstack/react-query";\nfunction C() {\n  const query = useQuery(options);\n  const { data, ...rest } = query;\n  return [data, rest];\n}`,
     );
 
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("flags a spread of a useInfiniteQuery result from the legacy react-query package", () => {

@@ -1,8 +1,37 @@
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { queryDestructureResult } from "./query-destructure-result.js";
+import { queryNoRestDestructuring } from "./query-no-rest-destructuring.js";
 
 describe("tanstack-query/query-destructure-result — regressions", () => {
+  // #1082: direct property access is tracked per-field by TanStack Query's
+  // proxy, exactly like destructuring — the playground repro must stay silent.
+  it("stays silent on the issue-1082 repro: assign then read query.data in JSX", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+function Todos() {
+  const query = useQuery({ queryKey: ['todos'] });
+  return <div>{query.data}</div>;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  // #1082: rest-destructuring is query-no-rest-destructuring's territory.
+  // Exactly one of the two rules may claim the two-step rest destructure,
+  // or the same line gets reported twice.
+  it("does not double-report a two-step rest destructure", () => {
+    const twoStepRestDestructure = `import { useQuery } from '@tanstack/react-query';
+function C() {
+  const query = useQuery({ queryKey: ['todos'] });
+  const { data, ...rest } = query;
+  return [data, rest];
+}`;
+    expect(runRule(queryDestructureResult, twoStepRestDestructure).diagnostics).toHaveLength(0);
+    expect(runRule(queryNoRestDestructuring, twoStepRestDestructure).diagnostics).toHaveLength(1);
+  });
+
   it("stays silent when the result is assigned and consumed field-by-field in render", () => {
     const { diagnostics } = runRule(
       queryDestructureResult,

@@ -1,4 +1,7 @@
-import { TANSTACK_ROUTE_PROPERTY_ORDER } from "../../constants/tanstack.js";
+import {
+  TANSTACK_ROUTE_PROPERTY_INDEX,
+  TANSTACK_ROUTE_PROPERTY_ORDER,
+} from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { getRouteOptionsObject } from "./utils/get-route-options-object.js";
@@ -28,12 +31,12 @@ export const tanstackStartRoutePropertyOrder = defineRule({
       }
 
       const sensitiveProperties = orderedPropertyNames.filter((propertyName) =>
-        TANSTACK_ROUTE_PROPERTY_ORDER.includes(propertyName),
+        TANSTACK_ROUTE_PROPERTY_INDEX.has(propertyName),
       );
 
       let lastIndex = -1;
       for (const propertyName of sensitiveProperties) {
-        const currentIndex = TANSTACK_ROUTE_PROPERTY_ORDER.indexOf(propertyName);
+        const currentIndex = TANSTACK_ROUTE_PROPERTY_INDEX.get(propertyName) ?? -1;
         if (currentIndex < lastIndex) {
           const expectedBefore = TANSTACK_ROUTE_PROPERTY_ORDER[lastIndex];
           context.report({

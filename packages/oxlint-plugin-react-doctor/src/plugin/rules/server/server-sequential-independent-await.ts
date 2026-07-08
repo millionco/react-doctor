@@ -1,6 +1,7 @@
 import { collectPatternNames } from "../../utils/collect-pattern-names.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
+import { getImportedNameFromModule } from "../../utils/find-import-source-for-name.js";
 import { isAuthGuardName } from "../../utils/is-auth-guard-name.js";
 import { tokenizeIdentifierWords } from "../../utils/tokenize-identifier-words.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -79,45 +80,50 @@ const GATE_LEADING_VERBS = new Set([
   "authenticate",
 ]);
 
-// True when `name` is bound by an earlier statement in the same block to
-// a non-awaited expression — i.e. a promise that was *started* before
-// this await. `const p = fetchUser(); ... const user = await p;` is
-// already concurrent, so awaiting `p` is not a waterfall.
-const isStartedPromiseBinding = (
-  name: string,
-  statements: EsTreeNode[],
-  beforeIndex: number,
-): boolean => {
-  for (let index = 0; index < beforeIndex; index++) {
-    const statement = statements[index];
-    if (!isNodeOfType(statement, "VariableDeclaration")) continue;
-    for (const declarator of statement.declarations ?? []) {
-      if (!isNodeOfType(declarator.id, "Identifier")) continue;
-      if (declarator.id.name !== name) continue;
-      if (declarator.init && !isNodeOfType(declarator.init, "AwaitExpression")) return true;
-    }
-  }
-  return false;
-};
-
-// True when the declaration awaits a bare Identifier that was started as
-// a promise earlier in the same block (`await postsPromise`). Such an
-// await is already running concurrently, so it is not the second leg of
-// a waterfall.
-const declarationAwaitsStartedPromise = (
-  declaration: EsTreeNode,
-  statements: EsTreeNode[],
-  declarationIndex: number,
-): boolean => {
+// True when the declaration awaits an already-existing promise value
+// rather than starting new work — a bare Identifier (`await postsPromise`)
+// or a member read (`await props.params` in Next.js 15). The promise was
+// created before this statement ran, so the await is not the second leg
+// of a waterfall.
+const declarationAwaitsExistingPromise = (declaration: EsTreeNode): boolean => {
   if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
   for (const declarator of declaration.declarations ?? []) {
     const init = declarator.init;
     if (!isNodeOfType(init, "AwaitExpression")) continue;
     const argument = init.argument;
-    if (
-      isNodeOfType(argument, "Identifier") &&
-      isStartedPromiseBinding(argument.name, statements, declarationIndex)
-    ) {
+    if (isNodeOfType(argument, "Identifier") || isNodeOfType(argument, "MemberExpression")) {
+      return true;
+    }
+  }
+  return false;
+};
+
+// Next.js request-scoped async APIs (`headers()`, `cookies()`,
+// `draftMode()`, `connection()`) and next-intl's server helpers
+// (`getTranslations()`, `getMessages()`, …) resolve from the ambient
+// request context, not the network — wrapping them in `Promise.all`
+// saves nothing.
+const REQUEST_SCOPED_IMPORT_SOURCES = ["next/headers", "next-intl/server"];
+
+const isRequestScopedCallee = (callee: EsTreeNode): boolean => {
+  if (!isNodeOfType(callee, "Identifier")) return false;
+  if (
+    REQUEST_SCOPED_IMPORT_SOURCES.some(
+      (moduleSource) => getImportedNameFromModule(callee, callee.name, moduleSource) !== null,
+    )
+  ) {
+    return true;
+  }
+  return getImportedNameFromModule(callee, callee.name, "next/server") === "connection";
+};
+
+const declarationAwaitsRequestScopedCall = (declaration: EsTreeNode): boolean => {
+  if (!isNodeOfType(declaration, "VariableDeclaration")) return false;
+  for (const declarator of declaration.declarations ?? []) {
+    const init = declarator.init;
+    if (!isNodeOfType(init, "AwaitExpression")) continue;
+    const argument = init.argument;
+    if (isNodeOfType(argument, "CallExpression") && isRequestScopedCallee(argument.callee)) {
       return true;
     }
   }
@@ -165,10 +171,18 @@ export const serverSequentialIndependentAwait = defineRule({
         if (!declarationStartsWithAwait(nextStatement)) continue;
 
         if (declarationReadsAnyName(nextStatement, declaredNames)) continue;
-        // The second await is on a promise started earlier in the block
-        // (`const p = fetchPosts(); … const posts = await p;`) — already
-        // concurrent, so there's no waterfall to flatten.
-        if (declarationAwaitsStartedPromise(nextStatement, statements, statementIndex + 1))
+        // The second await is on a promise that already exists
+        // (`const p = fetchPosts(); … const posts = await p;`,
+        // `await props.params`) — already running, so there's no
+        // waterfall to flatten.
+        if (declarationAwaitsExistingPromise(nextStatement)) continue;
+        // A request-scoped API (`await headers()`, `await getTranslations()`)
+        // resolves from the ambient request context, not the network, so
+        // pairing it with a real fetch is not a waterfall.
+        if (
+          declarationAwaitsRequestScopedCall(currentStatement) ||
+          declarationAwaitsRequestScopedCall(nextStatement)
+        )
           continue;
         // A guard / side-effect gate (`await requireSession()`, `db.connect()`)
         // must run before the next await — its ordering is intentional, not a

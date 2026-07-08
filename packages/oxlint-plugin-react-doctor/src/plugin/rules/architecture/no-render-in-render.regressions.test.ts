@@ -85,7 +85,7 @@ describe("architecture/no-render-in-render — regressions", () => {
 
   // fp-review PR 996: an earlier isStableMethodReceiver carve-out exempted
   // every this.renderX() call, voiding the react-datepicker calendar
-  // must-detect oracle. Class fields (`renderX = () => …`) are per-instance,
+  // must-detect check. Class fields (`renderX = () => …`) are per-instance,
   // so `this.` is not a stability signal — these must fire.
   it("flags a this.render* class-component helper method call", () => {
     const result = run(
@@ -97,7 +97,7 @@ describe("architecture/no-render-in-render — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("flags inline this.renderX() class-field calls (calendar.tsx planted shape)", () => {
+  it("flags inline this.renderX() class-field calls (calendar.tsx mined shape)", () => {
     const result = run(
       `class Calendar extends Component {
         renderCurrentMonth = (date = this.state.date) => (
@@ -192,5 +192,71 @@ describe("architecture/no-render-in-render — regressions", () => {
       `function List(){ const renderRow = (x) => <li>{x}</li>; const local = { renderRow }; const slots = local; return <ul>{slots.renderRow(1)}</ul>; }`,
     );
     expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // Verify wave: render helpers composing other render helpers at MODULE
+  // scope (lobe-ui renderItems.tsx) run outside any component render — no
+  // component identity, state, or memoization to lose.
+  it("does not flag a render* call inside a module-scope render helper", () => {
+    const result = run(
+      `const renderIcon = (icon) => <span className="icon">{icon}</span>;
+      export const renderDropdownMenuItems = (items) =>
+        items.map((item) => <li key={item.key}>{renderIcon(item.icon)}</li>);`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // Verify wave: a module-scope hook-free formatter (bulwarkmail
+  // renderMessage) cannot close over component state; the inline call is
+  // equivalent to inline JSX.
+  it("does not flag a module-scope hook-free formatter called inside a component", () => {
+    const result = run(
+      `function renderMessage(message) {
+        if (!message) return null;
+        return message.split("**").map((seg, i) =>
+          i % 2 === 1 ? <strong key={i}>{seg}</strong> : <React.Fragment key={i}>{seg}</React.Fragment>,
+        );
+      }
+      export function PluginDialogHost({ current }) {
+        return <p>{renderMessage(current.message)}</p>;
+      }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a module-scope render helper that calls hooks", () => {
+    const result = run(
+      `const renderStatus = () => {
+        const [open] = useState(false);
+        return <div>{String(open)}</div>;
+      };
+      export function Panel() {
+        return <div>{renderStatus()}</div>;
+      }`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a component-local render helper called inline", () => {
+    const result = run(
+      `export function Panel({ items }) {
+        const renderRow = (item) => <li>{item.label}</li>;
+        return <ul>{items.map((item) => renderRow(item))}<li>{renderRow(items[0])}</li></ul>;
+      }`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("does not claim a remount or state loss for a plain render-helper call", () => {
+    const result = run(
+      `function Page() {
+        const renderHeader = () => <h1>Title</h1>;
+        return <div>{renderHeader()}</div>;
+      }`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).not.toContain("remount");
+    expect(result.diagnostics[0].message).not.toContain("lose state");
+    expect(result.diagnostics[0].message).toContain("renderHeader()");
   });
 });

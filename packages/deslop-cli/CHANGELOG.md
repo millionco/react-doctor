@@ -1,5 +1,58 @@
 # deslop-cli
 
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies [[`9cb4149`](https://github.com/millionco/react-doctor/commit/9cb414905de7b360d728ca08d45167116a94ee90)]:
+  - deslop-js@0.7.2
+
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - deslop-js@0.7.1
+
+## 0.7.0
+
+### Patch Changes
+
+- Updated dependencies [[`ced746f`](https://github.com/millionco/react-doctor/commit/ced746f518f11e8283d488c4ff31c44e478bb0e5), [`20d81f6`](https://github.com/millionco/react-doctor/commit/20d81f6f26dc8f0562118076f835da2468591d5f), [`ce49250`](https://github.com/millionco/react-doctor/commit/ce4925008d37d7c86a234e6b9c7c2c3afe873405)]:
+  - deslop-js@0.7.0
+
+## 0.6.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - deslop-js@0.6.3
+
+## 0.6.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - deslop-js@0.6.2
+
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - deslop-js@0.6.1
+
+## 0.6.0
+
+### Patch Changes
+
+- [#936](https://github.com/millionco/react-doctor/pull/936) [`ba2af1b`](https://github.com/millionco/react-doctor/commit/ba2af1b7faa5ef4e1ae39e6c3b786259fba23f1f) Thanks [@aidenybai](https://github.com/aidenybai)! - Update the license to MIT with additional restrictions: the software may not be used as training, fine-tuning, or evaluation data for machine-learning models or AI systems, nor sold or resold as a commercial product or service (e.g. a paid API, SaaS, or hosted/managed service) whose value derives substantially from the software, without prior written permission (contact founders@million.dev). Each version's additional restrictions expire on the second anniversary of its release, after which that version is available under the standard MIT License (an FSL-style grant of future license). Each published package now ships its own up-to-date `LICENSE` file so the terms travel with the tarball.
+
+  The `react-doctor` CLI also now prints a one-time notice (once per run) when it detects it is running inside an AI/ML training pipeline or agent sandbox, pointing to the license terms.
+
+- Updated dependencies [[`ba2af1b`](https://github.com/millionco/react-doctor/commit/ba2af1b7faa5ef4e1ae39e6c3b786259fba23f1f), [`b69f4a7`](https://github.com/millionco/react-doctor/commit/b69f4a75360ad17d1d149aeb9de16835e792606a), [`a7ad969`](https://github.com/millionco/react-doctor/commit/a7ad969e5621ce1f61422b9bf578da600220d3e2), [`03b7a5f`](https://github.com/millionco/react-doctor/commit/03b7a5f79e50d42f1d4f1aaddb2587605c8edde0), [`7f9e7f4`](https://github.com/millionco/react-doctor/commit/7f9e7f42832f40a32d7583126c096067f948856f)]:
+  - deslop-js@0.6.0
+
 ## 0.5.8
 
 ### Patch Changes

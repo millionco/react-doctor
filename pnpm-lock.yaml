@@ -162,6 +162,19 @@ importers:
         specifier: ^25.6.0
         version: 25.6.0
 
+  packages/fuzz:
+    dependencies:
+      oxlint-plugin-react-doctor:
+        specifier: workspace:*
+        version: link:../oxlint-plugin-react-doctor
+    devDependencies:
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.6.0
+      cross-env:
+        specifier: ^10.1.0
+        version: 10.1.0
+
   packages/language-server:
     dependencies:
       '@react-doctor/core':

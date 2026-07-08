@@ -51,6 +51,55 @@ describe("tanstack-query/query-no-usequery-for-mutation — regressions", () => 
     expect(diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("stays silent on a POST to a read-named RPC endpoint (jumper get-zap-data shape)", () => {
+    const { diagnostics } = runRule(
+      queryNoUseQueryForMutation,
+      "const r = useQuery({ queryKey: ['zapData'], queryFn: () => fetch(`${apiBaseUrl}/zaps/get-zap-data`, { method: 'POST', body: JSON.stringify({ chain }) }).then((r) => r.json()) });",
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent on a polled query with refetchInterval (jumper routes-quote shape)", () => {
+    const { diagnostics } = runRule(
+      queryNoUseQueryForMutation,
+      `const POST_ENDPOINT = 'https://li.quest/v1/advanced/routes';
+      const r = useQuery({
+        queryKey: ['SeiWalletLinking'],
+        queryFn: () => fetch(POST_ENDPOINT, { method: 'POST', body: JSON.stringify(payload) }).then((r) => r.json()),
+        refetchInterval: 1000 * 60 * 60,
+      });`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a POST to a write-named endpoint even with refetchInterval: false", () => {
+    const { diagnostics } = runRule(
+      queryNoUseQueryForMutation,
+      `const r = useQuery({
+        queryKey: ['x'],
+        queryFn: () => fetch('/api/users/create', { method: 'POST', body }),
+        refetchInterval: false,
+      });`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a DELETE to a read-named endpoint (only POST gets the RPC-read pass)", () => {
+    const { diagnostics } = runRule(
+      queryNoUseQueryForMutation,
+      `const r = useQuery({ queryKey: ['x'], queryFn: () => fetch('/api/get-user', { method: 'DELETE' }) });`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a POST whose URL merely contains a read word inside a longer segment", () => {
+    const { diagnostics } = runRule(
+      queryNoUseQueryForMutation,
+      `const r = useQuery({ queryKey: ['x'], queryFn: () => fetch('/api/gettysburg/update', { method: 'POST', body }) });`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags a statically visible GraphQL mutation POSTed inside useQuery", () => {
     const { diagnostics } = runRule(
       queryNoUseQueryForMutation,

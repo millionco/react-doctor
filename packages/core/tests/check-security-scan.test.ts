@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { checkSecurityScan } from "@react-doctor/core";
+import { checkSecurityScan, checkSecurityScanCooperative } from "@react-doctor/core";
 import type { Diagnostic } from "@react-doctor/core";
 import { REACT_DOCTOR_RULES } from "oxlint-plugin-react-doctor";
 
@@ -233,6 +233,17 @@ describe("checkSecurityScan", () => {
 
     it("stays quiet on a hardened app with scoped rules and public-only browser config", () => {
       expect(checkSecurityScan(path.join(FIXTURES_DIRECTORY, "safe-hardened-app"))).toEqual([]);
+    });
+  });
+
+  describe("cooperative driver", () => {
+    it("produces the same diagnostics, in the same order, as the sync driver", async () => {
+      const fixtureDirectory = path.join(FIXTURES_DIRECTORY, "eva-mintlify-docs-platform");
+      const syncDiagnostics = checkSecurityScan(fixtureDirectory);
+      expect(syncDiagnostics.length).toBeGreaterThan(0);
+      await expect(checkSecurityScanCooperative(fixtureDirectory)).resolves.toEqual(
+        syncDiagnostics,
+      );
     });
   });
 
@@ -1524,7 +1535,7 @@ alter table data enable row level security;
   it("still reports timing-unsafe signature comparisons", () => {
     writeFile(
       "src/webhook-crypto.ts",
-      `if (signature !== expectedSignature) throw new Error("bad");`,
+      `import { createHmac } from "node:crypto";\nconst expectedSignature = createHmac("sha256", secret).update(body).digest("hex");\nif (signature !== expectedSignature) throw new Error("bad");`,
     );
 
     expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("insecure-crypto-risk");

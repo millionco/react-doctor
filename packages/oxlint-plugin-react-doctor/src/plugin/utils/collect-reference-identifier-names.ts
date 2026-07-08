@@ -100,9 +100,11 @@ const collectScopedReferenceIdentifierNames = (
     return;
   }
   if (typeof node.type === "string" && node.type.startsWith("TS")) return;
-  for (const [key, child] of Object.entries(node)) {
+  const nodeRecord = node as unknown as Record<string, unknown>;
+  for (const key of Object.keys(nodeRecord)) {
     if (key === "parent") continue;
     if (TYPE_POSITION_CHILD_KEYS.has(key)) continue;
+    const child = nodeRecord[key];
     if (Array.isArray(child)) {
       for (const item of child) {
         if (isAstNode(item)) collectScopedReferenceIdentifierNames(item, into, shadowed);

@@ -1,6 +1,5 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { ScanFinding } from "../../utils/file-scan.js";
-import { escapeRegExp } from "./utils/escape-reg-exp.js";
 import { getLocationAtIndex } from "./utils/get-location-at-index.js";
 import { isSupabaseMigrationPath } from "./utils/is-supabase-migration-path.js";
 import { sanitizeSqlForScan } from "./utils/sanitize-sql-for-scan.js";
@@ -8,22 +7,54 @@ import { sanitizeSqlForScan } from "./utils/sanitize-sql-for-scan.js";
 // A `create table` for a public-schema table — the only schema PostgREST
 // exposes to the anon key. Unqualified names default to `public`, so they
 // count; internal/Supabase-managed schemas (`auth.`, `storage.`, a `private.`
-// schema, …) are skipped via the negative lookahead. Requiring `(` or `as`
+// schema, …) are skipped via the negative lookahead. Schema qualifiers may be
+// quoted (`"public"."notes"` — the form `supabase db diff` generates), so both
+// the lookahead and the `public.` prefix accept quotes. Requiring `(` or `as`
 // after the name keeps `-- create table …` SQL comments and prose out of the
 // match. Group 1 captures the table name for the per-table RLS check.
 const CREATE_PUBLIC_TABLE_PATTERN =
-  /create\s+(?:unlogged\s+)?table\s+(?:if\s+not\s+exists\s+)?(?!(?:auth|storage|realtime|vault|extensions|graphql|graphql_public|pgbouncer|net|supabase_functions|supabase_migrations|cron|pgsodium|pgmq|information_schema|pg_catalog|pg_temp|private|internal)\s*\.)(?:public\s*\.\s*)?["`]?([A-Za-z_][\w$]*)["`]?(?:\s*\(|\s+as\b)/gi;
+  /create\s+(?:unlogged\s+)?table\s+(?:if\s+not\s+exists\s+)?(?!["`]?(?:auth|storage|realtime|vault|extensions|graphql|graphql_public|pgbouncer|net|supabase_functions|supabase_migrations|cron|pgsodium|pgmq|information_schema|pg_catalog|pg_temp|private|internal)["`]?\s*\.)(?:["`]?public["`]?\s*\.\s*)?["`]?([A-Za-z_][\w$]*)["`]?(?:\s*\(|\s+as\b)/gi;
 
 // Only `alter table <name> enable row level security` makes a public table
 // safe. A `create policy` alone does NOT — policies are inert until RLS is
 // enabled — so RLS must be checked per table rather than file-wide (a sibling
 // table enabling RLS must not vouch for this one). The enable keyword must
 // follow the table name directly so a nearby unrelated `enable` cannot match.
-const enableRlsForTablePattern = (tableName: string): RegExp =>
-  new RegExp(
-    `alter\\s+table\\s+(?:if\\s+exists\\s+)?(?:only\\s+)?(?:public\\s*\\.\\s*)?["\`]?${escapeRegExp(tableName)}["\`]?\\s+(?:force\\s+)?enable\\s+row\\s+level\\s+security`,
-    "i",
-  );
+// One global pass collects every enable's (table, index) pair, replacing a
+// per-created-table RegExp compile + tail slice.
+const ENABLE_RLS_PATTERN =
+  /alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?(?:["`]?public["`]?\s*\.\s*)?["`]?([A-Za-z_][\w$]*)["`]?\s+(?:force\s+)?enable\s+row\s+level\s+security/gi;
+
+// Any occurrence of the enable phrase, attributable to a table or not. After
+// sanitizing, the phrase survives only in live DDL or in EXECUTE'd dynamic
+// SQL. When it appears more often than the static per-table pattern matched,
+// the extra occurrences are dynamic enables — the common catch-all loop
+// `execute format('alter table %I enable row level security', tablename)`
+// over pg_tables — whose target names cannot be resolved statically, so the
+// per-table check would flag every table the loop actually covers.
+const ENABLE_RLS_KEYWORD_PATTERN = /\benable\s+row\s+level\s+security\b/gi;
+
+interface EnableRlsScanResult {
+  readonly lastEnableIndexByTable: Map<string, number>;
+  readonly staticEnableCount: number;
+}
+
+const collectEnableRls = (content: string): EnableRlsScanResult => {
+  const lastEnableIndexByTable = new Map<string, number>();
+  let staticEnableCount = 0;
+  for (const match of content.matchAll(ENABLE_RLS_PATTERN)) {
+    const tableName = match[1];
+    if (tableName === undefined) continue;
+    staticEnableCount += 1;
+    lastEnableIndexByTable.set(tableName.toLowerCase(), match.index);
+  }
+  return { lastEnableIndexByTable, staticEnableCount };
+};
+
+const hasDynamicEnableRls = (content: string, staticEnableCount: number): boolean => {
+  const keywordOccurrences = content.match(ENABLE_RLS_KEYWORD_PATTERN);
+  return (keywordOccurrences?.length ?? 0) > staticEnableCount;
+};
 
 export const supabaseTableMissingRls = defineRule({
   id: "supabase-table-missing-rls",
@@ -44,6 +75,8 @@ export const supabaseTableMissingRls = defineRule({
     if (!/create\s+(?:unlogged\s+)?table/i.test(content)) return [];
 
     const findings: ScanFinding[] = [];
+    const { lastEnableIndexByTable, staticEnableCount } = collectEnableRls(content);
+    if (hasDynamicEnableRls(content, staticEnableCount)) return [];
     CREATE_PUBLIC_TABLE_PATTERN.lastIndex = 0;
     for (
       let match = CREATE_PUBLIC_TABLE_PATTERN.exec(content);
@@ -54,8 +87,9 @@ export const supabaseTableMissingRls = defineRule({
       if (tableName === undefined) continue;
       // The enable must come AFTER this `create table` — an `alter table if
       // exists <name> enable …` before it is a no-op on a not-yet-created
-      // table, so only scan from the create position onward.
-      if (enableRlsForTablePattern(tableName).test(content.slice(match.index))) continue;
+      // table, so only the latest same-name enable position matters.
+      const lastEnableIndex = lastEnableIndexByTable.get(tableName.toLowerCase());
+      if (lastEnableIndex !== undefined && lastEnableIndex >= match.index) continue;
       const location = getLocationAtIndex(content, match.index);
       findings.push({
         message:

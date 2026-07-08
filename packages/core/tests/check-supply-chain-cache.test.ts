@@ -105,6 +105,24 @@ describe("supply-chain on-disk cache", () => {
     expect(second).toEqual(first); // advisory still produced from the fresh fetch
   });
 
+  it("prunes cache files past the TTL so stale purls don't accumulate across CI restores", async () => {
+    stubSocketFetch();
+    await runCheck();
+    const cacheFiles = walkCacheFiles(cacheDirectory);
+    expect(cacheFiles.length).toBeGreaterThan(0);
+
+    // Simulate an entry for a purl no run looks up anymore (a bumped or
+    // removed dependency) whose mtime is past the 24h TTL.
+    const staleFile = path.join(path.dirname(cacheFiles[0]), "stale-purl.json");
+    fs.writeFileSync(staleFile, JSON.stringify({ fetchedAtMs: 0, body: "{}" }));
+    const expiredDate = new Date(Date.now() - 48 * 60 * 60 * 1_000);
+    fs.utimesSync(staleFile, expiredDate, expiredDate);
+
+    await runCheck();
+    expect(fs.existsSync(staleFile)).toBe(false);
+    expect(walkCacheFiles(cacheDirectory).length).toBeGreaterThan(0); // live entries survive
+  });
+
   it("re-fetches every run when REACT_DOCTOR_NO_CACHE is set (cache bypassed)", async () => {
     process.env["REACT_DOCTOR_NO_CACHE"] = "1";
     const fetchMock = stubSocketFetch();

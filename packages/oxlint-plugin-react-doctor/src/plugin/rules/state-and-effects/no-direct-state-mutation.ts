@@ -6,6 +6,7 @@ import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectUseStateBindings } from "./utils/collect-use-state-bindings.js";
@@ -44,6 +45,9 @@ const producesPlainStateValue = (expression: EsTreeNode): boolean => {
     return true;
   }
   if (isNullOrUndefinedExpression(unwrapped)) return true;
+  if (isNodeOfType(unwrapped, "MemberExpression") && getRootIdentifierName(unwrapped) === "props") {
+    return true;
+  }
   return isPlainDataProducerCall(unwrapped);
 };
 
@@ -52,17 +56,19 @@ const producesPlainStateValue = (expression: EsTreeNode): boolean => {
 //   - object / array literals, incl. TS wrappers (`[] as Item[]`, `{} satisfies X`)
 //   - `null` / `undefined` / no argument — the value arrives later through the
 //     setter, and mutating it in place still never redraws (the wangeditor
-//     `const [editor] = useState(null)` + `editor.field = fn` bench bug)
+//     `const [editor] = useState(null)` + `editor.field = fn` bug)
 //   - plain-data producers: `Array(...)`, `Array.from(...)`, `Array.of(...)`,
 //     `structuredClone(...)` and method chains on them
+//   - reads off the `props` bag (`useState(props.initialItems)`) — props are
+//     render data by convention
 //   - lazy initializers whose top-level return produces any of the above — a
 //     return nested inside another function belongs to that inner scope
 // Everything else (`new TrackQueue()`, `createEditor(el)`, another binding)
 // is treated as an opaque instance whose fields and methods are its
 // imperative API, not render state. That exemption also skips plain data
-// flowing in from props or helper calls (`useState(props.initialItems)`,
-// `useState(getDefaultFilters())`) — a deliberate, known false-negative
-// trade-off until receiver typing can separate the two.
+// flowing in from helper calls (`useState(getDefaultFilters())`) — a
+// deliberate, known false-negative trade-off until receiver typing can
+// separate the two.
 const initializerMarksPlainState = (initializerArgument: EsTreeNode | undefined): boolean => {
   if (!initializerArgument) return true;
   const unwrapped = stripParenExpression(initializerArgument);
@@ -80,6 +86,32 @@ const initializerMarksPlainState = (initializerArgument: EsTreeNode | undefined)
     );
   }
   return producesPlainStateValue(unwrapped);
+};
+
+// Setter names passed straight to a JSX `ref` attribute (`ref={setNode}`) are
+// callback refs, so their paired state holds a DOM element / component
+// instance — not React render data. Writing to its fields
+// (`node.dataset.x = ...`, `node.style.x = ...`) is deliberate imperative DOM
+// work, not a lost state update, so those bindings must not be treated as
+// plain-object state.
+const collectCallbackRefSetterNames = (componentBody: EsTreeNode): Set<string> => {
+  const callbackRefSetterNames = new Set<string>();
+  walkAst(componentBody, (node: EsTreeNode): void => {
+    if (!isNodeOfType(node, "JSXAttribute")) return;
+    const attributeName = node.name;
+    if (
+      isNodeOfType(attributeName, "JSXIdentifier") &&
+      attributeName.name === "ref" &&
+      node.value &&
+      isNodeOfType(node.value, "JSXExpressionContainer")
+    ) {
+      const expression = stripParenExpression(node.value.expression);
+      if (isNodeOfType(expression, "Identifier")) {
+        callbackRefSetterNames.add(expression.name);
+      }
+    }
+  });
+  return callbackRefSetterNames;
 };
 
 const collectFunctionLocalBindings = (functionNode: EsTreeNode): Set<string> => {
@@ -105,29 +137,65 @@ const collectFunctionLocalBindings = (functionNode: EsTreeNode): Set<string> => 
   return localBindings;
 };
 
+// `const books = []` inside a `for`/`if` block (or a `for (const book of
+// ...)` binding) shadows the state name for everything nested in that
+// block, exactly like a function-body declaration does.
+const collectBlockScopedBindings = (node: EsTreeNode): Set<string> => {
+  const blockBindings = new Set<string>();
+  if (isNodeOfType(node, "BlockStatement")) {
+    for (const statement of node.body ?? []) {
+      if (!isNodeOfType(statement, "VariableDeclaration")) continue;
+      for (const declarator of statement.declarations ?? []) {
+        collectPatternNames(declarator.id, blockBindings);
+      }
+    }
+    return blockBindings;
+  }
+  if (isNodeOfType(node, "ForStatement") && isNodeOfType(node.init, "VariableDeclaration")) {
+    for (const declarator of node.init.declarations ?? []) {
+      collectPatternNames(declarator.id, blockBindings);
+    }
+    return blockBindings;
+  }
+  if (
+    (isNodeOfType(node, "ForOfStatement") || isNodeOfType(node, "ForInStatement")) &&
+    isNodeOfType(node.left, "VariableDeclaration")
+  ) {
+    for (const declarator of node.left.declarations ?? []) {
+      collectPatternNames(declarator.id, blockBindings);
+    }
+  }
+  return blockBindings;
+};
+
 // HACK: walks the component AST while tracking which state names are
 // SHADOWED in the current scope by a nested function's params or
 // var/let/const declarations. Without this, a handler that locally
 // re-binds the state name (e.g. `const items = raw.split(",")` then
 // `items.push(x)`) gets falsely flagged. We don't do real scope
 // analysis (would need eslint-utils' ScopeManager) — just lexical
-// param + top-level binding collection per function, which covers the
-// >99% of real-world shadowing cases without false positives.
+// param + per-block binding collection, which covers the >99% of
+// real-world shadowing cases without false positives.
 const walkComponentRespectingShadows = (
   node: EsTreeNode,
   shadowedStateNames: ReadonlySet<string>,
   visit: (child: EsTreeNode, currentlyShadowed: ReadonlySet<string>) => void,
+  isComponentBodyRoot = false,
 ): void => {
   if (!node || typeof node !== "object") return;
 
   let nextShadowedStateNames = shadowedStateNames;
-  if (isFunctionLike(node)) {
-    const localBindings = collectFunctionLocalBindings(node);
-    if (localBindings.size > 0) {
-      const merged = new Set(shadowedStateNames);
-      for (const localName of localBindings) merged.add(localName);
-      nextShadowedStateNames = merged;
-    }
+  // The component body's own declarations ARE the state bindings, not
+  // shadows of them — only nested blocks/functions can shadow.
+  const localBindings = isComponentBodyRoot
+    ? new Set<string>()
+    : isFunctionLike(node)
+      ? collectFunctionLocalBindings(node)
+      : collectBlockScopedBindings(node);
+  if (localBindings.size > 0) {
+    const merged = new Set(shadowedStateNames);
+    for (const localName of localBindings) merged.add(localName);
+    nextShadowedStateNames = merged;
   }
 
   visit(node, shadowedStateNames);
@@ -168,48 +236,51 @@ export const noDirectStateMutation = defineRule({
       // is only React-owned-state mutation when the state plausibly holds
       // React-managed data — see `initializerMarksPlainState` for the exact
       // boundary between plain data and opaque third-party instances.
+      const callbackRefSetterNames = collectCallbackRefSetterNames(componentBody);
       const plainObjectStateValueNames = new Set<string>();
       for (const binding of bindings) {
+        if (callbackRefSetterNames.has(binding.setterName)) continue;
         if (!isNodeOfType(binding.declarator.init, "CallExpression")) continue;
         if (initializerMarksPlainState(binding.declarator.init.arguments?.[0])) {
           plainObjectStateValueNames.add(binding.valueName);
         }
       }
 
-      walkComponentRespectingShadows(
-        componentBody,
-        new Set(),
-        (child: EsTreeNode, currentlyShadowed: ReadonlySet<string>) => {
-          if (isNodeOfType(child, "AssignmentExpression")) {
-            if (!isNodeOfType(child.left, "MemberExpression")) return;
-            const rootName = getRootIdentifierName(child.left);
-            if (!rootName || !stateValueToSetter.has(rootName)) return;
-            if (!plainObjectStateValueNames.has(rootName)) return;
-            if (currentlyShadowed.has(rootName)) return;
-            context.report({
-              node: child,
-              message: `Your screen won't update because you change "${rootName}" in place.`,
-            });
-            return;
-          }
+      const visitMutationCandidate = (
+        child: EsTreeNode,
+        currentlyShadowed: ReadonlySet<string>,
+      ): void => {
+        if (isNodeOfType(child, "AssignmentExpression")) {
+          if (!isNodeOfType(child.left, "MemberExpression")) return;
+          const rootName = getRootIdentifierName(child.left);
+          if (!rootName || !stateValueToSetter.has(rootName)) return;
+          if (!plainObjectStateValueNames.has(rootName)) return;
+          if (currentlyShadowed.has(rootName)) return;
+          context.report({
+            node: child,
+            message: `React can't tell you changed "${rootName}" in place, so this update can be skipped or lost.`,
+          });
+          return;
+        }
 
-          if (isNodeOfType(child, "CallExpression")) {
-            const callee = child.callee;
-            if (!isNodeOfType(callee, "MemberExpression")) return;
-            if (!isNodeOfType(callee.property, "Identifier")) return;
-            const methodName = callee.property.name;
-            if (!MUTATING_ARRAY_METHODS.has(methodName)) return;
-            const rootName = getRootIdentifierName(callee.object);
-            if (!rootName || !stateValueToSetter.has(rootName)) return;
-            if (!plainObjectStateValueNames.has(rootName)) return;
-            if (currentlyShadowed.has(rootName)) return;
-            context.report({
-              node: child,
-              message: `Your screen won't update because .${methodName}() changes "${rootName}" in place.`,
-            });
-          }
-        },
-      );
+        if (isNodeOfType(child, "CallExpression")) {
+          const callee = child.callee;
+          if (!isNodeOfType(callee, "MemberExpression")) return;
+          if (!isNodeOfType(callee.property, "Identifier")) return;
+          const methodName = callee.property.name;
+          if (!MUTATING_ARRAY_METHODS.has(methodName)) return;
+          const rootName = getRootIdentifierName(callee.object);
+          if (!rootName || !stateValueToSetter.has(rootName)) return;
+          if (!plainObjectStateValueNames.has(rootName)) return;
+          if (currentlyShadowed.has(rootName)) return;
+          context.report({
+            node: child,
+            message: `React can't tell .${methodName}() changed "${rootName}" in place, so this update can be skipped or lost.`,
+          });
+        }
+      };
+
+      walkComponentRespectingShadows(componentBody, new Set(), visitMutationCandidate, true);
     };
 
     return {

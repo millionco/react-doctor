@@ -12,7 +12,17 @@
  * `*Handler`), so the cheap escape-then-replace shape is enough
  * and avoids pulling picomatch into the per-file rule path.
  */
+// Unbounded by design: every call site passes user-config strings
+// (settings/forbid entries), never file-derived data, so the distinct
+// pattern set is tiny and fixed per scan. Flagless RegExps carry no
+// lastIndex state, so sharing one instance across callers is safe.
+const compiledGlobs = new Map<string, RegExp>();
+
 export const compileGlob = (pattern: string): RegExp => {
+  const cached = compiledGlobs.get(pattern);
+  if (cached) return cached;
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replaceAll("*", ".*");
-  return new RegExp(`^${escaped}$`);
+  const compiled = new RegExp(`^${escaped}$`);
+  compiledGlobs.set(pattern, compiled);
+  return compiled;
 };

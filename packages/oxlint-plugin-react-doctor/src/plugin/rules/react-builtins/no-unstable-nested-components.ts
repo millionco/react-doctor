@@ -8,7 +8,6 @@ import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
-import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 
 const buildMessage = (parentName: string | null): string => {
   let message =
@@ -277,15 +276,22 @@ const isFirstArgumentOfHocCall = (node: EsTreeNode): boolean => {
   return parent.arguments[0] === node;
 };
 
+const MAP_LIKE_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "map",
+  "forEach",
+  "filter",
+  "flatMap",
+  "reduce",
+  "reduceRight",
+]);
+
 const isReturnOfMapCallback = (node: EsTreeNode): boolean => {
   const parent = node.parent;
   if (!parent) return false;
   if (isNodeOfType(parent, "CallExpression")) {
     const callee = parent.callee;
     if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
-      return ["map", "forEach", "filter", "flatMap", "reduce", "reduceRight"].includes(
-        callee.property.name,
-      );
+      return MAP_LIKE_METHOD_NAMES.has(callee.property.name);
     }
   }
   if (
@@ -296,9 +302,7 @@ const isReturnOfMapCallback = (node: EsTreeNode): boolean => {
     if (callbackParent && isNodeOfType(callbackParent, "CallExpression")) {
       const callee = callbackParent.callee;
       if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
-        return ["map", "forEach", "filter", "flatMap", "reduce", "reduceRight"].includes(
-          callee.property.name,
-        );
+        return MAP_LIKE_METHOD_NAMES.has(callee.property.name);
       }
     }
   }
@@ -360,14 +364,14 @@ const isRenderFlowingReadReference = (identifier: EsTreeNode): boolean => {
         return (
           parent.init === valueNode &&
           isNodeOfType(parent.id, "Identifier") &&
-          isUppercaseName(parent.id.name)
+          isReactComponentName(parent.id.name)
         );
       case "AssignmentExpression": {
         const assignmentTarget = parent.left as EsTreeNode;
         return (
           parent.right === valueNode &&
           isNodeOfType(assignmentTarget, "Identifier") &&
-          isUppercaseName(assignmentTarget.name)
+          isReactComponentName(assignmentTarget.name)
         );
       }
       case "Property": {
@@ -541,7 +545,7 @@ export const noUnstableNestedComponents = defineRule({
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        if (isNodeOfType(node.name, "JSXIdentifier") && isUppercaseName(node.name.name)) {
+        if (isNodeOfType(node.name, "JSXIdentifier") && isReactComponentName(node.name.name)) {
           recordInstantiation(node.name as EsTreeNode, node.name.name);
           return;
         }
@@ -550,7 +554,7 @@ export const noUnstableNestedComponents = defineRule({
         }
       },
       Identifier(node: EsTreeNodeOfType<"Identifier">) {
-        if (!isUppercaseName(node.name)) return;
+        if (!isReactComponentName(node.name)) return;
         if (!isRenderFlowingReadReference(node as EsTreeNode)) return;
         recordInstantiation(node as EsTreeNode, node.name);
       },

@@ -67,6 +67,25 @@ describe("security-scan/url-prefilled-privileged-action — regressions", () => 
     expect(findings).toHaveLength(1);
   });
 
+  // Docs-validation FP wave: `parse*` helpers whitelist the value the same
+  // way the doc's named validators do (parseRoleSearchParam immediately maps
+  // the raw string onto an allowlisted union).
+  it("stays silent when a parse helper wraps the read (AsterDrive parseRoleSearchParam shape)", () => {
+    const findings = runScanRule(urlPrefilledPrivilegedAction, {
+      relativePath: "src/pages/admin/AdminUsersPage.tsx",
+      content: `const role = parseRoleSearchParam(searchParams.get("role"));\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent when a normalize helper wraps the read", () => {
+    const findings = runScanRule(urlPrefilledPrivilegedAction, {
+      relativePath: "src/app/auth/page.tsx",
+      content: `const next = normalizeReturnPath(searchParams.get("next"));\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
   it("still flags a raw receiver-chain read with no wrapping helper", () => {
     const findings = runScanRule(urlPrefilledPrivilegedAction, {
       relativePath: "src/app/auth/route.ts",

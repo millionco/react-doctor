@@ -14,7 +14,7 @@ import { walkAst } from "./walk-ast.js";
 //
 // Unambiguous DOM API method names: these never appear on plain data objects,
 // so a bare name match is safe.
-const DOM_QUERY_MEMBER_NAMES: ReadonlySet<string> = new Set([
+export const DOM_QUERY_MEMBER_NAMES: ReadonlySet<string> = new Set([
   "getBoundingClientRect",
   "getComputedStyle",
   "getElementById",
@@ -86,21 +86,72 @@ const resolvesToRefFactoryCall = (identifier: EsTreeNodeOfType<"Identifier">): b
   return found;
 };
 
-const isRefLikeReceiver = (receiver: EsTreeNode | null | undefined): boolean => {
+const unwrapExpression = (node: EsTreeNode | null | undefined): EsTreeNode | null => {
+  if (!node) return null;
+  if (isNodeOfType(node, "ChainExpression")) return unwrapExpression(node.expression as EsTreeNode);
+  if (isNodeOfType(node, "TSNonNullExpression")) {
+    return unwrapExpression(node.expression as EsTreeNode);
+  }
+  return node;
+};
+
+// `const el = contentRef.current` — a local alias of a ref's `.current`
+// carries the mounted element, so layout reads through the alias
+// (`el.scrollHeight`) are post-mount measurements too.
+const resolvesToRefCurrentAlias = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+  visitedAliasNames: ReadonlySet<string>,
+): boolean => {
+  if (visitedAliasNames.has(identifier.name)) return false;
+  const root = findProgramRoot(identifier);
+  if (!root) return false;
+  const nextVisited = new Set([...visitedAliasNames, identifier.name]);
+  let found = false;
+  walkAst(root, (child: EsTreeNode): boolean | void => {
+    if (found) return false;
+    if (
+      isNodeOfType(child, "VariableDeclarator") &&
+      isNodeOfType(child.id, "Identifier") &&
+      child.id.name === identifier.name
+    ) {
+      const init = unwrapExpression(child.init as EsTreeNode | null);
+      if (
+        init &&
+        isNodeOfType(init, "MemberExpression") &&
+        isNodeOfType(init.property, "Identifier") &&
+        init.property.name === "current" &&
+        isRefLikeReceiver(init.object as EsTreeNode, nextVisited)
+      ) {
+        found = true;
+        return false;
+      }
+    }
+  });
+  return found;
+};
+
+const isRefLikeReceiver = (
+  receiver: EsTreeNode | null | undefined,
+  visitedAliasNames: ReadonlySet<string> = new Set(),
+): boolean => {
   if (!receiver) return false;
   if (isNodeOfType(receiver, "ChainExpression")) {
-    return isRefLikeReceiver(receiver.expression as EsTreeNode);
+    return isRefLikeReceiver(receiver.expression as EsTreeNode, visitedAliasNames);
   }
   if (isNodeOfType(receiver, "TSNonNullExpression")) {
-    return isRefLikeReceiver(receiver.expression as EsTreeNode);
+    return isRefLikeReceiver(receiver.expression as EsTreeNode, visitedAliasNames);
   }
   if (isNodeOfType(receiver, "Identifier")) {
-    return hasRefLikeName(receiver.name) || resolvesToRefFactoryCall(receiver);
+    return (
+      hasRefLikeName(receiver.name) ||
+      resolvesToRefFactoryCall(receiver) ||
+      resolvesToRefCurrentAlias(receiver, visitedAliasNames)
+    );
   }
   if (isNodeOfType(receiver, "MemberExpression") && isNodeOfType(receiver.property, "Identifier")) {
     if (hasRefLikeName(receiver.property.name)) return true;
     if (receiver.property.name === "current")
-      return isRefLikeReceiver(receiver.object as EsTreeNode);
+      return isRefLikeReceiver(receiver.object as EsTreeNode, visitedAliasNames);
   }
   return false;
 };
@@ -117,6 +168,21 @@ export const isPostMountMemberRead = (node: EsTreeNode): boolean => {
   if (DOM_QUERY_MEMBER_NAMES.has(memberName)) return true;
   if (!LAYOUT_MEASUREMENT_MEMBER_NAMES.has(memberName)) return false;
   return isRefLikeReceiver(node.object as EsTreeNode);
+};
+
+// A member read that yields a live measurement VALUE. Layout members measure
+// as plain property reads (`ref.current.scrollHeight`), but DOM query members
+// are METHODS — they only measure when invoked (`window.matchMedia("...")`).
+// A bare method reference (`!!window.matchMedia`) is render-time-knowable, so
+// it does not justify deferring state init to a mount effect.
+export const isMeasurementMemberRead = (node: EsTreeNode): boolean => {
+  if (!isPostMountMemberRead(node)) return false;
+  if (!isNodeOfType(node, "MemberExpression") || !isNodeOfType(node.property, "Identifier")) {
+    return false;
+  }
+  if (!DOM_QUERY_MEMBER_NAMES.has(node.property.name)) return true;
+  const parent = node.parent;
+  return Boolean(parent && isNodeOfType(parent, "CallExpression") && parent.callee === node);
 };
 
 const isPropertyNamePosition = (identifier: EsTreeNode): boolean => {

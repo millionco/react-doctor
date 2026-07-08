@@ -92,21 +92,29 @@ const collectHandlerOnlyWriteStateNames = (
   useStateBindings: Array<{ valueName: string; setterName: string; declarator: EsTreeNode }>,
   handlerBindingNames: Set<string>,
 ): Set<string> => {
+  // One walk records, per setter name, whether any call exists and whether
+  // any of them sits outside an event handler — replacing a full body walk
+  // per useState binding.
+  const setterNames = new Set(useStateBindings.map((binding) => binding.setterName));
+  const settersWithAnyCall = new Set<string>();
+  const settersWithNonHandlerCall = new Set<string>();
+  walkAst(componentBody, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "CallExpression")) return;
+    if (!isNodeOfType(child.callee, "Identifier")) return;
+    const setterName = child.callee.name;
+    if (!setterNames.has(setterName)) return;
+    settersWithAnyCall.add(setterName);
+    if (settersWithNonHandlerCall.has(setterName)) return;
+    if (!isInsideEventHandler(child, handlerBindingNames)) {
+      settersWithNonHandlerCall.add(setterName);
+    }
+  });
   const handlerOnlyWriteStateNames = new Set<string>();
   for (const binding of useStateBindings) {
-    let didFindAnySetterCall = false;
-    let areAllSetterCallsInHandlers = true;
-    walkAst(componentBody, (child: EsTreeNode) => {
-      if (!areAllSetterCallsInHandlers) return false;
-      if (!isNodeOfType(child, "CallExpression")) return;
-      if (!isNodeOfType(child.callee, "Identifier")) return;
-      if (child.callee.name !== binding.setterName) return;
-      didFindAnySetterCall = true;
-      if (!isInsideEventHandler(child, handlerBindingNames)) {
-        areAllSetterCallsInHandlers = false;
-      }
-    });
-    if (didFindAnySetterCall && areAllSetterCallsInHandlers) {
+    if (
+      settersWithAnyCall.has(binding.setterName) &&
+      !settersWithNonHandlerCall.has(binding.setterName)
+    ) {
       handlerOnlyWriteStateNames.add(binding.valueName);
     }
   }

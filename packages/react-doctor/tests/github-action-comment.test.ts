@@ -114,23 +114,27 @@ const buildReport = (overrides: Partial<JsonReport> = {}): JsonReport => {
   };
 };
 
-const runRenderer = (report: JsonReport) => {
+const runRenderer = (report: JsonReport, envOverrides: Record<string, string> = {}) => {
   const tempDirectory = setupTempDirectory();
   const reportPath = path.join(tempDirectory, "report.json");
   const commentPath = path.join(tempDirectory, "comment.md");
   const outputPath = path.join(tempDirectory, "outputs.txt");
   fs.writeFileSync(reportPath, `${JSON.stringify(report)}\n`);
 
-  execFileSync(process.execPath, [RENDER_SCRIPT_PATH, reportPath, commentPath], {
-    env: {
-      ...process.env,
-      GITHUB_OUTPUT: outputPath,
-      GITHUB_RUN_URL: "https://github.com/millionco/react-doctor/actions/runs/123",
-      GITHUB_REPOSITORY: "millionco/react-doctor",
-      GITHUB_SERVER_URL: "https://github.com",
-      REACT_DOCTOR_HEAD_SHA: "cfc8878abcdef0123456789",
-    },
-  });
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    GITHUB_OUTPUT: outputPath,
+    GITHUB_RUN_URL: "https://github.com/millionco/react-doctor/actions/runs/123",
+    GITHUB_REPOSITORY: "millionco/react-doctor",
+    GITHUB_SERVER_URL: "https://github.com",
+    REACT_DOCTOR_HEAD_SHA: "cfc8878abcdef0123456789",
+    ...envOverrides,
+  };
+  // Drop the ambient value so the workflow-file notice is deterministic under
+  // CI (where GITHUB_WORKFLOW_REF is set) unless a test injects its own.
+  if (!("GITHUB_WORKFLOW_REF" in envOverrides)) delete env.GITHUB_WORKFLOW_REF;
+
+  execFileSync(process.execPath, [RENDER_SCRIPT_PATH, reportPath, commentPath], { env });
 
   return {
     comment: fs.readFileSync(commentPath, "utf8"),
@@ -176,6 +180,84 @@ describe("render-github-action-comment", () => {
     expect(outputs).toContain("total-issues=2");
     expect(outputs).toContain("error-count=2");
     expect(outputs).toContain("affected-files=2");
+  });
+
+  it("warns when a compare run degraded to listing every changed-file issue", () => {
+    const { comment } = runRenderer(buildReport({ baselineDegraded: true }));
+
+    // The counts now include pre-existing issues, so the comment must flag the
+    // misconfigured workflow and hand back the fix as a checkout diff.
+    expect(comment).toContain(
+      "<details><summary>⚠️ Warning: this workflow is configured incorrectly. See below to fix.</summary>",
+    );
+    expect(comment).toContain("compares against `main`");
+    // The fix is a diff with surrounding context so the reader can locate the step.
+    expect(comment).toContain("```diff");
+    expect(comment).toContain("       - uses: actions/checkout@v5");
+    expect(comment).toContain("+          fetch-depth: 0");
+    expect(comment).toContain("       - uses: millionco/react-doctor@v2");
+    // The notice sits at the bottom: after the findings, just above the footer.
+    expect(comment.indexOf("configured incorrectly")).toBeGreaterThan(
+      comment.indexOf("**Errors**"),
+    );
+    expect(comment.indexOf("configured incorrectly")).toBeLessThan(
+      comment.indexOf("Reviewed by [React Doctor]"),
+    );
+    // The notice points at the opt-out.
+    expect(comment).toContain("set `silence-missing-baseline-warning: true`");
+  });
+
+  it("omits the warning when silencing is opted into", () => {
+    const { comment } = runRenderer(buildReport({ baselineDegraded: true }), {
+      REACT_DOCTOR_SILENCE_MISSING_BASELINE_WARNING: "true",
+    });
+    // The findings still render; only the config warning is silenced.
+    expect(comment).not.toContain("configured incorrectly");
+    expect(comment).toContain("**Errors**");
+  });
+
+  it("names the workflow file in the degraded notice when the ref is available", () => {
+    const { comment } = runRenderer(buildReport({ baselineDegraded: true }), {
+      GITHUB_WORKFLOW_REF: "millionco/same/.github/workflows/react-doctor.yml@refs/heads/main",
+    });
+    // The filename uses a `<code>` tag, not a backtick span — GitHub doesn't
+    // render inline markdown inside a `<summary>`.
+    expect(comment).toContain(
+      "<details><summary>⚠️ Warning: <code>.github/workflows/react-doctor.yml</code> is configured incorrectly. See below to fix.</summary>",
+    );
+    expect(comment).toContain("in `.github/workflows/react-doctor.yml` so the checkout");
+  });
+
+  it("omits the baseline-degraded warning on a healthy run", () => {
+    const { comment } = runRenderer(buildReport());
+    expect(comment).not.toContain("configured incorrectly");
+  });
+
+  const emptySummary = {
+    errorCount: 0,
+    warningCount: 0,
+    affectedFileCount: 0,
+    totalDiagnosticCount: 0,
+    score: null,
+    scoreLabel: null,
+  };
+
+  it("treats a degraded run that scanned no React files as a normal skip, not a warning", () => {
+    // `baselineDegraded` is set on any `changed` run whose base can't be reached
+    // — including a PR that changed no React-eligible files. That's a normal skip,
+    // not a misconfiguration to warn about (the warning only fires once files are
+    // actually scanned and compared). See the two Bugbot findings on PR #1019.
+    const { comment, outputs } = runRenderer(
+      buildReport({
+        baselineDegraded: true,
+        diagnostics: [],
+        projects: [buildProjectEntry([], { scannedFileCount: 0 })],
+        summary: emptySummary,
+      }),
+    );
+    expect(comment).not.toContain("configured incorrectly");
+    expect(comment).toContain("skipped this pull request");
+    expect(outputs).toContain("skipped=true");
   });
 
   it("renders a baseline report with the new-issue count, fixed count, and commit footer", () => {

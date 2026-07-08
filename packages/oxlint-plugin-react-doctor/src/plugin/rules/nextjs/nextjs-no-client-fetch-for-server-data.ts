@@ -1,4 +1,4 @@
-import { PAGES_DIRECTORY_PATTERN, PAGE_OR_LAYOUT_FILE_PATTERN } from "../../constants/nextjs.js";
+import { PAGE_OR_LAYOUT_FILE_PATTERN } from "../../constants/nextjs.js";
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { containsFetchCall } from "../../utils/contains-fetch-call.js";
 import { defineRule } from "../../utils/define-rule.js";
@@ -6,7 +6,9 @@ import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 export const nextjsNoClientFetchForServerData = defineRule({
@@ -17,7 +19,12 @@ export const nextjsNoClientFetchForServerData = defineRule({
   severity: "warn",
   recommendation:
     "Remove 'use client' and fetch directly in the Server Component. No API round-trip, and secrets stay on the server.",
-  create: (context: RuleContext) => {
+  create: (context: RuleContext): RuleVisitors => {
+    const filename = normalizeFilename(context.filename ?? "");
+    const isPageOrLayoutFile =
+      PAGE_OR_LAYOUT_FILE_PATTERN.test(filename) || isInProjectDirectory(context, "pages");
+    if (!isPageOrLayoutFile) return {};
+
     let fileHasUseClient = false;
 
     return {
@@ -30,17 +37,11 @@ export const nextjsNoClientFetchForServerData = defineRule({
         const callback = getEffectCallback(node);
         if (!callback || !containsFetchCall(callback, { stopAtFunctionBoundary: true })) return;
 
-        const filename = normalizeFilename(context.filename ?? "");
-        const isPageOrLayoutFile =
-          PAGE_OR_LAYOUT_FILE_PATTERN.test(filename) || PAGES_DIRECTORY_PATTERN.test(filename);
-
-        if (isPageOrLayoutFile) {
-          context.report({
-            node,
-            message:
-              "useEffect + fetch in a page/layout makes your users wait through an extra round trip & loading spinner.",
-          });
-        }
+        context.report({
+          node,
+          message:
+            "useEffect + fetch in a page/layout makes your users wait through an extra round trip & loading spinner.",
+        });
       },
     };
   },

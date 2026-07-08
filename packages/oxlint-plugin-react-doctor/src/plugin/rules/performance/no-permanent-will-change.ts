@@ -23,6 +23,29 @@ export const noPermanentWillChange = defineRule({
         const key = isNodeOfType(property.key, "Identifier") ? property.key.name : null;
         if (key !== "willChange") continue;
 
+        // `willChange: isDragging ? "transform" : "auto"` — a conditional or
+        // logical value already scopes the hint to the active animation,
+        // which is exactly the recommended fix. Only static values are
+        // permanent promotions.
+        const value = property.value;
+        if (
+          isNodeOfType(value, "ConditionalExpression") ||
+          isNodeOfType(value, "LogicalExpression")
+        ) {
+          continue;
+        }
+
+        // `willChange: "scroll-position"` on a scroll container: there is
+        // no pre-scroll event to toggle the hint on, so permanence is the
+        // intended usage of that value.
+        if (
+          isNodeOfType(value, "Literal") &&
+          typeof value.value === "string" &&
+          value.value.trim() === "scroll-position"
+        ) {
+          continue;
+        }
+
         context.report({
           node: property,
           message:

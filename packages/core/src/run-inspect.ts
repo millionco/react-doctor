@@ -50,6 +50,7 @@ import {
   ScanDeadlineMs,
   SupplyChainOverlapTimeoutMs,
 } from "./refs.js";
+import { remainingDeadlineBudgetMs } from "./utils/remaining-deadline-budget-ms.js";
 import { resolveDeadCodeTimeout } from "./utils/resolve-dead-code-timeout.js";
 import { resolveLintIncludePaths } from "./resolve-lint-include-paths.js";
 import { Config, type ResolvedConfig } from "./services/config.js";
@@ -143,6 +144,14 @@ export interface InspectInput {
    * `REACT_DOCTOR_DEAD_CODE_OVERLAP=on` override still wins. Defaults to `false`.
    */
   readonly concurrentScan?: boolean;
+  /**
+   * Absolute epoch-millisecond deadline for the scan (the CLI's
+   * `--max-duration` budget resolved against the scan start). Past it the
+   * scan degrades gracefully: un-started lint batches are skipped (surfaced
+   * via `skippedCheckReasons["lint:partial"]` with the file list) and the
+   * dead-code phase is skipped or capped to the remaining budget.
+   */
+  readonly deadlineEpochMs?: number;
 }
 
 export interface InspectOutput {
@@ -229,6 +238,37 @@ export interface InspectOutput {
    */
   readonly lintCacheHitFileCount: number | null;
   readonly lintCacheTotalFileCount: number | null;
+  /**
+   * Sidecar lint cache outcome for the lint pass: cache-hit files whose
+   * cross-file diagnostics replayed from the sidecar store, and the hits
+   * considered. Both `null` when the sidecar cache was disabled or bypassed
+   * (per-file cache off, `REACT_DOCTOR_NO_SIDECAR_CACHE`, no bounded
+   * cross-file rule enabled). Fed to the Sentry wide event as
+   * `lint.sidecarReplayRatio`.
+   */
+  readonly lintSidecarReplayedFileCount: number | null;
+  readonly lintSidecarTotalFileCount: number | null;
+  /**
+   * Dead-code result cache outcome for this scan's dead-code pass: `true`
+   * when the cached result was replayed (the analysis worker never spawned),
+   * `false` on a miss (fresh analysis). `null` when the pass never consulted
+   * the cache — dead-code skipped/disabled, the cache off
+   * (`REACT_DOCTOR_NO_CACHE` / `REACT_DOCTOR_NO_DEAD_CODE_CACHE`), or the
+   * pass discarded by a lint failure. Fed to the Sentry wide event as
+   * `deadCode.cacheHit`.
+   */
+  readonly deadCodeCacheHit: boolean | null;
+  /**
+   * deslop's incremental summary-cache outcome for this scan's dead-code
+   * ANALYSIS: collected files served from cached parse summaries vs freshly
+   * parsed. Both `null` whenever no analysis consulted the incremental store —
+   * a whole-result cache hit (no analysis ran), the cache off, dead-code
+   * skipped/disabled, or the pass discarded by a lint failure. Fed to the
+   * Sentry wide event as `deadCode.summaryCacheHits` /
+   * `deadCode.summaryCacheMisses`.
+   */
+  readonly deadCodeSummaryCacheHits: number | null;
+  readonly deadCodeSummaryCacheMisses: number | null;
   /**
    * Per-rule tallies of diagnostics the pipeline dropped because the user
    * explicitly silenced the rule (config off switches, per-path overrides,
@@ -480,8 +520,8 @@ export const runInspect = <HooksR = never>(
     // SYNCHRONOUSLY before lint, blocking the event loop the whole time. Fork it
     // here (before lint) and join it just before the concat so its main-thread
     // CPU overlaps the subprocess-bound lint pass; `checkSecurityScanCooperative`
-    // yields to the event loop between file chunks so it can't starve lint's
-    // subprocess I/O or concurrently-scanning sibling projects. Skipped in
+    // hands the event loop back on a per-slice time budget so it can't starve
+    // lint's subprocess spawning/draining or sibling projects. Skipped in
     // diff/staged mode like the env checks. The final stable sort makes the
     // concat order irrelevant, so output stays byte-identical to the serial path.
     const securityScanFailedRef = yield* Ref.make(false);
@@ -605,6 +645,12 @@ export const runInspect = <HooksR = never>(
         : deadCodePhaseTimeoutMs;
     const workerCountSuffix =
       scanConcurrency > 1 ? ` ${highlighter.dim(`[~${scanConcurrency} workers]`)}` : "";
+    // Caps a phase timeout to what's left of the `--max-duration` budget;
+    // identity when no deadline was set.
+    const capToDeadline = (phaseTimeoutMs: number): number =>
+      input.deadlineEpochMs === undefined
+        ? phaseTimeoutMs
+        : Math.min(phaseTimeoutMs, remainingDeadlineBudgetMs(input.deadlineEpochMs));
 
     // ── Dead-code plan ────────────────────────────────────────────────
     // Dead-code (deslop reachability) emits only `"warning"`-severity
@@ -658,6 +704,13 @@ export const runInspect = <HooksR = never>(
               rootDirectory: scanDirectory,
               parseConcurrency: deadCodeParseConcurrency,
               workerTimeoutMs: deadCodeTimeout.workerTimeoutMs,
+              onCacheOutcome: (didHitCache) => {
+                deadCodeCacheHit = didHitCache;
+              },
+              onSummaryCacheStats: (stats) => {
+                deadCodeSummaryCacheHits = stats.hits;
+                deadCodeSummaryCacheMisses = stats.misses;
+              },
             })
             .pipe(
               Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
@@ -707,7 +760,9 @@ export const runInspect = <HooksR = never>(
       ? yield* Effect.forkChild(
           buildCollectDeadCode({
             workerTimeoutMs: overlapDeadCodeTimeout.workerTimeoutMs,
-            phaseTimeoutMs: resolveDeadCodePhaseTimeoutMs(overlapDeadCodeTimeout.phaseTimeoutMs),
+            phaseTimeoutMs: capToDeadline(
+              resolveDeadCodePhaseTimeoutMs(overlapDeadCodeTimeout.phaseTimeoutMs),
+            ),
           }),
         )
       : null;
@@ -719,6 +774,11 @@ export const runInspect = <HooksR = never>(
     // or bypassed so the wide event can tell "no cache" from "0% hit".
     let lintCacheHitFileCount: number | null = null;
     let lintCacheTotalFileCount: number | null = null;
+    let lintSidecarReplayedFileCount: number | null = null;
+    let lintSidecarTotalFileCount: number | null = null;
+    let deadCodeCacheHit: boolean | null = null;
+    let deadCodeSummaryCacheHits: number | null = null;
+    let deadCodeSummaryCacheMisses: number | null = null;
 
     const baseLintStream = linterService
       .run({
@@ -744,6 +804,11 @@ export const runInspect = <HooksR = never>(
           lintCacheHitFileCount = cacheHitFileCount;
           lintCacheTotalFileCount = totalConsideredFileCount;
         },
+        onSidecarStats: (sidecarReplayedFileCount, sidecarConsideredFileCount) => {
+          lintSidecarReplayedFileCount = sidecarReplayedFileCount;
+          lintSidecarTotalFileCount = sidecarConsideredFileCount;
+        },
+        deadlineEpochMs: input.deadlineEpochMs,
       })
       .pipe(
         Stream.catchTag("ReactDoctorError", (error: ReactDoctorError) =>
@@ -820,24 +885,39 @@ export const runInspect = <HooksR = never>(
     if (lintFailureState.didFail) {
       if (deadCodeFiber !== null) yield* Fiber.interrupt(deadCodeFiber);
     } else if (shouldRunDeadCode) {
-      yield* scanProgress.update(`Scanned ${scannedFilesLabel}, analyzing dead code...`);
-      // Sequential path: deslop gets the full core budget, and lint has already
-      // reported the true file count — scale the timeout to it so a large repo's
-      // legitimately-long pass isn't reclaimed before it finishes.
-      const sequentialDeadCodeTimeout = resolveDeadCodeTimeout({
-        sourceFileCount: totalFileCount,
-        deadCodeConcurrency: scanConcurrency,
-        fullConcurrency: scanConcurrency,
-      });
-      deadCodeCollected =
-        deadCodeFiber !== null
-          ? yield* Fiber.join(deadCodeFiber)
-          : yield* buildCollectDeadCode({
-              workerTimeoutMs: sequentialDeadCodeTimeout.workerTimeoutMs,
-              phaseTimeoutMs: resolveDeadCodePhaseTimeoutMs(
-                sequentialDeadCodeTimeout.phaseTimeoutMs,
-              ),
-            });
+      const isDeadlineSpent =
+        input.deadlineEpochMs !== undefined &&
+        remainingDeadlineBudgetMs(input.deadlineEpochMs) === 0;
+      if (isDeadlineSpent) {
+        // Max-duration budget spent on lint — skip dead-code so a truncated
+        // run nulls the score consistently whether the pass would have run
+        // sequentially or was overlapped with lint. Interrupt an overlap
+        // fiber rather than joining it past the budget.
+        if (deadCodeFiber !== null) yield* Fiber.interrupt(deadCodeFiber);
+        yield* Ref.set(deadCodeFailure, {
+          didFail: true,
+          reason: "Dead-code analysis skipped — max scan duration reached.",
+        });
+      } else {
+        yield* scanProgress.update(`Scanned ${scannedFilesLabel}, analyzing dead code...`);
+        // Sequential path: deslop gets the full core budget, and lint has already
+        // reported the true file count — scale the timeout to it so a large repo's
+        // legitimately-long pass isn't reclaimed before it finishes.
+        const sequentialDeadCodeTimeout = resolveDeadCodeTimeout({
+          sourceFileCount: totalFileCount,
+          deadCodeConcurrency: scanConcurrency,
+          fullConcurrency: scanConcurrency,
+        });
+        deadCodeCollected =
+          deadCodeFiber !== null
+            ? yield* Fiber.join(deadCodeFiber)
+            : yield* buildCollectDeadCode({
+                workerTimeoutMs: sequentialDeadCodeTimeout.workerTimeoutMs,
+                phaseTimeoutMs: capToDeadline(
+                  resolveDeadCodePhaseTimeoutMs(sequentialDeadCodeTimeout.phaseTimeoutMs),
+                ),
+              });
+      }
     }
     // On lint failure dead-code is discarded entirely, so a failure the forked
     // fiber may have recorded before we interrupted it must not leak into the
@@ -914,13 +994,18 @@ export const runInspect = <HooksR = never>(
       scoreSurface,
       resolvedConfig.config,
     );
-    const score = lintFailureState.didFail
-      ? null
-      : yield* scoreService.compute({
-          diagnostics: scoreDiagnostics,
-          isCi: input.isCi,
-          metadata: scoreMetadata,
-        });
+    // Dead-code findings feed the scored set, so a failed or deadline-skipped
+    // dead-code pass would leave the score computed over an incomplete set —
+    // overstating health. Null it like a lint failure; a pass that was merely
+    // disabled never sets `didFail`, so `--no-deslop` scans keep their score.
+    const score =
+      lintFailureState.didFail || deadCodeFailureState.didFail
+        ? null
+        : yield* scoreService.compute({
+            diagnostics: scoreDiagnostics,
+            isCi: input.isCi,
+            metadata: scoreMetadata,
+          });
     const lintPartialFailures = yield* Ref.get(partialFailuresRef);
     const securityScanFailed = yield* Ref.get(securityScanFailedRef);
 
@@ -947,6 +1032,13 @@ export const runInspect = <HooksR = never>(
       securityScanFailed,
       lintCacheHitFileCount,
       lintCacheTotalFileCount,
+      lintSidecarReplayedFileCount,
+      lintSidecarTotalFileCount,
+      // Lint failure discards the dead-code pass entirely (see
+      // `deadCodeFailureState` above), so its cache outcomes must not leak.
+      deadCodeCacheHit: lintFailureState.didFail ? null : deadCodeCacheHit,
+      deadCodeSummaryCacheHits: lintFailureState.didFail ? null : deadCodeSummaryCacheHits,
+      deadCodeSummaryCacheMisses: lintFailureState.didFail ? null : deadCodeSummaryCacheMisses,
       suppressedRuleCounts: transform.summarizeSuppressions(),
     };
   }).pipe(

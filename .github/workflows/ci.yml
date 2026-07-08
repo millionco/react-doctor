@@ -45,9 +45,9 @@ jobs:
         os: [ubuntu-latest]
         node-version: ["20.19.0", "22.18.0", "24", "25", "26"]
         include:
-          - os: windows-latest
+          - os: blacksmith-8vcpu-windows-2025
             node-version: "22.18.0"
-          - os: macos-latest
+          - os: blacksmith-6vcpu-macos-latest
             node-version: "22.18.0"
     steps:
       - uses: actions/checkout@v5
@@ -68,7 +68,7 @@ jobs:
       # deslop-js/-cli assert on POSIX-separator paths, so their suites are
       # build-only on Windows (mirrors the deslop upstream matrix).
       - run: pnpm test:deslop
-        if: ${{ matrix.os != 'windows-latest' }}
+        if: ${{ matrix.os != 'blacksmith-8vcpu-windows-2025' }}
 
       # lint + typecheck run as dedicated jobs in code-quality.yml; don't pay for
       # them again here.
@@ -130,7 +130,7 @@ jobs:
           pnpm check:published-deps
 
       - name: Smoke test packed CLI install
-        if: ${{ matrix.node-version == '22.18.0' && (matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest') }}
+        if: ${{ matrix.node-version == '22.18.0' && (matrix.os == 'ubuntu-latest' || matrix.os == 'blacksmith-8vcpu-windows-2025') }}
         run: |
           pnpm build
           pnpm smoke:packed-cli-install

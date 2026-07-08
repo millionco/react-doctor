@@ -177,4 +177,33 @@ describe("security-scan/raw-sql-injection-risk — regressions", () => {
     });
     expect(findings).toHaveLength(1);
   });
+
+  // Docs-validation FP wave: the doc says test paths are skipped, but
+  // `__integration__/` directories and Cypress config files fired anyway.
+  it("stays silent on integration-test tooling under __integration__/", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/pages/api/__integration__/util/truncateCliTables.ts",
+      content:
+        "export const truncateCliTables = async (tables) => {\n  const query = `TRUNCATE ${tables.join(', ')} CASCADE;`;\n  await cliPrisma.$executeRawUnsafe(query);\n};\n",
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent in a Cypress test-runner config file", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "cypressIntegration.config.ts",
+      content:
+        "async function truncateTables(client) {\n  const query = `TRUNCATE ${joinedTableNames} CASCADE;`;\n  await client.$executeRawUnsafe(query);\n}\n",
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags executeRawUnsafe in production server code", () => {
+    const findings = runScanRule(rawSqlInjectionRisk, {
+      relativePath: "src/server/users.ts",
+      content:
+        "export const remove = (prisma, id) => prisma.$executeRawUnsafe(`DELETE FROM users WHERE id = '${id}'`);\n",
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

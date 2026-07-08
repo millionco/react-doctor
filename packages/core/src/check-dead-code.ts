@@ -6,14 +6,23 @@ import {
   collectDeadCodeEntryPatterns,
   collectDeadCodeIgnorePatterns,
 } from "./dead-code/collect-dead-code-patterns.js";
+import {
+  collectAnalyzedFileStats,
+  computeDeadCodeCacheKey,
+  lookupDeadCodeResultCache,
+  storeDeadCodeResultCache,
+} from "./dead-code/dead-code-result-cache.js";
 import { withDeadCodeWorkerSlot } from "./dead-code/dead-code-worker-slots.js";
 import {
+  CORE_PACKAGE_VERSION,
+  DEAD_CODE_SUMMARY_CACHE_FILENAME,
   DEAD_CODE_WORKER_MAX_OLD_SPACE_MB,
   DEAD_CODE_WORKER_TIMEOUT_MS,
   MILLISECONDS_PER_SECOND,
   TSCONFIG_FILENAMES,
 } from "./constants.js";
 import { isRecord } from "./utils/is-record.js";
+import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
 import { toCanonicalPath } from "./utils/to-canonical-path.js";
 import { toRelativePath } from "./utils/to-relative-path.js";
 
@@ -57,6 +66,37 @@ interface CheckDeadCodeOptions {
    * `DEAD_CODE_WORKER_TIMEOUT_MS`.
    */
   readonly abortSignal?: AbortSignal;
+  /**
+   * Whether to consult the dead-code caches. Defaults OFF so direct callers
+   * (and existing tests) keep their fresh-analysis semantics; the `DeadCode`
+   * service passes the `DeadCodeResultCacheEnabled` Reference here. Gates
+   * both layers: the whole-project result cache (a hit replays the stored
+   * diagnostics without spawning the analysis worker; a fresh COMPLETE pass
+   * is stored on success — a crashed, timed-out, or aborted worker rejects
+   * before the store) and, on a miss, deslop's incremental summary cache
+   * inside the worker (per-file parse summaries so a changed-files re-analysis
+   * only re-parses what changed).
+   */
+  readonly cacheEnabled?: boolean;
+  /**
+   * Reports the cache outcome (`true` = hit, `false` = miss) once per call.
+   * Not invoked when `cacheEnabled` is off, so the orchestrator's telemetry
+   * distinguishes "no cache" from a miss.
+   */
+  readonly onCacheOutcome?: (didHitCache: boolean) => void;
+  /**
+   * Reports deslop's incremental summary-cache outcome (files served from
+   * cached parse summaries vs freshly parsed) once per ANALYSIS run. Not
+   * invoked on a whole-result cache hit (no analysis ran) or when caching is
+   * off (the worker analyzes without the incremental store), so the
+   * orchestrator's telemetry distinguishes "no cache" from a 0% hit rate.
+   */
+  readonly onSummaryCacheStats?: (stats: DeadCodeSummaryCacheStats) => void;
+}
+
+interface DeadCodeSummaryCacheStats {
+  readonly hits: number;
+  readonly misses: number;
 }
 
 interface DeadCodeWorkerInput {
@@ -67,6 +107,11 @@ interface DeadCodeWorkerInput {
   readonly deslopJsModuleSpecifier: string;
   /** Caps deslop's parse pool via `DESLOP_PARSE_CONCURRENCY` on the child env. */
   readonly parseConcurrency?: number;
+  /**
+   * `DeslopConfig.incrementalCachePath` for the worker's `analyze()` call.
+   * Omitted when caching is off — deslop then analyzes from scratch.
+   */
+  readonly incrementalCachePath?: string;
 }
 
 interface DeadCodeWorkerHandle {
@@ -104,6 +149,7 @@ interface DeadCodeWorkerResult {
   readonly unusedExports: ReadonlyArray<DeadCodeWorkerUnusedExport>;
   readonly unusedDependencies: ReadonlyArray<DeadCodeWorkerUnusedDependency>;
   readonly circularDependencies: ReadonlyArray<DeadCodeWorkerCircularDependency>;
+  readonly summaryCacheStats?: DeadCodeSummaryCacheStats;
 }
 
 interface DeadCodeWorkerError {
@@ -150,6 +196,14 @@ process.stdin.on("end", () => {
     circularDependencies: result.circularDependencies.map((cycle) => ({
       files: cycle.files,
     })),
+    ...(result.incrementalCacheStats
+      ? {
+          summaryCacheStats: {
+            hits: result.incrementalCacheStats.summaryHits,
+            misses: result.incrementalCacheStats.summaryMisses,
+          },
+        }
+      : {}),
   });
 
   const serializeError = (error) =>
@@ -173,6 +227,9 @@ process.stdin.on("end", () => {
         ...(workerInput.ignorePatterns.length > 0
           ? { ignorePatterns: workerInput.ignorePatterns }
           : {}),
+        ...(workerInput.incrementalCachePath
+          ? { incrementalCachePath: workerInput.incrementalCachePath }
+          : {}),
         // We consume only deslop's GRAPH-based findings (unusedFiles, unusedExports,
         // unusedDependencies, circularDependencies). Everything else deslop can compute
         // is pure wasted work for us, and it's the bulk of the runtime:
@@ -183,12 +240,18 @@ process.stdin.on("end", () => {
         //     are the single most expensive pass — duplicate-block detection alone was
         //     ~83s of a ~130s Sentry scan — so skipping them is an ~8.5x dead-code
         //     speedup on a large repo.
-        // Both are provably safe: the consumed graph findings are computed by their own
+        //   - reportRedundancy: the DRY-pattern detectors (duplicate types/constants,
+        //     simplifiable functions, identity wrappers, …) — ~120 ms of discarded
+        //     output per scan, and skipping them lets the incremental cache drop the
+        //     DRY-pattern summary fields (the largest slice of the cache file).
+        // All are provably safe: the consumed graph findings are computed by their own
         // detectors, independent of these passes (confirmed byte-identical on
-        // excalidraw + mui-material + sentry). tsConfigPath stays — the module resolver
-        // needs it for path-alias resolution in the import graph.
+        // excalidraw + mui-material + sentry; re-verified on sentry after the
+        // reportRedundancy flip). tsConfigPath stays — the module resolver needs it
+        // for path-alias resolution in the import graph.
         semantic: { enabled: false },
         reportCodeQuality: false,
+        reportRedundancy: false,
       };
       const result = await analyze(defineConfig(config));
       emit({ ok: true, result: normalizeResult(result) });
@@ -313,15 +376,25 @@ const parseCircularDependencies = (value: unknown): DeadCodeWorkerCircularDepend
   return circularDependencies;
 };
 
+// Telemetry-only, so malformed stats degrade to `undefined` instead of
+// rejecting the scan like the diagnostic fields above do.
+const parseSummaryCacheStats = (value: unknown): DeadCodeSummaryCacheStats | undefined => {
+  if (!isRecord(value)) return undefined;
+  if (typeof value.hits !== "number" || typeof value.misses !== "number") return undefined;
+  return { hits: value.hits, misses: value.misses };
+};
+
 const parseDeadCodeWorkerResult = (value: unknown): DeadCodeWorkerResult => {
   if (!isRecord(value)) {
     throw new Error("Dead-code worker returned an invalid result.");
   }
+  const summaryCacheStats = parseSummaryCacheStats(value.summaryCacheStats);
   return {
     unusedFiles: parseUnusedFiles(value.unusedFiles),
     unusedExports: parseUnusedExports(value.unusedExports),
     unusedDependencies: parseUnusedDependencies(value.unusedDependencies),
     circularDependencies: parseCircularDependencies(value.circularDependencies),
+    ...(summaryCacheStats ? { summaryCacheStats } : {}),
   };
 };
 
@@ -498,19 +571,64 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
 
   const entryPatterns = collectDeadCodeEntryPatterns(rootDirectory);
   const ignorePatterns = collectDeadCodeIgnorePatterns(rootDirectory);
+  const tsConfigPath = resolveTsConfigPath(rootDirectory);
+  const deslopJsModuleSpecifier =
+    options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js");
+
+  // Result cache: replay the last complete pass when nothing the analysis
+  // reads changed. The stat snapshot is taken BEFORE the (long) analysis so a
+  // stored result is verified — and stored — against the tree it started
+  // from; `storeDeadCodeResultCache` re-verifies the stats at store time so
+  // an edit racing the analysis skips the store instead of landing a stale
+  // entry.
+  const fileStatsSnapshot = options.cacheEnabled ? collectAnalyzedFileStats(rootDirectory) : null;
+  const cacheKey =
+    fileStatsSnapshot === null
+      ? null
+      : computeDeadCodeCacheKey({
+          rootDirectory,
+          entryPatterns,
+          ignorePatterns,
+          tsConfigPath,
+          deslopJsModuleSpecifier,
+          coreVersion: CORE_PACKAGE_VERSION,
+        });
+  if (cacheKey !== null && fileStatsSnapshot !== null) {
+    const cachedDiagnostics = lookupDeadCodeResultCache({
+      cacheDirectory: resolveReactDoctorCacheDir(rootDirectory),
+      cacheKey,
+      rootDirectory,
+      currentFileStats: fileStatsSnapshot,
+    });
+    options.onCacheOutcome?.(cachedDiagnostics !== null);
+    if (cachedDiagnostics !== null) return [...cachedDiagnostics];
+  }
+
   // `runDeadCodeWorkerWithTimeout` owns the abort wiring: when the surrounding
   // Effect fiber is interrupted (lint failed / dead-code phase timeout / scan
   // cancelled), `Effect.tryPromise` aborts `options.abortSignal`, which its
   // `settle()` path turns into an immediate worker SIGKILL — rather than
   // orphaning the child until the in-worker timer expires.
+  // The incremental summary cache serves the case the whole-result cache just
+  // missed on: something changed, and the worker should only re-parse what
+  // changed. Same per-project cache directory, same `cacheEnabled` switch
+  // (`REACT_DOCTOR_NO_CACHE` / `REACT_DOCTOR_NO_DEAD_CODE_CACHE`); a
+  // whole-result hit above returns before this line, so it never touches the
+  // incremental store.
+  const incrementalCachePath =
+    options.cacheEnabled === true
+      ? path.join(resolveReactDoctorCacheDir(rootDirectory), DEAD_CODE_SUMMARY_CACHE_FILENAME)
+      : undefined;
+
   const spawnAndRun = (): Promise<unknown> => {
     const workerHandle = (options.createWorker ?? createDeadCodeWorker)({
       rootDirectory,
       entryPatterns,
-      tsConfigPath: resolveTsConfigPath(rootDirectory),
+      tsConfigPath,
       ignorePatterns,
-      deslopJsModuleSpecifier: options.deslopJsModuleSpecifier ?? import.meta.resolve("deslop-js"),
+      deslopJsModuleSpecifier,
       parseConcurrency: options.parseConcurrency,
+      incrementalCachePath,
     });
     return runDeadCodeWorkerWithTimeout(
       workerHandle,
@@ -528,6 +646,9 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
       ? await withDeadCodeWorkerSlot(spawnAndRun, options.abortSignal)
       : await spawnAndRun();
   const result = parseDeadCodeWorkerResult(rawResult);
+  if (result.summaryCacheStats !== undefined) {
+    options.onSummaryCacheStats?.(result.summaryCacheStats);
+  }
   const toRelative = (filePath: string): string => toRelativeFilePath(rootDirectory, filePath);
   const diagnostics: Diagnostic[] = [];
 
@@ -597,6 +718,19 @@ export const checkDeadCode = async (options: CheckDeadCodeOptions): Promise<Diag
       line: 0,
       column: 0,
       category: DEAD_CODE_CATEGORY,
+    });
+  }
+
+  // Only a COMPLETE successful pass reaches this line — a crashed, timed-out,
+  // or aborted worker rejects above — so a stored entry never replays a
+  // truncated result (mirroring `shouldStoreScanPayload`).
+  if (cacheKey !== null && fileStatsSnapshot !== null) {
+    storeDeadCodeResultCache({
+      cacheDirectory: resolveReactDoctorCacheDir(rootDirectory),
+      cacheKey,
+      rootDirectory,
+      snapshotFileStats: fileStatsSnapshot,
+      diagnostics,
     });
   }
 

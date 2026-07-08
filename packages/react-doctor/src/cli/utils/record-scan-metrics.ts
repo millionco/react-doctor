@@ -177,9 +177,11 @@ export const recordScanMetrics = (input: ScanMetricsInput): void => {
     recordDistribution(METRIC.scanScore, result.score.score, {
       attributes: { mode: input.mode },
     });
-  } else if (!input.noScore && !input.didLintFail) {
-    // Score is null despite scoring being on and lint succeeding: the hosted
-    // score API was unreachable from this client.
+  } else if (!input.noScore && !input.didLintFail && !input.didDeadCodeFail) {
+    // Score is null despite scoring being on and every pass succeeding: the
+    // hosted score API was unreachable from this client. Failed passes null
+    // the score deliberately (incomplete diagnostic set), not a reachability
+    // problem.
     recordCount(METRIC.scoreUnavailable, 1, { mode: input.mode });
   }
 

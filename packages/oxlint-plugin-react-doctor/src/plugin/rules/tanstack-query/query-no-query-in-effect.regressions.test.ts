@@ -42,4 +42,12 @@ describe("tanstack-query/query-no-query-in-effect — regressions", () => {
     );
     expect(diagnostics).toHaveLength(0);
   });
+
+  it("flags query.refetch() member calls in the effect body", () => {
+    const { diagnostics } = runRule(
+      queryNoQueryInEffect,
+      `function Todos({ userId }) { const query = useQuery({ queryKey: ["todos"], queryFn: fetchTodos }); useEffect(() => { query.refetch(); }, [userId]); return null; }`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
 });

@@ -37,6 +37,7 @@ export const containsFetchCall = (
     : null;
   let didFindFetchCall = false;
   walkAst(node, (child) => {
+    if (didFindFetchCall) return false;
     if (
       effectInvokedFunctions &&
       child !== node &&
@@ -45,7 +46,10 @@ export const containsFetchCall = (
     ) {
       return false;
     }
-    if (isFetchCall(child)) didFindFetchCall = true;
+    if (isFetchCall(child)) {
+      didFindFetchCall = true;
+      return false;
+    }
   });
   return didFindFetchCall;
 };

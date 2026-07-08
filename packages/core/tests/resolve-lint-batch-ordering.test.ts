@@ -19,8 +19,8 @@ describe("resolveLintBatchOrdering", () => {
     }
   });
 
-  it("defaults to 'arrival' when the env var is unset", () => {
-    expect(resolveLintBatchOrdering()).toBe("arrival");
+  it("defaults to 'cost' when the env var is unset", () => {
+    expect(resolveLintBatchOrdering()).toBe("cost");
   });
 
   it("returns 'cost' for an exact lowercase match", () => {
@@ -28,14 +28,14 @@ describe("resolveLintBatchOrdering", () => {
     expect(resolveLintBatchOrdering()).toBe("cost");
   });
 
-  it("returns 'cost' for an uppercase value (case-insensitive)", () => {
-    process.env[ORDERING_ENV_VAR] = "COST";
-    expect(resolveLintBatchOrdering()).toBe("cost");
+  it("returns 'arrival' for an uppercase value (case-insensitive)", () => {
+    process.env[ORDERING_ENV_VAR] = "ARRIVAL";
+    expect(resolveLintBatchOrdering()).toBe("arrival");
   });
 
-  it("returns 'cost' for a value with surrounding whitespace and mixed case", () => {
-    process.env[ORDERING_ENV_VAR] = "  Cost  ";
-    expect(resolveLintBatchOrdering()).toBe("cost");
+  it("returns 'arrival' for a value with surrounding whitespace and mixed case", () => {
+    process.env[ORDERING_ENV_VAR] = "  Arrival  ";
+    expect(resolveLintBatchOrdering()).toBe("arrival");
   });
 
   it("returns 'arrival' for the explicit 'arrival' value", () => {
@@ -43,13 +43,13 @@ describe("resolveLintBatchOrdering", () => {
     expect(resolveLintBatchOrdering()).toBe("arrival");
   });
 
-  it("returns 'arrival' for an unrecognized value", () => {
+  it("returns 'cost' for an unrecognized value", () => {
     process.env[ORDERING_ENV_VAR] = "nonsense";
-    expect(resolveLintBatchOrdering()).toBe("arrival");
+    expect(resolveLintBatchOrdering()).toBe("cost");
   });
 
-  it("returns 'arrival' for an empty string", () => {
+  it("returns 'cost' for an empty string", () => {
     process.env[ORDERING_ENV_VAR] = "";
-    expect(resolveLintBatchOrdering()).toBe("arrival");
+    expect(resolveLintBatchOrdering()).toBe("cost");
   });
 });

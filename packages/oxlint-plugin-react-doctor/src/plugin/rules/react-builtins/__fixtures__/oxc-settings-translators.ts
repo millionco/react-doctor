@@ -267,6 +267,17 @@ export const TRANSLATORS: Record<
   "no-this-in-sfc": noThisInSfcTranslator,
   "no-multi-comp": (fixture: OxcFixtureLike) =>
     wrapForReactDoctor("noMultiComp", passthroughTopLevelObject(fixture.oxcOptions)),
+  "jsx-no-target-blank": (fixture: OxcFixtureLike) => {
+    const result: Record<string, unknown> = {};
+    const reactDoctor = wrapForReactDoctor(
+      "jsxNoTargetBlank",
+      passthroughTopLevelObject(fixture.oxcOptions),
+    );
+    if (reactDoctor) Object.assign(result, reactDoctor);
+    const reactBlock = oxcSettingsReactBlock(fixture.oxcSettings);
+    if (reactBlock) result.react = reactBlock;
+    return Object.keys(result).length > 0 ? result : null;
+  },
   "prefer-function-component": (fixture: OxcFixtureLike) =>
     wrapForReactDoctor("preferFunctionComponent", passthroughTopLevelObject(fixture.oxcOptions)),
   "display-name": displayNameTranslator,

@@ -1,16 +1,17 @@
 import { spawnSync } from "node:child_process";
 import * as path from "node:path";
 import type { SourceFileEntry } from "../types/index.js";
-import { readDirectoryEntries } from "../project-info/index.js";
-import { GIT_LS_FILES_MAX_BUFFER_BYTES, IGNORED_DIRECTORIES } from "../constants.js";
+import { GIT_LS_FILES_MAX_BUFFER_BYTES } from "../constants.js";
+import { hasIgnoredPathSegment } from "./has-ignored-path-segment.js";
 import { isLintableSourceFile } from "./is-lintable-source-file.js";
 import { isLargeMinifiedFile, statSourceFileSize } from "./is-large-minified-file.js";
+import { walkSourceTreeFiles } from "./walk-source-tree-files.js";
 
 // Stats each candidate once (the same stat the minified gate already paid),
 // drops files that sniff as large minified bundles, and keeps the size so the
-// lint pass can order batches largest-first. Shares its predicate with
-// `countSourceFiles` so the scanned set and the reported source-file count
-// stay in lockstep. A file that can't be stat'd is KEPT (parity with
+// lint pass can order batches largest-first. `countSourceFiles` delegates to
+// `listSourceFilesWithSize`, so the scanned set and the reported source-file
+// count can never diverge. A file that can't be stat'd is KEPT (parity with
 // `isLargeMinifiedFile`'s keep-on-error) with size `0`, so it sorts to the
 // cheap tail.
 const collectSizedSourceFiles = (
@@ -49,33 +50,19 @@ const listSourceFilesViaGit = (rootDirectory: string): string[] | null => {
 
   return result.stdout
     .split("\0")
-    .filter((filePath) => filePath.length > 0 && isLintableSourceFile(filePath));
+    .filter(
+      (filePath) =>
+        filePath.length > 0 && isLintableSourceFile(filePath) && !hasIgnoredPathSegment(filePath),
+    );
 };
 
 const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
   const filePaths: string[] = [];
-  const stack = [rootDirectory];
-
-  while (stack.length > 0) {
-    const currentDirectory = stack.pop()!;
-    const entries = readDirectoryEntries(currentDirectory);
-
-    for (const entry of entries) {
-      const absolutePath = path.join(currentDirectory, entry.name);
-
-      if (entry.isDirectory()) {
-        if (!entry.name.startsWith(".") && !IGNORED_DIRECTORIES.has(entry.name)) {
-          stack.push(absolutePath);
-        }
-        continue;
-      }
-
-      if (entry.isFile() && isLintableSourceFile(entry.name)) {
-        filePaths.push(path.relative(rootDirectory, absolutePath).replace(/\\/g, "/"));
-      }
+  for (const { absolutePath, name } of walkSourceTreeFiles(rootDirectory)) {
+    if (isLintableSourceFile(name)) {
+      filePaths.push(path.relative(rootDirectory, absolutePath).replace(/\\/g, "/"));
     }
   }
-
   return filePaths;
 };
 
@@ -88,7 +75,11 @@ const listSourceFilesViaFilesystem = (rootDirectory: string): string[] => {
 export const listSourceFilesWithSize = (rootDirectory: string): ReadonlyArray<SourceFileEntry> =>
   collectSizedSourceFiles(
     rootDirectory,
-    listSourceFilesViaGit(rootDirectory) ?? listSourceFilesViaFilesystem(rootDirectory),
+    // Sort whichever discovery path ran: the filesystem walk's readdir order is
+    // OS-dependent, and `git ls-files` orders cached vs. untracked entries by
+    // its own rules — sorting here makes both paths enumerate one identical,
+    // repeatable order for the same tree.
+    (listSourceFilesViaGit(rootDirectory) ?? listSourceFilesViaFilesystem(rootDirectory)).sort(),
   );
 
 // Returns every source file under `rootDirectory` (relative paths,

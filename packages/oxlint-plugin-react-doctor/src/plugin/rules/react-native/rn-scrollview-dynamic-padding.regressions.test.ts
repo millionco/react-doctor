@@ -117,6 +117,63 @@ const C = () => <ScrollView contentContainerStyle={{ paddingBottom: EXTRA }} />;
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on a spacing() design-token call", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `import { spacing } from "app/styles/spacing";
+const C = () => <FlatList contentContainerStyle={{ paddingTop: spacing(4), paddingBottom: spacing(6) }} />;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a spacing token member expression", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = () => {
+  const { spacing } = useTheme();
+  return <ScrollView contentContainerStyle={{ paddingTop: spacing.unit10 }} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a theme.spacing token member expression", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = () => {
+  const theme = useTheme();
+  return <ScrollView contentContainerStyle={{ paddingTop: theme.spacing.xl }} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags arithmetic mixing a spacing token with a dynamic inset", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = ({ bottomInset }) => {
+  const { spacing } = useTheme();
+  return <ScrollView contentContainerStyle={{ paddingBottom: spacing.xl + bottomInset }} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a spacing call whose argument is dynamic", () => {
+    const result = runRule(
+      rnScrollviewDynamicPadding,
+      `const C = ({ units }) => {
+  return <ScrollView contentContainerStyle={{ paddingBottom: spacing(units) }} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("stays silent on a negated static const", () => {
     const result = runRule(
       rnScrollviewDynamicPadding,

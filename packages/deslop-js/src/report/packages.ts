@@ -10,26 +10,82 @@ import { matchesPackageImportReference } from "../utils/matches-package-import-r
 import { matchesPackageTokenReference } from "../utils/matches-package-token-reference.js";
 import { findMonorepoRoot } from "../utils/find-monorepo-root.js";
 import { extractExpoConfigPluginEntries } from "../collect/expo-config-plugin-entries.js";
+import type { PackageFactKind, SummaryCache } from "../summary-cache.js";
 
 interface OverrideMapping {
   fromPackage: string;
   toPackage: string;
 }
 
+interface PackageFileGlobOptions {
+  readonly ignore: ReadonlyArray<string>;
+  readonly deep: number;
+  readonly dot?: boolean;
+}
+
+// The stale-package file scans, answered from the summary cache's shared tree
+// walk when one is live (verified byte-identical against fg on real corpora)
+// and by a real fast-glob scan otherwise — including when the search root is
+// not the walk root (a monorepo root above the scanned project).
+const globPackageFiles = (
+  cwd: string,
+  patterns: ReadonlyArray<string>,
+  options: PackageFileGlobOptions,
+  summaryCache: SummaryCache | undefined,
+): string[] =>
+  summaryCache?.matchWalkedFiles({ cwd, patterns, ...options }) ??
+  fg.sync([...patterns], {
+    cwd,
+    absolute: true,
+    onlyFiles: true,
+    ignore: [...options.ignore],
+    deep: options.deep,
+    ...(options.dot === undefined ? {} : { dot: options.dot }),
+  });
+
+const containsPackageName = (content: string, packageName: string): boolean =>
+  content.includes(packageName);
+
+// The per-file content predicates behind the config/docs/rescue scans, served
+// from the summary cache's fact layer when available (a fresh `readFileSync`
+// otherwise). Read failures throw exactly like the raw loops this replaces.
+const matchPackageNamesInFile = (
+  filePath: string,
+  kind: PackageFactKind,
+  names: ReadonlySet<string>,
+  matcher: (content: string, packageName: string) => boolean,
+  summaryCache: SummaryCache | undefined,
+): string[] => {
+  if (summaryCache !== undefined) {
+    return summaryCache.matchPackageNames(filePath, kind, names, matcher);
+  }
+  const content = readFileSync(filePath, "utf-8");
+  const matchedNames: string[] = [];
+  for (const packageName of names) {
+    if (matcher(content, packageName)) matchedNames.push(packageName);
+  }
+  return matchedNames;
+};
+
 interface PackageJsonDependencies {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
 }
 
-const discoverAllPackageJsonPaths = (rootDir: string): string[] => {
+const discoverAllPackageJsonPaths = (
+  rootDir: string,
+  summaryCache: SummaryCache | undefined,
+): string[] => {
   const paths = [join(rootDir, "package.json")];
-  const workspacePackageJsons = fg.sync("**/package.json", {
-    cwd: rootDir,
-    absolute: true,
-    onlyFiles: true,
-    ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**"],
-    deep: 5,
-  });
+  const workspacePackageJsons = globPackageFiles(
+    rootDir,
+    ["**/package.json"],
+    {
+      ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/.git/**"],
+      deep: 5,
+    },
+    summaryCache,
+  );
   for (const workspacePath of workspacePackageJsons) {
     if (workspacePath !== paths[0] && !paths.includes(workspacePath)) {
       paths.push(workspacePath);
@@ -41,6 +97,7 @@ const discoverAllPackageJsonPaths = (rootDir: string): string[] => {
 export const detectStalePackages = (
   graph: DependencyGraph,
   config: DeslopConfig,
+  summaryCache?: SummaryCache,
 ): UnusedDependency[] => {
   const packageJsonPath = resolve(config.rootDir, "package.json");
   let packageJson: PackageJsonDependencies;
@@ -72,7 +129,7 @@ export const detectStalePackages = (
       ? [config.rootDir, monorepoRoot]
       : [config.rootDir];
 
-  const allPackageJsonPaths = discoverAllPackageJsonPaths(config.rootDir);
+  const allPackageJsonPaths = discoverAllPackageJsonPaths(config.rootDir, summaryCache);
   if (monorepoRoot) {
     const monorepoPackageJson = join(monorepoRoot, "package.json");
     if (!allPackageJsonPaths.includes(monorepoPackageJson) && existsSync(monorepoPackageJson)) {
@@ -108,6 +165,7 @@ export const detectStalePackages = (
     config.rootDir,
     declaredNames,
     binToPackage,
+    summaryCache,
   );
   for (const packageName of nxProjectReferenced) usedPackageNames.add(packageName);
 
@@ -120,10 +178,11 @@ export const detectStalePackages = (
       configSearchRoot,
       graph,
       declaredNames,
+      summaryCache,
     );
     for (const packageName of configReferenced) usedPackageNames.add(packageName);
 
-    const tsconfigReferenced = collectTsconfigReferencedPackages(configSearchRoot);
+    const tsconfigReferenced = collectTsconfigReferencedPackages(configSearchRoot, summaryCache);
     for (const packageName of tsconfigReferenced) usedPackageNames.add(packageName);
 
     const { packageNames: expoPluginPackageNames } = extractExpoConfigPluginEntries(
@@ -208,7 +267,11 @@ export const detectStalePackages = (
   }
 
   if (candidateUnused.size > 0) {
-    const sourceFileRescued = scanSourceFilesForPackageImports(config.rootDir, candidateUnused);
+    const sourceFileRescued = scanSourceFilesForPackageImports(
+      config.rootDir,
+      candidateUnused,
+      summaryCache,
+    );
     for (const packageName of sourceFileRescued) {
       usedPackageNames.add(packageName);
       candidateUnused.delete(packageName);
@@ -251,6 +314,15 @@ const hasJsxFiles = (graph: DependencyGraph): boolean =>
     return filePath.endsWith(".tsx") || filePath.endsWith(".jsx");
   });
 
+// Peer relationships knowable WITHOUT an installed node_modules tree, for
+// the same uninstalled-checkout reason as `KNOWN_PACKAGE_BIN_NAMES`: the
+// host app must install these peers for the consumer package to work, so
+// flagging them breaks the consumer.
+const KNOWN_PEER_DEPENDENCY_NAMES = new Map<string, ReadonlyArray<string>>([
+  ["vitest-axe", ["axe-core"]],
+  ["jest-axe", ["axe-core"]],
+]);
+
 const collectPeerSatisfiedPackages = (
   nodeModulesSearchRoots: string[],
   declaredNames: Set<string>,
@@ -260,6 +332,12 @@ const collectPeerSatisfiedPackages = (
 
   for (const installedName of declaredNames) {
     if (!confirmedUsedNames.has(installedName)) continue;
+
+    for (const knownPeerName of KNOWN_PEER_DEPENDENCY_NAMES.get(installedName) ?? []) {
+      if (declaredNames.has(knownPeerName)) {
+        peerSatisfied.add(knownPeerName);
+      }
+    }
 
     const installedPackageJsonPath = findInstalledPackageJsonPath(
       installedName,
@@ -304,17 +382,54 @@ const SHELL_SPLIT_PATTERN = /\s*(?:&&|\|\||[;&|])\s*/;
 const INLINE_ENV_VAR_PATTERN = /^[A-Z_][A-Z0-9_]*=/;
 
 interface BinaryPackageIndex {
-  binToPackage: Map<string, string>;
+  binToPackage: Map<string, Set<string>>;
   packagesProvidingBinary: Set<string>;
 }
+
+// Bin names knowable WITHOUT an installed node_modules tree. Scanned
+// checkouts are frequently uninstalled, so the installed-metadata pass below
+// finds nothing and a script-invoked CLI whose bin differs from its package
+// name gets flagged as unused. These packages' bins can't be derived from
+// their names; the `<name>-cli` → `<name>` convention is derived generically
+// in `staticBinNamesForPackage`. Statically-inferred bins only feed the
+// bin→package lookup (credited when a script actually invokes the bin) — they
+// do NOT mark the package as used by mere presence the way installed bin
+// metadata does, so a genuinely unreferenced CLI dep stays flagged.
+const KNOWN_PACKAGE_BIN_NAMES = new Map<string, ReadonlyArray<string>>([
+  ["@tauri-apps/cli", ["tauri"]],
+  ["@typescript/native-preview", ["tsgo"]],
+  // The browser-flavor packages exist to be driven by the `playwright` CLI
+  // (they download their browser at install time); a `playwright test`
+  // script is their use.
+  ["playwright-chromium", ["playwright"]],
+  ["playwright-firefox", ["playwright"]],
+  ["playwright-webkit", ["playwright"]],
+]);
+
+const staticBinNamesForPackage = (packageName: string): string[] => {
+  const binNames = [...(KNOWN_PACKAGE_BIN_NAMES.get(packageName) ?? [])];
+  const unscopedName = packageName.split("/").pop()!;
+  if (unscopedName.endsWith("-cli") && unscopedName.length > "-cli".length) {
+    binNames.push(unscopedName.slice(0, -"-cli".length));
+  }
+  return binNames;
+};
 
 const buildBinaryPackageIndex = (
   nodeModulesSearchRoots: string[],
   declaredNames: Set<string>,
 ): BinaryPackageIndex => {
-  const binToPackage = new Map<string, string>();
+  const binToPackage = new Map<string, Set<string>>();
   const packagesProvidingBinary = new Set<string>();
+  const addBinMapping = (binaryName: string, packageName: string): void => {
+    const mappedPackages = binToPackage.get(binaryName) ?? new Set<string>();
+    mappedPackages.add(packageName);
+    binToPackage.set(binaryName, mappedPackages);
+  };
   for (const packageName of declaredNames) {
+    for (const staticBinName of staticBinNamesForPackage(packageName)) {
+      addBinMapping(staticBinName, packageName);
+    }
     const packageBinJsonPath = findInstalledPackageJsonPath(packageName, nodeModulesSearchRoots);
     if (!packageBinJsonPath) continue;
     try {
@@ -322,13 +437,13 @@ const buildBinaryPackageIndex = (
       const binPackageJson = JSON.parse(binContent);
       const binField = binPackageJson.bin;
       if (typeof binField === "string" && binField.length > 0) {
-        binToPackage.set(packageName.split("/").pop()!, packageName);
+        addBinMapping(packageName.split("/").pop()!, packageName);
         packagesProvidingBinary.add(packageName);
       } else if (typeof binField === "object" && binField !== null) {
         const binaryNames = Object.keys(binField);
         if (binaryNames.length === 0) continue;
         for (const binaryName of binaryNames) {
-          binToPackage.set(binaryName, packageName);
+          addBinMapping(binaryName, packageName);
         }
         packagesProvidingBinary.add(packageName);
       }
@@ -342,7 +457,7 @@ const buildBinaryPackageIndex = (
 const collectScriptReferencedPackages = (
   packageJsonPath: string,
   declaredNames: Set<string>,
-  binToPackage: Map<string, string>,
+  binToPackage: Map<string, Set<string>>,
 ): Set<string> => {
   const referenced = new Set<string>();
 
@@ -382,7 +497,7 @@ const collectScriptReferencedPackages = (
 const collectCommandReferencedPackages = (
   command: string,
   declaredNames: Set<string>,
-  binToPackage: Map<string, string>,
+  binToPackage: Map<string, Set<string>>,
 ): Set<string> => {
   const referenced = new Set<string>();
 
@@ -405,9 +520,10 @@ const collectCommandReferencedPackages = (
 
     for (const candidateBinary of [binaryToken, effectiveBinary]) {
       if (!candidateBinary) continue;
-      const mappedPackage = binToPackage.get(candidateBinary);
-      if (mappedPackage && declaredNames.has(mappedPackage)) {
-        referenced.add(mappedPackage);
+      for (const mappedPackage of binToPackage.get(candidateBinary) ?? []) {
+        if (declaredNames.has(mappedPackage)) {
+          referenced.add(mappedPackage);
+        }
       }
       if (declaredNames.has(candidateBinary)) {
         referenced.add(candidateBinary);
@@ -468,64 +584,72 @@ const collectConfigReferencedPackages = (
   rootDir: string,
   graph: DependencyGraph,
   declaredNames: Set<string>,
+  summaryCache: SummaryCache | undefined,
 ): Set<string> => {
   const referenced = new Set<string>();
 
+  const addMatchesFromFile = (
+    filePath: string,
+    kind: PackageFactKind,
+    matcher: (content: string, packageName: string) => boolean,
+  ): void => {
+    try {
+      for (const packageName of matchPackageNamesInFile(
+        filePath,
+        kind,
+        declaredNames,
+        matcher,
+        summaryCache,
+      )) {
+        referenced.add(packageName);
+      }
+    } catch {
+      return;
+    }
+  };
+
   for (const module of graph.modules) {
     if (!module.isConfigFile) continue;
-    try {
-      const content = readFileSync(module.fileId.path, "utf-8");
-      for (const packageName of declaredNames) {
-        if (content.includes(packageName)) {
-          referenced.add(packageName);
-        }
-      }
-    } catch {
-      continue;
-    }
+    addMatchesFromFile(module.fileId.path, "substring", containsPackageName);
   }
 
-  const configFiles = fg.sync(CONFIG_FILE_GLOBS, {
-    cwd: rootDir,
-    absolute: true,
-    onlyFiles: true,
-    ignore: ["**/node_modules/**"],
-    dot: true,
-    deep: 3,
-  });
+  const configFiles = globPackageFiles(
+    rootDir,
+    CONFIG_FILE_GLOBS,
+    { ignore: ["**/node_modules/**"], dot: true, deep: 3 },
+    summaryCache,
+  );
 
   for (const configPath of configFiles) {
-    try {
-      const content = readFileSync(configPath, "utf-8");
-      for (const packageName of declaredNames) {
-        if (content.includes(packageName)) {
-          referenced.add(packageName);
-        }
-      }
-    } catch {
-      continue;
-    }
+    addMatchesFromFile(configPath, "substring", containsPackageName);
   }
 
-  const documentationFiles = fg.sync(["**/*.{mdx,md}"], {
-    cwd: rootDir,
-    absolute: true,
-    onlyFiles: true,
-    ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/CHANGELOG.md"],
-    deep: 6,
-  });
+  const documentationFiles = globPackageFiles(
+    rootDir,
+    ["**/*.{mdx,md}"],
+    {
+      ignore: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/CHANGELOG.md"],
+      deep: 6,
+    },
+    summaryCache,
+  );
 
   for (const documentationPath of documentationFiles) {
-    try {
-      const content = readFileSync(documentationPath, "utf-8");
-      for (const packageName of declaredNames) {
-        if (matchesPackageImportReference(content, packageName)) {
-          referenced.add(packageName);
-        }
-      }
-    } catch {
-      continue;
-    }
+    addMatchesFromFile(documentationPath, "importReference", matchesPackageImportReference);
+  }
+
+  // Dot-directory tooling source trees (a dumi docs theme, storybook config
+  // components) import real dependencies but live outside the module graph's
+  // traversal, so their imports must be credited by content scan.
+  const toolingSourceFiles = globPackageFiles(
+    rootDir,
+    ["**/{.dumi,.storybook,.docz,.styleguidist}/**/*.{ts,tsx,js,jsx,mts,mjs}"],
+    { ignore: ["**/node_modules/**"], dot: true, deep: 8 },
+    summaryCache,
+  );
+
+  for (const toolingSourcePath of toolingSourceFiles) {
+    addMatchesFromFile(toolingSourcePath, "importReference", matchesPackageImportReference);
   }
 
   return referenced;
@@ -634,17 +758,17 @@ const collectPackageJsonConfigReferences = (
 const collectNxProjectJsonReferences = (
   rootDir: string,
   declaredNames: Set<string>,
-  binToPackage: Map<string, string>,
+  binToPackage: Map<string, Set<string>>,
+  summaryCache: SummaryCache | undefined,
 ): Set<string> => {
   const referenced = new Set<string>();
 
-  const projectJsonPaths = fg.sync(["project.json", "**/project.json"], {
-    cwd: rootDir,
-    absolute: true,
-    onlyFiles: true,
-    ignore: ["**/node_modules/**", "**/dist/**", "**/build/**"],
-    deep: 5,
-  });
+  const projectJsonPaths = globPackageFiles(
+    rootDir,
+    ["project.json", "**/project.json"],
+    { ignore: ["**/node_modules/**", "**/dist/**", "**/build/**"], deep: 5 },
+    summaryCache,
+  );
 
   for (const projectJsonPath of projectJsonPaths) {
     try {
@@ -688,17 +812,18 @@ const TSCONFIG_GLOBS = [
   "**/tsconfig.*.json",
 ];
 
-const collectTsconfigReferencedPackages = (rootDir: string): Set<string> => {
+const collectTsconfigReferencedPackages = (
+  rootDir: string,
+  summaryCache: SummaryCache | undefined,
+): Set<string> => {
   const referenced = new Set<string>();
 
-  const tsconfigFiles = fg.sync(TSCONFIG_GLOBS, {
-    cwd: rootDir,
-    absolute: true,
-    onlyFiles: true,
-    ignore: ["**/node_modules/**"],
-    dot: false,
-    deep: 4,
-  });
+  const tsconfigFiles = globPackageFiles(
+    rootDir,
+    TSCONFIG_GLOBS,
+    { ignore: ["**/node_modules/**"], dot: false, deep: 4 },
+    summaryCache,
+  );
 
   for (const tsconfigPath of tsconfigFiles) {
     try {
@@ -764,17 +889,39 @@ const SOURCE_FILE_IGNORES = [
 const scanSourceFilesForPackageImports = (
   rootDir: string,
   candidatePackages: Set<string>,
+  summaryCache: SummaryCache | undefined,
 ): Set<string> => {
   const found = new Set<string>();
   if (candidatePackages.size === 0) return found;
 
-  const sourceFiles = fg.sync(SOURCE_FILE_GLOBS, {
-    cwd: rootDir,
-    absolute: true,
-    onlyFiles: true,
-    ignore: SOURCE_FILE_IGNORES,
-    deep: 15,
-  });
+  const sourceFiles = globPackageFiles(
+    rootDir,
+    SOURCE_FILE_GLOBS,
+    { ignore: SOURCE_FILE_IGNORES, deep: 15 },
+    summaryCache,
+  );
+
+  if (summaryCache !== undefined) {
+    // Cached mode queries the FULL candidate set against every file (no
+    // early-shrink) so the per-file fact key stays stable across runs. The
+    // found-set is identical — a candidate is found iff any file matches it.
+    for (const filePath of sourceFiles) {
+      try {
+        for (const packageName of summaryCache.matchPackageNames(
+          filePath,
+          "importReference",
+          candidatePackages,
+          matchesPackageImportReference,
+        )) {
+          found.add(packageName);
+        }
+      } catch {
+        continue;
+      }
+    }
+    for (const packageName of found) candidatePackages.delete(packageName);
+    return found;
+  }
 
   for (const filePath of sourceFiles) {
     if (candidatePackages.size === 0) break;

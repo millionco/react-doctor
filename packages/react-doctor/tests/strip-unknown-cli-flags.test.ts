@@ -102,6 +102,16 @@ describe("stripUnknownCliFlags", () => {
     expect(stripUserArguments([".", "--no-telemetry"])).toEqual([".", "--no-telemetry"]);
   });
 
+  it("keeps the phase opt-out flags so Commander can toggle each scan phase", () => {
+    expect(stripUserArguments([".", "--no-lint", "--no-dead-code", "--no-supply-chain"])).toEqual([
+      ".",
+      "--no-lint",
+      "--no-dead-code",
+      "--no-supply-chain",
+    ]);
+    expect(stripUserArguments([".", "--supply-chain"])).toEqual([".", "--supply-chain"]);
+  });
+
   it("keeps color flags on the version subcommand and drops unknown ones", () => {
     expect(stripUserArguments(["version", "--no-color"])).toEqual(["version", "--no-color"]);
     expect(stripUserArguments(["version", "--color"])).toEqual(["version", "--color"]);

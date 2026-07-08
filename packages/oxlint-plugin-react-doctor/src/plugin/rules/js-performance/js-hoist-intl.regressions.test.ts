@@ -128,4 +128,73 @@ function getFormatter(locale) {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("stays silent on a discarded validity probe inside try/catch", () => {
+    const result = runRule(
+      jsHoistIntl,
+      `const handleSave = async (tz) => {
+  let isValid = false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    isValid = true;
+  } catch { isValid = false; }
+  return isValid;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a USED formatter constructed inside try/catch", () => {
+    const result = runRule(
+      jsHoistIntl,
+      `function fmt(n) {
+  try {
+    return new Intl.NumberFormat('en-US').format(n);
+  } catch {
+    return String(n);
+  }
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on a utility merging a caller options parameter", () => {
+    const result = runRule(
+      jsHoistIntl,
+      `export function formatNumberWithCommas(input, locale = 'en-US', options) {
+  return new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 20,
+    ...options,
+  }).format(input);
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a component spreading a props options object", () => {
+    const result = runRule(
+      jsHoistIntl,
+      `const Price = ({ locale, options, value }) => {
+  const text = new Intl.NumberFormat(locale, { ...options }).format(value);
+  return text;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a utility spreading a LOCAL options object", () => {
+    const result = runRule(
+      jsHoistIntl,
+      `function fmt(n) {
+  const defaults = { maximumFractionDigits: 2 };
+  return new Intl.NumberFormat('en-US', { ...defaults }).format(n);
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

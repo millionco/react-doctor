@@ -11,10 +11,16 @@ import { isNonInteractiveElement } from "../../utils/is-non-interactive-element.
 const buildMessage = (tag: string, role: string): string =>
   `Role \`${role}\` gives \`<${tag}>\` interactive semantics even though the element is noninteractive, so screen reader users get the wrong controls.`;
 
+// Mirrors the upstream `eslint-plugin-jsx-a11y` recommended config for
+// this rule, plus `nav → tablist` (permitted by ARIA in HTML and the
+// standard tabs pattern).
 const DEFAULT_ALLOWED_ROLES: Record<string, ReadonlyArray<string>> = {
-  ul: ["menu", "menubar", "radiogroup", "tablist", "tree", "treegrid"],
-  ol: ["menu", "menubar", "radiogroup", "tablist", "tree", "treegrid"],
-  li: ["menuitem", "menuitemcheckbox", "menuitemradio", "row", "tab", "treeitem"],
+  ul: ["listbox", "menu", "menubar", "radiogroup", "tablist", "tree", "treegrid"],
+  ol: ["listbox", "menu", "menubar", "radiogroup", "tablist", "tree", "treegrid"],
+  li: ["menuitem", "menuitemcheckbox", "menuitemradio", "option", "row", "tab", "treeitem"],
+  table: ["grid"],
+  td: ["gridcell"],
+  nav: ["tablist"],
   fieldset: ["radiogroup", "presentation"],
 };
 
@@ -74,6 +80,11 @@ export const noNoninteractiveElementToInteractiveRole = defineRule({
         if (allowed && allowed.includes(firstRole)) return;
         if (!isNonInteractiveElement(elementType, node)) return;
         if (!isInteractiveRole(firstRole)) return;
+        // A separator is only a widget when focusable; the non-focusable
+        // form is static structure (ARIA window-splitter pattern).
+        if (firstRole === "separator" && !hasJsxPropIgnoreCase(node.attributes, "tabindex")) {
+          return;
+        }
         context.report({
           node: roleAttribute,
           message: buildMessage(elementType, firstRole),

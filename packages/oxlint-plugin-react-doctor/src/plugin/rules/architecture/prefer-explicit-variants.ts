@@ -1,5 +1,6 @@
 import { BOOLEAN_PROP_VARIANT_BRANCH_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
+import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { isBooleanPrefixedPropName } from "../../utils/is-boolean-prefixed-prop-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isComponentDeclaration } from "../../utils/is-component-declaration.js";
@@ -100,6 +101,36 @@ const collectBooleanPropBindings = (param: EsTreeNode | undefined): Set<string> 
   return bindings;
 };
 
+// Icon-library naming conventions: tabler/lucide use an `Icon` prefix
+// (`IconChartBar`), MUI/heroicons an `Icon` suffix (`VolumeUpIcon`).
+const ICON_ELEMENT_NAME_PATTERN = /^Icon[A-Z0-9]|Icon$/;
+
+const getJsxElementLeafName = (node: EsTreeNode): string | null => {
+  if (!isNodeOfType(node, "JSXElement")) return null;
+  const flattenedName = flattenJsxName(node.openingElement.name as EsTreeNode);
+  if (!flattenedName) return null;
+  const segments = flattenedName.split(".");
+  return segments[segments.length - 1];
+};
+
+// Docs-validation FP cluster: two shapes of boolean-driven ternary are
+// display toggles, not "variants jammed into one component":
+//   - same element in both arms (`isEstimate ? <Text>A</Text> : <Text>B</Text>`)
+//     is a content/props pick on ONE component — morally a value pick;
+//   - paired icon swaps (`isOn ? <IconMinus /> : <IconPlus />`) toggle a
+//     leaf visual inside a button, never a component subtree.
+// Distinct components in the arms (`<ThreadHeader /> : <ChannelHeader />`)
+// still count toward the variant-switch threshold.
+const isDisplayToggleSwap = (consequent: EsTreeNode, alternate: EsTreeNode): boolean => {
+  const consequentName = getJsxElementLeafName(consequent);
+  const alternateName = getJsxElementLeafName(alternate);
+  if (!consequentName || !alternateName) return false;
+  if (consequentName === alternateName) return true;
+  return (
+    ICON_ELEMENT_NAME_PATTERN.test(consequentName) && ICON_ELEMENT_NAME_PATTERN.test(alternateName)
+  );
+};
+
 const collectVariantBranchProps = (
   body: EsTreeNode | undefined,
   booleanPropBindings: ReadonlySet<string>,
@@ -122,6 +153,7 @@ const collectVariantBranchProps = (
     const consequent = stripParenExpression(current.consequent);
     const alternate = stripParenExpression(current.alternate);
     if (!isJsxElementOrFragment(consequent) || !isJsxElementOrFragment(alternate)) return;
+    if (isDisplayToggleSwap(consequent, alternate)) return;
     variantBranchProps.add(propName);
   });
   return variantBranchProps;

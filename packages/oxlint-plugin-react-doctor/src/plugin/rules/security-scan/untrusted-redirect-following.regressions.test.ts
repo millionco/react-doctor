@@ -50,4 +50,48 @@ describe("security-scan/untrusted-redirect-following — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  // Docs-validation FP wave: `params.` is request-sourced only as an ambient
+  // route-handler binding; a locally constructed `new URLSearchParams()` is
+  // the code's own data, not caller input.
+  it("stays silent on urls built from a locally constructed URLSearchParams (jaeger client shape)", () => {
+    const content = [
+      "const params = new URLSearchParams();",
+      "params.set('query.serviceName', query.service);",
+      "const url = `${this.apiRoot}/trace-summaries?${params.toString()}`;",
+      "const response = await fetch(url, { signal: controller.signal });",
+    ].join("\n");
+    const findings = runScanRule(untrustedRedirectFollowing, {
+      relativePath: "src/api/v3/client.ts",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on locally built subsonic ping urls (psysonic fingerprint shape)", () => {
+    const content = [
+      "const params = new URLSearchParams({ u: username, t: token, s: salt, f: 'json' });",
+      "const url = `${restBaseFromUrl(baseUrl)}/ping.view?${params.toString()}`;",
+      "const resp = await fetch(url, { method: 'GET', headers });",
+    ].join("\n");
+    const findings = runScanRule(untrustedRedirectFollowing, {
+      relativePath: "src/utils/server/server-fingerprint.ts",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags urls built from ambient route params without local construction", () => {
+    const content = [
+      "export const GET = async (request, { params }) => {",
+      "  const url = `https://${params.host}/webhook`;",
+      "  return fetch(url);",
+      "};",
+    ].join("\n");
+    const findings = runScanRule(untrustedRedirectFollowing, {
+      relativePath: "app/api/relay/route.ts",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

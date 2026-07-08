@@ -57,6 +57,23 @@ describe("no-direct-state-mutation", () => {
     expect(result.diagnostics[0].message).toContain("editor");
   });
 
+  it("does not flag member assignment on state constructed with new", () => {
+    const result = runRule(
+      noDirectStateMutation,
+      `
+      function CodeBox({ readOnly }) {
+        const [editor, setEditor] = useState(new EditorController());
+        useEffect(() => {
+          editor.options.readOnly = readOnly;
+        }, [editor, readOnly]);
+        return <div ref={(el) => editor.attach(el)} />;
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not flag member assignment on a directly-constructed instance", () => {
     const result = runRule(
       noDirectStateMutation,

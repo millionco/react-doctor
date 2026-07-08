@@ -95,8 +95,6 @@ export const STATELESS_HTML_LEAF_TAGS: ReadonlySet<string> = new Set([
   "br",
   "hr",
   "wbr",
-  "img",
-  "picture",
   "figure",
   "figcaption",
   "label",
@@ -131,6 +129,10 @@ const STATEFUL_HTML_DESCENDANT_TAGS: ReadonlySet<string> = new Set([
   "audio",
   "source",
   "track",
+  // Media with network-load state — reordering index-keyed images
+  // re-fetches and flickers, and can show the wrong image transiently.
+  "img",
+  "picture",
   "iframe",
   "embed",
   "object",
@@ -143,11 +145,39 @@ const STATEFUL_HTML_DESCENDANT_TAGS: ReadonlySet<string> = new Set([
 
 const STATEFUL_DESCENDANT_SCAN_BUDGET = 200;
 
+interface RowContentScanOptions {
+  // Member reads rooted at these names (`{token.text}` where `token` is
+  // the iteration item) are row content that travels with the row.
+  memberRootNames?: ReadonlySet<string>;
+  // Fragments: ANY member read is display text, not external state.
+  allowAnyMemberRead?: boolean;
+  // Bare identifiers treated as row content (item-derived locals like a
+  // recursive renderer's `children`, or the bare item in text runs).
+  bareIdentifierNames?: ReadonlySet<string>;
+  // Calls whose callee roots at these names (`{fn(...)}` where `fn` IS
+  // the iteration item) are renderer-list content.
+  callCalleeRootNames?: ReadonlySet<string>;
+}
+
+const rootIdentifierNameOf = (expression: EsTreeNode): string | null => {
+  let object: EsTreeNode = expression;
+  while (isNodeOfType(object, "MemberExpression")) object = object.object as EsTreeNode;
+  return isNodeOfType(object, "Identifier") ? object.name : null;
+};
+
 // Walks the JSXElement subtree looking for stateful descendants —
 // form controls, media, interactive containers, custom (PascalCase)
 // components, or unknown function-call/identifier-yielding children.
-// Returns true (conservative) when any are found.
-export const containsStatefulDescendant = (jsxElement: EsTreeNode): boolean => {
+// Returns true (conservative) when any are found. Expressions matching
+// `options` are exempt: they are data carried by the row itself, not
+// stateful UI.
+export const containsStatefulDescendant = (
+  jsxElement: EsTreeNode,
+  options: RowContentScanOptions = {},
+): boolean => {
+  const memberRootNames = options.memberRootNames ?? new Set<string>();
+  const bareIdentifierNames = options.bareIdentifierNames ?? new Set<string>();
+  const callCalleeRootNames = options.callCalleeRootNames ?? new Set<string>();
   let budget = STATEFUL_DESCENDANT_SCAN_BUDGET;
   const stack: Array<EsTreeNode> = [jsxElement];
   while (stack.length > 0) {
@@ -178,13 +208,19 @@ export const containsStatefulDescendant = (jsxElement: EsTreeNode): boolean => {
     }
     if (isNodeOfType(node, "JSXExpressionContainer")) {
       const expression = node.expression as EsTreeNode;
-      // Function-call children (`{renderX(...)}`, `{items.map(...)}`,
-      // `{children}`) are unknown — assume stateful.
-      if (
-        isNodeOfType(expression, "CallExpression") ||
-        isNodeOfType(expression, "Identifier") ||
-        isNodeOfType(expression, "MemberExpression")
-      ) {
+      if (isNodeOfType(expression, "MemberExpression")) {
+        if (options.allowAnyMemberRead === true) continue;
+        const rootName = rootIdentifierNameOf(expression);
+        if (rootName !== null && memberRootNames.has(rootName)) continue;
+        return true;
+      }
+      if (isNodeOfType(expression, "Identifier")) {
+        if (bareIdentifierNames.has(expression.name)) continue;
+        return true;
+      }
+      if (isNodeOfType(expression, "CallExpression")) {
+        const callee = expression.callee as EsTreeNode;
+        if (isNodeOfType(callee, "Identifier") && callCalleeRootNames.has(callee.name)) continue;
         return true;
       }
       stack.push(expression);

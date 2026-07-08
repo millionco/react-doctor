@@ -9,6 +9,8 @@ import { areExpressionsStructurallyEqual } from "../../utils/are-expressions-str
 import { walkAst } from "../../utils/walk-ast.js";
 import { findTriggeredSideEffectCalleeName } from "./utils/find-triggered-side-effect-callee-name.js";
 import { hasDocumentClassListMutation } from "./utils/has-document-class-list-mutation.js";
+import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import { hasCleanup } from "./utils/effect/react.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -100,6 +102,20 @@ const hasDependencyMatch = (
     doesGuardMatchDependency(guardExpression, dependencyExpression),
   );
 
+// `if (mode === 'trialregistration') return;` followed by the side effect
+// excludes ONE prop value and runs the effect for every other value —
+// including the initial render. That is default-path data loading keyed to
+// a programmatic prop (the doc's routing FP case), not "fire when the prop
+// flips". Negated equality (`!==`) still gates on reaching a specific
+// value, so it keeps firing.
+const isEqualityToLiteralGuard = (guardExpression: GuardExpression): boolean => {
+  const parent = guardExpression.expression.parent;
+  if (!isNodeOfType(parent, "BinaryExpression")) return false;
+  if (parent.operator !== "===" && parent.operator !== "==") return false;
+  const otherSide = parent.left === guardExpression.expression ? parent.right : parent.left;
+  return isNodeOfType(otherSide, "Literal") || isNodeOfType(otherSide, "TemplateLiteral");
+};
+
 const isStandaloneIdentifier = (node: EsTreeNode): node is EsTreeNodeOfType<"Identifier"> =>
   isNodeOfType(node, "Identifier") &&
   !(
@@ -170,6 +186,14 @@ export const noEffectEventHandler = defineRule({
         const callback = getEffectCallback(node);
         if (!callback) return;
 
+        // An effect that returns a cleanup is synchronizing with an
+        // external system (body scroll lock, abortable fetch, cancellable
+        // subscription) — the cleanup half CANNOT live in an event
+        // handler, so the effect is not simulating one. Every corpus FP
+        // for this rule (prod telemetry review 2026-07) had a cleanup.
+        const analysis = getProgramAnalysis(node);
+        if (analysis && hasCleanup(analysis, node)) return;
+
         const depsNode = node.arguments[1];
         if (!isNodeOfType(depsNode, "ArrayExpression") || !depsNode.elements?.length) return;
 
@@ -198,6 +222,17 @@ export const noEffectEventHandler = defineRule({
           isReturnOnlyStatement(soleStatement.consequent) &&
           hasEventLikeRemainingStatements(statements.slice(1));
         if (!isSingleGuardedEventLikeStatement && !isEarlyReturnGuardedEventLikeBody) return;
+        // Only the early-return shape: there the equality guard EXCLUDES a
+        // value and the side effect is the default path (runs on mount).
+        // In the single-guarded shape an equality test gates ENTERING the
+        // side effect, which is the true-positive "when prop becomes X".
+        if (
+          isEarlyReturnGuardedEventLikeBody &&
+          !isSingleGuardedEventLikeStatement &&
+          matchingPropGuardExpressions.every(isEqualityToLiteralGuard)
+        ) {
+          return;
+        }
 
         const hasUnmatchedGuardExpression = guardExpressions.some(
           (guardExpression) =>

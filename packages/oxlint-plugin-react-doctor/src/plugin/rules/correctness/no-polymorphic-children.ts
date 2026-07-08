@@ -3,7 +3,9 @@ import { isComponentParameterSymbol } from "../../utils/is-component-parameter-s
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 // `const { children } = props` / `const { children } = this.props`: a body
@@ -61,6 +63,98 @@ const resolvesToPropsChildren = (operand: EsTreeNode, scopes: ScopeAnalysis): bo
   return false;
 };
 
+const isJsxProducingCallee = (callee: EsTreeNode): boolean => {
+  const calleeName = isNodeOfType(callee, "Identifier")
+    ? callee.name
+    : isNodeOfType(callee, "MemberExpression") &&
+        !callee.computed &&
+        isNodeOfType(callee.property, "Identifier")
+      ? callee.property.name
+      : null;
+  return calleeName === "createElement" || calleeName === "cloneElement";
+};
+
+const containsRenderOutput = (root: EsTreeNode | null | undefined): boolean => {
+  if (!root) return false;
+  let didFindRenderOutput = false;
+  const visit = (node: EsTreeNode): void => {
+    if (didFindRenderOutput) return;
+    if (isNodeOfType(node, "JSXElement") || isNodeOfType(node, "JSXFragment")) {
+      didFindRenderOutput = true;
+      return;
+    }
+    if (isNodeOfType(node, "ReturnStatement")) {
+      didFindRenderOutput = true;
+      return;
+    }
+    if (isNodeOfType(node, "CallExpression") && isJsxProducingCallee(node.callee)) {
+      didFindRenderOutput = true;
+      return;
+    }
+    const record = node as unknown as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (key === "parent") continue;
+      const child = record[key];
+      if (Array.isArray(child)) {
+        for (const item of child) {
+          if (item && typeof item === "object" && "type" in item) visit(item as EsTreeNode);
+        }
+      } else if (child && typeof child === "object" && "type" in child) {
+        visit(child as EsTreeNode);
+      }
+    }
+  };
+  visit(root);
+  return didFindRenderOutput;
+};
+
+const containsJsxValue = (root: EsTreeNode | null | undefined): boolean => {
+  if (!root) return false;
+  const inner = stripParenExpression(root);
+  if (isNodeOfType(inner, "JSXElement") || isNodeOfType(inner, "JSXFragment")) return true;
+  if (isNodeOfType(inner, "ConditionalExpression")) {
+    return containsJsxValue(inner.consequent) || containsJsxValue(inner.alternate);
+  }
+  if (isNodeOfType(inner, "LogicalExpression")) {
+    return containsJsxValue(inner.left) || containsJsxValue(inner.right);
+  }
+  if (isNodeOfType(inner, "CallExpression")) return isJsxProducingCallee(inner.callee);
+  return false;
+};
+
+// The doc's bar: flag only when the branch "actually changes rendering
+// rather than performing pure normalization or validation". Docs-validation
+// 2026-07 found the dominant FP shape is the comparison result feeding a
+// derived VALUE — a label fallback (`label={typeof children === 'string' ?
+// children : field}`), a markdown source (`file.value = … ? children : ''`),
+// a clsx toggle — where children render identically either way. So the
+// comparison must sit in branching position (ternary test, if test, or
+// `&&` guard) with JSX in a branch before it counts as polymorphic
+// rendering.
+const guardsRenderShape = (comparison: EsTreeNode): boolean => {
+  let current: EsTreeNode = findTransparentExpressionRoot(comparison);
+  while (current.parent) {
+    const parent: EsTreeNode = current.parent;
+    if (isNodeOfType(parent, "UnaryExpression") && parent.operator === "!") {
+      current = findTransparentExpressionRoot(parent);
+      continue;
+    }
+    if (isNodeOfType(parent, "LogicalExpression")) {
+      if (parent.left === current && containsJsxValue(parent.right)) return true;
+      current = findTransparentExpressionRoot(parent);
+      continue;
+    }
+    if (isNodeOfType(parent, "ConditionalExpression") && parent.test === current) {
+      return containsJsxValue(parent.consequent) || containsJsxValue(parent.alternate);
+    }
+    if (isNodeOfType(parent, "IfStatement") && parent.test === current) {
+      return containsRenderOutput(parent.consequent) || containsRenderOutput(parent.alternate);
+    }
+    return false;
+  }
+  return false;
+};
+
 // HACK: `typeof children === "string"` (or `=== 'object'`) is a
 // polymorphic-children smell — the component switches behavior based on
 // what the consumer happened to pass. Better to expose explicit
@@ -88,6 +182,8 @@ export const noPolymorphicChildren = defineRule({
         isNodeOfType(operand, "Literal") && operand.value === "string";
 
       if (!isStringLiteral(node.left) && !isStringLiteral(node.right)) return;
+
+      if (!guardsRenderShape(node)) return;
 
       context.report({
         node,

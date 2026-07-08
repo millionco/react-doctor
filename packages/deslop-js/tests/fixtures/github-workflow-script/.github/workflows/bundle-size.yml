@@ -1,0 +1,12 @@
+name: Bundle size
+on: pull_request
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          cp -r components/.github/workflows/bundle-size bundle-size
+          cd bundle-size
+          npm i --force
+          npm run build

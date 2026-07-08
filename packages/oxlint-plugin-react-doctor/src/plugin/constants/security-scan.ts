@@ -19,7 +19,13 @@ export const SERVER_CONTEXT_PATTERN =
   /(?:^|\/)(?:api|backend|server|servers|middleware|route|routes|functions|lambdas|workers)(?:\/|$)|(?:^|\/)[^/]+\.server\.[cm]?[jt]sx?$/i;
 
 export const TEST_CONTEXT_PATTERN =
-  /(?:^|\/)(?:__fixtures__|__mocks__|__tests__|fixtures|mocks|test|tests|testdata|test-data|e2e|playwright)(?:\/|$)|\.(?:test|spec|e2e|e2e-spec|integration-test|fixture|fixtures|stories|story)\.[cm]?[jt]sx?$|(?:^|\/)(?:test_[^/]+|[^/]+_test|conftest)\.py$|\.env\.[^/]*(?:test|e2e)[^/]*$/i;
+  /(?:^|\/)(?:__fixtures__|__mocks__|__tests__|__integration__|fixtures|mocks|test|tests|testdata|test-data|e2e|playwright|cypress|specs?)(?:\/|$)|\.(?:test|spec|e2e|e2e-spec|integration-test|fixture|fixtures|stories|story)\.[cm]?[jt]sx?$|(?:^|\/)(?:playwright|cypress|vitest|jest|karma)[^/]*\.conf(?:ig)?\.[cm]?[jt]s$|(?:^|\/)(?:test_[^/]+|[^/]+_test|conftest)\.py$|\.env\.[^/]*(?:test|e2e)[^/]*$/i;
+
+// Bundler / framework build configs (`vite.config.ts`, `next.config.mjs`,
+// `webpack.config.js`, …) execute in Node at build time and are never
+// bundled into the browser payload, so client-exposure rules skip them.
+export const BUILD_CONFIG_FILE_PATTERN =
+  /(?:^|\/)(?:vite|next|nuxt|astro|remix|webpack|rollup|rspack|rsbuild|esbuild|tsup|metro|expo|babel|tailwind|postcss|svelte|farm|parcel|snowpack)[^/]*\.config\.[cm]?[jt]sx?$/i;
 
 // `tools/` is deliberately not excluded: agent/MCP tool definitions live there.
 export const BUILD_SCRIPT_CONTEXT_PATTERN = /(?:^|\/)scripts(?:\/|$)/i;

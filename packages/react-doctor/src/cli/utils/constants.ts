@@ -27,9 +27,28 @@ export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
 // Bumped to 2: `CachedScanPayload` gained the required `supplyChainOverlapTimedOut`
 // (supply-chain overlap) and `deadCodeOverlapped` (dead-code overlap) fields.
 // Bumped to 3: gained the required `suppressedRuleCounts` field (suppression telemetry).
-export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 3;
+// Bumped to 4: gained the `manifestContentHash` replay guard, which every
+// `lookup` verifies — pre-bump entries without it would never hit again.
+export const SCAN_RESULT_CACHE_SCHEMA_VERSION = 4;
 export const SCAN_RESULT_CACHE_MAX_ENTRY_COUNT = 20;
-export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
+export const SCAN_RESULT_CACHE_FILENAME = "scan-cache.json";
+// The dirty-worktree cache-key fingerprint content-hashes every path `git
+// status` reports; past this many entries the hashing could cost more than a
+// cache hit saves, so the key builder bails to null (cache off) — the same
+// worst case as the old clean-tree-only gate.
+export const SCAN_RESULT_CACHE_MAX_DIRTY_STATUS_ENTRY_COUNT = 300;
+// Dirty files larger than this are fingerprinted by `mtimeMs:size` instead of
+// a content hash, bounding the key builder's read cost and memory.
+export const SCAN_RESULT_CACHE_MAX_HASHED_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
+// Stdout cap for `runGit` (git-hook-shared.ts). Node's default `maxBuffer`
+// is 1 MiB, and `git ls-files -v` alone exceeds that on repos with ~15-25k
+// tracked files (getsentry/sentry: 1.25 MB) — execFileSync then throws
+// ENOBUFS, runGit swallows it into `null`, and the whole-repo scan-result
+// cache silently never stores or serves on exactly the large repos it helps
+// most. 64 MiB clears monorepos with hundreds of thousands of files while
+// still bounding a pathological child.
+export const RUN_GIT_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
 export const GIT_HOOK_EXECUTABLE_MODE = 0o755;
 
@@ -167,6 +186,11 @@ export const METRIC = {
   scanScore: "scan.score",
   scanClean: "scan.clean",
   scanCheckSkipped: "scan.check_skipped",
+  // One count per completed scan where no project resolved a React /
+  // Preact runtime — the JSON report's `reactDetected: false` case. The
+  // kill metric for the vacuous-clean-scan signal: if it never fires,
+  // nobody points react-doctor at non-React targets and the surface can go.
+  scanNoReactDetected: "scan.no_react_detected",
   baselineDegraded: "baseline.degraded",
   ruleFired: "rule.fired",
   // Rule-rejection telemetry, both keyed by `rule` + `source` attributes:

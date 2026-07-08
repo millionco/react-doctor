@@ -90,12 +90,34 @@ const computeChildrenDepth = (
   return maxDepth;
 };
 
+const findOutermostJsxAncestor = (node: EsTreeNode): EsTreeNode => {
+  let outermost = node;
+  let ancestor: EsTreeNode | null | undefined = node.parent;
+  while (ancestor) {
+    if (isNodeOfType(ancestor, "JSXElement") || isNodeOfType(ancestor, "JSXFragment")) {
+      outermost = ancestor;
+    }
+    ancestor = ancestor.parent ?? null;
+  }
+  return outermost;
+};
+
+interface DeepLeafCandidate {
+  reportNode: EsTreeNode;
+  depth: number;
+}
+
 // Port of `oxc_linter::rules::react::jsx_max_depth`. Walks each leaf
 // JSX node (no JSXElement/JSXFragment children), counts its
 // ancestor JSX depth, and adds the depth of any `{identifier}` /
 // `{<jsxSubtree/>}` children — recursing through bindings via our
 // initializer-tracker. Cycles in binding references (`x → y → x`) are
 // broken by name.
+//
+// One over-deep tree has MANY over-deep leaves (every sibling under the
+// deep branch fires), so per-leaf reporting produced 10-40 diagnostics
+// for a single root cause in production. Reports are deduped to one per
+// outermost JSX tree — the deepest offending leaf wins.
 export const jsxMaxDepth = defineRule({
   id: "jsx-max-depth",
   title: "JSX nested too deeply",
@@ -105,14 +127,18 @@ export const jsxMaxDepth = defineRule({
   category: "Architecture",
   create: (context) => {
     const { max } = resolveSettings(context.settings);
+    const deepestLeafPerTree = new Map<EsTreeNode, DeepLeafCandidate>();
     const checkNode = (node: EsTreeNode): void => {
       if (!isLeafJsxNode(node)) return;
       const ancestorDepth = computeJsxAncestorDepth(node);
       const children = (node as { children?: ReadonlyArray<EsTreeNode> }).children ?? [];
       const childDepth = computeChildrenDepth(children, new Set<string>());
       const total = ancestorDepth + childDepth;
-      if (total > max) {
-        context.report({ node, message: buildMessage(total, max) });
+      if (total <= max) return;
+      const treeRoot = findOutermostJsxAncestor(node);
+      const existing = deepestLeafPerTree.get(treeRoot);
+      if (!existing || total > existing.depth) {
+        deepestLeafPerTree.set(treeRoot, { reportNode: node, depth: total });
       }
     };
     return {
@@ -121,6 +147,11 @@ export const jsxMaxDepth = defineRule({
       },
       JSXFragment(node: EsTreeNodeOfType<"JSXFragment">) {
         checkNode(node);
+      },
+      "Program:exit"() {
+        for (const { reportNode, depth } of deepestLeafPerTree.values()) {
+          context.report({ node: reportNode, message: buildMessage(depth, max) });
+        }
       },
     };
   },

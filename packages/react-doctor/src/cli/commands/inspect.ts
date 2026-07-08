@@ -8,6 +8,7 @@ import {
   DEFAULT_PROJECT_SCAN_CONCURRENCY,
   getChangedLineRanges,
   getDiffInfo,
+  hasReactRuntime,
   highlighter,
   mapWithConcurrency,
   mergeReactDoctorConfigs,
@@ -155,6 +156,13 @@ const finalizeScans = (input: FinalizeScansInput): void => {
     input.completedScans.every((scan) => scan.result.baselineDelta !== undefined);
   const baselineDegraded = input.baselineIntended && !baselineComputed;
   const mode: JsonReportMode = baselineDegraded ? "diff" : input.mode;
+  const isReactDetected = input.completedScans.some((scan) => hasReactRuntime(scan.result.project));
+  if (input.completedScans.length > 0 && !isReactDetected) {
+    recordCount(METRIC.scanNoReactDetected, 1);
+    logger.warn(
+      `No React project detected at ${input.resolvedDirectory} — React rules were gated off; this is not the same as a clean scan.`,
+    );
+  }
   const jsonCompletedScans = filterCompletedScansByCategories(
     input.completedScans,
     input.categoryFilters,
@@ -181,6 +189,7 @@ const finalizeScans = (input: FinalizeScansInput): void => {
         scans: jsonCompletedScans,
         totalElapsedMilliseconds: performance.now() - input.startTime,
         baseline,
+        baselineDegraded,
       }),
     );
   }
@@ -309,6 +318,13 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
     }
 
     const scanOptions: CliInspectOptions = resolveCliInspectOptions(flags, userConfig);
+    // One `--max-duration` budget per invocation, shared by every project of a
+    // workspace scan: fix the absolute deadline once here and hand it to each
+    // project's `inspect()` (rather than restarting the budget per project).
+    // `maxDurationMs` on `scanOptions` stays the configured value so telemetry
+    // reports what the user set, not each project's leftover.
+    const scanDeadlineEpochMs =
+      scanOptions.maxDurationMs !== undefined ? Date.now() + scanOptions.maxDurationMs : undefined;
     const categoryFilters = new Set(scanOptions.categoryFilters ?? []);
     const skipPrompts = shouldSkipPrompts({ yes: flags.yes, json: flags.json });
 
@@ -371,6 +387,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       try {
         const scanResult = await inspect(snapshot.tempDirectory, {
           ...scanOptions,
+          deadlineEpochMs: scanDeadlineEpochMs,
           includePaths: snapshot.stagedFiles,
           configOverride: userConfig,
           // Resolve `config.plugins` from the real config directory — the
@@ -532,10 +549,10 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
         projectScanTarget.userConfig?.plugins === undefined
           ? scanTarget.configSourceDirectory
           : projectScanTarget.configSourceDirectory;
-      // The Socket supply-chain check runs by default; opted out per project
-      // config. Off ⇒ a manifest-only diff change shouldn't pull a project into
-      // the scan (there'd be nothing to report).
-      const supplyChainEnabled = projectConfig?.supplyChain?.enabled !== false;
+      // The Socket supply-chain check runs by default; opted out by
+      // `--no-supply-chain` (wins) or per-project config. Off ⇒ a manifest-only
+      // diff change shouldn't pull a project into the scan (nothing to report).
+      const supplyChainEnabled = flags.supplyChain ?? projectConfig?.supplyChain?.enabled !== false;
 
       let includePaths: string[] | undefined;
       let supplyChainManifestChanged = false;
@@ -572,6 +589,7 @@ export const inspectAction = async (directory: string, flags: InspectFlags): Pro
       }
       const scanResult = await inspect(scanDirectory, {
         ...scanOptions,
+        deadlineEpochMs: scanDeadlineEpochMs,
         includePaths,
         configOverride: projectConfig,
         configSourceDirectory: projectConfigSourceDirectory ?? undefined,

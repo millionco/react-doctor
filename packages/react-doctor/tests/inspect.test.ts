@@ -312,4 +312,51 @@ module.exports = {
       fs.rmSync(monorepoDirectory, { recursive: true, force: true });
     }
   });
+
+  it("degrades baseline to a plain diff when the head lint only partially ran", async () => {
+    clearConfigCache();
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const projectDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-partial-"));
+    try {
+      writeJson(path.join(projectDirectory, "package.json"), {
+        name: "partial-head",
+        dependencies: { react: "^19.0.0", "react-dom": "^19.0.0" },
+      });
+      writeFile(
+        path.join(projectDirectory, "src", "App.tsx"),
+        "export const App = () => <main>Base</main>;\n",
+      );
+      initGitRepo(projectDirectory);
+      const baseRef = commitAll(projectDirectory, "initial");
+
+      writeFile(
+        path.join(projectDirectory, "src", "App.tsx"),
+        "export const App = () => <main>Head</main>;\n",
+      );
+
+      // A 1ms budget is spent before any lint batch spawns, so every file is
+      // deadline-skipped: the head lint is incomplete but `didLintFail` stays
+      // false. Baseline must not diff an incomplete head against a full base —
+      // it degrades to a plain diff (no delta) instead.
+      const result = await inspect(projectDirectory, {
+        lint: true,
+        deadCode: false,
+        noScore: true,
+        silent: true,
+        includePaths: ["src/App.tsx"],
+        baseline: { ref: baseRef },
+        maxDurationMs: 1,
+      });
+
+      // A "lint:partial" reason (not a "lint" skip) proves the head lint ran
+      // but was truncated, and the baseline degraded to a plain diff rather
+      // than diffing an incomplete head against a full base.
+      expect(result.skippedCheckReasons?.["lint:partial"]).toContain("max scan duration reached");
+      expect(result.skippedChecks).not.toContain("lint");
+      expect(result.baselineDelta).toBeUndefined();
+    } finally {
+      consoleSpy.mockRestore();
+      fs.rmSync(projectDirectory, { recursive: true, force: true });
+    }
+  });
 });

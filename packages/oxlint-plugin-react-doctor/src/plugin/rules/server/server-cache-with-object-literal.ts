@@ -36,6 +36,7 @@ export const serverCacheWithObjectLiteral = defineRule({
         cachedFunctionNames.add(node.id.name);
       },
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (cachedFunctionNames.size === 0) return;
         if (!isNodeOfType(node.callee, "Identifier")) return;
         if (!cachedFunctionNames.has(node.callee.name)) return;
         const firstArg = node.arguments?.[0];

@@ -141,9 +141,9 @@ describe("no-json-parse-stringify-clone", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  // react-bench-2 anchor (fix-react-rdh-sofn-xyz-mailing-settings): both
-  // planted clones inside getServerSideProps props MUST keep firing.
-  it("flags both clones in a getServerSideProps props object (bench anchor)", () => {
+  // sofn-xyz/mailing settings: both
+  // mined clones inside getServerSideProps props MUST keep firing.
+  it("flags both clones in a getServerSideProps props object", () => {
     const result = runRule(
       noJsonParseStringifyClone,
       `

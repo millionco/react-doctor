@@ -66,12 +66,24 @@ const collectStringSet = (values: unknown): ReadonlySet<string> => {
 // `runtimeGlobals` allowlist matches against that token.
 const JSX_NO_UNDEF_IDENTIFIER_PATTERN = /^`([^`]+)`/;
 
+// Directory segments that mark a file as Node CLI tooling rather than app
+// bundle code. Combined with the shebang check for `no-console`: console
+// output IS the interface of a CLI/build/smoke script, so flagging it there
+// is pure noise regardless of the user's global `no-console` setting.
+const NODE_CLI_PATH_SEGMENTS = new Set(["scripts", "bin", "tools"]);
+
+const hasNodeCliPathSegment = (filePath: string): boolean =>
+  filePath
+    .split(/[\\/]/)
+    .slice(0, -1)
+    .some((segment) => NODE_CLI_PATH_SEGMENTS.has(segment));
+
 /**
  * Pre-compiles every stateful filter and returns a single
  * `apply(diagnostic)` closure that runs (in order):
  *
  * 1. auto-suppress (test-noise rules in test files; `migration-hint`
- *    wins over `test-noise`)
+ *    wins over `test-noise`; `no-console` on Node CLI scripts)
  * 2. severity overrides (top-level `rules` / `categories`, with
  *    `"off"` dropping)
  * 3. warning suppression (only when `showWarnings` is false: drops every
@@ -207,6 +219,17 @@ export const buildDiagnosticPipeline = (
     return false;
   };
 
+  // `no-console` exists to keep console noise out of shipped app code; a Node
+  // CLI script's console output is its user interface. A shebang first line is
+  // definitive (the file is invoked as an executable), and `scripts/`-style
+  // directory segments cover un-shebanged build/tool files run via `node`.
+  const isNoConsoleOnNodeCliScript = (diagnostic: Diagnostic): boolean => {
+    if (diagnostic.rule !== "no-console") return false;
+    if (hasNodeCliPathSegment(diagnostic.filePath)) return true;
+    const lines = getFileLines(diagnostic.filePath);
+    return lines !== null && Boolean(lines[0]?.startsWith("#!"));
+  };
+
   // `runtimeGlobals` declares identifiers that exist at runtime but aren't
   // imported in-file — react-live `<LiveProvider scope>`, Storybook globals,
   // ambient `declare global` — which the single-file `jsx-no-undef` rule can't
@@ -221,6 +244,7 @@ export const buildDiagnosticPipeline = (
   return {
     apply: (diagnostic) => {
       if (shouldAutoSuppress(diagnostic)) return null;
+      if (isNoConsoleOnNodeCliScript(diagnostic)) return null;
 
       let current = diagnostic;
       let explicitSeverityOverride: RuleSeverityOverride | undefined;
@@ -279,7 +303,9 @@ export const buildDiagnosticPipeline = (
           const ruleIdentifier = `${current.plugin}/${current.rule}`;
           const diagnosticLineIndex = current.line - 1;
           const evaluation = evaluateSuppression(lines, diagnosticLineIndex, ruleIdentifier);
-          if (evaluation.isSuppressed) return suppress(current, "inline");
+          if (evaluation.isSuppressed) {
+            return suppress(current, evaluation.isForeignDirective ? "foreign-inline" : "inline");
+          }
           if (evaluation.nearMissHint) {
             current = { ...current, suppressionHint: evaluation.nearMissHint };
           }

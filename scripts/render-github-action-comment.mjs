@@ -17,6 +17,22 @@ const REPO_SLUG = process.env.GITHUB_REPOSITORY;
 const SERVER_URL = (process.env.GITHUB_SERVER_URL || "https://github.com").replace(/\/$/, "");
 const HEAD_SHA = process.env.REACT_DOCTOR_HEAD_SHA?.trim() || process.env.GITHUB_SHA?.trim() || "";
 
+// The workflow file this run came from, named in the degraded notice so the fix
+// points at the right file. GITHUB_WORKFLOW_REF is `owner/repo/path@ref`; drop
+// the `owner/repo/` prefix and the `@ref` suffix. Null when unavailable.
+const WORKFLOW_FILE = (() => {
+  const ref = process.env.GITHUB_WORKFLOW_REF?.trim();
+  if (!ref) return null;
+  const relativePath = ref.split("@")[0].replace(/^[^/]+\/[^/]+\//, "");
+  return relativePath || null;
+})();
+
+// The missing-baseline warning is opt-out via the action's
+// `silence-missing-baseline-warning` input (forwarded as this env). Silenced only
+// when explicitly set to "true".
+const SILENCE_MISSING_BASELINE_WARNING =
+  process.env.REACT_DOCTOR_SILENCE_MISSING_BASELINE_WARNING === "true";
+
 const pluralize = (count, singular, plural = `${singular}s`) =>
   `${count} ${count === 1 ? singular : plural}`;
 
@@ -43,6 +59,38 @@ const COPY = {
   leadScopeChanged: (baseBranch) => `vs \`${baseBranch}\``,
   leadScopeUncommitted: "uncommitted changes",
   leadScopeFull: "full project",
+
+  // Baseline-degraded callout: rendered at the bottom of the comment (above the
+  // footer) when a compare run couldn't resolve the base — almost always a
+  // shallow CI checkout with no merge base — so it fell back to listing every
+  // issue in the changed files, not only the PR-introduced ones. Names the
+  // workflow file and shows the exact checkout diff so the reader can find + fix.
+  // The filename uses a `<code>` tag, not a markdown backtick span: GitHub does
+  // not parse inline markdown inside a `<summary>`, so backticks render literally.
+  baselineDegradedSummary: (workflowFile) =>
+    workflowFile
+      ? `⚠️ Warning: <code>${workflowFile}</code> is configured incorrectly. See below to fix.`
+      : "⚠️ Warning: this workflow is configured incorrectly. See below to fix.",
+  baselineDegradedBody: (baseBranch, workflowFile) => [
+    `React Doctor compares against \`${baseBranch}\` to report only the issues this pull request introduces. This run couldn't complete that comparison (usually a **shallow CI checkout** with no merge base), so it listed **every** issue in the changed files, including ones that already existed on \`${baseBranch}\`.`,
+    "",
+    `Add \`fetch-depth: 0\` to the \`actions/checkout\` step in ${
+      workflowFile ? `\`${workflowFile}\`` : "your workflow"
+    } so the checkout includes the history React Doctor needs:`,
+    "",
+    "```diff",
+    " jobs:",
+    "   react-doctor:",
+    "     steps:",
+    "       - uses: actions/checkout@v5",
+    "+        with:",
+    "+          fetch-depth: 0",
+    "",
+    "       - uses: millionco/react-doctor@v2",
+    "```",
+    "",
+    "To silence this warning, set `silence-missing-baseline-warning: true` on the React Doctor action.",
+  ],
 
   // Issue lists.
   errorsHeading: "**Errors**",
@@ -171,6 +219,22 @@ const buildScopeSegment = (report) => {
     return COPY.leadScopeChanged(report.diff.baseBranch || "base");
   }
   return COPY.leadScopeFull;
+};
+
+// Collapsible warning shown at the bottom of the comment (above the footer) when
+// a compare run degraded to a full changed-files listing (see COPY.baselineDegraded*).
+// Empty string when the baseline was computed normally, so it drops out of the body.
+const buildBaselineDegradedNotice = (report) => {
+  if (!report.baselineDegraded || SILENCE_MISSING_BASELINE_WARNING) return "";
+  const baseBranch = report.diff?.baseBranch || "the base branch";
+  const lines = [
+    `<details><summary>${COPY.baselineDegradedSummary(WORKFLOW_FILE)}</summary>`,
+    "",
+    ...COPY.baselineDegradedBody(baseBranch, WORKFLOW_FILE),
+    "",
+    "</details>",
+  ];
+  return `${lines.join("\n")}\n\n`;
 };
 
 const buildSeveritySegment = (summary) => {
@@ -349,6 +413,7 @@ const buildIssuesBody = (report) => {
     buildErrorsBlock(collected),
     buildWarningsBlock(collected),
     buildSkippedChecksSection(report),
+    buildBaselineDegradedNotice(report),
     buildReviewFooter(collected.length > 0),
   ];
   return renderLines(lines);

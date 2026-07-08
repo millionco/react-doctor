@@ -145,6 +145,11 @@ const program = new Command()
     "--no-dead-code",
     "skip dead-code analysis (unused files / exports / dependencies, circular imports)",
   )
+  .option("--supply-chain", "enable the dependency supply-chain scan (default)")
+  .option(
+    "--no-supply-chain",
+    "skip the dependency supply-chain scan (Socket.dev dependency health checks)",
+  )
   .option("--verbose", "show every rule and per-file details (default shows top 3 rules)")
   .option(
     "--debug",
@@ -199,6 +204,10 @@ const program = new Command()
     "alias for --no-score (skip the score API, share URL, and crash reporting)",
   )
   .option("--staged", "scan only staged (git index) files for pre-commit hooks")
+  .option(
+    "--max-duration <seconds>",
+    "scan time budget for the whole run, shared across workspace projects: past it, remaining lint batches and dead-code are skipped and partial results are reported (skipped files are listed in the JSON report)",
+  )
   .option(
     "--blocking <level>",
     "severity that fails CI: error (default), warning, or none (advisory)",

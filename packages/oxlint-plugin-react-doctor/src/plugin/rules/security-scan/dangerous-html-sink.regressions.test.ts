@@ -637,4 +637,202 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  // Docs-validation FP wave.
+  it("stays silent on member access whose property is i18n-populated (internxt FAQ shape)", () => {
+    const content = [
+      "const questions: { title: string; body: string }[] = [",
+      "  {",
+      "    title: translate('views.account.faq.faq1.title'),",
+      "    body: translate('views.account.faq.faq1.description'),",
+      "  },",
+      "];",
+      "return questions.map((question) => (",
+      "  <DisclosurePanel dangerouslySetInnerHTML={{ __html: question.body }} />",
+      "));",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/views/account/security/frequently-asked-questions.tsx",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on per-line highlighter output with a literal fallback (semiotic CodeBlock shape)", () => {
+    const content = [
+      "const highlightedLines = window.Prism && window.Prism.languages[language]",
+      "  ? lines.map((line) => window.Prism.highlight(line, window.Prism.languages[language], language))",
+      "  : lines.map(escapeHtmlText);",
+      "return highlightedLines.map((lineHtml, i) => (",
+      "  <td dangerouslySetInnerHTML={{ __html: lineHtml || ' ' }} />",
+      "));",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/code-block.js",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on hidden tooling-directory theme files (.dumi Previewer shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: ".dumi/theme/builtins/preview-default/Previewer.tsx",
+      content: `return <div dangerouslySetInnerHTML={{ __html: props.description }} />;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on a const built purely from string-literal concatenation (HeroCodePreview shape)", () => {
+    const content = [
+      "const html =",
+      '  \'<span class="tok-kw">import</span> { Sidebar } <span class="tok-kw">from</span>;\\n\' +',
+      "  '<span class=\"tok-tag\">Menu</span> content\\n' +",
+      "  '<span class=\"tok-attr\">collapsed</span>';",
+      "export default function HeroCodePreview() {",
+      "  return <code dangerouslySetInnerHTML={{ __html: html }} />;",
+      "}",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "website/components/home/hero-code-preview.tsx",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on a deliberate sanitized-html wrapper file (oksskolten shape)", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/ui/sanitized-html.tsx",
+      content: `export function SanitizedHTML({ html, className }: SanitizedHTMLProps) {\n  return <div className={className} dangerouslySetInnerHTML={{ __html: html }} />;\n}\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on an identifier declared from an escapeHtml-escaped template (contact-print shape)", () => {
+    const content = [
+      "const html = `<html><body>",
+      "<header>${photoTag}",
+      '<div><h1>${escapeHtml(name || "Contact")}</h1></div>',
+      "</header>",
+      '${rows.join("")}',
+      "</body></html>`;",
+      "printWindow.document.write(html);",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "components/contacts/contact-print.ts",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on an identifier declared from a static template with benign interpolation (hyperdx shape)", () => {
+    const content = [
+      "const scriptContent = `(function(){var k='${STORAGE_KEY}';try{var r=window.matchMedia('(prefers-color-scheme: dark)');}catch(e){}})();`;",
+      "return (",
+      "  <script dangerouslySetInnerHTML={{ __html: scriptContent }} suppressHydrationWarning />",
+      ");",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/use-user-preferences.tsx",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on property-style serializer provenance routed through state (json-edit-react shape)", () => {
+    const content = [
+      "const highlight = async (code: string): Promise<Highlighted> => {",
+      "  const hl = await getHighlighter();",
+      "  return { html: hl.codeToHtml(code, { lang: 'tsx', theme: name }), bg, fg };",
+      "};",
+      "export const CodeBlock = ({ code }: CodeBlockProps) => {",
+      "  const [{ html, bg, fg }, setResult] = useState<Highlighted>({ html: '', bg: '#fff', fg: '#000' });",
+      "  return <Box dangerouslySetInnerHTML={{ __html: html }} />;",
+      "};",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "demo/src/examples/kit/code-block.tsx",
+      content,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags an identifier-with-fallback value without trusted provenance", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/preview.tsx",
+      content: `const bodyHtml = props.body;\nreturn <div dangerouslySetInnerHTML={{ __html: bodyHtml || '' }} />;\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("still flags an identifier declared from a template with tainted interpolations", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/widgets/card.ts",
+      content: 'const html = `<div class="card">${props.userHtml}</div>`;\nel.innerHTML = html;\n',
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags unsanitized signature HTML in a webmail composer under a singular email/ UI directory (bulwarkmail shape)", () => {
+    const content = [
+      "const composerSignatureHtml = signatureIdentity?.htmlSignature;",
+      "return (",
+      "  <div",
+      '    className="px-4 pb-3 text-sm"',
+      "    dangerouslySetInnerHTML={{ __html: `${signatureSeparatorEnabled ? '<div>-- </div>' : ''}${composerSignatureHtml}` }}",
+      "  />",
+      ");",
+    ].join("\n");
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "components/email/email-composer.tsx",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent in a singular email/ directory when the value is sanitized at the sink", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "components/email/email-viewer.tsx",
+      content: `return <div dangerouslySetInnerHTML={{ __html: sanitizePlainTextRenderedHtml(renderedBody) }} />;\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  // FN mining: bracket notation is the same innerHTML sink.
+  it("flags a bracket-notation innerHTML assignment from a tainted source", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/bio.ts",
+      content: `export const renderBio = (element, props) => {\n  element["innerHTML"] = props.bio;\n};\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent on a bracket-notation innerHTML assignment of a string literal", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/bio.ts",
+      content: `export const resetBio = (element) => {\n  element["innerHTML"] = "<em>No bio yet</em>";\n};\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("keeps the inert-parse-target exemption for bracket-notation writes", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/utils/decode.ts",
+      content: [
+        "export const decodeEntities = (text) => {",
+        '  const scratch = document.createElement("textarea");',
+        '  scratch["innerHTML"] = text;',
+        "  return scratch.value;",
+        "};",
+      ].join("\n"),
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("flags a bare markup identifier without taint-looking substrings beyond markup", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/comment.ts",
+      content: `export const renderComment = (element, commentMarkup) => {\n  element.innerHTML = commentMarkup;\n};\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

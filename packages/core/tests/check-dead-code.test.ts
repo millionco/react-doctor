@@ -3,6 +3,7 @@ import os from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import { checkDeadCode } from "../src/check-dead-code.js";
+import { resolveReactDoctorCacheDir } from "../src/utils/resolve-react-doctor-cache-dir.js";
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "rd-check-dead-code-"));
 
@@ -288,6 +289,58 @@ describe("checkDeadCode", () => {
     // it must not be self-flagged; an unrelated unused dep still is.
     expect(flaggedDevDeps).toEqual(["Unused devDependency: `genuinely-unused`"]);
   });
+
+  it(
+    "reuses deslop's incremental summary cache across real worker runs and reflects edits",
+    { timeout: 120_000 },
+    async () => {
+      const directory = setupProject("incremental-cache-e2e", {
+        "src/index.ts": 'import { keep } from "./lib.js";\nexport const entry = keep;\n',
+        "src/lib.ts": "export const keep = 1;\n",
+        "src/orphan.ts": "export const orphan = 1;\n",
+      });
+      // Pins `resolveReactDoctorCacheDir` to the fixture so both cache files
+      // live (and are cleaned up) with it.
+      fs.mkdirSync(path.join(directory, "node_modules"), { recursive: true });
+      const summariesPath = path.join(
+        resolveReactDoctorCacheDir(directory),
+        "dead-code-summaries.json",
+      );
+
+      const firstRun = await checkDeadCode({ rootDirectory: directory, cacheEnabled: true });
+      expect(fs.existsSync(summariesPath)).toBe(true);
+      expect(firstRun.some((diagnostic) => diagnostic.rule === "unused-file")).toBe(true);
+      expect(firstRun.some((diagnostic) => diagnostic.message.includes("newlyUnused"))).toBe(false);
+
+      // Invalidate the whole-result layer so the worker actually re-runs and
+      // serves the changed-files case from the incremental summary store.
+      fs.appendFileSync(path.join(directory, "src", "lib.ts"), "export const newlyUnused = 2;\n");
+
+      let reportedStats: { hits: number; misses: number } | null = null;
+      const secondRun = await checkDeadCode({
+        rootDirectory: directory,
+        cacheEnabled: true,
+        onSummaryCacheStats: (stats) => {
+          reportedStats = stats;
+        },
+      });
+      expect(secondRun.some((diagnostic) => diagnostic.message.includes("newlyUnused"))).toBe(true);
+      // Only the edited file re-parses; the other two summaries replay.
+      expect(reportedStats).toEqual({ hits: 2, misses: 1 });
+
+      // Byte-identical to an uncached full analysis at the same tree state —
+      // and the uncached control reports no summary-cache stats.
+      let didControlReportStats = false;
+      const controlRun = await checkDeadCode({
+        rootDirectory: directory,
+        onSummaryCacheStats: () => {
+          didControlReportStats = true;
+        },
+      });
+      expect(secondRun).toEqual(controlRun);
+      expect(didControlReportStats).toBe(false);
+    },
+  );
 
   it("rejects malformed worker results instead of silently dropping diagnostics", async () => {
     const directory = setupProject("malformed-worker-result", {

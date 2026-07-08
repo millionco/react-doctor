@@ -5,6 +5,12 @@ import { isInsideExcludedTypographyAncestor } from "./utils/is-inside-excluded-t
 
 const EM_DASH = "—";
 
+// Only an em dash embedded in prose (letters on both sides, same line)
+// reads as AI-generated copy. Standalone `—` placeholders for empty
+// values, ` — ` separators between interpolations, and dash bullets are
+// deliberate typography.
+const PROSE_EM_DASH_PATTERN = /\p{L}[^—\n]*—[^—\n]*\p{L}/u;
+
 export const noEmDashInJsxText = defineRule({
   id: "design-no-em-dash-in-jsx-text",
   title: "Em dash in JSX text",
@@ -20,6 +26,7 @@ export const noEmDashInJsxText = defineRule({
     JSXText(jsxTextNode: EsTreeNodeOfType<"JSXText">) {
       const textValue = typeof jsxTextNode.value === "string" ? jsxTextNode.value : "";
       if (!textValue.includes(EM_DASH)) return;
+      if (!PROSE_EM_DASH_PATTERN.test(textValue)) return;
       if (isInsideExcludedTypographyAncestor(jsxTextNode)) return;
       context.report({
         node: jsxTextNode,

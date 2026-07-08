@@ -3,6 +3,7 @@ import type { InspectFlags } from "./inspect-flags.js";
 import { isCiEnvironment } from "./is-ci-environment.js";
 import { pickBlockingLevel } from "./resolve-blocking-level.js";
 import { resolveCliCategories } from "./resolve-cli-categories.js";
+import { resolveMaxDurationFlag } from "./resolve-max-duration-flag.js";
 import { resolveParallelFlag } from "./resolve-parallel-flag.js";
 
 export interface CliInspectOptions extends InspectOptions {
@@ -14,8 +15,8 @@ export interface CliInspectOptions extends InspectOptions {
  * accepts. Flag-derived fields only (`scoreOnly`, `noScore`, `silent`,
  * `isCi`): every `userConfig` fallback — including `noScore` — lives in
  * `inspect()`'s merge layer, which sees each project's module-merged
- * config. The plain boolean knobs (`lint`, `deadCode`, `verbose`) pass
- * through unchanged for the same reason. This resolver reads
+ * config. The plain boolean knobs (`lint`, `deadCode`, `supplyChain`,
+ * `verbose`) pass through unchanged for the same reason. This resolver reads
  * `userConfig` only to decide the `--blocking warning` gate.
  */
 export const resolveCliInspectOptions = (
@@ -32,6 +33,7 @@ export const resolveCliInspectOptions = (
   return {
     lint: flags.lint,
     deadCode: flags.deadCode,
+    supplyChain: flags.supplyChain,
     verbose: flags.verbose,
     outputDirectory: flags.outputDir,
     // `--no-respect-inline-disables` is negatable-only, so commander defaults
@@ -48,6 +50,7 @@ export const resolveCliInspectOptions = (
     isCi: isCiEnvironment(),
     silent: Boolean(flags.json),
     concurrency: resolveParallelFlag(flags.parallel),
+    maxDurationMs: resolveMaxDurationFlag(flags.maxDuration),
     categoryFilters: resolveCliCategories(flags.category),
   };
 };

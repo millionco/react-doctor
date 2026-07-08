@@ -21,11 +21,13 @@ import {
   TAILWIND_ZOD_SECTIONS,
 } from "./dependencies.js";
 import { findMonorepoRoot, isMonorepoRoot } from "./monorepo-root.js";
+import { findNearestAncestorPackageJson } from "./find-nearest-ancestor-package-json.js";
 import {
   collectWorkspaceFacts,
   findDependencyInfoFromMonorepoRoot,
   SHOPIFY_FLASH_LIST_PACKAGE_NAME,
 } from "./collect-project-facts.js";
+import { resolveInstalledReactVersion } from "./resolve-installed-react-version.js";
 import { readPackageJson } from "./package-json.js";
 import {
   getLowestDependencyMajor,
@@ -60,11 +62,9 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
   const sourceFileCount = countSourceFiles(directory);
   const hasOwnTsConfig = fs.existsSync(path.join(directory, "tsconfig.json"));
 
-  const monorepoRoot = findMonorepoRoot(directory);
+  const enclosingProjectRoot = findNearestAncestorPackageJson(directory);
   const enclosingProject =
-    monorepoRoot !== null && isFile(path.join(monorepoRoot, "package.json"))
-      ? discoverProject(monorepoRoot)
-      : null;
+    enclosingProjectRoot !== null ? discoverProject(enclosingProjectRoot) : null;
 
   // A workspace subfolder (e.g. `repo/packages`): keep the enclosing root's
   // dependency + framework detection, but scope the directory-specific fields
@@ -107,6 +107,7 @@ const discoverProjectWithoutPackageJson = (directory: string): ProjectInfo => {
     shopifyFlashListVersion: null,
     shopifyFlashListMajorVersion: null,
     hasReanimated: false,
+    reanimatedVersion: null,
     isPreES2023Target: hasOwnTsConfig && detectPreES2023Target(directory),
     isStaticExport: false,
     sourceFileCount,
@@ -205,7 +206,10 @@ export const discoverProject = (directory: string): ProjectInfo => {
     }
   }
   const { react, tailwindcss, zod } = tracked;
-  const reactVersion = react.version;
+  let reactVersion = react.version;
+  if (!reactVersion || parseReactMajor(reactVersion) === null) {
+    reactVersion = resolveInstalledReactVersion(directory) ?? reactVersion;
+  }
   const tailwindVersion = tailwindcss.version;
   const zodVersion = zod.version;
 
@@ -246,6 +250,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
   // Reanimated implies React Native, so the fact only applies once the
   // project already classifies as RN.
   const hasReanimated = hasReactNativeWorkspace && workspaceFacts.hasReanimatedAwarePackage;
+  const reanimatedVersion = hasReanimated ? workspaceFacts.reanimatedVersion : null;
 
   const nextjsVersion =
     framework === "nextjs"
@@ -281,6 +286,7 @@ export const discoverProject = (directory: string): ProjectInfo => {
     shopifyFlashListMajorVersion:
       shopifyFlashListVersion === null ? null : getLowestDependencyMajor(shopifyFlashListVersion),
     hasReanimated,
+    reanimatedVersion,
     isPreES2023Target,
     // The static-export probe reads `next.config.*` next to the manifest
     // that supplied the `next` dependency signal — the scan root when it

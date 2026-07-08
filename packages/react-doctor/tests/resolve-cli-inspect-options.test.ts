@@ -135,3 +135,21 @@ describe("resolveCliInspectOptions: category filtering", () => {
     );
   });
 });
+
+describe("resolveCliInspectOptions: scan-phase flags", () => {
+  // Passed through as scan options (not folded into config) so the flag wins
+  // over per-project config in `inspect()`'s merge, matching lint/deadCode.
+  it("passes lint / deadCode / supplyChain through unchanged", () => {
+    const off = resolveCliInspectOptions(
+      { lint: false, deadCode: false, supplyChain: false },
+      null,
+    );
+    expect(off.lint).toBe(false);
+    expect(off.deadCode).toBe(false);
+    expect(off.supplyChain).toBe(false);
+
+    const unset = resolveCliInspectOptions({}, null);
+    expect(unset.supplyChain).toBeUndefined();
+    expect(resolveCliInspectOptions({ supplyChain: true }, null).supplyChain).toBe(true);
+  });
+});

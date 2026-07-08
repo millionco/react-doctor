@@ -107,9 +107,12 @@ export interface CollectRuleHitsOptions {
   /**
    * Project framework hint (default: "unknown"). Set to "react-native"
    * or "expo" to activate the `rn-*` rule bucket (both add the
-   * `react-native` capability in `buildCapabilities`).
+   * `react-native` capability in `buildCapabilities`), or a
+   * server-capable framework ("remix", "nextjs", "tanstack-start") for
+   * rules gated on a server-mutation story (e.g. `no-prevent-default`'s
+   * form variant).
    */
-  framework?: "unknown" | "react-native" | "expo";
+  framework?: ProjectInfo["framework"];
   hasReactCompiler?: boolean;
   hasTanStackQuery?: boolean;
 }

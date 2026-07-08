@@ -1,4 +1,4 @@
-import { LOOP_TYPES } from "../../constants/js.js";
+import { LOOP_TYPES, MUTATING_ARRAY_METHODS } from "../../constants/js.js";
 import { createLoopAwareVisitors } from "../../utils/create-loop-aware-visitors.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -64,8 +64,15 @@ const isSingleFieldEqualityPredicate = (node: EsTreeNodeOfType<"CallExpression">
 // inside the loop body. When the `.find()` receiver roots at one of
 // these, the receiver is a different array each pass, so a single
 // pre-loop Map can't replace it — flagging it would be a false
-// positive.
-const collectLoopBoundNames = (loop: EsTreeNode, names: Set<string>): void => {
+// positive. The set is a pure function of the (immutable) loop subtree, so
+// it is memoized per loop node — nested `.find()`s under the same loops
+// reuse one walk instead of re-collecting per call site.
+const loopBoundNamesCache = new WeakMap<EsTreeNode, ReadonlySet<string>>();
+
+const getLoopBoundNames = (loop: EsTreeNode): ReadonlySet<string> => {
+  const cached = loopBoundNamesCache.get(loop);
+  if (cached) return cached;
+  const names = new Set<string>();
   if ((isNodeOfType(loop, "ForOfStatement") || isNodeOfType(loop, "ForInStatement")) && loop.left) {
     walkAst(loop.left, (child: EsTreeNode) => {
       if (isNodeOfType(child, "Identifier")) names.add(child.name);
@@ -86,8 +93,24 @@ const collectLoopBoundNames = (loop: EsTreeNode, names: Set<string>): void => {
     if (isNodeOfType(child, "AssignmentExpression")) {
       const targetRoot = getRootIdentifierName(child.left);
       if (targetRoot) names.add(targetRoot);
+      return;
+    }
+    // `accumulator.push(item)` / `.sort()` inside the loop — the array
+    // the `.find()` scans changes every pass, so a pre-loop Map would go
+    // stale (docs-validation r2: cloudscape drilldown groupedSeriesData,
+    // freecut newTracks). Mutation counts the same as reassignment.
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "MemberExpression") &&
+      isNodeOfType(child.callee.property, "Identifier") &&
+      MUTATING_ARRAY_METHODS.has(child.callee.property.name)
+    ) {
+      const mutatedRoot = getRootIdentifierName(child.callee.object);
+      if (mutatedRoot) names.add(mutatedRoot);
     }
   });
+  loopBoundNamesCache.set(loop, names);
+  return names;
 };
 
 // `groups[i].links.find(...)` — the chain roots at an invariant name,
@@ -115,6 +138,20 @@ const hasLoopBoundComputedIndex = (
   return false;
 };
 
+// `CASE_EVENT_FILTER_OPTIONS[type].options.find(...)` — a receiver
+// rooted at a SCREAMING_SNAKE module constant is a fixed config/enum
+// table, tiny by convention (docs-validation r2: enum-sized filter
+// options rendered as badges). The doc's tiny-N carve-out ("< ~10
+// items — linear scan beats Map allocation") applies; growing data
+// arrays are not named like constants.
+const SCREAMING_SNAKE_PATTERN = /^[A-Z][A-Z0-9_]+$/;
+
+const isConstantTableReceiver = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
+  if (!isNodeOfType(node.callee, "MemberExpression")) return false;
+  const receiverRoot = getRootIdentifierName(node.callee.object);
+  return receiverRoot !== null && SCREAMING_SNAKE_PATTERN.test(receiverRoot);
+};
+
 const isLoopVariantReceiver = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   if (!isNodeOfType(node.callee, "MemberExpression")) return false;
   const receiver = node.callee.object;
@@ -126,7 +163,9 @@ const isLoopVariantReceiver = (node: EsTreeNodeOfType<"CallExpression">): boolea
   const loopBoundNames = new Set<string>();
   let ancestor: EsTreeNode | null | undefined = node.parent;
   while (ancestor) {
-    if (LOOP_TYPES.includes(ancestor.type)) collectLoopBoundNames(ancestor, loopBoundNames);
+    if (LOOP_TYPES.includes(ancestor.type)) {
+      for (const name of getLoopBoundNames(ancestor)) loopBoundNames.add(name);
+    }
     ancestor = ancestor.parent;
   }
   if (loopBoundNames.has(receiverRoot)) return true;
@@ -151,6 +190,7 @@ export const jsIndexMaps = defineRule({
         const methodName = node.callee.property.name;
         if (methodName !== "find" && methodName !== "findIndex") return;
         if (!isSingleFieldEqualityPredicate(node)) return;
+        if (isConstantTableReceiver(node)) return;
         if (isLoopVariantReceiver(node)) return;
         context.report({
           node,

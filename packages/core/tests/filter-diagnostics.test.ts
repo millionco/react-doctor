@@ -466,3 +466,53 @@ describe("mergeAndFilterDiagnostics — runtimeGlobals (issue #959)", () => {
     expect(filtered).toHaveLength(1);
   });
 });
+
+describe("mergeAndFilterDiagnostics — no-console on Node CLI scripts", () => {
+  const noConsole = (filePath: string): Diagnostic =>
+    createDiagnostic({ plugin: "eslint", rule: "no-console", filePath });
+
+  const readShebangedFile = (filePath: string): string[] | null =>
+    filePath.endsWith("smoke-test.mjs")
+      ? ["#!/usr/bin/env node", 'console.log("ok");']
+      : ['console.log("shipped to browser");'];
+
+  it("suppresses no-console in files with a shebang first line", () => {
+    const filtered = filterIgnoredDiagnostics(
+      [noConsole("headless/smoke-test.mjs"), noConsole("src/app.tsx")],
+      {},
+      TEST_ROOT_DIRECTORY,
+      readShebangedFile,
+    );
+    expect(filtered.map((diagnostic) => diagnostic.filePath)).toEqual(["src/app.tsx"]);
+  });
+
+  it("suppresses no-console under scripts/, bin/, and tools/ directory segments", () => {
+    const filtered = filterIgnoredDiagnostics(
+      [
+        noConsole("scripts/build.mjs"),
+        noConsole("packages/app/bin/cli.ts"),
+        noConsole("tools/codegen/emit.ts"),
+        noConsole("src/components/Button.tsx"),
+      ],
+      {},
+      TEST_ROOT_DIRECTORY,
+      () => ['console.log("no shebang");'],
+    );
+    expect(filtered.map((diagnostic) => diagnostic.filePath)).toEqual([
+      "src/components/Button.tsx",
+    ]);
+  });
+
+  it("does not suppress other rules in CLI scripts or no-console in app code", () => {
+    const filtered = filterIgnoredDiagnostics(
+      [
+        createDiagnostic({ plugin: "eslint", rule: "no-eval", filePath: "scripts/build.mjs" }),
+        noConsole("src/pages/checkout.tsx"),
+      ],
+      {},
+      TEST_ROOT_DIRECTORY,
+      () => ['console.log("body");'],
+    );
+    expect(filtered).toHaveLength(2);
+  });
+});

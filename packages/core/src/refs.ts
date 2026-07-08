@@ -158,17 +158,19 @@ export class DeadCodeOverlap extends Context.Reference<"auto" | "on" | "off">(
 ) {}
 
 /**
- * How the full-scan lint pass orders its file batches. `"arrival"` (the
- * default) keeps `git ls-files` discovery order. `"cost"` opts into LPT (feed
- * the largest files first); set `REACT_DOCTOR_LINT_BATCH_ORDERING=cost`. NOTE:
- * `cost` is OFF by default because the current sort-desc-then-chunk-100 packs
- * the heaviest files into one wave-1 batch — on size-skewed repos that mega-
- * batch is a straggler (and can trip the per-batch timeout + split), measurably
- * regressing the common full-scan case. LPT needs the heavy files SPREAD across
- * batches before `cost` earns the default. Tests override via
- * `Layer.succeed(LintBatchOrdering, ...)`. Diff / staged scans never reach this
- * — they pass user-scoped `includePaths` that skip discovery and stay in
- * arrival order; only the full-scan branch reads it.
+ * How the full-scan lint pass plans its file batches. `"cost"` (the default)
+ * builds size-balanced LPT batches (`planLintBatches`): the same mandatory
+ * batch count as greedy chunking (`ceil(files / 100)`), but every batch gets
+ * an even share of files AND bytes, so no 100-file chunk is a straggler while
+ * the remainder-batch worker idles — and the heavy files are SPREAD across
+ * batches, the precondition the old sort-desc-then-chunk-100 `cost` mode
+ * lacked (it packed the heaviest files into one wave-1 straggler batch,
+ * measurably regressing size-skewed repos, which is why it never earned the
+ * default). `"arrival"` (`REACT_DOCTOR_LINT_BATCH_ORDERING=arrival`) is the
+ * rollback hatch to plain greedy 100-file chunking in discovery order. Tests
+ * override via `Layer.succeed(LintBatchOrdering, ...)`. Diff / staged scans
+ * never reach this — they pass user-scoped `includePaths` that skip discovery
+ * and stay in arrival order; only the full-scan branch reads it.
  */
 export class LintBatchOrdering extends Context.Reference<"cost" | "arrival">(
   "react-doctor/LintBatchOrdering",
@@ -201,6 +203,60 @@ export class PerFileLintCacheEnabled extends Context.Reference<boolean>(
       const noFileCache = process.env["REACT_DOCTOR_NO_FILE_CACHE"]?.toLowerCase() ?? "";
       if (CACHE_DISABLED_VALUES.has(noCache)) return false;
       if (CACHE_DISABLED_VALUES.has(noFileCache)) return false;
+      return true;
+    },
+  },
+) {}
+
+/**
+ * Whether the sidecar lint cache (`runners/oxlint/sidecar-lint-cache.ts`) is
+ * active. Defaults ON — warm rescans replay the cross-file rules' cached
+ * diagnostics for every file whose dependency fingerprint (the probe set the
+ * plugin's collectors recorded) still matches the tree, and re-lint only the
+ * rest. Only reachable when the per-file lint cache itself is on (the
+ * sidecar covers its cache hits), so `REACT_DOCTOR_NO_CACHE` /
+ * `REACT_DOCTOR_NO_FILE_CACHE` implicitly disable it too. Opt-OUT knobs:
+ *
+ *   - `REACT_DOCTOR_NO_CACHE` — the global off-switch.
+ *   - `REACT_DOCTOR_NO_SIDECAR_CACHE` — granular rollback hatch: keep the
+ *     per-file cache but run the always-fresh sidecar over every hit
+ *     (the pre-cache behavior).
+ *
+ * Tests override via `Layer.succeed(SidecarLintCacheEnabled, false)`.
+ */
+export class SidecarLintCacheEnabled extends Context.Reference<boolean>(
+  "react-doctor/SidecarLintCacheEnabled",
+  {
+    defaultValue: () => {
+      const noCache = process.env["REACT_DOCTOR_NO_CACHE"]?.toLowerCase() ?? "";
+      const noSidecarCache = process.env["REACT_DOCTOR_NO_SIDECAR_CACHE"]?.toLowerCase() ?? "";
+      if (CACHE_DISABLED_VALUES.has(noCache)) return false;
+      if (CACHE_DISABLED_VALUES.has(noSidecarCache)) return false;
+      return true;
+    },
+  },
+) {}
+
+/**
+ * Whether the whole-project dead-code result cache
+ * (`dead-code/dead-code-result-cache.ts`) is active. Defaults ON — a rescan
+ * whose inputs (source tree, manifests, configs, analyzer version) are
+ * unchanged replays the stored diagnostics instead of re-running the
+ * analysis worker. Opt-OUT, two knobs (matching the per-file lint cache):
+ *
+ *   - `REACT_DOCTOR_NO_CACHE` — the global off-switch.
+ *   - `REACT_DOCTOR_NO_DEAD_CODE_CACHE` — granular: bust only this cache.
+ *
+ * Tests override via `Layer.succeed(DeadCodeResultCacheEnabled, false)`.
+ */
+export class DeadCodeResultCacheEnabled extends Context.Reference<boolean>(
+  "react-doctor/DeadCodeResultCacheEnabled",
+  {
+    defaultValue: () => {
+      const noCache = process.env["REACT_DOCTOR_NO_CACHE"]?.toLowerCase() ?? "";
+      const noDeadCodeCache = process.env["REACT_DOCTOR_NO_DEAD_CODE_CACHE"]?.toLowerCase() ?? "";
+      if (CACHE_DISABLED_VALUES.has(noCache)) return false;
+      if (CACHE_DISABLED_VALUES.has(noDeadCodeCache)) return false;
       return true;
     },
   },

@@ -3,7 +3,10 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
+import { hasJsxA11ySettings } from "../../utils/has-jsx-a11y-settings.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
+import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { objectHasAccessibleChild } from "../../utils/object-has-accessible-child.js";
@@ -50,14 +53,27 @@ const isUndefinedOrNullExpression = (expression: EsTreeNode): boolean => {
   return false;
 };
 
+// `alt={cond ? undefined : label}` renders with no alt attribute at all
+// when the branch is taken — same failure as `alt={undefined}`.
+const mayEvaluateToUndefinedOrNull = (expression: EsTreeNode): boolean => {
+  if (isUndefinedOrNullExpression(expression)) return true;
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    return (
+      mayEvaluateToUndefinedOrNull(expression.consequent as EsTreeNode) ||
+      mayEvaluateToUndefinedOrNull(expression.alternate as EsTreeNode)
+    );
+  }
+  return false;
+};
+
 // Mirrors `is_valid_alt_prop` — alt is valid when present and not
-// {undefined} / {null}.
+// {undefined} / {null} (directly or via a conditional branch).
 const isValidAltProp = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   if (!attribute.value) return false;
   if (isNodeOfType(attribute.value, "JSXExpressionContainer")) {
     const expression = attribute.value.expression;
     if (expression && expression.type !== "JSXEmptyExpression") {
-      return !isUndefinedOrNullExpression(expression as EsTreeNode);
+      return !mayEvaluateToUndefinedOrNull(expression as EsTreeNode);
     }
     return true;
   }
@@ -70,7 +86,8 @@ const isPresentationRole = (attribute: EsTreeNodeOfType<"JSXAttribute"> | undefi
   return value === "presentation" || value === "none";
 };
 
-// Mirrors `aria_label_has_value` — string literal must be non-empty,
+// Mirrors `aria_label_has_value` — string literal must be non-empty
+// (whether written directly or inside an expression container),
 // expression container must not be `undefined`.
 const ariaLabelHasValue = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean => {
   if (!attribute.value) return false;
@@ -86,6 +103,12 @@ const ariaLabelHasValue = (attribute: EsTreeNodeOfType<"JSXAttribute">): boolean
       (expression as { name: string }).name === "undefined"
     ) {
       return false;
+    }
+    if (
+      isNodeOfType(expression as EsTreeNode, "Literal") &&
+      typeof (expression as { value: unknown }).value === "string"
+    ) {
+      return (expression as { value: string }).value.length > 0;
     }
     return true;
   }
@@ -200,13 +223,36 @@ export const altText = defineRule({
     const objectAliases = new Set(settings.object ?? []);
     const areaAliases = new Set(settings.area ?? []);
     const inputImageAliases = new Set(settings['input[type="image"]'] ?? []);
+    const fileHasJsxA11ySettings = hasJsxA11ySettings(context.settings);
 
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (!fileHasJsxA11ySettings && isNodeOfType(node.name, "JSXIdentifier")) {
+          const rawName = node.name.name;
+          if (
+            rawName !== "img" &&
+            rawName !== "object" &&
+            rawName !== "area" &&
+            rawName.toLowerCase() !== "input" &&
+            !imgAliases.has(rawName) &&
+            !objectAliases.has(rawName) &&
+            !areaAliases.has(rawName) &&
+            !inputImageAliases.has(rawName)
+          ) {
+            return;
+          }
+        }
         if (isGeneratedImageRenderContext(context, node)) return;
+        // A spread (`{...props}`) can carry `alt` — wrapper components
+        // typed as ImgHTMLAttributes forward it from callers, so the
+        // element can't be proven unlabeled.
+        if (hasJsxSpreadAttribute(node.attributes)) return;
         const tag = getElementType(node, context.settings);
 
         if (checkImg && (tag === "img" || imgAliases.has(tag))) {
+          // aria-hidden imgs are removed from the accessibility tree —
+          // the decorative-image pattern; alt would never be announced.
+          if (isHiddenFromScreenReader(node, context.settings)) return;
           imgRule(node, node, context);
           return;
         }
@@ -227,7 +273,9 @@ export const altText = defineRule({
             (() => {
               const typeAttribute = hasJsxPropIgnoreCase(node.attributes, "type");
               if (!typeAttribute) return false;
-              return getJsxPropStringValue(typeAttribute) === "image";
+              // HTML attribute values for `type` are case-insensitive —
+              // `type="IMAGE"` is the same image button.
+              return getJsxPropStringValue(typeAttribute)?.toLowerCase() === "image";
             })();
           if (isInputImage || inputImageAliases.has(tag)) {
             inputTypeImageRule(node, node, context);

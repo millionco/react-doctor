@@ -466,8 +466,17 @@ describe("react-native/rn-no-raw-text", () => {
       expectFail(`const App = () => <Animated.View>Hello</Animated.View>;`);
     });
 
-    it("still fires inside a lowercase intrinsic", () => {
-      expectFail(`const App = () => <div>Hello</div>;`);
+    // DOM tags only exist in web-targeting code — React Native has no
+    // `div`, the element itself would fail before its raw text could —
+    // so raw text inside a known HTML/SVG tag is web markup, not an RN
+    // crash (real-world FP source: DevTools panel UIs and `Platform.OS`
+    // web trees inside RN packages).
+    it("does not fire inside a known HTML intrinsic (web markup)", () => {
+      expectPass(`const App = () => <div>Hello</div>;`);
+    });
+
+    it("still fires inside a lowercase name that is not a known HTML/SVG tag", () => {
+      expectFail(`const App = () => <viewport>Hello</viewport>;`);
     });
 
     it("still fires on an in-file component proven to render children outside Text", () => {
@@ -641,6 +650,20 @@ describe("react-native/rn-no-raw-text", () => {
         import { ListItem, Row } from "@expo/ui";
         const App = () => <ListItem><Row>raw headline</Row></ListItem>;
       `);
+    });
+  });
+
+  describe("message preview", () => {
+    it("collapses internal whitespace so CRLF and LF sources produce the same message", () => {
+      const source = `const App = () => (\n  <View>\n    a long raw headline that\n    wraps across source lines in the file body\n  </View>\n);`;
+      const lfResult = runRule(rnNoRawText, source, { filename: "App.native.tsx" });
+      const crlfResult = runRule(rnNoRawText, source.replace(/\n/g, "\r\n"), {
+        filename: "App.native.tsx",
+      });
+      expect(lfResult.diagnostics.map((diagnostic) => diagnostic.message)).toEqual(
+        crlfResult.diagnostics.map((diagnostic) => diagnostic.message),
+      );
+      expect(lfResult.diagnostics[0]?.message).not.toContain("\n");
     });
   });
 });

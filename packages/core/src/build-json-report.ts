@@ -7,6 +7,7 @@ import type {
   InspectResult,
 } from "./types/index.js";
 import { summarizeDiagnostics } from "./summarize-diagnostics.js";
+import { hasReactRuntime } from "./utils/has-react-runtime.js";
 
 interface BuildJsonReportInput {
   version: string;
@@ -21,6 +22,14 @@ interface BuildJsonReportInput {
    * delta totals and `mode: "baseline"`.
    */
   baseline?: { baseRef: string; fixedCount: number; baseTotalCount: number };
+  /**
+   * True when a `changed` run was intended but its baseline delta couldn't be
+   * computed (no merge base — usually a shallow CI checkout — or a failed
+   * base/head lint), so `diagnostics` list every finding in the changed files
+   * rather than only the introduced ones. Ignored when `baseline` is set: a
+   * computed baseline (v2) wins, so callers pass at most one.
+   */
+  baselineDegraded?: boolean;
 }
 
 const toJsonDiff = (diff: DiffInfo | null): JsonReportDiffInfo | null => {
@@ -73,6 +82,9 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReport => {
   );
 
   const shared = {
+    ...(input.scans.length > 0
+      ? { reactDetected: input.scans.some((scan) => hasReactRuntime(scan.result.project)) }
+      : {}),
     version: input.version,
     ok: true as const,
     directory: input.directory,
@@ -98,5 +110,10 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReport => {
     };
   }
 
-  return { schemaVersion: 1, mode: input.mode, ...shared };
+  return {
+    schemaVersion: 1,
+    mode: input.mode,
+    ...(input.baselineDegraded ? { baselineDegraded: true } : {}),
+    ...shared,
+  };
 };

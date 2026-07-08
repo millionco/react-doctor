@@ -1,10 +1,10 @@
 import * as Effect from "effect/Effect";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { readDirectoryEntries } from "./project-info/index.js";
-import { IGNORED_DIRECTORIES } from "./constants.js";
+import { hasIgnoredPathSegment } from "./utils/has-ignored-path-segment.js";
 import { isLintableSourceFile } from "./utils/is-lintable-source-file.js";
 import { messageFromUnknown } from "./utils/message-from-unknown.js";
+import { walkSourceTreeFiles } from "./utils/walk-source-tree-files.js";
 import { Git } from "./services/git.js";
 
 const DISABLE_DIRECTIVE_PATTERN = /(eslint|oxlint)-disable/;
@@ -35,7 +35,10 @@ const findFilesWithDisableDirectivesViaGit = async (
 
   return grepResult.stdout
     .split("\n")
-    .filter((filePath) => filePath.length > 0 && isLintableSourceFile(filePath));
+    .filter(
+      (filePath) =>
+        filePath.length > 0 && isLintableSourceFile(filePath) && !hasIgnoredPathSegment(filePath),
+    );
 };
 
 // HACK: filesystem fallback for non-git projects (and for cases where
@@ -49,7 +52,10 @@ const findFilesWithDisableDirectivesViaFilesystem = (
 ): string[] => {
   const matches: string[] = [];
   const checkFile = (relativePath: string): void => {
-    if (!isLintableSourceFile(relativePath)) return;
+    // Same exclusions as the git path above, so which discovery ran (and
+    // whether `includePaths` carried a build-output path) never changes
+    // which files get neutralized.
+    if (!isLintableSourceFile(relativePath) || hasIgnoredPathSegment(relativePath)) return;
     const absolutePath = path.join(rootDirectory, relativePath);
     let content: string;
     try {
@@ -65,22 +71,8 @@ const findFilesWithDisableDirectivesViaFilesystem = (
     return matches;
   }
 
-  const stack = [rootDirectory];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (current === undefined) continue;
-    const entries = readDirectoryEntries(current);
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        if (entry.name.startsWith(".") || IGNORED_DIRECTORIES.has(entry.name)) continue;
-        stack.push(path.join(current, entry.name));
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      const absolute = path.join(current, entry.name);
-      const relative = path.relative(rootDirectory, absolute);
-      checkFile(relative);
-    }
+  for (const { absolutePath } of walkSourceTreeFiles(rootDirectory)) {
+    checkFile(path.relative(rootDirectory, absolutePath));
   }
   return matches;
 };

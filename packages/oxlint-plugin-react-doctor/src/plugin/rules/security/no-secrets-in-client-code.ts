@@ -31,6 +31,25 @@ const CREDENTIALED_URL_PATTERN =
 const isPublicUrlValue = (value: string): boolean =>
   /^https?:\/\//.test(value) && !CREDENTIALED_URL_PATTERN.test(value);
 
+// `SECRET_COMBOBOX_MODE_DO_NOT_USE = "SECRET_COMBOBOX_MODE_DO_NOT_USE"` and
+// redux action types like `"cboard/ResetPassword/STORE_PASSWORD_API_SUCCESS"`
+// embed the variable's own name — a sentinel, never a credential.
+const isSelfReferentialSentinelValue = (variableName: string, literalValue: string): boolean =>
+  literalValue.toLowerCase().includes(variableName.toLowerCase());
+
+// Storage/config KEY NAMES (`"auth_local_email_blocklist"`,
+// `"od:memory:pending-connector-auth"`, `"__webstudio__$__api_token"`) are
+// human-readable lowercase words joined by separators; real leaked secrets
+// are high-entropy strings mixing case and digits.
+const isIdentifierLikeKeyNameValue = (literalValue: string): boolean => {
+  const wordSegments = literalValue
+    .replace(/^[_$\s]+|[_$\s]+$/g, "")
+    .split(/[_\-:./$]+/)
+    .filter((segment) => segment.length > 0);
+  if (wordSegments.length < 2) return false;
+  return wordSegments.every((segment) => /^[a-z]+$/.test(segment));
+};
+
 // Frameworks with a documented public-env convention get advice naming
 // their exact prefix; everything else falls back to the generic
 // `recommendation`. A project carries exactly one framework token, so the
@@ -42,7 +61,6 @@ const FRAMEWORK_ENV_ADVICE = [
   ["cra", "Create React App", "REACT_APP_*"],
   ["gatsby", "Gatsby", "GATSBY_*"],
 ] as const;
-
 export const noSecretsInClientCode = defineRule({
   id: "no-secrets-in-client-code",
   title: "Secret in client code",
@@ -121,6 +139,10 @@ export const noSecretsInClientCode = defineRule({
           !isUiConstant &&
           !isPublicUrlValue(literalValue) &&
           !isPlaceholderValueForVariableHeuristic &&
+          !isSelfReferentialSentinelValue(variableName, literalValue) &&
+          !isIdentifierLikeKeyNameValue(literalValue) &&
+          !isSelfReferentialSentinelValue(variableName, literalValue) &&
+          !isIdentifierLikeKeyNameValue(literalValue) &&
           literalValue.length > SECRET_MIN_LENGTH_CHARS
         ) {
           context.report({

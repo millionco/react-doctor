@@ -3,6 +3,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { isAbstractRole } from "../../utils/is-abstract-role.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
@@ -27,6 +28,17 @@ const DEFAULT_HANDLERS: ReadonlyArray<string> = [
   "onKeyUp",
 ];
 
+// Keyboard handlers on an element that can't take focus and has no
+// pointer handler only receive events BUBBLING from focusable
+// descendants (Escape shortcuts, composite-widget delegation) — the
+// element isn't itself presented as a control, so demanding a role is
+// noise.
+const KEYBOARD_HANDLERS_LOWER: ReadonlySet<string> = new Set([
+  "onkeypress",
+  "onkeydown",
+  "onkeyup",
+]);
+
 interface NoStaticElementInteractionsSettings {
   handlers?: ReadonlyArray<string>;
   allowExpressionValues?: boolean;
@@ -43,8 +55,54 @@ const resolveSettings = (
       : {};
   return {
     handlers: ruleSettings.handlers ?? DEFAULT_HANDLERS,
-    allowExpressionValues: ruleSettings.allowExpressionValues ?? false,
+    allowExpressionValues: ruleSettings.allowExpressionValues ?? true,
   };
+};
+
+// A keyboard event can only be DELIVERED to this element (rather than
+// bubble through it) when it takes focus (any tabIndex, including the
+// programmatic -1, or contentEditable) or doubles as a pointer target.
+const isDirectKeyboardEventTarget = (
+  attributes: EsTreeNodeOfType<"JSXOpeningElement">["attributes"],
+  handlersLower: ReadonlySet<string>,
+): boolean => {
+  if (hasJsxPropIgnoreCase(attributes, "tabIndex")) return true;
+  if (hasJsxPropIgnoreCase(attributes, "contentEditable")) return true;
+  for (const attribute of attributes) {
+    if (!isNodeOfType(attribute, "JSXAttribute")) continue;
+    const attributeName = getJsxAttributeName(attribute.name);
+    if (!attributeName) continue;
+    const nameLower = attributeName.toLowerCase();
+    if (KEYBOARD_HANDLERS_LOWER.has(nameLower)) continue;
+    if (!handlersLower.has(nameLower)) continue;
+    if (isNullValue(attribute)) continue;
+    return true;
+  }
+  return false;
+};
+
+const isStaticNullishExpression = (expression: EsTreeNode): boolean => {
+  if (isNodeOfType(expression, "Literal")) return expression.value === null;
+  if (isNodeOfType(expression, "Identifier")) return expression.name === "undefined";
+  return isNodeOfType(expression, "UnaryExpression") && expression.operator === "void";
+};
+
+interface StaticRoleBranch {
+  known: boolean;
+  role: string | null;
+}
+
+const resolveStaticRoleBranch = (expression: EsTreeNode): StaticRoleBranch => {
+  if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
+    return { known: true, role: expression.value };
+  }
+  if (isStaticNullishExpression(expression)) return { known: true, role: null };
+  return { known: false, role: null };
+};
+
+const isRecognizedRoleString = (roleText: string): boolean => {
+  const firstRole = roleText.toLowerCase().trim().split(/\s+/)[0];
+  return Boolean(firstRole && (isInteractiveRole(firstRole) || isNonInteractiveRole(firstRole)));
 };
 
 // True when the attribute value is `={null}`.
@@ -70,6 +128,9 @@ export const noStaticElementInteractions = defineRule({
   category: "Accessibility",
   create: (context) => {
     const settings = resolveSettings(context.settings);
+    const handlersLower: ReadonlySet<string> = new Set(
+      settings.handlers.map((handlerName) => handlerName.toLowerCase()),
+    );
     const isTestlikeFile = isTestlikeFilename(context.filename);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
@@ -82,10 +143,23 @@ export const noStaticElementInteractions = defineRule({
         // pass through.
         let hasNonBlockerHandler = false;
         let hasAnyHandler = false;
-        for (const handler of settings.handlers) {
-          const attribute = hasJsxPropIgnoreCase(node.attributes, handler);
-          if (!attribute) continue;
+        let isKeyboardTarget: boolean | null = null;
+        // Only the FIRST attribute per handler name counts (mirrors the
+        // per-handler `hasJsxPropIgnoreCase` first-match this replaces).
+        let seenHandlerNames: Set<string> | null = null;
+        for (const attribute of node.attributes) {
+          if (!isNodeOfType(attribute, "JSXAttribute")) continue;
+          const attributeName = getJsxAttributeName(attribute.name);
+          if (!attributeName) continue;
+          const handlerNameLower = attributeName.toLowerCase();
+          if (!handlersLower.has(handlerNameLower)) continue;
+          if (seenHandlerNames?.has(handlerNameLower)) continue;
+          (seenHandlerNames ??= new Set()).add(handlerNameLower);
           if (isNullValue(attribute)) continue;
+          if (KEYBOARD_HANDLERS_LOWER.has(handlerNameLower)) {
+            isKeyboardTarget ??= isDirectKeyboardEventTarget(node.attributes, handlersLower);
+            if (!isKeyboardTarget) continue;
+          }
           hasAnyHandler = true;
           if (!isPureEventBlockerHandler(attribute)) {
             hasNonBlockerHandler = true;
@@ -98,6 +172,9 @@ export const noStaticElementInteractions = defineRule({
         const elementType = getElementType(node, context.settings);
         // Custom JSX elements pass through.
         if (!HTML_TAGS.has(elementType)) return;
+        // <svg> has the implicit `graphics-document` role, so it isn't
+        // static; upstream skips it too.
+        if (elementType === "svg") return;
         if (isHiddenFromScreenReader(node, context.settings)) return;
         if (isPresentationRole(node)) return;
         if (isInteractiveElement(elementType, node)) return;
@@ -110,19 +187,48 @@ export const noStaticElementInteractions = defineRule({
           return;
         }
 
-        const attributeValue = roleAttribute.value as EsTreeNode;
+        let attributeValue = roleAttribute.value as EsTreeNode;
+        if (
+          isNodeOfType(attributeValue, "JSXExpressionContainer") &&
+          isNodeOfType(attributeValue.expression, "Literal") &&
+          typeof attributeValue.expression.value === "string"
+        ) {
+          attributeValue = attributeValue.expression;
+        }
         if (isNodeOfType(attributeValue, "Literal") && typeof attributeValue.value === "string") {
-          const firstRole = attributeValue.value.toLowerCase().trim().split(/\s+/)[0];
-          if (firstRole && (isInteractiveRole(firstRole) || isNonInteractiveRole(firstRole))) {
-            return;
-          }
+          if (isRecognizedRoleString(attributeValue.value)) return;
           context.report({ node: node.name, message: MESSAGE });
           return;
         }
-        if (
-          isNodeOfType(attributeValue, "JSXExpressionContainer") &&
-          settings.allowExpressionValues
-        ) {
+        if (isNodeOfType(attributeValue, "JSXExpressionContainer")) {
+          if (!settings.allowExpressionValues) {
+            context.report({ node: node.name, message: MESSAGE });
+            return;
+          }
+          const expression = attributeValue.expression as EsTreeNode;
+          // `role={undefined}` / `role={null}` render no role at all.
+          if (isStaticNullishExpression(expression)) {
+            context.report({ node: node.name, message: MESSAGE });
+            return;
+          }
+          // `role={isClickable ? "button" : undefined}` — a role is
+          // present exactly when the element acts as a control, so the
+          // semantics are provided. Report only when EVERY statically
+          // known branch is a non-role string or nullish.
+          if (isNodeOfType(expression, "ConditionalExpression")) {
+            const branches = [
+              resolveStaticRoleBranch(expression.consequent as EsTreeNode),
+              resolveStaticRoleBranch(expression.alternate as EsTreeNode),
+            ];
+            if (branches.some((branch) => !branch.known)) return;
+            const providesRole = branches.some(
+              (branch) => branch.role !== null && isRecognizedRoleString(branch.role),
+            );
+            if (providesRole) return;
+            context.report({ node: node.name, message: MESSAGE });
+            return;
+          }
+          // Any other expression computes the role at runtime — trust it.
           return;
         }
         context.report({ node: node.name, message: MESSAGE });

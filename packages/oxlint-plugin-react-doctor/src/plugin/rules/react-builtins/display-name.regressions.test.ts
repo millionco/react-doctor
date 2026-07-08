@@ -85,3 +85,32 @@ describe("react-builtins/display-name — regressions: extended HoC awareness", 
     expect(result.diagnostics).toEqual([]);
   });
 });
+
+describe("react-builtins/display-name — regressions: curried factory body shapes", () => {
+  it("flags an anonymous arrow component returned from a block-body arrow factory", () => {
+    const result = runJsx(`
+      export const h = (order) => { return (props) => <Title order={order} {...props} />; };
+    `);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags the same factory with an expression body identically", () => {
+    const blockBody = runJsx(`
+      export const h = (order) => { return (props) => <Title order={order} {...props} />; };
+    `);
+    const expressionBody = runJsx(`
+      export const h = (order) => (props) => <Title order={order} {...props} />;
+    `);
+    expect(blockBody.diagnostics.map((diagnostic) => diagnostic.message)).toEqual(
+      expressionBody.diagnostics.map((diagnostic) => diagnostic.message),
+    );
+  });
+
+  it("does not flag a PascalCase arrow component with a block body", () => {
+    const result = runJsx(`
+      const Header = (props) => { return <div {...props} />; };
+      export default Header;
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+});

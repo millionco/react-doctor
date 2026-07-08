@@ -306,6 +306,13 @@ export const OXLINT_OUTPUT_MAX_BYTES = 50 * 1024 * 1024;
 // binding is markedly slower than on a developer laptop.
 export const OXLINT_SPAWN_TIMEOUT_MS = 60_000;
 
+// Longest synchronous burst a cooperative main-thread pass (the security
+// scan's walk / file / rule steps, lint's pre-spawn cache hashing) may hold
+// the event loop before handing it back. Lint child processes are spawned and
+// drained from main-thread continuations, so bursts beyond ~a frame idle the
+// whole worker pool — and starve concurrently-scanning sibling projects.
+export const COOPERATIVE_YIELD_BUDGET_MS = 12;
+
 // Directory name appended to os.tmpdir() to form the shared base for the V8
 // compile cache. Matches the base Node's own module.enableCompileCache() uses,
 // so the bin (parent) and the spawned oxlint batches (children) share one tree.
@@ -450,6 +457,15 @@ export const DIAGNOSTIC_CATEGORY_BUCKETS = [
   "Accessibility",
   "Maintainability",
 ] as const;
+
+// Categories whose findings are matched by occurrence in the CI baseline
+// delta — the finding's identity is the flagged element (a missing
+// attribute, a wrong element), not the flagged line's text — so the delta
+// matches them by `(file, rule)` occurrence count instead of a line-text
+// hash. Every Accessibility rule is element-level; rules in other
+// categories opt in individually via their per-rule `matchByOccurrence`
+// flag (see `resolveMatchByOccurrence` in `runners/oxlint/parse-output`).
+export const OCCURRENCE_MATCHED_CATEGORIES: ReadonlySet<string> = new Set(["Accessibility"]);
 
 // Rules whose heuristic only makes sense in application code. A published
 // library deliberately exposes flexible primitives (components built in
@@ -620,9 +636,41 @@ export const FILE_LINT_CACHE_MAX_RULESET_COUNT = 8;
 // repos; the most-recently-stored entries are kept when over the cap.
 export const FILE_LINT_CACHE_MAX_FILE_COUNT = 50_000;
 
+// Sidecar lint cache (`runners/oxlint/sidecar-lint-cache.ts`). Caches the
+// cross-file rules' per-file diagnostics keyed by content hash + sidecar
+// ruleset hash, each entry guarded by the file's cross-file dependency probe
+// set, so a warm rescan replays the sidecar instead of re-linting every
+// unchanged file. Shares the file cache's bucket/file caps.
+export const SIDECAR_LINT_CACHE_SCHEMA_VERSION = 1;
+
+export const SIDECAR_LINT_CACHE_FILENAME = "sidecar-lint-cache.json";
+
 // Length (chars) of the project-directory hash used to name the tmp-dir cache
 // fallback when a project has no `node_modules` to host `.cache/react-doctor`.
 export const CACHE_FILENAME_HASH_LENGTH_CHARS = 16;
+
+// This package's own version, inlined at build time (`vite.config.ts` `env`)
+// the same way the CLI inlines `VERSION`; running from source (tests, dev)
+// falls back to "0.0.0". Cache keys include it because cached diagnostics
+// carry core's POST-PROCESSING (message text, toolchain-dependency filtering),
+// so an upgrade must never replay entries shaped by an older core.
+export const CORE_PACKAGE_VERSION = process.env.REACT_DOCTOR_CORE_VERSION ?? "0.0.0";
+
+// Whole-project dead-code result cache (`dead-code/dead-code-result-cache.ts`).
+// Replays deslop's diagnostics — skipping the analysis worker entirely — when
+// nothing the analysis reads has changed since the stored run.
+// Bumped to 2: entries carry a per-file `files` map (mtime, size, content
+// hash) instead of folding the file stats into the key, so a fresh checkout's
+// bumped mtimes can be repaired against unchanged content.
+export const DEAD_CODE_CACHE_SCHEMA_VERSION = 2;
+
+export const DEAD_CODE_CACHE_FILENAME = "dead-code-cache.json";
+
+// deslop's incremental analysis store (`DeslopConfig.incrementalCachePath`) —
+// per-file parse summaries + collect/resolution/package-fact layers, written
+// by the analysis WORKER for the changed-files case the whole-result cache
+// above can't serve. Lives in the same per-project cache directory.
+export const DEAD_CODE_SUMMARY_CACHE_FILENAME = "dead-code-summaries.json";
 
 // Plugin / rule / category identity for the diagnostics the supply-chain
 // check emits. `plugin: "socket"` keeps Socket findings visually distinct

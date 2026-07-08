@@ -49,4 +49,13 @@ describe("tanstack-start/tanstack-start-no-useeffect-fetch — regressions", () 
     );
     expect(diagnostics).toHaveLength(0);
   });
+
+  it("stays silent outside the routes directory", () => {
+    const { diagnostics } = runRule(
+      tanstackStartNoUseEffectFetch,
+      `function Nav() { useEffect(() => { fetch(url).then(setData); }, []); return null; }`,
+      { filename: "src/components/nav.tsx" },
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
 });

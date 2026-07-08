@@ -18,6 +18,7 @@ interface TsConfigCompilerOptions {
 
 interface TsConfigShape {
   readonly extends?: string;
+  readonly referencePaths: readonly string[];
   readonly compilerOptions: TsConfigCompilerOptions;
 }
 
@@ -82,8 +83,18 @@ const readTsConfig = (filePath: string): TsConfigShape | null => {
 
   return {
     extends: typeof parsed.config.extends === "string" ? parsed.config.extends : undefined,
+    referencePaths: normalizeReferencePaths(parsed.config.references),
     compilerOptions: normalizeCompilerOptions(parsed.config.compilerOptions),
   };
+};
+
+const normalizeReferencePaths = (references: unknown): string[] => {
+  if (!Array.isArray(references)) return [];
+  return references
+    .map((reference) =>
+      isPlainObject(reference) && typeof reference.path === "string" ? reference.path : null,
+    )
+    .filter((referencePath): referencePath is string => referencePath !== null);
 };
 
 const mergeCompilerOptions = (
@@ -143,12 +154,12 @@ const libIncludesES2023 = (lib: ReadonlyArray<string>): boolean =>
   lib.some(libEntryIncludesES2023Array);
 
 const compilerOptionsArePreES2023 = (compilerOptions: TsConfigCompilerOptions): boolean => {
-  if (compilerOptions.hasExplicitLib) {
-    return !libIncludesES2023(compilerOptions.lib ?? []);
-  }
-
   if (compilerOptions.target) {
     return targetYearIsPreES2023(compilerOptions.target);
+  }
+
+  if (compilerOptions.hasExplicitLib) {
+    return !libIncludesES2023(compilerOptions.lib ?? []);
   }
 
   return false;
@@ -157,10 +168,30 @@ const compilerOptionsArePreES2023 = (compilerOptions: TsConfigCompilerOptions): 
 const compilerOptionsDeclareTargetOrLib = (compilerOptions: TsConfigCompilerOptions): boolean =>
   compilerOptions.hasExplicitLib || compilerOptions.target !== undefined;
 
-const detectPreES2023FromConfig = (tsConfigPath: string): boolean => {
+const detectPreES2023FromConfig = (
+  tsConfigPath: string,
+  visitedConfigPaths: ReadonlySet<string> = new Set(),
+): boolean => {
+  if (visitedConfigPaths.has(tsConfigPath)) return false;
   const compilerOptions = readResolvedCompilerOptions(tsConfigPath, 0, new Set());
   if (!compilerOptions) return false;
-  if (!compilerOptionsDeclareTargetOrLib(compilerOptions)) return false;
+  if (!compilerOptionsDeclareTargetOrLib(compilerOptions)) {
+    const tsConfig = readTsConfig(tsConfigPath);
+    if (!tsConfig) return false;
+    const nextVisitedConfigPaths = new Set(visitedConfigPaths);
+    nextVisitedConfigPaths.add(tsConfigPath);
+    const configDirectory = path.dirname(tsConfigPath);
+    return tsConfig.referencePaths.some((referencePath) => {
+      const resolvedReferencePath = path.resolve(configDirectory, referencePath);
+      const referencedConfigPath = isFile(resolvedReferencePath)
+        ? resolvedReferencePath
+        : path.join(resolvedReferencePath, TSCONFIG_FILENAME);
+      return (
+        isFile(referencedConfigPath) &&
+        detectPreES2023FromConfig(referencedConfigPath, nextVisitedConfigPaths)
+      );
+    });
+  }
   return compilerOptionsArePreES2023(compilerOptions);
 };
 
@@ -168,8 +199,15 @@ export const detectPreES2023Target = (directory: string): boolean => {
   const tsConfigPath = path.join(directory, TSCONFIG_FILENAME);
   if (isFile(tsConfigPath)) return detectPreES2023FromConfig(tsConfigPath);
 
+  for (const fallbackFilename of FALLBACK_TSCONFIG_FILENAMES) {
+    const fallbackPath = path.join(directory, fallbackFilename);
+    if (isFile(fallbackPath)) return detectPreES2023FromConfig(fallbackPath);
+  }
+
   return false;
 };
+
+const FALLBACK_TSCONFIG_FILENAMES = ["tsconfig.app.json", "tsconfig.build.json"] as const;
 
 const FRAMEWORK_PACKAGES: Record<string, Framework> = {
   next: "nextjs",

@@ -427,6 +427,10 @@ export interface ReactDoctorConfig {
    * { "categories": { "Maintainability": "off", "Performance": "warn" } }
    * ```
    *
+   * A category severity re-stamps rules that are already enabled; it
+   * never activates opt-out (`defaultEnabled: false`) rules — pin the
+   * rule itself under `rules` to opt in.
+   *
    * To silence a whole tag-defined rule family (e.g. `"design"`,
    * `"test-noise"`, `"migration-hint"`) that doesn't align with a
    * single category, use `ignore.tags` instead.

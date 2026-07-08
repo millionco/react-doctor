@@ -91,7 +91,7 @@ const hasJsxSpreadAttribute = (attributes: EsTreeNode[]): boolean =>
 // jest/vitest suites routinely render deliberately static
 // `<input value={x} />` presentational stubs, where the missing handler
 // is intentional, never user-facing (ant-design's form __tests__ was a
-// mined bench FP).
+// mined FP).
 export const noUncontrolledInput = defineRule({
   id: "no-uncontrolled-input",
   title: "Uncontrolled input value",

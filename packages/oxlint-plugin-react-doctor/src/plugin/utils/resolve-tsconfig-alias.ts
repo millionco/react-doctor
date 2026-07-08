@@ -4,6 +4,7 @@ import {
   CROSS_FILE_DIRECTORY_WALK_MAX_LEVELS,
   TSCONFIG_EXTENDS_MAX_DEPTH,
 } from "../constants/thresholds.js";
+import { recordContentProbe } from "./cross-file-probe-recorder.js";
 import { resolveModuleFileFromAbsolutePath } from "./resolve-relative-import-path.js";
 
 interface ResolvedTsconfig {
@@ -74,7 +75,12 @@ const stripJsonComments = (text: string): string => {
   return output.replace(/,(\s*[}\]])/g, "$1");
 };
 
-const parseTsconfigFile = (configFilePath: string): Record<string, unknown> | null => {
+const parseTsconfigFile = (
+  configFilePath: string,
+  probedPaths: string[],
+): Record<string, unknown> | null => {
+  recordContentProbe(configFilePath);
+  probedPaths.push(configFilePath);
   let sourceText: string;
   try {
     sourceText = fs.readFileSync(configFilePath, "utf8");
@@ -119,8 +125,9 @@ const parsePathsField = (pathsField: unknown): Map<string, readonly string[]> =>
 const readResolvedTsconfig = (
   configFilePath: string,
   extendsDepth: number,
+  probedPaths: string[],
 ): ResolvedTsconfig | null => {
-  const parsed = parseTsconfigFile(configFilePath);
+  const parsed = parseTsconfigFile(configFilePath, probedPaths);
   if (!parsed) return null;
 
   const configDirectory = path.dirname(configFilePath);
@@ -136,7 +143,9 @@ const readResolvedTsconfig = (
 
   if (typeof parsed.extends === "string" && extendsDepth < TSCONFIG_EXTENDS_MAX_DEPTH) {
     const parentPath = resolveExtendsPath(parsed.extends, configDirectory);
-    const inherited = parentPath ? readResolvedTsconfig(parentPath, extendsDepth + 1) : null;
+    const inherited = parentPath
+      ? readResolvedTsconfig(parentPath, extendsDepth + 1, probedPaths)
+      : null;
     if (inherited) return inherited;
   }
 
@@ -146,22 +155,41 @@ const readResolvedTsconfig = (
 interface CacheEntry {
   readonly mtimeMs: number;
   readonly config: ResolvedTsconfig | null;
+  /** Every tsconfig read while resolving the `extends` chain, in order. */
+  readonly probedChainPaths: ReadonlyArray<string>;
 }
 
 const configByFilePath = new Map<string, CacheEntry>();
 
 const loadTsconfigCached = (configFilePath: string): ResolvedTsconfig | null => {
+  // A missing entry config resolves to null without reading anything else,
+  // so the entry path itself is always a content dependency (its answer is
+  // "absent" when the statSync throws).
+  recordContentProbe(configFilePath);
   let fileStat: fs.Stats;
   try {
     fileStat = fs.statSync(configFilePath);
   } catch {
     return null;
   }
+  // The resolved config depends on the whole `extends` CHAIN, not just this
+  // entry file, so each entry remembers the chain paths it read and replays
+  // them into an active probe recorder on a memo hit — the fingerprint gets
+  // the full chain without re-parsing it per file
+  // (see cross-file-probe-recorder.ts).
   const cached = configByFilePath.get(configFilePath);
-  if (cached && cached.mtimeMs === fileStat.mtimeMs) return cached.config;
+  if (cached && cached.mtimeMs === fileStat.mtimeMs) {
+    for (const probedPath of cached.probedChainPaths) recordContentProbe(probedPath);
+    return cached.config;
+  }
 
-  const config = readResolvedTsconfig(configFilePath, 0);
-  configByFilePath.set(configFilePath, { mtimeMs: fileStat.mtimeMs, config });
+  const probedChainPaths: string[] = [];
+  const config = readResolvedTsconfig(configFilePath, 0, probedChainPaths);
+  configByFilePath.set(configFilePath, {
+    mtimeMs: fileStat.mtimeMs,
+    config,
+    probedChainPaths,
+  });
   return config;
 };
 

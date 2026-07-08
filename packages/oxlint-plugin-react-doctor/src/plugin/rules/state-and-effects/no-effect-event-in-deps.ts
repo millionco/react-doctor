@@ -5,6 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isImportedFromNonReactModule } from "../../utils/is-imported-from-non-react-module.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -103,6 +104,12 @@ export const noEffectEventInDeps = defineRule({
         const initializer = declaratorNode.init;
         if (!initializer || !isNodeOfType(initializer, "CallExpression")) return;
         if (!isHookCall(initializer, "useEffectEvent")) return;
+        if (
+          isNodeOfType(initializer.callee, "Identifier") &&
+          isImportedFromNonReactModule(declaratorNode, initializer.callee.name)
+        ) {
+          return;
+        }
         componentBindings.addBindingToCurrentFrame(declaratorNode.id.name);
       },
     });

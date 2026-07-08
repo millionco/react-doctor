@@ -39,6 +39,69 @@ describe("server/server-hoist-static-io — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag readdir in a handler that writes and unlinks files in the same directory", () => {
+    const result = runRule(
+      serverHoistStaticIo,
+      `export async function POST(request) {
+        const dir = getBrandingDir();
+        const allFiles = await readdir(dir).catch(() => []);
+        for (const f of allFiles) {
+          try { await unlink(path.join(dir, f)); } catch {}
+        }
+        const buffer = Buffer.from(await request.arrayBuffer());
+        await writeFile(path.join(dir, "asset.png"), buffer);
+        return Response.json({ ok: true });
+      }`,
+      { filename: "app/api/admin/branding/route.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag readdir in a DELETE handler that unlinks listed files", () => {
+    const result = runRule(
+      serverHoistStaticIo,
+      `export async function DELETE(request) {
+        const dir = getBrandingDir();
+        const allFiles = await readdir(dir).catch(() => []);
+        for (const f of allFiles) {
+          try { await unlink(path.join(dir, f)); } catch {}
+        }
+        return Response.json({ success: true });
+      }`,
+      { filename: "app/api/admin/branding/route.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags readdir in a read-only handler", () => {
+    const result = runRule(
+      serverHoistStaticIo,
+      `export async function GET(request) {
+        const entries = await readdir("./content");
+        return Response.json(entries);
+      }`,
+      { filename: "app/content/route.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a static readFile in a handler that mutates unrelated files", () => {
+    const result = runRule(
+      serverHoistStaticIo,
+      `export async function POST(request) {
+        const font = await readFile("./fonts/Inter.ttf");
+        await writeFile("./out/render.png", font);
+        return new Response(font);
+      }`,
+      { filename: "app/og/route.ts" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags a read through an intermediate binding that never touches a param", () => {
     const result = runRule(
       serverHoistStaticIo,

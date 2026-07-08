@@ -1,8 +1,8 @@
 import { TANSTACK_ROOT_ROUTE_FILE_PATTERN } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
-import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -72,7 +72,11 @@ export const tanstackStartMissingHeadContent = defineRule({
   severity: "warn",
   recommendation:
     "Add `<HeadContent />` inside `<head>` in your __root route. Without it, route `head()` meta tags are dropped.",
-  create: (context: RuleContext) => {
+  create: (context: RuleContext): RuleVisitors => {
+    // The pattern anchors on the separator-free `__root.<ext>` basename, so
+    // testing the raw filename equals testing the backslash-normalized one.
+    if (!TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(context.filename ?? "")) return {};
+
     let hasHeadContentElement = false;
     let hasDocumentHeadElement = false;
     let hasCustomHeadChildElement = false;
@@ -140,10 +144,6 @@ export const tanstackStartMissingHeadContent = defineRule({
 
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
-        const filename = context.filename ?? "";
-        const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
-        if (!isRootRouteFile) return;
-
         const statements = node.body ?? [];
         // Pre-scan top-level imports before JSX visits so late import
         // declarations do not make alias detection source-order dependent.
@@ -160,22 +160,12 @@ export const tanstackStartMissingHeadContent = defineRule({
         }
       },
       ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
-        const filename = context.filename ?? "";
-        const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
-        if (!isRootRouteFile) return;
         collectImportBindings(node);
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
-        const filename = context.filename ?? "";
-        const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
-        if (!isRootRouteFile) return;
         collectVariableAlias(node);
       },
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-        const filename = normalizeFilename(context.filename ?? "");
-        const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
-        if (!isRootRouteFile) return;
-
         if (isNodeOfType(node.name, "JSXIdentifier")) {
           if (node.name.name === DOCUMENT_HEAD_ELEMENT_NAME) {
             hasDocumentHeadElement = true;
@@ -208,10 +198,6 @@ export const tanstackStartMissingHeadContent = defineRule({
         }
       },
       "Program:exit"(programNode: EsTreeNode) {
-        const filename = normalizeFilename(context.filename ?? "");
-        const isRootRouteFile = TANSTACK_ROOT_ROUTE_FILE_PATTERN.test(filename);
-        if (!isRootRouteFile) return;
-
         if (hasDocumentHeadElement && !hasHeadContentElement && !hasCustomHeadChildElement) {
           context.report({
             node: programNode,

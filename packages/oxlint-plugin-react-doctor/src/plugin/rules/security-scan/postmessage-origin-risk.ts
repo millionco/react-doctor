@@ -4,6 +4,7 @@ import type { ScanFinding } from "../../utils/file-scan.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { parseSourceText } from "../../utils/parse-source-file.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { escapeRegExp } from "./utils/escape-reg-exp.js";
 import { getLocationAtIndex } from "./utils/get-location-at-index.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 
@@ -26,10 +27,26 @@ const MESSAGE_DATA_BINDING_PATTERN = /\b(?:const|let|var)\s+[^;=]*=\s*$/;
 // MessagePort/Worker/BroadcastChannel/EventSource/WebSocket message events
 // are same-application or server-stream channels; window-origin checks
 // neither exist nor apply there. `self.onmessage` is the worker-global
-// handler idiom. Substring match (no left \b) so camelCase receivers like
-// `tokenChannel.onmessage` count; `^source\.` is the EventSource idiom.
+// handler idiom (`_self` is the Prism-style polyfill for it). Substring
+// match (no left \b) so camelCase receivers like `tokenChannel.onmessage`
+// count; `^source\.` is the EventSource idiom.
 const SAME_APPLICATION_CHANNEL_TARGET_PATTERN =
-  /port\d?\b|worker|channel|broadcast|socket|\bws\b|\bsse\b|eventsource|^self\.|^source\./i;
+  /port\d?\b|worker|channel|broadcast|socket|\bws\b|\bsse\b|eventsource|^_?self\.|^source\./i;
+
+// A receiver whose NAME says nothing (`es.onmessage`, `g.onmessage`) can
+// still be a same-application channel — resolve the identifier to its
+// constructor (`const es = new EventSource(url)`, `let g = new Worker(...)`)
+// anywhere in the file.
+const SAME_APPLICATION_CHANNEL_CONSTRUCTOR_SOURCE = String.raw`=\s*new\s+(?:EventSource|WebSocket|Worker|SharedWorker|BroadcastChannel|MessageChannel)\b`;
+
+const isSameApplicationChannelInstance = (targetText: string, fileContent: string): boolean => {
+  const receiverRoot = /^[\w$]+/.exec(targetText)?.[0];
+  if (receiverRoot === undefined) return false;
+  const constructorAssignmentPattern = new RegExp(
+    `(?<![\\w$.])${escapeRegExp(receiverRoot)}\\s*${SAME_APPLICATION_CHANNEL_CONSTRUCTOR_SOURCE}`,
+  );
+  return constructorAssignmentPattern.test(fileContent);
+};
 
 const WORKER_FILE_PATH_PATTERN = /worker/i;
 
@@ -84,6 +101,7 @@ export const postmessageOriginRisk = defineRule({
       const targetText = getMessageHandlerTarget(file.content, node);
       if (targetText === null) return;
       if (SAME_APPLICATION_CHANNEL_TARGET_PATTERN.test(targetText)) return;
+      if (isSameApplicationChannelInstance(targetText, file.content)) return;
 
       const nodeText = getNodeText(file.content, node);
       const messageDataIndex = nodeText.search(MESSAGE_DATA_READ_PATTERN);

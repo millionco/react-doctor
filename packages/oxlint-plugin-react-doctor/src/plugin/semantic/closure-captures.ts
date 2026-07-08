@@ -2,21 +2,10 @@ import type { EsTreeNode } from "../utils/es-tree-node.js";
 import type { ReferenceDescriptor, ScopeAnalysis } from "./scope-analysis.js";
 import { isDescendantScope } from "./scope-analysis.js";
 import { TYPE_POSITION_CHILD_KEYS } from "../constants/ts-type-position-keys.js";
-import { isAstDescendant } from "../utils/is-ast-descendant.js";
 import { isAstNode } from "../utils/is-ast-node.js";
 import { isFunctionLike } from "../utils/is-function-like.js";
 
-// True if `inner` is a descendant of `outer` (or equal) in the AST
-// tree. Used to filter references inside `functionNode`.
-// Returns every reference inside `functionNode`'s body whose binding
-// lives OUTSIDE the function — i.e. the closure-captured set. Useful
-// for exhaustive-deps to compute the actual set of values a hook
-// callback closes over.
-//
-// Excludes: globals (unresolved references), references whose binding
-// is the function itself (recursive call) or its parameters /
-// internal locals.
-export const closureCaptures = (
+const computeClosureCaptures = (
   functionNode: EsTreeNode,
   scopes: ScopeAnalysis,
 ): ReadonlyArray<ReferenceDescriptor> => {
@@ -72,7 +61,44 @@ export const closureCaptures = (
   };
   visit(functionNode);
 
-  // Filter out references whose identifier is OUTSIDE functionNode in
-  // the AST (defensive — shouldn't happen given our walk).
-  return out.filter((reference) => isAstDescendant(reference.identifier, functionNode));
+  // Every collected reference's identifier IS a walked descendant of
+  // `functionNode` (`referenceFor` is keyed by the identifier node, and
+  // bubbled inner captures sit inside inner subtrees), so no
+  // containment re-check is needed here.
+  return out;
+};
+
+// Memoized per (ScopeAnalysis, function node). The walk recurses into
+// inner functions through this entry point, so nested callbacks compute
+// once and every enclosing function — and every calling rule — reuses
+// the shared frozen-by-convention array (`ReadonlyArray`, callers only
+// iterate). Keyed on the ScopeAnalysis first because the semantic-
+// context fallback can mint throwaway stub analyses for the same AST.
+const capturesByAnalysis = new WeakMap<
+  ScopeAnalysis,
+  WeakMap<EsTreeNode, ReadonlyArray<ReferenceDescriptor>>
+>();
+
+// Returns every reference inside `functionNode`'s body whose binding
+// lives OUTSIDE the function — i.e. the closure-captured set. Useful
+// for exhaustive-deps to compute the actual set of values a hook
+// callback closes over.
+//
+// Excludes: globals (unresolved references), references whose binding
+// is the function itself (recursive call) or its parameters /
+// internal locals.
+export const closureCaptures = (
+  functionNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): ReadonlyArray<ReferenceDescriptor> => {
+  let capturesByFunction = capturesByAnalysis.get(scopes);
+  if (!capturesByFunction) {
+    capturesByFunction = new WeakMap();
+    capturesByAnalysis.set(scopes, capturesByFunction);
+  }
+  const memoizedCaptures = capturesByFunction.get(functionNode);
+  if (memoizedCaptures) return memoizedCaptures;
+  const computedCaptures = computeClosureCaptures(functionNode, scopes);
+  capturesByFunction.set(functionNode, computedCaptures);
+  return computedCaptures;
 };

@@ -204,3 +204,101 @@ describe("spawnLintBatches — LPT batch-order invariance", () => {
     ]);
   });
 });
+
+/**
+ * `--max-duration` graceful degradation: once `deadlineEpochMs` passes,
+ * batches that haven't spawned are skipped and reported via
+ * `onPartialFailure` (with the file list), while already-collected
+ * diagnostics are still returned — a partial result instead of the empty
+ * `{"ok":false,"projects":[]}` report a SIGTERM'd scan produced.
+ */
+const lintFileBatchesWithDeadline = (fileBatches: string[][], deadlineEpochMs: number) => {
+  const partialFailures: string[] = [];
+  const diagnostics = spawnLintBatches({
+    baseArgs: ["-e", EMIT_ONE_DIAGNOSTIC_PER_FILE_SCRIPT],
+    fileBatches,
+    rootDirectory: process.cwd(),
+    nodeBinaryPath: process.execPath,
+    project,
+    deadlineEpochMs,
+    onPartialFailure: (reason) => partialFailures.push(reason),
+  });
+  return { diagnostics, partialFailures };
+};
+
+describe("spawnLintBatches — max-duration deadline", () => {
+  it("skips remaining batches past the deadline and reports the skipped files", async () => {
+    const { diagnostics, partialFailures } = lintFileBatchesWithDeadline(
+      [["src/a.tsx"], ["src/b.tsx"], ["src/c.tsx"]],
+      Date.now() - 1,
+    );
+
+    expect(await diagnostics).toEqual([]);
+    expect(partialFailures).toHaveLength(1);
+    expect(partialFailures[0]).toContain("3 file(s) skipped");
+    expect(partialFailures[0]).toContain("max scan duration reached");
+    expect(partialFailures[0]).toContain("src/a.tsx");
+  });
+
+  it("stops binary-split retries once the deadline passes mid-batch", async () => {
+    const partialFailures: string[] = [];
+
+    // One splittable-failing batch (spawn timeout) whose FIRST spawn starts
+    // inside the budget: the timeout can't fire before the deadline does at
+    // any split level after that, so every file must end deadline-skipped —
+    // never endlessly re-split — regardless of machine speed.
+    const diagnostics = await spawnLintBatches({
+      baseArgs: ["-e", "setTimeout(() => {}, 10_000);"],
+      fileBatches: [["src/a.tsx", "src/b.tsx", "src/c.tsx", "src/d.tsx"]],
+      rootDirectory: process.cwd(),
+      nodeBinaryPath: process.execPath,
+      project,
+      spawnTimeoutMs: 300,
+      deadlineEpochMs: Date.now() + 450,
+      onPartialFailure: (reason) => partialFailures.push(reason),
+    });
+
+    expect(diagnostics).toEqual([]);
+    expect(partialFailures).toHaveLength(1);
+    expect(partialFailures[0]).toContain("4 file(s) skipped");
+    expect(partialFailures[0]).toContain("max scan duration reached");
+  });
+
+  it("attributes a single-file timeout past the deadline as a skip, not a drop", async () => {
+    const partialFailures: string[] = [];
+
+    // A lone-file batch starts inside the budget (top-of-fn check passes) but
+    // its spawn times out AFTER the deadline (spawn timeout 200ms > 100ms
+    // budget). It reaches the catch as a splittable, single-file failure — it
+    // must be reported as a max-duration skip, not a pathological drop.
+    const diagnostics = await spawnLintBatches({
+      baseArgs: ["-e", "setTimeout(() => {}, 10_000);"],
+      fileBatches: [["src/a.tsx"]],
+      rootDirectory: process.cwd(),
+      nodeBinaryPath: process.execPath,
+      project,
+      spawnTimeoutMs: 200,
+      deadlineEpochMs: Date.now() + 100,
+      onPartialFailure: (reason) => partialFailures.push(reason),
+    });
+
+    expect(diagnostics).toEqual([]);
+    expect(partialFailures).toHaveLength(1);
+    expect(partialFailures[0]).toContain("1 file(s) skipped");
+    expect(partialFailures[0]).toContain("max scan duration reached");
+    expect(partialFailures[0]).not.toContain("failed to lint");
+  });
+
+  it("lints every batch when the deadline has not passed", async () => {
+    const { diagnostics, partialFailures } = lintFileBatchesWithDeadline(
+      [["src/a.tsx"], ["src/b.tsx"]],
+      Date.now() + 60_000,
+    );
+
+    expect((await diagnostics).map((diagnostic) => diagnostic.filePath).sort()).toEqual([
+      "src/a.tsx",
+      "src/b.tsx",
+    ]);
+    expect(partialFailures).toEqual([]);
+  });
+});

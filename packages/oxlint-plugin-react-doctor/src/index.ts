@@ -23,6 +23,19 @@ export { MOTION_LIBRARY_PACKAGES } from "./plugin/constants/style.js";
 export { CROSS_FILE_RULE_IDS } from "./plugin/constants/cross-file-rule-ids.js";
 
 export {
+  CROSS_FILE_DEPENDENCY_COLLECTORS,
+  UNBOUNDED_CROSS_FILE_RULE_IDS,
+  collectCrossFileDependencyProbes,
+} from "./plugin/cross-file-dependencies.js";
+export type { CrossFileProbeTrace } from "./plugin/utils/cross-file-probe-recorder.js";
+
+// Per-scan invalidation for the nearest-package.json memos. The memos are
+// sound while a scan's filesystem is frozen, but a long-lived host (the LSP
+// server) must drop them between scans — core's `runOxlint` calls this at
+// every scan start.
+export { resetManifestCaches } from "./plugin/utils/read-nearest-package-manifest.js";
+
+export {
   classifySecurityScanFile,
   shouldReadSecurityScanContent,
 } from "./plugin/rules/security-scan/utils/classify-security-scan-file.js";

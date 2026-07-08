@@ -15,18 +15,48 @@ const REQUEST_INPUT_EXPRESSION_PATTERN =
 
 const SAFE_REDIRECT_MODE_PATTERN = /\bredirect\s*:\s*["'](?:manual|error)["']/;
 
+// `params`/`body`/`query` are request-sourced only as ambient route-handler
+// bindings. When the same file constructs the variable itself
+// (`const params = new URLSearchParams()` feeding
+// `const url = \`\${apiRoot}?\${params.toString()}\``), it is local data,
+// not caller input.
+const AMBIENT_REQUEST_TOKEN_PATTERN = /\b(params|body|query)\./g;
+
+const isLocallyConstructedBinding = (bindingName: string, fileContent: string): boolean => {
+  const localConstructionPattern = new RegExp(
+    `(?:const|let|var)\\s+${bindingName}\\s*(?::[^=;\\n]{0,80})?=\\s*new\\s+URLSearchParams\\b`,
+  );
+  return localConstructionPattern.test(fileContent);
+};
+
+const hasRequestSourcedToken = (expression: string, fileContent: string): boolean => {
+  const withoutAmbientTokens = expression.replace(
+    AMBIENT_REQUEST_TOKEN_PATTERN,
+    (ambientToken, bindingName: string) =>
+      isLocallyConstructedBinding(bindingName, fileContent) ? "" : ambientToken,
+  );
+  return REQUEST_INPUT_EXPRESSION_PATTERN.test(withoutAmbientTokens);
+};
+
 // A variable merely NAMED `url` is not caller input; the URL expression (or
 // the same-file assignment that produced it) must read from the request.
 const isRequestSourcedUrlExpression = (urlExpression: string, fileContent: string): boolean => {
-  if (REQUEST_INPUT_EXPRESSION_PATTERN.test(urlExpression)) return true;
+  if (hasRequestSourcedToken(urlExpression, fileContent)) return true;
   const identifierMatch = /^[\w$]+$/.exec(urlExpression.trim());
   if (identifierMatch === null) return false;
   // `[^=;\n]{0,80}` on both sides of the name covers plain declarations and
   // destructuring (`const { imageUrl } = await request.json()`).
   const assignmentPattern = new RegExp(
-    `(?:const|let|var)[^=;\\n]{0,80}\\b${identifierMatch[0]}\\b[^=;\\n]{0,80}=[^;\\n]*(?:\\breq\\.|\\brequest\\.|\\bsearchParams\\b|\\bparams\\.|\\bbody\\.|\\bquery\\.|\\$_(?:GET|POST|REQUEST))`,
+    `(?:const|let|var)[^=;\\n]{0,80}\\b${identifierMatch[0]}\\b[^=;\\n]{0,80}=([^;\\n]*)`,
+    "g",
   );
-  return assignmentPattern.test(fileContent);
+  for (const assignmentMatch of fileContent.matchAll(assignmentPattern)) {
+    const initializer = assignmentMatch[1] ?? "";
+    if (/\breq\.|\brequest\.|\bsearchParams\b|\$_(?:GET|POST|REQUEST)/.test(initializer))
+      return true;
+    if (hasRequestSourcedToken(initializer, fileContent)) return true;
+  }
+  return false;
 };
 
 export const untrustedRedirectFollowing = defineRule({

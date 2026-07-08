@@ -5,10 +5,29 @@ import { functionContainsReactRenderOutput } from "../../utils/function-contains
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactFunctionCall } from "../../utils/is-react-function-call.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
+import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const MESSAGE =
   "`createRef()` in a function component allocates a brand-new ref on every render, so it never holds a value between renders. Use the `useRef()` hook instead.";
+
+// `useMemo(() => createRef(), [])` runs its callback during the enclosing
+// component/hook's render, so the memo callback is transparent when
+// resolving where the createRef really lives — the fix is still `useRef`.
+const isUseMemoCallbackArgument = (functionNode: EsTreeNode): boolean => {
+  const parent = functionNode.parent;
+  if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
+  if (parent.arguments?.[0] !== functionNode) return false;
+  return isReactFunctionCall(parent, "useMemo");
+};
+
+const findEnclosingRenderFunction = (node: EsTreeNode): EsTreeNode | null => {
+  let enclosingFunction = findEnclosingFunction(node);
+  while (enclosingFunction && isUseMemoCallbackArgument(enclosingFunction)) {
+    enclosingFunction = findEnclosingFunction(enclosingFunction);
+  }
+  return enclosingFunction;
+};
 
 // `createRef` is the class-component ref API. Inside a function component or a
 // custom hook it produces a fresh ref each render (no persistence) — almost
@@ -36,7 +55,7 @@ export const noCreateRefInFunctionComponent = defineRule({
         if (symbol && symbol.kind !== "import") return;
       }
 
-      const enclosingFunction = findEnclosingFunction(node);
+      const enclosingFunction = findEnclosingRenderFunction(node);
       if (!enclosingFunction) return;
       const displayName = componentOrHookDisplayNameForFunction(enclosingFunction);
       if (!displayName) return;

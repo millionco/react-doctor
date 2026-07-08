@@ -3,8 +3,9 @@ import { isFrameworkRouteOrSpecialFilename } from "../../utils/is-framework-rout
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
-import { isAstNode } from "../../utils/is-ast-node.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
+import { isInsideFunctionScope } from "../../utils/is-inside-function-scope.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import {
@@ -267,23 +268,30 @@ const classifyExport = (
     : { kind: "non-component", reportNode };
 };
 
-const collectAllNodes = (programRoot: EsTreeNode): EsTreeNode[] => {
-  const out: EsTreeNode[] = [];
-  const visit = (node: EsTreeNode): void => {
-    out.push(node);
-    const record = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(record)) {
-      if (key === "parent") continue;
-      const child = record[key];
-      if (Array.isArray(child)) {
-        for (const item of child) if (isAstNode(item)) visit(item);
-      } else if (isAstNode(child)) {
-        visit(child);
-      }
+interface RelevantNodes {
+  exportNodes: EsTreeNode[];
+  componentCandidates: EsTreeNode[];
+}
+
+// One walk collecting only the node kinds the two analysis passes below
+// consume — materializing every node of the program cost more than the
+// passes themselves.
+const collectRelevantNodes = (programRoot: EsTreeNode): RelevantNodes => {
+  const exportNodes: EsTreeNode[] = [];
+  const componentCandidates: EsTreeNode[] = [];
+  walkAst(programRoot, (child) => {
+    const childType = child.type;
+    if (
+      childType === "ExportAllDeclaration" ||
+      childType === "ExportDefaultDeclaration" ||
+      childType === "ExportNamedDeclaration"
+    ) {
+      exportNodes.push(child);
+    } else if (childType === "FunctionDeclaration" || childType === "VariableDeclarator") {
+      componentCandidates.push(child);
     }
-  };
-  visit(programRoot);
-  return out;
+  });
+  return { exportNodes, componentCandidates };
 };
 
 const isEntryPointFile = (filename: string): boolean => {
@@ -412,7 +420,7 @@ export const onlyExportComponents = defineRule({
       Program(node: EsTreeNodeOfType<"Program">) {
         const filename = normalizeFilename(context.filename ?? "");
         if (!isFileNameAllowed(filename, settings.checkJS)) return;
-        const allNodes = collectAllNodes(node as EsTreeNode);
+        const { exportNodes, componentCandidates } = collectRelevantNodes(node as EsTreeNode);
 
         const exports: ExportType[] = [];
         let hasReactExport = false;
@@ -421,7 +429,7 @@ export const onlyExportComponents = defineRule({
         const isExportedNodeIds = new WeakSet<object>();
 
         // First pass: collect exports.
-        for (const child of allNodes) {
+        for (const child of exportNodes) {
           if (isNodeOfType(child, "ExportAllDeclaration")) {
             // `export type * from '…'` is TS-type-only; skip.
             if ((child as { exportKind?: string }).exportKind === "type") continue;
@@ -560,6 +568,15 @@ export const onlyExportComponents = defineRule({
                 }
               }
             }
+            // Re-exports (`export { x } from './x'`) forward bindings
+            // declared in ANOTHER module — this file holds no value to
+            // move, so "move non-component exports out" is unactionable
+            // here. Pure barrels (`export { default } from './FlexBasic'`)
+            // and convenience re-exports (`export { styles as switchStyles }
+            // from './style'`) were the dominant FP shape in production.
+            // Component-named re-exports still count toward hasReactExport
+            // so local-component analysis stays accurate.
+            const isReExportFromSource = Boolean((child as { source?: unknown }).source);
             for (const specifier of child.specifiers ?? []) {
               if (!isNodeOfType(specifier, "ExportSpecifier")) continue;
               const exported = (specifier as { exported?: EsTreeNode }).exported;
@@ -573,13 +590,16 @@ export const onlyExportComponents = defineRule({
               // identifier — match that semantics.
               const localName = local && isNodeOfType(local, "Identifier") ? local.name : null;
               const reportNode = specifier as EsTreeNode;
+              let entry: ExportType;
               if (exportedName === "default" && localName) {
-                exports.push(classifyExport(localName, reportNode, false, null, state));
+                entry = classifyExport(localName, reportNode, false, null, state);
               } else if (exportedName) {
-                exports.push(classifyExport(exportedName, reportNode, false, null, state));
+                entry = classifyExport(exportedName, reportNode, false, null, state);
               } else {
-                exports.push({ kind: "non-component", reportNode });
+                entry = { kind: "non-component", reportNode };
               }
+              if (isReExportFromSource && entry.kind !== "react-component") continue;
+              exports.push(entry);
             }
           }
         }
@@ -608,9 +628,19 @@ export const onlyExportComponents = defineRule({
           }
           return false;
         };
-        for (const child of allNodes) {
+        // A component declared inside another function (a test callback, a
+        // factory, an object-literal `render` method) is never a Fast
+        // Refresh boundary — only module-scope components are. The origin
+        // rule (eslint-plugin-react-refresh) walks top-level statements
+        // only; flagging nested declarations tells users to export values
+        // that can't be exported.
+        for (const child of componentCandidates) {
           if (isNodeOfType(child, "FunctionDeclaration") && child.id) {
-            if (isReactComponentName(child.id.name) && !isInsideExport(child as EsTreeNode)) {
+            if (
+              isReactComponentName(child.id.name) &&
+              !isInsideExport(child as EsTreeNode) &&
+              !isInsideFunctionScope(child)
+            ) {
               localComponents.push(child.id);
             }
           }
@@ -618,7 +648,8 @@ export const onlyExportComponents = defineRule({
             if (
               isReactComponentName(child.id.name) &&
               canBeReactFunctionComponent(child.init as EsTreeNode | null | undefined, state) &&
-              !isInsideExport(child as EsTreeNode)
+              !isInsideExport(child as EsTreeNode) &&
+              !isInsideFunctionScope(child)
             ) {
               localComponents.push(child.id);
             }

@@ -57,4 +57,28 @@ describe("js-performance/js-hoist-regexp — regressions", () => {
   it("does not flag a no-argument `new RegExp()` in a loop", () => {
     expectPass(`for (const x of xs) { const re = new RegExp(); }`);
   });
+
+  // fn-mining sweep: `RegExp(...)` without `new` constructs a regex per
+  // pass exactly like `new RegExp(...)` does.
+  it("flags `RegExp(...)` called without `new` inside a for loop", () => {
+    expectFail(
+      `function count(lines) { let total = 0; for (const line of lines) { if (RegExp("^\\\\d+:").test(line)) total += 1; } return total; }`,
+    );
+  });
+
+  it("does not flag a non-new `RegExp(loopVar)` whose pattern depends on the loop", () => {
+    expectPass(
+      `for (const keyword of keywords) { if (RegExp(keyword, "gi").test(text)) hits.push(keyword); }`,
+    );
+  });
+
+  // fn-mining sweep: iterator callbacks run once per element — regex
+  // construction there is per-pass work just like a `for` body.
+  it("flags `new RegExp` inside a .map() callback", () => {
+    expectFail(`const stripped = lines.map((line) => line.replace(new RegExp("^\\\\d+:"), ""));`);
+  });
+
+  it("does not flag `new RegExp` outside any loop or iterator callback", () => {
+    expectPass(`const parse = (line) => new RegExp("^\\\\d+:").test(line);`);
+  });
 });

@@ -1,5 +1,87 @@
 # deslop-js
 
+## 0.7.2
+
+### Patch Changes
+
+- [#1077](https://github.com/millionco/react-doctor/pull/1077) [`9cb4149`](https://github.com/millionco/react-doctor/commit/9cb414905de7b360d728ca08d45167116a94ee90) Thanks [@aidenybai](https://github.com/aidenybai)! - Align 30+ rules with their documented behavior, fixing the false-positive clusters confirmed by a validation pass of 2,143 sampled diagnostics against the official rule prompts. Highlights: `jsx-key` now flags key-after-spread (the documented hazard) instead of the safe key-before-spread shape and exempts props rest parameters; `no-did-update-set-state` honors the prop-comparison guard exemption; `no-console` skips Node CLI scripts; `circular-dependency` skips type-only, lazy-import, and render-time-only cycles; `query-mutation-missing-invalidation` exempts read-only mutations; `insecure-crypto-risk` requires cryptographic context instead of matching identifier names; `no-unknown-property` allows valid hyphenated SVG attributes; `no-aria-hidden-on-focusable` verifies the element is actually focusable; `no-flush-sync` implements the documented DOM-measurement carve-out.
+
+## 0.7.1
+
+## 0.7.0
+
+### Minor Changes
+
+- [#1057](https://github.com/millionco/react-doctor/pull/1057) [`ce49250`](https://github.com/millionco/react-doctor/commit/ce4925008d37d7c86a234e6b9c7c2c3afe873405) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Dead-code analysis is now incremental across scans. deslop-js gains an opt-in `incrementalCachePath` config field: one stat walk per run (following directory symlinks, like the glob scans it stands in for) validates four independently keyed layers — per-file parse summaries (mtime+size), the collected file list, the module-resolution map (dropped whenever the file set or a bundler/tsconfig-like config changes, since resolution is file-set-dependent), and the per-file package-reference facts behind the unused-dependency content scans. The same walk also answers the stale-package file-discovery globs (config/docs/rescue/package.json/nx/tsconfig scans, verified byte-identical against fast-glob), so a cached run never re-walks the tree for them. Entry resolution deliberately stays live every run (it reads config/doc/sibling-source content no fingerprint can validate); on cached runs it moves to a dedicated worker thread so its filesystem work overlaps the main-thread analysis instead of serializing after it. Every layer fails open — corrupt, truncated, or version/config-mismatched stores degrade to a fresh computation, never a wrong result — writes are atomic and skipped when clean, and results are byte-identical to an uncached run. Unused-export detection also indexes re-export edges by source module, dropping an O(entry points × edges) scan that dominated the detector on large repos.
+
+  react-doctor points the analysis worker at a per-project summary store next to the existing whole-result dead-code cache, so a changed-files rescan of a large repo re-parses only what changed (sentry, 9k files: ~8.0s → ~3.2s with 0-10 files edited; ~4.0s after adding a file; the cache-fill run costs the same as an uncached scan). The worker also stops running the discarded DRY-pattern redundancy detectors (`reportRedundancy: false`), which shrinks the summary store by dropping fields only those detectors read, and reports the cache outcome as `deadCode.summaryCacheHits` / `deadCode.summaryCacheMisses` in anonymized telemetry (absent whenever no analysis consulted the store). `REACT_DOCTOR_NO_CACHE` (or the granular `REACT_DOCTOR_NO_DEAD_CODE_CACHE`) disables it.
+
+### Patch Changes
+
+- [#1060](https://github.com/millionco/react-doctor/pull/1060) [`ced746f`](https://github.com/millionco/react-doctor/commit/ced746f518f11e8283d488c4ff31c44e478bb0e5) Thanks [@rayhanadev](https://github.com/rayhanadev)! - The whole cache stack now survives CI's fresh checkouts, so the GitHub Action's persisted `REACT_DOCTOR_CACHE_DIR` actually warms every layer instead of only the content-addressed ones. The whole-repo scan-result cache moves under the shared per-project cache root (honoring `REACT_DOCTOR_CACHE_DIR` like the lint, sidecar, dead-code, and supply-chain caches — previously it silently escaped the action's cache into `node_modules/.cache` or the OS temp dir), and its key drops every stat-based fingerprint that a re-clone rotates: config files and gitignored dotenv files are now content-hashed, and the toolchain is keyed by package versions (matching the lint ruleset hash) rather than install mtimes. The stat-fingerprinted dead-code caches gain mtime repair (the ninja/restat pattern): entries carry a content-hash witness, and a stat mismatch over identical bytes — every file after a fresh checkout — re-hashes once, accepts the entry, and persists the refreshed stat so the cost is paid once per checkout, not per run. This covers core's whole-project dead-code result cache (per-file `(mtime, size, hash)` records replacing the stats-in-key fingerprint) and deslop-js's incremental summary store (parse summaries, package-reference facts, and the manifest/bundler-config fingerprints feeding the collect/resolution hashes). Expired supply-chain score entries are also pruned past their TTL so restored cache directories stop accumulating dead purls. Everything stays fail-open and byte-identical to an uncached scan; on a re-cloned repo with one changed file, a warm scan now replays ~100% of lint, sidecar, and parse work instead of starting cold.
+
+- [#1056](https://github.com/millionco/react-doctor/pull/1056) [`20d81f6`](https://github.com/millionco/react-doctor/commit/20d81f6f26dc8f0562118076f835da2468591d5f) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Hardened the dead-code result cache key against two silent-staleness classes. The fingerprinted extension and manifest name lists are now imported from `deslop-js/analyzed-inputs` — a new dependency-free subpath export assembled from the same constants deslop's own readers consume — so a deslop upgrade that widens its walk can never under-invalidate the cache. And the key now includes `@react-doctor/core`'s own version, so upgrading react-doctor re-analyzes instead of replaying cached diagnostics shaped by an older core's post-processing. The cache schema-version constant remains for cache-format changes only.
+
+## 0.6.3
+
+## 0.6.2
+
+## 0.6.1
+
+## 0.6.0
+
+### Patch Changes
+
+- [#936](https://github.com/millionco/react-doctor/pull/936) [`ba2af1b`](https://github.com/millionco/react-doctor/commit/ba2af1b7faa5ef4e1ae39e6c3b786259fba23f1f) Thanks [@aidenybai](https://github.com/aidenybai)! - Update the license to MIT with additional restrictions: the software may not be used as training, fine-tuning, or evaluation data for machine-learning models or AI systems, nor sold or resold as a commercial product or service (e.g. a paid API, SaaS, or hosted/managed service) whose value derives substantially from the software, without prior written permission (contact founders@million.dev). Each version's additional restrictions expire on the second anniversary of its release, after which that version is available under the standard MIT License (an FSL-style grant of future license). Each published package now ships its own up-to-date `LICENSE` file so the terms travel with the tarball.
+
+  The `react-doctor` CLI also now prints a one-time notice (once per run) when it detects it is running inside an AI/ML training pipeline or agent sandbox, pointing to the license terms.
+
+- [#915](https://github.com/millionco/react-doctor/pull/915) [`b69f4a7`](https://github.com/millionco/react-doctor/commit/b69f4a75360ad17d1d149aeb9de16835e792606a) Thanks [@skoshx](https://github.com/skoshx)! - Fix false positives in Expo config plugin detection for package-name plugins and nested expo config
+
+  Expo config plugins can be referenced by package name (not just local file paths) from `app.json` / `app.config.*`, but the collector dropped any plugin entry that didn't resolve to a local file — so packages referenced only as config plugins were reported as unused. The `app.config.{js,ts}` AST path also only matched a top-level `plugins` property and never descended into the standard `{ expo: { plugins: [...] } }` shape (the JSON `app.json` path already read `expo.plugins`).
+
+  Fixed by:
+
+  - Tracking package-name plugins (e.g. `@config-plugins/detox`, `@react-native-firebase/app`) alongside local file-path plugins
+  - Descending into the nested `expo` object in the config-object AST collector
+  - Marking those package-name plugins as used in `detectStalePackages` (gated on the declared dependency set, so unrelated strings can't suppress real unused deps)
+
+  Closes [#914](https://github.com/millionco/react-doctor/issues/914)
+
+- [#971](https://github.com/millionco/react-doctor/pull/971) [`a7ad969`](https://github.com/millionco/react-doctor/commit/a7ad969e5621ce1f61422b9bf578da600220d3e2) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Fix `deslop/unused-export` false positive for namespace-imported components used in JSX
+
+  A component referenced only through a namespace import in JSX —
+  `import * as S from "./style"` then `<S.Custom />` — was reported as an unused
+  export. The usage walker recorded namespace member access in regular expressions
+  (`MemberExpression`, e.g. `S.helper()`) but not in JSX (`JSXMemberExpression`),
+  so a member used solely as `<S.x />` was missed whenever the namespace had any
+  other accessed member. Closes [#875](https://github.com/millionco/react-doctor/issues/875).
+
+- [#963](https://github.com/millionco/react-doctor/pull/963) [`03b7a5f`](https://github.com/millionco/react-doctor/commit/03b7a5f79e50d42f1d4f1aaddb2587605c8edde0) Thanks [@skoshx](https://github.com/skoshx)! - Exclude TypeScript 6.x to fix bunx installation crash
+
+  TypeScript 6.0.3 has an internal circular dependency with its `Comparison` enum
+  that triggers a known Bun module loader bug, causing `bunx react-doctor install`
+  to crash with "ReferenceError: Cannot access 'Comparison' before initialization".
+  Narrow the dependency range to `>=5.0.4 <6` until Bun fixes enum initialization
+  order (see oven-sh/bun#12805).
+
+  The constraint covers both `react-doctor` (whose CLI imports `typescript` at
+  startup) and `deslop-js` (loaded by the dead-code scan, which can run under bun),
+  so no published package pulls TypeScript 6.x into a consumer's install tree.
+
+  `npx` continues to work because npm's resolver handles the circular dependency
+  correctly. TypeScript 5.9.3 is stable and tested; TypeScript 6.x support will
+  return once the upstream bug is resolved.
+
+  Closes [#962](https://github.com/millionco/react-doctor/issues/962)
+
+- [#916](https://github.com/millionco/react-doctor/pull/916) [`7f9e7f4`](https://github.com/millionco/react-doctor/commit/7f9e7f42832f40a32d7583126c096067f948856f) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Rework unused-dependency detection to lean on real package metadata instead of hand-maintained whitelists.
+
+  - Treat any installed dependency that ships a CLI binary as used. A package that declares a `bin` is routinely invoked outside what a static scan can see (Makefiles, CI, git hooks, ad-hoc `npx`), so it's no longer flagged just because no `package.json` script names the binary. Empty `bin` fields (`""` / `{}`) don't count.
+  - Drop the hardcoded fallback tables now that the bin/peer scans read real `node_modules` metadata: the binary→package map (`CLI_BINARY_TO_PACKAGE` + the `babel`/`jest`/`remark` fallbacks), the env-wrapper binary set, the static peer-dependency map, and the implicit-companion map. With dependencies installed (the normal scan condition) detection is unchanged — a package's real `bin` and `peerDependencies` cover what the tables used to hardcode.
+
+  Trade-off: when scanning **without** `node_modules`, a CLI dependency whose binary name differs from its package name (e.g. `vp` → `vite-plus`) can no longer be resolved from scripts, and a few heuristic peer relationships that aren't declared `peerDependencies` (e.g. `@hookform/resolvers` → `zod`) are no longer inferred. The always-used lists for tooling that can't be detected statically (`typescript`, `eslint`, `@types/*`, `eslint-plugin-*`, …) are unchanged.
+
 ## 0.5.8
 
 ### Patch Changes

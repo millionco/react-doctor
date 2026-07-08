@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
+import { RUN_GIT_MAX_BUFFER_BYTES } from "./constants.js";
 
 export const HOOK_FILE_NAME = "pre-commit";
 export const HOOK_RELATIVE_PATH = "hooks/pre-commit";
@@ -33,6 +34,7 @@ export const runGit = (projectRoot: string, args: ReadonlyArray<string>): string
       cwd: projectRoot,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: RUN_GIT_MAX_BUFFER_BYTES,
     }).trim();
   } catch {
     return null;

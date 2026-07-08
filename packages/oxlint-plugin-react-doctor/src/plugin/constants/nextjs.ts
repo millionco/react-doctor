@@ -23,8 +23,6 @@ export const METADATA_EXPORT_NAMES = ["metadata", "generateMetadata"];
 export const INTERNAL_PAGE_PATH_PATTERN =
   /\/(?:(?:\((?:dashboard|admin|settings|account|internal|manage|console|portal|auth|onboarding|app|ee|protected)\))|(?:dashboard|admin|settings|account|internal|manage|console|portal))\//i;
 
-export const PAGES_DIRECTORY_PATTERN = /\/pages\//;
-
 export const NEXTJS_NAVIGATION_FUNCTIONS = new Set([
   "redirect",
   "permanentRedirect",
@@ -49,8 +47,6 @@ export const CACHE_REVALIDATION_FUNCTION_NAMES = new Set([
 export const GOOGLE_FONTS_PATTERN = /fonts\.googleapis\.com/;
 
 export const POLYFILL_SCRIPT_PATTERN = /polyfill\.io|polyfill\.min\.js|cdn\.polyfill/;
-
-export const APP_DIRECTORY_PATTERN = /\/app\//;
 
 export const ROUTE_HANDLER_FILE_PATTERN = new RegExp(
   `/route\\.${NEXTJS_SOURCE_FILE_EXTENSION_GROUP}$`,

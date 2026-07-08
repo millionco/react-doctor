@@ -304,7 +304,7 @@ for this codebase) for canonical examples.
   `ci.*` counters — those dims are wide-event attributes; the `scan.completed`/
   `scan.duration`/`rule.fired` metric counters stay as the cheap,
   trace-sampling-independent floor alongside `cli.invoked`/`cli.error`). Score
-  reachability is derivable (`!score.available && !lint.failed && !scan.noScore`) and
+  reachability is derivable (`!score.available && !lint.failed && !deadCode.failed && !scan.noScore` — failed passes null the score deliberately) and
   score latency is the `Score.compute` child span's duration, so neither needs a
   dedicated field. CI detection + the official-action marker and forwarded
   inputs live in `cli/utils/is-ci-environment.ts`; `action.yml` sets the

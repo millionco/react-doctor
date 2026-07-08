@@ -6,6 +6,11 @@ import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 
 const ZOD_MODULE = "zod";
 
+// Every zod detection below bottoms out in `getImportInfoForIdentifier`,
+// which requires an import whose source is exactly `ZOD_MODULE` — so a file
+// with no such import can never report, and rules gate their visitors on it.
+export const ZOD_MODULE_SOURCES: ReadonlyArray<string> = [ZOD_MODULE];
+
 interface ZodImportInfo {
   imported: string | null;
   isDefault: boolean;
@@ -28,7 +33,21 @@ export const getStaticPropertyName = (
   return null;
 };
 
+// The classification is a pure function of the identifier node within its
+// (immutable) file, and every zod rule re-queries the same identifiers —
+// memoize per node; `has()` distinguishes a cached null from a miss.
+const importInfoCache = new WeakMap<EsTreeNode, ZodImportInfo | null>();
+
 const getImportInfoForIdentifier = (
+  identifier: EsTreeNodeOfType<"Identifier">,
+): ZodImportInfo | null => {
+  if (importInfoCache.has(identifier)) return importInfoCache.get(identifier) ?? null;
+  const importInfo = computeImportInfoForIdentifier(identifier);
+  importInfoCache.set(identifier, importInfo);
+  return importInfo;
+};
+
+const computeImportInfoForIdentifier = (
   identifier: EsTreeNodeOfType<"Identifier">,
 ): ZodImportInfo | null => {
   const binding = findVariableInitializer(identifier, identifier.name);

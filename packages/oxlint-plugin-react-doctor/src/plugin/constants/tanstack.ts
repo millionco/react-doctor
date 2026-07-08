@@ -1,4 +1,3 @@
-export const TANSTACK_ROUTE_FILE_PATTERN = /\/routes\//;
 export const TANSTACK_ROOT_ROUTE_FILE_PATTERN = /__root\.(tsx?|jsx?)$/;
 
 export const TANSTACK_ROUTE_PROPERTY_ORDER = [
@@ -18,6 +17,12 @@ export const TANSTACK_ROUTE_PROPERTY_ORDER = [
   "headers",
   "remountDeps",
 ];
+
+// Index of each order-sensitive route property, so membership and ordering
+// are one Map lookup instead of includes() + indexOf() linear scans.
+export const TANSTACK_ROUTE_PROPERTY_INDEX: ReadonlyMap<string, number> = new Map(
+  TANSTACK_ROUTE_PROPERTY_ORDER.map((propertyName, orderIndex) => [propertyName, orderIndex]),
+);
 
 export const TANSTACK_ROUTE_CREATION_FUNCTIONS = new Set([
   "createFileRoute",
@@ -39,6 +44,11 @@ export const TANSTACK_MIDDLEWARE_METHOD_ORDER = [
   "server",
   "handler",
 ];
+
+// Same Map-index companion for the server-fn middleware chain order.
+export const TANSTACK_MIDDLEWARE_METHOD_INDEX: ReadonlyMap<string, number> = new Map(
+  TANSTACK_MIDDLEWARE_METHOD_ORDER.map((methodName, orderIndex) => [methodName, orderIndex]),
+);
 
 export const TANSTACK_REDIRECT_FUNCTIONS = new Set(["redirect", "notFound"]);
 
@@ -78,6 +88,13 @@ export const QUERY_CACHE_UPDATE_METHODS = new Set([
 // above (`session.invalidate()` is a stale-cache true positive), so it only
 // counts when the receiver chain is rooted in a binding created by one of
 // these hooks.
+// Any TanStack Query entry point (`@tanstack/react-query`,
+// `@tanstack/query-core`, `@tanstack/vue-query`, devtools subpaths, …).
+// An import matching this proves a file's `useMutation` / `useQuery`
+// call really is TanStack's, not a same-named export from another
+// library.
+export const TANSTACK_QUERY_MODULE_PATTERN = /^@tanstack\/[^/]*query/;
+
 export const TRPC_UTILS_INVALIDATE_METHOD = "invalidate";
 export const TRPC_UTILS_HOOK_PATTERN = /^use\w*Utils$/;
 export const QUERY_CLIENT_HOOK_NAME = "useQueryClient";

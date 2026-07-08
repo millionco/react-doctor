@@ -1,12 +1,14 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import {
   getImportedNameFromModule,
   isImportedFromModule,
 } from "../../utils/find-import-source-for-name.js";
 import { isCanonicalReactNamespaceName } from "../../utils/is-canonical-react-namespace-name.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactComponentOrHookName } from "../../utils/is-react-component-or-hook-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 const REMOVAL_MESSAGE_BY_REACT_API_NAME = new Map<string, string>([
@@ -67,6 +69,50 @@ const isNullishComparatorArgument = (argumentNode: EsTreeNode): boolean =>
   (isNodeOfType(argumentNode, "Identifier") && argumentNode.name === "undefined") ||
   (isNodeOfType(argumentNode, "Literal") && argumentNode.value === null);
 
+// The only HOC wrappers React Compiler's infer mode recognizes as a
+// compilation opt-in. Deliberately narrower than the plugin-wide
+// `COMPONENT_HOC_WRAPPER_NAMES` (which also names `observer` / `lazy`):
+// the compiler skips functions wrapped in arbitrary HOCs, so their
+// manual memoization stays load-bearing.
+const COMPILER_INFERABLE_HOC_NAMES = new Set(["memo", "forwardRef"]);
+
+const calleeTrailingName = (callee: EsTreeNode): string | null => {
+  if (isNodeOfType(callee, "Identifier")) return callee.name;
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    return callee.property.name;
+  }
+  return null;
+};
+
+// Whether React Compiler's infer mode will compile `functionNode`: a
+// function named like a component/hook (directly or via its variable
+// binding), or one wrapped in `memo` / `forwardRef`. Anonymous functions
+// handed to arbitrary HOCs (`NiceModal.create(() => …)`) are skipped by
+// the compiler, so hooks inside them are never auto-cached.
+const isCompilerInferableFunction = (functionNode: EsTreeNode): boolean => {
+  if (
+    (isNodeOfType(functionNode, "FunctionDeclaration") ||
+      isNodeOfType(functionNode, "FunctionExpression")) &&
+    functionNode.id
+  ) {
+    return isReactComponentOrHookName(functionNode.id.name);
+  }
+  const parent = functionNode.parent;
+  if (parent && isNodeOfType(parent, "CallExpression")) {
+    if (parent.arguments?.[0] !== functionNode) return false;
+    const calleeName = calleeTrailingName(parent.callee);
+    return calleeName !== null && COMPILER_INFERABLE_HOC_NAMES.has(calleeName);
+  }
+  if (parent && isNodeOfType(parent, "VariableDeclarator")) {
+    return (
+      isNodeOfType(parent.id, "Identifier") &&
+      parent.init === functionNode &&
+      isReactComponentOrHookName(parent.id.name)
+    );
+  }
+  return false;
+};
+
 // Active only when React Compiler is detected (`requires:
 // ["react-compiler"]` in the rule registry). Userland helpers and
 // `useMemo` from non-react packages are filtered out by the import-
@@ -96,6 +142,13 @@ export const reactCompilerNoManualMemoization = defineRule({
       if (apiName === "memo") {
         const comparatorArgument = node.arguments?.[1];
         if (comparatorArgument && !isNullishComparatorArgument(comparatorArgument)) return;
+      } else {
+        // `useMemo` / `useCallback` are only redundant inside a function
+        // the compiler will actually compile. Inside a function it skips
+        // (an anonymous arrow handed to a non-React HOC, a non-component
+        // helper) nothing is auto-cached, so the manual memoization stays.
+        const enclosingFunction = findEnclosingFunction(node);
+        if (!enclosingFunction || !isCompilerInferableFunction(enclosingFunction)) return;
       }
       const removalMessage = REMOVAL_MESSAGE_BY_REACT_API_NAME.get(apiName);
       if (!removalMessage) return;

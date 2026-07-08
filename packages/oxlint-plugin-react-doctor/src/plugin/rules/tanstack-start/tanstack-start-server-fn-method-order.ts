@@ -1,5 +1,6 @@
 import {
   TANSTACK_INPUT_VALIDATOR_METHOD_NAMES,
+  TANSTACK_MIDDLEWARE_METHOD_INDEX,
   TANSTACK_MIDDLEWARE_METHOD_ORDER,
   TANSTACK_SERVER_FN_NAMES,
 } from "../../constants/tanstack.js";
@@ -53,14 +54,13 @@ export const tanstackStartServerFnMethodOrder = defineRule({
       if (methodNames[methodNames.length - 1] !== ownMethodName) return;
 
       const orderSensitiveMethods = methodNames.filter((name) =>
-        TANSTACK_MIDDLEWARE_METHOD_ORDER.includes(toMethodOrderToken(name)),
+        TANSTACK_MIDDLEWARE_METHOD_INDEX.has(toMethodOrderToken(name)),
       );
 
       let lastIndex = -1;
       for (const methodName of orderSensitiveMethods) {
-        const currentIndex = TANSTACK_MIDDLEWARE_METHOD_ORDER.indexOf(
-          toMethodOrderToken(methodName),
-        );
+        const currentIndex =
+          TANSTACK_MIDDLEWARE_METHOD_INDEX.get(toMethodOrderToken(methodName)) ?? -1;
         if (currentIndex < lastIndex) {
           const expectedBefore = TANSTACK_MIDDLEWARE_METHOD_ORDER[lastIndex];
           context.report({

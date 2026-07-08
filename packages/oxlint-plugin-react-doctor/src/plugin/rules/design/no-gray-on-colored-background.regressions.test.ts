@@ -70,4 +70,39 @@ describe("design/no-gray-on-colored-background — regressions", () => {
     const result = run(`const C = () => <div className="bg-emerald-900 text-gray-950">Hi</div>;`);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not flag a translucent tint background (bg-blue-500/10)", () => {
+    const result = run(`const C = () => <div className="bg-blue-500/10 text-gray-600">Hi</div>;`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag muted light gray on a near-black colored background", () => {
+    const result = run(`const C = () => <div className="bg-blue-950 text-gray-400">Hi</div>;`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag near-black gray text on a bright yellow background", () => {
+    const result = run(`const C = () => <div className="bg-yellow-500 text-gray-900">Hi</div>;`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag near-black gray text on a bright amber background", () => {
+    const result = run(`const C = () => <div className="bg-amber-500 text-gray-950">Hi</div>;`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags mid gray on a bright yellow background", () => {
+    const result = run(`const C = () => <div className="bg-yellow-500 text-gray-500">Hi</div>;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags mid gray on a solid mid-shade colored background", () => {
+    const result = run(`const C = () => <div className="bg-blue-600 text-gray-500">Hi</div>;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags dark gray on a dark colored background of similar depth", () => {
+    const result = run(`const C = () => <div className="bg-blue-900 text-gray-600">Hi</div>;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

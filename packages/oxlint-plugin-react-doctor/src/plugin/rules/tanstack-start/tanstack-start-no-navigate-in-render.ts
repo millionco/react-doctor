@@ -4,17 +4,17 @@ import {
   HOOK_NAME_PATTERN,
   REACT_HANDLER_PROP_PATTERN,
 } from "../../constants/react.js";
-import { TANSTACK_ROUTE_FILE_PATTERN } from "../../constants/tanstack.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import {
   getFunctionBindingIdentifier,
   getFunctionBindingName,
 } from "../../utils/get-function-binding-name.js";
-import { normalizeFilename } from "../../utils/normalize-filename.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { RuleVisitors } from "../../utils/rule-visitors.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -34,7 +34,9 @@ export const tanstackStartNoNavigateInRender = defineRule({
   severity: "warn",
   recommendation:
     "Use `throw redirect({ to: '/path' })` in `beforeLoad` or `loader`. navigate() during render causes hydration issues.",
-  create: (context: RuleContext) => {
+  create: (context: RuleContext): RuleVisitors => {
+    if (!isInProjectDirectory(context, "routes")) return {};
+
     // HACK: only callbacks that React calls LATER are safe scopes for
     // navigate() — useEffect / useLayoutEffect (post-commit), useCallback
     // / useMemo (cached, fired by event handlers later), JSX `onXxx`
@@ -191,9 +193,6 @@ export const tanstackStartNoNavigateInRender = defineRule({
 
     return {
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-        const filename = normalizeFilename(context.filename ?? "");
-        if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
-
         if (isDeferredHookCall(node)) deferredCallbackDepth++;
 
         if (deferredCallbackDepth > 0 || eventHandlerDepth > 0) return;
@@ -212,56 +211,38 @@ export const tanstackStartNoNavigateInRender = defineRule({
         }
       },
       "CallExpression:exit"(node: EsTreeNode) {
-        const filename = normalizeFilename(context.filename ?? "");
-        if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
         if (isDeferredHookCall(node)) {
           deferredCallbackDepth = Math.max(0, deferredCallbackDepth - 1);
         }
       },
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-        const filename = normalizeFilename(context.filename ?? "");
-        if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
         if (isEventHandlerAttribute(node)) eventHandlerDepth++;
       },
       "JSXAttribute:exit"(node: EsTreeNode) {
-        const filename = normalizeFilename(context.filename ?? "");
-        if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
         if (isEventHandlerAttribute(node)) {
           eventHandlerDepth = Math.max(0, eventHandlerDepth - 1);
         }
       },
       Property(node: EsTreeNodeOfType<"Property">) {
-        const filename = normalizeFilename(context.filename ?? "");
-        if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
         if (isEventHandlerProperty(node)) eventHandlerDepth++;
       },
       "Property:exit"(node: EsTreeNode) {
-        const filename = normalizeFilename(context.filename ?? "");
-        if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
         if (isEventHandlerProperty(node)) {
           eventHandlerDepth = Math.max(0, eventHandlerDepth - 1);
         }
       },
       VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
-        const filename = normalizeFilename(context.filename ?? "");
-        if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
         if (isHandlerNamedVariableDeclarator(node)) eventHandlerDepth++;
       },
       "VariableDeclarator:exit"(node: EsTreeNode) {
-        const filename = normalizeFilename(context.filename ?? "");
-        if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
         if (isHandlerNamedVariableDeclarator(node)) {
           eventHandlerDepth = Math.max(0, eventHandlerDepth - 1);
         }
       },
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {
-        const filename = normalizeFilename(context.filename ?? "");
-        if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
         if (isHandlerNamedFunctionDeclaration(node)) eventHandlerDepth++;
       },
       "FunctionDeclaration:exit"(node: EsTreeNode) {
-        const filename = normalizeFilename(context.filename ?? "");
-        if (!TANSTACK_ROUTE_FILE_PATTERN.test(filename)) return;
         if (isHandlerNamedFunctionDeclaration(node)) {
           eventHandlerDepth = Math.max(0, eventHandlerDepth - 1);
         }

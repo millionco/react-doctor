@@ -36,11 +36,14 @@ describe("react-builtins/no-unknown-property — regressions", () => {
       expect(result.diagnostics).toHaveLength(0);
     });
 
-    it("still flags tw in ordinary files", () => {
+    // fp-review: `tw` is all-lowercase with no known camelCase form, so
+    // React renders it verbatim since v16 (and twin.macro consumes it at
+    // build time in any file) — no longer flagged anywhere.
+    it("does not flag tw in ordinary files either", () => {
       const result = runRule(noUnknownProperty, OG_IMAGE_WITH_TW, {
         filename: "/proj/app/page.tsx",
       });
-      expect(result.diagnostics.length).toBeGreaterThan(0);
+      expect(result.diagnostics).toHaveLength(0);
     });
 
     it("does not flag tw in files that render through ImageResponse", () => {
@@ -61,7 +64,7 @@ describe("react-builtins/no-unknown-property — regressions", () => {
       expect(result.diagnostics).toHaveLength(0);
     });
 
-    it("still flags tw on ordinary JSX in mixed files that also render generated images", () => {
+    it("does not flag tw on ordinary JSX in mixed files that also render generated images", () => {
       const result = runRule(
         noUnknownProperty,
         `
@@ -78,7 +81,7 @@ describe("react-builtins/no-unknown-property — regressions", () => {
         },
       );
 
-      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics).toHaveLength(0);
     });
   });
 
@@ -110,6 +113,154 @@ describe("react-builtins/no-unknown-property — regressions", () => {
       const result = runRule(noUnknownProperty, `<div transform-origin="center" />`);
       expect(result.parseErrors).toEqual([]);
       expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
+  // fp-review: ~85% of the rule's false positives were react-three-fiber
+  // scene-graph intrinsics (`<mesh position>`, `<meshStandardMaterial
+  // emissive>`, `<boxGeometry args>`, …). These are lowercase JSX tags
+  // handled by a custom reconciler, not DOM elements, so DOM-property
+  // validation never applies. Same mechanism: Electron's `<webview>`.
+  describe("non-HTML/SVG lowercase intrinsics (react-three-fiber, Electron)", () => {
+    const R3F_SCENE = `
+      <group position={[0, 1, 0]}>
+        <mesh position={[0, 0, 0]} rotation={[0, Math.PI, 0]} castShadow>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshStandardMaterial emissive="red" emissiveIntensity={2} transparent roughness={0.5} />
+        </mesh>
+        <pointLight intensity={1.5} distance={10} decay={2} />
+        <primitive object={scene} />
+      </group>
+    `;
+
+    it("does not flag react-three-fiber scene elements", () => {
+      const result = runRule(noUnknownProperty, R3F_SCENE);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag Electron webview props", () => {
+      const result = runRule(noUnknownProperty, `<webview partition="persist:design" src={url} />`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("still flags unknown camelCase props on a real HTML tag", () => {
+      const result = runRule(noUnknownProperty, `<div emissiveIntensity={2} />`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
+  // fp-review: since React 16, unknown all-lowercase attributes are
+  // rendered to the DOM verbatim — library selector hooks
+  // (`frimousse-list`, `cmdk-input-wrapper`, `p-id` in exported SVGs),
+  // real-but-unlisted attributes (`credentialless`), and compile-time
+  // props consumed by JSX pragmas (theme-ui `sx`, emotion `css`,
+  // styled-jsx `<style jsx>`). "React ignores this prop" is false for
+  // all of them.
+  describe("all-lowercase attributes rendered verbatim since React 16", () => {
+    for (const [description, code] of [
+      ["library selector hook on a button", `<button frimousse-emoji="" onClick={onPick} />`],
+      ["library selector hook on an input", `<input frimousse-search="" value={value} />`],
+      ["cmdk wrapper attribute", `<div cmdk-input-wrapper="">{children}</div>`],
+      ["p-id on exported svg", `<svg p-id="2347" viewBox="0 0 1024 1024" />`],
+      ["credentialless iframe", `<iframe credentialless src={url} />`],
+      ["theme-ui sx prop", `<div sx={{ color: "primary" }} />`],
+      ["emotion css prop", `<code css={{ display: "block" }} />`],
+      ["styled-jsx style tag", `<style jsx global>{\`body { margin: 0; }\`}</style>`],
+    ] as const) {
+      it(`does not flag ${description}`, () => {
+        const result = runRule(noUnknownProperty, code);
+        expect(result.parseErrors).toEqual([]);
+        expect(result.diagnostics).toHaveLength(0);
+      });
+    }
+
+    it("still flags lowercase attrs with a known camelCase form", () => {
+      const result = runRule(noUnknownProperty, `<div onclick={handler} class="bar" />`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(2);
+    });
+
+    it("still flags invalid aria attributes", () => {
+      const result = runRule(noUnknownProperty, `<div aria-fake="true" />`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags reserved data-xml attributes", () => {
+      const result = runRule(noUnknownProperty, `<div data-xml-anything="invalid" />`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
+  // docs-validation 2026-07: hyphenated SVG presentation attributes on SVG
+  // elements (`stroke-width` / `clip-rule` on `<path>` in lobe-ui icons)
+  // are the actual SVG attribute names. React sets unknown lowercase
+  // attributes via setAttribute, so the icons render correctly — "React
+  // ignores this prop" was factually wrong (11/12 sampled FPs).
+  describe("hyphenated SVG attributes on SVG elements", () => {
+    for (const [attribute, tag] of [
+      ["stroke-width", "path"],
+      ["clip-rule", "path"],
+      ["fill-rule", "path"],
+      ["stroke-linecap", "line"],
+      ["fill-opacity", "circle"],
+      ["stop-color", "stop"],
+      ["dominant-baseline", "text"],
+    ] as const) {
+      it(`does not flag ${attribute} on <${tag}>`, () => {
+        const result = runRule(noUnknownProperty, `<${tag} ${attribute}="x" />`);
+        expect(result.parseErrors).toEqual([]);
+        expect(result.diagnostics).toHaveLength(0);
+      });
+    }
+
+    it("still flags stroke-width on a non-SVG element", () => {
+      const result = runRule(noUnknownProperty, `<div stroke-width="2" />`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags a camelCase typo on an SVG element", () => {
+      const result = runRule(noUnknownProperty, `<path strokeWidht="2" />`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags hyphenated HTML attribute spellings on HTML elements", () => {
+      const result = runRule(noUnknownProperty, `<meta http-equiv="refresh" />`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
+  // fp-review: React attaches synthetic events to any host element —
+  // ant-design's Masonry listens for descendant image load/error events
+  // on the container div. The per-tag whitelist only applies to
+  // non-event attributes like `download` or `fetchPriority`.
+  describe("synthetic event handlers on any host element", () => {
+    it("does not flag onLoad/onError on a div", () => {
+      const result = runRule(
+        noUnknownProperty,
+        `<div onLoad={handleImageLoad} onError={handleImageError}>{children}</div>`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("does not flag media events on a div", () => {
+      const result = runRule(noUnknownProperty, `<div onAbort={abort} onEnded={end} />`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
+
+    it("still flags tag-restricted non-event attributes", () => {
+      const result = runRule(noUnknownProperty, `<div download="foo" fetchPriority="high" />`);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(2);
     });
   });
 });

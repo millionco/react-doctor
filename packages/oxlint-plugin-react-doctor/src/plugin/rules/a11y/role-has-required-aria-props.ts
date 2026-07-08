@@ -42,6 +42,11 @@ const NATIVE_VALUE_PROPS: ReadonlySet<string> = new Set([
 // state, so it still must declare the prop.
 const NATIVE_HEADING_TAGS: ReadonlySet<string> = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
 
+// A native `<select>`'s implicit role is combobox: the browser exposes its
+// expansion state and owns its option popup, so an explicit redundant
+// `role="combobox"` doesn't also need `aria-controls`/`aria-expanded`.
+const NATIVE_COMBOBOX_PROPS: ReadonlySet<string> = new Set(["aria-controls", "aria-expanded"]);
+
 const suppliesNativeAriaProp = (
   node: EsTreeNodeOfType<"JSXOpeningElement">,
   elementType: string,
@@ -50,6 +55,9 @@ const suppliesNativeAriaProp = (
   // A native `<h1>`–`<h6>` carries an intrinsic heading level, so an
   // explicit `role="heading"` doesn't also need `aria-level` spelled out.
   if (property === "aria-level" && NATIVE_HEADING_TAGS.has(elementType)) return true;
+  if (elementType === "select") return NATIVE_COMBOBOX_PROPS.has(property);
+  // A native `<option>` exposes selectedness from its DOM `selected` state.
+  if (property === "aria-selected" && elementType === "option") return true;
   if (elementType !== "input") return false;
   const typeAttribute = hasJsxPropIgnoreCase(node.attributes, "type");
   const inputType = typeAttribute ? getJsxPropStringValue(typeAttribute) : null;

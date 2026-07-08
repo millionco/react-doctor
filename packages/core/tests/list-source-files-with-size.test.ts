@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
@@ -55,5 +56,97 @@ describe("listSourceFilesWithSize", () => {
     expect(listSourceFiles(temporaryDirectory)).toEqual(
       listSourceFilesWithSize(temporaryDirectory).map((entry) => entry.path),
     );
+  });
+
+  const writeNestedFile = (relativePath: string, contents: string): void => {
+    const filePath = path.join(temporaryDirectory, relativePath);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, contents);
+  };
+
+  // Issue: ant-design scans covered `.dumi/**` only when git discovery ran —
+  // the filesystem walk skipped EVERY dot-directory, so the two paths
+  // enumerated different sets for the same tree.
+  it("filesystem walk descends into allowlisted dot-directories", () => {
+    writeNestedFile(".dumi/hooks/use-local-storage.ts", "export const useLs = () => null;\n");
+    writeNestedFile(".storybook/preview.tsx", "export const decorators = [];\n");
+    writeNestedFile("src/app.tsx", "export const App = () => null;\n");
+    writeNestedFile(".next/server/page.js", "module.exports = {};\n");
+    writeNestedFile(".git/hooks/sample.js", "module.exports = {};\n");
+
+    const filePaths = listSourceFiles(temporaryDirectory);
+
+    expect(filePaths).toContain(".dumi/hooks/use-local-storage.ts");
+    expect(filePaths).toContain(".storybook/preview.tsx");
+    expect(filePaths).toContain("src/app.tsx");
+    expect(filePaths).not.toContain(".next/server/page.js");
+    expect(filePaths).not.toContain(".git/hooks/sample.js");
+  });
+
+  // Issue: a repo's `.codex/skills/**/scripts/*.mjs` agent-tooling scripts
+  // were scanned as app code, producing 83 `no-console` false positives —
+  // hidden directories outside the allowlist must be excluded by default.
+  it("filesystem walk skips non-allowlisted hidden directories", () => {
+    writeNestedFile(".codex/skills/translate/scripts/check.mjs", "console.log(1);\n");
+    writeNestedFile(".github/scripts/release.mjs", "console.log(1);\n");
+    writeNestedFile("src/app.tsx", "export const App = () => null;\n");
+
+    const filePaths = listSourceFiles(temporaryDirectory);
+
+    expect(filePaths).toContain("src/app.tsx");
+    expect(filePaths).not.toContain(".codex/skills/translate/scripts/check.mjs");
+    expect(filePaths).not.toContain(".github/scripts/release.mjs");
+  });
+
+  it("filesystem walk returns a sorted, repeatable listing", () => {
+    writeNestedFile("zebra/last.tsx", "export const Last = () => null;\n");
+    writeNestedFile("alpha/first.tsx", "export const First = () => null;\n");
+    writeNestedFile("middle.ts", "export const middle = 1;\n");
+
+    const firstListing = listSourceFiles(temporaryDirectory);
+
+    expect(firstListing).toEqual([...firstListing].sort());
+    expect(firstListing).toEqual(listSourceFiles(temporaryDirectory));
+  });
+
+  const runGit = (...args: string[]): void => {
+    const result = spawnSync("git", args, { cwd: temporaryDirectory });
+    expect(result.status).toBe(0);
+  };
+
+  // Issue: nteract/semiotic commits `ai/dist/mcp-server.js`, so `git
+  // ls-files` listed it (gitignore only hides UNTRACKED files) and 44
+  // bundled-artifact diagnostics reached the report.
+  it("git discovery excludes committed build output and matches the filesystem walk", () => {
+    writeNestedFile("ai/dist/mcp-server.js", "module.exports = () => {};\n");
+    writeNestedFile("dist/index.js", "module.exports = 1;\n");
+    writeNestedFile("src/app.tsx", "export const App = () => null;\n");
+    writeNestedFile(".dumi/pages/banner.tsx", "export const Banner = () => null;\n");
+    writeNestedFile(".codex/skills/translate/scripts/check.mjs", "console.log(1);\n");
+    runGit("init", "--quiet");
+    runGit("add", "-A");
+    runGit(
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "user.name=test",
+      "commit",
+      "--quiet",
+      "-m",
+      "init",
+    );
+
+    const gitListing = listSourceFiles(temporaryDirectory);
+
+    expect(gitListing).not.toContain("ai/dist/mcp-server.js");
+    expect(gitListing).not.toContain("dist/index.js");
+    expect(gitListing).not.toContain(".codex/skills/translate/scripts/check.mjs");
+    expect(gitListing).toContain("src/app.tsx");
+    expect(gitListing).toContain(".dumi/pages/banner.tsx");
+
+    // Same tree without `.git` falls back to the filesystem walk; both
+    // discovery paths must enumerate the identical (sorted) set.
+    fs.rmSync(path.join(temporaryDirectory, ".git"), { recursive: true, force: true });
+    expect(listSourceFiles(temporaryDirectory)).toEqual(gitListing);
   });
 });

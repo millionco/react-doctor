@@ -769,7 +769,14 @@ export class Git extends Context.Service<
         showStagedContent: (directory, relativePath, options) =>
           runCommand({
             command: "git",
-            args: ["show", `:${relativePath}`],
+            // The `./` prefix is required for the same reason as `showRefContent`
+            // below: git reads a bare `:<path>` index pathspec relative to the
+            // REPO ROOT, but `relativePath` is relative to `directory` (the
+            // scanned project, which may be a monorepo subproject). `:./` makes
+            // git resolve it against the cwd, so a subproject's staged content is
+            // read correctly instead of silently missing (the whole file set
+            // would otherwise be skipped and `--staged` scans nothing).
+            args: ["show", `:./${relativePath}`],
             directory,
             maxStdoutBytes: options?.maxBufferBytes,
           }).pipe(Effect.map((result) => (result.status === 0 ? result.stdout : null))),

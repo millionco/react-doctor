@@ -10,7 +10,11 @@ const NON_PRODUCTION_PATH_SEGMENTS: ReadonlyArray<string> = [
   "/fixtures/",
   "/__mocks__/",
   "/mocks/",
+  "/testUtils/",
+  "/test-utils/",
+  "/testutils/",
   "/cypress/",
+  "/playwright/",
   "/.storybook/",
   "/.dumi/",
   "/stories/",
@@ -205,8 +209,21 @@ const sliceBelowSourceRoot = (filename: string): string => {
   return filename.slice(cutAt);
 };
 
+// Every rule consults this with the same filename while a file lints, so a
+// one-entry memo absorbs the ~70 substring scans below for all but the first
+// call per file.
+let lastFilename: string | undefined;
+let lastResult = false;
+
 export const isTestlikeFilename = (rawFilename: string | undefined): boolean => {
   if (!rawFilename) return false;
+  if (rawFilename === lastFilename) return lastResult;
+  lastFilename = rawFilename;
+  lastResult = computeIsTestlikeFilename(rawFilename);
+  return lastResult;
+};
+
+const computeIsTestlikeFilename = (rawFilename: string): boolean => {
   const filename = rawFilename.replaceAll("\\", "/");
   const lastSlash = filename.lastIndexOf("/");
   const basename = lastSlash === -1 ? filename : filename.slice(lastSlash + 1);

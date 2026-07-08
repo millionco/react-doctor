@@ -79,20 +79,33 @@ const ELEMENT_ROLE_PAIRS: ReadonlyArray<readonly [string, string]> = [
   ["ul", "list"],
 ];
 
-// Returns all implicit roles for `tag`. Empty array if tag has none.
-export const getElementImplicitRoles = (tag: string): ReadonlyArray<string> => {
-  const out: string[] = [];
-  for (const [element, role] of ELEMENT_ROLE_PAIRS) {
-    if (element === tag && !out.includes(role)) out.push(role);
+const EMPTY_ROLE_LIST: ReadonlyArray<string> = [];
+
+const buildLookup = (
+  pairs: ReadonlyArray<readonly [string, string]>,
+  keyIndex: 0 | 1,
+): ReadonlyMap<string, ReadonlyArray<string>> => {
+  const lookup = new Map<string, string[]>();
+  for (const pair of pairs) {
+    const key = pair[keyIndex];
+    const value = pair[keyIndex === 0 ? 1 : 0];
+    const values = lookup.get(key);
+    if (!values) {
+      lookup.set(key, [value]);
+    } else if (!values.includes(value)) {
+      values.push(value);
+    }
   }
-  return out;
+  return lookup;
 };
 
+const IMPLICIT_ROLES_BY_TAG = buildLookup(ELEMENT_ROLE_PAIRS, 0);
+const TAGS_BY_ROLE = buildLookup(ELEMENT_ROLE_PAIRS, 1);
+
+// Returns all implicit roles for `tag`. Empty array if tag has none.
+export const getElementImplicitRoles = (tag: string): ReadonlyArray<string> =>
+  IMPLICIT_ROLES_BY_TAG.get(tag) ?? EMPTY_ROLE_LIST;
+
 // Reverse lookup: HTML elements that map to `role`.
-export const getTagsForRole = (role: string): ReadonlyArray<string> => {
-  const out: string[] = [];
-  for (const [element, r] of ELEMENT_ROLE_PAIRS) {
-    if (r === role && !out.includes(element)) out.push(element);
-  }
-  return out;
-};
+export const getTagsForRole = (role: string): ReadonlyArray<string> =>
+  TAGS_BY_ROLE.get(role) ?? EMPTY_ROLE_LIST;

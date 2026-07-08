@@ -17,6 +17,8 @@ import { isPackageJsonReactNativeAware, isPackageJsonReanimatedAware } from "./r
 import { getWorkspacePatterns, resolveWorkspaceDirectories } from "./workspaces.js";
 import { parseReactMajor } from "./version.js";
 
+const REANIMATED_DEPENDENCY_NAME = "react-native-reanimated";
+
 // A dependency's declared spec plus the directory whose manifest supplied
 // it — the scan root, or the workspace package that declares the package.
 // `sourceDirectory` lets config-file detectors (e.g. the Next.js static-
@@ -45,6 +47,7 @@ export interface WorkspaceFacts {
   // Any-of predicates over the scan root + every workspace manifest.
   hasReactNativeAwarePackage: boolean;
   hasReanimatedAwarePackage: boolean;
+  reanimatedVersion: string | null;
 }
 
 export const SHOPIFY_FLASH_LIST_PACKAGE_NAME = "@shopify/flash-list";
@@ -123,6 +126,10 @@ const evaluateManifestFacts = (
     const spec = getDependencySpec(packageJson, SHOPIFY_FLASH_LIST_PACKAGE_NAME);
     if (spec !== null) facts.shopifyFlashList = { version: spec, sourceDirectory: directory };
   }
+  if (facts.reanimatedVersion === null) {
+    const spec = getDependencySpec(packageJson, REANIMATED_DEPENDENCY_NAME);
+    if (spec !== null) facts.reanimatedVersion = spec;
+  }
   facts.hasReactNativeAwarePackage =
     facts.hasReactNativeAwarePackage || isPackageJsonReactNativeAware(packageJson);
   facts.hasReanimatedAwarePackage =
@@ -158,6 +165,7 @@ export const collectWorkspaceFacts = (
     shopifyFlashList: { version: null, sourceDirectory: null },
     hasReactNativeAwarePackage: false,
     hasReanimatedAwarePackage: false,
+    reanimatedVersion: null,
   };
 
   evaluateManifestFacts(facts, rootPackageJson, rootDirectory);

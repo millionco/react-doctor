@@ -132,4 +132,19 @@ export default function Page() {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("stays silent outside page, layout, and pages files", () => {
+    const result = runRule(
+      nextjsNoClientFetchForServerData,
+      `"use client";
+import { useEffect } from "react";
+export function Widget() {
+  useEffect(() => { fetch("/api/data"); }, []);
+  return null;
+}`,
+      { filename: "components/widget.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

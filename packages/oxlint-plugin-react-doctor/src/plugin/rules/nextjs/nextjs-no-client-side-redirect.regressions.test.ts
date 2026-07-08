@@ -139,6 +139,152 @@ export default function Page() {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on same-page canonicalization via { pathname: router.pathname }", () => {
+    const result = runRule(
+      nextjsNoClientSideRedirect,
+      `import { useEffect } from "react";
+import { useRouter } from "next/router";
+export default function SourcesList({ sources }) {
+  const router = useRouter();
+  useEffect(() => {
+    if (!router.isReady) return;
+    const { source: _omit, ...rest } = router.query;
+    void router.replace(
+      { pathname: router.pathname, query: rest, hash: "sources" },
+      undefined,
+      { shallow: true },
+    );
+  }, [router, sources]);
+  return null;
+}`,
+      { filename: "src/components/SourcesList.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the destination variable is built from the current pathname", () => {
+    const result = runRule(
+      nextjsNoClientSideRedirect,
+      `"use client";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+export default function StatusPane({ orderId }) {
+  const router = useRouter();
+  useEffect(() => {
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.has("statusToken")) {
+      currentUrl.searchParams.delete("statusToken");
+      const nextSearch = currentUrl.searchParams.toString();
+      const nextUrl = nextSearch
+        ? \`\${currentUrl.pathname}?\${nextSearch}\`
+        : currentUrl.pathname;
+      router.replace(nextUrl, { scroll: false });
+    }
+  }, [router, orderId]);
+  return null;
+}`,
+      { filename: "app/checkout/success/StatusPane.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a literal redirect to the page's own route (param cleanup)", () => {
+    const result = runRule(
+      nextjsNoClientSideRedirect,
+      `"use client";
+import { useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+export default function ContactsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const contactId = searchParams.get("contact");
+    if (contactId) selectContact(contactId);
+    router.replace("/contacts");
+  }, [searchParams, router]);
+  return null;
+}`,
+      { filename: "app/(main)/[locale]/contacts/page.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a redirect inside a setTimeout-rescheduled polling loop", () => {
+    const result = runRule(
+      nextjsNoClientSideRedirect,
+      `"use client";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+export default function ReturnStatus({ orderId }) {
+  const router = useRouter();
+  useEffect(() => {
+    let timer;
+    let cancelled = false;
+    const poll = async () => {
+      const status = await fetchStatus(orderId);
+      if (cancelled) return;
+      if (status.paymentStatus === "paid") {
+        router.replace(\`/shop/checkout/success?orderId=\${orderId}\`);
+        return;
+      }
+      timer = setTimeout(poll, 2000);
+    };
+    poll();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [orderId, router]);
+  return null;
+}`,
+      { filename: "app/checkout/return/ReturnStatus.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a literal redirect to a different route from a page file", () => {
+    const result = runRule(
+      nextjsNoClientSideRedirect,
+      `"use client";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+export default function SetupPage() {
+  const router = useRouter();
+  useEffect(() => {
+    checkSetup().then((done) => {
+      if (done) router.replace("/");
+    });
+  }, [router]);
+  return null;
+}`,
+      { filename: "app/setup/page.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags a redirect that merely passes the current path as a query param", () => {
+    const result = runRule(
+      nextjsNoClientSideRedirect,
+      `import { useEffect } from "react";
+import { useRouter } from "next/router";
+export default function GuardedPage() {
+  const router = useRouter();
+  useEffect(() => {
+    router.replace({ pathname: "/login", query: { from: router.asPath } });
+  }, [router]);
+  return null;
+}`,
+      { filename: "pages/settings.tsx" },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("stays silent on a redirect inside the returned cleanup function", () => {
     const result = runRule(
       nextjsNoClientSideRedirect,

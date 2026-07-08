@@ -9,6 +9,7 @@ import {
   detectAiTrainingEnvironment,
   Files,
   Git,
+  hasReactRuntime,
   layerOtlp,
   Linter,
   LintPartialFailures,
@@ -125,6 +126,7 @@ const outputToDiagnoseResult = (
     skippedChecks,
     ...(Object.keys(skippedCheckReasons).length > 0 ? { skippedCheckReasons } : {}),
     project: output.project,
+    reactDetected: hasReactRuntime(output.project),
     elapsedMilliseconds,
   };
 };
@@ -236,12 +238,15 @@ const diagnoseProjectBatch = async (
     (projectDefinition) => diagnoseProject(projectDefinition, baseOptions, batchConfig),
   );
 
+  const succeededProjects = projectResults.filter((projectResult) => projectResult.ok);
+
   return {
     projects: projectResults,
-    diagnostics: projectResults.flatMap((projectResult) =>
-      projectResult.ok ? projectResult.diagnostics : [],
-    ),
+    diagnostics: succeededProjects.flatMap((projectResult) => projectResult.diagnostics),
     score: findWorstScore(projectResults),
+    ...(succeededProjects.length > 0
+      ? { reactDetected: succeededProjects.some((projectResult) => projectResult.reactDetected) }
+      : {}),
     elapsedMilliseconds: globalThis.performance.now() - startTime,
   };
 };

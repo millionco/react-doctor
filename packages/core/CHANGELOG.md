@@ -1,5 +1,139 @@
 # @react-doctor/core
 
+## 0.7.2
+
+### Patch Changes
+
+- [#1077](https://github.com/millionco/react-doctor/pull/1077) [`9cb4149`](https://github.com/millionco/react-doctor/commit/9cb414905de7b360d728ca08d45167116a94ee90) Thanks [@aidenybai](https://github.com/aidenybai)! - Align 30+ rules with their documented behavior, fixing the false-positive clusters confirmed by a validation pass of 2,143 sampled diagnostics against the official rule prompts. Highlights: `jsx-key` now flags key-after-spread (the documented hazard) instead of the safe key-before-spread shape and exempts props rest parameters; `no-did-update-set-state` honors the prop-comparison guard exemption; `no-console` skips Node CLI scripts; `circular-dependency` skips type-only, lazy-import, and render-time-only cycles; `query-mutation-missing-invalidation` exempts read-only mutations; `insecure-crypto-risk` requires cryptographic context instead of matching identifier names; `no-unknown-property` allows valid hyphenated SVG attributes; `no-aria-hidden-on-focusable` verifies the element is actually focusable; `no-flush-sync` implements the documented DOM-measurement carve-out.
+
+- [#1071](https://github.com/millionco/react-doctor/pull/1071) [`d353dad`](https://github.com/millionco/react-doctor/commit/d353dadf988c52e3037dff52eec9cf8923145364) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Detect React when scanning a package subdirectory of a monorepo, so React rules no longer gate off silently. Two additions at the `discoverProject` seam:
+
+  - **Nearest-ancestor discovery.** A scan target with no `package.json` of its own now adopts the nearest enclosing package (a leaf workspace, a plain app root, or a monorepo root — whichever is closest, bounded by the git root) instead of only workspace-configured monorepo roots. Scanning `app/src/components` in a plain React app now inherits the app's React detection rather than synthesizing an empty, React-blind project.
+  - **Node-resolution React version fallback.** When declarations yield no usable React version (a version-less spec like `workspace:*` / `*` / a dist-tag, or React living only in a hoisted `node_modules` the declaration walks never reach), the version is resolved the way Node itself would — `require.resolve("react/package.json")` — making "React is installed and importable" ⇒ "React is detected" an invariant. Guarded to installations physically inside the enclosing repo so a globally installed React can't leak in, and it never overrides a parseable peer range (`^18 || ^19` still floors to the lowest supported major).
+
+- [#1083](https://github.com/millionco/react-doctor/pull/1083) [`5d2f17f`](https://github.com/millionco/react-doctor/commit/5d2f17f71c9fb8e0d8d649da1b26de8f5cfe6c34) Thanks [@skoshx](https://github.com/skoshx)! - `query-destructure-result` no longer classifies rest-destructuring (`const { data, ...rest } = query`) — that shape is `query-no-rest-destructuring`'s territory, and claiming it in both rules reported the same line twice ([#1082](https://github.com/millionco/react-doctor/issues/1082)). The rule now fires only on the consumption it uniquely owns: spreading the whole TanStack Query result into JSX (`<Inner {...query} />`) or an object literal, which enumerates every field and subscribes the component to all of them.
+
+- [#1077](https://github.com/millionco/react-doctor/pull/1077) [`9cb4149`](https://github.com/millionco/react-doctor/commit/9cb414905de7b360d728ca08d45167116a94ee90) Thanks [@aidenybai](https://github.com/aidenybai)! - Second-round FP/FN sweep: restore delta-audit recall regressions, wire confirmed false-negative clusters (jsx-no-target-blank, button-has-type, no-default-props), repair the never-firing no-layout-property-animation rule, reconcile no-array-index-as-key, gate RN boxShadow rules on new-architecture provenance, and skip the vulnerability axis for devDependencies in the supply-chain check.
+
+- [#1067](https://github.com/millionco/react-doctor/pull/1067) [`ce9dabf`](https://github.com/millionco/react-doctor/commit/ce9dabf1103f4f989bb8f9c1783a24674ba163e7) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Fix `--staged` silently scanning nothing when the project is a subdirectory of the git repo (the standard monorepo layout, e.g. `apps/webui`). Staged paths are collected project-relative (`git diff --cached --relative`), but the staged-content read used a bare `git show :<path>` index pathspec, which git resolves against the repo root — so in a subproject every read missed, the file was silently skipped, and the scan "passed" with `scannedFileCount: 0` (particularly dangerous in a pre-commit hook). The index read now uses the cwd-relative `git show :./<path>` form, matching how baseline `<ref>:<path>` reads were already resolved.
+
+- Updated dependencies [[`9cb4149`](https://github.com/millionco/react-doctor/commit/9cb414905de7b360d728ca08d45167116a94ee90), [`1880b15`](https://github.com/millionco/react-doctor/commit/1880b152e4d6aedd5c06cf2ca51783e53cfb4004), [`5d2f17f`](https://github.com/millionco/react-doctor/commit/5d2f17f71c9fb8e0d8d649da1b26de8f5cfe6c34), [`9cb4149`](https://github.com/millionco/react-doctor/commit/9cb414905de7b360d728ca08d45167116a94ee90)]:
+  - oxlint-plugin-react-doctor@0.7.2
+  - deslop-js@0.7.2
+
+## 0.7.1
+
+### Patch Changes
+
+- [#1061](https://github.com/millionco/react-doctor/pull/1061) [`c0c3fc1`](https://github.com/millionco/react-doctor/commit/c0c3fc170972876c8bbc2419b32e66b9c864df85) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - Fix a CI-gate false positive in the baseline delta: pre-existing element-level findings (Accessibility-category rules, plus rules flagged `matchByOccurrence` like `iframe-missing-sandbox`) are now matched by `(file, rule)` occurrence count instead of the flagged line's text, so reformatting the flagged line (reindentation, prettier reflow, collapsing a multi-line JSX element) no longer reports the finding as newly introduced. The flag is resolved at diagnostic creation and carried on the diagnostic as an optional `matchByOccurrence` field (also present in the JSON report). Expression-level rules keep line-text-sensitive matching, and a genuinely new extra occurrence still surfaces.
+
+- Updated dependencies [[`c0c3fc1`](https://github.com/millionco/react-doctor/commit/c0c3fc170972876c8bbc2419b32e66b9c864df85)]:
+  - oxlint-plugin-react-doctor@0.7.1
+  - deslop-js@0.7.1
+
+## 0.7.0
+
+### Patch Changes
+
+- Updated dependencies [[`ced746f`](https://github.com/millionco/react-doctor/commit/ced746f518f11e8283d488c4ff31c44e478bb0e5), [`20d81f6`](https://github.com/millionco/react-doctor/commit/20d81f6f26dc8f0562118076f835da2468591d5f), [`ce49250`](https://github.com/millionco/react-doctor/commit/ce4925008d37d7c86a234e6b9c7c2c3afe873405)]:
+  - deslop-js@0.7.0
+  - oxlint-plugin-react-doctor@0.7.0
+
+## 0.6.3
+
+### Patch Changes
+
+- Updated dependencies [[`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`b4faf74`](https://github.com/millionco/react-doctor/commit/b4faf74744c730d0836235854b0233ce59a42566), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`b4faf74`](https://github.com/millionco/react-doctor/commit/b4faf74744c730d0836235854b0233ce59a42566), [`b4faf74`](https://github.com/millionco/react-doctor/commit/b4faf74744c730d0836235854b0233ce59a42566), [`072d37e`](https://github.com/millionco/react-doctor/commit/072d37e8e4f82454d2e187114d0194f26efc1bf0), [`2980d0f`](https://github.com/millionco/react-doctor/commit/2980d0f4ed6abfee061ac02f3a0820806f942b95), [`5fec491`](https://github.com/millionco/react-doctor/commit/5fec491e6844d73f658f355ae2cbe86285068f0e), [`05f6399`](https://github.com/millionco/react-doctor/commit/05f639910abf2b3bfc0802e9ad568ecd2b7ce13d), [`a1c8ee1`](https://github.com/millionco/react-doctor/commit/a1c8ee110e137bbc8771c8a471c20287cccd2b38), [`fa61c20`](https://github.com/millionco/react-doctor/commit/fa61c2056951df2429e79d888e5f7334aaf61cfd), [`ac71a3b`](https://github.com/millionco/react-doctor/commit/ac71a3b8cfc8bdd157f0f1bcd242b61ec69f9c17), [`d8628d7`](https://github.com/millionco/react-doctor/commit/d8628d7f21e60b0e6dfd98d76c9f24e03f7afe24), [`ebeee56`](https://github.com/millionco/react-doctor/commit/ebeee568abf9a7ed37ed9fe0bba695e4f2a11c9f), [`da3b19c`](https://github.com/millionco/react-doctor/commit/da3b19c79c27945d873eb24e34431cbefa8f9938), [`6a9a73b`](https://github.com/millionco/react-doctor/commit/6a9a73b14908272535aabab6742258b61bc2ee5c), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b), [`173cc0a`](https://github.com/millionco/react-doctor/commit/173cc0a8ba5578229e3832b2167d3f7a5386c91b)]:
+  - oxlint-plugin-react-doctor@0.6.3
+  - deslop-js@0.6.3
+
+## 0.6.2
+
+### Patch Changes
+
+- Updated dependencies [[`f07ee37`](https://github.com/millionco/react-doctor/commit/f07ee37598360b7d761505afe6960f9fd2f93595)]:
+  - oxlint-plugin-react-doctor@0.6.2
+  - deslop-js@0.6.2
+
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [[`5f60bef`](https://github.com/millionco/react-doctor/commit/5f60befa8f954d3daf6e790670be8a170683e708), [`6885698`](https://github.com/millionco/react-doctor/commit/6885698cda0bc35446a13a1af7327f62c9c68025)]:
+  - oxlint-plugin-react-doctor@0.6.1
+  - deslop-js@0.6.1
+
+## 0.6.0
+
+### Patch Changes
+
+- [#1011](https://github.com/millionco/react-doctor/pull/1011) [`8232e96`](https://github.com/millionco/react-doctor/commit/8232e967238ff7943c0cac0d0b2a2f9d349c89dd) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - Make file discovery deterministic and artifact-free, and add `--max-duration` for graceful partial results on slow scans.
+
+  - File discovery is now identical between the git-tracked path (`git ls-files`) and the filesystem walk: the walk descends into non-ignored dot-directories (e.g. `.dumi`, `.storybook`) instead of skipping every dot-directory, and its output is sorted. Repeated scans of the same tree produce the same file set regardless of which discovery path runs.
+  - Committed build output (`dist/`, `build/`, `out/`, `.next/`, `coverage/`, `storybook-static/`, …) is excluded from both discovery paths by path-segment filtering. Previously `git ls-files` listed tracked bundles (gitignore only hides untracked files), so bundled artifacts like `ai/dist/mcp-server.js` were linted.
+  - New `--max-duration <seconds>` flag: when the budget is spent, remaining lint batches and the dead-code pass are skipped and the scan returns partial results with the skipped files reported explicitly, instead of a SIGTERM'd empty `{"ok":false,"projects":[]}` report. The budget applies once to the whole invocation — every project of a workspace scan shares it — and a scan whose dead-code pass failed or was truncated reports a `null` score rather than one computed from an incomplete diagnostic set.
+
+- [#973](https://github.com/millionco/react-doctor/pull/973) [`99f2417`](https://github.com/millionco/react-doctor/commit/99f2417d8c181916919e6ae0a5ea0722770c7857) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Add `runtimeGlobals` config to silence jsx-no-undef false positives for runtime-injected identifiers
+
+  `jsx-no-undef` is a single-file rule, so it flags capitalized JSX identifiers
+  that are provided at runtime rather than imported in the file — react-live's
+  `<LiveProvider scope={...}>`, Storybook globals, MDX live blocks, or an ambient
+  `declare global` in a separate `.d.ts`. List those names in the new
+  `runtimeGlobals` config array and `jsx-no-undef` treats them as known. Opt-in —
+  an empty/absent list leaves behavior unchanged.
+
+  Closes [#959](https://github.com/millionco/react-doctor/issues/959)
+
+- [#929](https://github.com/millionco/react-doctor/pull/929) [`5f2bd72`](https://github.com/millionco/react-doctor/commit/5f2bd7254362109555194e43a019824478cb9ab5) Thanks [@skoshx](https://github.com/skoshx)! - fix: validate string array config fields (projects, textComponents, etc.)
+
+  Non-string entries in `config.projects` caused `selectProjects` to crash with `requestedName.trim is not a function`. The validator now filters non-string entries from `projects`, `textComponents`, `rawTextWrapperComponents`, and `serverAuthFunctionNames` with warnings instead of crashing.
+
+  Fixes [#921](https://github.com/millionco/react-doctor/issues/921) (Sentry REACT-DOCTOR-1R)
+
+- [#940](https://github.com/millionco/react-doctor/pull/940) [`441e6af`](https://github.com/millionco/react-doctor/commit/441e6afb55ee154e70e56f10a79565b9fd1f3295) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Stop a scan from crashing when a git subprocess fails synchronously (fixes REACT-DOCTOR-1E, REACT-DOCTOR-1P, REACT-DOCTOR-20). Unlike a missing binary (`ENOENT`, which arrives on the catchable `'error'` event), `child_process.spawn` **throws synchronously** when the working directory isn't a directory (`ENOTDIR`) or the argument list exceeds the OS command-line limit (`ENAMETOOLONG` — e.g. `--scope lines` on a 1,000+-file diff on Windows). That throw escaped Effect's error channel entirely and took down the whole scan (reported to Sentry as a raw `spawn` error). The git runner now pre-flights both conditions and fails on its normal channel, so the existing fallbacks recover instead: a bad working directory degrades like an unavailable git, and an over-long `--scope lines` diff degrades to file-level scope.
+
+- [#951](https://github.com/millionco/react-doctor/pull/951) [`c16e8ea`](https://github.com/millionco/react-doctor/commit/c16e8ea6f6cd455c837d02aafedb916817a4008e) Thanks [@skoshx](https://github.com/skoshx)! - Fix misleading remediation for react-hooks-js/incompatible-library
+
+  `react-hooks-js/incompatible-library` fires when the React Compiler can't
+  memoize through a third-party hook (e.g. `@tanstack/react-virtual`'s
+  `useVirtualizer`). The diagnostic carried the generic React Compiler action —
+  "Rewrite the flagged code so the compiler can optimize it" — which reads as
+  "reimplement the library locally" and steered users off mature libraries.
+
+  The rule stays active (the compiler's own bail-out reason is informative), but
+  its remediation now names the real fix: it's how the library works, not a bug in
+  your code — memoize values you pass from it into other memoized components, or
+  suppress it with `// react-doctor-disable-next-line react-hooks-js/incompatible-library`.
+
+  Closes [#950](https://github.com/millionco/react-doctor/issues/950)
+
+- [#972](https://github.com/millionco/react-doctor/pull/972) [`fff9466`](https://github.com/millionco/react-doctor/commit/fff946689638bab3641474b6f8712a62777934ab) Thanks [@rayhanadev](https://github.com/rayhanadev)! - Stop react-doctor from flagging its own toolchain as an unused dependency
+
+  After `react-doctor install` — especially via `bunx`, where react-doctor is
+  declared in `package.json` but never materialized in `node_modules` — a scan
+  reported `react-doctor` itself as an unused devDependency. It's used via the CLI,
+  git hooks, CI, and the agent skill (never imported in source), so the dead-code
+  import graph can't see it, and deslop's "ships a binary → used" heuristic can't
+  read its `bin` when it isn't installed. The dead-code pass now never reports
+  react-doctor's own CLI / plugin packages (`react-doctor`,
+  `eslint-plugin-react-doctor`, `oxlint-plugin-react-doctor`) as unused.
+
+  Closes [#961](https://github.com/millionco/react-doctor/issues/961)
+
+- [#1012](https://github.com/millionco/react-doctor/pull/1012) [`80e3093`](https://github.com/millionco/react-doctor/commit/80e3093815ecc40f29442ef44b4fee9accd76e8a) Thanks [@devin-ai-integration](https://github.com/apps/devin-ai-integration)! - Core-engine reliability and security fixes from the 20-day audit. The lint binary-split retry budget is now scoped per batch and anchored at the first failure, so one pathological batch no longer starves the rest of the scan's recovery (and drop reasons name the limit that fired). `REACT_DOCTOR_SUPPLY_CHAIN_TIMEOUT_MS` can now raise the supply-chain budget instead of only lowering it. A corrupt per-file lint cache no longer fails every warm scan until hand-deleted, and the cache now busts when the oxlint child runs a different Node than the CLI (nvm fallback). The `/tmp` fallback cache directory is scoped per user so another local user can't pre-create and poison it, and the auto-detected default branch is validated before reaching git argv. The spawn argv guard is platform-sized (Windows 24k chars, macOS 800k, other POSIX 1.5M), so large `--scope lines` diffs no longer silently degrade to file scope on Linux/macOS. A security-scan I/O failure now skips that pass instead of failing the whole scan, and is reported on the run's telemetry as `securityScan.failed`. Note: the per-file lint cache is invalidated once on upgrade (its ruleset-hash separators changed).
+
+- [#927](https://github.com/millionco/react-doctor/pull/927) [`c2ce298`](https://github.com/millionco/react-doctor/commit/c2ce2989add3e43d21b7f609cad975e0284b6c42) Thanks [@skoshx](https://github.com/skoshx)! - Fix crash when disable comments contain Object.prototype keys (constructor, toString, valueOf, etc.)
+
+  Resolves REACT-DOCTOR-1Y and fixes [#920](https://github.com/millionco/react-doctor/issues/920).
+
+  The suppression near-miss detector would crash with `TypeError: bareRuleKey.includes is not a function` when an eslint-disable or oxlint-disable comment contained a token matching an Object.prototype member name. Indexing the LEGACY_RULE_KEY_TO_NATIVE_RULE_KEY lookup map with such a token returned an inherited method (which the `??` fallback let through), so `canonicalizeRuleKey` now guards the lookup with a `typeof` check and only treats the result as an alias when it is a string.
+
+- [#930](https://github.com/millionco/react-doctor/pull/930) [`ea4d9af`](https://github.com/millionco/react-doctor/commit/ea4d9afd4f2afc15c5d52217c3d001bd02b84046) Thanks [@skoshx](https://github.com/skoshx)! - Degrade gracefully when git is unavailable or diff base ref is missing (fixes REACT-DOCTOR-F, REACT-DOCTOR-1K, REACT-DOCTOR-14, REACT-DOCTOR-22). CI containers without git installed and shallow clones missing the diff base ref now fall back to a full scan with a clear warning instead of crashing and reporting to Sentry.
+
+- Updated dependencies [[`ba2af1b`](https://github.com/millionco/react-doctor/commit/ba2af1b7faa5ef4e1ae39e6c3b786259fba23f1f), [`b69f4a7`](https://github.com/millionco/react-doctor/commit/b69f4a75360ad17d1d149aeb9de16835e792606a), [`7ef9f0e`](https://github.com/millionco/react-doctor/commit/7ef9f0eb7c026b4f9003902d1ab66d232e8ab43f), [`a7ad969`](https://github.com/millionco/react-doctor/commit/a7ad969e5621ce1f61422b9bf578da600220d3e2), [`c2af308`](https://github.com/millionco/react-doctor/commit/c2af3082bfcb85c97e4bfa0d0d71f20478cebe9b), [`03b7a5f`](https://github.com/millionco/react-doctor/commit/03b7a5f79e50d42f1d4f1aaddb2587605c8edde0), [`c72b560`](https://github.com/millionco/react-doctor/commit/c72b560682f1254aa4dd793898f2eed48afdbe27), [`6e67626`](https://github.com/millionco/react-doctor/commit/6e6762667838caa518cea203fe985184ab0bd31f), [`0b64af5`](https://github.com/millionco/react-doctor/commit/0b64af58b16329c5cae7a210463d2842e34b150d), [`5639b1e`](https://github.com/millionco/react-doctor/commit/5639b1e40e66650cb7042206b19807b2f785d8ff), [`988ce57`](https://github.com/millionco/react-doctor/commit/988ce5701af82aef406be48190dace1449a5393c), [`f69f216`](https://github.com/millionco/react-doctor/commit/f69f21681dd7f17d632a09d742d501ef0b9b3047), [`6e67626`](https://github.com/millionco/react-doctor/commit/6e6762667838caa518cea203fe985184ab0bd31f), [`6e67626`](https://github.com/millionco/react-doctor/commit/6e6762667838caa518cea203fe985184ab0bd31f), [`6e67626`](https://github.com/millionco/react-doctor/commit/6e6762667838caa518cea203fe985184ab0bd31f), [`6339f71`](https://github.com/millionco/react-doctor/commit/6339f715cc1a30521a699b818140ec2fae6f569e), [`7f9e7f4`](https://github.com/millionco/react-doctor/commit/7f9e7f42832f40a32d7583126c096067f948856f)]:
+  - oxlint-plugin-react-doctor@0.6.0
+  - deslop-js@0.6.0
+
 ## 0.5.8
 
 ### Patch Changes

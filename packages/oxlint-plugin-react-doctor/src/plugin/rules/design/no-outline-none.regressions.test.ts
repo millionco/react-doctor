@@ -80,4 +80,47 @@ describe("design/no-outline-none — regressions", () => {
     );
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not flag outline:none on an aria-modal dialog surface", () => {
+    const result = run(
+      `const Content = ({ role, ariaModal, isOpen }) => (
+        <div role={role} aria-modal={ariaModal} style={{ outline: 'none' }} />
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag outline:none when the component renders a FocusManager", () => {
+    const result = run(
+      `const PopoverContent = ({ isOpen, children }) => {
+        const content = <div style={{ outline: 'none' }}>{children}</div>;
+        if (isOpen) {
+          return <Floater.FocusManager modal>{content}</Floater.FocusManager>;
+        }
+        return content;
+      };`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag outline:none with own onFocus/onBlur indicator handlers", () => {
+    const result = run(
+      `const LegendItem = ({ showRing, hideRing }) => (
+        <g tabIndex={0} onFocus={showRing} onBlur={hideRing} style={{ outline: 'none' }} />
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag outline:0 on a SkipNav content target", () => {
+    const result = run(
+      `const App = () => <SkipNavContent style={{ display: 'flex', outline: 0 }} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags outline:none on a plain button with only onFocus", () => {
+    const result = run(`<button onFocus={track} style={{ outline: "none" }} />`);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

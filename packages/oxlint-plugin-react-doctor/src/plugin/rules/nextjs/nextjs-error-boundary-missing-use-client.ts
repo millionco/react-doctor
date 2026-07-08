@@ -1,6 +1,7 @@
-import { APP_DIRECTORY_PATTERN, ERROR_BOUNDARY_FILE_PATTERN } from "../../constants/nextjs.js";
+import { ERROR_BOUNDARY_FILE_PATTERN } from "../../constants/nextjs.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { hasDirective } from "../../utils/has-directive.js";
+import { isInProjectDirectory } from "../../utils/is-in-project-directory.js";
 import { normalizeFilename } from "../../utils/normalize-filename.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -16,7 +17,7 @@ export const nextjsErrorBoundaryMissingUseClient = defineRule({
   create: (context: RuleContext) => ({
     Program(programNode: EsTreeNodeOfType<"Program">) {
       const filename = normalizeFilename(context.filename ?? "");
-      if (!APP_DIRECTORY_PATTERN.test(filename)) return;
+      if (!isInProjectDirectory(context, "app")) return;
       if (!ERROR_BOUNDARY_FILE_PATTERN.test(filename)) return;
       if (hasDirective(programNode, "use client")) return;
 

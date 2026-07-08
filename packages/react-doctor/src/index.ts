@@ -57,6 +57,7 @@ export {
   filterSourceFiles,
   summarizeDiagnostics,
   defineConfig,
+  hasReactRuntime,
 } from "@react-doctor/core";
 export { buildJsonReport, buildJsonReportError };
 // `ReactDoctorError` is the tagged Schema class from

@@ -1,6 +1,5 @@
 import type { EsTreeNode } from "./es-tree-node.js";
 import { findProgramRoot } from "./find-program-root.js";
-import { isAstNode } from "./is-ast-node.js";
 
 interface ImportInfo {
   source: string;
@@ -11,48 +10,37 @@ interface ImportInfo {
 
 const collectFromProgram = (programRoot: EsTreeNode): Map<string, ImportInfo> => {
   const lookup = new Map<string, ImportInfo>();
-  const visit = (node: EsTreeNode): void => {
-    if (node.type === "ImportDeclaration" && "source" in node && node.source) {
-      const source = (node.source as { value?: unknown }).value;
-      if (typeof source !== "string") return;
-      if ("specifiers" in node && Array.isArray(node.specifiers)) {
-        for (const specifier of node.specifiers as ReadonlyArray<EsTreeNode>) {
-          if (!("local" in specifier) || !specifier.local) continue;
-          const local = specifier.local as { name?: string };
-          if (typeof local.name !== "string") continue;
-          if (specifier.type === "ImportDefaultSpecifier") {
-            lookup.set(local.name, { source, imported: null, isDefault: true, isNamespace: false });
-          } else if (specifier.type === "ImportNamespaceSpecifier") {
-            lookup.set(local.name, { source, imported: null, isDefault: false, isNamespace: true });
-          } else if (specifier.type === "ImportSpecifier") {
-            const importedNode = (specifier as { imported?: { name?: string; value?: string } })
-              .imported;
-            const importedName =
-              importedNode?.name ??
-              (typeof importedNode?.value === "string" ? importedNode.value : null);
-            lookup.set(local.name, {
-              source,
-              imported: importedName,
-              isDefault: false,
-              isNamespace: false,
-            });
-          }
-        }
-      }
-      return;
-    }
-    const nodeRecord = node as unknown as Record<string, unknown>;
-    for (const key of Object.keys(nodeRecord)) {
-      if (key === "parent") continue;
-      const child = nodeRecord[key];
-      if (Array.isArray(child)) {
-        for (const item of child) if (isAstNode(item)) visit(item);
-      } else if (isAstNode(child)) {
-        visit(child);
+  // `ImportDeclaration` only occurs directly in `Program.body`, so one pass
+  // over the top-level statements replaces a whole-program recursion.
+  const bodyStatements = (programRoot as { body?: ReadonlyArray<EsTreeNode> }).body ?? [];
+  for (const node of bodyStatements) {
+    if (node.type !== "ImportDeclaration" || !("source" in node) || !node.source) continue;
+    const source = (node.source as { value?: unknown }).value;
+    if (typeof source !== "string") continue;
+    if (!("specifiers" in node) || !Array.isArray(node.specifiers)) continue;
+    for (const specifier of node.specifiers as ReadonlyArray<EsTreeNode>) {
+      if (!("local" in specifier) || !specifier.local) continue;
+      const local = specifier.local as { name?: string };
+      if (typeof local.name !== "string") continue;
+      if (specifier.type === "ImportDefaultSpecifier") {
+        lookup.set(local.name, { source, imported: null, isDefault: true, isNamespace: false });
+      } else if (specifier.type === "ImportNamespaceSpecifier") {
+        lookup.set(local.name, { source, imported: null, isDefault: false, isNamespace: true });
+      } else if (specifier.type === "ImportSpecifier") {
+        const importedNode = (specifier as { imported?: { name?: string; value?: string } })
+          .imported;
+        const importedName =
+          importedNode?.name ??
+          (typeof importedNode?.value === "string" ? importedNode.value : null);
+        lookup.set(local.name, {
+          source,
+          imported: importedName,
+          isDefault: false,
+          isNamespace: false,
+        });
       }
     }
-  };
-  visit(programRoot);
+  }
   return lookup;
 };
 
@@ -67,6 +55,22 @@ const getImportLookup = (node: EsTreeNode): Map<string, ImportInfo> | null => {
     importLookupCache.set(programRoot, cached);
   }
   return cached;
+};
+
+// True if the enclosing module imports anything from any of `moduleSources`.
+// A cheap existence gate for detectors whose signal can only come from a
+// specific library — when the import is absent, callers skip their AST walk
+// entirely.
+export const hasImportFromModules = (
+  contextNode: EsTreeNode,
+  moduleSources: ReadonlyArray<string>,
+): boolean => {
+  const lookup = getImportLookup(contextNode);
+  if (!lookup) return false;
+  for (const info of lookup.values()) {
+    if (moduleSources.includes(info.source)) return true;
+  }
+  return false;
 };
 
 // True if `localIdentifierName` was imported from `moduleSource` in the

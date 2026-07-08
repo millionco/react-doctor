@@ -183,7 +183,7 @@ export const clientPassiveEventListeners = defineRule({
   tags: ["test-noise"],
   severity: "warn",
   recommendation:
-    "Add `{ passive: true }` as the third argument: `addEventListener('scroll', handler, { passive: true })`. Only do this if the handler doesn't call `event.preventDefault()`, since passive listeners ignore it (which breaks pull-to-refresh, custom gestures, and nested scrolling).",
+    "Add `{ passive: true }` as the third argument: `addEventListener('touchmove', handler, { passive: true })`. Only do this if the handler doesn't call `event.preventDefault()`, since passive listeners ignore it (which breaks pull-to-refresh, custom gestures, and nested scrolling).",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isMemberProperty(node.callee, "addEventListener")) return;

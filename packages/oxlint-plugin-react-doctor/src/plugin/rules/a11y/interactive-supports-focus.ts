@@ -1,11 +1,13 @@
-import { ALL_EVENT_HANDLERS } from "../../constants/event-handlers.js";
+import { ALL_EVENT_HANDLERS_LOWER } from "../../constants/event-handlers.js";
 import { HTML_TAGS } from "../../constants/html-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
+import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isDisabledElement } from "../../utils/is-disabled-element.js";
 import { isHiddenFromScreenReader } from "../../utils/is-hidden-from-screen-reader.js";
 import { isInteractiveElement } from "../../utils/is-interactive-element.js";
@@ -28,6 +30,38 @@ const DEFAULT_TABBABLE_ROLES: ReadonlyArray<string> = [
   "switch",
   "textbox",
 ];
+
+// Composite widget CONTAINERS per the ARIA APG: keyboard focus lives on
+// their items (roving tabindex) or is delegated via aria-activedescendant,
+// and the container itself must NOT be a tab stop — its handlers exist for
+// bubbled events (arrow-key onKeyDown, hover bookkeeping, click-outside
+// guards) from focusable descendants.
+const COMPOSITE_CONTAINER_ROLES: ReadonlySet<string> = new Set([
+  "toolbar",
+  "listbox",
+  "menu",
+  "menubar",
+  "radiogroup",
+  "tablist",
+  "tree",
+  "treegrid",
+  "grid",
+]);
+
+// Items operated through aria-activedescendant: the item never takes DOM
+// focus (the combobox input keeps it), so it needs an `id` for the
+// pointer, not a tabIndex. An explicit id on a composite item is the
+// static marker of that pattern.
+const COMPOSITE_ITEM_ROLES: ReadonlySet<string> = new Set([
+  "option",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "treeitem",
+  "tab",
+  "row",
+  "gridcell",
+]);
 
 interface InteractiveSupportsFocusSettings {
   tabbable?: ReadonlyArray<string>;
@@ -59,10 +93,22 @@ export const interactiveSupportsFocus = defineRule({
     const tabbableSet = new Set(settings.tabbable);
     return {
       JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
+        if (node.attributes.length === 0) return;
         // A spread (`{...props}`) can carry `tabIndex`, so focus support is indeterminate.
         if (hasJsxSpreadAttribute(node.attributes)) return;
         const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
         const role = roleAttribute ? getJsxPropStringValue(roleAttribute) : null;
+        if (!role) return;
+        let hasInteractiveHandler = false;
+        for (const attribute of node.attributes) {
+          if (!isNodeOfType(attribute, "JSXAttribute")) continue;
+          const attributeName = getJsxAttributeName(attribute.name);
+          if (attributeName && ALL_EVENT_HANDLERS_LOWER.has(attributeName.toLowerCase())) {
+            hasInteractiveHandler = true;
+            break;
+          }
+        }
+        if (!hasInteractiveHandler) return;
         const elementType = getElementType(node, context.settings);
         // Custom components (PascalCase, not in HTML_TAGS) encapsulate
         // their own focus behaviour — `<SegmentButton role="option" />`
@@ -71,20 +117,21 @@ export const interactiveSupportsFocus = defineRule({
         // unactionable: the user can't add tabIndex to a wrapper that
         // already handles focus correctly.
         if (!HTML_TAGS.has(elementType)) return;
-        const hasInteractiveHandler = ALL_EVENT_HANDLERS.some((handler) =>
-          Boolean(hasJsxPropIgnoreCase(node.attributes, handler)),
-        );
-        const hasTabIndex = Boolean(hasJsxPropIgnoreCase(node.attributes, "tabIndex"));
-
         if (
-          !hasInteractiveHandler ||
           isDisabledElement(node) ||
           isHiddenFromScreenReader(node, context.settings) ||
           isPresentationRole(node)
         ) {
           return;
         }
-        if (!role) return;
+        if (COMPOSITE_CONTAINER_ROLES.has(role)) return;
+        if (
+          COMPOSITE_ITEM_ROLES.has(role) &&
+          Boolean(hasJsxPropIgnoreCase(node.attributes, "id"))
+        ) {
+          return;
+        }
+        const hasTabIndex = Boolean(hasJsxPropIgnoreCase(node.attributes, "tabIndex"));
         if (
           !isInteractiveRole(role) ||
           isInteractiveElement(elementType, node) ||

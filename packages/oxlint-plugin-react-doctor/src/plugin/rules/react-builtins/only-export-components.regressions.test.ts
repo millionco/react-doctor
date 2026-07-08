@@ -217,6 +217,51 @@ describe("react-builtins/only-export-components — regressions", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  // Fuzz FP hunt: components declared inside another function — a test
+  // callback, a factory, or an object-literal `render` method — are never
+  // Fast Refresh boundaries, so neither the "not exported" nor the
+  // "exports nothing" message applies to them.
+  it("ignores components declared inside function scopes", () => {
+    const testCallbackFile = `
+      declare const test: (name: string, run: () => void) => void;
+      declare const render: (element: unknown) => void;
+      test("renders", () => {
+        const Harness = () => <div />;
+        render(<Harness />);
+      });
+    `;
+    const factoryFile = `
+      function setup() {
+        const Row = () => <tr />;
+        return Row;
+      }
+      export const config = setup();
+    `;
+    const renderMethodFile = `
+      const meta = { render: () => { const Demo = () => <div />; return <Demo />; } };
+      export default meta;
+    `;
+    for (const [code, filename] of [
+      [testCallbackFile, "src/harness.tsx"],
+      [factoryFile, "src/setup-table.tsx"],
+      [renderMethodFile, "src/demo-meta.tsx"],
+    ]) {
+      const result = runRule(onlyExportComponents, code, { filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
+  });
+
+  it("still flags module-scope local components", () => {
+    const moduleScopeFile = `
+      const Widget = () => <div />;
+    `;
+    const result = runRule(onlyExportComponents, moduleScopeFile, {
+      filename: "src/widget.tsx",
+    });
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("still flags non-component exports in ordinary component files", () => {
     const mixedFile = `
       export const formatProfile = (profile) => profile.name.trim();
@@ -224,6 +269,59 @@ describe("react-builtins/only-export-components — regressions", () => {
     `;
     const result = runRule(onlyExportComponents, mixedFile, {
       filename: "src/components/profile-card.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  // Production FP sweep: re-exports (`export { x } from './x'`) forward
+  // bindings declared in ANOTHER module — there is nothing in this file
+  // to move, so the mixed-export diagnostic is unactionable here. Pure
+  // barrels and convenience re-exports were the dominant FP shape.
+  it("does not flag pure re-export barrels", () => {
+    const barrelFile = `
+      export { default } from './FlexBasic';
+      export { default as Flexbox } from './FlexBasic';
+    `;
+    const result = runRule(onlyExportComponents, barrelFile, {
+      filename: "src/Flex/Flexbox.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag non-component re-exports mixed with component re-exports", () => {
+    const imperativeBarrel = `
+      export { ContextMenuHost } from './ContextMenuHost';
+      export { closeContextMenu, showContextMenu } from './store';
+    `;
+    const result = runRule(onlyExportComponents, imperativeBarrel, {
+      filename: "src/base-ui/ContextMenu/imperative.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a convenience re-export alongside a local component", () => {
+    const componentWithReExport = `
+      export { parseTrigger } from '@/utils/parseTrigger';
+      export const Popover = () => <div />;
+    `;
+    const result = runRule(onlyExportComponents, componentWithReExport, {
+      filename: "src/base-ui/Popover/Popover.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags locally-declared non-components exported via a specifier block", () => {
+    const localSpecifierFile = `
+      const formatLabel = (value) => value.trim();
+      export const Card = () => <div />;
+      export { formatLabel };
+    `;
+    const result = runRule(onlyExportComponents, localSpecifierFile, {
+      filename: "src/components/card.tsx",
     });
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);

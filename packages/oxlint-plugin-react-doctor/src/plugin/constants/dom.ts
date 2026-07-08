@@ -1,10 +1,8 @@
-export const PASSIVE_EVENT_NAMES = new Set([
-  "scroll",
-  "wheel",
-  "touchstart",
-  "touchmove",
-  "touchend",
-]);
+// Only events that can actually block scrolling benefit from
+// `{ passive: true }`. "scroll" fires after the scroll happens and is not
+// cancelable, and "touchend" doesn't gate scroll starts — browsers ignore
+// the passive flag for both, so recommending it there is pure noise.
+export const PASSIVE_EVENT_NAMES = new Set(["wheel", "mousewheel", "touchstart", "touchmove"]);
 
 export const SCRIPT_LOADING_ATTRIBUTES = new Set(["defer", "async"]);
 

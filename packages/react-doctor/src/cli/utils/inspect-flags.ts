@@ -5,6 +5,8 @@
 export interface InspectFlags {
   lint?: boolean;
   deadCode?: boolean;
+  // Resolved against `supplyChain.enabled` (this flag wins), like lint/deadCode.
+  supplyChain?: boolean;
   verbose?: boolean;
   // Forces a Sentry trace and prints its id at the end. Conflicts with
   // --no-score / --no-telemetry, which disable the telemetry it needs.
@@ -35,6 +37,9 @@ export interface InspectFlags {
   // Set by the `why <file:line>` command (no longer a CLI flag); routes the
   // inspect flow into the single-location explain path.
   explain?: string;
+  // `--max-duration <seconds>`: scan time budget; parsed by
+  // `resolveMaxDurationFlag`.
+  maxDuration?: string;
   blocking?: string;
   /**
    * @deprecated Renamed to `blocking`. Still parsed as an alias when

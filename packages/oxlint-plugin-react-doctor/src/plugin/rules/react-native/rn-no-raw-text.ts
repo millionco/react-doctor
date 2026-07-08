@@ -5,6 +5,9 @@ import {
   REACT_NATIVE_TEXT_COMPONENT_KEYWORDS,
   REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS,
 } from "../../constants/react-native.js";
+import { HTML_TAGS } from "../../constants/html-tags.js";
+import { SVG_TAGS } from "../../constants/svg-tags.js";
+import { containsJsxElement } from "../../utils/contains-jsx-element.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { hasDirective } from "../../utils/has-directive.js";
 import { isInsidePlatformOsWebBranch } from "../../utils/is-inside-platform-os-web-branch.js";
@@ -18,10 +21,12 @@ import { isExpoUiComponentElement } from "./utils/is-expo-ui-component-element.j
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-const truncateText = (text: string): string =>
-  text.length > RAW_TEXT_PREVIEW_MAX_CHARS
-    ? `${text.slice(0, RAW_TEXT_PREVIEW_MAX_CHARS)}...`
-    : text;
+const truncateText = (text: string): string => {
+  const collapsedText = text.replace(/\s+/g, " ");
+  return collapsedText.length > RAW_TEXT_PREVIEW_MAX_CHARS
+    ? `${collapsedText.slice(0, RAW_TEXT_PREVIEW_MAX_CHARS)}...`
+    : collapsedText;
+};
 
 const isRawTextContent = (child: EsTreeNode): boolean => {
   if (isNodeOfType(child, "JSXText")) return Boolean(child.value?.trim());
@@ -66,9 +71,11 @@ const resolveTextBoundaryName = (
   return resolveJsxElementName(openingElement);
 };
 
+const TEXT_COMPONENT_KEYWORDS: ReadonlyArray<string> = [...REACT_NATIVE_TEXT_COMPONENT_KEYWORDS];
+
 const isTextHandlingComponent = (elementName: string): boolean => {
   if (REACT_NATIVE_TEXT_COMPONENTS.has(elementName)) return true;
-  return [...REACT_NATIVE_TEXT_COMPONENT_KEYWORDS].some((keyword) => elementName.includes(keyword));
+  return TEXT_COMPONENT_KEYWORDS.some((keyword) => elementName.includes(keyword));
 };
 
 const isTransparentTextWrapper = (elementName: string | null): boolean =>
@@ -119,10 +126,19 @@ export const rnNoRawText = defineRule({
     let autoDetectedTextWrappers: ReadonlySet<string> = new Set();
     let autoDetectedNonTextWrappers: ReadonlySet<string> = new Set();
 
-    // A built-in crash host: a React Native host primitive, or any lowercase
-    // intrinsic (`div`, `fbt`, …) — raw text directly inside one always crashes.
-    const isNonTextHostName = (elementName: string): boolean =>
-      !isReactComponentName(elementName) || REACT_NATIVE_RAW_TEXT_HOST_COMPONENTS.has(elementName);
+    // A built-in crash host: a React Native host primitive, or a lowercase
+    // intrinsic that is NOT a known HTML/SVG tag (`fbt`, a typo'd primitive).
+    // Real DOM tags (`div`, `span`, `button`, svg `text`, …) are excluded:
+    // they only exist in web-targeting code (React Native has no `div` — the
+    // element itself would fail before its text could), so raw text inside
+    // one is web markup, not an RN crash. Mixed-target RN packages (a
+    // DevTools panel UI next to an RN runtime, `Platform.OS` web branches,
+    // react-native-web) render DOM trees legitimately.
+    const isNonTextHostName = (elementName: string): boolean => {
+      if (REACT_NATIVE_RAW_TEXT_HOST_COMPONENTS.has(elementName)) return true;
+      if (isReactComponentName(elementName)) return false;
+      return !HTML_TAGS.has(elementName) && !SVG_TAGS.has(elementName);
+    };
 
     // A raw-text child only crashes at a host boundary, so report it only when
     // its enclosing element is a proven non-text renderer: a built-in crash host
@@ -163,6 +179,9 @@ export const rnNoRawText = defineRule({
     return {
       Program(programNode: EsTreeNodeOfType<"Program">) {
         isDomComponentFile = hasDirective(programNode, "use dom");
+        // A file with no JSX never fires the JSXElement visitor, so the
+        // wrapper classification would go unread — skip the fixpoint walk.
+        if (!containsJsxElement(programNode)) return;
         const childrenForwarding = collectTextWrapperComponents(
           programNode,
           isTextHandlingComponent,

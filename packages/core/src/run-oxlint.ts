@@ -1,8 +1,15 @@
 import * as fs from "node:fs";
 import os from "node:os";
 import * as path from "node:path";
+import {
+  CROSS_FILE_DEPENDENCY_COLLECTORS,
+  CROSS_FILE_RULE_IDS,
+  collectCrossFileDependencyProbes,
+  resetManifestCaches,
+} from "oxlint-plugin-react-doctor";
 import type { Diagnostic, ProjectInfo, ReactDoctorConfig } from "./types/index.js";
 import { batchIncludePaths } from "./batch-include-paths.js";
+import { COOPERATIVE_YIELD_BUDGET_MS } from "./constants.js";
 import { buildRuleSeverityControls } from "./build-rule-severity-controls.js";
 import { canOxlintExtendConfig } from "./can-oxlint-extend-config.js";
 import { collectIgnorePatterns } from "./collect-ignore-patterns.js";
@@ -12,6 +19,13 @@ import { neutralizeDisableDirectives } from "./neutralize-disable-directives.js"
 import { computeRulesetHash } from "./runners/oxlint/compute-ruleset-hash.js";
 import { createOxlintConfig } from "./runners/oxlint/config.js";
 import { createFileLintCache } from "./runners/oxlint/file-lint-cache.js";
+import { createSidecarProbeAnswerResolver } from "./runners/oxlint/resolve-sidecar-probe-answer.js";
+import type { SidecarProbeAnswerResolver } from "./runners/oxlint/resolve-sidecar-probe-answer.js";
+import { createSidecarLintCache } from "./runners/oxlint/sidecar-lint-cache.js";
+import type {
+  SidecarDependencyProbe,
+  SidecarLintCache,
+} from "./runners/oxlint/sidecar-lint-cache.js";
 import { resolveUserPlugins } from "./runners/oxlint/plugin-resolution.js";
 import { resolveOxlintToolchainVersions } from "./runners/oxlint/resolve-toolchain-versions.js";
 import {
@@ -23,9 +37,10 @@ import { spawnLintBatches } from "./runners/oxlint/spawn-batches.js";
 import { validateRuleRegistration } from "./runners/oxlint/validate-rule-registration.js";
 import { dedupeDiagnostics } from "./utils/dedupe-diagnostics.js";
 import { hashFileContents } from "./utils/hash-file-contents.js";
-import { listSourceFiles, listSourceFilesWithSize } from "./utils/list-source-files.js";
+import { listSourceFilesWithSize } from "./utils/list-source-files.js";
+import { planLintBatches } from "./utils/plan-lint-batches.js";
 import { resolveReactDoctorCacheDir } from "./utils/resolve-react-doctor-cache-dir.js";
-import { sortSourceFilesByCost } from "./utils/sort-source-files-by-cost.js";
+import { yieldToEventLoop } from "./utils/yield-to-event-loop.js";
 
 interface RunOxlintOptions {
   rootDirectory: string;
@@ -72,15 +87,33 @@ interface RunOxlintOptions {
    * `PerFileLintCacheEnabled` Reference. When on (and the scan is eligible —
    * no audit mode, no adopted `extends`, no user plugins), unchanged files
    * replay their cached cacheable-rule diagnostics and only changed files are
-   * re-linted; the cross-file rules always run fresh in a sidecar pass.
+   * re-linted; the cross-file rules always run fresh on every file (in the
+   * misses' full pass, and in a sidecar pass over the cache hits).
    */
   perFileLintCacheEnabled?: boolean;
+  /**
+   * Enables the sidecar lint cache, resolved from the
+   * `SidecarLintCacheEnabled` Reference. When on (and the per-file cache is
+   * active), each cache-hit file's cross-file diagnostics replay from the
+   * sidecar store as long as the file's recorded dependency probes still
+   * match the tree; only mismatching files re-lint. Off → every cache hit
+   * runs the always-fresh sidecar pass (the pre-cache behavior).
+   */
+  sidecarLintCacheEnabled?: boolean;
   /**
    * Called once after the cache split with `(cacheHitFileCount,
    * totalConsideredFileCount)`. Surfaced to the Sentry wide event as
    * `lintCacheHitRatio`. Not invoked when the cache is disabled or bypassed.
    */
   onCacheStats?: (cacheHitFileCount: number, totalConsideredFileCount: number) => void;
+  /**
+   * Called once with `(sidecarReplayedFileCount, sidecarConsideredFileCount)`
+   * — how many cache-hit files replayed their cross-file diagnostics from
+   * the sidecar store vs. the hits considered. Surfaced to the Sentry wide
+   * event as `lint.sidecarReplayRatio`. Not invoked when the sidecar cache
+   * is disabled or bypassed.
+   */
+  onSidecarStats?: (sidecarReplayedFileCount: number, sidecarConsideredFileCount: number) => void;
   /** Per-batch wall-clock budget, resolved from the `OxlintSpawnTimeoutMs` Reference. */
   spawnTimeoutMs?: number;
   /** Per-batch stdout+stderr byte cap, resolved from the `OxlintOutputMaxBytes` Reference. */
@@ -100,10 +133,13 @@ interface RunOxlintOptions {
    * of running on after the phase is abandoned.
    */
   signal?: AbortSignal;
+  /** See `SpawnLintBatchesInput.deadlineEpochMs`. */
+  deadlineEpochMs?: number;
   /**
-   * Full-scan batch ordering, resolved from the `LintBatchOrdering`
-   * Reference. `"arrival"` (the default) keeps discovery order; `"cost"`
-   * opts into LPT (largest files first). Only affects the full-scan branch
+   * Full-scan batch planning, resolved from the `LintBatchOrdering`
+   * Reference. `"cost"` (the default) plans size-balanced LPT batches via
+   * `planLintBatches`; `"arrival"` is the rollback hatch to the plain greedy
+   * 100-file chunking in discovery order. Only affects the full-scan branch
    * (`includePaths` undefined) — diff / staged scans pass explicit paths and
    * are untouched.
    */
@@ -129,6 +165,139 @@ const writeOxlintConfig = (
   } finally {
     fs.closeSync(fileHandle);
   }
+};
+
+/**
+ * Attributes diagnostics back to the file that produced them by the
+ * normalized path oxlint echoes. Returns `null` when ANY diagnostic can't be
+ * attributed — the path forms don't align, so the caller must skip its cache
+ * store rather than risk caching a wrong empty result for a file that
+ * actually had diagnostics.
+ */
+const attributeDiagnosticsToFiles = (
+  diagnostics: ReadonlyArray<Diagnostic>,
+  files: ReadonlyArray<string>,
+): Map<string, Diagnostic[]> | null => {
+  const fileByNormalizedPath = new Map<string, string>();
+  for (const file of files) {
+    fileByNormalizedPath.set(file.replaceAll("\\", "/"), file);
+  }
+  const diagnosticsByFile = new Map<string, Diagnostic[]>();
+  for (const diagnostic of diagnostics) {
+    const file = fileByNormalizedPath.get(diagnostic.filePath);
+    if (file === undefined) return null;
+    const fileDiagnostics = diagnosticsByFile.get(file) ?? [];
+    fileDiagnostics.push(diagnostic);
+    diagnosticsByFile.set(file, fileDiagnostics);
+  }
+  return diagnosticsByFile;
+};
+
+interface SidecarStorablePass {
+  readonly files: ReadonlyArray<string>;
+  /** Cross-file BOUNDED-rule diagnostics this pass produced for `files`. */
+  readonly diagnostics: ReadonlyArray<Diagnostic>;
+  /** False when the pass had a partial failure or a config fallback — its
+   * output may be incomplete, so nothing from it is stored. */
+  readonly isTrusted: boolean;
+  /** Each file's answered probe set (from `collectSidecarProbesForFiles`). */
+  readonly probesByFile: ReadonlyMap<string, ReadonlyArray<SidecarDependencyProbe> | null>;
+}
+
+/**
+ * Collects each file's cross-file dependency probes (via the plugin's
+ * collectors) with their current answers. Fail-open per file: an unreadable /
+ * unparseable / collector-failing file maps to `null` (no entry stored — it
+ * re-lints next scan). The filesystem is frozen for the scan, so this can run
+ * CONCURRENTLY with an oxlint child-process await — the caller starts it
+ * unawaited before a lint pass and awaits it at store time, hiding the
+ * in-process parse + resolution cost under the subprocess wait. The loop
+ * yields on the cooperative time budget so the child's stdout handling (and
+ * sibling fibers) keep flowing; each per-file collection is synchronous, so
+ * the module-level probe recorder never sees interleaved use. Never rejects.
+ */
+const collectSidecarProbesForFiles = async (input: {
+  files: ReadonlyArray<string>;
+  rootDirectory: string;
+  boundedSidecarRuleIds: ReadonlyArray<string>;
+  probeAnswers: SidecarProbeAnswerResolver;
+}): Promise<Map<string, ReadonlyArray<SidecarDependencyProbe> | null>> => {
+  const buildProbes = (file: string): SidecarDependencyProbe[] | null => {
+    const absoluteFilePath = path.resolve(input.rootDirectory, file);
+    let trace: ReturnType<typeof collectCrossFileDependencyProbes>;
+    try {
+      trace = collectCrossFileDependencyProbes({
+        absoluteFilePath,
+        sourceText: fs.readFileSync(absoluteFilePath, "utf8"),
+        ruleIds: input.boundedSidecarRuleIds,
+      });
+    } catch {
+      return null;
+    }
+    if (trace === null) return null;
+    const probes: SidecarDependencyProbe[] = [];
+    for (const contentPath of trace.contentPaths) {
+      const relativePath = input.probeAnswers.toRelativePath(contentPath);
+      probes.push({
+        kind: "content",
+        path: relativePath,
+        answer: input.probeAnswers.answerFor("content", relativePath),
+      });
+    }
+    // A path can carry BOTH probe kinds (e.g. a package.json probed for
+    // existence during the ancestor walk and then read): keep both — the
+    // content answer can't distinguish a directory from a missing file, but
+    // the resolvers can (`"dir"` vs `"none"`).
+    for (const existencePath of trace.existencePaths) {
+      const relativePath = input.probeAnswers.toRelativePath(existencePath);
+      probes.push({
+        kind: "exists",
+        path: relativePath,
+        answer: input.probeAnswers.answerFor("exists", relativePath),
+      });
+    }
+    return probes;
+  };
+
+  const probesByFile = new Map<string, ReadonlyArray<SidecarDependencyProbe> | null>();
+  let collectSliceStartedAt = performance.now();
+  for (const file of input.files) {
+    probesByFile.set(file, buildProbes(file));
+    if (performance.now() - collectSliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
+      await yieldToEventLoop();
+      collectSliceStartedAt = performance.now();
+    }
+  }
+  return probesByFile;
+};
+
+/**
+ * Stores each freshly-linted file's probe set + cross-file diagnostics so
+ * the next scan can replay instead of re-linting.
+ */
+const storeSidecarEntries = (input: {
+  sidecarCache: SidecarLintCache;
+  cacheKeyByFile: ReadonlyMap<string, string>;
+  storablePasses: ReadonlyArray<SidecarStorablePass>;
+}): void => {
+  let didStoreAnyEntry = false;
+  for (const pass of input.storablePasses) {
+    if (!pass.isTrusted) continue;
+    const diagnosticsByFile = attributeDiagnosticsToFiles(pass.diagnostics, pass.files);
+    if (diagnosticsByFile === null) continue;
+    for (const file of pass.files) {
+      const cacheKey = input.cacheKeyByFile.get(file);
+      if (cacheKey === undefined) continue;
+      const probes = pass.probesByFile.get(file);
+      if (probes === undefined || probes === null) continue;
+      input.sidecarCache.store(cacheKey, {
+        probes,
+        diagnostics: diagnosticsByFile.get(file) ?? [],
+      });
+      didStoreAnyEntry = true;
+    }
+  }
+  if (didStoreAnyEntry) input.sidecarCache.persist();
 };
 
 const REACT_HOOKS_JS_DROP_PREFIX =
@@ -199,10 +368,12 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     configSourceDirectory = rootDirectory,
     onPartialFailure,
     perFileLintCacheEnabled = false,
+    sidecarLintCacheEnabled = false,
     onCacheStats,
+    onSidecarStats,
     spawnTimeoutMs,
     outputMaxBytes,
-    lintBatchOrdering = "arrival",
+    lintBatchOrdering = "cost",
   } = options;
 
   const serverAuthFunctionNames = Array.isArray(userConfig?.serverAuthFunctionNames)
@@ -213,6 +384,13 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
   const severityControls = buildRuleSeverityControls(userConfig);
 
   validateRuleRegistration();
+
+  // A new scan starts here: drop the plugin's nearest-package.json memos so
+  // the in-process sidecar probe collection (`collectSidecarProbesForFiles`)
+  // never replays a previous scan's package-directory walk or manifest
+  // verdict in a long-lived host (LSP server). Within this scan the memos
+  // are sound — the filesystem is treated as frozen while the scan runs.
+  resetManifestCaches();
 
   if (includePaths !== undefined && includePaths.length === 0) {
     return [];
@@ -243,6 +421,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     extendsPaths: string[];
     disableReactHooksJsPlugin?: boolean;
     ruleSelection?: "cacheable" | "sidecar";
+    sidecarRuleIdFilter?: ReadonlySet<string>;
   }) =>
     createOxlintConfig({
       pluginPath,
@@ -255,6 +434,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       userPlugins,
       disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
       ruleSelection: overrides.ruleSelection,
+      sidecarRuleIdFilter: overrides.sidecarRuleIdFilter,
     });
 
   // HACK: only neutralize disable comments in audit mode. Default
@@ -326,21 +506,34 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
     // that JS-plugin rules hit the 5-min `OXLINT_SPAWN_TIMEOUT_MS`
     // in a single batch, leaving `skippedChecks: ["lint"]` and zero
     // diagnostics. Materializing the file list ahead of time and
-    // feeding it through `batchIncludePaths` keeps each spawn under
+    // feeding it through the batch planner keeps each spawn under
     // the timeout and recovers the diagnostics we were dropping.
-    //
-    // `"cost"` orders discovered files largest-first (LPT) so the
-    // heaviest batch starts in wave 1 of the parallel pool instead of
-    // stranding in the tail — the size is the minified gate's existing
-    // stat, captured rather than re-paid. `"arrival"` (the default) keeps
-    // discovery order; `cost` is the env opt-in (`LintBatchOrdering`). Only
-    // invoked for a full scan, so diff / staged scans never pay the walk.
-    const discoverScanFiles = (): string[] =>
-      lintBatchOrdering === "cost"
-        ? sortSourceFilesByCost(listSourceFilesWithSize(rootDirectory))
-        : listSourceFiles(rootDirectory);
+    // Hand the event loop back once before the synchronous discovery walk +
+    // cache-hash burst below. The orchestrator forked the security-scan and
+    // supply-chain fibers just before lint, but a forked fiber only runs when
+    // the current one suspends — this is their first chance to start (fire the
+    // Socket.dev requests, begin the scan walk) instead of stalling until the
+    // first oxlint spawn.
+    await yieldToEventLoop();
+    // Only a full scan pays the walk — diff / staged scans pass
+    // explicit paths.
+    const sizedScanFiles =
+      includePaths === undefined ? listSourceFilesWithSize(rootDirectory) : null;
+    const candidateFiles =
+      includePaths !== undefined ? includePaths : (sizedScanFiles ?? []).map((entry) => entry.path);
 
-    const candidateFiles = includePaths !== undefined ? includePaths : discoverScanFiles();
+    // `"cost"` (the default) plans size-balanced LPT batches — the size is
+    // the discovery walk's existing stat, captured rather than re-paid.
+    // `"arrival"` (the `REACT_DOCTOR_LINT_BATCH_ORDERING` rollback hatch) and
+    // every explicit-`includePaths` scan keep the plain greedy chunking.
+    const sizeByFile =
+      sizedScanFiles !== null && lintBatchOrdering === "cost"
+        ? new Map(sizedScanFiles.map((entry) => [entry.path, entry.sizeBytes]))
+        : null;
+    const buildFileBatches = (passBaseArgs: string[], passFiles: string[]): string[][] =>
+      sizeByFile !== null
+        ? planLintBatches({ baseArgs: passBaseArgs, files: passFiles, sizeByFile })
+        : batchIncludePaths(passBaseArgs, passFiles);
 
     // Runs one oxlintrc over a file list, retrying once with the optional
     // react-hooks-js plugin stripped if it fails to import (issue #833).
@@ -371,7 +564,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       };
       const passConfigPath = path.join(configDirectory, configFileName);
       const passBaseArgs = makeBaseArgs(passConfigPath);
-      const passFileBatches = batchIncludePaths(passBaseArgs, files);
+      const passFileBatches = buildFileBatches(passBaseArgs, files);
       const spawnPass = () =>
         spawnLintBatches({
           baseArgs: passBaseArgs,
@@ -385,6 +578,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
           outputMaxBytes,
           concurrency: options.concurrency,
           signal: options.signal,
+          deadlineEpochMs: options.deadlineEpochMs,
         });
       writeOxlintConfig(passConfigPath, buildConfigForPass({}));
       try {
@@ -429,69 +623,222 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       const cache = createFileLintCache(resolveReactDoctorCacheDir(rootDirectory), rulesetHash);
 
       // Partition candidates by content hash. An unreadable file (no hash) is
-      // treated as a miss and re-linted.
+      // treated as a miss and re-linted. Hashing reads every candidate's whole
+      // content, so the loop yields on the cooperative time budget — otherwise
+      // this pre-spawn burst starves the forked security-scan / supply-chain
+      // fibers (and sibling projects) until the first oxlint spawn.
       const cacheKeyByFile = new Map<string, string>();
+      // Canonical relative path → content hash, reused by the sidecar cache's
+      // probe-answer resolver so verifying a source-file dependency is a map
+      // lookup instead of a re-read.
+      const contentHashByRelativePath = new Map<string, string>();
       const missFiles: string[] = [];
       const replayedDiagnostics: Diagnostic[] = [];
+      let hashSliceStartedAt = performance.now();
       for (const candidateFile of candidateFiles) {
-        const contentHash = hashFileContents(path.resolve(rootDirectory, candidateFile));
+        const absoluteCandidatePath = path.resolve(rootDirectory, candidateFile);
+        const contentHash = hashFileContents(absoluteCandidatePath);
         if (contentHash === null) {
           missFiles.push(candidateFile);
           continue;
         }
+        contentHashByRelativePath.set(
+          path.relative(rootDirectory, absoluteCandidatePath).replaceAll("\\", "/"),
+          contentHash,
+        );
         const cacheKey = `${candidateFile.replaceAll("\\", "/")}\u0000${contentHash}`;
         cacheKeyByFile.set(candidateFile, cacheKey);
         const cachedDiagnostics = cache.lookup(cacheKey);
         if (cachedDiagnostics === null) missFiles.push(candidateFile);
         else replayedDiagnostics.push(...cachedDiagnostics);
+        if (performance.now() - hashSliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
+          await yieldToEventLoop();
+          hashSliceStartedAt = performance.now();
+        }
       }
       const cacheHitFileCount = candidateFiles.length - missFiles.length;
 
-      // Cacheable rules re-run only on changed files; the cross-file sidecar
-      // always runs fresh on EVERY file so a dependency change can never serve
-      // a stale cross-file verdict for an unchanged file.
-      const cacheableResult = await runConfigOverFiles(
+      // The cross-file sidecar over the cache hits. The enabled sidecar rules
+      // split by whether the plugin ships a dependency collector for them:
+      //
+      //   - BOUNDED rules replay from the sidecar cache: a hit file whose
+      //     stored dependency probes all still match the tree replays its
+      //     stored cross-file diagnostics; only mismatching (or unknown)
+      //     files re-lint, in a sidecar pass narrowed to the bounded rules.
+      //   - UNBOUNDED rules (no collector — see the plugin's
+      //     `UNBOUNDED_CROSS_FILE_RULE_IDS`; empty today) can't be
+      //     fingerprinted, so they run always-fresh over EVERY hit file in a
+      //     second narrowed pass. The degradation is per-rule, not global.
+      //
+      // With the sidecar cache off (or no bounded rule enabled) the split
+      // collapses to the pre-cache behavior: one always-fresh sidecar pass,
+      // all cross-file rules, every hit file.
+      const enabledSidecarRuleIds = Object.keys(
+        buildConfig({ extendsPaths: [], ruleSelection: "sidecar" }).rules,
+      )
+        .map((ruleKey) => ruleKey.slice(ruleKey.lastIndexOf("/") + 1))
+        .filter((ruleId) => CROSS_FILE_RULE_IDS.has(ruleId));
+      const boundedSidecarRuleIds = enabledSidecarRuleIds.filter((ruleId) =>
+        CROSS_FILE_DEPENDENCY_COLLECTORS.has(ruleId),
+      );
+      const boundedSidecarRuleIdSet: ReadonlySet<string> = new Set(boundedSidecarRuleIds);
+      const unboundedSidecarRuleIds = enabledSidecarRuleIds.filter(
+        (ruleId) => !CROSS_FILE_DEPENDENCY_COLLECTORS.has(ruleId),
+      );
+      const useSidecarCache = sidecarLintCacheEnabled && boundedSidecarRuleIds.length > 0;
+
+      const sidecarCache = useSidecarCache
+        ? createSidecarLintCache(
+            resolveReactDoctorCacheDir(rootDirectory),
+            computeRulesetHash({
+              config: buildConfig({
+                extendsPaths: [],
+                ruleSelection: "sidecar",
+                sidecarRuleIdFilter: boundedSidecarRuleIdSet,
+              }),
+              toolchainVersions: resolveOxlintToolchainVersions(nodeBinaryPath),
+              ignorePatterns: combinedPatterns,
+              tsconfigContent,
+            }),
+          )
+        : null;
+      const probeAnswers = createSidecarProbeAnswerResolver({
+        rootDirectory,
+        contentHashByRelativePath,
+      });
+      // Started UNAWAITED so the in-process probe collection interleaves with
+      // the full pass's child-process await below (the filesystem is frozen
+      // for the scan, so collecting before/during/after the pass is
+      // equivalent). Never rejects — a failing file maps to `null`.
+      const missProbesTask =
+        sidecarCache === null
+          ? null
+          : collectSidecarProbesForFiles({
+              files: missFiles,
+              rootDirectory,
+              boundedSidecarRuleIds,
+              probeAnswers,
+            });
+
+      // Miss files run the FULL config in one pass — cacheable and cross-file
+      // rules together — and the cross-file sidecar covers only the cache
+      // HITS. The previous shape (cacheable pass over misses, then sidecar
+      // over every file) parsed and spawned over each miss twice, doubling
+      // the lint cost of a cold-cache scan — every CI run. The fresh output
+      // is partitioned by rule id below so only cacheable-rule diagnostics
+      // are stored; cache contents and reported diagnostics are unchanged,
+      // and a stale cross-file verdict still can't be served (hits replay
+      // only behind matching dependency probes, misses ran the cross-file
+      // rules in the full pass).
+      const fullResult = await runConfigOverFiles(
         (overrides) =>
           buildConfig({
             extendsPaths: [],
-            ruleSelection: "cacheable",
             disableReactHooksJsPlugin: overrides.disableReactHooksJsPlugin,
           }),
-        "oxlintrc.cacheable.json",
+        "oxlintrc.full.json",
         missFiles,
-        undefined,
+        options.onFileProgress &&
+          ((scannedFileCount) => options.onFileProgress?.(scannedFileCount, candidateFiles.length)),
       );
-      const sidecarResult = await runConfigOverFiles(
-        () => buildConfig({ extendsPaths: [], ruleSelection: "sidecar" }),
-        "oxlintrc.sidecar.json",
-        candidateFiles,
-        options.onFileProgress,
-      );
+      const missFileSet = new Set(missFiles);
+      const hitFiles = candidateFiles.filter((candidateFile) => !missFileSet.has(candidateFile));
 
-      // Reported only after both passes succeed — if lint throws, the run fails
-      // and no cache-hit ratio is attached to a failed scan's telemetry.
-      onCacheStats?.(cacheHitFileCount, candidateFiles.length);
-
-      // Attribute fresh cacheable diagnostics back to their miss file by the
-      // normalized path oxlint echoes. If ANY diagnostic can't be attributed,
-      // the path forms don't align — skip the store rather than risk caching a
-      // wrong empty result for a file that actually had diagnostics.
-      const missFileByNormalizedPath = new Map<string, string>();
-      for (const missFile of missFiles) {
-        missFileByNormalizedPath.set(missFile.replaceAll("\\", "/"), missFile);
-      }
-      const freshDiagnosticsByFile = new Map<string, Diagnostic[]>();
-      let isAttributionSound = true;
-      for (const diagnostic of cacheableResult.diagnostics) {
-        const missFile = missFileByNormalizedPath.get(diagnostic.filePath);
-        if (missFile === undefined) {
-          isAttributionSound = false;
-          break;
+      // Split the hit files into replays and sidecar re-lints by re-answering
+      // each stored probe against the current tree. Source-file answers are
+      // map lookups over the hashes computed above; the loop still stats
+      // package.json / tsconfig probes, so it shares the cooperative budget.
+      const sidecarReplayedDiagnostics: Diagnostic[] = [];
+      const sidecarLintFiles: string[] = [];
+      if (sidecarCache === null) {
+        sidecarLintFiles.push(...hitFiles);
+      } else {
+        let verifySliceStartedAt = performance.now();
+        for (const hitFile of hitFiles) {
+          const cacheKey = cacheKeyByFile.get(hitFile);
+          const entry = cacheKey === undefined ? null : sidecarCache.lookup(cacheKey);
+          const isReplayable =
+            entry !== null &&
+            entry.probes.every(
+              (probe) => probeAnswers.answerFor(probe.kind, probe.path) === probe.answer,
+            );
+          if (isReplayable) sidecarReplayedDiagnostics.push(...entry.diagnostics);
+          else sidecarLintFiles.push(hitFile);
+          if (performance.now() - verifySliceStartedAt >= COOPERATIVE_YIELD_BUDGET_MS) {
+            await yieldToEventLoop();
+            verifySliceStartedAt = performance.now();
+          }
         }
-        const fileDiagnostics = freshDiagnosticsByFile.get(missFile) ?? [];
-        fileDiagnostics.push(diagnostic);
-        freshDiagnosticsByFile.set(missFile, fileDiagnostics);
       }
+
+      // Same overlap as `missProbesTask`: collect the re-lint set's probes
+      // while the bounded sidecar pass awaits its child processes.
+      const sidecarProbesTask =
+        sidecarCache === null
+          ? null
+          : collectSidecarProbesForFiles({
+              files: sidecarLintFiles,
+              rootDirectory,
+              boundedSidecarRuleIds,
+              probeAnswers,
+            });
+      // Replayed files are completed work: without them in the numerator the
+      // spinner stalls at missFiles + sidecarLintFiles of candidateFiles, and
+      // an all-replayed pass (empty sidecarLintFiles) would never tick at all.
+      const sidecarReplayedFileCount = hitFiles.length - sidecarLintFiles.length;
+      if (sidecarReplayedFileCount > 0) {
+        options.onFileProgress?.(
+          missFiles.length + sidecarReplayedFileCount,
+          candidateFiles.length,
+        );
+      }
+      const boundedSidecarResult = await runConfigOverFiles(
+        () =>
+          buildConfig({
+            extendsPaths: [],
+            ruleSelection: "sidecar",
+            ...(useSidecarCache ? { sidecarRuleIdFilter: boundedSidecarRuleIdSet } : {}),
+          }),
+        "oxlintrc.sidecar.json",
+        sidecarLintFiles,
+        options.onFileProgress &&
+          ((scannedFileCount) =>
+            options.onFileProgress?.(
+              missFiles.length + sidecarReplayedFileCount + scannedFileCount,
+              candidateFiles.length,
+            )),
+      );
+      const unboundedSidecarResult =
+        useSidecarCache && unboundedSidecarRuleIds.length > 0
+          ? await runConfigOverFiles(
+              () =>
+                buildConfig({
+                  extendsPaths: [],
+                  ruleSelection: "sidecar",
+                  sidecarRuleIdFilter: new Set(unboundedSidecarRuleIds),
+                }),
+              "oxlintrc.sidecar-unbounded.json",
+              hitFiles,
+              undefined,
+            )
+          : { diagnostics: [], didDropReactHooksJsPlugin: false, hadPartialFailure: false };
+
+      const freshCacheableDiagnostics: Diagnostic[] = [];
+      for (const diagnostic of fullResult.diagnostics) {
+        if (!CROSS_FILE_RULE_IDS.has(diagnostic.rule)) freshCacheableDiagnostics.push(diagnostic);
+      }
+
+      // Reported only after every pass succeeds — if lint throws, the run
+      // fails and no cache ratio is attached to a failed scan's telemetry.
+      onCacheStats?.(cacheHitFileCount, candidateFiles.length);
+      if (sidecarCache !== null) {
+        onSidecarStats?.(hitFiles.length - sidecarLintFiles.length, hitFiles.length);
+      }
+
+      const freshDiagnosticsByFile = attributeDiagnosticsToFiles(
+        freshCacheableDiagnostics,
+        missFiles,
+      );
 
       // Skip the store when this run can't be trusted to represent a clean,
       // complete lint of the miss files:
@@ -501,9 +848,9 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
       //     empty output would mask the failure as a clean hit next scan;
       //   - the diagnostics couldn't be attributed back to their miss file.
       if (
-        !cacheableResult.didDropReactHooksJsPlugin &&
-        !cacheableResult.hadPartialFailure &&
-        isAttributionSound
+        !fullResult.didDropReactHooksJsPlugin &&
+        !fullResult.hadPartialFailure &&
+        freshDiagnosticsByFile !== null
       ) {
         for (const missFile of missFiles) {
           const cacheKey = cacheKeyByFile.get(missFile);
@@ -514,19 +861,44 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         cache.persist();
       }
 
+      if (sidecarCache !== null && missProbesTask !== null && sidecarProbesTask !== null) {
+        storeSidecarEntries({
+          sidecarCache,
+          cacheKeyByFile,
+          storablePasses: [
+            {
+              files: sidecarLintFiles,
+              diagnostics: boundedSidecarResult.diagnostics,
+              isTrusted: !boundedSidecarResult.hadPartialFailure,
+              probesByFile: await sidecarProbesTask,
+            },
+            {
+              files: missFiles,
+              diagnostics: fullResult.diagnostics.filter((diagnostic) =>
+                boundedSidecarRuleIdSet.has(diagnostic.rule),
+              ),
+              isTrusted: !fullResult.didDropReactHooksJsPlugin && !fullResult.hadPartialFailure,
+              probesByFile: await missProbesTask,
+            },
+          ],
+        });
+      }
+
       // Dedupe the merged result to match the non-cached path (which dedupes
       // at the end of `spawnLintBatches`): a duplicate path in `includePaths`
       // replays the same cached set twice, which dedupe collapses — so warm
       // output stays equal to a cache-off scan of the same inputs.
       return dedupeDiagnostics([
         ...replayedDiagnostics,
-        ...cacheableResult.diagnostics,
-        ...sidecarResult.diagnostics,
+        ...fullResult.diagnostics,
+        ...sidecarReplayedDiagnostics,
+        ...boundedSidecarResult.diagnostics,
+        ...unboundedSidecarResult.diagnostics,
       ]);
     }
 
     const baseArgs = makeBaseArgs(configPath);
-    const fileBatches = batchIncludePaths(baseArgs, candidateFiles);
+    const fileBatches = buildFileBatches(baseArgs, candidateFiles);
 
     const runBatches = () =>
       spawnLintBatches({
@@ -541,6 +913,7 @@ export const runOxlint = async (options: RunOxlintOptions): Promise<Diagnostic[]
         outputMaxBytes,
         concurrency: options.concurrency,
         signal: options.signal,
+        deadlineEpochMs: options.deadlineEpochMs,
       });
 
     writeOxlintConfig(configPath, buildConfig({ extendsPaths }));

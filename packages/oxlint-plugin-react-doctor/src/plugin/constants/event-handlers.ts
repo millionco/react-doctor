@@ -30,3 +30,10 @@ export const ALL_EVENT_HANDLERS: ReadonlyArray<string> = [
   ...MOUSE_EVENT_HANDLERS,
   ...KEYBOARD_EVENT_HANDLERS,
 ];
+
+// Lowercased Set for single-pass, case-insensitive presence checks over an
+// element's attributes — one lookup per attribute instead of one full
+// attribute scan per handler name.
+export const ALL_EVENT_HANDLERS_LOWER: ReadonlySet<string> = new Set(
+  ALL_EVENT_HANDLERS.map((handlerName) => handlerName.toLowerCase()),
+);

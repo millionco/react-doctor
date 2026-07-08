@@ -4,11 +4,18 @@ import {
 } from "../../../constants/security.js";
 import { escapeRegExp } from "./escape-reg-exp.js";
 
+// Compiled once — `matchAll` clones the regex per call, so the shared
+// constant never carries `lastIndex` state between invocations.
+const PUBLIC_ENV_SECRET_NAME_GLOBAL_PATTERN = new RegExp(
+  PUBLIC_ENV_SECRET_NAME_PATTERN.source,
+  "gi",
+);
+
 // Returns a RegExp matching the first suspicious name so callers can
 // locate the finding in the file content; `undefined` when every
 // public-prefixed env name in the content is a trusted/publishable one.
 export const findSuspiciousPublicEnvSecretNamePattern = (content: string): RegExp | undefined => {
-  for (const match of content.matchAll(new RegExp(PUBLIC_ENV_SECRET_NAME_PATTERN.source, "gi"))) {
+  for (const match of content.matchAll(PUBLIC_ENV_SECRET_NAME_GLOBAL_PATTERN)) {
     const value = match[0] ?? "";
     if (!TRUSTED_PUBLIC_SECRET_NAME_PATTERN.test(value)) {
       return new RegExp(escapeRegExp(value));

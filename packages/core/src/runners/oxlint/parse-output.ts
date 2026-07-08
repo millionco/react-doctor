@@ -7,7 +7,7 @@ import type {
   OxlintOutput,
   ProjectInfo,
 } from "../../types/index.js";
-import { ERROR_PREVIEW_LENGTH_CHARS } from "../../constants.js";
+import { ERROR_PREVIEW_LENGTH_CHARS, OCCURRENCE_MATCHED_CATEGORIES } from "../../constants.js";
 import { isLintableSourceFile } from "../../utils/is-lintable-source-file.js";
 import { isMinifiedSource } from "../../utils/is-minified-source.js";
 import { OxlintOutputUnparseable, ReactDoctorError } from "../../errors.js";
@@ -15,6 +15,8 @@ import { getCapabilities } from "../../project-info/capabilities.js";
 import { appendReanimatedSharedValueHint } from "../../utils/append-reanimated-shared-value-hint.js";
 import { redactSensitiveText } from "../../utils/redact-sensitive-text.js";
 import { shouldSuppressLocalUseHookDiagnostic } from "./should-suppress-local-use-hook-diagnostic.js";
+import { shouldSuppressCompilerFindingInWorklet } from "./should-suppress-compiler-finding-in-worklet.js";
+import { suppressMemoizationInBailedOutFunctions } from "./suppress-memoization-in-bailed-out-functions.js";
 
 const FILEPATH_WITH_LOCATION_PATTERN = /\S+\.\w+:\d+:\d+[\s\S]*$/;
 const LEADING_SEVERITY_LABEL_PATTERN = /^(?:Error|Warning):\s*/;
@@ -207,6 +209,17 @@ const parseRuleCode = (code: string): { plugin: string; rule: string } => {
 const resolveDiagnosticCategory = (plugin: string, rule: string): string =>
   getRuleCategory(rule) ?? lookupOwnString(PLUGIN_CATEGORY_MAP, plugin) ?? "Bugs";
 
+// Whether the finding's identity is the flagged element rather than the
+// flagged line's text, so `computeDiagnosticDelta` matches it by
+// `(file, rule)` occurrence count. Resolved here — the one place that
+// already consults rule metadata — so the delta stays a pure function of
+// its `Diagnostic` inputs. Every Accessibility-category finding qualifies
+// (element-level by nature, including adopted third-party a11y rules);
+// rules in other categories opt in via their `matchByOccurrence` flag.
+const resolveMatchByOccurrence = (rule: string, category: string): boolean =>
+  OCCURRENCE_MATCHED_CATEGORIES.has(category) ||
+  Boolean(reactDoctorPlugin.rules[rule]?.matchByOccurrence);
+
 /**
  * Maps oxlint's non-primary labels (`labels[1..]`) into related source
  * locations. Editors surface these as a diagnostic's
@@ -309,13 +322,14 @@ export const parseOxlintOutput = (
     return minified;
   };
 
-  return parsed.diagnostics
+  const mappedDiagnostics = parsed.diagnostics
     .filter(
       (diagnostic) =>
         diagnostic.code &&
         isLintableSourceFile(diagnostic.filename) &&
         !isMinifiedDiagnosticFile(diagnostic.filename) &&
-        !shouldSuppressLocalUseHookDiagnostic(diagnostic, rootDirectory),
+        !shouldSuppressLocalUseHookDiagnostic(diagnostic, rootDirectory) &&
+        !shouldSuppressCompilerFindingInWorklet(diagnostic, project, rootDirectory),
     )
     .map((diagnostic) => {
       const { plugin, rule } = parseRuleCode(diagnostic.code);
@@ -334,6 +348,7 @@ export const parseOxlintOutput = (
       // for everything else; offset / length are additive.
       const primarySpan = primaryLabel?.span;
       const relatedLocations = buildRelatedLocations(diagnostic.labels, normalizedFilePath);
+      const category = resolveDiagnosticCategory(plugin, rule);
       return {
         filePath: normalizedFilePath,
         plugin,
@@ -346,8 +361,19 @@ export const parseOxlintOutput = (
         line: primarySpan?.line ?? 0,
         column: primarySpan?.column ?? 0,
         ...(primarySpan ? { offset: primarySpan.offset, length: primarySpan.length } : {}),
-        category: resolveDiagnosticCategory(plugin, rule),
+        category,
+        ...(resolveMatchByOccurrence(rule, category) ? { matchByOccurrence: true } : {}),
         ...(relatedLocations.length > 0 ? { relatedLocations } : {}),
       };
     });
+  // This suppression is only sound under two invariants:
+  //   1. The `react-hooks-js` bail-out diagnostics and the
+  //      `react-compiler-no-manual-memoization` diagnostics for a file
+  //      always arrive in the SAME parseOxlintOutput batch — the
+  //      suppression can't see a bail-out reported in another batch.
+  //   2. `run-oxlint.ts` disables the per-file lint cache when
+  //      `project.hasReactCompiler` is true (see `useFileLintCache`), so
+  //      cached, unsuppressed memoization diagnostics can never replay
+  //      around this call.
+  return suppressMemoizationInBailedOutFunctions(mappedDiagnostics, rootDirectory);
 };

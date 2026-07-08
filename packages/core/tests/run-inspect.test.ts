@@ -183,9 +183,11 @@ describe("runInspect — phase timeouts & overall deadline", () => {
     expect(output.didDeadCodeFail).toBe(true);
     expect(output.deadCodeFailureReason).toContain("Dead-code analysis exceeded");
     expect(output.deadCodeFailureReason).toContain("skipped");
-    // The scan still completed: lint diagnostics came through, score computed.
+    // The scan still completed: lint diagnostics came through — but the score
+    // is null because the scored set is missing the dead-code findings.
     expect(output.didLintFail).toBe(false);
     expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).toContain("no-derived-state");
+    expect(output.score).toBeNull();
   });
 
   it("caps the lint phase, nulls the score, and tags the failure as OxlintBatchExceeded", async () => {
@@ -206,6 +208,36 @@ describe("runInspect — phase timeouts & overall deadline", () => {
     expect(output.lintFailureReason).toContain("Lint analysis exceeded");
     expect(output.score).toBeNull();
     expect(output.diagnostics).toHaveLength(0);
+  });
+
+  it("skips overlapped dead-code when the max-duration budget is spent before lint finishes", async () => {
+    // Lint outlasts the 150ms budget; the overlapped dead-code fiber completes
+    // early with a finding. Joining it would leave the score non-null while a
+    // sequential run past the same budget skips + nulls it — so the overlap
+    // path must skip consistently.
+    const output = await Effect.runPromise(
+      runInspect({ ...baseInput, deadlineEpochMs: Date.now() + 150 }).pipe(
+        Effect.provide(
+          baseTimeoutLayers({
+            linter: Layer.mock(Linter, {
+              run: () => Stream.fromEffect(Effect.as(Effect.sleep("500 millis"), lintDiagnostic)),
+            }),
+            deadCode: DeadCode.layerOf([deadCodeDiagnostic]),
+            refOverrides: Layer.mergeAll(
+              Layer.succeed(DeadCodeOverlap, "on"),
+              Layer.succeed(LintPhaseTimeoutMs, 600_000),
+              Layer.succeed(DeadCodePhaseTimeoutMs, 600_000),
+              Layer.succeed(ScanDeadlineMs, 600_000),
+            ),
+          }),
+        ),
+      ),
+    );
+
+    expect(output.didDeadCodeFail).toBe(true);
+    expect(output.deadCodeFailureReason).toContain("max scan duration reached");
+    expect(output.diagnostics.map((diagnostic) => diagnostic.rule)).not.toContain("unused-file");
+    expect(output.score).toBeNull();
   });
 
   it("raises ScanDeadlineExceeded when the overall scan deadline elapses", async () => {

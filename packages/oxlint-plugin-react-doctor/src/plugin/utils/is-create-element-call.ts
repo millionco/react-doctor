@@ -38,14 +38,14 @@ export const isCreateElementCall = (node: EsTreeNode): boolean => {
   if (isNodeOfType(callee, "Identifier")) return callee.name === "createElement";
 
   if (isNodeOfType(callee, "MemberExpression")) {
+    const propertyIsCreateElement = callee.computed
+      ? isNodeOfType(callee.property, "Literal") && callee.property.value === "createElement"
+      : isNodeOfType(callee.property, "Identifier") && callee.property.name === "createElement";
+    if (!propertyIsCreateElement) return false;
     // Walk the chain — `dom.window.document.createElement(...)` has
     // `document` somewhere in the object chain (not just the immediate
     // object), and that's still the DOM API.
-    if (memberChainContainsDocument(callee.object as EsTreeNode)) return false;
-    if (callee.computed) {
-      return isNodeOfType(callee.property, "Literal") && callee.property.value === "createElement";
-    }
-    return isNodeOfType(callee.property, "Identifier") && callee.property.name === "createElement";
+    return !memberChainContainsDocument(callee.object as EsTreeNode);
   }
 
   return false;

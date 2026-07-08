@@ -12,13 +12,23 @@ const EXCLUDED_EXTENSIONS = new Set([
   ".gql",
 ]);
 
-const TEST_FILE_PATTERN = /(?:\.(?:test|spec|stories|story|cy)\.|(?:^|\/)__tests__\/)/;
+// `.test-d.` files are consumed by vitest's typecheck glob, never imported.
+const TEST_FILE_PATTERN = /(?:\.(?:test|spec|stories|story|cy|test-d)\.|(?:^|\/)__tests__\/)/;
 
+// `public` files are served / `<script src>`-loaded as static assets,
+// consumed without any import edge the graph could see. (`__mocks__` is NOT
+// excluded here: it is a Jest entry-point concern handled by entry discovery,
+// and stays flagged in vitest-only projects. `.github` scripts are an entry
+// discovery concern too: CI-referenced ones become entries, the rest stay
+// flagged.)
 const EXCLUDED_DIRECTORY_PATTERN =
-  /(?:^|\/)(?:e2e|cypress|playwright|__fixtures__|__snapshots__|scripts)\/(?!.*node_modules)/;
+  /(?:^|\/)(?:e2e|cypress|playwright|__fixtures__|__snapshots__|public|scripts)\/(?!.*node_modules)/;
 
+// The `\.config\.[^/]+\.` alternative covers config VARIANTS consumed by
+// deployment convention (`jaeger-ui.config.console-analytics.js`,
+// `vite.config.prod.ts`) rather than by import.
 const CONFIG_FILE_PATTERN =
-  /(?:^|\/)(?:[^/]+\.config\.[tj]sx?$|[^/]+\.setup\.[tj]sx?$|setupTests\.[tj]sx?$|jest\.setup\.[tj]sx?$|vitest\.setup\.[tj]sx?$)/;
+  /(?:^|\/)(?:[^/]+\.config\.[tj]sx?$|[^/]+\.config\.[^/]+\.[tj]sx?$|[^/]+\.setup\.[tj]sx?$|setupTests\.[tj]sx?$|jest\.setup\.[tj]sx?$|vitest\.setup\.[tj]sx?$)/;
 
 const hasExcludedExtension = (filePath: string): boolean => {
   const lastDot = filePath.lastIndexOf(".");

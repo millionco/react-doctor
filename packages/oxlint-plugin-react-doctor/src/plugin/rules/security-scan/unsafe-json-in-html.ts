@@ -16,6 +16,33 @@ const SINK_JSON_STRINGIFY_PATTERNS = [
   /dangerouslySetInnerHTML\s*=\s*\{\{\s*__html\s*:[\s\S]{0,300}?\bJSON\.stringify\s*\(/gi,
   /<script\b[^>]*>(?:(?!<\/script>)[\s\S]){0,300}?\bJSON\.stringify\s*\(/gi,
 ];
+const INLINE_SCRIPT_PATTERN_INDEX = 1;
+
+// A `JSON.stringify` between a `<script>` tag and its close only serializes
+// into MARKUP when it sits inside a template interpolation (`${…}`) or a
+// string-concat junction (`" + JSON.stringify(...)`). Otherwise it is part of
+// the script's own source and runs in the browser at runtime — nothing is
+// embedded into HTML at render time.
+const MARKUP_INTERPOLATION_JUNCTION_PATTERN = /\$\{|["'`]\s*\+\s*$/;
+
+// `<script>{…}</script>` in JSX renders the expression as a TEXT child, and
+// React HTML-escapes text children — a `</script>` breakout is impossible.
+// `{{` is excluded: that shape only appears in attribute position.
+const JSX_EXPRESSION_CHILD_PATTERN = /^\s*\{(?!\{)/;
+
+const STRING_LITERAL_PATTERN = /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g;
+const JSON_KEYWORD_OR_NUMBER_PATTERN = /\b(?:true|false|null)\b|[\d.]+(?:e[+-]?\d+)?/gi;
+
+// A stringify argument built entirely from literals (`JSON.stringify({
+// "@context": "https://schema.org", … })`) has no data flow at all — nothing
+// attacker-influenced can reach the sink. Any bare identifier, call, or
+// template interpolation in the argument keeps the finding.
+const isFullyStaticJsonArgument = (argumentText: string): boolean => {
+  if (argumentText.includes("`") || argumentText.includes("${")) return false;
+  const withoutStrings = argumentText.replace(STRING_LITERAL_PATTERN, "");
+  const withoutKeywords = withoutStrings.replace(JSON_KEYWORD_OR_NUMBER_PATTERN, "");
+  return !/[A-Za-z_$]/.test(withoutKeywords);
+};
 
 // Only escaping the OUTPUT of JSON.stringify is safe: a `.replace` of `<` on
 // its return value, or an escape/serializer helper wrapping the whole call.
@@ -43,12 +70,25 @@ export const unsafeJsonInHtml = defineRule({
 
     const findings: ScanFinding[] = [];
     const seenIndices = new Set<number>();
-    for (const pattern of SINK_JSON_STRINGIFY_PATTERNS) {
+    for (const [patternIndex, pattern] of SINK_JSON_STRINGIFY_PATTERNS.entries()) {
       pattern.lastIndex = 0;
       for (let match = pattern.exec(content); match !== null; match = pattern.exec(content)) {
         // An escape/serializer helper wrapping the call escapes the output.
         const beforeStringify = match[0].replace(JSON_STRINGIFY_TOKEN_PATTERN, "");
         if (ESCAPE_WRAPPER_PATTERN.test(beforeStringify)) continue;
+
+        if (patternIndex === INLINE_SCRIPT_PATTERN_INDEX) {
+          const tagCloseIndex = content.indexOf(">", match.index);
+          const stringifyTokenOffset = match[0].search(/\bJSON\.stringify\s*\($/i);
+          if (tagCloseIndex >= 0 && stringifyTokenOffset >= 0) {
+            const betweenTagAndStringify = content.slice(
+              tagCloseIndex + 1,
+              match.index + stringifyTokenOffset,
+            );
+            if (!MARKUP_INTERPOLATION_JUNCTION_PATTERN.test(betweenTagAndStringify)) continue;
+            if (JSX_EXPRESSION_CHILD_PATTERN.test(betweenTagAndStringify)) continue;
+          }
+        }
 
         // A `.replace` of `<` applied to the call's return value escapes it.
         const openParenIndex = match.index + match[0].length - 1;
@@ -59,6 +99,10 @@ export const unsafeJsonInHtml = defineRule({
             closeParenIndex + 1 + RETURN_LOOKAHEAD_CHARS,
           );
           if (RETURN_ESCAPE_PATTERN.test(afterReturn)) continue;
+
+          if (isFullyStaticJsonArgument(content.slice(openParenIndex + 1, closeParenIndex))) {
+            continue;
+          }
         }
 
         if (seenIndices.has(match.index)) continue;

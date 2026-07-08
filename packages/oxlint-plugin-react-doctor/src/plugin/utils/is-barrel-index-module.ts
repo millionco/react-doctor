@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { recordContentProbe } from "./cross-file-probe-recorder.js";
 import { parseExportSpecifiers } from "./parse-export-specifiers.js";
 import { stripJsComments } from "./strip-js-comments.js";
 
@@ -32,7 +33,17 @@ interface ImportedBinding {
   didExport: boolean;
 }
 
-const barrelIndexModuleInfoCache = new Map<string, BarrelIndexModuleInfo>();
+interface BarrelInfoCacheEntry {
+  mtimeMs: number;
+  size: number;
+  moduleInfo: BarrelIndexModuleInfo;
+}
+
+// Keyed by mtime/size like its siblings (`parse-source-file.ts`,
+// `does-module-export-name.ts`) so a long-lived process — the language
+// server, repeated `diagnose()` calls — re-reads a barrel that changed on
+// disk instead of serving a stale classification.
+const barrelIndexModuleInfoCache = new Map<string, BarrelInfoCacheEntry>();
 
 const isIndexModuleFilePath = (filePath: string): boolean =>
   INDEX_MODULE_FILE_PATTERN.test(path.basename(filePath));
@@ -215,10 +226,31 @@ const classifyBarrelModule = (sourceText: string): BarrelIndexModuleInfo => {
 };
 
 export const getBarrelIndexModuleInfo = (filePath: string): BarrelIndexModuleInfo => {
+  // Non-index paths never touch the filesystem — the answer is a pure
+  // function of the filename, so no probe is recorded for them.
   if (!isIndexModuleFilePath(filePath)) return createNonBarrelInfo();
 
+  // Recorded BEFORE the cache lookup: the classification is a pure function
+  // of this one file's content, so the content probe alone captures the
+  // dependency while the cache stays warm (see cross-file-probe-recorder.ts).
+  recordContentProbe(filePath);
+
+  let fileStat: fs.Stats | null;
+  try {
+    fileStat = fs.statSync(filePath);
+  } catch {
+    fileStat = null;
+  }
   const cachedResult = barrelIndexModuleInfoCache.get(filePath);
-  if (cachedResult !== undefined) return cachedResult;
+  if (
+    cachedResult !== undefined &&
+    fileStat !== null &&
+    cachedResult.mtimeMs === fileStat.mtimeMs &&
+    cachedResult.size === fileStat.size
+  ) {
+    return cachedResult.moduleInfo;
+  }
+  if (fileStat === null) return createNonBarrelInfo();
 
   let moduleInfo = createNonBarrelInfo();
   try {
@@ -227,7 +259,11 @@ export const getBarrelIndexModuleInfo = (filePath: string): BarrelIndexModuleInf
     moduleInfo = createNonBarrelInfo();
   }
 
-  barrelIndexModuleInfoCache.set(filePath, moduleInfo);
+  barrelIndexModuleInfoCache.set(filePath, {
+    mtimeMs: fileStat.mtimeMs,
+    size: fileStat.size,
+    moduleInfo,
+  });
   return moduleInfo;
 };
 

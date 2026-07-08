@@ -49,3 +49,6 @@ jobs:
           blocking: none
           node-version: 22.18.0
           version: ./packages/react-doctor
+          # This repo dogfoods its own action; opt out of the missing-baseline
+          # warning so self-scans don't nag about their own CI setup.
+          silence-missing-baseline-warning: true

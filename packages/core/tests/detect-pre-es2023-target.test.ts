@@ -123,6 +123,62 @@ describe("detectPreES2023Target", () => {
     expect(detectPreES2023Target(path.join(projectDirectory, "apps", "web"))).toBe(false);
   });
 
+  it("treats a pre-ES2023 target as pre-ES2023 even with a modern explicit lib", () => {
+    const projectDirectory = setupProject("es5-target-esnext-lib", {
+      "tsconfig.json": writeTsConfig({
+        compilerOptions: { target: "es5", lib: ["dom", "dom.iterable", "esnext"] },
+      }),
+    });
+
+    expect(detectPreES2023Target(projectDirectory)).toBe(true);
+  });
+
+  it("follows solution-style references when the root config has no target or lib", () => {
+    const projectDirectory = setupProject("solution-style-references", {
+      "tsconfig.json": writeTsConfig({
+        files: [],
+        references: [{ path: "./tsconfig.app.json" }, { path: "./tsconfig.node.json" }],
+        compilerOptions: { baseUrl: "." },
+      }),
+      "tsconfig.app.json": writeTsConfig({
+        compilerOptions: { target: "ES2020", lib: ["ES2020", "DOM"] },
+      }),
+      "tsconfig.node.json": writeTsConfig({
+        compilerOptions: { target: "ES2022", lib: ["ES2023"] },
+      }),
+    });
+
+    expect(detectPreES2023Target(projectDirectory)).toBe(true);
+  });
+
+  it("stays false when all solution-style references target ES2023+", () => {
+    const projectDirectory = setupProject("solution-style-modern", {
+      "tsconfig.json": writeTsConfig({
+        files: [],
+        references: [{ path: "./tsconfig.app.json" }],
+      }),
+      "tsconfig.app.json": writeTsConfig({
+        compilerOptions: { target: "ES2023" },
+      }),
+    });
+
+    expect(detectPreES2023Target(projectDirectory)).toBe(false);
+  });
+
+  it("falls back to tsconfig.build.json when tsconfig.json is absent", () => {
+    const projectDirectory = setupProject("build-config-fallback", {
+      "tsconfig.build.json": writeTsConfig({
+        extends: "../build-config-fallback-root/tsconfig.json",
+        compilerOptions: { outDir: "dist" },
+      }),
+      "../build-config-fallback-root/tsconfig.json": writeTsConfig({
+        compilerOptions: { target: "ES2022" },
+      }),
+    });
+
+    expect(detectPreES2023Target(projectDirectory)).toBe(true);
+  });
+
   it("feeds the pre-ES2023 capability through project discovery", () => {
     const projectDirectory = setupProject("discovered-capability", {
       "package.json": writeTsConfig({

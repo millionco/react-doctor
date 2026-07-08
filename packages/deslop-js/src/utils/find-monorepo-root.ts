@@ -1,22 +1,6 @@
 import { resolve, join, dirname } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
-
-const MONOREPO_ROOT_MARKERS = [
-  "pnpm-workspace.yaml",
-  "pnpm-workspace.yml",
-  "lerna.json",
-  "nx.json",
-  "turbo.json",
-  "rush.json",
-];
-
-const LOCKFILE_MARKERS = [
-  "pnpm-lock.yaml",
-  "yarn.lock",
-  "package-lock.json",
-  "bun.lockb",
-  "bun.lock",
-];
+import { LOCKFILE_MARKERS, MONOREPO_ROOT_MARKERS } from "../constants.js";
 
 const MAX_MONOREPO_WALK_DEPTH = 5;
 

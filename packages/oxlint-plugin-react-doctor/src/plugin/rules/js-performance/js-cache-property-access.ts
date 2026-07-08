@@ -78,11 +78,11 @@ export const jsCachePropertyAccess = defineRule({
         if (isNameShadowedByEnclosingFunctionParameter(writeTarget, rootName, loopBody)) return;
         writtenAccessPrefixes.add(writtenKey);
       };
+      // Write targets and read counts inspect disjoint node types, and the
+      // write-prefix set is only consulted after the walk — one pass fills both.
       walkAst(loopBody, (child: EsTreeNode) => {
         if (isNodeOfType(child, "AssignmentExpression")) recordWriteTarget(child.left);
         if (isNodeOfType(child, "UpdateExpression")) recordWriteTarget(child.argument);
-      });
-      walkAst(loopBody, (child: EsTreeNode) => {
         if (!isNodeOfType(child, "MemberExpression")) return;
         if (child.computed) return;
         // Skip if this MemberExpression is itself nested inside another (only

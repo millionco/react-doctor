@@ -181,6 +181,10 @@ export const DATA_ARRAY_PROP_NAMES: ReadonlySet<string> = new Set([
 // `*Shapes`, `*Children`, `*Nodes`, `*Edges`, `*Data`, `*Collection`,
 // `*Models`, `*Records`, `*Filters`, `*Values`, `*Times`, `*Resources`.
 export const DATA_ARRAY_PROP_SUFFIXES: ReadonlyArray<string> = [
+  // `*Props` are pass-through prop bags (Radix / MUI / antd MemoInput
+  // watch-lists) whose identity the consumer deliberately handles —
+  // mirrors CONFIG_OBJECT_PROP_SUFFIXES in the object-rule tables.
+  "Props",
   "Items",
   "Options",
   "Tabs",

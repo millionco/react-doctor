@@ -104,6 +104,7 @@ Options:
   --base <ref>       base git ref for files/changed/lines scope (auto-detected when omitted)
   --no-score         skip the score API and share URL
   --staged           scan only staged (git index) files for pre-commit hooks
+  --max-duration <seconds>  scan time budget for the whole run, shared across workspace projects: past it, remaining lint batches and dead-code are skipped and partial results are reported (skipped files are listed in the JSON report)
   --blocking <level>  severity that fails CI: error (default), warning, none
   --debug            force a Sentry trace and print its id at the end (paste it into a bug report)
   -h, --help         display help for command

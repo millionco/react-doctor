@@ -29,17 +29,7 @@ export const roleSupportsAriaProps = defineRule({
   category: "Accessibility",
   create: (context) => ({
     JSXOpeningElement(node: EsTreeNodeOfType<"JSXOpeningElement">) {
-      const elementType = getElementType(node, context.settings);
-      const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
-      const role = roleAttribute
-        ? getJsxPropStringValue(roleAttribute)
-        : getImplicitRole(node, elementType);
-      if (!role) return;
-      if (!VALID_ARIA_ROLES.has(role)) return;
-      const isImplicit = !roleAttribute;
-      const supported = ROLE_SUPPORTS_ARIA_PROPS[role];
-      if (!supported) return;
-
+      let ariaAttributes: Array<{ attribute: EsTreeNode; propName: string }> | null = null;
       for (const attribute of node.attributes) {
         if (!isNodeOfType(attribute as EsTreeNode, "JSXAttribute")) continue;
         const attributeNode = attribute as EsTreeNodeOfType<"JSXAttribute">;
@@ -51,9 +41,25 @@ export const roleSupportsAriaProps = defineRule({
         const propName = propRawName.toLowerCase();
         if (!propName.startsWith("aria-")) continue;
         if (!ARIA_PROPERTIES.has(propName)) continue;
+        (ariaAttributes ??= []).push({ attribute: attribute as EsTreeNode, propName });
+      }
+      if (!ariaAttributes) return;
+
+      const elementType = getElementType(node, context.settings);
+      const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
+      const role = roleAttribute
+        ? getJsxPropStringValue(roleAttribute)
+        : getImplicitRole(node, elementType);
+      if (!role) return;
+      if (!VALID_ARIA_ROLES.has(role)) return;
+      const isImplicit = !roleAttribute;
+      const supported = ROLE_SUPPORTS_ARIA_PROPS[role];
+      if (!supported) return;
+
+      for (const { attribute, propName } of ariaAttributes) {
         if (supported.has(propName)) continue;
         context.report({
-          node: attribute as EsTreeNode,
+          node: attribute,
           message: isImplicit
             ? buildMessageImplicit(role, propName, elementType)
             : buildMessageDefault(role, propName),

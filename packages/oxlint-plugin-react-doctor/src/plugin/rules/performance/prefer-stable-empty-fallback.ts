@@ -108,13 +108,13 @@ export const preferStableEmptyFallback = defineRule({
         memoRegistry = buildSameFileMemoRegistry(node as EsTreeNode);
       },
       JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-        if (!isInsideFunctionScope(node)) return;
-        if (isJsxAttributeOnIntrinsicHtmlElement(node)) return;
         if (!node.value) return;
         if (!isNodeOfType(node.value, "JSXExpressionContainer")) return;
         const innerExpression = node.value.expression;
         if (!innerExpression) return;
         if (innerExpression.type === "JSXEmptyExpression") return;
+        if (!isInsideFunctionScope(node)) return;
+        if (isJsxAttributeOnIntrinsicHtmlElement(node)) return;
 
         const parentJsxOpening = node.parent;
         const openingName =

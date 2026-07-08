@@ -33,7 +33,9 @@ export const Gate = ({ isLoggedIn }: { isLoggedIn: boolean }) => {
 };
 `;
 
-const FORM_SOURCE = `export const SignUp = () => (
+const FORM_SOURCE = `"use client";
+
+export const SignUp = () => (
   <form onSubmit={(event) => { event.preventDefault(); }}>
     <button type="submit">Submit</button>
   </form>

@@ -77,15 +77,15 @@ const consumedFindingSignature = (result: {
   });
 
 describe("deslop discarded-passes parity", () => {
-  it("produces identical graph-based findings with semantic + code-quality on vs off", async () => {
+  it("produces identical graph-based findings with semantic + code-quality + redundancy on vs off", async () => {
     const projectDirectory = buildFixture();
     const tsConfigPath = path.join(projectDirectory, "tsconfig.json");
 
-    // Full deslop (every detector) vs react-doctor's actual config — BOTH the
-    // semantic TS-Program pass AND the expensive code-quality detectors
+    // Full deslop (every detector) vs react-doctor's actual config — the
+    // semantic TS-Program pass, the expensive code-quality detectors
     // (duplicate blocks, complexity, feature flags, TS smells, private-type
-    // leaks, re-export cycles) disabled, since react-doctor discards their
-    // output and they are the bulk of the runtime.
+    // leaks, re-export cycles), AND the DRY-pattern redundancy detectors all
+    // disabled, since react-doctor discards their output.
     const full = await analyze(defineConfig({ rootDir: projectDirectory, tsConfigPath }));
     const deadCodeOnly = await analyze(
       defineConfig({
@@ -93,6 +93,7 @@ describe("deslop discarded-passes parity", () => {
         tsConfigPath,
         semantic: { enabled: false },
         reportCodeQuality: false,
+        reportRedundancy: false,
       }),
     );
 

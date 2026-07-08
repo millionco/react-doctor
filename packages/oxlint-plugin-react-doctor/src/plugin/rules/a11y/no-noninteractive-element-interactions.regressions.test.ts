@@ -190,4 +190,145 @@ describe("a11y/no-noninteractive-element-interactions regressions", () => {
     );
     expect(result.diagnostics).toEqual([]);
   });
+
+  // Verify-run FP cluster: modal-content shields whose only handler is a
+  // pure `stopPropagation` guard are not interaction targets.
+  describe("pure event-blocker handlers", () => {
+    it("stays silent on a <pre onClick> stopPropagation shield", () => {
+      const result = runRule(
+        noNoninteractiveElementInteractions,
+        `<pre onClick={(e) => e.stopPropagation()}>{content}</pre>`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on a <form onMouseDown> stopPropagation guard with keyboard-accessible onSubmit", () => {
+      const result = runRule(
+        noNoninteractiveElementInteractions,
+        `<form onSubmit={submit} onMouseDown={(e) => e.stopPropagation()}><input /></form>`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on an <img onClick> stopPropagation guard inside a lightbox", () => {
+      const result = runRule(
+        noNoninteractiveElementInteractions,
+        `<img src={src} alt="" onClick={(e) => e.stopPropagation()} />`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags when a second mouse handler does real work", () => {
+      const result = runRule(
+        noNoninteractiveElementInteractions,
+        `<li onClick={(e) => e.stopPropagation()} onMouseDown={selectItem}>x</li>`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
+  // Verify-run FP cluster: keyboard-only handlers on containers are
+  // delegation for bubbled events from focusable descendants (roving
+  // focus, Enter/Escape), so keyboard users are served, not excluded.
+  describe("keyboard-only handlers are delegation", () => {
+    it("stays silent on a <tbody onKeyDown> grid-navigation delegate", () => {
+      const result = runRule(
+        noNoninteractiveElementInteractions,
+        `<tbody onKeyDown={onGridKeyDownHandler}>{rows}</tbody>`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on a <ul onKeyDown> roving-focus delegate", () => {
+      const result = runRule(
+        noNoninteractiveElementInteractions,
+        `<ul aria-label="List of recent rooms" onKeyDown={handleKeyDown}>{items}</ul>`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on an <hr> window-splitter with tabIndex and onKeyDown", () => {
+      const result = runRule(
+        noNoninteractiveElementInteractions,
+        `<hr aria-label="Resize sidebar" aria-orientation="vertical" aria-valuenow={width} tabIndex={0} onPointerDown={onPointerDown} onKeyDown={onKeyDown} />`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a mouse handler alongside a keyboard handler", () => {
+      const result = runRule(
+        noNoninteractiveElementInteractions,
+        `<li onClick={selectItem} onKeyDown={handleKey}>x</li>`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
+  // Verify-run FP cluster: composite-widget wrappers marked
+  // role="presentation" delegate clicks to the real menuitem inside.
+  it('stays silent on a <li role="presentation"> delegation wrapper', () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<li role="presentation" onClick={onItemActivate}><span role="menuitem" tabIndex={-1}>Open</span></li>`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // Delta-verify recall regression (React-PhoneNr-Input country list): the
+  // presentation-role <li> is the ONLY click target for selecting a country,
+  // so the role hides a genuine keyboard-inaccessible interaction rather
+  // than marking delegation — it must fire.
+  it('flags a <li role="presentation"> whose own onClick is the sole interaction target', () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<li key={c.iso2} className="country-list-item" onClick={handleSelect(c.iso2)} role="presentation"><FlagIcon countryCode={c.iso2} svg aria-label={c.name} />{c.name}</li>`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when the presentation-role wrapper delegates to a nested native control", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<li role="presentation" onClick={onRowClick}><div><a href="/details">Details</a></div></li>`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // Verify-run FP: contentEditable elements are focusable and
+  // keyboard-editable, so handlers on them serve keyboard users.
+  it("stays silent on a contentEditable heading with handlers", () => {
+    const result = runRule(
+      noNoninteractiveElementInteractions,
+      `<h1 contentEditable suppressContentEditableWarning onClick={select} onBlur={save}>title</h1>`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // Verify-run FP cluster: conditional interactivity — the role-less
+  // branch is the state where the click does nothing.
+  describe("conditional role paired with tabIndex", () => {
+    it("stays silent on role/tabIndex both keyed to the same condition", () => {
+      const result = runRule(
+        noNoninteractiveElementInteractions,
+        `<li onClick={() => ev.url && open(ev.url)} role={ev.url ? "button" : undefined} tabIndex={ev.url ? 0 : undefined}>x</li>`,
+      );
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a conditional role without any tabIndex", () => {
+      const result = runRule(
+        noNoninteractiveElementInteractions,
+        `<li role={show ? "button" : undefined} onClick={() => {}}>x</li>`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags a conditional non-interactive role even with tabIndex", () => {
+      const result = runRule(
+        noNoninteractiveElementInteractions,
+        `<li role={show ? "listitem" : undefined} tabIndex={0} onClick={() => {}}>x</li>`,
+      );
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
 });

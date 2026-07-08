@@ -219,6 +219,18 @@ describe("buildDiagnosticPipeline — summarizeSuppressions", () => {
     ]);
   });
 
+  it("tallies foreign eslint-disable comments honored for compiler rules as `foreign-inline`", () => {
+    const projectDir = setupCase(
+      "suppression-summary-foreign-inline",
+      `// eslint-disable-next-line react-hooks/refs\nconst width = widthRef.current;\n`,
+    );
+    const pipeline = buildPipeline(null, projectDir, createNodeReadFileLinesSync(projectDir));
+    expect(pipeline.apply(baseDiagnostic({ plugin: "react-hooks-js", rule: "refs" }))).toBeNull();
+    expect(pipeline.summarizeSuppressions()).toEqual([
+      { rule: "react-hooks-js/refs", source: "foreign-inline", count: 1 },
+    ]);
+  });
+
   it("does not count file-level `ignore.files` drops — they reject a path, not a rule", () => {
     const pipeline = buildPipeline({ ignore: { files: ["src/skip.tsx"] } });
     expect(pipeline.apply(baseDiagnostic({ filePath: "src/skip.tsx" }))).toBeNull();

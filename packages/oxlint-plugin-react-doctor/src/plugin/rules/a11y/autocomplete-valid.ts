@@ -3,6 +3,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
+import { skipNonProductionFiles } from "../../utils/skip-non-production-files.js";
 
 const buildMessage = (value: string): string =>
   `Users who rely on autofill can't fill this field because \`${value}\` isn't a known token, so use a valid \`autoComplete\` token.`;
@@ -131,13 +132,13 @@ interface AutocompleteValidSettings {
 
 const resolveSettings = (
   settings: Readonly<Record<string, unknown>> | undefined,
-): { inputComponents: ReadonlyArray<string> } => {
+): { inputComponents: ReadonlySet<string> } => {
   const reactDoctor = settings?.["react-doctor"];
   const ruleSettings =
     typeof reactDoctor === "object" && reactDoctor !== null
       ? ((reactDoctor as { autocompleteValid?: AutocompleteValidSettings }).autocompleteValid ?? {})
       : {};
-  return { inputComponents: ruleSettings.inputComponents ?? [] };
+  return { inputComponents: new Set(ruleSettings.inputComponents ?? []) };
 };
 
 // Port of `oxc_linter::rules::jsx_a11y::autocomplete_valid`. Validates
@@ -150,12 +151,16 @@ export const autocompleteValid = defineRule({
   recommendation:
     "Use a valid autofill token in `autoComplete` so browsers can fill the right field reliably.",
   category: "Accessibility",
-  create: (context) => {
+  // Docs-validation FP cluster: test fixtures deliberately pass arbitrary
+  // autoComplete values through to assert rendering behaviour; markup in
+  // test-only files never reaches a browser's autofill, so the finding is
+  // unactionable there.
+  create: skipNonProductionFiles((context) => {
     const settings = resolveSettings(context.settings);
     return {
       JSXOpeningElement: (node: EsTreeNodeOfType<"JSXOpeningElement">) => {
         const tag = getElementType(node, context.settings);
-        if (!FORM_CONTROL_TAGS.has(tag) && !settings.inputComponents.includes(tag)) return;
+        if (!FORM_CONTROL_TAGS.has(tag) && !settings.inputComponents.has(tag)) return;
         const attribute = hasJsxPropIgnoreCase(node.attributes, "autoComplete");
         if (!attribute) return;
         const value = getJsxPropStringValue(attribute);
@@ -165,5 +170,5 @@ export const autocompleteValid = defineRule({
         }
       },
     };
-  },
+  }),
 });

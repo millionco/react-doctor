@@ -961,6 +961,19 @@ const extractCiWorkflowEntries = (rootDir: string): string[] => {
   const workflowsDir = join(rootDir, ".github", "workflows");
   if (!existsSync(workflowsDir)) return entries;
 
+  // Standalone tool packages vendored under .github (a workflow `cp`s the
+  // directory and runs `npm run build` inside it) reference their scripts
+  // through their own package.json, not the workflow yml.
+  const nestedToolPackageJsonPaths = fg.sync("**/package.json", {
+    cwd: join(rootDir, ".github"),
+    absolute: true,
+    onlyFiles: true,
+    ignore: ["**/node_modules/**"],
+  });
+  for (const nestedPackageJsonPath of nestedToolPackageJsonPaths) {
+    entries.push(...extractScriptEntries(dirname(nestedPackageJsonPath)));
+  }
+
   const workflowFiles = fg.sync("*.{yml,yaml}", {
     cwd: workflowsDir,
     absolute: true,
@@ -2774,6 +2787,12 @@ const discoverTestRunnerEntryPoints = (
         }
         if (customPatterns.length > 0) {
           activatedPatterns.push(...customPatterns);
+          // A custom `testMatch` narrows which SPEC files run, but Jest's
+          // `__mocks__` automock convention is independent of it — those
+          // files stay runner-consumed entries no matter what testMatch says.
+          if (isJestRunner) {
+            activatedPatterns.push("**/__mocks__/**/*.{ts,tsx,js,jsx,mjs,cjs}");
+          }
         } else {
           activatedPatterns.push(...runner.entryPatterns);
         }

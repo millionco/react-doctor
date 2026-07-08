@@ -18,15 +18,17 @@ afterAll(() => {
 const USER_CONFIG = {
   rules: {
     "react-doctor/no-barrel-import": "warn",
-    "react-doctor/no-array-index-key": "warn",
+    "react-doctor/no-array-index-as-key": "warn",
   },
 } as const;
 
-const BARREL_INDEX = "export { Button } from './Button';\n";
+const BARREL_INDEX = "export { Button } from './Button';\nexport { Card } from './Card';\n";
 const NON_BARREL_INDEX = "export const Button = () => null;\n";
+// The mapped list comes from a prop: `no-array-index-as-key` exempts
+// positionally-stable local literal arrays, so a dynamic source is needed
+// for the sanity assertions below.
 const APP_SOURCE = `import { Button } from "./components";
-export const App = () => {
-  const items = [1, 2, 3];
+export const App = ({ items }: { items: string[] }) => {
   return <ul>{items.map((value, index) => <li key={index}>{value}<Button /></li>)}</ul>;
 };
 `;
@@ -43,6 +45,7 @@ const setupFixture = (caseId: string, indexSource: string): string => {
   const projectDir = setupReactProject(tempRoot, caseId, {
     files: {
       "src/components/Button.tsx": "export const Button = () => null;\n",
+      "src/components/Card.tsx": "export const Card = () => null;\n",
       "src/components/index.ts": indexSource,
       "src/App.tsx": APP_SOURCE,
       "src/clean.tsx": "export const Clean = () => <div>ok</div>;\n",
@@ -97,7 +100,9 @@ describe("per-file lint cache", () => {
     expect(serialize(warm)).toBe(serialize(withCacheOff));
     // Sanity: the fixture actually produced diagnostics from both halves.
     expect(withCacheOff.some((diagnostic) => diagnostic.rule === "no-barrel-import")).toBe(true);
-    expect(withCacheOff.some((diagnostic) => diagnostic.rule === "no-array-index-key")).toBe(true);
+    expect(withCacheOff.some((diagnostic) => diagnostic.rule === "no-array-index-as-key")).toBe(
+      true,
+    );
   });
 
   it("reports zero hits cold and full hits warm via onCacheStats", async () => {
@@ -146,7 +151,7 @@ export const App = () => <div><Button /></div>;
     // The cacheable diagnostic is gone, and the cache-on result matches a
     // from-scratch scan of the edited tree.
     expect(serialize(afterEditCacheOn)).toBe(serialize(afterEditCacheOff));
-    expect(afterEditCacheOn.some((diagnostic) => diagnostic.rule === "no-array-index-key")).toBe(
+    expect(afterEditCacheOn.some((diagnostic) => diagnostic.rule === "no-array-index-as-key")).toBe(
       false,
     );
   });

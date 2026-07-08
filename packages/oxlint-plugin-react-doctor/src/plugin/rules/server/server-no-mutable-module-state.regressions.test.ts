@@ -190,4 +190,31 @@ export async function isAdmin(role) {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("does not claim a leak for a never-written let, only that a write would leak", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+let apiVersion = "v1";
+export async function getVersion() {
+  return apiVersion;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("any write to it leaks");
+  });
+
+  it("still flags a reassigned module-scoped let", () => {
+    const result = runRule(
+      serverNoMutableModuleState,
+      `"use server";
+let lastUserId = null;
+export async function track(userId) {
+  lastUserId = userId;
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

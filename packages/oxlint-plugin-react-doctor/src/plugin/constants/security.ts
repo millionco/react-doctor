@@ -209,8 +209,14 @@ export const FULL_ENV_LEAK_SECRET_NAME_PATTERN =
 
 // TODO(follow-up): de-overfit — several vendor names here mirror specific
 // regression fixtures (TLDRAW / POSTHOG / ALGOLIA / GC_API_KEY).
+// `FACEBOOK_CLIENT_TOKEN` is Meta's designated client-embeddable token,
+// documented as safe to ship in app binaries. The trailing metadata-suffix
+// branch exempts names that only REFERENCE a credential (`…_TOKEN_KIND`,
+// `…_TOKEN_URL`, `…_TOKEN_ENDPOINT`): their values are labels, URLs, or
+// header names, not credentials. The suffix must directly follow the secret
+// keyword so `DATABASE_URL` (the URL IS the secret) keeps firing.
 export const TRUSTED_PUBLIC_SECRET_NAME_PATTERN =
-  /(?:SENTRY_DSN|PUBLIC_KEY|PUBLISHABLE|ANON_KEY|POSTHOG_(?:PROJECT_)?TOKEN|POSTHOG_KEY|TLDRAW_LICENSE_KEY|CLERK_PUBLISHABLE_KEY|ALGOLIA_SEARCH_KEY|GC_API_KEY|GOOGLE_MAPS_API_KEY|MAPBOX_TOKEN|MIXPANEL_TOKEN|(?:NEXT_PUBLIC|VITE|REACT_APP|EXPO_PUBLIC)_(?:DISABLE|ENABLE|ALLOW|REQUIRE)_)/i;
+  /(?:SENTRY_DSN|PUBLIC_KEY|PUBLISHABLE|ANON_KEY|POSTHOG_(?:PROJECT_)?TOKEN|POSTHOG_KEY|TLDRAW_LICENSE_KEY|CLERK_PUBLISHABLE_KEY|ALGOLIA_SEARCH_KEY|GC_API_KEY|GOOGLE_MAPS_API_KEY|MAPBOX_TOKEN|MIXPANEL_TOKEN|FACEBOOK_CLIENT_TOKEN|(?:NEXT_PUBLIC|VITE|REACT_APP|EXPO_PUBLIC)_(?:DISABLE|ENABLE|ALLOW|REQUIRE)_)|(?:TOKEN|SECRET|PASSWORD|PRIVATE)_(?:KIND|TYPE|URL|URI|ENDPOINT|HEADER|NAME)$/i;
 
 // Public, client-safe keys designed to ship in the browser, each with a
 // prefix distinct from the same vendor's secret key (RevenueCat `appl_`
@@ -246,7 +252,13 @@ export const SECRET_CONTEXTUAL_PLACEHOLDER_VALUE_PATTERNS = [
 export const SECRET_PLACEHOLDER_CONTEXT_PATTERN =
   /(?:placeholder|example|sample|dummy|masked|redacted|mask)/i;
 
-export const SECRET_VARIABLE_PATTERN = /(?:api_?key|secret|token|password|credential|auth)/i;
+// `auth(?!or(?!i[sz]))` keeps `auth` / `oauth` / `authorization` /
+// `authorised` matching while exempting `author` / `authors` /
+// `authority` — the person-who-writes words are the single biggest
+// source of name-heuristic false positives (e.g.
+// `TOP_PR_AUTHORS_COMPONENT_IDENTIFIER`).
+export const SECRET_VARIABLE_PATTERN =
+  /(?:api_?key|secret|token|password|credential|auth(?!or(?!i[sz])))/i;
 
 export const SECRET_TOOLING_FILE_PATTERN = /(?:^|\/)[^/]+\.config\.[cm]?[jt]s$/;
 

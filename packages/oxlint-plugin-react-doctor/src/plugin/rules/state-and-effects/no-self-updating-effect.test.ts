@@ -615,13 +615,13 @@ describe("no-self-updating-effect", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a fixpoint map() write the analysis cannot prove converges (known limitation)", () => {
-    // lightdash useCartesianChartConfig: this DOES converge at runtime (after
-    // one pass every entry already matches the target, so the next run bails),
-    // but proving it needs value-tracking through `.map(...)` we do not attempt.
-    // `.map` does not drive the array toward the empty fixpoint, so we stay
-    // sound and flag rather than silently assume convergence. This is an
-    // accepted residual false positive — better an over-warn than a hidden loop.
+  it("suppresses a fixpoint map() write per the doc's accepted unprovable case", () => {
+    // lightdash useCartesianChartConfig: this converges at runtime (after one
+    // pass every entry already matches the target, so the next run bails).
+    // Proving it needs value-tracking through `.map(...)` we do not attempt;
+    // the doc names the `.map()` functional updater as one of the rule's two
+    // ACCEPTED unprovable cases to suppress, and the docs-validation pass
+    // measured 0 TP / 7 FP with four of the FPs being exactly this shape.
     const result = runRule(
       noSelfUpdatingEffect,
       `
@@ -643,7 +643,7 @@ describe("no-self-updating-effect", () => {
     );
 
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("still flags a fresh-reference loop whose guard reads only unrelated state", () => {

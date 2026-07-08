@@ -1,0 +1,4 @@
+{
+  "name": "namespace-destructure-exports",
+  "main": "src/index.ts"
+}

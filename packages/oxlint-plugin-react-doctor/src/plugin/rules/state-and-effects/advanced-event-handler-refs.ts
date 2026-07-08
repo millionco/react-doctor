@@ -1,6 +1,7 @@
 import { EFFECT_HOOK_NAMES, SUBSCRIPTION_METHOD_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -24,6 +25,20 @@ const STABLE_HANDLER_HOOK_NAMES = new Set([
   "useStableCallback",
 ]);
 
+// `useThrottleCallback` / `useThrottledCallback` / `useDebouncedCallback`
+// wrappers memoize internally: identity only changes when their explicit
+// deps change (rare and intentional), so the per-render re-subscription
+// churn the rule targets doesn't exist. The ref-wrapper refactor would
+// also break the `.cancel()`/`.flush()` cleanup these wrappers require
+// (docs-validation r2: tracecat use-window-size, cloudscape
+// collapsible-flashbar).
+const THROTTLED_HANDLER_HOOK_PATTERN = /^use\w*(?:Throttle|Debounce)/i;
+
+const isThrottledHandlerHookCall = (callNode: EsTreeNodeOfType<"CallExpression">): boolean => {
+  const calleeName = getCalleeName(callNode);
+  return calleeName !== null && THROTTLED_HANDLER_HOOK_PATTERN.test(calleeName);
+};
+
 const isEmptyDepsUseMemoCall = (callNode: EsTreeNodeOfType<"CallExpression">): boolean => {
   if (!isHookCall(callNode, "useMemo")) return false;
   const memoDepsNode = callNode.arguments?.[1];
@@ -39,7 +54,9 @@ const isEmptyDepsUseMemoCall = (callNode: EsTreeNodeOfType<"CallExpression">): b
 const isStableHandlerInitializer = (initializer: EsTreeNode): boolean => {
   if (isNodeOfType(initializer, "CallExpression")) {
     return (
-      isHookCall(initializer, STABLE_HANDLER_HOOK_NAMES) || isEmptyDepsUseMemoCall(initializer)
+      isHookCall(initializer, STABLE_HANDLER_HOOK_NAMES) ||
+      isEmptyDepsUseMemoCall(initializer) ||
+      isThrottledHandlerHookCall(initializer)
     );
   }
   return (

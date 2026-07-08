@@ -3,7 +3,7 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noCascadingSetState } from "./no-cascading-set-state.js";
 
 describe("state-and-effects/no-cascading-set-state — regressions: mined bug shapes stay detected", () => {
-  it("flags a synchronous setter plus a variable-stored handler registered via addEventListener in the same effect (cookiekit CookieConsentContext shape)", () => {
+  it("stays silent when a variable-stored handler registered via addEventListener holds most setters (cookiekit CookieConsentContext shape)", () => {
     const result = runRule(
       noCascadingSetState,
       `
@@ -34,8 +34,7 @@ describe("state-and-effects/no-cascading-set-state — regressions: mined bug sh
       };
     `,
     );
-    expect(result.diagnostics.length).toBeGreaterThan(0);
-    expect(result.diagnostics[0].message).toContain("4 setState calls");
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("flags sequential early-return guard blocks whose setters sum past the threshold (openfootmanager MatchSimulation shape)", () => {
@@ -113,7 +112,7 @@ describe("state-and-effects/no-cascading-set-state — regressions: mined bug sh
 });
 
 describe("state-and-effects/no-cascading-set-state — regressions: FP-fix setter counting stays exact", () => {
-  it("counts setters inside a variable-stored listener handler (stored handlers keep their call sites)", () => {
+  it("does not count setters inside a variable-stored listener handler (handlers fire on their own dispatch)", () => {
     const result = runRule(
       noCascadingSetState,
       `
@@ -135,7 +134,7 @@ describe("state-and-effects/no-cascading-set-state — regressions: FP-fix sette
       };
     `,
     );
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it("does not over-count: one synchronous setter plus a one-setter registered handler stays under the threshold", () => {
@@ -186,7 +185,7 @@ describe("state-and-effects/no-cascading-set-state — regressions: FP-fix sette
 });
 
 describe("no-cascading-set-state — regressions", () => {
-  it("flags a stored listener handler beside a guarded setter (cookiekit CookieConsentContext)", () => {
+  it("stays silent on a stored listener handler beside a guarded setter (cookiekit CookieConsentContext)", () => {
     const result = runRule(
       noCascadingSetState,
       `function CookieManager({ enableFloatingButton, detailedConsent }) {
@@ -214,7 +213,7 @@ describe("no-cascading-set-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("flags an if/else setter ladder behind early-return guards (openfootmanager MatchSimulation)", () => {
@@ -351,6 +350,283 @@ describe("no-cascading-set-state — regressions", () => {
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a component-level async useCallback helper whose setters run in a post-await continuation (portos AutobiographyTab, delta audit)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function useCityData({ api }) {
+        const [apps, setApps] = useState([]);
+        const [agents, setAgents] = useState([]);
+        const [status, setStatus] = useState(null);
+        const [loading, setLoading] = useState(true);
+        const fetchAll = useCallback(async () => {
+          const [appsData, agentsData, statusData] = await Promise.all([
+            api.getApps(),
+            api.getAgents(),
+            api.getStatus(),
+          ]);
+          setApps(appsData);
+          setAgents(agentsData);
+          setStatus(statusData);
+          setLoading(false);
+        }, [api]);
+        useEffect(() => {
+          fetchAll();
+        }, [fetchAll, api]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a helper invoked only from an async continuation (its setters batch after the await, delta audit)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function useAlbumDetail({ id, resolveAlbum }) {
+        const [album, setAlbum] = useState(null);
+        const [isStarred, setIsStarred] = useState(false);
+        const [starredSongs, setStarredSongs] = useState(null);
+        const [loading, setLoading] = useState(true);
+        useEffect(() => {
+          const applyAlbumPayload = (data) => {
+            setAlbum(data);
+            setIsStarred(Boolean(data.album.starred));
+            setStarredSongs(data.songs);
+            setLoading(false);
+          };
+          void (async () => {
+            const local = await resolveAlbum(id);
+            if (local) applyAlbumPayload(local);
+          })();
+        }, [id, resolveAlbum]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when async setters are separated by awaits even with several call sites (loading/data/idle straddle)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function useSearch({ query, search, count }) {
+        const [status, setStatus] = useState("idle");
+        const [hits, setHits] = useState([]);
+        const [total, setTotal] = useState(0);
+        useEffect(() => {
+          void (async () => {
+            setStatus("loading");
+            const result = await search(query);
+            setHits(result.hits);
+            const totalCount = await count(query);
+            setTotal(totalCount);
+            setStatus("idle");
+          })();
+        }, [query, search, count]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when async fetch branches are mutually exclusive (appflowy FileBlock, delta audit)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function FileBlock({ readOnly, retryLocalUrl, fileHandler }) {
+        const [localUrl, setLocalUrl] = useState(null);
+        const [needRetry, setNeedRetry] = useState(false);
+        useEffect(() => {
+          if (readOnly) return;
+          void (async () => {
+            if (retryLocalUrl) {
+              const fileData = await fileHandler.getStoredFile(retryLocalUrl);
+              setLocalUrl(fileData?.url);
+              setNeedRetry(!!fileData);
+            } else {
+              setNeedRetry(false);
+            }
+          })();
+        }, [readOnly, retryLocalUrl, fileHandler]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the effect kicks off two independent async fetch helpers (portos ScheduleTab, delta audit)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function ScheduleTab({ api }) {
+        const [schedule, setSchedule] = useState(null);
+        const [providers, setProviders] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const fetchSchedule = useCallback(async () => {
+          const data = await api.getCosSchedule().catch(() => null);
+          setSchedule(data);
+          setLoading(false);
+        }, []);
+        const fetchProviders = useCallback(async () => {
+          const data = await api.getProviders().catch(() => null);
+          setProviders(data?.providers || []);
+        }, []);
+        useEffect(() => {
+          fetchSchedule();
+          fetchProviders();
+        }, [fetchSchedule, fetchProviders]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when post-await success/failure branches straddle a trailing loading setter (portos DatadogTab, delta audit)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function DatadogTab({ api }) {
+        const [errors, setErrors] = useState([]);
+        const [loading, setLoading] = useState(true);
+        const [fetchFailed, setFetchFailed] = useState(false);
+        const fetchErrors = useCallback(async () => {
+          setLoading(true);
+          setFetchFailed(false);
+          const result = await api.searchDatadogErrors().catch(() => null);
+          if (result) {
+            setErrors(result.data || []);
+          } else {
+            setFetchFailed(true);
+          }
+          setLoading(false);
+        }, [api]);
+        useEffect(() => {
+          fetchErrors();
+        }, [fetchErrors]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent for a dev-only guarded debug effect (lumina MainAIChatShell, delta audit)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function Shell({ t }) {
+        const [input, setInput] = useState("");
+        const [isExportSelectionMode, setIsExportSelectionMode] = useState(false);
+        const [selectedExportIds, setSelectedExportIds] = useState([]);
+        const [showHistory, setShowHistory] = useState(false);
+        const handleNewChat = useCallback(() => {
+          setIsExportSelectionMode(false);
+          setSelectedExportIds([]);
+          setShowHistory(false);
+        }, []);
+        useEffect(() => {
+          if (!import.meta.env.DEV) {
+            return;
+          }
+          handleNewChat();
+          setInput(t.debugMessage);
+        }, [handleNewChat, t]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not double-count a function declaration inside the effect body (open-design OnboardingDropdown, delta audit)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function OnboardingDropdown({ open, placement }) {
+        const [resolvedPlacement, setResolvedPlacement] = useState(placement);
+        const [menuMaxHeight, setMenuMaxHeight] = useState(240);
+        useLayoutEffect(() => {
+          if (!open) return;
+          function measureMenu() {
+            const nextPlacement = placement === "top" ? "top" : "bottom";
+            setResolvedPlacement(nextPlacement);
+            setMenuMaxHeight(200);
+          }
+          measureMenu();
+          window.addEventListener("resize", measureMenu);
+          return () => window.removeEventListener("resize", measureMenu);
+        }, [open, placement]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not count a shared helper reached through branches or member chains (portos useStepStream, delta audit)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function useStepStream({ latest, closed, active }) {
+        const [phase, setPhase] = useState("");
+        const [op, setOp] = useState(null);
+        const [isActive, setIsActive] = useState(false);
+        const settle = useCallback(() => {
+          setIsActive(false); setPhase(""); setOp(null);
+          return null;
+        }, []);
+        useEffect(() => {
+          if (!active) return;
+          if (latest && latest.label) setPhase(latest.label);
+          if (latest && latest.type === "complete") settle()?.onComplete?.(latest);
+          else if (latest && latest.type === "error") settle()?.onError?.(new Error("failed"));
+          else if (closed) settle()?.onError?.(new Error("lost connection"));
+        }, [latest, closed, active, settle]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a wholesale synchronous delegation to a component-level reset helper (portos Loras, delta recall gain)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function SuggestionsSection({ resetSignal }) {
+        const [query, setQuery] = useState("");
+        const [activeQuery, setActiveQuery] = useState("");
+        const [liveCards, setLiveCards] = useState(null);
+        const [cursor, setCursor] = useState(null);
+        const resetToCached = useCallback(() => {
+          setActiveQuery(""); setLiveCards(null); setCursor(null);
+        }, []);
+        useEffect(() => { setQuery(""); resetToCached(); }, [resetSignal, resetToCached]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags an expression-bodied effect that delegates wholesale to a multi-setter reset helper (portos ManuscriptReadAloud, delta recall gain)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function ManuscriptReadAloud({ section, content }) {
+        const [segments, setSegments] = useState(null);
+        const [currentIndex, setCurrentIndex] = useState(-1);
+        const [isPlaying, setIsPlaying] = useState(false);
+        const [elapsedMs, setElapsedMs] = useState(0);
+        const resetNarration = () => {
+          setSegments(null);
+          setCurrentIndex(-1);
+          setIsPlaying(false);
+          setElapsedMs(0);
+        };
+        useEffect(() => { resetNarration(); }, [section?.issueId, content]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
   it("still counts setters inside a synchronous forEach callback", () => {

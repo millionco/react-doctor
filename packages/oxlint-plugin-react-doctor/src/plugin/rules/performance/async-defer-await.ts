@@ -79,6 +79,10 @@ interface AwaitWindow {
   // Index of the first statement past the preamble (where the guard, if any,
   // must live).
   guardCandidateIndex: number;
+  // `await this.init();` — an await whose value is discarded exists for its
+  // side effect, and the guard below it very often reads state that side
+  // effect establishes (`if (!this.db) throw`). Never report those windows.
+  hasBareSideEffectAwait: boolean;
 }
 
 // `await Y(); if (cancelled) return;` is the cancellation-check
@@ -136,6 +140,45 @@ const testReadsRefCurrent = (test: EsTreeNode): boolean => {
   return didFindRefCurrentRead;
 };
 
+const CANCELLATION_NAME_FRAGMENTS: ReadonlyArray<string> = [
+  "cancel",
+  "abort",
+  "dispos",
+  "destroy",
+  "stale",
+  "alive",
+  "mounted",
+  "stopped",
+  "settled",
+  "cleanedup",
+  "generation",
+  "current",
+  "token",
+  "signal",
+];
+
+const isCancellationLikeName = (rawName: string): boolean => {
+  const normalized = rawName.replace(/^[_#]+/, "").toLowerCase();
+  // A variable named exactly `current` (a loop cursor, a pagination
+  // index) is not staleness vocabulary — only compounds like `isCurrent`
+  // or `currentRequestId` are.
+  if (normalized === "current") return false;
+  for (const fragment of CANCELLATION_NAME_FRAGMENTS) {
+    if (normalized.includes(fragment)) return true;
+  }
+  return false;
+};
+
+const collectAllTestNames = (test: EsTreeNode): Set<string> => {
+  const names = new Set<string>();
+  walkAst(test, (child: EsTreeNode): void => {
+    if (isNodeOfType(child, "Identifier") || isNodeOfType(child, "PrivateIdentifier")) {
+      names.add(child.name);
+    }
+  });
+  return names;
+};
+
 const isCancellationGuardTest = (test: EsTreeNode | null): boolean => {
   if (!test) return false;
   const referenced = new Set<string>();
@@ -146,7 +189,130 @@ const isCancellationGuardTest = (test: EsTreeNode | null): boolean => {
   for (const name of referenced) {
     if (CANCELLATION_GUARD_NAMES.has(name)) return true;
   }
+  // Also scan EVERY identifier in the test (member property names,
+  // private fields) for cancellation/staleness vocabulary:
+  // `controller.signal.aborted`, `this._destroyed`, `batch.aborted`,
+  // `seq !== getSeq.current`, `token !== runToken`.
+  for (const name of collectAllTestNames(test)) {
+    if (isCancellationLikeName(name)) return true;
+  }
   return testReadsRefCurrent(test);
+};
+
+// Guards whose test CALLS something (`isCurrent()`, `ctx.isStale()`,
+// `configManager.get(...)`) or reads instance/private state (`this.db`,
+// `this.#db`) are re-checking mutable state that the await itself may have
+// changed — deferring the await would change behavior. An immediately
+// invoked inline arrow/function expression is transparent, though: its body
+// is fully visible, so only calls/this/private reads INSIDE it count.
+const guardTestReadsMutableEnvironment = (test: EsTreeNode | null): boolean => {
+  if (!test) return false;
+  let readsMutableEnvironment = false;
+  walkAst(test, (child: EsTreeNode): boolean | void => {
+    if (readsMutableEnvironment) return false;
+    if (isNodeOfType(child, "CallExpression")) {
+      const isInlineFunctionCallee =
+        isNodeOfType(child.callee, "ArrowFunctionExpression") ||
+        isNodeOfType(child.callee, "FunctionExpression");
+      if (!isInlineFunctionCallee) {
+        readsMutableEnvironment = true;
+        return false;
+      }
+      return;
+    }
+    if (isNodeOfType(child, "ThisExpression") || isNodeOfType(child, "PrivateIdentifier")) {
+      readsMutableEnvironment = true;
+      return false;
+    }
+  });
+  return readsMutableEnvironment;
+};
+
+// `if (refreshId !== currentRefreshId) return` — an (in)equality between two
+// non-literal operands is the staleness-comparison signature: the right side
+// is a captured value that may have advanced during the await. Literal
+// comparisons (`if (mode === "off") return`) stay reportable.
+const isNonLiteralComparisonTest = (test: EsTreeNode | null): boolean => {
+  if (!test) return false;
+  if (!isNodeOfType(test, "BinaryExpression")) return false;
+  if (!["===", "!==", "==", "!="].includes(test.operator)) return false;
+  const isLiteralOperand = (operand: EsTreeNode): boolean =>
+    isNodeOfType(operand, "Literal") ||
+    isNodeOfType(operand, "TemplateLiteral") ||
+    (isNodeOfType(operand, "UnaryExpression") && isLiteralOperand(operand.argument));
+  return !isLiteralOperand(test.left) && !isLiteralOperand(test.right);
+};
+
+// A guard whose consequent performs its own effect calls (`if (smime) {
+// setComposerMode('compose'); setShowComposer(true); return; }`) is not a
+// cheap skip path — the awaited call's side effects and the consequent's
+// effects have an observable order, so hoisting the guard above the await
+// changes behavior instead of just saving latency.
+const guardConsequentPerformsSideEffects = (consequent: EsTreeNode | null | undefined): boolean => {
+  if (!consequent) return false;
+  let performsSideEffects = false;
+  walkAst(consequent, (child: EsTreeNode): boolean | void => {
+    if (performsSideEffects) return false;
+    if (isFunctionLike(child)) return false;
+    // Constructing the exception in `throw new Error(...)` is part of the
+    // early exit itself, not ordered work — a throw-exit guard is exactly
+    // the hoistable shape the rule targets.
+    if (isNodeOfType(child, "ThrowStatement")) return false;
+    if (
+      isNodeOfType(child, "CallExpression") ||
+      isNodeOfType(child, "NewExpression") ||
+      isNodeOfType(child, "AssignmentExpression") ||
+      isNodeOfType(child, "UpdateExpression")
+    ) {
+      performsSideEffects = true;
+      return false;
+    }
+  });
+  return performsSideEffects;
+};
+
+const findEnclosingFunction = (node: EsTreeNode): EsTreeNode | null => {
+  let ancestor: EsTreeNode | null | undefined = node.parent;
+  while (ancestor) {
+    if (isFunctionLike(ancestor)) return ancestor;
+    ancestor = ancestor.parent;
+  }
+  return null;
+};
+
+// `let failed = false; try { await del(); } catch { failed = true; }
+// if (failed) return;` — the guard reads a local flag that the function
+// itself reassigns, so the flag's value depends on work around the await.
+const guardTestReadsReassignedLocal = (
+  test: EsTreeNode | null,
+  guardStatement: EsTreeNode,
+): boolean => {
+  if (!test) return false;
+  const testIdentifierNames = new Set<string>();
+  collectReferenceIdentifierNames(test, testIdentifierNames);
+  if (testIdentifierNames.size === 0) return false;
+  const enclosingFunction = findEnclosingFunction(guardStatement);
+  if (!enclosingFunction || !isFunctionLike(enclosingFunction) || !enclosingFunction.body) {
+    return false;
+  }
+  let readsReassignedLocal = false;
+  walkAst(enclosingFunction.body, (child: EsTreeNode): boolean | void => {
+    if (readsReassignedLocal) return false;
+    let assignedTarget: EsTreeNode | null = null;
+    if (isNodeOfType(child, "AssignmentExpression")) assignedTarget = child.left;
+    else if (isNodeOfType(child, "UpdateExpression")) assignedTarget = child.argument;
+    if (!assignedTarget) return;
+    const assignedNames = new Set<string>();
+    collectPatternNames(assignedTarget, assignedNames);
+    if (isNodeOfType(assignedTarget, "Identifier")) assignedNames.add(assignedTarget.name);
+    for (const name of assignedNames) {
+      if (testIdentifierNames.has(name)) {
+        readsReassignedLocal = true;
+        return false;
+      }
+    }
+  });
+  return readsReassignedLocal;
 };
 
 // Walks forward from `startIndex` collecting an "await preamble" — the
@@ -158,11 +324,13 @@ const collectAwaitWindow = (statements: EsTreeNode[], startIndex: number): Await
   const firstStatement = statements[startIndex];
   const awaitedBindingNames = new Set<string>();
   let isAwaitingStatement = false;
+  let hasBareSideEffectAwait = false;
   if (isNodeOfType(firstStatement, "VariableDeclaration")) {
     const result = processVariableDeclaration(firstStatement, awaitedBindingNames);
     if (result.didIntroduceAwait) isAwaitingStatement = true;
   } else if (isBareAwaitExpressionStatement(firstStatement)) {
     isAwaitingStatement = true;
+    hasBareSideEffectAwait = true;
   }
   if (!isAwaitingStatement) return null;
 
@@ -170,6 +338,7 @@ const collectAwaitWindow = (statements: EsTreeNode[], startIndex: number): Await
   while (cursor < statements.length) {
     const candidate = statements[cursor];
     if (isBareAwaitExpressionStatement(candidate)) {
+      hasBareSideEffectAwait = true;
       cursor++;
       continue;
     }
@@ -183,6 +352,7 @@ const collectAwaitWindow = (statements: EsTreeNode[], startIndex: number): Await
     firstAwaitStatement: firstStatement,
     awaitedBindingNames,
     guardCandidateIndex: cursor,
+    hasBareSideEffectAwait,
   };
 };
 
@@ -216,13 +386,24 @@ export const asyncDeferAwait = defineRule({
         if (!isEarlyExitIfStatement(guardStatement)) continue;
         if (!isNodeOfType(guardStatement, "IfStatement")) continue;
 
+        if (window.hasBareSideEffectAwait || window.awaitedBindingNames.size === 0) {
+          statementIndex = window.guardCandidateIndex - 1;
+          continue;
+        }
+
         const testIdentifierNames = new Set<string>();
         collectReferenceIdentifierNames(guardStatement.test, testIdentifierNames);
         if (hasAnyIdentifierName(testIdentifierNames, window.awaitedBindingNames)) {
           statementIndex = window.guardCandidateIndex - 1;
           continue;
         }
-        if (isCancellationGuardTest(guardStatement.test)) {
+        if (
+          isCancellationGuardTest(guardStatement.test) ||
+          guardTestReadsMutableEnvironment(guardStatement.test) ||
+          isNonLiteralComparisonTest(guardStatement.test) ||
+          guardTestReadsReassignedLocal(guardStatement.test, guardStatement) ||
+          guardConsequentPerformsSideEffects(guardStatement.consequent)
+        ) {
           statementIndex = window.guardCandidateIndex - 1;
           continue;
         }

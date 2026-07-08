@@ -7,16 +7,20 @@
  * story. In a Vite/CRA/Gatsby/Expo/RN app `preventDefault()` IS the
  * canonical pattern, so the recommendation was actively misleading.
  *
- * New behavior (covered below):
+ * Current behavior (covered below):
  *
  *   server-capable (`nextjs` / `tanstack-start` / `remix`) →
- *     diagnostic fires with the "server action" wording.
- *   client-only / SPA / mobile (`vite` / `cra` / `gatsby` /
- *     `react-native` / `expo`) → form variant is suppressed entirely.
- *   `unknown` framework → diagnostic still fires with a
- *     framework-neutral message that DOES NOT mention "server action".
+ *     diagnostic fires with the "server action" wording. For `nextjs`
+ *     the module must itself declare `"use client"` — a form module
+ *     without the directive is either Pages Router (no server actions)
+ *     or transitively client-rendered, both mined FP clusters.
+ *   every other framework, including `unknown` → form variant is
+ *     suppressed entirely (a controlled form is the canonical pattern
+ *     in component libraries, SPAs, and Electron shells).
  *   `<a onClick preventDefault()>` → unchanged across all frameworks
- *     (it's about UX/accessibility, not server capability).
+ *     (it's about UX/accessibility, not server capability), except
+ *     that a preventDefault behind a condition (disabled-link guard)
+ *     no longer counts as a dead link.
  */
 
 import * as fs from "node:fs";
@@ -226,7 +230,10 @@ ${ANCHOR_PREVENT_DEFAULT_SOURCE}`,
     expect(anchorHits[0].message).not.toContain("server action");
   });
 
-  it("flags <a onClick preventDefault()> when the call is nested inside conditional logic", async () => {
+  it("does NOT flag <a onClick preventDefault()> when every call is conditionally guarded (disabled-link state)", async () => {
+    // Mined FP cluster: `if (!ready) e.preventDefault()` implements a
+    // disabled-link state — in the enabled branch the anchor navigates
+    // normally, so "nothing navigates" doesn't hold.
     const projectDir = createNextProject("next-app-anchor-conditional", {
       "src/app/pager/page.tsx": `"use client";
 
@@ -247,9 +254,7 @@ export const Pager = () => (
 `,
     });
 
-    const anchorHits = await getPreventDefaultHits(projectDir, { framework: "nextjs" });
-    expect(anchorHits).toHaveLength(1);
-    expect(anchorHits[0].message).toContain("<button>");
+    await expect(getPreventDefaultHits(projectDir, { framework: "nextjs" })).resolves.toEqual([]);
   });
 });
 
@@ -374,21 +379,38 @@ ${ANCHOR_PREVENT_DEFAULT_SOURCE}`,
 });
 
 describe("no-prevent-default — unknown framework", () => {
-  it("flags <form onSubmit preventDefault()> with framework-neutral wording (no 'server action')", async () => {
+  it("suppresses the <form> onSubmit warning (mined component-library / demo-page FP cluster)", async () => {
     const projectDir = setupReactProject(tempRoot, "unknown-form", {
       files: {
         "src/sign-up.tsx": FORM_PREVENT_DEFAULT_SOURCE,
       },
     });
 
-    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
-    expect(formHits).toHaveLength(1);
-    expect(formHits[0].message).toContain("form won't work without JavaScript");
-    expect(formHits[0].message).not.toContain("server action");
+    await expect(getPreventDefaultHits(projectDir, { framework: "unknown" })).resolves.toEqual([]);
   });
 
+  it("still flags <a onClick preventDefault()>", async () => {
+    const projectDir = setupReactProject(tempRoot, "unknown-anchor", {
+      files: {
+        "src/pager.tsx": ANCHOR_PREVENT_DEFAULT_SOURCE,
+      },
+    });
+
+    const anchorHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    expect(anchorHits).toHaveLength(1);
+    expect(anchorHits[0].message).toContain("<button>");
+  });
+});
+
+// AST-shape edge cases. Form cases run with `framework: "remix"` (a
+// server-capable framework with no `"use client"` requirement) and
+// anchor cases with `framework: "unknown"`, so the expectations
+// describe the AST walk + attribute guards independently of the
+// framework gating. If the rule's `collectPreventDefaultCalls`
+// walker or `findJsxAttribute` lookup regresses, these fire first.
+describe("no-prevent-default — AST shape edge cases", () => {
   it("flags an arrow-concise-body handler that returns preventDefault()", async () => {
-    const projectDir = setupReactProject(tempRoot, "unknown-concise-arrow", {
+    const projectDir = setupReactProject(tempRoot, "ast-concise-arrow", {
       files: {
         "src/sign-up.tsx": `export const SignUp = () => (
   <form onSubmit={(event) => event.preventDefault()}>
@@ -399,17 +421,10 @@ describe("no-prevent-default — unknown framework", () => {
       },
     });
 
-    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "remix" });
     expect(formHits).toHaveLength(1);
-    expect(formHits[0].message).toContain("form won't work without JavaScript");
   });
-});
 
-// AST-shape edge cases — all run with `framework: "unknown"` so the
-// expectations describe the AST walk + attribute guards independently
-// of any framework branching. If the rule's `containsPreventDefaultCall`
-// walker or `findJsxAttribute` lookup regresses, these fire first.
-describe("no-prevent-default — AST shape edge cases", () => {
   it("flags an async arrow handler that calls preventDefault()", async () => {
     const projectDir = setupReactProject(tempRoot, "ast-async-arrow", {
       files: {
@@ -427,7 +442,7 @@ describe("no-prevent-default — AST shape edge cases", () => {
       },
     });
 
-    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "remix" });
     expect(formHits).toHaveLength(1);
   });
 
@@ -447,7 +462,7 @@ describe("no-prevent-default — AST shape edge cases", () => {
       },
     });
 
-    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "remix" });
     expect(formHits).toHaveLength(1);
   });
 
@@ -473,7 +488,7 @@ export const SignUp = () => (
       },
     });
 
-    await expect(getPreventDefaultHits(projectDir, { framework: "unknown" })).resolves.toEqual([]);
+    await expect(getPreventDefaultHits(projectDir, { framework: "remix" })).resolves.toEqual([]);
   });
 
   it("flags preventDefault() reached through a nested closure inside the handler", async () => {
@@ -493,7 +508,7 @@ export const SignUp = () => (
       },
     });
 
-    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "remix" });
     expect(formHits).toHaveLength(1);
   });
 
@@ -513,7 +528,7 @@ export const SignUp = () => (
       },
     });
 
-    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "remix" });
     expect(formHits).toHaveLength(1);
   });
 
@@ -531,7 +546,7 @@ export const SignUp = () => (
       },
     });
 
-    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "remix" });
     expect(formHits).toHaveLength(1);
   });
 
@@ -556,7 +571,7 @@ export const SignUp = () => (
       },
     });
 
-    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "remix" });
     expect(formHits).toHaveLength(1);
   });
 
@@ -585,7 +600,7 @@ export const SignUp = () => (
       },
     });
 
-    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "remix" });
     expect(formHits).toHaveLength(2);
   });
 
@@ -605,7 +620,7 @@ export const SignUp = () => (
       },
     });
 
-    await expect(getPreventDefaultHits(projectDir, { framework: "unknown" })).resolves.toEqual([]);
+    await expect(getPreventDefaultHits(projectDir, { framework: "remix" })).resolves.toEqual([]);
   });
 
   it("does NOT flag <a onClickCapture> (attribute-name guard)", async () => {
@@ -640,7 +655,7 @@ export const SignUp = () => (
       },
     });
 
-    await expect(getPreventDefaultHits(projectDir, { framework: "unknown" })).resolves.toEqual([]);
+    await expect(getPreventDefaultHits(projectDir, { framework: "remix" })).resolves.toEqual([]);
   });
 
   it("does NOT flag a capitalized <A> user component (anchor tag-name guard)", async () => {
@@ -756,7 +771,7 @@ describe("no-prevent-default — optional chaining", () => {
       },
     });
 
-    const formHits = await getPreventDefaultHits(projectDir, { framework: "unknown" });
+    const formHits = await getPreventDefaultHits(projectDir, { framework: "remix" });
     expect(formHits).toHaveLength(1);
   });
 
@@ -782,20 +797,14 @@ describe("no-prevent-default — optional chaining", () => {
   });
 });
 
-// Currently `framework: "nextjs"` resolves the same way for App Router
-// and Pages Router. Pages Router has no RSC Server Actions; the
-// `<form action={serverAction}>` recommendation only literally applies
-// to App Router. We still ship the same "server action" message in
-// both routers because (a) the broader "use a form action for
-// progressive enhancement" idea is still correct on Pages Router via
-// classic `<form action="/api/route" method="POST">`, and (b) we don't
-// yet have per-file router-type detection in this rule.
-//
-// Pin the current behavior so a future router-aware precision PR
-// (mirroring `nextjs-no-client-side-redirect`'s split) has to flip
-// these assertions intentionally.
-describe("no-prevent-default — Next.js Pages Router (precision-debt pin)", () => {
-  it("still fires with server-action wording on Pages Router forms (acknowledged limitation)", async () => {
+// `framework: "nextjs"` resolves the same way for App Router and Pages
+// Router, but Server Actions only exist in the App Router. The rule
+// now uses the `"use client"` directive as the router discriminator:
+// an inline onSubmit handler only runs in a client module, so a form
+// module without the directive is either Pages Router or transitively
+// client-rendered — both mined FP clusters — and stays quiet.
+describe("no-prevent-default — Next.js Pages Router", () => {
+  it("suppresses the form warning on Pages Router forms (no 'use client' directive)", async () => {
     const projectDir = setupReactProject(tempRoot, "next-pages-form", {
       packageJsonExtras: {
         dependencies: { next: "^15.0.0", react: "^19.0.0", "react-dom": "^19.0.0" },
@@ -805,8 +814,6 @@ describe("no-prevent-default — Next.js Pages Router (precision-debt pin)", () 
       },
     });
 
-    const formHits = await getPreventDefaultHits(projectDir, { framework: "nextjs" });
-    expect(formHits).toHaveLength(1);
-    expect(formHits[0].message).toContain("server action");
+    await expect(getPreventDefaultHits(projectDir, { framework: "nextjs" })).resolves.toEqual([]);
   });
 });

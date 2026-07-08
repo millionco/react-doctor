@@ -75,6 +75,11 @@ export const noLegacyClassLifecycles = defineRule({
         !isNodeOfType(memberNode, "PropertyDefinition")
       )
         return;
+      // React calls lifecycles as instance methods with literal names — a
+      // static member or a computed `[componentWillMount]()` key (where the
+      // identifier is a VARIABLE reference, not the method name) is never a
+      // lifecycle.
+      if (memberNode.static || memberNode.computed) return;
       if (!isNodeOfType(memberNode.key, "Identifier")) return;
       const message = buildLegacyLifecycleMessage(memberNode.key.name);
       if (message) context.report({ node: memberNode.key, message });
@@ -82,6 +87,19 @@ export const noLegacyClassLifecycles = defineRule({
 
     return {
       ClassBody(node: EsTreeNodeOfType<"ClassBody">) {
+        // A React class component MUST extend React.Component (directly or
+        // via a base class) — a class with no `extends` can't be one, so a
+        // method named `componentWillMount` there is ordinary code. We only
+        // require SOME superclass (not `Component` by name) because legacy
+        // codebases routinely extend their own base classes.
+        const classNode = node.parent;
+        if (!classNode) return;
+        if (
+          !isNodeOfType(classNode, "ClassDeclaration") &&
+          !isNodeOfType(classNode, "ClassExpression")
+        )
+          return;
+        if (!classNode.superClass) return;
         for (const member of node.body ?? []) {
           checkMember(member);
         }

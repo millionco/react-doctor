@@ -466,8 +466,17 @@ describe("react-native/rn-no-raw-text", () => {
       expectFail(`const App = () => <Animated.View>Hello</Animated.View>;`);
     });
 
-    it("still fires inside a lowercase intrinsic", () => {
-      expectFail(`const App = () => <div>Hello</div>;`);
+    // DOM tags only exist in web-targeting code — React Native has no
+    // `div`, the element itself would fail before its raw text could —
+    // so raw text inside a known HTML/SVG tag is web markup, not an RN
+    // crash (real-world FP source: DevTools panel UIs and `Platform.OS`
+    // web trees inside RN packages).
+    it("does not fire inside a known HTML intrinsic (web markup)", () => {
+      expectPass(`const App = () => <div>Hello</div>;`);
+    });
+
+    it("still fires inside a lowercase name that is not a known HTML/SVG tag", () => {
+      expectFail(`const App = () => <viewport>Hello</viewport>;`);
     });
 
     it("still fires on an in-file component proven to render children outside Text", () => {

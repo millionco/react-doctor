@@ -129,6 +129,19 @@ describe("dependency-tooling", () => {
       "@tauri-apps/cli",
       "@tinacms/cli",
       "@typescript/native-preview",
+      // static bin fallback (no node_modules entry): `copy-styles` runs the
+      // `cpy` bin that cpy-cli ships.
+      "cpy-cli",
+      // static bin fallback: `test:browser` runs `playwright test`, which
+      // drives the browser that playwright-chromium downloads at install.
+      "playwright-chromium",
+      // static peer fallback: axe-core is vitest-axe's peer dependency and
+      // vitest-axe is imported.
+      "axe-core",
+      "vitest-axe",
+      // imported from the .dumi docs-theme tree, which the module graph
+      // never traverses — credited by the tooling-source content scan.
+      "docs-theme-widgets",
       "babel-eslint",
       "chart.js",
       "chokidar-cli",
@@ -4494,6 +4507,131 @@ describe("cycle-type-only", () => {
   });
 });
 
+describe("cycle-interface-value-import", () => {
+  it("does not report a cycle whose back edge imports only an interface via a value-form import", async () => {
+    const result = await scanFixture("cycle-interface-value-import");
+    assert.equal(
+      result.circularDependencies.length,
+      0,
+      `the interface-only back edge is erased at compile time, got: ${JSON.stringify(result.circularDependencies)}`,
+    );
+  });
+});
+
+describe("default-export-alias-of-used-named", () => {
+  it("does not flag a default export aliasing a named export that is consumed", async () => {
+    const result = await scanFixture("default-export-alias-of-used-named");
+    assert.deepEqual(
+      deadExportNames(result),
+      [],
+      `the named Page usage disproves the default alias being dead, got: ${JSON.stringify(result.unusedExports)}`,
+    );
+  });
+});
+
+describe("github-workflow-script", () => {
+  it("does not flag scripts run via a vendored .github tool package's npm scripts", async () => {
+    const result = await scanFixture("github-workflow-script");
+    assert.deepEqual(
+      result.unusedFiles.map((unusedFile) => unusedFile.path),
+      [],
+      `build.js is executed by the vendored bundle-size package's npm run build`,
+    );
+  });
+});
+
+describe("namespace-destructure-exports", () => {
+  it("should track members read via destructuring of a namespace import", async () => {
+    const result = await scanFixture("namespace-destructure-exports");
+    const allUnusedNames = deadExportNames(result);
+    assert.ok(
+      !allUnusedNames.includes("noFocalPath"),
+      `noFocalPath is read via \`const { noFocalPath } = testResources\`, got: ${allUnusedNames}`,
+    );
+    assert.ok(
+      allUnusedNames.includes("orphanResource"),
+      `orphanResource is never read from the namespace, got: ${allUnusedNames}`,
+    );
+  });
+});
+
+describe("local-use-in-exported-declaration", () => {
+  it("should count references made inside other exported declarations as local use", async () => {
+    const result = await scanFixture("local-use-in-exported-declaration");
+    const allUnusedNames = deadExportNames(result);
+    assert.ok(
+      !allUnusedNames.includes("isLikelyBookTitleAuthorResult"),
+      `isLikelyBookTitleAuthorResult is called inside exported splitAuthorSearchResults, got: ${allUnusedNames}`,
+    );
+    assert.ok(
+      allUnusedNames.includes("neverReferencedAnywhere"),
+      `neverReferencedAnywhere has no local or external reference, got: ${allUnusedNames}`,
+    );
+  });
+});
+
+describe("runner-convention-files", () => {
+  it("should not flag files consumed by runner/deployment convention as unused", async () => {
+    const result = await scanFixture("runner-convention-files");
+    const fixtureDir = resolve(FIXTURES_DIR, "runner-convention-files");
+    const unusedFilePaths = orphanPaths(result, fixtureDir);
+    assert.ok(
+      !unusedFilePaths.includes("src/render-element.test-d.ts"),
+      `*.test-d.ts is consumed by the typecheck runner glob, got: ${unusedFilePaths}`,
+    );
+    assert.ok(
+      !unusedFilePaths.includes("public/theme-init.js"),
+      `public/ assets are script-src loaded, not imported, got: ${unusedFilePaths}`,
+    );
+    assert.ok(
+      !unusedFilePaths.includes("example-ui.config.console-analytics.js"),
+      `config variants are consumed by deployment convention, got: ${unusedFilePaths}`,
+    );
+    assert.ok(
+      unusedFilePaths.includes("src/orphan.ts"),
+      `a genuine orphan must still be flagged, got: ${unusedFilePaths}`,
+    );
+  });
+});
+
+describe("jest-custom-testmatch-mocks", () => {
+  it("should keep __mocks__ entries alive when jest testMatch is customized", async () => {
+    const result = await scanFixture("jest-custom-testmatch-mocks");
+    const fixtureDir = resolve(FIXTURES_DIR, "jest-custom-testmatch-mocks");
+    const unusedFilePaths = orphanPaths(result, fixtureDir);
+    assert.ok(
+      !unusedFilePaths.includes("__mocks__/axios.ts"),
+      `Jest automock consumes __mocks__ regardless of testMatch, got: ${unusedFilePaths}`,
+    );
+    assert.ok(
+      unusedFilePaths.includes("src/orphan.ts"),
+      `a genuine orphan must still be flagged, got: ${unusedFilePaths}`,
+    );
+  });
+});
+
+describe("cycle-lazy-import", () => {
+  it("should not report cycles closed only by a dynamic import() edge", async () => {
+    const result = await scanFixture("cycle-lazy-import");
+    assert.equal(
+      result.circularDependencies.length,
+      0,
+      `lazy import() back edges should not create cycles, got: ${JSON.stringify(result.circularDependencies)}`,
+    );
+  });
+});
+
+describe("cycle-function-only", () => {
+  it("should not report cycles whose back edge is only dereferenced inside function bodies", async () => {
+    const result = await scanFixture("cycle-function-only");
+    assert.equal(
+      result.circularDependencies.length,
+      0,
+      `function-body-only back edges run after module init, got: ${JSON.stringify(result.circularDependencies)}`,
+    );
+  });
+});
+
 describe("cycle-chain", () => {
   it("should detect A→B→C→A circular dependency chain", async () => {
     const result = await scanFixture("cycle-chain");
@@ -5055,9 +5193,15 @@ describe("typescript-smells", () => {
 
   it("flags `@ts-ignore` and `@ts-nocheck` comments", async () => {
     const result = await scanFixture("typescript-smells");
-    const tsIgnore = result.typeScriptEscapeHatches.find((finding) => finding.kind === "ts-ignore");
-    assert.ok(tsIgnore, "expected ts-ignore finding");
-    assert.equal(tsIgnore.confidence, "high");
+    const tsIgnoreFindings = result.typeScriptEscapeHatches.filter(
+      (finding) => finding.kind === "ts-ignore",
+    );
+    assert.equal(
+      tsIgnoreFindings.length,
+      2,
+      `expected the bare @ts-ignore and the mid-ternary @ts-ignore-with-trailing-text to both fire, got ${JSON.stringify(tsIgnoreFindings)}`,
+    );
+    for (const finding of tsIgnoreFindings) assert.equal(finding.confidence, "high");
   });
 
   it("flags `@ts-expect-error` without an explanation, but allows it when the comment carries a justification", async () => {

@@ -12,6 +12,39 @@ const TEXT_COLOR_PATTERN =
 const BG_COLOR_PATTERN =
   /^bg-(?:white|black|transparent|current|inherit|\[|(?:gray|slate|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-)/;
 
+// Washed-out gray needs the text and background to sit close in
+// luminance. Polar-opposite shades (`text-gray-400` on `bg-blue-950`
+// muted-on-dark cards, `text-gray-900` on `bg-yellow-500` warning
+// badges) are deliberate high-contrast pairings.
+const WASHED_OUT_SHADE_GAP_MAX = 400;
+
+// At -500, these hues are bright enough that near-black gray text is
+// the recommended contrast choice, not a washout.
+const LIGHT_BG_HUES = new Set(["yellow", "amber", "lime"]);
+const LIGHT_BG_DARK_GRAY_MIN_SHADE = 700;
+
+const getUtilityShade = (utility: string): number | null => {
+  const shadeMatch = utility.match(/-(\d+)$/);
+  return shadeMatch ? Number(shadeMatch[1]) : null;
+};
+
+const isWashedOutPair = (grayUtility: string, coloredUtility: string): boolean => {
+  const grayShade = getUtilityShade(grayUtility);
+  const bgShade = getUtilityShade(coloredUtility);
+  if (grayShade === null || bgShade === null) return true;
+  if (Math.abs(grayShade - bgShade) > WASHED_OUT_SHADE_GAP_MAX) return false;
+  const hueMatch = coloredUtility.match(/^bg-([a-z]+)-/);
+  if (
+    hueMatch &&
+    LIGHT_BG_HUES.has(hueMatch[1]) &&
+    bgShade <= 500 &&
+    grayShade >= LIGHT_BG_DARK_GRAY_MIN_SHADE
+  ) {
+    return false;
+  }
+  return true;
+};
+
 // The variant scope of a Tailwind token is every segment before the
 // utility (`dark:hover:text-gray-500` → `dark:hover`), sorted so
 // reordered stacks (`md:hover` vs `hover:md`) share one key. A leading
@@ -57,7 +90,11 @@ export const noGrayOnColoredBackground = defineRule({
         const grayMatch = utility.match(GRAY_TEXT_PATTERN);
         if (grayMatch && !grayTextByScope.has(scope)) grayTextByScope.set(scope, grayMatch[0]);
         const coloredMatch = utility.match(COLORED_BG_PATTERN);
-        if (coloredMatch && !coloredBgByScope.has(scope))
+        // An alpha modifier (`bg-blue-500/10` badge tints) means the
+        // composite color is mostly the page background, not the hue.
+        const hasAlphaModifier =
+          coloredMatch !== null && utility.charAt(coloredMatch[0].length) === "/";
+        if (coloredMatch && !hasAlphaModifier && !coloredBgByScope.has(scope))
           coloredBgByScope.set(scope, coloredMatch[0]);
       }
 
@@ -71,6 +108,7 @@ export const noGrayOnColoredBackground = defineRule({
       for (const [scope, grayUtility] of grayTextByScope) {
         const coloredUtility = coloredBgByScope.get(scope);
         if (!coloredUtility) continue;
+        if (!isWashedOutPair(grayUtility, coloredUtility)) continue;
         reportPair(grayUtility, coloredUtility);
         return;
       }
@@ -83,6 +121,7 @@ export const noGrayOnColoredBackground = defineRule({
       if (baseGrayText) {
         for (const [scope, coloredUtility] of coloredBgByScope) {
           if (scope === "" || textColorScopes.has(scope)) continue;
+          if (!isWashedOutPair(baseGrayText, coloredUtility)) continue;
           reportPair(baseGrayText, coloredUtility);
           return;
         }
@@ -91,6 +130,7 @@ export const noGrayOnColoredBackground = defineRule({
       if (baseColoredBg) {
         for (const [scope, grayUtility] of grayTextByScope) {
           if (scope === "" || bgColorScopes.has(scope)) continue;
+          if (!isWashedOutPair(grayUtility, baseColoredBg)) continue;
           reportPair(grayUtility, baseColoredBg);
           return;
         }

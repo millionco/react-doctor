@@ -32,11 +32,12 @@ afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
-// `no-array-index-key` fires once per `key={index}` usage, so the finding
-// count is deterministic: N usages → N diagnostics. It's `defaultEnabled:
-// false`, so the config override turns it on for both the head and base
-// passes (baseline reuses the same user config).
-const RULE = "react-doctor/no-array-index-key";
+// `no-array-index-as-key` fires once per `key={index}` usage, so the finding
+// count is deterministic: N usages → N diagnostics. The config override pins
+// it on for both the head and base passes (baseline reuses the same user
+// config). (`no-array-index-key` used to be the vehicle here, but its JSX
+// path is now delegated to this canonical rule.)
+const RULE = "react-doctor/no-array-index-as-key";
 const CONFIG_OVERRIDE: ReactDoctorConfig = { rules: { [RULE]: "warn" } };
 
 // One `key={index}` per mapped row → exactly `findingCount` diagnostics.
@@ -92,7 +93,8 @@ describe("#858: subdirectory baseline resolves changed-file paths against the sc
           configOverride: CONFIG_OVERRIDE,
         });
       const findings = (result: Awaited<ReturnType<typeof scanUi>>): number =>
-        result.diagnostics.filter((diagnostic) => diagnostic.rule === "no-array-index-key").length;
+        result.diagnostics.filter((diagnostic) => diagnostic.rule === "no-array-index-as-key")
+          .length;
 
       // A baseline-free head scan = the full finding set in the changed file
       // (relational reference, so the assertions don't hard-code the rule's

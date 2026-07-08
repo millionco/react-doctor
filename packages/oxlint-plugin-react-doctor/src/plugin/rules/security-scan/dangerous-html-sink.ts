@@ -4,25 +4,26 @@ import { escapeRegExp } from "./utils/escape-reg-exp.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 
 // HTML-injection sinks: React's `dangerouslySetInnerHTML`, the DOM
-// `innerHTML`/`outerHTML` assignments, `insertAdjacentHTML(position, html)`,
+// `innerHTML`/`outerHTML` assignments (dot or bracket notation —
+// `el["innerHTML"] = x` is the same sink), `insertAdjacentHTML(position, html)`,
 // `document.write(ln)(html)`, `Range.createContextualFragment(html)`, and the
 // explicitly-unsafe `Element.setHTMLUnsafe(html)` (the sanitizing `setHTML` is
 // deliberately not a sink).
 const DANGEROUS_HTML_PATTERN =
-  /dangerouslySetInnerHTML|\.(?:inner|outer)HTML\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\(|\bdocument\.write(?:ln)?\s*\(|\.(?:createContextualFragment|setHTMLUnsafe)\s*\(/;
+  /dangerouslySetInnerHTML|(?:\.(?:inner|outer)HTML|\[\s*["'](?:inner|outer)HTML["']\s*\])\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\(|\bdocument\.write(?:ln)?\s*\(|\.(?:createContextualFragment|setHTMLUnsafe)\s*\(/;
 
 // Captures the value handed to the sink. For `insertAdjacentHTML` the value is
 // the second argument (after the position), so the position arg is skipped. The
 // leading `.` keeps it a method call, not a `function insertAdjacentHTML(` decl.
 const HTML_VALUE_START_PATTERN =
-  /(?:__html\s*:|\.(?:inner|outer)HTML\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\(\s*[^,]*,|\bdocument\.write(?:ln)?\s*\(|\.(?:createContextualFragment|setHTMLUnsafe)\s*\()\s*([\s\S]*)/;
+  /(?:__html\s*:|(?:\.(?:inner|outer)HTML|\[\s*["'](?:inner|outer)HTML["']\s*\])\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\(\s*[^,]*,|\bdocument\.write(?:ln)?\s*\(|\.(?:createContextualFragment|setHTMLUnsafe)\s*\()\s*([\s\S]*)/;
 
 // Dynamic-looking sources. Beyond request/props/state data, this covers the
 // classic OWASP DOM-XSS sources (`location.hash`/`.search`/`.href`,
 // `document.cookie`/`.referrer`, `window.name`, web/session storage,
 // `URLSearchParams`) — attacker-controllable channels that must be flagged.
 const HTML_TAINT_PATTERN =
-  /searchParams|query|params|request|req\.|response\.|result\.|data\.|await|fetch|props\.|children|content|html|body|text|message|\blocation\b|document\.cookie|\breferrer\b|\blocalStorage\b|\bsessionStorage\b|URLSearchParams|window\.name/i;
+  /searchParams|query|params|request|req\.|response\.|result\.|data\.|await|fetch|props\.|children|content|html|body|text|message|markup|\blocation\b|document\.cookie|\breferrer\b|\blocalStorage\b|\bsessionStorage\b|URLSearchParams|window\.name/i;
 
 // A trailing line comment (`innerHTML = "" // clear`) must not defeat the
 // literal/constant exemptions: without tolerating it the value never matches,
@@ -52,8 +53,10 @@ const SANITIZER_PATTERN =
 // A bare-identifier value sanitized at its definition site
 // (`const clean = DOMPurify.sanitize(md)` then `__html: clean`). The sink only
 // sees the identifier, so the source assignment is checked across the file.
+// `[:=]` accepts property-style provenance (`{ html: DOMPurify.sanitize(md) }`
+// routed through state) alongside plain assignments.
 const SANITIZED_ASSIGNMENT_PATTERN =
-  /=\s*[^\n;]*\b(?:DOMPurify\b|sanitize\w*\s*\(|purify\w*\s*\()/i;
+  /[:=]\s*[^\n;]*\b(?:DOMPurify\b|sanitize\w*\s*\(|purify\w*\s*\()/i;
 
 // A bare-identifier value captured from a DOM node's own serialized content
 // (`const original = button.innerHTML; … button.innerHTML = original`). The
@@ -90,9 +93,14 @@ const HIGHLIGHTER_LIBRARY_PATTERN =
 // bare file-wide library keyword would exempt any sink in a file that merely
 // imports a highlighter — checking the assignment keeps the trust link.
 const SERIALIZER_ASSIGNMENT_PATTERN =
-  /=\s*[^\n;]*(?:\b(?:katex|shiki|hljs|prism|mermaid)\b|hast-util-to-html|renderHtmlFromRichText|(?:toHtml|render[A-Za-z]*(?:Html|HTML)|renderToString|renderToStaticMarkup|codeToHtml|codeToHast)\s*\()/i;
+  /[:=]\s*[^\n;]*(?:\b(?:katex|shiki|hljs|prism|mermaid)\b|hast-util-to-html|renderHtmlFromRichText|(?:toHtml|render[A-Za-z]*(?:Html|HTML)|renderToString|renderToStaticMarkup|codeToHtml|codeToHast)\s*\()/i;
 
 const BARE_IDENTIFIER_VALUE_PATTERN = /^[\w$]+\s*(?:[;,})\n]|$)/;
+
+// `lineHtml || " "` / `html ?? ""` — an identifier with a string-literal
+// fallback is still identifier-shaped for provenance checks.
+const IDENTIFIER_WITH_LITERAL_FALLBACK_PATTERN =
+  /^[\w$]+\s*(?:\|\||\?\?)\s*(?:"[^"\n]*"|'[^'\n]*'|`[^`$]*`)\s*(?:[;,})\n]|$)/;
 
 // Highlighter/serializer output is routinely stored on an object before the
 // sink (`highlightedFiles[0].darkHtml`), so the serializer-library exemption
@@ -110,11 +118,25 @@ const STYLE_TAG_LOOKBEHIND_LINES = 5;
 // Also exempt email components by filename (e.g. RawHtml.tsx or *Email.tsx)
 // even when scan rootDir is a monorepo subpackage like packages/emails (so
 // the relativePath never contains an "emails/" segment).
+// Only the PLURAL `emails/` directory (the react-email convention) is a
+// template dir; a singular `email/` directory in a webmail app holds
+// browser UI (composer, viewer) whose sinks render into the live page.
 const EMAIL_TEMPLATE_PATH_PATTERN =
-  /(?:^|\/)emails?(?:\/|$)|email[-_.]templates?(?:\/|$)|RawHtml|[A-Za-z]*[Ee]mail[A-Za-z]*\.(?:t|j)sx?/i;
+  /(?:^|\/)emails(?:\/|$)|email[-_.]templates?(?:\/|$)|RawHtml|[A-Za-z]*[Ee]mail[A-Za-z]*\.(?:t|j)sx?/i;
+
+// Files under hidden tool directories (`.dumi/theme/`, `.storybook/`) are
+// docs-site/tooling themes rendering repository-authored content, not
+// production app source. (`.next/`, `.yarn/` are already generated paths.)
+const HIDDEN_TOOLING_DIRECTORY_PATTERN = /(?:^|\/)\.[\w-]+\//;
+
+// A file explicitly named after sanitizing (`sanitized-html.tsx`,
+// `SanitizedHTML.tsx`) is a deliberate render-pre-sanitized-HTML wrapper whose
+// callers hold the sanitizer — the audited-by-design idiom. `(?<!un)` keeps
+// `unsanitized-html.tsx` firing.
+const SANITIZER_WRAPPER_PATH_PATTERN = /(?<!un)saniti[sz]e?d?[\w-]*\.[cm]?[jt]sx?$/i;
 
 const INNERHTML_TARGET_PATTERN =
-  /(?:^|[^\w$.])([\w$]+(?:\.[\w$]+)*)\.(?:(?:inner|outer)HTML\s*[+]?=(?!=)|insertAdjacentHTML\s*\()/;
+  /(?:^|[^\w$.])([\w$]+(?:\.[\w$]+)*)(?:(?:\.(?:inner|outer)HTML|\[\s*["'](?:inner|outer)HTML["']\s*\])\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\()/;
 
 // DOM methods that splice a node into a live tree. If a scratch node reaches
 // one of these — or is returned as a node — its parsed HTML can hit the live
@@ -140,6 +162,36 @@ const getTemplateInterpolations = (valueTail: string): string | null => {
   const templateBody = valueTail.slice(1, closingBacktickIndex);
   const interpolations = templateBody.match(/\$\{[^}]*\}/g);
   return interpolations === null ? "" : interpolations.join(" ");
+};
+
+// Returns the initializer text of the identifier's `const`/`let`/`var`
+// declaration (bounded window), or null when the file never declares it.
+const getIdentifierDeclarationInitializer = (
+  identifier: string,
+  fileContent: string,
+): string | null => {
+  const declarationPattern = new RegExp(
+    `(?:const|let|var)\\s+${escapeRegExp(identifier)}\\s*(?::[^=\\n]{0,120})?=\\s*`,
+  );
+  const declarationMatch = declarationPattern.exec(fileContent);
+  if (declarationMatch === null) return null;
+  const initializerStartIndex = declarationMatch.index + declarationMatch[0].length;
+  return fileContent.slice(
+    initializerStartIndex,
+    initializerStartIndex + STATIC_TEMPLATE_MAX_CHARS,
+  );
+};
+
+// `const html = '<span>…</span>' + '…' + '…';` — an initializer that is only
+// string literals joined by `+` is static markup, the multi-line counterpart
+// of the single-literal exemption.
+const isPureStringLiteralConcat = (initializerText: string): boolean => {
+  if (!/^["']/.test(initializerText)) return false;
+  const withoutLiterals = initializerText.replace(/"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g, "");
+  const statementEndIndex = withoutLiterals.search(/[;,})\]]/);
+  const betweenLiterals =
+    statementEndIndex >= 0 ? withoutLiterals.slice(0, statementEndIndex) : withoutLiterals;
+  return /^[\s+]*$/.test(betweenLiterals);
 };
 
 // A sink target is inert when its parsed HTML can never reach the live
@@ -277,6 +329,8 @@ export const dangerousHtmlSink = defineRule({
     if (file.isGeneratedBundle) return [];
     if (!isProductionSourcePath(file.relativePath)) return [];
     if (EMAIL_TEMPLATE_PATH_PATTERN.test(file.relativePath)) return [];
+    if (HIDDEN_TOOLING_DIRECTORY_PATTERN.test(file.relativePath)) return [];
+    if (SANITIZER_WRAPPER_PATH_PATTERN.test(file.relativePath)) return [];
     if (!DANGEROUS_HTML_PATTERN.test(file.content)) return [];
 
     const findings: ScanFinding[] = [];
@@ -321,7 +375,34 @@ export const dangerousHtmlSink = defineRule({
       const longValueTail = HTML_VALUE_START_PATTERN.exec(
         lines.slice(lineIndex, lineIndex + 1 + STATIC_TEMPLATE_LOOKAHEAD_LINES).join("\n"),
       )?.[1]?.trimStart();
-      const templateInterpolations = getTemplateInterpolations(longValueTail ?? fullValueTail);
+      let templateInterpolations = getTemplateInterpolations(longValueTail ?? fullValueTail);
+
+      const isIdentifierShapedValue =
+        BARE_IDENTIFIER_VALUE_PATTERN.test(valueExpression) ||
+        MEMBER_OR_INDEX_ACCESS_VALUE_PATTERN.test(valueExpression) ||
+        IDENTIFIER_WITH_LITERAL_FALLBACK_PATTERN.test(valueExpression);
+      const valueIdentifier = isIdentifierShapedValue
+        ? valueExpression.match(/^[\w$]+/)?.[0]
+        : undefined;
+
+      // A bare-identifier value declared from static text — a string-literal
+      // concat or a template literal — is judged by its declaration: the
+      // static text cannot be injection, only the interpolations can.
+      if (
+        templateInterpolations === null &&
+        valueIdentifier !== undefined &&
+        BARE_IDENTIFIER_VALUE_PATTERN.test(valueExpression)
+      ) {
+        const declarationInitializer = getIdentifierDeclarationInitializer(
+          valueIdentifier,
+          file.content,
+        );
+        if (declarationInitializer !== null) {
+          if (isPureStringLiteralConcat(declarationInitializer)) continue;
+          templateInterpolations = getTemplateInterpolations(declarationInitializer);
+        }
+      }
+
       if (templateInterpolations === "") continue;
       const judgedExpression = templateInterpolations ?? valueExpression;
 
@@ -339,36 +420,56 @@ export const dangerousHtmlSink = defineRule({
       if (/highlight/i.test(valueExpression) && HIGHLIGHTER_LIBRARY_PATTERN.test(file.content)) {
         continue;
       }
-      // Value is a bare identifier or member/index access: exempt only when that
-      // identifier is assigned from a serializer or a sanitizer in the file.
-      if (
-        BARE_IDENTIFIER_VALUE_PATTERN.test(valueExpression) ||
-        MEMBER_OR_INDEX_ACCESS_VALUE_PATTERN.test(valueExpression)
-      ) {
-        const valueIdentifier = valueExpression.match(/^[\w$]+/)?.[0];
-        if (valueIdentifier !== undefined) {
-          const escapedIdentifier = escapeRegExp(valueIdentifier);
-          const fromSerializer = new RegExp(
-            `\\b${escapedIdentifier}\\b\\s*${SERIALIZER_ASSIGNMENT_PATTERN.source}`,
-            "i",
+      // Value is a bare identifier, member/index access, or identifier with a
+      // literal fallback: exempt only when that identifier is assigned from a
+      // serializer or a sanitizer in the file. `[:=]` accepts property-style
+      // provenance too (`{ html: hl.codeToHtml(code) }` routed through state).
+      if (valueIdentifier !== undefined) {
+        const escapedIdentifier = escapeRegExp(valueIdentifier);
+        const fromSerializer = new RegExp(
+          `\\b${escapedIdentifier}\\b\\s*${SERIALIZER_ASSIGNMENT_PATTERN.source}`,
+          "i",
+        );
+        if (fromSerializer.test(file.content)) continue;
+        const fromSanitizer = new RegExp(
+          `\\b${escapedIdentifier}\\b\\s*${SANITIZED_ASSIGNMENT_PATTERN.source}`,
+          "i",
+        );
+        if (fromSanitizer.test(file.content)) continue;
+        const fromDomContent = new RegExp(
+          `\\b${escapedIdentifier}\\b\\s*${DOM_CONTENT_ASSIGNMENT_PATTERN.source}`,
+        );
+        if (fromDomContent.test(file.content)) continue;
+        // Highlighter output rendered per line: the identifier is the `.map(`
+        // callback parameter over a `highlight*`-named array
+        // (`highlightedLines.map((lineHtml, i) => …)`) and the file uses a
+        // highlighter library.
+        const highlighterMapCallbackPattern = new RegExp(
+          `highlight[\\w$]*\\s*\\.map\\(\\s*(?:async\\s+)?\\(?\\s*${escapedIdentifier}\\b`,
+          "i",
+        );
+        if (
+          highlighterMapCallbackPattern.test(file.content) &&
+          HIGHLIGHTER_LIBRARY_PATTERN.test(file.content)
+        ) {
+          continue;
+        }
+      }
+      // A member-access value whose property is populated from an i18n call
+      // (`questions = [{ body: translate("…") }]` then `question.body`) is
+      // developer-authored bundle content, same as a direct `t()` value.
+      if (MEMBER_OR_INDEX_ACCESS_VALUE_PATTERN.test(valueExpression)) {
+        const propertyName = valueExpression.match(/\.([\w$]+)\s*(?:[;,})\n]|$)/)?.[1];
+        if (propertyName !== undefined) {
+          const i18nPropertyProvenancePattern = new RegExp(
+            `\\b${escapeRegExp(propertyName)}\\s*:\\s*${I18N_VALUE_PATTERN.source}`,
           );
-          if (fromSerializer.test(file.content)) continue;
-          const fromSanitizer = new RegExp(
-            `\\b${escapedIdentifier}\\b\\s*${SANITIZED_ASSIGNMENT_PATTERN.source}`,
-            "i",
-          );
-          if (fromSanitizer.test(file.content)) continue;
-          const fromDomContent = new RegExp(
-            `\\b${escapedIdentifier}\\b\\s*${DOM_CONTENT_ASSIGNMENT_PATTERN.source}`,
-          );
-          if (fromDomContent.test(file.content)) continue;
+          if (i18nPropertyProvenancePattern.test(file.content)) continue;
         }
       }
       const sinkTargetMatch = INNERHTML_TARGET_PATTERN.exec(line);
-      if (
-        sinkTargetMatch?.[1] !== undefined &&
-        isInertParseTarget(sinkTargetMatch[1], file.content)
-      ) {
+      const sinkTarget = sinkTargetMatch?.[1] ?? sinkTargetMatch?.[2];
+      if (sinkTarget !== undefined && isInertParseTarget(sinkTarget, file.content)) {
         continue;
       }
       const textBeforeSink = lines

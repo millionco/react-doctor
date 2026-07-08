@@ -36,6 +36,33 @@ describe("security-scan/git-provider-url-injection-risk — regressions", () => 
     expect(findings).toHaveLength(0);
   });
 
+  it("stays silent on URLSearchParams query strings (renoun issue-url shape)", () => {
+    const findings = runScanRule(gitProviderUrlInjectionRisk, {
+      relativePath: "src/file-system/repository.ts",
+      content:
+        "const params = new URLSearchParams({ title, body: description });\nconst issueUrl = `https://github.com/${owner}/${repo}/issues/new?${params.toString()}`;\n",
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on OAuth authorize URLs built from encoded params (devlovers shape)", () => {
+    const findings = runScanRule(gitProviderUrlInjectionRisk, {
+      relativePath: "app/api/auth/github/route.ts",
+      content:
+        "const params = new URLSearchParams({ client_id: authEnv.github.clientId, state });\nreturn NextResponse.redirect(`https://github.com/login/oauth/authorize?${params.toString()}`);\n",
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("keeps flagging raw member reads off params in provider URL paths", () => {
+    const findings = runScanRule(gitProviderUrlInjectionRisk, {
+      relativePath: "src/server/repos.ts",
+      content:
+        "const apiUrl = `https://api.github.com/repos/${params.owner}/${params.repo}/contents`;\n",
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("stays silent in test-data directories (conductor diagramTests shape)", () => {
     const findings = runScanRule(gitProviderUrlInjectionRisk, {
       relativePath: "src/testData/diagramTests.js",

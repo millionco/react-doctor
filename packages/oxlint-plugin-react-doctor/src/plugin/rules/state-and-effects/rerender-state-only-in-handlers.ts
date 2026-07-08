@@ -1,8 +1,10 @@
-import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
+import { BUILTIN_HOOK_NAMES, EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getRootIdentifierName } from "../../utils/get-root-identifier-name.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
+import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -14,22 +16,57 @@ import { collectRenderReachableNames } from "./utils/collect-render-reachable-na
 import { expandTransitiveDependencies } from "./utils/expand-transitive-dependencies.js";
 import { collectFunctionLikeLocalNames } from "./utils/collect-function-like-local-names.js";
 import { isSetterCalledDuringRender } from "./utils/is-setter-called-during-render.js";
-import {
-  collectScopedReferenceNames,
-  createComponentBindingScope,
-} from "./utils/scope-aware-reference-names.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
-// Names listed in an EFFECT hook's dependency array. Only effect hooks
-// qualify — `useMemo`/`useCallback` deps merely control memoization/
-// identity, and reading `ref.current` inside those callbacks stays
-// correct, so they don't justify keeping the value in state.
-const collectDependencyArrayNames = (componentBody: EsTreeNode): Set<string> => {
-  const dependencyNames = new Set<string>();
+interface EffectDependencyInfo {
+  dependencyNames: Set<string>;
+  synchronouslyCalledFunctionNames: Set<string>;
+  payloadReadNames: Set<string>;
+  nestedCallbackCalledFunctionNames: Set<string>;
+}
+
+// A read whose enclosing expression is the TEST of a conditional — the
+// `currentPage < visibleRange.start` in `if (currentPage < visibleRange.start)`
+// — feeds control flow, not a value that leaves the effect. Member reads
+// inside a guard are still guard reads (lumina PDFThumbnails, delta audit).
+const isInsideConditionTest = (identifier: EsTreeNode, stopAt: EsTreeNode): boolean => {
+  let current: EsTreeNode | null | undefined = identifier;
+  let parent = current.parent;
+  while (parent && current !== stopAt) {
+    if (
+      (isNodeOfType(parent, "IfStatement") ||
+        isNodeOfType(parent, "ConditionalExpression") ||
+        isNodeOfType(parent, "WhileStatement") ||
+        isNodeOfType(parent, "DoWhileStatement")) &&
+      (parent as { test?: EsTreeNode }).test === current
+    ) {
+      return true;
+    }
+    current = parent;
+    parent = current.parent;
+  }
+  return false;
+};
+
+// One entry per effect hook call: the root names listed in its dependency
+// array, the functions its callback invokes SYNCHRONOUSLY (nested
+// callbacks like `.then(...)` or timers are excluded — a setter called there
+// is an async trigger for the next re-run, not a same-pass echo), the
+// names whose VALUE the callback actually consumes (member access or a call
+// argument outside guard tests), and the functions invoked from NESTED
+// callbacks (promise continuations, timers) — a setter called there
+// re-triggers the effect later, so the state drives an async loop.
+// A guard-only read (`if (closing && ...)`) is not a payload read.
+const collectEffectDependencyInfos = (
+  componentBody: EsTreeNode,
+  setterNames: ReadonlySet<string>,
+): EffectDependencyInfo[] => {
+  const effectInfos: EffectDependencyInfo[] = [];
   walkAst(componentBody, (child: EsTreeNode) => {
     if (!isNodeOfType(child, "CallExpression")) return;
     if (!isHookCall(child, EFFECT_HOOK_NAMES)) return;
+    const dependencyNames = new Set<string>();
     for (const argument of child.arguments ?? []) {
       if (!isNodeOfType(argument, "ArrayExpression")) continue;
       for (const element of argument.elements ?? []) {
@@ -38,86 +75,124 @@ const collectDependencyArrayNames = (componentBody: EsTreeNode): Set<string> => 
         if (rootName) dependencyNames.add(rootName);
       }
     }
-  });
-  return dependencyNames;
-};
-
-const isPureEarlyExitConsequent = (consequent: EsTreeNode): boolean => {
-  if (isNodeOfType(consequent, "ContinueStatement")) return true;
-  if (isNodeOfType(consequent, "ReturnStatement")) {
-    return (
-      !consequent.argument ||
-      (isNodeOfType(consequent.argument, "Literal") && consequent.argument.value === null)
-    );
-  }
-  if (isNodeOfType(consequent, "BlockStatement")) {
-    const statements = consequent.body ?? [];
-    return statements.length === 1 && isPureEarlyExitConsequent(statements[0] as EsTreeNode);
-  }
-  return false;
-};
-
-const collectEarlyExitGuardStatements = (
-  effectCallback: EsTreeNode,
-): EsTreeNodeOfType<"IfStatement">[] => {
-  const guardStatements: EsTreeNodeOfType<"IfStatement">[] = [];
-  walkAst(effectCallback, (child: EsTreeNode) => {
-    if (
-      isNodeOfType(child, "IfStatement") &&
-      !child.alternate &&
-      isPureEarlyExitConsequent(child.consequent as EsTreeNode)
-    ) {
-      guardStatements.push(child);
-    }
-  });
-  return guardStatements;
-};
-
-// Names whose VALUE is consumed inside an EFFECT hook's callback body (its
-// render-time arguments — the dependency array — are NOT included). Reads
-// that only gate an early exit (`if (!dirty) return;`) do not count: the
-// guard needs the re-run, not the content, so the dep stays a pure trigger
-// (the debounced-save shape). A name read anywhere else in the callback
-// (`getEmojiPickerData(emojiData, …)`) is a payload read. The guard tests
-// are detached while the scope-aware collector runs so payload reads and
-// guard reads resolve through the SAME binding scopes — a local that
-// shadows a state name can neither hide nor fake a read of the outer value.
-const collectEffectCallbackReadNames = (componentBody: EsTreeNode): Set<string> => {
-  const readNames = new Set<string>();
-  walkAst(componentBody, (child: EsTreeNode) => {
-    if (!isNodeOfType(child, "CallExpression")) return;
-    if (!isHookCall(child, EFFECT_HOOK_NAMES)) return;
+    const synchronouslyCalledFunctionNames = new Set<string>();
+    const payloadReadNames = new Set<string>();
+    const nestedCallbackCalledFunctionNames = new Set<string>();
     const effectCallback = child.arguments?.[0];
     if (
-      !isNodeOfType(effectCallback, "ArrowFunctionExpression") &&
-      !isNodeOfType(effectCallback, "FunctionExpression")
+      isNodeOfType(effectCallback, "ArrowFunctionExpression") ||
+      isNodeOfType(effectCallback, "FunctionExpression")
     ) {
-      return;
+      walkAst(effectCallback.body, (bodyNode: EsTreeNode): boolean | void => {
+        if (bodyNode !== effectCallback.body && isFunctionLike(bodyNode)) return false;
+        if (
+          isNodeOfType(bodyNode, "CallExpression") &&
+          isNodeOfType(bodyNode.callee, "Identifier")
+        ) {
+          synchronouslyCalledFunctionNames.add(bodyNode.callee.name);
+        }
+      });
+      walkAst(effectCallback.body, (bodyNode: EsTreeNode): void => {
+        if (!isNodeOfType(bodyNode, "CallExpression")) return;
+        if (!isNodeOfType(bodyNode.callee, "Identifier")) return;
+        let ancestor: EsTreeNode | null | undefined = bodyNode.parent;
+        while (ancestor && ancestor !== effectCallback.body) {
+          if (isFunctionLike(ancestor)) {
+            nestedCallbackCalledFunctionNames.add(bodyNode.callee.name);
+            return;
+          }
+          ancestor = ancestor.parent;
+        }
+      });
+      walkAst(effectCallback.body, (bodyNode: EsTreeNode): void => {
+        if (!isNodeOfType(bodyNode, "Identifier")) return;
+        const parent = bodyNode.parent;
+        if (!parent) return;
+        if (isNodeOfType(parent, "MemberExpression") && parent.object === bodyNode) {
+          if (isInsideConditionTest(bodyNode, effectCallback.body as EsTreeNode)) return;
+          payloadReadNames.add(bodyNode.name);
+          return;
+        }
+        if (
+          isNodeOfType(parent, "CallExpression") &&
+          (parent.arguments ?? []).some((argument) => argument === bodyNode)
+        ) {
+          // An argument of the state's own setter (`setX(x + 1)`) writes,
+          // it doesn't consume.
+          const calleeName = isNodeOfType(parent.callee, "Identifier") ? parent.callee.name : null;
+          if (calleeName !== null && setterNames.has(calleeName)) return;
+          payloadReadNames.add(bodyNode.name);
+        }
+      });
     }
-    const guardStatements = collectEarlyExitGuardStatements(effectCallback);
-    const detachedGuardTests = guardStatements.map((statement) => statement.test);
-    // HACK: the guard tests are detached in place (and reattached
-    // synchronously below) so the collector never sees them — walking
-    // them separately would need a second, drift-prone scope tracker.
-    for (const statement of guardStatements) {
-      (statement as unknown as { test: EsTreeNode | null }).test = null;
-    }
-    try {
-      for (const referenceName of collectScopedReferenceNames(
-        effectCallback,
-        createComponentBindingScope(),
-        new Set(),
-      )) {
-        readNames.add(referenceName);
-      }
-    } finally {
-      guardStatements.forEach((statement, index) => {
-        (statement as unknown as { test: EsTreeNode | null }).test =
-          detachedGuardTests[index] ?? null;
+    effectInfos.push({
+      dependencyNames,
+      synchronouslyCalledFunctionNames,
+      payloadReadNames,
+      nestedCallbackCalledFunctionNames,
+    });
+  });
+  return effectInfos;
+};
+
+// State handed to a CUSTOM hook call (`useKeyboardNav({ pendingFocus })`)
+// escapes into foreign reactive logic — the hook re-runs on every render
+// and reads the fresh value, so the state is consumed beyond handlers.
+// Builtin hooks are excluded: a `useState(other)` initializer reads once,
+// and memo/callback deps only matter if their result is render-reachable
+// (the dependency graph already models that).
+const collectCustomHookArgumentNames = (componentBody: EsTreeNode): Set<string> => {
+  const argumentNames = new Set<string>();
+  walkAst(componentBody, (child: EsTreeNode) => {
+    if (!isNodeOfType(child, "CallExpression")) return;
+    if (!isNodeOfType(child.callee, "Identifier")) return;
+    const calleeName = child.callee.name;
+    if (!isReactHookName(calleeName)) return;
+    if (BUILTIN_HOOK_NAMES.has(calleeName)) return;
+    if (EFFECT_HOOK_NAMES.has(calleeName)) return;
+    for (const argument of child.arguments ?? []) {
+      walkAst(argument as EsTreeNode, (argumentNode: EsTreeNode) => {
+        if (isNodeOfType(argumentNode, "Identifier")) argumentNames.add(argumentNode.name);
       });
     }
   });
-  return readNames;
+  return argumentNames;
+};
+
+const collectTopLevelVoidMarkedNames = (
+  componentBody: EsTreeNodeOfType<"BlockStatement">,
+): Set<string> => {
+  const voidMarkedNames = new Set<string>();
+  for (const statement of componentBody.body ?? []) {
+    if (!isNodeOfType(statement, "ExpressionStatement")) continue;
+    const expression = statement.expression;
+    if (!isNodeOfType(expression, "UnaryExpression") || expression.operator !== "void") continue;
+    if (isNodeOfType(expression.argument, "Identifier")) {
+      voidMarkedNames.add(expression.argument.name);
+    }
+  }
+  return voidMarkedNames;
+};
+
+// A render-phase call to anything but a hook (`buildSegments(now())`,
+// `computeAnchoredPanelStyle(anchorEl)`) can produce different output on
+// every render, so a forced re-render actually refreshes the screen.
+const hasRenderPhaseNonHookCall = (componentBody: EsTreeNode): boolean => {
+  let didFindRenderPhaseCall = false;
+  walkAst(componentBody, (child: EsTreeNode): boolean | void => {
+    if (didFindRenderPhaseCall) return false;
+    if (child !== componentBody && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const calleeName = isNodeOfType(child.callee, "Identifier")
+      ? child.callee.name
+      : isNodeOfType(child.callee, "MemberExpression") &&
+          isNodeOfType(child.callee.property, "Identifier")
+        ? child.callee.property.name
+        : null;
+    if (calleeName !== null && isReactHookName(calleeName)) return;
+    didFindRenderPhaseCall = true;
+  });
+  return didFindRenderPhaseCall;
 };
 
 export const rerenderStateOnlyInHandlers = defineRule({
@@ -143,35 +218,62 @@ export const rerenderStateOnlyInHandlers = defineRule({
         componentBody,
         eventHandlerReferenceNames,
       );
+      // A top-level `void someState;` is the deliberate "re-render to
+      // refresh render output" marker (WaterfallHUD's `void now` next to
+      // `buildSegments(performance.now())`) — but only when the render
+      // body computes something call-based that can change between
+      // renders. With static-only output the statement is just
+      // unused-variable hygiene and the state-triggered re-render really
+      // is wasted, so the marker must not suppress the diagnostic.
+      if (hasRenderPhaseNonHookCall(componentBody)) {
+        for (const voidMarkedName of collectTopLevelVoidMarkedNames(componentBody)) {
+          directRenderNames.add(voidMarkedName);
+        }
+      }
       const renderReachableNames = expandTransitiveDependencies(directRenderNames, dependencyGraph);
-      // An effect dep counts as a reason to keep the value in state only
-      // when it is a pure re-run TRIGGER: the effect never reads the value,
-      // so the dep's identity change is the whole point and a `useRef` swap
-      // would stop the re-run (`useEffect(() => scrollToHash(), [loaded])`).
-      // When the effect body READS the state, the dep entry is just
-      // exhaustive-deps hygiene for that read — it does not prove the value
-      // ever reaches the screen, and suppressing on it masks the canonical
-      // write-only-state-echoed-in-an-effect bug. Non-state dep names
-      // (derived render-phase locals like `offset` from `page * 10`) still
-      // suppress via the transitive expansion.
-      const stateValueNames = new Set(bindings.map((binding) => binding.valueName));
-      const effectCallbackReadNames = collectEffectCallbackReadNames(componentBody);
-      const effectTriggerNames = new Set<string>();
-      for (const dependencyName of collectDependencyArrayNames(componentBody)) {
-        const isStateReadByAnEffect =
-          stateValueNames.has(dependencyName) && effectCallbackReadNames.has(dependencyName);
-        if (!isStateReadByAnEffect) effectTriggerNames.add(dependencyName);
+      const setterNames = new Set(bindings.map((binding) => binding.setterName));
+      // A state name in an effect's dependency array marks the state as
+      // reactively consumed: the effect must re-run when it changes, and a
+      // `useRef` swap would silently stop those re-runs, so the re-render is
+      // load-bearing rather than wasted. The one shape that stays flagged is
+      // the self-echo loop — a dep-listing effect that reads the state only
+      // as a guard and calls its setter synchronously
+      // (`useEffect(() => { if (x) { fire(); setX(false); } }, [x])`): the
+      // state never leaves the effect as a value, so a ref (or no state at
+      // all) would work. An effect that consumes the PAYLOAD (member reads,
+      // call arguments) before clearing is a handoff, not an echo.
+      const effectInfos = collectEffectDependencyInfos(componentBody, setterNames);
+      const selfEchoValueNames = new Set<string>();
+      for (const binding of bindings) {
+        // A setter also invoked from a NESTED callback of the same effect
+        // (`.finally(() => setRunningQueueId(null))`, a retry timer) clears
+        // the slot later and re-triggers the effect — the state drives an
+        // async dequeue loop, so the re-render is load-bearing, not an echo
+        // (portos VideoGen, delta audit).
+        const hasGuardOnlySynchronousSelfWrite = effectInfos.some(
+          (effectInfo) =>
+            effectInfo.dependencyNames.has(binding.valueName) &&
+            effectInfo.synchronouslyCalledFunctionNames.has(binding.setterName) &&
+            !effectInfo.payloadReadNames.has(binding.valueName) &&
+            !effectInfo.nestedCallbackCalledFunctionNames.has(binding.setterName),
+        );
+        if (hasGuardOnlySynchronousSelfWrite) selfEchoValueNames.add(binding.valueName);
+      }
+      const effectConsumedNames = new Set<string>();
+      for (const effectInfo of effectInfos) {
+        for (const dependencyName of effectInfo.dependencyNames) {
+          if (!selfEchoValueNames.has(dependencyName)) effectConsumedNames.add(dependencyName);
+        }
+      }
+      for (const hookArgumentName of collectCustomHookArgumentNames(componentBody)) {
+        effectConsumedNames.add(hookArgumentName);
       }
       for (const reachableName of expandTransitiveDependencies(
-        effectTriggerNames,
+        effectConsumedNames,
         dependencyGraph,
       )) {
         renderReachableNames.add(reachableName);
       }
-
-      // One walk records which setters are called at all, replacing a full
-      // component-body walk per binding.
-      const setterNames = new Set(bindings.map((binding) => binding.setterName));
       const calledSetterNames = new Set<string>();
       walkAst(componentBody, (child: EsTreeNode) => {
         if (

@@ -3,6 +3,66 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { queryDestructureResult } from "./query-destructure-result.js";
 
 describe("tanstack-query/query-destructure-result — regressions", () => {
+  it("stays silent when the result is assigned and consumed field-by-field in render", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+function LoadConfigButton() {
+  const backupFileQuery = useQuery({ queryKey: ['backup-file'] });
+  if (backupFileQuery.error) return <ErrorBanner error={backupFileQuery.error} />;
+  return <pre>{JSON.stringify(backupFileQuery.data)}</pre>;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when a custom hook reads data/isLoading/error off the result object", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+export function useSkills(workspaceId) {
+  const query = useQuery({ queryKey: ['skills', workspaceId] });
+  return { skills: query.data ?? [], skillsIsLoading: query.isLoading, skillsError: query.error };
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent when a field read feeds a useEffect via a derived binding", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+function LoadDefaultConfig() {
+  const defaultConfigQuery = useQuery({ queryKey: ['default-connection'] });
+  const defaultConnectionConfigs = defaultConfigQuery.data;
+  useEffect(() => {
+    if (!defaultConnectionConfigs) return;
+    applyConfigs(defaultConnectionConfigs);
+  }, [defaultConnectionConfigs]);
+  return defaultConfigQuery.isLoading ? <Spinner /> : null;
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("stays silent for an infinite query consumed via property access", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useInfiniteQuery } from '@tanstack/react-query';
+function GroupChat() {
+  const history = useInfiniteQuery({ queryKey: ['messages'] });
+  return (
+    <List
+      pages={history.data?.pages}
+      hasMore={history.hasNextPage}
+      onLoadMore={() => history.fetchNextPage()}
+    />
+  );
+}`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
   it("stays silent when the whole query is returned from a custom hook", () => {
     const { diagnostics } = runRule(
       queryDestructureResult,
@@ -19,39 +79,15 @@ describe("tanstack-query/query-destructure-result — regressions", () => {
     expect(diagnostics).toHaveLength(0);
   });
 
-  it("still flags assigning the whole object then reading fields inline", () => {
-    const { diagnostics } = runRule(
-      queryDestructureResult,
-      `import { useQuery } from '@tanstack/react-query'; function C() { const query = useQuery({ queryKey: ['user'] }); return query.data; }`,
-    );
-    expect(diagnostics.length).toBeGreaterThan(0);
-  });
-
-  it("still flags when the binding only appears in a dependency array", () => {
+  it("stays silent when the binding appears in a dependency array", () => {
     const { diagnostics } = runRule(
       queryDestructureResult,
       `import { useQuery } from '@tanstack/react-query'; function C() { const query = useQuery({ queryKey: ['user'] }); useEffect(() => { console.log(query.data); }, [query]); return query.data; }`,
     );
-    expect(diagnostics.length).toBeGreaterThan(0);
-  });
-
-  it("stays silent when the query is destructured from the binding later", () => {
-    const { diagnostics } = runRule(
-      queryDestructureResult,
-      `import { useQuery } from '@tanstack/react-query'; function C() { const query = useQuery({ queryKey: ['user'] }); const { data } = query; return data; }`,
-    );
     expect(diagnostics).toHaveLength(0);
   });
 
-  it("stays silent when a custom hook returns the query in a tuple", () => {
-    const { diagnostics } = runRule(
-      queryDestructureResult,
-      `import { useQuery } from '@tanstack/react-query'; export function useUser(id) { const query = useQuery({ queryKey: ['user', id] }); return [query, id]; }`,
-    );
-    expect(diagnostics).toHaveLength(0);
-  });
-
-  it("still flags when console.log(query) merely mentions the binding", () => {
+  it("stays silent when console.log(query) mentions the binding", () => {
     const { diagnostics } = runRule(
       queryDestructureResult,
       `import { useQuery } from '@tanstack/react-query';
@@ -61,73 +97,120 @@ function C() {
   return query.data;
 }`,
     );
-    expect(diagnostics.length).toBeGreaterThan(0);
+    expect(diagnostics).toHaveLength(0);
   });
 
-  it("still flags when useDebugValue(query) merely mentions the binding", () => {
+  it("stays silent when the query is plainly destructured from the binding later", () => {
     const { diagnostics } = runRule(
       queryDestructureResult,
-      `import { useQuery } from '@tanstack/react-query';
-import { useDebugValue } from 'react';
-function C() {
-  const query = useQuery({ queryKey: ['user'] });
-  useDebugValue(query);
-  return query.data;
-}`,
+      `import { useQuery } from '@tanstack/react-query'; function C() { const query = useQuery({ queryKey: ['user'] }); const { data } = query; return data; }`,
     );
-    expect(diagnostics.length).toBeGreaterThan(0);
+    expect(diagnostics).toHaveLength(0);
   });
 
-  it("still flags when a shadowed unrelated binding is forwarded in a nested callback", () => {
+  it("stays silent when a custom hook returns { ...query } with an overridden field", () => {
     const { diagnostics } = runRule(
       queryDestructureResult,
       `import { useQuery } from '@tanstack/react-query';
-function C() {
-  const query = useQuery({ queryKey: ['user'] });
-  const onClick = () => {
-    const query = buildSearchQuery();
-    send(query);
+export function useMetadata(options) {
+  const query = useQuery({ queryKey: ['metadata'], ...options });
+  return {
+    ...query,
+    isLoading: query.isLoading || isLoadingSources,
   };
-  return <button onClick={onClick}>{query.data}</button>;
-}`,
-    );
-    expect(diagnostics.length).toBeGreaterThan(0);
-  });
-
-  it("stays silent when a custom hook conditionally returns one of two whole queries", () => {
-    const { diagnostics } = runRule(
-      queryDestructureResult,
-      `import { useQuery } from '@tanstack/react-query';
-export function useUser(id, preferCache) {
-  const remoteQuery = useQuery({ queryKey: ['user', id] });
-  const cachedQuery = useQuery({ queryKey: ['cached-user', id] });
-  return preferCache ? cachedQuery : remoteQuery;
 }`,
     );
     expect(diagnostics).toHaveLength(0);
   });
 
-  it("stays silent when a custom hook returns the query behind a logical fallback", () => {
+  it("stays silent when an arrow-body custom hook forwards { ...query }", () => {
     const { diagnostics } = runRule(
       queryDestructureResult,
       `import { useQuery } from '@tanstack/react-query';
-export function useUser(id, fallback) {
-  const query = useQuery({ queryKey: ['user', id] });
-  return query ?? fallback;
+export const usePatterns = (config) => {
+  const query = useQuery({ queryKey: ['patterns', config] });
+  return { ...query, patterns: query.data ?? [] };
+};`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("still flags { ...query } spread into a non-returned object inside a hook", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+export function useChartConfig() {
+  const query = useQuery({ queryKey: ['chart'] });
+  const snapshot = { ...query, label: 'chart' };
+  return snapshot.data;
+}`,
+    );
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it("still flags { ...query } returned from a plain component", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+function buildViewModel() {
+  const query = useQuery({ queryKey: ['rows'] });
+  return { ...query, label: 'rows' };
+}`,
+    );
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it("flags a JSX spread behind a TS assertion", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+function C() {
+  const query = useQuery({ queryKey: ['user'] });
+  return <Inner {...(query as UserQueryResult)} />;
+}`,
+    );
+    expect(diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a spread of a shadowed unrelated binding", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+function C() {
+  const query = useQuery({ queryKey: ['user'] });
+  const buildPayload = () => {
+    const query = buildSearchQuery();
+    return { ...query };
+  };
+  return <button onClick={buildPayload}>{query.data}</button>;
 }`,
     );
     expect(diagnostics).toHaveLength(0);
   });
 
-  it("stays silent when a custom hook returns the query behind a TS assertion", () => {
+  it("does not flag spreading an array unrelated to the query binding", () => {
     const { diagnostics } = runRule(
       queryDestructureResult,
       `import { useQuery } from '@tanstack/react-query';
-export function useUser(id) {
-  const query = useQuery({ queryKey: ['user', id] });
-  return query!;
+function C() {
+  const query = useQuery({ queryKey: ['user'] });
+  const items = [...(query.data ?? [])];
+  return items.length;
 }`,
     );
     expect(diagnostics).toHaveLength(0);
+  });
+
+  it("reports each enumerating reference of the same binding", () => {
+    const { diagnostics } = runRule(
+      queryDestructureResult,
+      `import { useQuery } from '@tanstack/react-query';
+function C() {
+  const query = useQuery({ queryKey: ['user'] });
+  const snapshot = { ...query };
+  return <Inner {...query} snapshot={snapshot} />;
+}`,
+    );
+    expect(diagnostics).toHaveLength(2);
   });
 });

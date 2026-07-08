@@ -340,6 +340,20 @@ const collectJsxAttributeReferenceNames = (
   if (!isNodeOfType(node, "JSXAttribute")) return new Set();
   const attributeName = isNodeOfType(node.name, "JSXIdentifier") ? node.name.name : null;
   if (!node.value) return new Set();
+  // `onContextMenu={hovered ? closeMenu : openMenu}` reads `hovered` during
+  // render to pick the handler — only the branches are handler-phase values.
+  if (
+    attributeName &&
+    isEventHandlerName(attributeName) &&
+    isNodeOfType(node.value, "JSXExpressionContainer") &&
+    isNodeOfType(node.value.expression, "ConditionalExpression")
+  ) {
+    return collectScopedReferenceNames(
+      node.value.expression.test,
+      scope,
+      eventHandlerReferenceNames,
+    );
+  }
   if (attributeName && isEventHandlerName(attributeName) && isIntrinsicJsxAttribute(node))
     return new Set();
   if (
@@ -361,6 +375,11 @@ export const collectScopedReferenceNames = (
   eventHandlerReferenceNames: Set<string>,
 ): Set<string> => {
   if (isNodeOfType(node, "Identifier")) return new Set([resolveBindingName(scope, node.name)]);
+  // `<Icon />` references the local `Icon` binding; lowercase tags are
+  // intrinsic elements, never local references.
+  if (isNodeOfType(node, "JSXIdentifier")) {
+    return /^[a-z]/.test(node.name) ? new Set() : new Set([resolveBindingName(scope, node.name)]);
+  }
   if (
     isNodeOfType(node, "FunctionDeclaration") ||
     isNodeOfType(node, "FunctionExpression") ||

@@ -4,13 +4,19 @@ import { containsDirectAwait } from "../../utils/contains-direct-await.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isInlineFunctionExpression } from "../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
-const findFirstAwaitOutsideNestedFunctions = (block: EsTreeNode): EsTreeNode | null => {
+const LOOP_STATEMENT_TYPES: ReadonlySet<string> = new Set(LOOP_TYPES);
+
+const findFirstAwaitOutsideNestedFunctions = (
+  block: EsTreeNode,
+  skipNestedLoops = false,
+): EsTreeNode | null => {
   let firstAwait: EsTreeNode | null = null;
   walkAst(block, (child: EsTreeNode): boolean | void => {
     if (firstAwait) return false;
@@ -21,6 +27,10 @@ const findFirstAwaitOutsideNestedFunctions = (block: EsTreeNode): EsTreeNode | n
       // the callback's body.)
       return false;
     }
+    // Nested loops are inspected as their own unit, with their own
+    // exemptions — attributing their awaits to the outer loop both
+    // double-reports and bypasses those exemptions.
+    if (skipNestedLoops && child !== block && LOOP_STATEMENT_TYPES.has(child.type)) return false;
     if (isNodeOfType(child, "AwaitExpression")) {
       firstAwait = child;
     }
@@ -36,26 +46,91 @@ const findFirstAwaitOutsideNestedFunctions = (block: EsTreeNode): EsTreeNode | n
 // operations where serialization is required for transactions, FK
 // constraints, mutation ordering, etc. The callee list is shared with
 // `INTENTIONAL_SEQUENCING_CALLEE_NAMES` so the two rules can't diverge.
+const isIntentionalSequencingCallee = (callee: EsTreeNode | null | undefined): boolean => {
+  if (isNodeOfType(callee, "Identifier")) {
+    return INTENTIONAL_SEQUENCING_CALLEE_NAMES.has(callee.name);
+  }
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    return INTENTIONAL_SEQUENCING_CALLEE_NAMES.has(callee.property.name);
+  }
+  return false;
+};
+
 const isAwaitingSleepLikeCall = (awaitNode: EsTreeNode): boolean => {
   if (!isNodeOfType(awaitNode, "AwaitExpression")) return false;
   const argument = awaitNode.argument;
   if (!argument) return false;
   if (!isNodeOfType(argument, "CallExpression")) return false;
-  if (
-    isNodeOfType(argument.callee, "Identifier") &&
-    INTENTIONAL_SEQUENCING_CALLEE_NAMES.has(argument.callee.name)
-  ) {
-    return true;
-  }
-  if (
-    isNodeOfType(argument.callee, "MemberExpression") &&
-    isNodeOfType(argument.callee.property, "Identifier") &&
-    INTENTIONAL_SEQUENCING_CALLEE_NAMES.has(argument.callee.property.name)
-  ) {
-    return true;
-  }
-  return false;
+  return isIntentionalSequencingCallee(argument.callee);
 };
+
+const PROMISE_CONCURRENCY_METHODS = new Set(["all", "allSettled", "race", "any"]);
+
+const isPromiseConcurrencyCall = (
+  node: EsTreeNode | null | undefined,
+): node is EsTreeNodeOfType<"CallExpression"> => {
+  if (!isNodeOfType(node, "CallExpression")) return false;
+  const callee = node.callee;
+  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
+  if (!isNodeOfType(callee.object, "Identifier") || callee.object.name !== "Promise") return false;
+  if (!isNodeOfType(callee.property, "Identifier")) return false;
+  return PROMISE_CONCURRENCY_METHODS.has(callee.property.name);
+};
+
+// `for (const chunk of chunks) { await Promise.all(chunk.map(...)); }` is
+// deliberate bounded concurrency (batching / rate limiting): the work
+// already runs in parallel within each batch, and the sequential batches
+// are the point. Awaiting a combinator is never the naive one-at-a-time
+// mistake this rule targets.
+const isAwaitingPromiseConcurrencyCall = (awaitNode: EsTreeNode): boolean => {
+  if (!isNodeOfType(awaitNode, "AwaitExpression")) return false;
+  return isPromiseConcurrencyCall(awaitNode.argument);
+};
+
+// `await new Promise((resolve) => setTimeout(resolve, delay))` — and the
+// event-wait variant that stashes `resolve` for an external caller — are
+// manual sleeps/waits, sequential by design just like a named `sleep()`.
+const isAwaitingManualPromiseWait = (awaitNode: EsTreeNode): boolean => {
+  if (!isNodeOfType(awaitNode, "AwaitExpression")) return false;
+  const argument = awaitNode.argument;
+  if (!isNodeOfType(argument, "NewExpression")) return false;
+  if (!isNodeOfType(argument.callee, "Identifier") || argument.callee.name !== "Promise") {
+    return false;
+  }
+  const executor = argument.arguments?.[0];
+  if (
+    isNodeOfType(executor, "Identifier") &&
+    INTENTIONAL_SEQUENCING_CALLEE_NAMES.has(executor.name)
+  ) {
+    return true;
+  }
+  if (!isInlineFunctionExpression(executor)) return false;
+  const resolveParam = executor.params?.[0];
+  const resolveParamName = isNodeOfType(resolveParam, "Identifier") ? resolveParam.name : null;
+  let isWaitLike = false;
+  walkAst(executor.body, (child: EsTreeNode): boolean | void => {
+    if (isWaitLike) return false;
+    if (isNodeOfType(child, "CallExpression") && isIntentionalSequencingCallee(child.callee)) {
+      isWaitLike = true;
+      return false;
+    }
+    if (
+      resolveParamName &&
+      isNodeOfType(child, "AssignmentExpression") &&
+      isNodeOfType(child.right, "Identifier") &&
+      child.right.name === resolveParamName
+    ) {
+      isWaitLike = true;
+      return false;
+    }
+  });
+  return isWaitLike;
+};
+
+const isIntentionallySequentialAwait = (awaitNode: EsTreeNode): boolean =>
+  isAwaitingSleepLikeCall(awaitNode) ||
+  isAwaitingPromiseConcurrencyCall(awaitNode) ||
+  isAwaitingManualPromiseWait(awaitNode);
 
 const collectPatternIdentifiers = (pattern: EsTreeNode, target: Set<string>): void => {
   if (isNodeOfType(pattern, "Identifier")) {
@@ -258,12 +333,35 @@ const isExitAwaitDependent = (
   block: EsTreeNode,
   awaitAssignedNames: ReadonlySet<string>,
 ): boolean => {
+  // `return dataUrl` / `return await op()` — an exit that carries an
+  // awaited value out of the loop is conditioned on the await by data flow.
+  if (
+    isNodeOfType(exitStatement, "ReturnStatement") &&
+    exitStatement.argument &&
+    isAwaitDependentTest(exitStatement.argument, awaitAssignedNames)
+  ) {
+    return true;
+  }
+  let isExitGuardedByAwaitIndependentCondition = false;
   let childOfAncestor: EsTreeNode = exitStatement;
   let ancestor: EsTreeNode | null | undefined = exitStatement;
   while (ancestor) {
+    if (isNodeOfType(ancestor, "IfStatement")) {
+      if (isAwaitDependentTest(ancestor.test, awaitAssignedNames)) return true;
+      isExitGuardedByAwaitIndependentCondition = true;
+    }
+    // `try { return await op(); } catch { … }` — the exit only happens when
+    // the awaited call succeeds, so this is a retry-until-success loop: the
+    // exit is conditioned on the await through exception control flow. A
+    // bare exit guarded by an await-INDEPENDENT condition inside the try
+    // (`if (cancelled) return;`) is a cancellation check, not a success
+    // exit, so it doesn't make the awaits order-dependent.
     if (
-      isNodeOfType(ancestor, "IfStatement") &&
-      isAwaitDependentTest(ancestor.test, awaitAssignedNames)
+      isNodeOfType(ancestor, "TryStatement") &&
+      ancestor.handler &&
+      childOfAncestor === ancestor.block &&
+      containsDirectAwait(ancestor.block) &&
+      !isExitGuardedByAwaitIndependentCondition
     ) {
       return true;
     }
@@ -319,6 +417,62 @@ const loopBodyHasAwaitDependentEarlyExit = (
   return hasAwaitDependentExit;
 };
 
+const getRootObjectIdentifierName = (node: EsTreeNode | null | undefined): string | null => {
+  let current: EsTreeNode | null | undefined = node;
+  while (isNodeOfType(current, "MemberExpression")) {
+    current = current.object;
+  }
+  return isNodeOfType(current, "Identifier") ? current.name : null;
+};
+
+const MUTATING_ARRAY_METHOD_NAMES = new Set([...ARRAY_MUTATION_METHOD_NAMES, "pop", "shift"]);
+
+const collectBodyWrittenBindingNames = (block: EsTreeNode): Set<string> => {
+  const writtenNames = new Set<string>();
+  walkAst(block, (child: EsTreeNode): boolean | void => {
+    if (child !== block && isFunctionLike(child)) return false;
+    if (isNodeOfType(child, "AssignmentExpression") && child.left) {
+      collectPatternIdentifiers(child.left, writtenNames);
+      const assignedRootName = getRootObjectIdentifierName(child.left);
+      if (assignedRootName) writtenNames.add(assignedRootName);
+      return;
+    }
+    if (!isNodeOfType(child, "CallExpression")) return;
+    const callee = child.callee;
+    if (
+      isNodeOfType(callee, "MemberExpression") &&
+      !callee.computed &&
+      isNodeOfType(callee.property, "Identifier") &&
+      MUTATING_ARRAY_METHOD_NAMES.has(callee.property.name)
+    ) {
+      const receiverRootName = getRootObjectIdentifierName(callee.object);
+      if (receiverRootName) writtenNames.add(receiverRootName);
+    }
+  });
+  return writtenNames;
+};
+
+// A `while`/`do-while` whose continuation condition reads state the body
+// writes (drain queues, pagination cursors, `while (!done)` stream pumps,
+// fetch-until-enough accumulators) is sequential BY CONSTRUCTION — the
+// next iteration cannot be decided before the current one finishes.
+const isLoopTestDependentOnBodyState = (
+  test: EsTreeNode | null | undefined,
+  body: EsTreeNode,
+): boolean => {
+  if (!test) return false;
+  const testReferencedNames = new Set<string>();
+  collectReferenceIdentifierNames(test, testReferencedNames);
+  if (testReferencedNames.size === 0) return false;
+  const writtenNames = collectBodyWrittenBindingNames(body);
+  const awaitAssignedNames = collectAwaitAssignedBindingNames(body);
+  addDerivedBindings(body, awaitAssignedNames);
+  for (const referencedName of testReferencedNames) {
+    if (writtenNames.has(referencedName) || awaitAssignedNames.has(referencedName)) return true;
+  }
+  return false;
+};
+
 const getLoopLabelName = (loopNode: EsTreeNode): string | null => {
   const parent = loopNode.parent;
   if (isNodeOfType(parent, "LabeledStatement") && isNodeOfType(parent.label, "Identifier")) {
@@ -327,18 +481,22 @@ const getLoopLabelName = (loopNode: EsTreeNode): string | null => {
   return null;
 };
 
-const loopBodyHasOnlySleepLikeAwaits = (block: EsTreeNode): boolean => {
-  let allAreSleepLike = true;
-  let foundAny = false;
+// One deliberate sequencing await in the body — a backoff sleep, a
+// `Promise.all` over a batch, a DB transaction step — marks the WHOLE loop
+// as intentionally paced: the author already chose sequential execution,
+// so parallelizing the remaining awaits would change semantics.
+const loopBodyHasIntentionallySequentialAwait = (block: EsTreeNode): boolean => {
+  let foundIntentional = false;
   walkAst(block, (child: EsTreeNode): boolean | void => {
+    if (foundIntentional) return false;
     if (isInlineFunctionExpression(child) || isNodeOfType(child, "FunctionDeclaration"))
       return false;
-    if (isNodeOfType(child, "AwaitExpression")) {
-      foundAny = true;
-      if (!isAwaitingSleepLikeCall(child)) allAreSleepLike = false;
+    if (isNodeOfType(child, "AwaitExpression") && isIntentionallySequentialAwait(child)) {
+      foundIntentional = true;
+      return false;
     }
   });
-  return foundAny && allAreSleepLike;
+  return foundIntentional;
 };
 
 const ITERATION_METHOD_NAMES_WITH_CALLBACK = new Set([
@@ -357,21 +515,139 @@ const ITERATION_METHOD_NAMES_WITH_CALLBACK = new Set([
 // HACK: `await Promise.all(items.map(async item => { await fetch(item); }))`
 // is the canonical PARALLEL-async pattern — not a bug. The async callbacks
 // produce an array of promises that `Promise.all` (and friends) await
-// concurrently. Don't flag `.map` (or `.flatMap`) when its result flows
-// directly into one of the concurrency combinators. We only recognise
-// direct member calls (`Promise.all(...)`) since that's how 99% of code
-// writes it; `Promise["all"](...)` etc. are rare enough to accept.
-const PROMISE_CONCURRENCY_METHODS = new Set(["all", "allSettled", "race", "any"]);
+// concurrently. The promise array may flow into the combinator through a
+// chained `.filter(...)`, an array literal / spread, or a local binding
+// that is combined later (`const jobs = items.map(async …); await
+// Promise.all(jobs)`), so follow those transparent hops before deciding.
+const CHAINED_ARRAY_METHOD_NAMES = new Set([
+  "filter",
+  "flat",
+  "slice",
+  "concat",
+  "reverse",
+  "sort",
+  "toReversed",
+  "toSorted",
+]);
+
+const resolvePromiseFlowNode = (mapCall: EsTreeNode): EsTreeNode => {
+  let current: EsTreeNode = mapCall;
+  while (true) {
+    current = findTransparentExpressionRoot(current);
+    const parent = current.parent;
+    if (!parent) return current;
+    if (isNodeOfType(parent, "SpreadElement") || isNodeOfType(parent, "ArrayExpression")) {
+      current = parent;
+      continue;
+    }
+    if (isNodeOfType(parent, "LogicalExpression")) {
+      current = parent;
+      continue;
+    }
+    if (isNodeOfType(parent, "ConditionalExpression") && parent.test !== current) {
+      current = parent;
+      continue;
+    }
+    if (isNodeOfType(parent, "MemberExpression") && parent.object === current) {
+      const grandParent = parent.parent;
+      if (
+        isNodeOfType(grandParent, "CallExpression") &&
+        grandParent.callee === parent &&
+        !parent.computed &&
+        isNodeOfType(parent.property, "Identifier") &&
+        CHAINED_ARRAY_METHOD_NAMES.has(parent.property.name)
+      ) {
+        current = grandParent;
+        continue;
+      }
+    }
+    return current;
+  }
+};
+
+const findEnclosingFunctionOrProgram = (node: EsTreeNode): EsTreeNode => {
+  let current: EsTreeNode = node;
+  while (current.parent && !isFunctionLike(current)) {
+    current = current.parent;
+  }
+  return current;
+};
+
+const isBindingCombinedWithPromiseConcurrency = (
+  bindingName: string,
+  scope: EsTreeNode,
+): boolean => {
+  let isCombined = false;
+  walkAst(scope, (child: EsTreeNode): boolean | void => {
+    if (isCombined) return false;
+    if (!isPromiseConcurrencyCall(child)) return;
+    const referencedNames = new Set<string>();
+    for (const combinatorArgument of child.arguments ?? []) {
+      collectReferenceIdentifierNames(combinatorArgument, referencedNames);
+    }
+    if (referencedNames.has(bindingName)) {
+      isCombined = true;
+      return false;
+    }
+  });
+  return isCombined;
+};
 
 const isWrappedInPromiseConcurrency = (mapCall: EsTreeNode): boolean => {
-  const parent = mapCall.parent;
-  if (!isNodeOfType(parent, "CallExpression")) return false;
-  if (parent.arguments?.[0] !== mapCall) return false;
-  const callee = parent.callee;
-  if (!isNodeOfType(callee, "MemberExpression") || callee.computed) return false;
-  if (!isNodeOfType(callee.object, "Identifier") || callee.object.name !== "Promise") return false;
-  if (!isNodeOfType(callee.property, "Identifier")) return false;
-  return PROMISE_CONCURRENCY_METHODS.has(callee.property.name);
+  const flowNode = resolvePromiseFlowNode(mapCall);
+  const parent = flowNode.parent;
+  if (
+    isNodeOfType(parent, "CallExpression") &&
+    isPromiseConcurrencyCall(parent) &&
+    (parent.arguments ?? []).some((argument) => argument === flowNode)
+  ) {
+    return true;
+  }
+  let bindingName: string | null = null;
+  if (
+    isNodeOfType(parent, "VariableDeclarator") &&
+    parent.init === flowNode &&
+    isNodeOfType(parent.id, "Identifier")
+  ) {
+    bindingName = parent.id.name;
+  } else if (
+    isNodeOfType(parent, "AssignmentExpression") &&
+    parent.right === flowNode &&
+    isNodeOfType(parent.left, "Identifier")
+  ) {
+    bindingName = parent.left.name;
+  }
+  if (!bindingName || !parent) return false;
+  return isBindingCombinedWithPromiseConcurrency(
+    bindingName,
+    findEnclosingFunctionOrProgram(parent),
+  );
+};
+
+// A sequential loop inside a `worker` function that is instantiated
+// several times into `Promise.all(Array.from({ length: N }, worker))` is
+// a bounded worker pool: each worker draining items one at a time IS the
+// concurrency-limit mechanism, not a missed parallelization.
+const isLoopInsideWorkerPoolFunction = (loopNode: EsTreeNode): boolean => {
+  const enclosingFunction = findEnclosingFunctionOrProgram(loopNode);
+  if (!isFunctionLike(enclosingFunction)) return false;
+  let functionBindingName: string | null = null;
+  if (
+    isNodeOfType(enclosingFunction, "FunctionDeclaration") &&
+    isNodeOfType(enclosingFunction.id, "Identifier")
+  ) {
+    functionBindingName = enclosingFunction.id.name;
+  } else if (
+    isNodeOfType(enclosingFunction.parent, "VariableDeclarator") &&
+    isNodeOfType(enclosingFunction.parent.id, "Identifier")
+  ) {
+    functionBindingName = enclosingFunction.parent.id.name;
+  }
+  if (!functionBindingName || !enclosingFunction.parent) return false;
+  return isBindingCombinedWithPromiseConcurrency(
+    functionBindingName,
+    findEnclosingFunctionOrProgram(enclosingFunction.parent),
+  );
 };
 
 export const asyncAwaitInLoop = defineRule({
@@ -393,10 +669,17 @@ export const asyncAwaitInLoop = defineRule({
     ): void => {
       const loopBody = loopNode.body;
       if (!loopBody) return;
-      if (loopBodyHasOnlySleepLikeAwaits(loopBody)) return;
+      if (loopBodyHasIntentionallySequentialAwait(loopBody)) return;
+      if (
+        (isNodeOfType(loopNode, "WhileStatement") || isNodeOfType(loopNode, "DoWhileStatement")) &&
+        isLoopTestDependentOnBodyState(loopNode.test, loopBody)
+      ) {
+        return;
+      }
       if (hasLoopCarriedDependency(loopBody)) return;
       if (loopBodyHasAwaitDependentEarlyExit(loopBody, getLoopLabelName(loopNode))) return;
-      const firstAwait = findFirstAwaitOutsideNestedFunctions(loopBody);
+      if (isLoopInsideWorkerPoolFunction(loopNode)) return;
+      const firstAwait = findFirstAwaitOutsideNestedFunctions(loopBody, true);
       if (firstAwait) {
         context.report({
           node: firstAwait,

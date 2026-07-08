@@ -23,6 +23,72 @@ const isAddEventListenerCall = (node: EsTreeNode): boolean => {
   return true;
 };
 
+// A setter fed only constants (`setVisible(false)`, `setTooltip(null)`)
+// repeats the same value on every event after the first, so React bails out
+// via Object.is and no per-event redraw happens — state only flips at
+// threshold crossings, not per scroll/move event.
+const isConstantOnlyArgument = (argument: EsTreeNode | undefined): boolean => {
+  if (!argument) return true;
+  if (isNodeOfType(argument, "Literal")) return true;
+  if (isNodeOfType(argument, "Identifier")) return argument.name === "undefined";
+  if (isNodeOfType(argument, "TemplateLiteral")) return (argument.expressions ?? []).length === 0;
+  if (isNodeOfType(argument, "UnaryExpression")) return isConstantOnlyArgument(argument.argument);
+  return false;
+};
+
+const nodeReadsRefCurrent = (node: EsTreeNode): boolean => {
+  let readsRef = false;
+  walkAst(node, (child: EsTreeNode) => {
+    if (readsRef) return;
+    if (
+      isNodeOfType(child, "MemberExpression") &&
+      isNodeOfType(child.property, "Identifier") &&
+      child.property.name === "current"
+    ) {
+      readsRef = true;
+    }
+  });
+  return readsRef;
+};
+
+const isFunctionLikeNode = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "ArrowFunctionExpression") ||
+  isNodeOfType(node, "FunctionExpression") ||
+  isNodeOfType(node, "FunctionDeclaration");
+
+const containsReturnStatement = (node: EsTreeNode): boolean => {
+  let hasReturn = false;
+  walkAst(node, (child: EsTreeNode) => {
+    if (hasReturn) return;
+    if (isFunctionLikeNode(child)) return false;
+    if (isNodeOfType(child, "ReturnStatement")) hasReturn = true;
+  });
+  return hasReturn;
+};
+
+// A handler that early-returns on a `.current` comparison already
+// deduplicates via a ref — the rule's own suggested fix — so the setter
+// only runs when the tracked value actually changes, not per event.
+const handlerDeduplicatesViaRef = (handler: EsTreeNode): boolean => {
+  const handlerBody = isNodeOfType(handler, "ArrowFunctionExpression")
+    ? handler.body
+    : isNodeOfType(handler, "FunctionExpression")
+      ? handler.body
+      : null;
+  if (!handlerBody) return false;
+  let hasRefGuardedReturn = false;
+  walkAst(handlerBody, (child: EsTreeNode) => {
+    if (hasRefGuardedReturn) return;
+    if (isFunctionLikeNode(child)) return false;
+    if (!isNodeOfType(child, "IfStatement")) return;
+    if (!child.test || !nodeReadsRefCurrent(child.test)) return;
+    if (child.consequent && containsReturnStatement(child.consequent)) {
+      hasRefGuardedReturn = true;
+    }
+  });
+  return hasRefGuardedReturn;
+};
+
 const handlerCallsSetState = (handler: EsTreeNode): EsTreeNode | null => {
   if (
     !isNodeOfType(handler, "ArrowFunctionExpression") &&
@@ -37,7 +103,8 @@ const handlerCallsSetState = (handler: EsTreeNode): EsTreeNode | null => {
       isNodeOfType(child, "CallExpression") &&
       isNodeOfType(child.callee, "Identifier") &&
       /^set[A-Z]/.test(child.callee.name) &&
-      isUseStateSetterInScope(child, child.callee.name)
+      isUseStateSetterInScope(child, child.callee.name) &&
+      !isConstantOnlyArgument(child.arguments?.[0])
     ) {
       setStateCall = child;
     }
@@ -72,6 +139,7 @@ export const rerenderTransitionsScroll = defineRule({
       if (!handler) return;
       const setStateCall = handlerCallsSetState(handler);
       if (!setStateCall) return;
+      if (handlerDeduplicatesViaRef(handler)) return;
 
       // Skip if the setState is already wrapped in startTransition.
       let cursor: EsTreeNode | null = setStateCall.parent ?? null;

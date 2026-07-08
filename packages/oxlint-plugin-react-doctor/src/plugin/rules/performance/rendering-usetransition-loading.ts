@@ -81,6 +81,16 @@ const ASYNC_DATA_CALLEE_NAMES: ReadonlySet<string> = new Set([
   "axios",
 ]);
 
+// Resource-load lifecycle JSX events (image/media/iframe/webview). A
+// loading flag cleared from `onLoad` / `onError` tracks a genuinely
+// asynchronous external load that `useTransition` cannot model.
+const RESOURCE_LOAD_EVENT_ATTRIBUTE_PATTERN =
+  /^on(?:Load|Error|Abort|Progress|CanPlay|Stalled|Suspend|Waiting|Ended)/;
+
+const JSX_EVENT_HANDLER_ATTRIBUTE_PATTERN = /^on[A-Z]/;
+
+const REDUX_DISPATCH_HOOK_PATTERN = /^use\w*Dispatch$/;
+
 // One pass over the component body computes every async-work signal the
 // caller ORs together, short-circuiting on the first hit:
 //   - `setterName` called inside an async-context function ("async" or an
@@ -128,6 +138,206 @@ const hasAsyncLoadingWork = (fnBody: EsTreeNode, setterName: string | null): boo
   return found;
 };
 
+const isHookDependencyArray = (arrayNode: EsTreeNode): boolean => {
+  const call = arrayNode.parent;
+  return Boolean(
+    call &&
+    isNodeOfType(call, "CallExpression") &&
+    isNodeOfType(call.callee, "Identifier") &&
+    /^use[A-Z]/.test(call.callee.name),
+  );
+};
+
+// The rule can only reason about the flag when every use of the setter is
+// visible in this component. When the setter itself escapes — returned
+// from a custom hook, passed as a prop or callback argument — the toggling
+// happens somewhere the rule can't see (usually around async work), so
+// recommending `useTransition` here is speculation.
+const setterEscapes = (
+  fnBody: EsTreeNode,
+  setterName: string,
+  declaratorNode: EsTreeNode,
+): boolean => {
+  let escapes = false;
+  walkAst(fnBody, (child: EsTreeNode) => {
+    if (escapes) return false;
+    if (!isNodeOfType(child, "Identifier") || child.name !== setterName) return;
+    let cursor: EsTreeNode | null | undefined = child.parent;
+    while (cursor && cursor !== fnBody) {
+      if (cursor === declaratorNode) return;
+      cursor = cursor.parent ?? null;
+    }
+    const parent = child.parent;
+    if (parent && isNodeOfType(parent, "CallExpression") && parent.callee === child) return;
+    if (parent && isNodeOfType(parent, "ArrayExpression") && isHookDependencyArray(parent)) return;
+    escapes = true;
+    return false;
+  });
+  return escapes;
+};
+
+const enclosingJsxAttributeName = (node: EsTreeNode, boundary: EsTreeNode): string | null => {
+  let cursor: EsTreeNode | null | undefined = node.parent;
+  while (cursor && cursor !== boundary) {
+    if (isNodeOfType(cursor, "JSXAttribute") && isNodeOfType(cursor.name, "JSXIdentifier")) {
+      return cursor.name.name;
+    }
+    cursor = cursor.parent ?? null;
+  }
+  return null;
+};
+
+const collectSetterCalls = (fnBody: EsTreeNode, setterName: string): EsTreeNode[] => {
+  const calls: EsTreeNode[] = [];
+  walkAst(fnBody, (child: EsTreeNode) => {
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      child.callee.name === setterName
+    ) {
+      calls.push(child);
+    }
+  });
+  return calls;
+};
+
+// `onClick={() => setIsLoading(true)}` where the flip IS the whole
+// handler: the flag is a manually driven UI toggle (demo pages, controlled
+// child props). There's no accompanying update to wrap in a transition,
+// so `useTransition` has nothing to offer.
+const isBareInlineJsxHandlerCall = (call: EsTreeNode, boundary: EsTreeNode): boolean => {
+  const arrow = call.parent;
+  if (!arrow || !isNodeOfType(arrow, "ArrowFunctionExpression") || arrow.body !== call) {
+    return false;
+  }
+  const container = arrow.parent;
+  if (!container || !isNodeOfType(container, "JSXExpressionContainer")) return false;
+  const attributeName = enclosingJsxAttributeName(call, boundary);
+  return attributeName !== null && JSX_EVENT_HANDLER_ATTRIBUTE_PATTERN.test(attributeName);
+};
+
+// Names of functions in the component body that do async work themselves
+// (declared `async` or awaiting), plus redux-style dispatchers obtained
+// from `useDispatch()` / `useAppDispatch()`. A sync helper that toggles
+// the flag and then calls one of these is wrapping async work.
+const collectAsyncSignalNames = (fnBody: EsTreeNode): Set<string> => {
+  const names = new Set<string>();
+  walkAst(fnBody, (child: EsTreeNode) => {
+    if (isNodeOfType(child, "FunctionDeclaration")) {
+      if (Boolean(child.async) && child.id && isNodeOfType(child.id, "Identifier")) {
+        names.add(child.id.name);
+      }
+      return;
+    }
+    if (!isNodeOfType(child, "VariableDeclarator") || !isNodeOfType(child.id, "Identifier")) {
+      return;
+    }
+    const init = child.init;
+    if (!init) return;
+    if (isFunctionLike(init) && Boolean((init as { async?: boolean }).async)) {
+      names.add(child.id.name);
+      return;
+    }
+    if (
+      isNodeOfType(init, "CallExpression") &&
+      isNodeOfType(init.callee, "Identifier") &&
+      REDUX_DISPATCH_HOOK_PATTERN.test(init.callee.name)
+    ) {
+      names.add(child.id.name);
+    }
+  });
+  return names;
+};
+
+const callsAnyIdentifier = (root: EsTreeNode | null, names: ReadonlySet<string>): boolean => {
+  if (!root || names.size === 0) return false;
+  let found = false;
+  walkAst(root, (child: EsTreeNode) => {
+    if (found) return false;
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      names.has(child.callee.name)
+    ) {
+      found = true;
+    }
+  });
+  return found;
+};
+
+const setterCalledAlongsideAsyncSignal = (fnBody: EsTreeNode, setterName: string): boolean => {
+  const asyncSignalNames = collectAsyncSignalNames(fnBody);
+  if (asyncSignalNames.size === 0) return false;
+  let found = false;
+  walkAst(fnBody, (child: EsTreeNode) => {
+    if (found) return false;
+    if (!isFunctionLike(child)) return;
+    const functionBody = (child as { body: EsTreeNode | null }).body;
+    if (
+      callsIdentifier(functionBody, setterName) &&
+      callsAnyIdentifier(functionBody, asyncSignalNames)
+    ) {
+      found = true;
+      return false;
+    }
+  });
+  return found;
+};
+
+// Flags toggled from `addEventListener` handlers track loading driven by
+// an external event source (webview navigation, media elements, sockets)
+// — asynchronous by nature, not a transition candidate.
+const setterCalledInEventListenerHandler = (fnBody: EsTreeNode, setterName: string): boolean => {
+  const handlerNames = new Set<string>();
+  let foundInline = false;
+  walkAst(fnBody, (child: EsTreeNode) => {
+    if (foundInline) return false;
+    if (
+      !isNodeOfType(child, "CallExpression") ||
+      !isNodeOfType(child.callee, "MemberExpression") ||
+      !isNodeOfType(child.callee.property, "Identifier") ||
+      child.callee.property.name !== "addEventListener"
+    ) {
+      return;
+    }
+    const handler = child.arguments?.[1];
+    if (!handler) return;
+    if (isFunctionLike(handler)) {
+      if (callsIdentifier(handler.body, setterName)) foundInline = true;
+      return;
+    }
+    if (isNodeOfType(handler, "Identifier")) handlerNames.add(handler.name);
+  });
+  if (foundInline) return true;
+  if (handlerNames.size === 0) return false;
+  let foundNamed = false;
+  walkAst(fnBody, (child: EsTreeNode) => {
+    if (foundNamed) return false;
+    if (
+      isNodeOfType(child, "VariableDeclarator") &&
+      isNodeOfType(child.id, "Identifier") &&
+      handlerNames.has(child.id.name) &&
+      child.init &&
+      isFunctionLike(child.init) &&
+      callsIdentifier(child.init.body, setterName)
+    ) {
+      foundNamed = true;
+      return false;
+    }
+    if (
+      isNodeOfType(child, "FunctionDeclaration") &&
+      child.id &&
+      isNodeOfType(child.id, "Identifier") &&
+      handlerNames.has(child.id.name) &&
+      callsIdentifier(child.body, setterName)
+    ) {
+      foundNamed = true;
+      return false;
+    }
+  });
+  return foundNamed;
+};
+
 export const renderingUsetransitionLoading = defineRule({
   id: "rendering-usetransition-loading",
   title: "Loading useState forces extra render",
@@ -159,6 +369,28 @@ export const renderingUsetransitionLoading = defineRule({
       // async-data hook / global in the component body.
       const fnBody = enclosingFunctionBody(node as EsTreeNode);
       if (fnBody && hasAsyncLoadingWork(fnBody, setterName)) return;
+
+      if (fnBody && setterName) {
+        if (setterEscapes(fnBody, setterName, node as EsTreeNode)) return;
+        if (setterCalledAlongsideAsyncSignal(fnBody, setterName)) return;
+        if (setterCalledInEventListenerHandler(fnBody, setterName)) return;
+
+        const setterCalls = collectSetterCalls(fnBody, setterName);
+        if (setterCalls.length > 0) {
+          const hasResourceLoadEventCall = setterCalls.some((call) => {
+            const attributeName = enclosingJsxAttributeName(call, fnBody);
+            return (
+              attributeName !== null && RESOURCE_LOAD_EVENT_ATTRIBUTE_PATTERN.test(attributeName)
+            );
+          });
+          if (hasResourceLoadEventCall) return;
+
+          const allBareInlineJsxHandlerCalls = setterCalls.every((call) =>
+            isBareInlineJsxHandlerCall(call, fnBody),
+          );
+          if (allBareInlineJsxHandlerCalls) return;
+        }
+      }
 
       context.report({
         node: node.init,

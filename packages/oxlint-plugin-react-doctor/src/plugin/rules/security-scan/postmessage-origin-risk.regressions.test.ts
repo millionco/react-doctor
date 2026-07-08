@@ -114,6 +114,41 @@ describe("security-scan/postmessage-origin-risk — regressions", () => {
     expect(findings).toHaveLength(0);
   });
 
+  // Docs-validation FP wave: a receiver whose short name says nothing
+  // (`es`, `g`) is still a same-application channel when the file constructs
+  // it from EventSource/Worker/etc.
+  it("stays silent on short-named EventSource receivers (PortOS useSseProgress shape)", () => {
+    const findings = runScanRule(postmessageOriginRisk, {
+      relativePath: "src/hooks/use-sse-progress.js",
+      content: `const es = new EventSource(url);\nes.onmessage = (evt) => {\n  const data = JSON.parse(evt.data);\n  setFrames((prev) => [...prev, data]);\n};\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on short-named Worker receivers (prism inline-worker shape)", () => {
+    const findings = runScanRule(postmessageOriginRisk, {
+      relativePath: "src/lib/highlight-runtime.js",
+      content: `let g = new Worker(n.filename);\ng.onmessage = function (e) {\n  u.highlightedCode = e.data;\n};\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("stays silent on the _self worker-global polyfill handler (prism shape)", () => {
+    const findings = runScanRule(postmessageOriginRisk, {
+      relativePath: "src/lib/prism-runtime.js",
+      content: `_self.addEventListener(\n  "message",\n  function (e) {\n    const t = JSON.parse(e.data);\n    run(t.language, t.code);\n  },\n  false,\n);\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("still flags short-named receivers not constructed from a channel", () => {
+    const findings = runScanRule(postmessageOriginRisk, {
+      relativePath: "src/popup/bridge.ts",
+      content: `const w = window.open(popupUrl);\nw.onmessage = (event) => {\n  applyAuthResult(event.data);\n};\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("stays silent when event.data is bound to a local before the origin guard returns", () => {
     const findings = runScanRule(postmessageOriginRisk, {
       relativePath: "src/widget.ts",

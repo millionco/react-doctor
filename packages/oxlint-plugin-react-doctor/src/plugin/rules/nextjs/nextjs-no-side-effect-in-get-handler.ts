@@ -16,6 +16,14 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { walkAst } from "../../utils/walk-ast.js";
 
+// OAuth redirect callbacks and email-token verification links are the flows
+// where a server-state write on GET is inherent: the provider redirect or the
+// mail client's link IS a GET, so the handler cannot move to POST. The doc's
+// own guidance keeps these GET (single-use token, idempotent write) instead of
+// flagging them; prefetch/forged requests cannot complete the token exchange.
+const TOKEN_EXCHANGE_ROUTE_PATTERN =
+  /\/(?:callback|verify(?:-email)?|confirm(?:-email)?|magic-link)(?:\/|$)/i;
+
 const extractMutatingRouteSegment = (rawFilename: string): string | null => {
   const segments = rawFilename.replaceAll("\\", "/").split("/");
   for (const segment of segments) {
@@ -238,7 +246,9 @@ export const nextjsNoSideEffectInGetHandler = defineRule({
         resolveBinding = buildProgramBindingLookup(node);
         const filename = normalizeFilename(context.filename ?? "");
         isRouteHandlerFile =
-          ROUTE_HANDLER_FILE_PATTERN.test(filename) && !CRON_ROUTE_PATTERN.test(filename);
+          ROUTE_HANDLER_FILE_PATTERN.test(filename) &&
+          !CRON_ROUTE_PATTERN.test(filename) &&
+          !TOKEN_EXCHANGE_ROUTE_PATTERN.test(filename);
         mutatingSegment = isRouteHandlerFile ? extractMutatingRouteSegment(filename) : null;
       },
       ExportNamedDeclaration(node: EsTreeNodeOfType<"ExportNamedDeclaration">) {

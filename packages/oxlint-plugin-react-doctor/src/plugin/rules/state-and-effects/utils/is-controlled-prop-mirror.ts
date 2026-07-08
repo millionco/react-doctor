@@ -95,7 +95,10 @@ const referencesIdentifierNamed = (root: EsTreeNode, identifierName: string): bo
   return isReferenced;
 };
 
-const isSetterWiredToJsxHandler = (componentFunction: EsTreeNode, setterName: string): boolean => {
+export const isSetterWiredToJsxHandler = (
+  componentFunction: EsTreeNode,
+  setterName: string,
+): boolean => {
   let isWired = false;
   walkAst(componentFunction, (child: EsTreeNode): boolean | void => {
     if (isWired) return false;

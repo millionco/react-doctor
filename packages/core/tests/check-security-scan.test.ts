@@ -1535,7 +1535,7 @@ alter table data enable row level security;
   it("still reports timing-unsafe signature comparisons", () => {
     writeFile(
       "src/webhook-crypto.ts",
-      `if (signature !== expectedSignature) throw new Error("bad");`,
+      `import { createHmac } from "node:crypto";\nconst expectedSignature = createHmac("sha256", secret).update(body).digest("hex");\nif (signature !== expectedSignature) throw new Error("bad");`,
     );
 
     expect(rulesOf(checkSecurityScan(temporaryRoot))).toContain("insecure-crypto-risk");

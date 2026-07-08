@@ -72,7 +72,9 @@ describe("runOxlint", () => {
       const projectDir = setupReactProject(tempRoot, "barrel-index-module", {
         files: {
           "src/components/Button.tsx": "export const Button = () => null;\n",
-          "src/components/index.ts": "export { Button } from './Button';\n",
+          "src/components/Card.tsx": "export const Card = () => null;\n",
+          "src/components/index.ts":
+            "export { Button } from './Button';\nexport { Card } from './Card';\n",
           "src/import-directory.tsx": "import { Button } from './components';\nvoid Button;\n",
           "src/import-explicit-index.tsx":
             "import { Button } from './components/index';\nvoid Button;\n",
@@ -103,8 +105,9 @@ describe("runOxlint", () => {
           "src/components/Button.tsx": "export default function Button() { return null; }\n",
           "src/components/Input.tsx": "export const Input = () => null;\n",
           "src/components/parts.ts": "export const Root = () => null;\n",
+          "src/components/Badge.tsx": "export const Badge = () => null;\n",
           "src/components/index.ts":
-            "export { default as Button } from './Button';\nexport { Input as TextInput } from './Input';\nexport * as ButtonParts from './parts';\n",
+            "export { default as Button } from './Button';\nexport { Input as TextInput } from './Input';\nexport * as ButtonParts from './parts';\nexport { Badge } from './Badge';\n",
           "src/import-directory.tsx":
             "import { Button, TextInput, ButtonParts } from './components';\nvoid Button;\nvoid TextInput;\nvoid ButtonParts;\n",
         },
@@ -118,8 +121,25 @@ describe("runOxlint", () => {
       expect(hits[0]?.message).toContain('"./components/parts"');
     });
 
-    it("flags single-source star barrels and nested barrels", async () => {
+    it("flags star barrels and resolves guidance through nested barrels", async () => {
       const projectDir = setupReactProject(tempRoot, "star-and-nested-barrel-index-module", {
+        files: {
+          "src/components/button/Button.tsx": "export const Button = () => null;\n",
+          "src/components/button/index.ts": "export * from './Button';\n",
+          "src/components/Input.tsx": "export const Input = () => null;\n",
+          "src/components/index.ts": "export * from './button';\nexport * from './Input';\n",
+          "src/import-directory.tsx": "import { Button } from './components';\nvoid Button;\n",
+        },
+      });
+
+      const hits = await collectRuleHits(projectDir, "no-barrel-import");
+
+      expect(hits).toHaveLength(1);
+      expect(hits[0]?.message).toContain('"./components/button/Button"');
+    });
+
+    it("does not flag single-source pure re-export barrels", async () => {
+      const projectDir = setupReactProject(tempRoot, "single-source-barrel-index-module", {
         files: {
           "src/components/button/Button.tsx": "export const Button = () => null;\n",
           "src/components/button/index.ts": "export * from './Button';\n",
@@ -130,8 +150,7 @@ describe("runOxlint", () => {
 
       const hits = await collectRuleHits(projectDir, "no-barrel-import");
 
-      expect(hits).toHaveLength(1);
-      expect(hits[0]?.message).toContain('"./components/button/Button"');
+      expect(hits).toEqual([]);
     });
 
     it("resolves direct guidance through multi-source star barrels when names are unambiguous", async () => {
@@ -175,7 +194,9 @@ describe("runOxlint", () => {
       const projectDir = setupReactProject(tempRoot, "commented-barrel-index-module", {
         files: {
           "src/components/Button.tsx": "export const Button = () => null;\n",
-          "src/components/index.ts": "export { Button } from './Button'; // UI component\n",
+          "src/components/Card.tsx": "export const Card = () => null;\n",
+          "src/components/index.ts":
+            "export { Button } from './Button'; // UI component\nexport { Card } from './Card'; // UI component\n",
           "src/import-directory.tsx": "import { Button } from './components';\nvoid Button;\n",
         },
       });
@@ -196,7 +217,7 @@ describe("runOxlint", () => {
           "src/components/index.ts":
             "import { Button } from './Button';\nimport DefaultButton, * as Icons from './icons';\n\nexport { Button, DefaultButton, Icons };\n",
           "src/import-directory.tsx":
-            "import { Button, DefaultButton, Icons } from './components';\nvoid Button;\nvoid DefaultButton;\nvoid Icons;\n",
+            "import { Button, DefaultButton } from './components';\nvoid Button;\nvoid DefaultButton;\n",
         },
       });
 
@@ -250,7 +271,9 @@ describe("runOxlint", () => {
       const projectDir = setupReactProject(tempRoot, "package-entry-barrel-index-module", {
         files: {
           "src/components/Button.tsx": "export const Button = () => null;\n",
-          "src/components/index.ts": "export { Button } from './Button';\n",
+          "src/components/Card.tsx": "export const Card = () => null;\n",
+          "src/components/index.ts":
+            "export { Button } from './Button';\nexport { Card } from './Card';\n",
           "src/components/package.json": JSON.stringify({ exports: "./index.ts" }),
           "src/import-directory.tsx": "import { Button } from './components';\nvoid Button;\n",
         },
@@ -266,7 +289,9 @@ describe("runOxlint", () => {
       const projectDir = setupReactProject(tempRoot, "package-conditional-entry-barrel", {
         files: {
           "src/components/Button.tsx": "export const Button = () => null;\n",
-          "src/components/entry/index.ts": "export { Button } from '../Button';\n",
+          "src/components/Card.tsx": "export const Card = () => null;\n",
+          "src/components/entry/index.ts":
+            "export { Button } from '../Button';\nexport { Card } from '../Card';\n",
           "src/components/package.json": JSON.stringify({
             exports: {
               import: {
@@ -288,7 +313,9 @@ describe("runOxlint", () => {
       const projectDir = setupReactProject(tempRoot, "package-export-array-barrel", {
         files: {
           "src/components/Button.tsx": "export const Button = () => null;\n",
-          "src/components/entry/index.ts": "export { Button } from '../Button';\n",
+          "src/components/Card.tsx": "export const Card = () => null;\n",
+          "src/components/entry/index.ts":
+            "export { Button } from '../Button';\nexport { Card } from '../Card';\n",
           "src/components/package.json": JSON.stringify({
             exports: [
               {

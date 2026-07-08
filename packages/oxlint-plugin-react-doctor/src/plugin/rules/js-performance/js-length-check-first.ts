@@ -40,6 +40,10 @@ const LENGTH_EQUALITY_OPERATORS: ReadonlySet<string> = new Set(["===", "=="]);
 // guard (partial-input validation) proves the author already thought about
 // diverging lengths, so the "check length first" advice is noise there.
 const LENGTH_MISMATCH_OPERATORS: ReadonlySet<string> = new Set(["!==", "!=", ">", "<", ">=", "<="]);
+const LENGTH_ANY_COMPARISON_OPERATORS: ReadonlySet<string> = new Set([
+  ...LENGTH_EQUALITY_OPERATORS,
+  ...LENGTH_MISMATCH_OPERATORS,
+]);
 
 // `<a>.length <op> <b>.length` (in either operand order) comparing the
 // two arrays under test, for the given operator set.
@@ -68,13 +72,6 @@ const isLengthComparison = (
     areExpressionsStructurallyEqual(rightLengthObject, normalizedReceiver);
   return matchesReceiverThenIndexed || matchesIndexedThenReceiver;
 };
-
-const isMatchingLengthEqualityGuard = (
-  guardOperand: EsTreeNode,
-  receiverArray: EsTreeNode,
-  indexedArray: EsTreeNode,
-): boolean =>
-  isLengthComparison(guardOperand, receiverArray, indexedArray, LENGTH_EQUALITY_OPERATORS);
 
 // A statement that ends the current control-flow path (so a guarded
 // `if (mismatch) return/throw` makes the comparison below unreachable on
@@ -196,6 +193,168 @@ const hasDominatingLengthGuard = (
   return false;
 };
 
+// `mismatch || !a.every(…)` is the De Morgan twin of
+// `match && a.every(…)`: falling into the every() operand means the
+// earlier length operand was already falsy, so lengths were handled.
+const collectEarlierOrOperands = (node: EsTreeNode): EsTreeNode[] => {
+  const earlierOperands: EsTreeNode[] = [];
+  let currentNode: EsTreeNode = node;
+  let parentNode: EsTreeNode | null = currentNode.parent ?? null;
+  while (parentNode) {
+    if (isNodeOfType(parentNode, "LogicalExpression")) {
+      if (parentNode.operator === "||" && parentNode.right === currentNode) {
+        earlierOperands.push(...flattenLogicalOrChain(parentNode.left));
+      }
+      currentNode = parentNode;
+      parentNode = currentNode.parent ?? null;
+      continue;
+    }
+    if (
+      isNodeOfType(parentNode, "ChainExpression") ||
+      (isNodeOfType(parentNode, "UnaryExpression") && parentNode.operator === "!")
+    ) {
+      currentNode = parentNode;
+      parentNode = currentNode.parent ?? null;
+      continue;
+    }
+    break;
+  }
+  return earlierOperands;
+};
+
+const LENGTH_PRESERVING_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "slice",
+  "map",
+  "sort",
+  "reverse",
+  "toSorted",
+  "toReversed",
+]);
+
+// Peels wrappers that keep the element count intact: `[...x]`,
+// `x.slice()`, `x.slice(0)`, `x.map(fn)`, `x.sort(…)`, `x.reverse()`,
+// `x.toSorted(…)`, `x.toReversed()`, `Array.from(x)`.
+const peelLengthPreservingDerivation = (expression: EsTreeNode): EsTreeNode => {
+  let current = unwrapChainExpression(expression);
+  for (;;) {
+    if (
+      isNodeOfType(current, "ArrayExpression") &&
+      current.elements?.length === 1 &&
+      isNodeOfType(current.elements[0], "SpreadElement")
+    ) {
+      current = unwrapChainExpression(current.elements[0].argument);
+      continue;
+    }
+    if (isNodeOfType(current, "CallExpression")) {
+      const callee = unwrapChainExpression(current.callee);
+      if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+        const calleeObject = unwrapChainExpression(callee.object);
+        if (
+          isNodeOfType(calleeObject, "Identifier") &&
+          calleeObject.name === "Array" &&
+          callee.property.name === "from" &&
+          current.arguments?.length === 1
+        ) {
+          current = unwrapChainExpression(current.arguments[0]);
+          continue;
+        }
+        if (LENGTH_PRESERVING_METHOD_NAMES.has(callee.property.name)) {
+          const isBoundedSlice =
+            callee.property.name === "slice" && (current.arguments ?? []).length > 0;
+          if (!isBoundedSlice) {
+            current = calleeObject;
+            continue;
+          }
+        }
+      }
+    }
+    return current;
+  }
+};
+
+const findConstInitializer = (identifierName: string, fromNode: EsTreeNode): EsTreeNode | null => {
+  let child: EsTreeNode = fromNode;
+  let ancestor: EsTreeNode | null | undefined = fromNode.parent;
+  while (ancestor) {
+    if (isFunctionLike(ancestor)) {
+      const parameterNames = new Set<string>();
+      for (const parameter of ancestor.params ?? []) {
+        collectPatternNames(parameter, parameterNames);
+      }
+      if (parameterNames.has(identifierName)) return null;
+    }
+    if (isNodeOfType(ancestor, "BlockStatement") || isNodeOfType(ancestor, "Program")) {
+      const statements: EsTreeNode[] = ancestor.body ?? [];
+      const childIndex = statements.indexOf(child);
+      const searchEnd = childIndex === -1 ? statements.length : childIndex;
+      for (let index = 0; index < searchEnd; index += 1) {
+        const statement = statements[index];
+        if (!isNodeOfType(statement, "VariableDeclaration") || statement.kind !== "const") continue;
+        for (const declarator of statement.declarations ?? []) {
+          if (
+            isNodeOfType(declarator, "VariableDeclarator") &&
+            isNodeOfType(declarator.id, "Identifier") &&
+            declarator.id.name === identifierName &&
+            declarator.init
+          ) {
+            return declarator.init as EsTreeNode;
+          }
+        }
+      }
+    }
+    child = ancestor;
+    ancestor = ancestor.parent ?? null;
+  }
+  return null;
+};
+
+// `const sortedA = [...a].sort()` compared element-wise is really a
+// comparison of `a` — guards on the source array cover the copy because
+// the derivation preserves length.
+const resolveComparedArraySource = (expression: EsTreeNode, scopeNode: EsTreeNode): EsTreeNode => {
+  let current = peelLengthPreservingDerivation(expression);
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (!isNodeOfType(current, "Identifier")) return current;
+    const initializer = findConstInitializer(current.name, scopeNode);
+    if (!initializer) return current;
+    const peeledInitializer = peelLengthPreservingDerivation(initializer);
+    if (peeledInitializer === unwrapChainExpression(initializer)) return current;
+    current = peeledInitializer;
+  }
+  return current;
+};
+
+const PREFIX_INTENT_NAME_PATTERN = /prefix|startswith/i;
+
+// `const isPrefix = (chain, other) => chain.every((id, i) => other[i] === id)`
+// compares a prefix on purpose — the doc's sole false-positive carve-out.
+const isInsidePrefixNamedFunction = (node: EsTreeNode): boolean => {
+  let ancestor: EsTreeNode | null | undefined = node.parent;
+  while (ancestor) {
+    if (isFunctionLike(ancestor)) {
+      if (
+        isNodeOfType(ancestor, "FunctionDeclaration") &&
+        isNodeOfType(ancestor.id, "Identifier") &&
+        PREFIX_INTENT_NAME_PATTERN.test(ancestor.id.name)
+      ) {
+        return true;
+      }
+      const holder = ancestor.parent;
+      if (
+        holder &&
+        isNodeOfType(holder, "VariableDeclarator") &&
+        isNodeOfType(holder.id, "Identifier") &&
+        PREFIX_INTENT_NAME_PATTERN.test(holder.id.name)
+      ) {
+        return true;
+      }
+      return false;
+    }
+    ancestor = ancestor.parent ?? null;
+  }
+  return false;
+};
+
 // HACK: when comparing two arrays element-by-element via .every / .some /
 // .reduce against another array, a length mismatch is the cheapest possible
 // shortcut. e.g. `a.length === b.length && a.every((x, i) => x === b[i])`
@@ -226,12 +385,51 @@ export const jsLengthCheckFirst = defineRule({
       if (!indexedArrayObject) return;
 
       const receiverArrayObject = node.callee.object;
-      const earlierGuardOperands = collectEarlierAndGuardOperands(node);
-      const isAlreadyLengthGuarded = earlierGuardOperands.some((guardOperand) =>
-        isMatchingLengthEqualityGuard(guardOperand, receiverArrayObject, indexedArrayObject),
+      const resolvedReceiverSource = resolveComparedArraySource(receiverArrayObject, node);
+      const resolvedIndexedSource = resolveComparedArraySource(indexedArrayObject, node);
+
+      // Same array on both sides (directly or via a length-preserving
+      // derivation like `.map()`): lengths are equal by construction, a
+      // length precheck would be dead code.
+      if (areExpressionsStructurallyEqual(resolvedReceiverSource, resolvedIndexedSource)) return;
+
+      const comparedArrayPairs: [EsTreeNode, EsTreeNode][] = [
+        [receiverArrayObject, indexedArrayObject],
+        [resolvedReceiverSource, resolvedIndexedSource],
+      ];
+
+      const earlierAndGuardOperands = collectEarlierAndGuardOperands(node);
+      // Any length comparison in the guard counts: equality gates the loop,
+      // a relational check (`node.length >= ancestor.length && …`) is a
+      // deliberate prefix comparison — the doc's false-positive carve-out.
+      const isAlreadyLengthGuarded = earlierAndGuardOperands.some((guardOperand) =>
+        comparedArrayPairs.some(([receiverSide, indexedSide]) =>
+          isLengthComparison(
+            guardOperand,
+            receiverSide,
+            indexedSide,
+            LENGTH_ANY_COMPARISON_OPERATORS,
+          ),
+        ),
       );
       if (isAlreadyLengthGuarded) return;
-      if (hasDominatingLengthGuard(node, receiverArrayObject, indexedArrayObject)) return;
+
+      const earlierOrGuardOperands = collectEarlierOrOperands(node);
+      const isMismatchGuardedByOrChain = earlierOrGuardOperands.some((guardOperand) =>
+        comparedArrayPairs.some(([receiverSide, indexedSide]) =>
+          isLengthComparison(guardOperand, receiverSide, indexedSide, LENGTH_MISMATCH_OPERATORS),
+        ),
+      );
+      if (isMismatchGuardedByOrChain) return;
+
+      if (
+        comparedArrayPairs.some(([receiverSide, indexedSide]) =>
+          hasDominatingLengthGuard(node, receiverSide, indexedSide),
+        )
+      ) {
+        return;
+      }
+      if (isInsidePrefixNamedFunction(node)) return;
 
       context.report({
         node,

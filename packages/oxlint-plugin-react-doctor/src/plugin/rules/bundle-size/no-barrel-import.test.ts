@@ -22,8 +22,12 @@ describe("no-barrel-import", () => {
       "export const Button = () => null;\n",
     );
     fs.writeFileSync(
+      path.join(componentsDirectory, "Card.tsx"),
+      "export const Card = () => null;\n",
+    );
+    fs.writeFileSync(
       path.join(componentsDirectory, "index.ts"),
-      "export { Button } from './Button';\n",
+      "export { Button } from './Button';\nexport { Card } from './Card';\n",
     );
     entryFilename = path.join(temporaryDirectory, "src", "App.tsx");
   });

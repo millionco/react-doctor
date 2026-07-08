@@ -36,9 +36,15 @@ export const queryNoQueryInEffect = defineRule({
           return false;
         if (!isNodeOfType(child, "CallExpression")) return;
 
-        const calleeName = isNodeOfType(child.callee, "Identifier") ? child.callee.name : null;
+        const callee = child.callee;
+        const isRefetchCall =
+          (isNodeOfType(callee, "Identifier") && callee.name === "refetch") ||
+          (isNodeOfType(callee, "MemberExpression") &&
+            !callee.computed &&
+            isNodeOfType(callee.property, "Identifier") &&
+            callee.property.name === "refetch");
 
-        if (calleeName === "refetch") {
+        if (isRefetchCall) {
           context.report({
             node: child,
             message:

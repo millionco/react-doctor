@@ -15,12 +15,16 @@ export const jsEarlyExit = defineRule({
   create: (context: RuleContext) => ({
     IfStatement(node: EsTreeNodeOfType<"IfStatement">) {
       if (!isNodeOfType(node.consequent, "BlockStatement") || !node.consequent.body) return;
+      // An `else` branch is a two-way fork: a guard clause cannot flatten
+      // it, so it never counts toward the single-branch chain.
+      if (node.alternate) return;
 
       let nestingDepth = 0;
       let currentBlock: EsTreeNode = node.consequent;
       while (isNodeOfType(currentBlock, "BlockStatement") && currentBlock.body?.length === 1) {
         const innerStatement: EsTreeNode = currentBlock.body[0];
         if (!isNodeOfType(innerStatement, "IfStatement")) break;
+        if (innerStatement.alternate) break;
         nestingDepth++;
         currentBlock = innerStatement.consequent;
       }

@@ -1,103 +1,67 @@
 import { TANSTACK_QUERY_HOOKS } from "../../constants/tanstack.js";
+import { componentOrHookDisplayNameForFunction } from "../../utils/component-or-hook-display-name.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { isTanstackQuerySource } from "../../utils/is-tanstack-query-source.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
-// Wrappers that are transparent for "is this expression what the function
-// returns": `return preferCache ? cachedQuery : remoteQuery`,
-// `return query ?? fallback`, `return query as UseQueryResult`, `query!`.
-const RETURNED_EXPRESSION_WRAPPER_TYPES = new Set<string>([
-  "ConditionalExpression",
-  "LogicalExpression",
-  "ParenthesizedExpression",
-  "TSAsExpression",
-  "TSSatisfiesExpression",
-  "TSNonNullExpression",
-]);
-
-const findReturnedExpressionRoot = (identifier: EsTreeNode): EsTreeNode => {
-  let current = identifier;
-  while (current.parent && RETURNED_EXPRESSION_WRAPPER_TYPES.has(current.parent.type)) {
-    current = current.parent;
-  }
-  return current;
+// TanStack Query result objects track field access through property getters,
+// so `query.data` subscribes to exactly `data` — identical to destructuring.
+// The only consumptions that genuinely subscribe to every field are the ones
+// that ENUMERATE the object: spreading it into an object literal or JSX
+// attributes, or rest-destructuring it through a later binding. Everything
+// else (field reads, forwarding, dependency arrays) is field-tracked or
+// tracked at the eventual read site, and must stay silent.
+// `return { ...query, isLoading: ... }` inside a custom hook forwards the
+// whole result object as the hook's own return value: the spread happens once
+// per hook render, and which fields are SUBSCRIBED to is still decided at the
+// consumer's read site. Destructuring here cannot reduce re-renders, so this
+// forwarding spread must stay silent.
+const isHookReturnForwardingSpread = (objectExpression: EsTreeNode): boolean => {
+  const objectParent = objectExpression.parent;
+  const enclosingFunction = findEnclosingFunction(objectExpression);
+  if (!enclosingFunction) return false;
+  const isReturnedFromEnclosingFunction =
+    isNodeOfType(objectParent, "ReturnStatement") ||
+    (isNodeOfType(enclosingFunction, "ArrowFunctionExpression") &&
+      enclosingFunction.body === objectExpression);
+  if (!isReturnedFromEnclosingFunction) return false;
+  const enclosingName = componentOrHookDisplayNameForFunction(enclosingFunction);
+  return Boolean(enclosingName && isReactHookName(enclosingName));
 };
 
-// A reference position that actually hands the whole object onward:
-// returned from a custom hook (incl. an arrow's implicit return, a returned
-// tuple/object literal, and a conditional/logical/TS-wrapped return), wired
-// into JSX, spread, or re-bound (`const q = query` / `const { data } = query`).
-// A mere mention — an effect dependency array `[query]`, a diagnostic
-// `console.log(query)` / `useDebugValue(query)` call argument — is NOT
-// forwarding, so it must not silence the rule for a component that reads
-// `query.data` field-by-field in render.
-const isForwardingReference = (identifier: EsTreeNode): boolean => {
-  const parent = identifier.parent;
-  if (isNodeOfType(parent, "SpreadElement") || isNodeOfType(parent, "JSXSpreadAttribute")) {
-    return true;
+const classifyEveryFieldRead = (identifier: EsTreeNode): "spread" | "rest-destructuring" | null => {
+  const expressionRoot = findTransparentExpressionRoot(identifier);
+  const parent = expressionRoot.parent;
+  if (isNodeOfType(parent, "JSXSpreadAttribute")) return "spread";
+  if (isNodeOfType(parent, "SpreadElement") && isNodeOfType(parent.parent, "ObjectExpression")) {
+    return isHookReturnForwardingSpread(parent.parent) ? null : "spread";
   }
-  if (isNodeOfType(parent, "JSXExpressionContainer")) return true;
-  if (isNodeOfType(parent, "Property") && parent.value === identifier) return true;
-  if (isNodeOfType(parent, "VariableDeclarator") && parent.init === identifier) return true;
-
-  const returnedRoot = findReturnedExpressionRoot(identifier);
-  const returnedParent = returnedRoot.parent;
-  if (isNodeOfType(returnedParent, "ReturnStatement")) return true;
   if (
-    isNodeOfType(returnedParent, "ArrowFunctionExpression") &&
-    returnedParent.body === returnedRoot
+    isNodeOfType(parent, "VariableDeclarator") &&
+    parent.init === expressionRoot &&
+    isNodeOfType(parent.id, "ObjectPattern") &&
+    parent.id.properties.some((property) => isNodeOfType(property, "RestElement"))
   ) {
-    return true;
+    return "rest-destructuring";
   }
-  if (isNodeOfType(returnedParent, "ArrayExpression")) {
-    const grandparent = returnedParent.parent;
-    if (isNodeOfType(grandparent, "ReturnStatement")) return true;
-    if (
-      isNodeOfType(grandparent, "ArrowFunctionExpression") &&
-      grandparent.body === returnedParent
-    ) {
-      return true;
-    }
-  }
-  return false;
-};
-
-// True when the whole-query binding is FORWARDED rather than consumed
-// field-by-field in this scope: returned from a custom hook, passed as a JSX
-// attribute, spread, or re-bound. Those are the documented wrap-a-query
-// patterns — TanStack's tracked-properties optimization keys off which fields
-// are accessed during render, so forwarding the object does not "subscribe to
-// every field." References are resolved through scope analysis, so a shadowed
-// unrelated binding of the same name never counts. A reference that is the
-// object of a member access (`query.data`) is a field read and keeps the
-// binding flag-eligible.
-const isForwardedBinding = (bindingIdentifier: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  const bindingSymbol = scopes.symbolFor(bindingIdentifier);
-  if (!bindingSymbol) return false;
-  return bindingSymbol.references.some((reference) => {
-    const referenceIdentifier = reference.identifier;
-    if (referenceIdentifier === bindingIdentifier) return false;
-    const parent = referenceIdentifier.parent;
-    if (isNodeOfType(parent, "MemberExpression") && parent.object === referenceIdentifier) {
-      return false;
-    }
-    return isForwardingReference(referenceIdentifier);
-  });
+  return null;
 };
 
 export const queryDestructureResult = defineRule({
   id: "query-destructure-result",
-  title: "Whole query result subscribes to every field",
+  title: "Spreading a whole query result subscribes to every field",
   tags: ["test-noise"],
   requires: ["tanstack-query"],
-  severity: "error",
+  severity: "warn",
   recommendation:
-    "Destructure only the fields you need, like `const { data, isLoading } = useQuery(...)`. Assigning the whole object bypasses TanStack Query's tracked-property optimization and subscribes to every field.",
+    "TanStack Query only subscribes to the fields you actually read, so `query.data` is as targeted as destructuring. Spreading or rest-destructuring the whole result reads every field and re-renders on each change; pick out only the fields you need.",
   create: (context: RuleContext) => ({
     VariableDeclarator(node: EsTreeNodeOfType<"VariableDeclarator">) {
       if (!isNodeOfType(node.id, "Identifier")) return;
@@ -111,22 +75,30 @@ export const queryDestructureResult = defineRule({
 
       // Only flag when the hook actually comes from TanStack Query. A hook of
       // the same name imported from another library (e.g. `convex/react`) does
-      // not return a tracked result object, so destructuring it would be wrong.
-      // `null` (no import in this file — a global, an auto-import, or a call
-      // before its declaration) still fires, preserving prior behavior. A
-      // `useQuery` re-exported through a LOCAL module reports that module as its
-      // source and is intentionally skipped: a per-file rule can't follow the
-      // re-export chain, and firing on an unverified local source would
-      // re-introduce the Convex false positive this gate exists to prevent.
+      // not return a tracked result object. `null` (no import in this file —
+      // a global, an auto-import, or a call before its declaration) still
+      // fires, preserving prior behavior. A `useQuery` re-exported through a
+      // LOCAL module reports that module as its source and is intentionally
+      // skipped: a per-file rule can't follow the re-export chain.
       const importSource = getImportSourceForName(node, calleeName);
       if (importSource !== null && !isTanstackQuerySource(importSource)) return;
 
-      if (isForwardedBinding(node.id, context.scopes)) return;
+      const bindingSymbol = context.scopes.symbolFor(node.id);
+      if (!bindingSymbol) return;
 
-      context.report({
-        node: node.id,
-        message: `Destructure ${calleeName}() results instead of assigning the whole query object, so TanStack Query only subscribes to the fields you use.`,
-      });
+      for (const reference of bindingSymbol.references) {
+        const referenceIdentifier = reference.identifier;
+        if (referenceIdentifier === node.id) continue;
+        const everyFieldRead = classifyEveryFieldRead(referenceIdentifier);
+        if (!everyFieldRead) continue;
+        context.report({
+          node: referenceIdentifier,
+          message:
+            everyFieldRead === "spread"
+              ? `Spreading the whole ${calleeName}() result reads every field, so TanStack Query subscribes to all of them and re-renders on each change. Spread only the fields you need.`
+              : `Rest-destructuring the ${calleeName}() result reads every field, so TanStack Query subscribes to all of them and re-renders on each change.`,
+        });
+      }
     },
   }),
 });

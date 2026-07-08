@@ -23,6 +23,16 @@ export const nextjsNoNativeScript = defineRule({
         : null;
       if (typeof typeValue === "string" && !EXECUTABLE_SCRIPT_TYPES.has(typeValue)) return;
 
+      // Inline scripts (dangerouslySetInnerHTML, no src) are render-blocking
+      // by design — theme/env bootstraps must run before first paint, and
+      // next/script cannot guarantee pre-paint execution. Only external
+      // scripts have a loading strategy to miss.
+      const hasSrcAttribute = Boolean(findJsxAttribute(node.attributes ?? [], "src"));
+      const hasInlineHtml = Boolean(
+        findJsxAttribute(node.attributes ?? [], "dangerouslySetInnerHTML"),
+      );
+      if (hasInlineHtml && !hasSrcAttribute) return;
+
       context.report({
         node,
         message: "Plain <script> has no Next.js loading strategy, so it can block rendering.",

@@ -1,9 +1,12 @@
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 
 // Direct-callee names that produce a fresh value every call. The
@@ -104,9 +107,29 @@ const variableLabelForUpdateArgument = (argument: EsTreeNode | null | undefined)
   return "counter";
 };
 
+// A counter declared inside a function re-initializes on every call, so
+// `let key = 0; … <X key={key++} />` inside a render function (or a
+// per-render helper) yields the SAME deterministic 0..n sequence each
+// render — index-key semantics, not a changing key. Only a counter that
+// survives across renders (module scope) actually changes the key every
+// render. Unresolved names abstain: precision over recall.
+const isModuleScopedBinding = (identifier: EsTreeNodeOfType<"Identifier">): boolean => {
+  const binding = findVariableInitializer(identifier, identifier.name);
+  if (!binding) return false;
+  if (isNodeOfType(binding.scopeOwner, "Program")) return true;
+  if (isNodeOfType(binding.scopeOwner, "BlockStatement")) {
+    return findEnclosingFunction(binding.scopeOwner) === null;
+  }
+  return false;
+};
+
 const looksLikeFreshUpdateExpression = (expression: EsTreeNode): string | null => {
   const stripped = stripParenExpression(expression);
   if (isNodeOfType(stripped, "UpdateExpression")) {
+    const argument = stripped.argument ? stripParenExpression(stripped.argument) : null;
+    if (argument && isNodeOfType(argument, "Identifier") && !isModuleScopedBinding(argument)) {
+      return null;
+    }
     const label = variableLabelForUpdateArgument(stripped.argument);
     return stripped.prefix ? `${stripped.operator}${label}` : `${label}${stripped.operator}`;
   }
@@ -114,9 +137,31 @@ const looksLikeFreshUpdateExpression = (expression: EsTreeNode): string | null =
     isNodeOfType(stripped, "AssignmentExpression") &&
     (stripped.operator === "+=" || stripped.operator === "-=")
   ) {
+    const target = stripParenExpression(stripped.left);
+    if (isNodeOfType(target, "Identifier") && !isModuleScopedBinding(target)) {
+      return null;
+    }
     return `${stripped.operator} side-effect`;
   }
   return null;
+};
+
+// A fresh call anywhere in the key expression (`key={String(Math.random())}`,
+// `key={item.id || nanoid()}`) makes the computed key fresh too. Never
+// descends into nested functions: a callback stored in the key expression
+// isn't evaluated during key computation.
+const findFreshCallInSubtree = (root: EsTreeNode): string | null => {
+  let foundDescription: string | null = null;
+  walkAst(root, (child: EsTreeNode): boolean | void => {
+    if (foundDescription) return false;
+    if (child !== root && isFunctionLike(child)) return false;
+    const description = isAlwaysFreshExpression(child);
+    if (description) {
+      foundDescription = description;
+      return false;
+    }
+  });
+  return foundDescription;
 };
 
 // Flags `<X key={Math.random()} />`, `<X key={Date.now()} />`,
@@ -144,6 +189,10 @@ const looksLikeFreshUpdateExpression = (expression: EsTreeNode): string | null =
 //   - Doesn't model arbitrary user-defined factories. Adding a generic
 //     "looks like an id generator" name list would over-report on
 //     things like `getKey(item.id)` which is fine.
+//   - Counter keys (`key={key++}`) only flag when the counter is
+//     module-scoped: a counter declared inside a function resets on
+//     every call, so its key sequence is deterministic per render —
+//     index-key semantics, not a changing key.
 export const noRandomKey = defineRule({
   id: "no-random-key",
   title: "Random value used as a key",
@@ -162,7 +211,7 @@ export const noRandomKey = defineRule({
       if (inner.type === "JSXEmptyExpression") return;
 
       const freshDescription =
-        isAlwaysFreshExpression(inner) ?? looksLikeFreshUpdateExpression(inner);
+        findFreshCallInSubtree(inner) ?? looksLikeFreshUpdateExpression(inner);
       if (!freshDescription) return;
 
       context.report({

@@ -150,4 +150,206 @@ describe("js-performance/async-await-in-loop — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  it("stays silent on a batched-concurrency loop awaiting Promise.all per chunk", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function f(updates) { for (let i = 0; i < updates.length; i += 10) { const batch = updates.slice(i, i + 10); await Promise.all(batch.map((update) => apply(update))); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a loop paced by an inline setTimeout promise", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function f(items) { for (const item of items) { await send(item); await new Promise((resolve) => setTimeout(resolve, 100)); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a wait that stashes resolve for an external caller", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function f(queue) { let resolveNext = null; while (true) { const item = queue[0]; if (item) { await handle(item); } await new Promise((resolve) => { resolveNext = resolve; }); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a retry loop that returns from inside try/catch", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function retry(callback, maxRetries) { let lastError; for (let attempt = 0; attempt <= maxRetries; attempt++) { try { return await callback(); } catch (error) { lastError = error; } } throw lastError; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags per-item try/catch that only logs and never exits", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function f(files) { for (const file of files) { try { await upload(file); } catch (error) { report(error); } } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // Delta-verify recall regression (bulwarkmail email-composer): a bare
+  // `if (cancelled) return;` inside a per-item try/catch is a cancellation
+  // check, not a retry-until-success exit — the independent per-attachment
+  // fetches must still be flagged.
+  it("still flags independent per-item fetches whose try block only exits on a cancellation flag", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function hydrate(inlineAtts, composerClient, updates) {
+        let cancelled = false;
+        for (const att of inlineAtts) {
+          if (!att.cid) continue;
+          try {
+            const buffer = await composerClient.fetchBlobArrayBuffer(att.blobId);
+            if (cancelled) return;
+            const blob = new Blob([buffer]);
+            const dataUrl = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.onerror = () => reject(reader.error);
+              reader.readAsDataURL(blob);
+            });
+            if (cancelled) return;
+            updates.set(att.cid, dataUrl);
+          } catch (err) { report(err); }
+        }
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent on a first-success search whose guarded return carries the awaited value", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function firstMirror(urls) { for (const url of urls) { try { const response = await fetch(url); if (response.ok) return response; } catch (error) { log(error); } } return null; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a guarded bare return whose exit carries an awaited value later", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function pick(ids) { for (const id of ids) { try { const item = await load(id); if (!item) continue; return item; } catch (error) { log(error); } } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a stream pump whose while-test reads body-assigned state", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function pipe(reader, writer) { let done = false; while (!done) { const status = await reader.read(); if (!status.done) { await writer.write(status.value); } done = status.done; } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a queue drain whose while-test reads the drained queue", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function drain(queue) { while (queue.length > 0) { const job = queue.shift(); await run(job); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a counter-style while loop over independent items", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function f(urls) { let i = 0; while (i < urls.length) { await fetch(urls[i]); i++; } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on .map(async).filter(...) collected by Promise.all through a binding", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function f(rowOrders) { const rowPromises = rowOrders.map(async (row) => { const doc = await createRow(row.id); return doc; }).filter(Boolean); return Promise.all(rowPromises); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on .flatMap(async) assigned then awaited with Promise.all later", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function f(groups) { const previews = groups.flatMap(async (group) => { const html = await render(group); return html; }); const rendered = await Promise.all(previews); return rendered; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on .map(async) spread into a Promise.race array", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function f(windows) { return Promise.race([...windows.map(async (win) => { const value = await query(win); return value; })]); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on an optional-chained .map(async) wrapped in Promise.all", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function f(state, sdk) { await Promise.all(state?.order?.line_items.map(async (lineItem) => { await sdk.line_items.delete(lineItem.id); })); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on .map(async) behind a nullish fallback inside Promise.all", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function f(theme) { const secondary = await Promise.all(theme.secondaryThemePaths?.map(async (path) => (await load(path)).default) ?? []); return secondary; }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a bounded worker-pool loop fanned out through Promise.all", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function loadAll(rows, ensureRow) { let cursor = 0; const worker = async () => { while (true) { const idx = cursor++; if (idx >= rows.length) return; await ensureRow(rows[idx].id); } }; await Promise.all(Array.from({ length: 4 }, worker)); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not attribute a nested loop's awaits to the enclosing loop", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function f(files) { for (const file of files) { let hasMoreItems = true; while (hasMoreItems) { const page = await fetchPage(file); hasMoreItems = page.hasMore; } } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an outer loop with its own direct awaits beside a nested loop", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `async function f(files) { for (const file of files) { for (const chunk of file.chunks) { validate(chunk); } await upload(file); } }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags .map(async) whose promises are never collected", () => {
+    const result = runRule(
+      asyncAwaitInLoop,
+      `function f(items) { items.map(async (item) => { await save(item); }); }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

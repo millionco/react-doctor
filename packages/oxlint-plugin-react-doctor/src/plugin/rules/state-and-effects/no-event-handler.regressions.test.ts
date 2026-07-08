@@ -493,7 +493,11 @@ describe("no-event-handler — must-detect regressions", () => {
 });
 
 describe("no-event-handler — regressions", () => {
-  it("fires on a mount effect syncing storage into state (digitalocean sea-notes Theme)", () => {
+  // Flipped by the 67k-diagnostic verification run: a `[]`-deps effect whose
+  // tested state is only ever set by the mount effect itself is one-time
+  // initialization (no-initialize-state territory), not a faked event
+  // handler. Handler-set state tested under `[]` deps still fires.
+  it("stays silent on a []-deps mount effect syncing storage into state (digitalocean sea-notes Theme)", () => {
     const result = runRule(
       noEventHandler,
       `function MaterialThemeProvider({ children }) {
@@ -511,7 +515,7 @@ describe("no-event-handler — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("fires on a true positive despite an incidental window read in the effect", () => {
@@ -680,5 +684,426 @@ describe("no-event-handler — regressions", () => {
       forceJsx: true,
     });
     expect(productionResult.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent when the guard reads state from an opaque custom hook (cloudscape useFilterProps)", () => {
+    const result = runRule(
+      noEventHandler,
+      `export default function useFilterProps(series, controlledVisibleSeries, controlledOnVisibleChange) {
+        const [visibleSeries = [], setVisibleSeriesState] = useControllable(
+          controlledVisibleSeries,
+          controlledOnVisibleChange,
+          series,
+          { componentName: 'AreaChart', controlledProp: 'visibleSeries', changeHandler: 'onFilterChange' },
+        );
+        const setVisibleSeries = useCallback((selectedSeries) => {
+          setVisibleSeriesState(selectedSeries);
+          fireNonCancelableEvent(controlledOnVisibleChange, { visibleSeries: selectedSeries });
+        }, [controlledOnVisibleChange, setVisibleSeriesState]);
+        useEffect(() => {
+          const newVisibleSeries = visibleSeries.filter(s => series.indexOf(s) !== -1);
+          if (newVisibleSeries.length !== visibleSeries.length) {
+            setVisibleSeries(newVisibleSeries);
+          }
+        }, [series, visibleSeries, setVisibleSeries]);
+        return [visibleSeries, setVisibleSeries];
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a null-guard-tested external instance sync (aws graph-explorer cy.zoom)", () => {
+    const result = runRule(
+      noEventHandler,
+      `export const useManageConfigChanges = (config, cy) => {
+        const { zoom } = config;
+        useEffect(() => {
+          if (cy && cy.zoom() !== zoom) {
+            cy.zoom(zoom);
+          }
+        }, [cy, zoom]);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a ref-rooted DOM focus consequent", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Grid({ focusedDate }) {
+        const [gridHasFocus, setGridHasFocus] = useState(false);
+        const elementRef = useRef(null);
+        useEffect(() => {
+          if (focusedDate && gridHasFocus) {
+            elementRef.current?.focus();
+          }
+        }, [focusedDate, gridHasFocus]);
+        return <div ref={elementRef} onFocus={() => setGridHasFocus(true)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a window.scrollTo consequent", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Page({ step }) {
+        const [submitted, setSubmitted] = useState(false);
+        useEffect(() => {
+          if (submitted) {
+            window.scrollTo(0, 0);
+          }
+        }, [submitted, step]);
+        return <button onClick={() => setSubmitted(true)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the consequent syncs a custom-hook service instance", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Layer({ visible }) {
+        const layerService = useLayerState();
+        useEffect(() => {
+          if (visible) {
+            layerService.show();
+          }
+        }, [visible]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a ref-rooted animation play call (lottie)", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Icon({ active }) {
+        const animationRef = useRef(null);
+        useEffect(() => {
+          if (active) {
+            animationRef.current?.play();
+          }
+        }, [active]);
+        return <Lottie ref={animationRef} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the tested state's setter is handed by reference to a promise", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Preview({ fileId, onReady }) {
+        const [blobUrl, setBlobUrl] = useState(null);
+        useEffect(() => {
+          resolveBlobUrl(fileId).then(setBlobUrl);
+        }, [fileId]);
+        useEffect(() => {
+          if (blobUrl) {
+            onReady(blobUrl);
+          }
+        }, [blobUrl]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a redirect reacting to async-driven auth state", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Guard({ children }) {
+        const [user, setUser] = useState(null);
+        useEffect(() => {
+          fetchSession().then(setUser);
+        }, []);
+        useEffect(() => {
+          if (!user) {
+            router.push('/login');
+          }
+        }, [user]);
+        return children;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the consequent only reassigns an effect-local binding (kaihotz usePhonenumber)", () => {
+    const result = runRule(
+      noEventHandler,
+      `export const usePhonenumber = ({ initialValue, initialCountry, format }) => {
+        const [state, dispatch] = useReducer(phoneReducer, initialState);
+        useEffect(() => {
+          let payload = { country: initialCountry, phoneNumber: '' };
+          if (initialValue && typeof initialValue === 'string') {
+            payload = { country: findCountryFor(initialValue), phoneNumber: initialValue };
+          }
+          dispatch({ type: 'onChange', payload });
+        }, [format, initialCountry, initialValue]);
+        return state;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a for-loop guard assigning an effect-local accumulator (json-edit-react useAppliedBroadcast)", () => {
+    const result = runRule(
+      noEventHandler,
+      `export const useAppliedBroadcast = (path, animateCollapse) => {
+        const { commands, version } = useCollapse();
+        useEffect(() => {
+          if (!commands) return;
+          let lastMatching;
+          for (const cmd of commands) {
+            if (matchesPath(path, cmd)) lastMatching = cmd;
+          }
+          if (!lastMatching) return;
+          animateCollapse(lastMatching.collapsed);
+        }, [version, commands]);
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a dev-only warning comparing a non-Ref-named useRef against the current value (frimousse Search)", () => {
+    const result = runRule(
+      noEventHandler,
+      `const Search = ({ value, defaultValue, onChange }) => {
+        const isControlled = typeof value === "string";
+        const wasControlled = useRef(isControlled);
+        useEffect(() => {
+          if (process.env.NODE_ENV !== "production" && wasControlled.current !== isControlled) {
+            console.warn("Search is switching between controlled and uncontrolled.");
+          }
+          wasControlled.current = isControlled;
+        }, [isControlled]);
+        return <input value={value} onChange={onChange} />;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a usePrevious-vs-current-prop transition guard (trendyol Carousel)", () => {
+    const result = runRule(
+      noEventHandler,
+      `const Carousel = (userProps) => {
+        const props = { ...defaultProps, ...userProps };
+        const [items, setItems] = useState([]);
+        const [page, setPage] = useState(0);
+        const prevChildren = usePrevious(userProps.children);
+        useEffect(() => {
+          setItems(updateNodes(props.children, prevChildren));
+          if (page < props.pageCount && prevChildren && prevChildren.length < props.children.length) {
+            slide();
+            setPage(page + 1);
+          }
+        }, [props.children]);
+        return null;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the guard tests only effect-local derived values (mailing usePreviewTree cursor sync)", () => {
+    const result = runRule(
+      noEventHandler,
+      `export function usePreviewTree(previews) {
+        const [cursor, setCursor] = useState(-1);
+        const [treeRoutes, setTreeRoutes] = useState(undefined);
+        useEffect(() => {
+          if (cursor !== -1 || !treeRoutes) return;
+          const path = decodeURIComponent(router.asPath.split("?")[0]);
+          const idx = treeRoutes.findIndex((route) => route.path === path);
+          if (idx >= 0) setCursor(idx);
+        }, [cursor, treeRoutes]);
+        return { cursor, navigate: (next) => setCursor(next) };
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a dispatch-then-return retry preamble (hightable ScrollProvider)", () => {
+    const result = runRule(
+      noEventHandler,
+      `export function ScrollProvider({ children }) {
+        const [scrollTo, setScrollTo] = useState(undefined);
+        const { focusState, focusDispatch } = useContext(CellNavigationContext);
+        useEffect(() => {
+          if (focusState.status !== 'should_scroll_into_view') return;
+          if (!scrollTo) {
+            focusDispatch({ type: 'CANNOT_SCROLL_YET' });
+            return;
+          }
+          scrollTo({ top: 0, behavior: 'instant' });
+          focusDispatch({ type: 'GLOBAL_SCROLLING_STARTED' });
+        }, [scrollTo, focusState, focusDispatch]);
+        return children;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the consequent directly calls a custom-hook-returned function (hightable goToCell)", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Pager({ total }) {
+        const [pageIndex, setPageIndex] = useState(0);
+        const { goToPage } = usePagination();
+        useEffect(() => {
+          if (pageIndex > total) {
+            goToPage(total);
+          }
+        }, [pageIndex, total, goToPage]);
+        return <button onClick={() => setPageIndex(pageIndex + 1)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("suppresses the prop report when the guard also tests opaque-hook async data (openmrs AddTaskForm)", () => {
+    const result = runRule(
+      noEventHandler,
+      `const AddTaskForm = ({ editTaskUuid }) => {
+        const isEditMode = Boolean(editTaskUuid);
+        const { task: existingTask } = useTask(editTaskUuid);
+        const [selectedTask, setSelectedTask] = useState(null);
+        useEffect(() => {
+          if (isEditMode && existingTask) {
+            setSelectedTask(existingTask);
+          }
+        }, [isEditMode, existingTask]);
+        return <button onClick={() => setSelectedTask(null)}>clear</button>;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a config-gated zero-arg call of a deps-listed useCallback (mailing leavesOnly)", () => {
+    const result = runRule(
+      noEventHandler,
+      `export function usePreviewTree(previews, options = {}) {
+        const { leavesOnly } = options;
+        const [cursor, setCursor] = useState(-1);
+        const down = useCallback(() => setCursor((current) => current + 1), []);
+        const goToNearestLeaf = useCallback(() => {
+          if (cursor === -1) return;
+          down();
+        }, [cursor, down]);
+        useEffect(() => {
+          if (leavesOnly) goToNearestLeaf();
+        }, [leavesOnly, goToNearestLeaf]);
+        return { cursor };
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("fires on a truthiness-guarded useReducer dispatch without an early exit", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Wizard() {
+        const [visible, setVisible] = useState(false);
+        const [state, dispatch] = useReducer(wizardReducer, initialWizardState);
+        useEffect(() => {
+          if (visible) dispatch({ type: 'open' });
+        }, [visible]);
+        return <button onClick={() => setVisible(true)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("fires on a zero-arg prop-callback invocation guarded by handler state", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Modal({ onOpen }) {
+        const [open, setOpen] = useState(false);
+        useEffect(() => {
+          if (open) onOpen();
+        }, [open, onOpen]);
+        return <button onClick={() => setOpen(true)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on a []-deps mount effect restoring persisted state", () => {
+    const result = runRule(
+      noEventHandler,
+      `function Checkout() {
+        const [error, setError] = useState(null);
+        useEffect(() => {
+          const sessionStorageError = sessionStorage.getItem('checkout-error');
+          if (sessionStorageError) {
+            setError(sessionStorageError);
+          }
+        }, []);
+        return error ? <Banner>{error}</Banner> : null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // Delta-verify recall regression (appflowy DeletePageConfirm): the guard
+  // conjoins a plain `open` prop with a memo whose upstream walk stops at an
+  // opaque hook (useAppView). The memo is a transparent derivation — NOT
+  // directly-tested async hook data — so the opaque-hook stop must not veto
+  // the prop report: `open` flipping true runs void handleOk() (a delete!).
+  it("fires on a prop-flipped effect whose guard also reads memo state derived from an opaque hook (appflowy DeletePageConfirm)", () => {
+    const result = runRule(
+      noEventHandler,
+      `function DeletePageConfirm({ open, onClose, viewId, onDeleted }) {
+        const view = useAppView(viewId);
+        const [loading, setLoading] = useState(false);
+        const { deletePage } = useAppOperations();
+        const handleOk = useCallback(async () => {
+          if (!view) return;
+          setLoading(true);
+          try {
+            await deletePage?.(viewId);
+            onClose();
+            onDeleted?.();
+          } finally {
+            setLoading(false);
+          }
+        }, [deletePage, onClose, onDeleted, view, viewId]);
+        const hasPublished = useMemo(() => {
+          const publishedView = filterViewsByCondition(view?.children || [], (v) => v.is_published);
+          return view?.is_published || !!publishedView.length;
+        }, [view]);
+        useEffect(() => {
+          if (!hasPublished && open) {
+            void handleOk();
+          }
+        }, [handleOk, hasPublished, open]);
+        if (!hasPublished) return null;
+        return <NormalModal open={open} onClose={onClose} onOk={handleOk} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("prop");
   });
 });

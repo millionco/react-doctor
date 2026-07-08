@@ -16,6 +16,27 @@ export const REACT_RUNTIME_MODULE_SOURCES = new Set([
   "preact/hooks",
 ]);
 
+// React-ecosystem packages whose use*-named exports are REAL React hooks
+// bound by the Rules of Hooks, even though the package isn't a React
+// runtime — state managers, routers, data-fetching libraries. Most of the
+// ecosystem self-identifies by carrying "react" in its package name
+// (react-redux, @tanstack/react-query, react-hook-form, react-router);
+// this set covers the well-known ones that don't. `rules-of-hooks` must
+// NOT exempt imports from these the way it exempts non-React use* helpers
+// (WebdriverIO's `useBrowser`, DI registries, codegen utilities).
+export const REACT_ECOSYSTEM_PACKAGE_NAMES = new Set([
+  "next",
+  "@remix-run/react",
+  "swr",
+  "zustand",
+  "jotai",
+  "recoil",
+  "wouter",
+  "framer-motion",
+  "@apollo/client",
+  "urql",
+]);
+
 export const LOADING_STATE_PATTERN = /^(?:isLoading|isPending)$/;
 
 export const STABLE_HOOK_WRAPPERS = new Set(["useState", "useMemo", "useRef"]);
@@ -76,6 +97,29 @@ export const HANDLER_FUNCTION_NAME_PATTERN = /^(?:on|handle)[A-Z]/;
 
 export const EFFECT_HOOK_NAMES = new Set(["useEffect", "useLayoutEffect"]);
 export const HOOKS_WITH_DEPS = new Set(["useEffect", "useLayoutEffect", "useMemo", "useCallback"]);
+
+// React's own built-in hooks — the complement of "custom hook" when a
+// callee name already matches the hook naming convention
+// (`isReactHookName`). Includes the bare `use(...)` hook from React 19,
+// which `isReactHookName` matches by exact name.
+export const BUILTIN_HOOK_NAMES: ReadonlySet<string> = new Set([
+  "use",
+  "useState",
+  "useRef",
+  "useMemo",
+  "useCallback",
+  "useReducer",
+  "useContext",
+  "useEffect",
+  "useLayoutEffect",
+  "useInsertionEffect",
+  "useImperativeHandle",
+  "useSyncExternalStore",
+  "useDeferredValue",
+  "useTransition",
+  "useId",
+  "useDebugValue",
+]);
 
 // React's two component-wrapping HOCs that the rule visitor needs to
 // "see through" — `memo(Comp)` and `forwardRef(Comp)`. Both forms

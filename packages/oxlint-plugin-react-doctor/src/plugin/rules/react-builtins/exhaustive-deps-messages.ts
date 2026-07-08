@@ -9,6 +9,9 @@ export const buildMissingDepMessage = (hookName: string, depName: string): strin
 export const buildUnnecessaryDepMessage = (hookName: string, depName: string): string =>
   `\`${hookName}\` re-runs whenever \`${depName}\` changes even though it never uses it.`;
 
+export const buildModuleScopeDepMessage = (hookName: string, depName: string): string =>
+  `\`${hookName}\` doesn't need \`${depName}\` in its dependency array — it's defined outside the component and never changes between renders.`;
+
 export const buildDuplicateDepMessage = (hookName: string, depName: string): string =>
   `\`${hookName}\` lists \`${depName}\` twice, adding dependency-array noise without changing when it runs.`;
 

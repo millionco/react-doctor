@@ -36,6 +36,67 @@ interface ControlHasAssociatedLabelSettings {
 // set `aria-label` and the labelling-prop check passes; users who want
 // to enforce regardless can override via `ignoreElements: []`.
 
+// OXC's interactive-element list includes td/th/tr/option/datalist and
+// audio/video, but none of them is an operable control a user labels:
+// table cells are layout (skeleton/spacer cells fire constantly), an
+// option's accessible name is its value/text by spec, and media
+// elements either render self-labelled native controls (`controls`) or
+// are passive playback surfaces. Elements that opt into a real widget
+// role (e.g. `<td role="button">`) still go through the role path.
+const NON_OPERABLE_ELEMENTS: ReadonlySet<string> = new Set([
+  "td",
+  "th",
+  "tr",
+  "option",
+  "datalist",
+  "audio",
+  "video",
+]);
+
+// `role="separator"` is only a focusable widget when the author makes
+// it one; the overwhelmingly common usage is a static decorative
+// divider that needs no accessible name.
+const SEPARATOR_ROLE = "separator";
+
+// Input types whose accessible name falls back to `placeholder` per
+// HTML-AAM (plus textarea, handled by tag).
+const PLACEHOLDER_NAMEABLE_INPUT_TYPES: ReadonlySet<string> = new Set([
+  "text",
+  "search",
+  "url",
+  "tel",
+  "email",
+  "password",
+  "number",
+]);
+
+// Packages whose exports are pictographic icon components: a
+// self-closing `<Trash2 />` inside a button renders no text, so it
+// must not satisfy the "component child might render a label"
+// assumption the way an unknown component does.
+const ICON_PACKAGE_SOURCES: ReadonlyArray<string> = [
+  "lucide-react",
+  "lucide-react-native",
+  "react-icons",
+  "react-feather",
+  "phosphor-react",
+  "iconoir-react",
+  "react-bootstrap-icons",
+  "@heroicons/react",
+  "@tabler/icons-react",
+  "@phosphor-icons/react",
+  "@radix-ui/react-icons",
+  "@mui/icons-material",
+  "@ant-design/icons",
+  "@primer/octicons-react",
+  "@fortawesome/react-fontawesome",
+];
+
+const isIconPackageSource = (source: string): boolean =>
+  ICON_PACKAGE_SOURCES.some(
+    (packageName) => source === packageName || source.startsWith(`${packageName}/`),
+  );
+
 // Only Tailwind's `hidden` (display: none) qualifies: it removes the
 // input from the accessibility tree AND the tab order, so the only way
 // to reach it is the programmatic trigger. sr-only-family classes
@@ -89,6 +150,67 @@ const hasDisplayNoneClass = (opening: EsTreeNodeOfType<"JSXOpeningElement">): bo
   return false;
 };
 
+// The `hidden` attribute removes the element from the accessibility
+// tree entirely (and from the tab order), so no user — sighted or
+// blind — can reach it; a label serves nobody. A literal `false` (or
+// the authored string "false") signals intent to show, everything
+// else — bare attribute, any other string, a dynamic expression — is
+// treated as hidden (ambiguous → prefer not firing).
+const hasHiddenAttribute = (opening: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  const hiddenAttribute = hasJsxPropIgnoreCase(opening.attributes, "hidden");
+  if (!hiddenAttribute) return false;
+  const value = hiddenAttribute.value;
+  if (!value) return true;
+  if (isNodeOfType(value, "Literal")) {
+    return value.value !== "false" && Boolean(value.value);
+  }
+  if (isNodeOfType(value, "JSXExpressionContainer")) {
+    const expression = stripParenExpression(value.expression as EsTreeNode);
+    if (isNodeOfType(expression, "Literal")) return Boolean(expression.value);
+  }
+  return true;
+};
+
+const HIDDEN_STYLE_VALUES_BY_PROPERTY: Readonly<Record<string, string>> = {
+  display: "none",
+  visibility: "hidden",
+};
+
+// `style={{ display: "none" }}` / `style={{ visibility: "hidden" }}`
+// with a static literal value — the standard hidden-file-input /
+// submit-proxy pattern.
+const hasStaticHiddenStyle = (opening: EsTreeNodeOfType<"JSXOpeningElement">): boolean => {
+  const styleAttribute = hasJsxPropIgnoreCase(opening.attributes, "style");
+  if (!styleAttribute?.value) return false;
+  if (!isNodeOfType(styleAttribute.value, "JSXExpressionContainer")) return false;
+  const styleExpression = stripParenExpression(styleAttribute.value.expression as EsTreeNode);
+  if (!isNodeOfType(styleExpression, "ObjectExpression")) return false;
+  for (const property of styleExpression.properties) {
+    if (!isNodeOfType(property, "Property")) continue;
+    if (property.computed) continue;
+    const key = property.key as EsTreeNode;
+    const propertyName = isNodeOfType(key, "Identifier")
+      ? key.name
+      : isNodeOfType(key, "Literal") && typeof key.value === "string"
+        ? key.value
+        : null;
+    if (!propertyName) continue;
+    const hiddenValue = HIDDEN_STYLE_VALUES_BY_PROPERTY[propertyName];
+    if (!hiddenValue) continue;
+    const propertyValue = stripParenExpression(property.value as EsTreeNode);
+    if (isNodeOfType(propertyValue, "Literal") && propertyValue.value === hiddenValue) return true;
+  }
+  return false;
+};
+
+const isElementInlineHidden = (
+  opening: EsTreeNodeOfType<"JSXOpeningElement">,
+  settings: Readonly<Record<string, unknown>> | undefined,
+): boolean =>
+  isHiddenFromScreenReader(opening, settings) ||
+  hasHiddenAttribute(opening) ||
+  hasStaticHiddenStyle(opening);
+
 // A `<input type="file">` that is display-none hidden AND wired to a ref
 // is opened programmatically (`fileInputRef.current?.click()`) from a
 // separate, already-labeled button. Requiring it to carry its own label
@@ -110,6 +232,18 @@ const DEFAULT_LABELLING_PROPS: ReadonlyArray<string> = ["alt", "aria-label", "ar
 const ID_ATTRIBUTE = "id";
 const HTML_FOR_ATTRIBUTE = "htmlFor";
 const LABEL_ELEMENT = "label";
+// Design systems routinely export a `Label` component (styled.label /
+// Radix Label / shadcn Label) that renders an html `<label>` wrapping
+// its children — treat it like the element when it carries text.
+const LABEL_COMPONENT_NAME = "Label";
+// MUI-style polymorphic escape hatch: `<Button component="label">`
+// renders an html <label>, implicitly labelling the control inside.
+const POLYMORPHIC_COMPONENT_PROP = "component";
+// A wrapper like `<Field label="Hotkey"><input/></Field>` injects the
+// association (htmlFor/id pair or a wrapping <label>) for its child
+// control — the visible name exists, it just lives on the wrapper.
+const WRAPPER_LABEL_PROP = "label";
+const SELECT_ELEMENT = "select";
 
 // Default depth for the children-walk. Upstream `eslint-plugin-jsx-a11y`
 // defaults to 2, but real-world buttons routinely nest text deeper
@@ -168,7 +302,33 @@ const hasLabellingProp = (
   return false;
 };
 
-const toAttributeMatchKey = (kind: "identifier" | "literal", value: string): string | null => {
+const hasNonEmptyPropValue = (attribute: EsTreeNodeOfType<"JSXAttribute"> | undefined): boolean => {
+  if (!attribute?.value) return false;
+  const value = attribute.value;
+  if (isNodeOfType(value, "Literal")) {
+    return typeof value.value === "string" ? value.value.trim().length > 0 : Boolean(value.value);
+  }
+  if (isNodeOfType(value, "JSXExpressionContainer")) {
+    const expression = stripParenExpression(value.expression as EsTreeNode);
+    if (isNodeOfType(expression, "JSXEmptyExpression")) return false;
+    if (isNodeOfType(expression, "Literal")) {
+      return typeof expression.value === "string"
+        ? expression.value.trim().length > 0
+        : Boolean(expression.value);
+    }
+    if (isNodeOfType(expression, "TemplateLiteral")) {
+      const staticValue = getStaticTemplateLiteralValue(expression);
+      if (staticValue !== null) return staticValue.trim().length > 0;
+    }
+    return true;
+  }
+  return true;
+};
+
+const toAttributeMatchKey = (
+  kind: "identifier" | "literal" | "template",
+  value: string,
+): string | null => {
   const trimmedValue = value.trim();
   return trimmedValue.length > 0 ? `${kind}:${trimmedValue}` : null;
 };
@@ -179,27 +339,80 @@ const getLiteralAttributeMatchKey = (value: unknown): string | null => {
   return null;
 };
 
-const getAttributeMatchKey = (
-  attribute: EsTreeNodeOfType<"JSXAttribute"> | undefined,
+const getExpressionPathKey = (rawExpression: EsTreeNode): string | null => {
+  const expression = stripParenExpression(rawExpression);
+  if (isNodeOfType(expression, "Identifier")) return expression.name;
+  if (isNodeOfType(expression, "MemberExpression")) {
+    if (expression.computed) return null;
+    const objectPath = getExpressionPathKey(expression.object as EsTreeNode);
+    const property = expression.property as EsTreeNode;
+    if (objectPath === null || !isNodeOfType(property, "Identifier")) return null;
+    return `${objectPath}.${property.name}`;
+  }
+  return null;
+};
+
+// A structural key for a dynamic template like `bucket-name-${bucket.id}`:
+// both the label's htmlFor and the control's id are authored from the
+// same source text, so matching quasi chunks + expression paths proves
+// the association without evaluating anything.
+const getTemplateStructureMatchKey = (
+  templateLiteral: EsTreeNodeOfType<"TemplateLiteral">,
 ): string | null => {
-  if (!attribute?.value) return null;
-  const value = attribute.value;
-  if (isNodeOfType(value, "Literal")) {
-    return getLiteralAttributeMatchKey(value.value);
+  const quasis = templateLiteral.quasis ?? [];
+  const expressions = templateLiteral.expressions ?? [];
+  const parts: string[] = [];
+  for (const [quasiIndex, quasi] of quasis.entries()) {
+    parts.push(quasi.value?.cooked ?? quasi.value?.raw ?? "");
+    if (quasiIndex < expressions.length) {
+      const expressionKey = getExpressionPathKey(expressions[quasiIndex] as EsTreeNode);
+      if (expressionKey === null) return null;
+      parts.push(`\u0000${expressionKey}\u0000`);
+    }
   }
-  if (!isNodeOfType(value, "JSXExpressionContainer")) return null;
-  const expression = value.expression as EsTreeNode;
-  if (isNodeOfType(expression, "Identifier")) {
-    return toAttributeMatchKey("identifier", expression.name);
-  }
+  return toAttributeMatchKey("template", parts.join(""));
+};
+
+const getExpressionMatchKeys = (rawExpression: EsTreeNode): ReadonlyArray<string> => {
+  const expression = stripParenExpression(rawExpression);
   if (isNodeOfType(expression, "Literal")) {
-    return getLiteralAttributeMatchKey(expression.value);
+    const literalKey = getLiteralAttributeMatchKey(expression.value);
+    return literalKey === null ? [] : [literalKey];
   }
   if (isNodeOfType(expression, "TemplateLiteral")) {
     const staticValue = getStaticTemplateLiteralValue(expression);
-    return staticValue === null ? null : toAttributeMatchKey("literal", staticValue);
+    if (staticValue !== null) {
+      const literalKey = toAttributeMatchKey("literal", staticValue);
+      return literalKey === null ? [] : [literalKey];
+    }
+    const templateKey = getTemplateStructureMatchKey(expression);
+    return templateKey === null ? [] : [templateKey];
   }
-  return null;
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    return [
+      ...getExpressionMatchKeys(expression.consequent as EsTreeNode),
+      ...getExpressionMatchKeys(expression.alternate as EsTreeNode),
+    ];
+  }
+  const pathKey = getExpressionPathKey(expression);
+  if (pathKey !== null) {
+    const identifierKey = toAttributeMatchKey("identifier", pathKey);
+    return identifierKey === null ? [] : [identifierKey];
+  }
+  return [];
+};
+
+const getAttributeMatchKeys = (
+  attribute: EsTreeNodeOfType<"JSXAttribute"> | undefined,
+): ReadonlyArray<string> => {
+  if (!attribute?.value) return [];
+  const value = attribute.value;
+  if (isNodeOfType(value, "Literal")) {
+    const literalKey = getLiteralAttributeMatchKey(value.value);
+    return literalKey === null ? [] : [literalKey];
+  }
+  if (!isNodeOfType(value, "JSXExpressionContainer")) return [];
+  return getExpressionMatchKeys(value.expression as EsTreeNode);
 };
 
 interface CheckChildContext {
@@ -207,7 +420,53 @@ interface CheckChildContext {
   customAttributes: ReadonlyArray<string>;
   controlComponents: ReadonlyArray<string>;
   settings: Readonly<Record<string, unknown>> | undefined;
+  iconComponentNames: ReadonlySet<string>;
+  iconNamespaceNames: ReadonlySet<string>;
 }
+
+// Locally-defined icon components almost universally advertise
+// themselves by name: `Icon`, `IconDesktop`, `ChevronDownIcon`.
+const ICON_COMPONENT_NAME_PATTERN = /^Icon($|[A-Z0-9_])|Icon$/;
+
+const isIconComponentName = (tagName: string, context: CheckChildContext): boolean => {
+  if (context.iconComponentNames.has(tagName)) return true;
+  if (ICON_COMPONENT_NAME_PATTERN.test(tagName)) return true;
+  const namespaceEnd = tagName.indexOf(".");
+  if (namespaceEnd === -1) return false;
+  return context.iconNamespaceNames.has(tagName.slice(0, namespaceEnd));
+};
+
+// Whether an expression child can contribute an accessible name.
+// Provably-empty renders (null/boolean literals, empty strings) and
+// icon-only JSX (including `cond ? <ChevronDown/> : <ChevronRight/>`)
+// don't; anything dynamic stays conservative.
+const expressionProvidesLabel = (
+  rawExpression: EsTreeNode,
+  currentDepth: number,
+  context: CheckChildContext,
+): boolean => {
+  const expression = stripParenExpression(rawExpression);
+  if (isNodeOfType(expression, "JSXEmptyExpression")) return false;
+  if (isNodeOfType(expression, "Literal")) {
+    if (typeof expression.value === "string") return expression.value.trim().length > 0;
+    if (typeof expression.value === "number") return true;
+    return false;
+  }
+  if (isNodeOfType(expression, "ConditionalExpression")) {
+    return (
+      expressionProvidesLabel(expression.consequent as EsTreeNode, currentDepth, context) ||
+      expressionProvidesLabel(expression.alternate as EsTreeNode, currentDepth, context)
+    );
+  }
+  if (isNodeOfType(expression, "LogicalExpression")) {
+    // Only the right side of `guard && <content/>` renders as content.
+    return expressionProvidesLabel(expression.right as EsTreeNode, currentDepth, context);
+  }
+  if (isNodeOfType(expression, "JSXElement") || isNodeOfType(expression, "JSXFragment")) {
+    return checkChildForLabel(expression, currentDepth, context);
+  }
+  return true;
+};
 
 const checkChildForLabel = (
   child: EsTreeNode,
@@ -215,7 +474,9 @@ const checkChildForLabel = (
   context: CheckChildContext,
 ): boolean => {
   if (currentDepth > context.depth) return false;
-  if (isNodeOfType(child, "JSXExpressionContainer")) return true;
+  if (isNodeOfType(child, "JSXExpressionContainer")) {
+    return expressionProvidesLabel(child.expression as EsTreeNode, currentDepth, context);
+  }
   if (isNodeOfType(child, "JSXText")) return child.value.trim().length > 0;
   if (isNodeOfType(child, "JSXFragment")) {
     return child.children.some((nestedChild) =>
@@ -230,7 +491,11 @@ const checkChildForLabel = (
     }
     if (child.children.length === 0) {
       const tagName = getElementType(child.openingElement, context.settings);
-      if (isReactComponentName(tagName) && !context.controlComponents.includes(tagName)) {
+      if (
+        isReactComponentName(tagName) &&
+        !context.controlComponents.includes(tagName) &&
+        !isIconComponentName(tagName, context)
+      ) {
         return true;
       }
     }
@@ -258,101 +523,176 @@ const isFunctionBoundary = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "FunctionExpression") ||
   isNodeOfType(node, "FunctionDeclaration");
 
-const hasAncestorLabel = (
+const rendersLabelElement = (
+  tagName: string,
+  opening: EsTreeNodeOfType<"JSXOpeningElement">,
+): boolean => {
+  if (tagName === LABEL_ELEMENT || tagName === LABEL_COMPONENT_NAME) return true;
+  const componentAttribute = hasJsxPropIgnoreCase(opening.attributes, POLYMORPHIC_COMPONENT_PROP);
+  if (!componentAttribute) return false;
+  return getJsxPropStringValue(componentAttribute) === LABEL_ELEMENT;
+};
+
+// One upward pass: the control needs no own label when an ancestor
+// hides it from AT entirely, wraps it in a (text-bearing) label
+// element, or is a field-wrapper component carrying the visible name
+// in a `label` prop. Label association stops at the first function
+// boundary (a render callback may mount anywhere), but hidden-ness
+// keeps applying through children-position callbacks (`.map(...)`
+// output renders in place); only a JSXAttribute boundary makes the
+// render context unknowable.
+const findAncestorNameSource = (
   element: EsTreeNodeOfType<"JSXElement">,
   context: CheckChildContext,
-): boolean => {
+): "hidden" | "labeled" | null => {
   let current = element.parent;
+  let didCrossFunctionBoundary = false;
   while (current) {
-    if (isFunctionBoundary(current)) break;
+    if (isNodeOfType(current, "JSXAttribute")) break;
+    if (isFunctionBoundary(current)) didCrossFunctionBoundary = true;
     if (isNodeOfType(current, "JSXElement")) {
-      const tagName = getElementType(current.openingElement, context.settings);
-      if (tagName === LABEL_ELEMENT && hasAccessibleLabelText(current, context)) {
-        return true;
+      const opening = current.openingElement;
+      if (isElementInlineHidden(opening, context.settings)) return "hidden";
+      const tagName = getElementType(opening, context.settings);
+      if (
+        !didCrossFunctionBoundary &&
+        rendersLabelElement(tagName, opening) &&
+        hasAccessibleLabelText(current, context)
+      ) {
+        return "labeled";
+      }
+      // The wrapper-label-prop association survives function
+      // boundaries: `<Field label="Body">{(id) => <textarea id={id}/>}
+      // </Field>` is the render-prop flavour of the same injection.
+      if (
+        isReactComponentName(tagName) &&
+        hasNonEmptyPropValue(hasJsxPropIgnoreCase(opening.attributes, WRAPPER_LABEL_PROP))
+      ) {
+        return "labeled";
       }
     }
+    current = current.parent ?? null;
+  }
+  return null;
+};
+
+const isInsideJsxAttribute = (element: EsTreeNodeOfType<"JSXElement">): boolean => {
+  let current = element.parent;
+  while (current) {
+    if (isNodeOfType(current, "JSXAttribute")) return true;
     current = current.parent ?? null;
   }
   return false;
 };
 
-const findEnclosingJsxTreeRoot = (element: EsTreeNodeOfType<"JSXElement">): EsTreeNode => {
-  let root: EsTreeNode = element;
+// The name the element's render output is bound to: `renderField` in
+// `const renderField = (field) => <input … />`, a `function
+// renderField() {}`, or `checkbox` in `const checkbox = <input … />`.
+// Used to associate the output with a `<label>…{renderField(field)}…
+// </label>` / `<label>{checkbox}…</label>` embed site.
+const getEnclosingBindingName = (element: EsTreeNodeOfType<"JSXElement">): string | null => {
   let current = element.parent;
   while (current) {
-    if (isFunctionBoundary(current)) break;
-    if (isNodeOfType(current, "JSXElement") || isNodeOfType(current, "JSXFragment")) {
-      root = current;
+    if (isNodeOfType(current, "VariableDeclarator")) {
+      return isNodeOfType(current.id as EsTreeNode, "Identifier")
+        ? (current.id as EsTreeNodeOfType<"Identifier">).name
+        : null;
+    }
+    if (isFunctionBoundary(current)) {
+      if (
+        isNodeOfType(current, "FunctionDeclaration") &&
+        current.id &&
+        isNodeOfType(current.id as EsTreeNode, "Identifier")
+      ) {
+        return current.id.name;
+      }
+      const functionParent = current.parent;
+      if (
+        functionParent &&
+        isNodeOfType(functionParent, "VariableDeclarator") &&
+        isNodeOfType(functionParent.id as EsTreeNode, "Identifier")
+      ) {
+        return (functionParent.id as EsTreeNodeOfType<"Identifier">).name;
+      }
+      return null;
     }
     current = current.parent ?? null;
   }
-  return root;
+  return null;
 };
 
-const collectJsxFromExpression = (rawExpression: EsTreeNode): ReadonlyArray<EsTreeNode> => {
+const collectEmbeddedNamesFromExpression = (
+  rawExpression: EsTreeNode,
+  names: Set<string>,
+): void => {
   const expression = stripParenExpression(rawExpression);
-  if (isNodeOfType(expression, "JSXElement") || isNodeOfType(expression, "JSXFragment")) {
-    return [expression];
+  if (isNodeOfType(expression, "Identifier")) {
+    names.add(expression.name);
+    return;
+  }
+  if (isNodeOfType(expression, "CallExpression")) {
+    const callee = stripParenExpression(expression.callee as EsTreeNode);
+    if (isNodeOfType(callee, "Identifier")) names.add(callee.name);
+    return;
   }
   if (isNodeOfType(expression, "LogicalExpression")) {
-    return [
-      ...collectJsxFromExpression(expression.left as EsTreeNode),
-      ...collectJsxFromExpression(expression.right as EsTreeNode),
-    ];
+    collectEmbeddedNamesFromExpression(expression.left as EsTreeNode, names);
+    collectEmbeddedNamesFromExpression(expression.right as EsTreeNode, names);
+    return;
   }
   if (isNodeOfType(expression, "ConditionalExpression")) {
-    return [
-      ...collectJsxFromExpression(expression.consequent as EsTreeNode),
-      ...collectJsxFromExpression(expression.alternate as EsTreeNode),
-    ];
+    collectEmbeddedNamesFromExpression(expression.consequent as EsTreeNode, names);
+    collectEmbeddedNamesFromExpression(expression.alternate as EsTreeNode, names);
   }
-  return [];
 };
 
-const searchForHtmlForLabel = (
-  node: EsTreeNode,
-  controlIdKey: string,
+const collectLabelEmbeddedNames = (
+  element: EsTreeNodeOfType<"JSXElement"> | EsTreeNodeOfType<"JSXFragment">,
+  currentDepth: number,
   context: CheckChildContext,
-): boolean => {
-  if (isNodeOfType(node, "JSXExpressionContainer")) {
-    return collectJsxFromExpression(node.expression as EsTreeNode).some((jsxNode) =>
-      searchForHtmlForLabel(jsxNode, controlIdKey, context),
-    );
-  }
-  const children =
-    isNodeOfType(node, "JSXElement") || isNodeOfType(node, "JSXFragment") ? node.children : [];
-  if (isNodeOfType(node, "JSXElement")) {
-    const tagName = getElementType(node.openingElement, context.settings);
-    if (tagName === LABEL_ELEMENT) {
-      const htmlForAttribute = hasJsxPropIgnoreCase(
-        node.openingElement.attributes,
-        HTML_FOR_ATTRIBUTE,
+  names: Set<string>,
+): void => {
+  if (currentDepth > context.depth) return;
+  for (const child of element.children) {
+    if (isNodeOfType(child as EsTreeNode, "JSXExpressionContainer")) {
+      collectEmbeddedNamesFromExpression(
+        (child as EsTreeNodeOfType<"JSXExpressionContainer">).expression as EsTreeNode,
+        names,
       );
-      if (
-        getAttributeMatchKey(htmlForAttribute) === controlIdKey &&
-        hasAccessibleLabelText(node, context)
-      ) {
-        return true;
-      }
+      continue;
+    }
+    if (
+      isNodeOfType(child as EsTreeNode, "JSXElement") ||
+      isNodeOfType(child as EsTreeNode, "JSXFragment")
+    ) {
+      collectLabelEmbeddedNames(
+        child as EsTreeNodeOfType<"JSXElement">,
+        currentDepth + 1,
+        context,
+        names,
+      );
     }
   }
-  for (const child of children) {
-    if (searchForHtmlForLabel(child as EsTreeNode, controlIdKey, context)) {
-      return true;
-    }
-  }
-  return false;
 };
 
-const hasHtmlForLabel = (
-  element: EsTreeNodeOfType<"JSXElement">,
-  context: CheckChildContext,
+const supportsPlaceholderNameFallback = (
+  tagName: string,
+  opening: EsTreeNodeOfType<"JSXOpeningElement">,
 ): boolean => {
-  const idAttribute = hasJsxPropIgnoreCase(element.openingElement.attributes, ID_ATTRIBUTE);
-  const controlIdKey = getAttributeMatchKey(idAttribute);
-  if (controlIdKey === null) return false;
-  return searchForHtmlForLabel(findEnclosingJsxTreeRoot(element), controlIdKey, context);
+  if (tagName === "textarea") return true;
+  if (tagName !== "input") return false;
+  const typeAttribute = hasJsxPropIgnoreCase(opening.attributes, "type");
+  if (!typeAttribute) return true;
+  const typeValue = getJsxPropStringValue(typeAttribute);
+  if (typeValue === null) return true;
+  return PLACEHOLDER_NAMEABLE_INPUT_TYPES.has(typeValue.toLowerCase());
 };
+
+interface DeferredControlCandidate {
+  opening: EsTreeNodeOfType<"JSXOpeningElement">;
+  controlIdKeys: ReadonlyArray<string>;
+  enclosingBindingName: string | null;
+}
 
 // Port of `oxc_linter::rules::jsx_a11y::control_has_associated_label`.
 export const controlHasAssociatedLabel = defineRule({
@@ -365,44 +705,139 @@ export const controlHasAssociatedLabel = defineRule({
   create: (context) => {
     const settings = resolveSettings(context.settings);
     const isTestlikeFile = isTestlikeFilename(context.filename);
+    const iconComponentNames = new Set<string>();
+    const iconNamespaceNames = new Set<string>();
+    const labelHtmlForKeys = new Set<string>();
+    const labelEmbeddedNames = new Set<string>();
+    const deferredCandidates: DeferredControlCandidate[] = [];
+    const checkContext: CheckChildContext = {
+      depth: settings.depth,
+      customAttributes: settings.labelAttributes,
+      controlComponents: settings.controlComponents,
+      settings: context.settings,
+      iconComponentNames,
+      iconNamespaceNames,
+    };
     return {
+      ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
+        const source = node.source?.value;
+        if (typeof source !== "string" || !isIconPackageSource(source)) return;
+        for (const specifier of node.specifiers ?? []) {
+          if (!isNodeOfType(specifier.local as EsTreeNode, "Identifier")) continue;
+          const localName = (specifier.local as EsTreeNodeOfType<"Identifier">).name;
+          if (isNodeOfType(specifier, "ImportNamespaceSpecifier")) {
+            iconNamespaceNames.add(localName);
+          } else {
+            iconComponentNames.add(localName);
+          }
+        }
+      },
       JSXElement(node: EsTreeNodeOfType<"JSXElement">) {
         if (isTestlikeFile) return;
         const opening = node.openingElement;
         const tagName = getElementType(opening, context.settings);
+
+        // Labels anywhere in the file can associate (same-component
+        // siblings, sibling components, render helpers) — collect them
+        // all and decide at Program:exit. Labels inside JSX-attribute
+        // callbacks (render props) may never render, so they don't
+        // register.
+        if (
+          tagName === LABEL_ELEMENT &&
+          hasAccessibleLabelText(node, checkContext) &&
+          !isInsideJsxAttribute(node)
+        ) {
+          const htmlForAttribute = hasJsxPropIgnoreCase(opening.attributes, HTML_FOR_ATTRIBUTE);
+          for (const htmlForKey of getAttributeMatchKeys(htmlForAttribute)) {
+            labelHtmlForKeys.add(htmlForKey);
+          }
+          collectLabelEmbeddedNames(node, 1, checkContext, labelEmbeddedNames);
+        }
+
         if (DEFAULT_IGNORE_ELEMENTS.includes(tagName)) return;
         if (settings.ignoreElements.includes(tagName)) return;
 
         const roleAttribute = hasJsxPropIgnoreCase(opening.attributes, "role");
         const role = roleAttribute ? getJsxPropStringValue(roleAttribute) : null;
         if (role && settings.ignoreRoles.includes(role)) return;
-        if (isHiddenFromScreenReader(opening, context.settings)) return;
+        if (isElementInlineHidden(opening, context.settings)) return;
         if (isProgrammaticHiddenFileInput(tagName, opening)) return;
 
         const isDomElement = HTML_TAGS.has(tagName);
-        const isInteractiveEl = isInteractiveElement(tagName, opening);
-        const isInteractiveRoleEl = role !== null && isInteractiveRole(role);
+        const isInteractiveEl =
+          !NON_OPERABLE_ELEMENTS.has(tagName) && isInteractiveElement(tagName, opening);
+        const isNonFocusableSeparator =
+          role === SEPARATOR_ROLE && !hasJsxPropIgnoreCase(opening.attributes, "tabIndex");
+        const isInteractiveRoleEl =
+          role !== null && isInteractiveRole(role) && !isNonFocusableSeparator;
         const isControlComponent = settings.controlComponents.includes(tagName);
 
         if (!(isInteractiveEl || (isDomElement && isInteractiveRoleEl) || isControlComponent)) {
           return;
         }
 
+        if (tagName === "input") {
+          const typeAttribute = hasJsxPropIgnoreCase(opening.attributes, "type");
+          const typeValue = typeAttribute
+            ? getJsxPropStringValue(typeAttribute)?.toLowerCase()
+            : null;
+          // Submit/reset inputs get a default accessible name from the
+          // user agent; button inputs are named by `value` per HTML-AAM.
+          if (typeValue === "submit" || typeValue === "reset") return;
+          if (
+            typeValue === "button" &&
+            hasNonEmptyPropValue(hasJsxPropIgnoreCase(opening.attributes, "value"))
+          ) {
+            return;
+          }
+        }
+
+        // `title` is deliberately NOT accepted as a label (matching
+        // upstream jsx-a11y/oxc and the rule doc): a title-only name is
+        // invisible to sighted keyboard users and unreliable on touch
+        // screen readers, so icon-only buttons named solely by `title`
+        // must still be reported.
+        if (
+          supportsPlaceholderNameFallback(tagName, opening) &&
+          hasNonEmptyPropValue(hasJsxPropIgnoreCase(opening.attributes, "placeholder"))
+        ) {
+          return;
+        }
+
         if (hasLabellingProp(opening.attributes as EsTreeNode[], settings.labelAttributes)) {
           return;
         }
-        const checkContext: CheckChildContext = {
-          depth: settings.depth,
-          customAttributes: settings.labelAttributes,
-          controlComponents: settings.controlComponents,
-          settings: context.settings,
-        };
-        if (hasAncestorLabel(node, checkContext)) return;
-        if (hasHtmlForLabel(node, checkContext)) return;
-        for (const child of node.children) {
-          if (checkChildForLabel(child as EsTreeNode, 1, checkContext)) return;
+        // JSX passed as a prop value (`<Trans components={{ link: <a/> }}>`,
+        // `icon={<button/>}`) is composed by the receiving component —
+        // it may gain children/labels there, so its context is unknowable.
+        if (isInsideJsxAttribute(node)) return;
+        if (findAncestorNameSource(node, checkContext) !== null) return;
+        // A select's accessible name never comes from its contents —
+        // option text names the options, not the control.
+        if (tagName !== SELECT_ELEMENT) {
+          for (const child of node.children) {
+            if (checkChildForLabel(child as EsTreeNode, 1, checkContext)) return;
+          }
         }
-        context.report({ node: opening, message: MESSAGE });
+        deferredCandidates.push({
+          opening,
+          controlIdKeys: getAttributeMatchKeys(
+            hasJsxPropIgnoreCase(opening.attributes, ID_ATTRIBUTE),
+          ),
+          enclosingBindingName: getEnclosingBindingName(node),
+        });
+      },
+      "Program:exit"() {
+        for (const candidate of deferredCandidates) {
+          if (candidate.controlIdKeys.some((idKey) => labelHtmlForKeys.has(idKey))) continue;
+          if (
+            candidate.enclosingBindingName !== null &&
+            labelEmbeddedNames.has(candidate.enclosingBindingName)
+          ) {
+            continue;
+          }
+          context.report({ node: candidate.opening, message: MESSAGE });
+        }
       },
     };
   },

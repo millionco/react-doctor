@@ -144,6 +144,54 @@ describe("react-builtins/jsx-no-constructed-context-values — regressions", () 
     expect(result.diagnostics).toEqual([]);
   });
 
+  // Rule-level coverage for the commercelayer miss report: these
+  // legacy `.Provider` shapes DO fire here. The scan-level silence in
+  // that repo came from `disabledBy: ["react-compiler"]` (the package
+  // ships babel-plugin-react-compiler), not from the detector.
+  it("flags an object literal mixing spread and shorthand members in a Provider value", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `
+      import OrderStorageContext from "#context/OrderStorageContext";
+
+      export function OrderStorage(props) {
+        const { children, ...p } = props;
+        const setLocalOrder = () => {};
+        return (
+          <OrderStorageContext.Provider value={{ ...p, setLocalOrder }}>
+            {children}
+          </OrderStorageContext.Provider>
+        );
+      }
+    `,
+      { filename: "OrderStorage.tsx" },
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a spread-only object literal in a Provider value", () => {
+    const result = runRule(
+      jsxNoConstructedContextValues,
+      `
+      import CommerceLayerContext from "#context/CommerceLayerContext";
+
+      export function CommerceLayer(props) {
+        const { children, ...p } = props;
+        return (
+          <CommerceLayerContext.Provider value={{ ...p }}>
+            {children}
+          </CommerceLayerContext.Provider>
+        );
+      }
+    `,
+      { filename: "CommerceLayer.tsx" },
+    );
+
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("does not flag when a prop shadows the context binding name", () => {
     const result = runRule(
       jsxNoConstructedContextValues,

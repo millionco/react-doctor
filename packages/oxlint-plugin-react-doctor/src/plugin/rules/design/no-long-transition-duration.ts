@@ -28,6 +28,52 @@ const hasInfiniteIterationCount = (properties: ReadonlyArray<EsTreeNode>): boole
 const isInfiniteAnimationSegment = (segment: string): boolean =>
   segment.trim().split(/\s+/).includes("infinite");
 
+// `animation: 'shrink 8s linear forwards'` — a fill-mode of `forwards`
+// marks a one-shot animation that holds its end state (auto-dismiss
+// countdowns, status fades, entrance heroes). Its duration IS the
+// intended display time, the doc's deliberate-animation carve-out.
+const isOneShotForwardsSegment = (segment: string): boolean =>
+  segment.trim().split(/\s+/).includes("forwards");
+
+const hasForwardsFillMode = (properties: ReadonlyArray<EsTreeNode>): boolean =>
+  properties.some(
+    (property) =>
+      getStylePropertyKey(property) === "animationFillMode" &&
+      getStylePropertyStringValue(property) === "forwards",
+  );
+
+// Tailwind's built-in animation utilities all loop forever; an inline
+// `animationDuration` next to them merely tunes an ambient loop.
+const INFINITE_ANIMATION_CLASS_PATTERN =
+  /(?:^|\s)(?:motion-safe:|motion-reduce:|dark:|group-hover:|hover:)*animate-(?:ping|pulse|spin|bounce)(?:$|\s)/;
+
+const getStaticClassNameText = (openingElement: EsTreeNode): string | null => {
+  if (!isNodeOfType(openingElement, "JSXOpeningElement")) return null;
+  for (const attribute of openingElement.attributes ?? []) {
+    if (!isNodeOfType(attribute, "JSXAttribute")) continue;
+    if (!isNodeOfType(attribute.name, "JSXIdentifier")) continue;
+    if (attribute.name.name !== "className" && attribute.name.name !== "class") continue;
+    const value = attribute.value;
+    if (isNodeOfType(value, "Literal") && typeof value.value === "string") return value.value;
+    if (isNodeOfType(value, "JSXExpressionContainer")) {
+      const expression = value.expression;
+      if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
+        return expression.value;
+      }
+      if (isNodeOfType(expression, "TemplateLiteral")) {
+        return (expression.quasis ?? []).map((quasi) => quasi.value?.cooked ?? "").join(" ");
+      }
+    }
+  }
+  return null;
+};
+
+const hasInfiniteAnimationClassName = (openingElement: EsTreeNode | null | undefined): boolean => {
+  if (!openingElement) return false;
+  const classNameText = getStaticClassNameText(openingElement);
+  return classNameText !== null && INFINITE_ANIMATION_CLASS_PATTERN.test(classNameText);
+};
+
 // `100ms` / `1.5s` as the WHOLE segment (transitionDuration / animationDuration
 // values). One combined pattern replaces separate ms and s matches per segment.
 const DURATION_SEGMENT_PATTERN = /^([\d.]+)(m?s)$/;
@@ -60,7 +106,9 @@ export const noLongTransitionDuration = defineRule({
       }
 
       const properties = expression.properties ?? [];
-      const isLoopingAnimation = hasInfiniteIterationCount(properties);
+      const isLoopingAnimation =
+        hasInfiniteIterationCount(properties) || hasInfiniteAnimationClassName(openingElement);
+      const isOneShotFillForwards = hasForwardsFillMode(properties);
 
       for (const property of properties) {
         const key = getStylePropertyKey(property);
@@ -89,6 +137,7 @@ export const noLongTransitionDuration = defineRule({
           let longestDurationMs = 0;
           for (const segment of value.split(",")) {
             if (key === "animation" && isInfiniteAnimationSegment(segment)) continue;
+            if (key === "animation" && isOneShotForwardsSegment(segment)) continue;
             const firstTimeMatch = segment.match(FIRST_TIME_TOKEN_PATTERN);
             if (!firstTimeMatch) continue;
             const segmentDurationMs =
@@ -101,7 +150,7 @@ export const noLongTransitionDuration = defineRule({
         }
 
         const isAnimationProperty = key === "animation" || key === "animationDuration";
-        if (isAnimationProperty && isLoopingAnimation) continue;
+        if (isAnimationProperty && (isLoopingAnimation || isOneShotFillForwards)) continue;
 
         if (durationMs !== null && durationMs > LONG_TRANSITION_DURATION_THRESHOLD_MS) {
           context.report({

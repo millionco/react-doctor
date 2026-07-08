@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vite-plus/test";
+import * as fs from "node:fs";
+import os from "node:os";
+import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { renderingHydrationMismatchTime } from "./rendering-hydration-mismatch-time.js";
 
@@ -100,5 +103,192 @@ describe("performance/rendering-hydration-mismatch-time — regressions", () => 
     expectPass(
       `export const Row = () => <button onClick={useCallback(() => track(Date.now()), [])}>go</button>;`,
     );
+  });
+
+  describe("client-only mounted-flag guards", () => {
+    it("does not flag new Date() inside an isClient && guard (attribute expression)", () => {
+      expectPass(`
+        export const PointsBox = () => {
+          const isClient = useClient();
+          return (
+            <div>
+              {isClient && (
+                <IconHeader title={\`Updated: \${format(new Date())}\`} />
+              )}
+            </div>
+          );
+        };
+      `);
+    });
+
+    it("does not flag Date.now() in the branches of an isMounted ternary", () => {
+      expectPass(`
+        export const Stamp = ({ isMounted }) => (
+          <time>{isMounted ? Date.now() : null}</time>
+        );
+      `);
+    });
+
+    it("does not flag new Date() returned from an if (hasMounted) branch", () => {
+      expectPass(`
+        export const Clock = () => {
+          const hasMounted = useHasMounted();
+          if (hasMounted) {
+            return <span>{new Date().toLocaleString()}</span>;
+          }
+          return null;
+        };
+      `);
+    });
+
+    it("still flags a guard whose flag is unrelated to mounting", () => {
+      expectFail(`
+        export const Banner = ({ isAdmin }) => (
+          <div>{isAdmin && <span>{Date.now()}</span>}</div>
+        );
+      `);
+    });
+  });
+
+  describe("falsy-initial useState gates", () => {
+    it("does not flag new Date() inside JSX gated by a useState(false) flag", () => {
+      expectPass(`
+        export const EventModal = () => {
+          const [showRecurrenceEditor, setShowRecurrenceEditor] = useState(false);
+          return (
+            <div>
+              {showRecurrenceEditor && (
+                <RecurrenceEditor
+                  eventStart={(() => {
+                    const d = new Date(startDate);
+                    return isNaN(d.getTime()) ? new Date() : d;
+                  })()}
+                />
+              )}
+            </div>
+          );
+        };
+      `);
+    });
+
+    it("does not flag Date.now() inside JSX gated by a useState(null) toast", () => {
+      expectPass(`
+        export const Panel = () => {
+          const [undoToast, setUndoToast] = useState(null);
+          return (
+            <div>
+              {undoToast && onMutate && (
+                <span>{Math.ceil((undoToast.expiresAt - Date.now()) / 1000)}s</span>
+              )}
+            </div>
+          );
+        };
+      `);
+    });
+
+    it("still flags when the gating state starts truthy", () => {
+      expectFail(`
+        export const Panel = () => {
+          const [visible, setVisible] = useState(true);
+          return <div>{visible && <span>{Date.now()}</span>}</div>;
+        };
+      `);
+    });
+
+    it("still flags when the gate is a prop, not local state", () => {
+      expectFail(`
+        export const Banner = ({ open }) => (
+          <div>{open && <span>{Date.now()}</span>}</div>
+        );
+      `);
+    });
+  });
+
+  describe("copyright-year idiom", () => {
+    it("does not flag new Date().getFullYear()", () => {
+      expectPass(`
+        export const Footer = () => (
+          <footer>© {new Date().getFullYear()} Example</footer>
+        );
+      `);
+    });
+
+    it("still flags new Date().toLocaleDateString()", () => {
+      expectFail(`export const Footer = () => <footer>{new Date().toLocaleDateString()}</footer>;`);
+    });
+  });
+
+  describe("framer-motion transition config", () => {
+    it("does not flag Math.random() inside a motion element's transition prop", () => {
+      expectPass(`
+        export const FloatingCard = () => (
+          <motion.div
+            animate={{ y: [0, -12, 0] }}
+            transition={{ duration: 5 + Math.random() * 3, repeat: Infinity }}
+          />
+        );
+      `);
+    });
+
+    it("still flags Math.random() in a motion element's initial prop", () => {
+      expectFail(`
+        export const FloatingCard = () => (
+          <motion.div initial={{ opacity: Math.random() }} />
+        );
+      `);
+    });
+
+    it("still flags Math.random() in a transition prop on a non-motion element", () => {
+      expectFail(`
+        export const Card = () => <Widget transition={{ duration: Math.random() }} />;
+      `);
+    });
+  });
+
+  describe("email templates", () => {
+    it("does not flag new Date().getFullYear() in an MJML email footer", () => {
+      expectPass(`
+        import { MjmlText } from "@faire/mjml-react";
+
+        export default function Footer() {
+          return <MjmlText>© {new Date().getFullYear()} Example</MjmlText>;
+        }
+      `);
+    });
+
+    it("does not flag time values in react-email components", () => {
+      expectPass(`
+        import { Text } from "@react-email/components";
+
+        export const Footer = () => <Text>{new Date().getFullYear()}</Text>;
+      `);
+    });
+  });
+
+  describe("React Native packages", () => {
+    let temporaryDirectory = "";
+
+    beforeEach(() => {
+      temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-hydration-rn-"));
+    });
+
+    afterEach(() => {
+      fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+    });
+
+    it("does not flag new Date() in a react-native package (no hydration on mobile)", () => {
+      const packageDirectory = fs.mkdtempSync(path.join(temporaryDirectory, "package-"));
+      fs.writeFileSync(
+        path.join(packageDirectory, "package.json"),
+        JSON.stringify({ dependencies: { "react-native": "0.82.0" } }),
+      );
+      const result = runRule(
+        renderingHydrationMismatchTime,
+        `export const DatePickerField = () => <DateTimeInput maximumDate={new Date()} />;`,
+        { filename: path.join(packageDirectory, "src", "DateTimeInput.tsx") },
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    });
   });
 });

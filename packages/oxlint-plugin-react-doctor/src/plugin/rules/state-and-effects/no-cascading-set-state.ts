@@ -2,6 +2,7 @@ import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { CASCADING_SET_STATE_THRESHOLD } from "../../constants/thresholds.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
+import { findProgramRoot } from "../../utils/find-program-root.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -17,10 +18,11 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // early-returning guard branch stays mutually exclusive with the
 // post-guard body (see countStatementSequenceSetStateCalls). ASYNC
 // function bodies are NOT walked — their setStates fire across async
-// boundaries on separate render cycles (the canonical fetch pattern
+// boundaries on separate render cycles, and React 18+ batches each
+// continuation into a single render (the canonical fetch pattern
 // `setStatus('loading'); await fetch(); setData(d); setStatus('idle')`
-// is 3 setStates separated by awaits, not 3 cascading synchronous
-// updates that need a reducer).
+// is not a synchronous cascade; a delta audit against 0.7.1 confirmed
+// every async-continuation flag on 121 repos was a false positive).
 const isAsyncFunctionLike = (node: EsTreeNode): boolean => {
   if (
     isNodeOfType(node, "ArrowFunctionExpression") ||
@@ -50,25 +52,24 @@ const SYNCHRONOUS_ITERATION_METHOD_NAMES: ReadonlySet<string> = new Set([
   "sort",
 ]);
 
-// A function expression passed INLINE as a call argument to something other
-// than a synchronous array iteration — `store.subscribe(() => { … })`,
-// `setTimeout(() => { … })`, `promise.then(() => { … })` — is a deferred
-// callback that runs on its own dispatch, so its setters don't compound with
-// the effect body's. Everything else IS walked: IIFEs and `forEach`/`map`/…
-// callbacks run on the same synchronous dispatch, and a function stored in a
-// variable (a helper invoked inline, or a handler registered via
-// `addEventListener`) keeps its setter call sites counted — those are the
-// exact writes the reducer recommendation targets.
-const isDeferredInlineCallback = (functionNode: EsTreeNode): boolean => {
+// A nested function only compounds with the effect body when it runs on the
+// effect's own synchronous dispatch: an IIFE or a `forEach`/`map`/… iteration
+// callback. Everything else — a callback handed to `store.subscribe(...)` /
+// `setTimeout(...)` / `.then(...)`, an event handler registered via
+// `addEventListener` or an options object (`dropTargetForElements({ onDrop })`),
+// a cleanup closure — fires later on its own dispatch (and React batches it),
+// so its setters must not be counted against the effect. A locally-stored
+// helper is only counted where the effect body actually CALLS it.
+const runsOnEffectDispatch = (functionNode: EsTreeNode): boolean => {
   const parent = (functionNode as unknown as { parent?: EsTreeNode | null }).parent;
   if (!parent || !isNodeOfType(parent, "CallExpression")) return false;
-  if ((parent.callee as unknown) === (functionNode as unknown)) return false;
+  if ((parent.callee as unknown) === (functionNode as unknown)) return true;
   const isCallbackArgument = (parent.arguments ?? []).some(
     (argument) => (argument as unknown) === (functionNode as unknown),
   );
   if (!isCallbackArgument) return false;
   const callee = parent.callee;
-  return !(
+  return (
     isNodeOfType(callee, "MemberExpression") &&
     isNodeOfType(callee.property, "Identifier") &&
     SYNCHRONOUS_ITERATION_METHOD_NAMES.has(callee.property.name)
@@ -106,54 +107,128 @@ const isGuardWithTerminatingBranch = (statement: EsTreeNode): EsTreeNode | null 
 // modeling block-level control flow: setters before an early-returning
 // guard always run (they accumulate), the guard branch is a separate
 // mutually-exclusive path (tracked as a max), and statements after an
-// unconditional `return`/`throw` are unreachable.
-const countStatementSequenceSetStateCalls = (statements: ReadonlyArray<EsTreeNode>): number => {
+// unconditional `return`/`throw` are unreachable. Function declarations
+// don't execute where they appear — their setters count at call sites.
+const countStatementSequenceSetStateCalls = (
+  statements: ReadonlyArray<EsTreeNode>,
+  context: HelperCountingContext,
+): number => {
   let fallThroughCount = 0;
   let maxTerminatingPathCount = 0;
   for (const statement of statements) {
+    if (isFunctionLike(statement)) continue;
     const guardBranch = isGuardWithTerminatingBranch(statement);
     if (guardBranch) {
       maxTerminatingPathCount = Math.max(
         maxTerminatingPathCount,
-        fallThroughCount + countMaxPathSetStateCalls(guardBranch),
+        fallThroughCount + countMaxPathSetStateCalls(guardBranch, context),
       );
       continue;
     }
     if (isTerminatingStatement(statement)) break;
-    fallThroughCount += countMaxPathSetStateCalls(statement);
+    fallThroughCount += countMaxPathSetStateCalls(statement, context);
   }
   return Math.max(maxTerminatingPathCount, fallThroughCount);
 };
 
-const countMaxPathSetStateCalls = (node: EsTreeNode): number => {
+interface HelperCountingContext {
+  helpersByName: Map<string, EsTreeNode>;
+  activeHelpers: Set<EsTreeNode>;
+  effectCallback: EsTreeNode;
+}
+
+// Function bindings declared in the file (`const applyAll = () => {...}`,
+// `function fetchAll() {...}`) — inside the effect callback or at component /
+// hook level: their setters count at the effect's synchronous CALL site, not
+// the declaration.
+const collectLocalHelperFunctions = (root: EsTreeNode): Map<string, EsTreeNode> => {
+  const helpersByName = new Map<string, EsTreeNode>();
+  const visit = (node: EsTreeNode): void => {
+    if (isNodeOfType(node, "FunctionDeclaration") && node.id) {
+      helpersByName.set(node.id.name, node);
+    }
+    if (
+      isNodeOfType(node, "VariableDeclarator") &&
+      isNodeOfType(node.id, "Identifier") &&
+      node.init &&
+      isFunctionLike(node.init)
+    ) {
+      helpersByName.set(node.id.name, node.init as EsTreeNode);
+    }
+    // `const fetchAll = useCallback(async () => {...}, [deps])` — the
+    // callable binding is the memoized inner function.
+    if (
+      isNodeOfType(node, "VariableDeclarator") &&
+      isNodeOfType(node.id, "Identifier") &&
+      node.init &&
+      isNodeOfType(node.init, "CallExpression") &&
+      isNodeOfType(node.init.callee, "Identifier") &&
+      node.init.callee.name === "useCallback" &&
+      node.init.arguments?.[0] &&
+      isFunctionLike(node.init.arguments[0] as EsTreeNode)
+    ) {
+      helpersByName.set(node.id.name, node.init.arguments[0] as EsTreeNode);
+    }
+    const record = node as unknown as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (key === "parent") continue;
+      const child = record[key];
+      if (Array.isArray(child)) {
+        for (const item of child) {
+          if (item && typeof item === "object" && "type" in item) visit(item as EsTreeNode);
+        }
+      } else if (child && typeof child === "object" && "type" in child) {
+        visit(child as EsTreeNode);
+      }
+    }
+  };
+  visit(root);
+  return helpersByName;
+};
+
+// A helper's setters only count when the effect body delegates to it
+// WHOLESALE — an unconditional top-level `applyAll();` / `resetToCached();`
+// statement (or an expression-bodied `useEffect(() => resetAll(), …)`).
+// Helper calls nested in branches, member chains (`settle()?.onComplete`),
+// or other expressions are shared event-handler routines the effect merely
+// reuses on one of several exclusive paths; counting their setters at those
+// sites produced confirmed false positives (portos StoryBuilder, catho
+// DropdownLight) in the delta audit.
+const isWholesaleDelegationCall = (callNode: EsTreeNode, effectCallback: EsTreeNode): boolean => {
+  const parent = (callNode as unknown as { parent?: EsTreeNode | null }).parent;
+  if (!parent) return false;
+  if ((parent as unknown) === (effectCallback as unknown)) return true;
+  if (!isNodeOfType(parent, "ExpressionStatement")) return false;
+  const grandParent = (parent as unknown as { parent?: EsTreeNode | null }).parent;
+  return (grandParent as unknown) === ((effectCallback as { body?: EsTreeNode }).body as unknown);
+};
+
+const countMaxPathSetStateCalls = (node: EsTreeNode, context: HelperCountingContext): number => {
   if (!node || typeof node !== "object") return 0;
   // Async function bodies — see comment above. Deferred INLINE callbacks
-  // (`.then(...)`, `setTimeout(...)`, subscriptions) are skipped by
-  // shouldWalkChild below; other sync function bodies are walked.
+  // (`.then(...)`, `setTimeout(...)`, subscriptions, stored handlers) are
+  // skipped by shouldWalkChild below; other sync function bodies are walked.
   if (isAsyncFunctionLike(node)) return 0;
   // Statement lists: walk with block-level control flow so setters in an
   // early-returning guard branch are mutually exclusive with the
   // post-guard body (max), not summed.
   if (isNodeOfType(node, "BlockStatement") || isNodeOfType(node, "Program")) {
-    return countStatementSequenceSetStateCalls((node.body ?? []) as EsTreeNode[]);
+    return countStatementSequenceSetStateCalls((node.body ?? []) as EsTreeNode[], context);
   }
   // If/else: SUM the branches' call sites. Only one branch fires per run,
   // but every call site is a separate write the rule's reducer
   // recommendation would consolidate — an `if/else if/else` ladder that
   // fans out over 3+ setters is exactly the cascading shape to flag.
   // (Mutually exclusive early-return guards are handled at the statement-
-  // sequence level instead, where the mined FP shape actually lives.)
-  if (isNodeOfType(node, "IfStatement")) {
-    const thenCount = countMaxPathSetStateCalls(node.consequent as EsTreeNode);
-    const elseCount = node.alternate ? countMaxPathSetStateCalls(node.alternate as EsTreeNode) : 0;
+  // sequence level instead, where the mined FP shape actually lives.
+  // A branch-MAX variant was measured on the corpus and traded ~1:1
+  // against judged true positives, so summing stays.)
+  if (isNodeOfType(node, "IfStatement") || isNodeOfType(node, "ConditionalExpression")) {
+    const consequent = node.consequent as EsTreeNode;
+    const alternate = node.alternate as EsTreeNode | null | undefined;
+    const thenCount = countMaxPathSetStateCalls(consequent, context);
+    const elseCount = alternate ? countMaxPathSetStateCalls(alternate, context) : 0;
     return thenCount + elseCount;
-  }
-  // Conditional expression — same logic.
-  if (isNodeOfType(node, "ConditionalExpression")) {
-    return (
-      countMaxPathSetStateCalls(node.consequent as EsTreeNode) +
-      countMaxPathSetStateCalls(node.alternate as EsTreeNode)
-    );
   }
   // Switch: max across runs (a "run" is a sequence of cases that fall
   // through into each other; a run ends at break/return/throw/continue).
@@ -168,7 +243,7 @@ const countMaxPathSetStateCalls = (node: EsTreeNode): number => {
       let caseSetters = 0;
       let runEnds = false;
       for (const statement of consequent) {
-        caseSetters += countMaxPathSetStateCalls(statement as EsTreeNode);
+        caseSetters += countMaxPathSetStateCalls(statement as EsTreeNode, context);
         if (isTerminatingStatement(statement as EsTreeNode)) runEnds = true;
       }
       currentRunSetters += caseSetters;
@@ -183,12 +258,12 @@ const countMaxPathSetStateCalls = (node: EsTreeNode): number => {
   // Try/catch/finally: max(try, catch) (only one path runs on
   // success vs throw) + finally (always runs).
   if (isNodeOfType(node, "TryStatement")) {
-    const tryCount = countMaxPathSetStateCalls(node.block as EsTreeNode);
+    const tryCount = countMaxPathSetStateCalls(node.block as EsTreeNode, context);
     const catchCount = node.handler
-      ? countMaxPathSetStateCalls((node.handler as { body: EsTreeNode }).body)
+      ? countMaxPathSetStateCalls((node.handler as { body: EsTreeNode }).body, context)
       : 0;
     const finallyCount = node.finalizer
-      ? countMaxPathSetStateCalls(node.finalizer as EsTreeNode)
+      ? countMaxPathSetStateCalls(node.finalizer as EsTreeNode, context)
       : 0;
     return Math.max(tryCount, catchCount) + finallyCount;
   }
@@ -203,19 +278,38 @@ const countMaxPathSetStateCalls = (node: EsTreeNode): number => {
   ) {
     let nestedSettersInArgs = 0;
     for (const argument of (node as EsTreeNodeOfType<"CallExpression">).arguments ?? []) {
-      nestedSettersInArgs += countMaxPathSetStateCalls(argument as EsTreeNode);
+      nestedSettersInArgs += countMaxPathSetStateCalls(argument as EsTreeNode, context);
     }
     return 1 + nestedSettersInArgs;
   }
-  // Walk children, summing — sequential statements compound. The only
-  // function-like children skipped are DEFERRED inline callbacks (handed
-  // straight to `store.subscribe(...)` / `setTimeout(...)` / `.then(...)`),
-  // which run on their own dispatch. IIFEs, `forEach`/`map`/… callbacks, and
-  // variable-stored helpers/handlers ARE walked. (A `setX(prev => { setY() })`
-  // functional updater is counted via the setter-call arguments branch above,
-  // not here.)
+  // A wholesale top-level delegation to a locally-declared sync helper runs
+  // its body on the effect's dispatch — count the helper's setters here, at
+  // the call site.
+  if (isNodeOfType(node, "CallExpression") && isNodeOfType(node.callee, "Identifier")) {
+    const helperFunction = context.helpersByName.get(node.callee.name);
+    if (
+      helperFunction &&
+      !context.activeHelpers.has(helperFunction) &&
+      isWholesaleDelegationCall(node, context.effectCallback)
+    ) {
+      context.activeHelpers.add(helperFunction);
+      let helperCount = countMaxPathSetStateCalls(helperFunction, context);
+      context.activeHelpers.delete(helperFunction);
+      for (const argument of node.arguments ?? []) {
+        helperCount += countMaxPathSetStateCalls(argument as EsTreeNode, context);
+      }
+      return helperCount;
+    }
+  }
+  // Walk children, summing — sequential statements compound. Nested
+  // function-like children are skipped unless they run on the effect's own
+  // dispatch (IIFEs, `forEach`/`map`/… iteration callbacks): callbacks handed
+  // to other APIs and stored handlers fire later on their own dispatch.
+  // Helper declarations are counted at their synchronous call sites instead
+  // (see the helper-call branch above). (A `setX(prev => { setY() })`
+  // functional updater is counted via the setter-call arguments branch.)
   const shouldWalkChild = (child: EsTreeNode): boolean =>
-    !isFunctionLike(child) || !isDeferredInlineCallback(child);
+    !isFunctionLike(child) || runsOnEffectDispatch(child);
   let total = 0;
   const nodeRecord = node as unknown as Record<string, unknown>;
   for (const key of Object.keys(nodeRecord)) {
@@ -229,7 +323,7 @@ const countMaxPathSetStateCalls = (node: EsTreeNode): number => {
           "type" in item &&
           shouldWalkChild(item as EsTreeNode)
         ) {
-          total += countMaxPathSetStateCalls(item as EsTreeNode);
+          total += countMaxPathSetStateCalls(item as EsTreeNode, context);
         }
       }
     } else if (
@@ -238,7 +332,7 @@ const countMaxPathSetStateCalls = (node: EsTreeNode): number => {
       "type" in child &&
       shouldWalkChild(child as EsTreeNode)
     ) {
-      total += countMaxPathSetStateCalls(child as EsTreeNode);
+      total += countMaxPathSetStateCalls(child as EsTreeNode, context);
     }
   }
   return total;
@@ -258,6 +352,60 @@ const isInitOnlyEffect = (node: EsTreeNodeOfType<"CallExpression">): boolean => 
   return (depsArg.elements ?? []).length === 0;
 };
 
+const DEV_ENV_FLAG_NAMES: ReadonlySet<string> = new Set(["DEV", "PROD", "MODE", "NODE_ENV"]);
+
+const mentionsDevEnvFlag = (node: EsTreeNode): boolean => {
+  if (!node || typeof node !== "object") return false;
+  if (
+    isNodeOfType(node, "MemberExpression") &&
+    isNodeOfType(node.property, "Identifier") &&
+    DEV_ENV_FLAG_NAMES.has(node.property.name) &&
+    isNodeOfType(node.object, "MemberExpression") &&
+    isNodeOfType(node.object.property, "Identifier") &&
+    node.object.property.name === "env"
+  ) {
+    return true;
+  }
+  const record = node as unknown as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (key === "parent") continue;
+    const child = record[key];
+    if (Array.isArray(child)) {
+      for (const item of child) {
+        if (
+          item &&
+          typeof item === "object" &&
+          "type" in item &&
+          mentionsDevEnvFlag(item as EsTreeNode)
+        ) {
+          return true;
+        }
+      }
+    } else if (
+      child &&
+      typeof child === "object" &&
+      "type" in child &&
+      mentionsDevEnvFlag(child as EsTreeNode)
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+// An effect whose first statement is an early return gated on
+// `import.meta.env.DEV` / `process.env.NODE_ENV` is a dev-only harness —
+// the body never runs in production, so its setter count is not a
+// production render-cascade concern.
+const isDevOnlyGuardedEffect = (callback: EsTreeNode): boolean => {
+  const body = (callback as { body?: EsTreeNode }).body;
+  if (!body || !isNodeOfType(body, "BlockStatement")) return false;
+  const firstStatement = (body.body ?? [])[0] as EsTreeNode | undefined;
+  if (!firstStatement) return false;
+  if (!isGuardWithTerminatingBranch(firstStatement)) return false;
+  return mentionsDevEnvFlag((firstStatement as EsTreeNodeOfType<"IfStatement">).test as EsTreeNode);
+};
+
 export const noCascadingSetState = defineRule({
   id: "no-cascading-set-state",
   title: "Multiple setState calls in one effect",
@@ -271,8 +419,14 @@ export const noCascadingSetState = defineRule({
       if (isInitOnlyEffect(node)) return;
       const callback = getEffectCallback(node);
       if (!callback) return;
+      if (isDevOnlyGuardedEffect(callback)) return;
 
-      const setStateCallCount = countMaxPathSetStateCalls(callback);
+      const countingContext: HelperCountingContext = {
+        helpersByName: collectLocalHelperFunctions(findProgramRoot(node) ?? callback),
+        activeHelpers: new Set(),
+        effectCallback: callback,
+      };
+      const setStateCallCount = countMaxPathSetStateCalls(callback, countingContext);
       if (setStateCallCount >= CASCADING_SET_STATE_THRESHOLD) {
         context.report({
           node,

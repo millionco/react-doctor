@@ -56,6 +56,158 @@ describe("a11y/prefer-tag-over-role regressions", () => {
     expect(result.diagnostics[0].message).not.toContain("`<menu>`");
   });
 
+  it("does not suggest table tags for ARIA grid composite roles on divs", () => {
+    const source = `const Grid = () => (
+      <div role="grid">
+        <div role="rowgroup">
+          <div role="row">
+            <div role="columnheader">Name</div>
+            <div role="rowheader">Row</div>
+            <div role="gridcell">Ada</div>
+            <div role="cell">1815</div>
+          </div>
+        </div>
+      </div>
+    );`;
+    const result = runRule(preferTagOverRole, source);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('does not suggest <input> for a valued custom `<div role="slider">` (multi-thumb / resize handle)', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const Thumb = () => <span role="slider" tabIndex={-1} aria-valuemin={0} aria-valuemax={100} aria-valuenow={50} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('does not suggest <input> for a drag-to-resize `<span role="spinbutton">`', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const Resizer = () => <span role="spinbutton" aria-valuemin={0} aria-valuenow={width} onPointerDown={handlePointerDown} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('still suggests <input> for a bare `<div role="slider">`', () => {
+    const result = runRule(preferTagOverRole, `const S = () => <div role="slider" />;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it('does not suggest <hr> for a draggable splitter `<div role="separator">` (mouse/touch handlers)', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const Splitter = () => <div role="separator" onMouseDown={handleSplitterMouseDown} onTouchStart={handleSplitterMouseDown} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('does not suggest <hr> for a `<div role="separator">` with visible children (hr is void)', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const GroupTitle = ({ title }) => <div role="separator">{title}</div>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('does not suggest <progress> for a `<div role="progressbar">` with custom children', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const Bar = () => <div role="progressbar"><div className="line" /><div className="line" /></div>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('still suggests <progress> for a bare `<div role="progressbar">`', () => {
+    const result = runRule(preferTagOverRole, `const Bar = () => <div role="progressbar" />;`);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it('does not suggest <input> for a contentEditable `<div role="textbox">` (rich token editor)', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const Editor = () => <div role="textbox" aria-multiline="true" contentEditable="true" />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('does not report an `aria-hidden` `<div role="separator">` (excluded from the tree)', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const Deco = () => <div role="separator" aria-hidden="true" />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('does not suggest <button> for a `<div role="button">` wrapping an input (nested interactive)', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const DropZone = () => <div role="button" tabIndex={0}><input type="file" /></div>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('does not suggest <button> for a `<div role="button">` with block children', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const Icon = () => <div role="button" tabIndex={0}><p>Label</p></div>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('does not suggest <button> for a `<span role="button">` nested inside a native <button>', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const Row = () => <button type="button"><span>Title</span><span role="button" onClick={openSettings}>Settings</span></button>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('still suggests <button> for a `<div role="button">` with plain text content', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const B = () => <div role="button" tabIndex={0}>Click me</div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it('suggests <button> for an href-less `<a role="button">` (hand-rolled button)', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const A = () => <a role="button" tabIndex={0} onKeyDown={handleKeyDown}>Toggle</a>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("`<button>`");
+  });
+
+  it('does not report `<a role="button" href="...">` (a real link styled as a button)', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const A = () => <a role="button" href="/docs">Docs</a>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('does not report `<a role="button" {...props}>` (spread could supply href)', () => {
+    const result = runRule(
+      preferTagOverRole,
+      `const A = (props) => <a role="button" {...props}>Maybe link</a>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('does not report other roles on an anchor (`<a role="tab">`)', () => {
+    const result = runRule(preferTagOverRole, `const A = () => <a role="tab">Tab</a>;`);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not report role usage in testlike files (mock scaffolding)", () => {
+    const result = runRule(preferTagOverRole, `const Mock = () => <div role="button">Open</div>;`, {
+      filename: "src/components/trash/TrashGrid.test.tsx",
+    });
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it('does not suggest <hr> for a window-splitter `<div role="separator">` (focusable/valued)', () => {
     const result = runRule(
       preferTagOverRole,

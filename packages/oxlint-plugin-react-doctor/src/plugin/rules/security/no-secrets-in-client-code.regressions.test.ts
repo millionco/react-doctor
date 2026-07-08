@@ -65,4 +65,48 @@ describe("security/no-secrets-in-client-code — regressions", () => {
       runClient(`const authorisedSigningValue = "9f8e7d6c5b4a39281706f5e4d3c2b1a0abcdef";`).length,
     ).toBeGreaterThan(0);
   });
+
+  // Docs-validation FP wave: sentinel values that embed the variable's own
+  // name are markers, never credentials (antd's SECRET_COMBOBOX_MODE_DO_NOT_USE,
+  // redux action-type strings).
+  it("stays silent on a sentinel whose value is its own variable name (antd shape)", () => {
+    expect(
+      runClient(`const SECRET_COMBOBOX_MODE_DO_NOT_USE = "SECRET_COMBOBOX_MODE_DO_NOT_USE";`),
+    ).toHaveLength(0);
+  });
+
+  it("stays silent on redux action-type strings embedding the variable name (cboard shape)", () => {
+    expect(
+      runClient(
+        `const STORE_PASSWORD_API_SUCCESS = "cboard/ResetPassword/STORE_PASSWORD_API_SUCCESS";`,
+      ),
+    ).toHaveLength(0);
+  });
+
+  // Docs-validation FP wave: storage/config KEY NAMES are human-readable
+  // lowercase words joined by separators, not high-entropy secret values.
+  it("stays silent on localStorage key names (open-design shape)", () => {
+    expect(
+      runClient(
+        `const MEMORY_CONNECTOR_PENDING_AUTH_STORAGE_KEY = "od:memory:pending-connector-auth";`,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("stays silent on window-property key names (webstudio shape)", () => {
+    expect(runClient(`const apiTokenKey = "__webstudio__$__api_token_lookup";`)).toHaveLength(0);
+  });
+
+  it("stays silent on config-field identifier values (asterdrive shape)", () => {
+    expect(
+      runClient(`const AUTH_LOCAL_EMAIL_BLOCKLIST_KEY = "auth_local_email_blocklist_field";`),
+    ).toHaveLength(0);
+  });
+
+  // …while high-entropy values mixing case, digits, and separators still flag.
+  it("still flags separator-joined values with entropy (not key-name-shaped)", () => {
+    expect(
+      runClient(`const clientAuthToken = "xK9v-3LmZ-k84T-rWpB-2Qj7-mE5n";`).length,
+    ).toBeGreaterThan(0);
+  });
 });

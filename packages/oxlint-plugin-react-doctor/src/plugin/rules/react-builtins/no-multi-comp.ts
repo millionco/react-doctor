@@ -273,6 +273,18 @@ interface DetectedComponent {
 //   export const DefinitionPopover = { Wrapper, Header, Description, … }
 // The user is exporting all the private functions under a single
 // namespace value — they're still part of the public API surface.
+const unwrapTsCast = (expression: EsTreeNode): EsTreeNode => {
+  let current = stripParenExpression(expression);
+  while (
+    current.type === "TSAsExpression" ||
+    current.type === "TSSatisfiesExpression" ||
+    current.type === "TSNonNullExpression"
+  ) {
+    current = stripParenExpression((current as { expression: EsTreeNode }).expression);
+  }
+  return current;
+};
+
 const collectReExportedNames = (program: EsTreeNode): Set<string> => {
   const names = new Set<string>();
   if (!isNodeOfType(program, "Program")) return names;
@@ -280,10 +292,13 @@ const collectReExportedNames = (program: EsTreeNode): Set<string> => {
     // `export default Foo` where `Foo` is an Identifier referencing a
     // separately-declared component. Walking up from `Foo`'s binding
     // node never reaches the ExportDefaultDeclaration, so we record
-    // the name here for `isExportedDeclaration` to pick up.
+    // the name here for `isExportedDeclaration` to pick up. Compound
+    // components export through a cast (`export default SplitButton as
+    // SplitButtonComponent`), so unwrap TS casts first.
     if (isNodeOfType(statement, "ExportDefaultDeclaration")) {
-      if (isNodeOfType(statement.declaration, "Identifier")) {
-        names.add(statement.declaration.name);
+      const defaultExpression = unwrapTsCast(statement.declaration as EsTreeNode);
+      if (isNodeOfType(defaultExpression, "Identifier")) {
+        names.add(defaultExpression.name);
       }
       continue;
     }
@@ -303,8 +318,21 @@ const collectReExportedNames = (program: EsTreeNode): Set<string> => {
     if (!isNodeOfType(statement.declaration, "VariableDeclaration")) continue;
     for (const declarator of statement.declaration.declarations ?? []) {
       if (!isNodeOfType(declarator, "VariableDeclarator")) continue;
-      if (!isNodeOfType(declarator.init, "ObjectExpression")) continue;
-      for (const property of declarator.init.properties ?? []) {
+      if (!declarator.init) continue;
+      const init = unwrapTsCast(declarator.init as EsTreeNode);
+      // `export const FileGrid = memo(FileGridComponent)` — the private
+      // declaration IS the public surface, just re-exported through a
+      // HoC wrapper under a (possibly different) name.
+      if (isNodeOfType(init, "CallExpression")) {
+        const calleeName = flattenCalleeName(init.callee);
+        if (calleeName && REACT_HOC_NAMES.has(calleeName)) {
+          const wrappedArg = init.arguments[0] as EsTreeNode | undefined;
+          if (wrappedArg && isNodeOfType(wrappedArg, "Identifier")) names.add(wrappedArg.name);
+        }
+        continue;
+      }
+      if (!isNodeOfType(init, "ObjectExpression")) continue;
+      for (const property of init.properties ?? []) {
         if (!isNodeOfType(property, "Property")) continue;
         if (property.computed) continue;
         // `{ Wrapper, Header }` (shorthand) and `{ Wrapper: Wrapper, ... }`
@@ -506,6 +534,23 @@ const walkComponentSearch = (node: EsTreeNode, context: VisitContext): void => {
       context.componentDepth -= 1;
       return;
     }
+    // `export default function () { … }` / `export default () => …` —
+    // anonymous default component (demo pages, docs themes). Without
+    // this it contributes NEITHER to the component tally NOR to
+    // exportedCount, so a page with one anonymous default plus private
+    // helpers looked like an all-private file and lost the
+    // feature-module exemption.
+    const isAnonymousFunctionComponent =
+      (isNodeOfType(declaration, "FunctionDeclaration") && !declaration.id) ||
+      (isNodeOfType(declaration, "FunctionExpression") && !declaration.id) ||
+      isNodeOfType(declaration, "ArrowFunctionExpression");
+    if (isAnonymousFunctionComponent && containsJsx(declaration)) {
+      recordComponent(context, "UnnamedComponent", declaration, true);
+      context.componentDepth += 1;
+      walkChildren(node, context);
+      context.componentDepth -= 1;
+      return;
+    }
   }
 
   // Object property: { RenderFoo() { return <div/> } } where key is PascalCase.
@@ -630,7 +675,14 @@ export const noMultiComp = defineRule({
         //     where a handful of private helpers (`PreferencesToggle*`
         //     / `Cell` / `SortableCell` style) sit alongside the
         //     public exports
+        //   - every component exported (3+ components) — parts / atoms /
+        //     shadcn primitive files (`Alert` + `AlertTitle` +
+        //     `AlertDescription`, `Table` + `TableRow` + `TableHeader`).
+        //     The 4-component band already forgave 2-of-4 exported, so
+        //     3-of-3 firing was an inconsistency, and the corpus showed
+        //     it was the single most common FP shape for this rule.
         const isBarrelLikeFile =
+          exportedCount >= flagged.length ||
           (flagged.length >= 4 && exportedCount >= Math.floor(flagged.length * 0.7)) ||
           (flagged.length >= 8 && exportedCount >= Math.floor(flagged.length * 0.5));
         if (isBarrelLikeFile) return;

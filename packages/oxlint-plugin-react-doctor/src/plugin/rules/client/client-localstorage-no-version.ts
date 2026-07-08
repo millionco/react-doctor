@@ -38,6 +38,22 @@ const isJsonStringifyCall = (node: EsTreeNode): boolean => {
   return node.callee.property.name === "stringify";
 };
 
+// The key is either an inline string literal or an identifier that resolves
+// to a `const` string literal (`const CACHE_KEY = 'prefs'` then
+// `setItem(CACHE_KEY, ...)`) — const guarantees the binding is never
+// reassigned, so the literal is the key at every call site.
+const resolveStringKey = (keyArg: EsTreeNode, context: RuleContext): string | null => {
+  if (isNodeOfType(keyArg, "Literal")) {
+    return typeof keyArg.value === "string" ? keyArg.value : null;
+  }
+  if (!isNodeOfType(keyArg, "Identifier")) return null;
+  const symbol = context.scopes.symbolFor(keyArg);
+  if (!symbol || symbol.kind !== "const") return null;
+  const initializer = symbol.initializer;
+  if (!isNodeOfType(initializer, "Literal")) return null;
+  return typeof initializer.value === "string" ? initializer.value : null;
+};
+
 export const clientLocalstorageNoVersion = defineRule({
   id: "client-localstorage-no-version",
   title: "Unversioned localStorage key",
@@ -56,9 +72,9 @@ export const clientLocalstorageNoVersion = defineRule({
 
       const keyArg = node.arguments?.[0];
       if (!keyArg) return;
-      if (!isNodeOfType(keyArg, "Literal")) return;
-      if (typeof keyArg.value !== "string") return;
-      if (isVersionedKey(keyArg.value)) return;
+      const keyValue = resolveStringKey(keyArg, context);
+      if (keyValue === null) return;
+      if (isVersionedKey(keyValue)) return;
 
       const valueArg = node.arguments?.[1];
       if (!valueArg) return;
@@ -66,7 +82,7 @@ export const clientLocalstorageNoVersion = defineRule({
 
       context.report({
         node: keyArg,
-        message: `${node.callee.object.name}.setItem("${keyArg.value}", JSON.stringify(...)) has no version, so changing the data shape later crashes your users' saved sessions. Add one to the key (e.g. "${keyArg.value}:v1").`,
+        message: `${node.callee.object.name}.setItem("${keyValue}", JSON.stringify(...)) has no version, so changing the data shape later crashes your users' saved sessions. Add one to the key (e.g. "${keyValue}:v1").`,
       });
     },
   }),

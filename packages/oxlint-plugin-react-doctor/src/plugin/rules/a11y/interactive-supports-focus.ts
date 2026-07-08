@@ -31,6 +31,38 @@ const DEFAULT_TABBABLE_ROLES: ReadonlyArray<string> = [
   "textbox",
 ];
 
+// Composite widget CONTAINERS per the ARIA APG: keyboard focus lives on
+// their items (roving tabindex) or is delegated via aria-activedescendant,
+// and the container itself must NOT be a tab stop — its handlers exist for
+// bubbled events (arrow-key onKeyDown, hover bookkeeping, click-outside
+// guards) from focusable descendants.
+const COMPOSITE_CONTAINER_ROLES: ReadonlySet<string> = new Set([
+  "toolbar",
+  "listbox",
+  "menu",
+  "menubar",
+  "radiogroup",
+  "tablist",
+  "tree",
+  "treegrid",
+  "grid",
+]);
+
+// Items operated through aria-activedescendant: the item never takes DOM
+// focus (the combobox input keeps it), so it needs an `id` for the
+// pointer, not a tabIndex. An explicit id on a composite item is the
+// static marker of that pattern.
+const COMPOSITE_ITEM_ROLES: ReadonlySet<string> = new Set([
+  "option",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "treeitem",
+  "tab",
+  "row",
+  "gridcell",
+]);
+
 interface InteractiveSupportsFocusSettings {
   tabbable?: ReadonlyArray<string>;
 }
@@ -89,6 +121,13 @@ export const interactiveSupportsFocus = defineRule({
           isDisabledElement(node) ||
           isHiddenFromScreenReader(node, context.settings) ||
           isPresentationRole(node)
+        ) {
+          return;
+        }
+        if (COMPOSITE_CONTAINER_ROLES.has(role)) return;
+        if (
+          COMPOSITE_ITEM_ROLES.has(role) &&
+          Boolean(hasJsxPropIgnoreCase(node.attributes, "id"))
         ) {
           return;
         }

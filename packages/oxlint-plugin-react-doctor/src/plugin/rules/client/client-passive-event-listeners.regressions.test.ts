@@ -3,12 +3,12 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { clientPassiveEventListeners } from "./client-passive-event-listeners.js";
 
 describe("client/client-passive-event-listeners — regressions", () => {
-  it("still flags the inline rAF-throttled scroll handler", () => {
+  it("still flags the inline rAF-throttled wheel handler", () => {
     const result = runRule(
       clientPassiveEventListeners,
       `let ticking = false;
-const onDocumentScroll = (callback) => {
-  document.addEventListener('scroll', (evt) => {
+const onDocumentWheel = (callback) => {
+  document.addEventListener('wheel', (evt) => {
     if (!ticking) {
       window.requestAnimationFrame(() => {
         callbacks.forEach((cbObj) => cbObj.cb._execute(evt));
@@ -39,8 +39,8 @@ const onDocumentScroll = (callback) => {
     const result = runRule(
       clientPassiveEventListeners,
       `function setup(el) {
-  const onScroll = () => { trackPosition(); };
-  el.addEventListener("scroll", onScroll);
+  const onWheel = () => { trackPosition(); };
+  el.addEventListener("wheel", onWheel);
 }`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -64,20 +64,20 @@ const onDocumentScroll = (callback) => {
     const result = runRule(
       clientPassiveEventListeners,
       `function setup(el) {
-  let onScroll;
-  onScroll = () => { trackPosition(); };
-  el.addEventListener("scroll", onScroll);
+  let onWheel;
+  onWheel = () => { trackPosition(); };
+  el.addEventListener("wheel", onWheel);
 }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("still flags an outer scroll handler when only a nested callback calls preventDefault", () => {
+  it("still flags an outer touchmove handler when only a nested callback calls preventDefault", () => {
     const result = runRule(
       clientPassiveEventListeners,
       `function setup(el) {
-  el.addEventListener("scroll", () => {
+  el.addEventListener("touchmove", () => {
     updateHeader();
     attachDragGuard((dragEvent) => dragEvent.preventDefault());
   });
@@ -103,8 +103,8 @@ const onDocumentScroll = (callback) => {
     const result = runRule(
       clientPassiveEventListeners,
       `class Tracker {
-  onScroll() { this.record(); }
-  attach(el) { el.addEventListener("scroll", this.onScroll); }
+  onWheel() { this.record(); }
+  attach(el) { el.addEventListener("wheel", this.onWheel); }
 }`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -127,8 +127,8 @@ const onDocumentScroll = (callback) => {
     const result = runRule(
       clientPassiveEventListeners,
       `class Tracker {
-  #onScroll() { this.record(); }
-  attach(el) { el.addEventListener("scroll", this.#onScroll); }
+  #onWheel() { this.record(); }
+  attach(el) { el.addEventListener("wheel", this.#onWheel); }
 }`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -151,8 +151,8 @@ const onDocumentScroll = (callback) => {
     const result = runRule(
       clientPassiveEventListeners,
       `const controller = {
-  onScroll() { this.record(); },
-  attach(el) { el.addEventListener("scroll", this.onScroll); },
+  onWheel() { this.record(); },
+  attach(el) { el.addEventListener("wheel", this.onWheel); },
 };`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -163,7 +163,7 @@ const onDocumentScroll = (callback) => {
     const result = runRule(
       clientPassiveEventListeners,
       `function attach(el, handlers) {
-  el.addEventListener("scroll", handlers.onScroll);
+  el.addEventListener("wheel", handlers.onWheel);
 }`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -175,7 +175,7 @@ const onDocumentScroll = (callback) => {
       clientPassiveEventListeners,
       `function useAttach(el) {
   const handlerRef = useRef(() => trackPosition());
-  el.addEventListener("scroll", handlerRef.current);
+  el.addEventListener("wheel", handlerRef.current);
 }`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -185,9 +185,9 @@ const onDocumentScroll = (callback) => {
   it("still flags an imported identifier handler (symmetric with member handlers)", () => {
     const result = runRule(
       clientPassiveEventListeners,
-      `import { onScroll } from "./handlers";
+      `import { onWheel } from "./handlers";
 function attach(el) {
-  el.addEventListener("scroll", onScroll);
+  el.addEventListener("wheel", onWheel);
 }`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -233,7 +233,7 @@ function attach(el) {
     const result = runRule(
       clientPassiveEventListeners,
       `function attach(el) {
-  el.addEventListener("scroll", (event) => track(event), { passive: true });
+  el.addEventListener("wheel", (event) => track(event), { passive: true });
 }`,
     );
     expect(result.parseErrors).toEqual([]);
@@ -244,10 +244,41 @@ function attach(el) {
     const result = runRule(
       clientPassiveEventListeners,
       `function attach(el) {
-  el.addEventListener("scroll", (event) => track(event), { capture: true });
+  el.addEventListener("wheel", (event) => track(event), { capture: true });
 }`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on a scroll listener (scroll is not cancelable, passive is a no-op)", () => {
+    const result = runRule(
+      clientPassiveEventListeners,
+      `function attach(el) {
+  el.addEventListener("scroll", () => updateHeader());
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a touchend listener (touchend does not block scroll starts)", () => {
+    const result = runRule(
+      clientPassiveEventListeners,
+      `function attach(el) {
+  el.addEventListener("touchend", (event) => finishGesture(event));
+}`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a document scroll listener even without options", () => {
+    const result = runRule(
+      clientPassiveEventListeners,
+      `document.addEventListener("scroll", () => reportScrollDepth());`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
   });
 });

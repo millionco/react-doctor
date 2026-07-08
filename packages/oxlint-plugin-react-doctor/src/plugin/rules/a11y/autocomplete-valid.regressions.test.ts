@@ -50,4 +50,25 @@ describe("a11y/autocomplete-valid regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  // Docs-validation FP (remix-forms schema-form.test.tsx): test fixtures
+  // deliberately pass arbitrary autoComplete values through to assert
+  // rendering; markup in test-only files never reaches a browser's autofill.
+  it("stays silent in test files", () => {
+    const result = runRule(
+      autocompleteValid,
+      `const F = () => <input type="text" autoComplete="shipping" />;`,
+      { filename: "src/schema-form.test.tsx" },
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags an incomplete modifier-only value in production files", () => {
+    const result = runRule(
+      autocompleteValid,
+      `const F = () => <input type="text" autoComplete="shipping" />;`,
+      { filename: "src/checkout-form.tsx" },
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

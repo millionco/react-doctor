@@ -27,6 +27,11 @@ import("./beta.js").then((module) => {
 // @ts-ignore
 const ignored: number = "string-value";
 
+const ternaryIgnored = Array.isArray(rawConfig)
+  ? rawConfig[0]
+  : // @ts-ignore Support Firefox's non-standard behavior
+    (rawConfig as { width: number }).width;
+
 // @ts-expect-error
 const expectErrorNoExplanation: number = "string-value";
 

@@ -1,6 +1,7 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { isSetterCall } from "../../utils/is-setter-call.js";
 import { isUseStateSetterInScope } from "../../utils/is-use-state-setter-in-scope.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -56,6 +57,28 @@ const DEFERRED_EXECUTION_CALLEE_NAMES: ReadonlySet<string> = new Set([
   "useInsertionEffect",
 ]);
 
+const EFFECT_HOOK_CALLEE_NAMES: ReadonlySet<string> = new Set([
+  "useEffect",
+  "useLayoutEffect",
+  "useInsertionEffect",
+]);
+
+// A mount-only effect (`useEffect(fn, [])`) runs exactly once, right after
+// the first render — the captured state is still current when the closure
+// executes, so it cannot go stale. A setTimeout/subscription nested INSIDE
+// such an effect is still deferred (the walk hits that boundary first).
+const isMountOnlyEffectCall = (
+  callNode: EsTreeNodeOfType<"CallExpression">,
+  calleeName: string,
+): boolean => {
+  if (!EFFECT_HOOK_CALLEE_NAMES.has(calleeName)) return false;
+  const dependenciesArgument = callNode.arguments?.[1];
+  return (
+    isNodeOfType(dependenciesArgument, "ArrayExpression") &&
+    (dependenciesArgument.elements ?? []).length === 0
+  );
+};
+
 // True if the enclosing function-like ancestor is an argument to a
 // deferred-execution call. Walks outward stopping at the first
 // function/arrow boundary; if that boundary's parent is a CallExpression
@@ -81,13 +104,52 @@ const isInsideDeferredCallback = (node: EsTreeNode): boolean => {
       ) {
         calleeName = callee.property.name;
       }
-      if (calleeName && DEFERRED_EXECUTION_CALLEE_NAMES.has(calleeName)) return true;
+      if (
+        calleeName &&
+        DEFERRED_EXECUTION_CALLEE_NAMES.has(calleeName) &&
+        !isMountOnlyEffectCall(parent, calleeName)
+      ) {
+        return true;
+      }
       // Keep walking — we might be inside a nested fn whose own enclosing
       // call IS deferred.
     }
     current = parent;
   }
   return false;
+};
+
+const isFunctionLikeNode = (node: EsTreeNode): boolean =>
+  isNodeOfType(node, "ArrowFunctionExpression") ||
+  isNodeOfType(node, "FunctionExpression") ||
+  isNodeOfType(node, "FunctionDeclaration");
+
+// A single synchronous `setX(x - 1)` per handler invocation cannot lose its
+// own update — React renders between discrete events, so the next call reads
+// fresh state. The sync lost-update hazard needs the same stale value feeding
+// TWO updates before a render, whose static signal is a second call to the
+// same setter reachable in the same enclosing function.
+const hasMultipleSetterCallsInEnclosingFunction = (
+  setterCallNode: EsTreeNodeOfType<"CallExpression">,
+  setterName: string,
+): boolean => {
+  let enclosingFunction: EsTreeNode | null | undefined = setterCallNode.parent;
+  while (enclosingFunction && !isFunctionLikeNode(enclosingFunction)) {
+    enclosingFunction = enclosingFunction.parent;
+  }
+  if (!enclosingFunction) return false;
+
+  let setterCallCount = 0;
+  walkAst(enclosingFunction, (child: EsTreeNode) => {
+    if (
+      isNodeOfType(child, "CallExpression") &&
+      isNodeOfType(child.callee, "Identifier") &&
+      child.callee.name === setterName
+    ) {
+      setterCallCount += 1;
+    }
+  });
+  return setterCallCount >= 2;
 };
 
 export const rerenderFunctionalSetstate = defineRule({
@@ -109,10 +171,21 @@ export const rerenderFunctionalSetstate = defineRule({
       const argument = node.arguments[0];
       const expectedStateName = deriveStateVariableName(calleeName);
 
+      // The arithmetic / update shapes are hazardous when the closure runs
+      // past later renders (deferred execution) or when one stale value can
+      // feed two updates before a render (a second call to the same setter
+      // in the same handler). A lone `setPage(page - 1)` in a plain sync
+      // handler re-reads fresh state every discrete event and cannot lose
+      // an update.
+      const canSyncArithmeticGoStale = (): boolean =>
+        isInsideDeferredCallback(node) ||
+        hasMultipleSetterCallsInEnclosingFunction(node, calleeName);
+
       if (
         isNodeOfType(argument, "BinaryExpression") &&
         STATE_ARITHMETIC_OPERATORS.has(argument.operator) &&
-        expectedStateName
+        expectedStateName &&
+        canSyncArithmeticGoStale()
       ) {
         const matchesExpected = (operand: EsTreeNode | undefined): boolean =>
           isNodeOfType(operand, "Identifier") && operand.name === expectedStateName;
@@ -136,7 +209,8 @@ export const rerenderFunctionalSetstate = defineRule({
         isNodeOfType(argument, "UpdateExpression") &&
         (argument.operator === "++" || argument.operator === "--") &&
         isNodeOfType(argument.argument, "Identifier") &&
-        argument.argument.name === expectedStateName
+        argument.argument.name === expectedStateName &&
+        canSyncArithmeticGoStale()
       ) {
         const display = argument.prefix
           ? `${argument.operator}${argument.argument.name}`
@@ -160,16 +234,15 @@ export const rerenderFunctionalSetstate = defineRule({
       // the derived state variable: `setX([...x, ...])` or
       // `setX({ ...x, key: value })`.
       //
-      // GATE (spread shapes only): a spread merge is flagged only when
-      // the call site is inside a deferred-execution context (setTimeout,
+      // GATE (spread shapes): a spread merge is flagged only when the
+      // call site is inside a deferred-execution context (setTimeout,
       // .then(), addEventListener, useEffect, debounce, …) where the
       // closure survives past later renders and the captured state goes
       // stale. Synchronous render-path handlers (`onClick={() =>
       // setX({...x, …})}`) close over fresh state every render. The
-      // arithmetic / update shapes above stay ungated: `setPage(page - 1)`
-      // in a sync handler still loses updates when events batch before the
-      // next render (double-click), so the functional form is always the
-      // fix there.
+      // arithmetic / update shapes above additionally fire in a sync
+      // handler that calls the same setter twice — that's the batching
+      // case where one stale read feeds two updates before a render.
       if (!isInsideDeferredCallback(node)) return;
       if (expectedStateName && isNodeOfType(argument, "ArrayExpression")) {
         const spreadsState = (argument.elements ?? []).some(

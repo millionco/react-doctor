@@ -84,6 +84,13 @@ export interface ProjectInfo {
    */
   hasReanimated: boolean;
   /**
+   * The declared `react-native-reanimated` version spec, or `null` when
+   * absent. The Compiler-compatible `.get()` / `.set()` accessors only
+   * exist from reanimated 3.15.0, so the shared-value hint must not
+   * recommend them to projects pinned below that.
+   */
+  reanimatedVersion: string | null;
+  /**
    * `true` when the project's `tsconfig.json` `compilerOptions.target` or
    * `compilerOptions.lib` indicates the output environment predates ES2023
    * (e.g. `target: "es2022"` or `lib: ["es2022"]`). Drives the `pre-es2023`

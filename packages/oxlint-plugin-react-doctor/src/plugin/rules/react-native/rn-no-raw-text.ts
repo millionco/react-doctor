@@ -5,6 +5,8 @@ import {
   REACT_NATIVE_TEXT_COMPONENT_KEYWORDS,
   REACT_NATIVE_TEXT_TRANSPARENT_COMPONENTS,
 } from "../../constants/react-native.js";
+import { HTML_TAGS } from "../../constants/html-tags.js";
+import { SVG_TAGS } from "../../constants/svg-tags.js";
 import { containsJsxElement } from "../../utils/contains-jsx-element.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { hasDirective } from "../../utils/has-directive.js";
@@ -124,10 +126,19 @@ export const rnNoRawText = defineRule({
     let autoDetectedTextWrappers: ReadonlySet<string> = new Set();
     let autoDetectedNonTextWrappers: ReadonlySet<string> = new Set();
 
-    // A built-in crash host: a React Native host primitive, or any lowercase
-    // intrinsic (`div`, `fbt`, …) — raw text directly inside one always crashes.
-    const isNonTextHostName = (elementName: string): boolean =>
-      !isReactComponentName(elementName) || REACT_NATIVE_RAW_TEXT_HOST_COMPONENTS.has(elementName);
+    // A built-in crash host: a React Native host primitive, or a lowercase
+    // intrinsic that is NOT a known HTML/SVG tag (`fbt`, a typo'd primitive).
+    // Real DOM tags (`div`, `span`, `button`, svg `text`, …) are excluded:
+    // they only exist in web-targeting code (React Native has no `div` — the
+    // element itself would fail before its text could), so raw text inside
+    // one is web markup, not an RN crash. Mixed-target RN packages (a
+    // DevTools panel UI next to an RN runtime, `Platform.OS` web branches,
+    // react-native-web) render DOM trees legitimately.
+    const isNonTextHostName = (elementName: string): boolean => {
+      if (REACT_NATIVE_RAW_TEXT_HOST_COMPONENTS.has(elementName)) return true;
+      if (isReactComponentName(elementName)) return false;
+      return !HTML_TAGS.has(elementName) && !SVG_TAGS.has(elementName);
+    };
 
     // A raw-text child only crashes at a host boundary, so report it only when
     // its enclosing element is a proven non-text renderer: a built-in crash host

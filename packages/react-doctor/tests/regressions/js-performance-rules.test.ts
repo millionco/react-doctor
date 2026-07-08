@@ -433,7 +433,7 @@ describe("async-defer-await", () => {
     expect(hits).toHaveLength(3);
   });
 
-  it("flags bare-await statements when followed by an unrelated guard", async () => {
+  it("stays silent on bare side-effect awaits followed by an unrelated guard", async () => {
     const projectDir = setupReactProject(tempRoot, "async-defer-await-bare-await", {
       files: {
         "src/flush.ts": `
@@ -450,7 +450,7 @@ describe("async-defer-await", () => {
     });
 
     const hits = await collectRuleHits(projectDir, "async-defer-await");
-    expect(hits).toHaveLength(1);
+    expect(hits).toHaveLength(0);
   });
 
   it("flags the earliest of multiple consecutive awaits before an unrelated guard", async () => {
@@ -859,11 +859,12 @@ describe("js-combine-iterations", () => {
       },
     });
 
+    // One report per fluent chain (the outermost adjacent pair): the
+    // combine-into-one-pass advice covers the whole chain, so the inner
+    // `.flatMap().filter()` pair no longer gets a second diagnostic.
     const hits = await collectRuleHits(projectDir, "js-combine-iterations");
-    expect(hits).toHaveLength(2);
-    const messages = hits.map((hit) => hit.message);
-    expect(messages.some((message) => message.includes(".flatMap().filter()"))).toBe(true);
-    expect(messages.some((message) => message.includes(".filter().map()"))).toBe(true);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].message).toContain(".filter().map()");
   });
 
   it("does not flag .values().flatMap().filter().map() Iterator-helper chains", async () => {
@@ -1077,7 +1078,7 @@ describe("js-length-check-first", () => {
     expect(hits).toHaveLength(1);
   });
 
-  it("still flags .every() when the surrounding chain uses an inequality operator", async () => {
+  it("stays silent when a relational length guard precedes .every() (prefix-check shape)", async () => {
     const projectDir = setupReactProject(tempRoot, "length-check-first-inequality-guard", {
       files: {
         "src/compare.ts": `
@@ -1088,7 +1089,7 @@ describe("js-length-check-first", () => {
     });
 
     const hits = await collectRuleHits(projectDir, "js-length-check-first");
-    expect(hits).toHaveLength(1);
+    expect(hits).toHaveLength(0);
   });
 });
 describe("async-parallel", () => {
@@ -1487,7 +1488,7 @@ describe("issue #543: js-tosorted-immutable is gated off for React Native / Expo
     expect(hits).toHaveLength(0);
   });
 
-  it("does not flag [...freshlyFiltered].sort() where the spread target is a fresh array", async () => {
+  it("flags [...freshlyFiltered].sort() — the documented spread-sort shape fires even on fresh arrays", async () => {
     const projectDir = setupReactProject(tempRoot, "tosorted-fresh-array-spread", {
       files: {
         "src/sort-shown.ts": `
@@ -1500,6 +1501,6 @@ describe("issue #543: js-tosorted-immutable is gated off for React Native / Expo
     });
 
     const hits = await collectRuleHits(projectDir, "js-tosorted-immutable");
-    expect(hits).toHaveLength(0);
+    expect(hits).toHaveLength(1);
   });
 });

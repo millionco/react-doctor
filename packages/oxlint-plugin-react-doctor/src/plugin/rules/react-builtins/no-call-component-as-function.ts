@@ -69,6 +69,62 @@ const declarationBodyContainsHookCall = (symbol: SymbolDescriptor): boolean => {
   return didFindHookCall;
 };
 
+// A React component receives a single props object; a PascalCase function
+// declared with two or more parameters (`BoldedText(text, highlight)`) is a
+// formatting helper that happens to return JSX, and calling it positionally
+// is the only way to use it.
+const declarationTakesMultiplePositionalArguments = (symbol: SymbolDescriptor): boolean => {
+  const componentFunction = isComponentDeclaration(symbol.declarationNode)
+    ? symbol.declarationNode
+    : symbol.initializer;
+  if (!componentFunction || !isFunctionLike(componentFunction)) return false;
+  return (componentFunction.params?.length ?? 0) >= 2;
+};
+
+// An `async function` component cannot own hooks, fiber state, or
+// memoization — none of the harms this rule warns about apply — and
+// calling it directly (`TokensAsync(props)`) is a deliberate RSC pattern
+// (the returned promise renders like an element in a server tree).
+const declarationIsAsyncFunction = (symbol: SymbolDescriptor): boolean => {
+  const componentFunction = isComponentDeclaration(symbol.declarationNode)
+    ? symbol.declarationNode
+    : symbol.initializer;
+  if (!componentFunction || !isFunctionLike(componentFunction)) return false;
+  return componentFunction.async === true;
+};
+
+// `React.useCallback(() => MenuIcon({ isChildrenVisible }), [deps])` builds
+// an adapter component whose render IS the call — the produced elements get
+// fibers normally when the adapter is rendered, so the call happens inside
+// React, not outside it. Only the exact shape is exempt: the call feeds the
+// returned expression of an arrow passed directly to useCallback, and the
+// callee is hook-free (a hook-owning callee would splice its hooks into the
+// adapter's hook order, which the rule must keep flagging).
+const isReturnedFromUseCallbackAdapter = (callNode: EsTreeNode): boolean => {
+  let current: EsTreeNode = callNode;
+  let parent: EsTreeNode | null | undefined = callNode.parent;
+  while (parent) {
+    if (isNodeOfType(parent, "ArrowFunctionExpression")) {
+      if (parent.body !== current) return false;
+      const grandparent = parent.parent;
+      return (
+        isNodeOfType(grandparent, "CallExpression") &&
+        getCalleeName(grandparent) === "useCallback" &&
+        grandparent.arguments.some((argumentNode) => argumentNode === parent)
+      );
+    }
+    if (
+      !isNodeOfType(parent, "ConditionalExpression") &&
+      !isNodeOfType(parent, "LogicalExpression")
+    ) {
+      return false;
+    }
+    current = parent;
+    parent = parent.parent;
+  }
+  return false;
+};
+
 // A component is only flagged on strong, shadow-safe evidence: the called
 // identifier resolves to a same-file component definition that returns JSX, OR
 // to an imported binding that is also rendered as a JSX element in this file.
@@ -137,12 +193,19 @@ export const noCallComponentAsFunction = defineRule({
               isRendered ||
               declarationBodyContainsHookCall(symbol));
           const isComponent = isLocalComponent || (symbol.kind === "import" && isRendered);
-          if (isComponent) {
-            context.report({
-              node: candidate.node,
-              message: message(candidate.name),
-            });
+          if (!isComponent) continue;
+          if (declarationTakesMultiplePositionalArguments(symbol)) continue;
+          if (declarationIsAsyncFunction(symbol)) continue;
+          if (
+            !declarationBodyContainsHookCall(symbol) &&
+            isReturnedFromUseCallbackAdapter(candidate.node)
+          ) {
+            continue;
           }
+          context.report({
+            node: candidate.node,
+            message: message(candidate.name),
+          });
         }
       },
     };

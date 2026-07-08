@@ -19,55 +19,69 @@ export const noZIndex9999 = defineRule({
   defaultEnabled: false,
   recommendation:
     "Pick a small z-index scale, like dropdown 10, modal 20, toast 30. To layer something on top, use `isolation: isolate` instead of bigger numbers.",
-  create: (context: RuleContext) => ({
-    JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
-      const expression = getInlineStyleExpression(node);
-      if (!expression) return;
+  create: (context: RuleContext) => {
+    // The root cause of absurd z-indexes is a missing layering scale, a
+    // single per-file decision — report the first instance, not every
+    // overlay/tooltip/toast that repeats it. Negative values (`-9999`)
+    // are the deliberate "render behind everything" technique, not the
+    // escalation antipattern, so only positive values count.
+    let didReportInFile = false;
+    return {
+      JSXAttribute(node: EsTreeNodeOfType<"JSXAttribute">) {
+        if (didReportInFile) return;
+        const expression = getInlineStyleExpression(node);
+        if (!expression) return;
 
-      for (const property of expression.properties ?? []) {
-        const key = getStylePropertyKey(property);
-        if (key !== "zIndex") continue;
+        for (const property of expression.properties ?? []) {
+          const key = getStylePropertyKey(property);
+          if (key !== "zIndex") continue;
 
-        const zValue = getStylePropertyNumberValue(property);
-        if (zValue !== null && Math.abs(zValue) >= Z_INDEX_ABSURD_THRESHOLD) {
-          context.report({
-            node: property,
-            message: `z-index ${zValue} is unusually high and can hide a layering bug instead of fixing it. Use a small set scale, like 1 to 50.`,
-          });
-        }
-      }
-    },
-    CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isNodeOfType(node.callee, "MemberExpression")) return;
-      if (
-        !isNodeOfType(node.callee.property, "Identifier") ||
-        node.callee.property.name !== "create"
-      )
-        return;
-      if (
-        !isNodeOfType(node.callee.object, "Identifier") ||
-        node.callee.object.name !== "StyleSheet"
-      )
-        return;
-
-      const argument = node.arguments?.[0];
-      if (!argument || !isNodeOfType(argument, "ObjectExpression")) return;
-
-      walkAst(argument, (child: EsTreeNode) => {
-        if (!isNodeOfType(child, "Property")) return;
-        const key = getStylePropertyKey(child);
-        if (key !== "zIndex") return;
-
-        if (isNodeOfType(child.value, "Literal") && typeof child.value.value === "number") {
-          const zValue = child.value.value;
-          if (Math.abs(zValue) >= Z_INDEX_ABSURD_THRESHOLD) {
+          const zValue = getStylePropertyNumberValue(property);
+          if (zValue !== null && zValue >= Z_INDEX_ABSURD_THRESHOLD) {
+            didReportInFile = true;
             context.report({
-              node: child,
-              message: `z-index ${zValue} is way too high & usually hides a layering bug instead of fixing it, so use a small set scale, like 1 to 50.`,
+              node: property,
+              message: `z-index ${zValue} is unusually high and can hide a layering bug instead of fixing it. Use a small set scale, like 1 to 50.`,
             });
+            return;
           }
         }
-      });
-    },
-  }),
+      },
+      CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
+        if (didReportInFile) return;
+        if (!isNodeOfType(node.callee, "MemberExpression")) return;
+        if (
+          !isNodeOfType(node.callee.property, "Identifier") ||
+          node.callee.property.name !== "create"
+        )
+          return;
+        if (
+          !isNodeOfType(node.callee.object, "Identifier") ||
+          node.callee.object.name !== "StyleSheet"
+        )
+          return;
+
+        const argument = node.arguments?.[0];
+        if (!argument || !isNodeOfType(argument, "ObjectExpression")) return;
+
+        walkAst(argument, (child: EsTreeNode) => {
+          if (didReportInFile) return;
+          if (!isNodeOfType(child, "Property")) return;
+          const key = getStylePropertyKey(child);
+          if (key !== "zIndex") return;
+
+          if (isNodeOfType(child.value, "Literal") && typeof child.value.value === "number") {
+            const zValue = child.value.value;
+            if (zValue >= Z_INDEX_ABSURD_THRESHOLD) {
+              didReportInFile = true;
+              context.report({
+                node: child,
+                message: `z-index ${zValue} is way too high & usually hides a layering bug instead of fixing it, so use a small set scale, like 1 to 50.`,
+              });
+            }
+          }
+        });
+      },
+    };
+  },
 });

@@ -11,16 +11,196 @@ import {
 } from "../../constants/data-sink-method-names.js";
 import { getCallMethodName } from "../../utils/get-call-method-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
-import { getArgsUpstreamRefs, getCallExpr, isSynchronous } from "./utils/effect/ast.js";
-import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
+import type { Reference } from "eslint-scope";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import {
+  getCallExpr,
+  getDownstreamRefs,
+  getEventualCallRefsTo,
+  getUpstreamRefs,
+  isSynchronous,
+  resolveToFunction,
+} from "./utils/effect/ast.js";
+import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import {
   getEffectFn,
   getEffectFnRefs,
-  isPropCall,
+  isCustomHookParameter,
+  isPropCallbackInvocationRef,
   isState,
   isUseEffect,
   isWholePropsObjectReference,
 } from "./utils/effect/react.js";
+
+const SETTER_NAMED_CALLBACK_PATTERN = /^set[A-Z]/;
+const DATA_FETCHING_CALLBACK_PATTERN = /^(fetch|refetch|load|query|request)([A-Z_]|$)/;
+
+const getCallCalleeName = (callExpr: EsTreeNode): string | null => {
+  if (!isNodeOfType(callExpr, "CallExpression")) return null;
+  const callee = callExpr.callee;
+  if (isNodeOfType(callee, "Identifier")) return callee.name;
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    return callee.property.name;
+  }
+  return null;
+};
+
+// `const valid = isValidRange(range)` / `const ctx = bindSync(doc)` use the
+// prop as a pure transform whose result stays local — a read, not a
+// notification. The value may flow through conditional / logical branches
+// (`el.textContent = isMixed ? 'Mixed' : formatDisplay(v)`) or be returned
+// from a helper (`return formatValue(v)`) — the caller consumes it either
+// way. Bare statements, guarded calls (`onSync && onSync(x)`), if-test
+// reads and concise arrow bodies all remain notifications.
+const isCallResultCapturedToLocal = (callExpr: EsTreeNode): boolean => {
+  let current: EsTreeNode = callExpr;
+  let parent = (current as unknown as { parent?: EsTreeNode | null }).parent;
+  while (
+    parent &&
+    (isNodeOfType(parent, "AwaitExpression") ||
+      isNodeOfType(parent, "ChainExpression") ||
+      isNodeOfType(parent, "TSAsExpression") ||
+      isNodeOfType(parent, "TSNonNullExpression") ||
+      (isNodeOfType(parent, "ConditionalExpression") &&
+        parent.test !== (current as unknown as typeof parent.test)) ||
+      isNodeOfType(parent, "LogicalExpression"))
+  ) {
+    current = parent;
+    parent = (current as unknown as { parent?: EsTreeNode | null }).parent;
+  }
+  if (!parent) return false;
+  if (isNodeOfType(parent, "VariableDeclarator")) {
+    return parent.init === (current as unknown as typeof parent.init);
+  }
+  if (isNodeOfType(parent, "AssignmentExpression")) {
+    return parent.right === (current as unknown as typeof parent.right);
+  }
+  return isNodeOfType(parent, "ReturnStatement");
+};
+
+// A prop-callback invocation that actually NOTIFIES the parent: it carries
+// arguments (a bare `onEnd()` ping hands nothing up), its result is
+// discarded rather than captured locally (a captured result is a transform
+// read), and it isn't a data-fetching API (`fetchNextPage(state)` pulls data
+// in, it doesn't mirror state up).
+const isParentNotificationCallbackRef = (analysis: ProgramAnalysis, ref: Reference): boolean => {
+  if (!isPropCallbackInvocationRef(analysis, ref)) return false;
+  const callExpr = getCallExpr(ref);
+  if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) return false;
+  if ((callExpr.arguments ?? []).length === 0) return false;
+  if (isCallResultCapturedToLocal(callExpr)) return false;
+  const calleeName = getCallCalleeName(callExpr);
+  if (calleeName && DATA_FETCHING_CALLBACK_PATTERN.test(calleeName)) return false;
+  return true;
+};
+
+const isInsideSpreadElement = (identifier: EsTreeNode, root: EsTreeNode): boolean => {
+  let node: EsTreeNode | null | undefined = identifier;
+  while (node && node !== root) {
+    if (isNodeOfType(node, "SpreadElement")) return true;
+    node = (node as unknown as { parent?: EsTreeNode | null }).parent;
+  }
+  return false;
+};
+
+// Upstream state provenance that stops at data-providing hook-call
+// initializers. A binding produced by a custom hook
+// (`const { onDrawerChange, queue } = useDrawers({ state })`) is the hook's
+// OUTPUT — walking through it into the hook call's arguments would claim
+// every hook input as provenance of every hook output. Wrapper hooks
+// (`useMemo(() => amount + 1, [amount])`) stay transparent: their result IS
+// a local computation over the referenced state.
+const collectUpstreamStateRefs = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+  stateRefs: Reference[],
+  visited: Set<Reference>,
+): void => {
+  if (visited.has(ref)) return;
+  visited.add(ref);
+  if (isState(analysis, ref)) {
+    stateRefs.push(ref);
+    return;
+  }
+  for (const def of ref.resolved?.defs ?? []) {
+    if (def.type === "ImportBinding" || def.type === "Parameter") continue;
+    const defNode = def.node as unknown as EsTreeNode;
+    if (!isNodeOfType(defNode, "VariableDeclarator") || !defNode.init) continue;
+    const initializer = defNode.init as EsTreeNode;
+    const calleeName = getInitializerCalleeName(initializer);
+    if (
+      calleeName !== null &&
+      isReactHookName(calleeName) &&
+      !FUNCTION_WRAPPER_HOOK_NAMES.has(calleeName)
+    ) {
+      continue;
+    }
+    for (const innerRef of getDownstreamRefs(analysis, initializer)) {
+      // `const next = { ...state }` copies state into a fresh object the
+      // code then overwrites with new values — handing `next` up gives the
+      // parent the freshly computed value, not the live state binding.
+      if (isInsideSpreadElement(innerRef.identifier as unknown as EsTreeNode, initializer)) {
+        continue;
+      }
+      collectUpstreamStateRefs(analysis, innerRef, stateRefs, visited);
+    }
+  }
+};
+
+// State refs flowing into the DATA arguments of calls that sit on a path
+// to a prop-callback invocation. Restricting to callback-reaching calls is
+// what keeps this precise: a raw upstream-arg scan also swallows hook
+// wrapper calls (`useCallback(fn, [state])` lists state in a dep array
+// without passing it anywhere at runtime) and unrelated local setter calls
+// in the same helper. Function-valued arguments are callbacks the callee
+// may run later, not data handed to it.
+const collectPropCallbackBoundStateRefs = (
+  analysis: ProgramAnalysis,
+  ref: Reference,
+  isPropCallbackRef: (innerRef: Reference) => boolean,
+): Reference[] => {
+  const stateRefs: Reference[] = [];
+  for (const upRef of getUpstreamRefs(analysis, ref)) {
+    const callExpr = getCallExpr(upRef);
+    if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) continue;
+    const reachesPropCallback =
+      getEventualCallRefsTo(analysis, upRef, isPropCallbackRef).length > 0;
+    if (!reachesPropCallback) continue;
+    for (const argument of callExpr.arguments ?? []) {
+      if (isFunctionLike(argument as EsTreeNode)) continue;
+      for (const argRef of getDownstreamRefs(analysis, argument as EsTreeNode)) {
+        if (resolveToFunction(argRef)) continue;
+        collectUpstreamStateRefs(analysis, argRef, stateRefs, new Set());
+      }
+    }
+  }
+  return stateRefs;
+};
+
+// `setHasMoreItems(result && !result.finished)` — a setter-named callback
+// received as a CUSTOM HOOK's parameter stores the computed value in the
+// caller's state even when the value isn't the hook's own useState (the
+// internxt shape); the hook should return the value instead. The same shape
+// on a component prop is the sanctioned lifted-state contract — the parent
+// owns the state and delegates the write (delta audit: jaeger LayoutSettings,
+// kubetail KubeContextPicker, freecut clip-waveform) — so components require
+// real state provenance via collectPropCallbackBoundStateRefs. A literal
+// first argument is a field-targeting API (`setValue('address1', '')` from
+// react-hook-form), not a data hand-back.
+const isSetterNamedCallbackReceivingData = (callbackRef: Reference): boolean => {
+  const callExpr = getCallExpr(callbackRef);
+  if (!callExpr || !isNodeOfType(callExpr, "CallExpression")) return false;
+  const calleeName = getCallCalleeName(callExpr);
+  if (!calleeName || !SETTER_NAMED_CALLBACK_PATTERN.test(calleeName)) return false;
+  if (!isCustomHookParameter(callbackRef)) return false;
+  const firstArgument = (callExpr.arguments ?? [])[0];
+  if (!firstArgument) return false;
+  return (
+    !isNodeOfType(firstArgument, "Literal") &&
+    !isNodeOfType(firstArgument, "TemplateLiteral") &&
+    !isFunctionLike(firstArgument as EsTreeNode)
+  );
+};
 
 // Memoizing hooks that WRAP a function they're given — the wrapped function
 // is usually a genuine parent prop callback (`useCallback((v) => onChange(v))`,
@@ -39,7 +219,18 @@ const FUNCTION_WRAPPER_HOOK_NAMES: ReadonlySet<string> = new Set([
 
 const getInitializerCalleeName = (init: EsTreeNode): string | null => {
   if (!isNodeOfType(init, "CallExpression")) return null;
-  const callee = init.callee;
+  let callee = init.callee as EsTreeNode;
+  // `(useRapidForm as any)({ fieldEvent })` — see through TS cast wrappers
+  // so the hook-call check still recognises the callee.
+  // ParenthesizedExpression is oxc-only (preserveParens), absent from the
+  // TSESTree union, hence the raw type-string check.
+  while (
+    isNodeOfType(callee, "TSAsExpression") ||
+    isNodeOfType(callee, "TSNonNullExpression") ||
+    callee.type === ("ParenthesizedExpression" as typeof callee.type)
+  ) {
+    callee = (callee as unknown as { expression: EsTreeNode }).expression;
+  }
   if (isNodeOfType(callee, "Identifier")) return callee.name;
   if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
     return callee.property.name;
@@ -90,7 +281,17 @@ export const noPassLiveStateToParent = defineRule({
       if (!effectFn) return;
 
       for (const ref of effectFnRefs) {
-        if (!isPropCall(analysis, ref)) continue;
+        // Only a prop reference actually INVOKED as a parent notification
+        // somewhere in the call chain counts — a data method called on a
+        // destructured prop value (`hrefs.find(...)`) reads the prop and
+        // never reaches the parent, a bare completion ping (`onEnd()`)
+        // hands nothing up, a locally captured result is a transform read,
+        // and a fetch-named callback pulls data in rather than mirroring
+        // state up.
+        const propCallbackRefs = getEventualCallRefsTo(analysis, ref, (innerRef) =>
+          isParentNotificationCallbackRef(analysis, innerRef),
+        );
+        if (propCallbackRefs.length === 0) continue;
         if (resolvesToLocalHookReturnBinding(ref)) continue;
         if (!isSynchronous(ref.identifier as unknown as EsTreeNode, effectFn)) continue;
         const callExpr = getCallExpr(ref);
@@ -127,10 +328,13 @@ export const noPassLiveStateToParent = defineRule({
         }
         if (calleeNode && isNamespacedApiCallee(calleeNode)) continue;
 
-        const stateArgRefs = getArgsUpstreamRefs(analysis, ref).filter((argRef) =>
-          isState(analysis, argRef),
+        const stateArgRefs = collectPropCallbackBoundStateRefs(analysis, ref, (innerRef) =>
+          isParentNotificationCallbackRef(analysis, innerRef),
         );
-        if (stateArgRefs.length === 0) continue;
+        const handsSetterNamedCallbackData = propCallbackRefs.some(
+          isSetterNamedCallbackReceivingData,
+        );
+        if (stateArgRefs.length === 0 && !handsSetterNamedCallbackData) continue;
 
         context.report({
           node: callExpr,

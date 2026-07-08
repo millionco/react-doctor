@@ -120,6 +120,85 @@ describe("react-native/rn-no-dimensions-get — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("stays silent on a one-shot module-level read feeding style constants", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";\nconst dimensions = Dimensions.get("window");\nexport const MAX_WIDTH = dimensions.width - 48;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a module-level destructured read", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";\nconst { height } = Dimensions.get("screen");\nexport const FULL_DRAWER_HEIGHT = height;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent inside a makeStyles stylesheet-factory callback", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";
+      import { makeStyles } from "app/styles";
+      const useStyles = makeStyles(({ palette }) => ({
+        unfurl: {
+          width: Dimensions.get("window").width - 48,
+          backgroundColor: palette.white,
+        },
+      }));`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent inside a createUseStyles factory callback", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";
+      import { createUseStyles } from "react-jss";
+      const useStyles = createUseStyles(() => ({
+        root: { maxWidth: Dimensions.get("window").width },
+      }));`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags Dimensions.get inside a component body", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";
+      export const Card = () => {
+        const { width } = Dimensions.get("window");
+        return <View style={{ width }} />;
+      };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags Dimensions.get inside a hook body", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";
+      export const useCardWidth = () => Dimensions.get("window").width / 2;`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags module-level Dimensions.addEventListener", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions } from "react-native";\nDimensions.addEventListener("change", () => {});`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("does not claim users see a stale layout for a fresh read in an event handler", () => {
     const result = runRule(
       rnNoDimensionsGet,
@@ -136,5 +215,40 @@ describe("react-native/rn-no-dimensions-get — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0].message).not.toContain("Your users see a stale layout");
     expect(result.diagnostics[0].message).toContain("never updates");
+  });
+
+  it("still flags Dimensions.get through an aliased import", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions as Dims, View } from "react-native";
+      const Screen = () => {
+        const { width } = Dims.get("window");
+        return <View style={{ width }} />;
+      };`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags RN.Dimensions.get namespace access", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import * as RN from "react-native";
+      const Screen = () => {
+        const { width } = RN.Dimensions.get("window");
+        return <RN.View style={{ width }} />;
+      };`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags inline require react-native Dimensions.get", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `const Screen = () => {
+        const { width } = require("react-native").Dimensions.get("window");
+        return <View style={{ width }} />;
+      };`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 });

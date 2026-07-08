@@ -17,6 +17,7 @@ interface ParseResultMessage {
     readonly memberAccesses: ParsedSource["memberAccesses"];
     readonly wholeObjectUses: string[];
     readonly localIdentifierReferences: string[];
+    readonly topLevelImportReferences: string[];
     readonly referencedFilenames: string[];
     readonly redundantTypePatterns: ParsedSource["redundantTypePatterns"];
     readonly identityWrappers: ParsedSource["identityWrappers"];
@@ -57,6 +58,7 @@ const deserializeParsedSource = (serialized: ParseResultMessage["parsed"]): Pars
   memberAccesses: serialized.memberAccesses,
   wholeObjectUses: serialized.wholeObjectUses,
   localIdentifierReferences: serialized.localIdentifierReferences,
+  topLevelImportReferences: serialized.topLevelImportReferences,
   referencedFilenames: serialized.referencedFilenames,
   redundantTypePatterns: serialized.redundantTypePatterns,
   identityWrappers: serialized.identityWrappers,
@@ -135,6 +137,7 @@ const parseFilesWithWorkerPool = async (
           memberAccesses: [],
           wholeObjectUses: [],
           localIdentifierReferences: [],
+          topLevelImportReferences: [],
           referencedFilenames: [],
           redundantTypePatterns: [],
           identityWrappers: [],

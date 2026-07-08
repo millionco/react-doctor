@@ -28,8 +28,20 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // Without this, `setX(getFilteredTodos(todos, filter))` would treat
 // `getFilteredTodos` as a missing dep and bail before the §2 "expensive
 // derivation" branch could fire.
-const collectValueIdentifierNames = (node: EsTreeNode | null | undefined, into: string[]): void => {
+const collectValueIdentifierNames = (
+  node: EsTreeNode | null | undefined,
+  into: string[],
+  localBindingNames: ReadonlySet<string> = new Set(),
+): void => {
   if (!node || typeof node !== "object") return;
+  if (isNodeOfType(node, "ArrowFunctionExpression") || isNodeOfType(node, "FunctionExpression")) {
+    const nestedBindingNames = new Set(localBindingNames);
+    for (const parameter of node.params ?? []) {
+      if (isNodeOfType(parameter, "Identifier")) nestedBindingNames.add(parameter.name);
+    }
+    collectValueIdentifierNames(node.body, into, nestedBindingNames);
+    return;
+  }
   if (isNodeOfType(node, "CallExpression")) {
     if (isNodeOfType(node.callee, "MemberExpression")) {
       // For `state.method(arg)`, `state` is a reactive read; `method`
@@ -38,24 +50,24 @@ const collectValueIdentifierNames = (node: EsTreeNode | null | undefined, into: 
       // aren't reactive reads either.
       const rootName = getRootIdentifierName(node.callee);
       if (!rootName || !BUILTIN_GLOBAL_NAMESPACE_NAMES.has(rootName)) {
-        collectValueIdentifierNames(node.callee.object, into);
+        collectValueIdentifierNames(node.callee.object, into, localBindingNames);
       }
     }
     for (const argument of node.arguments ?? []) {
-      collectValueIdentifierNames(argument, into);
+      collectValueIdentifierNames(argument, into, localBindingNames);
     }
     return;
   }
   if (isNodeOfType(node, "MemberExpression")) {
     const rootName = getRootIdentifierName(node);
     if (!rootName || !BUILTIN_GLOBAL_NAMESPACE_NAMES.has(rootName)) {
-      collectValueIdentifierNames(node.object, into);
+      collectValueIdentifierNames(node.object, into, localBindingNames);
     }
-    if (node.computed) collectValueIdentifierNames(node.property, into);
+    if (node.computed) collectValueIdentifierNames(node.property, into, localBindingNames);
     return;
   }
   if (isNodeOfType(node, "Identifier")) {
-    into.push(node.name);
+    if (!localBindingNames.has(node.name)) into.push(node.name);
     return;
   }
   const nodeRecord = node as unknown as Record<string, unknown>;
@@ -65,11 +77,11 @@ const collectValueIdentifierNames = (node: EsTreeNode | null | undefined, into: 
     if (Array.isArray(child)) {
       for (const item of child) {
         if (item && typeof item === "object" && "type" in item) {
-          collectValueIdentifierNames(item as EsTreeNode, into);
+          collectValueIdentifierNames(item as EsTreeNode, into, localBindingNames);
         }
       }
     } else if (child && typeof child === "object" && "type" in child) {
-      collectValueIdentifierNames(child as EsTreeNode, into);
+      collectValueIdentifierNames(child as EsTreeNode, into, localBindingNames);
     }
   }
 };
@@ -94,6 +106,10 @@ export const noDerivedStateEffect = defineRule({
       const dependencyNames = new Set<string>();
       for (const element of depsNode.elements ?? []) {
         if (isNodeOfType(element, "Identifier")) dependencyNames.add(element.name);
+        if (isNodeOfType(element, "MemberExpression")) {
+          const rootName = getRootIdentifierName(element);
+          if (rootName) dependencyNames.add(rootName);
+        }
       }
       if (dependencyNames.size === 0) return;
       // Initial-only / default / seed-named deps signal an explicit

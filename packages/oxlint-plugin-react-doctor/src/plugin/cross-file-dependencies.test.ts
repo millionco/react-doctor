@@ -8,6 +8,7 @@ import {
 } from "./cross-file-dependencies.js";
 import { CROSS_FILE_RULE_IDS } from "./constants/cross-file-rule-ids.js";
 import { __clearParseSourceFileCacheForTests } from "./utils/parse-source-file.js";
+import { resetManifestCaches } from "./utils/read-nearest-package-manifest.js";
 import { __clearTsconfigAliasCacheForTests } from "./utils/resolve-tsconfig-alias.js";
 
 // The collectors' contract (see cross-file-dependencies.ts): for a given file,
@@ -23,6 +24,7 @@ beforeEach(() => {
   temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "rd-cross-file-deps-"));
   __clearParseSourceFileCacheForTests();
   __clearTsconfigAliasCacheForTests();
+  resetManifestCaches();
 });
 
 afterEach(() => {

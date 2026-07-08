@@ -247,4 +247,113 @@ describe("rerender-functional-setstate — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toEqual([]);
   });
+
+  // innovaccer/design-system Select: a spread setter in a MOUNT-ONLY effect
+  // runs once right after the first render — state cannot have changed
+  // between render and effect, so no staleness exists.
+  it("stays silent on a spread setter inside a mount-only effect", () => {
+    const result = runRule(
+      rerenderFunctionalSetstate,
+      `function Select({ popoverWidth, trigger }) {
+        const [popoverStyle, setPopoverStyle] = useState({});
+        const triggerRef = useRef(null);
+        useEffect(() => {
+          const triggerWidth = triggerRef.current?.clientWidth;
+          if (!popoverWidth && triggerWidth) {
+            setPopoverStyle({ ...popoverStyle, width: triggerWidth });
+          }
+        }, []);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a setter inside a subscription registered in a mount-only effect", () => {
+    const result = runRule(
+      rerenderFunctionalSetstate,
+      `function C() {
+        const [messages, setMessages] = useState([]);
+        useEffect(() => {
+          return subscribe((received) => setMessages([...messages, received]));
+        }, []);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  // cloudscape wizard page: a lone arithmetic setter per sync click handler
+  // gets a fresh render between discrete clicks — no update can be lost.
+  it("stays silent on a single arithmetic setter per synchronous click handler", () => {
+    const result = runRule(
+      rerenderFunctionalSetstate,
+      `function WizardPage({ steps }) {
+        const [activeStepIndex, setActiveStepIndex] = useState(0);
+        const onNext = () => {
+          if (activeStepIndex >= steps.length) return;
+          setActiveStepIndex(activeStepIndex + 1);
+        };
+        const onPrevious = () => {
+          if (activeStepIndex <= 0) return;
+          setActiveStepIndex(activeStepIndex - 1);
+        };
+        return <button onClick={onNext} onBlur={onPrevious} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  // atomantic/PortOS usePostSession: arithmetic in a useCallback whose deps
+  // include the state fires on discrete user answers — never stale.
+  it("stays silent on a lone arithmetic setter in a dep-tracked useCallback", () => {
+    const result = runRule(
+      rerenderFunctionalSetstate,
+      `function usePostSession(currentDrill) {
+        const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+        const submitAnswer = useCallback(() => {
+          if (currentQuestionIndex + 1 >= currentDrill.questions.length) return;
+          setCurrentQuestionIndex(currentQuestionIndex + 1);
+        }, [currentDrill, currentQuestionIndex]);
+        return { submitAnswer };
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags arithmetic when the same handler calls the setter twice", () => {
+    const result = runRule(
+      rerenderFunctionalSetstate,
+      `function Stepper() {
+        const [count, setCount] = useState(0);
+        const onDoubleStep = () => {
+          setCount(count + 1);
+          setCount(count + 1);
+        };
+        return <button onClick={onDoubleStep}>{count}</button>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags arithmetic inside a setInterval closure", () => {
+    const result = runRule(
+      rerenderFunctionalSetstate,
+      `function Timer() {
+        const [seconds, setSeconds] = useState(0);
+        useEffect(() => {
+          const id = setInterval(() => setSeconds(seconds + 1), 1000);
+          return () => clearInterval(id);
+        }, []);
+        return <span>{seconds}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

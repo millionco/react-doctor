@@ -1,4 +1,4 @@
-import { SOURCE_FILE_PATTERN } from "../../constants/security-scan.js";
+import { DEMO_CONTEXT_PATTERN, SOURCE_FILE_PATTERN } from "../../constants/security-scan.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getMatchLocation } from "./utils/get-match-location.js";
 import { isConfigOrCiPath } from "./utils/is-config-or-ci-path.js";
@@ -24,6 +24,23 @@ const CHECKSUM_VERIFICATION_PATTERN =
 const EXECUTION_CONTEXT_PATTERN =
   /\b(?:child_process|childProcess|execa|os\.system|subprocess\.|Deno\.run|autoUpdater|electron-updater)\b|\b(?:exec(?:File)?(?:Sync)?|spawn(?:Sync)?)\s*\(/;
 
+// GitHub only executes workflows from the repo-root `.github/workflows/`; a
+// copy nested deeper (a vendored dependency patch like
+// `src-tauri/patches/cpal-0.15.3/.github/workflows/cpal.yml`, a template dir)
+// never runs in this repository, so it crosses none of its trust boundaries.
+const NESTED_WORKFLOW_PATH_PATTERN = /.\/\.github\/workflows\//i;
+
+// Version-pinned vendored directories (`cpal-0.15.3/`) are third-party code
+// the project does not own; mirrors GENERATED_SOURCE_CONTEXT_PATTERN's
+// version-dir clause, which only source-path classification applies.
+const VENDORED_VERSION_DIRECTORY_PATTERN = /(?:^|\/)[\w-]+[.@-]\d+\.\d+\.\d+(?:[-.][\w.]+)?\//;
+
+const isTrustedBoundaryConfigPath = (relativePath: string): boolean =>
+  isConfigOrCiPath(relativePath) &&
+  !NESTED_WORKFLOW_PATH_PATTERN.test(relativePath) &&
+  !VENDORED_VERSION_DIRECTORY_PATTERN.test(relativePath) &&
+  !DEMO_CONTEXT_PATTERN.test(relativePath);
+
 export const pluginUpdateTrustRisk = defineRule({
   id: "plugin-update-trust-risk",
   title: "Plugin or updater trust boundary risk",
@@ -31,7 +48,10 @@ export const pluginUpdateTrustRisk = defineRule({
   recommendation:
     "Require signed updates/plugins, pin trusted repositories, verify hashes before execution, and keep custom repository installs behind explicit warnings.",
   scan: (file) => {
-    if (!isProductionSourcePath(file.relativePath) && !isConfigOrCiPath(file.relativePath)) {
+    if (
+      !isProductionSourcePath(file.relativePath) &&
+      !isTrustedBoundaryConfigPath(file.relativePath)
+    ) {
       return [];
     }
     const content = getScannableContent(file);

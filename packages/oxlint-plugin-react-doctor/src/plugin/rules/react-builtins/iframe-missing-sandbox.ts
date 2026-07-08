@@ -34,6 +34,13 @@ const INVALID_VALUE_MESSAGE = (value: string): string =>
 const INVALID_COMBINATION_MESSAGE =
   "Combining `allow-scripts` & `allow-same-origin` lets the iframe remove its own sandbox, defeating the protection.";
 
+// The permissions-policy boilerplate vendors ship with third-party video
+// embeds (YouTube/Vimeo: `allow="… encrypted-media; picture-in-picture …"`).
+// Such players need `allow-scripts` + `allow-same-origin` to function — the
+// exact pair this rule bans — so no compliant sandbox exists, and the
+// cross-origin frame never had "full access to your site" to begin with.
+const MEDIA_EMBED_ALLOW_PATTERN = /encrypted-media|picture-in-picture/i;
+
 const isAllowedSandboxToken = (token: string): boolean => {
   if (token === "") return true;
   if (!token.startsWith("allow-")) return false;
@@ -89,6 +96,23 @@ export const iframeMissingSandbox = defineRule({
         // embed site, where a missing `sandbox` is the author's omission.
         const hasExplicitSrc = Boolean(hasJsxPropIgnoreCase(node.attributes, "src"));
         if (!hasExplicitSrc && hasJsxSpreadAttribute(node.attributes)) return;
+        // A `ref`-driven frame with no `src`/`srcDoc` starts as `about:blank`
+        // and is scripted by the parent itself — there is no embedded page to
+        // sandbox, and any effective sandbox would break the parent's
+        // `contentWindow` access.
+        const hasSrcDoc = Boolean(hasJsxPropIgnoreCase(node.attributes, "srcDoc"));
+        if (
+          !hasExplicitSrc &&
+          !hasSrcDoc &&
+          Boolean(hasJsxPropIgnoreCase(node.attributes, "ref"))
+        ) {
+          return;
+        }
+        const allowAttr = hasJsxPropIgnoreCase(node.attributes, "allow");
+        if (allowAttr) {
+          const allowValue = getJsxPropStringValue(allowAttr);
+          if (allowValue !== null && MEDIA_EMBED_ALLOW_PATTERN.test(allowValue)) return;
+        }
         context.report({ node: node.name, message: MISSING_MESSAGE });
         return;
       }

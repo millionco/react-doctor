@@ -10,6 +10,11 @@ export const SOURCE_FILE_PATTERN = /\.(tsx?|jsx?|mts|mjs)$/;
 // bundles, and `.cjs` isn't part of the scanner's source-file set.
 export const GENERATED_BUNDLE_FILE_PATTERN = /\.(iife|umd|global|min)\.m?js$/i;
 
+// Codegen output directories (`src/__generated__/form.stories.tsx`): the
+// generator, not the file, owns any fix, so diagnostics there are never
+// actionable and linters conventionally exclude them.
+export const GENERATED_SOURCE_DIRECTORY_PATTERN = /(?:^|\/)__generated__\//;
+
 // Minified / generated files (e.g. a one-line `public/inject.js` bundle)
 // don't carry the `.min`/`.iife` extension we can match on, so we sniff
 // content. A file is treated as minified only when BOTH hold: it has a
@@ -37,6 +42,14 @@ export const MINIFIED_SNIFF_BYTES = 65_536;
 export const MINIFIED_MIN_SIZE_BYTES = 20_000;
 
 export const GIT_LS_FILES_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
+
+// Hidden (dot-)directories are excluded from source discovery by default:
+// they hold tool state and agent/editor tooling (`.codex`, `.claude`,
+// `.cursor`, `.agents`, `.vscode`, `.github`, …) whose scripts are not app
+// code — scanning them surfaces noise like `no-console` on Node CLI
+// helpers. These are the deliberate exceptions: dot-directories that hold
+// real React source (docs frameworks, Storybook config components).
+export const SCANNED_DOT_DIRECTORIES = new Set([".dumi", ".storybook"]);
 
 export const IGNORED_DIRECTORIES = new Set([
   ".angular",

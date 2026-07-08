@@ -102,4 +102,34 @@ describe("no-derived-state-effect — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags inline .filter derivations in an effect", () => {
+    const result = runRule(
+      noDerivedStateEffect,
+      `function Todos({ todos }) {
+        const [visibleTodos, setVisibleTodos] = useState([]);
+        useEffect(() => {
+          setVisibleTodos(todos.filter((todo) => !todo.done));
+        }, [todos]);
+        return <List items={visibleTodos} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags member-expression dependencies like [user.name]", () => {
+    const result = runRule(
+      noDerivedStateEffect,
+      `function Greeting({ user }) {
+        const [greeting, setGreeting] = useState("");
+        useEffect(() => {
+          setGreeting("Hello " + user.name);
+        }, [user.name]);
+        return <span>{greeting}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

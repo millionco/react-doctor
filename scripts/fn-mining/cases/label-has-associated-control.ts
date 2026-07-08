@@ -48,6 +48,8 @@ export const labelHasAssociatedControlCases: FnMiningCase[] = [
     description: "custom <Label> design-system component with no control",
     filePath: "src/form.tsx",
     code: `const Field = () => <Label>Name</Label>;`,
-    shouldFire: true,
+    shouldFire: false,
+    carveOutReason:
+      "Only lowercase `label` (plus configured `labelComponents`) is checked: a custom <Label> may forward htmlFor internally or not render a <label> at all — opt-in via the labelComponents setting, not a recall bug.",
   },
 ];

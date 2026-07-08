@@ -4,18 +4,19 @@ import { escapeRegExp } from "./utils/escape-reg-exp.js";
 import { isProductionSourcePath } from "./utils/is-production-source-path.js";
 
 // HTML-injection sinks: React's `dangerouslySetInnerHTML`, the DOM
-// `innerHTML`/`outerHTML` assignments, `insertAdjacentHTML(position, html)`,
+// `innerHTML`/`outerHTML` assignments (dot or bracket notation —
+// `el["innerHTML"] = x` is the same sink), `insertAdjacentHTML(position, html)`,
 // `document.write(ln)(html)`, `Range.createContextualFragment(html)`, and the
 // explicitly-unsafe `Element.setHTMLUnsafe(html)` (the sanitizing `setHTML` is
 // deliberately not a sink).
 const DANGEROUS_HTML_PATTERN =
-  /dangerouslySetInnerHTML|\.(?:inner|outer)HTML\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\(|\bdocument\.write(?:ln)?\s*\(|\.(?:createContextualFragment|setHTMLUnsafe)\s*\(/;
+  /dangerouslySetInnerHTML|(?:\.(?:inner|outer)HTML|\[\s*["'](?:inner|outer)HTML["']\s*\])\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\(|\bdocument\.write(?:ln)?\s*\(|\.(?:createContextualFragment|setHTMLUnsafe)\s*\(/;
 
 // Captures the value handed to the sink. For `insertAdjacentHTML` the value is
 // the second argument (after the position), so the position arg is skipped. The
 // leading `.` keeps it a method call, not a `function insertAdjacentHTML(` decl.
 const HTML_VALUE_START_PATTERN =
-  /(?:__html\s*:|\.(?:inner|outer)HTML\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\(\s*[^,]*,|\bdocument\.write(?:ln)?\s*\(|\.(?:createContextualFragment|setHTMLUnsafe)\s*\()\s*([\s\S]*)/;
+  /(?:__html\s*:|(?:\.(?:inner|outer)HTML|\[\s*["'](?:inner|outer)HTML["']\s*\])\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\(\s*[^,]*,|\bdocument\.write(?:ln)?\s*\(|\.(?:createContextualFragment|setHTMLUnsafe)\s*\()\s*([\s\S]*)/;
 
 // Dynamic-looking sources. Beyond request/props/state data, this covers the
 // classic OWASP DOM-XSS sources (`location.hash`/`.search`/`.href`,
@@ -135,7 +136,7 @@ const HIDDEN_TOOLING_DIRECTORY_PATTERN = /(?:^|\/)\.[\w-]+\//;
 const SANITIZER_WRAPPER_PATH_PATTERN = /(?<!un)saniti[sz]e?d?[\w-]*\.[cm]?[jt]sx?$/i;
 
 const INNERHTML_TARGET_PATTERN =
-  /(?:^|[^\w$.])([\w$]+(?:\.[\w$]+)*)\.(?:(?:inner|outer)HTML\s*[+]?=(?!=)|insertAdjacentHTML\s*\()/;
+  /(?:^|[^\w$.])([\w$]+(?:\.[\w$]+)*)(?:(?:\.(?:inner|outer)HTML|\[\s*["'](?:inner|outer)HTML["']\s*\])\s*[+]?=(?!=)|\.insertAdjacentHTML\s*\()/;
 
 // DOM methods that splice a node into a live tree. If a scratch node reaches
 // one of these — or is returned as a node — its parsed HTML can hit the live

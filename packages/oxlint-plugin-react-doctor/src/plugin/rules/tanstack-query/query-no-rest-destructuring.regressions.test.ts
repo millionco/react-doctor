@@ -18,4 +18,44 @@ describe("tanstack-query/query-no-rest-destructuring — regressions", () => {
     );
     expect(diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("flags a rest-destructure of an aliased TanStack import", () => {
+    const { diagnostics } = runRule(
+      queryNoRestDestructuring,
+      `import { useQuery as useTodosQuery } from "@tanstack/react-query"; const { data, ...rest } = useTodosQuery({ queryKey: ["todos"] });`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("flags a namespace call: ReactQuery.useQuery(...)", () => {
+    const { diagnostics } = runRule(
+      queryNoRestDestructuring,
+      `import * as ReactQuery from "@tanstack/react-query"; const { data, ...rest } = ReactQuery.useQuery({ queryKey: ["todos"] });`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on a namespace call from a non-TanStack module", () => {
+    const { diagnostics } = runRule(
+      queryNoRestDestructuring,
+      `import * as Convex from "convex/react"; const { page, ...rest } = Convex.useQuery(api.messages.list);`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("flags a two-step rest-destructure of a const query-result binding", () => {
+    const { diagnostics } = runRule(
+      queryNoRestDestructuring,
+      `import { useQuery } from "@tanstack/react-query"; const queryResult = useQuery({ queryKey: ["todos"] }); const { data, ...rest } = queryResult;`,
+    );
+    expect(diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("stays silent on a two-step rest-destructure of a reassignable binding", () => {
+    const { diagnostics } = runRule(
+      queryNoRestDestructuring,
+      `import { useQuery } from "@tanstack/react-query"; let queryResult = useQuery({ queryKey: ["todos"] }); queryResult = fallback; const { data, ...rest } = queryResult;`,
+    );
+    expect(diagnostics).toHaveLength(0);
+  });
 });

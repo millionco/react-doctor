@@ -36,7 +36,9 @@ export const dangerousHtmlSinkCases: FnMiningCase[] = [
         element.innerHTML = commentMarkup;
       };
     `,
-    shouldFire: true,
+    shouldFire: false,
+    carveOutReason:
+      "HTML_TAINT_PATTERN is a deliberate precision gate: the rule only judges dynamic-LOOKING values. A bare identifier with no taint-shaped token would make every innerHTML write a finding, drowning real XSS candidates in noise.",
   },
   {
     ruleId: "dangerous-html-sink",
@@ -69,7 +71,9 @@ export const dangerousHtmlSinkCases: FnMiningCase[] = [
         $container.html(searchParams.get("q"));
       };
     `,
-    shouldFire: true,
+    shouldFire: false,
+    carveOutReason:
+      "The rule's docs enumerate its sink set (React + native DOM HTML sinks); jQuery is out of scope. `.html(` is far too generic for a regex scan — cheerio, builders, and unrelated `.html()` getters/setters would flood a React-focused linter with FPs.",
   },
   {
     ruleId: "dangerous-html-sink",

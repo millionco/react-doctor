@@ -33,6 +33,63 @@ const TRIVIAL_DATE_GETTER_NAMES: ReadonlySet<string> = new Set([
   "valueOf",
 ]);
 
+// Constructing these built-ins costs about as much as calling the
+// trivial coercion functions — `useState(new Date())` / `useState(new
+// Map())` are idiomatic cheap initial states, not the expensive-model
+// construction this rule targets.
+const TRIVIAL_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
+  "Date",
+  "Map",
+  "Set",
+  "WeakMap",
+  "WeakSet",
+  "RegExp",
+  "Error",
+  "URL",
+  "URLSearchParams",
+  "AbortController",
+]);
+
+const EAGER_CALL_RESOLUTION_DEPTH_LIMIT = 4;
+
+// The call (or constructor) that runs eagerly on EVERY render inside a
+// `useState(...)` argument. Beyond a bare `expensiveFn()`, wrapper
+// shapes still evaluate the call unconditionally each render:
+//   - `expensiveFn(raw) ?? []` / `expensiveFn(raw) || []` — the left of
+//     a logical expression always evaluates;
+//   - `[...expensiveFn(raw)]` — a spread eagerly iterates the call;
+//   - `new HeavyModel(config)` — a constructor is a call by another name;
+//   - `computeLayout(width).sections` — the member read forces the call.
+// Right-hand logical operands and plain array elements are left alone:
+// the former is conditionally evaluated, the latter overlaps common
+// cheap `useState([value])` literals.
+const findEagerInitializerCall = (
+  expression: EsTreeNode,
+  depth = 0,
+): EsTreeNodeOfType<"CallExpression"> | EsTreeNodeOfType<"NewExpression"> | null => {
+  if (depth > EAGER_CALL_RESOLUTION_DEPTH_LIMIT) return null;
+  if (isNodeOfType(expression, "CallExpression") || isNodeOfType(expression, "NewExpression")) {
+    return expression;
+  }
+  if (isNodeOfType(expression, "ChainExpression")) {
+    return findEagerInitializerCall(expression.expression as EsTreeNode, depth + 1);
+  }
+  if (isNodeOfType(expression, "LogicalExpression")) {
+    return findEagerInitializerCall(expression.left as EsTreeNode, depth + 1);
+  }
+  if (isNodeOfType(expression, "MemberExpression")) {
+    return findEagerInitializerCall(expression.object as EsTreeNode, depth + 1);
+  }
+  if (isNodeOfType(expression, "ArrayExpression")) {
+    for (const element of expression.elements ?? []) {
+      if (!element || !isNodeOfType(element, "SpreadElement")) continue;
+      const spreadCall = findEagerInitializerCall(element.argument as EsTreeNode, depth + 1);
+      if (spreadCall) return spreadCall;
+    }
+  }
+  return null;
+};
+
 export const rerenderLazyStateInit = defineRule({
   id: "rerender-lazy-state-init",
   title: "State initializer runs on every render",
@@ -44,8 +101,9 @@ export const rerenderLazyStateInit = defineRule({
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isHookCall(node, "useState") || !node.arguments?.length) return;
-      const initializer = node.arguments[0];
-      if (!isNodeOfType(initializer, "CallExpression")) return;
+      const initializer = findEagerInitializerCall(node.arguments[0] as EsTreeNode);
+      if (!initializer) return;
+      const isConstructor = isNodeOfType(initializer, "NewExpression");
 
       const callee = initializer.callee;
       const memberPropertyName =
@@ -58,6 +116,7 @@ export const rerenderLazyStateInit = defineRule({
       const calleeName = calleeIsIdentifier ? callee.name : (memberPropertyName ?? "fn");
 
       if (TRIVIAL_INITIALIZER_NAMES.has(calleeName)) return;
+      if (isConstructor && TRIVIAL_CONSTRUCTOR_NAMES.has(calleeName)) return;
       if (
         memberPropertyName &&
         (initializer.arguments ?? []).length === 0 &&
@@ -74,9 +133,10 @@ export const rerenderLazyStateInit = defineRule({
       // sibling `rerender-lazy-ref-init`.
       if (isReactHookName(calleeName)) return;
 
+      const callDescription = isConstructor ? `new ${calleeName}()` : `${calleeName}()`;
       context.report({
         node: initializer,
-        message: `useState(${calleeName}()) re-runs ${calleeName}() on every render & throws the result away.`,
+        message: `useState(${callDescription}) re-runs ${callDescription} on every render & throws the result away.`,
       });
     },
   }),

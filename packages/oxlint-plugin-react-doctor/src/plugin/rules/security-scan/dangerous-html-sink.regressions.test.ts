@@ -796,4 +796,35 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  // FN mining: bracket notation is the same innerHTML sink.
+  it("flags a bracket-notation innerHTML assignment from a tainted source", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/bio.ts",
+      content: `export const renderBio = (element, props) => {\n  element["innerHTML"] = props.bio;\n};\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("stays silent on a bracket-notation innerHTML assignment of a string literal", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/bio.ts",
+      content: `export const resetBio = (element) => {\n  element["innerHTML"] = "<em>No bio yet</em>";\n};\n`,
+    });
+    expect(findings).toHaveLength(0);
+  });
+
+  it("keeps the inert-parse-target exemption for bracket-notation writes", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/utils/decode.ts",
+      content: [
+        "export const decodeEntities = (text) => {",
+        '  const scratch = document.createElement("textarea");',
+        '  scratch["innerHTML"] = text;',
+        "  return scratch.value;",
+        "};",
+      ].join("\n"),
+    });
+    expect(findings).toHaveLength(0);
+  });
 });

@@ -262,6 +262,36 @@ describe("react-builtins/jsx-key — regressions", () => {
     `);
   });
 
+  // #1078 exact repro shapes: a stable `key` written BEFORE a typed props
+  // rest spread. Key-before-spread is the documented fix shape and must
+  // never fire, whatever the spread is.
+  it("does not flag the issue-1078 typed FC shape: key before a props rest spread", () => {
+    expectPass(`
+      const Checkboxes: FC<CheckboxesProps> = ({className, ...rest}) => (
+        <div>
+          {options.map((option) => (
+            <Checkbox key={option.name} label={option.label} name={option.name} {...rest} />
+          ))}
+        </div>
+      );
+    `);
+  });
+
+  it("does not flag the issue-1078 Omit-props shape: key before a props rest spread", () => {
+    expectPass(`
+      const BaseRadioButtons: FC<BaseRadioButtonsProps> = ({
+        children, className, classNameLabel, isHorizontal, options, ...props
+      }) => (
+        <CheckboxRadioGroup className={className} isHorizontal={isHorizontal}>
+          {options.map((option) => (
+            <InputRadio key={option.value} className={classNameLabel} option={option} {...props} />
+          ))}
+          {children}
+        </CheckboxRadioGroup>
+      );
+    `);
+  });
+
   // Folded in from PR #1079 (issue #1078), adapted to the key-after-spread
   // direction: a rest binding in a component's props parameter can never
   // carry `key` — React strips it before props reach the component.

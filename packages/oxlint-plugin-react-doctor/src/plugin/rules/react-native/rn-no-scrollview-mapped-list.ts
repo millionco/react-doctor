@@ -80,10 +80,7 @@ const isShortFixedLengthIteration = (node: EsTreeNodeOfType<"CallExpression">): 
 
 const isReduceBuildingJsxRows = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
   if (!isNodeOfType(node.callee, "MemberExpression")) return false;
-  if (
-    !isNodeOfType(node.callee.property, "Identifier") ||
-    node.callee.property.name !== "reduce"
-  ) {
+  if (!isNodeOfType(node.callee.property, "Identifier") || node.callee.property.name !== "reduce") {
     return false;
   }
   const rowBuilder = node.arguments?.[0];

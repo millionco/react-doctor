@@ -102,10 +102,7 @@ const containsNetworkRequestInEffect = (effectCallback: EsTreeNode): boolean => 
     if (child !== effectCallback && isFunctionLike(child) && invokedFunctions.has(child)) {
       return false;
     }
-    if (
-      isNodeOfType(child, "CallExpression") &&
-      isNodeOfType(child.callee, "Identifier")
-    ) {
+    if (isNodeOfType(child, "CallExpression") && isNodeOfType(child.callee, "Identifier")) {
       const scopeFunction = scopeFunctions.get(child.callee.name);
       if (scopeFunction && containsNetworkRequest(scopeFunction)) {
         found = true;
@@ -142,7 +139,10 @@ const collectEffectCancellationFlagNames = (effectCallback: EsTreeNode): Set<str
   for (const statement of body.body ?? []) {
     if (!isNodeOfType(statement, "VariableDeclaration") || statement.kind !== "let") continue;
     for (const declarator of statement.declarations ?? []) {
-      if (!isNodeOfType(declarator, "VariableDeclarator") || !isNodeOfType(declarator.id, "Identifier")) {
+      if (
+        !isNodeOfType(declarator, "VariableDeclarator") ||
+        !isNodeOfType(declarator.id, "Identifier")
+      ) {
         continue;
       }
       const initializer = declarator.init;

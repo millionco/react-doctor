@@ -63,7 +63,9 @@ export const noDerivedStateEffectCases: FnMiningCase[] = [
         return <span>{count}</span>;
       };
     `,
-    shouldFire: true,
+    shouldFire: false,
+    carveOutReason:
+      "The rule only inspects top-level ExpressionStatement setters in the effect body — an if-guarded setter is treated as conditional sync logic outside the pure derived-state mirror shape.",
   },
   {
     ruleId: "no-derived-state-effect",

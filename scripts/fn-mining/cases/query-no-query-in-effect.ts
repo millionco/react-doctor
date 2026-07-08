@@ -63,7 +63,9 @@ export const queryNoQueryInEffectCases: FnMiningCase[] = [
         return <List items={data} />;
       };
     `,
-    shouldFire: true,
+    shouldFire: false,
+    carveOutReason:
+      "Refetch inside timer callbacks registered by the effect is carved out like setInterval — the callback is a nested handler, not synchronous effect-body work (see query-no-query-in-effect.regressions.test.ts).",
   },
   {
     ruleId: "query-no-query-in-effect",

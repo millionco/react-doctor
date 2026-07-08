@@ -1,6 +1,8 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isConstDeclaredBinding } from "../../utils/is-const-declared-binding.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
+import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { resolveJsxElementName } from "./utils/resolve-jsx-element-name.js";
@@ -10,7 +12,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
 const NON_VIRTUALIZED_SCROLL_CONTAINERS = new Set(["ScrollView"]);
 
-const ARRAY_ITERATION_METHODS = new Set(["map", "flatMap"]);
+const ARRAY_ITERATION_METHODS = new Set(["map", "flatMap", "reduce"]);
 
 // The doc's FP carve-out: for a fixed-length array under ~10 rows,
 // virtualization overhead outweighs the mount cost.
@@ -76,10 +78,29 @@ const isShortFixedLengthIteration = (node: EsTreeNodeOfType<"CallExpression">): 
   return maxLength !== null && maxLength <= SHORT_FIXED_LIST_MAX_ROW_COUNT;
 };
 
+const isReduceBuildingJsxRows = (node: EsTreeNodeOfType<"CallExpression">): boolean => {
+  if (!isNodeOfType(node.callee, "MemberExpression")) return false;
+  if (
+    !isNodeOfType(node.callee.property, "Identifier") ||
+    node.callee.property.name !== "reduce"
+  ) {
+    return false;
+  }
+  const rowBuilder = node.arguments?.[0];
+  if (!rowBuilder || !isFunctionLike(rowBuilder)) return false;
+  let buildsJsx = false;
+  walkAst(rowBuilder, (child) => {
+    if (isNodeOfType(child, "JSXElement")) buildsJsx = true;
+  });
+  return buildsJsx;
+};
+
 const isArrayIterationExpression = (node: EsTreeNode): boolean => {
   if (!isNodeOfType(node, "CallExpression")) return false;
   if (!isNodeOfType(node.callee, "MemberExpression")) return false;
   if (!isNodeOfType(node.callee.property, "Identifier")) return false;
+
+  if (node.callee.property.name === "reduce") return isReduceBuildingJsxRows(node);
 
   if (ARRAY_ITERATION_METHODS.has(node.callee.property.name)) return true;
 

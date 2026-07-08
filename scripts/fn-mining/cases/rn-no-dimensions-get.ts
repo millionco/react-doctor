@@ -76,6 +76,8 @@ export const rnNoDimensionsGetCases: FnMiningCase[] = [
       const windowWidth = Dimensions.get("window").width;
       const Screen = () => <View style={{ width: windowWidth }} />;
     `,
-    shouldFire: true,
+    shouldFire: false,
+    carveOutReason:
+      "Module-level one-shot Dimensions.get reads are the documented FP carve-out — static layout constants do not go stale mid-render.",
   },
 ];

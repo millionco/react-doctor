@@ -37,6 +37,8 @@ const DEFAULT_CONTROL_COMPONENTS: ReadonlySet<string> = new Set([
   "textarea",
 ]);
 
+const DEFAULT_LABEL_COMPONENTS: ReadonlySet<string> = new Set(["label"]);
+
 const DEFAULT_LABEL_ATTRIBUTES: ReadonlyArray<string> = ["alt", "aria-label", "aria-labelledby"];
 
 const resolveSettings = (
@@ -57,7 +59,7 @@ const resolveSettings = (
     typeof jsxA11y === "object" && jsxA11y !== null ? (jsxA11y as JsxA11ySettings) : {};
   const forAttributes = a11ySettings.attributes?.for ?? ["htmlFor"];
   const labelComponents: ReadonlySet<string> = new Set([
-    "label",
+    ...DEFAULT_LABEL_COMPONENTS,
     ...(ruleSettings.labelComponents ?? []),
   ]);
   const labelAttributes: ReadonlySet<string> = new Set([

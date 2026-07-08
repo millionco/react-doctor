@@ -107,4 +107,16 @@ const C = ({ showPurchased }) => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("still flags rows built with reduce instead of map", () => {
+    const result = runRule(
+      rnNoScrollviewMappedList,
+      `const C = ({ items }) => (
+  <ScrollView>
+    {items.reduce((accumulated, item) => [...accumulated, <Row key={item.id} data={item} />], [])}
+  </ScrollView>
+);`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

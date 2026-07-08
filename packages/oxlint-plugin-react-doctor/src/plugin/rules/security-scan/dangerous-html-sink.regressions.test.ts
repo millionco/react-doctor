@@ -827,4 +827,12 @@ describe("security-scan/dangerous-html-sink — regressions", () => {
     });
     expect(findings).toHaveLength(0);
   });
+
+  it("flags a bare markup identifier without taint-looking substrings beyond markup", () => {
+    const findings = runScanRule(dangerousHtmlSink, {
+      relativePath: "src/components/comment.ts",
+      content: `export const renderComment = (element, commentMarkup) => {\n  element.innerHTML = commentMarkup;\n};\n`,
+    });
+    expect(findings).toHaveLength(1);
+  });
 });

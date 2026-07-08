@@ -36,9 +36,7 @@ export const dangerousHtmlSinkCases: FnMiningCase[] = [
         element.innerHTML = commentMarkup;
       };
     `,
-    shouldFire: false,
-    carveOutReason:
-      "HTML_TAINT_PATTERN is a deliberate precision gate: the rule only judges dynamic-LOOKING values. A bare identifier with no taint-shaped token would make every innerHTML write a finding, drowning real XSS candidates in noise.",
+    shouldFire: true,
   },
   {
     ruleId: "dangerous-html-sink",

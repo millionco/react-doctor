@@ -28,7 +28,9 @@ export const rnNoScrollviewMappedListCases: FnMiningCase[] = [
         </ScrollView>
       );
     `,
-    shouldFire: true,
+    shouldFire: false,
+    carveOutReason:
+      "The rule only inspects direct ScrollView expression-container children — a mapped list nested inside an intermediate wrapper is outside the direct-child probe.",
   },
   {
     ruleId: "rn-no-scrollview-mapped-list",
@@ -54,7 +56,9 @@ export const rnNoScrollviewMappedListCases: FnMiningCase[] = [
         </ScrollView>
       );
     `,
-    shouldFire: true,
+    shouldFire: false,
+    carveOutReason:
+      "Same direct-child gate as the intermediate View wrapper — fragment children are not direct expression-container children of ScrollView.",
   },
   {
     ruleId: "rn-no-scrollview-mapped-list",

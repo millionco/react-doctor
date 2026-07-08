@@ -23,7 +23,7 @@ const HTML_VALUE_START_PATTERN =
 // `document.cookie`/`.referrer`, `window.name`, web/session storage,
 // `URLSearchParams`) — attacker-controllable channels that must be flagged.
 const HTML_TAINT_PATTERN =
-  /searchParams|query|params|request|req\.|response\.|result\.|data\.|await|fetch|props\.|children|content|html|body|text|message|\blocation\b|document\.cookie|\breferrer\b|\blocalStorage\b|\bsessionStorage\b|URLSearchParams|window\.name/i;
+  /searchParams|query|params|request|req\.|response\.|result\.|data\.|await|fetch|props\.|children|content|html|body|text|message|markup|\blocation\b|document\.cookie|\breferrer\b|\blocalStorage\b|\bsessionStorage\b|URLSearchParams|window\.name/i;
 
 // A trailing line comment (`innerHTML = "" // clear`) must not defeat the
 // literal/constant exemptions: without tolerating it the value never matches,
@@ -468,10 +468,8 @@ export const dangerousHtmlSink = defineRule({
         }
       }
       const sinkTargetMatch = INNERHTML_TARGET_PATTERN.exec(line);
-      if (
-        sinkTargetMatch?.[1] !== undefined &&
-        isInertParseTarget(sinkTargetMatch[1], file.content)
-      ) {
+      const sinkTarget = sinkTargetMatch?.[1] ?? sinkTargetMatch?.[2];
+      if (sinkTarget !== undefined && isInertParseTarget(sinkTarget, file.content)) {
         continue;
       }
       const textBeforeSink = lines

@@ -103,4 +103,50 @@ describe("state-and-effects/no-fetch-in-effect — regressions", () => {
       };
     `);
   });
+
+  it("still flags fetch hidden in a component-scope helper", () => {
+    expectFail(`
+      const Profile = ({ url }) => {
+        const [data, setData] = useState(null);
+        const loadProfile = async () => {
+          const response = await fetch(url);
+          setData(await response.json());
+        };
+        useEffect(() => {
+          void loadProfile();
+        }, [url]);
+        return <div>{data?.name}</div>;
+      };
+    `);
+  });
+
+  it("still flags fetch when cleanup only toggles an unrelated boolean", () => {
+    expectFail(`
+      const Profile = ({ url }) => {
+        const [data, setData] = useState(null);
+        useEffect(() => {
+          fetch(url).then((response) => response.json()).then(setData);
+          return () => {
+            windowFocusTracker.isSubscribed = false;
+          };
+        }, [url]);
+        return <div>{data?.name}</div>;
+      };
+    `);
+  });
+
+  it("still flags XMLHttpRequest inside an effect", () => {
+    expectFail(`
+      const Profile = ({ url }) => {
+        const [data, setData] = useState(null);
+        useEffect(() => {
+          const request = new XMLHttpRequest();
+          request.open("GET", url);
+          request.onload = () => setData(JSON.parse(request.responseText));
+          request.send();
+        }, [url]);
+        return <div>{data?.name}</div>;
+      };
+    `);
+  });
 });

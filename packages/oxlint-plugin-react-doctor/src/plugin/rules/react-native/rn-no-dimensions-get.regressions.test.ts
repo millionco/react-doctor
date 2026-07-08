@@ -216,4 +216,39 @@ describe("react-native/rn-no-dimensions-get — regressions", () => {
     expect(result.diagnostics[0].message).not.toContain("Your users see a stale layout");
     expect(result.diagnostics[0].message).toContain("never updates");
   });
+
+  it("still flags Dimensions.get through an aliased import", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import { Dimensions as Dims, View } from "react-native";
+      const Screen = () => {
+        const { width } = Dims.get("window");
+        return <View style={{ width }} />;
+      };`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags RN.Dimensions.get namespace access", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `import * as RN from "react-native";
+      const Screen = () => {
+        const { width } = RN.Dimensions.get("window");
+        return <RN.View style={{ width }} />;
+      };`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("still flags inline require react-native Dimensions.get", () => {
+    const result = runRule(
+      rnNoDimensionsGet,
+      `const Screen = () => {
+        const { width } = require("react-native").Dimensions.get("window");
+        return <View style={{ width }} />;
+      };`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });

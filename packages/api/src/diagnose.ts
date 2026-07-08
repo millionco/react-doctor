@@ -207,11 +207,7 @@ const diagnoseProject = async (
     const shouldRunLint = resolveShouldRunLint(mergedOptions, effectiveConfig);
     const shouldRunDeadCode = resolveShouldRunDeadCode(mergedOptions, effectiveConfig);
 
-    const program = buildInspectProgram(
-      scanTarget,
-      mergedOptions,
-      effectiveConfig ?? undefined,
-    );
+    const program = buildInspectProgram(scanTarget, mergedOptions, effectiveConfig ?? undefined);
     // `plugins` is override-wins in the merge: when a caller layer supplies
     // it, relative entries resolve against the scan root (caller configs
     // have no file location); otherwise the on-disk config's directory.

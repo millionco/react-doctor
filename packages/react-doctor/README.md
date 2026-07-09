@@ -49,7 +49,18 @@ This adds the workflow, scans every pull request, and posts a summary comment. C
 
 [CI docs →](https://react.doctor/ci)
 
-### 4. Configure rules
+### 4. Rank function complexity
+
+Use the standalone `complexity` command to rank the most complex functions in a directory, or compare against a base ref:
+
+```bash
+npx react-doctor@latest complexity
+npx react-doctor@latest complexity --sort cognitive
+npx react-doctor@latest complexity --diff main
+npx react-doctor@latest complexity --json
+```
+
+### 5. Configure rules
 
 You can configure which rules to run and how to run them in `doctor.config.ts`.
 

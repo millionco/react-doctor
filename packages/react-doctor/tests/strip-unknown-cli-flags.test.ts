@@ -112,6 +112,36 @@ describe("stripUnknownCliFlags", () => {
     expect(stripUserArguments([".", "--supply-chain"])).toEqual([".", "--supply-chain"]);
   });
 
+  it("keeps complexity subcommand options so Commander can parse them", () => {
+    expect(
+      stripUserArguments([
+        "complexity",
+        "src",
+        "--top",
+        "2",
+        "--sort",
+        "cognitive",
+        "--min",
+        "3",
+        "--json",
+        "--diff",
+        "main",
+      ]),
+    ).toEqual([
+      "complexity",
+      "src",
+      "--top",
+      "2",
+      "--sort",
+      "cognitive",
+      "--min",
+      "3",
+      "--json",
+      "--diff",
+      "main",
+    ]);
+  });
+
   it("keeps color flags on the version subcommand and drops unknown ones", () => {
     expect(stripUserArguments(["version", "--no-color"])).toEqual(["version", "--no-color"]);
     expect(stripUserArguments(["version", "--color"])).toEqual(["version", "--color"]);

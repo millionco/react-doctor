@@ -21,6 +21,9 @@ export const REACT_DOCTOR_CONFIG_PROJECT_NAME = "react-doctor";
 
 export const STAGED_FILES_TEMP_DIR_PREFIX = "react-doctor-staged-";
 export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
+export const COMPLEXITY_FILES_TEMP_DIR_PREFIX = "react-doctor-complexity-";
+export const COMPLEXITY_COMMAND_DEFAULT_TOP_COUNT = 20;
+export const COMPLEXITY_COMMAND_DEFAULT_MIN_CYCLOMATIC = 1;
 // Bump on any breaking change to `CachedScanPayload`'s shape so a stale on-disk
 // cache (missing a newly-required field) is discarded wholesale by
 // `readPersistedCache` instead of deserializing into an invalid payload.
@@ -174,6 +177,7 @@ export const NANOSECONDS_PER_SECOND = 1_000_000_000n;
 // dimensions (rule id, package manager, ...) go in attributes, never the name.
 export const METRIC = {
   cliInvoked: "cli.invoked",
+  complexityCommandInvoked: "complexity.command_invoked",
   cliError: "cli.error",
   cliEnvironmentError: "cli.env_error",
   projectDetected: "project.detected",

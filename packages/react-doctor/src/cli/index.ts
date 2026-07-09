@@ -2,6 +2,7 @@ import { Command, Option } from "commander";
 import { CANONICAL_GITHUB_URL, CI_URL, highlighter } from "@react-doctor/core";
 import { flushSentry, initializeSentry } from "../instrument.js";
 import { ciConfigAction, ciInstallAction, ciUpgradeAction } from "./commands/ci.js";
+import { complexityAction } from "./commands/complexity.js";
 import { inspectAction } from "./commands/inspect.js";
 import { installAction } from "./commands/install.js";
 import {
@@ -128,6 +129,28 @@ ${highlighter.dim("Learn more:")}
   ${highlighter.info(CI_URL)}
 `;
 
+const renderComplexityHelpEpilog = (): string => `
+${highlighter.dim("Examples:")}
+${formatExampleLines([
+  ["react-doctor complexity", "rank the most complex functions in the current project"],
+  ["react-doctor complexity ./packages/ui", "analyze a specific directory"],
+  [
+    "react-doctor complexity --sort cognitive",
+    "rank by cognitive complexity instead of cyclomatic",
+  ],
+  ["react-doctor complexity --top 10", "show only the worst 10 functions"],
+  ["react-doctor complexity --diff main", "compare complexity against a base ref"],
+  ["react-doctor complexity --json > complexity.json", "write a machine-readable report"],
+])}
+
+${highlighter.dim("Flags:")}
+  ${highlighter.info("--diff <ref>")} compare against a base git ref.
+  ${highlighter.info("--sort <metric>")} rank by ${highlighter.info("cyclomatic")} or ${highlighter.info("cognitive")}.
+  ${highlighter.info("--top <n>")} cap the visible rows in the terminal output.
+  ${highlighter.info("--min <n>")} hide functions below a cyclomatic threshold.
+  ${highlighter.info("--json")} output structured JSON only.
+`;
+
 const collectCategoryOption = (value: string, previousValues: string[] | undefined): string[] => [
   ...(previousValues ?? []),
   value,
@@ -137,6 +160,7 @@ const program = new Command()
   .name("react-doctor")
   .description("Diagnose React codebase health")
   .version(VERSION, "-v, --version", "display the version number")
+  .enablePositionalOptions()
   .argument("[directory]", "project directory to scan", ".")
   .option("--lint", "enable linting")
   .option("--no-lint", "skip linting")
@@ -229,6 +253,20 @@ const program = new Command()
   .addHelpText("after", renderRootHelpEpilog);
 
 program.action(inspectAction);
+
+program
+  .command("complexity [directory]")
+  .description("Analyze cyclomatic and cognitive complexity in a project directory")
+  .option("--json", "output structured JSON only")
+  .option("--diff <ref>", "compare complexity against a base git ref")
+  .option("--top <n>", "show only the worst n functions in the terminal table (default: 20)")
+  .option("--sort <metric>", "rank by cyclomatic complexity (default) or cognitive complexity")
+  .option(
+    "--min <n>",
+    "hide functions below this cyclomatic threshold in the terminal table (default: 1)",
+  )
+  .addHelpText("after", renderComplexityHelpEpilog)
+  .action((directory, options) => complexityAction(directory ?? ".", options));
 
 program
   .command("why <location>")

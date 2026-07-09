@@ -60,6 +60,15 @@ Use `--no-score` to skip the score API and the share URL. Runs with scoring disa
 npx react-doctor@latest --no-score
 ```
 
+Use `complexity` to rank the most complex functions in a directory, or compare against a base ref:
+
+```bash
+npx react-doctor@latest complexity
+npx react-doctor@latest complexity --sort cognitive
+npx react-doctor@latest complexity --diff main
+npx react-doctor@latest complexity --json
+```
+
 Install the skill into your coding agent (50+ agents supported via agent-install: Claude Code, Codex, Cursor, Factory Droid, Gemini CLI, GitHub Copilot, Goose, OpenCode, Pi, Windsurf, Roo Code, Cline, Kilo Code, Warp, Replit, OpenHands, Continue, and more):
 
 ```bash

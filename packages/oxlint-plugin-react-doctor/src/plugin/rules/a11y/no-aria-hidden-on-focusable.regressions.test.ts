@@ -125,4 +125,40 @@ describe("a11y/no-aria-hidden-on-focusable regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("does not flag aria-hidden on a decorative background video without controls", () => {
+    const result = runRule(
+      noAriaHiddenOnFocusable,
+      `export const Hero = ({ onError }) => (
+        <video aria-hidden="true" autoPlay muted loop playsInline onError={onError}>
+          <source src="/hero.mp4" type="video/mp4" />
+        </video>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag aria-hidden on an autoplaying audio element without controls", () => {
+    const result = runRule(
+      noAriaHiddenOnFocusable,
+      `export const Ambience = () => <audio aria-hidden="true" autoPlay loop src="/wind.mp3" />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags aria-hidden on a video with controls", () => {
+    const result = runRule(
+      noAriaHiddenOnFocusable,
+      `export const Player = () => <video controls aria-hidden="true" src="/clip.mp4" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags aria-hidden on a video made tabbable via tabIndex", () => {
+    const result = runRule(
+      noAriaHiddenOnFocusable,
+      `export const Player = () => <video tabIndex={0} aria-hidden="true" src="/clip.mp4" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

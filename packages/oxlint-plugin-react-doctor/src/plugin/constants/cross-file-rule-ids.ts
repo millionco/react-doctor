@@ -20,8 +20,8 @@
 //     `no-full-lodash-import` read the manifest's `bin` field
 //     (`is-inside-node-cli-package.ts`); `prefer-dynamic-import` reads the
 //     publishable-library shape (`is-published-library-package.ts`);
-//     `rendering-hydration-mismatch-time` reads the package-platform
-//     classification to skip React Native files;
+//     `rendering-hydration-mismatch-time` and `no-locale-format-in-render`
+//     read the package-platform classification to skip React Native files;
 //     `rn-no-legacy-shadow-styles` and `rn-style-prefer-boxshadow` read the
 //     manifest's react-native version plus `android/gradle.properties` and
 //     static Expo app configs (`is-legacy-arch-react-native-file.ts`) to stay
@@ -38,6 +38,7 @@ export const CROSS_FILE_RULE_IDS: ReadonlySet<string> = new Set([
   "nextjs-no-use-search-params-without-suspense",
   "no-dynamic-import-path",
   "no-full-lodash-import",
+  "no-locale-format-in-render",
   "no-mutating-reducer-state",
   "prefer-dynamic-import",
   "rendering-hydration-mismatch-time",

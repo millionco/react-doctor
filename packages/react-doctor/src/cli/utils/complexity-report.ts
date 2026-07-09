@@ -163,20 +163,7 @@ const loadComplexityRuntimeTools = async (): Promise<ComplexityRuntimeTools> => 
   return complexityRuntimeToolsPromise;
 };
 
-interface ComplexityFunctionKeyInput {
-  readonly relativePath: string;
-  readonly name: string;
-  readonly kind: FunctionComplexity["kind"];
-  readonly line: number;
-}
-
 const DEFAULT_SORT_METRIC: ComplexitySortMetric = "cyclomatic";
-
-const buildFunctionKey = (input: ComplexityFunctionKeyInput): string => {
-  if (input.name === "<module>") return `${input.relativePath}|module`;
-  if (input.name === "<anonymous>") return `${input.relativePath}|${input.kind}|${input.line}`;
-  return `${input.relativePath}|${input.kind}|${input.name}`;
-};
 
 const getKindPriority = (kind: FunctionComplexity["kind"]): number => {
   if (kind === "module") return 5;
@@ -294,12 +281,7 @@ const flattenComplexityFile = (input: ParsedComplexityFile): ComplexityAnalysisF
     ...input.analysisFunctions[index]!,
     filePath: input.filePath,
     relativePath: input.relativePath,
-    key: buildFunctionKey({
-      relativePath: input.relativePath,
-      name: functionEntry.name,
-      kind: functionEntry.kind,
-      line: functionEntry.line,
-    }),
+    key: input.analysisFunctions[index]!.key,
   }));
 
 const analyzeComplexityTree = async (directory: string): Promise<ComplexityTreeAnalysis> => {
@@ -643,26 +625,6 @@ export const buildComplexityReport = async (
   const sourceFiles = listSourceFiles(resolvedDirectory);
   try {
     const snapshot = await materializeBaselineTree(resolvedDirectory, resolvedDiffRef, sourceFiles);
-    if (sourceFiles.length > 0 && snapshot.materializedFiles.length === 0) {
-      snapshot.cleanup();
-      return {
-        version: VERSION,
-        directory: resolvedDirectory,
-        mode: "diff",
-        sortMetric,
-        minCyclomatic,
-        top,
-        files: headAnalysis.files,
-        functions: rankedHeadFunctions,
-        diff: {
-          baseRef: resolvedDiffRef,
-          computed: false,
-          note: `Could not compute diff against ${requestedDiffRef}; showing head-only complexity.`,
-          ...createEmptyDiffSummary([]),
-        },
-        summary,
-      };
-    }
     try {
       const baseAnalysis = await analyzeComplexityTree(snapshot.tempDirectory);
       const diffFunctions = compareFunctionAnalyses(

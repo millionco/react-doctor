@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@voidzero-dev/vite-plus-test";
 import { analyzeComplexity } from "./complexity.js";
+import { collectChangeComplexityFunctionEntries } from "./change-complexity.js";
 import { attachParentReferences } from "../../test-utils/attach-parent-references.js";
 import { parseFixture } from "../../test-utils/parse-fixture.js";
 
@@ -66,6 +67,52 @@ function positioned() {
       line: 2,
       column: 0,
     });
+  });
+
+  it("qualifies same-named class methods by owner in diff keys", () => {
+    const parsed = parseFixture(`
+      class First {
+        render() {
+          return 1;
+        }
+      }
+
+      class Second {
+        render() {
+          if (flag) {
+            return 2;
+          }
+          return 0;
+        }
+      }
+    `);
+    attachParentReferences(parsed.program);
+    const entries = collectChangeComplexityFunctionEntries(
+      parsed.program,
+      `
+      class First {
+        render() {
+          return 1;
+        }
+      }
+
+      class Second {
+        render() {
+          if (flag) {
+            return 2;
+          }
+          return 0;
+        }
+      }
+    `,
+      "src/example.ts",
+    );
+
+    const renderEntries = entries.filter((entry) => entry.name === "render");
+    expect(renderEntries).toHaveLength(2);
+    expect(new Set(renderEntries.map((entry) => entry.key)).size).toBe(2);
+    expect(renderEntries.some((entry) => entry.key.includes("class:First"))).toBe(true);
+    expect(renderEntries.some((entry) => entry.key.includes("class:Second"))).toBe(true);
   });
 
   it("computes cyclomatic complexity from the CFG", () => {

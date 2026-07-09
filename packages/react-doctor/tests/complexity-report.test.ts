@@ -177,6 +177,144 @@ export function gamma(flag: boolean) {
     }
   });
 
+  it("keeps same-named methods in different classes from colliding in diff joins", async () => {
+    const repositoryDirectory = createTempGitRepository();
+    try {
+      writeRepositoryFile(
+        repositoryDirectory,
+        "src/example.ts",
+        `
+class First {
+  render() {
+    return 1;
+  }
+}
+
+class Second {
+  render() {
+    if (flag) {
+      return 2;
+    }
+    return 0;
+  }
+}
+`,
+      );
+      const baseCommit = commitRepositoryState(repositoryDirectory, "base");
+
+      writeRepositoryFile(
+        repositoryDirectory,
+        "src/example.ts",
+        `
+class Second {
+  render() {
+    return 2;
+  }
+}
+
+class First {
+  render() {
+    if (flag) {
+      return 1;
+    }
+    return 0;
+  }
+}
+`,
+      );
+
+      const report = await buildComplexityReport({
+        directory: repositoryDirectory,
+        diffRef: baseCommit,
+        top: 20,
+        minCyclomatic: 1,
+        sortMetric: "cyclomatic",
+      });
+
+      expect(report.diff?.computed).toBe(true);
+      const renderEntries = report.diff?.functions.filter(
+        (functionEntry) => functionEntry.name === "render",
+      );
+      expect(renderEntries).toHaveLength(2);
+      expect(new Set(renderEntries?.map((functionEntry) => functionEntry.key)).size).toBe(2);
+      expect(
+        renderEntries?.some((functionEntry) => functionEntry.key.includes("class:First")),
+      ).toBe(true);
+      expect(
+        renderEntries?.some((functionEntry) => functionEntry.key.includes("class:Second")),
+      ).toBe(true);
+      expect(
+        renderEntries?.some(
+          (functionEntry) =>
+            functionEntry.relativePath === "src/example.ts" &&
+            functionEntry.status === "changed" &&
+            functionEntry.cyclomaticDelta > 0,
+        ),
+      ).toBe(true);
+      expect(
+        renderEntries?.some(
+          (functionEntry) =>
+            functionEntry.relativePath === "src/example.ts" &&
+            functionEntry.status === "changed" &&
+            functionEntry.cyclomaticDelta < 0,
+        ),
+      ).toBe(true);
+    } finally {
+      rmSync(repositoryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("treats a valid empty base tree as an added diff", async () => {
+    const repositoryDirectory = createTempGitRepository();
+    try {
+      writeRepositoryFile(repositoryDirectory, "README.md", "base\n");
+      const baseCommit = commitRepositoryState(repositoryDirectory, "base");
+
+      writeRepositoryFile(
+        repositoryDirectory,
+        "src/example.ts",
+        `
+export function alpha(value: number) {
+  return value + 1;
+}
+
+export function beta(flag: boolean) {
+  if (flag) {
+    return 1;
+  }
+  return 0;
+}
+`,
+      );
+
+      const report = await buildComplexityReport({
+        directory: repositoryDirectory,
+        diffRef: baseCommit,
+        top: 20,
+        minCyclomatic: 1,
+        sortMetric: "cyclomatic",
+      });
+
+      expect(report.diff?.computed).toBe(true);
+      expect(
+        report.diff?.functions.every((functionEntry) => functionEntry.status === "added"),
+      ).toBe(true);
+      expect(report.diff?.addedCount).toBe(report.diff?.functions.length);
+      expect(report.diff?.removedCount).toBe(0);
+      expect(report.diff?.regressedCount).toBe(0);
+      expect(report.diff?.improvedCount).toBe(0);
+      expect(
+        report.diff?.functions.every(
+          (functionEntry) =>
+            functionEntry.rawLinesChanged === null && functionEntry.bloatRatio === null,
+        ),
+      ).toBe(true);
+      expect(Number.isFinite(report.diff?.changeComplexityScore ?? Number.NaN)).toBe(true);
+    } finally {
+      rmSync(repositoryDirectory, { recursive: true, force: true });
+    }
+  });
+
   it("sorts diff rows by the selected metric", async () => {
     const repositoryDirectory = createTempGitRepository();
     try {

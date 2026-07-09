@@ -1,6 +1,5 @@
 import { getFunctionBindingName } from "../utils/get-function-binding-name.js";
 import type { EsTreeNode } from "../utils/es-tree-node.js";
-import type { EsTreeNodeOfType } from "../utils/es-tree-node-of-type.js";
 import { isAstNode } from "../utils/is-ast-node.js";
 import { isFunctionLike } from "../utils/is-function-like.js";
 import { isNodeOfType } from "../utils/is-node-of-type.js";
@@ -71,6 +70,73 @@ export const getFunctionName = (node: EsTreeNode): string => {
   return "<anonymous>";
 };
 
+const getMethodAccessorKind = (node: EsTreeNode): string | null => {
+  const parent = node.parent;
+  if (isNodeOfType(parent, "MethodDefinition")) {
+    if (parent.kind === "get" || parent.kind === "set") return parent.kind;
+  }
+  if (isNodeOfType(parent, "Property")) {
+    if (parent.kind === "get" || parent.kind === "set") return parent.kind;
+  }
+  return null;
+};
+
+const getOwnerBindingName = (ownerNode: EsTreeNode): string | null => {
+  if (isNodeOfType(ownerNode, "ClassDeclaration") || isNodeOfType(ownerNode, "ClassExpression")) {
+    if (isNodeOfType(ownerNode.id, "Identifier")) return ownerNode.id.name;
+  }
+  let currentNode: EsTreeNode | null | undefined = ownerNode.parent;
+  while (currentNode !== null && currentNode !== undefined) {
+    if (
+      isNodeOfType(currentNode, "VariableDeclarator") &&
+      currentNode.init === ownerNode &&
+      isNodeOfType(currentNode.id, "Identifier")
+    ) {
+      return currentNode.id.name;
+    }
+    if (isNodeOfType(currentNode, "AssignmentExpression") && currentNode.right === ownerNode) {
+      return getAssignmentTargetName(currentNode);
+    }
+    if (
+      (isNodeOfType(currentNode, "Property") ||
+        isNodeOfType(currentNode, "MethodDefinition") ||
+        isNodeOfType(currentNode, "PropertyDefinition")) &&
+      currentNode.value === ownerNode
+    ) {
+      return getKeyName(currentNode);
+    }
+    if (isNodeOfType(currentNode, "Program")) return null;
+    currentNode = currentNode.parent;
+  }
+  return null;
+};
+
+const getEnclosingOwnerQualifier = (node: EsTreeNode): string | null => {
+  let currentNode: EsTreeNode | null | undefined = node.parent;
+  while (currentNode !== null && currentNode !== undefined) {
+    if (
+      isNodeOfType(currentNode, "ClassDeclaration") ||
+      isNodeOfType(currentNode, "ClassExpression")
+    ) {
+      const bindingName = getOwnerBindingName(currentNode);
+      if (bindingName) return `class:${bindingName}`;
+    }
+    if (isNodeOfType(currentNode, "ObjectExpression")) {
+      const bindingName = getOwnerBindingName(currentNode);
+      if (bindingName) return `object:${bindingName}`;
+    }
+    currentNode = currentNode.parent;
+  }
+  return null;
+};
+
+export const getFunctionKeyQualifier = (node: EsTreeNode): string | null => {
+  const ownerQualifier = getEnclosingOwnerQualifier(node);
+  const accessorKind = getMethodAccessorKind(node);
+  if (ownerQualifier === null && accessorKind === null) return null;
+  return [ownerQualifier, accessorKind].filter(Boolean).join("|");
+};
+
 const isMethodFunction = (node: EsTreeNode): boolean => {
   const parent = node.parent;
   if (isNodeOfType(parent, "MethodDefinition")) return true;
@@ -125,12 +191,17 @@ export interface ComplexityFunctionKeyInput {
   readonly name: string;
   readonly kind: ComplexityFunctionKind["kind"];
   readonly line: number;
+  readonly keyQualifier?: string | null;
 }
 
 export const buildComplexityFunctionKey = (input: ComplexityFunctionKeyInput): string => {
   if (input.name === MODULE_NAME) return `${input.relativePath}|module`;
   if (input.name === "<anonymous>") return `${input.relativePath}|${input.kind}|${input.line}`;
-  return `${input.relativePath}|${input.kind}|${input.name}`;
+  const keyQualifier =
+    input.keyQualifier === undefined || input.keyQualifier === null || input.keyQualifier === ""
+      ? ""
+      : `|${input.keyQualifier}`;
+  return `${input.relativePath}|${input.kind}${keyQualifier}|${input.name}`;
 };
 
 export const createComplexityPositionResolver = (

@@ -5,6 +5,7 @@ import { isReactHookName } from "../utils/is-react-hook-name.js";
 import { calculateLineDiff } from "../utils/calculate-line-diff.js";
 import {
   buildComplexityFunctionKey,
+  getFunctionKeyQualifier,
   collectFunctionNodes,
   createComplexityPositionResolver,
   getFunctionKind,
@@ -288,6 +289,7 @@ export const collectChangeComplexityFunctionEntries = (
         name,
         kind,
         line: position.line,
+        keyQualifier: getFunctionKeyQualifier(functionNode),
       }),
       name,
       kind,

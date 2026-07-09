@@ -1,6 +1,3 @@
-import { list RuleTags } from "./rule-catalog.js";
-import { CliInputError } from "./cli-input-error.js";
-
 const splitTagFlagValue = (value: string): string[] =>
   value
     .split(",")

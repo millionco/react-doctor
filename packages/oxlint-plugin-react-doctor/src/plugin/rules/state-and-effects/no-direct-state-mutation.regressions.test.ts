@@ -504,6 +504,34 @@ describe("no-direct-state-mutation — regressions", () => {
       expect(result.diagnostics).toHaveLength(1);
     });
 
+    it("still flags when the setter receives JSON.parse plain data", () => {
+      const result = runRule(
+        noDirectStateMutation,
+        `function Settings({ raw }) {
+          const [data, setData] = useState(null);
+          const load = () => setData(JSON.parse(raw));
+          const toggle = () => { data.enabled = !data.enabled; };
+          return <button onClick={toggle}>{String(load)}</button>;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("still flags when the setter receives a copying array transform", () => {
+      const result = runRule(
+        noDirectStateMutation,
+        `function Filtered({ source }) {
+          const [rows, setRows] = useState(null);
+          const load = () => setRows(source.filter((row) => row.active));
+          const add = () => { rows.push({ active: true }); };
+          return <button onClick={add}>{String(load)}</button>;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("still flags when the setter receives a bare helper-call result", () => {
       const result = runRule(
         noDirectStateMutation,

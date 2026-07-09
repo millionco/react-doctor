@@ -17,6 +17,31 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 // opaque third-party instance: `Array(5)`, `structuredClone(defaults)`.
 const PLAIN_DATA_PRODUCER_GLOBAL_NAMES = new Set(["Array", "structuredClone"]);
 const PLAIN_DATA_ARRAY_STATIC_METHODS = new Set(["from", "of"]);
+const PLAIN_DATA_JSON_STATIC_METHODS = new Set(["parse"]);
+const PLAIN_DATA_OBJECT_STATIC_METHODS = new Set([
+  "assign",
+  "entries",
+  "fromEntries",
+  "keys",
+  "values",
+]);
+
+// Copying array transforms return a NEW plain array when the receiver is an
+// array — and even on a non-array receiver they never witness an opaque
+// instance being handed to the setter, so they must not count as opaque
+// evidence (`setItems(items.filter(...))` is the canonical plain-state feed).
+const ARRAY_COPY_METHOD_NAMES = new Set([
+  "map",
+  "filter",
+  "slice",
+  "concat",
+  "flat",
+  "flatMap",
+  "toSorted",
+  "toReversed",
+  "toSpliced",
+  "with",
+]);
 
 const isNullOrUndefinedExpression = (expression: EsTreeNode): boolean =>
   (isNodeOfType(expression, "Literal") && expression.value === null) ||
@@ -31,8 +56,16 @@ const isPlainDataProducerCall = (expression: EsTreeNode): boolean => {
   if (!isNodeOfType(callee, "MemberExpression") || !isNodeOfType(callee.property, "Identifier")) {
     return false;
   }
-  if (isNodeOfType(callee.object, "Identifier") && callee.object.name === "Array") {
-    return PLAIN_DATA_ARRAY_STATIC_METHODS.has(callee.property.name);
+  if (isNodeOfType(callee.object, "Identifier")) {
+    if (callee.object.name === "Array") {
+      return PLAIN_DATA_ARRAY_STATIC_METHODS.has(callee.property.name);
+    }
+    if (callee.object.name === "JSON") {
+      return PLAIN_DATA_JSON_STATIC_METHODS.has(callee.property.name);
+    }
+    if (callee.object.name === "Object") {
+      return PLAIN_DATA_OBJECT_STATIC_METHODS.has(callee.property.name);
+    }
   }
   // `Array(5).fill(0)`-style chains: a method called on plain data yields
   // plain data, not an opaque instance.
@@ -96,14 +129,23 @@ const initializerMarksPlainState = (initializerArgument: EsTreeNode | undefined)
 // API, so it must not be classified as plain React data. Only constructor
 // calls and member-method factories count as opaque evidence: a BARE helper
 // call (`setEditor(createEditor(el))`) stays unclassified so the documented
-// wangeditor-class lost-update detection keeps firing.
+// wangeditor-class lost-update detection keeps firing, and member calls that
+// produce plain data (`JSON.parse(raw)`, `items.filter(...)`) stay
+// unclassified so mutations on the resulting plain value are still reported.
 const producesOpaqueInstanceValue = (expression: EsTreeNode): boolean => {
   if (isNodeOfType(expression, "NewExpression")) return true;
-  return (
-    isNodeOfType(expression, "CallExpression") &&
-    isNodeOfType(expression.callee, "MemberExpression") &&
-    !isPlainDataProducerCall(expression)
-  );
+  if (!isNodeOfType(expression, "CallExpression")) return false;
+  const callee = expression.callee;
+  if (!isNodeOfType(callee, "MemberExpression")) return false;
+  if (isPlainDataProducerCall(expression)) return false;
+  if (
+    !callee.computed &&
+    isNodeOfType(callee.property, "Identifier") &&
+    ARRAY_COPY_METHOD_NAMES.has(callee.property.name)
+  ) {
+    return false;
+  }
+  return true;
 };
 
 interface SetterValueObservations {

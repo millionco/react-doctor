@@ -80,6 +80,13 @@ export interface Diagnostic {
   endColumn?: number;
   category: string;
   /**
+   * Behavioral tags from the rule definition (e.g. `["test-noise"]`,
+   * `["design"]`, `["migration-hint"]`). Present on react-doctor rules;
+   * empty or absent on adopted third-party rules. Exposed in JSON output
+   * for downstream tag-based filtering.
+   */
+  tags?: string[];
+  /**
    * Set when the finding's identity is the flagged element itself (a missing
    * attribute, a wrong element) rather than the flagged line's text — every
    * Accessibility-category finding, plus rules that opt in via their
@@ -108,6 +115,17 @@ export interface Diagnostic {
    * score-neutral — the score never reads it.
    */
   fixGroupId?: string;
+  /**
+   * Resolved gate verdict: `true` when this diagnostic would count toward
+   * the CI exit-code gate given the active tag/category/severity filtering
+   * (via CLI flags or config), `false` otherwise. Present only when
+   * `--exclude-tag` / `--include-tag` / `--category` filtering is active
+   * or when a gate config exists; absent means all diagnostics block
+   * according to their severity alone. Downstream gates (GitHub Action,
+   * custom tooling) can filter `blocking === true` instead of
+   * re-implementing React Doctor's selection logic.
+   */
+  blocking?: boolean;
 }
 
 export interface CleanedDiagnostic {

@@ -113,6 +113,13 @@ const getRuleRecommendation = (ruleName: string, project: ProjectInfo): string |
 export const getRuleCategory = (ruleName: string): string | undefined =>
   reactDoctorPlugin.rules[ruleName]?.category;
 
+// Tags for behavioral families (`test-noise`, `design`, `migration-hint`)
+// consumed by `ignore.tags` and rendered in the JSON report. Only
+// react-doctor rules carry them; adopted third-party rules return an
+// empty array.
+export const getRuleTags = (ruleName: string): string[] =>
+  reactDoctorPlugin.rules[ruleName]?.tags ?? [];
+
 // Short human headline for a rule (e.g. "Array index used as a key").
 // Only react-doctor rules carry one; adopted third-party rules return
 // undefined and renderers fall back to the `plugin/rule` id.
@@ -349,6 +356,7 @@ export const parseOxlintOutput = (
       const primarySpan = primaryLabel?.span;
       const relatedLocations = buildRelatedLocations(diagnostic.labels, normalizedFilePath);
       const category = resolveDiagnosticCategory(plugin, rule);
+      const tags = getRuleTags(rule);
       return {
         filePath: normalizedFilePath,
         plugin,
@@ -362,6 +370,7 @@ export const parseOxlintOutput = (
         column: primarySpan?.column ?? 0,
         ...(primarySpan ? { offset: primarySpan.offset, length: primarySpan.length } : {}),
         category,
+        ...(tags.length > 0 ? { tags } : {}),
         ...(resolveMatchByOccurrence(rule, category) ? { matchByOccurrence: true } : {}),
         ...(relatedLocations.length > 0 ? { relatedLocations } : {}),
       };

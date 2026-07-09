@@ -381,4 +381,17 @@ export interface JsonReportV2 extends Omit<JsonReportV1, "schemaVersion"> {
   baseline: JsonReportBaselineInfo;
 }
 
-export type JsonReport = JsonReportV1 | JsonReportV2;
+/**
+ * Extended report with rule tags and blocking metadata. Structurally a
+ * superset of v2 — every v2 field is present — but every `Diagnostic`
+ * includes `tags` (behavioral tags like `"test-noise"`, `"design"`) and an
+ * optional `blocking` boolean (the resolved gate verdict when tag/category/
+ * severity filtering is active). Both full and baseline reports use v3 when
+ * tags are emitted. Consumers branch on `schemaVersion === 3`.
+ */
+export interface JsonReportV3 extends Omit<JsonReportV2, "schemaVersion" | "baseline"> {
+  schemaVersion: 3;
+  baseline?: JsonReportBaselineInfo;
+}
+
+export type JsonReport = JsonReportV1 | JsonReportV2 | JsonReportV3;

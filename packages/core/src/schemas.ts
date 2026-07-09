@@ -32,11 +32,13 @@ export class Diagnostic extends Schema.Class<Diagnostic>("Diagnostic")({
   endLine: Schema.optional(Schema.Number),
   endColumn: Schema.optional(Schema.Number),
   category: Schema.String,
+  tags: Schema.optional(Schema.Array(Schema.String)),
   matchByOccurrence: Schema.optional(Schema.Boolean),
   fileContext: Schema.optional(Schema.Literals(["test", "story"])),
   suppressionHint: Schema.optional(Schema.String),
   relatedLocations: Schema.optional(Schema.Array(DiagnosticRelatedLocation)),
   fixGroupId: Schema.optional(Schema.String),
+  blocking: Schema.optional(Schema.Boolean),
 }) {}
 
 /**
@@ -169,5 +171,29 @@ export class JsonReportV2 extends Schema.Class<JsonReportV2>("JsonReportV2")({
   error: Schema.NullOr(JsonReportError),
 }) {}
 
-export const JsonReport = Schema.Union([JsonReportV1, JsonReportV2]);
+/**
+ * Extended report with rule tags and blocking metadata — `schemaVersion: 3`.
+ * A superset of v2: every diagnostic includes `tags` (behavioral tags like
+ * `"test-noise"`, `"design"`) and an optional `blocking` boolean (resolved
+ * gate verdict when tag/category/severity filtering is active). Baseline
+ * reports carry the same schema version when tags are present.
+ */
+export class JsonReportV3 extends Schema.Class<JsonReportV3>("JsonReportV3")({
+  schemaVersion: Schema.Literal(3),
+  version: Schema.String,
+  ok: Schema.Boolean,
+  directory: Schema.String,
+  mode: JsonReportMode,
+  /** See `JsonReportV1.reactDetected`. */
+  reactDetected: Schema.optional(Schema.Boolean),
+  diff: Schema.NullOr(JsonReportDiffInfo),
+  baseline: Schema.optional(JsonReportBaseline),
+  projects: Schema.Array(JsonReportProjectEntry),
+  diagnostics: Schema.Array(Diagnostic),
+  summary: JsonReportSummary,
+  elapsedMilliseconds: Schema.Number,
+  error: Schema.NullOr(JsonReportError),
+}) {}
+
+export const JsonReport = Schema.Union([JsonReportV1, JsonReportV2, JsonReportV3]);
 export type JsonReport = Schema.Schema.Type<typeof JsonReport>;

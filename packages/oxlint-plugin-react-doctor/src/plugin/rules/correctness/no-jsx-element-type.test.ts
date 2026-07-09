@@ -3,6 +3,10 @@ import { runRule } from "../../../test-utils/run-rule.js";
 import { noJsxElementType } from "./no-jsx-element-type.js";
 
 describe("no-jsx-element-type", () => {
+  it("ships at warn severity — a type-hygiene preference, not a runtime bug", () => {
+    expect(noJsxElementType.severity).toBe("warn");
+  });
+
   it("flags function declaration with JSX.Element return type", () => {
     const result = runRule(
       noJsxElementType,

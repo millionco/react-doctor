@@ -43,7 +43,10 @@ const extractReturnTypeAnnotation = (
 export const noJsxElementType = defineRule({
   id: "no-jsx-element-type",
   title: "No JSX.Element",
-  severity: "error",
+  // A `JSX.Element` return-type annotation is a type-hygiene preference
+  // (too narrow for what components legitimately return), not a runtime
+  // bug — it must not block a scan at error severity.
+  severity: "warn",
   recommendation:
     "Replace `JSX.Element` with `React.ReactNode`. `JSX.Element` is too narrow: it excludes `null`, strings, numbers, and fragments that components commonly return.",
   create: (context: RuleContext) => {

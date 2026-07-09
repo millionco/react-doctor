@@ -8,7 +8,11 @@ import { handleError, handleUserError } from "../utils/handle-error.js";
 import { isExpectedUserError } from "../utils/is-expected-user-error.js";
 import { recordCount } from "../utils/record-metric.js";
 import { reportErrorToSentry } from "../utils/report-error.js";
-import { buildComplexityReport } from "../utils/complexity-report.js";
+import {
+  buildComplexityReport,
+  getComplexityHeadlineScore,
+  getComplexityScoreBand,
+} from "../utils/complexity-report.js";
 import { renderComplexityReport } from "../utils/render-complexity.js";
 import type { ComplexitySortMetric } from "../utils/complexity-report.js";
 
@@ -62,16 +66,16 @@ export const complexityAction = async (
       1,
     );
 
-    recordCount(METRIC.complexityCommandInvoked, 1, {
-      mode: options.diff === undefined ? "full" : "diff",
-    });
-
     const report = await buildComplexityReport({
       directory,
       diffRef: options.diff ?? null,
       sortMetric,
       minCyclomatic,
       top,
+    });
+    recordCount(METRIC.complexityCommandInvoked, 1, {
+      mode: options.diff === undefined ? "full" : "diff",
+      scoreBand: getComplexityScoreBand(getComplexityHeadlineScore(report)),
     });
     if (options.json === true) {
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

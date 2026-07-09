@@ -10,3 +10,5 @@ The command now keeps its own `--help` / `-h` flags, ranks diff rows by the sele
 Relative diff refs like `HEAD~1` and `HEAD^` are now resolved before baseline materialization, so they work the same as full SHAs and branch names.
 
 Diff mode now also reports change-complexity decomposition: essential change, raw line churn, bloat ratio, nesting delta, entropy, and an overall change-complexity score.
+
+The terminal output now starts with a headline 0–1 complexity score and a compact table so the command is readable at a glance.

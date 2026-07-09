@@ -132,7 +132,7 @@ ${highlighter.dim("Learn more:")}
 const renderComplexityHelpEpilog = (): string => `
 ${highlighter.dim("Examples:")}
 ${formatExampleLines([
-  ["react-doctor complexity", "rank the most complex functions in the current project"],
+  ["react-doctor complexity", "show a headline complexity score and the most complex functions"],
   ["react-doctor complexity ./packages/ui", "analyze a specific directory"],
   [
     "react-doctor complexity --sort cognitive",
@@ -147,6 +147,7 @@ ${formatExampleLines([
 ])}
 
 ${highlighter.dim("Flags:")}
+  Complexity output starts with a 0–1 headline score (higher = more complex); diff mode shows change complexity and a trimmed table.
   ${highlighter.info("--diff <ref>")} compare against a base git ref and report essential-change breakdown.
   ${highlighter.info("--sort <metric>")} rank by ${highlighter.info("cyclomatic")} or ${highlighter.info("cognitive")}.
   ${highlighter.info("--top <n>")} cap the visible rows in the terminal output.

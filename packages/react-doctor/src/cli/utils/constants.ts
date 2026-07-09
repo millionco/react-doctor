@@ -24,6 +24,24 @@ export const BASELINE_FILES_TEMP_DIR_PREFIX = "react-doctor-baseline-";
 export const COMPLEXITY_FILES_TEMP_DIR_PREFIX = "react-doctor-complexity-";
 export const COMPLEXITY_COMMAND_DEFAULT_TOP_COUNT = 20;
 export const COMPLEXITY_COMMAND_DEFAULT_MIN_CYCLOMATIC = 1;
+export const COMPLEXITY_SCORE_FUNCTION_CYCLOMATIC_CAP = 50;
+export const COMPLEXITY_SCORE_FUNCTION_COGNITIVE_CAP = 50;
+export const COMPLEXITY_SCORE_FUNCTION_CYCLOMATIC_WEIGHT = 0.6;
+export const COMPLEXITY_SCORE_FUNCTION_COGNITIVE_WEIGHT = 0.4;
+export const COMPLEXITY_SCORE_CODEBASE_MEAN_WEIGHT = 0.5;
+export const COMPLEXITY_SCORE_CODEBASE_MAX_WEIGHT = 0.5;
+export const COMPLEXITY_SCORE_BAND_SIMPLE_MAX = 0.25;
+export const COMPLEXITY_SCORE_BAND_MODERATE_MAX = 0.5;
+export const COMPLEXITY_SCORE_BAND_COMPLEX_MAX = 0.75;
+export const COMPLEXITY_SCORE_CHANGE_SATURATION_K = 80;
+export const COMPLEXITY_SCORE_BAR_WIDTH_CHARS = 20;
+export const COMPLEXITY_TABLE_FUNCTION_WIDTH_CHARS = 20;
+export const COMPLEXITY_TABLE_LOCATION_WIDTH_CHARS = 22;
+export const COMPLEXITY_TABLE_MIN_FUNCTION_WIDTH_CHARS = 12;
+export const COMPLEXITY_TABLE_MIN_LOCATION_WIDTH_CHARS = 12;
+export const COMPLEXITY_DIFF_CALLOUT_MIN_BLOAT_RATIO = 2;
+export const COMPLEXITY_DIFF_CALLOUT_MIN_RAW_LINES_CHANGED = 6;
+export const COMPLEXITY_DIFF_CALLOUT_PURE_CHURN_MAX_ESSENTIAL_CHANGE = 0.5;
 // Bump on any breaking change to `CachedScanPayload`'s shape so a stale on-disk
 // cache (missing a newly-required field) is discarded wholesale by
 // `readPersistedCache` instead of deserializing into an invalid payload.

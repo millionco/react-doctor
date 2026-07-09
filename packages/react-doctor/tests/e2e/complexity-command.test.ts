@@ -106,11 +106,12 @@ describe.skipIf(!hasBuiltCli)("complexity command", () => {
       minCyclomatic: 1,
       sortMetric: "cyclomatic",
     });
-    const cyclomaticRenderedRows = stripAnsi(renderComplexityReport(cyclomaticReport))
-      .split("\n")
-      .filter((line) => line.startsWith("src/complexity.ts:"));
-    expect(cyclomaticRenderedRows).toHaveLength(2);
-    expect(cyclomaticRenderedRows[0]).toContain("flatSwitch");
+    const cyclomaticRenderedText = stripAnsi(renderComplexityReport(cyclomaticReport));
+    expect(cyclomaticRenderedText).toContain("flatSwitch");
+    expect(cyclomaticRenderedText).toContain("nestedBranch");
+    expect(cyclomaticRenderedText.indexOf("flatSwitch")).toBeLessThan(
+      cyclomaticRenderedText.indexOf("nestedBranch"),
+    );
 
     const cognitiveReport = await buildComplexityReport({
       directory: projectDirectory,
@@ -118,11 +119,9 @@ describe.skipIf(!hasBuiltCli)("complexity command", () => {
       minCyclomatic: 1,
       sortMetric: "cognitive",
     });
-    const cognitiveRenderedRows = stripAnsi(renderComplexityReport(cognitiveReport))
-      .split("\n")
-      .filter((line) => line.startsWith("src/complexity.ts:"));
-    expect(cognitiveRenderedRows).toHaveLength(1);
-    expect(cognitiveRenderedRows[0]).toContain("nestedBranch");
+    const cognitiveRenderedText = stripAnsi(renderComplexityReport(cognitiveReport));
+    expect(cognitiveRenderedText).toContain("nestedBranch");
+    expect(cognitiveRenderedText).not.toContain("flatSwitch");
 
     const jsonRun = await runCli(["complexity", projectDirectory, "--json"], projectDirectory);
     expect(jsonRun.exitCode).toBe(0);
@@ -204,6 +203,8 @@ export function secondaryStructural(value: number) {
           computed: true,
         },
       });
+      expect(diffJson.summary.complexityScore).toBeGreaterThanOrEqual(0);
+      expect(diffJson.diff.normalizedChangeComplexityScore).toBeGreaterThan(0);
       expect(diffJson.diff.totalEssentialChange).toBeGreaterThan(0);
       expect(diffJson.diff.changeEntropy).toBeGreaterThan(0);
       expect(
@@ -215,8 +216,10 @@ export function secondaryStructural(value: number) {
         projectDirectory,
       );
       expect(diffRenderRun.exitCode).toBe(0);
-      expect(diffRenderRun.stdout).toContain("change complexity total essential");
-      expect(diffRenderRun.stdout).toContain("raw lines");
+      expect(diffRenderRun.stdout).toContain("React Doctor · Complexity vs HEAD~1");
+      expect(diffRenderRun.stdout).toContain("bloat = raw lines ÷ real change");
+      expect(diffRenderRun.stdout).toContain("⚠");
+      expect(diffRenderRun.stdout).not.toContain("0f6dca72");
     } finally {
       fs.rmSync(projectDirectory, { recursive: true, force: true });
     }

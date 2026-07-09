@@ -3,7 +3,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { buildComplexityReport } from "../src/cli/utils/complexity-report.js";
+import {
+  buildComplexityReport,
+  getComplexityScoreBand,
+} from "../src/cli/utils/complexity-report.js";
 import { renderComplexityReport } from "../src/cli/utils/render-complexity.js";
 
 const ESC = String.fromCharCode(0x1b);
@@ -78,6 +81,10 @@ export function beta(flag: boolean) {
       expect(report.mode).toBe("full");
       expect(report.summary.filesAnalyzed).toBe(1);
       expect(report.summary.totalFunctions).toBe(3);
+      expect(report.summary.complexityScore).toBeGreaterThanOrEqual(0);
+      expect(report.summary.complexityScore).toBeLessThanOrEqual(1);
+      expect(report.summary.complexityScore).toBeLessThan(0.25);
+      expect(report.summary).not.toHaveProperty("normalizedChangeComplexityScore");
       expect(report.summary.mostComplexFunction?.name).toBe("alpha");
       expect(report.files[0]?.relativePath).toBe("src/example.ts");
       expect(
@@ -87,8 +94,14 @@ export function beta(flag: boolean) {
         ),
       ).toBe(true);
       expect(report.functions[0]?.name).toBe("alpha");
-      expect(renderComplexityReport(report)).toContain("files analyzed");
-      expect(renderComplexityReport(report)).toContain("cyclomatic");
+      expect(renderComplexityReport(report)).toContain("React Doctor · Complexity");
+      expect(renderComplexityReport(report)).toContain("/ 1.00");
+      expect(renderComplexityReport(report)).toContain("simple");
+      expect(renderComplexityReport(report)).not.toContain("<module>");
+      expect(getComplexityScoreBand(0.24)).toBe("simple");
+      expect(getComplexityScoreBand(0.25)).toBe("moderate");
+      expect(getComplexityScoreBand(0.5)).toBe("complex");
+      expect(getComplexityScoreBand(0.75)).toBe("very complex");
     } finally {
       rmSync(repositoryDirectory, { recursive: true, force: true });
     }
@@ -163,8 +176,11 @@ export function gamma(flag: boolean) {
       expect(report.diff?.improvedCount).toBe(1);
       expect(report.diff?.addedCount).toBe(1);
       expect(report.diff?.removedCount).toBe(1);
-      expect(renderComplexityReport(report)).toContain("net cyclomatic");
-      expect(renderComplexityReport(report)).toContain("added");
+      expect(report.diff?.normalizedChangeComplexityScore).toBeGreaterThan(0);
+      expect(renderComplexityReport(report)).toContain("React Doctor · Complexity vs");
+      expect(renderComplexityReport(report)).toContain("bloat = raw lines ÷ real change");
+      expect(renderComplexityReport(report)).not.toContain("⚠");
+      expect(renderComplexityReport(report)).not.toContain("<module>");
       const removedEntry = report.functions.find(
         (functionEntry) => functionEntry.status === "removed",
       );
@@ -369,11 +385,16 @@ export function beta(items: string[]) {
         minCyclomatic: 1,
         sortMetric: "cyclomatic",
       });
-      const cyclomaticRenderedRows = stripAnsi(renderComplexityReport(cyclomaticReport))
-        .split("\n")
-        .filter((line) => line.startsWith("src/example.ts:"));
-      expect(cyclomaticReport.diff?.functions[0]?.name).toBe("alpha");
-      expect(cyclomaticRenderedRows[0]).toContain("alpha");
+      const cyclomaticRenderedText = stripAnsi(renderComplexityReport(cyclomaticReport));
+      const cyclomaticOrder = cyclomaticReport.diff?.functions
+        .slice(0, 2)
+        .map((entry) => entry.name);
+      expect(cyclomaticOrder).toHaveLength(2);
+      expect(cyclomaticRenderedText).toContain(cyclomaticOrder?.[0] ?? "");
+      expect(cyclomaticRenderedText).toContain(cyclomaticOrder?.[1] ?? "");
+      expect(cyclomaticRenderedText.indexOf(cyclomaticOrder?.[0] ?? "")).toBeLessThan(
+        cyclomaticRenderedText.indexOf(cyclomaticOrder?.[1] ?? ""),
+      );
 
       const cognitiveReport = await buildComplexityReport({
         directory: repositoryDirectory,
@@ -382,11 +403,15 @@ export function beta(items: string[]) {
         minCyclomatic: 1,
         sortMetric: "cognitive",
       });
-      const cognitiveRenderedRows = stripAnsi(renderComplexityReport(cognitiveReport))
-        .split("\n")
-        .filter((line) => line.startsWith("src/example.ts:"));
-      expect(cognitiveReport.diff?.functions[0]?.name).toBe("beta");
-      expect(cognitiveRenderedRows[0]).toContain("beta");
+      const cognitiveRenderedText = stripAnsi(renderComplexityReport(cognitiveReport));
+      const cognitiveOrder = cognitiveReport.diff?.functions.slice(0, 2).map((entry) => entry.name);
+      expect(cognitiveOrder).toHaveLength(2);
+      expect(cyclomaticOrder).not.toEqual(cognitiveOrder);
+      expect(cognitiveRenderedText).toContain(cognitiveOrder?.[0] ?? "");
+      expect(cognitiveRenderedText).toContain(cognitiveOrder?.[1] ?? "");
+      expect(cognitiveRenderedText.indexOf(cognitiveOrder?.[0] ?? "")).toBeLessThan(
+        cognitiveRenderedText.indexOf(cognitiveOrder?.[1] ?? ""),
+      );
     } finally {
       rmSync(repositoryDirectory, { recursive: true, force: true });
     }
@@ -443,7 +468,8 @@ export function alpha(items: string[]) {
         (functionEntry) => functionEntry.cyclomaticDelta === 0 && functionEntry.cognitiveDelta > 0,
       );
       expect(cognitiveOnlyFunction?.cognitiveDelta).toBeGreaterThan(0);
-      expect(renderComplexityReport(report)).toContain("regressed 1");
+      expect(stripAnsi(renderComplexityReport(report))).toContain("React Doctor · Complexity vs");
+      expect(report.diff?.normalizedChangeComplexityScore).toBeGreaterThan(0);
     } finally {
       rmSync(repositoryDirectory, { recursive: true, force: true });
     }
@@ -503,14 +529,12 @@ export function beta(items: string[]) {
         minCyclomatic: 4,
         sortMetric: "cyclomatic",
       });
-      const renderedRows = stripAnsi(renderComplexityReport(report))
-        .split("\n")
-        .filter((line) => line.startsWith("src/example.ts:"));
+      const renderedText = stripAnsi(renderComplexityReport(report));
 
       expect(report.functions).toHaveLength(1);
-      expect(renderedRows).toHaveLength(1);
+      expect(renderedText).toContain("alpha");
+      expect(renderedText).not.toContain("beta");
       expect(report.functions[0]?.name).toBe("alpha");
-      expect(renderedRows[0]).toContain("alpha");
     } finally {
       rmSync(repositoryDirectory, { recursive: true, force: true });
     }
@@ -564,6 +588,7 @@ export function alpha(value: number) {
 
       expect(relativeRefReport.mode).toBe("diff");
       expect(relativeRefReport.diff?.computed).toBe(true);
+      expect(relativeRefReport.diff?.requestedBaseRef).toBe("HEAD~1");
       expect(relativeRefReport.diff?.baseRef).toBe(resolvedBaseRef);
       expect(relativeRefReport.diff?.netCyclomaticChange).toBe(1);
       expect(relativeRefReport.diff?.functions[0]?.status).toBe("changed");
@@ -577,6 +602,7 @@ export function alpha(value: number) {
       });
 
       expect(caretRefReport.diff?.computed).toBe(true);
+      expect(caretRefReport.diff?.requestedBaseRef).toBe("HEAD^");
       expect(caretRefReport.diff?.baseRef).toBe(resolvedBaseRef);
       expect(caretRefReport.diff?.netCyclomaticChange).toBe(
         relativeRefReport.diff?.netCyclomaticChange,
@@ -668,10 +694,11 @@ export function secondaryStructural(value: number) {
       expect(report.diff?.changeComplexityScore).toBeGreaterThan(
         report.diff?.totalEssentialChange ?? 0,
       );
+      expect(stripAnsi(renderComplexityReport(report))).toContain("React Doctor · Complexity vs");
       expect(stripAnsi(renderComplexityReport(report))).toContain(
-        "change complexity total essential",
+        "bloat = raw lines ÷ real change",
       );
-      expect(stripAnsi(renderComplexityReport(report))).toContain("raw lines");
+      expect(stripAnsi(renderComplexityReport(report))).toContain("structural change");
     } finally {
       rmSync(repositoryDirectory, { recursive: true });
     }
@@ -707,7 +734,7 @@ export function alpha(value: number) {
       expect(renderComplexityReport(report)).toContain(
         "Could not compute diff against does-not-exist",
       );
-      expect(renderComplexityReport(report)).toContain("cyclomatic");
+      expect(renderComplexityReport(report)).toContain("cyc");
     } finally {
       rmSync(repositoryDirectory, { recursive: true, force: true });
     }

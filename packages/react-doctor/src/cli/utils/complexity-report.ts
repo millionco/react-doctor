@@ -21,7 +21,19 @@ import {
   CHANGE_COMPLEXITY_ENTROPY_WEIGHT,
   CHANGE_COMPLEXITY_STRUCTURAL_RISK_WEIGHT,
 } from "../../../../oxlint-plugin-react-doctor/src/plugin/semantic/constants.js";
-import { COMPLEXITY_FILES_TEMP_DIR_PREFIX } from "./constants.js";
+import {
+  COMPLEXITY_FILES_TEMP_DIR_PREFIX,
+  COMPLEXITY_SCORE_BAND_COMPLEX_MAX,
+  COMPLEXITY_SCORE_BAND_MODERATE_MAX,
+  COMPLEXITY_SCORE_BAND_SIMPLE_MAX,
+  COMPLEXITY_SCORE_CHANGE_SATURATION_K,
+  COMPLEXITY_SCORE_CODEBASE_MAX_WEIGHT,
+  COMPLEXITY_SCORE_CODEBASE_MEAN_WEIGHT,
+  COMPLEXITY_SCORE_FUNCTION_COGNITIVE_CAP,
+  COMPLEXITY_SCORE_FUNCTION_COGNITIVE_WEIGHT,
+  COMPLEXITY_SCORE_FUNCTION_CYCLOMATIC_CAP,
+  COMPLEXITY_SCORE_FUNCTION_CYCLOMATIC_WEIGHT,
+} from "./constants.js";
 import { materializeBaselineFiles } from "./materialize-baseline-files.js";
 import { resolveGitRefSha } from "./resolve-git-ref-sha.js";
 import { VERSION } from "./version.js";
@@ -67,6 +79,7 @@ export type ComplexityReportFunctionEntry = ComplexityFunctionEntry | Complexity
 
 export interface ComplexityDiffSummary {
   readonly baseRef: string;
+  readonly requestedBaseRef?: string;
   readonly computed: boolean;
   readonly note?: string;
   readonly functions: ReadonlyArray<ComplexityFunctionDelta>;
@@ -81,6 +94,7 @@ export interface ComplexityDiffSummary {
   readonly changeEntropy: number;
   readonly normalizedChangeEntropy: number;
   readonly changeComplexityScore: number;
+  readonly normalizedChangeComplexityScore: number;
 }
 
 export interface ComplexitySummary {
@@ -89,6 +103,7 @@ export interface ComplexitySummary {
   readonly totalCyclomatic: number;
   readonly totalCognitive: number;
   readonly mostComplexFunction: ComplexityFunctionEntry | null;
+  readonly complexityScore: number;
 }
 
 export interface ComplexityReport {
@@ -132,6 +147,8 @@ interface ComplexityAnalysisFunctionEntry extends ComplexityFunctionEntry {
   readonly startOffset: number;
   readonly endOffset: number;
 }
+
+export type ComplexityScoreBand = "simple" | "moderate" | "complex" | "very complex";
 
 interface ComplexityRuntimeTools {
   readonly parseSourceFile: (absoluteFilePath: string) => EsTreeNode | null;
@@ -194,6 +211,52 @@ const compareFunctionsByDisplayPriority = (
 
   return firstFunction.line - secondFunction.line;
 };
+
+const calculateFunctionComplexityScore = (functionEntry: ComplexityFunctionEntry): number => {
+  const cyclomaticScore = Math.min(
+    functionEntry.cyclomatic / COMPLEXITY_SCORE_FUNCTION_CYCLOMATIC_CAP,
+    1,
+  );
+  const cognitiveScore = Math.min(
+    functionEntry.cognitive / COMPLEXITY_SCORE_FUNCTION_COGNITIVE_CAP,
+    1,
+  );
+  return (
+    cyclomaticScore * COMPLEXITY_SCORE_FUNCTION_CYCLOMATIC_WEIGHT +
+    cognitiveScore * COMPLEXITY_SCORE_FUNCTION_COGNITIVE_WEIGHT
+  );
+};
+
+const calculateCodebaseComplexityScore = (
+  functions: ReadonlyArray<ComplexityFunctionEntry>,
+): number => {
+  const realFunctions = functions.filter((functionEntry) => functionEntry.name !== "<module>");
+  if (realFunctions.length === 0) return 0;
+  const functionScores = realFunctions.map(calculateFunctionComplexityScore);
+  const meanScore =
+    functionScores.reduce((totalScore, functionScore) => totalScore + functionScore, 0) /
+    functionScores.length;
+  const maxScore = Math.max(...functionScores);
+  return (
+    meanScore * COMPLEXITY_SCORE_CODEBASE_MEAN_WEIGHT +
+    maxScore * COMPLEXITY_SCORE_CODEBASE_MAX_WEIGHT
+  );
+};
+
+export const getComplexityScoreBand = (score: number): ComplexityScoreBand => {
+  if (score < COMPLEXITY_SCORE_BAND_SIMPLE_MAX) return "simple";
+  if (score < COMPLEXITY_SCORE_BAND_MODERATE_MAX) return "moderate";
+  if (score < COMPLEXITY_SCORE_BAND_COMPLEX_MAX) return "complex";
+  return "very complex";
+};
+
+export const formatComplexityScoreBandLabel = (score: number, isDiffMode: boolean): string =>
+  `${getComplexityScoreBand(score)}${isDiffMode ? " change" : ""}`;
+
+export const getComplexityHeadlineScore = (report: ComplexityReport): number =>
+  report.mode === "diff" && report.diff?.computed === true
+    ? report.diff.normalizedChangeComplexityScore
+    : report.summary.complexityScore;
 
 const getFunctionDeltaForSortMetric = (
   comparison: ComplexityFunctionDelta,
@@ -503,6 +566,10 @@ const summarizeComparison = (
   const changeEntropy = calculateChangeEntropy(
     functions.map((functionDelta) => functionDelta.essentialChange),
   );
+  const changeComplexityScore =
+    totalEssentialChange +
+    totalStructuralRisk * CHANGE_COMPLEXITY_STRUCTURAL_RISK_WEIGHT +
+    changeEntropy.normalizedChangeEntropy * CHANGE_COMPLEXITY_ENTROPY_WEIGHT;
   return {
     functions,
     regressedCount,
@@ -515,10 +582,9 @@ const summarizeComparison = (
     totalStructuralRisk,
     changeEntropy: changeEntropy.changeEntropy,
     normalizedChangeEntropy: changeEntropy.normalizedChangeEntropy,
-    changeComplexityScore:
-      totalEssentialChange +
-      totalStructuralRisk * CHANGE_COMPLEXITY_STRUCTURAL_RISK_WEIGHT +
-      changeEntropy.normalizedChangeEntropy * CHANGE_COMPLEXITY_ENTROPY_WEIGHT,
+    changeComplexityScore,
+    normalizedChangeComplexityScore:
+      1 - Math.exp(-changeComplexityScore / COMPLEXITY_SCORE_CHANGE_SATURATION_K),
   };
 };
 
@@ -537,17 +603,20 @@ const createEmptyDiffSummary = (
   changeEntropy: 0,
   normalizedChangeEntropy: 0,
   changeComplexityScore: 0,
+  normalizedChangeComplexityScore: 0,
 });
 
 const buildComplexitySummary = (
   analysis: ComplexityTreeAnalysis,
   mostComplexFunction: ComplexityFunctionEntry | null,
+  complexityScore: number,
 ): ComplexitySummary => ({
   filesAnalyzed: analysis.files.length,
   totalFunctions: analysis.functions.length,
   totalCyclomatic: analysis.totalCyclomatic,
   totalCognitive: analysis.totalCognitive,
   mostComplexFunction,
+  complexityScore,
 });
 
 const materializeBaselineTree = async (
@@ -580,12 +649,17 @@ export const buildComplexityReport = async (
 
   const headAnalysis = await analyzeComplexityTree(resolvedDirectory);
   const publicHeadFunctions = headAnalysis.functions.map(toPublicComplexityFunctionEntry);
+  const codebaseComplexityScore = calculateCodebaseComplexityScore(publicHeadFunctions);
   const rankedHeadFunctions = publicHeadFunctions
     .filter((functionEntry) => functionEntry.cyclomatic >= minCyclomatic)
     .sort((firstFunction, secondFunction) =>
       compareFunctionsByDisplayPriority(firstFunction, secondFunction, sortMetric),
     );
-  const summary = buildComplexitySummary(headAnalysis, rankedHeadFunctions[0] ?? null);
+  const summary = buildComplexitySummary(
+    headAnalysis,
+    rankedHeadFunctions[0] ?? null,
+    codebaseComplexityScore,
+  );
 
   if (requestedDiffRef === null) {
     return {
@@ -614,6 +688,7 @@ export const buildComplexityReport = async (
       functions: rankedHeadFunctions,
       diff: {
         baseRef: requestedDiffRef,
+        requestedBaseRef: requestedDiffRef,
         computed: false,
         note: `Could not compute diff against ${requestedDiffRef}; showing head-only complexity.`,
         ...createEmptyDiffSummary([]),
@@ -648,6 +723,7 @@ export const buildComplexityReport = async (
         functions: visibleDiffFunctions,
         diff: {
           baseRef: resolvedDiffRef,
+          requestedBaseRef: requestedDiffRef,
           computed: true,
           ...diffSummary,
         },
@@ -668,6 +744,7 @@ export const buildComplexityReport = async (
       functions: rankedHeadFunctions,
       diff: {
         baseRef: resolvedDiffRef,
+        requestedBaseRef: requestedDiffRef,
         computed: false,
         note: `Could not compute diff against ${requestedDiffRef}; showing head-only complexity.`,
         ...createEmptyDiffSummary([]),

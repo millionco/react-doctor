@@ -89,6 +89,15 @@ export interface SpawnLintBatchesInput {
   readonly concurrency?: number;
 }
 
+interface BatchPassOutcome {
+  readonly diagnostics: Diagnostic[];
+  readonly droppedFiles: string[];
+  /** Subset of `droppedFiles` whose failing error was the OOM kind. */
+  readonly oomDroppedFiles: string[];
+  readonly deadlineSkippedFiles: string[];
+  readonly firstDropReason: string | null;
+}
+
 /**
  * Runs every prebuilt file batch through oxlint, with binary-split
  * retry on the splittable error classes (timeout / output-too-large /
@@ -97,12 +106,19 @@ export interface SpawnLintBatchesInput {
  * (surfaced via `onPartialFailure`) so JSON-mode consumers see WHICH
  * files were skipped instead of silently losing them.
  *
- * Parallel runs (concurrency > 1) get one extra safety net: if the pass
- * fails with a resource-exhaustion error that's exclusive to running
- * many oxlint subprocesses at once (EAGAIN / EMFILE / ENFILE / ENOMEM —
- * see `isParallelismRelatedSpawnError`), the whole pass replays once
- * with a single worker. That's the only failure a serial replay can
- * clear, so every other error class is left to propagate.
+ * Parallel runs (concurrency > 1) get two extra safety nets:
+ * - If the pass fails with a resource-exhaustion error that's exclusive
+ *   to running many oxlint subprocesses at once (EAGAIN / EMFILE /
+ *   ENFILE / ENOMEM — see `isParallelismRelatedSpawnError`), the whole
+ *   pass replays once with a single worker. That's the only failure a
+ *   serial replay can clear, so every other error class is left to
+ *   propagate.
+ * - Files dropped because oxlint's native binding SIGABRT'd under
+ *   memory pressure (`OxlintBatchExceeded { kind: "oom" }`) get one
+ *   serial single-file-batch rescue pass: the OOM is usually a function
+ *   of N concurrent oxlint allocator arenas, not the file itself, so a
+ *   lone process with the machine to itself typically clears it —
+ *   turning a partial scan into a complete (if slower) one.
  *
  * Errors that aren't splittable and aren't parallelism-related (oxlint
  * config crash, JS plugin resolution failure, etc.) propagate to the
@@ -129,14 +145,20 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
   // `inspect({ concurrency })` that skips the CLI's resolver — is bounded by
   // the [MIN, HARD_MAX] worker ceiling and can't oversubscribe oxlint processes.
   const requestedConcurrency = resolveScanConcurrency(input.concurrency ?? MIN_SCAN_CONCURRENCY);
-  const totalFileCount = fileBatches.reduce((sum, batch) => sum + batch.length, 0);
+  const isPastDeadline = (): boolean =>
+    deadlineEpochMs !== undefined && remainingDeadlineBudgetMs(deadlineEpochMs) === 0;
 
-  // One full pass over every batch at `concurrency` workers. All mutable
-  // state (diagnostics, dropped-file bookkeeping, progress counters, the
-  // progress timer) is scoped here so the serial fallback below can replay
-  // the pass from a clean slate instead of inheriting half-populated state
-  // from a parallel attempt that died mid-flight.
-  const runBatchPass = async (concurrency: number): Promise<Diagnostic[]> => {
+  // One full pass over the given batches at `concurrency` workers. All
+  // mutable state (diagnostics, dropped-file bookkeeping, progress counters,
+  // the progress timer) is scoped here so the serial fallback and the OOM
+  // rescue below replay from a clean slate instead of inheriting
+  // half-populated state from an attempt that died mid-flight.
+  const runBatchPass = async (
+    concurrency: number,
+    passBatches: ReadonlyArray<string[]>,
+    passOnFileProgress: SpawnLintBatchesInput["onFileProgress"],
+  ): Promise<BatchPassOutcome> => {
+    const totalFileCount = passBatches.reduce((sum, batch) => sum + batch.length, 0);
     const allDiagnostics: Diagnostic[] = [];
     // HACK: tracks files whose smallest splittable batch (down to a
     // single file) still failed with a splittable error — surfaced via
@@ -147,11 +169,10 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     // ones (e.g. one file × one quadratic JS-plugin rule, originally
     // hit on supabase/studio's `apps/studio/pages/...` bucket).
     const droppedFiles: string[] = [];
+    const oomDroppedFiles: string[] = [];
     // Batches that never spawned because `deadlineEpochMs` passed — reported
     // apart from `droppedFiles` (budget exhaustion, not pathological files).
     const deadlineSkippedFiles: string[] = [];
-    const isPastDeadline = (): boolean =>
-      deadlineEpochMs !== undefined && remainingDeadlineBudgetMs(deadlineEpochMs) === 0;
     // HACK: keep the first splittable error message we saw so
     // `onPartialFailure` can report WHY each batch failed instead of
     // misleadingly always blaming the per-batch budget. Same root cause
@@ -210,6 +231,9 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
           // or the cumulative split budget / depth cap is exhausted — drop the
           // remaining files, record why, and let the scan continue.
           droppedFiles.push(...batch);
+          if (error.reason._tag === "OxlintBatchExceeded" && error.reason.kind === "oom") {
+            oomDroppedFiles.push(...batch);
+          }
           if (firstDropReason === null) {
             let limitHint = "";
             if (isDepthCapReached) {
@@ -238,19 +262,19 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     let scannedFileCount = 0;
     let displayedFileCount = 0;
     const progressTimer =
-      onFileProgress && totalFileCount > 1
+      passOnFileProgress && totalFileCount > 1
         ? setInterval(() => {
             const ceiling = Math.min(startedFileCount, totalFileCount - 1);
             if (displayedFileCount < ceiling) {
               displayedFileCount += 1;
-              onFileProgress(displayedFileCount, totalFileCount);
+              passOnFileProgress(displayedFileCount, totalFileCount);
             }
           }, PROGRESS_TICK_INTERVAL_MS)
         : null;
     progressTimer?.unref?.();
 
     try {
-      const batchResults = await mapWithConcurrency(fileBatches, concurrency, async (batch) => {
+      const batchResults = await mapWithConcurrency(passBatches, concurrency, async (batch) => {
         if (isPastDeadline()) {
           deadlineSkippedFiles.push(...batch);
           return [];
@@ -264,12 +288,12 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
         // A split retry can deadline-skip part of the batch, so count only the
         // files actually linted — not the whole batch — as scanned.
         scannedFileCount += batch.length - batchState.deadlineSkippedFileCount;
-        if (onFileProgress) {
+        if (passOnFileProgress) {
           displayedFileCount = Math.min(
             Math.max(displayedFileCount, scannedFileCount),
             totalFileCount,
           );
-          onFileProgress(displayedFileCount, totalFileCount);
+          passOnFileProgress(displayedFileCount, totalFileCount);
         }
         return batchDiagnostics;
       });
@@ -278,46 +302,85 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
       if (progressTimer !== null) clearInterval(progressTimer);
     }
 
-    // Report skipped files once per completed pass. A pass that throws (e.g.
-    // the parallel attempt below hitting EAGAIN) exits before this point, so
-    // only the winning pass surfaces its skips.
-    const reportSkippedFiles = (
-      skippedFiles: string[],
-      buildMessage: (fileListPreview: string) => string,
-    ): void => {
-      if (skippedFiles.length === 0 || !onPartialFailure) return;
-      const previewFiles = skippedFiles.slice(0, OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT).join(", ");
-      const remainderHint =
-        skippedFiles.length > OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT
-          ? `, +${skippedFiles.length - OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT} more`
-          : "";
-      onPartialFailure(buildMessage(`${previewFiles}${remainderHint}`));
-    };
-    const reasonHint = firstDropReason ? ` — first failure: ${firstDropReason}` : "";
-    reportSkippedFiles(
+    return {
+      diagnostics: allDiagnostics,
       droppedFiles,
-      (fileListPreview) =>
-        `${droppedFiles.length} file(s) failed to lint and were skipped (${fileListPreview})${reasonHint}`,
-    );
-    reportSkippedFiles(
+      oomDroppedFiles,
       deadlineSkippedFiles,
-      (fileListPreview) =>
-        `${deadlineSkippedFiles.length} file(s) skipped — max scan duration reached before they were linted (${fileListPreview})`,
-    );
-    return allDiagnostics;
+      firstDropReason,
+    };
   };
 
   // Parallel runs get one serial retry, but only for the parallelism-exclusive
   // resource exhaustion a single worker can clear. Any other error — or a run
   // that was already serial — would recur, so it propagates.
-  let diagnostics: Diagnostic[];
+  let outcome: BatchPassOutcome;
+  let effectiveConcurrency = requestedConcurrency;
   try {
-    diagnostics = await runBatchPass(requestedConcurrency);
+    outcome = await runBatchPass(requestedConcurrency, fileBatches, onFileProgress);
   } catch (error) {
     if (requestedConcurrency <= MIN_SCAN_CONCURRENCY || !isParallelismRelatedSpawnError(error)) {
       throw error;
     }
-    diagnostics = await runBatchPass(MIN_SCAN_CONCURRENCY);
+    effectiveConcurrency = MIN_SCAN_CONCURRENCY;
+    outcome = await runBatchPass(MIN_SCAN_CONCURRENCY, fileBatches, onFileProgress);
   }
+
+  let { droppedFiles, firstDropReason } = outcome;
+  const diagnostics = outcome.diagnostics;
+  // OOM rescue: a SIGABRT in oxlint's fixed-size allocator is usually caused
+  // by N sibling oxlint processes competing for memory, not by the files
+  // themselves. Replay just the OOM-dropped files serially, one single-file
+  // batch each (progress reporting stays with the main pass), and keep only
+  // the files that STILL fail as dropped. Deadline pressure skips the rescue —
+  // those files are already recorded as dropped.
+  if (
+    outcome.oomDroppedFiles.length > 0 &&
+    effectiveConcurrency > MIN_SCAN_CONCURRENCY &&
+    !isPastDeadline()
+  ) {
+    const rescueBatches = outcome.oomDroppedFiles.map((filePath) => [filePath]);
+    const rescueOutcome = await runBatchPass(MIN_SCAN_CONCURRENCY, rescueBatches, undefined);
+    diagnostics.push(...rescueOutcome.diagnostics);
+    const rescuedFiles = new Set(outcome.oomDroppedFiles);
+    for (const stillFailingFile of [
+      ...rescueOutcome.droppedFiles,
+      ...rescueOutcome.deadlineSkippedFiles,
+    ]) {
+      rescuedFiles.delete(stillFailingFile);
+    }
+    droppedFiles = droppedFiles.filter((filePath) => !rescuedFiles.has(filePath));
+    if (droppedFiles.length === 0) firstDropReason = null;
+    else if (rescueOutcome.firstDropReason !== null) {
+      firstDropReason = rescueOutcome.firstDropReason;
+    }
+  }
+
+  // Report skipped files once, after any rescue, so a fully rescued scan is
+  // NOT reported partial (a partial report causes downstream consumers to
+  // refuse the whole scan).
+  const reportSkippedFiles = (
+    skippedFiles: ReadonlyArray<string>,
+    buildMessage: (fileListPreview: string) => string,
+  ): void => {
+    if (skippedFiles.length === 0 || !onPartialFailure) return;
+    const previewFiles = skippedFiles.slice(0, OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT).join(", ");
+    const remainderHint =
+      skippedFiles.length > OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT
+        ? `, +${skippedFiles.length - OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT} more`
+        : "";
+    onPartialFailure(buildMessage(`${previewFiles}${remainderHint}`));
+  };
+  const reasonHint = firstDropReason ? ` — first failure: ${firstDropReason}` : "";
+  reportSkippedFiles(
+    droppedFiles,
+    (fileListPreview) =>
+      `${droppedFiles.length} file(s) failed to lint and were skipped (${fileListPreview})${reasonHint}`,
+  );
+  reportSkippedFiles(
+    outcome.deadlineSkippedFiles,
+    (fileListPreview) =>
+      `${outcome.deadlineSkippedFiles.length} file(s) skipped — max scan duration reached before they were linted (${fileListPreview})`,
+  );
   return dedupeDiagnostics(diagnostics);
 };

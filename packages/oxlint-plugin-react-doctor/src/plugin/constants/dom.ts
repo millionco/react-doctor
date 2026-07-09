@@ -40,6 +40,21 @@ export const TIMER_CALLEE_NAMES_REQUIRING_CLEANUP = new Set(["setInterval", "set
 
 export const TIMER_CLEANUP_CALLEE_NAMES = new Set(["clearInterval", "clearTimeout"]);
 
+// Connection-opening constructors. Connecting starts at construction
+// time, so an instance created without a later `.close()` keeps the
+// connection (and its message handlers) alive after unmount.
+export const SOCKET_CONSTRUCTOR_NAMES_REQUIRING_CLEANUP = new Set(["WebSocket", "EventSource"]);
+
+// DOM observer constructors whose `.observe(...)` registration keeps
+// firing until `.disconnect()` / `.unobserve()`.
+export const OBSERVER_CONSTRUCTOR_NAMES = new Set([
+  "ResizeObserver",
+  "MutationObserver",
+  "IntersectionObserver",
+  "PerformanceObserver",
+  "ReportingObserver",
+]);
+
 // Globals whose values mutate outside the React data flow. Listing
 // them as deps doesn't trigger a re-run when they change because
 // React compares deps with `Object.is` during render — and the read

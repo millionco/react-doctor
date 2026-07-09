@@ -181,6 +181,11 @@ export const GLOBAL_RELEASE_METHOD_NAMES = new Set([
   "unlisten",
   "unsub",
   "abort",
+  // Observer (`ResizeObserver` et al.) and connection (`WebSocket` /
+  // `EventSource`) release verbs.
+  "disconnect",
+  "unobserve",
+  "close",
 ]);
 
 export const BOUND_RESOURCE_RELEASE_METHOD_NAMES = new Set([

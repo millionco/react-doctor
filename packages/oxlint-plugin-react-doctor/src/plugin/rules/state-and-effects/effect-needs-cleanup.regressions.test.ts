@@ -166,6 +166,254 @@ export const Listener = () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a ResizeObserver observed in an effect without disconnect", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Measurer = () => {
+  const elementRef = useRef(null);
+  useEffect(() => {
+    const observer = new ResizeObserver(() => update());
+    observer.observe(elementRef.current);
+  }, []);
+  return <div ref={elementRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("observe");
+  });
+
+  it("does not flag an observer whose cleanup calls disconnect", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const Measurer = () => {
+  const elementRef = useRef(null);
+  useEffect(() => {
+    const observer = new IntersectionObserver(() => update());
+    observer.observe(elementRef.current);
+    return () => observer.disconnect();
+  }, []);
+  return <div ref={elementRef} />;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a MutationObserver cleaned up via unobserve", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef } from "react";
+export const DomWatcher = ({ target }) => {
+  useEffect(() => {
+    const observer = new MutationObserver(() => update());
+    observer.observe(target, { childList: true });
+    return () => observer.unobserve(target);
+  }, [target]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a WebSocket opened in an effect without close", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const LiveFeed = ({ url }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    socket.onmessage = (event) => update(event.data);
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("WebSocket");
+    expect(result.diagnostics[0].message).toContain("connection");
+  });
+
+  it("flags returning the WebSocket handle itself as cleanup (closes nothing)", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const LiveFeed = ({ url }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    return socket;
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag an EventSource closed in cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const ServerEvents = ({ url }) => {
+  useEffect(() => {
+    const source = new EventSource(url);
+    source.onmessage = (event) => update(event.data);
+    return () => source.close();
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a discarded setInterval inside a useCallback (unclearable)", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const Poller = () => {
+  const startPolling = useCallback(() => {
+    setInterval(() => poll(), 1000);
+  }, []);
+  return <button onClick={startPolling}>start</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("setInterval");
+  });
+
+  it("does not flag a setInterval in useCallback whose id is captured", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const Poller = () => {
+  const intervalRef = useRef(null);
+  const startPolling = useCallback(() => {
+    intervalRef.current = setInterval(() => poll(), 1000);
+  }, []);
+  const stopPolling = useCallback(() => {
+    clearInterval(intervalRef.current);
+  }, []);
+  return <button onClick={startPolling} onBlur={stopPolling}>start</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a one-shot setTimeout in a component-scope handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useState } from "react";
+export const Toast = () => {
+  const [visible, setVisible] = useState(false);
+  const showToast = () => {
+    setVisible(true);
+    setTimeout(() => setVisible(false), 3000);
+  };
+  return <button onClick={showToast}>show</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a discarded setInterval inside a component-scope handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Ticker = () => {
+  const startTicking = () => {
+    setInterval(() => tick(), 1000);
+  };
+  return <button onClick={startTicking}>tick</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags an addEventListener in a handler when the file has no release call at all", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const KeyTracker = () => {
+  const armListener = () => {
+    window.addEventListener("keydown", (event) => track(event.key));
+  };
+  return <button onClick={armListener}>arm</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("addEventListener");
+  });
+
+  it("does not flag a handler subscription when another function releases it", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const KeyTracker = () => {
+  const onKeyDown = (event) => track(event.key);
+  const armListener = () => {
+    window.addEventListener("keydown", onKeyDown);
+  };
+  const disarmListener = () => {
+    window.removeEventListener("keydown", onKeyDown);
+  };
+  return <button onClick={armListener} onBlur={disarmListener}>arm</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a `{ once: true }` listener registered in a handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const OneShot = () => {
+  const armListener = () => {
+    window.addEventListener("pointerup", () => finish(), { once: true });
+  };
+  return <button onPointerDown={armListener}>press</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a handler that manages its own release (toggle shape)", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Toggle = ({ emitter, handler }) => {
+  const retarget = () => {
+    emitter.off("change", handler);
+    emitter.on("change", handler);
+  };
+  return <button onClick={retarget}>retarget</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a captured subscription disposer in a useCallback", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const StoreBridge = ({ store }) => {
+  const unsubscribeRef = useRef(null);
+  const connect = useCallback(() => {
+    unsubscribeRef.current = store.subscribe(() => sync());
+  }, [store]);
+  return <button onClick={connect}>connect</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("still flags an HTTP `server.listen(port)` whose returned server is returned from the effect", () => {
     const result = runRule(
       effectNeedsCleanup,

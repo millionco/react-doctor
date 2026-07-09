@@ -6,7 +6,6 @@ import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-l
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
-import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-event-callee.js";
 import {
   getHookName,
   isOutsideAllFunctions,
@@ -19,8 +18,8 @@ import {
  * One cohesive concept: "given a captured symbol, is its value
  * structurally stable across re-renders (and therefore unnecessary
  * in a deps array)?". The rule reads `symbolHasStableValue` /
- * `symbolHasStableHookOrigin` / `symbolHasUseEffectEventOrigin` /
- * `isRecursiveInitializerCapture` at multiple sites — extracting
+ * `symbolHasStableHookOrigin` / `isRecursiveInitializerCapture` at
+ * multiple sites — extracting
  * them lets the rule body stay focused on the diff-the-captured-vs-
  * declared logic.
  *
@@ -120,19 +119,6 @@ export const symbolHasStableHookOrigin = (symbol: SymbolDescriptor): boolean => 
     return isNodeOfType(innerBinding, "Identifier") && symbol.bindingIdentifier === innerBinding;
   }
   return false;
-};
-
-export const symbolHasUseEffectEventOrigin = (
-  symbol: SymbolDescriptor,
-  scopes: ScopeAnalysis,
-): boolean => {
-  const initializer = symbol.initializer ? unwrapExpression(symbol.initializer) : null;
-  if (!initializer || !isNodeOfType(initializer, "CallExpression")) return false;
-  if (getHookName(initializer.callee) !== "useEffectEvent") return false;
-  // A same-named polyfill imported from a non-React package or defined in
-  // this module returns a STABLE callback — the effect-event dep message
-  // only applies to React's own useEffectEvent.
-  return !isNonReactEffectEventCallee(initializer.callee, initializer, scopes);
 };
 
 export const getFunctionValueNode = (symbol: SymbolDescriptor): EsTreeNode | null => {

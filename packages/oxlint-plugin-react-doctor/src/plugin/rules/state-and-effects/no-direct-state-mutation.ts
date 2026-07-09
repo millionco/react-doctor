@@ -72,11 +72,22 @@ const isPlainDataProducerCall = (expression: EsTreeNode): boolean => {
   return producesPlainStateValue(callee.object);
 };
 
+// `new Array(9)` / `new Object()` produce the same plain data as their call
+// forms (`Array(9)`, `Object()`) — the `new` spelling must not read as an
+// opaque third-party instance.
+const PLAIN_DATA_CONSTRUCTOR_NAMES = new Set(["Array", "Object"]);
+
+const isPlainDataNewExpression = (expression: EsTreeNode): boolean =>
+  isNodeOfType(expression, "NewExpression") &&
+  isNodeOfType(expression.callee, "Identifier") &&
+  PLAIN_DATA_CONSTRUCTOR_NAMES.has(expression.callee.name);
+
 const producesPlainStateValue = (expression: EsTreeNode): boolean => {
   const unwrapped = stripParenExpression(expression);
   if (isNodeOfType(unwrapped, "ObjectExpression") || isNodeOfType(unwrapped, "ArrayExpression")) {
     return true;
   }
+  if (isPlainDataNewExpression(unwrapped)) return true;
   if (isNullOrUndefinedExpression(unwrapped)) return true;
   if (isNodeOfType(unwrapped, "MemberExpression") && getRootIdentifierName(unwrapped) === "props") {
     return true;
@@ -133,7 +144,7 @@ const initializerMarksPlainState = (initializerArgument: EsTreeNode | undefined)
 // produce plain data (`JSON.parse(raw)`, `items.filter(...)`) stay
 // unclassified so mutations on the resulting plain value are still reported.
 const producesOpaqueInstanceValue = (expression: EsTreeNode): boolean => {
-  if (isNodeOfType(expression, "NewExpression")) return true;
+  if (isNodeOfType(expression, "NewExpression")) return !isPlainDataNewExpression(expression);
   if (!isNodeOfType(expression, "CallExpression")) return false;
   const callee = expression.callee;
   if (!isNodeOfType(callee, "MemberExpression")) return false;
@@ -159,26 +170,34 @@ const collectSetterValueObservations = (
 ): SetterValueObservations => {
   const plainFedSetterNames = new Set<string>();
   const opaqueFedSetterNames = new Set<string>();
-  walkAst(componentBody, (node: EsTreeNode): void => {
-    if (!isNodeOfType(node, "CallExpression")) return;
-    if (!isNodeOfType(node.callee, "Identifier")) return;
-    const setterName = node.callee.name;
-    if (!setterNames.has(setterName)) return;
-    const argument = node.arguments?.[0];
-    if (!argument) return;
-    const unwrapped = stripParenExpression(argument as EsTreeNode);
-    // Nullish resets (`setNode(null)`) carry no shape information, and
-    // updater functions / identifiers stay unclassified — only concrete
-    // value shapes count as evidence.
-    if (isNullOrUndefinedExpression(unwrapped)) return;
-    if (producesPlainStateValue(unwrapped)) {
-      plainFedSetterNames.add(setterName);
-      return;
-    }
-    if (producesOpaqueInstanceValue(unwrapped)) {
-      opaqueFedSetterNames.add(setterName);
-    }
-  });
+  // Shadow-respecting walk: a nested function whose param or local re-binds
+  // the setter name calls its OWN function, so its argument shapes are not
+  // evidence about the state binding.
+  walkComponentRespectingShadows(
+    componentBody,
+    new Set(),
+    (node: EsTreeNode, currentlyShadowed: ReadonlySet<string>): void => {
+      if (!isNodeOfType(node, "CallExpression")) return;
+      if (!isNodeOfType(node.callee, "Identifier")) return;
+      const setterName = node.callee.name;
+      if (!setterNames.has(setterName) || currentlyShadowed.has(setterName)) return;
+      const argument = node.arguments?.[0];
+      if (!argument) return;
+      const unwrapped = stripParenExpression(argument as EsTreeNode);
+      // Nullish resets (`setNode(null)`) carry no shape information, and
+      // updater functions / identifiers stay unclassified — only concrete
+      // value shapes count as evidence.
+      if (isNullOrUndefinedExpression(unwrapped)) return;
+      if (producesPlainStateValue(unwrapped)) {
+        plainFedSetterNames.add(setterName);
+        return;
+      }
+      if (producesOpaqueInstanceValue(unwrapped)) {
+        opaqueFedSetterNames.add(setterName);
+      }
+    },
+    true,
+  );
   return { plainFedSetterNames, opaqueFedSetterNames };
 };
 

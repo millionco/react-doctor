@@ -13,6 +13,7 @@ import {
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-event-callee.js";
+import { symbolHasReactUseEffectEventOrigin } from "../../utils/symbol-has-react-use-effect-event-origin.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { isRulesOfHooksSuppressedAt } from "./rules-of-hooks-suppression.js";
@@ -718,22 +719,6 @@ const isInsideLoop = (descendant: EsTreeNode, ancestor: EsTreeNode): boolean => 
   return false;
 };
 
-const isUseEffectEventSymbol = (symbol: SymbolDescriptor): boolean => {
-  const initializer = symbol.initializer;
-  if (!initializer || !isNodeOfType(initializer, "CallExpression")) return false;
-  return getHookNameFromCallee(initializer.callee) === "useEffectEvent";
-};
-
-const isNonReactEffectEventSymbol = (
-  symbol: SymbolDescriptor,
-  contextNode: EsTreeNode,
-  scopes: ScopeAnalysis,
-): boolean => {
-  const initializer = symbol.initializer;
-  if (!initializer || !isNodeOfType(initializer, "CallExpression")) return false;
-  return isNonReactEffectEventCallee(initializer.callee, contextNode, scopes);
-};
-
 const findEnclosingComponentOrHookFunction = (node: EsTreeNode): EsTreeNode | null => {
   let current: EsTreeNode | null | undefined = node.parent;
   while (current) {
@@ -996,8 +981,7 @@ export const rulesOfHooks = defineRule({
       Identifier(node: EsTreeNodeOfType<"Identifier">) {
         const reference = context.scopes.referenceFor(node);
         const symbol = reference?.resolvedSymbol;
-        if (!symbol || !isUseEffectEventSymbol(symbol)) return;
-        if (isNonReactEffectEventSymbol(symbol, node, context.scopes)) return;
+        if (!symbol || !symbolHasReactUseEffectEventOrigin(symbol, context.scopes)) return;
         if (!isSameComponentOrHookScope(symbol, node)) return;
         if (isInsideAllowedEffectEventCallback(node, additionalEffectHooksRegex)) return;
 

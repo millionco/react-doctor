@@ -617,6 +617,16 @@ describe("react-builtins/only-export-components — regressions", () => {
       expect(result.diagnostics[0]?.message).toContain("exports non-components");
     });
 
+    it("still flags a zero-argument default-exported factory call", () => {
+      const zeroArgFactoryFile = `export default makeHomePage();`;
+      const result = runRule(onlyExportComponents, zeroArgFactoryFile, {
+        filename: "src/home-page.tsx",
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("unnamed");
+    });
+
     it("still flags an anonymous component wrapped in a known HOC", () => {
       const anonymousMemoFile = `export default memo(() => <div />);`;
       const result = runRule(onlyExportComponents, anonymousMemoFile, {

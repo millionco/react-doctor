@@ -114,11 +114,15 @@ const isRouteFactoryCall = (expression: EsTreeNode): boolean => {
   return false;
 };
 
-// Every argument is a config shape (object / literal / template) — the
-// call defines something from data rather than wrapping a component, so
-// there is no component (named or not) to track. Function or identifier
-// arguments keep the anonymous-HOC treatment.
+// At least one argument, and every argument is a config shape (object /
+// literal / template) — the call defines something from data rather than
+// wrapping a component, so there is no component (named or not) to track.
+// Function or identifier arguments keep the anonymous-HOC treatment, and a
+// ZERO-argument call (`export default makeHomePage()`) stays anonymous too:
+// with no arguments there is no config evidence, and the factory may well
+// return a component.
 const isConfigOnlyFactoryCall = (call: EsTreeNodeOfType<"CallExpression">): boolean =>
+  call.arguments.length > 0 &&
   call.arguments.every((argument) => {
     const expression = skipTsExpression(argument as EsTreeNode);
     return (

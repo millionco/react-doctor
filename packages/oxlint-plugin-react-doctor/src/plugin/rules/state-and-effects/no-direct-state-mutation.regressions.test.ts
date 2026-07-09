@@ -504,6 +504,34 @@ describe("no-direct-state-mutation — regressions", () => {
       expect(result.diagnostics).toHaveLength(1);
     });
 
+    it("still flags when the setter receives new Array(N) plain data", () => {
+      const result = runRule(
+        noDirectStateMutation,
+        `function Board() {
+          const [cells, setCells] = useState(null);
+          const init = () => setCells(new Array(9));
+          const mark = () => { cells.fill("x"); };
+          return <button onClick={mark}>{String(init)}</button>;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("ignores opaque evidence from a shadowed same-named setter", () => {
+      const result = runRule(
+        noDirectStateMutation,
+        `function Config() {
+          const [config, setConfig] = useState(null);
+          const helper = (setConfig) => setConfig(new Registry());
+          const mutate = () => { config.items = []; };
+          return <button onClick={mutate}>{String(helper)}</button>;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
     it("still flags when the setter receives JSON.parse plain data", () => {
       const result = runRule(
         noDirectStateMutation,

@@ -48,8 +48,8 @@ import {
   isStableRefContainerCapture,
   symbolHasStableHookOrigin,
   symbolHasStableValue,
-  symbolHasUseEffectEventOrigin,
 } from "./exhaustive-deps-symbol-stability.js";
+import { symbolHasReactUseEffectEventOrigin } from "../../utils/symbol-has-react-use-effect-event-origin.js";
 
 // Port of `oxc_linter::rules::react::exhaustive_deps`. Diffs the
 // closure-captured set of an effect / memo callback against its
@@ -1096,7 +1096,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
 
           if (isNodeOfType(stripped, "Identifier")) {
             const depSymbol = context.scopes.symbolFor(stripped);
-            if (depSymbol && symbolHasUseEffectEventOrigin(depSymbol, context.scopes)) {
+            if (depSymbol && symbolHasReactUseEffectEventOrigin(depSymbol, context.scopes)) {
               context.report({
                 node: elementNode,
                 message: buildEffectEventDepMessage(),

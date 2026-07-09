@@ -63,10 +63,11 @@ describe("createScheduler", () => {
   it("drops a superseded in-flight scan and only reports the newest", async () => {
     const scannedReasons: string[] = [];
     const reportedReasons: string[] = [];
+    const releaseScanByReason = new Map<string, () => void>();
     const scheduler = createScheduler({
       performScan: async (request) => {
         scannedReasons.push(request.reason);
-        await delay(50);
+        await new Promise<void>((resolve) => releaseScanByReason.set(request.reason, resolve));
         return makeOutcome(request);
       },
       onResult: (outcome) => reportedReasons.push(outcome.request.reason),
@@ -75,12 +76,17 @@ describe("createScheduler", () => {
     });
 
     scheduler.enqueue(interactiveInput({ reason: "scan-a" }));
-    await delay(25);
+    await waitFor(() => scannedReasons.includes("scan-a"));
+
     scheduler.enqueue(interactiveInput({ reason: "scan-b" }));
+    await waitFor(() => scannedReasons.includes("scan-b"));
 
-    await delay(120);
+    // The superseded scan finishes first; its report must still be dropped.
+    releaseScanByReason.get("scan-a")?.();
+    releaseScanByReason.get("scan-b")?.();
+    await waitFor(() => reportedReasons.includes("scan-b"));
 
-    expect(scannedReasons).toContain("scan-a");
+    expect(scannedReasons).toEqual(["scan-a", "scan-b"]);
     expect(reportedReasons).toEqual(["scan-b"]);
     scheduler.dispose();
   });

@@ -25,10 +25,8 @@ const EXPORT_ALL_MESSAGE =
   "`export *` hides what's exported, so Fast Refresh can't safely preserve component state.";
 const REACT_CONTEXT_MESSAGE =
   "This file exports a context with components, so Fast Refresh can't safely preserve component state.";
-const LOCAL_COMPONENT_MESSAGE =
-  "This component is not exported, so Fast Refresh skips it and local edits can full-reload.";
-const NO_EXPORT_MESSAGE =
-  "This file exports nothing, so Fast Refresh can't track the component and local edits can full-reload.";
+const NAMESPACE_OBJECT_MESSAGE =
+  "This export bundles components inside an object, so Fast Refresh can't track them and falls back to a full reload.";
 
 interface OnlyExportComponentsSettings {
   allowExportNames?: ReadonlyArray<string>;
@@ -75,7 +73,8 @@ type ExportType =
   | { kind: "react-component" }
   | { kind: "non-component"; reportNode: EsTreeNode }
   | { kind: "allowed" }
-  | { kind: "react-context"; reportNode: EsTreeNode };
+  | { kind: "react-context"; reportNode: EsTreeNode }
+  | { kind: "namespace-object"; reportNode: EsTreeNode };
 
 const isReactCreateContext = (initializer: EsTreeNode | null | undefined): boolean => {
   if (!initializer) return false;
@@ -117,6 +116,9 @@ interface AnalyzerState {
   customHocs: ReadonlySet<string>;
   allowExportNames: ReadonlySet<string>;
   allowConstantExport: boolean;
+  // Module-scope component binding names — used to spot a component
+  // reference smuggled inside a namespace-object export.
+  localComponentNames: ReadonlySet<string>;
 }
 
 const isReactHocName = (name: string, state: AnalyzerState): boolean => state.customHocs.has(name);
@@ -180,6 +182,36 @@ const isReactComponentInitializer = (expression: EsTreeNode, state: AnalyzerStat
     stripped.arguments.length > 0
   ) {
     return true;
+  }
+  return false;
+};
+
+// The real Fast-Refresh breaker react-refresh checks for: a module whose
+// export is a plain OBJECT that carries components among its properties
+// (`export const Pages = { Home, sidebarWidth: 240 }` / `export default
+// { Home, helpers }`). The export itself is not a component function, so
+// `isReactRefreshBoundary` rejects the whole module and every component
+// reached through the object full-reloads on edit.
+const objectExpressionBundlesComponents = (
+  objectExpression: EsTreeNodeOfType<"ObjectExpression">,
+  state: AnalyzerState,
+): boolean => {
+  for (const property of objectExpression.properties ?? []) {
+    if (!isNodeOfType(property, "Property")) continue;
+    const value = skipTsExpression(property.value as EsTreeNode);
+    if (isNodeOfType(value, "Identifier")) {
+      if (state.localComponentNames.has(value.name)) return true;
+      continue;
+    }
+    if (
+      (isNodeOfType(value, "ArrowFunctionExpression") ||
+        isNodeOfType(value, "FunctionExpression")) &&
+      !property.computed &&
+      isNodeOfType(property.key as EsTreeNode, "Identifier") &&
+      isReactComponentName((property.key as EsTreeNodeOfType<"Identifier">).name)
+    ) {
+      return true;
+    }
   }
   return false;
 };
@@ -258,6 +290,12 @@ const classifyExport = (
         return { kind: "react-context", reportNode };
       }
       return { kind: "non-component", reportNode };
+    }
+    if (
+      isNodeOfType(stripped, "ObjectExpression") &&
+      objectExpressionBundlesComponents(stripped, state)
+    ) {
+      return { kind: "namespace-object", reportNode };
     }
     if (NOT_REACT_COMPONENT_EXPRESSION_TYPES.has(stripped.type)) {
       return { kind: "non-component", reportNode };
@@ -411,21 +449,42 @@ export const onlyExportComponents = defineRule({
   category: "Architecture",
   create: (context) => {
     const settings = resolveSettings(context.settings);
-    const state: AnalyzerState = {
-      customHocs: new Set([...DEFAULT_REACT_HOCS, ...settings.customHOCs]),
-      allowExportNames: new Set(settings.allowExportNames),
-      allowConstantExport: settings.allowConstantExport,
-    };
     return {
       Program(node: EsTreeNodeOfType<"Program">) {
         const filename = normalizeFilename(context.filename ?? "");
         if (!isFileNameAllowed(filename, settings.checkJS)) return;
         const { exportNodes, componentCandidates } = collectRelevantNodes(node as EsTreeNode);
 
+        // Module-scope component bindings (exported or not) — a component
+        // declared inside another function is never a Fast Refresh
+        // boundary, so only top-level names participate.
+        const localComponentNames = new Set<string>();
+        const state: AnalyzerState = {
+          customHocs: new Set([...DEFAULT_REACT_HOCS, ...settings.customHOCs]),
+          allowExportNames: new Set(settings.allowExportNames),
+          allowConstantExport: settings.allowConstantExport,
+          localComponentNames,
+        };
+        for (const child of componentCandidates) {
+          if (isNodeOfType(child, "FunctionDeclaration") && child.id) {
+            if (isReactComponentName(child.id.name) && !isInsideFunctionScope(child)) {
+              localComponentNames.add(child.id.name);
+            }
+          }
+          if (isNodeOfType(child, "VariableDeclarator") && isNodeOfType(child.id, "Identifier")) {
+            if (
+              isReactComponentName(child.id.name) &&
+              canBeReactFunctionComponent(child.init as EsTreeNode | null | undefined, state) &&
+              !isInsideFunctionScope(child)
+            ) {
+              localComponentNames.add(child.id.name);
+            }
+          }
+        }
+
         const exports: ExportType[] = [];
         let hasReactExport = false;
         let hasAnyExports = false;
-        const localComponents: EsTreeNode[] = [];
         const isExportedNodeIds = new WeakSet<object>();
 
         // First pass: collect exports.
@@ -507,9 +566,17 @@ export const onlyExportComponents = defineRule({
               }
               continue;
             }
+            if (isNodeOfType(stripped, "ObjectExpression")) {
+              context.report({
+                node: stripped,
+                message: objectExpressionBundlesComponents(stripped, state)
+                  ? NAMESPACE_OBJECT_MESSAGE
+                  : ANONYMOUS_MESSAGE,
+              });
+              continue;
+            }
             if (
               isNodeOfType(stripped, "ArrowFunctionExpression") ||
-              isNodeOfType(stripped, "ObjectExpression") ||
               isNodeOfType(stripped, "Literal")
             ) {
               context.report({ node: stripped, message: ANONYMOUS_MESSAGE });
@@ -597,6 +664,13 @@ export const onlyExportComponents = defineRule({
                 entry = classifyExport(exportedName, reportNode, false, null, state);
               } else {
                 entry = { kind: "non-component", reportNode };
+                // `export { Foo as "🍌" }` still EXPORTS the component —
+                // the module is a (broken) component boundary, so the
+                // string-literal specifier must be reported as the
+                // non-component shape it is.
+                if (localName && isReactComponentName(localName)) {
+                  exports.push({ kind: "react-component" });
+                }
               }
               if (isReExportFromSource && entry.kind !== "react-component") continue;
               exports.push(entry);
@@ -609,50 +683,19 @@ export const onlyExportComponents = defineRule({
           if (entry.kind === "react-component") hasReactExport = true;
         }
 
-        // Find unexported local components — only matters if there are
-        // exports already (mixed module) or no exports at all. A
-        // declaration whose name appears in a separate `export {…}`
-        // is still LOCAL per OXC (only declarations inside an export
-        // statement count as "exported").
-        const isInsideExport = (node: EsTreeNode): boolean => {
-          let walker: EsTreeNode | null | undefined = node.parent;
-          while (walker) {
-            if (
-              isNodeOfType(walker, "ExportNamedDeclaration") ||
-              isNodeOfType(walker, "ExportDefaultDeclaration") ||
-              isNodeOfType(walker, "ExportAllDeclaration")
-            ) {
-              return true;
-            }
-            walker = walker.parent ?? null;
-          }
-          return false;
-        };
-        // A component declared inside another function (a test callback, a
-        // factory, an object-literal `render` method) is never a Fast
-        // Refresh boundary — only module-scope components are. The origin
-        // rule (eslint-plugin-react-refresh) walks top-level statements
-        // only; flagging nested declarations tells users to export values
-        // that can't be exported.
-        for (const child of componentCandidates) {
-          if (isNodeOfType(child, "FunctionDeclaration") && child.id) {
-            if (
-              isReactComponentName(child.id.name) &&
-              !isInsideExport(child as EsTreeNode) &&
-              !isInsideFunctionScope(child)
-            ) {
-              localComponents.push(child.id);
-            }
-          }
-          if (isNodeOfType(child, "VariableDeclarator") && isNodeOfType(child.id, "Identifier")) {
-            if (
-              isReactComponentName(child.id.name) &&
-              canBeReactFunctionComponent(child.init as EsTreeNode | null | undefined, state) &&
-              !isInsideExport(child as EsTreeNode) &&
-              !isInsideFunctionScope(child)
-            ) {
-              localComponents.push(child.id);
-            }
+        // The react-refresh boundary constraint is about EXPORTS only: a
+        // module that exports a component must export nothing but
+        // components / allowed constants. Non-exported internal components
+        // are fine (react-refresh registers them, and modules that don't
+        // export components were never refresh boundaries), so they are
+        // deliberately NOT reported. A namespace-object export that
+        // carries components is the real breaker — the export is an
+        // object, not a component function, so the whole module fails the
+        // boundary check — and reports regardless of what else the module
+        // exports.
+        for (const entry of exports) {
+          if (entry.kind === "namespace-object") {
+            context.report({ node: entry.reportNode, message: NAMESPACE_OBJECT_MESSAGE });
           }
         }
         if (hasAnyExports && hasReactExport) {
@@ -663,14 +706,6 @@ export const onlyExportComponents = defineRule({
             if (entry.kind === "react-context") {
               context.report({ node: entry.reportNode, message: REACT_CONTEXT_MESSAGE });
             }
-          }
-        } else if (hasAnyExports && !hasReactExport && localComponents.length > 0) {
-          for (const local of localComponents) {
-            context.report({ node: local, message: LOCAL_COMPONENT_MESSAGE });
-          }
-        } else if (!hasAnyExports && localComponents.length > 0) {
-          for (const local of localComponents) {
-            context.report({ node: local, message: NO_EXPORT_MESSAGE });
           }
         }
       },

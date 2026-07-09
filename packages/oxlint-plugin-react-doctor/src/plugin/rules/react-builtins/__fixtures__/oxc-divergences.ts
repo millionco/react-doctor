@@ -91,13 +91,26 @@ export const DIVERGENCES: Record<string, OxcDivergence> = {
     reason: "Intentional: default max raised from 2 → 10 to suppress idiomatic-React FPs.",
   },
   "only-export-components": {
-    // OXC defaults `allowConstantExport: false`, which flags any
-    // primitive-constant export alongside a component. We default
-    // `allowConstantExport: true` because exported constants are
-    // stable references that don't break Fast Refresh — matches the
-    // recommended config in `eslint-plugin-react-refresh`.
-    failSkips: [3, 4, 10, 14],
-    reason: "Intentional: default allowConstantExport=true to suppress shadcn-style FPs.",
+    // Two intentional divergences:
+    // (1) fail[3, 4, 10, 14] — OXC defaults `allowConstantExport: false`,
+    //     which flags any primitive-constant export alongside a
+    //     component. We default `allowConstantExport: true` because
+    //     exported constants are stable references that don't break Fast
+    //     Refresh — matches the recommended config in
+    //     `eslint-plugin-react-refresh`.
+    // (2) fail[12, 13, 21] — non-exported internal components are no
+    //     longer reported. The react-refresh boundary constraint is
+    //     about exports only (a module that exports a component must
+    //     export only components); a module whose exports carry no
+    //     component was never a refresh boundary, and "export this
+    //     component" is the wrong advice for config/registry files that
+    //     merely USE a local component (`export const tabs = [<Tab/>]`).
+    //     The real breaker — a namespace-object export bundling
+    //     components — is reported instead (not covered by OXC fixtures;
+    //     see only-export-components.regressions.test.ts).
+    failSkips: [3, 4, 10, 14, 12, 13, 21],
+    reason:
+      "Intentional: default allowConstantExport=true; exports-only Fast-Refresh model (local components unreported, namespace-object exports flagged).",
   },
   "jsx-pascal-case": {
     // OXC defaults `allowLeadingUnderscore: false`. We default to

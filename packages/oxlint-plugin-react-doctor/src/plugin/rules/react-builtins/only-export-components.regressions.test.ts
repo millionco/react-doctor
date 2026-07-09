@@ -252,14 +252,88 @@ describe("react-builtins/only-export-components — regressions", () => {
     }
   });
 
-  it("still flags module-scope local components", () => {
+  // Exports-only Fast-Refresh model: react-refresh's boundary check only
+  // looks at what a module EXPORTS. Non-exported internal components are
+  // fine; the real breaker is an export whose value is an object that
+  // bundles components with (or without) other values.
+  it("does not flag non-exported module-scope components", () => {
     const moduleScopeFile = `
       const Widget = () => <div />;
     `;
     const result = runRule(onlyExportComponents, moduleScopeFile, {
       filename: "src/widget.tsx",
     });
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a config file that merely uses a local component in an exported value", () => {
+    const configFile = `
+      const Tab = () => <div />;
+      export const tabs = [<Tab />, <Tab />];
+    `;
+    const result = runRule(onlyExportComponents, configFile, {
+      filename: "src/tabs-config.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a named namespace-object export that bundles components with non-components", () => {
+    const namespaceFile = `
+      const Home = () => <div>Home</div>;
+      const About = () => <div>About</div>;
+      export const Pages = { Home, About, sidebarWidth: 240 };
+    `;
+    const result = runRule(onlyExportComponents, namespaceFile, {
+      filename: "src/pages-namespace.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("bundles components inside an object");
+  });
+
+  it("flags a default namespace-object export carrying components", () => {
+    const namespaceDefaultFile = `
+      const Home = () => <div>Home</div>;
+      const formatTitle = (title) => title.trim();
+      export default { Home, formatTitle };
+    `;
+    const result = runRule(onlyExportComponents, namespaceDefaultFile, {
+      filename: "src/pages-default.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("bundles components inside an object");
+  });
+
+  it("flags a namespace-object export with an inline PascalCase component property", () => {
+    const inlineNamespaceFile = `
+      export const Widgets = { Header: () => <header />, footerHeight: 64 };
+    `;
+    const result = runRule(onlyExportComponents, inlineNamespaceFile, {
+      filename: "src/widgets.tsx",
+    });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("bundles components inside an object");
+  });
+
+  it("does not flag a plain config-object export without components", () => {
+    const plainObjectFile = `
+      export const ProfileCard = () => <div>Profile</div>;
+      export const Home = () => <div>Home</div>;
+    `;
+    const configOnlyFile = `
+      export const theme = { primary: "#333", spacing: 8 };
+    `;
+    for (const [code, filename] of [
+      [plainObjectFile, "src/profile.tsx"],
+      [configOnlyFile, "src/theme-config.tsx"],
+    ]) {
+      const result = runRule(onlyExportComponents, code, { filename });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(0);
+    }
   });
 
   it("still flags non-component exports in ordinary component files", () => {

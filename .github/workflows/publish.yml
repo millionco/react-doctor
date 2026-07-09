@@ -3,6 +3,12 @@ name: Publish
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_publish:
+        description: "Run pnpm release even with no pending changesets (finish a partial publish)"
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -28,12 +34,23 @@ jobs:
         with:
           node-version: 22.18.0
           cache: pnpm
+          registry-url: https://registry.npmjs.org
 
       - run: npm install -g npm@11
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Force publish remaining package versions
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.force_publish }}
+        env:
+          NPM_CONFIG_PROVENANCE: true
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: pnpm release
+
       - name: Create release PR or publish
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.force_publish) }}
         id: changesets
         uses: changesets/action@v1
         with:

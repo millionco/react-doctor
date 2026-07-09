@@ -25,6 +25,8 @@ export interface InspectFlags {
   respectInlineDisables?: boolean;
   warnings?: boolean;
   category?: string | string[];
+  excludeTag?: string | string[];
+  includeTag?: string | string[];
   project?: string;
   scope?: string;
   base?: string;

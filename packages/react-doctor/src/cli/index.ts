@@ -133,6 +133,11 @@ const collectCategoryOption = (value: string, previousValues: string[] | undefin
   value,
 ];
 
+const collectTagOption = (value: string, previousValues: string[] | undefined): string[] => [
+  ...(previousValues ?? []),
+  value,
+];
+
 const program = new Command()
   .name("react-doctor")
   .description("Diagnose React codebase health")
@@ -198,6 +203,18 @@ const program = new Command()
       "--category <category>",
       "only show diagnostics in a category (repeatable; e.g. Security)",
     ).argParser(collectCategoryOption),
+  )
+  .addOption(
+    new Option(
+      "--exclude-tag <tag>",
+      "hide diagnostics with a tag (repeatable; e.g. test-noise, design)",
+    ).argParser(collectTagOption),
+  )
+  .addOption(
+    new Option(
+      "--include-tag <tag>",
+      "only show diagnostics with a tag (repeatable; overrides --exclude-tag)",
+    ).argParser(collectTagOption),
   )
   .option(
     "--no-telemetry",

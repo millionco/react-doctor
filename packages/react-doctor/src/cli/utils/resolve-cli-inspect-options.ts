@@ -3,11 +3,14 @@ import type { InspectFlags } from "./inspect-flags.js";
 import { isCiEnvironment } from "./is-ci-environment.js";
 import { pickBlockingLevel } from "./resolve-blocking-level.js";
 import { resolveCliCategories } from "./resolve-cli-categories.js";
+import { resolveCliTags } from "./resolve-cli-tags.js";
 import { resolveMaxDurationFlag } from "./resolve-max-duration-flag.js";
 import { resolveParallelFlag } from "./resolve-parallel-flag.js";
 
 export interface CliInspectOptions extends InspectOptions {
   categoryFilters?: string[];
+  excludeTagFilters?: string[];
+  includeTagFilters?: string[];
 }
 
 /**
@@ -52,5 +55,7 @@ export const resolveCliInspectOptions = (
     concurrency: resolveParallelFlag(flags.parallel),
     maxDurationMs: resolveMaxDurationFlag(flags.maxDuration),
     categoryFilters: resolveCliCategories(flags.category),
+    excludeTagFilters: resolveCliTags(flags.excludeTag),
+    includeTagFilters: resolveCliTags(flags.includeTag),
   };
 };

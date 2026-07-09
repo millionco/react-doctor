@@ -245,6 +245,7 @@ import { noSelfUpdatingEffect } from "./rules/state-and-effects/no-self-updating
 import { noSetState } from "./rules/react-builtins/no-set-state.js";
 import { noSetStateInRender } from "./rules/state-and-effects/no-set-state-in-render.js";
 import { noSideTabBorder } from "./rules/design/no-side-tab-border.js";
+import { noStaleTimerRef } from "./rules/state-and-effects/no-stale-timer-ref.js";
 import { noStaticElementInteractions } from "./rules/a11y/no-static-element-interactions.js";
 import { noStringFalseOnBooleanAttribute } from "./rules/react-builtins/no-string-false-on-boolean-attribute.js";
 import { noStringRefs } from "./rules/react-builtins/no-string-refs.js";
@@ -3194,6 +3195,18 @@ export const reactDoctorRules = [
       ...noSideTabBorder,
       framework: "global",
       category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-stale-timer-ref",
+    id: "no-stale-timer-ref",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noStaleTimerRef,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noStaleTimerRef.requires ?? [])])],
     },
   },
   {

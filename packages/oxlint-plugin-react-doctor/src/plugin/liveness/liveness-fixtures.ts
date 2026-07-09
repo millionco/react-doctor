@@ -819,6 +819,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-side-tab-border": {
     code: 'const C = () => <div className="border-l-4 border-[#ff0000]" />;',
   },
+  "no-stale-timer-ref": {
+    code: 'import { useRef } from "react";\nexport const useDelayedCallback = (callback) => {\n  const timerRef = useRef(null);\n  const schedule = () => {\n    if (timerRef.current) return;\n    timerRef.current = setTimeout(callback, 100);\n  };\n  const cancel = () => {\n    clearTimeout(timerRef.current);\n  };\n  return { schedule, cancel };\n};',
+  },
   "no-static-element-interactions": {
     code: "export const A = ({ onClick }) => <div role={'wat'} onClick={onClick} />;",
   },

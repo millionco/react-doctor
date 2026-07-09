@@ -75,6 +75,13 @@ export function beta(flag: boolean) {
       expect(report.summary.filesAnalyzed).toBe(1);
       expect(report.summary.totalFunctions).toBe(3);
       expect(report.summary.mostComplexFunction?.name).toBe("alpha");
+      expect(report.files[0]?.relativePath).toBe("src/example.ts");
+      expect(
+        report.functions.every(
+          (functionEntry) =>
+            !functionEntry.relativePath.includes("\\") && !functionEntry.key.includes("\\"),
+        ),
+      ).toBe(true);
       expect(report.functions[0]?.name).toBe("alpha");
       expect(renderComplexityReport(report)).toContain("files analyzed");
       expect(renderComplexityReport(report)).toContain("cyclomatic");

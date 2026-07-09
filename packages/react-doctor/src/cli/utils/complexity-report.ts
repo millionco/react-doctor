@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import type { EsTreeNode, FileComplexity, FunctionComplexity } from "oxlint-plugin-react-doctor";
-import { listSourceFiles, type MaterializedTree } from "@react-doctor/core";
+import { listSourceFiles, toRelativePath, type MaterializedTree } from "@react-doctor/core";
 import { COMPLEXITY_FILES_TEMP_DIR_PREFIX } from "./constants.js";
 import { materializeBaselineFiles } from "./materialize-baseline-files.js";
 import { VERSION } from "./version.js";
@@ -198,7 +198,7 @@ const parseComplexityFile = async (
 
   return {
     filePath: absolutePath,
-    relativePath,
+    relativePath: toRelativePath(absolutePath, rootDirectory),
     parsedFile: analyzeComplexity(program, sourceText),
   };
 };

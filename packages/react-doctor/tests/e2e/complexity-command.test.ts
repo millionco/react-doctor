@@ -8,6 +8,10 @@ import { setupReactProject } from "../regressions/_helpers.js";
 import { buildComplexityReport } from "../../src/cli/utils/complexity-report.js";
 import { renderComplexityReport } from "../../src/cli/utils/render-complexity.js";
 
+const ESC = String.fromCharCode(0x1b);
+const ANSI_ESCAPE_PATTERN = new RegExp(`${ESC}\\[[0-9;?]*[A-Za-z]`, "g");
+const stripAnsi = (input: string): string => input.replace(ANSI_ESCAPE_PATTERN, "");
+
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const builtCliPath = path.resolve(currentDirectory, "../../dist/cli.js");
 const hasBuiltCli = fs.existsSync(builtCliPath);
@@ -85,7 +89,7 @@ describe.skipIf(!hasBuiltCli)("complexity command", () => {
       minCyclomatic: 1,
       sortMetric: "cyclomatic",
     });
-    const cyclomaticRenderedRows = renderComplexityReport(cyclomaticReport)
+    const cyclomaticRenderedRows = stripAnsi(renderComplexityReport(cyclomaticReport))
       .split("\n")
       .filter((line) => line.startsWith("src/complexity.ts:"));
     expect(cyclomaticRenderedRows).toHaveLength(2);
@@ -97,7 +101,7 @@ describe.skipIf(!hasBuiltCli)("complexity command", () => {
       minCyclomatic: 1,
       sortMetric: "cognitive",
     });
-    const cognitiveRenderedRows = renderComplexityReport(cognitiveReport)
+    const cognitiveRenderedRows = stripAnsi(renderComplexityReport(cognitiveReport))
       .split("\n")
       .filter((line) => line.startsWith("src/complexity.ts:"));
     expect(cognitiveRenderedRows).toHaveLength(1);

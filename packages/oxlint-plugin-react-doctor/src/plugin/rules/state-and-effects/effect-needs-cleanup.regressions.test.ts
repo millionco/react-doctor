@@ -253,6 +253,40 @@ export const LiveFeed = ({ url }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a BroadcastChannel opened in an effect without close", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const TabSync = ({ channelName }) => {
+  useEffect(() => {
+    const channel = new BroadcastChannel(channelName);
+    channel.onmessage = (event) => applyRemoteChange(event.data);
+  }, [channelName]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("BroadcastChannel");
+  });
+
+  it("does not flag an RTCPeerConnection closed in cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Call = ({ config }) => {
+  useEffect(() => {
+    const peerConnection = new RTCPeerConnection(config);
+    peerConnection.ontrack = (event) => attachStream(event.streams[0]);
+    return () => peerConnection.close();
+  }, [config]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag an EventSource closed in cleanup", () => {
     const result = runRule(
       effectNeedsCleanup,

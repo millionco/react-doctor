@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useEffectEvent } from "react";
 
 declare const fetchData: () => Promise<unknown>;
 
@@ -40,8 +40,8 @@ export const intlInRender = (amount: number, locale: string): string => {
   return formatter.format(amount);
 };
 
-const useEffectEvent = <T,>(handler: T): T => handler;
-
+// React's own useEffectEvent (imported above) — a LOCAL polyfill of the
+// same name is deliberately exempt from no-effect-event-in-deps.
 export const EffectEventInDeps = ({ value }: { value: number }) => {
   const onChange = useEffectEvent((next: number) => {
     console.log(next, value);

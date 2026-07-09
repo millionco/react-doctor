@@ -30,6 +30,7 @@ const AUDITED_RULE_IDS = [
   "no-nested-component-definition",
   "no-react19-deprecated-apis",
   "no-render-in-render",
+  "no-stale-timer-ref",
   "no-usememo-simple-expression",
   "only-export-components",
   "prefer-use-sync-external-store",

@@ -96,6 +96,8 @@ export const HANDLER_SNIPPET_POOL = [
   `const handleReset = () => { const next = { ...values }; next.title = ""; setValues(next); };`,
   `const handleMutate = () => { values.title = "changed"; setValues(values); };`,
   `const handleAsyncToggle = () => { setTimeout(() => setIsOpen(!isOpen), 100); };`,
+  `const timerRef = useRef(null); const handleSchedule = () => { if (timerRef.current) return; timerRef.current = setTimeout(() => { timerRef.current = null; handle(); }, 300); }; const handleCancel = () => { if (timerRef.current) { clearTimeout(timerRef.current); } };`,
+  `const timerRef = useRef(null); const handleQueue = () => { clearTimeout(timerRef.current); timerRef.current = setTimeout(handle, 250); }; const handleFlush = () => { clearTimeout(timerRef.current); timerRef.current = null; handle(); };`,
   `const handleBatch = async () => { for (const item of items) { await api.post(url, item); } };`,
   `const handleBatch = async () => { await Promise.all(items.map((item) => api.post(url, item))); };`,
   `const handleSequence = async () => { const first = await fetch(url); const second = await fetch(url); handle(first, second); };`,

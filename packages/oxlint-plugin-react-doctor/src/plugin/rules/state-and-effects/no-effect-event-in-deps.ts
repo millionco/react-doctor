@@ -104,11 +104,15 @@ export const noEffectEventInDeps = defineRule({
         const initializer = declaratorNode.init;
         if (!initializer || !isNodeOfType(initializer, "CallExpression")) return;
         if (!isHookCall(initializer, "useEffectEvent")) return;
-        if (
-          isNodeOfType(initializer.callee, "Identifier") &&
-          isImportedFromNonReactModule(declaratorNode, initializer.callee.name)
-        ) {
-          return;
+        // A same-named `useEffectEvent` imported from a non-React package OR
+        // defined in this module (userland polyfill) returns a STABLE
+        // callback — listing it in deps is fine, so it must not taint the
+        // binding set. Only React's export / a bare global carries the
+        // unstable-identity semantics.
+        if (isNodeOfType(initializer.callee, "Identifier")) {
+          if (isImportedFromNonReactModule(declaratorNode, initializer.callee.name)) return;
+          const calleeSymbol = context.scopes.referenceFor(initializer.callee)?.resolvedSymbol;
+          if (calleeSymbol && calleeSymbol.kind !== "import") return;
         }
         componentBindings.addBindingToCurrentFrame(declaratorNode.id.name);
       },

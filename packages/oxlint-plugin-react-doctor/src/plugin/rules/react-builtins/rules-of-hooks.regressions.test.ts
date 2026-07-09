@@ -390,6 +390,51 @@ describe("react-builtins/rules-of-hooks — regressions: same-named non-React us
     `);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("does not flag a useEffectEvent polyfill DEFINED in the same module (floating-ui shape) whose result is passed as a prop", () => {
+    const result = runTsx(`
+      import * as React from "react";
+      function useEffectEvent(callback) {
+        const ref = React.useRef(callback);
+        React.useInsertionEffect(() => {
+          ref.current = callback;
+        });
+        return React.useCallback((...args) => ref.current?.(...args), []);
+      }
+      const MyComponent = ({ onDone }) => {
+        const handleChange = useEffectEvent(() => onDone());
+        return <Child onChange={handleChange} />;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a const-bound local useEffectEvent polyfill whose result is returned from a custom hook", () => {
+    const result = runTsx(`
+      import { useCallback, useRef } from "react";
+      const useEffectEvent = (callback) => {
+        const ref = useRef(callback);
+        ref.current = callback;
+        return useCallback((...args) => ref.current(...args), []);
+      };
+      const useStableHandler = (handler) => {
+        return useEffectEvent(handler);
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags React's useEffectEvent result called outside an effect even when a polyfill exists elsewhere", () => {
+    const result = runTsx(`
+      import { useEffectEvent } from "react";
+      const MyComponent = ({ onDone }) => {
+        const handleChange = useEffectEvent(() => onDone());
+        const wrapped = handleChange;
+        return <button onClick={wrapped}>go</button>;
+      };
+    `);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
 });
 
 describe("react-builtins/rules-of-hooks — regressions: underscore-prefixed component bindings", () => {

@@ -33,6 +33,23 @@ describe("no-effect-event-in-deps — regressions: same-named non-React useEffec
     );
   });
 
+  it("does not flag a useEffectEvent polyfill DEFINED in the same module listed in deps (its result is a stable callback)", () => {
+    const result = runTsx(`
+      import { useCallback, useEffect, useRef } from "react";
+      const useEffectEvent = (callback) => {
+        const ref = useRef(callback);
+        ref.current = callback;
+        return useCallback((...args) => ref.current(...args), []);
+      };
+      const MyComponent = ({ value }) => {
+        const onTick = useEffectEvent(() => value);
+        useEffect(() => { onTick(); }, [onTick]);
+        return null;
+      };
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("still flags a bare/unimported useEffectEvent listed in deps (parity)", () => {
     const result = runTsx(`
       import { useEffect } from "react";

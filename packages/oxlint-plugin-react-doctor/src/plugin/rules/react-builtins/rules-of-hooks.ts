@@ -725,22 +725,38 @@ const isUseEffectEventSymbol = (symbol: SymbolDescriptor): boolean => {
 };
 
 // React's effect-event semantics (call-only, never stored or passed around)
-// apply to React's own `useEffectEvent`. A same-named hook EXPLICITLY imported
-// from another package — e.g. `@rocket.chat/fuselage-hooks`, whose
-// `useEffectEvent` is a stable-callback helper designed to be passed as props —
-// carries different semantics, so applying these reports would be a false
-// positive. A bare/unimported `useEffectEvent` is still treated as React's to
+// apply to React's own `useEffectEvent`. A same-named hook that is EXPLICITLY
+// imported from another package (e.g. `@rocket.chat/fuselage-hooks`) or
+// DEFINED in this module (the floating-ui-style userland polyfill — a
+// stable-callback helper designed to be stored and passed as props) carries
+// different semantics, so applying these reports would be a false positive.
+// Only a bare/unresolved `useEffectEvent` is still treated as React's, to
 // preserve parity with eslint-plugin-react-hooks.
-const isNonReactEffectEventCallee = (callee: EsTreeNode, contextNode: EsTreeNode): boolean =>
-  isNodeOfType(callee, "Identifier") && isImportedFromNonReactModule(contextNode, callee.name);
+const resolvesToLocalNonImportBinding = (
+  identifier: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const symbol = scopes.referenceFor(identifier)?.resolvedSymbol;
+  return Boolean(symbol && symbol.kind !== "import");
+};
+
+const isNonReactEffectEventCallee = (
+  callee: EsTreeNode,
+  contextNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean =>
+  isNodeOfType(callee, "Identifier") &&
+  (isImportedFromNonReactModule(contextNode, callee.name) ||
+    resolvesToLocalNonImportBinding(callee, scopes));
 
 const isNonReactEffectEventSymbol = (
   symbol: SymbolDescriptor,
   contextNode: EsTreeNode,
+  scopes: ScopeAnalysis,
 ): boolean => {
   const initializer = symbol.initializer;
   if (!initializer || !isNodeOfType(initializer, "CallExpression")) return false;
-  return isNonReactEffectEventCallee(initializer.callee, contextNode);
+  return isNonReactEffectEventCallee(initializer.callee, contextNode, scopes);
 };
 
 const findEnclosingComponentOrHookFunction = (node: EsTreeNode): EsTreeNode | null => {
@@ -868,7 +884,7 @@ export const rulesOfHooks = defineRule({
         if (
           hookName === "useEffectEvent" &&
           !isUseEffectEventInitializer(node) &&
-          !isNonReactEffectEventCallee(node.callee, node)
+          !isNonReactEffectEventCallee(node.callee, node, context.scopes)
         ) {
           context.report({ node: node.callee, message: buildEffectEventPassedDownMessage() });
           return;
@@ -1006,7 +1022,7 @@ export const rulesOfHooks = defineRule({
         const reference = context.scopes.referenceFor(node);
         const symbol = reference?.resolvedSymbol;
         if (!symbol || !isUseEffectEventSymbol(symbol)) return;
-        if (isNonReactEffectEventSymbol(symbol, node)) return;
+        if (isNonReactEffectEventSymbol(symbol, node, context.scopes)) return;
         if (!isSameComponentOrHookScope(symbol, node)) return;
         if (isInsideAllowedEffectEventCallback(node, additionalEffectHooksRegex)) return;
 

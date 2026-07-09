@@ -7,6 +7,7 @@ import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -17,8 +18,6 @@ import { getStaticMemberPropertyName } from "./utils/static-member-property-name
 const MESSAGE = "This reducer changes state in place, so your update is silently skipped.";
 
 const SAME_REFERENCE_ARRAY_RETURN_METHODS = new Set(["copyWithin", "fill", "reverse", "sort"]);
-
-const SAME_REFERENCE_COLLECTION_RETURN_METHODS = new Set(["add", "set"]);
 
 const OBJECT_MUTATION_METHODS = new Set(["assign", "defineProperties", "defineProperty"]);
 
@@ -282,16 +281,14 @@ const canExpressionReturnOriginalReducerStateReference = (
       ) {
         return true;
       }
-      // Map#set and Set#add return the collection receiver. Only count this as
-      // a top-level same-reference return when the receiver itself is the
-      // reducer state reference, not merely a nested collection in a new wrapper.
-      if (
-        methodName &&
-        SAME_REFERENCE_COLLECTION_RETURN_METHODS.has(methodName) &&
-        isExpressionOriginalReducerStateReference(unwrappedNode.callee.object, state)
-      ) {
-        return true;
-      }
+      // `return state.set(k, v)` / `return state.add(v)` is deliberately NOT
+      // treated as a same-reference return: on an immutable-API collection
+      // (Immutable.js Map, Mori) `.set`/`.add` return a NEW collection and
+      // returning it is the CORRECT reducer shape. Distinguishing that from a
+      // native Map/Set (where the receiver comes back) needs type info the
+      // lint pipeline doesn't have, and the immutable idiom dominates
+      // return-position collection calls in reducers (see the consumed-result
+      // escape in `collectReducerStateMutationsInExpressionOrStatement`).
     }
   }
 
@@ -428,21 +425,29 @@ const collectReducerStateMutationsInExpressionOrStatement = (
     //   state.items.push(item);
     //   items.splice(index, 1);
     //   stateMap.set(key, value);
-    //
-    // Collection method names like `set` and `add` are assumed mutating
-    // when called on state-derived values. The residual false-positive
-    // risk is when state holds a custom immutable-API value whose
-    // `.set`/`.add`/`.delete` return a NEW container (Immutable.js
-    // Map, Mori, persistent collections). Distinguishing those from
-    // Map/Set requires TS type info which the lint pipeline doesn't
-    // have. In practice the discard-the-result-of-an-immutable-API
-    // pattern is itself a bug, so this rule's diagnostic still points
-    // at code that needs attention.
     if (
       !methodName ||
       (!MUTATING_ARRAY_METHODS.has(methodName) && !MUTATING_COLLECTION_METHODS.has(methodName))
     )
       return;
+    // Collection method names like `set` / `add` / `delete` are shared with
+    // immutable-API containers (Immutable.js Map, Mori) whose calls return a
+    // NEW collection instead of mutating the receiver. Distinguishing them
+    // from native Map/Set needs type info the lint pipeline doesn't have, so
+    // the escape is result-shaped: a call whose result is CONSUMED
+    // (`return state.set(k, v)`, `const next = state.set(k, v)`) matches the
+    // immutable idiom and is skipped; a discarded-result call
+    // (`state.set(k, v);`) is either a native mutation or a no-op immutable
+    // call — both worth reporting. Array mutators stay unconditional:
+    // consuming a native `.splice()` / `.push()` result is idiomatic
+    // (`const removed = items.splice(i, 1)`) and still mutates.
+    if (
+      MUTATING_COLLECTION_METHODS.has(methodName) &&
+      !MUTATING_ARRAY_METHODS.has(methodName) &&
+      !isResultDiscardedCall(unwrappedChild)
+    ) {
+      return;
+    }
     if (isExpressionRootedInMutableReducerStateSource(unwrappedChild.callee.object, state)) {
       mutations.push({ node: unwrappedChild });
     }

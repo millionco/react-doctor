@@ -984,4 +984,87 @@ describe("no-mutating-reducer-state", () => {
     expect(result.parseErrors).toEqual([]);
     expect(Array.isArray(result.diagnostics)).toBe(true);
   });
+
+  it("does NOT flag `return state.set(...)` — the immutable-collection idiom", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+      import { Map } from "immutable";
+
+      function reducer(state, action) {
+        switch (action.type) {
+          case "put":
+            return state.set(action.key, action.value);
+          case "drop":
+            return state.delete(action.key);
+          default:
+            return state;
+        }
+      }
+
+      useReducer(reducer, Map());
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag a consumed collection call assigned and returned", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        const next = state.set(action.key, action.value);
+        return next;
+      }
+
+      useReducer(reducer, initialImmutableState);
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a discarded-result collection delete followed by returning state", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        state.delete(action.key);
+        return state;
+      }
+
+      useReducer(reducer, new Map());
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still flags a consumed ARRAY mutator — native splice returns removed items and mutates", () => {
+    const result = runRule(
+      noMutatingReducerState,
+      `
+      import { useReducer } from "react";
+
+      function reducer(state, action) {
+        const removed = state.items.splice(action.index, 1);
+        return state;
+      }
+
+      useReducer(reducer, { items: [] });
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

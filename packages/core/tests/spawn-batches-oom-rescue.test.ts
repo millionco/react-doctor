@@ -98,7 +98,7 @@ const buildPoisonedRescueScript = (abortAllOnce = false): string =>
     "const markerPathFor = (file) => path.join(markerDirectory, encodeURIComponent(file));",
     'const isPoison = (file) => file.includes("poison");',
     "const unattempted = files.filter(",
-    `  (file) => (${JSON.stringify(abortAllOnce)} || isPoison(file)) && !fs.existsSync(markerPathFor(file)),`,
+    `  (file) => (${abortAllOnce ? "true" : "false"} || isPoison(file)) && !fs.existsSync(markerPathFor(file)),`,
     ");",
     "if (unattempted.length > 0) {",
     '  for (const file of unattempted) fs.writeFileSync(markerPathFor(file), "");',

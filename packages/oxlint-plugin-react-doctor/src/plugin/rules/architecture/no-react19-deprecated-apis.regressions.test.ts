@@ -43,7 +43,9 @@ describe("architecture/no-react19-deprecated-apis — regressions", () => {
     expect(result.diagnostics[0]?.message).toContain("forwardRef");
   });
 
-  it("reports forwardRef and useContext separately in the same file", () => {
+  // useContext is NOT deprecated in React 19 — `use()` is additive. Flagging
+  // it was reward-deciding misinformation (RD-FP-010).
+  it("does not flag useContext (not deprecated; use() is additive)", () => {
     const result = run(
       `import { forwardRef, useContext } from "react";
 const Ctx = {};
@@ -53,10 +55,8 @@ const useTheme = () => useContext(Ctx);
 const useLocale = () => useContext(Ctx);
 `,
     );
-    expect(result.diagnostics).toHaveLength(2);
-    const messages = result.diagnostics.map((diagnostic) => diagnostic.message).sort();
-    expect(messages[0]).toContain("forwardRef");
-    expect(messages[1]).toContain("useContext");
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("forwardRef");
   });
 
   it("still flags a named forwardRef import outside components/ui/", () => {
@@ -69,15 +69,14 @@ const Input = forwardRef((props, ref) => <input ref={ref} {...props} />);
     expect(result.diagnostics[0]?.message).toContain("forwardRef");
   });
 
-  it("still flags React.useContext on a namespace import", () => {
+  it("does not flag React.useContext on a namespace import", () => {
     const result = run(
       `import * as React from "react";
 const Ctx = {};
 const useTheme = () => React.useContext(Ctx);
 `,
     );
-    expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]?.message).toContain("useContext");
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("still flags directories that merely resemble components/ui/", () => {

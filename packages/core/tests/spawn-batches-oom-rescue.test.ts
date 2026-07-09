@@ -81,6 +81,40 @@ const buildAbortOnceScript = (): string =>
 
 const ALWAYS_ABORT_SCRIPT = 'process.kill(process.pid, "SIGABRT");';
 
+// "poison.tsx" SIGABRTs on its first attempt (so it enters the rescue), then
+// prints non-JSON stdout — a non-splittable `OxlintOutputUnparseable` that
+// makes the rescue pass itself reject. Every other file lints normally.
+const buildPoisonedRescueScript = (): string =>
+  [
+    'const fs = require("fs");',
+    'const path = require("path");',
+    `const markerDirectory = ${JSON.stringify(markerDirectory)};`,
+    "const files = process.argv.slice(1);",
+    "const markerPathFor = (file) => path.join(markerDirectory, encodeURIComponent(file));",
+    'const isPoison = (file) => file.includes("poison");',
+    "const unattemptedPoison = files.filter(",
+    "  (file) => isPoison(file) && !fs.existsSync(markerPathFor(file)),",
+    ");",
+    "if (unattemptedPoison.length > 0) {",
+    '  for (const file of unattemptedPoison) fs.writeFileSync(markerPathFor(file), "");',
+    '  process.kill(process.pid, "SIGABRT");',
+    "}",
+    "if (files.some(isPoison)) {",
+    '  process.stdout.write("oxlint panicked: definitely not json");',
+    "  process.exit(0);",
+    "}",
+    "const diagnostics = files.map((filename) => ({",
+    '  message: "Array index used as a key",',
+    '  code: "react-doctor(no-array-index-as-key)",',
+    '  severity: "warning",',
+    '  causes: [], url: "", help: "",',
+    "  filename,",
+    '  labels: [{ label: "", span: { offset: 0, length: 1, line: 1, column: 1 } }],',
+    "  related: [],",
+    "}));",
+    "process.stdout.write(JSON.stringify({ diagnostics, number_of_files: files.length, number_of_rules: 1 }));",
+  ].join("\n");
+
 const runBatches = (
   script: string,
   concurrency: number,
@@ -122,6 +156,32 @@ describe("spawnLintBatches — OOM rescue pass", () => {
     expect(partialFailures).toHaveLength(1);
     expect(partialFailures[0]).toContain("2 file(s) failed to lint");
     expect(partialFailures[0]).toContain("ran out of memory");
+  });
+
+  it("falls back to the completed main pass when the rescue itself rejects", async () => {
+    const partialFailures: string[] = [];
+
+    const diagnostics = await spawnLintBatches({
+      baseArgs: ["-e", buildPoisonedRescueScript()],
+      fileBatches: [["src/one.tsx"], ["src/two.tsx"], ["src/poison.tsx"]],
+      rootDirectory: process.cwd(),
+      nodeBinaryPath: process.execPath,
+      project,
+      concurrency: 2,
+      onPartialFailure: (reason) => partialFailures.push(reason),
+    });
+
+    // The rescue replay of poison.tsx dies on unparseable stdout (a
+    // non-splittable error). The main pass already completed — its
+    // diagnostics must survive and the poisoned file stays reported as
+    // dropped, instead of the whole scan rejecting.
+    expect(diagnostics.map((diagnostic) => diagnostic.filePath).sort()).toEqual([
+      "src/one.tsx",
+      "src/two.tsx",
+    ]);
+    expect(partialFailures).toHaveLength(1);
+    expect(partialFailures[0]).toContain("1 file(s) failed to lint");
+    expect(partialFailures[0]).toContain("src/poison.tsx");
   });
 
   it("does not rescue on an already-serial run (nothing to de-contend)", async () => {

@@ -335,6 +335,15 @@ export const OXLINT_SPLIT_TOTAL_BUDGET_MS = 180_000;
 // even if the budget clock is somehow not advancing.
 export const OXLINT_SPLIT_MAX_DEPTH = 8;
 
+// Wall-clock cap on the serial OOM rescue pass (replaying OOM-dropped
+// files one at a time after the parallel pass). The rescue is unbounded
+// by batch count — each file that STILL fails re-waits a spawn timeout —
+// so without a cap a large OOM-dropped set could eat the whole
+// LINT_PHASE_TIMEOUT_MS and convert a partial scan into a total lint
+// failure. 60 s rescues dozens of healthy files while at most one
+// still-pathological file can burn the budget.
+export const OXLINT_OOM_RESCUE_BUDGET_MS = 60_000;
+
 // Effect-side cap on the dead-code phase. Sits ABOVE the in-worker
 // DEAD_CODE_WORKER_TIMEOUT_MS (= 120 s) as a runtime-independent
 // backstop: if the worker's own timer is wedged (or the worker never

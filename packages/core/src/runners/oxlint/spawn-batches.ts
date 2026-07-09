@@ -1,6 +1,7 @@
 import {
   MILLISECONDS_PER_SECOND,
   MIN_SCAN_CONCURRENCY,
+  OXLINT_OOM_RESCUE_BUDGET_MS,
   OXLINT_PARTIAL_FAILURE_PREVIEW_COUNT,
   OXLINT_SPLIT_MAX_DEPTH,
   OXLINT_SPLIT_TOTAL_BUDGET_MS,
@@ -96,6 +97,13 @@ interface BatchPassOutcome {
   readonly oomDroppedFiles: string[];
   readonly deadlineSkippedFiles: string[];
   readonly firstDropReason: string | null;
+  /**
+   * First drop reason among NON-OOM drops. After a rescue clears the OOM
+   * drops, the surviving dropped files were dropped for other reasons
+   * (timeouts, output caps) — attributing them to the rescued OOM would
+   * point users at a failure class that no longer applies.
+   */
+  readonly firstNonOomDropReason: string | null;
 }
 
 /**
@@ -145,8 +153,12 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
   // `inspect({ concurrency })` that skips the CLI's resolver — is bounded by
   // the [MIN, HARD_MAX] worker ceiling and can't oversubscribe oxlint processes.
   const requestedConcurrency = resolveScanConcurrency(input.concurrency ?? MIN_SCAN_CONCURRENCY);
+  // The OOM rescue pass installs its own (shorter) deadline here so a serial
+  // replay of many still-failing files can't eat the whole lint-phase budget.
+  let rescueDeadlineEpochMs: number | undefined;
   const isPastDeadline = (): boolean =>
-    deadlineEpochMs !== undefined && remainingDeadlineBudgetMs(deadlineEpochMs) === 0;
+    (deadlineEpochMs !== undefined && remainingDeadlineBudgetMs(deadlineEpochMs) === 0) ||
+    (rescueDeadlineEpochMs !== undefined && remainingDeadlineBudgetMs(rescueDeadlineEpochMs) === 0);
 
   // One full pass over the given batches at `concurrency` workers. All
   // mutable state (diagnostics, dropped-file bookkeeping, progress counters,
@@ -180,6 +192,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     // every invocation in a sandbox runtime), so surfacing one example
     // is enough to diagnose.
     let firstDropReason: string | null = null;
+    let firstNonOomDropReason: string | null = null;
 
     // Per-top-level-batch state threaded through the binary-split recursion
     // (which awaits its two halves sequentially, so this is race-free even
@@ -231,18 +244,18 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
           // or the cumulative split budget / depth cap is exhausted — drop the
           // remaining files, record why, and let the scan continue.
           droppedFiles.push(...batch);
-          if (error.reason._tag === "OxlintBatchExceeded" && error.reason.kind === "oom") {
-            oomDroppedFiles.push(...batch);
+          const isOomDrop =
+            error.reason._tag === "OxlintBatchExceeded" && error.reason.kind === "oom";
+          if (isOomDrop) oomDroppedFiles.push(...batch);
+          let limitHint = "";
+          if (isDepthCapReached) {
+            limitHint = ` (split depth cap of ${splitMaxDepth} levels reached)`;
+          } else if (isBudgetElapsed) {
+            limitHint = ` (split budget of ${splitTotalBudgetMs / MILLISECONDS_PER_SECOND}s exhausted at depth ${depth})`;
           }
-          if (firstDropReason === null) {
-            let limitHint = "";
-            if (isDepthCapReached) {
-              limitHint = ` (split depth cap of ${splitMaxDepth} levels reached)`;
-            } else if (isBudgetElapsed) {
-              limitHint = ` (split budget of ${splitTotalBudgetMs / MILLISECONDS_PER_SECOND}s exhausted at depth ${depth})`;
-            }
-            firstDropReason = batch.length > 1 ? `${error.message}${limitHint}` : error.message;
-          }
+          const dropReason = batch.length > 1 ? `${error.message}${limitHint}` : error.message;
+          firstDropReason ??= dropReason;
+          if (!isOomDrop) firstNonOomDropReason ??= dropReason;
           return [];
         }
         const splitIndex = Math.ceil(batch.length / 2);
@@ -308,6 +321,7 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
       oomDroppedFiles,
       deadlineSkippedFiles,
       firstDropReason,
+      firstNonOomDropReason,
     };
   };
 
@@ -340,19 +354,38 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     !isPastDeadline()
   ) {
     const rescueBatches = outcome.oomDroppedFiles.map((filePath) => [filePath]);
-    const rescueOutcome = await runBatchPass(MIN_SCAN_CONCURRENCY, rescueBatches, undefined);
-    diagnostics.push(...rescueOutcome.diagnostics);
-    const rescuedFiles = new Set(outcome.oomDroppedFiles);
-    for (const stillFailingFile of [
-      ...rescueOutcome.droppedFiles,
-      ...rescueOutcome.deadlineSkippedFiles,
-    ]) {
-      rescuedFiles.delete(stillFailingFile);
+    rescueDeadlineEpochMs = Date.now() + OXLINT_OOM_RESCUE_BUDGET_MS;
+    // The rescue is strictly best-effort: it replays files that already
+    // crashed oxlint once, so a second, non-splittable failure mode
+    // (spawn error, garbled output) is realistic. Falling back to the
+    // completed main-pass outcome preserves the pre-rescue worst case —
+    // partial results plus a warning — instead of discarding the scan.
+    let rescueOutcome: BatchPassOutcome | null = null;
+    try {
+      rescueOutcome = await runBatchPass(MIN_SCAN_CONCURRENCY, rescueBatches, undefined);
+    } catch {
+      rescueOutcome = null;
+    } finally {
+      rescueDeadlineEpochMs = undefined;
     }
-    droppedFiles = droppedFiles.filter((filePath) => !rescuedFiles.has(filePath));
-    if (droppedFiles.length === 0) firstDropReason = null;
-    else if (rescueOutcome.firstDropReason !== null) {
-      firstDropReason = rescueOutcome.firstDropReason;
+    if (rescueOutcome !== null) {
+      diagnostics.push(...rescueOutcome.diagnostics);
+      const rescuedFiles = new Set(outcome.oomDroppedFiles);
+      for (const stillFailingFile of [
+        ...rescueOutcome.droppedFiles,
+        ...rescueOutcome.deadlineSkippedFiles,
+      ]) {
+        rescuedFiles.delete(stillFailingFile);
+      }
+      droppedFiles = droppedFiles.filter((filePath) => !rescuedFiles.has(filePath));
+      // Reattribute the "first failure" hint: once the OOM drops are rescued,
+      // pointing the report at the (cleared) OOM would name a failure class
+      // that no longer applies to any remaining dropped file.
+      if (droppedFiles.length === 0) firstDropReason = null;
+      else {
+        firstDropReason =
+          rescueOutcome.firstDropReason ?? outcome.firstNonOomDropReason ?? firstDropReason;
+      }
     }
   }
 

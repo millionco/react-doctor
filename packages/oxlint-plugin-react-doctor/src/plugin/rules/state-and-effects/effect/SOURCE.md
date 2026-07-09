@@ -71,14 +71,16 @@ builds one lazily per `Program` with `eslint-scope` in
   upstream invalid cases this flips ("From props via callback setter"
   in `no-derived-state.json`, "Value-less useState" in `syntax.json`)
   are marked `todo: true` in the parity fixtures.
-- **`no-adjust-state-on-prop-change` severity + message** — upstream
-  ships this rule as `type: "suggestion"` with softened "Avoid …
-  Instead …" copy. We promote it to `severity: "error"` (the pattern
-  always causes an extra render with a stale UI between the two
-  commits — there is no benign instance) and rewrite the message in
-  the authoritative "what's wrong → why → fix" shape used by the rest
-  of the error-level effect rules in this folder. Detector behavior
-  is unchanged; only the diagnostic copy and severity diverge.
+- **`no-adjust-state-on-prop-change` message** — upstream ships this
+  rule as `type: "suggestion"` with softened "Avoid … Instead …" copy.
+  We rewrite the message in the authoritative "what's wrong → why →
+  fix" shape used by the error-level effect rules in this folder.
+  Detector behavior is unchanged; only the diagnostic copy diverges.
+  Severity is `warn`, matching the rest of the derived-state family
+  (the rule co-fires with `no-derived-state` et al. on the same effect
+  and shares their false-positive mode on non-derivable interactive /
+  env / draft / handshake state; it was briefly promoted to `error`
+  before the corpus audit demoted it back).
 - **Externally-driven / non-render-knowable state suppression** — the
   whole "you might not need an effect" premise assumes a `useState`
   value is written from a React event handler, so the work can be

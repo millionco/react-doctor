@@ -585,16 +585,18 @@ describe.skipIf(!hasBuiltCli)("built CLI subprocess visual smoke", () => {
   let fixtureDirectory: string;
 
   beforeAll(() => {
+    // A conditional hook call — `rules-of-hooks` fires at error severity,
+    // which is what drives the top-errors block below.
     fixtureDirectory = setupReactProject(tempRoot, "subprocess-fixture", {
       files: {
         "src/counter.tsx": [
-          "import { useState, useEffect } from 'react';",
+          "import { useState } from 'react';",
           "export const Counter = ({ value }: { value: number }) => {",
-          "  const [count, setCount] = useState(0);",
-          "  useEffect(() => {",
-          "    setCount(0);",
-          "  }, [value]);",
-          "  return <span>{count}</span>;",
+          "  if (value > 0) {",
+          "    const [count] = useState(value);",
+          "    return <span>{count}</span>;",
+          "  }",
+          "  return <span>0</span>;",
           "};",
           "",
         ].join("\n"),
@@ -612,10 +614,10 @@ describe.skipIf(!hasBuiltCli)("built CLI subprocess visual smoke", () => {
     expect(stdout).toContain("React Doctor");
     expect(stdout).toContain("error you should fix");
     // The top-error headline shows the rule's human title (not the id).
-    expect(stdout).toContain("State synced to a prop inside an effect");
+    expect(stdout).toContain("Hook called conditionally");
     // The inline code frame is rendered from the actual fixture file.
-    expect(stdout).toContain("src/counter.tsx:5");
-    expect(stdout).toContain("setCount(0)");
+    expect(stdout).toContain("src/counter.tsx:4");
+    expect(stdout).toContain("useState(value)");
   }, 60_000);
 
   it("renders the structured visual region without overflowing a 120-column terminal", async () => {

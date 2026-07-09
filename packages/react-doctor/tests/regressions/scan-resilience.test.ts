@@ -520,14 +520,15 @@ describe("issue #141: oxlint config must not reference unloaded plugins", () => 
       project: buildTestProject({ rootDirectory: "/tmp/test" }),
     });
 
-    // `no-adjust-state-on-prop-change` is intentionally promoted to
-    // `error` — the pattern always causes an extra render with a stale
-    // UI between commits, there is no benign instance. See SOURCE.md.
+    // The whole derived-state family ships at `warn` — including
+    // `no-adjust-state-on-prop-change`, which was briefly promoted to
+    // `error` before the corpus audit demoted it back to match the
+    // family it co-fires with. See SOURCE.md.
     const portedRuleSeverity: Record<string, "warn" | "error"> = {
       "no-derived-state": "warn",
       "no-chain-state-updates": "warn",
       "no-event-handler": "warn",
-      "no-adjust-state-on-prop-change": "error",
+      "no-adjust-state-on-prop-change": "warn",
       "no-reset-all-state-on-prop-change": "warn",
       "no-pass-live-state-to-parent": "warn",
       "no-pass-data-to-parent": "warn",

@@ -353,39 +353,45 @@ export const spawnLintBatches = async (input: SpawnLintBatchesInput): Promise<Di
     effectiveConcurrency > MIN_SCAN_CONCURRENCY &&
     !isPastDeadline()
   ) {
-    const rescueBatches = outcome.oomDroppedFiles.map((filePath) => [filePath]);
     rescueDeadlineEpochMs = Date.now() + OXLINT_OOM_RESCUE_BUDGET_MS;
-    // The rescue is strictly best-effort: it replays files that already
-    // crashed oxlint once, so a second, non-splittable failure mode
-    // (spawn error, garbled output) is realistic. Falling back to the
-    // completed main-pass outcome preserves the pre-rescue worst case —
-    // partial results plus a warning — instead of discarding the scan.
-    let rescueOutcome: BatchPassOutcome | null = null;
-    try {
-      rescueOutcome = await runBatchPass(MIN_SCAN_CONCURRENCY, rescueBatches, undefined);
-    } catch {
-      rescueOutcome = null;
-    } finally {
-      rescueDeadlineEpochMs = undefined;
+    // The rescue is strictly additive: it replays files that already crashed
+    // oxlint once, so a second, non-splittable failure mode (spawn error,
+    // garbled output) is realistic. Each file replays in its own single-file
+    // pass with its own recovery, so one file's rescue failure leaves just
+    // that file dropped (with its reason) while the completed main pass AND
+    // every rescue that already succeeded are kept — a rescue can only ever
+    // improve on the pre-rescue outcome of partial results plus a warning.
+    const rescuedFiles = new Set<string>();
+    let firstRescueFailureReason: string | null = null;
+    for (const oomDroppedFile of outcome.oomDroppedFiles) {
+      if (isPastDeadline()) break;
+      try {
+        const rescueOutcome = await runBatchPass(
+          MIN_SCAN_CONCURRENCY,
+          [[oomDroppedFile]],
+          undefined,
+        );
+        diagnostics.push(...rescueOutcome.diagnostics);
+        const didFileStillFail =
+          rescueOutcome.droppedFiles.length > 0 || rescueOutcome.deadlineSkippedFiles.length > 0;
+        if (didFileStillFail) {
+          firstRescueFailureReason ??= rescueOutcome.firstDropReason;
+        } else {
+          rescuedFiles.add(oomDroppedFile);
+        }
+      } catch (error) {
+        firstRescueFailureReason ??= error instanceof Error ? error.message : String(error);
+      }
     }
-    if (rescueOutcome !== null) {
-      diagnostics.push(...rescueOutcome.diagnostics);
-      const rescuedFiles = new Set(outcome.oomDroppedFiles);
-      for (const stillFailingFile of [
-        ...rescueOutcome.droppedFiles,
-        ...rescueOutcome.deadlineSkippedFiles,
-      ]) {
-        rescuedFiles.delete(stillFailingFile);
-      }
-      droppedFiles = droppedFiles.filter((filePath) => !rescuedFiles.has(filePath));
-      // Reattribute the "first failure" hint: once the OOM drops are rescued,
-      // pointing the report at the (cleared) OOM would name a failure class
-      // that no longer applies to any remaining dropped file.
-      if (droppedFiles.length === 0) firstDropReason = null;
-      else {
-        firstDropReason =
-          rescueOutcome.firstDropReason ?? outcome.firstNonOomDropReason ?? firstDropReason;
-      }
+    rescueDeadlineEpochMs = undefined;
+    droppedFiles = droppedFiles.filter((filePath) => !rescuedFiles.has(filePath));
+    // Reattribute the "first failure" hint: once the OOM drops are rescued,
+    // pointing the report at the (cleared) OOM would name a failure class
+    // that no longer applies to any remaining dropped file.
+    if (droppedFiles.length === 0) firstDropReason = null;
+    else {
+      firstDropReason =
+        firstRescueFailureReason ?? outcome.firstNonOomDropReason ?? firstDropReason;
     }
   }
 

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import {
+  ABORT_EXIT_CODES,
   MILLISECONDS_PER_SECOND,
   OXLINT_OUTPUT_MAX_BYTES,
   OXLINT_SPAWN_TIMEOUT_MS as DEFAULT_OXLINT_SPAWN_TIMEOUT_MS,
@@ -18,7 +19,9 @@ const SANITIZED_ENV: NodeJS.ProcessEnv = buildOxlintChildEnv(process.env);
  * - `OxlintBatchExceeded { kind: "output-too-large" }` — stdout+stderr
  *   crossed `OXLINT_OUTPUT_MAX_BYTES`.
  * - `OxlintBatchExceeded { kind: "oom" | "killed" }` — child exited
- *   on a signal (SIGABRT → OOM, others → generic kill).
+ *   on a signal (SIGABRT → OOM, others → generic kill), or with one
+ *   of the abort exit codes Windows reports instead of a signal
+ *   (`ABORT_EXIT_CODES` → OOM).
  * - `OxlintSpawnFailed { cause }` — `spawn` itself errored, or the
  *   child exited successfully but printed only stderr.
  *
@@ -122,7 +125,7 @@ export const spawnOxlint = (
       clearAbortListener();
       reject(new ReactDoctorError({ reason: new OxlintSpawnFailed({ cause: error }) }));
     });
-    child.on("close", (_code, signal) => {
+    child.on("close", (code, signal) => {
       clearTimeout(timeoutHandle);
       clearAbortListener();
       if (didKillForSize) {
@@ -136,10 +139,17 @@ export const spawnOxlint = (
         );
         return;
       }
-      if (signal) {
+      // Windows has no POSIX signals: an aborting child (the native binding
+      // panicking under memory pressure) reports `signal: null` plus a
+      // well-known abort exit code, so those exits are folded into the same
+      // OOM class a POSIX SIGABRT produces.
+      const isAbortExitCode = code !== null && ABORT_EXIT_CODES.has(code);
+      if (signal || isAbortExitCode) {
         const stderrOutput = Buffer.concat(stderrBuffers).toString("utf-8").trim();
-        const isOom = signal === "SIGABRT";
-        const detailParts: string[] = [`killed by ${signal}`];
+        const isOom = signal === "SIGABRT" || isAbortExitCode;
+        const detailParts: string[] = [
+          signal ? `killed by ${signal}` : `aborted with exit code ${code}`,
+        ];
         if (isOom) detailParts.push("try scanning fewer files with --diff");
         if (stderrOutput) detailParts.push(stderrOutput);
         reject(

@@ -301,8 +301,10 @@ export function alpha(items: string[]) {
       expect(report.diff?.improvedCount).toBe(0);
       expect(report.diff?.netCyclomaticChange).toBe(0);
       expect(report.diff?.netCognitiveChange).toBeGreaterThan(0);
-      expect(report.diff?.functions[0]?.cyclomaticDelta).toBe(0);
-      expect(report.diff?.functions[0]?.cognitiveDelta).toBeGreaterThan(0);
+      const cognitiveOnlyFunction = report.diff?.functions.find(
+        (functionEntry) => functionEntry.cyclomaticDelta === 0 && functionEntry.cognitiveDelta > 0,
+      );
+      expect(cognitiveOnlyFunction?.cognitiveDelta).toBeGreaterThan(0);
       expect(renderComplexityReport(report)).toContain("regressed 1");
     } finally {
       rmSync(repositoryDirectory, { recursive: true, force: true });
@@ -444,6 +446,96 @@ export function alpha(value: number) {
       expect(headCommit).toHaveLength(40);
     } finally {
       rmSync(repositoryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("includes formatting-only changes and diff entropy in the summary", async () => {
+    const repositoryDirectory = createTempGitRepository();
+    try {
+      writeRepositoryFile(
+        repositoryDirectory,
+        "src/example.ts",
+        `
+export function formatOnly(value: number) { return value + 1; }
+
+export function structural(value: number) {
+  return value;
+}
+
+export function secondaryStructural(value: number) {
+  return value;
+}
+`,
+      );
+      const baseCommit = commitRepositoryState(repositoryDirectory, "base");
+
+      writeRepositoryFile(
+        repositoryDirectory,
+        "src/example.ts",
+        `
+export function formatOnly(value: number) {
+  return value + 1;
+}
+
+export function structural(value: number) {
+  if (value > 0) {
+    return value;
+  }
+  return 0;
+}
+
+export function secondaryStructural(value: number) {
+  if (value > 1) {
+    return value;
+  }
+  return 0;
+}
+`,
+      );
+
+      const report = await buildComplexityReport({
+        directory: repositoryDirectory,
+        diffRef: baseCommit,
+        top: 20,
+        minCyclomatic: 1,
+        sortMetric: "cyclomatic",
+      });
+
+      expect(report.mode).toBe("diff");
+      expect(report.diff?.computed).toBe(true);
+      expect(report.diff?.functions).toHaveLength(4);
+
+      const formatOnly = report.diff?.functions.find(
+        (functionEntry) => functionEntry.name === "formatOnly",
+      );
+      const structural = report.diff?.functions.find(
+        (functionEntry) => functionEntry.name === "structural",
+      );
+      const secondaryStructural = report.diff?.functions.find(
+        (functionEntry) => functionEntry.name === "secondaryStructural",
+      );
+
+      expect(formatOnly).toMatchObject({
+        essentialChange: 0,
+        rawLinesChanged: expect.any(Number),
+        bloatRatio: expect.any(Number),
+      });
+      expect(formatOnly?.rawLinesChanged).toBeGreaterThan(0);
+      expect(formatOnly?.bloatRatio).toBeGreaterThan(0);
+      expect(structural?.essentialChange).toBeGreaterThan(0);
+      expect(secondaryStructural?.essentialChange).toBeGreaterThan(0);
+      expect(report.diff?.totalEssentialChange).toBeGreaterThan(0);
+      expect(report.diff?.changeEntropy).toBeGreaterThan(0);
+      expect(report.diff?.normalizedChangeEntropy).toBeGreaterThanOrEqual(0);
+      expect(report.diff?.changeComplexityScore).toBeGreaterThan(
+        report.diff?.totalEssentialChange ?? 0,
+      );
+      expect(stripAnsi(renderComplexityReport(report))).toContain(
+        "change complexity total essential",
+      );
+      expect(stripAnsi(renderComplexityReport(report))).toContain("raw lines");
+    } finally {
+      rmSync(repositoryDirectory, { recursive: true });
     }
   });
 

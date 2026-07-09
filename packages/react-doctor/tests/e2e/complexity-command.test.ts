@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import os from "node:os";
@@ -131,6 +132,94 @@ describe.skipIf(!hasBuiltCli)("complexity command", () => {
       mode: "full",
       directory: projectDirectory,
     });
+  }, 60_000);
+
+  it("renders change complexity details in diff mode", async () => {
+    const projectDirectory = fs.mkdtempSync(path.join(tempRoot, "complexity-diff-"));
+    try {
+      execFileSync("git", ["init"], { cwd: projectDirectory, stdio: "ignore" });
+      execFileSync("git", ["config", "user.email", "test@example.com"], {
+        cwd: projectDirectory,
+        stdio: "ignore",
+      });
+      execFileSync("git", ["config", "user.name", "Test User"], {
+        cwd: projectDirectory,
+        stdio: "ignore",
+      });
+      fs.mkdirSync(path.join(projectDirectory, "src"), { recursive: true });
+      fs.writeFileSync(
+        path.join(projectDirectory, "src/complexity.ts"),
+        `export function formatOnly(value: number) { return value + 1; }
+
+export function structural(value: number) {
+  return value;
+}
+
+export function secondaryStructural(value: number) {
+  return value;
+}
+`,
+      );
+      execFileSync("git", ["add", "."], { cwd: projectDirectory, stdio: "ignore" });
+      execFileSync("git", ["commit", "-m", "base", "--quiet"], {
+        cwd: projectDirectory,
+        stdio: "ignore",
+      });
+      fs.writeFileSync(
+        path.join(projectDirectory, "src/complexity.ts"),
+        `export function formatOnly(value: number) {
+  return value + 1;
+}
+
+export function structural(value: number) {
+  if (value > 0) {
+    return value;
+  }
+  return 0;
+}
+
+export function secondaryStructural(value: number) {
+  if (value > 1) {
+    return value;
+  }
+  return 0;
+}
+`,
+      );
+      execFileSync("git", ["add", "."], { cwd: projectDirectory, stdio: "ignore" });
+      execFileSync("git", ["commit", "-m", "head", "--quiet"], {
+        cwd: projectDirectory,
+        stdio: "ignore",
+      });
+
+      const diffJsonRun = await runCli(
+        ["complexity", projectDirectory, "--diff", "HEAD~1", "--json"],
+        projectDirectory,
+      );
+      expect(diffJsonRun.exitCode).toBe(0);
+      const diffJson = JSON.parse(diffJsonRun.stdout);
+      expect(diffJson).toMatchObject({
+        mode: "diff",
+        diff: {
+          computed: true,
+        },
+      });
+      expect(diffJson.diff.totalEssentialChange).toBeGreaterThan(0);
+      expect(diffJson.diff.changeEntropy).toBeGreaterThan(0);
+      expect(
+        diffJson.functions.some((entry: { name: string }) => entry.name === "formatOnly"),
+      ).toBe(true);
+
+      const diffRenderRun = await runCli(
+        ["complexity", projectDirectory, "--diff", "HEAD~1"],
+        projectDirectory,
+      );
+      expect(diffRenderRun.exitCode).toBe(0);
+      expect(diffRenderRun.stdout).toContain("change complexity total essential");
+      expect(diffRenderRun.stdout).toContain("raw lines");
+    } finally {
+      fs.rmSync(projectDirectory, { recursive: true, force: true });
+    }
   }, 60_000);
 
   it("keeps the default inspect command working with root options", async () => {

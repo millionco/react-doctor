@@ -60,12 +60,13 @@ Use `--no-score` to skip the score API and the share URL. Runs with scoring disa
 npx react-doctor@latest --no-score
 ```
 
-Use `complexity` to rank the most complex functions in a directory, or compare against a base ref:
+Use `complexity` to rank the most complex functions in a directory, or compare against a base ref. Diff mode also includes a change-complexity breakdown with essential change, raw line churn, bloat ratio, nesting delta, and entropy:
 
 ```bash
 npx react-doctor@latest complexity
 npx react-doctor@latest complexity --sort cognitive
 npx react-doctor@latest complexity --diff main
+npx react-doctor@latest complexity --diff main~2
 npx react-doctor@latest complexity --json
 ```
 

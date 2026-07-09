@@ -139,12 +139,15 @@ ${formatExampleLines([
     "rank by cognitive complexity instead of cyclomatic",
   ],
   ["react-doctor complexity --top 10", "show only the worst 10 functions"],
-  ["react-doctor complexity --diff main", "compare complexity against a base ref"],
+  [
+    "react-doctor complexity --diff main~2",
+    "compare complexity against a base ref with change-complexity breakdown",
+  ],
   ["react-doctor complexity --json > complexity.json", "write a machine-readable report"],
 ])}
 
 ${highlighter.dim("Flags:")}
-  ${highlighter.info("--diff <ref>")} compare against a base git ref.
+  ${highlighter.info("--diff <ref>")} compare against a base git ref and report essential-change breakdown.
   ${highlighter.info("--sort <metric>")} rank by ${highlighter.info("cyclomatic")} or ${highlighter.info("cognitive")}.
   ${highlighter.info("--top <n>")} cap the visible rows in the terminal output.
   ${highlighter.info("--min <n>")} hide functions below a cyclomatic threshold.

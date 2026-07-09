@@ -1,12 +1,18 @@
-import { getFunctionBindingName } from "../utils/get-function-binding-name.js";
 import type { EsTreeNode } from "../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../utils/es-tree-node-of-type.js";
-import type { BasicBlock, FunctionCfg } from "./control-flow-graph.js";
 import { isAstNode } from "../utils/is-ast-node.js";
 import { isFunctionLike } from "../utils/is-function-like.js";
 import { isNodeOfType } from "../utils/is-node-of-type.js";
-import { isReactComponentOrHookName } from "../utils/is-react-component-or-hook-name.js";
-import { createSourcePositionResolver } from "../utils/create-source-position-resolver.js";
+import type { BasicBlock, FunctionCfg } from "./control-flow-graph.js";
+import {
+  collectFunctionNodes,
+  createComplexityPositionResolver,
+  getFunctionKind,
+  getFunctionName,
+  getNodeStartOffset,
+  visitChildren,
+  walkAllNodes,
+} from "./complexity-helpers.js";
 import { analyzeControlFlow } from "./control-flow-graph.js";
 
 export interface FunctionComplexity {
@@ -35,85 +41,7 @@ interface ComplexityTotals {
   maxNestingDepth: number;
 }
 
-interface NodeWithStartOffset {
-  readonly start?: number;
-}
-
 const MODULE_NAME = "<module>";
-
-const getNodeStartOffset = (node: EsTreeNode): number | undefined => {
-  const nodeWithStartOffset = node as NodeWithStartOffset;
-  return typeof nodeWithStartOffset.start === "number" ? nodeWithStartOffset.start : undefined;
-};
-
-const getKeyName = (node: EsTreeNode): string | null => {
-  if (
-    (isNodeOfType(node, "Property") ||
-      isNodeOfType(node, "MethodDefinition") ||
-      isNodeOfType(node, "PropertyDefinition")) &&
-    node.key
-  ) {
-    if (isNodeOfType(node.key, "Identifier")) return node.key.name;
-    if (isNodeOfType(node.key, "Literal")) return String(node.key.value);
-  }
-  return null;
-};
-
-const getAssignmentTargetName = (assignment: EsTreeNode): string | null => {
-  if (!isNodeOfType(assignment, "AssignmentExpression")) return null;
-  const left = assignment.left;
-  if (isNodeOfType(left, "Identifier")) return left.name;
-  if (isNodeOfType(left, "MemberExpression")) {
-    if (!left.computed && isNodeOfType(left.property, "Identifier")) return left.property.name;
-    if (isNodeOfType(left.property, "Literal")) return String(left.property.value);
-  }
-  return null;
-};
-
-const isSupportedLogicalOperator = (operator: string): operator is "&&" | "||" =>
-  operator === "&&" || operator === "||";
-
-const getFunctionName = (node: EsTreeNode): string => {
-  if (isNodeOfType(node, "FunctionDeclaration") && isNodeOfType(node.id, "Identifier")) {
-    return node.id.name;
-  }
-
-  const bindingName = getFunctionBindingName(node);
-  if (bindingName) return bindingName;
-
-  const parent = node.parent;
-  if (
-    parent &&
-    (isNodeOfType(parent, "Property") ||
-      isNodeOfType(parent, "MethodDefinition") ||
-      isNodeOfType(parent, "PropertyDefinition"))
-  ) {
-    const propertyName = getKeyName(parent);
-    if (propertyName) return propertyName;
-  }
-
-  const assignmentName = parent ? getAssignmentTargetName(parent) : null;
-  if (assignmentName) return assignmentName;
-
-  return "<anonymous>";
-};
-
-const isMethodFunction = (node: EsTreeNode): boolean => {
-  const parent = node.parent;
-  if (isNodeOfType(parent, "MethodDefinition")) return true;
-  if (!isNodeOfType(parent, "Property")) return false;
-  return parent.method === true;
-};
-
-const getFunctionKind = (node: EsTreeNode, name: string): FunctionComplexity["kind"] => {
-  if (name === MODULE_NAME) return "module";
-  if (isReactComponentOrHookName(name)) {
-    return name.startsWith("use") ? "hook" : "component";
-  }
-  if (isMethodFunction(node)) return "method";
-  if (isNodeOfType(node, "ArrowFunctionExpression")) return "arrow";
-  return "function";
-};
 
 const collectReachableBlocks = (entryBlock: BasicBlock): Set<BasicBlock> => {
   const reachableBlocks = new Set<BasicBlock>();
@@ -176,26 +104,8 @@ const calculateCyclomatic = (
   };
 };
 
-const visitChildren = (node: EsTreeNode, visitor: (child: EsTreeNode) => void): void => {
-  const record = node as unknown as Record<string, unknown>;
-  for (const key of Object.keys(record)) {
-    if (key === "parent") continue;
-    const child = record[key];
-    if (Array.isArray(child)) {
-      for (const item of child) {
-        if (isAstNode(item)) visitor(item);
-      }
-    } else if (isAstNode(child)) {
-      visitor(child);
-    }
-  }
-};
-
-const walkAllNodes = (node: EsTreeNode, visitor: (child: EsTreeNode) => boolean | void): void => {
-  const shouldDescend = visitor(node);
-  if (shouldDescend === false) return;
-  visitChildren(node, (child) => walkAllNodes(child, visitor));
-};
+const isSupportedLogicalOperator = (operator: string): operator is "&&" | "||" =>
+  operator === "&&" || operator === "||";
 
 const countDecisionPoints = (root: EsTreeNode): number => {
   let total = 0;
@@ -296,19 +206,19 @@ const measureCognitive = (root: EsTreeNode): ComplexityTotals => {
     if (isNodeOfType(node, "ForStatement")) {
       totals.cognitive += 1 + nestingDepth;
       totals.maxNestingDepth = updateMaxDepth(totals.maxNestingDepth, nestingDepth + 1);
-      if (node.init) visit(node.init as EsTreeNode, nestingDepth);
-      if (node.test) visit(node.test as EsTreeNode, nestingDepth);
-      if (node.update) visit(node.update as EsTreeNode, nestingDepth);
-      visit(node.body as EsTreeNode, nestingDepth + 1);
+      if (node.init) visit(node.init, nestingDepth);
+      if (node.test) visit(node.test, nestingDepth);
+      if (node.update) visit(node.update, nestingDepth);
+      visit(node.body, nestingDepth + 1);
       return;
     }
 
     if (isNodeOfType(node, "ForInStatement") || isNodeOfType(node, "ForOfStatement")) {
       totals.cognitive += 1 + nestingDepth;
       totals.maxNestingDepth = updateMaxDepth(totals.maxNestingDepth, nestingDepth + 1);
-      visit(node.left as EsTreeNode, nestingDepth);
-      visit(node.right as EsTreeNode, nestingDepth);
-      visit(node.body as EsTreeNode, nestingDepth + 1);
+      visit(node.left, nestingDepth);
+      visit(node.right, nestingDepth);
+      visit(node.body, nestingDepth + 1);
       return;
     }
 
@@ -317,9 +227,9 @@ const measureCognitive = (root: EsTreeNode): ComplexityTotals => {
       totals.maxNestingDepth = updateMaxDepth(totals.maxNestingDepth, nestingDepth + 1);
       if (isNodeOfType(node, "WhileStatement")) {
         visit(node.test, nestingDepth);
-        visit(node.body as EsTreeNode, nestingDepth + 1);
+        visit(node.body, nestingDepth + 1);
       } else {
-        visit(node.body as EsTreeNode, nestingDepth + 1);
+        visit(node.body, nestingDepth + 1);
         visit(node.test, nestingDepth);
       }
       return;
@@ -388,14 +298,6 @@ const measureCognitive = (root: EsTreeNode): ComplexityTotals => {
   return totals;
 };
 
-const collectFunctionNodes = (root: EsTreeNode): EsTreeNode[] => {
-  const functionNodes: EsTreeNode[] = [];
-  walkAllNodes(root, (node) => {
-    if (isFunctionLike(node)) functionNodes.push(node);
-  });
-  return functionNodes;
-};
-
 const buildFunctionComplexity = (
   root: EsTreeNode,
   functionNode: EsTreeNode,
@@ -432,7 +334,7 @@ const buildFunctionComplexity = (
 };
 
 export const analyzeComplexity = (program: EsTreeNode, sourceText: string): FileComplexity => {
-  const resolvePosition = createSourcePositionResolver(sourceText).resolve;
+  const resolvePosition = createComplexityPositionResolver(sourceText);
   const cfgAnalysis = analyzeControlFlow(program);
   const functions = [program, ...collectFunctionNodes(program)].map((functionNode) =>
     buildFunctionComplexity(program, functionNode, cfgAnalysis, resolvePosition),

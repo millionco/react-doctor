@@ -51,12 +51,13 @@ This adds the workflow, scans every pull request, and posts a summary comment. C
 
 ### 4. Rank function complexity
 
-Use the standalone `complexity` command to rank the most complex functions in a directory, or compare against a base ref:
+Use the standalone `complexity` command to rank the most complex functions in a directory, or compare against a base ref. Diff mode also includes a change-complexity breakdown with essential change, raw line churn, bloat ratio, nesting delta, and entropy:
 
 ```bash
 npx react-doctor@latest complexity
 npx react-doctor@latest complexity --sort cognitive
 npx react-doctor@latest complexity --diff main
+npx react-doctor@latest complexity --diff main~2
 npx react-doctor@latest complexity --json
 ```
 

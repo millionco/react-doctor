@@ -448,6 +448,172 @@ export const StoreBridge = ({ store }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("flags a `{ once: false }` listener registered in a handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const KeyTracker = () => {
+  const armListener = () => {
+    window.addEventListener("keydown", (event) => track(event.key), { once: false });
+  };
+  return <button onClick={armListener}>arm</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("addEventListener");
+  });
+
+  it("flags a listener whose `once` option is a variable (may be false)", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const KeyTracker = ({ shouldFireOnce }) => {
+  const armListener = () => {
+    window.addEventListener("keydown", (event) => track(event.key), { once: shouldFireOnce });
+  };
+  return <button onClick={armListener}>arm</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a listener released through an abort `{ signal }` option", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const KeyTracker = ({ controller }) => {
+  const armListener = () => {
+    window.addEventListener("keydown", (event) => track(event.key), { signal: controller.signal });
+  };
+  return <button onClick={armListener}>arm</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a handler listener even when the same handler closes an unrelated resource", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Recorder = ({ stream }) => {
+  const armListener = () => {
+    stream.close();
+    window.addEventListener("keydown", (event) => track(event.key));
+  };
+  return <button onClick={armListener}>arm</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("addEventListener");
+  });
+
+  it("flags a discarded setInterval even when the same handler closes a connection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Reconnector = ({ socket }) => {
+  const restart = () => {
+    socket.close();
+    setInterval(() => tick(), 1000);
+  };
+  return <button onClick={restart}>restart</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("setInterval");
+  });
+
+  it("does not flag a discarded setInterval in a handler that also clears an interval", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Ticker = ({ tickIdRef }) => {
+  const restart = () => {
+    clearInterval(tickIdRef.current);
+    setInterval(() => tick(), 1000);
+  };
+  return <button onClick={restart}>restart</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a WebSocket constructed as a concise useCallback body", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const LiveFeed = ({ url }) => {
+  const connect = useCallback(() => new WebSocket(url), [url]);
+  return <button onClick={connect}>connect</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("WebSocket");
+  });
+
+  it("flags an EventSource constructed as a concise component-scope handler body", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const ServerEvents = ({ url }) => {
+  const connect = () => new EventSource(url);
+  return <button onClick={connect}>connect</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("EventSource");
+  });
+
+  it("does not flag a concise-body socket whose handle is stored in a ref", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback, useRef } from "react";
+export const LiveFeed = ({ url }) => {
+  const socketRef = useRef(null);
+  const connect = useCallback(() => (socketRef.current = new WebSocket(url)), [url]);
+  return <button onClick={connect}>connect</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not attribute a setInterval inside a nested inner callback to the retained handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const Chart = ({ node }) => {
+  const draw = useCallback(() => {
+    render(node, {
+      onFrame: () => {
+        setInterval(() => tick(), 1000);
+      },
+    });
+  }, [node]);
+  return <button onClick={draw}>draw</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("still flags a direct leak in a handler that also defines a nested inner function", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Poller = () => {
+  const startPolling = () => {
+    const format = (value) => String(value);
+    setInterval(() => poll(format), 1000);
+  };
+  return <button onClick={startPolling}>start</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("setInterval");
+  });
+
   it("still flags an HTTP `server.listen(port)` whose returned server is returned from the effect", () => {
     const result = runRule(
       effectNeedsCleanup,

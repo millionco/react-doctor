@@ -17,11 +17,11 @@ import {
   isSubscribeLikeCallExpression,
 } from "./utils/is-subscribe-like-call-expression.js";
 import {
-  containsReleaseLikeCall,
   isCleanupFunctionLike,
   isCleanupReturn,
   isReleaseLikeCall,
 } from "./utils/is-cleanup-return.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 
@@ -271,24 +271,29 @@ const effectHasCleanupReturn = (
 // scope — leaks exactly like one created in an effect, but no effect
 // cleanup return can ever release it. The firing policy here is much
 // stricter than the effect policy to stay precise:
-//   - `setInterval` with a DISCARDED id: unclearable, always a leak.
-//   - a discarded `new WebSocket(...)` / `new EventSource(...)`:
-//     the connection opens at construction and the handle is gone.
+//   - `setInterval` with a DISCARDED id: a leak unless the same handler
+//     also clears an interval (start/stop pairs manage their own ids).
+//   - a discarded `new WebSocket(...)` / `new EventSource(...)`: the
+//     connection opens at construction and the handle is gone, unless
+//     the same handler also closes a connection (reconnect shape).
 //   - a discarded subscribe/observe registration, but only when the
-//     whole file contains no release-shaped call at all (a matching
-//     `removeEventListener` / `disconnect` / `unsubscribe` elsewhere
-//     means the component manages the lifecycle across functions).
+//     whole file contains no PAIRED release for that registration verb
+//     (a `removeEventListener` elsewhere means the component manages a
+//     listener's lifecycle across functions; an unrelated
+//     `stream.close()` releases no listener and must not hide one).
+// Nested functions are separate scopes: a leak inside an inner callback
+// or a nested `useEffect` belongs to that function's own analysis, not
+// to the retained handler that happens to enclose it.
 // `setTimeout` is deliberately exempt on this path: a one-shot timer
 // in a handler (debounce, toast dismiss) is idiomatic, self-clearing
 // fire-and-forget.
 
 const EMPTY_NAME_SET: ReadonlySet<string> = new Set();
 
-const isDiscardedConstruction = (node: EsTreeNode): boolean =>
-  isNodeOfType(node.parent, "ExpressionStatement");
-
 // `addEventListener(name, handler, { once: true })` self-releases and
 // `{ signal }` delegates release to an AbortController — neither leaks.
+// `once` must be literally `true`: `{ once: false }` — or a value that
+// may be false — keeps the listener registered.
 const hasSelfReleasingListenerOptions = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "CallExpression") &&
   (node.arguments ?? []).some(
@@ -298,48 +303,123 @@ const hasSelfReleasingListenerOptions = (node: EsTreeNode): boolean =>
         (property) =>
           isNodeOfType(property, "Property") &&
           isNodeOfType(property.key, "Identifier") &&
-          (property.key.name === "once" || property.key.name === "signal"),
+          (property.key.name === "signal" ||
+            (property.key.name === "once" &&
+              isNodeOfType(property.value, "Literal") &&
+              property.value.value === true)),
       ),
   );
 
-const fileReleaseScanCache = new WeakMap<EsTreeNode, boolean>();
+// A release call only counts against a leak when its verb can plausibly
+// release that resource. `on` pairs with `.on(name, null)` (d3-style
+// removal), which `isReleaseLikeCall` already recognizes.
+const PAIRED_RELEASE_VERB_NAMES_BY_REGISTRATION_VERB: ReadonlyMap<
+  string,
+  ReadonlySet<string>
+> = new Map([
+  ["addEventListener", new Set(["removeEventListener", "abort"])],
+  ["addListener", new Set(["removeListener", "off", "abort"])],
+  ["on", new Set(["off", "removeListener", "on"])],
+  ["subscribe", new Set(["unsubscribe", "unsub"])],
+  ["sub", new Set(["unsub", "unsubscribe"])],
+  ["watch", new Set(["unwatch", "close"])],
+  ["listen", new Set(["unlisten", "close"])],
+  [OBSERVER_REGISTRATION_METHOD_NAME, new Set(["disconnect", "unobserve"])],
+]);
 
-const fileContainsReleaseLikeCall = (anyNode: EsTreeNode): boolean => {
-  let programNode: EsTreeNode = anyNode;
-  while (programNode.parent) programNode = programNode.parent;
-  const cached = fileReleaseScanCache.get(programNode);
-  if (cached !== undefined) return cached;
-  let didFindRelease = false;
-  walkAst(programNode, (child: EsTreeNode) => {
-    if (didFindRelease) return false;
-    if (isReleaseLikeCall(child, EMPTY_NAME_SET, EMPTY_NAME_SET)) {
-      didFindRelease = true;
+// Whole-lifecycle verbs that release any resource kind.
+const UNIVERSAL_RELEASE_VERB_NAMES: ReadonlySet<string> = new Set([
+  "cleanup",
+  "dispose",
+  "destroy",
+  "teardown",
+]);
+
+const SOCKET_RELEASE_VERB_NAMES: ReadonlySet<string> = new Set(["close"]);
+
+const INTERVAL_RELEASE_VERB_NAMES: ReadonlySet<string> = new Set(["clearInterval"]);
+
+const getReleaseVerbName = (node: EsTreeNode): string | null => {
+  if (!isReleaseLikeCall(node, EMPTY_NAME_SET, EMPTY_NAME_SET)) return null;
+  const callNode = isNodeOfType(node, "ChainExpression") ? node.expression : node;
+  if (!isNodeOfType(callNode, "CallExpression")) return null;
+  const callee = isNodeOfType(callNode.callee, "ChainExpression")
+    ? callNode.callee.expression
+    : callNode.callee;
+  if (isNodeOfType(callee, "Identifier")) return callee.name;
+  if (isNodeOfType(callee, "MemberExpression") && isNodeOfType(callee.property, "Identifier")) {
+    return callee.property.name;
+  }
+  return null;
+};
+
+const matchesPairedReleaseVerb = (
+  releaseVerbName: string,
+  pairedVerbNames: ReadonlySet<string>,
+): boolean =>
+  pairedVerbNames.has(releaseVerbName) || UNIVERSAL_RELEASE_VERB_NAMES.has(releaseVerbName);
+
+const bodyContainsPairedReleaseCall = (
+  body: EsTreeNode,
+  pairedVerbNames: ReadonlySet<string>,
+): boolean => {
+  let didFindPairedRelease = false;
+  walkAst(body, (child: EsTreeNode) => {
+    if (didFindPairedRelease) return false;
+    if (child !== body && isFunctionLike(child)) return false;
+    const releaseVerbName = getReleaseVerbName(child);
+    if (releaseVerbName !== null && matchesPairedReleaseVerb(releaseVerbName, pairedVerbNames)) {
+      didFindPairedRelease = true;
       return false;
     }
   });
-  fileReleaseScanCache.set(programNode, didFindRelease);
-  return didFindRelease;
+  return didFindPairedRelease;
+};
+
+const fileReleaseVerbNamesCache = new WeakMap<EsTreeNode, ReadonlySet<string>>();
+
+const collectFileReleaseVerbNames = (anyNode: EsTreeNode): ReadonlySet<string> => {
+  let programNode: EsTreeNode = anyNode;
+  while (programNode.parent) programNode = programNode.parent;
+  const cached = fileReleaseVerbNamesCache.get(programNode);
+  if (cached) return cached;
+  const releaseVerbNames = new Set<string>();
+  walkAst(programNode, (child: EsTreeNode) => {
+    const releaseVerbName = getReleaseVerbName(child);
+    if (releaseVerbName !== null) releaseVerbNames.add(releaseVerbName);
+  });
+  fileReleaseVerbNamesCache.set(programNode, releaseVerbNames);
+  return releaseVerbNames;
+};
+
+const fileContainsPairedReleaseCall = (
+  registrationCall: EsTreeNode,
+  registrationVerbName: string,
+): boolean => {
+  const fileReleaseVerbNames = collectFileReleaseVerbNames(registrationCall);
+  const pairedVerbNames = PAIRED_RELEASE_VERB_NAMES_BY_REGISTRATION_VERB.get(registrationVerbName);
+  if (!pairedVerbNames) return fileReleaseVerbNames.size > 0;
+  for (const releaseVerbName of fileReleaseVerbNames) {
+    if (matchesPairedReleaseVerb(releaseVerbName, pairedVerbNames)) return true;
+  }
+  return false;
 };
 
 const findRetainedFunctionLeak = (retainedFunction: EsTreeNode): SubscribeLikeUsage | null => {
-  if (
-    !isNodeOfType(retainedFunction, "ArrowFunctionExpression") &&
-    !isNodeOfType(retainedFunction, "FunctionExpression") &&
-    !isNodeOfType(retainedFunction, "FunctionDeclaration")
-  ) {
-    return null;
-  }
+  if (!isFunctionLike(retainedFunction)) return null;
   const body = retainedFunction.body;
   if (!body) return null;
-  // A function that also releases something manages its own resource
-  // lifecycle (toggle handlers, start/stop pairs) — leave it alone.
-  if (containsReleaseLikeCall(body, EMPTY_NAME_SET, EMPTY_NAME_SET)) return null;
 
   let leak: SubscribeLikeUsage | null = null;
   walkAst(body, (child: EsTreeNode) => {
     if (leak !== null) return false;
+    if (isFunctionLike(child)) return false;
 
-    if (isSocketConstruction(child) && isDiscardedConstruction(child)) {
+    if (
+      isSocketConstruction(child) &&
+      isResultDiscardedCall(child) &&
+      !bodyContainsPairedReleaseCall(body, SOCKET_RELEASE_VERB_NAMES)
+    ) {
       leak = {
         kind: "socket",
         node: child,
@@ -353,24 +433,25 @@ const findRetainedFunctionLeak = (retainedFunction: EsTreeNode): SubscribeLikeUs
     if (
       isNodeOfType(child.callee, "Identifier") &&
       child.callee.name === "setInterval" &&
-      isResultDiscardedCall(child)
+      isResultDiscardedCall(child) &&
+      !bodyContainsPairedReleaseCall(body, INTERVAL_RELEASE_VERB_NAMES)
     ) {
       leak = { kind: "timer", node: child, resourceName: "setInterval" };
       return false;
     }
 
-    if (
-      isSubscribeOrObserveCall(child) &&
-      isResultDiscardedCall(child) &&
-      !hasSelfReleasingListenerOptions(child) &&
-      !fileContainsReleaseLikeCall(child)
-    ) {
-      const propertyName =
+    if (isSubscribeOrObserveCall(child) && isResultDiscardedCall(child)) {
+      const registrationVerbName =
         isNodeOfType(child.callee, "MemberExpression") &&
         isNodeOfType(child.callee.property, "Identifier")
           ? child.callee.property.name
           : "subscribe";
-      leak = { kind: "subscribe", node: child, resourceName: propertyName };
+      if (
+        !hasSelfReleasingListenerOptions(child) &&
+        !fileContainsPairedReleaseCall(child, registrationVerbName)
+      ) {
+        leak = { kind: "subscribe", node: child, resourceName: registrationVerbName };
+      }
       return false;
     }
   });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { runRule } from "../../../test-utils/run-rule.js";
 import { noNestedComponentDefinition } from "./no-nested-component-definition.js";
+import { noUnstableNestedComponents } from "../react-builtins/no-unstable-nested-components.js";
 
 const run = (code: string) =>
   runRule(noNestedComponentDefinition, code, { filename: "fixture.tsx" });
@@ -9,6 +10,11 @@ const messagesOf = (result: { diagnostics: Array<{ message: string }> }) =>
   result.diagnostics.map((diagnostic) => diagnostic.message);
 
 describe("architecture/no-nested-component-definition — regressions", () => {
+  it("shares one severity with no-unstable-nested-components (same defect class)", () => {
+    expect(noNestedComponentDefinition.severity).toBe("warn");
+    expect(noNestedComponentDefinition.severity).toBe(noUnstableNestedComponents.severity);
+  });
+
   it("flags a nested component that is rendered as JSX", () => {
     const result = run(`
       const Parent = () => {

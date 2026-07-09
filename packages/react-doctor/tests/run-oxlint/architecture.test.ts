@@ -33,7 +33,8 @@ describe("runOxlint", () => {
       "no-nested-component-definition": {
         fixture: "architecture-issues.tsx",
         ruleSource: "rules/architecture.ts",
-        severity: "error",
+        // Aligned with `no-unstable-nested-components` (same defect class).
+        severity: "warning",
       },
       "no-many-boolean-props": {
         fixture: "new-rules.tsx",

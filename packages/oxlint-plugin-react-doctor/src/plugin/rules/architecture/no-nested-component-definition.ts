@@ -29,7 +29,10 @@ export const noNestedComponentDefinition = defineRule({
   id: "no-nested-component-definition",
   title: "Component defined inside another component",
   tags: ["test-noise", "react-jsx-only"],
-  severity: "error",
+  // Aligned with `no-unstable-nested-components` (react-builtins), which
+  // reports the same defect class: the two co-fire on the same nested
+  // component, and one blocking while the other warns was incoherent.
+  severity: "warn",
   category: "Correctness",
   recommendation:
     "Move it to module scope or a separate file so React does not recreate the component and erase its state on every parent render.",

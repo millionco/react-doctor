@@ -114,6 +114,20 @@ const isRouteFactoryCall = (expression: EsTreeNode): boolean => {
   return false;
 };
 
+// Every argument is a config shape (object / literal / template) — the
+// call defines something from data rather than wrapping a component, so
+// there is no component (named or not) to track. Function or identifier
+// arguments keep the anonymous-HOC treatment.
+const isConfigOnlyFactoryCall = (call: EsTreeNodeOfType<"CallExpression">): boolean =>
+  call.arguments.every((argument) => {
+    const expression = skipTsExpression(argument as EsTreeNode);
+    return (
+      isNodeOfType(expression, "ObjectExpression") ||
+      isNodeOfType(expression, "Literal") ||
+      isNodeOfType(expression, "TemplateLiteral")
+    );
+  });
+
 interface AnalyzerState {
   customHocs: ReadonlySet<string>;
   allowExportNames: ReadonlySet<string>;
@@ -613,6 +627,14 @@ export const onlyExportComponents = defineRule({
                 })();
               if (isHoc && firstArgIsValid) {
                 hasReactExport = true;
+              } else if (!isHoc && isConfigOnlyFactoryCall(stripped)) {
+                // `export default defineFrontComponent({ … })` — an unknown
+                // factory fed only config objects/literals is a library
+                // definition (SDK registrations, plugin manifests), not an
+                // unnamed component. It still counts as a non-component
+                // export so a module that ALSO exports components reports
+                // the mixed boundary.
+                exports.push({ kind: "non-component", reportNode: stripped });
               } else {
                 context.report({ node: stripped, message: ANONYMOUS_MESSAGE });
               }

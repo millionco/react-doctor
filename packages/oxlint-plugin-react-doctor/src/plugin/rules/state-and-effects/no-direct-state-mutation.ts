@@ -88,6 +88,58 @@ const initializerMarksPlainState = (initializerArgument: EsTreeNode | undefined)
   return producesPlainStateValue(unwrapped);
 };
 
+// A null/undefined/absent initializer only says "the value arrives later
+// through the setter" — WHAT arrives decides whether in-place writes are the
+// lost-update bug. When every observed setter call feeds the state an opaque
+// instance (`setGainNode(audioContext.createGain())`, `setEditor(new E())`),
+// the binding holds a third-party object whose fields are its imperative
+// API, so it must not be classified as plain React data. Only constructor
+// calls and member-method factories count as opaque evidence: a BARE helper
+// call (`setEditor(createEditor(el))`) stays unclassified so the documented
+// wangeditor-class lost-update detection keeps firing.
+const producesOpaqueInstanceValue = (expression: EsTreeNode): boolean => {
+  if (isNodeOfType(expression, "NewExpression")) return true;
+  return (
+    isNodeOfType(expression, "CallExpression") &&
+    isNodeOfType(expression.callee, "MemberExpression") &&
+    !isPlainDataProducerCall(expression)
+  );
+};
+
+interface SetterValueObservations {
+  plainFedSetterNames: ReadonlySet<string>;
+  opaqueFedSetterNames: ReadonlySet<string>;
+}
+
+const collectSetterValueObservations = (
+  componentBody: EsTreeNode,
+  setterNames: ReadonlySet<string>,
+): SetterValueObservations => {
+  const plainFedSetterNames = new Set<string>();
+  const opaqueFedSetterNames = new Set<string>();
+  walkAst(componentBody, (node: EsTreeNode): void => {
+    if (!isNodeOfType(node, "CallExpression")) return;
+    if (!isNodeOfType(node.callee, "Identifier")) return;
+    const setterName = node.callee.name;
+    if (!setterNames.has(setterName)) return;
+    const argument = node.arguments?.[0];
+    if (!argument) return;
+    const unwrapped = stripParenExpression(argument as EsTreeNode);
+    // Nullish resets (`setNode(null)`) carry no shape information, and
+    // updater functions / identifiers stay unclassified — only concrete
+    // value shapes count as evidence.
+    if (isNullOrUndefinedExpression(unwrapped)) return;
+    if (producesPlainStateValue(unwrapped)) {
+      plainFedSetterNames.add(setterName);
+      return;
+    }
+    if (producesOpaqueInstanceValue(unwrapped)) {
+      opaqueFedSetterNames.add(setterName);
+    }
+  });
+  return { plainFedSetterNames, opaqueFedSetterNames };
+};
+
 // Setter names passed straight to a JSX `ref` attribute (`ref={setNode}`) are
 // callback refs, so their paired state holds a DOM element / component
 // instance — not React render data. Writing to its fields
@@ -237,13 +289,27 @@ export const noDirectStateMutation = defineRule({
       // React-managed data — see `initializerMarksPlainState` for the exact
       // boundary between plain data and opaque third-party instances.
       const callbackRefSetterNames = collectCallbackRefSetterNames(componentBody);
+      const setterValueObservations = collectSetterValueObservations(
+        componentBody,
+        new Set(bindings.map((binding) => binding.setterName)),
+      );
       const plainObjectStateValueNames = new Set<string>();
       for (const binding of bindings) {
         if (callbackRefSetterNames.has(binding.setterName)) continue;
         if (!isNodeOfType(binding.declarator.init, "CallExpression")) continue;
-        if (initializerMarksPlainState(binding.declarator.init.arguments?.[0])) {
-          plainObjectStateValueNames.add(binding.valueName);
+        const initializerArgument = binding.declarator.init.arguments?.[0];
+        if (!initializerMarksPlainState(initializerArgument)) continue;
+        const isNullishInitializer =
+          !initializerArgument ||
+          isNullOrUndefinedExpression(stripParenExpression(initializerArgument));
+        if (
+          isNullishInitializer &&
+          setterValueObservations.opaqueFedSetterNames.has(binding.setterName) &&
+          !setterValueObservations.plainFedSetterNames.has(binding.setterName)
+        ) {
+          continue;
         }
+        plainObjectStateValueNames.add(binding.valueName);
       }
 
       const visitMutationCandidate = (

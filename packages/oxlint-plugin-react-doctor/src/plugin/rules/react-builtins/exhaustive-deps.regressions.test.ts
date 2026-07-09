@@ -1029,6 +1029,57 @@ describe("react-builtins/exhaustive-deps — upstream disable-comment suppressio
     });
   });
 
+  // The effect-event dep message only applies to React's own
+  // useEffectEvent — a same-named polyfill imported from another package
+  // (or spelled through its namespace) returns a STABLE callback, so
+  // listing it in deps is correct and must not be reported.
+  describe("useEffectEvent dep origin resolution (fuzz FP hunt)", () => {
+    it("does not flag a namespace polyfill useEffectEvent listed in deps", () => {
+      const code = `
+        import { useEffect } from "react";
+        import * as FloatingUI from "@floating-ui/react/utils";
+        export const TickPanel = ({ value }) => {
+          const onTick = FloatingUI.useEffectEvent(() => value);
+          useEffect(() => { onTick(); }, [onTick]);
+          return null;
+        };
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("does not flag a named-import polyfill useEffectEvent listed in deps", () => {
+      const code = `
+        import { useEffect } from "react";
+        import { useEffectEvent } from "@floating-ui/react/utils";
+        export const TickPanel = ({ value }) => {
+          const onTick = useEffectEvent(() => value);
+          useEffect(() => { onTick(); }, [onTick]);
+          return null;
+        };
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags React's useEffectEvent listed in deps", () => {
+      const code = `
+        import { useEffect, useEffectEvent } from "react";
+        export const TickPanel = ({ value }) => {
+          const onTick = useEffectEvent(() => value);
+          useEffect(() => { onTick(); }, [onTick]);
+          return null;
+        };
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("useEffectEvent");
+    });
+  });
+
   it("does not suppress a report on a different line than the disable comment", () => {
     const code = [
       "function MyComponent({ autoStart, other }) {",

@@ -583,6 +583,63 @@ describe("react-builtins/only-export-components — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  // `export default factory({ … })` — an unknown factory fed only config
+  // objects is a library definition (SDK registrations, route manifests),
+  // not an unnamed component (fuzz FP hunt: twenty front-components).
+  describe("config-object factory default exports", () => {
+    it("does not flag a default-exported config factory call", () => {
+      const configFactoryFile = `
+        import { defineFrontComponent } from "twenty-sdk/define";
+        const ContributorStats = () => <div />;
+        export default defineFrontComponent({
+          name: "Contributor Stats",
+          component: ContributorStats,
+        });
+      `;
+      const result = runRule(onlyExportComponents, configFactoryFile, {
+        filename: "src/contributor-stats.front-component.tsx",
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("reports the mixed boundary when a component export sits beside the factory", () => {
+      const mixedFile = `
+        import { defineFrontComponent } from "twenty-sdk/define";
+        export const Stats = () => <div />;
+        export default defineFrontComponent({ name: "Stats" });
+      `;
+      const result = runRule(onlyExportComponents, mixedFile, {
+        filename: "src/stats.tsx",
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("exports non-components");
+    });
+
+    it("still flags an anonymous component wrapped in a known HOC", () => {
+      const anonymousMemoFile = `export default memo(() => <div />);`;
+      const result = runRule(onlyExportComponents, anonymousMemoFile, {
+        filename: "src/anonymous.tsx",
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("unnamed");
+    });
+
+    it("still flags an unknown curried HOC wrapping a component identifier", () => {
+      const curriedFile = `
+        const MainView = () => <div />;
+        export default compose()(MainView);
+      `;
+      const result = runRule(onlyExportComponents, curriedFile, {
+        filename: "src/main-view.tsx",
+      });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+  });
+
   // Modern Vite Fast Refresh treats `use[A-Z]*` exports as refresh
   // boundaries alongside components, so a hook export next to the
   // component is not a hazard.

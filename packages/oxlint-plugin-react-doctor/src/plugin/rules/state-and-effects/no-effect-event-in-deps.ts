@@ -5,7 +5,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isComponentAssignment } from "../../utils/is-component-assignment.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
-import { isImportedFromNonReactModule } from "../../utils/is-imported-from-non-react-module.js";
+import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-event-callee.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isUppercaseName } from "../../utils/is-uppercase-name.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -109,21 +109,7 @@ export const noEffectEventInDeps = defineRule({
         // callback — listing it in deps is fine, so it must not taint the
         // binding set. Only React's export / a bare global carries the
         // unstable-identity semantics.
-        if (isNodeOfType(initializer.callee, "Identifier")) {
-          if (isImportedFromNonReactModule(declaratorNode, initializer.callee.name)) return;
-          const calleeSymbol = context.scopes.referenceFor(initializer.callee)?.resolvedSymbol;
-          if (calleeSymbol && calleeSymbol.kind !== "import") return;
-        }
-        // `Utils.useEffectEvent(...)` through a namespace/binding imported
-        // from a non-React package is the polyfill origin spelled as a member
-        // access; `React.useEffectEvent` keeps firing because "react" is a
-        // React runtime source.
-        if (
-          isNodeOfType(initializer.callee, "MemberExpression") &&
-          !initializer.callee.computed &&
-          isNodeOfType(initializer.callee.object, "Identifier") &&
-          isImportedFromNonReactModule(declaratorNode, initializer.callee.object.name)
-        ) {
+        if (isNonReactEffectEventCallee(initializer.callee, declaratorNode, context.scopes)) {
           return;
         }
         componentBindings.addBindingToCurrentFrame(declaratorNode.id.name);

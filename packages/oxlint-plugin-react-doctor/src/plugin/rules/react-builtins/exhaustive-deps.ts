@@ -1096,7 +1096,7 @@ If the missing value is recreated every render, move it inside the hook or stabi
 
           if (isNodeOfType(stripped, "Identifier")) {
             const depSymbol = context.scopes.symbolFor(stripped);
-            if (depSymbol && symbolHasUseEffectEventOrigin(depSymbol)) {
+            if (depSymbol && symbolHasUseEffectEventOrigin(depSymbol, context.scopes)) {
               context.report({
                 node: elementNode,
                 message: buildEffectEventDepMessage(),

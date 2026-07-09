@@ -1,6 +1,9 @@
 // rule: no-array-index-as-key
 // weakness: library-idiom
-// source: FP-FIX history (string fragments: position IS the identity)
+// source: FP-FIX history (string-character slices: position IS the identity).
+//         `.split()` output was later reclassified as data rows (bulwarkmail /
+//         tracecat corpus misses), so only the character-slice shapes remain
+//         ground-truth-valid here.
 export const MatchedName = ({ name }: { name: string }) => (
   <span>
     {[...name].map((char, index) => (
@@ -8,10 +11,10 @@ export const MatchedName = ({ name }: { name: string }) => (
     ))}
   </span>
 );
-export const Paragraphs = ({ body }: { body: string }) => (
+export const SpelledOut = ({ word }: { word: string }) => (
   <div>
-    {body.split("\n").map((line, index) => (
-      <p key={index}>{line}</p>
+    {Array.from(word).map((letter, index) => (
+      <b key={index}>{letter}</b>
     ))}
   </div>
 );

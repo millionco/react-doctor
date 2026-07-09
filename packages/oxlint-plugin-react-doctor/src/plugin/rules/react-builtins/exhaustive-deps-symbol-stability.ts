@@ -6,6 +6,7 @@ import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-l
 import { isAstDescendant } from "../../utils/is-ast-descendant.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-event-callee.js";
 import {
   getHookName,
   isOutsideAllFunctions,
@@ -121,10 +122,17 @@ export const symbolHasStableHookOrigin = (symbol: SymbolDescriptor): boolean => 
   return false;
 };
 
-export const symbolHasUseEffectEventOrigin = (symbol: SymbolDescriptor): boolean => {
+export const symbolHasUseEffectEventOrigin = (
+  symbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+): boolean => {
   const initializer = symbol.initializer ? unwrapExpression(symbol.initializer) : null;
   if (!initializer || !isNodeOfType(initializer, "CallExpression")) return false;
-  return getHookName(initializer.callee) === "useEffectEvent";
+  if (getHookName(initializer.callee) !== "useEffectEvent") return false;
+  // A same-named polyfill imported from a non-React package or defined in
+  // this module returns a STABLE callback — the effect-event dep message
+  // only applies to React's own useEffectEvent.
+  return !isNonReactEffectEventCallee(initializer.callee, initializer, scopes);
 };
 
 export const getFunctionValueNode = (symbol: SymbolDescriptor): EsTreeNode | null => {

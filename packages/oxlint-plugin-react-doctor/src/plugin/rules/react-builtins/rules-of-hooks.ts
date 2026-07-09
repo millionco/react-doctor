@@ -12,7 +12,7 @@ import {
 } from "../../constants/react.js";
 import { getImportSourceForName } from "../../utils/find-import-source-for-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
-import { isImportedFromNonReactModule } from "../../utils/is-imported-from-non-react-module.js";
+import { isNonReactEffectEventCallee } from "../../utils/is-non-react-effect-event-callee.js";
 import { isReactHocCallbackArgument } from "../../utils/is-react-hoc-callback-argument.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import { isRulesOfHooksSuppressedAt } from "./rules-of-hooks-suppression.js";
@@ -722,48 +722,6 @@ const isUseEffectEventSymbol = (symbol: SymbolDescriptor): boolean => {
   const initializer = symbol.initializer;
   if (!initializer || !isNodeOfType(initializer, "CallExpression")) return false;
   return getHookNameFromCallee(initializer.callee) === "useEffectEvent";
-};
-
-// React's effect-event semantics (call-only, never stored or passed around)
-// apply to React's own `useEffectEvent`. A same-named hook that is EXPLICITLY
-// imported from another package (e.g. `@rocket.chat/fuselage-hooks`) or
-// DEFINED in this module (the floating-ui-style userland polyfill — a
-// stable-callback helper designed to be stored and passed as props) carries
-// different semantics, so applying these reports would be a false positive.
-// Only a bare/unresolved `useEffectEvent` is still treated as React's, to
-// preserve parity with eslint-plugin-react-hooks.
-const resolvesToLocalNonImportBinding = (
-  identifier: EsTreeNode,
-  scopes: ScopeAnalysis,
-): boolean => {
-  const symbol = scopes.referenceFor(identifier)?.resolvedSymbol;
-  return Boolean(symbol && symbol.kind !== "import");
-};
-
-const isNonReactEffectEventCallee = (
-  callee: EsTreeNode,
-  contextNode: EsTreeNode,
-  scopes: ScopeAnalysis,
-): boolean => {
-  if (isNodeOfType(callee, "Identifier")) {
-    return (
-      isImportedFromNonReactModule(contextNode, callee.name) ||
-      resolvesToLocalNonImportBinding(callee, scopes)
-    );
-  }
-  // `Utils.useEffectEvent(...)` through a namespace/binding imported from a
-  // non-React package is the same polyfill origin spelled as a member access
-  // (floating-ui-style util namespaces). `React.useEffectEvent` keeps firing
-  // because "react" is a React runtime source, and a bare unimported
-  // `Hook.useEffectEvent(...)` object stays treated as React's for parity.
-  if (
-    isNodeOfType(callee, "MemberExpression") &&
-    !callee.computed &&
-    isNodeOfType(callee.object, "Identifier")
-  ) {
-    return isImportedFromNonReactModule(contextNode, callee.object.name);
-  }
-  return false;
 };
 
 const isNonReactEffectEventSymbol = (

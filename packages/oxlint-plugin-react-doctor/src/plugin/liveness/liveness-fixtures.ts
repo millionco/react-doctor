@@ -782,7 +782,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     forceJsx: true,
   },
   "no-render-in-render": {
-    code: "const Foo = () => <div>{renderRow()}</div>;",
+    code: "const Foo = () => {\n        const renderRow = () => {\n          const [open] = useState(false);\n          return <div>{String(open)}</div>;\n        };\n        return <div>{renderRow()}</div>;\n      };",
   },
   "no-render-prop-children": {
     code: '\n        import { Layout } from "@/components/layout";\n        const Panel = () => (\n          <Layout\n            renderHeader={() => <h1>Title</h1>}\n            renderFooter={() => <footer>Footer</footer>}\n            renderActions={() => <button>Go</button>}\n          />\n        );\n      ',

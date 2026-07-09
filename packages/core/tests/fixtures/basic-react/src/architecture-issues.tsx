@@ -6,7 +6,10 @@ const GenericHandlerComponent = () => {
 };
 
 const RenderInRenderComponent = () => {
-  const renderItem = (item: string) => <span>{item}</span>;
+  const renderItem = (item: string) => {
+    const [isExpanded] = useState(false);
+    return <span>{isExpanded ? item : item.slice(0, 1)}</span>;
+  };
   return <div>{renderItem("hello")}</div>;
 };
 

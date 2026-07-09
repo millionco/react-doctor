@@ -7,6 +7,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getFunctionBindingName } from "../../utils/get-function-binding-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -225,6 +226,19 @@ const isEffectCallbackFunction = (functionNode: EsTreeNode): boolean => {
   return isHookCall(parent, EFFECT_HOOK_NAMES) && getEffectCallback(parent) === functionNode;
 };
 
+const doesEffectCallbackReturnName = (effectCallback: EsTreeNode, name: string): boolean => {
+  if (!isFunctionLike(effectCallback)) return false;
+  let isReturnedByName = false;
+  walkInsideStatementBlocks(effectCallback.body, (child: EsTreeNode) => {
+    if (isReturnedByName || !isNodeOfType(child, "ReturnStatement") || !child.argument) return;
+    const returned = stripParenExpression(child.argument);
+    if (isNodeOfType(returned, "Identifier") && returned.name === name) {
+      isReturnedByName = true;
+    }
+  });
+  return isReturnedByName;
+};
+
 const isFunctionReturnedFromEffectCallback = (
   functionNode: EsTreeNode,
   effectCallback: EsTreeNode,
@@ -234,29 +248,40 @@ const isFunctionReturnedFromEffectCallback = (
   if (effectCallback.body === functionNode) return true;
   // `const stop = () => clearTimeout(...); return stop;` — the cleanup bound
   // to a local first. Missing this shape would flag a cleanup clear.
-  if (
-    isNodeOfType(functionNode.parent, "VariableDeclarator") &&
-    isNodeOfType(functionNode.parent.id, "Identifier")
-  ) {
-    const cleanupBindingName = functionNode.parent.id.name;
-    let isReturnedByName = false;
-    walkInsideStatementBlocks(effectCallback.body, (child: EsTreeNode) => {
-      if (isReturnedByName || !isNodeOfType(child, "ReturnStatement") || !child.argument) return;
-      const returned = stripParenExpression(child.argument);
-      if (isNodeOfType(returned, "Identifier") && returned.name === cleanupBindingName) {
-        isReturnedByName = true;
-      }
-    });
-    return isReturnedByName;
-  }
-  return false;
+  const cleanupBindingName = getFunctionBindingName(functionNode);
+  return (
+    cleanupBindingName !== null && doesEffectCallbackReturnName(effectCallback, cleanupBindingName)
+  );
+};
+
+// `const stop = () => clearTimeout(...);` declared in the component body and
+// handed to an effect via `return stop` — the cleanup lives OUTSIDE the
+// effect callback, so the nesting walk in `isInsideEffectCleanupReturn`
+// cannot link the two; match it by binding name against every effect in the
+// component/hook scope instead.
+const isReturnedFromAnyEffectInScope = (
+  functionNode: EsTreeNode,
+  ownerScope: EsTreeNode,
+): boolean => {
+  const cleanupBindingName = getFunctionBindingName(functionNode);
+  if (cleanupBindingName === null) return false;
+  let isReturnedFromEffect = false;
+  walkAst(ownerScope, (child: EsTreeNode) => {
+    if (isReturnedFromEffect) return false;
+    if (!isNodeOfType(child, "CallExpression") || !isHookCall(child, EFFECT_HOOK_NAMES)) return;
+    const effectCallback = getEffectCallback(child);
+    if (effectCallback && doesEffectCallbackReturnName(effectCallback, cleanupBindingName)) {
+      isReturnedFromEffect = true;
+    }
+  });
+  return isReturnedFromEffect;
 };
 
 // Clears inside an effect's cleanup return are a v1 non-goal: the stale
 // window there is unmount / StrictMode remount, and the re-run path
 // immediately re-arms the ref in the effect body, so flagging the ubiquitous
 // `return () => clearTimeout(ref.current)` idiom would be mostly noise.
-const isInsideEffectCleanupReturn = (node: EsTreeNode): boolean => {
+const isInsideEffectCleanupReturn = (node: EsTreeNode, ownerScope: EsTreeNode): boolean => {
   let functionNode = findEnclosingFunction(node);
   while (functionNode) {
     const outerFunction = findEnclosingFunction(functionNode);
@@ -267,6 +292,7 @@ const isInsideEffectCleanupReturn = (node: EsTreeNode): boolean => {
     ) {
       return true;
     }
+    if (isReturnedFromAnyEffectInScope(functionNode, ownerScope)) return true;
     functionNode = outerFunction;
   }
   return false;
@@ -320,7 +346,7 @@ export const noStaleTimerRef = defineRule({
       const usageFacts = collectTimerRefUsageFacts(refBinding.scopeOwner, refName);
       if (!usageFacts.holdsScheduledTimerId || !usageFacts.hasPendingSignalRead) return;
 
-      if (isInsideEffectCleanupReturn(node)) return;
+      if (isInsideEffectCleanupReturn(node, refBinding.scopeOwner)) return;
       if (hasRefCurrentReassignmentAfterClear(node, refName)) return;
 
       context.report({

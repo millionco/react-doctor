@@ -286,6 +286,29 @@ describe("no-stale-timer-ref", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet for a component-level cleanup function returned from the effect", () => {
+    const result = runRule(
+      noStaleTimerRef,
+      `
+      import { useEffect, useRef } from "react";
+      const Comp = ({ tick, delay }) => {
+        const timerRef = useRef(null);
+        const isPending = timerRef.current ? "yes" : "no";
+        const stop = () => {
+          clearTimeout(timerRef.current);
+        };
+        useEffect(() => {
+          timerRef.current = setTimeout(tick, delay);
+          return stop;
+        }, [tick, delay]);
+        return <span>{isPending}</span>;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays quiet when the binding is not a useRef ref", () => {
     const result = runRule(
       noStaleTimerRef,

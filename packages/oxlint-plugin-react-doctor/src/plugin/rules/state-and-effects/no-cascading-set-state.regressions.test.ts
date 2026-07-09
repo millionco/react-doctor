@@ -37,7 +37,7 @@ describe("state-and-effects/no-cascading-set-state — regressions: mined bug sh
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags sequential early-return guard blocks whose setters sum past the threshold (openfootmanager MatchSimulation shape)", () => {
+  it("stays silent on an if/else ladder whose mutually-exclusive branches only co-run 2 setters (openfootmanager MatchSimulation shape, max-path semantics)", () => {
     const result = runRule(
       noCascadingSetState,
       `
@@ -63,7 +63,7 @@ describe("state-and-effects/no-cascading-set-state — regressions: mined bug sh
       };
     `,
     );
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("still flags a synchronous forEach cascade", () => {
@@ -216,7 +216,7 @@ describe("no-cascading-set-state — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags an if/else setter ladder behind early-return guards (openfootmanager MatchSimulation)", () => {
+  it("stays silent on an if/else setter ladder behind early-return guards — branches never co-run (openfootmanager MatchSimulation, max-path semantics)", () => {
     const result = runRule(
       noCascadingSetState,
       `function MatchSimulation({ gameState, snapshot, matchMode }) {
@@ -238,7 +238,7 @@ describe("no-cascading-set-state — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("flags a helper declared in the effect body and invoked synchronously", () => {
@@ -622,6 +622,127 @@ describe("no-cascading-set-state — regressions", () => {
           setElapsedMs(0);
         };
         useEffect(() => { resetNarration(); }, [section?.issueId, content]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("counts if/else branches as mutually exclusive — 2 setters per branch never co-run (max, not sum)", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function Toggle({ mode }) {
+        const [a, setA] = useState(0);
+        const [b, setB] = useState(0);
+        const [c, setC] = useState(0);
+        const [d, setD] = useState(0);
+        useEffect(() => {
+          if (mode === "on") {
+            setA(1);
+            setB(1);
+          } else {
+            setC(1);
+            setD(1);
+          }
+        }, [mode]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags when a single if/else branch holds 3 setters that do co-run", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function Loader({ ready }) {
+        const [a, setA] = useState(0);
+        const [b, setB] = useState(0);
+        const [c, setC] = useState(0);
+        useEffect(() => {
+          if (ready) {
+            setA(1);
+            setB(2);
+            setC(3);
+          } else {
+            setA(0);
+          }
+        }, [ready]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
+  it("treats a synchronous nested function declaration inside a switch case as its own scope", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function Machine({ event }) {
+        const [a, setA] = useState(0);
+        const [b, setB] = useState(0);
+        const [c, setC] = useState(0);
+        useEffect(() => {
+          switch (event.type) {
+            case "key": {
+              function handleKeyDown() {
+                setA(1);
+                setB(2);
+                setC(3);
+              }
+              window.addEventListener("keydown", handleKeyDown);
+              break;
+            }
+            default:
+              break;
+          }
+        }, [event]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not count a synchronous closure handed as an argument to a delegated helper", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function Widget({ data }) {
+        const [a, setA] = useState(0);
+        const [b, setB] = useState(0);
+        const [c, setC] = useState(0);
+        useEffect(() => {
+          const applyLater = (callback) => {
+            window.addEventListener("idle", callback);
+          };
+          applyLater(() => {
+            setA(1);
+            setB(2);
+            setC(3);
+          });
+        }, [data]);
+        return null;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still counts a functional updater's nested setters — they run on the same dispatch", () => {
+    const result = runRule(
+      noCascadingSetState,
+      `function Chain({ input }) {
+        const [a, setA] = useState(0);
+        const [b, setB] = useState(0);
+        const [c, setC] = useState(0);
+        useEffect(() => {
+          setA((prev) => {
+            setB(prev + 1);
+            setC(prev + 2);
+            return prev;
+          });
+        }, [input]);
         return null;
       }`,
     );

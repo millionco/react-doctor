@@ -18,9 +18,9 @@ const EMPTY_VISITORS: RuleVisitors = {};
 // `requires`, `tags`, and `recommendation` continue to flow through.
 //
 // Used by the rule registry to wrap every `framework: "react-native"`
-// rule. Other framework rules don't need this — they already key off
-// `requires: ["nextjs" | "tanstack-start" | …]` and React Native is
-// the only one with mixed-monorepo file-level ambiguity.
+// rule; `wrapNextjsRule` is the parallel gate for `framework: "nextjs"`
+// rules (same mixed-monorepo file-level ambiguity, keyed on a `next`
+// dependency in the nearest manifest instead of platform classification).
 export const wrapReactNativeRule = (rule: Rule): Rule => {
   const innerCreate = rule.create.bind(rule);
   return {

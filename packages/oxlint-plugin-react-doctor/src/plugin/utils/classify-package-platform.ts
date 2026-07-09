@@ -72,11 +72,18 @@ const isWebFrameworkOnly = (manifest: PackageManifest): boolean => {
   return false;
 };
 
-const declaresAnyDependency = (manifest: PackageManifest): boolean =>
+export const declaresAnyDependency = (manifest: PackageManifest): boolean =>
   DEPENDENCY_SECTION_NAMES.some((sectionName) => {
     const section = manifest[sectionName];
     return typeof section === "object" && section !== null && Object.keys(section).length > 0;
   });
+
+export const declaresDependency = (manifest: PackageManifest, dependencyName: string): boolean => {
+  for (const declaredName of iterateDependencyNames(manifest)) {
+    if (declaredName === dependencyName) return true;
+  }
+  return false;
+};
 
 export type PackagePlatform = "expo" | "react-native" | "web" | "neutral" | "unknown";
 

@@ -2,25 +2,32 @@ import { ruleRegistry } from "./rule-registry.js";
 import type { Rule } from "./utils/rule.js";
 import type { HostRule } from "./utils/rule-plugin.js";
 import type { RulePlugin } from "./utils/rule-plugin.js";
+import { wrapNextjsRule } from "./utils/wrap-nextjs-rule.js";
 import { wrapReactNativeRule } from "./utils/wrap-react-native-rule.js";
 import { wrapWithSemanticContext } from "./utils/wrap-with-semantic-context.js";
 
 // Wraps every `framework: "react-native"` rule with the shared package-
-// boundary check (`isReactNativeFileActive`) so they short-circuit on
-// files that demonstrably target the web. Done at registry load rather
-// than per-rule so adding a new `rn-*` rule never needs to remember to
-// repeat the same gate — it just lands in the `react-native/` bucket
-// and the registry takes care of the rest. Non-RN rules pass through
-// unchanged.
+// boundary check (`isReactNativeFileActive`) and every
+// `framework: "nextjs"` rule with the parallel check (`isNextFileActive`)
+// so they short-circuit on files whose own package demonstrably targets
+// another platform. Done at registry load rather than per-rule so adding
+// a new `rn-*` / `nextjs-*` rule never needs to remember to repeat the
+// same gate — it just lands in its bucket directory and the registry
+// takes care of the rest. Other rules pass through unchanged.
 //
 // Then wraps EVERY rule with the semantic-context wrapper, which
 // builds a scope tree and CFG for the file lazily on first access.
 // Rules that never read `context.scopes` / `context.cfg` pay nothing.
+const applyFrameworkGate = (rule: Rule): Rule => {
+  if (rule.framework === "react-native") return wrapReactNativeRule(rule);
+  if (rule.framework === "nextjs") return wrapNextjsRule(rule);
+  return rule;
+};
+
 const applyFrameworkRuleWrappers = (registry: Record<string, Rule>): Record<string, HostRule> => {
   const wrapped: Record<string, HostRule> = {};
   for (const [ruleId, rule] of Object.entries(registry)) {
-    const frameworkWrapped = rule.framework === "react-native" ? wrapReactNativeRule(rule) : rule;
-    wrapped[ruleId] = wrapWithSemanticContext(frameworkWrapped);
+    wrapped[ruleId] = wrapWithSemanticContext(applyFrameworkGate(rule));
   }
   return wrapped;
 };

@@ -1,8 +1,8 @@
-import * as fs from "node:fs";
 import {
   classifyPackagePlatform,
   findNearestPackageDirectory,
 } from "./classify-package-platform.js";
+import { isPackageNestedBelowProjectRoot } from "./is-package-nested-below-project-root.js";
 import { normalizeFilename } from "./normalize-filename.js";
 import { getReactDoctorStringSetting } from "./get-react-doctor-setting.js";
 import type { RuleContext } from "./rule-context.js";
@@ -20,46 +20,6 @@ const WEB_FILE_EXTENSION_PATTERN = /\.web\.[cm]?[jt]sx?$/;
 // back into RN-only checks even when the package classification (or
 // project framework) doesn't already cover them.
 const NATIVE_FILE_EXTENSION_PATTERN = /\.(?:ios|android|native)\.[cm]?[jt]sx?$/;
-
-// Symlink-tolerant directory comparison: core realpaths the settings
-// `rootDirectory` (see `resolveSettingsRootDirectory`), while oxlint may
-// hand rules pre-realpath filenames (macOS `/var` vs `/private/var`), so
-// the package directory is realpathed too before comparing. Memoized per
-// package directory — every file in a package shares the answer.
-const cachedRealDirectoryByDirectory = new Map<string, string>();
-
-const resolveRealDirectory = (directory: string): string => {
-  const cached = cachedRealDirectoryByDirectory.get(directory);
-  if (cached !== undefined) return cached;
-  let realDirectory: string;
-  try {
-    realDirectory = fs.realpathSync(directory);
-  } catch {
-    realDirectory = directory;
-  }
-  cachedRealDirectoryByDirectory.set(directory, realDirectory);
-  return realDirectory;
-};
-
-// A "neutral" package (a parseable manifest that declares dependencies but
-// no RN and no web-framework signal) is authoritative when it sits BELOW
-// the project root: in a monorepo, the RN capability comes from a sibling
-// workspace, and this package's own manifest says it never depends on
-// react-native — so RN rules must not apply to its files. At the project
-// root the manifest is the same one the project-level framework hint was
-// derived from, so the framework fallback stays in charge.
-const isPackageNestedBelowProjectRoot = (
-  packageDirectory: string,
-  rootDirectory: string | undefined,
-): boolean => {
-  if (rootDirectory === undefined || rootDirectory.length === 0) return false;
-  const realPackageDirectory = normalizeFilename(resolveRealDirectory(packageDirectory));
-  const normalizedRootDirectory = normalizeFilename(rootDirectory);
-  const rootPrefix = normalizedRootDirectory.endsWith("/")
-    ? normalizedRootDirectory
-    : `${normalizedRootDirectory}/`;
-  return realPackageDirectory.startsWith(rootPrefix);
-};
 
 // Classifies which platform `filename` targets given the surrounding
 // `context.settings["react-doctor"].framework` hint. `isReactNativeFileActive`

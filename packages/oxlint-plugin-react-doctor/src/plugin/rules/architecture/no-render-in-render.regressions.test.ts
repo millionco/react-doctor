@@ -7,8 +7,10 @@ const run = (code: string) => runRule(noRenderInRender, code, { filename: "fixtu
 // Precision audit: the rule requires React-component semantics — the
 // resolved helper's body must CALL hooks — before firing. A hook-free
 // render helper is a plain function returning JSX (inline call ==
-// inline JSX; nothing to lose), and class methods can't call hooks, so
-// both are exempt.
+// inline JSX; nothing to lose), and `this.renderX()` method calls can't
+// resolve to hook-calling locals, so both are exempt. A class
+// component's render() is still render context: a bare hook-calling
+// helper invoked there fires.
 describe("architecture/no-render-in-render — regressions", () => {
   it("flags a component-local render* helper that calls hooks", () => {
     const result = run(
@@ -86,6 +88,59 @@ describe("architecture/no-render-in-render — regressions", () => {
       }
       export function PluginDialogHost({ current }) {
         return <p>{renderMessage(current.message)}</p>;
+      }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("flags a hook-calling helper invoked as a bare identifier inside a class render()", () => {
+    const result = run(
+      `const renderStatus = () => {
+        const [open] = useState(false);
+        return <div>{String(open)}</div>;
+      };
+      class Panel extends React.Component {
+        render() { return <div>{renderStatus()}</div>; }
+      }`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics[0].message).toContain("renderStatus()");
+  });
+
+  it("flags a hook-calling helper declared inside a class render() body", () => {
+    const result = run(
+      `class Panel extends Component {
+        render() {
+          const renderRow = () => {
+            const [open] = useState(false);
+            return <div>{String(open)}</div>;
+          };
+          return <div>{renderRow()}</div>;
+        }
+      }`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics[0].message).toContain("renderRow()");
+  });
+
+  it("does not flag a hook-free bare helper called inside a class render()", () => {
+    const result = run(
+      `const renderIcon = () => <span className="icon" />;
+      class Panel extends React.Component {
+        render() { return <div>{renderIcon()}</div>; }
+      }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a hook-calling helper called inside a non-React class method", () => {
+    const result = run(
+      `const renderStatus = () => {
+        const [open] = useState(false);
+        return <div>{String(open)}</div>;
+      };
+      class TemplateBuilder {
+        build() { return <div>{renderStatus()}</div>; }
       }`,
     );
     expect(result.diagnostics).toEqual([]);

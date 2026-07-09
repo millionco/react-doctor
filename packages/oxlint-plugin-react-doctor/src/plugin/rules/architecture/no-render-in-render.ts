@@ -2,6 +2,8 @@ import { RENDER_FUNCTION_PATTERN } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { getCalleeName } from "../../utils/get-callee-name.js";
 import { isComponentFunction } from "../../utils/is-component-function.js";
+import { isEs5Component } from "../../utils/is-es5-component.js";
+import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isReactHookName } from "../../utils/is-react-hook-name.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -18,13 +20,16 @@ import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 // count) corrupts hook state. A hook-free render helper is just a
 // function that returns JSX — calling it inline is byte-for-byte
 // equivalent to writing the JSX in place (no identity, state, or
-// memoization exists to lose), so it is NOT flagged. Class methods
-// (`this.renderHeader()`) are exempt for the same reason: they cannot
-// call hooks, so an inline method call is plain JSX composition.
+// memoization exists to lose), so it is NOT flagged. Hook-free class
+// method calls (`this.renderHeader()`) are exempt for the same reason —
+// but a class component's render() IS render context: a bare
+// hook-calling helper invoked there still inlines hooks into a class
+// render, which is always broken.
 const isInsideComponentContext = (node: EsTreeNode): boolean => {
   let cursor: EsTreeNode | null | undefined = node.parent;
   while (cursor) {
     if (isFunctionLike(cursor) && isComponentFunction(cursor)) return true;
+    if (isEs5Component(cursor) || isEs6Component(cursor)) return true;
     cursor = cursor.parent ?? null;
   }
   return false;

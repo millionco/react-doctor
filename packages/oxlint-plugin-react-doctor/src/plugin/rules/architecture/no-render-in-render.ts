@@ -46,7 +46,13 @@ const functionBodyOf = (node: EsTreeNode): EsTreeNode | null => {
 const containsHookCall = (body: EsTreeNode): boolean => {
   let found = false;
   walkAst(body, (child: EsTreeNode) => {
-    if (found) return;
+    if (found) return false;
+    // A component DEFINED inside the helper owns its hooks — they run under
+    // that child's fiber when it renders, not when the helper is invoked
+    // inline — so its subtree must not make the helper itself hook-calling.
+    // Non-component nested functions stay in the walk: a closure that calls
+    // hooks and runs during the helper call still splices into the caller.
+    if (child !== body && isFunctionLike(child) && isComponentFunction(child)) return false;
     if (!isNodeOfType(child, "CallExpression")) return;
     const name = getCalleeName(child);
     if (name && isReactHookName(name)) found = true;

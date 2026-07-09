@@ -204,6 +204,39 @@ describe("architecture/no-render-in-render — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("does not flag a hook-free helper that defines a nested hook-calling component", () => {
+    const result = run(
+      `const renderList = (items) => {
+        const Row = ({ item }) => {
+          const [open, setOpen] = useState(false);
+          return <li onClick={() => setOpen(!open)}>{item.name}</li>;
+        };
+        return <ul>{items.map((item) => <Row key={item.id} item={item} />)}</ul>;
+      };
+      export function Panel({ items }) {
+        return <div>{renderList(items)}</div>;
+      }`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags when a nested NON-component closure calls hooks during the helper call", () => {
+    const result = run(
+      `const renderRows = (items) => {
+        const buildRow = (item) => {
+          const theme = useContext(ThemeContext);
+          return <li className={theme}>{item.name}</li>;
+        };
+        return <ul>{items.map(buildRow)}</ul>;
+      };
+      export function Panel({ items }) {
+        return <div>{renderRows(items)}</div>;
+      }`,
+    );
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics[0].message).toContain("renderRows()");
+  });
+
   it("does not flag a render* call inside a module-scope render helper (outside any component)", () => {
     const result = run(
       `const renderIcon = (icon) => {

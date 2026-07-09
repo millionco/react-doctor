@@ -7,6 +7,7 @@ import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../utils/rule-context.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 
 const isSimpleExpression = (node: EsTreeNode | null): boolean => {
   if (!node) return false;
@@ -48,6 +49,66 @@ const isTriviallyCheapExpression = (node: EsTreeNode | null): boolean => {
   if (isNodeOfType(innerExpression, "Identifier")) return false;
   if (isNodeOfType(innerExpression, "MemberExpression")) return false;
   return true;
+};
+
+// A flat array/object literal whose parts are all simple reads —
+// `[x]`, `{ a, b }`. Rebuilding one costs a few nanoseconds, so the
+// memo only pays for itself when the RESULT'S IDENTITY is consumed
+// (dep / prop / escaping value). Spreads, computed keys, and nested
+// containers are excluded.
+const isTrivialContainerLiteral = (node: EsTreeNode | null): boolean => {
+  if (!node) return false;
+  const innerExpression = stripParenExpression(node);
+  if (isNodeOfType(innerExpression, "ArrayExpression")) {
+    return (innerExpression.elements ?? []).every(
+      (element) => element !== null && isSimpleExpression(element),
+    );
+  }
+  if (isNodeOfType(innerExpression, "ObjectExpression")) {
+    return (innerExpression.properties ?? []).every(
+      (property) =>
+        isNodeOfType(property, "Property") &&
+        !property.computed &&
+        isSimpleExpression(property.value),
+    );
+  }
+  return false;
+};
+
+// True when the reference can never leak the container's identity —
+// it's only read THROUGH (`value.length`, `value.map(...)`, `value[0]`).
+const isNonEscapingRead = (identifier: EsTreeNode): boolean => {
+  const parentNode = identifier.parent;
+  return isNodeOfType(parentNode, "MemberExpression") && parentNode.object === identifier;
+};
+
+// Decide whether the memoized container's referential identity is ever
+// consumed. Fires only in provably identity-free shapes:
+//   - the result is discarded (`useMemo(...)` in statement position),
+//   - the result is immediately destructured (container identity gone),
+//   - every read of the result binding stays behind a member access.
+// Anything else — passed as a prop, listed in deps, returned, spread —
+// might rely on the stable reference, which is the legitimate use of
+// memoizing a fresh container.
+const isMemoIdentityUnused = (
+  memoCallNode: EsTreeNodeOfType<"CallExpression">,
+  scopes: ScopeAnalysis,
+): boolean => {
+  const parentNode = memoCallNode.parent;
+  if (isNodeOfType(parentNode, "ExpressionStatement")) return true;
+  if (!isNodeOfType(parentNode, "VariableDeclarator") || parentNode.init !== memoCallNode) {
+    return false;
+  }
+  const bindingTarget = parentNode.id;
+  if (isNodeOfType(bindingTarget, "ArrayPattern") || isNodeOfType(bindingTarget, "ObjectPattern")) {
+    return true;
+  }
+  if (!isNodeOfType(bindingTarget, "Identifier")) return false;
+  const symbol = scopes.symbolFor(bindingTarget);
+  if (!symbol) return false;
+  return symbol.references.every(
+    (reference) => reference.flag === "read" && isNonEscapingRead(reference.identifier),
+  );
 };
 
 export const noUsememoSimpleExpression = defineRule({
@@ -98,11 +159,25 @@ export const noUsememoSimpleExpression = defineRule({
         returnExpression = callback.body.body[0].argument;
       }
 
-      if (returnExpression && isTriviallyCheapExpression(returnExpression)) {
+      if (!returnExpression) return;
+
+      if (isTriviallyCheapExpression(returnExpression)) {
         context.report({
           node,
           message:
             "This costs more than it saves because useMemo is wrapping a value that's already cheap, so remove the useMemo",
+        });
+        return;
+      }
+
+      if (
+        isTrivialContainerLiteral(returnExpression) &&
+        isMemoIdentityUnused(node, context.scopes)
+      ) {
+        context.report({
+          node,
+          message:
+            "This useMemo rebuilds a tiny literal whose reference is never relied on, so remove the useMemo and build the value inline",
         });
       }
     },

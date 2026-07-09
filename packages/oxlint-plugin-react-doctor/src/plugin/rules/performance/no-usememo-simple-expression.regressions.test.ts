@@ -65,4 +65,76 @@ describe("performance/no-usememo-simple-expression — regressions", () => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
+
+  it("flags a trivial array literal memo whose result is only read through members", () => {
+    const result = runRule(
+      noUsememoSimpleExpression,
+      "function C({ x }) { const items = useMemo(() => [x], [x]); return <p>{items.length}</p>; }",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a trivial object literal memo that is immediately destructured", () => {
+    const result = runRule(
+      noUsememoSimpleExpression,
+      "function C({ a, b }) { const { total } = useMemo(() => ({ total: a + b, parts: 2 }), [a, b]); return <p>{total}</p>; }",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a trivial tuple memo destructured into locals", () => {
+    const result = runRule(
+      noUsememoSimpleExpression,
+      "function C({ x, y }) { const [first, second] = useMemo(() => [x, y], [x, y]); return <p>{first}{second}</p>; }",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when the memoized object is passed as a JSX prop (identity matters)", () => {
+    const result = runRule(
+      noUsememoSimpleExpression,
+      "function C({ color }) { const style = useMemo(() => ({ color }), [color]); return <Child style={style} />; }",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the memoized array feeds another hook's deps (identity matters)", () => {
+    const result = runRule(
+      noUsememoSimpleExpression,
+      "function C({ x }) { const deps = useMemo(() => [x], [x]); useEffect(() => { sync(deps); }, [deps]); return null; }",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when the memoized container is returned from a custom hook", () => {
+    const result = runRule(
+      noUsememoSimpleExpression,
+      "function useThing({ x }) { return useMemo(() => [x, x + 1], [x]); }",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a container literal with a spread element", () => {
+    const result = runRule(
+      noUsememoSimpleExpression,
+      "function C({ items }) { const copy = useMemo(() => [...items], [items]); return <p>{copy.length}</p>; }",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a container whose members are non-trivial to build", () => {
+    const result = runRule(
+      noUsememoSimpleExpression,
+      "function C({ rows }) { const stats = useMemo(() => ({ ids: rows.map((row) => row.id) }), [rows]); return <p>{stats.ids.length}</p>; }",
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

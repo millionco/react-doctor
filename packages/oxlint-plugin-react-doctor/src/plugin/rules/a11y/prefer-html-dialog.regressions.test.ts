@@ -186,4 +186,41 @@ describe("a11y/prefer-html-dialog regressions", () => {
     const result = runRule(preferHtmlDialog, source);
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a ternary role whose branches are both dialog roles", () => {
+    const result = runRule(
+      preferHtmlDialog,
+      `const M = ({ isAlert, children }) => (
+        <div role={isAlert ? "alertdialog" : "dialog"}>{children}</div>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a const-bound dialog role", () => {
+    const result = runRule(
+      preferHtmlDialog,
+      `const modalRole = "dialog";
+const M = ({ children }) => <div role={modalRole}>{children}</div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a ternary role with a non-dialog branch", () => {
+    const result = runRule(
+      preferHtmlDialog,
+      `const M = ({ open, children }) => (
+        <div role={open ? "dialog" : "presentation"}>{children}</div>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a role resolved from a parameter", () => {
+    const result = runRule(
+      preferHtmlDialog,
+      `const M = ({ overlayRole, children }) => <div role={overlayRole}>{children}</div>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

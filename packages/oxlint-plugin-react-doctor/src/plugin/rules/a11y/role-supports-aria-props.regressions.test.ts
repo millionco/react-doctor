@@ -111,4 +111,42 @@ describe("a11y/role-supports-aria-props regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a prop unsupported by BOTH branches of a ternary role", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const F = ({ grouped }) => (
+        <div role={grouped ? "radiogroup" : "toolbar"} aria-multiselectable="true" />
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("`radiogroup` / `toolbar`");
+  });
+
+  it("flags a prop unsupported by a const-bound role", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const groupRole = "radiogroup";
+const F = () => <div role={groupRole} aria-multiselectable="true" />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag when one ternary branch supports the prop", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const F = ({ isList }) => (
+        <div role={isList ? "listbox" : "radiogroup"} aria-multiselectable="true" />
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a role resolved from a parameter", () => {
+    const result = runRule(
+      roleSupportsAriaProps,
+      `const F = ({ widgetRole }) => <div role={widgetRole} aria-multiselectable="true" />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

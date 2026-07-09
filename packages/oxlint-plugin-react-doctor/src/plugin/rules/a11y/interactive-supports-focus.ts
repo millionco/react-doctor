@@ -4,7 +4,7 @@ import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
 import { getJsxAttributeName } from "../../utils/get-jsx-attribute-name.js";
-import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
+import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -97,8 +97,12 @@ export const interactiveSupportsFocus = defineRule({
         // A spread (`{...props}`) can carry `tabIndex`, so focus support is indeterminate.
         if (hasJsxSpreadAttribute(node.attributes)) return;
         const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
-        const role = roleAttribute ? getJsxPropStringValue(roleAttribute) : null;
-        if (!role) return;
+        // Static resolution covers `role={cond ? "button" : "link"}` and
+        // const-bound roles, not just the literal.
+        const roleCandidates = roleAttribute
+          ? getJsxPropStaticStringValues(roleAttribute, context.scopes)
+          : null;
+        if (roleCandidates === null || roleCandidates.length === 0) return;
         let hasInteractiveHandler = false;
         for (const attribute of node.attributes) {
           if (!isNodeOfType(attribute, "JSXAttribute")) continue;
@@ -124,26 +128,29 @@ export const interactiveSupportsFocus = defineRule({
         ) {
           return;
         }
-        if (COMPOSITE_CONTAINER_ROLES.has(role)) return;
-        if (
-          COMPOSITE_ITEM_ROLES.has(role) &&
-          Boolean(hasJsxPropIgnoreCase(node.attributes, "id"))
-        ) {
-          return;
-        }
+        // The diagnostic claims the element can't receive focus it needs,
+        // so it must hold for EVERY candidate role: any candidate that
+        // wouldn't be reported on its own keeps the element silent.
         const hasTabIndex = Boolean(hasJsxPropIgnoreCase(node.attributes, "tabIndex"));
-        if (
-          !isInteractiveRole(role) ||
-          isInteractiveElement(elementType, node) ||
-          isNonInteractiveRole(role) ||
-          isNonInteractiveElement(elementType, node) ||
-          hasTabIndex
-        ) {
-          return;
+        const hasId = Boolean(hasJsxPropIgnoreCase(node.attributes, "id"));
+        for (const role of roleCandidates) {
+          if (COMPOSITE_CONTAINER_ROLES.has(role)) return;
+          if (COMPOSITE_ITEM_ROLES.has(role) && hasId) return;
+          if (
+            !isInteractiveRole(role) ||
+            isInteractiveElement(elementType, node) ||
+            isNonInteractiveRole(role) ||
+            isNonInteractiveElement(elementType, node) ||
+            hasTabIndex
+          ) {
+            return;
+          }
         }
-        const message = tabbableSet.has(role)
-          ? buildTabbableMessage(role)
-          : buildFocusableMessage(role);
+        const isEveryCandidateTabbable = roleCandidates.every((role) => tabbableSet.has(role));
+        const roleDisplay = roleCandidates.join("' / '");
+        const message = isEveryCandidateTabbable
+          ? buildTabbableMessage(roleDisplay)
+          : buildFocusableMessage(roleDisplay);
         context.report({ node, message });
       },
     };

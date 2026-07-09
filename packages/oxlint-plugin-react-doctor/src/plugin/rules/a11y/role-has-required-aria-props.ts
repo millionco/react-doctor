@@ -2,6 +2,7 @@ import { HTML_TAGS } from "../../constants/html-tags.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { getElementType } from "../../utils/get-element-type.js";
+import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 
@@ -81,9 +82,17 @@ export const roleHasRequiredAriaProps = defineRule({
       if (!HTML_TAGS.has(elementType)) return;
       const roleAttribute = hasJsxPropIgnoreCase(node.attributes, "role");
       if (!roleAttribute) return;
-      const roleValue = getJsxPropStringValue(roleAttribute);
-      if (roleValue === null) return;
-      const roles = roleValue.split(/\s+/).filter((token) => token.length > 0);
+      // Static resolution covers `role={cond ? "checkbox" : "radio"}` and
+      // const-bound roles, not just the literal. Every resolved candidate
+      // is validated — a branch missing its required props is a bug
+      // whenever that branch is taken.
+      const roleCandidates = getJsxPropStaticStringValues(roleAttribute, context.scopes);
+      if (roleCandidates === null) return;
+      const roles = new Set(
+        roleCandidates.flatMap((candidate) =>
+          candidate.split(/\s+/).filter((token) => token.length > 0),
+        ),
+      );
       for (const role of roles) {
         const required = ROLE_REQUIRED_PROPS.get(role);
         if (!required) continue;

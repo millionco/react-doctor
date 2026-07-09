@@ -80,4 +80,51 @@ describe("a11y/interactive-supports-focus regressions", () => {
     );
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a ternary role whose branches are both interactive and unfocusable", () => {
+    const result = runRule(
+      interactiveSupportsFocus,
+      `const X = ({ navigates, go }) => (
+        <div role={navigates ? "link" : "button"} onClick={go}>{label}</div>
+      );`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a const-bound interactive role lacking tabIndex", () => {
+    const result = runRule(
+      interactiveSupportsFocus,
+      `const clickableRole = "button";
+const X = ({ go }) => <div role={clickableRole} onClick={go}>{label}</div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a ternary role with a non-interactive branch", () => {
+    const result = runRule(
+      interactiveSupportsFocus,
+      `const X = ({ active, go }) => (
+        <div role={active ? "button" : "presentation"} onClick={go}>{label}</div>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a ternary role with a composite-container branch", () => {
+    const result = runRule(
+      interactiveSupportsFocus,
+      `const X = ({ isMenu, handle }) => (
+        <div role={isMenu ? "menu" : "button"} onKeyDown={handle}>{items}</div>
+      );`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a role resolved from a parameter", () => {
+    const result = runRule(
+      interactiveSupportsFocus,
+      `const X = ({ widgetRole, go }) => <div role={widgetRole} onClick={go}>{label}</div>;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
 });

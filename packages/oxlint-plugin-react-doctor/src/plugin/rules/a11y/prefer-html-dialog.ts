@@ -4,7 +4,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { findJsxAttribute } from "../../utils/find-jsx-attribute.js";
 import { flattenCalleeName } from "../../utils/flatten-callee-name.js";
-import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
+import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
 import { getJsxPropStringValue } from "../../utils/get-jsx-prop-string-value.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
@@ -297,8 +297,17 @@ export const preferHtmlDialog = defineRule({
         // diagnostic per offending element instead of two.
         const roleAttribute = findJsxAttribute(node.attributes, "role");
         if (roleAttribute) {
-          const roleValue = getJsxPropStringValue(roleAttribute);
-          if (roleValue !== null && ROLE_DIALOG_VALUES.has(roleValue)) {
+          // Static resolution covers `role={isAlert ? "alertdialog" :
+          // "dialog"}` and const-bound roles. The element is only
+          // definitely a hand-rolled dialog when EVERY candidate is a
+          // dialog role — a `role={open ? "dialog" : "presentation"}`
+          // toggle stays silent.
+          const roleCandidates = getJsxPropStaticStringValues(roleAttribute, context.scopes);
+          if (
+            roleCandidates !== null &&
+            roleCandidates.length > 0 &&
+            roleCandidates.every((candidate) => ROLE_DIALOG_VALUES.has(candidate))
+          ) {
             if (focusTrapSignals && isElementFocusTrapped(node, focusTrapSignals)) return;
             const ariaModalAttribute = findJsxAttribute(node.attributes, "aria-modal");
             const isModal = ariaModalAttribute ? isAriaModalTrue(ariaModalAttribute) : false;

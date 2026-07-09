@@ -3,7 +3,7 @@ import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { flattenJsxName } from "../../utils/flatten-jsx-name.js";
 import { getElementType } from "../../utils/get-element-type.js";
-import { getStaticTemplateLiteralValue } from "../../utils/get-static-template-literal-value.js";
+import { getJsxPropStaticStringValues } from "../../utils/get-jsx-prop-static-string-values.js";
 import { hasJsxA11ySettings } from "../../utils/has-jsx-a11y-settings.js";
 import { hasJsxPropIgnoreCase } from "../../utils/has-jsx-prop-ignore-case.js";
 import { hasJsxSpreadAttribute } from "../../utils/has-jsx-spread-attribute.js";
@@ -78,40 +78,14 @@ const isInvalidHref = (value: string, validHrefs: ReadonlySet<string>): boolean 
   return value === "" || value === "#" || value === "javascript:void(0)";
 };
 
-const getStaticHrefValue = (value: EsTreeNode): string | null => {
-  if (isNodeOfType(value, "Literal")) {
-    return typeof value.value === "string" ? value.value : null;
-  }
-  if (isNodeOfType(value, "JSXExpressionContainer")) {
-    const expression = value.expression;
-    if (isNodeOfType(expression, "Literal") && typeof expression.value === "string") {
-      return expression.value;
-    }
-    if (isNodeOfType(expression, "TemplateLiteral")) {
-      return getStaticTemplateLiteralValue(expression);
-    }
-  }
-  return null;
-};
-
-const checkValueIsEmptyOrInvalid = (
-  value: EsTreeNode,
-  validHrefs: ReadonlySet<string>,
-): boolean => {
-  if (isNodeOfType(value, "Literal")) {
-    return typeof value.value === "string" ? isInvalidHref(value.value, validHrefs) : false;
-  }
+// The string-valued cases live in `getJsxPropStaticStringValues`; this
+// covers the remaining statically-nowhere shapes: `href={undefined}`,
+// `href={null}`, and a fragment value.
+const isNullishOrFragmentHref = (value: EsTreeNode): boolean => {
   if (isNodeOfType(value, "JSXExpressionContainer")) {
     const expression = value.expression;
     if (isNodeOfType(expression, "Identifier") && expression.name === "undefined") return true;
-    if (isNodeOfType(expression, "Literal")) {
-      if (expression.value === null) return true;
-      if (typeof expression.value === "string") return isInvalidHref(expression.value, validHrefs);
-    }
-    if (isNodeOfType(expression, "TemplateLiteral")) {
-      const staticValue = getStaticTemplateLiteralValue(expression);
-      return staticValue === null ? false : isInvalidHref(staticValue, validHrefs);
-    }
+    if (isNodeOfType(expression, "Literal") && expression.value === null) return true;
   }
   if (isNodeOfType(value, "JSXFragment")) return true;
   return false;
@@ -151,12 +125,22 @@ export const anchorIsValid = defineRule({
             context.report({ node: node.name, message: MESSAGE_INCORRECT_HREF });
             return;
           }
-          if (checkValueIsEmptyOrInvalid(hrefAttribute.value as EsTreeNode, settings.validHrefs)) {
+          // Static resolution covers `href={active ? "#" : ""}` and
+          // const-bound hrefs. The "goes nowhere" claim must hold on every
+          // path, so ALL candidates have to be invalid — one reachable
+          // destination keeps the anchor silent.
+          const hrefCandidates = getJsxPropStaticStringValues(hrefAttribute, context.scopes);
+          const isEveryCandidateInvalid =
+            hrefCandidates !== null
+              ? hrefCandidates.length > 0 &&
+                hrefCandidates.every((candidate) => isInvalidHref(candidate, settings.validHrefs))
+              : isNullishOrFragmentHref(hrefAttribute.value as EsTreeNode);
+          if (isEveryCandidateInvalid) {
             const hasOnClick = Boolean(hasJsxPropIgnoreCase(node.attributes, "onClick"));
             // `href="#"` without a click handler is a working scroll-to-top
             // link: it is focusable and navigates to the top of the page, so
             // the "goes nowhere" claim is false (docs-validation FP cluster).
-            if (!hasOnClick && getStaticHrefValue(hrefAttribute.value as EsTreeNode) === "#") {
+            if (!hasOnClick && hrefCandidates?.every((candidate) => candidate === "#")) {
               return;
             }
             context.report({

@@ -51,4 +51,50 @@ describe("a11y/aria-role regressions", () => {
     });
     expect(result.diagnostics).toHaveLength(1);
   });
+
+  it("flags a ternary role with one invalid branch", () => {
+    const result = runRule(
+      ariaRole,
+      `export const A = ({ isOn }) => <div role={isOn ? "buton" : "link"} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("`buton`");
+  });
+
+  it("flags a const-bound invalid role", () => {
+    const result = runRule(
+      ariaRole,
+      `const widgetRole = "datepicker";
+export const A = () => <div role={widgetRole} />;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a static template-literal invalid role", () => {
+    const result = runRule(ariaRole, "export const A = () => <div role={`datepicker`} />;");
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not flag a ternary role whose branches are both valid", () => {
+    const result = runRule(
+      ariaRole,
+      `export const A = ({ isOn }) => <div role={isOn ? "checkbox" : "radio"} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a let-bound role (reassignable, stays dynamic)", () => {
+    const result = runRule(
+      ariaRole,
+      `let widgetRole = "datepicker";
+widgetRole = resolveRole();
+export const A = () => <div role={widgetRole} />;`,
+    );
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does not flag a role prop resolved from a parameter", () => {
+    const result = runRule(ariaRole, `export const A = ({ role }) => <div role={role} />;`);
+    expect(result.diagnostics).toEqual([]);
+  });
 });

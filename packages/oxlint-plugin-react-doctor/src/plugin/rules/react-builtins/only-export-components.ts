@@ -203,12 +203,21 @@ const objectExpressionBundlesComponents = (
       if (state.localComponentNames.has(value.name)) return true;
       continue;
     }
-    if (
-      (isNodeOfType(value, "ArrowFunctionExpression") ||
-        isNodeOfType(value, "FunctionExpression")) &&
+    const hasComponentNamedKey =
       !property.computed &&
       isNodeOfType(property.key as EsTreeNode, "Identifier") &&
-      isReactComponentName((property.key as EsTreeNodeOfType<"Identifier">).name)
+      isReactComponentName((property.key as EsTreeNodeOfType<"Identifier">).name);
+    if (!hasComponentNamedKey) continue;
+    if (
+      isNodeOfType(value, "ArrowFunctionExpression") ||
+      isNodeOfType(value, "FunctionExpression")
+    ) {
+      return true;
+    }
+    if (
+      isNodeOfType(value, "CallExpression") &&
+      isHocCallee(value.callee as EsTreeNode, state) &&
+      value.arguments.length > 0
     ) {
       return true;
     }
@@ -325,7 +334,11 @@ const collectRelevantNodes = (programRoot: EsTreeNode): RelevantNodes => {
       childType === "ExportNamedDeclaration"
     ) {
       exportNodes.push(child);
-    } else if (childType === "FunctionDeclaration" || childType === "VariableDeclarator") {
+    } else if (
+      childType === "FunctionDeclaration" ||
+      childType === "VariableDeclarator" ||
+      childType === "ClassDeclaration"
+    ) {
       componentCandidates.push(child);
     }
   });
@@ -471,10 +484,21 @@ export const onlyExportComponents = defineRule({
               localComponentNames.add(child.id.name);
             }
           }
-          if (isNodeOfType(child, "VariableDeclarator") && isNodeOfType(child.id, "Identifier")) {
+          if (isNodeOfType(child, "ClassDeclaration") && child.id) {
             if (
               isReactComponentName(child.id.name) &&
-              canBeReactFunctionComponent(child.init as EsTreeNode | null | undefined, state) &&
+              isEs6Component(child) &&
+              !isInsideFunctionScope(child)
+            ) {
+              localComponentNames.add(child.id.name);
+            }
+          }
+          if (isNodeOfType(child, "VariableDeclarator") && isNodeOfType(child.id, "Identifier")) {
+            const initializer = child.init as EsTreeNode | null | undefined;
+            if (
+              isReactComponentName(child.id.name) &&
+              (canBeReactFunctionComponent(initializer, state) ||
+                (initializer ? isEs6Component(skipTsExpression(initializer)) : false)) &&
               !isInsideFunctionScope(child)
             ) {
               localComponentNames.add(child.id.name);

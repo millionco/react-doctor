@@ -117,6 +117,8 @@ describe("stripUnknownCliFlags", () => {
       stripUserArguments([
         "complexity",
         "src",
+        "--help",
+        "-h",
         "--top",
         "2",
         "--sort",
@@ -130,6 +132,8 @@ describe("stripUnknownCliFlags", () => {
     ).toEqual([
       "complexity",
       "src",
+      "--help",
+      "-h",
       "--top",
       "2",
       "--sort",

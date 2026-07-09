@@ -161,21 +161,38 @@ const compareFunctionsByDisplayPriority = (
   return firstFunction.line - secondFunction.line;
 };
 
+const getFunctionDeltaForSortMetric = (
+  comparison: ComplexityFunctionDelta,
+  sortMetric: ComplexitySortMetric,
+): number => {
+  if (sortMetric === "cognitive") return comparison.cognitiveDelta;
+  return comparison.cyclomaticDelta;
+};
+
+const getAbsoluteFunctionDeltaForSortMetric = (
+  comparison: ComplexityFunctionDelta,
+  sortMetric: ComplexitySortMetric,
+): number => Math.abs(getFunctionDeltaForSortMetric(comparison, sortMetric));
+
+const getSignPriority = (delta: number): number => {
+  if (delta > 0) return 2;
+  if (delta < 0) return 0;
+  return 1;
+};
+
 const compareFunctionDeltas = (
   firstDelta: ComplexityFunctionDelta,
   secondDelta: ComplexityFunctionDelta,
+  sortMetric: ComplexitySortMetric,
 ): number => {
-  const absoluteCyclomaticDelta =
-    secondDelta.absoluteCyclomaticDelta - firstDelta.absoluteCyclomaticDelta;
-  if (absoluteCyclomaticDelta !== 0) return absoluteCyclomaticDelta;
+  const absoluteDelta =
+    getAbsoluteFunctionDeltaForSortMetric(secondDelta, sortMetric) -
+    getAbsoluteFunctionDeltaForSortMetric(firstDelta, sortMetric);
+  if (absoluteDelta !== 0) return absoluteDelta;
 
-  const getSignPriority = (delta: number): number => {
-    if (delta > 0) return 2;
-    if (delta < 0) return 0;
-    return 1;
-  };
   const signDelta =
-    getSignPriority(secondDelta.cyclomaticDelta) - getSignPriority(firstDelta.cyclomaticDelta);
+    getSignPriority(getFunctionDeltaForSortMetric(secondDelta, sortMetric)) -
+    getSignPriority(getFunctionDeltaForSortMetric(firstDelta, sortMetric));
   if (signDelta !== 0) return signDelta;
 
   const pathDelta = firstDelta.relativePath.localeCompare(secondDelta.relativePath);
@@ -267,8 +284,10 @@ const groupFunctionsByKey = (
 };
 
 const compareFunctionAnalyses = (
+  directory: string,
   headFunctions: ReadonlyArray<ComplexityFunctionEntry>,
   baseFunctions: ReadonlyArray<ComplexityFunctionEntry>,
+  sortMetric: ComplexitySortMetric,
 ): ComplexityFunctionDelta[] => {
   const comparisonEntries: ComplexityFunctionDelta[] = [];
   const headFunctionsByKey = groupFunctionsByKey(headFunctions);
@@ -324,7 +343,7 @@ const compareFunctionAnalyses = (
       const baseEntry = baseEntries[index]!;
       comparisonEntries.push({
         key,
-        filePath: baseEntry.filePath,
+        filePath: path.resolve(directory, baseEntry.relativePath),
         relativePath: baseEntry.relativePath,
         name: baseEntry.name,
         kind: baseEntry.kind,
@@ -339,7 +358,9 @@ const compareFunctionAnalyses = (
     }
   }
 
-  return comparisonEntries.sort(compareFunctionDeltas);
+  return comparisonEntries.sort((firstDelta, secondDelta) =>
+    compareFunctionDeltas(firstDelta, secondDelta, sortMetric),
+  );
 };
 
 const summarizeComparison = (
@@ -359,9 +380,15 @@ const summarizeComparison = (
       addedCount += 1;
     } else if (functionDelta.status === "removed") {
       removedCount += 1;
-    } else if (functionDelta.cyclomaticDelta > 0) {
+    } else if (
+      functionDelta.cyclomaticDelta > 0 ||
+      (functionDelta.cyclomaticDelta === 0 && functionDelta.cognitiveDelta > 0)
+    ) {
       regressedCount += 1;
-    } else if (functionDelta.cyclomaticDelta < 0) {
+    } else if (
+      functionDelta.cyclomaticDelta < 0 ||
+      (functionDelta.cyclomaticDelta === 0 && functionDelta.cognitiveDelta < 0)
+    ) {
       improvedCount += 1;
     }
   }
@@ -496,8 +523,16 @@ export const buildComplexityReport = async (
     }
     try {
       const baseAnalysis = await analyzeComplexityTree(snapshot.tempDirectory);
-      const diffFunctions = compareFunctionAnalyses(headAnalysis.functions, baseAnalysis.functions);
-      const diffSummary = summarizeComparison(diffFunctions);
+      const diffFunctions = compareFunctionAnalyses(
+        resolvedDirectory,
+        headAnalysis.functions,
+        baseAnalysis.functions,
+        sortMetric,
+      );
+      const visibleDiffFunctions = diffFunctions.filter(
+        (comparison) => getComplexityComparisonCyclomatic(comparison) >= minCyclomatic,
+      );
+      const diffSummary = summarizeComparison(visibleDiffFunctions);
       return {
         version: VERSION,
         directory: resolvedDirectory,
@@ -506,7 +541,7 @@ export const buildComplexityReport = async (
         minCyclomatic,
         top,
         files: headAnalysis.files,
-        functions: diffFunctions,
+        functions: visibleDiffFunctions,
         diff: {
           baseRef: resolvedDiffRef,
           computed: true,

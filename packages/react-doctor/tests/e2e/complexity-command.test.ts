@@ -80,6 +80,22 @@ export function linear(value: number) {
   });
 
 describe.skipIf(!hasBuiltCli)("complexity command", () => {
+  it("shows subcommand help for --help and -h", async () => {
+    const projectDirectory = setupComplexityProject("complexity-help");
+
+    const longHelpRun = await runCli(["complexity", "--help"], projectDirectory);
+    expect(longHelpRun.exitCode).toBe(0);
+    expect(longHelpRun.stderr).toBe("");
+    expect(longHelpRun.stdout).toContain("Usage: react-doctor complexity");
+    expect(longHelpRun.stdout).not.toContain("files analyzed");
+
+    const shortHelpRun = await runCli(["complexity", "-h"], projectDirectory);
+    expect(shortHelpRun.exitCode).toBe(0);
+    expect(shortHelpRun.stderr).toBe("");
+    expect(shortHelpRun.stdout).toContain("Usage: react-doctor complexity");
+    expect(shortHelpRun.stdout).not.toContain("files analyzed");
+  }, 60_000);
+
   it("respects top and sort settings in the rendered report", async () => {
     const projectDirectory = setupComplexityProject("subcommand-options");
 

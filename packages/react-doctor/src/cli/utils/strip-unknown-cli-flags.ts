@@ -128,10 +128,10 @@ const WHY_FLAG_SPEC: CliFlagSpec = {
 };
 
 const COMPLEXITY_FLAG_SPEC: CliFlagSpec = {
-  longOptionsWithoutValues: new Set(["--json"]),
+  longOptionsWithoutValues: new Set(["--help", "--json"]),
   longOptionsWithRequiredValues: new Set(["--diff", "--min", "--sort", "--top"]),
   longOptionsWithOptionalValues: new Set(),
-  shortOptionsWithoutValues: new Set(),
+  shortOptionsWithoutValues: new Set(["-h"]),
   shortOptionsWithRequiredValues: new Set(),
 };
 

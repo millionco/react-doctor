@@ -148,6 +148,21 @@ describe("rerender-lazy-state-init — regressions", () => {
           const [when, setWhen] = useState(new Date());
           const [seen, setSeen] = useState(new Set());
           const [byId, setById] = useState(new Map());
+          const [weakSeen, setWeakSeen] = useState(new WeakSet());
+          const [weakById, setWeakById] = useState(new WeakMap());
+          const [controller, setController] = useState(new AbortController());
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent on an already-lazy empty-container initializer", () => {
+      const result = runRule(
+        rerenderLazyStateInit,
+        `function C() {
+          const [byId, setById] = useState(() => new Map());
           return null;
         }`,
       );

@@ -53,6 +53,26 @@ export const TRIVIAL_INITIALIZER_NAMES = new Set([
   "parseFloat",
 ]);
 
+// Constructing these built-ins costs about as much as calling the
+// trivial coercion functions — `useState(new Date())` / `useRef(new
+// Map())` are idiomatic cheap initial values, not the expensive-model
+// construction the lazy-init rules target. Recommending the lazy-init
+// pattern for an empty container is net-negative ceremony. Shared by
+// `rerender-lazy-state-init` and `rerender-lazy-ref-init`.
+export const TRIVIAL_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
+  "Date",
+  "Map",
+  "Set",
+  "WeakMap",
+  "WeakSet",
+  "WeakRef",
+  "RegExp",
+  "Error",
+  "URL",
+  "URLSearchParams",
+  "AbortController",
+]);
+
 // Used by `noDerivedStateEffect` to decide whether a derived-state
 // expression is "expensive enough" to recommend `useMemo` over plain
 // inline computation. Coercion / parsing / boundary helpers are cheap

@@ -88,46 +88,56 @@ describe("rerender-lazy-ref-init", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags useRef with `new AbortController()` (allocation discarded after first render)", () => {
+  it("does NOT flag trivial empty-container constructors (lazy-init is net-negative for them)", () => {
     const result = runRule(
       rerenderLazyRefInit,
       `
       import { useRef } from "react";
 
       function Component() {
-        const ref = useRef(new AbortController());
+        const cache = useRef(new Map());
+        const seen = useRef(new Set());
+        const weakSeen = useRef(new WeakSet());
+        const weakById = useRef(new WeakMap());
+        const controller = useRef(new AbortController());
+      }
+    `,
+    );
+
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("does NOT flag `new Set(props.items)` — the exemption is name-based, construction stays cheap relative to the lazy-ref ceremony", () => {
+    const result = runRule(
+      rerenderLazyRefInit,
+      `
+      import { useRef } from "react";
+
+      function Component({ items }) {
+        const seen = useRef(new Set(items));
+      }
+    `,
+    );
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("still flags a user-defined class constructor", () => {
+    const result = runRule(
+      rerenderLazyRefInit,
+      `
+      import { useRef } from "react";
+      import { HeavyModel } from "./model";
+
+      function Component({ config }) {
+        const model = useRef(new HeavyModel(config));
       }
     `,
     );
 
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("new AbortController()");
-  });
-
-  it("flags useRef with a `new Map()` / `new Set()` initializer", () => {
-    const mapResult = runRule(
-      rerenderLazyRefInit,
-      `
-      import { useRef } from "react";
-
-      function Component() {
-        const cache = useRef(new Map());
-      }
-    `,
-    );
-    const setResult = runRule(
-      rerenderLazyRefInit,
-      `
-      import { useRef } from "react";
-
-      function Component() {
-        const seen = useRef(new Set());
-      }
-    `,
-    );
-
-    expect(mapResult.diagnostics).toHaveLength(1);
-    expect(setResult.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("new HeavyModel()");
   });
 
   it("does NOT flag useRef capturing another hook's value", () => {

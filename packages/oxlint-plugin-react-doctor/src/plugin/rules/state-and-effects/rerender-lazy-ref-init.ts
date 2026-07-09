@@ -1,4 +1,4 @@
-import { TRIVIAL_INITIALIZER_NAMES } from "../../constants/react.js";
+import { TRIVIAL_CONSTRUCTOR_NAMES, TRIVIAL_INITIALIZER_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -23,9 +23,12 @@ import type { RuleContext } from "../../utils/rule-context.js";
 //   - `useRef(new Callee())`     — `new` expression (the class case)
 //
 // Both allocate fresh per render and lose the allocation immediately
-// after the first render. The `new AbortController()` / `new Map()` /
-// `new Set()` patterns are the most common production occurrences of
-// this bug and are exactly what the rule should catch.
+// after the first render — but only EXPENSIVE construction is worth the
+// lazy-init ceremony. Empty-container built-ins (`new Set()`,
+// `new Map()`, `new AbortController()`, …) cost about as much as the
+// trivial coercion helpers, so recommending the null-check pattern for
+// them is net-negative; they're exempt via TRIVIAL_CONSTRUCTOR_NAMES
+// (shared with `rerender-lazy-state-init`).
 //
 // LIMITATIONS:
 //   - Doesn't try to follow identifier bindings (`const init = expensiveCall();
@@ -62,6 +65,7 @@ export const rerenderLazyRefInit = defineRule({
         : (memberPropertyName ?? "fn");
 
       if (TRIVIAL_INITIALIZER_NAMES.has(calleeName)) return;
+      if (isNewCall && TRIVIAL_CONSTRUCTOR_NAMES.has(calleeName)) return;
 
       // `useRef(useId())` / `useRef(useContext(Ctx))` captures another
       // hook's value. The result is already stable per the rules of

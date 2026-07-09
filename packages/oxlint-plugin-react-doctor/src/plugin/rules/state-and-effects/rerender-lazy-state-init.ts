@@ -1,4 +1,4 @@
-import { TRIVIAL_INITIALIZER_NAMES } from "../../constants/react.js";
+import { TRIVIAL_CONSTRUCTOR_NAMES, TRIVIAL_INITIALIZER_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
@@ -31,23 +31,6 @@ const TRIVIAL_DATE_GETTER_NAMES: ReadonlySet<string> = new Set([
   "getUTCSeconds",
   "getUTCMilliseconds",
   "valueOf",
-]);
-
-// Constructing these built-ins costs about as much as calling the
-// trivial coercion functions — `useState(new Date())` / `useState(new
-// Map())` are idiomatic cheap initial states, not the expensive-model
-// construction this rule targets.
-const TRIVIAL_CONSTRUCTOR_NAMES: ReadonlySet<string> = new Set([
-  "Date",
-  "Map",
-  "Set",
-  "WeakMap",
-  "WeakSet",
-  "RegExp",
-  "Error",
-  "URL",
-  "URLSearchParams",
-  "AbortController",
 ]);
 
 const EAGER_CALL_RESOLUTION_DEPTH_LIMIT = 4;

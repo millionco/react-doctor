@@ -167,6 +167,77 @@ export function gamma(flag: boolean) {
     }
   });
 
+  it("resolves relative diff refs before materializing baseline files", async () => {
+    const repositoryDirectory = createTempGitRepository();
+    try {
+      writeRepositoryFile(
+        repositoryDirectory,
+        "src/example.ts",
+        `
+export function alpha(value: number) {
+  if (value > 0) {
+    return 1;
+  }
+  return 0;
+}
+`,
+      );
+      commitRepositoryState(repositoryDirectory, "base");
+
+      writeRepositoryFile(
+        repositoryDirectory,
+        "src/example.ts",
+        `
+export function alpha(value: number) {
+  if (value > 0) {
+    return 1;
+  }
+  if (value > 1) {
+    return 2;
+  }
+  return 0;
+}
+`,
+      );
+      const headCommit = commitRepositoryState(repositoryDirectory, "head");
+      const resolvedBaseRef = execFileSync("git", ["rev-parse", "HEAD~1"], {
+        cwd: repositoryDirectory,
+        encoding: "utf8",
+      }).trim();
+
+      const relativeRefReport = await buildComplexityReport({
+        directory: repositoryDirectory,
+        diffRef: "HEAD~1",
+        top: 20,
+        minCyclomatic: 1,
+        sortMetric: "cyclomatic",
+      });
+
+      expect(relativeRefReport.mode).toBe("diff");
+      expect(relativeRefReport.diff?.computed).toBe(true);
+      expect(relativeRefReport.diff?.baseRef).toBe(resolvedBaseRef);
+      expect(relativeRefReport.diff?.netCyclomaticChange).toBe(1);
+      expect(relativeRefReport.diff?.functions[0]?.status).toBe("changed");
+
+      const caretRefReport = await buildComplexityReport({
+        directory: repositoryDirectory,
+        diffRef: "HEAD^",
+        top: 20,
+        minCyclomatic: 1,
+        sortMetric: "cyclomatic",
+      });
+
+      expect(caretRefReport.diff?.computed).toBe(true);
+      expect(caretRefReport.diff?.baseRef).toBe(resolvedBaseRef);
+      expect(caretRefReport.diff?.netCyclomaticChange).toBe(
+        relativeRefReport.diff?.netCyclomaticChange,
+      );
+      expect(headCommit).toHaveLength(40);
+    } finally {
+      rmSync(repositoryDirectory, { recursive: true, force: true });
+    }
+  });
+
   it("falls back to head-only complexity when the diff ref cannot be materialized", async () => {
     const repositoryDirectory = createTempGitRepository();
     try {

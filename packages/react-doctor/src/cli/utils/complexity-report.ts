@@ -5,6 +5,7 @@ import type { EsTreeNode, FileComplexity, FunctionComplexity } from "oxlint-plug
 import { listSourceFiles, toRelativePath, type MaterializedTree } from "@react-doctor/core";
 import { COMPLEXITY_FILES_TEMP_DIR_PREFIX } from "./constants.js";
 import { materializeBaselineFiles } from "./materialize-baseline-files.js";
+import { resolveGitRefSha } from "./resolve-git-ref-sha.js";
 import { VERSION } from "./version.js";
 
 export type ComplexitySortMetric = "cyclomatic" | "cognitive";
@@ -413,6 +414,7 @@ export const buildComplexityReport = async (
   const sortMetric = input.sortMetric ?? DEFAULT_SORT_METRIC;
   const minCyclomatic = input.minCyclomatic ?? 1;
   const top = input.top ?? null;
+  const requestedDiffRef = input.diffRef ?? null;
 
   const headAnalysis = await analyzeComplexityTree(resolvedDirectory);
   const rankedHeadFunctions = headAnalysis.functions
@@ -422,8 +424,7 @@ export const buildComplexityReport = async (
     );
   const summary = buildComplexitySummary(headAnalysis, rankedHeadFunctions[0] ?? null);
 
-  const baseRef = input.diffRef ?? null;
-  if (baseRef === null) {
+  if (requestedDiffRef === null) {
     return {
       version: VERSION,
       directory: resolvedDirectory,
@@ -437,9 +438,36 @@ export const buildComplexityReport = async (
     };
   }
 
+  const resolvedDiffRef = resolveGitRefSha(resolvedDirectory, requestedDiffRef);
+  if (resolvedDiffRef === null) {
+    return {
+      version: VERSION,
+      directory: resolvedDirectory,
+      mode: "diff",
+      sortMetric,
+      minCyclomatic,
+      top,
+      files: headAnalysis.files,
+      functions: rankedHeadFunctions,
+      diff: {
+        baseRef: requestedDiffRef,
+        computed: false,
+        note: `Could not compute diff against ${requestedDiffRef}; showing head-only complexity.`,
+        functions: [],
+        regressedCount: 0,
+        improvedCount: 0,
+        addedCount: 0,
+        removedCount: 0,
+        netCyclomaticChange: 0,
+        netCognitiveChange: 0,
+      },
+      summary,
+    };
+  }
+
   const sourceFiles = listSourceFiles(resolvedDirectory);
   try {
-    const snapshot = await materializeBaselineTree(resolvedDirectory, baseRef, sourceFiles);
+    const snapshot = await materializeBaselineTree(resolvedDirectory, resolvedDiffRef, sourceFiles);
     if (sourceFiles.length > 0 && snapshot.materializedFiles.length === 0) {
       snapshot.cleanup();
       return {
@@ -452,9 +480,9 @@ export const buildComplexityReport = async (
         files: headAnalysis.files,
         functions: rankedHeadFunctions,
         diff: {
-          baseRef,
+          baseRef: resolvedDiffRef,
           computed: false,
-          note: `Could not compute diff against ${baseRef}; showing head-only complexity.`,
+          note: `Could not compute diff against ${requestedDiffRef}; showing head-only complexity.`,
           functions: [],
           regressedCount: 0,
           improvedCount: 0,
@@ -480,7 +508,7 @@ export const buildComplexityReport = async (
         files: headAnalysis.files,
         functions: diffFunctions,
         diff: {
-          baseRef,
+          baseRef: resolvedDiffRef,
           computed: true,
           ...diffSummary,
         },
@@ -500,9 +528,9 @@ export const buildComplexityReport = async (
       files: headAnalysis.files,
       functions: rankedHeadFunctions,
       diff: {
-        baseRef,
+        baseRef: resolvedDiffRef,
         computed: false,
-        note: `Could not compute diff against ${baseRef}; showing head-only complexity.`,
+        note: `Could not compute diff against ${requestedDiffRef}; showing head-only complexity.`,
         functions: [],
         regressedCount: 0,
         improvedCount: 0,

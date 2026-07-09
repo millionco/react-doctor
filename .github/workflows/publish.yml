@@ -34,7 +34,11 @@ jobs:
         with:
           node-version: 22.18.0
           cache: pnpm
-          registry-url: https://registry.npmjs.org
+          # Do NOT set registry-url here: setup-node writes an empty
+          # //registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN} line that
+          # prevents npm Trusted Publishing OIDC from firing
+          # (actions/setup-node#1551). publish-dev still has it for classic
+          # token flows; stable publish is OIDC-only.
 
       - run: npm install -g npm@11
 

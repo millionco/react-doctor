@@ -370,6 +370,51 @@ describe("no-stale-timer-ref", () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("stays quiet when a shadowing parameter reuses the ref name", () => {
+    const result = runRule(
+      noStaleTimerRef,
+      `
+      import { useRef } from "react";
+      const Comp = ({ fire }) => {
+        const timerRef = useRef(null);
+        const pending = timerRef.current ? 1 : 0;
+        const arm = () => {
+          timerRef.current = setTimeout(fire, 10);
+        };
+        const disarm = (timerRef) => {
+          clearTimeout(timerRef.current);
+        };
+        return <div onFocus={arm} onBlur={disarm}>{pending}</div>;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("stays quiet when a local non-ref binding shadows the useRef name", () => {
+    const result = runRule(
+      noStaleTimerRef,
+      `
+      import { useRef } from "react";
+      const Comp = ({ fire, getTimerBox }) => {
+        const timerRef = useRef(null);
+        const pending = timerRef.current ? 1 : 0;
+        const arm = () => {
+          timerRef.current = setTimeout(fire, 10);
+        };
+        const disarm = () => {
+          const timerRef = getTimerBox();
+          clearTimeout(timerRef.current);
+        };
+        return <div onFocus={arm} onBlur={disarm}>{pending}</div>;
+      };
+      `,
+    );
+
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("stays quiet when the ref is only read non-conditionally", () => {
     const result = runRule(
       noStaleTimerRef,

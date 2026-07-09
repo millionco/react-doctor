@@ -7,6 +7,8 @@ import { defineRule } from "../../utils/define-rule.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getRangeStart } from "../../utils/get-range-start.js";
+import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isNullishExpression } from "../../utils/is-nullish-expression.js";
@@ -43,22 +45,37 @@ const getGlobalTimerCalleeName = (node: EsTreeNode): string | null => {
   return null;
 };
 
-const isRefCurrentMemberOf = (node: EsTreeNode, refName: string): boolean => {
-  if (!isNodeOfType(node, "MemberExpression") || node.computed) return false;
-  if (!isNodeOfType(node.property, "Identifier") || node.property.name !== "current") return false;
+// `<name>.current` (non-computed, identifier receiver) — the receiver name,
+// or null for any other shape.
+const getRefCurrentReceiverName = (node: EsTreeNode): string | null => {
+  if (!isNodeOfType(node, "MemberExpression") || node.computed) return null;
+  if (!isNodeOfType(node.property, "Identifier") || node.property.name !== "current") return null;
   const receiver = stripParenExpression(node.object);
-  return isNodeOfType(receiver, "Identifier") && receiver.name === refName;
+  return isNodeOfType(receiver, "Identifier") ? receiver.name : null;
 };
 
-const isClearCallOnRef = (node: EsTreeNode, refName: string): boolean => {
-  const calleeName = getGlobalTimerCalleeName(node);
-  if (calleeName === null || !TIMER_CLEANUP_CALLEE_NAMES.has(calleeName)) return false;
-  if (!isNodeOfType(node, "CallExpression")) return false;
+const isRefCurrentMemberOf = (node: EsTreeNode, refName: string): boolean =>
+  getRefCurrentReceiverName(node) === refName;
+
+interface ClearCallOnTimerRef {
+  clearCalleeName: string;
+  refName: string;
+}
+
+// `clearTimeout(ref.current)` / `window.clearInterval(ref.current)` — the
+// clear built-in and the ref it clears, or null for any other call shape.
+const parseClearCallOnTimerRef = (node: EsTreeNode): ClearCallOnTimerRef | null => {
+  const clearCalleeName = getGlobalTimerCalleeName(node);
+  if (clearCalleeName === null || !TIMER_CLEANUP_CALLEE_NAMES.has(clearCalleeName)) return null;
+  if (!isNodeOfType(node, "CallExpression")) return null;
   const clearedArgument = node.arguments?.[0];
-  return (
-    Boolean(clearedArgument) && isRefCurrentMemberOf(stripParenExpression(clearedArgument), refName)
-  );
+  if (!clearedArgument) return null;
+  const refName = getRefCurrentReceiverName(stripParenExpression(clearedArgument));
+  return refName === null ? null : { clearCalleeName, refName };
 };
+
+const isClearCallOnRef = (node: EsTreeNode, refName: string): boolean =>
+  parseClearCallOnTimerRef(node)?.refName === refName;
 
 const isNullishResetExpression = (node: EsTreeNode): boolean =>
   isNullishExpression(stripParenExpression(node));
@@ -174,29 +191,6 @@ const isPendingSignalRead = (refCurrentMember: EsTreeNode, refName: string): boo
   return didPassBooleanProjection;
 };
 
-// The function (or Program) whose body declares `const refName = useRef(...)`
-// — the component/hook scope every read and write of the ref lives in. Null
-// when the name is not a useRef binding visible from `referenceNode`.
-const findTimerRefOwnerScope = (referenceNode: EsTreeNode, refName: string): EsTreeNode | null => {
-  let cursor: EsTreeNode | null | undefined = referenceNode;
-  while (cursor) {
-    if (isNodeOfType(cursor, "BlockStatement") || isNodeOfType(cursor, "Program")) {
-      for (const statement of cursor.body ?? []) {
-        if (!isNodeOfType(statement, "VariableDeclaration")) continue;
-        for (const declarator of statement.declarations ?? []) {
-          if (!isNodeOfType(declarator.id, "Identifier") || declarator.id.name !== refName)
-            continue;
-          if (!declarator.init || !isHookCall(declarator.init, "useRef")) continue;
-          if (isNodeOfType(cursor, "Program")) return cursor;
-          return findEnclosingFunction(declarator) ?? cursor;
-        }
-      }
-    }
-    cursor = cursor.parent ?? null;
-  }
-  return null;
-};
-
 interface TimerRefUsageFacts {
   holdsScheduledTimerId: boolean;
   hasPendingSignalRead: boolean;
@@ -235,14 +229,9 @@ const isFunctionReturnedFromEffectCallback = (
   functionNode: EsTreeNode,
   effectCallback: EsTreeNode,
 ): boolean => {
+  if (!isFunctionLike(effectCallback)) return false;
   if (isNodeOfType(functionNode.parent, "ReturnStatement")) return true;
-  if (
-    (isNodeOfType(effectCallback, "ArrowFunctionExpression") ||
-      isNodeOfType(effectCallback, "FunctionExpression")) &&
-    effectCallback.body === functionNode
-  ) {
-    return true;
-  }
+  if (effectCallback.body === functionNode) return true;
   // `const stop = () => clearTimeout(...); return stop;` — the cleanup bound
   // to a local first. Missing this shape would flag a cleanup clear.
   if (
@@ -251,16 +240,13 @@ const isFunctionReturnedFromEffectCallback = (
   ) {
     const cleanupBindingName = functionNode.parent.id.name;
     let isReturnedByName = false;
-    walkInsideStatementBlocks(
-      (effectCallback as { body?: EsTreeNode }).body ?? effectCallback,
-      (child: EsTreeNode) => {
-        if (isReturnedByName || !isNodeOfType(child, "ReturnStatement") || !child.argument) return;
-        const returned = stripParenExpression(child.argument);
-        if (isNodeOfType(returned, "Identifier") && returned.name === cleanupBindingName) {
-          isReturnedByName = true;
-        }
-      },
-    );
+    walkInsideStatementBlocks(effectCallback.body, (child: EsTreeNode) => {
+      if (isReturnedByName || !isNodeOfType(child, "ReturnStatement") || !child.argument) return;
+      const returned = stripParenExpression(child.argument);
+      if (isNodeOfType(returned, "Identifier") && returned.name === cleanupBindingName) {
+        isReturnedByName = true;
+      }
+    });
     return isReturnedByName;
   }
   return false;
@@ -286,23 +272,17 @@ const isInsideEffectCleanupReturn = (node: EsTreeNode): boolean => {
   return false;
 };
 
-const getRangeStart = (node: EsTreeNode): number | null => {
-  const rangeStart = node.range?.[0];
-  return typeof rangeStart === "number" ? rangeStart : null;
-};
-
 // Any `ref.current = ...` (null, undefined, or a re-armed timer) lexically
 // after the clear in the same function ends the stale window — the debounce
 // `clearTimeout(ref.current); ref.current = setTimeout(...)` shape is fine.
 const hasRefCurrentReassignmentAfterClear = (clearCall: EsTreeNode, refName: string): boolean => {
   const enclosingFunction = findEnclosingFunction(clearCall);
-  if (!enclosingFunction) return false;
-  const functionBody = (enclosingFunction as { body?: EsTreeNode }).body;
-  if (!functionBody || !isNodeOfType(functionBody, "BlockStatement")) return false;
+  if (!isFunctionLike(enclosingFunction)) return false;
+  if (!isNodeOfType(enclosingFunction.body, "BlockStatement")) return false;
   const clearStart = getRangeStart(clearCall);
   if (clearStart === null) return false;
   let didFindLaterReassignment = false;
-  walkInsideStatementBlocks(functionBody, (child: EsTreeNode) => {
+  walkInsideStatementBlocks(enclosingFunction.body, (child: EsTreeNode) => {
     if (didFindLaterReassignment) return;
     if (!isAssignmentToRefCurrent(child, refName)) return;
     const assignmentStart = getRangeStart(child);
@@ -327,29 +307,17 @@ export const noStaleTimerRef = defineRule({
     "Reset the ref right after clearing (`clearTimeout(ref.current); ref.current = null`) so truthiness checks on the ref keep meaning \u201Ctimer still pending\u201D.",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      const clearCalleeName = getGlobalTimerCalleeName(node);
-      if (clearCalleeName === null || !TIMER_CLEANUP_CALLEE_NAMES.has(clearCalleeName)) return;
+      const clearCall = parseClearCallOnTimerRef(node);
+      if (!clearCall) return;
       if (isShadowedTimerGlobal(node)) return;
+      const { clearCalleeName, refName } = clearCall;
 
-      const clearedArgument = node.arguments?.[0];
-      if (!clearedArgument) return;
-      const clearedExpression = stripParenExpression(clearedArgument);
-      if (
-        !isNodeOfType(clearedExpression, "MemberExpression") ||
-        clearedExpression.computed ||
-        !isNodeOfType(clearedExpression.property, "Identifier") ||
-        clearedExpression.property.name !== "current"
-      ) {
-        return;
-      }
-      const refReceiver = stripParenExpression(clearedExpression.object);
-      if (!isNodeOfType(refReceiver, "Identifier")) return;
-      const refName = refReceiver.name;
+      // Closest-scope binding resolution — a shadowing parameter or local
+      // re-declaration of the name wins over an outer `useRef` binding.
+      const refBinding = findVariableInitializer(node, refName);
+      if (!refBinding?.initializer || !isHookCall(refBinding.initializer, "useRef")) return;
 
-      const ownerScope = findTimerRefOwnerScope(node, refName);
-      if (!ownerScope) return;
-
-      const usageFacts = collectTimerRefUsageFacts(ownerScope, refName);
+      const usageFacts = collectTimerRefUsageFacts(refBinding.scopeOwner, refName);
       if (!usageFacts.holdsScheduledTimerId || !usageFacts.hasPendingSignalRead) return;
 
       if (isInsideEffectCleanupReturn(node)) return;

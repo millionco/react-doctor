@@ -6,6 +6,7 @@ import { EFFECT_HOOK_NAMES, SUBSCRIPTION_METHOD_NAMES } from "../../constants/re
 import { defineRule } from "../../utils/define-rule.js";
 import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
+import { getRangeStart } from "../../utils/get-range-start.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { isResultDiscardedCall } from "../../utils/is-result-discarded-call.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -219,11 +220,6 @@ const collectCleanupBindings = (effectCallback: EsTreeNode): CleanupBindings => 
   });
 
   return bindings;
-};
-
-const getRangeStart = (node: EsTreeNode): number | null => {
-  const rangeStart = node.range?.[0];
-  return typeof rangeStart === "number" ? rangeStart : null;
 };
 
 // A resource registered and then released SYNCHRONOUSLY later in the same

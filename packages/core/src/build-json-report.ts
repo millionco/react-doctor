@@ -98,7 +98,7 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReport => {
 
   if (input.baseline) {
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
       mode: "baseline",
       baseline: {
         baseRef: input.baseline.baseRef,
@@ -111,7 +111,7 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReport => {
   }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     mode: input.mode,
     ...(input.baselineDegraded ? { baselineDegraded: true } : {}),
     ...shared,

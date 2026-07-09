@@ -118,6 +118,108 @@ describe("no-derived-state-effect — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("flags a derived-state setter wrapped in an if guard", () => {
+    const result = runRule(
+      noDerivedStateEffect,
+      `function Todos({ todos }) {
+        const [visibleTodos, setVisibleTodos] = useState([]);
+        useEffect(() => {
+          if (todos.length > 0) {
+            setVisibleTodos(todos.filter((todo) => !todo.done));
+          }
+        }, [todos]);
+        return <List items={visibleTodos} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags guarded setters in both branches of an if/else", () => {
+    const result = runRule(
+      noDerivedStateEffect,
+      `function Greeting({ name }) {
+        const [greeting, setGreeting] = useState("");
+        useEffect(() => {
+          if (name) {
+            setGreeting("Hello " + name);
+          } else {
+            setGreeting("Hello stranger");
+          }
+        }, [name]);
+        return <span>{greeting}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a braceless if-guarded setter", () => {
+    const result = runRule(
+      noDerivedStateEffect,
+      `function Field({ value }) {
+        const [draft, setDraft] = useState(value);
+        useEffect(() => {
+          if (value !== draft) setDraft(value);
+        }, [value]);
+        return <span>{draft}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("stays silent when a guard branch does non-setter work", () => {
+    const result = runRule(
+      noDerivedStateEffect,
+      `function Todos({ todos }) {
+        const [visibleTodos, setVisibleTodos] = useState([]);
+        useEffect(() => {
+          if (todos.length > 0) {
+            analytics.track("todos-updated");
+            setVisibleTodos(todos.filter((todo) => !todo.done));
+          }
+        }, [todos]);
+        return <List items={visibleTodos} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on an early-return guard (non-expression statement)", () => {
+    const result = runRule(
+      noDerivedStateEffect,
+      `function Field({ value }) {
+        const [draft, setDraft] = useState(value);
+        useEffect(() => {
+          if (!value) return;
+          setDraft(value);
+        }, [value]);
+        return <span>{draft}</span>;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("stays silent on a guarded controlled-input mirror also written from onChange", () => {
+    const result = runRule(
+      noDerivedStateEffect,
+      `function Field({ value }) {
+        const [draft, setDraft] = useState(value);
+        useEffect(() => {
+          if (value !== draft) {
+            setDraft(value);
+          }
+        }, [value]);
+        return <input value={draft} onChange={(e) => setDraft(e.target.value)} />;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("flags member-expression dependencies like [user.name]", () => {
     const result = runRule(
       noDerivedStateEffect,

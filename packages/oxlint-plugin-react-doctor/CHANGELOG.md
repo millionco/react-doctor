@@ -1,5 +1,15 @@
 # oxlint-plugin-react-doctor
 
+## 0.7.4
+
+### Patch Changes
+
+- [#1112](https://github.com/millionco/react-doctor/pull/1112) [`f91ede7`](https://github.com/millionco/react-doctor/commit/f91ede75c5d03970f4d30d66e862ce56e179c290) Thanks [@aidenybai](https://github.com/aidenybai)! - Add `no-match-media-in-state-initializer` to detect SSR-unsafe `matchMedia()` calls evaluated by React state initializers.
+
+- [#1110](https://github.com/millionco/react-doctor/pull/1110) [`6b70b32`](https://github.com/millionco/react-doctor/commit/6b70b3231c5d9531f72e39b0e99550fbe850d86b) Thanks [@aidenybai](https://github.com/aidenybai)! - Add the `effect-listener-cleanup-mismatch` rule for ineffective EventTarget cleanup callbacks and capture flags.
+
+- [#1111](https://github.com/millionco/react-doctor/pull/1111) [`82187a3`](https://github.com/millionco/react-doctor/commit/82187a3b31fb38b622c911e92d70db95e9154ea4) Thanks [@aidenybai](https://github.com/aidenybai)! - Add `no-indeterminate-attribute` to catch native checkboxes whose visual indeterminate state is incorrectly set through an HTML attribute.
+
 ## 0.7.3
 
 ### Patch Changes

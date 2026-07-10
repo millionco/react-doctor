@@ -307,7 +307,8 @@ const collectRnNoRawTextDependencies: CrossFileDependencyCollector = ({
 
 // no-dynamic-import-path / no-full-lodash-import (`is-inside-node-cli-package`),
 // prefer-dynamic-import (`is-published-library-package`),
-// rendering-hydration-mismatch-time / no-locale-format-in-render
+// rendering-hydration-mismatch-time / no-locale-format-in-render /
+// no-match-media-in-state-initializer
 // (`classifyReactNativeFileTarget`), and
 // rn-prefer-expo-image (`isExpoManagedFileActive` + the `wrapReactNativeRule`
 // gate) all read only the nearest manifest: the same ancestor package.json
@@ -335,6 +336,7 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-dynamic-import-path", collectNearestManifestDependencies],
     ["no-full-lodash-import", collectNearestManifestDependencies],
     ["no-locale-format-in-render", collectNearestManifestDependencies],
+    ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
     ["prefer-dynamic-import", collectNearestManifestDependencies],
     ["rendering-hydration-mismatch-time", collectNearestManifestDependencies],

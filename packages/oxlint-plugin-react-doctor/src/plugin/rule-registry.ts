@@ -211,6 +211,7 @@ import { noLegacyContextApi } from "./rules/architecture/no-legacy-context-api.j
 import { noLocaleFormatInRender } from "./rules/performance/no-locale-format-in-render.js";
 import { noLongTransitionDuration } from "./rules/design/no-long-transition-duration.js";
 import { noManyBooleanProps } from "./rules/architecture/no-many-boolean-props.js";
+import { noMatchMediaInStateInitializer } from "./rules/performance/no-match-media-in-state-initializer.js";
 import { noMirrorPropEffect } from "./rules/state-and-effects/no-mirror-prop-effect.js";
 import { noMoment } from "./rules/bundle-size/no-moment.js";
 import { noMultiComp } from "./rules/react-builtins/no-multi-comp.js";
@@ -2793,6 +2794,20 @@ export const reactDoctorRules = [
       ...noManyBooleanProps,
       framework: "global",
       category: "Maintainability",
+    },
+  },
+  {
+    key: "react-doctor/no-match-media-in-state-initializer",
+    id: "no-match-media-in-state-initializer",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noMatchMediaInStateInitializer,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(noMatchMediaInStateInitializer.requires ?? [])]),
+      ],
     },
   },
   {

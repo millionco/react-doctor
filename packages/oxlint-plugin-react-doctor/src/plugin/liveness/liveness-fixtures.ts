@@ -705,6 +705,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-long-transition-duration": {
     code: 'const S = () => <div style={{ transition: "width 2s ease" }} />;',
   },
+  "no-match-media-in-state-initializer": {
+    code: 'import { useState } from "react";\nuseState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);',
+  },
   "no-many-boolean-props": {
     code: "const Toggle = ({ isOpen, isLoading, hasIcon, canEdit }) => <div />;",
   },

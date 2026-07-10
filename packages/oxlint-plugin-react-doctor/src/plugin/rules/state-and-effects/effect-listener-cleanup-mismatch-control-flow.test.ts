@@ -52,10 +52,23 @@ describe("effect-listener-cleanup-mismatch canonical cleanup shape", () => {
       }, [shouldListen]);`,
       expectedCount: 0,
     },
+    {
+      name: "a final cleanup-body return expression",
+      code: `useEffect(() => {
+        document.addEventListener("mousedown", (event) => { return handle(event); });
+        return () => {
+          return (document.removeEventListener(
+            "mousedown",
+            (event) => { return handle(event); },
+          ));
+        };
+      }, []);`,
+      expectedCount: 1,
+    },
   ];
 
   for (const testCase of testCases) {
-    it(`stays quiet for ${testCase.name}`, () => {
+    it(`handles ${testCase.name}`, () => {
       expectDiagnosticCount(testCase.code, testCase.expectedCount);
     });
   }

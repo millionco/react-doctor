@@ -446,10 +446,16 @@ const analyzeCleanupBody = (
   let hasAmbiguousReachability = false;
   let hasUnknownAbortCall = false;
   let hasUnknownRemovalCall = false;
+  const finalCleanupStatement = isNodeOfType(cleanupBody, "BlockStatement")
+    ? cleanupBody.body[cleanupBody.body.length - 1]
+    : null;
   walkAst(cleanupBody, (child: EsTreeNode) => {
     if (child !== cleanupBody && isFunctionLike(child)) return false;
     if (isNodeOfType(child, "ClassDeclaration") || isNodeOfType(child, "ClassExpression")) {
       return false;
+    }
+    if (isNodeOfType(child, "ReturnStatement") && child === finalCleanupStatement) {
+      return;
     }
     if (isNodeOfType(child, "ReturnStatement") || isNodeOfType(child, "ThrowStatement")) {
       hasAmbiguousReachability = true;

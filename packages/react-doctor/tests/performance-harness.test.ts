@@ -105,7 +105,10 @@ describe("performance harness", () => {
       "--profile",
       "--heap-profile",
     ]);
-    expect(options.directories).toEqual([path.resolve("./packages/react-doctor"), "/tmp/example"]);
+    expect(options.directories).toEqual([
+      path.resolve("./packages/react-doctor"),
+      path.resolve("/tmp/example"),
+    ]);
     expect(options.samples).toBe(3);
     expect(options.warmups).toBe(0);
     expect(options.workerCounts).toEqual([1, 4, "auto"]);

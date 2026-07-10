@@ -108,14 +108,14 @@ describe("effect-listener-cleanup-mismatch computed methods", () => {
       expectedCount: 0,
     },
     {
-      name: "dynamic computed removal method",
+      name: "const-computed removal mismatch",
       code: `useEffect(() => {
         const handleResize = () => resize();
         const removalMethod = "removeEventListener";
         window.addEventListener("resize", handleResize);
         return () => window[removalMethod]("resize", () => resize());
       }, []);`,
-      expectedCount: 0,
+      expectedCount: 1,
     },
   ];
 

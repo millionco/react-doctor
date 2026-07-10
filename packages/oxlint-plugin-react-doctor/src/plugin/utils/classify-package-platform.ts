@@ -79,10 +79,14 @@ export const declaresAnyDependency = (manifest: PackageManifest): boolean =>
   });
 
 export const declaresDependency = (manifest: PackageManifest, dependencyName: string): boolean => {
-  for (const declaredName of iterateDependencyNames(manifest)) {
-    if (declaredName === dependencyName) return true;
-  }
-  return false;
+  return DEPENDENCY_SECTION_NAMES.some((sectionName) => {
+    const section = manifest[sectionName];
+    return (
+      typeof section === "object" &&
+      section !== null &&
+      Object.prototype.propertyIsEnumerable.call(section, dependencyName)
+    );
+  });
 };
 
 export type PackagePlatform = "expo" | "react-native" | "web" | "neutral" | "unknown";

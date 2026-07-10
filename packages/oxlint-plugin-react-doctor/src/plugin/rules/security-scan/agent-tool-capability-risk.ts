@@ -18,7 +18,9 @@ export const agentToolCapabilityRisk = defineRule({
   scan: scanByPattern({
     shouldScan: (file) =>
       isProductionSourcePath(file.relativePath) &&
-      AGENT_TOOL_CONTEXT_PATH_PATTERN.test(file.relativePath),
+      AGENT_TOOL_CONTEXT_PATH_PATTERN.test(file.relativePath) &&
+      AGENT_TOOL_DEFINITION_PATTERN.test(file.content) &&
+      AGENT_TOOL_DANGEROUS_CAPABILITY_PATTERN.test(file.content),
     pattern: AGENT_TOOL_DEFINITION_PATTERN,
     requireAll: [AGENT_TOOL_DANGEROUS_CAPABILITY_PATTERN],
     // Capability keywords (`fetch`, `exec`, `eval`) routinely appear as whole

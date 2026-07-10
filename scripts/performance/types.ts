@@ -1,0 +1,212 @@
+export interface BenchmarkCliOptions {
+  directories: string[];
+  samples: number;
+  warmups: number;
+  workerCounts: Array<number | "auto">;
+  modes: BenchmarkMode[];
+  cacheCohorts: BenchmarkCacheCohort[];
+  outputDirectory: string;
+  comparePath: string | null;
+  cliPath: string;
+  profile: boolean;
+  heapProfile: boolean;
+}
+
+export interface BenchmarkTargetMetadata {
+  directory: string;
+  label: string;
+  gitSha: string | null;
+  isGitDirty: boolean | null;
+  sourceFileCount: number;
+  sourceByteCount: number;
+}
+
+export interface HostMetadata {
+  platform: NodeJS.Platform;
+  architecture: string;
+  nodeVersion: string;
+  cpuModel: string;
+  cpuCount: number;
+  totalMemoryBytes: number;
+  hostname: string;
+}
+
+export interface BenchmarkReportProject {
+  skippedChecks: string[];
+  scannedFileCount?: number;
+  elapsedMilliseconds: number;
+  project: {
+    projectName?: string;
+    sourceFileCount: number;
+  };
+}
+
+export interface BenchmarkJsonReport {
+  schemaVersion: number;
+  diagnostics: unknown[];
+  elapsedMilliseconds: number;
+  projects: BenchmarkReportProject[];
+}
+
+export interface ValidatedBenchmarkReport {
+  elapsedMilliseconds: number;
+  diagnosticCount: number;
+  diagnosticHash: string;
+  scannedFileCount: number;
+}
+
+export interface ProcessResourceUsage {
+  userSeconds: number | null;
+  systemSeconds: number | null;
+  maximumResidentSetBytes: number | null;
+}
+
+export interface BenchmarkSample {
+  index: number;
+  wallMilliseconds: number;
+  cliElapsedMilliseconds: number;
+  userSeconds: number | null;
+  systemSeconds: number | null;
+  maximumResidentSetBytes: number | null;
+  diagnosticCount: number;
+  diagnosticHash: string;
+  scannedFileCount: number;
+  profileDirectory: string | null;
+}
+
+export interface DistributionSummary {
+  minimum: number;
+  median: number;
+  maximum: number;
+  medianAbsoluteDeviation: number;
+}
+
+export interface BenchmarkSeries {
+  target: BenchmarkTargetMetadata;
+  mode: BenchmarkMode;
+  cacheCohort: BenchmarkCacheCohort;
+  workerCount: number | "auto";
+  samples: BenchmarkSample[];
+  wallMilliseconds: DistributionSummary;
+  cliElapsedMilliseconds: DistributionSummary;
+  maximumResidentSetBytes: DistributionSummary | null;
+  filesPerSecond: number;
+  mebibytesPerSecond: number;
+  diagnosticHash: string;
+}
+
+export interface BenchmarkComparison {
+  key: string;
+  baselineMedianMilliseconds: number;
+  currentMedianMilliseconds: number;
+  deltaMilliseconds: number;
+  deltaRatio: number;
+  classification: "improved" | "stable" | "regressed";
+}
+
+export interface BenchmarkComparisonSeries {
+  target: {
+    directory: string;
+  };
+  mode: BenchmarkMode;
+  cacheCohort: BenchmarkCacheCohort;
+  workerCount: number | "auto";
+  wallMilliseconds: {
+    median: number;
+  };
+  diagnosticHash: string;
+}
+
+export interface PerformanceResult {
+  schemaVersion: 1;
+  generatedAt: string;
+  reactDoctorGitSha: string | null;
+  reactDoctorIsDirty: boolean | null;
+  host: HostMetadata;
+  options: Omit<BenchmarkCliOptions, "directories" | "comparePath">;
+  series: BenchmarkSeries[];
+  comparisons: BenchmarkComparison[];
+}
+
+export interface CpuProfileCallFrame {
+  functionName: string;
+  url: string;
+  lineNumber: number;
+  columnNumber: number;
+}
+
+export interface CpuProfileNode {
+  id: number;
+  callFrame: CpuProfileCallFrame;
+  children?: number[];
+}
+
+export interface CpuProfile {
+  nodes: CpuProfileNode[];
+  samples?: number[];
+  timeDeltas?: number[];
+}
+
+export interface CpuProfileFrameSummary {
+  functionName: string;
+  url: string;
+  lineNumber: number;
+  selfMicroseconds: number;
+  totalMicroseconds: number;
+  selfPercent: number;
+  totalPercent: number;
+}
+
+export interface CpuProfileProcessSummary {
+  file: string;
+  role: string;
+  sampledMicroseconds: number;
+  topFrames: CpuProfileFrameSummary[];
+}
+
+export interface CpuProfileAnalysis {
+  generatedAt: string;
+  profileDirectory: string;
+  sampledMicroseconds: number;
+  processes: CpuProfileProcessSummary[];
+  aggregateTopFrames: CpuProfileFrameSummary[];
+}
+
+export interface HeapProfileNode {
+  callFrame: CpuProfileCallFrame;
+  selfSize: number;
+  id: number;
+  children: HeapProfileNode[];
+}
+
+export interface HeapProfile {
+  head: HeapProfileNode;
+}
+
+export interface HeapProfileFrameSummary {
+  functionName: string;
+  url: string;
+  lineNumber: number;
+  selfBytes: number;
+  totalBytes: number;
+  selfPercent: number;
+  totalPercent: number;
+}
+
+export interface HeapProfileProcessSummary {
+  file: string;
+  role: string;
+  sampledBytes: number;
+  topFrames: HeapProfileFrameSummary[];
+}
+
+export interface HeapProfileAnalysis {
+  generatedAt: string;
+  profileDirectory: string;
+  sampledBytes: number;
+  processes: HeapProfileProcessSummary[];
+  aggregateTopFrames: HeapProfileFrameSummary[];
+}
+
+export type BenchmarkMode = "lint" | "full";
+export type BenchmarkCacheCohort = "no-cache" | "cold" | "hot";

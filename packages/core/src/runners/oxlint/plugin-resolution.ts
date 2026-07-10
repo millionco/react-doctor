@@ -1,6 +1,5 @@
 import { createRequire } from "node:module";
 import * as path from "node:path";
-import type { OxlintRuleSeverity } from "oxlint-plugin-react-doctor";
 import { messageFromUnknown } from "../../utils/message-from-unknown.js";
 import { warnConfigIssue } from "../../utils/warn-config-issue.js";
 
@@ -56,8 +55,6 @@ const readPluginShape = (
 
 interface ResolvedReactHooksJsPlugin {
   entry: JsPluginEntry;
-  /** Rule names exported by the loaded plugin (e.g. "void-use-memo"). */
-  availableRuleNames: ReadonlySet<string>;
 }
 
 const bundledRequire = createRequire(import.meta.url);
@@ -73,35 +70,9 @@ export const resolveReactHooksJsPlugin = (
   } catch {
     return null;
   }
-  const { ruleNames } = readPluginShape(pluginSpecifier, (spec) => bundledRequire(spec));
   return {
     entry: { name: "react-hooks-js", specifier: pluginSpecifier },
-    availableRuleNames: ruleNames,
   };
-};
-
-export const filterRulesToAvailable = (
-  rules: Record<string, OxlintRuleSeverity>,
-  pluginNamespace: string,
-  availableRuleNames: ReadonlySet<string>,
-): Record<string, OxlintRuleSeverity> => {
-  // Empty `availableRuleNames` means we couldn't introspect the plugin
-  // (e.g. exotic export shape). Fall back to the unfiltered rule set so
-  // we don't silently disable rules in supported configurations.
-  if (availableRuleNames.size === 0) return rules;
-  const ruleKeyPrefix = `${pluginNamespace}/`;
-  const filtered: Record<string, OxlintRuleSeverity> = {};
-  for (const [ruleKey, severity] of Object.entries(rules)) {
-    if (!ruleKey.startsWith(ruleKeyPrefix)) {
-      filtered[ruleKey] = severity;
-      continue;
-    }
-    const ruleName = ruleKey.slice(ruleKeyPrefix.length);
-    if (availableRuleNames.has(ruleName)) {
-      filtered[ruleKey] = severity;
-    }
-  }
-  return filtered;
 };
 
 /**

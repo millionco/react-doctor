@@ -69,11 +69,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@oxc-project/types": "^0.132.0",
+    "@oxc-project/types": "^0.138.0",
     "fast-glob": "^3.3.3",
     "minimatch": "^10.2.5",
-    "oxc-parser": "^0.132.0",
-    "oxc-resolver": "^11.19.1",
+    "oxc-parser": "^0.138.0",
+    "oxc-resolver": "^11.23.0",
     "typescript": ">=5.0.4 <6"
   },
   "devDependencies": {

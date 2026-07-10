@@ -33,7 +33,11 @@ const REGEX_PRECEDING_KEYWORDS = new Set([
 // `!` — means division; anything else (or nothing) means a regex can start
 // here. Misclassifying toward "division" is the safe direction: the slash is
 // then lexed as plain code, which is exactly the pre-regex-support behavior.
-const isRegexLiteralStart = (characters: string[], slashIndex: number): boolean => {
+const isRegexLiteralStart = (
+  content: string,
+  characters: ArrayLike<string>,
+  slashIndex: number,
+): boolean => {
   let cursor = slashIndex - 1;
   while (cursor >= 0 && WHITESPACE_PATTERN.test(characters[cursor])) cursor -= 1;
   if (cursor < 0) return true;
@@ -49,7 +53,7 @@ const isRegexLiteralStart = (characters: string[], slashIndex: number): boolean 
     }
     // `obj.return / 2` is a property access, not the keyword.
     if (wordStartIndex > 0 && characters[wordStartIndex - 1] === ".") return false;
-    return REGEX_PRECEDING_KEYWORDS.has(characters.slice(wordStartIndex, cursor + 1).join(""));
+    return REGEX_PRECEDING_KEYWORDS.has(content.slice(wordStartIndex, cursor + 1));
   }
   // `</` opens a JSX closing tag, never a regex.
   if (previousCharacter === "<") return false;
@@ -148,7 +152,7 @@ const quotedLiteralHasWhitespace = (
 // counts as a real call site; single-token literals (module specifiers,
 // identifiers) are exempt. Newlines are always preserved for line mapping.
 const blankNonCodePreservingPositions = (content: string, blankStringContents: boolean): string => {
-  const characters = content.split("");
+  let characters: string[] | null = null;
   let stringDelimiter: string | null = null;
   let isBlankingString = false;
   // Brace depth of each open template `${…}` expression, innermost last.
@@ -156,7 +160,9 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
   let index = 0;
 
   const blankUnlessNewline = (offset: number): void => {
-    if (offset < content.length && content[offset] !== "\n") characters[offset] = " ";
+    if (offset >= content.length || content[offset] === "\n") return;
+    characters ??= content.split("");
+    characters[offset] = " ";
   };
 
   while (index < content.length) {
@@ -223,6 +229,7 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
     }
 
     if (character === "/" && nextCharacter === "/") {
+      characters ??= content.split("");
       while (index < content.length && content[index] !== "\n") {
         characters[index] = " ";
         index += 1;
@@ -231,6 +238,7 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
     }
 
     if (character === "/" && nextCharacter === "*") {
+      characters ??= content.split("");
       while (index < content.length) {
         if (content[index] === "*" && content[index + 1] === "/") {
           characters[index] = " ";
@@ -251,7 +259,7 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
     // interior is blanked like prose so pattern words inside it don't count as
     // call sites.
     if (character === "/") {
-      const regexEndIndex = isRegexLiteralStart(characters, index)
+      const regexEndIndex = isRegexLiteralStart(content, characters ?? content, index)
         ? findRegexLiteralEnd(content, index)
         : null;
       if (regexEndIndex !== null) {
@@ -289,11 +297,13 @@ const blankNonCodePreservingPositions = (content: string, blankStringContents: b
     index += 1;
   }
 
-  return characters.join("");
+  return characters?.join("") ?? content;
 };
 
 export const stripCommentsPreservingPositions = (content: string): string =>
-  blankNonCodePreservingPositions(content, false);
+  content.includes("//") || content.includes("/*")
+    ? blankNonCodePreservingPositions(content, false)
+    : content;
 
 export const stripCommentsAndStringLiteralsPreservingPositions = (content: string): string =>
   blankNonCodePreservingPositions(content, true);

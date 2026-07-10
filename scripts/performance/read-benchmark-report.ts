@@ -1,0 +1,38 @@
+import { createHash } from "node:crypto";
+import * as fs from "node:fs";
+import * as Schema from "effect/Schema";
+import { JsonReport } from "@react-doctor/core/schemas";
+import type { ValidatedBenchmarkReport } from "./types.ts";
+
+const projectSourceFileCount = (project: unknown): number => {
+  if (
+    typeof project === "object" &&
+    project !== null &&
+    "sourceFileCount" in project &&
+    typeof project.sourceFileCount === "number"
+  ) {
+    return project.sourceFileCount;
+  }
+  throw new Error("Benchmark report project has no sourceFileCount");
+};
+
+export const readBenchmarkReport = (reportPath: string): ValidatedBenchmarkReport => {
+  const report = Schema.decodeUnknownSync(JsonReport)(
+    JSON.parse(fs.readFileSync(reportPath, "utf8")),
+  );
+  const skippedChecks = report.projects.flatMap((project) => project.skippedChecks);
+  if (skippedChecks.length > 0) {
+    throw new Error(`Benchmark scan degraded: ${skippedChecks.join(", ")}`);
+  }
+  const scannedFileCount = report.projects.reduce(
+    (total, project) =>
+      total + (project.scannedFileCount ?? projectSourceFileCount(project.project)),
+    0,
+  );
+  return {
+    elapsedMilliseconds: report.elapsedMilliseconds,
+    diagnosticCount: report.diagnostics.length,
+    diagnosticHash: createHash("sha256").update(JSON.stringify(report.diagnostics)).digest("hex"),
+    scannedFileCount,
+  };
+};

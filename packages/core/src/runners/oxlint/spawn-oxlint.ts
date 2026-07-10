@@ -7,6 +7,7 @@ import {
 } from "../../constants.js";
 import { OxlintBatchExceeded, OxlintSpawnFailed, ReactDoctorError } from "../../errors.js";
 import { buildOxlintChildEnv } from "../../utils/build-oxlint-child-env.js";
+import { buildProfiledNodeArguments } from "../../utils/build-profiled-node-arguments.js";
 
 const SANITIZED_ENV: NodeJS.ProcessEnv = buildOxlintChildEnv(process.env);
 
@@ -51,18 +52,26 @@ export const spawnOxlint = (
       );
       return;
     }
-    const child = spawn(nodeBinaryPath, args, {
-      cwd: rootDirectory,
-      env: SANITIZED_ENV,
-      // HACK: oxlint's cli.js sets process.stdin._handle.setBlocking(true)
-      // when stdout is not a TTY. This initializes and refs the child's stdin
-      // handle, and since the parent never closes the pipe the child's event
-      // loop can't drain after the lint operation — hanging the process
-      // indefinitely (observed on WSL 2, Node v24). Connecting stdin to
-      // /dev/null makes the setBlocking call harmless and lets the child exit
-      // cleanly once the lint pass finishes.
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const child = spawn(
+      nodeBinaryPath,
+      buildProfiledNodeArguments({
+        argumentsList: args,
+        cpuProfileDirectory: SANITIZED_ENV.REACT_DOCTOR_CPU_PROFILE_DIR,
+        heapProfileDirectory: SANITIZED_ENV.REACT_DOCTOR_HEAP_PROFILE_DIR,
+      }),
+      {
+        cwd: rootDirectory,
+        env: SANITIZED_ENV,
+        // HACK: oxlint's cli.js sets process.stdin._handle.setBlocking(true)
+        // when stdout is not a TTY. This initializes and refs the child's stdin
+        // handle, and since the parent never closes the pipe the child's event
+        // loop can't drain after the lint operation — hanging the process
+        // indefinitely (observed on WSL 2, Node v24). Connecting stdin to
+        // /dev/null makes the setBlocking call harmless and lets the child exit
+        // cleanly once the lint pass finishes.
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
 
     const onAbort = () => {
       child.kill("SIGKILL");

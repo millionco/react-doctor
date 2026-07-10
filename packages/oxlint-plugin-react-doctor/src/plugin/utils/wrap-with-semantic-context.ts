@@ -102,7 +102,9 @@ export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
 
     const visitors = rule.create(enrichedContext);
     const passthroughVisitors: RuleVisitors = {};
-    for (const [nodeType, handler] of Object.entries(visitors)) {
+    for (const nodeType in visitors) {
+      if (!Object.hasOwn(visitors, nodeType)) continue;
+      const handler = visitors[nodeType];
       if (typeof handler !== "function") continue;
       passthroughVisitors[nodeType] = handler;
     }

@@ -30,7 +30,17 @@ interface CacheEntry {
   readonly program: EsTreeNode | null;
 }
 
-export const parseSourceText = (filename: string, sourceText: string): EsTreeNode | null => {
+export interface ParseSourceTextInput {
+  readonly filename: string;
+  readonly sourceText: string;
+  readonly shouldAttachParentReferences: boolean;
+}
+
+export const parseSourceText = ({
+  filename,
+  sourceText,
+  shouldAttachParentReferences,
+}: ParseSourceTextInput): EsTreeNode | null => {
   try {
     const result = parseSync(filename, sourceText, {
       astType: "ts",
@@ -39,7 +49,7 @@ export const parseSourceText = (filename: string, sourceText: string): EsTreeNod
     const hasFatalError = result.errors.some((parseError) => parseError.severity === "Error");
     if (hasFatalError) return null;
     const parsedProgram = result.program as unknown as EsTreeNode;
-    attachParentReferences(parsedProgram);
+    if (shouldAttachParentReferences) attachParentReferences(parsedProgram);
     return parsedProgram;
   } catch {
     return null;
@@ -117,7 +127,11 @@ export const parseSourceFile = (absoluteFilePath: string): EsTreeNode | null => 
     return null;
   }
 
-  const parsedProgram = parseSourceText(absoluteFilePath, sourceText);
+  const parsedProgram = parseSourceText({
+    filename: absoluteFilePath,
+    sourceText,
+    shouldAttachParentReferences: true,
+  });
 
   parseCache.set(absoluteFilePath, {
     mtimeMs: fileStat.mtimeMs,

@@ -1,6 +1,6 @@
 import { SOURCE_FILE_PATTERN } from "../../../constants/security-scan.js";
 import type { FileScan, ScannedFile } from "../../../utils/file-scan.js";
-import { getMatchLocation } from "./get-match-location.js";
+import { getLocationAtIndex } from "./get-location-at-index.js";
 import { isFirebaseRulesPath } from "./is-firebase-rules-path.js";
 import {
   stripCommentsAndStringLiteralsPreservingPositions,
@@ -65,10 +65,17 @@ export const scanByPattern =
     if (requireAll !== undefined && !requireAll.every((gate) => gate.test(content))) {
       return [];
     }
-    const patterns = pattern instanceof RegExp ? [pattern] : pattern;
-    const matchedPattern = patterns.find((candidate) => candidate.test(content));
-    if (matchedPattern === undefined) return [];
+    let matchIndex = -1;
+    if (pattern instanceof RegExp) {
+      matchIndex = content.search(pattern);
+    } else {
+      for (let patternIndex = 0; patternIndex < pattern.length; patternIndex += 1) {
+        matchIndex = content.search(pattern[patternIndex]);
+        if (matchIndex >= 0) break;
+      }
+    }
+    if (matchIndex < 0) return [];
     if (suppressWhen !== undefined && suppressWhen.test(content)) return [];
-    const { line, column } = getMatchLocation(content, matchedPattern);
+    const { line, column } = getLocationAtIndex(content, matchIndex);
     return [{ message, line, column }];
   };

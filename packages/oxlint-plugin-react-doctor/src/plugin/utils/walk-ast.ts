@@ -1,3 +1,4 @@
+import { KEYS } from "eslint-visitor-keys";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { isAstNode } from "./is-ast-node.js";
 
@@ -7,14 +8,29 @@ import { isAstNode } from "./is-ast-node.js";
 // for the enclosing function only). Returning anything else (including
 // `undefined`, the natural value of statements) continues the walk.
 export const walkAst = (node: EsTreeNode, visitor: (child: EsTreeNode) => boolean | void): void => {
-  if (!node || typeof node !== "object") return;
   if (visitor(node) === false) return;
   const nodeRecord = node as unknown as Record<string, unknown>;
-  for (const key of Object.keys(nodeRecord)) {
-    if (key === "parent") continue;
+  const childKeys = KEYS[node.type];
+  if (childKeys !== undefined) {
+    for (let keyIndex = 0; keyIndex < childKeys.length; keyIndex += 1) {
+      const child = nodeRecord[childKeys[keyIndex]];
+      if (Array.isArray(child)) {
+        for (let itemIndex = 0; itemIndex < child.length; itemIndex += 1) {
+          const item = child[itemIndex];
+          if (isAstNode(item)) walkAst(item, visitor);
+        }
+      } else if (isAstNode(child)) {
+        walkAst(child, visitor);
+      }
+    }
+    return;
+  }
+  for (const key in nodeRecord) {
+    if (key === "parent" || !Object.hasOwn(nodeRecord, key)) continue;
     const child = nodeRecord[key];
     if (Array.isArray(child)) {
-      for (const item of child) {
+      for (let itemIndex = 0; itemIndex < child.length; itemIndex += 1) {
+        const item = child[itemIndex];
         if (isAstNode(item)) walkAst(item, visitor);
       }
     } else if (isAstNode(child)) {

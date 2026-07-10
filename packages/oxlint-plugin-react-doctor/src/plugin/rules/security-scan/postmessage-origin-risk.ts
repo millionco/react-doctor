@@ -93,7 +93,14 @@ export const postmessageOriginRisk = defineRule({
   scan: (file) => {
     if (!isProductionSourcePath(file.relativePath)) return [];
     if (WORKER_FILE_PATH_PATTERN.test(file.relativePath)) return [];
-    const ast = parseSourceText(file.absolutePath, file.content);
+    if (!file.content.includes("addEventListener") && !file.content.includes("onmessage")) {
+      return [];
+    }
+    const ast = parseSourceText({
+      filename: file.absolutePath,
+      sourceText: file.content,
+      shouldAttachParentReferences: false,
+    });
     if (ast === null) return [];
 
     const findings: ScanFinding[] = [];

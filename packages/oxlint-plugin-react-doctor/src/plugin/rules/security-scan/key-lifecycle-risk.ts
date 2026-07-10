@@ -5,6 +5,9 @@ import {
 import { defineRule } from "../../utils/define-rule.js";
 import { scanByPattern } from "./utils/scan-by-pattern.js";
 
+const KEY_MATERIAL_MARKER_PATTERN =
+  /PRIVATE KEY|SSH_PRIVATE_KEY|GPG_PRIVATE_KEY|DEPLOY_KEY|SIGNING_KEY/i;
+
 export const keyLifecycleRisk = defineRule({
   id: "key-lifecycle-risk",
   title: "Long-lived key material in repository",
@@ -22,7 +25,8 @@ export const keyLifecycleRisk = defineRule({
   scan: scanByPattern({
     shouldScan: (file) =>
       !TEST_CONTEXT_PATTERN.test(file.relativePath) &&
-      !DOCUMENTATION_CONTEXT_PATTERN.test(file.relativePath),
+      !DOCUMENTATION_CONTEXT_PATTERN.test(file.relativePath) &&
+      KEY_MATERIAL_MARKER_PATTERN.test(file.content),
     pattern:
       /(?<!(?:placeholder|example|sample|dummy|fake)[\s\S]{0,40})-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----(?:\s|\\r|\\n)*[A-Za-z0-9+/=][A-Za-z0-9+/=\s]{38,}(?![^-]{0,160}\.\.\.)|\b(?:SSH_PRIVATE_KEY|GPG_PRIVATE_KEY|DEPLOY_KEY|SIGNING_KEY)\b\s*[:=]\s*["'][^"'\n]{16,}["']/i,
     message: "Private or long-lived release key material appears in the repository.",

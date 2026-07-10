@@ -22,7 +22,11 @@ export const mcpToolCapabilityRisk = defineRule({
   recommendation:
     "MCP tool calls run with the connecting client's authority. Validate inputs, enforce per-tool authorization, and avoid raw filesystem/shell/network access where possible.",
   scan: scanByPattern({
-    shouldScan: (file) => isProductionSourcePath(file.relativePath),
+    shouldScan: (file) =>
+      isProductionSourcePath(file.relativePath) &&
+      MCP_IMPORT_PATTERN.test(file.content) &&
+      MCP_TOOL_SURFACE_PATTERN.test(file.content) &&
+      AGENT_TOOL_DANGEROUS_CAPABILITY_PATTERN.test(file.content),
     pattern: MCP_TOOL_SURFACE_PATTERN,
     requireAll: [MCP_IMPORT_PATTERN, AGENT_TOOL_DANGEROUS_CAPABILITY_PATTERN],
     // Same prose trap as the agent sibling: a capability word in a tool's

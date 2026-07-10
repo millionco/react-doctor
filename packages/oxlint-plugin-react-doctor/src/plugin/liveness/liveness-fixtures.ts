@@ -655,6 +655,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-img-lazy-with-high-fetchpriority": {
     code: 'const Hero = () => <img src="/a.png" loading="lazy" fetchPriority="high" />;',
   },
+  "no-indeterminate-attribute": {
+    code: 'const Checkbox = () => <input type="checkbox" indeterminate />;',
+  },
   "no-initialize-state": {
     code: "function C() {\n        const [count, setCount] = useState(null);\n        useEffect(() => {\n          const initial = 42;\n          setCount(initial);\n          return () => console.log(initial);\n        }, []);\n        return null;\n      }",
   },

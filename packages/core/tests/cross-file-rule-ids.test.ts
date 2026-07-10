@@ -140,6 +140,7 @@ describe("CROSS_FILE_RULE_IDS", () => {
       "no-barrel-import",
       "no-dynamic-import-path",
       "no-full-lodash-import",
+      "no-indeterminate-attribute",
       "no-locale-format-in-render",
       "no-match-media-in-state-initializer",
       "no-mutating-reducer-state",

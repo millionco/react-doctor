@@ -6,7 +6,11 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildBenchmarkComparisons } from "./build-benchmark-comparisons.ts";
 import { collectTargetMetadata } from "./collect-target-metadata.ts";
-import { BYTES_PER_MEBIBYTE, MILLISECONDS_PER_SECOND } from "./constants.ts";
+import {
+  BENCHMARK_RUNS_DIRECTORY_NAME,
+  BYTES_PER_MEBIBYTE,
+  MILLISECONDS_PER_SECOND,
+} from "./constants.ts";
 import { parsePerformanceArguments } from "./parse-performance-arguments.ts";
 import { renderPerformanceMarkdown } from "./render-performance-markdown.ts";
 import { runBenchmarkSample } from "./run-benchmark-sample.ts";
@@ -114,7 +118,7 @@ const runSeries = (
   workerCount: number | "auto",
 ): BenchmarkSeries => {
   const slug = seriesSlug(target, mode, cacheCohort, workerCount);
-  const seriesDirectory = path.join(options.outputDirectory, "runs", slug);
+  const seriesDirectory = path.join(options.outputDirectory, BENCHMARK_RUNS_DIRECTORY_NAME, slug);
   fs.rmSync(seriesDirectory, { recursive: true, force: true });
   fs.mkdirSync(seriesDirectory, { recursive: true });
   process.stderr.write(

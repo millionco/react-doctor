@@ -3,12 +3,16 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { buildBenchmarkComparisons } from "../../../scripts/performance/build-benchmark-comparisons.ts";
+import { createStressProject } from "../../../scripts/performance/create-stress-project.ts";
 import { parsePerformanceArguments } from "../../../scripts/performance/parse-performance-arguments.ts";
+import { parseStressPerformanceArguments } from "../../../scripts/performance/parse-stress-performance-arguments.ts";
 import { readBenchmarkReport } from "../../../scripts/performance/read-benchmark-report.ts";
 import { renderPerformanceMarkdown } from "../../../scripts/performance/render-performance-markdown.ts";
+import { runPerformance } from "../../../scripts/performance/run-performance.ts";
 import { summarizeDistribution } from "../../../scripts/performance/summarize-distribution.ts";
 import type { BenchmarkSeries, PerformanceResult } from "../../../scripts/performance/types.ts";
 
+const REPOSITORY_ROOT = path.resolve(import.meta.dirname, "../../..");
 const temporaryDirectories: string[] = [];
 
 const createTemporaryDirectory = (): string => {
@@ -116,6 +120,88 @@ describe("performance harness", () => {
     expect(() => parsePerformanceArguments([".", "--samples", "0"])).toThrow("--samples");
     expect(() => parsePerformanceArguments([".", "--cache", "unknown"])).toThrow(
       "Unknown cache cohort",
+    );
+  });
+
+  it("parses stress-project dimensions and benchmark options", () => {
+    const options = parseStressPerformanceArguments([
+      "--files",
+      "12",
+      "--components-per-file",
+      "3",
+      "--samples",
+      "2",
+      "--warmups",
+      "0",
+      "--workers",
+      "1,auto",
+      "--profile",
+    ]);
+
+    expect(options.files).toBe(12);
+    expect(options.componentsPerFile).toBe(3);
+    expect(options.samples).toBe(2);
+    expect(options.warmups).toBe(0);
+    expect(options.workers).toBe("1,auto");
+    expect(options.profile).toBe(true);
+    expect(parseStressPerformanceArguments([]).cache).toBe("cold");
+  });
+
+  it("generates a deterministic stress project", () => {
+    const directory = createTemporaryDirectory();
+    const stressProject = createStressProject({
+      directory,
+      fileCount: 3,
+      componentsPerFileCount: 2,
+    });
+    const componentPath = path.join(directory, "src", "component-00000.tsx");
+    const firstSource = fs.readFileSync(componentPath, "utf8");
+
+    expect(stressProject.generatedSourceFileCount).toBe(5);
+    expect(stressProject.componentCount).toBe(6);
+    expect(firstSource).toContain("StressComponent00000_0");
+    expect(firstSource).toContain("StressComponent00000_1");
+
+    createStressProject({
+      directory,
+      fileCount: 3,
+      componentsPerFileCount: 2,
+    });
+    expect(fs.readFileSync(componentPath, "utf8")).toBe(firstSource);
+  });
+
+  it("runs the benchmark against a generated stress project with stable diagnostics", () => {
+    const directory = createTemporaryDirectory();
+    const projectDirectory = path.join(directory, "project");
+    const outputDirectory = path.join(directory, "results");
+    const stressProject = createStressProject({
+      directory: projectDirectory,
+      fileCount: 4,
+      componentsPerFileCount: 1,
+    });
+    const result = runPerformance({
+      directories: [projectDirectory],
+      samples: 2,
+      warmups: 0,
+      workerCounts: [1],
+      modes: ["lint"],
+      cacheCohorts: ["no-cache"],
+      outputDirectory,
+      comparePath: null,
+      cliPath: path.join(REPOSITORY_ROOT, "packages/react-doctor/dist/cli.js"),
+      profile: false,
+      heapProfile: false,
+    });
+
+    expect(result.series).toHaveLength(1);
+    expect(result.series[0]?.samples).toHaveLength(2);
+    expect(result.series[0]?.diagnosticHash).toHaveLength(64);
+    expect(result.series[0]?.samples[0]?.diagnosticCount).toBeGreaterThan(0);
+    expect(result.series[0]?.samples[1]?.diagnosticHash).toBe(
+      result.series[0]?.samples[0]?.diagnosticHash,
+    );
+    expect(result.series[0]?.samples[0]?.scannedFileCount).toBe(
+      stressProject.generatedSourceFileCount,
     );
   });
 

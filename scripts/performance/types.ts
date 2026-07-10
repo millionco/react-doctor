@@ -12,6 +12,34 @@ export interface BenchmarkCliOptions {
   heapProfile: boolean;
 }
 
+export interface CreateStressProjectInput {
+  readonly directory: string;
+  readonly fileCount: number;
+  readonly componentsPerFileCount: number;
+}
+
+export interface StressProjectMetadata {
+  readonly directory: string;
+  readonly generatedSourceFileCount: number;
+  readonly componentCount: number;
+}
+
+export interface StressPerformanceCommandOptions {
+  readonly files: number;
+  readonly componentsPerFile: number;
+  readonly samples: number;
+  readonly warmups: number;
+  readonly workers: string;
+  readonly mode: string;
+  readonly cache: string;
+  readonly out: string;
+  readonly project: string;
+  readonly cli: string;
+  readonly compare?: string;
+  readonly profile: boolean;
+  readonly heapProfile: boolean;
+}
+
 export interface BenchmarkTargetMetadata {
   directory: string;
   label: string;

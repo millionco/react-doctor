@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as ts from "typescript";
+import ts from "typescript";
 import type { Diagnostic } from "../../types/index.js";
 
 const MANUAL_MEMOIZATION_PLUGIN = "react-doctor";

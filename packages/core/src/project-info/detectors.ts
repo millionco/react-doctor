@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
-import * as ts from "typescript";
+import ts from "typescript";
 import { ES2023_YEAR, ES_TARGET_YEAR_BY_NAME, TSCONFIG_EXTENDS_MAX_DEPTH } from "../constants.js";
 import type { Framework, PackageJson } from "../types/index.js";
 import { isProjectBoundary } from "../utils/is-project-boundary.js";

@@ -122,6 +122,18 @@ export class AmbiguousProject extends Schema.TaggedErrorClass<AmbiguousProject>(
   }
 }
 
+export class ProjectDiscoveryFailed extends Schema.TaggedErrorClass<ProjectDiscoveryFailed>()(
+  "ProjectDiscoveryFailed",
+  {
+    directory: Schema.String,
+    cause: Schema.Unknown,
+  },
+) {
+  get message() {
+    return `Project discovery failed for ${this.directory}: ${Cause.pretty(Cause.fail(this.cause))}`;
+  }
+}
+
 export class DeadCodeAnalysisFailed extends Schema.TaggedErrorClass<DeadCodeAnalysisFailed>()(
   "DeadCodeAnalysisFailed",
   {
@@ -178,6 +190,7 @@ export const ReactDoctorErrorReason = Schema.Union([
   ProjectNotFound,
   NoReactDependency,
   AmbiguousProject,
+  ProjectDiscoveryFailed,
   DeadCodeAnalysisFailed,
   GitInvocationFailed,
   GitBaseBranchMissing,

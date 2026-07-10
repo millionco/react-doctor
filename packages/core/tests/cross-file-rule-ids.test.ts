@@ -133,13 +133,14 @@ describe("CROSS_FILE_RULE_IDS", () => {
     expect(detected).toEqual(declared);
   });
 
-  it("contains the verified thirteen and nothing the analysis can't justify", () => {
+  it("contains the verified fourteen and nothing the analysis can't justify", () => {
     expect([...CROSS_FILE_RULE_IDS].sort()).toEqual([
       "nextjs-missing-metadata",
       "nextjs-no-use-search-params-without-suspense",
       "no-barrel-import",
       "no-dynamic-import-path",
       "no-full-lodash-import",
+      "no-indeterminate-attribute",
       "no-locale-format-in-render",
       "no-mutating-reducer-state",
       "prefer-dynamic-import",

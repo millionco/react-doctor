@@ -194,6 +194,7 @@ import { noGlobalCssVariableAnimation } from "./rules/performance/no-global-css-
 import { noGradientText } from "./rules/design/no-gradient-text.js";
 import { noGrayOnColoredBackground } from "./rules/design/no-gray-on-colored-background.js";
 import { noImgLazyWithHighFetchpriority } from "./rules/performance/no-img-lazy-with-high-fetchpriority.js";
+import { noIndeterminateAttribute } from "./rules/correctness/no-indeterminate-attribute.js";
 import { noInitializeState } from "./rules/state-and-effects/no-initialize-state.js";
 import { noInlineBounceEasing } from "./rules/design/no-inline-bounce-easing.js";
 import { noInlineExhaustiveStyle } from "./rules/design/no-inline-exhaustive-style.js";
@@ -2592,6 +2593,17 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(noImgLazyWithHighFetchpriority.requires ?? [])]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/no-indeterminate-attribute",
+    id: "no-indeterminate-attribute",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noIndeterminateAttribute,
+      framework: "global",
+      category: "Bugs",
     },
   },
   {

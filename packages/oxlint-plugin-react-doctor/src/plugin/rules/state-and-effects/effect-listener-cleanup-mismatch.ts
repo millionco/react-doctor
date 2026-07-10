@@ -4,10 +4,19 @@ import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { readStaticBoolean } from "../../utils/read-static-boolean.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
+import { buildListenerCleanupMismatchMessage } from "./utils/build-listener-cleanup-mismatch-message.js";
+import { callbackMayRegisterEventListener } from "./utils/callback-may-register-event-listener.js";
+import { compareListenerCallbackIdentities } from "./utils/compare-listener-callback-identities.js";
+import { doesListenerAnalysisAbortController } from "./utils/does-listener-analysis-abort-controller.js";
+import { doesListenerAnalysisCancelRegistration } from "./utils/does-listener-analysis-cancel-registration.js";
 import { getStaticMemberPropertyName } from "./utils/static-member-property-name.js";
+import { isListenerPathAmbiguous } from "./utils/is-listener-path-ambiguous.js";
+import { resolveEventListenerCapture } from "./utils/resolve-event-listener-capture.js";
+import { resolveStaticOnceOption } from "./utils/resolve-static-once-option.js";
 import type { SymbolDescriptor } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -32,16 +41,22 @@ interface ListenerRegistration {
   readonly eventName: string;
   readonly callbackIdentity: CallbackIdentity;
   readonly capture: boolean;
+  readonly once: boolean;
   readonly abortControllerSymbolId: number | null;
   readonly hasUnknownCancellation: boolean;
 }
 
-interface ListenerAnalysis {
-  readonly registrations: ListenerRegistration[];
+interface CancellationAnalysis {
   readonly removals: ListenerCandidate[];
   readonly abortedControllerSymbolIds: ReadonlySet<number>;
+  readonly exhaustiveBranches: ReadonlyArray<ExhaustiveCleanupBranches>;
   readonly hasUnknownAbortCall: boolean;
   readonly hasUnknownRemovalCall: boolean;
+}
+
+interface ListenerAnalysis extends CancellationAnalysis {
+  readonly registrations: ListenerRegistration[];
+  readonly setupAbortAnalysis: CancellationAnalysis | null;
 }
 
 interface ListenerMismatch {
@@ -50,11 +65,9 @@ interface ListenerMismatch {
   readonly callbackComparison: "different" | "same";
 }
 
-interface CleanupAnalysis {
-  readonly removals: ListenerCandidate[];
-  readonly abortedControllerSymbolIds: ReadonlySet<number>;
-  readonly hasUnknownAbortCall: boolean;
-  readonly hasUnknownRemovalCall: boolean;
+interface ExhaustiveCleanupBranches {
+  readonly alternate: CancellationAnalysis;
+  readonly consequent: CancellationAnalysis;
 }
 
 interface EffectListenerInputs {
@@ -69,32 +82,17 @@ interface RegistrationCancellation {
   readonly hasUnknownCancellation: boolean;
 }
 
+interface CalledCleanup {
+  readonly body: EsTreeNode;
+  readonly symbolId: number;
+}
+
+interface StaticEventDispatch {
+  readonly eventName: string;
+  readonly targetKey: string;
+}
+
 const LISTENER_EFFECT_HOOK_NAMES = new Set([...EFFECT_HOOK_NAMES, "useInsertionEffect"]);
-
-const PATH_AMBIGUOUS_ANCESTOR_TYPES: ReadonlySet<string> = new Set([
-  "CatchClause",
-  "ConditionalExpression",
-  "DoWhileStatement",
-  "ForInStatement",
-  "ForOfStatement",
-  "ForStatement",
-  "IfStatement",
-  "LogicalExpression",
-  "SwitchCase",
-  "SwitchStatement",
-  "TryStatement",
-  "WhileStatement",
-]);
-
-const isPathAmbiguousCall = (node: EsTreeNode, bodyNode: EsTreeNode): boolean => {
-  if (PATH_AMBIGUOUS_ANCESTOR_TYPES.has(bodyNode.type)) return true;
-  let currentNode: EsTreeNode | null | undefined = node;
-  while (currentNode?.parent && currentNode.parent !== bodyNode) {
-    currentNode = currentNode.parent;
-    if (PATH_AMBIGUOUS_ANCESTOR_TYPES.has(currentNode.type)) return true;
-  }
-  return false;
-};
 
 const hasOnlyReadReferences = (symbol: SymbolDescriptor): boolean =>
   symbol.references.every((reference) => reference.flag === "read");
@@ -148,22 +146,25 @@ const resolveCallbackIdentity = (
   return { node: symbol.bindingIdentifier, isConcreteFunction: false };
 };
 
-const compareCallbackIdentities = (
-  registrationIdentity: CallbackIdentity,
-  removalIdentity: CallbackIdentity,
-): "same" | "different" | "unknown" => {
-  if (registrationIdentity.node === removalIdentity.node) return "same";
-  if (registrationIdentity.isConcreteFunction && removalIdentity.isConcreteFunction) {
-    return "different";
-  }
-  return "unknown";
-};
-
 const resolveTargetKey = (targetNode: EsTreeNode, context: RuleContext): string | null => {
   const unwrappedTarget = stripParenExpression(targetNode);
   if (isNodeOfType(unwrappedTarget, "Identifier")) {
     const symbol = resolveAliasedSymbol(unwrappedTarget, context, new Set());
-    if (symbol) return `symbol:${symbol.id}`;
+    if (symbol) {
+      if (symbol.kind === "import" || symbol.kind === "parameter" || symbol.kind === "function") {
+        return null;
+      }
+      const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
+      if (
+        isNodeOfType(initializer, "NewExpression") &&
+        isNodeOfType(initializer.callee, "Identifier") &&
+        !context.scopes.isGlobalReference(initializer.callee)
+      ) {
+        return null;
+      }
+      if (isNodeOfType(initializer, "NewExpression")) return `fresh:${symbol.id}`;
+      return `symbol:${symbol.id}`;
+    }
     if (context.scopes.isGlobalReference(unwrappedTarget)) {
       return `global:${unwrappedTarget.name}`;
     }
@@ -175,6 +176,18 @@ const resolveTargetKey = (targetNode: EsTreeNode, context: RuleContext): string 
     isNodeOfType(unwrappedTarget.property, "Identifier")
   ) {
     const objectKey = resolveTargetKey(unwrappedTarget.object, context);
+    if (
+      unwrappedTarget.property.name === "document" &&
+      (objectKey === "global:window" || objectKey === "global:globalThis")
+    ) {
+      return "global:document";
+    }
+    if (
+      unwrappedTarget.property.name === "window" &&
+      (objectKey === "global:window" || objectKey === "global:globalThis")
+    ) {
+      return "global:window";
+    }
     return objectKey === null ? null : `${objectKey}.${unwrappedTarget.property.name}`;
   }
   return null;
@@ -207,27 +220,40 @@ const resolveStaticEventName = (
   return resolveStaticEventName(symbol.initializer, context, visitedSymbolIds);
 };
 
-const resolveCapture = (optionsNode: EsTreeNode | null | undefined): boolean | null => {
-  if (!optionsNode) return false;
-  const unwrappedOptions = stripParenExpression(optionsNode);
-  if (isNodeOfType(unwrappedOptions, "Literal")) {
-    return typeof unwrappedOptions.value === "boolean" ? unwrappedOptions.value : null;
+const readStaticEventDispatch = (
+  node: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): StaticEventDispatch | null => {
+  const targetNode = readDirectMemberReceiver(node.callee, "dispatchEvent", context);
+  const eventArgument = node.arguments?.[0];
+  if (!eventArgument) return null;
+  const eventNode = stripParenExpression(eventArgument);
+  if (
+    !targetNode ||
+    !isNodeOfType(eventNode, "NewExpression") ||
+    !isNodeOfType(eventNode.callee, "Identifier") ||
+    eventNode.callee.name !== "Event" ||
+    !context.scopes.isGlobalReference(eventNode.callee)
+  ) {
+    return null;
   }
-  if (!isNodeOfType(unwrappedOptions, "ObjectExpression")) return null;
-
-  let capture = false;
-  for (const property of unwrappedOptions.properties) {
-    if (!isNodeOfType(property, "Property")) return null;
-    const propertyName = getStaticPropertyKeyName(property, { allowComputedString: true });
-    if (propertyName === null) return null;
-    if (propertyName !== "capture") continue;
-    const propertyValue = stripParenExpression(property.value);
-    if (!isNodeOfType(propertyValue, "Literal") || typeof propertyValue.value !== "boolean") {
-      return null;
-    }
-    capture = propertyValue.value;
+  const target = stripParenExpression(targetNode);
+  if (!isNodeOfType(target, "Identifier")) return null;
+  const targetSymbol = resolveAliasedSymbol(target, context, new Set());
+  const targetInitializer = targetSymbol?.initializer
+    ? stripParenExpression(targetSymbol.initializer)
+    : null;
+  if (
+    !isNodeOfType(targetInitializer, "NewExpression") ||
+    !isNodeOfType(targetInitializer.callee, "Identifier") ||
+    targetInitializer.callee.name !== "EventTarget" ||
+    !context.scopes.isGlobalReference(targetInitializer.callee)
+  ) {
+    return null;
   }
-  return capture;
+  const targetKey = resolveTargetKey(targetNode, context);
+  const eventName = resolveStaticEventName(eventNode.arguments?.[0], context);
+  return targetKey !== null && eventName !== null ? { eventName, targetKey } : null;
 };
 
 const resolveLocalAbortControllerSymbolId = (
@@ -255,15 +281,17 @@ const resolveLocalAbortControllerSymbolId = (
 const readDirectMemberReceiver = (
   memberNode: EsTreeNode | null | undefined,
   memberName: string,
+  context?: RuleContext,
 ): EsTreeNode | null => {
   if (!memberNode) return null;
   const unwrappedMember = stripParenExpression(memberNode);
-  if (
-    !isNodeOfType(unwrappedMember, "MemberExpression") ||
-    getStaticMemberPropertyName(unwrappedMember) !== memberName
-  ) {
-    return null;
-  }
+  if (!isNodeOfType(unwrappedMember, "MemberExpression")) return null;
+  const staticPropertyName =
+    getStaticMemberPropertyName(unwrappedMember) ??
+    (context && unwrappedMember.computed
+      ? resolveStaticEventName(unwrappedMember.property, context)
+      : null);
+  if (staticPropertyName !== memberName) return null;
   return unwrappedMember.object;
 };
 
@@ -325,6 +353,117 @@ const resolveSignalAbortControllerSymbolId = (
   return resolveLocalAbortControllerSymbolId(signalSymbol.initializer, context);
 };
 
+const readControllerAbortedCondition = (
+  conditionNode: EsTreeNode,
+  controllerSymbolId: number,
+  context: RuleContext,
+): "aborted" | "not-aborted" | null => {
+  const unwrappedCondition = stripParenExpression(conditionNode);
+  if (isNodeOfType(unwrappedCondition, "UnaryExpression") && unwrappedCondition.operator === "!") {
+    const operandCondition = readControllerAbortedCondition(
+      unwrappedCondition.argument,
+      controllerSymbolId,
+      context,
+    );
+    if (operandCondition === "aborted") return "not-aborted";
+    if (operandCondition === "not-aborted") return "aborted";
+    return null;
+  }
+  if (isNodeOfType(unwrappedCondition, "BinaryExpression")) {
+    const leftBoolean = readStaticBoolean(unwrappedCondition.left);
+    const rightBoolean = readStaticBoolean(unwrappedCondition.right);
+    const memberNode =
+      leftBoolean === null
+        ? unwrappedCondition.left
+        : rightBoolean === null
+          ? unwrappedCondition.right
+          : null;
+    const comparedBoolean = leftBoolean ?? rightBoolean;
+    if (memberNode && comparedBoolean !== null) {
+      const memberCondition = readControllerAbortedCondition(
+        memberNode,
+        controllerSymbolId,
+        context,
+      );
+      if (memberCondition) {
+        const isEquality =
+          unwrappedCondition.operator === "==" || unwrappedCondition.operator === "===";
+        const isInequality =
+          unwrappedCondition.operator === "!=" || unwrappedCondition.operator === "!==";
+        const shouldInvert = (isEquality && !comparedBoolean) || (isInequality && comparedBoolean);
+        if (isEquality || isInequality) {
+          if (!shouldInvert) return memberCondition;
+          return memberCondition === "aborted" ? "not-aborted" : "aborted";
+        }
+      }
+    }
+    return null;
+  }
+  const signalNode = readDirectMemberReceiver(unwrappedCondition, "aborted");
+  if (!signalNode) return null;
+  return resolveSignalAbortControllerSymbolId(signalNode, context) === controllerSymbolId
+    ? "aborted"
+    : null;
+};
+
+const isAbortGuardForChild = (
+  parentNode: EsTreeNode,
+  childNode: EsTreeNode,
+  controllerSymbolId: number,
+  context: RuleContext,
+): boolean => {
+  if (
+    isNodeOfType(parentNode, "IfStatement") ||
+    isNodeOfType(parentNode, "ConditionalExpression")
+  ) {
+    const condition = readControllerAbortedCondition(parentNode.test, controllerSymbolId, context);
+    return (
+      (parentNode.consequent === childNode && condition === "not-aborted") ||
+      (parentNode.alternate === childNode && condition === "aborted")
+    );
+  }
+  if (!isNodeOfType(parentNode, "LogicalExpression") || parentNode.right !== childNode) {
+    return false;
+  }
+  const condition = readControllerAbortedCondition(parentNode.left, controllerSymbolId, context);
+  return (
+    (parentNode.operator === "&&" && condition === "not-aborted") ||
+    (parentNode.operator === "||" && condition === "aborted")
+  );
+};
+
+const isAbortGuaranteedByPath = (
+  node: EsTreeNode,
+  bodyNode: EsTreeNode,
+  controllerSymbolId: number,
+  context: RuleContext,
+): boolean =>
+  !isListenerPathAmbiguous(node, bodyNode, (parentNode, childNode) =>
+    isAbortGuardForChild(parentNode, childNode, controllerSymbolId, context),
+  );
+
+const resolveBoundAbortControllerSymbolId = (
+  callNode: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): number | null => {
+  const callee = stripParenExpression(callNode.callee);
+  if (!isNodeOfType(callee, "Identifier")) return null;
+  const boundAbortSymbol = resolveAliasedSymbol(callee, context, new Set());
+  if (!boundAbortSymbol?.initializer) return null;
+  const initializer = stripParenExpression(boundAbortSymbol.initializer);
+  if (!isNodeOfType(initializer, "CallExpression")) return null;
+  const abortMethodNode = readDirectMemberReceiver(initializer.callee, "bind");
+  if (!abortMethodNode) return null;
+  const controllerNode = readDirectMemberReceiver(abortMethodNode, "abort");
+  const boundThisNode = initializer.arguments?.[0];
+  if (!controllerNode || !boundThisNode) return null;
+  const controllerSymbolId = resolveLocalAbortControllerSymbolId(controllerNode, context);
+  const boundThisSymbolId = resolveLocalAbortControllerSymbolId(boundThisNode, context);
+  return controllerSymbolId !== null && controllerSymbolId === boundThisSymbolId
+    ? controllerSymbolId
+    : null;
+};
+
 const resolveRegistrationCancellation = (
   optionsNode: EsTreeNode | null | undefined,
   context: RuleContext,
@@ -357,14 +496,60 @@ const readListenerCandidate = (
   methodName: "addEventListener" | "removeEventListener",
   context: RuleContext,
 ): ListenerCandidate | null => {
-  const targetNode = readDirectMemberReceiver(node.callee, methodName);
+  const targetNode = readDirectMemberReceiver(node.callee, methodName, context);
   if (!targetNode) return null;
   const targetKey = resolveTargetKey(targetNode, context);
   const eventName = resolveStaticEventName(node.arguments?.[0], context);
   const callbackIdentity = resolveCallbackIdentity(node.arguments?.[1], context);
-  const capture = resolveCapture(node.arguments?.[2]);
+  const capture = resolveEventListenerCapture(node.arguments?.[2]);
   if (targetKey === null || eventName === null) return null;
   return { node, targetKey, eventName, callbackIdentity, capture };
+};
+
+const readDestructuredRemovalCandidate = (
+  node: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): ListenerCandidate | null => {
+  const methodNode = readDirectMemberReceiver(node.callee, "call");
+  if (!methodNode || !isNodeOfType(methodNode, "Identifier")) return null;
+  const methodSymbol = context.scopes.symbolFor(methodNode);
+  if (
+    !methodSymbol ||
+    methodSymbol.kind !== "const" ||
+    !hasOnlyReadReferences(methodSymbol) ||
+    !isNodeOfType(methodSymbol.declarationNode, "VariableDeclarator")
+  ) {
+    return null;
+  }
+  const declaration = methodSymbol.declarationNode;
+  if (!isNodeOfType(declaration.id, "ObjectPattern") || !declaration.init) return null;
+  const isRemovalBinding = declaration.id.properties.some((property) => {
+    if (!isNodeOfType(property, "Property")) return false;
+    const bindingNode = isNodeOfType(property.value, "AssignmentPattern")
+      ? property.value.left
+      : property.value;
+    return (
+      getStaticPropertyKeyName(property, { allowComputedString: true }) === "removeEventListener" &&
+      bindingNode === methodSymbol.bindingIdentifier
+    );
+  });
+  if (!isRemovalBinding) return null;
+  const targetNode = node.arguments?.[0];
+  if (!targetNode) return null;
+  const declarationTargetKey = resolveTargetKey(declaration.init, context);
+  const targetKey = resolveTargetKey(targetNode, context);
+  if (declarationTargetKey === null || targetKey === null || declarationTargetKey !== targetKey) {
+    return null;
+  }
+  const eventName = resolveStaticEventName(node.arguments?.[1], context);
+  if (eventName === null) return null;
+  return {
+    node,
+    targetKey,
+    eventName,
+    callbackIdentity: resolveCallbackIdentity(node.arguments?.[2], context),
+    capture: resolveEventListenerCapture(node.arguments?.[3]),
+  };
 };
 
 const resolveReturnedCleanupBody = (
@@ -387,6 +572,7 @@ const collectEffectListenerInputs = (
 ): EffectListenerInputs => {
   const registrations: ListenerRegistration[] = [];
   const cleanupBodies: EsTreeNode[] = [];
+  const listenerRegistrationCountsByTarget = new Map<string, number>();
   let returnStatementCount = 0;
   if (!isNodeOfType(effectBody, "BlockStatement")) {
     return {
@@ -404,7 +590,22 @@ const collectEffectListenerInputs = (
       return false;
     }
     if (isNodeOfType(child, "CallExpression")) {
-      if (isPathAmbiguousCall(child, effectBody)) return;
+      const hasAmbiguousPath = isListenerPathAmbiguous(child, effectBody);
+      if (hasAmbiguousPath) return;
+      const registrationTarget = readDirectMemberReceiver(
+        child.callee,
+        "addEventListener",
+        context,
+      );
+      const registrationTargetKey = registrationTarget
+        ? resolveTargetKey(registrationTarget, context)
+        : null;
+      if (registrationTargetKey !== null) {
+        listenerRegistrationCountsByTarget.set(
+          registrationTargetKey,
+          (listenerRegistrationCountsByTarget.get(registrationTargetKey) ?? 0) + 1,
+        );
+      }
       const candidate = readListenerCandidate(child, "addEventListener", context);
       if (candidate?.callbackIdentity && candidate.capture !== null) {
         const registrationCancellation = resolveRegistrationCancellation(
@@ -417,9 +618,28 @@ const collectEffectListenerInputs = (
           eventName: candidate.eventName,
           callbackIdentity: candidate.callbackIdentity,
           capture: candidate.capture,
+          once: resolveStaticOnceOption(candidate.node.arguments?.[2]) === true,
           abortControllerSymbolId: registrationCancellation.abortControllerSymbolId,
           hasUnknownCancellation: registrationCancellation.hasUnknownCancellation,
         });
+      }
+      const eventDispatch = readStaticEventDispatch(child, context);
+      if (eventDispatch) {
+        const dispatchedRegistrations = registrations.filter(
+          (registration) =>
+            registration.targetKey === eventDispatch.targetKey &&
+            registration.eventName === eventDispatch.eventName,
+        );
+        const dispatchedRegistration = dispatchedRegistrations[0];
+        if (
+          dispatchedRegistrations.length === 1 &&
+          dispatchedRegistration?.once &&
+          listenerRegistrationCountsByTarget.get(eventDispatch.targetKey) === 1 &&
+          dispatchedRegistration.callbackIdentity.isConcreteFunction &&
+          !callbackMayRegisterEventListener(dispatchedRegistration.callbackIdentity.node)
+        ) {
+          registrations.splice(registrations.indexOf(dispatchedRegistration), 1);
+        }
       }
       return;
     }
@@ -437,18 +657,90 @@ const collectEffectListenerInputs = (
   };
 };
 
+const resolveCalledCleanup = (
+  callNode: EsTreeNodeOfType<"CallExpression">,
+  context: RuleContext,
+): CalledCleanup | null => {
+  const callee = stripParenExpression(callNode.callee);
+  if (!isNodeOfType(callee, "Identifier")) return null;
+  const cleanupSymbol = resolveAliasedSymbol(callee, context, new Set());
+  if (
+    !cleanupSymbol?.initializer ||
+    (cleanupSymbol.kind !== "const" && cleanupSymbol.kind !== "function")
+  ) {
+    return null;
+  }
+  const initializer = stripParenExpression(cleanupSymbol.initializer);
+  if (!isFunctionLike(initializer) || initializer.async || initializer.generator) return null;
+  return { body: initializer.body, symbolId: cleanupSymbol.id };
+};
+
 const analyzeCleanupBody = (
   cleanupBody: EsTreeNode,
   context: RuleContext,
-): CleanupAnalysis | null => {
+  visitedCleanupSymbolIds: Set<number> = new Set(),
+  isLoopBody = false,
+): CancellationAnalysis | null => {
   const removals: ListenerCandidate[] = [];
   const abortedControllerSymbolIds = new Set<number>();
+  const exhaustiveBranches: ExhaustiveCleanupBranches[] = [];
   let hasAmbiguousReachability = false;
   let hasUnknownAbortCall = false;
   let hasUnknownRemovalCall = false;
   const finalCleanupStatement = isNodeOfType(cleanupBody, "BlockStatement")
     ? cleanupBody.body[cleanupBody.body.length - 1]
     : null;
+  const addCleanupAnalysis = (analysis: CancellationAnalysis): void => {
+    removals.push(...analysis.removals);
+    hasUnknownAbortCall ||= analysis.hasUnknownAbortCall;
+    hasUnknownRemovalCall ||= analysis.hasUnknownRemovalCall;
+    for (const controllerSymbolId of analysis.abortedControllerSymbolIds) {
+      abortedControllerSymbolIds.add(controllerSymbolId);
+    }
+    exhaustiveBranches.push(...analysis.exhaustiveBranches);
+  };
+  const addGuaranteedLoopPrefix = (loopBody: EsTreeNode): boolean => {
+    const loopStatements = isNodeOfType(loopBody, "BlockStatement") ? loopBody.body : [loopBody];
+    for (const loopStatement of loopStatements) {
+      if (
+        isNodeOfType(loopStatement, "BreakStatement") ||
+        isNodeOfType(loopStatement, "ContinueStatement")
+      ) {
+        return true;
+      }
+      if (isNodeOfType(loopStatement, "BlockStatement")) {
+        if (addGuaranteedLoopPrefix(loopStatement)) return true;
+        continue;
+      }
+      if (isNodeOfType(loopStatement, "IfStatement")) {
+        const staticTestValue = readStaticBoolean(loopStatement.test);
+        if (staticTestValue !== null) {
+          const testAnalysis = analyzeCleanupBody(
+            loopStatement.test,
+            context,
+            new Set(visitedCleanupSymbolIds),
+            true,
+          );
+          if (!testAnalysis) return true;
+          addCleanupAnalysis(testAnalysis);
+          const guaranteedBranch = staticTestValue
+            ? loopStatement.consequent
+            : loopStatement.alternate;
+          if (guaranteedBranch && addGuaranteedLoopPrefix(guaranteedBranch)) return true;
+          continue;
+        }
+      }
+      const loopStatementAnalysis = analyzeCleanupBody(
+        loopStatement,
+        context,
+        new Set(visitedCleanupSymbolIds),
+        true,
+      );
+      if (!loopStatementAnalysis) return true;
+      addCleanupAnalysis(loopStatementAnalysis);
+    }
+    return false;
+  };
   walkAst(cleanupBody, (child: EsTreeNode) => {
     if (child !== cleanupBody && isFunctionLike(child)) return false;
     if (isNodeOfType(child, "ClassDeclaration") || isNodeOfType(child, "ClassExpression")) {
@@ -457,34 +749,110 @@ const analyzeCleanupBody = (
     if (isNodeOfType(child, "ReturnStatement") && child === finalCleanupStatement) {
       return;
     }
-    if (isNodeOfType(child, "ReturnStatement") || isNodeOfType(child, "ThrowStatement")) {
+    if (
+      isNodeOfType(child, "ReturnStatement") ||
+      isNodeOfType(child, "ThrowStatement") ||
+      (isLoopBody &&
+        (isNodeOfType(child, "BreakStatement") || isNodeOfType(child, "ContinueStatement")))
+    ) {
       hasAmbiguousReachability = true;
       return false;
     }
+    if (isNodeOfType(child, "ForOfStatement")) {
+      const iterable = stripParenExpression(child.right);
+      const isGuaranteedNonEmpty =
+        isNodeOfType(iterable, "ArrayExpression") &&
+        iterable.elements.some((element) => element && !isNodeOfType(element, "SpreadElement"));
+      if (isGuaranteedNonEmpty && !isListenerPathAmbiguous(child, cleanupBody)) {
+        addGuaranteedLoopPrefix(child.body);
+      }
+      return false;
+    }
+    if (
+      (isNodeOfType(child, "IfStatement") || isNodeOfType(child, "ConditionalExpression")) &&
+      child.alternate &&
+      readStaticBoolean(child.test) === null &&
+      !isListenerPathAmbiguous(child, cleanupBody)
+    ) {
+      const consequentAnalysis = analyzeCleanupBody(
+        child.consequent,
+        context,
+        new Set(visitedCleanupSymbolIds),
+      );
+      const alternateAnalysis = analyzeCleanupBody(
+        child.alternate,
+        context,
+        new Set(visitedCleanupSymbolIds),
+      );
+      if (consequentAnalysis && alternateAnalysis) {
+        exhaustiveBranches.push({
+          alternate: alternateAnalysis,
+          consequent: consequentAnalysis,
+        });
+        hasUnknownAbortCall ||=
+          consequentAnalysis.hasUnknownAbortCall && alternateAnalysis.hasUnknownAbortCall;
+        hasUnknownRemovalCall ||=
+          consequentAnalysis.hasUnknownRemovalCall && alternateAnalysis.hasUnknownRemovalCall;
+      }
+      const testAnalysis = analyzeCleanupBody(
+        child.test,
+        context,
+        new Set(visitedCleanupSymbolIds),
+      );
+      if (testAnalysis) addCleanupAnalysis(testAnalysis);
+      return false;
+    }
     if (!isNodeOfType(child, "CallExpression")) return;
-    if (isPathAmbiguousCall(child, cleanupBody)) return;
-    const removalTarget = readDirectMemberReceiver(child.callee, "removeEventListener");
-    if (removalTarget) {
+    const hasAmbiguousPath = isListenerPathAmbiguous(child, cleanupBody);
+    const removalTarget = readDirectMemberReceiver(child.callee, "removeEventListener", context);
+    if (removalTarget && !hasAmbiguousPath) {
       const removal = readListenerCandidate(child, "removeEventListener", context);
       if (removal) {
         removals.push(removal);
+        hasUnknownRemovalCall ||= removal.callbackIdentity === null || removal.capture === null;
       } else {
         hasUnknownRemovalCall = true;
       }
     }
-    const controllerNode = readDirectMemberReceiver(child.callee, "abort");
-    if (!controllerNode) return;
-    const controllerSymbolId = resolveLocalAbortControllerSymbolId(controllerNode, context);
-    if (controllerSymbolId === null) {
-      hasUnknownAbortCall = true;
-    } else {
-      abortedControllerSymbolIds.add(controllerSymbolId);
+    if (!removalTarget && !hasAmbiguousPath) {
+      const destructuredRemoval = readDestructuredRemovalCandidate(child, context);
+      if (destructuredRemoval) removals.push(destructuredRemoval);
     }
+    const controllerNode = readDirectMemberReceiver(child.callee, "abort");
+    if (controllerNode) {
+      const controllerSymbolId = resolveLocalAbortControllerSymbolId(controllerNode, context);
+      if (controllerSymbolId === null) {
+        if (!hasAmbiguousPath) hasUnknownAbortCall = true;
+      } else if (
+        !hasAmbiguousPath ||
+        isAbortGuaranteedByPath(child, cleanupBody, controllerSymbolId, context)
+      ) {
+        abortedControllerSymbolIds.add(controllerSymbolId);
+      }
+      return;
+    }
+    if (hasAmbiguousPath) return;
+    const boundAbortControllerSymbolId = resolveBoundAbortControllerSymbolId(child, context);
+    if (boundAbortControllerSymbolId !== null) {
+      abortedControllerSymbolIds.add(boundAbortControllerSymbolId);
+      return;
+    }
+    const calledCleanup = resolveCalledCleanup(child, context);
+    if (!calledCleanup || visitedCleanupSymbolIds.has(calledCleanup.symbolId)) return;
+    visitedCleanupSymbolIds.add(calledCleanup.symbolId);
+    const calledCleanupAnalysis = analyzeCleanupBody(
+      calledCleanup.body,
+      context,
+      visitedCleanupSymbolIds,
+    );
+    if (!calledCleanupAnalysis) return;
+    addCleanupAnalysis(calledCleanupAnalysis);
   });
   if (hasAmbiguousReachability) return null;
   return {
     removals,
     abortedControllerSymbolIds,
+    exhaustiveBranches,
     hasUnknownAbortCall,
     hasUnknownRemovalCall,
   };
@@ -504,41 +872,33 @@ const analyzeEffectListeners = (
   }
   const removals: ListenerCandidate[] = [];
   const abortedControllerSymbolIds = new Set<number>();
+  const exhaustiveBranches: ExhaustiveCleanupBranches[] = [];
   let hasUnknownAbortCall = false;
   let hasUnknownRemovalCall = false;
+  const addAnalysis = (analysis: CancellationAnalysis): void => {
+    removals.push(...analysis.removals);
+    exhaustiveBranches.push(...analysis.exhaustiveBranches);
+    hasUnknownAbortCall ||= analysis.hasUnknownAbortCall;
+    hasUnknownRemovalCall ||= analysis.hasUnknownRemovalCall;
+    for (const controllerSymbolId of analysis.abortedControllerSymbolIds) {
+      abortedControllerSymbolIds.add(controllerSymbolId);
+    }
+  };
+  const setupAbortAnalysis = analyzeCleanupBody(effectBody, context);
   for (const cleanupBody of effectInputs.cleanupBodies) {
     const cleanupAnalysis = analyzeCleanupBody(cleanupBody, context);
     if (!cleanupAnalysis) return null;
-    removals.push(...cleanupAnalysis.removals);
-    hasUnknownAbortCall ||= cleanupAnalysis.hasUnknownAbortCall;
-    hasUnknownRemovalCall ||= cleanupAnalysis.hasUnknownRemovalCall;
-    for (const controllerSymbolId of cleanupAnalysis.abortedControllerSymbolIds) {
-      abortedControllerSymbolIds.add(controllerSymbolId);
-    }
+    addAnalysis(cleanupAnalysis);
   }
   return {
     registrations: effectInputs.registrations,
     removals,
     abortedControllerSymbolIds,
+    exhaustiveBranches,
     hasUnknownAbortCall,
     hasUnknownRemovalCall,
+    setupAbortAnalysis,
   };
-};
-
-const buildMismatchMessage = (
-  registration: ListenerRegistration,
-  removalCapture: boolean,
-  callbackComparison: "different" | "same",
-): string => {
-  const hasCallbackMismatch = callbackComparison === "different";
-  const hasCaptureMismatch = registration.capture !== removalCapture;
-  if (hasCallbackMismatch && hasCaptureMismatch) {
-    return `The cleanup removes \`${registration.eventName}\` with a different callback binding and capture ${String(removalCapture)}, but it was registered with capture ${String(registration.capture)}. Pass the same callback binding and capture flag to both EventTarget calls.`;
-  }
-  if (hasCallbackMismatch) {
-    return `The cleanup removes \`${registration.eventName}\` with a different callback binding than the one registered, so \`removeEventListener\` cannot detach that listener. Pass the same callback binding to both calls.`;
-  }
-  return `The cleanup removes \`${registration.eventName}\` with capture ${String(removalCapture)}, but it was registered with capture ${String(registration.capture)}. \`removeEventListener\` must use the same capture flag as \`addEventListener\`.`;
 };
 
 export const effectListenerCleanupMismatch = defineRule({
@@ -565,13 +925,20 @@ export const effectListenerCleanupMismatch = defineRule({
             candidateRegistration.eventName === registration.eventName,
         );
         if (sameEventRegistrations.length > 1) continue;
+        if (registration.abortControllerSymbolId !== null && listenerAnalysis.hasUnknownAbortCall) {
+          continue;
+        }
         if (
           registration.abortControllerSymbolId !== null &&
-          (listenerAnalysis.hasUnknownAbortCall ||
-            listenerAnalysis.abortedControllerSymbolIds.has(registration.abortControllerSymbolId))
+          listenerAnalysis.setupAbortAnalysis &&
+          doesListenerAnalysisAbortController(
+            listenerAnalysis.setupAbortAnalysis,
+            registration.abortControllerSymbolId,
+          )
         ) {
           continue;
         }
+        if (doesListenerAnalysisCancelRegistration(listenerAnalysis, registration)) continue;
         const candidateRemovals = listenerAnalysis.removals.filter(
           (removal) =>
             removal.targetKey === registration.targetKey &&
@@ -584,7 +951,7 @@ export const effectListenerCleanupMismatch = defineRule({
             didFindNonMismatchCandidate = true;
             break;
           }
-          const callbackComparison = compareCallbackIdentities(
+          const callbackComparison = compareListenerCallbackIdentities(
             registration.callbackIdentity,
             removal.callbackIdentity,
           );
@@ -611,8 +978,9 @@ export const effectListenerCleanupMismatch = defineRule({
         }
         context.report({
           node: firstProvableMismatch.removalNode,
-          message: buildMismatchMessage(
-            registration,
+          message: buildListenerCleanupMismatchMessage(
+            registration.eventName,
+            registration.capture,
             firstProvableMismatch.removalCapture,
             firstProvableMismatch.callbackComparison,
           ),

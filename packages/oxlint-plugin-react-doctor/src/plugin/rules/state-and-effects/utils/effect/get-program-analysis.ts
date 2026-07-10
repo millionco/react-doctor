@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../../../utils/es-tree-node-of-type.js";
 import { findProgramRoot } from "../../../../utils/find-program-root.js";
 import { VISITOR_KEYS } from "./constants.js";
+import { getAstChildKeys } from "./get-ast-child-keys.js";
 
 export interface ProgramAnalysis {
   programNode: EsTreeNodeOfType<"Program">;
@@ -14,51 +15,10 @@ export interface ProgramAnalysis {
 // lazily on first access from any rule.
 const programToAnalysis: WeakMap<EsTreeNode, ProgramAnalysis> = new WeakMap();
 
-// Strips `.parent` from every node in the subtree and remembers the
-// originals so we can restore them after eslint-scope's `analyze()`
-// returns. eslint-scope walks the tree internally; if any node still
-// has a `parent` reference back up, it falls into infinite recursion
-// (verified — `RangeError: Maximum call stack size exceeded`).
-const stripAndRecordParents = (
-  root: EsTreeNode,
-): Array<{ node: Record<string, unknown>; originalParent: unknown }> => {
-  const restorations: Array<{ node: Record<string, unknown>; originalParent: unknown }> = [];
-  const seen = new WeakSet<object>();
-  const visit = (value: unknown): void => {
-    if (!value || typeof value !== "object") return;
-    if (seen.has(value as object)) return;
-    seen.add(value as object);
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item);
-      return;
-    }
-    const record = value as Record<string, unknown>;
-    if (!("type" in record)) return;
-    if ("parent" in record) {
-      restorations.push({ node: record, originalParent: record.parent });
-      record.parent = null;
-    }
-    for (const key of Object.keys(record)) {
-      if (key === "parent") continue;
-      visit(record[key]);
-    }
-  };
-  visit(root);
-  return restorations;
-};
-
-const restoreParents = (
-  restorations: ReadonlyArray<{ node: Record<string, unknown>; originalParent: unknown }>,
-): void => {
-  for (const restoration of restorations) {
-    restoration.node.parent = restoration.originalParent;
-  }
-};
-
 // Returns the program-level eslint-scope analysis, caching per program
 // so repeated calls within the same file (across multiple rules) reuse
-// the work. Safe to call from any rule visitor callback — the in-place
-// parent-strip + restore happens synchronously within this function.
+// the work. Oxc's visitor keys cover every emitted node type, so
+// eslint-scope never falls back to enumerating the `parent` property.
 //
 // Returns `null` only if we can't find a Program root via the live
 // parent chain (shouldn't happen in practice — defensive).
@@ -69,21 +29,15 @@ export const getProgramAnalysis = (anyNode: EsTreeNode): ProgramAnalysis | null 
   const cached = programToAnalysis.get(programNode);
   if (cached) return cached;
 
-  const restorations = stripAndRecordParents(programNode);
-  let scopeManager: ScopeManager;
-  try {
-    scopeManager = analyze(
-      programNode as unknown as Parameters<typeof analyze>[0],
-      {
-        ecmaVersion: 2024,
-        sourceType: "module",
-        childVisitorKeys: VISITOR_KEYS,
-        fallback: "iteration",
-      } as Parameters<typeof analyze>[1],
-    );
-  } finally {
-    restoreParents(restorations);
-  }
+  const scopeManager: ScopeManager = analyze(
+    programNode as unknown as Parameters<typeof analyze>[0],
+    {
+      ecmaVersion: 2024,
+      sourceType: "module",
+      childVisitorKeys: VISITOR_KEYS,
+      fallback: getAstChildKeys,
+    } as Parameters<typeof analyze>[1],
+  );
 
   const analysis: ProgramAnalysis = { programNode, scopeManager };
   programToAnalysis.set(programNode, analysis);

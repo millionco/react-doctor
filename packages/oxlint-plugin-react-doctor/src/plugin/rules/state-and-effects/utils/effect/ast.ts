@@ -5,18 +5,14 @@ import { isAstNode } from "../../../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../../utils/is-node-of-type.js";
 import { TRANSPARENT_EXPRESSION_WRAPPER_TYPES } from "../../../../utils/strip-paren-expression.js";
+import { getAstChildKeys } from "./get-ast-child-keys.js";
 import { getScopeForNode, type ProgramAnalysis } from "./get-program-analysis.js";
-import { VISITOR_KEYS } from "./constants.js";
 
 // 1:1 port of upstream `src/util/ast.js` from
 // `eslint-plugin-react-you-might-not-need-an-effect`. Upstream uses
 // `context.sourceCode.getScope(node)` and `context.sourceCode.visitorKeys`.
 // We thread the cached `ProgramAnalysis` (eslint-scope ScopeManager)
-// through every helper and use `eslint-visitor-keys.KEYS` as the
-// static visitorKeys table.
-
-const getChildKeys = (node: EsTreeNode): ReadonlyArray<string> =>
-  VISITOR_KEYS[node.type] ?? Object.keys(node).filter((key) => key !== "parent");
+// through every helper and use Oxc's visitor keys for its AST.
 
 // A function-expression ARGUMENT of a binding's initializer call
 // (`const observer = new MutationObserver((m) => setN(m.length))`) is a
@@ -93,7 +89,7 @@ const descend = (
   visit(node);
   visited.add(node);
 
-  const keys = getChildKeys(node);
+  const keys = getAstChildKeys(node);
   const record = node as unknown as Record<string, unknown>;
   for (const key of keys) {
     const child = record[key];

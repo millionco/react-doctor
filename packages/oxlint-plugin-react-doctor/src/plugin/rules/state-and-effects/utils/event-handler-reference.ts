@@ -15,14 +15,6 @@ export const getStaticMemberReferenceName = (
   return propertyName ? `${resolveName(node.object.name)}.${propertyName}` : null;
 };
 
-export const getStaticPropertyKeyName = (node: EsTreeNode): string | null => {
-  if (!isNodeOfType(node, "Property")) return null;
-  if (node.computed) return null;
-  if (isNodeOfType(node.key, "Identifier")) return node.key.name;
-  if (isNodeOfType(node.key, "Literal")) return String(node.key.value);
-  return null;
-};
-
 export const isEventHandlerValue = (
   node: EsTreeNode,
   eventHandlerReferenceNames: Set<string>,

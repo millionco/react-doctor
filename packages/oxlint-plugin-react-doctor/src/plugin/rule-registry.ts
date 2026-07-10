@@ -49,6 +49,7 @@ import { noThreePeriodEllipsis } from "./rules/react-ui/no-three-period-ellipsis
 import { noVagueButtonLabel } from "./rules/react-ui/no-vague-button-label.js";
 import { dialogHasAccessibleName } from "./rules/a11y/dialog-has-accessible-name.js";
 import { displayName } from "./rules/react-builtins/display-name.js";
+import { effectListenerCleanupMismatch } from "./rules/state-and-effects/effect-listener-cleanup-mismatch.js";
 import { effectNeedsCleanup } from "./rules/state-and-effects/effect-needs-cleanup.js";
 import { exhaustiveDeps } from "./rules/react-builtins/exhaustive-deps.js";
 import { expoNoNonInlinedEnv } from "./rules/react-native/expo-no-non-inlined-env.js";
@@ -888,6 +889,20 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       requires: [...new Set<Capability>(["react", ...(displayName.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/effect-listener-cleanup-mismatch",
+    id: "effect-listener-cleanup-mismatch",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...effectListenerCleanupMismatch,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(effectListenerCleanupMismatch.requires ?? [])]),
+      ],
     },
   },
   {

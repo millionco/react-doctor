@@ -1,10 +1,8 @@
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { getStaticPropertyKeyName } from "../../../utils/get-static-property-key-name.js";
 import { isInlineFunctionExpression } from "../../../utils/is-inline-function-expression.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
-import {
-  getStaticMemberReferenceName,
-  getStaticPropertyKeyName,
-} from "./event-handler-reference.js";
+import { getStaticMemberReferenceName } from "./event-handler-reference.js";
 import {
   addPatternBindings,
   createBlockBindingScope,
@@ -47,7 +45,9 @@ const addObjectPropertyFunctionNames = (
   if (!isNodeOfType(node, "ObjectExpression")) return;
   for (const property of node.properties ?? []) {
     if (!isNodeOfType(property, "Property")) continue;
-    const propertyName = getStaticPropertyKeyName(property);
+    const propertyName = getStaticPropertyKeyName(property, {
+      stringifyNonStringLiterals: true,
+    });
     if (!propertyName) continue;
     if (!isFunctionLikeReference(property.value, functionLikeLocalNames, scope)) continue;
     functionLikeLocalNames.add(`${objectBindingName}.${propertyName}`);

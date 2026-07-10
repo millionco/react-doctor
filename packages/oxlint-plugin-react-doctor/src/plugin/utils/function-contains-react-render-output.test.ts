@@ -14,6 +14,12 @@ interface FunctionFixture {
   program: EsTreeNode;
 }
 
+interface CreateElementRenderTestCase {
+  code: string;
+  expected: boolean;
+  name: string;
+}
+
 const parseFunctionFixture = (code: string, functionName: string): FunctionFixture => {
   const { program, errors } = parseFixture(code);
   expect(errors).toEqual([]);
@@ -46,6 +52,45 @@ describe("functionContainsReactRenderOutput", () => {
     expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(false);
     expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(false);
   });
+
+  const createElementCases: CreateElementRenderTestCase[] = [
+    {
+      name: "renamed named React imports",
+      code: `import { createElement as create } from "react";
+        function Card() { return create("div"); }`,
+      expected: true,
+    },
+    {
+      name: "namespace React imports",
+      code: `import * as ReactClient from "react";
+        function Card() { return ReactClient.createElement("div"); }`,
+      expected: true,
+    },
+    {
+      name: "same-named imports from another module",
+      code: `import { createElement } from "other";
+        function Card() { return createElement("div"); }`,
+      expected: false,
+    },
+    {
+      name: "unbound global React namespaces",
+      code: `function Card() { return React.createElement("div"); }`,
+      expected: false,
+    },
+    {
+      name: "shadowed default React imports",
+      code: `import ReactClient from "react";
+        function Card(ReactClient) { return ReactClient.createElement("div"); }`,
+      expected: false,
+    },
+  ];
+
+  for (const testCase of createElementCases) {
+    it(`handles ${testCase.name}`, () => {
+      const { functionNode, scopes } = parseFunctionFixture(testCase.code, "Card");
+      expect(functionContainsReactRenderOutput(functionNode, scopes)).toBe(testCase.expected);
+    });
+  }
 
   it("memoizes per (functionNode, scopes): a repeat query with the same inputs skips the re-walk", () => {
     const { functionNode, scopes, program } = parseFunctionFixture(

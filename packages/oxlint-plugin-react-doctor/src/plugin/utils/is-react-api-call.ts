@@ -2,6 +2,7 @@ import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getImportedName } from "./get-imported-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { resolveConstIdentifierAlias } from "./resolve-const-identifier-alias.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
 export interface ReactApiCallOptions {
@@ -35,8 +36,7 @@ const isNamedReactApiImport = (
 };
 
 const isReactNamespaceImport = (identifier: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  if (!isNodeOfType(identifier, "Identifier")) return false;
-  const symbol = scopes.symbolFor(identifier);
+  const symbol = resolveConstIdentifierAlias(identifier, scopes);
   if (!symbol || !isImportedFromReact(symbol)) return false;
   return (
     isNodeOfType(symbol.declarationNode, "ImportDefaultSpecifier") ||

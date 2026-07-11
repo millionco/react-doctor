@@ -1391,6 +1391,157 @@ export const Pollers = ({ items }) => {
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
   });
+
+  it("accepts a local timer returned from a block-bodied map callback", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.map(() => {
+      const timerId = setInterval(poll, 1000);
+      return timerId;
+    });
+    return () => timerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a map callback that returns a value other than its local timer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.map((item) => {
+      const timerId = setInterval(poll, 1000);
+      return item.id;
+    });
+    return () => timerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a map callback that conditionally mixes timers with other values", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.map((item) => {
+      const timerId = setInterval(poll, 1000);
+      if (item.disabled) return null;
+      return timerId;
+    });
+    return () => timerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a map callback that can exit after scheduling before returning the timer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.map((item) => {
+      const timerId = setInterval(poll, 1000);
+      if (item.invalid) throw new Error("invalid");
+      return timerId;
+    });
+    return () => timerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a timer handle returned from a filter callback", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.filter(() => setInterval(poll, 1000));
+    return () => timerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects cleanup through a different timer collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items, previousTimerIds }) => {
+  useEffect(() => {
+    const timerIds = items.map(() => {
+      const timerId = setInterval(poll, 1000);
+      return timerId;
+    });
+    return () => previousTimerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items, previousTimerIds]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects the wrong clear verb for a mapped interval collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.map(() => {
+      const timerId = setInterval(poll, 1000);
+      return timerId;
+    });
+    return () => timerIds.forEach((timerId) => clearTimeout(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a local mapped timer that is not returned", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.map(() => {
+      const timerId = setInterval(poll, 1000);
+      track(timerId);
+    });
+    return () => timerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });
 
 describe("effect-needs-cleanup stable aliases and indirect cleanup helpers", () => {

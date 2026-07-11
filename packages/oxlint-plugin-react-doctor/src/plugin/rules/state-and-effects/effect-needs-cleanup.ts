@@ -283,6 +283,14 @@ const doMatchingNodesCoverEveryPathAfterUsage = (
   let pathAnchor = usageNode;
   let pathOwner = findEnclosingFunction(pathAnchor);
   while (pathOwner && isSynchronousIteratorCallback(pathOwner)) {
+    if (
+      matchingNodes.length > 0 &&
+      matchingNodes.every(
+        (matchingNode) => context.cfg.enclosingFunction(matchingNode) === pathOwner,
+      )
+    ) {
+      break;
+    }
     const iteratorCall = pathOwner.parent;
     if (!isNodeOfType(iteratorCall, "CallExpression")) break;
     pathAnchor = iteratorCall;
@@ -405,14 +413,112 @@ const resolveIteratorCollectionKey = (
   return null;
 };
 
+const findCollectionMappingCall = (callbackNode: EsTreeNode): EsTreeNode | null => {
+  if (
+    (!isNodeOfType(callbackNode, "ArrowFunctionExpression") &&
+      !isNodeOfType(callbackNode, "FunctionExpression")) ||
+    callbackNode.async ||
+    callbackNode.generator
+  ) {
+    return null;
+  }
+  const callNode = callbackNode.parent;
+  if (!isNodeOfType(callNode, "CallExpression")) return null;
+  const callee = stripParenExpression(callNode.callee);
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.computed ||
+    !isNodeOfType(callee.property, "Identifier")
+  ) {
+    return null;
+  }
+  if (
+    isNodeOfType(callee.object, "Identifier") &&
+    callee.object.name === "Array" &&
+    callee.property.name === "from" &&
+    callNode.arguments?.[1] === callbackNode
+  ) {
+    return callNode;
+  }
+  return callee.property.name === "map" && callNode.arguments?.[0] === callbackNode
+    ? callNode
+    : null;
+};
+
+const findMappedResourceCollectionKey = (
+  resourceNode: EsTreeNode,
+  context: RuleContext,
+): string | null => {
+  const callbackNode = findEnclosingFunction(resourceNode);
+  if (
+    !callbackNode ||
+    (!isNodeOfType(callbackNode, "ArrowFunctionExpression") &&
+      !isNodeOfType(callbackNode, "FunctionExpression"))
+  ) {
+    return null;
+  }
+  const mappingCall = findCollectionMappingCall(callbackNode);
+  if (!mappingCall) return null;
+
+  if (isNodeOfType(callbackNode.body, "BlockStatement")) {
+    const resourceRoot = findTransparentExpressionRoot(resourceNode);
+    const resourceDeclarator = resourceRoot.parent;
+    const resourceDeclaration = resourceDeclarator?.parent;
+    if (
+      !isNodeOfType(resourceDeclarator, "VariableDeclarator") ||
+      resourceDeclarator.init !== resourceRoot ||
+      !isNodeOfType(resourceDeclarator.id, "Identifier") ||
+      !isNodeOfType(resourceDeclaration, "VariableDeclaration") ||
+      resourceDeclaration.kind !== "const" ||
+      resourceDeclaration.parent !== callbackNode.body
+    ) {
+      return null;
+    }
+
+    const returnStatements: EsTreeNode[] = [];
+    walkAst(callbackNode.body, (child: EsTreeNode) => {
+      if (child !== callbackNode.body && isFunctionLike(child)) return false;
+      if (isNodeOfType(child, "ReturnStatement")) returnStatements.push(child);
+    });
+    const returnStatement = returnStatements[0];
+    const callbackStatements = callbackNode.body.body ?? [];
+    const returnedIdentifier =
+      isNodeOfType(returnStatement, "ReturnStatement") && returnStatement.argument
+        ? stripParenExpression(returnStatement.argument)
+        : null;
+    const resourceSymbol = context.scopes.symbolFor(resourceDeclarator.id);
+    if (
+      returnStatements.length !== 1 ||
+      callbackStatements[callbackStatements.length - 1] !== returnStatement ||
+      !isNodeOfType(returnedIdentifier, "Identifier") ||
+      !resourceSymbol ||
+      context.scopes.symbolFor(returnedIdentifier)?.id !== resourceSymbol.id ||
+      !doMatchingNodesCoverEveryPathAfterUsage(resourceNode, [returnStatement], context)
+    ) {
+      return null;
+    }
+  } else if (findTransparentExpressionRoot(resourceNode) !== callbackNode.body) {
+    return null;
+  }
+
+  const mappingRoot = findTransparentExpressionRoot(mappingCall);
+  const collectionDeclarator = mappingRoot.parent;
+  return isNodeOfType(collectionDeclarator, "VariableDeclarator") &&
+    collectionDeclarator.init === mappingRoot
+    ? resolveExpressionKey(collectionDeclarator.id, context)
+    : null;
+};
+
 const findContainingCollectionKey = (
   resourceNode: EsTreeNode,
   context: RuleContext,
 ): string | null => {
+  const mappedCollectionKey = findMappedResourceCollectionKey(resourceNode, context);
+  if (mappedCollectionKey !== null) return mappedCollectionKey;
   let currentNode = resourceNode;
   let parentNode = currentNode.parent;
   while (parentNode) {
-    if (isFunctionLike(parentNode) && !isSynchronousIteratorCallback(parentNode)) return null;
+    if (isFunctionLike(parentNode)) return null;
     if (isNodeOfType(parentNode, "VariableDeclarator") && parentNode.init === currentNode) {
       return resolveExpressionKey(parentNode.id, context);
     }
@@ -918,26 +1024,25 @@ const doesReleaseCallMatchUsage = (
     : callNode.callee;
 
   if (usage.kind === "timer") {
+    const expectedCleanupName =
+      usage.registrationVerbName === "setInterval" ? "clearInterval" : "clearTimeout";
     if (
       !isNodeOfType(callee, "Identifier") ||
       !TIMER_CLEANUP_CALLEE_NAMES.has(callee.name) ||
-      usage.handleKey === null
+      callee.name !== expectedCleanupName
     ) {
-      const expectedCleanupName =
-        usage.registrationVerbName === "setInterval" ? "clearInterval" : "clearTimeout";
-      return (
-        isNodeOfType(callee, "Identifier") &&
-        callee.name === expectedCleanupName &&
-        findContainingCollectionKey(usage.node, context) !== null &&
-        findContainingCollectionKey(usage.node, context) ===
-          resolveIteratorCollectionKey(callNode.arguments?.[0], context)
-      );
+      return false;
     }
-    const expectedCleanupName =
-      usage.registrationVerbName === "setInterval" ? "clearInterval" : "clearTimeout";
-    return (
-      callee.name === expectedCleanupName &&
+    if (
+      usage.handleKey !== null &&
       resolveExpressionKey(callNode.arguments?.[0], context) === usage.handleKey
+    ) {
+      return true;
+    }
+    const collectionKey = findContainingCollectionKey(usage.node, context);
+    return (
+      collectionKey !== null &&
+      collectionKey === resolveIteratorCollectionKey(callNode.arguments?.[0], context)
     );
   }
 

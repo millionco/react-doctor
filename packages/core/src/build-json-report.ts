@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import type {
   Diagnostic,
   DiffInfo,
@@ -67,13 +68,18 @@ const findWorstScoredProject = (
 const toJsonReportDiagnostic = (
   diagnostic: Diagnostic,
   projectRoot: string,
+  reportRoot: string,
 ): JsonReportDiagnosticV3 => {
   const normalizedFilePath = toNormalizedRelativePath(diagnostic.filePath, projectRoot);
+  const reportRelativeFilePath = toNormalizedRelativePath(
+    path.resolve(projectRoot, diagnostic.filePath),
+    reportRoot,
+  );
   const ruleIdentity = getDiagnosticRuleIdentity(diagnostic);
   return {
     ...diagnostic,
     id: buildDiagnosticIdentity({
-      filePath: normalizedFilePath,
+      filePath: reportRelativeFilePath,
       line: diagnostic.line,
       column: diagnostic.column,
       plugin: diagnostic.plugin,
@@ -102,7 +108,7 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReportV3 => {
       framework: result.project.framework,
       project: result.project,
       diagnostics: result.diagnostics.map((diagnostic) =>
-        toJsonReportDiagnostic(diagnostic, result.project.rootDirectory),
+        toJsonReportDiagnostic(diagnostic, result.project.rootDirectory, input.directory),
       ),
       score: result.score,
       skippedChecks,
@@ -123,11 +129,18 @@ export const buildJsonReport = (input: BuildJsonReportInput): JsonReportV3 => {
   const flattenedDiagnostics = projects.flatMap((entry) => entry.diagnostics);
   const worstScoredProject = findWorstScoredProject(projects);
 
-  const summary = summarizeDiagnostics(
+  const diagnosticSummary = summarizeDiagnostics(
     flattenedDiagnostics,
     worstScoredProject?.score?.score ?? null,
     worstScoredProject?.score?.label ?? null,
   );
+  const affectedFileCount = projects.reduce(
+    (totalAffectedFileCount, project) =>
+      totalAffectedFileCount +
+      new Set(project.diagnostics.map((diagnostic) => diagnostic.normalizedFilePath)).size,
+    0,
+  );
+  const summary = { ...diagnosticSummary, affectedFileCount };
 
   return {
     schemaVersion: 3,

@@ -90,6 +90,47 @@ describe("buildJsonReport", () => {
     expect(report.diagnostics[0]).not.toHaveProperty("location");
   });
 
+  it("scopes diagnostic identities and affected file counts to workspace projects", () => {
+    const firstProject = {
+      ...projectInfo,
+      rootDirectory: "/repo/packages/first",
+      projectName: "first",
+    };
+    const secondProject = {
+      ...projectInfo,
+      rootDirectory: "/repo/packages/second",
+      projectName: "second",
+    };
+    const report = buildJsonReport({
+      version: "1.2.3",
+      directory: "/repo",
+      mode: "full",
+      diff: null,
+      scans: [
+        {
+          directory: firstProject.rootDirectory,
+          result: result({ project: firstProject }),
+        },
+        {
+          directory: secondProject.rootDirectory,
+          result: result({ project: secondProject }),
+        },
+      ],
+      totalElapsedMilliseconds: 1200,
+    });
+
+    expect(report.diagnostics.map((diagnostic) => diagnostic.normalizedFilePath)).toEqual([
+      "src/App.tsx",
+      "src/App.tsx",
+    ]);
+    expect(report.diagnostics.map((diagnostic) => diagnostic.id)).toEqual([
+      "packages/first/src/App.tsx::12:1::react-doctor/no-array-index-as-key",
+      "packages/second/src/App.tsx::12:1::react-doctor/no-array-index-as-key",
+    ]);
+    expect(new Set(report.diagnostics.map((diagnostic) => diagnostic.id)).size).toBe(2);
+    expect(report.summary.affectedFileCount).toBe(2);
+  });
+
   it("marks a v3 report baselineDegraded when a compare run couldn't diff the base", () => {
     const report = buildJsonReport({
       version: "1.2.3",

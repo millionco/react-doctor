@@ -249,14 +249,13 @@ const buildOutcomeAttributes = (input: RunEventInput): RunEventAttributes => {
   // gate too — keep `outcome.wouldBlock`/`outcome.status`/`outcome.exitCode` consistent with the real exit.
   const wouldBlock =
     !input.scoreOnly && !input.gateExempt && shouldBlockCi(gateDiagnostics, blockingLevel);
-  const hasSkippedChecks = result.skippedChecks.length > 0;
   const complete = isScanComplete({
     analyzedFileCount: result.analyzedFiles?.length,
     scannedFileCount: result.scannedFileCount,
     skippedCheckCount: result.skippedChecks.length,
     skippedCheckReasonCount: Object.keys(result.skippedCheckReasons ?? {}).length,
   });
-  const isClean = result.diagnostics.length === 0 && !hasSkippedChecks;
+  const isClean = result.diagnostics.length === 0 && complete;
   const outcome = wouldBlock ? "blocked" : isClean ? "clean" : "ok";
 
   const firings = summarizeRuleFirings(result.diagnostics);

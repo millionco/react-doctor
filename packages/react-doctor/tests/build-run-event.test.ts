@@ -61,6 +61,7 @@ const buildResult = (overrides: Partial<InspectResult> = {}): InspectResult => (
   project: projectInfo,
   elapsedMilliseconds: 1200,
   scannedFileCount: 10,
+  analyzedFiles: Array.from({ length: 10 }, (_unused, index) => `src/${index}.tsx`),
   scanElapsedMilliseconds: 900,
   ...overrides,
 });
@@ -187,6 +188,8 @@ describe("buildRunEventAttributes", () => {
       }),
     );
     expect(partialCheckAttributes["outcome.complete"]).toBe(false);
+    expect(partialCheckAttributes["outcome.status"]).toBe("ok");
+    expect(partialCheckAttributes["outcome.clean"]).toBe(false);
     expect(
       buildRunEventAttributes(baseInput({ error: new Error("boom") }))["outcome.complete"],
     ).toBe(false);

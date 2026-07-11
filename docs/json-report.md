@@ -11,7 +11,8 @@ Version 3 is the default. Versions 1 and 2 remain accepted by the exported
 Each diagnostic includes:
 
 - `id`: deterministic
-  `<normalizedFilePath>::<line>:<column>::<plugin>/<rule>` identity
+  `<reportRelativeFilePath>::<line>:<column>::<plugin>/<rule>` identity, unique
+  across workspace projects
 - `normalizedFilePath`: project-relative path with `/` separators
 - canonical `plugin`, `rule`, `category`, `severity`, and sorted `tags`
 - the original `filePath` and source span fields

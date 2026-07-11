@@ -882,7 +882,7 @@ export const runInspect = <HooksR = never>(
         : [
             ...new Set(
               lintFileCoverageState.value.candidateFiles.map((filePath) =>
-                filePath.replaceAll("\\", "/"),
+                toNormalizedRelativePath(filePath, scanDirectory),
               ),
             ),
           ];

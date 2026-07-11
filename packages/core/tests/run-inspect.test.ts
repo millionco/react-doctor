@@ -116,6 +116,7 @@ const supplyChainDiagnostic: Diagnostic = {
 
 const layersOf = (config: {
   diagnostics?: ReadonlyArray<Diagnostic>;
+  linter?: Layer.Layer<Linter>;
   deadCode?: ReadonlyArray<Diagnostic>;
   supplyChain?: ReadonlyArray<Diagnostic>;
   githubViewerPermission?: string | null;
@@ -128,7 +129,7 @@ const layersOf = (config: {
     Project.layerOf(sampleProject),
     Config.layerOf({ config: null, resolvedDirectory: "/repo", configSourceDirectory: null }),
     Files.layerInMemory(new Map()),
-    Linter.layerOf(config.diagnostics ?? []),
+    config.linter ?? Linter.layerOf(config.diagnostics ?? []),
     LintPartialFailures.layerLive,
     DeadCode.layerOf(config.deadCode ?? []),
     Git.layerOf({
@@ -811,6 +812,31 @@ describe("runInspect — scan progress phases", () => {
 });
 
 describe("runInspect — diff mode skips dead-code", () => {
+  it("canonicalizes file coverage before counting completed include paths", async () => {
+    const coverageLinter = Layer.mock(Linter, {
+      run: (input) =>
+        Stream.unwrap(
+          Effect.sync(() => {
+            const includePaths = input.includePaths ?? [];
+            input.onFileCoverage?.({
+              candidateFiles: includePaths,
+              analyzedFiles: includePaths,
+            });
+            return Stream.empty;
+          }),
+        ),
+    });
+    const output = await Effect.runPromise(
+      runInspect({
+        ...baseInput,
+        includePaths: ["src/App.tsx", "./src/App.tsx"],
+      }).pipe(Effect.provide(layersOf({ linter: coverageLinter }))),
+    );
+
+    expect(output.scannedFileCount).toBe(1);
+    expect(output.analyzedFiles).toEqual(["src/App.tsx"]);
+  });
+
   it("treats includePaths.length > 0 as diff mode and skips DeadCode.run", async () => {
     const output = await Effect.runPromise(
       runInspect({ ...baseInput, includePaths: ["src/App.tsx"] }).pipe(

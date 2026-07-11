@@ -79,6 +79,18 @@ describe("no-hydration-branch-on-browser-global", () => {
       "nested logical JSX branch",
       `"use client"; export const Page = ({ ready }) => <main>{typeof window !== "undefined" && (ready && <ClientOnly />)}</main>;`,
     ],
+    [
+      "a browser-dependent JSX branch with an earlier dynamic operand",
+      `"use client"; export const Page = ({ ready }) => <main>{ready && typeof window !== "undefined" && <ClientOnly />}</main>;`,
+    ],
+    [
+      "a browser-dependent JSX branch with a nested condition group",
+      `"use client"; export const Page = ({ ready }) => <main>{(ready && typeof document !== "undefined") && <ClientOnly />}</main>;`,
+    ],
+    [
+      "a browser-dependent JSX branch with a truthy const alias",
+      `"use client"; export const Page = () => { const enabled = true; return <main>{typeof window !== "undefined" && enabled && <ClientOnly />}</main>; };`,
+    ],
   ])("reports different rendered output selected by %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -177,6 +189,30 @@ describe("no-hydration-branch-on-browser-global", () => {
     [
       "a logical empty template branch",
       '"use client"; export const Page = () => <main>{typeof window !== "undefined" && ``}</main>;',
+    ],
+    [
+      "a logical JSX branch blocked after the browser predicate",
+      `"use client"; export const Page = () => <main>{typeof window !== "undefined" && false && <ClientOnly />}</main>;`,
+    ],
+    [
+      "a logical JSX branch blocked before the browser predicate",
+      `"use client"; export const Page = () => <main>{false && typeof window !== "undefined" && <ClientOnly />}</main>;`,
+    ],
+    [
+      "a logical JSX branch blocked by a later const alias",
+      `"use client"; export const Page = () => { const enabled = false; return <main>{typeof window !== "undefined" && enabled && <ClientOnly />}</main>; };`,
+    ],
+    [
+      "a logical JSX branch blocked by an earlier const alias",
+      `"use client"; export const Page = () => { const enabled = false; return <main>{enabled && typeof document !== "undefined" && <ClientOnly />}</main>; };`,
+    ],
+    [
+      "a logical JSX branch blocked inside a nested rendered group",
+      `"use client"; export const Page = () => <main>{typeof window !== "undefined" && (false && <ClientOnly />)}</main>;`,
+    ],
+    [
+      "a logical JSX branch blocked inside a nested condition group",
+      `"use client"; export const Page = () => <main>{(typeof document !== "undefined" && false) && <ClientOnly />}</main>;`,
     ],
   ])("stays quiet for %s", (_name, code) => {
     const result = run(code);

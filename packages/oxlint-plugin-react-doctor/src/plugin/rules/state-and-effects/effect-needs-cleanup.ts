@@ -447,6 +447,9 @@ const effectHasCleanupForUsage = (
       return;
     }
     if (isNodeOfType(returnedValue, "Identifier")) {
+      if (returnedValue.name === "undefined" && context.scopes.isGlobalReference(returnedValue)) {
+        return;
+      }
       const returnedKey = resolveExpressionKey(returnedValue, context);
       if (usage.handleKey !== null && returnedKey === usage.handleKey) return;
       const returnedSymbol = context.scopes.symbolFor(returnedValue);

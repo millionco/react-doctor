@@ -1100,6 +1100,23 @@ export const LiveFeed = ({ firstUrl, secondUrl }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not treat `return undefined` as resource cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const LiveFeed = ({ url, disabled }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    if (disabled) return undefined;
+    socket.onmessage = update;
+  }, [url, disabled]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports a recurring timer in an inline JSX handler", () => {
     const result = runRule(
       effectNeedsCleanup,

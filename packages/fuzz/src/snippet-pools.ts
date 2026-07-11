@@ -33,6 +33,7 @@ export const EFFECT_SNIPPET_POOL = [
   `useEffect(() => { document.title = String(state); }, [state]);`,
   `useEffect(() => { setState(value); }, [value]);`,
   `useEffect(() => { if (value) { handle(value); } }, [value]);`,
+  `const CallbackRefChild = ({ onSelect }) => { const callbackRef = useRef(onSelect); callbackRef.current = onSelect; const childData = buildPhoneData(); useEffect(() => { callbackRef.current(childData); }, [childData]); return null; };`,
   `useEffect(() => { const debounced = debounce(() => handle(value), 300); debounced(); return () => debounced.cancel(); }, [value]);`,
   `useEffect(() => { const unsubscribe = store.subscribe(handle); return unsubscribe; }, []);`,
   `useEffect(() => store.subscribe(handle), []);`,

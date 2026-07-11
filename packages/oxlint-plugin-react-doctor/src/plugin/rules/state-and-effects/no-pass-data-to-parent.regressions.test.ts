@@ -561,4 +561,392 @@ describe("no-pass-data-to-parent — regressions", () => {
       expect(result.diagnostics.length).toBeGreaterThan(0);
     });
   });
+
+  describe("callback refs sourced from parent callbacks (FN-024)", () => {
+    it("flags the PhoneInput ref-laundering shape with an initializer and render assignment", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, country, phoneNumber, withCountryMeta }) {
+          const onChangeRef = useRef(onChange);
+          onChangeRef.current = onChange;
+          const data = toPhoneNumber(phoneNumber, country, withCountryMeta);
+          useEffect(() => {
+            onChangeRef.current(data);
+          }, [country, phoneNumber, withCountryMeta]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("flags a wrapped static-computed current call after a dominating props-member assignment", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const PhoneInput = (props) => {
+          const onChangeRef = React.useRef();
+          (onChangeRef as { current?: typeof props.onChange })["current"] = props.onChange;
+          const data = buildPhoneData();
+          useEffect(() => {
+            ((onChangeRef as { current: typeof props.onChange })["current"] as typeof props.onChange)(data);
+          }, [data]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("flags optional calls through immutable callback and ref alias chains", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import { useRef as useReactRef } from "react";
+        const PhoneInput = ({ onChange: notifyChange }) => {
+          const parentCallback = notifyChange;
+          const callbackRef = useReactRef(parentCallback);
+          const callbackRefAlias = callbackRef;
+          const latestCallbackRef = callbackRefAlias;
+          const childData = buildPhoneData();
+          useEffect(() => {
+            latestCallbackRef["current"]?.(childData);
+          }, [childData]);
+          return null;
+        };`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("flags render assignments after effect registration and parent-callback reassignment", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, onCommit }) {
+          const callbackRef = useRef();
+          const childData = buildPhoneData();
+          useEffect(() => {
+            callbackRef.current(childData);
+          }, [childData]);
+          callbackRef.current = onChange;
+          callbackRef.current = onCommit;
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("flags refs created through an immutable React namespace alias", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `import ReactClient from "react";
+        const ReactAlias = ReactClient;
+        function PhoneInput({ onChange }) {
+          const callbackRef = ReactAlias.useRef(onChange);
+          const childData = buildPhoneData();
+          useEffect(() => {
+            callbackRef.current(childData);
+          }, [childData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("preserves useEffectEvent callback tracing", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, phoneNumber }) {
+          const notifyChange = useEffectEvent(() => {
+            onChange(toPhoneNumber(phoneNumber));
+          });
+          useEffect(() => {
+            notifyChange();
+          }, [notifyChange]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    });
+
+    it("stays silent for DOM refs and callback object bags", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, childData }) {
+          const inputRef = useRef(null);
+          const callbacksRef = useRef({ onChange });
+          useEffect(() => {
+            inputRef.current?.focus();
+            callbacksRef.current.onChange(childData);
+          }, [childData]);
+          return <input ref={inputRef} />;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for a ref initialized from a local callback or opaque wrapper", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, childData }) {
+          const localCallback = (data) => log(data);
+          const localCallbackRef = useRef(localCallback);
+          const opaqueCallbackRef = useLatestCallback(onChange);
+          useEffect(() => {
+            localCallbackRef.current(childData);
+            opaqueCallbackRef.current(childData);
+          }, [childData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when mutable callback aliases or ref aliases lose parent provenance", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, childData }) {
+          const localCallback = (data) => log(data);
+          let callbackAlias = onChange;
+          callbackAlias = localCallback;
+          const mutableCallbackRef = useRef(callbackAlias);
+          const aliasedRef = useRef(onChange);
+          const refAlias = aliasedRef;
+          refAlias.current = localCallback;
+          useEffect(() => {
+            mutableCallbackRef.current(childData);
+            aliasedRef.current(childData);
+          }, [childData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for a shadowed useRef implementation", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `const useRef = (value) => ({ current: value });
+        function PhoneInput({ onChange, childData }) {
+          const callbackRef = useRef(onChange);
+          useEffect(() => {
+            callbackRef.current(childData);
+          }, [childData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when React or an aliased React namespace is shadowed", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, childData }) {
+          const React = { useRef: (value) => ({ current: value }) };
+          const ReactAlias = React;
+          const callbackRef = ReactAlias.useRef(onChange);
+          useEffect(() => {
+            callbackRef.current(childData);
+          }, [childData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for conditional and mixed current assignments", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, childData, disabled }) {
+          const localCallback = (data) => log(data);
+          const conditionalRef = useRef();
+          if (!disabled) conditionalRef.current = onChange;
+          const mixedRef = useRef(onChange);
+          mixedRef.current = onChange;
+          if (disabled) mixedRef.current = localCallback;
+          const dynamicRef = useRef(onChange);
+          dynamicRef[disabled ? "current" : "fallback"] = localCallback;
+          useEffect(() => {
+            conditionalRef.current(childData);
+            mixedRef.current(childData);
+            dynamicRef.current(childData);
+          }, [childData, disabled]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for imperative-handle and opaque ref-object mutation", () => {
+      const imperativeHandleResult = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, childData }) {
+          const localCallback = (data) => log(data);
+          const callbackRef = useRef(onChange);
+          useImperativeHandle(callbackRef, () => localCallback, [localCallback]);
+          useEffect(() => {
+            callbackRef.current(childData);
+          }, [childData]);
+          return null;
+        }`,
+      );
+      const opaqueMutationResult = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, childData }) {
+          const callbackRef = useRef(onChange);
+          synchronizeCallbackRef(callbackRef);
+          useEffect(() => {
+            callbackRef.current(childData);
+          }, [childData]);
+          return null;
+        }`,
+      );
+      expect(imperativeHandleResult.parseErrors).toEqual([]);
+      expect(imperativeHandleResult.diagnostics).toEqual([]);
+      expect(opaqueMutationResult.parseErrors).toEqual([]);
+      expect(opaqueMutationResult.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for event-time assignments and event-handler calls", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, childData }) {
+          const callbackRef = useRef();
+          const handleClick = () => {
+            callbackRef.current = onChange;
+            callbackRef.current(childData);
+          };
+          useEffect(() => {
+            window.addEventListener("click", handleClick);
+            return () => window.removeEventListener("click", handleClick);
+          }, [handleClick]);
+          return <button onClick={handleClick}>Notify</button>;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for dynamic current access and destructive updates", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, childData, currentKey }) {
+          const dynamicRef = useRef(onChange);
+          const updatedRef = useRef(onChange);
+          updatedRef.current++;
+          useEffect(() => {
+            dynamicRef[currentKey](childData);
+            updatedRef.current(childData);
+          }, [childData, currentKey]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for deferred and nested assignments", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, childData }) {
+          const deferredRef = useRef();
+          const nestedRef = useRef();
+          const syncNestedRef = () => {
+            nestedRef.current = onChange;
+          };
+          syncNestedRef();
+          useEffect(() => {
+            deferredRef.current = onChange;
+            deferredRef.current(childData);
+            nestedRef.current(childData);
+          }, [childData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent for deferred calls and calls outside effects", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, childData }) {
+          const callbackRef = useRef(onChange);
+          callbackRef.current(childData);
+          useEffect(() => {
+            setTimeout(() => callbackRef.current(childData), 0);
+          }, [childData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("keeps callback-ref calls subject to command filters", () => {
+      const result = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ fetchAllServiceMetrics, childData }) {
+          const callbackRef = useRef(fetchAllServiceMetrics);
+          useEffect(() => {
+            callbackRef.current(childData);
+          }, [childData]);
+          return null;
+        }`,
+      );
+      const aliasedResult = runRule(
+        noPassDataToParent,
+        `function PhoneInput(props) {
+          const { fetchAllServiceMetrics: notifyParent } = props;
+          const callbackAlias = notifyParent;
+          const callbackRef = useRef(callbackAlias);
+          const childData = buildPhoneData();
+          useEffect(() => {
+            callbackRef.current(childData);
+          }, [childData]);
+          return null;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+      expect(aliasedResult.parseErrors).toEqual([]);
+      expect(aliasedResult.diagnostics).toEqual([]);
+    });
+
+    it("keeps callback-ref calls subject to cleanup and handler-bag filters", () => {
+      const cleanupResult = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onChange, childData, source }) {
+          const callbackRef = useRef(onChange);
+          useEffect(() => {
+            callbackRef.current(childData);
+            return () => source.dispose();
+          }, [childData, source]);
+          return null;
+        }`,
+      );
+      const handlerBagResult = runRule(
+        noPassDataToParent,
+        `function PhoneInput({ onReady }) {
+          const callbackRef = useRef(onReady);
+          const handleChange = () => {};
+          useEffect(() => {
+            callbackRef.current({ handleChange });
+          }, [handleChange]);
+          return null;
+        }`,
+      );
+      expect(cleanupResult.parseErrors).toEqual([]);
+      expect(cleanupResult.diagnostics).toEqual([]);
+      expect(handlerBagResult.parseErrors).toEqual([]);
+      expect(handlerBagResult.diagnostics).toEqual([]);
+    });
+  });
 });

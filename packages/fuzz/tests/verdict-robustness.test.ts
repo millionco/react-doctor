@@ -29,6 +29,7 @@ const AUDITED_RULE_IDS = [
   "no-locale-format-in-render",
   "no-mutating-reducer-state",
   "no-nested-component-definition",
+  "no-pass-data-to-parent",
   "no-react19-deprecated-apis",
   "no-render-in-render",
   "no-stale-timer-ref",

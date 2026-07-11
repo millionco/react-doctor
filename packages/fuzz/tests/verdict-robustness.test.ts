@@ -25,6 +25,7 @@ const AUDITED_RULE_IDS = [
   "no-aria-hidden-on-focusable",
   "no-cascading-set-state",
   "no-derived-state-effect",
+  "no-impure-state-updater",
   "no-jsx-element-type",
   "no-locale-format-in-render",
   "no-mutating-reducer-state",

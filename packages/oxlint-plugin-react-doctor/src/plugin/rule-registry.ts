@@ -195,6 +195,7 @@ import { noGradientText } from "./rules/design/no-gradient-text.js";
 import { noGrayOnColoredBackground } from "./rules/design/no-gray-on-colored-background.js";
 import { noHydrationBranchOnBrowserGlobal } from "./rules/performance/no-hydration-branch-on-browser-global.js";
 import { noImgLazyWithHighFetchpriority } from "./rules/performance/no-img-lazy-with-high-fetchpriority.js";
+import { noImpureStateUpdater } from "./rules/state-and-effects/no-impure-state-updater.js";
 import { noIndeterminateAttribute } from "./rules/correctness/no-indeterminate-attribute.js";
 import { noInitializeState } from "./rules/state-and-effects/no-initialize-state.js";
 import { noInlineBounceEasing } from "./rules/design/no-inline-bounce-easing.js";
@@ -2610,6 +2611,18 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(noImgLazyWithHighFetchpriority.requires ?? [])]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/no-impure-state-updater",
+    id: "no-impure-state-updater",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noImpureStateUpdater,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noImpureStateUpdater.requires ?? [])])],
     },
   },
   {

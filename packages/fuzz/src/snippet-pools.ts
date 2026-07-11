@@ -65,6 +65,7 @@ export const STATE_SNIPPET_POOL = [
   `const deferredValue = useDeferredValue(state);`,
   `const [isPending, startTransition] = useTransition();`,
   `const [counterState, dispatchCounter] = useReducer((state, action) => { state.count += 1; return state; }, { count: 0 });`,
+  `const [persistedCount, setPersistedCount] = useState(0); const incrementPersistedCount = () => setPersistedCount((previousCount) => { localStorage.setItem("count", String(previousCount + 1)); return previousCount + 1; });`,
   `const [parsedItems, setParsedItems] = useState(parseItems(value));`,
   `const indexRef = useRef(buildIndex(items));`,
   `const doubled = useMemo(() => state * 2, [state]);`,

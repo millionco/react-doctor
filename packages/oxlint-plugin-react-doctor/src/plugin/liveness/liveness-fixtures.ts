@@ -685,6 +685,17 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-json-parse-stringify-clone": {
     code: "const copy = JSON.parse(JSON.stringify(state));",
   },
+  "no-impure-state-updater": {
+    code: `import { useState } from "react";
+      const Counter = () => {
+        const [count, setCount] = useState(0);
+        const increment = () => setCount((previousCount) => {
+          localStorage.setItem("count", String(previousCount + 1));
+          return previousCount + 1;
+        });
+        return <button onClick={increment}>{count}</button>;
+      };`,
+  },
   "no-jsx-element-type": {
     code: "\n      function App(): JSX.Element {\n        return <div />;\n      }\n    ",
   },

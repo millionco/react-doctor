@@ -123,6 +123,24 @@ export const StoreSubscriber = ({ store }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a cleanup function returned through a const alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const LiveFeed = ({ url }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    const closeSocket = () => socket.close();
+    const cleanup = closeSocket;
+    return cleanup;
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   // Mined miss (gatsby loading-indicator): the cleanup calls `.off` with a
   // FRESH inline arrow — a different reference from the one `.on` registered
   // — so reference-based removal removes nothing and the listeners leak.

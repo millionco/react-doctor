@@ -337,15 +337,14 @@ const findContainingCollectionKey = (
   return null;
 };
 
-const resolveObjectExpression = (
+const resolveConstValue = (
   expression: EsTreeNode | null | undefined,
   context: RuleContext,
   visitedSymbolIds: Set<number> = new Set(),
-): EsTreeNodeOfType<"ObjectExpression"> | null => {
+): EsTreeNode | null => {
   if (!expression) return null;
   const unwrappedExpression = stripParenExpression(expression);
-  if (isNodeOfType(unwrappedExpression, "ObjectExpression")) return unwrappedExpression;
-  if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
+  if (!isNodeOfType(unwrappedExpression, "Identifier")) return unwrappedExpression;
   const symbol = context.scopes.symbolFor(unwrappedExpression);
   if (
     !symbol ||
@@ -353,10 +352,18 @@ const resolveObjectExpression = (
     !symbol.initializer ||
     visitedSymbolIds.has(symbol.id)
   ) {
-    return null;
+    return unwrappedExpression;
   }
   visitedSymbolIds.add(symbol.id);
-  return resolveObjectExpression(symbol.initializer, context, visitedSymbolIds);
+  return resolveConstValue(symbol.initializer, context, visitedSymbolIds);
+};
+
+const resolveObjectExpression = (
+  expression: EsTreeNode | null | undefined,
+  context: RuleContext,
+): EsTreeNodeOfType<"ObjectExpression"> | null => {
+  const resolvedExpression = resolveConstValue(expression, context);
+  return isNodeOfType(resolvedExpression, "ObjectExpression") ? resolvedExpression : null;
 };
 
 const getListenerAbortControllerKey = (
@@ -482,11 +489,7 @@ const effectHasCleanupForUsage = (
         return;
       }
     }
-    const cleanupFunction = isFunctionLike(returnedValue)
-      ? returnedValue
-      : isNodeOfType(returnedValue, "Identifier")
-        ? context.scopes.symbolFor(returnedValue)?.initializer
-        : null;
+    const cleanupFunction = resolveConstValue(returnedValue, context);
     if (!cleanupFunction || !isFunctionLike(cleanupFunction)) return;
     walkAst(cleanupFunction.body, (cleanupChild: EsTreeNode) => {
       if (didFindMatchingCleanup) return false;

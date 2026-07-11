@@ -83,6 +83,21 @@ describe("no-prop-callback-in-render", () => {
       `const List = ({ items, renderItem }) => <div>{items.map((item) => renderItem(item))}</div>;`,
     ],
     [
+      "comparison results from a concise sort callback",
+      `const List = ({ items, compareItems }) => {
+         const copy = [...items];
+         copy.sort((firstItem, secondItem) => compareItems(firstItem, secondItem));
+         return <div>{copy.join(", ")}</div>;
+       };`,
+    ],
+    [
+      "mapped results from a concise callback",
+      `const List = ({ items, transformItem }) => {
+         items.map((item) => transformItem(item));
+         return null;
+       };`,
+    ],
+    [
       "a returned callback result",
       `const Panel = ({ value, selectView }) => { return selectView(value); };`,
     ],

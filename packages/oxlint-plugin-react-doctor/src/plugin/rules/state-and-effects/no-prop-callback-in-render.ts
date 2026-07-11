@@ -55,10 +55,9 @@ const isPreservedThroughConciseArrow = (
       isNodeOfType(invocation.callee, "MemberExpression") &&
       !invocation.callee.computed &&
       isNodeOfType(invocation.callee.property, "Identifier") &&
-      invocation.callee.property.name === "forEach" &&
       invocation.arguments?.[0] === parent
     ) {
-      return false;
+      return invocation.callee.property.name !== "forEach";
     }
     node = invocation;
     parent = node.parent;

@@ -65,6 +65,14 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       `"use client"; export const Page = () => <div>{typeof document !== "undefined" ? window.innerWidth : 0}</div>;`,
     ],
     [
+      "an object-type browser guard",
+      `"use client"; export const Page = () => <div>{typeof window === "object" ? window.innerWidth : 0}</div>;`,
+    ],
+    [
+      "a function-type browser API guard",
+      `"use client"; export const Page = () => <div>{typeof matchMedia === "function" ? String(matchMedia("(min-width: 800px)").matches) : "false"}</div>;`,
+    ],
+    [
       "a compound availability guard",
       `"use client"; export const Page = ({ ready }) => <div>{typeof window !== "undefined" && ready ? window.innerWidth : 0}</div>;`,
     ],

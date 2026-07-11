@@ -1097,11 +1097,27 @@ const collectValueEvidence = (
       evidence.hasUnknownSource = true;
       return evidence;
     }
-    if (
-      reference.resolved.references.some(
-        (candidateReference) => candidateReference.isWrite() && !candidateReference.init,
-      )
-    ) {
+    const nonInitializerWrites = reference.resolved.references.filter(
+      (candidateReference) => candidateReference.isWrite() && !candidateReference.init,
+    );
+    if (nonInitializerWrites.length > 0) {
+      const writtenIdentifier = nonInitializerWrites[0]?.identifier as unknown as EsTreeNode;
+      const assignment = writtenIdentifier.parent;
+      if (
+        nonInitializerWrites.length === 1 &&
+        assignment &&
+        isNodeOfType(assignment, "AssignmentExpression") &&
+        assignment.operator === "=" &&
+        assignment.left === writtenIdentifier
+      ) {
+        return collectValueEvidence(
+          analysis,
+          assignment.right as EsTreeNode,
+          frame,
+          remainingCallFrames,
+          visitedBindings,
+        );
+      }
       evidence.hasUnknownSource = true;
       return evidence;
     }
@@ -1157,8 +1173,6 @@ const collectValueEvidence = (
               new Set(refVisitedBindings),
             ),
           );
-        } else {
-          evidence.hasUnknownSource = true;
         }
         for (const candidateReference of refBinding.references) {
           if (candidateReference.init) continue;
@@ -1179,6 +1193,10 @@ const collectValueEvidence = (
             isNodeOfType(memberParent, "AssignmentExpression") &&
             memberParent.left === member
           ) {
+            if (memberParent.operator !== "=") {
+              evidence.hasUnknownSource = true;
+              continue;
+            }
             mergeEvidence(
               evidence,
               collectValueEvidence(
@@ -1191,11 +1209,7 @@ const collectValueEvidence = (
             );
             continue;
           }
-          if (
-            memberParent &&
-            ((isNodeOfType(memberParent, "AssignmentExpression") && memberParent.left !== member) ||
-              isNodeOfType(memberParent, "UpdateExpression"))
-          ) {
+          if (memberParent && isNodeOfType(memberParent, "UpdateExpression")) {
             evidence.hasUnknownSource = true;
           }
         }

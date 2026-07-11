@@ -29,6 +29,21 @@ describe("state-and-effects/no-fetch-in-effect — regressions", () => {
     `);
   });
 
+  it("does not flag an aliased signal passed through a const options object", () => {
+    expectPass(`
+      const Profile = ({ url }) => {
+        useEffect(() => {
+          const controller = new AbortController();
+          const signal = controller.signal;
+          const options = { signal };
+          fetch(url, options).then((response) => response.json()).then(setProfile);
+          return () => controller.abort();
+        }, [url]);
+        return null;
+      };
+    `);
+  });
+
   it("does not flag a fetch guarded by a cancelled flag set in the cleanup", () => {
     expectPass(`
       const GithubSection = ({ isOpen }) => {
@@ -45,6 +60,102 @@ describe("state-and-effects/no-fetch-in-effect — regressions", () => {
             isCancelled = true;
           };
         }, [isOpen]);
+        return null;
+      };
+    `);
+  });
+
+  it("does not flag a promise completion gated by an ignore flag", () => {
+    expectPass(`
+      const SearchResults = ({ query }) => {
+        useEffect(() => {
+          let ignore = false;
+          fetch("/api/search?q=" + query)
+            .then((response) => response.json())
+            .then((results) => {
+              if (!ignore) setResults(results);
+            });
+          setLoading(true);
+          return () => {
+            ignore = true;
+          };
+        }, [query]);
+        return null;
+      };
+    `);
+  });
+
+  it("flags cleanup that aborts a controller not passed to the request", () => {
+    expectFail(`
+      const Profile = ({ url }) => {
+        useEffect(() => {
+          const controller = new AbortController();
+          fetch(url).then((response) => response.json()).then(setProfile);
+          return () => controller.abort();
+        }, [url]);
+        return null;
+      };
+    `);
+  });
+
+  it("flags cleanup that aborts a different request controller", () => {
+    expectFail(`
+      const Profile = ({ url }) => {
+        useEffect(() => {
+          const requestController = new AbortController();
+          const cleanupController = new AbortController();
+          fetch(url, { signal: requestController.signal })
+            .then((response) => response.json())
+            .then(setProfile);
+          return () => cleanupController.abort();
+        }, [url]);
+        return null;
+      };
+    `);
+  });
+
+  it("flags a cancellation flag that never guards the completion sink", () => {
+    expectFail(`
+      const Profile = ({ url }) => {
+        useEffect(() => {
+          let isCancelled = false;
+          fetch(url).then((response) => response.json()).then(setProfile);
+          return () => {
+            isCancelled = true;
+          };
+        }, [url]);
+        return null;
+      };
+    `);
+  });
+
+  it("flags a cancellation flag checked with the stale-result polarity", () => {
+    expectFail(`
+      const Profile = ({ url }) => {
+        useEffect(() => {
+          let isCancelled = false;
+          fetch(url).then(async (response) => {
+            const profile = await response.json();
+            if (isCancelled) setProfile(profile);
+          });
+          return () => {
+            isCancelled = true;
+          };
+        }, [url]);
+        return null;
+      };
+    `);
+  });
+
+  it("flags effects when only one of multiple requests uses the aborted signal", () => {
+    expectFail(`
+      const Dashboard = ({ profileUrl, activityUrl }) => {
+        useEffect(() => {
+          const controller = new AbortController();
+          fetch(profileUrl, { signal: controller.signal }).then(setProfile);
+          fetch(activityUrl).then(setActivity);
+          return () => controller.abort();
+        }, [profileUrl, activityUrl]);
         return null;
       };
     `);

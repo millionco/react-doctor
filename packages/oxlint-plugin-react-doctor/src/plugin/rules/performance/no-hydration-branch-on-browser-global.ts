@@ -50,14 +50,24 @@ const readTypeofBrowserGlobal = (
     return null;
   }
   const argument = stripParenExpression(unwrappedExpression.argument);
+  if (isNodeOfType(argument, "Identifier")) {
+    return (argument.name === "window" || argument.name === "document") &&
+      context.scopes.isGlobalReference(argument)
+      ? argument.name
+      : null;
+  }
   if (
-    !isNodeOfType(argument, "Identifier") ||
-    (argument.name !== "window" && argument.name !== "document") ||
-    !context.scopes.isGlobalReference(argument)
+    !isNodeOfType(argument, "MemberExpression") ||
+    argument.computed ||
+    !isNodeOfType(argument.object, "Identifier") ||
+    argument.object.name !== "globalThis" ||
+    !context.scopes.isGlobalReference(argument.object) ||
+    !isNodeOfType(argument.property, "Identifier") ||
+    (argument.property.name !== "window" && argument.property.name !== "document")
   ) {
     return null;
   }
-  return argument.name;
+  return argument.property.name;
 };
 
 const matchBrowserPredicate = (

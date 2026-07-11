@@ -31,6 +31,10 @@ describe("no-hydration-branch-on-browser-global", () => {
       "logical JSX branch",
       `"use client"; export const Page = () => <main>{typeof window !== "undefined" && <ClientOnly />}</main>;`,
     ],
+    [
+      "compound logical JSX branch",
+      `"use client"; export const Page = ({ ready }) => <main>{typeof window !== "undefined" && ready && <ClientOnly />}</main>;`,
+    ],
   ])("reports different rendered output selected by %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -65,6 +69,22 @@ describe("no-hydration-branch-on-browser-global", () => {
     [
       "a server component without client render evidence",
       `export const Page = () => typeof window === "undefined" ? <Server /> : <Client />;`,
+    ],
+    [
+      "a logical null branch",
+      `"use client"; export const Page = () => <main>{typeof window !== "undefined" && null}</main>;`,
+    ],
+    [
+      "a logical boolean branch",
+      `"use client"; export const Page = () => <main>{typeof window !== "undefined" && false}</main>;`,
+    ],
+    [
+      "a logical empty string branch",
+      `"use client"; export const Page = () => <main>{typeof window !== "undefined" && ""}</main>;`,
+    ],
+    [
+      "a logical empty template branch",
+      '"use client"; export const Page = () => <main>{typeof window !== "undefined" && ``}</main>;',
     ],
   ])("stays quiet for %s", (_name, code) => {
     const result = run(code);

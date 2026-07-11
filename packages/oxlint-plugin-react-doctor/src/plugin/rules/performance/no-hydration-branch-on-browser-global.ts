@@ -18,6 +18,7 @@ import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { readInitialStateBoolean } from "../../utils/read-initial-state-boolean.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
@@ -30,6 +31,11 @@ interface BrowserPredicateMatch {
   readonly browserGlobalName: "window" | "document";
   readonly clientResult: boolean;
   readonly serverResult: boolean;
+}
+
+interface HydrationConditionMatch {
+  readonly predicateMatch: BrowserPredicateMatch;
+  readonly predicateNode: EsTreeNode;
 }
 
 const evaluateEquality = (operator: string, left: string, right: string): boolean | null => {
@@ -114,6 +120,96 @@ const matchBrowserPredicate = (
   const serverResult = evaluateEquality(unwrappedExpression.operator, "undefined", comparedType);
   if (clientResult === null || serverResult === null || clientResult === serverResult) return null;
   return { browserGlobalName, clientResult, serverResult };
+};
+
+const readLogicalConditionResult = (
+  operator: "&&" | "||",
+  leftResult: boolean | null,
+  rightResult: boolean | null,
+): boolean | null => {
+  if (operator === "&&") {
+    if (leftResult === false || rightResult === false) return false;
+    if (leftResult === true && rightResult === true) return true;
+    return null;
+  }
+  if (leftResult === true || rightResult === true) return true;
+  if (leftResult === false && rightResult === false) return false;
+  return null;
+};
+
+const readHydrationConditionResult = (
+  expression: EsTreeNode,
+  context: RuleContext,
+  runtime: "client" | "server",
+): boolean | null => {
+  const unwrappedExpression = stripParenExpression(expression);
+  const predicateMatch = matchBrowserPredicate(unwrappedExpression, context);
+  if (predicateMatch) return predicateMatch[`${runtime}Result`];
+  const staticResult = readInitialStateBoolean(unwrappedExpression, context.scopes);
+  if (staticResult !== null) return staticResult;
+  if (
+    isNodeOfType(unwrappedExpression, "UnaryExpression") &&
+    unwrappedExpression.operator === "!"
+  ) {
+    const argumentResult = readHydrationConditionResult(
+      unwrappedExpression.argument,
+      context,
+      runtime,
+    );
+    return argumentResult === null ? null : !argumentResult;
+  }
+  if (
+    !isNodeOfType(unwrappedExpression, "LogicalExpression") ||
+    (unwrappedExpression.operator !== "&&" && unwrappedExpression.operator !== "||")
+  ) {
+    return null;
+  }
+  return readLogicalConditionResult(
+    unwrappedExpression.operator,
+    readHydrationConditionResult(unwrappedExpression.left, context, runtime),
+    readHydrationConditionResult(unwrappedExpression.right, context, runtime),
+  );
+};
+
+const matchHydrationCondition = (
+  expression: EsTreeNode,
+  context: RuleContext,
+): HydrationConditionMatch | null => {
+  const unwrappedExpression = stripParenExpression(expression);
+  const predicateMatch = matchBrowserPredicate(unwrappedExpression, context);
+  if (predicateMatch) return { predicateMatch, predicateNode: unwrappedExpression };
+  if (
+    isNodeOfType(unwrappedExpression, "UnaryExpression") &&
+    unwrappedExpression.operator === "!"
+  ) {
+    return matchHydrationCondition(unwrappedExpression.argument, context);
+  }
+  if (
+    !isNodeOfType(unwrappedExpression, "LogicalExpression") ||
+    (unwrappedExpression.operator !== "&&" && unwrappedExpression.operator !== "||")
+  ) {
+    return null;
+  }
+  const leftMatch = matchHydrationCondition(unwrappedExpression.left, context);
+  const rightMatch = matchHydrationCondition(unwrappedExpression.right, context);
+  if (leftMatch && rightMatch) {
+    const clientResult = readHydrationConditionResult(unwrappedExpression, context, "client");
+    const serverResult = readHydrationConditionResult(unwrappedExpression, context, "server");
+    return clientResult !== null && serverResult !== null && clientResult !== serverResult
+      ? leftMatch
+      : null;
+  }
+  const nestedMatch = leftMatch ?? rightMatch;
+  if (!nestedMatch) return null;
+  const otherOperand = leftMatch ? unwrappedExpression.right : unwrappedExpression.left;
+  const otherResult = readInitialStateBoolean(otherOperand, context.scopes);
+  if (
+    (unwrappedExpression.operator === "&&" && otherResult === false) ||
+    (unwrappedExpression.operator === "||" && otherResult === true)
+  ) {
+    return null;
+  }
+  return nestedMatch;
 };
 
 const areNodeArraysEquivalent = (
@@ -404,14 +500,15 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
     const reportedNodes = new Set<EsTreeNode>();
 
     const reportHydrationBranch = (
-      predicateNode: EsTreeNode,
+      conditionNode: EsTreeNode,
       leftBranch: EsTreeNode,
       rightBranch: EsTreeNode | null,
       requiresRenderedContext: boolean,
     ): void => {
+      const conditionMatch = matchHydrationCondition(conditionNode, context);
+      if (!conditionMatch) return;
+      const { predicateMatch, predicateNode } = conditionMatch;
       if (reportedNodes.has(predicateNode)) return;
-      const predicateMatch = matchBrowserPredicate(predicateNode, context);
-      if (!predicateMatch) return;
       if (rightBranch && areRenderedBranchesEquivalent(leftBranch, rightBranch)) return;
       const componentOrHookNode = findRenderPhaseComponentOrHook(predicateNode, context.scopes);
       if (!componentOrHookNode) return;

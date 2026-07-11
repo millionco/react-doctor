@@ -1,6 +1,8 @@
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
@@ -10,7 +12,10 @@ import { getDownstreamRefs } from "./utils/effect/ast.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
 import { isPropCallbackInvocationRef } from "./utils/effect/react.js";
 
-const isReturnedFromConciseArrow = (callExpression: EsTreeNode): boolean => {
+const isPreservedThroughConciseArrow = (
+  callExpression: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
   let node = callExpression;
   let parent = node.parent;
   while (parent) {
@@ -39,7 +44,24 @@ const isReturnedFromConciseArrow = (callExpression: EsTreeNode): boolean => {
       parent = node.parent;
       continue;
     }
-    return isNodeOfType(parent, "ArrowFunctionExpression") && parent.body === node;
+    if (!isNodeOfType(parent, "ArrowFunctionExpression") || parent.body !== node) {
+      return !isResultDiscardedCall(node);
+    }
+    const invocation = parent.parent;
+    if (!isNodeOfType(invocation, "CallExpression") || !executesDuringRender(parent, scopes)) {
+      return true;
+    }
+    if (
+      isNodeOfType(invocation.callee, "MemberExpression") &&
+      !invocation.callee.computed &&
+      isNodeOfType(invocation.callee.property, "Identifier") &&
+      invocation.callee.property.name === "forEach" &&
+      invocation.arguments?.[0] === parent
+    ) {
+      return false;
+    }
+    node = invocation;
+    parent = node.parent;
   }
   return false;
 };
@@ -53,7 +75,7 @@ export const noPropCallbackInRender = defineRule({
   create: (context) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
       if (!isResultDiscardedCall(node)) return;
-      if (isReturnedFromConciseArrow(node)) return;
+      if (isPreservedThroughConciseArrow(node, context.scopes)) return;
       if (!findRenderPhaseComponentOrHook(node, context.scopes)) return;
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;

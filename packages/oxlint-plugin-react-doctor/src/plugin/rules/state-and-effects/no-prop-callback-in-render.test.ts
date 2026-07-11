@@ -48,6 +48,20 @@ describe("no-prop-callback-in-render", () => {
        };`,
     ],
     [
+      "a concise IIFE",
+      `const Image = ({ error, onError }) => {
+         if (error) (() => onError(error))();
+         return null;
+       };`,
+    ],
+    [
+      "a concise forEach callback",
+      `const List = ({ items, onVisit }) => {
+         items.forEach((item) => onVisit(item));
+         return null;
+       };`,
+    ],
+    [
       "a custom hook callback",
       `const useNotifyError = (error, onError) => {
          if (error) onError(error);
@@ -63,6 +77,10 @@ describe("no-prop-callback-in-render", () => {
     [
       "a rendered callback result",
       `const List = ({ item, renderItem }) => <div>{renderItem(item)}</div>;`,
+    ],
+    [
+      "rendered callback results from a concise map callback",
+      `const List = ({ items, renderItem }) => <div>{items.map((item) => renderItem(item))}</div>;`,
     ],
     [
       "a returned callback result",

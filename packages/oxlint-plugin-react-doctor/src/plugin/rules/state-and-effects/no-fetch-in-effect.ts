@@ -2,7 +2,6 @@ import { FETCH_CALLEE_NAMES, FETCH_MEMBER_OBJECTS } from "../../constants/librar
 import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import { collectEffectInvokedFunctions } from "../../utils/collect-effect-invoked-functions.js";
-import { executesDuringRender } from "../../utils/executes-during-render.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findVariableInitializer } from "../../utils/find-variable-initializer.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
@@ -62,45 +61,51 @@ const isXmlHttpRequestConstruction = (node: EsTreeNode): boolean =>
 const isNetworkRequest = (node: EsTreeNode): boolean =>
   isRealFetchCall(node) || isXmlHttpRequestConstruction(node);
 
-const collectComponentScopeFunctionBindings = (
-  componentScope: EsTreeNode,
-  effectCallback: EsTreeNode,
-): Map<string, EsTreeNode> => {
-  const bindings = new Map<string, EsTreeNode>();
-  walkAst(componentScope, (child) => {
-    if (child === effectCallback) return false;
-    if (isNodeOfType(child, "VariableDeclarator") && isNodeOfType(child.id, "Identifier")) {
-      const initializer = child.init ? stripParenExpression(child.init) : null;
-      if (isFunctionLike(initializer)) bindings.set(child.id.name, initializer);
-      return;
-    }
-    if (isNodeOfType(child, "FunctionDeclaration") && isNodeOfType(child.id, "Identifier")) {
-      bindings.set(child.id.name, child);
-    }
-  });
-  return bindings;
+const resolveLocalFunction = (
+  expression: EsTreeNode | null | undefined,
+  context: RuleContext,
+): EsTreeNode | null => {
+  if (!expression) return null;
+  const unwrappedExpression = stripParenExpression(expression);
+  if (isFunctionLike(unwrappedExpression)) return unwrappedExpression;
+  if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
+  const initializer = context.scopes.symbolFor(unwrappedExpression)?.initializer;
+  if (!initializer) return null;
+  const unwrappedInitializer = stripParenExpression(initializer);
+  return isFunctionLike(unwrappedInitializer) ? unwrappedInitializer : null;
 };
 
-const collectEffectAnalysisFunctions = (effectCallback: EsTreeNode): Set<EsTreeNode> => {
-  const invokedFunctions = collectEffectInvokedFunctions(effectCallback);
-  const enclosingComponent = findEnclosingFunction(effectCallback);
-  if (!enclosingComponent) return invokedFunctions;
+const collectEffectAnalysisFunctions = (
+  effectCallback: EsTreeNode,
+  context: RuleContext,
+): Set<EsTreeNode> => {
+  const analysisFunctions = new Set<EsTreeNode>();
+  const pendingFunctions: EsTreeNode[] = [];
+  const enqueueFunction = (functionNode: EsTreeNode): void => {
+    for (const invokedFunction of collectEffectInvokedFunctions(functionNode)) {
+      if (analysisFunctions.has(invokedFunction)) continue;
+      analysisFunctions.add(invokedFunction);
+      pendingFunctions.push(invokedFunction);
+    }
+  };
 
-  const scopeFunctions = collectComponentScopeFunctionBindings(enclosingComponent, effectCallback);
-  walkAst(effectCallback, (child) => {
-    if (child !== effectCallback && isFunctionLike(child) && invokedFunctions.has(child)) {
-      return false;
-    }
-    if (isNodeOfType(child, "CallExpression") && isNodeOfType(child.callee, "Identifier")) {
-      const scopeFunction = scopeFunctions.get(child.callee.name);
-      if (scopeFunction) {
-        for (const invokedFunction of collectEffectInvokedFunctions(scopeFunction)) {
-          invokedFunctions.add(invokedFunction);
-        }
+  enqueueFunction(effectCallback);
+  while (pendingFunctions.length > 0) {
+    const currentFunction = pendingFunctions.pop();
+    if (!currentFunction) break;
+    walkAst(currentFunction, (child) => {
+      if (child !== currentFunction && isFunctionLike(child)) return false;
+      if (!isNodeOfType(child, "CallExpression")) return;
+
+      const calledFunction = resolveLocalFunction(child.callee, context);
+      if (calledFunction) enqueueFunction(calledFunction);
+      for (const callArgument of child.arguments ?? []) {
+        const callbackFunction = resolveLocalFunction(callArgument, context);
+        if (callbackFunction) enqueueFunction(callbackFunction);
       }
-    }
-  });
-  return invokedFunctions;
+    });
+  }
+  return analysisFunctions;
 };
 
 const collectNodesFromAnalysisFunctions = (
@@ -111,9 +116,7 @@ const collectNodesFromAnalysisFunctions = (
   const seenNodes = new Set<EsTreeNode>();
   for (const analysisFunction of analysisFunctions) {
     walkAst(analysisFunction, (child) => {
-      if (child !== analysisFunction && isFunctionLike(child) && !executesDuringRender(child)) {
-        return false;
-      }
+      if (child !== analysisFunction && isFunctionLike(child)) return false;
       if (!seenNodes.has(child) && predicate(child)) {
         seenNodes.add(child);
         nodes.push(child);
@@ -511,7 +514,7 @@ export const noFetchInEffect = defineRule({
       const callback = getEffectCallback(node);
       if (!callback) return;
 
-      const analysisFunctions = collectEffectAnalysisFunctions(callback);
+      const analysisFunctions = collectEffectAnalysisFunctions(callback, context);
       const requests = collectNodesFromAnalysisFunctions(analysisFunctions, isNetworkRequest);
       if (requests.length === 0) return;
 

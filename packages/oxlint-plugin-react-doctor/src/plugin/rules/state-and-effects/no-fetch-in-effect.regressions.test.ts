@@ -260,4 +260,108 @@ describe("state-and-effects/no-fetch-in-effect — regressions", () => {
       };
     `);
   });
+
+  it("flags a fetch inside an effect-registered event listener", () => {
+    expectFail(`
+      const Profile = ({ url }) => {
+        useEffect(() => {
+          const onFocus = () => {
+            fetch(url).then((response) => response.json()).then(setProfile);
+          };
+          window.addEventListener("focus", onFocus);
+          return () => window.removeEventListener("focus", onFocus);
+        }, [url]);
+        return null;
+      };
+    `);
+  });
+
+  it("flags a fetch inside an effect-scheduled timer callback", () => {
+    expectFail(`
+      const Profile = ({ url }) => {
+        useEffect(() => {
+          const timer = setTimeout(() => {
+            fetch(url).then((response) => response.json()).then(setProfile);
+          }, 100);
+          return () => clearTimeout(timer);
+        }, [url]);
+        return null;
+      };
+    `);
+  });
+
+  it("ignores a fetch inside an unreferenced nested declaration", () => {
+    expectPass(`
+      const Profile = ({ url }) => {
+        useEffect(() => {
+          const neverCalled = () => {
+            fetch(url).then((response) => response.json()).then(setProfile);
+          };
+          console.log("mounted");
+        }, [url]);
+        return null;
+      };
+    `);
+  });
+
+  it("does not flag an event-listener fetch cancelled by its matching controller", () => {
+    expectPass(`
+      const Profile = ({ url }) => {
+        useEffect(() => {
+          const controller = new AbortController();
+          const onFocus = () => {
+            fetch(url, { signal: controller.signal })
+              .then((response) => response.json())
+              .then(setProfile);
+          };
+          window.addEventListener("focus", onFocus);
+          return () => {
+            window.removeEventListener("focus", onFocus);
+            controller.abort();
+          };
+        }, [url]);
+        return null;
+      };
+    `);
+  });
+
+  it("does not flag a timer fetch whose completion uses the matching ignore flag", () => {
+    expectPass(`
+      const Profile = ({ url }) => {
+        useEffect(() => {
+          let ignore = false;
+          const timer = setTimeout(async () => {
+            const response = await fetch(url);
+            if (ignore) return;
+            setProfile(await response.json());
+          }, 100);
+          return () => {
+            ignore = true;
+            clearTimeout(timer);
+          };
+        }, [url]);
+        return null;
+      };
+    `);
+  });
+
+  it("flags a listener fetch when cleanup aborts an unrelated controller", () => {
+    expectFail(`
+      const Profile = ({ url }) => {
+        useEffect(() => {
+          const requestController = new AbortController();
+          const cleanupController = new AbortController();
+          const onFocus = () => {
+            fetch(url, { signal: requestController.signal }).then(setProfile);
+          };
+          window.addEventListener("focus", onFocus);
+          return () => {
+            window.removeEventListener("focus", onFocus);
+            cleanupController.abort();
+          };
+        }, [url]);
+        return null;
+      };
+    `);
+  });
 });

@@ -1040,7 +1040,7 @@ export const Poller = () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags a component-scope function that leaks even when nothing references it yet", () => {
+  it("ignores an unreferenced component-scope function that cannot acquire a resource", () => {
     const result = runRule(
       effectNeedsCleanup,
       `export const Idle = () => {
@@ -1051,7 +1051,7 @@ export const Poller = () => {
 };`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toHaveLength(0);
   });
 
   it('does not flag a `{ "once": true }` listener registered with a string-literal key', () => {
@@ -1232,6 +1232,161 @@ export const LiveFeed = ({ url, disabled }) => {
       `export const Toast = () => (
   <button onClick={() => setTimeout(hideToast, 3000)}>show</button>
 );`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});
+
+describe("effect-needs-cleanup path and reachability correlation", () => {
+  it("flags a resource when only one return path supplies matching cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url, shouldCleanup }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    if (shouldCleanup) return () => socket.close();
+    return undefined;
+  }, [url, shouldCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts cleanup on every branch that acquires its resource", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ primaryUrl, secondaryUrl, usePrimary }) => {
+  useEffect(() => {
+    if (usePrimary) {
+      const primary = new WebSocket(primaryUrl);
+      return () => primary.close();
+    }
+    const secondary = new WebSocket(secondaryUrl);
+    return () => secondary.close();
+  }, [primaryUrl, secondaryUrl, usePrimary]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("flags a resource released synchronously on only one path", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url, shouldClose }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    if (shouldClose) socket.close();
+  }, [url, shouldClose]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("flags a retained listener whose local AbortController can never be aborted", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Listener = () => (
+  <button
+    onClick={() => {
+      const controller = new AbortController();
+      window.addEventListener("resize", update, { signal: controller.signal });
+    }}
+  >
+    listen
+  </button>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a retained listener whose local AbortController is aborted by a reachable handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const Listener = () => {
+  const controller = new AbortController();
+  const listen = () => {
+    window.addEventListener("resize", update, { signal: controller.signal });
+  };
+  const stop = () => controller.abort();
+  return <button onClick={listen} onBlur={stop}>listen</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores a resource acquisition inside an uncalled nested function", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url }) => {
+  useEffect(() => {
+    const openUnusedSocket = () => new WebSocket(url);
+    void openUnusedSocket;
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not let an unreachable release function suppress a retained listener leak", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `export const KeyTracker = () => {
+  const onKeyDown = (event) => track(event.key);
+  const armListener = () => {
+    window.addEventListener("keydown", onKeyDown);
+  };
+  const unusedDisarmListener = () => {
+    window.removeEventListener("keydown", onKeyDown);
+  };
+  return <button onClick={armListener}>arm</button>;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects an opaque cleanup identifier for a locally owned connection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url, opaqueCleanup }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    return opaqueCleanup;
+  }, [url, opaqueCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts map-created timers cleared through the same collection", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Pollers = ({ items }) => {
+  useEffect(() => {
+    const timerIds = items.map(() => setInterval(poll, 1000));
+    return () => timerIds.forEach((timerId) => clearInterval(timerId));
+  }, [items]);
+  return null;
+};`,
     );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);

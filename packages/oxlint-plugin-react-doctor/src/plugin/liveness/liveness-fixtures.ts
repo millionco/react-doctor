@@ -652,6 +652,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-gray-on-colored-background": {
     code: 'const C = () => <div className="bg-blue-600 text-gray-400">Hi</div>;',
   },
+  "no-hydration-branch-on-browser-global": {
+    code: '"use client";\nexport const Page = () => typeof window === "undefined" ? <Server /> : <Client />;',
+    filePath: "app/page.tsx",
+  },
   "no-img-lazy-with-high-fetchpriority": {
     code: 'const Hero = () => <img src="/a.png" loading="lazy" fetchPriority="high" />;',
   },
@@ -857,6 +861,10 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-uncontrolled-input": {
     code: 'export default function Field({ text }) { return <input type="text" value={text} />; }',
     filePath: "app/field.tsx",
+  },
+  "no-unguarded-browser-global-in-render-or-hook-init": {
+    code: '"use client";\nexport const Page = () => <main>{window.innerWidth}</main>;',
+    filePath: "app/page.tsx",
   },
   "no-undeferred-third-party": {
     code: 'const W = () => <script src="https://cdn.example.com/w.js" />;',

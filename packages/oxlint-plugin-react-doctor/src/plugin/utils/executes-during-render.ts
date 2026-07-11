@@ -32,6 +32,7 @@ export const executesDuringRender = (functionNode: EsTreeNode): boolean => {
   if (!isNodeOfType(parent, "CallExpression")) return false;
   if (parent.callee === functionNode) return true;
   if (isHookCall(parent, "useMemo") && parent.arguments?.[0] === functionNode) return true;
+  if (isHookCall(parent, "useState") && parent.arguments?.[0] === functionNode) return true;
   return (
     isNodeOfType(parent.callee, "MemberExpression") &&
     !parent.callee.computed &&

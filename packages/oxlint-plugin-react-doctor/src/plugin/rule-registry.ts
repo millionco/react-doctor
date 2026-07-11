@@ -193,6 +193,7 @@ import { noGiantComponent } from "./rules/architecture/no-giant-component.js";
 import { noGlobalCssVariableAnimation } from "./rules/performance/no-global-css-variable-animation.js";
 import { noGradientText } from "./rules/design/no-gradient-text.js";
 import { noGrayOnColoredBackground } from "./rules/design/no-gray-on-colored-background.js";
+import { noHydrationBranchOnBrowserGlobal } from "./rules/performance/no-hydration-branch-on-browser-global.js";
 import { noImgLazyWithHighFetchpriority } from "./rules/performance/no-img-lazy-with-high-fetchpriority.js";
 import { noIndeterminateAttribute } from "./rules/correctness/no-indeterminate-attribute.js";
 import { noInitializeState } from "./rules/state-and-effects/no-initialize-state.js";
@@ -259,6 +260,7 @@ import { noTransitionAll } from "./rules/performance/no-transition-all.js";
 import { noUncontrolledInput } from "./rules/correctness/no-uncontrolled-input.js";
 import { noUndeferredThirdParty } from "./rules/bundle-size/no-undeferred-third-party.js";
 import { noUnescapedEntities } from "./rules/react-builtins/no-unescaped-entities.js";
+import { noUnguardedBrowserGlobalInRenderOrHookInit } from "./rules/performance/no-unguarded-browser-global-in-render-or-hook-init.js";
 import { noUnknownProperty } from "./rules/react-builtins/no-unknown-property.js";
 import { noUnsafe } from "./rules/react-builtins/no-unsafe.js";
 import { noUnstableNestedComponents } from "./rules/react-builtins/no-unstable-nested-components.js";
@@ -2583,6 +2585,20 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-hydration-branch-on-browser-global",
+    id: "no-hydration-branch-on-browser-global",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noHydrationBranchOnBrowserGlobal,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(noHydrationBranchOnBrowserGlobal.requires ?? [])]),
+      ],
+    },
+  },
+  {
     key: "react-doctor/no-img-lazy-with-high-fetchpriority",
     id: "no-img-lazy-with-high-fetchpriority",
     source: "react-doctor",
@@ -3369,6 +3385,23 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Bugs",
       requires: [...new Set<Capability>(["react", ...(noUnescapedEntities.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/no-unguarded-browser-global-in-render-or-hook-init",
+    id: "no-unguarded-browser-global-in-render-or-hook-init",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noUnguardedBrowserGlobalInRenderOrHookInit,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>([
+          "react",
+          ...(noUnguardedBrowserGlobalInRenderOrHookInit.requires ?? []),
+        ]),
+      ],
     },
   },
   {

@@ -328,8 +328,8 @@ describe("no-match-media-in-state-initializer", () => {
     });
   });
 
-  it("keeps framework gates and warning severity", async () => {
-    expect(noMatchMediaInStateInitializer.disabledWhen).toEqual(["vite", "cra"]);
+  it("keeps the SSR gate and warning severity", async () => {
+    expect(noMatchMediaInStateInitializer.requires).toEqual(["ssr"]);
     expect(noMatchMediaInStateInitializer.severity).toBe("warn");
     await expectDiagnostic(
       noMatchMediaInStateInitializer,

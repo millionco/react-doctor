@@ -6,6 +6,18 @@ import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
+const BOUNDED_PIPELINE_SOURCE_METHOD_NAMES = new Set(["slice", "split"]);
+
+const isBoundedPipelineSource = (node: EsTreeNode): boolean => {
+  const receiver = stripParenExpression(node);
+  return (
+    isNodeOfType(receiver, "CallExpression") &&
+    isNodeOfType(receiver.callee, "MemberExpression") &&
+    isNodeOfType(receiver.callee.property, "Identifier") &&
+    BOUNDED_PIPELINE_SOURCE_METHOD_NAMES.has(receiver.callee.property.name)
+  );
+};
+
 export const jsFlatmapFilter = defineRule({
   id: "js-flatmap-filter",
   title: ".map().filter(Boolean) loops twice",
@@ -55,6 +67,7 @@ export const jsFlatmapFilter = defineRule({
       // literal twice is trivial cost; the flatMap rewrite is pure
       // ceremony at this scale.
       const receiver: EsTreeNode | null | undefined = stripParenExpression(innerCall.callee.object);
+      if (receiver && isBoundedPipelineSource(receiver)) return;
       if (receiver && isNodeOfType(receiver, "ArrayExpression")) {
         const elements = receiver.elements ?? [];
         if (

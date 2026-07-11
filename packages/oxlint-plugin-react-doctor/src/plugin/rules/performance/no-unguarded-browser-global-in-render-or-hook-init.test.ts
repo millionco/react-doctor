@@ -49,6 +49,10 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       `"use client"; export const Page = () => <div>{typeof window !== "undefined" ? window.innerWidth : 0}</div>;`,
     ],
     [
+      "a globalThis typeof guard",
+      `"use client"; export const Page = () => <div>{typeof globalThis.window !== "undefined" ? globalThis.window.innerWidth : 0}</div>;`,
+    ],
+    [
       "a short-circuit guard",
       `"use client"; export const Page = () => <div>{typeof document !== "undefined" && document.title}</div>;`,
     ],

@@ -49,6 +49,7 @@ import { noThreePeriodEllipsis } from "./rules/react-ui/no-three-period-ellipsis
 import { noVagueButtonLabel } from "./rules/react-ui/no-vague-button-label.js";
 import { dialogHasAccessibleName } from "./rules/a11y/dialog-has-accessible-name.js";
 import { displayName } from "./rules/react-builtins/display-name.js";
+import { effectListenerCleanupMismatch } from "./rules/state-and-effects/effect-listener-cleanup-mismatch.js";
 import { effectNeedsCleanup } from "./rules/state-and-effects/effect-needs-cleanup.js";
 import { exhaustiveDeps } from "./rules/react-builtins/exhaustive-deps.js";
 import { expoNoNonInlinedEnv } from "./rules/react-native/expo-no-non-inlined-env.js";
@@ -193,6 +194,7 @@ import { noGlobalCssVariableAnimation } from "./rules/performance/no-global-css-
 import { noGradientText } from "./rules/design/no-gradient-text.js";
 import { noGrayOnColoredBackground } from "./rules/design/no-gray-on-colored-background.js";
 import { noImgLazyWithHighFetchpriority } from "./rules/performance/no-img-lazy-with-high-fetchpriority.js";
+import { noIndeterminateAttribute } from "./rules/correctness/no-indeterminate-attribute.js";
 import { noInitializeState } from "./rules/state-and-effects/no-initialize-state.js";
 import { noInlineBounceEasing } from "./rules/design/no-inline-bounce-easing.js";
 import { noInlineExhaustiveStyle } from "./rules/design/no-inline-exhaustive-style.js";
@@ -210,6 +212,7 @@ import { noLegacyContextApi } from "./rules/architecture/no-legacy-context-api.j
 import { noLocaleFormatInRender } from "./rules/performance/no-locale-format-in-render.js";
 import { noLongTransitionDuration } from "./rules/design/no-long-transition-duration.js";
 import { noManyBooleanProps } from "./rules/architecture/no-many-boolean-props.js";
+import { noMatchMediaInStateInitializer } from "./rules/performance/no-match-media-in-state-initializer.js";
 import { noMirrorPropEffect } from "./rules/state-and-effects/no-mirror-prop-effect.js";
 import { noMoment } from "./rules/bundle-size/no-moment.js";
 import { noMultiComp } from "./rules/react-builtins/no-multi-comp.js";
@@ -891,6 +894,21 @@ export const reactDoctorRules = [
       framework: "global",
       category: "Maintainability",
       requires: [...new Set<Capability>(["react", ...(displayName.requires ?? [])])],
+    },
+  },
+  {
+    key: "react-doctor/effect-listener-cleanup-mismatch",
+    id: "effect-listener-cleanup-mismatch",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...effectListenerCleanupMismatch,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(effectListenerCleanupMismatch.requires ?? [])]),
+      ],
+      requiresSemanticContext: true,
     },
   },
   {
@@ -2592,6 +2610,18 @@ export const reactDoctorRules = [
     },
   },
   {
+    key: "react-doctor/no-indeterminate-attribute",
+    id: "no-indeterminate-attribute",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noIndeterminateAttribute,
+      framework: "global",
+      category: "Bugs",
+      requiresSemanticContext: true,
+    },
+  },
+  {
     key: "react-doctor/no-initialize-state",
     id: "no-initialize-state",
     source: "react-doctor",
@@ -2790,6 +2820,21 @@ export const reactDoctorRules = [
       ...noManyBooleanProps,
       framework: "global",
       category: "Maintainability",
+      requiresSemanticContext: true,
+    },
+  },
+  {
+    key: "react-doctor/no-match-media-in-state-initializer",
+    id: "no-match-media-in-state-initializer",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noMatchMediaInStateInitializer,
+      framework: "global",
+      category: "Bugs",
+      requires: [
+        ...new Set<Capability>(["react", ...(noMatchMediaInStateInitializer.requires ?? [])]),
+      ],
       requiresSemanticContext: true,
     },
   },

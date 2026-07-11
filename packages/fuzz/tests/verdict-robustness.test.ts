@@ -18,6 +18,7 @@ import { buildVerdictPreservingVariants } from "../src/verdict-preserving-varian
 const AUDITED_RULE_IDS = [
   "anchor-is-valid",
   "aria-role",
+  "effect-listener-cleanup-mismatch",
   "effect-needs-cleanup",
   "interactive-supports-focus",
   "no-adjust-state-on-prop-change",

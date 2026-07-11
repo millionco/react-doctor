@@ -12,6 +12,7 @@ import type { ProjectInfo } from "../types/index.js";
 import {
   AmbiguousProject,
   NoReactDependency,
+  ProjectDiscoveryFailed,
   ProjectNotFound,
   ReactDoctorError,
 } from "../errors.js";
@@ -34,7 +35,7 @@ const translateProjectInfoError = (cause: unknown, directory: string): ReactDoct
       }),
     });
   }
-  return new ReactDoctorError({ reason: new ProjectNotFound({ directory }) });
+  return new ReactDoctorError({ reason: new ProjectDiscoveryFailed({ directory, cause }) });
 };
 
 export class Project extends Context.Service<

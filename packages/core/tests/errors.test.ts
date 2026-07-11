@@ -11,6 +11,7 @@ import {
   OxlintOutputUnparseable,
   OxlintSpawnFailed,
   OxlintUnavailable,
+  ProjectDiscoveryFailed,
   ProjectNotFound,
   ReactDoctorError,
   ScanDeadlineExceeded,
@@ -119,6 +120,21 @@ describe("ReactDoctorError leaves", () => {
     );
   });
 
+  it("ProjectDiscoveryFailed names the directory and wraps the cause", () => {
+    const error = new ReactDoctorError({
+      reason: new ProjectDiscoveryFailed({
+        directory: "/repo/apps/mobile",
+        cause: new TypeError("ts.parseConfigFileTextToJson is not a function"),
+      }),
+    });
+    expect(formatReactDoctorError(error)).toContain(
+      "Project discovery failed for /repo/apps/mobile",
+    );
+    expect(formatReactDoctorError(error)).toContain(
+      "ts.parseConfigFileTextToJson is not a function",
+    );
+  });
+
   it("DeadCodeAnalysisFailed wraps the cause", () => {
     const error = new ReactDoctorError({
       reason: new DeadCodeAnalysisFailed({ cause: "SIGABRT from native binding" }),
@@ -175,6 +191,7 @@ describe("isSplittableReactDoctorError", () => {
       new ProjectNotFound({ directory: "x" }),
       new NoReactDependency({ directory: "x" }),
       new AmbiguousProject({ directory: "x", candidates: [] }),
+      new ProjectDiscoveryFailed({ directory: "x", cause: new Error("boom") }),
       new DeadCodeAnalysisFailed({ cause: "x" }),
     ] as const;
     for (const reason of cases) {

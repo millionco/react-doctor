@@ -1,8 +1,8 @@
 import type { EsTreeNode } from "./es-tree-node.js";
-import { getImportedName as getImportSpecifierName } from "./get-imported-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
+import { isReactApiCall, type ReactApiCallOptions } from "./is-react-api-call.js";
 import { walkAst } from "./walk-ast.js";
-import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
+import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 
 const NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES: ReadonlySet<string> = new Set([
   "FunctionDeclaration",
@@ -11,6 +11,11 @@ const NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES: ReadonlySet<string> = new Set([
   "ClassDeclaration",
   "ClassExpression",
 ]);
+
+const REACT_CREATE_ELEMENT_OPTIONS: ReactApiCallOptions = {
+  allowGlobalReactNamespace: false,
+  allowUnboundBareCalls: false,
+};
 
 // A function expression passed directly as a call argument
 // (`items.map(item => <li/>)`, `useMemo(() => <div/>, deps)`) feeds the
@@ -29,54 +34,6 @@ const isCallArgumentFunctionExpression = (node: EsTreeNode): boolean => {
 const isNestedRenderEvidenceBoundary = (node: EsTreeNode): boolean =>
   NESTED_RENDER_EVIDENCE_BOUNDARY_TYPES.has(node.type) && !isCallArgumentFunctionExpression(node);
 
-const isReactImport = (symbol: SymbolDescriptor): boolean => {
-  let importDeclaration: EsTreeNode | null | undefined = symbol.declarationNode?.parent;
-  while (importDeclaration && !isNodeOfType(importDeclaration, "ImportDeclaration")) {
-    importDeclaration = importDeclaration.parent ?? null;
-  }
-  if (!importDeclaration || !isNodeOfType(importDeclaration, "ImportDeclaration")) return false;
-  return importDeclaration.source.value === "react";
-};
-
-const getImportedName = (symbol: SymbolDescriptor): string | null => {
-  if (symbol.kind !== "import") return null;
-  if (!isReactImport(symbol)) return null;
-  return getImportSpecifierName(symbol.declarationNode) ?? null;
-};
-
-const isReactNamespaceImport = (symbol: SymbolDescriptor): boolean => {
-  if (symbol.kind !== "import") return false;
-  if (!isReactImport(symbol)) return false;
-  return (
-    isNodeOfType(symbol.declarationNode, "ImportDefaultSpecifier") ||
-    isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier")
-  );
-};
-
-const isReactCreateElementIdentifierCall = (callee: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  if (!isNodeOfType(callee, "Identifier")) return false;
-  const symbol = scopes.symbolFor(callee);
-  return Boolean(symbol && getImportedName(symbol) === "createElement");
-};
-
-const isReactCreateElementMemberCall = (callee: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  if (!isNodeOfType(callee, "MemberExpression")) return false;
-  if (callee.computed) return false;
-  if (!isNodeOfType(callee.object, "Identifier")) return false;
-  if (!isNodeOfType(callee.property, "Identifier")) return false;
-  if (callee.property.name !== "createElement") return false;
-  const symbol = scopes.symbolFor(callee.object);
-  return Boolean(symbol && isReactNamespaceImport(symbol));
-};
-
-const isReactCreateElementCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
-  if (!isNodeOfType(node, "CallExpression")) return false;
-  return (
-    isReactCreateElementIdentifierCall(node.callee, scopes) ||
-    isReactCreateElementMemberCall(node.callee, scopes)
-  );
-};
-
 const containsRenderOutput = (rootNode: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   let hasRenderOutput = false;
   walkAst(rootNode, (node: EsTreeNode): boolean | void => {
@@ -85,7 +42,7 @@ const containsRenderOutput = (rootNode: EsTreeNode, scopes: ScopeAnalysis): bool
     if (
       node.type === "JSXElement" ||
       node.type === "JSXFragment" ||
-      isReactCreateElementCall(node, scopes)
+      isReactApiCall(node, "createElement", scopes, REACT_CREATE_ELEMENT_OPTIONS)
     ) {
       hasRenderOutput = true;
       return false;

@@ -1,9 +1,9 @@
 import { collectPatternNames } from "../../../utils/collect-pattern-names.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { getStaticPropertyKeyName } from "../../../utils/get-static-property-key-name.js";
 import { isAstNode } from "../../../utils/is-ast-node.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import {
-  getStaticPropertyKeyName,
   isEventHandlerName,
   isEventHandlerValue,
   isIntrinsicJsxAttribute,
@@ -234,7 +234,9 @@ const collectPropertyReferenceNames = (
   eventHandlerReferenceNames: Set<string>,
 ): Set<string> => {
   if (!isNodeOfType(node, "Property")) return new Set();
-  const propertyName = getStaticPropertyKeyName(node);
+  const propertyName = getStaticPropertyKeyName(node, {
+    stringifyNonStringLiterals: true,
+  });
   if (
     propertyName &&
     isEventHandlerName(propertyName) &&

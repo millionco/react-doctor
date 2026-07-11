@@ -168,6 +168,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     settings: { "react-doctor": { displayName: { ignoreTranspilerName: true } } },
     forceJsx: true,
   },
+  "effect-listener-cleanup-mismatch": {
+    code: 'import { useEffect } from "react";\nexport const Listener = () => {\n  useEffect(() => {\n    window.addEventListener("resize", () => resize());\n    return () => window.removeEventListener("resize", () => resize());\n  }, []);\n  return null;\n};',
+  },
   "effect-needs-cleanup": {
     code: 'import { useEffect } from "react";\nexport const WatchForm = ({ form }) => {\n  useEffect(() => form.watch((value) => {\n    console.log(value);\n  }), [form]);\n  return null;\n};',
   },
@@ -652,6 +655,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-img-lazy-with-high-fetchpriority": {
     code: 'const Hero = () => <img src="/a.png" loading="lazy" fetchPriority="high" />;',
   },
+  "no-indeterminate-attribute": {
+    code: 'const Checkbox = () => <input type="checkbox" indeterminate />;',
+  },
   "no-initialize-state": {
     code: "function C() {\n        const [count, setCount] = useState(null);\n        useEffect(() => {\n          const initial = 42;\n          setCount(initial);\n          return () => console.log(initial);\n        }, []);\n        return null;\n      }",
   },
@@ -701,6 +707,9 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   },
   "no-long-transition-duration": {
     code: 'const S = () => <div style={{ transition: "width 2s ease" }} />;',
+  },
+  "no-match-media-in-state-initializer": {
+    code: 'import { useState } from "react";\nuseState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);',
   },
   "no-many-boolean-props": {
     code: "const Toggle = ({ isOpen, isLoading, hasIcon, canEdit }) => <div />;",

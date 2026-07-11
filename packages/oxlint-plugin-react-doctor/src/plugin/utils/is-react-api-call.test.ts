@@ -56,6 +56,11 @@ describe("isReactApiCall", () => {
       expectedCount: 1,
     },
     {
+      name: "wrapped namespace React receivers",
+      code: 'import * as ReactClient from "react"; (ReactClient as any).useEffect(() => {});',
+      expectedCount: 1,
+    },
+    {
       name: "same-named imports from another package",
       code: 'import { useEffect } from "other"; useEffect(() => {});',
       expectedCount: 0,

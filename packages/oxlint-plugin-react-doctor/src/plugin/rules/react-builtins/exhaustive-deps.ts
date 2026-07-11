@@ -602,6 +602,34 @@ const isUnstableInitializer = (node: EsTreeNode | null): boolean => {
   );
 };
 
+const isPotentiallyFreshComparedValue = (
+  node: EsTreeNode,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number> = new Set(),
+): boolean => {
+  const candidate = unwrapExpression(node);
+  if (isUnstableInitializer(candidate)) return true;
+  if (isNodeOfType(candidate, "ConditionalExpression")) {
+    return (
+      isPotentiallyFreshComparedValue(candidate.consequent, scopes, visitedSymbolIds) ||
+      isPotentiallyFreshComparedValue(candidate.alternate, scopes, visitedSymbolIds)
+    );
+  }
+  if (isNodeOfType(candidate, "LogicalExpression")) {
+    return (
+      isPotentiallyFreshComparedValue(candidate.left, scopes, visitedSymbolIds) ||
+      isPotentiallyFreshComparedValue(candidate.right, scopes, visitedSymbolIds)
+    );
+  }
+  if (!isNodeOfType(candidate, "Identifier")) return false;
+  const symbol = scopes.symbolFor(candidate);
+  if (!symbol || visitedSymbolIds.has(symbol.id)) return false;
+  if (symbol.kind === "let" || symbol.kind === "var") return true;
+  if (symbol.kind !== "const" || !symbol.initializer) return false;
+  visitedSymbolIds.add(symbol.id);
+  return isPotentiallyFreshComparedValue(symbol.initializer, scopes, visitedSymbolIds);
+};
+
 const isExtraDepAllowedForHook = (
   hookName: string,
   node: EsTreeNode,
@@ -672,13 +700,7 @@ const isConvergingFunctionalUpdater = (node: EsTreeNode, scopes: ScopeAnalysis):
   if (isPreviousValue(test.left)) comparedValue = test.right;
   else if (isPreviousValue(test.right)) comparedValue = test.left;
   if (!comparedValue) return false;
-  const comparedValueSymbol = getRootSymbol(comparedValue, scopes);
-  if (
-    isUnstableInitializer(comparedValue) ||
-    isUnstableInitializer(comparedValueSymbol?.initializer ?? null)
-  ) {
-    return false;
-  }
+  if (isPotentiallyFreshComparedValue(comparedValue, scopes)) return false;
   const isSameComparedValue = (expression: EsTreeNode): boolean => {
     const candidate = unwrapExpression(expression);
     const compared = unwrapExpression(comparedValue);

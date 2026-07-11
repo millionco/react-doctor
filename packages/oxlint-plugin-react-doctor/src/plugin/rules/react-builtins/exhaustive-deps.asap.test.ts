@@ -50,4 +50,39 @@ describe("exhaustive-deps — every-commit converging setters", () => {
       expect(result.diagnostics).toHaveLength(1);
     },
   );
+
+  it("still rejects fresh values hidden behind const aliases and fallbacks", () => {
+    const result = runRule(
+      exhaustiveDeps,
+      `function Snapshot({ value }) {
+        const [snapshot, setSnapshot] = useState(null);
+        useEffect(() => {
+          const empty = {};
+          const fallback = empty;
+          const next = value ?? fallback;
+          setSnapshot((previous) => previous === next ? previous : next);
+        });
+        return snapshot;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("still rejects reassigned compared bindings", () => {
+    const result = runRule(
+      exhaustiveDeps,
+      `function Snapshot() {
+        const [snapshot, setSnapshot] = useState(null);
+        useEffect(() => {
+          let next = readSnapshot();
+          next = {};
+          setSnapshot((previous) => previous === next ? previous : next);
+        });
+        return snapshot;
+      }`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
 });

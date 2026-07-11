@@ -15,6 +15,7 @@ import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
+import { getCalleeName } from "../../utils/get-callee-name.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
@@ -1433,9 +1434,10 @@ export const effectNeedsCleanup = defineRule({
         const firstUsage = findFirstUsageWithoutCleanup(callback, usages, context);
         if (!firstUsage) return;
         const resourceNoun = RESOURCE_NOUN_BY_KIND[firstUsage.kind];
+        const hookName = getCalleeName(node) ?? "effect";
         context.report({
           node,
-          message: `\`${firstUsage.resourceName}\` creates a ${resourceNoun} in useEffect without returning cleanup. Return a cleanup function so it does not leak after unmount.`,
+          message: `\`${firstUsage.resourceName}\` creates a ${resourceNoun} in ${hookName} without returning cleanup. Return a cleanup function so it does not leak after unmount.`,
         });
       },
       FunctionDeclaration(node: EsTreeNodeOfType<"FunctionDeclaration">) {

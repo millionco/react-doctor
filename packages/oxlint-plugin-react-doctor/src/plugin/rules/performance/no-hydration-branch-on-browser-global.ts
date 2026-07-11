@@ -283,6 +283,37 @@ const findFollowingReturnedValues = (
   return returnedValues;
 };
 
+const areConditionExpressionsEquivalent = (
+  leftExpression: EsTreeNode,
+  rightExpression: EsTreeNode,
+): boolean => {
+  const left = stripParenExpression(leftExpression);
+  const right = stripParenExpression(rightExpression);
+  if (areExpressionsStructurallyEqual(left, right)) return true;
+  if (left.type !== right.type) return false;
+  if (isNodeOfType(left, "UnaryExpression") && isNodeOfType(right, "UnaryExpression")) {
+    return (
+      left.operator === right.operator &&
+      areConditionExpressionsEquivalent(left.argument, right.argument)
+    );
+  }
+  if (isNodeOfType(left, "LogicalExpression") && isNodeOfType(right, "LogicalExpression")) {
+    return (
+      left.operator === right.operator &&
+      areConditionExpressionsEquivalent(left.left, right.left) &&
+      areConditionExpressionsEquivalent(left.right, right.right)
+    );
+  }
+  if (isNodeOfType(left, "BinaryExpression") && isNodeOfType(right, "BinaryExpression")) {
+    return (
+      left.operator === right.operator &&
+      areConditionExpressionsEquivalent(left.left, right.left) &&
+      areConditionExpressionsEquivalent(left.right, right.right)
+    );
+  }
+  return false;
+};
+
 const areReturnTreesEquivalent = (
   leftStatement: EsTreeNode | null | undefined,
   rightStatement: EsTreeNode | null | undefined,
@@ -296,7 +327,7 @@ const areReturnTreesEquivalent = (
   }
   if (isNodeOfType(leftStatement, "IfStatement") && isNodeOfType(rightStatement, "IfStatement")) {
     return (
-      areExpressionsStructurallyEqual(leftStatement.test, rightStatement.test) &&
+      areConditionExpressionsEquivalent(leftStatement.test, rightStatement.test) &&
       areReturnTreesEquivalent(leftStatement.consequent, rightStatement.consequent) &&
       areReturnTreesEquivalent(leftStatement.alternate, rightStatement.alternate)
     );

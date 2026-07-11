@@ -92,7 +92,7 @@ describe("no-hydration-branch-on-browser-global", () => {
     ],
     [
       "mirrored nested return trees",
-      `"use client"; export const Page = ({ ready }) => { if (typeof window === "undefined") { if (ready) return <Ready />; return <Fallback />; } else { if (ready) return <Ready />; return <Fallback />; } };`,
+      `"use client"; export const Page = ({ ready, blocked }) => { if (typeof window === "undefined") { if (!ready && blocked === false) return <Fallback />; return <Ready />; } else { if (!ready && blocked === false) return <Fallback />; return <Ready />; } };`,
     ],
     [
       "a non-rendered local value",

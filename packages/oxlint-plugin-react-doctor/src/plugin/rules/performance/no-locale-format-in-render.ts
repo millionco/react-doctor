@@ -7,6 +7,7 @@ import { hasClientRenderEvidence } from "../../utils/has-client-render-evidence.
 import { hasDirective } from "../../utils/has-directive.js";
 import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js";
 import { hasSuppressHydrationWarningAttribute } from "../../utils/has-suppress-hydration-warning-attribute.js";
+import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-early-return.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
@@ -14,8 +15,6 @@ import { isInsideClientOnlyGuard } from "../../utils/is-inside-client-only-guard
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
-import { referencesClientOnlyFlag } from "../../utils/references-client-only-flag.js";
-import { referencesFalsyInitialState } from "../../utils/references-falsy-initial-state.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
@@ -246,39 +245,6 @@ const matchDateDefaultStringification = (node: EsTreeNode): LocaleFormatMatch | 
     }
   }
   return null;
-};
-
-// `if (!mounted) return …;` above the formatting means everything after it
-// only runs post-hydration on the client — the SSR-safe early-return shape.
-const isAfterClientOnlyEarlyReturn = (
-  node: EsTreeNode,
-  componentOrHookNode: EsTreeNode,
-): boolean => {
-  const body = isFunctionLike(componentOrHookNode) ? componentOrHookNode.body : null;
-  if (!isNodeOfType(body, "BlockStatement")) return false;
-  const ancestors = new Set<EsTreeNode>();
-  let cursor: EsTreeNode | null | undefined = node;
-  while (cursor) {
-    ancestors.add(cursor);
-    cursor = cursor.parent ?? null;
-  }
-  for (const statement of body.body ?? []) {
-    if (ancestors.has(statement)) return false;
-    if (!isNodeOfType(statement, "IfStatement")) continue;
-    if (!referencesClientOnlyFlag(statement.test) && !referencesFalsyInitialState(statement.test)) {
-      continue;
-    }
-    let returnsEarly = false;
-    walkAst(statement.consequent, (child: EsTreeNode) => {
-      if (isFunctionLike(child)) return false;
-      if (isNodeOfType(child, "ReturnStatement")) {
-        returnsEarly = true;
-        return false;
-      }
-    });
-    if (returnsEarly) return true;
-  }
-  return false;
 };
 
 export const noLocaleFormatInRender = defineRule({

@@ -1058,6 +1058,24 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
+    it("keeps reactive identity sources beside a stable member fallback", () => {
+      const code = `
+        function EditorSurface({ pendingMappingOperationsRef }) {
+          const stableRefs = useMemo(() => ({ operations: null }), []);
+          const pendingOpsRef = stableRefs.operations ?? pendingMappingOperationsRef;
+          useLayoutEffect(() => {
+            consumeOperations(pendingOpsRef.current);
+          }, []);
+          return null;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]?.message).toContain("pendingMappingOperationsRef");
+      expect(result.diagnostics[0]?.message).not.toContain("pendingOpsRef");
+    });
+
     it("resolves wrapped optional member identity sources", () => {
       const code = `
         function EditorSurface(props) {

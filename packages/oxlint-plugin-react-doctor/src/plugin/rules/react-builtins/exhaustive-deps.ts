@@ -501,7 +501,7 @@ const resolveIdentitySourceKeysFromExpression = (
     if (!sourceKey || !rootSymbol) return null;
     if (isOutsideAllFunctions(rootSymbol)) return new Set();
     if (isStableRefContainerCapture(rootSymbol, sourceKey, scopes)) return new Set();
-    if (symbolHasStableValue(rootSymbol, scopes)) return null;
+    if (symbolHasStableValue(rootSymbol, scopes)) return new Set();
     return new Set([sourceKey]);
   }
   if (isNodeOfType(stripped, "LogicalExpression")) {

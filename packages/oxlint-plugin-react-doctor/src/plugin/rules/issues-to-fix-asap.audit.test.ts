@@ -66,6 +66,25 @@ describe("ISSUES_TO_FIX_ASAP audit", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it.each(["{}", "[]", "new Map()"])(
+    "still rejects an equality guard against a fresh %s value",
+    (freshValue) => {
+      const result = runRule(
+        exhaustiveDeps,
+        `function Snapshot() {
+          const [snapshot, setSnapshot] = useState(null);
+          useEffect(() => {
+            const next = ${freshValue};
+            setSnapshot((previous) => previous === next ? previous : next);
+          });
+          return snapshot;
+        }`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    },
+  );
+
   it("detects prop-derived state copied through a ref", () => {
     const result = runRule(
       noDerivedState,

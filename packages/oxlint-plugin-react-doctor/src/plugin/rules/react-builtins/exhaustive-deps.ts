@@ -635,7 +635,7 @@ const isStableSetterLikeSymbol = (symbol: SymbolDescriptor, scopes: ScopeAnalysi
   );
 };
 
-const isConvergingFunctionalUpdater = (node: EsTreeNode): boolean => {
+const isConvergingFunctionalUpdater = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   const updater = unwrapExpression(node);
   if (
     !isNodeOfType(updater, "ArrowFunctionExpression") &&
@@ -672,6 +672,13 @@ const isConvergingFunctionalUpdater = (node: EsTreeNode): boolean => {
   if (isPreviousValue(test.left)) comparedValue = test.right;
   else if (isPreviousValue(test.right)) comparedValue = test.left;
   if (!comparedValue) return false;
+  const comparedValueSymbol = getRootSymbol(comparedValue, scopes);
+  if (
+    isUnstableInitializer(comparedValue) ||
+    isUnstableInitializer(comparedValueSymbol?.initializer ?? null)
+  ) {
+    return false;
+  }
   const isSameComparedValue = (expression: EsTreeNode): boolean => {
     const candidate = unwrapExpression(expression);
     const compared = unwrapExpression(comparedValue);
@@ -704,7 +711,7 @@ const isGuardedStableSetterCall = (
     return false;
   }
   const writtenValue = parent.arguments?.[0];
-  return Boolean(writtenValue && isConvergingFunctionalUpdater(writtenValue));
+  return Boolean(writtenValue && isConvergingFunctionalUpdater(writtenValue, scopes));
 };
 
 const findStableSetterReference = (node: EsTreeNode, scopes: ScopeAnalysis): string | null => {

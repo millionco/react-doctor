@@ -1,5 +1,51 @@
 # oxlint-plugin-react-doctor
 
+## 0.7.5
+
+### Patch Changes
+
+- [#1138](https://github.com/millionco/react-doctor/pull/1138) [`d4f2209`](https://github.com/millionco/react-doctor/commit/d4f22093a15ab937d40c7f40c1637ea3e53f6e26) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid recommending flatMap for bounded slice and string-tokenization pipelines where a second pass is negligible.
+
+- [#1128](https://github.com/millionco/react-doctor/pull/1128) [`5113067`](https://github.com/millionco/react-doctor/commit/5113067458f03349922bdd0a22ad564574ca74c2) Thanks [@aidenybai](https://github.com/aidenybai)! - Refine `exhaustive-deps` identity tracking for stable and React hook aliases, ref fallbacks, exact props members, and intentional reactive `useMemo` invalidation tokens.
+
+- [#1123](https://github.com/millionco/react-doctor/pull/1123) [`118f806`](https://github.com/millionco/react-doctor/commit/118f80616fb1771f39a5c9a2afa1a5c8eb08120c) Thanks [@aidenybai](https://github.com/aidenybai)! - Expand effect cleanup matching for abort signals, subscriptions, listeners, observers, timers, and retained resources.
+
+- [#1130](https://github.com/millionco/react-doctor/pull/1130) [`63fc41f`](https://github.com/millionco/react-doctor/commit/63fc41f4af69dcc1c8b1f39bf944e7201830be8f) Thanks [@aidenybai](https://github.com/aidenybai)! - Add no-prop-callback-in-render to report discarded parent callbacks executed during render while preserving render props and deferred callbacks.
+
+- [#1132](https://github.com/millionco/react-doctor/pull/1132) [`98005f2`](https://github.com/millionco/react-doctor/commit/98005f2c3dc70debcd5fa5f95ce28aa9f32b5f7e) Thanks [@aidenybai](https://github.com/aidenybai)! - Add no-impure-state-updater to report replay-unsafe side effects inside React state updater callbacks while preserving pure calculations and local accumulators.
+
+- [#1131](https://github.com/millionco/react-doctor/pull/1131) [`7bbb792`](https://github.com/millionco/react-doctor/commit/7bbb792e983318453118d1662dc4b4ac5c2d9dc0) Thanks [@aidenybai](https://github.com/aidenybai)! - Add no-ref-current-in-render to report React ref mutations during render while preserving event, effect, ref-callback, deferred, and predictable lazy-initialization writes.
+
+- [#1143](https://github.com/millionco/react-doctor/pull/1143) [`5aa82e8`](https://github.com/millionco/react-doctor/commit/5aa82e86d065221e249b6e7c454c8411887bda23) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect missing JSX keys when list iterators use named local callbacks.
+
+- [#1141](https://github.com/millionco/react-doctor/pull/1141) [`11333b9`](https://github.com/millionco/react-doctor/commit/11333b9e7db0a8735baa4316f0e0c010b701ed8e) Thanks [@aidenybai](https://github.com/aidenybai)! - Keep no-giant-component diagnostic identity stable by excluding volatile measured line counts from its message.
+
+- [#1122](https://github.com/millionco/react-doctor/pull/1122) [`b47d053`](https://github.com/millionco/react-doctor/commit/b47d05302bfd8d465c468a65809ad5c7a2b0bdd7) Thanks [@aidenybai](https://github.com/aidenybai)! - Add SSR-aware hydration diagnostics and gate browser-global render checks to projects that can server render.
+
+- [#1125](https://github.com/millionco/react-doctor/pull/1125) [`a31f5e8`](https://github.com/millionco/react-doctor/commit/a31f5e8eb87d4e4b889f5ba293189a9a92829771) Thanks [@aidenybai](https://github.com/aidenybai)! - Fix effect-needs-cleanup correlation for useSyncExternalStore subscribe callbacks that return matching disposers.
+
+- [#1142](https://github.com/millionco/react-doctor/pull/1142) [`a989008`](https://github.com/millionco/react-doctor/commit/a989008fec7afce1039978c3355aadc5b8eea147) Thanks [@aidenybai](https://github.com/aidenybai)! - Recognize state consumed through synchronous render-time collection merges in rerender-state-only-in-handlers.
+
+- [#1127](https://github.com/millionco/react-doctor/pull/1127) [`6610ea9`](https://github.com/millionco/react-doctor/commit/6610ea9ea4ce3a75b6502f89ed7ce4cbf0915eff) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect parent callback invocations routed through React refs in no-pass-data-to-parent.
+
+- [#1140](https://github.com/millionco/react-doctor/pull/1140) [`6292f89`](https://github.com/millionco/react-doctor/commit/6292f891f699654147608bc6a09d64ea5959737e) Thanks [@aidenybai](https://github.com/aidenybai)! - Avoid treating qualified product API-key record collections as authentication credentials in browser storage.
+
+- [#1129](https://github.com/millionco/react-doctor/pull/1129) [`593824d`](https://github.com/millionco/react-doctor/commit/593824de1a156677db33de41e2579280d1a5e65b) Thanks [@aidenybai](https://github.com/aidenybai)! - Extend no-derived-state to report canonical render-phase prop and state mirrors while preserving semi-controlled and interaction state.
+
+- [#1139](https://github.com/millionco/react-doctor/pull/1139) [`2b5a18e`](https://github.com/millionco/react-doctor/commit/2b5a18ea3aedb476cf66d21347708102460f218e) Thanks [@aidenybai](https://github.com/aidenybai)! - Allow equality-guarded functional state updates in intentional every-commit effects while retaining infinite-loop diagnostics for fresh and non-converging values.
+
+- [#1136](https://github.com/millionco/react-doctor/pull/1136) [`6821fe0`](https://github.com/millionco/react-doctor/commit/6821fe08bb22ba4f58b7971f4d8026525ee4295c) Thanks [@aidenybai](https://github.com/aidenybai)! - Detect prop- and state-derived values copied into state through local refs while preserving DOM, escaped, and externally assigned refs.
+
+- [#1137](https://github.com/millionco/react-doctor/pull/1137) [`3ec8e1e`](https://github.com/millionco/react-doctor/commit/3ec8e1e85957c446c13a459acf167e9407234746) Thanks [@aidenybai](https://github.com/aidenybai)! - Limit client-localstorage-no-version to persistent localStorage data instead of flagging session-scoped JSON.
+
+- [#1119](https://github.com/millionco/react-doctor/pull/1119) [`b686594`](https://github.com/millionco/react-doctor/commit/b686594dfacbf4362780b25210d450e7eb4a9260) Thanks [@aidenybai](https://github.com/aidenybai)! - Unify effect state-write provenance so derived-state and event-handler diagnostics only report proven render-source copies.
+
+- [#1126](https://github.com/millionco/react-doctor/pull/1126) [`4a5d9bb`](https://github.com/millionco/react-doctor/commit/4a5d9bbe75f5400913f3cf943e3a4ed1beb4d32c) Thanks [@aidenybai](https://github.com/aidenybai)! - Trace conservative project-local helper return provenance in derived-state effect rules without reporting ambiguous or externally sourced values.
+
+- [#1121](https://github.com/millionco/react-doctor/pull/1121) [`3867cf1`](https://github.com/millionco/react-doctor/commit/3867cf1ae77750f8c824181aac2187204348ad60) Thanks [@aidenybai](https://github.com/aidenybai)! - Tighten React 19 deprecation, JSX slot, and React import-origin diagnostics to avoid stale false positives.
+
+- [#1124](https://github.com/millionco/react-doctor/pull/1124) [`70b5d99`](https://github.com/millionco/react-doctor/commit/70b5d99db9f499c65e5dae95663f0497fd5ef420) Thanks [@aidenybai](https://github.com/aidenybai)! - Require `no-fetch-in-effect` cancellation cleanups to guard the matching request and its completion state updates.
+
 ## 0.7.4
 
 ### Patch Changes

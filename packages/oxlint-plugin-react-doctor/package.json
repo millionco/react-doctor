@@ -1,6 +1,6 @@
 {
   "name": "oxlint-plugin-react-doctor",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "description": "React Doctor rules for oxlint.",
   "keywords": [
     "accessibility",

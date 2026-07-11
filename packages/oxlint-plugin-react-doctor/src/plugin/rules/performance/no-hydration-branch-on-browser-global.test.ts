@@ -47,6 +47,10 @@ describe("no-hydration-branch-on-browser-global", () => {
       "compound logical JSX branch",
       `"use client"; export const Page = ({ ready }) => <main>{typeof window !== "undefined" && ready && <ClientOnly />}</main>;`,
     ],
+    [
+      "nested logical JSX branch",
+      `"use client"; export const Page = ({ ready }) => <main>{typeof window !== "undefined" && (ready && <ClientOnly />)}</main>;`,
+    ],
   ])("reports different rendered output selected by %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -77,6 +81,10 @@ describe("no-hydration-branch-on-browser-global", () => {
     [
       "a mounted early-return gate",
       `import { useEffect, useState } from "react"; export const Page = () => { const [mounted, setMounted] = useState(false); useEffect(() => setMounted(true), []); if (!mounted) return null; return typeof window === "undefined" ? <Server /> : <Client />; };`,
+    ],
+    [
+      "a browser probe inside an OR condition that is already true",
+      `"use client"; export const Page = () => { const ready = true; return <main>{(typeof window !== "undefined" || ready) && <ClientOnly />}</main>; };`,
     ],
     [
       "an unreachable return after identical branches",

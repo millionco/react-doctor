@@ -184,17 +184,28 @@ const isRenderedValue = (node: EsTreeNode): boolean => {
   return isNodeOfType(unwrappedNode, "JSXElement") || isNodeOfType(unwrappedNode, "JSXFragment");
 };
 
-const findBrowserPredicateInLogicalOperand = (
+const findBrowserPredicateInAndCondition = (
   node: EsTreeNode,
   context: RuleContext,
 ): EsTreeNode | null => {
   const unwrappedNode = stripParenExpression(node);
   if (matchBrowserPredicate(unwrappedNode, context)) return unwrappedNode;
-  if (!isNodeOfType(unwrappedNode, "LogicalExpression")) return null;
+  if (!isNodeOfType(unwrappedNode, "LogicalExpression") || unwrappedNode.operator !== "&&") {
+    return null;
+  }
   return (
-    findBrowserPredicateInLogicalOperand(unwrappedNode.left, context) ??
-    findBrowserPredicateInLogicalOperand(unwrappedNode.right, context)
+    findBrowserPredicateInAndCondition(unwrappedNode.left, context) ??
+    findBrowserPredicateInAndCondition(unwrappedNode.right, context)
   );
+};
+
+const findRenderedValueInAndBranch = (node: EsTreeNode): EsTreeNode | null => {
+  const unwrappedNode = stripParenExpression(node);
+  if (isRenderedValue(unwrappedNode)) return unwrappedNode;
+  if (!isNodeOfType(unwrappedNode, "LogicalExpression") || unwrappedNode.operator !== "&&") {
+    return null;
+  }
+  return findRenderedValueInAndBranch(unwrappedNode.right);
 };
 
 const findEnclosingJsxAttribute = (node: EsTreeNode): EsTreeNodeOfType<"JSXAttribute"> | null => {
@@ -358,9 +369,20 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
       },
       LogicalExpression(node: EsTreeNodeOfType<"LogicalExpression">) {
         if (node.operator !== "&&" && node.operator !== "||") return;
-        const predicateNode = findBrowserPredicateInLogicalOperand(node.left, context);
-        if (!predicateNode || !isRenderedValue(node.right)) return;
-        reportHydrationBranch(predicateNode, node.right, null, true);
+        const predicateNode =
+          node.operator === "&&"
+            ? findBrowserPredicateInAndCondition(node.left, context)
+            : matchBrowserPredicate(node.left, context)
+              ? stripParenExpression(node.left)
+              : null;
+        const renderedValue =
+          node.operator === "&&"
+            ? findRenderedValueInAndBranch(node.right)
+            : isRenderedValue(node.right)
+              ? node.right
+              : null;
+        if (!predicateNode || !renderedValue) return;
+        reportHydrationBranch(predicateNode, renderedValue, null, true);
       },
       IfStatement(node: EsTreeNodeOfType<"IfStatement">) {
         const consequentValues = getReturnedValues(node.consequent);

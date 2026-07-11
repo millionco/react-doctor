@@ -37,6 +37,13 @@ const isCpuProfileNode = (value: unknown): value is CpuProfileNode => {
   if (!("callFrame" in value) || typeof value.callFrame !== "object" || value.callFrame === null) {
     return false;
   }
+  if (
+    "children" in value &&
+    (!Array.isArray(value.children) ||
+      !value.children.every((childId) => typeof childId === "number"))
+  ) {
+    return false;
+  }
   return (
     "functionName" in value.callFrame &&
     typeof value.callFrame.functionName === "string" &&
@@ -74,6 +81,7 @@ const frameKey = (node: CpuProfileNode): string =>
 
 const resolveProcessRole = (profile: CpuProfile): string => {
   const urls = profile.nodes.map((node) => node.callFrame.url).join("\n");
+  if (urls.includes("packages/react-doctor/dist/cli.js")) return "react-doctor";
   if (
     urls.includes("deslop-js") ||
     urls.includes("entries-worker") ||
@@ -81,7 +89,6 @@ const resolveProcessRole = (profile: CpuProfile): string => {
   ) {
     return "dead-code";
   }
-  if (urls.includes("packages/react-doctor/dist/cli.js")) return "react-doctor";
   if (urls.includes("oxlint") || urls.includes("oxlint-plugin-react-doctor")) return "oxlint";
   return "node";
 };
@@ -116,13 +123,26 @@ const analyzeProfile = (profilePath: string): AnalyzedProfile => {
   const parsedProfile: unknown = JSON.parse(fs.readFileSync(profilePath, "utf8"));
   if (!isCpuProfile(parsedProfile)) throw new Error(`Invalid CPU profile: ${profilePath}`);
   const nodesById = new Map(parsedProfile.nodes.map((node) => [node.id, node]));
+  if (nodesById.size !== parsedProfile.nodes.length) {
+    throw new Error(`Invalid CPU profile with duplicate node IDs: ${profilePath}`);
+  }
   const frameKeysByNodeId = new Map(parsedProfile.nodes.map((node) => [node.id, frameKey(node)]));
   const parentById = new Map<number, number>();
   for (const node of parsedProfile.nodes) {
-    for (const childId of node.children ?? []) parentById.set(childId, node.id);
+    for (const childId of node.children ?? []) {
+      if (!nodesById.has(childId)) {
+        throw new Error(`Invalid CPU profile with unknown child node: ${profilePath}`);
+      }
+      const existingParentId = parentById.get(childId);
+      if (existingParentId !== undefined && existingParentId !== node.id) {
+        throw new Error(`Invalid CPU profile with multiple parents: ${profilePath}`);
+      }
+      parentById.set(childId, node.id);
+    }
   }
   const timings = new Map<string, MutableFrameTiming>();
   const visitedFrameKeyAtSample = new Map<string, number>();
+  const visitedNodeIdAtSample = new Map<number, number>();
   let sampledMicroseconds = 0;
   const samples = parsedProfile.samples ?? [];
   const timeDeltas = parsedProfile.timeDeltas ?? [];
@@ -142,6 +162,10 @@ const analyzeProfile = (profilePath: string): AnalyzedProfile => {
     timings.set(selfKey, selfTiming);
     let currentNode: CpuProfileNode | undefined = sampleNode;
     while (currentNode !== undefined) {
+      if (visitedNodeIdAtSample.get(currentNode.id) === index) {
+        throw new Error(`Invalid CPU profile with cyclic nodes: ${profilePath}`);
+      }
+      visitedNodeIdAtSample.set(currentNode.id, index);
       const currentFrameKey = frameKeysByNodeId.get(currentNode.id);
       if (currentFrameKey !== undefined && visitedFrameKeyAtSample.get(currentFrameKey) !== index) {
         const timing = timings.get(currentFrameKey) ?? {

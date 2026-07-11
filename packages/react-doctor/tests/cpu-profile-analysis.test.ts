@@ -50,4 +50,43 @@ describe("analyzeCpuProfiles", () => {
       fs.rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("rejects cyclic CPU profile node graphs", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-cpu-profile-test-"));
+    try {
+      fs.writeFileSync(
+        path.join(directory, "CPU.cyclic.cpuprofile"),
+        JSON.stringify({
+          nodes: [
+            {
+              id: 1,
+              callFrame: {
+                functionName: "(root)",
+                url: "",
+                lineNumber: 0,
+                columnNumber: 0,
+              },
+              children: [2],
+            },
+            {
+              id: 2,
+              callFrame: {
+                functionName: "runWork",
+                url: "packages/react-doctor/dist/cli.js",
+                lineNumber: 9,
+                columnNumber: 0,
+              },
+              children: [1],
+            },
+          ],
+          samples: [2],
+          timeDeltas: [1_000],
+        }),
+      );
+
+      expect(() => analyzeCpuProfiles(directory)).toThrow("cyclic nodes");
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

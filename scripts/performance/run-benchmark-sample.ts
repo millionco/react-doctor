@@ -2,14 +2,11 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { performance } from "node:perf_hooks";
-import { BENCHMARK_TIMEOUT_MS, BYTES_PER_KIBIBYTE, COMMAND_MAX_BUFFER_BYTES } from "./constants.ts";
+import { buildBenchmarkEnvironment } from "./build-benchmark-environment.ts";
+import { BENCHMARK_TIMEOUT_MS, COMMAND_MAX_BUFFER_BYTES } from "./constants.ts";
+import { parseProcessResourceUsage } from "./parse-process-resource-usage.ts";
 import { readBenchmarkReport } from "./read-benchmark-report.ts";
-import type {
-  BenchmarkCacheCohort,
-  BenchmarkMode,
-  BenchmarkSample,
-  ProcessResourceUsage,
-} from "./types.ts";
+import type { BenchmarkCacheCohort, BenchmarkMode, BenchmarkSample } from "./types.ts";
 
 export interface RunBenchmarkSampleInput {
   repositoryRoot: string;
@@ -24,23 +21,6 @@ export interface RunBenchmarkSampleInput {
   cpuProfile: boolean;
   heapProfile: boolean;
 }
-
-const parseResourceUsage = (stderr: string): ProcessResourceUsage => {
-  const darwinTimingMatch = stderr.match(/([\d.]+)\s+real\s+([\d.]+)\s+user\s+([\d.]+)\s+sys/);
-  const darwinResidentSetMatch = stderr.match(/(\d+)\s+maximum resident set size/);
-  const linuxUserMatch = stderr.match(/User time \(seconds\):\s*([\d.]+)/);
-  const linuxSystemMatch = stderr.match(/System time \(seconds\):\s*([\d.]+)/);
-  const linuxResidentSetMatch = stderr.match(/Maximum resident set size \(kbytes\):\s*(\d+)/);
-  return {
-    userSeconds: Number(darwinTimingMatch?.[2] ?? linuxUserMatch?.[1]) || null,
-    systemSeconds: Number(darwinTimingMatch?.[3] ?? linuxSystemMatch?.[1]) || null,
-    maximumResidentSetBytes: darwinResidentSetMatch
-      ? Number(darwinResidentSetMatch[1])
-      : linuxResidentSetMatch
-        ? Number(linuxResidentSetMatch[1]) * BYTES_PER_KIBIBYTE
-        : null,
-  };
-};
 
 const resolveTimeArguments = (): string[] => {
   if (process.platform === "darwin") return ["-l"];
@@ -58,31 +38,15 @@ export const runBenchmarkSample = (input: RunBenchmarkSampleInput): BenchmarkSam
       : null;
   if (profileDirectory !== null) fs.mkdirSync(profileDirectory, { recursive: true });
 
-  const nodeOptions = [
-    process.env.NODE_OPTIONS,
-    !input.cpuProfile || profileDirectory === null ? null : "--cpu-prof",
-    !input.cpuProfile || profileDirectory === null ? null : `--cpu-prof-dir=${profileDirectory}`,
-    !input.heapProfile || profileDirectory === null ? null : "--heap-prof",
-    !input.heapProfile || profileDirectory === null ? null : `--heap-prof-dir=${profileDirectory}`,
-  ]
-    .filter((option) => option)
-    .join(" ");
-  const environment: NodeJS.ProcessEnv = {
-    ...process.env,
-    CI: "1",
-    GIT_TERMINAL_PROMPT: "0",
-    NODE_COMPILE_CACHE: path.join(input.cacheDirectory, "node-compile"),
-    REACT_DOCTOR_CACHE_DIR: path.join(input.cacheDirectory, "react-doctor"),
-    REACT_DOCTOR_CPU_PROFILE_DIR:
-      input.cpuProfile && profileDirectory !== null ? profileDirectory : undefined,
-    REACT_DOCTOR_HEAP_PROFILE_DIR:
-      input.heapProfile && profileDirectory !== null ? profileDirectory : undefined,
-    REACT_DOCTOR_NO_TELEMETRY: "1",
-    REACT_DOCTOR_PARALLEL: input.workerCount === "auto" ? undefined : String(input.workerCount),
-    SENTRY_TRACES_SAMPLE_RATE: "0",
-    ...(input.cacheCohort === "no-cache" ? { REACT_DOCTOR_NO_CACHE: "1" } : {}),
-    ...(nodeOptions.length > 0 ? { NODE_OPTIONS: nodeOptions } : {}),
-  };
+  const environment = buildBenchmarkEnvironment({
+    baseEnvironment: process.env,
+    cacheDirectory: input.cacheDirectory,
+    cacheCohort: input.cacheCohort,
+    workerCount: input.workerCount,
+    cpuProfile: input.cpuProfile,
+    heapProfile: input.heapProfile,
+    profileDirectory,
+  });
   const cliArguments = [
     input.cliPath,
     input.targetDirectory,
@@ -117,7 +81,7 @@ export const runBenchmarkSample = (input: RunBenchmarkSampleInput): BenchmarkSam
     );
   }
   const report = readBenchmarkReport(reportPath);
-  const resourceUsage = parseResourceUsage(result.stderr);
+  const resourceUsage = parseProcessResourceUsage(result.stderr);
   return {
     index: input.sampleIndex,
     wallMilliseconds,

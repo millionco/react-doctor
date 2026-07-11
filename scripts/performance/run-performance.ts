@@ -54,6 +54,7 @@ const isComparisonSeries = (value: unknown): value is BenchmarkComparisonSeries 
     return false;
   }
   if (!("directory" in value.target) || typeof value.target.directory !== "string") return false;
+  if ("label" in value.target && typeof value.target.label !== "string") return false;
   if (!("mode" in value) || (value.mode !== "lint" && value.mode !== "full")) return false;
   if (
     !("cacheCohort" in value) ||

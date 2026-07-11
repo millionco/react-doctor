@@ -6,22 +6,12 @@ import { createStressProject } from "./create-stress-project.ts";
 import { parsePerformanceArguments } from "./parse-performance-arguments.ts";
 import { parseStressPerformanceArguments } from "./parse-stress-performance-arguments.ts";
 import { runPerformance } from "./run-performance.ts";
+import type { PerformanceResult } from "./types.ts";
 
-const main = (): void => {
-  const stressOptions = parseStressPerformanceArguments(process.argv.slice(2));
+export const runStressPerformance = (argumentsList: string[]): PerformanceResult => {
+  const stressOptions = parseStressPerformanceArguments(argumentsList);
   const outputDirectory = path.resolve(stressOptions.out);
   const projectDirectory = path.resolve(stressOptions.project);
-  clearBenchmarkRunArtifacts(outputDirectory);
-  const stressProject = createStressProject({
-    directory: projectDirectory,
-    fileCount: stressOptions.files,
-    componentsPerFileCount: stressOptions.componentsPerFile,
-  });
-  fs.mkdirSync(outputDirectory, { recursive: true });
-  fs.writeFileSync(
-    path.join(outputDirectory, "stress-project.json"),
-    `${JSON.stringify(stressProject, null, 2)}\n`,
-  );
   const benchmarkOptions = parsePerformanceArguments([
     projectDirectory,
     "--samples",
@@ -42,8 +32,23 @@ const main = (): void => {
     ...(stressOptions.profile ? ["--profile"] : []),
     ...(stressOptions.heapProfile ? ["--heap-profile"] : []),
   ]);
-  const result = runPerformance(benchmarkOptions);
-  process.stdout.write(`${path.join(outputDirectory, "results.md")}\n`);
+  clearBenchmarkRunArtifacts(outputDirectory);
+  const stressProject = createStressProject({
+    directory: projectDirectory,
+    fileCount: stressOptions.files,
+    componentsPerFileCount: stressOptions.componentsPerFile,
+  });
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  fs.writeFileSync(
+    path.join(outputDirectory, "stress-project.json"),
+    `${JSON.stringify(stressProject, null, 2)}\n`,
+  );
+  return runPerformance(benchmarkOptions);
+};
+
+const main = (): void => {
+  const result = runStressPerformance(process.argv.slice(2));
+  process.stdout.write(`${path.join(result.options.outputDirectory, "results.md")}\n`);
   if (result.comparisons.some((comparison) => comparison.classification === "regressed")) {
     process.exitCode = 1;
   }

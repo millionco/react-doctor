@@ -59,23 +59,6 @@ export interface HostMetadata {
   hostname: string;
 }
 
-export interface BenchmarkReportProject {
-  skippedChecks: string[];
-  scannedFileCount?: number;
-  elapsedMilliseconds: number;
-  project: {
-    projectName?: string;
-    sourceFileCount: number;
-  };
-}
-
-export interface BenchmarkJsonReport {
-  schemaVersion: number;
-  diagnostics: unknown[];
-  elapsedMilliseconds: number;
-  projects: BenchmarkReportProject[];
-}
-
 export interface ValidatedBenchmarkReport {
   elapsedMilliseconds: number;
   diagnosticCount: number;
@@ -135,6 +118,7 @@ export interface BenchmarkComparison {
 export interface BenchmarkComparisonSeries {
   target: {
     directory: string;
+    label?: string;
   };
   mode: BenchmarkMode;
   cacheCohort: BenchmarkCacheCohort;

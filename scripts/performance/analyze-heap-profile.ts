@@ -79,6 +79,7 @@ const collectNodes = (rootNode: HeapProfileNode): HeapProfileNode[] => {
 
 const resolveProcessRole = (nodes: HeapProfileNode[]): string => {
   const urls = nodes.map((node) => node.callFrame.url).join("\n");
+  if (urls.includes("packages/react-doctor/dist/cli.js")) return "react-doctor";
   if (
     urls.includes("deslop-js") ||
     urls.includes("entries-worker") ||
@@ -86,7 +87,6 @@ const resolveProcessRole = (nodes: HeapProfileNode[]): string => {
   ) {
     return "dead-code";
   }
-  if (urls.includes("packages/react-doctor/dist/cli.js")) return "react-doctor";
   if (urls.includes("oxlint") || urls.includes("oxlint-plugin-react-doctor")) return "oxlint";
   return "node";
 };

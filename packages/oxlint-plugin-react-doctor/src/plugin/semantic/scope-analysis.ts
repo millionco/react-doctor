@@ -635,6 +635,11 @@ const setNodeScope = (node: EsTreeNode, state: BuilderState): void => {
 // analysis blind to them (e.g. misclassifying a module constant used as
 // a default). References are parked on the current (function) scope.
 const walkParameterReferences = (pattern: EsTreeNode, state: BuilderState): void => {
+  if ("decorators" in pattern && Array.isArray(pattern.decorators)) {
+    for (const decorator of pattern.decorators) {
+      if (isAstNode(decorator)) walk(decorator, state);
+    }
+  }
   if (isNodeOfType(pattern, "AssignmentPattern")) {
     walkParameterReferences(pattern.left as EsTreeNode, state);
     const defaultValue = (pattern.right as EsTreeNode | null) ?? null;
@@ -731,6 +736,7 @@ const walk = (node: EsTreeNode, state: BuilderState): void => {
     if (isNodeOfType(node, "ClassDeclaration") && node.id) {
       handleClassDeclaration(node, state);
     }
+    for (const decorator of node.decorators) walk(decorator as EsTreeNode, state);
     // Class scope is its own — class methods see the class name
     // (FunctionExpression-like for ClassExpression).
     const classScope = pushScope("class", node, state);

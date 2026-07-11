@@ -1,14 +1,21 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { analyzeCpuProfiles } from "../../../scripts/performance/analyze-cpu-profile.ts";
+import { analyzeHeapProfiles } from "../../../scripts/performance/analyze-heap-profile.ts";
 import { buildBenchmarkComparisons } from "../../../scripts/performance/build-benchmark-comparisons.ts";
+import { buildBenchmarkEnvironment } from "../../../scripts/performance/build-benchmark-environment.ts";
+import type { BuildBenchmarkEnvironmentInput } from "../../../scripts/performance/build-benchmark-environment.ts";
 import { createStressProject } from "../../../scripts/performance/create-stress-project.ts";
 import { parsePerformanceArguments } from "../../../scripts/performance/parse-performance-arguments.ts";
+import { parseProcessResourceUsage } from "../../../scripts/performance/parse-process-resource-usage.ts";
 import { parseStressPerformanceArguments } from "../../../scripts/performance/parse-stress-performance-arguments.ts";
 import { readBenchmarkReport } from "../../../scripts/performance/read-benchmark-report.ts";
 import { renderPerformanceMarkdown } from "../../../scripts/performance/render-performance-markdown.ts";
 import { runPerformance } from "../../../scripts/performance/run-performance.ts";
+import { runStressPerformance } from "../../../scripts/performance/run-stress-performance.ts";
 import { summarizeDistribution } from "../../../scripts/performance/summarize-distribution.ts";
 import type { BenchmarkSeries, PerformanceResult } from "../../../scripts/performance/types.ts";
 
@@ -121,9 +128,72 @@ describe("performance harness", () => {
   it("rejects invalid arguments", () => {
     expect(() => parsePerformanceArguments([])).toThrow();
     expect(() => parsePerformanceArguments([".", "--samples", "0"])).toThrow("--samples");
+    expect(() => parsePerformanceArguments([".", "--samples", "3oops"])).toThrow("--samples");
+    expect(() => parsePerformanceArguments([".", "--workers", "1.5"])).toThrow("--workers");
     expect(() => parsePerformanceArguments([".", "--cache", "unknown"])).toThrow(
       "Unknown cache cohort",
     );
+    expect(() => parseStressPerformanceArguments(["--files", "1e3"])).toThrow("--files");
+  });
+
+  it("isolates cache cohorts and quotes profile paths", () => {
+    const profileDirectory = path.join(createTemporaryDirectory(), "profiles with spaces");
+    fs.mkdirSync(profileDirectory);
+    const sharedInput: Omit<BuildBenchmarkEnvironmentInput, "cacheCohort"> = {
+      baseEnvironment: {
+        NODE_OPTIONS: "--trace-warnings",
+        REACT_DOCTOR_NO_CACHE: "1",
+      },
+      cacheDirectory: "/tmp/cache",
+      workerCount: "auto",
+      cpuProfile: true,
+      heapProfile: true,
+      profileDirectory,
+    };
+    const coldEnvironment = buildBenchmarkEnvironment({
+      ...sharedInput,
+      cacheCohort: "cold",
+    });
+    const noCacheEnvironment = buildBenchmarkEnvironment({
+      ...sharedInput,
+      cacheCohort: "no-cache",
+    });
+
+    expect(coldEnvironment.REACT_DOCTOR_NO_CACHE).toBeUndefined();
+    expect(noCacheEnvironment.REACT_DOCTOR_NO_CACHE).toBe("1");
+    expect(coldEnvironment.NODE_OPTIONS).toContain(
+      `--cpu-prof-dir=${JSON.stringify(profileDirectory)}`,
+    );
+    expect(coldEnvironment.NODE_OPTIONS).toContain(
+      `--heap-prof-dir=${JSON.stringify(profileDirectory)}`,
+    );
+    const profileProbe = spawnSync(process.execPath, ["-e", ""], {
+      encoding: "utf8",
+      env: coldEnvironment,
+    });
+    expect(profileProbe.status, profileProbe.stderr).toBe(0);
+    const profileFilenames = fs.readdirSync(profileDirectory);
+    expect(profileFilenames.some((filename) => filename.endsWith(".cpuprofile"))).toBe(true);
+    expect(profileFilenames.some((filename) => filename.endsWith(".heapprofile"))).toBe(true);
+  });
+
+  it("preserves zero-valued process resource measurements", () => {
+    expect(
+      parseProcessResourceUsage("0.01 real 0.00 user 0.00 sys\n0 maximum resident set size"),
+    ).toEqual({
+      userSeconds: 0,
+      systemSeconds: 0,
+      maximumResidentSetBytes: 0,
+    });
+    expect(
+      parseProcessResourceUsage(
+        "User time (seconds): 0.00\nSystem time (seconds): 0.00\nMaximum resident set size (kbytes): 0",
+      ),
+    ).toEqual({
+      userSeconds: 0,
+      systemSeconds: 0,
+      maximumResidentSetBytes: 0,
+    });
   });
 
   it("parses stress-project dimensions and benchmark options", () => {
@@ -173,6 +243,58 @@ describe("performance harness", () => {
     expect(fs.readFileSync(componentPath, "utf8")).toBe(firstSource);
   });
 
+  it("refuses to replace unmarked stress directories", () => {
+    const directory = createTemporaryDirectory();
+    const projectDirectory = path.join(directory, "existing-project");
+    const sentinelPath = path.join(projectDirectory, "keep.txt");
+    fs.mkdirSync(projectDirectory);
+    fs.writeFileSync(sentinelPath, "keep");
+
+    expect(() =>
+      createStressProject({
+        directory: projectDirectory,
+        fileCount: 1,
+        componentsPerFileCount: 1,
+      }),
+    ).toThrow("unmarked");
+    expect(fs.readFileSync(sentinelPath, "utf8")).toBe("keep");
+  });
+
+  it("refuses stress project paths that contain the working directory", () => {
+    expect(() =>
+      createStressProject({
+        directory: path.dirname(process.cwd()),
+        fileCount: 1,
+        componentsPerFileCount: 1,
+      }),
+    ).toThrow("working directory");
+  });
+
+  it("validates stress benchmark dimensions before replacing the generated project", () => {
+    const directory = createTemporaryDirectory();
+    const projectDirectory = path.join(directory, "stress-project");
+    const outputDirectory = path.join(directory, "results");
+    createStressProject({
+      directory: projectDirectory,
+      fileCount: 1,
+      componentsPerFileCount: 1,
+    });
+    const sentinelPath = path.join(projectDirectory, "keep.txt");
+    fs.writeFileSync(sentinelPath, "keep");
+
+    expect(() =>
+      runStressPerformance([
+        "--project",
+        projectDirectory,
+        "--out",
+        outputDirectory,
+        "--cache",
+        "typo",
+      ]),
+    ).toThrow("Unknown cache cohort");
+    expect(fs.readFileSync(sentinelPath, "utf8")).toBe("keep");
+  });
+
   it("runs the benchmark against a generated stress project with stable diagnostics", () => {
     const directory = createTemporaryDirectory();
     const projectDirectory = path.join(directory, "project");
@@ -206,6 +328,40 @@ describe("performance harness", () => {
     expect(result.series[0]?.samples[0]?.scannedFileCount).toBe(
       stressProject.generatedSourceFileCount,
     );
+  });
+
+  it("captures and aggregates profiles across the benchmark process tree", () => {
+    const directory = createTemporaryDirectory();
+    const projectDirectory = path.join(directory, "project");
+    const outputDirectory = path.join(directory, "profile results");
+    createStressProject({
+      directory: projectDirectory,
+      fileCount: 1,
+      componentsPerFileCount: 1,
+    });
+    runPerformance({
+      directories: [projectDirectory],
+      samples: 1,
+      warmups: 0,
+      workerCounts: [1],
+      modes: ["full"],
+      cacheCohorts: ["no-cache"],
+      outputDirectory,
+      comparePath: null,
+      cliPath: path.join(REPOSITORY_ROOT, "packages/react-doctor/dist/cli.js"),
+      profile: true,
+      heapProfile: true,
+    });
+
+    const cpuAnalysis = analyzeCpuProfiles(outputDirectory);
+    const heapAnalysis = analyzeHeapProfiles(outputDirectory);
+    const cpuProcessRoles = new Set(
+      cpuAnalysis.processes.map((processSummary) => processSummary.role),
+    );
+    expect(cpuProcessRoles).toContain("react-doctor");
+    expect(cpuProcessRoles).toContain("oxlint");
+    expect(cpuProcessRoles).toContain("dead-code");
+    expect(heapAnalysis.processes.length).toBeGreaterThanOrEqual(3);
   });
 
   it("summarizes distributions with a robust median and MAD", () => {
@@ -307,6 +463,38 @@ describe("performance harness", () => {
     expect(markdown).toContain("React Doctor performance results");
     expect(markdown).toContain("regressed");
     expect(markdown).toContain("1300.0 ms");
+  });
+
+  it("matches comparison targets across checkout paths", () => {
+    const baselineSeries = {
+      ...createSeries(1_000),
+      target: {
+        directory: "/tmp/baseline/app",
+      },
+    };
+    const currentSeries = {
+      ...createSeries(900),
+      target: {
+        ...createSeries(900).target,
+        directory: "/tmp/current/app",
+      },
+    };
+
+    expect(buildBenchmarkComparisons([currentSeries], [baselineSeries])).toHaveLength(1);
+  });
+
+  it("rejects comparisons with no matching baseline series", () => {
+    const baselineSeries = {
+      ...createSeries(1_000),
+      target: {
+        ...createSeries(1_000).target,
+        label: "other-app",
+      },
+    };
+
+    expect(() => buildBenchmarkComparisons([createSeries(900)], [baselineSeries])).toThrow(
+      "no matching series",
+    );
   });
 
   it("rejects comparisons when diagnostic output changes", () => {

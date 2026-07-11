@@ -3,6 +3,8 @@ import * as path from "node:path";
 import { buildStressSourceFile } from "./build-stress-source-file.ts";
 import {
   STRESS_FILE_INDEX_CHARACTER_COUNT,
+  STRESS_PROJECT_MARKER_CONTENT,
+  STRESS_PROJECT_MARKER_FILENAME,
   STRESS_SUPPORT_SOURCE_FILE_COUNT,
   STRESS_VALUE_MODULUS,
 } from "./constants.ts";
@@ -16,11 +18,44 @@ export const createStressProject = (input: CreateStressProjectInput): StressProj
     throw new Error("Stress components per file must be a positive integer");
   }
 
-  fs.rmSync(input.directory, { recursive: true, force: true });
-  const sourceDirectory = path.join(input.directory, "src");
+  const projectDirectory = path.resolve(input.directory);
+  const currentWorkingDirectoryRelativeToProject = path.relative(projectDirectory, process.cwd());
+  if (
+    currentWorkingDirectoryRelativeToProject === "" ||
+    (currentWorkingDirectoryRelativeToProject !== ".." &&
+      !currentWorkingDirectoryRelativeToProject.startsWith(`..${path.sep}`))
+  ) {
+    throw new Error(
+      `Stress project directory cannot contain the working directory: ${projectDirectory}`,
+    );
+  }
+  const markerPath = path.join(projectDirectory, STRESS_PROJECT_MARKER_FILENAME);
+  if (fs.existsSync(projectDirectory)) {
+    const projectStats = fs.lstatSync(projectDirectory);
+    if (!projectStats.isDirectory() || projectStats.isSymbolicLink()) {
+      throw new Error(`Stress project path must be a directory: ${projectDirectory}`);
+    }
+    const projectEntries = fs.readdirSync(projectDirectory);
+    if (projectEntries.length > 0) {
+      const markerStats = fs.existsSync(markerPath) ? fs.lstatSync(markerPath) : null;
+      const hasValidMarker =
+        markerStats?.isFile() === true &&
+        !markerStats.isSymbolicLink() &&
+        fs.readFileSync(markerPath, "utf8") === STRESS_PROJECT_MARKER_CONTENT;
+      if (!hasValidMarker) {
+        throw new Error(
+          `Refusing to replace unmarked stress project directory: ${projectDirectory}`,
+        );
+      }
+    }
+  }
+
+  fs.rmSync(projectDirectory, { recursive: true, force: true });
+  const sourceDirectory = path.join(projectDirectory, "src");
   fs.mkdirSync(sourceDirectory, { recursive: true });
+  fs.writeFileSync(markerPath, STRESS_PROJECT_MARKER_CONTENT);
   fs.writeFileSync(
-    path.join(input.directory, "package.json"),
+    path.join(projectDirectory, "package.json"),
     `${JSON.stringify(
       {
         name: "react-doctor-stress-project",
@@ -35,7 +70,7 @@ export const createStressProject = (input: CreateStressProjectInput): StressProj
     )}\n`,
   );
   fs.writeFileSync(
-    path.join(input.directory, "tsconfig.json"),
+    path.join(projectDirectory, "tsconfig.json"),
     `${JSON.stringify(
       {
         compilerOptions: {
@@ -67,7 +102,7 @@ export const createStressProject = (input: CreateStressProjectInput): StressProj
   fs.writeFileSync(path.join(sourceDirectory, "index.ts"), `${indexExports.join("\n")}\n`);
 
   return {
-    directory: input.directory,
+    directory: projectDirectory,
     generatedSourceFileCount: input.fileCount + STRESS_SUPPORT_SOURCE_FILE_COUNT,
     componentCount: input.fileCount * input.componentsPerFileCount,
   };

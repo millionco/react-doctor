@@ -1,43 +1,59 @@
+import * as path from "node:path";
 import { COMPARISON_REGRESSION_MIN_MS, COMPARISON_REGRESSION_RATIO } from "./constants.ts";
 import type { BenchmarkComparison, BenchmarkComparisonSeries, BenchmarkSeries } from "./types.ts";
 
 const seriesKey = (series: BenchmarkComparisonSeries): string =>
-  [series.target.directory, series.mode, series.cacheCohort, String(series.workerCount)].join("::");
+  [
+    series.target.label ?? path.basename(series.target.directory),
+    series.mode,
+    series.cacheCohort,
+    String(series.workerCount),
+  ].join("::");
 
 export const buildBenchmarkComparisons = (
   currentSeries: BenchmarkSeries[],
   baselineSeries: BenchmarkComparisonSeries[] | null,
 ): BenchmarkComparison[] => {
   if (baselineSeries === null) return [];
-  const baselineByKey = new Map(baselineSeries.map((series) => [seriesKey(series), series]));
-  return currentSeries.flatMap((series) => {
+  const baselineByKey = new Map<string, BenchmarkComparisonSeries>();
+  for (const series of baselineSeries) {
     const key = seriesKey(series);
-    const baselineSeries = baselineByKey.get(key);
-    if (baselineSeries === undefined) return [];
-    if (baselineSeries.diagnosticHash !== series.diagnosticHash) {
+    if (baselineByKey.has(key)) throw new Error(`Duplicate performance baseline series: ${key}`);
+    baselineByKey.set(key, series);
+  }
+  const currentKeys = new Set<string>();
+  const comparisons: BenchmarkComparison[] = [];
+  for (const series of currentSeries) {
+    const key = seriesKey(series);
+    if (currentKeys.has(key)) throw new Error(`Duplicate current performance series: ${key}`);
+    currentKeys.add(key);
+    const matchingBaseline = baselineByKey.get(key);
+    if (matchingBaseline === undefined) {
+      throw new Error(`Performance baseline has no matching series for ${key}`);
+    }
+    if (matchingBaseline.diagnosticHash !== series.diagnosticHash) {
       throw new Error(`Diagnostic output changed from the baseline for ${key}`);
     }
-    const baselineMedianMilliseconds = baselineSeries.wallMilliseconds.median;
+    const baselineMedianMilliseconds = matchingBaseline.wallMilliseconds.median;
     const currentMedianMilliseconds = series.wallMilliseconds.median;
     const deltaMilliseconds = currentMedianMilliseconds - baselineMedianMilliseconds;
     const deltaRatio =
       baselineMedianMilliseconds === 0 ? 0 : deltaMilliseconds / baselineMedianMilliseconds;
     const isMaterial = Math.abs(deltaMilliseconds) >= COMPARISON_REGRESSION_MIN_MS;
-    const classification =
-      isMaterial && deltaRatio >= COMPARISON_REGRESSION_RATIO
-        ? "regressed"
-        : isMaterial && deltaRatio <= -COMPARISON_REGRESSION_RATIO
-          ? "improved"
-          : "stable";
-    return [
-      {
-        key,
-        baselineMedianMilliseconds,
-        currentMedianMilliseconds,
-        deltaMilliseconds,
-        deltaRatio,
-        classification,
-      },
-    ];
-  });
+    let classification: BenchmarkComparison["classification"] = "stable";
+    if (isMaterial && deltaRatio >= COMPARISON_REGRESSION_RATIO) {
+      classification = "regressed";
+    } else if (isMaterial && deltaRatio <= -COMPARISON_REGRESSION_RATIO) {
+      classification = "improved";
+    }
+    comparisons.push({
+      key,
+      baselineMedianMilliseconds,
+      currentMedianMilliseconds,
+      deltaMilliseconds,
+      deltaRatio,
+      classification,
+    });
+  }
+  return comparisons;
 };

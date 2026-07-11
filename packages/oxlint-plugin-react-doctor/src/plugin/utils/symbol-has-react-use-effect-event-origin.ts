@@ -1,20 +1,7 @@
 import type { ScopeAnalysis, SymbolDescriptor } from "../semantic/scope-analysis.js";
-import type { EsTreeNode } from "./es-tree-node.js";
+import { isReactApiCall } from "./is-react-api-call.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { isNonReactEffectEventCallee } from "./is-non-react-effect-event-callee.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
-
-const getUseEffectEventCalleeName = (callee: EsTreeNode): string | null => {
-  if (isNodeOfType(callee, "Identifier")) return callee.name;
-  if (
-    isNodeOfType(callee, "MemberExpression") &&
-    !callee.computed &&
-    isNodeOfType(callee.property, "Identifier")
-  ) {
-    return callee.property.name;
-  }
-  return null;
-};
 
 // The ONE symbol-level answer to "is this binding the product of React's own
 // `useEffectEvent`?" — the initializer is a `useEffectEvent(...)` /
@@ -29,6 +16,8 @@ export const symbolHasReactUseEffectEventOrigin = (
 ): boolean => {
   const initializer = symbol.initializer ? stripParenExpression(symbol.initializer) : null;
   if (!initializer || !isNodeOfType(initializer, "CallExpression")) return false;
-  if (getUseEffectEventCalleeName(initializer.callee) !== "useEffectEvent") return false;
-  return !isNonReactEffectEventCallee(initializer.callee, initializer, scopes);
+  return isReactApiCall(initializer, "useEffectEvent", scopes, {
+    allowGlobalReactNamespace: true,
+    allowUnboundBareCalls: true,
+  });
 };

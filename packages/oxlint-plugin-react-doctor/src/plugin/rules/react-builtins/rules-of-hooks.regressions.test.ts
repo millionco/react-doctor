@@ -381,6 +381,17 @@ describe("react-builtins/rules-of-hooks — regressions: same-named non-React us
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
+  it("still flags a renamed React useEffectEvent import when passed around", () => {
+    const result = runTsx(`
+      import { useEffectEvent as useStableEvent } from "react";
+      const MyComponent = ({ onDone }) => {
+        const handleChange = useStableEvent(() => onDone());
+        return <Child onChange={handleChange} />;
+      };
+    `);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+
   it("still flags a bare/unimported useEffectEvent when passed around (parity)", () => {
     const result = runTsx(`
       const MyComponent = ({ onDone }) => {

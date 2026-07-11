@@ -784,7 +784,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'import { render } from "react-dom";\nrender(null, document.getElementById("root"));',
   },
   "no-react19-deprecated-apis": {
-    code: 'import * as React from "react";\nimport * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";\n\nconst AlertDialogOverlay = React.forwardRef((props, ref) => (\n  <AlertDialogPrimitive.Overlay {...props} ref={ref} />\n));\nconst AlertDialogContent = React.forwardRef((props, ref) => (\n  <AlertDialogPrimitive.Content {...props} ref={ref} />\n));\nconst AlertDialogTitle = React.forwardRef((props, ref) => (\n  <AlertDialogPrimitive.Title {...props} ref={ref} />\n));\n',
+    code: 'import * as React from "react";\nconst Button = React.createFactory("button");\nvoid Button;',
   },
   "no-redundant-roles": {
     code: 'const Nav = () => <nav role="navigation" />;',

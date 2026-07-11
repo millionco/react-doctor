@@ -446,7 +446,6 @@ const effectHasCleanupForUsage = (
         ? context.scopes.symbolFor(returnedValue)?.initializer
         : null;
     if (!cleanupFunction || !isFunctionLike(cleanupFunction)) return;
-    let didFindOpaqueCleanupContract = false;
     walkAst(cleanupFunction.body, (cleanupChild: EsTreeNode) => {
       if (didFindMatchingCleanup) return false;
       if (
@@ -460,18 +459,7 @@ const effectHasCleanupForUsage = (
         didFindMatchingCleanup = true;
         return false;
       }
-      if (!isNodeOfType(cleanupChild, "CallExpression")) return;
-      const releaseVerbName = getReleaseVerbName(cleanupChild);
-      if (
-        releaseVerbName &&
-        (TIMER_CLEANUP_CALLEE_NAMES.has(releaseVerbName) ||
-          GLOBAL_RELEASE_METHOD_NAMES.has(releaseVerbName))
-      ) {
-        return;
-      }
-      didFindOpaqueCleanupContract = true;
     });
-    if (didFindOpaqueCleanupContract) didFindMatchingCleanup = true;
   });
   return didFindMatchingCleanup;
 };

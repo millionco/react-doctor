@@ -1061,6 +1061,26 @@ export const Listener = ({ firstTarget, secondTarget, handler }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("does not let an opaque cleanup call suppress another resource leak", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const LiveFeed = ({ firstUrl, secondUrl }) => {
+  useEffect(() => {
+    const firstSocket = new WebSocket(firstUrl);
+    const secondSocket = new WebSocket(secondUrl);
+    return () => {
+      firstSocket.close();
+      recordCleanup();
+    };
+  }, [firstUrl, secondUrl]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("reports a recurring timer in an inline JSX handler", () => {
     const result = runRule(
       effectNeedsCleanup,

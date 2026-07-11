@@ -330,5 +330,10 @@ export const isGeneratedImageRenderContext = (context: RuleContext, node?: EsTre
   const programRoot = findProgramRoot(node);
   if (!programRoot) return false;
 
-  return collectGeneratedImageJsxNodes(programRoot).has(node);
+  const generatedImageJsxNodes = collectGeneratedImageJsxNodes(programRoot);
+  if (generatedImageJsxNodes.has(node)) return true;
+  if (isNodeOfType(node, "JSXElement")) {
+    return generatedImageJsxNodes.has(node.openingElement);
+  }
+  return false;
 };

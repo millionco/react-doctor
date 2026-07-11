@@ -239,29 +239,49 @@ const isInRenderedOutput = (node: EsTreeNode, componentOrHookNode: EsTreeNode): 
   return false;
 };
 
-const getReturnedValue = (statement: EsTreeNode | null | undefined): EsTreeNode | null => {
-  if (!statement) return null;
-  if (isNodeOfType(statement, "ReturnStatement")) return statement.argument ?? null;
+const statementAlwaysReturns = (statement: EsTreeNode): boolean => {
+  if (isNodeOfType(statement, "ReturnStatement")) return true;
   if (isNodeOfType(statement, "IfStatement")) {
-    return getReturnedValue(statement.consequent) ?? getReturnedValue(statement.alternate);
+    return Boolean(
+      statement.alternate &&
+      statementAlwaysReturns(statement.consequent) &&
+      statementAlwaysReturns(statement.alternate),
+    );
   }
-  if (!isNodeOfType(statement, "BlockStatement")) return null;
-  const lastStatement = statement.body.at(-1);
-  return isNodeOfType(lastStatement, "ReturnStatement") ? (lastStatement.argument ?? null) : null;
+  if (!isNodeOfType(statement, "BlockStatement")) return false;
+  return statement.body.some((childStatement) => statementAlwaysReturns(childStatement));
 };
 
-const findFollowingReturnValue = (
-  ifStatement: EsTreeNodeOfType<"IfStatement">,
-): EsTreeNode | null => {
-  const parentNode = ifStatement.parent;
-  if (!isNodeOfType(parentNode, "BlockStatement")) return null;
-  const statementIndex = parentNode.body.findIndex((statement) => statement === ifStatement);
-  if (statementIndex < 0) return null;
-  for (const statement of parentNode.body.slice(statementIndex + 1)) {
-    const returnedValue = getReturnedValue(statement);
-    if (returnedValue) return returnedValue;
+const getReturnedValues = (statement: EsTreeNode | null | undefined): ReadonlyArray<EsTreeNode> => {
+  if (!statement) return [];
+  if (isNodeOfType(statement, "ReturnStatement")) {
+    return statement.argument ? [statement.argument] : [];
   }
-  return null;
+  if (isNodeOfType(statement, "IfStatement")) {
+    return [...getReturnedValues(statement.consequent), ...getReturnedValues(statement.alternate)];
+  }
+  if (!isNodeOfType(statement, "BlockStatement")) return [];
+  const returnedValues: Array<EsTreeNode> = [];
+  for (const childStatement of statement.body) {
+    returnedValues.push(...getReturnedValues(childStatement));
+    if (statementAlwaysReturns(childStatement)) break;
+  }
+  return returnedValues;
+};
+
+const findFollowingReturnedValues = (
+  ifStatement: EsTreeNodeOfType<"IfStatement">,
+): ReadonlyArray<EsTreeNode> => {
+  const parentNode = ifStatement.parent;
+  if (!isNodeOfType(parentNode, "BlockStatement")) return [];
+  const statementIndex = parentNode.body.findIndex((statement) => statement === ifStatement);
+  if (statementIndex < 0) return [];
+  const returnedValues: Array<EsTreeNode> = [];
+  for (const statement of parentNode.body.slice(statementIndex + 1)) {
+    returnedValues.push(...getReturnedValues(statement));
+    if (statementAlwaysReturns(statement)) break;
+  }
+  return returnedValues;
 };
 
 const branchHasSuppression = (branch: EsTreeNode): boolean => {
@@ -343,10 +363,11 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
         reportHydrationBranch(predicateNode, node.right, null, true);
       },
       IfStatement(node: EsTreeNodeOfType<"IfStatement">) {
-        const consequentValue = getReturnedValue(node.consequent);
-        const alternateValue = getReturnedValue(node.alternate) ?? findFollowingReturnValue(node);
-        if (!consequentValue || !alternateValue) return;
-        if (!isRenderedValue(consequentValue) && !isRenderedValue(alternateValue)) return;
+        const consequentValues = getReturnedValues(node.consequent);
+        const alternateValues = node.alternate
+          ? getReturnedValues(node.alternate)
+          : findFollowingReturnedValues(node);
+        if (consequentValues.length === 0 || alternateValues.length === 0) return;
         const componentOrHookNode = findRenderPhaseComponentOrHook(node.test);
         if (!componentOrHookNode) return;
         const enclosingFunction = findEnclosingFunction(node);
@@ -356,7 +377,14 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
         ) {
           return;
         }
-        reportHydrationBranch(node.test, consequentValue, alternateValue, false);
+        for (const consequentValue of consequentValues) {
+          for (const alternateValue of alternateValues) {
+            if (!isRenderedValue(consequentValue) && !isRenderedValue(alternateValue)) {
+              continue;
+            }
+            reportHydrationBranch(node.test, consequentValue, alternateValue, false);
+          }
+        }
       },
     };
   },

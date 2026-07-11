@@ -36,6 +36,10 @@ describe("no-hydration-branch-on-browser-global", () => {
       `"use client"; export const Page = ({ ready }) => { if (typeof window === "undefined") return <Server />; else if (ready) return <Client />; else return <Fallback />; };`,
     ],
     [
+      "a later differing else-if return",
+      `"use client"; export const Page = ({ ready }) => { if (typeof window === "undefined") return <Server />; else if (ready) return <Server />; else return <Client />; };`,
+    ],
+    [
       "logical JSX branch",
       `"use client"; export const Page = () => <main>{typeof window !== "undefined" && <ClientOnly />}</main>;`,
     ],
@@ -73,6 +77,10 @@ describe("no-hydration-branch-on-browser-global", () => {
     [
       "a mounted early-return gate",
       `import { useEffect, useState } from "react"; export const Page = () => { const [mounted, setMounted] = useState(false); useEffect(() => setMounted(true), []); if (!mounted) return null; return typeof window === "undefined" ? <Server /> : <Client />; };`,
+    ],
+    [
+      "an unreachable return after identical branches",
+      `"use client"; export const Page = () => { if (typeof window === "undefined") return <Same />; return <Same />; return <Different />; };`,
     ],
     [
       "a non-rendered local value",
@@ -126,7 +134,7 @@ describe("no-hydration-branch-on-browser-global", () => {
     ).toEqual([]);
     expect(
       run(
-        `import { ImageResponse } from "next/og"; export const GET = () => new ImageResponse(typeof window === "undefined" ? <div>server</div> : <div>client</div>);`,
+        `"use client"; import { ImageResponse } from "next/og"; export const Page = () => new ImageResponse(typeof window === "undefined" ? <div>server</div> : <div>client</div>);`,
       ).diagnostics,
     ).toEqual([]);
   });

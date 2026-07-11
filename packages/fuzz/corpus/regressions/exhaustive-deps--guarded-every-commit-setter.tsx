@@ -1,3 +1,6 @@
+// rule: exhaustive-deps
+// weakness: effect-semantics
+// source: ISSUES_TO_FIX_ASAP.md (intentional every-commit DOM synchronization)
 import { useLayoutEffect, useState } from "react";
 
 export const VisualContext = () => {

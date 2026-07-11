@@ -14,6 +14,7 @@ import { collectEffectInvokedFunctions } from "../../utils/collect-effect-invoke
 import { enclosingComponentOrHookName } from "../../utils/enclosing-component-or-hook-name.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
+import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
@@ -459,9 +460,29 @@ const resolveStableValue = (
       (reference) => reference.flag === "read" && !isWithinAssignmentTarget(reference.identifier),
     ) &&
     symbol.scope.symbols.filter((candidate) => candidate.name === symbol.name).length === 1;
+  const recursiveFunctionSymbol =
+    symbol?.kind === "function" && isFunctionLike(symbol.declarationNode)
+      ? context.scopes
+          .ownScopeFor(symbol.declarationNode)
+          ?.symbols.find(
+            (candidate) =>
+              candidate.name === symbol.name &&
+              candidate.declarationNode === symbol.declarationNode,
+          )
+      : null;
+  const isUnreassignedFunctionBinding =
+    symbol?.kind === "function" &&
+    symbol.references.every(
+      (reference) => reference.flag === "read" && !isWithinAssignmentTarget(reference.identifier),
+    ) &&
+    (!recursiveFunctionSymbol ||
+      recursiveFunctionSymbol.references.every(
+        (reference) => reference.flag === "read" && !isWithinAssignmentTarget(reference.identifier),
+      )) &&
+    symbol.scope.symbols.filter((candidate) => candidate.name === symbol.name).length === 1;
   if (
     !symbol ||
-    (symbol.kind !== "const" && !isUnreassignedMutableBinding) ||
+    (symbol.kind !== "const" && !isUnreassignedMutableBinding && !isUnreassignedFunctionBinding) ||
     !symbol.initializer ||
     visitedSymbolIds.has(symbol.id)
   ) {
@@ -537,6 +558,87 @@ const isSynchronousIteratorCallback = (functionNode: EsTreeNode): boolean => {
   );
 };
 
+const findDirectCallForReference = (identifier: EsTreeNode): EsTreeNode | null => {
+  const expressionRoot = findTransparentExpressionRoot(identifier);
+  const callNode = expressionRoot.parent;
+  return isNodeOfType(callNode, "CallExpression") && callNode.callee === expressionRoot
+    ? callNode
+    : null;
+};
+
+const findSingleDirectInvocation = (
+  functionNode: EsTreeNode,
+  caller: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const bindingIdentifier = getFunctionBindingIdentifier(functionNode);
+  if (!bindingIdentifier || resolveStableValue(bindingIdentifier, context) !== functionNode) {
+    return null;
+  }
+  const symbol = context.scopes.symbolFor(bindingIdentifier);
+  if (!symbol) return null;
+  const invocationCalls = symbol.references.flatMap((reference) => {
+    const callNode = findDirectCallForReference(reference.identifier);
+    return callNode ? [callNode] : [];
+  });
+  if (invocationCalls.length !== 1) return null;
+  const invocationCall = invocationCalls[0];
+  return findEnclosingFunction(invocationCall) === caller &&
+    isNodeReachableWithinFunction(invocationCall, context)
+    ? invocationCall
+    : null;
+};
+
+const resolveCleanupPathAnchor = (
+  usageNode: EsTreeNode,
+  effectCallback: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode => {
+  const usageFunction = findEnclosingFunction(usageNode);
+  if (!usageFunction || usageFunction === effectCallback) return usageNode;
+  return findSingleDirectInvocation(usageFunction, effectCallback, context) ?? usageNode;
+};
+
+const resolveSingleAssignedCleanupFunction = (
+  expression: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const unwrappedExpression = stripParenExpression(expression);
+  if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
+  const symbol = context.scopes.symbolFor(unwrappedExpression);
+  const initializer = symbol?.initializer ? stripParenExpression(symbol.initializer) : null;
+  if (
+    !symbol ||
+    (symbol.kind !== "let" && symbol.kind !== "var") ||
+    !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+    symbol.declarationNode.id !== symbol.bindingIdentifier ||
+    !isNodeOfType(initializer, "Literal") ||
+    initializer.value !== null ||
+    symbol.scope.symbols.filter((candidate) => candidate.name === symbol.name).length !== 1
+  ) {
+    return null;
+  }
+  const assignmentReferences = symbol.references.filter((reference) =>
+    isWithinAssignmentTarget(reference.identifier),
+  );
+  if (assignmentReferences.length !== 1) return null;
+  const assignmentReference = assignmentReferences[0];
+  const assignmentTarget = findTransparentExpressionRoot(assignmentReference.identifier);
+  const assignmentNode = assignmentTarget.parent;
+  if (
+    !isNodeOfType(assignmentNode, "AssignmentExpression") ||
+    assignmentNode.operator !== "=" ||
+    assignmentNode.left !== assignmentTarget ||
+    findEnclosingFunction(assignmentNode) !== findEnclosingFunction(usage.node) ||
+    !doMatchingNodesCoverEveryPathAfterUsage(usage.node, [assignmentNode], context)
+  ) {
+    return null;
+  }
+  const assignedValue = stripParenExpression(assignmentNode.right);
+  return isFunctionLike(assignedValue) ? assignedValue : null;
+};
+
 const doesCleanupFunctionReleaseUsage = (
   cleanupFunction: EsTreeNode,
   usage: SubscribeLikeUsage,
@@ -563,7 +665,10 @@ const doesCleanupFunctionReleaseUsage = (
       ? cleanupChild.expression
       : cleanupChild;
     if (!isNodeOfType(helperCall, "CallExpression")) return;
-    const helperFunction = resolveStableValue(helperCall.callee, context);
+    const stableHelperFunction = resolveStableValue(helperCall.callee, context);
+    const helperFunction = isNodeOfType(stableHelperFunction, "Identifier")
+      ? resolveSingleAssignedCleanupFunction(stableHelperFunction, usage, context)
+      : stableHelperFunction;
     if (
       helperFunction &&
       isFunctionLike(helperFunction) &&
@@ -643,7 +748,11 @@ const effectHasCleanupForUsage = (
       matchingCleanupReturns.push(child);
     }
   });
-  return doMatchingNodesCoverEveryPathAfterUsage(usage.node, matchingCleanupReturns, context);
+  return doMatchingNodesCoverEveryPathAfterUsage(
+    resolveCleanupPathAnchor(usage.node, callback, context),
+    matchingCleanupReturns,
+    context,
+  );
 };
 
 const findFirstUsageWithoutCleanup = (

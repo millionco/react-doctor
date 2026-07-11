@@ -1591,3 +1591,198 @@ export const Feed = ({ url }) => {
     expect(result.diagnostics).toHaveLength(1);
   });
 });
+
+describe("effect-needs-cleanup CLI integration correlation", () => {
+  it("rejects cleanup methods called on an unrelated resource", () => {
+    for (const releaseName of ["remove", "cleanup", "dispose", "destroy", "teardown"]) {
+      const result = runRule(
+        effectNeedsCleanup,
+        `import { useEffect } from "react";
+declare const node: { ${releaseName}: () => void };
+export const Resize = () => {
+  useEffect(() => {
+    window.addEventListener("resize", () => {});
+    return () => {
+      node.${releaseName}();
+    };
+  }, []);
+  return null;
+};`,
+      );
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+    }
+  });
+
+  it("rejects a returned helper that does not clear its timer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+declare const track: () => void;
+export const Clock = () => {
+  useEffect(() => {
+    setInterval(track, 1000);
+    const stopInterval = () => {
+      track();
+    };
+    return stopInterval;
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects an undefined cleanup binding shadowed inside its installer", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+declare const tick: () => void;
+export const Clock = () => {
+  useEffect(() => {
+    const id = setInterval(tick, 1000);
+    let stopInterval: (() => void) | undefined;
+    const install = () => {
+      const stopInterval = () => clearInterval(id);
+      return stopInterval;
+    };
+    install();
+    return stopInterval;
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a ref timer started and stopped through synchronous helpers", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect, useRef, useState } from "react";
+export const Clock = () => {
+  const [, setTick] = useState(0);
+  const intervalIdRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    const startInterval = () => {
+      if (intervalIdRef.current) return;
+      intervalIdRef.current = setInterval(() => setTick((state) => state + 1), 1000);
+    };
+    const stopInterval = () => {
+      if (!intervalIdRef.current) return;
+      clearInterval(intervalIdRef.current);
+      intervalIdRef.current = null;
+    };
+    startInterval();
+    return stopInterval;
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a listener disposer assigned by a synchronous subscribe helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+declare const win: Window;
+declare const updatePixelRatio: () => void;
+export const Resolution = () => {
+  useEffect(() => {
+    let remove: (() => void) | null = null;
+    const subscribe = () => {
+      const media = win.matchMedia("(resolution: 1dppx)");
+      media.addEventListener("change", updatePixelRatio);
+      remove = () => {
+        media.removeEventListener("change", updatePixelRatio);
+      };
+    };
+    subscribe();
+    return () => {
+      remove?.();
+    };
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a listener disposer assigned on only one control-flow path", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+declare const win: Window;
+declare const updatePixelRatio: () => void;
+export const Resolution = ({ shouldAssignCleanup }) => {
+  useEffect(() => {
+    let remove: (() => void) | null = null;
+    const subscribe = () => {
+      const media = win.matchMedia("(resolution: 1dppx)");
+      media.addEventListener("change", updatePixelRatio);
+      if (shouldAssignCleanup) {
+        remove = () => media.removeEventListener("change", updatePixelRatio);
+      }
+    };
+    subscribe();
+    return () => remove?.();
+  }, [shouldAssignCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects an assigned disposer that releases another listener", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+declare const firstTarget: EventTarget;
+declare const secondTarget: EventTarget;
+declare const handler: EventListener;
+export const Listener = () => {
+  useEffect(() => {
+    let remove: (() => void) | null = null;
+    const subscribe = () => {
+      firstTarget.addEventListener("change", handler);
+      remove = () => secondTarget.removeEventListener("change", handler);
+    };
+    subscribe();
+    return () => remove?.();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a returned function declaration that removes its listener", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+declare const emitter: {
+  on: (eventName: string, handler: () => void) => void;
+  off: (eventName: string, handler: () => void) => void;
+};
+declare const handler: () => void;
+export const Emitter = () => {
+  useEffect(() => {
+    emitter.on("change", handler);
+    function cleanup() {
+      emitter.off("change", handler);
+    }
+    return cleanup;
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});

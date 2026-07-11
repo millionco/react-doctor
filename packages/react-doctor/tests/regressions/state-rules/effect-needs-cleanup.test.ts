@@ -204,7 +204,7 @@ export const ConditionalSubscribe = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("does NOT flag when a cleanup function returns an unrecognized release shape", async () => {
+  it("flags when cleanup only releases an unrelated resource", async () => {
     for (const releaseName of ["remove", "cleanup", "dispose", "destroy", "teardown"]) {
       const projectDir = setupReactProject(
         tempRoot,
@@ -230,7 +230,7 @@ export const Resize = () => {
       );
 
       const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
-      expect(hits).toHaveLength(0);
+      expect(hits).toHaveLength(1);
     }
   });
 
@@ -502,7 +502,7 @@ export const Zoom = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("does NOT flag a returned opaque local cleanup function", async () => {
+  it("flags a returned local function that does not release the timer", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-return-opaque-cleanup", {
       files: {
         "src/Clock.tsx": `import { useEffect } from "react";
@@ -524,10 +524,10 @@ export const Clock = () => {
     });
 
     const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
-    expect(hits).toHaveLength(0);
+    expect(hits).toHaveLength(1);
   });
 
-  it("does NOT flag when the effect returns an opaque cleanup binding", async () => {
+  it("flags a returned cleanup binding left undefined by a shadowing declaration", async () => {
     const projectDir = setupReactProject(tempRoot, "effect-needs-cleanup-opaque-cleanup-binding", {
       files: {
         "src/Clock.tsx": `import { useEffect } from "react";
@@ -552,7 +552,7 @@ export const Clock = () => {
     });
 
     const hits = await collectRuleHits(projectDir, "effect-needs-cleanup");
-    expect(hits).toHaveLength(0);
+    expect(hits).toHaveLength(1);
   });
 
   it("does NOT flag expression-body arrow whose subscribe return is the implicit cleanup (Bugbot #157)", async () => {

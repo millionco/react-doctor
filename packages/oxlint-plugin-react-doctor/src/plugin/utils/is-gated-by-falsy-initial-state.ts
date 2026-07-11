@@ -3,18 +3,17 @@ import type { EsTreeNode } from "./es-tree-node.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { readInitialStateBoolean } from "./read-initial-state-boolean.js";
 
-// True when `node` only renders once a `useState(falsyLiteral)` flag has
-// flipped truthy — that flip can only happen after hydration, so the gated
-// branch cannot appear in the server-vs-first-client-render comparison.
+// True when a proven initial condition short-circuits the path to `node` on
+// both the server and first client render.
 export const isGatedByFalsyInitialState = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   let cursor: EsTreeNode = node;
   let parent: EsTreeNode | null | undefined = node.parent;
   while (parent) {
     if (
       isNodeOfType(parent, "LogicalExpression") &&
-      parent.operator === "&&" &&
       parent.right === cursor &&
-      readInitialStateBoolean(parent.left, scopes) === false
+      ((parent.operator === "&&" && readInitialStateBoolean(parent.left, scopes) === false) ||
+        (parent.operator === "||" && readInitialStateBoolean(parent.left, scopes) === true))
     ) {
       return true;
     }

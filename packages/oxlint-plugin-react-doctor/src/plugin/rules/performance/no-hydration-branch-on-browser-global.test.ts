@@ -91,6 +91,22 @@ describe("no-hydration-branch-on-browser-global", () => {
       "a browser-dependent JSX branch with a truthy const alias",
       `"use client"; export const Page = () => { const enabled = true; return <main>{typeof window !== "undefined" && enabled && <ClientOnly />}</main>; };`,
     ],
+    [
+      "a hydration branch behind state with a lazy true initializer",
+      `import { useState } from "react"; export const Page = () => { const [mounted] = useState(() => true); return mounted && (typeof window === "undefined" ? <Server /> : <Client />); };`,
+    ],
+    [
+      "a hydration branch behind state with an unknown initializer",
+      `import { useState } from "react"; export const Page = ({ initialMounted }) => { const [mounted] = useState(initialMounted); return mounted && (typeof window === "undefined" ? <Server /> : <Client />); };`,
+    ],
+    [
+      "a hydration branch behind state with a mutated initializer alias",
+      `import { useState } from "react"; export const Page = () => { let initialMounted = false; initialMounted = true; const [mounted] = useState(initialMounted); return mounted && (typeof document === "undefined" ? <Server /> : <Client />); };`,
+    ],
+    [
+      "a hydration branch behind an initially false OR operand",
+      `import { useState } from "react"; export const Page = () => { const [mounted] = useState(false); return mounted || (typeof window === "undefined" ? <Server /> : <Client />); };`,
+    ],
   ])("reports different rendered output selected by %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -125,6 +141,26 @@ describe("no-hydration-branch-on-browser-global", () => {
     [
       "a const alias of mounted state",
       `import { useState } from "react"; export const Page = () => { const [mounted] = useState(false); const ready = mounted; return ready && (typeof window === "undefined" ? <Server /> : <Client />); };`,
+    ],
+    [
+      "a hydration branch behind an initially true OR gate",
+      `import { useState } from "react"; export const Page = () => { const [mounted] = useState(false); return !mounted || (typeof window === "undefined" ? <Server /> : <Client />); };`,
+    ],
+    [
+      "a hydration branch behind a nested initially true OR gate",
+      `import { useState } from "react"; export const Page = ({ ready }) => { const [mounted] = useState(false); return !mounted || (ready && (typeof document === "undefined" ? <Server /> : <Client />)); };`,
+    ],
+    [
+      "a hydration branch behind lazy false state",
+      `import { useState } from "react"; export const Page = () => { const [mounted] = useState(() => false); return mounted && (typeof window === "undefined" ? <Server /> : <Client />); };`,
+    ],
+    [
+      "a hydration branch behind unary-negated false state",
+      `import { useState } from "react"; export const Page = () => { const [mounted] = useState(!true); return mounted && (typeof window === "undefined" ? <Server /> : <Client />); };`,
+    ],
+    [
+      "a hydration branch behind an immutable false initializer alias",
+      `import { useState } from "react"; export const Page = () => { const initialMounted = false; const [mounted] = useState(initialMounted); return mounted && (typeof window === "undefined" ? <Server /> : <Client />); };`,
     ],
     [
       "a browser probe inside an OR condition that is already true",

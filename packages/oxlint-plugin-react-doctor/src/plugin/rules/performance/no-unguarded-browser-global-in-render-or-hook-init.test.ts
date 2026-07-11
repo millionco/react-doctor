@@ -57,6 +57,22 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       "a shadowed alias of mounted state",
       `import { useState } from "react"; export const Page = () => { const [mounted] = useState(false); const ready = mounted; return [true].map((ready) => ready && window.innerWidth); };`,
     ],
+    [
+      "a browser read behind state with a lazy true initializer",
+      `import { useState } from "react"; export const Page = () => { const [mounted] = useState(() => true); return mounted && window.innerWidth; };`,
+    ],
+    [
+      "a browser read behind state with an unknown initializer",
+      `import { useState } from "react"; export const Page = ({ initialMounted }) => { const [mounted] = useState(initialMounted); return mounted && window.innerWidth; };`,
+    ],
+    [
+      "a browser read behind state with a mutated initializer alias",
+      `import { useState } from "react"; export const Page = () => { let initialMounted = false; initialMounted = true; const [mounted] = useState(initialMounted); return mounted && window.innerWidth; };`,
+    ],
+    [
+      "a browser read behind an initially false OR operand",
+      `import { useState } from "react"; export const Page = () => { const [mounted] = useState(false); return mounted || window.innerWidth; };`,
+    ],
   ])("reports an unguarded browser read in %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -143,6 +159,26 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
     [
       "a const alias of mounted state",
       `import { useState } from "react"; export const Page = () => { const [mounted] = useState(false); const ready = mounted; return <div>{ready && window.innerWidth}</div>; };`,
+    ],
+    [
+      "an initially true OR short-circuit gate",
+      `import { useState } from "react"; export const Page = () => { const [mounted] = useState(false); return <div>{!mounted || window.innerWidth}</div>; };`,
+    ],
+    [
+      "a nested initially true OR short-circuit gate",
+      `import { useState } from "react"; export const Page = ({ ready }) => { const [mounted] = useState(false); return <div>{!mounted || (ready && window.innerWidth)}</div>; };`,
+    ],
+    [
+      "a falsy state gate with a lazy initializer",
+      `import { useState } from "react"; export const Page = () => { const [mounted] = useState(() => false); return <div>{mounted && window.innerWidth}</div>; };`,
+    ],
+    [
+      "a falsy state gate with unary negation",
+      `import { useState } from "react"; export const Page = () => { const [mounted] = useState(!true); return <div>{mounted && window.innerWidth}</div>; };`,
+    ],
+    [
+      "a falsy state gate with an immutable initializer alias",
+      `import { useState } from "react"; export const Page = () => { const initialMounted = false; const [mounted] = useState(initialMounted); return <div>{mounted && window.innerWidth}</div>; };`,
     ],
     [
       "a shadowed Array.from lookalike",

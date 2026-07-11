@@ -49,9 +49,7 @@ const getTypeofBrowserGlobalName = (
 };
 
 const browserGuardCoversGlobal = (guardName: string, browserGlobalName: string): boolean =>
-  guardName === browserGlobalName ||
-  guardName === "window" ||
-  (guardName === "document" && browserGlobalName === "document");
+  guardName === browserGlobalName || guardName === "window" || guardName === "document";
 
 const mergeAvailability = (
   leftAvailability: boolean | null,

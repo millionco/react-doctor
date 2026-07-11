@@ -28,6 +28,10 @@ describe("no-hydration-branch-on-browser-global", () => {
       `"use client"; export const Page = () => { if (typeof document === "undefined") return <Server />; return <Client />; };`,
     ],
     [
+      "else-if returns",
+      `"use client"; export const Page = ({ ready }) => { if (typeof window === "undefined") return <Server />; else if (ready) return <Client />; else return <Fallback />; };`,
+    ],
+    [
       "logical JSX branch",
       `"use client"; export const Page = () => <main>{typeof window !== "undefined" && <ClientOnly />}</main>;`,
     ],
@@ -57,6 +61,10 @@ describe("no-hydration-branch-on-browser-global", () => {
     [
       "a mounted guard",
       `"use client"; export const Page = ({ isMounted }) => <div>{isMounted && (typeof window === "undefined" ? <Server /> : <Client />)}</div>;`,
+    ],
+    [
+      "a falsy state gate",
+      `import { useState } from "react"; export const Page = () => { const [open] = useState(false); return <div>{open && (typeof window === "undefined" ? <Server /> : <Client />)}</div>; };`,
     ],
     [
       "a non-rendered local value",

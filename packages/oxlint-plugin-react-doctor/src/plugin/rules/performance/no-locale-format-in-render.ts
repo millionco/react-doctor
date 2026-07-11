@@ -11,7 +11,6 @@ import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-e
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
-import { isInsideClientOnlyGuard } from "../../utils/is-inside-client-only-guard.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
@@ -268,13 +267,12 @@ export const noLocaleFormatInRender = defineRule({
 
     const reportIfRenderPhase = (match: LocaleFormatMatch): void => {
       if (reportedNodes.has(match.node)) return;
-      const componentOrHookNode = findRenderPhaseComponentOrHook(match.node);
+      const componentOrHookNode = findRenderPhaseComponentOrHook(match.node, context.scopes);
       if (!componentOrHookNode) return;
       if (fileIsEmailTemplate) return;
       if (!hasClientRenderEvidence(componentOrHookNode, fileHasUseClientDirective)) return;
-      if (isInsideClientOnlyGuard(match.node)) return;
-      if (isGatedByFalsyInitialState(match.node)) return;
-      if (isAfterClientOnlyEarlyReturn(match.node, componentOrHookNode)) return;
+      if (isGatedByFalsyInitialState(match.node, context.scopes)) return;
+      if (isAfterClientOnlyEarlyReturn(match.node, componentOrHookNode, context.scopes)) return;
       if (hasSuppressHydrationWarningAttribute(findEnclosingJsxOpeningElement(match.node))) return;
       if (
         isGeneratedImageRenderContext(
@@ -316,7 +314,7 @@ export const noLocaleFormatInRender = defineRule({
         if (!isNodeOfType(expression, "CallExpression")) return;
         if (!isNodeOfType(expression.callee, "Identifier")) return;
         const helperName = expression.callee.name;
-        const componentOrHookNode = findRenderPhaseComponentOrHook(node);
+        const componentOrHookNode = findRenderPhaseComponentOrHook(node, context.scopes);
         if (!componentOrHookNode) return;
         const binding = findVariableInitializer(expression.callee, helperName);
         const helperNode = binding?.initializer;
@@ -329,9 +327,8 @@ export const noLocaleFormatInRender = defineRule({
           if (!match || reportedNodes.has(match.node)) return;
           if (fileIsEmailTemplate) return;
           if (!hasClientRenderEvidence(componentOrHookNode, fileHasUseClientDirective)) return;
-          if (isInsideClientOnlyGuard(node)) return;
-          if (isGatedByFalsyInitialState(node)) return;
-          if (isAfterClientOnlyEarlyReturn(node, componentOrHookNode)) return;
+          if (isGatedByFalsyInitialState(node, context.scopes)) return;
+          if (isAfterClientOnlyEarlyReturn(node, componentOrHookNode, context.scopes)) return;
           if (hasSuppressHydrationWarningAttribute(findEnclosingJsxOpeningElement(node))) return;
           reportedNodes.add(match.node);
           context.report({

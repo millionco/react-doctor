@@ -14,13 +14,13 @@ import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-e
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
-import { isInsideClientOnlyGuard } from "../../utils/is-inside-client-only-guard.js";
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
+import type { ScopeAnalysis } from "../../semantic/scope-analysis.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
 import type { RuleContext } from "../../utils/rule-context.js";
@@ -235,7 +235,11 @@ const findEnclosingJsxAttribute = (node: EsTreeNode): EsTreeNodeOfType<"JSXAttri
   return null;
 };
 
-const isInRenderedOutput = (node: EsTreeNode, componentOrHookNode: EsTreeNode): boolean => {
+const isInRenderedOutput = (
+  node: EsTreeNode,
+  componentOrHookNode: EsTreeNode,
+  scopes: ScopeAnalysis,
+): boolean => {
   let currentNode = node;
   let parentNode = currentNode.parent;
   while (parentNode) {
@@ -254,7 +258,7 @@ const isInRenderedOutput = (node: EsTreeNode, componentOrHookNode: EsTreeNode): 
         componentOrHookNode.body === currentNode
       );
     }
-    if (isFunctionLike(parentNode) && !executesDuringRender(parentNode)) return false;
+    if (isFunctionLike(parentNode) && !executesDuringRender(parentNode, scopes)) return false;
     currentNode = parentNode;
     parentNode = currentNode.parent;
   }
@@ -362,11 +366,25 @@ const areReturnTreesEquivalent = (
   );
 };
 
-const branchHasSuppression = (branch: EsTreeNode): boolean => {
-  const unwrappedBranch = stripParenExpression(branch);
+const isStructuralRenderedValue = (node: EsTreeNode | null): boolean => {
+  if (!node) return false;
+  const unwrappedNode = stripParenExpression(node);
+  return isNodeOfType(unwrappedNode, "JSXElement") || isNodeOfType(unwrappedNode, "JSXFragment");
+};
+
+const branchRootsSuppressSameElement = (
+  leftBranch: EsTreeNode,
+  rightBranch: EsTreeNode | null,
+): boolean => {
+  if (!rightBranch) return false;
+  const left = stripParenExpression(leftBranch);
+  const right = stripParenExpression(rightBranch);
   return (
-    isNodeOfType(unwrappedBranch, "JSXElement") &&
-    hasSuppressHydrationWarningAttribute(unwrappedBranch.openingElement)
+    isNodeOfType(left, "JSXElement") &&
+    isNodeOfType(right, "JSXElement") &&
+    flattenJsxName(left.openingElement.name) === flattenJsxName(right.openingElement.name) &&
+    hasSuppressHydrationWarningAttribute(left.openingElement) &&
+    hasSuppressHydrationWarningAttribute(right.openingElement)
   );
 };
 
@@ -395,27 +413,31 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
       const predicateMatch = matchBrowserPredicate(predicateNode, context);
       if (!predicateMatch) return;
       if (rightBranch && areRenderedBranchesEquivalent(leftBranch, rightBranch)) return;
-      const componentOrHookNode = findRenderPhaseComponentOrHook(predicateNode);
+      const componentOrHookNode = findRenderPhaseComponentOrHook(predicateNode, context.scopes);
       if (!componentOrHookNode) return;
       if (!hasClientRenderEvidence(componentOrHookNode, fileHasUseClientDirective)) return;
-      if (requiresRenderedContext && !isInRenderedOutput(predicateNode, componentOrHookNode))
+      if (
+        requiresRenderedContext &&
+        !isInRenderedOutput(predicateNode, componentOrHookNode, context.scopes)
+      )
         return;
       if (!isRenderedValue(leftBranch) && (!rightBranch || !isRenderedValue(rightBranch))) {
         const attribute = findEnclosingJsxAttribute(predicateNode);
         if (!attribute || isEventHandlerAttribute(attribute)) return;
       }
+      if (fileIsEmailTemplate || isGatedByFalsyInitialState(predicateNode, context.scopes)) {
+        return;
+      }
+      if (isAfterClientOnlyEarlyReturn(predicateNode, componentOrHookNode, context.scopes)) return;
+      const openingElement = findEnclosingJsxOpeningElement(predicateNode);
       if (
-        fileIsEmailTemplate ||
-        isInsideClientOnlyGuard(predicateNode) ||
-        isGatedByFalsyInitialState(predicateNode)
+        hasSuppressHydrationWarningAttribute(openingElement) &&
+        !isStructuralRenderedValue(leftBranch) &&
+        !isStructuralRenderedValue(rightBranch)
       ) {
         return;
       }
-      if (isAfterClientOnlyEarlyReturn(predicateNode, componentOrHookNode)) return;
-      const openingElement = findEnclosingJsxOpeningElement(predicateNode);
-      if (hasSuppressHydrationWarningAttribute(openingElement)) return;
-      if (branchHasSuppression(leftBranch) || (rightBranch && branchHasSuppression(rightBranch)))
-        return;
+      if (branchRootsSuppressSameElement(leftBranch, rightBranch)) return;
       if (isGeneratedImageRenderContext(context, openingElement ?? leftBranch)) {
         return;
       }
@@ -458,12 +480,13 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
           ? getReturnedValues(node.alternate)
           : findFollowingReturnedValues(node);
         if (consequentValues.length === 0 || alternateValues.length === 0) return;
-        const componentOrHookNode = findRenderPhaseComponentOrHook(node.test);
+        const componentOrHookNode = findRenderPhaseComponentOrHook(node.test, context.scopes);
         if (!componentOrHookNode) return;
         const enclosingFunction = findEnclosingFunction(node);
         if (
           enclosingFunction !== componentOrHookNode &&
-          (!enclosingFunction || !isInRenderedOutput(enclosingFunction, componentOrHookNode))
+          (!enclosingFunction ||
+            !isInRenderedOutput(enclosingFunction, componentOrHookNode, context.scopes))
         ) {
           return;
         }

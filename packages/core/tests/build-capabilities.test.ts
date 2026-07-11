@@ -18,6 +18,7 @@ const baseProject: ProjectInfo = {
   hasTypeScript: true,
   hasReactCompiler: false,
   hasTanStackQuery: false,
+  hasSsrDependency: false,
   nextjsVersion: null,
   nextjsMajorVersion: null,
   hasReactNativeWorkspace: false,
@@ -310,6 +311,17 @@ describe("buildCapabilities", () => {
     for (const framework of ["vite", "cra", "expo", "react-native", "preact", "unknown"] as const) {
       expect(buildCapabilities({ ...baseProject, framework }).has("ssr")).toBe(false);
     }
+  });
+
+  it("emits `ssr` for Vite only with concrete SSR dependency evidence", () => {
+    expect(buildCapabilities({ ...baseProject, framework: "vite" }).has("ssr")).toBe(false);
+    expect(
+      buildCapabilities({
+        ...baseProject,
+        framework: "vite",
+        hasSsrDependency: true,
+      }).has("ssr"),
+    ).toBe(true);
   });
 
   it("does not treat a statically-exported Next.js app as `client-only`", () => {

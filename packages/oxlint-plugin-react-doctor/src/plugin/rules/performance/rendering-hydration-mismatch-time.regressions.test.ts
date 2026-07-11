@@ -96,7 +96,9 @@ describe("performance/rendering-hydration-mismatch-time — regressions", () => 
   });
 
   it("still flags useMemo(() => Date.now(), []) inline in JSX", () => {
-    expectFail(`export const Stamp = () => <time>{useMemo(() => Date.now(), [])}</time>;`);
+    expectFail(
+      `import { useMemo } from "react"; export const Stamp = () => <time>{useMemo(() => Date.now(), [])}</time>;`,
+    );
   });
 
   it("does not flag a useCallback handler factory inline in JSX", () => {
@@ -105,9 +107,9 @@ describe("performance/rendering-hydration-mismatch-time — regressions", () => 
     );
   });
 
-  describe("client-only mounted-flag guards", () => {
-    it("does not flag new Date() inside an isClient && guard (attribute expression)", () => {
-      expectPass(`
+  describe("unproven client-only flag guards", () => {
+    it("flags new Date() behind a custom-hook result without local state provenance", () => {
+      expectFail(`
         export const PointsBox = () => {
           const isClient = useClient();
           return (
@@ -121,16 +123,16 @@ describe("performance/rendering-hydration-mismatch-time — regressions", () => 
       `);
     });
 
-    it("does not flag Date.now() in the branches of an isMounted ternary", () => {
-      expectPass(`
+    it("flags Date.now() behind a prop named isMounted", () => {
+      expectFail(`
         export const Stamp = ({ isMounted }) => (
           <time>{isMounted ? Date.now() : null}</time>
         );
       `);
     });
 
-    it("does not flag new Date() returned from an if (hasMounted) branch", () => {
-      expectPass(`
+    it("flags new Date() behind an unproven hasMounted value", () => {
+      expectFail(`
         export const Clock = () => {
           const hasMounted = useHasMounted();
           if (hasMounted) {
@@ -153,6 +155,7 @@ describe("performance/rendering-hydration-mismatch-time — regressions", () => 
   describe("falsy-initial useState gates", () => {
     it("does not flag new Date() inside JSX gated by a useState(false) flag", () => {
       expectPass(`
+        import { useState } from "react";
         export const EventModal = () => {
           const [showRecurrenceEditor, setShowRecurrenceEditor] = useState(false);
           return (
@@ -173,6 +176,7 @@ describe("performance/rendering-hydration-mismatch-time — regressions", () => 
 
     it("does not flag Date.now() inside JSX gated by a useState(null) toast", () => {
       expectPass(`
+        import { useState } from "react";
         export const Panel = () => {
           const [undoToast, setUndoToast] = useState(null);
           return (
@@ -188,6 +192,7 @@ describe("performance/rendering-hydration-mismatch-time — regressions", () => 
 
     it("still flags when the gating state starts truthy", () => {
       expectFail(`
+        import { useState } from "react";
         export const Panel = () => {
           const [visible, setVisible] = useState(true);
           return <div>{visible && <span>{Date.now()}</span>}</div>;

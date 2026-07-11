@@ -14,6 +14,7 @@ import { findMonorepoRoot } from "./monorepo-root.js";
 import { readPackageJson } from "./package-json.js";
 import { frameworkMergeRank } from "./detectors.js";
 import { isPackageJsonReactNativeAware, isPackageJsonReanimatedAware } from "./rn-metadata.js";
+import { isPackageJsonSsrAware } from "./ssr-metadata.js";
 import { getWorkspacePatterns, resolveWorkspaceDirectories } from "./workspaces.js";
 import { parseReactMajor } from "./version.js";
 
@@ -47,6 +48,7 @@ export interface WorkspaceFacts {
   // Any-of predicates over the scan root + every workspace manifest.
   hasReactNativeAwarePackage: boolean;
   hasReanimatedAwarePackage: boolean;
+  hasSsrDependency: boolean;
   reanimatedVersion: string | null;
 }
 
@@ -134,6 +136,7 @@ const evaluateManifestFacts = (
     facts.hasReactNativeAwarePackage || isPackageJsonReactNativeAware(packageJson);
   facts.hasReanimatedAwarePackage =
     facts.hasReanimatedAwarePackage || isPackageJsonReanimatedAware(packageJson);
+  facts.hasSsrDependency = facts.hasSsrDependency || isPackageJsonSsrAware(packageJson);
 };
 
 interface CollectWorkspaceFactsOptions {
@@ -165,6 +168,7 @@ export const collectWorkspaceFacts = (
     shopifyFlashList: { version: null, sourceDirectory: null },
     hasReactNativeAwarePackage: false,
     hasReanimatedAwarePackage: false,
+    hasSsrDependency: false,
     reanimatedVersion: null,
   };
 

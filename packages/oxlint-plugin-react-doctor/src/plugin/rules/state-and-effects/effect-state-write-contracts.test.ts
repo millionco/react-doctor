@@ -286,6 +286,41 @@ describe("derived-state family contracts", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("stays silent for DOM measurements stored after layout", () => {
+    const measurementCode = `const useDelay = (callback) => {
+      const callbackRef = useRef(callback);
+      callbackRef.current = callback;
+      return useCallback((...args) => callbackRef.current(...args), []);
+    };
+    function Masonry({ items, columnCount, getItemRef }) {
+      const [itemHeights, setItemHeights] = useState([]);
+      const collectItemSize = useDelay(() => {
+        const nextItemHeights = items.map((item) => {
+          const itemElement = getItemRef(item.key);
+          const rectangle = itemElement?.getBoundingClientRect();
+          return [item.key, rectangle ? rectangle.height : 0];
+        });
+        setItemHeights((previousItemHeights) =>
+          isEqual(previousItemHeights, nextItemHeights) ? previousItemHeights : nextItemHeights
+        );
+      });
+      useLayoutEffect(() => {
+        collectItemSize();
+      }, [items, columnCount, collectItemSize]);
+      return itemHeights.length;
+    }`;
+    for (const rule of [
+      noDerivedState,
+      noDerivedStateEffect,
+      noAdjustStateOnPropChange,
+      noInitializeState,
+    ]) {
+      const result = runRule(rule, measurementCode, { forceJsx: true });
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
   it("requires a copied render source for prop-change adjustment", () => {
     const copiedResult = runRule(
       noAdjustStateOnPropChange,

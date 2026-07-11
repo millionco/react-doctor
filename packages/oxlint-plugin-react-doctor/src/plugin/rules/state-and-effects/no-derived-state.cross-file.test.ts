@@ -38,6 +38,24 @@ const runConsumer = (
 };
 
 describe("no-derived-state — cross-file helper return summaries", () => {
+  it("flags a render-phase mirror through an imported pure helper", () => {
+    writeFile("src/derive-label.ts", `export const deriveLabel = (value) => value.trim();\n`);
+    const result = runConsumer(`
+import { deriveLabel } from "./derive-label";
+function Field({ value }) {
+  const previousValue = useRef(value);
+  const [label, setLabel] = useState(deriveLabel(value));
+  if (value !== previousValue.current) {
+    previousValue.current = value;
+    setLabel(deriveLabel(value));
+  }
+  return label;
+}
+`);
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("flags a named helper imported under an alias", () => {
     writeFile(
       "src/select-visible.ts",

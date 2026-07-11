@@ -155,6 +155,58 @@ const isReactNamedImportReference = (ref: Reference | null, importedName: string
     }),
   );
 
+const isReactNamespaceImportReference = (ref: Reference | null): boolean =>
+  Boolean(
+    ref?.resolved?.defs.some((def) => {
+      if (def.type !== "ImportBinding") return false;
+      const declarationNode = def.node as unknown as EsTreeNode;
+      if (
+        !isNodeOfType(declarationNode, "ImportNamespaceSpecifier") &&
+        !isNodeOfType(declarationNode, "ImportDefaultSpecifier")
+      ) {
+        return false;
+      }
+      const importDeclaration = declarationNode.parent;
+      return Boolean(
+        importDeclaration &&
+        isNodeOfType(importDeclaration, "ImportDeclaration") &&
+        isNodeOfType(importDeclaration.source as EsTreeNode, "Literal") &&
+        importDeclaration.source.value === "react",
+      );
+    }),
+  );
+
+export const isGenuineReactHookDeclarator = (
+  analysis: ProgramAnalysis,
+  declarator: EsTreeNode,
+  hookName: string,
+): boolean => {
+  if (
+    !isNodeOfType(declarator, "VariableDeclarator") ||
+    !isNodeOfType(declarator.init, "CallExpression")
+  ) {
+    return false;
+  }
+  const callee = stripParenExpression(declarator.init.callee);
+  if (isNodeOfType(callee, "Identifier")) {
+    const reference = getRef(analysis, callee);
+    if (!reference?.resolved) return callee.name === hookName;
+    return isReactNamedImportReference(reference, hookName);
+  }
+  if (
+    !isNodeOfType(callee, "MemberExpression") ||
+    callee.computed ||
+    !isNodeOfType(callee.object, "Identifier") ||
+    !isNodeOfType(callee.property, "Identifier") ||
+    callee.property.name !== hookName
+  ) {
+    return false;
+  }
+  const namespaceReference = getRef(analysis, callee.object);
+  if (!namespaceReference?.resolved) return callee.object.name === "React";
+  return isReactNamespaceImportReference(namespaceReference);
+};
+
 const isHookCallee = (
   analysis: ProgramAnalysis,
   node: EsTreeNode | null | undefined,

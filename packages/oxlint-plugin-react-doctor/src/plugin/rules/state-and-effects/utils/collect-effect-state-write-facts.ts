@@ -45,6 +45,11 @@ interface EffectValueEvidence {
   readsExternalValue: boolean;
 }
 
+export interface RenderValueEvidence {
+  sourceReferences: ReadonlySet<Reference>;
+  isExclusivelyRenderKnown: boolean;
+}
+
 interface HelperReturnSummary {
   usedParameterIndices: ReadonlySet<number>;
 }
@@ -1281,6 +1286,35 @@ const collectValueEvidence = (
     }
   }
   return evidence;
+};
+
+export const collectRenderValueEvidence = (
+  analysis: ProgramAnalysis,
+  expression: EsTreeNode,
+  componentFunction: EsTreeNode,
+  currentFilename?: string,
+): RenderValueEvidence => {
+  const evidence = collectValueEvidence(
+    analysis,
+    expression,
+    {
+      functionNode: componentFunction,
+      invocation: null,
+      isDeferred: false,
+      introducedBindings: new Set(),
+      substitutions: new Map(),
+      currentFilename,
+    },
+    1,
+  );
+  return {
+    sourceReferences: evidence.sourceReferences,
+    isExclusivelyRenderKnown:
+      evidence.sourceReferences.size > 0 &&
+      !evidence.hasUnknownSource &&
+      !evidence.hasDeferredIntroducedValue &&
+      !evidence.readsExternalValue,
+  };
 };
 
 const findStateSetterReference = (

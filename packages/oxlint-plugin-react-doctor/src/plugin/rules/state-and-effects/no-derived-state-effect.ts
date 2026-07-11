@@ -1,9 +1,10 @@
+import { EFFECT_HOOK_NAMES } from "../../constants/react.js";
 import { defineRule } from "../../utils/define-rule.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
+import { isHookCall } from "../../utils/is-hook-call.js";
 import type { RuleContext } from "../../utils/rule-context.js";
 import { collectEffectStateWriteFacts } from "./utils/collect-effect-state-write-facts.js";
 import { getProgramAnalysis } from "./utils/effect/get-program-analysis.js";
-import { isUseEffect } from "./utils/effect/react.js";
 
 export const noDerivedStateEffect = defineRule({
   id: "no-derived-state-effect",
@@ -14,7 +15,7 @@ export const noDerivedStateEffect = defineRule({
     "Work out derived values while rendering: `const x = fn(dep)`. To reset a component's state when a prop changes, give it a key prop: `<Component key={prop} />`. See https://react.dev/learn/you-might-not-need-an-effect",
   create: (context: RuleContext) => ({
     CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
-      if (!isUseEffect(node)) return;
+      if (!isHookCall(node, EFFECT_HOOK_NAMES)) return;
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;
       const derivedWrite = collectEffectStateWriteFacts(analysis, node).find(

@@ -321,6 +321,22 @@ describe("derived-state family contracts", () => {
     }
   });
 
+  it("reports a render-known copy stored from useLayoutEffect", () => {
+    const result = runRule(
+      noDerivedStateEffect,
+      `function Example({ value }) {
+        const [mirror, setMirror] = useState("");
+        useLayoutEffect(() => {
+          setMirror(value.trim());
+        }, [value]);
+        return <div>{mirror}</div>;
+      }`,
+      { forceJsx: true },
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
   it("stays silent for a debounced copy of render state", () => {
     const debouncedCode = `function useDebouncedState(value, delay) {
       const [state, setState] = useState(value);

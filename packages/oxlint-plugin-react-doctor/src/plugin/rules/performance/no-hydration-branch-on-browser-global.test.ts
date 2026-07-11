@@ -28,6 +28,10 @@ describe("no-hydration-branch-on-browser-global", () => {
       `"use client"; export const Page = () => { if (typeof document === "undefined") return <Server />; return <Client />; };`,
     ],
     [
+      "early return followed by setup and client return",
+      `"use client"; export const Page = () => { if (typeof document === "undefined") return <Server />; const content = getContent(); return <Client content={content} />; };`,
+    ],
+    [
       "else-if returns",
       `"use client"; export const Page = ({ ready }) => { if (typeof window === "undefined") return <Server />; else if (ready) return <Client />; else return <Fallback />; };`,
     ],

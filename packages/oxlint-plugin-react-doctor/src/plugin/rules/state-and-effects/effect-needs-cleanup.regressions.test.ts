@@ -1392,3 +1392,202 @@ export const Pollers = ({ items }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("effect-needs-cleanup stable aliases and indirect cleanup helpers", () => {
+  it("accepts an unreassigned let cleanup alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    let cleanup = () => socket.close();
+    const cleanupAlias = cleanup;
+    return cleanupAlias;
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts an unreassigned var listener options alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Listener = () => {
+  useEffect(() => {
+    const controller = new AbortController();
+    var options = { signal: controller.signal };
+    window.addEventListener("resize", update, options);
+    return () => controller.abort();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a reassigned cleanup alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url, skipCleanup }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    let cleanup = () => socket.close();
+    if (skipCleanup) cleanup = () => {};
+    return cleanup;
+  }, [url, skipCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a cleanup alias reassigned through destructuring", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url, replacement }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    let cleanup = () => socket.close();
+    ({ cleanup } = replacement);
+    return cleanup;
+  }, [url, replacement]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("rejects a reassigned listener options alias", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Listener = ({ useOtherSignal }) => {
+  useEffect(() => {
+    const controller = new AbortController();
+    const otherController = new AbortController();
+    let options = { signal: controller.signal };
+    if (useOtherSignal) options = { signal: otherController.signal };
+    window.addEventListener("resize", update, options);
+    return () => controller.abort();
+  }, [useOtherSignal]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("accepts a socket released by a transitively invoked local helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    const closeSocket = () => socket.close();
+    const releaseConnection = () => closeSocket();
+    return () => releaseConnection();
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a timer released by an invoked local helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Poller = () => {
+  useEffect(() => {
+    const timerId = setInterval(poll, 1000);
+    const stopPolling = () => clearInterval(timerId);
+    return () => stopPolling();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts a listener released by an invoked local helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Listener = ({ target, handler }) => {
+  useEffect(() => {
+    target.addEventListener("change", handler);
+    const stopListening = () => target.removeEventListener("change", handler);
+    return () => stopListening();
+  }, [target, handler]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("rejects a reassigned cleanup helper", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url, skipCleanup }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    let closeSocket = () => socket.close();
+    if (skipCleanup) closeSocket = () => {};
+    return () => closeSocket();
+  }, [url, skipCleanup]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("does not correlate a helper that releases another resource", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url, otherSocket }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    const closeSocket = () => otherSocket.close();
+    return () => closeSocket();
+  }, [url, otherSocket]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("terminates cyclic helper traversal without inventing cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Feed = ({ url }) => {
+  useEffect(() => {
+    const socket = new WebSocket(url);
+    const firstCleanup = () => secondCleanup();
+    const secondCleanup = () => firstCleanup();
+    return () => firstCleanup();
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});

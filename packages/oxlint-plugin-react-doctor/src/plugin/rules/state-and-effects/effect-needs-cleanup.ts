@@ -420,7 +420,29 @@ const findContainingCollectionKey = (
   return null;
 };
 
-const resolveConstValue = (
+const isWithinAssignmentTarget = (identifier: EsTreeNode): boolean => {
+  let currentNode = identifier;
+  let parentNode = currentNode.parent;
+  while (parentNode) {
+    if (isNodeOfType(parentNode, "AssignmentExpression")) {
+      return parentNode.left === currentNode;
+    }
+    if (
+      isNodeOfType(parentNode, "UpdateExpression") ||
+      (isNodeOfType(parentNode, "UnaryExpression") && parentNode.operator === "delete")
+    ) {
+      return parentNode.argument === currentNode;
+    }
+    if (isNodeOfType(parentNode, "ForInStatement") || isNodeOfType(parentNode, "ForOfStatement")) {
+      return parentNode.left === currentNode;
+    }
+    currentNode = parentNode;
+    parentNode = currentNode.parent;
+  }
+  return false;
+};
+
+const resolveStableValue = (
   expression: EsTreeNode | null | undefined,
   context: RuleContext,
   visitedSymbolIds: Set<number> = new Set(),
@@ -429,23 +451,31 @@ const resolveConstValue = (
   const unwrappedExpression = stripParenExpression(expression);
   if (!isNodeOfType(unwrappedExpression, "Identifier")) return unwrappedExpression;
   const symbol = context.scopes.symbolFor(unwrappedExpression);
+  const isUnreassignedMutableBinding =
+    (symbol?.kind === "let" || symbol?.kind === "var") &&
+    isNodeOfType(symbol.declarationNode, "VariableDeclarator") &&
+    symbol.declarationNode.id === symbol.bindingIdentifier &&
+    symbol.references.every(
+      (reference) => reference.flag === "read" && !isWithinAssignmentTarget(reference.identifier),
+    ) &&
+    symbol.scope.symbols.filter((candidate) => candidate.name === symbol.name).length === 1;
   if (
     !symbol ||
-    symbol.kind !== "const" ||
+    (symbol.kind !== "const" && !isUnreassignedMutableBinding) ||
     !symbol.initializer ||
     visitedSymbolIds.has(symbol.id)
   ) {
     return unwrappedExpression;
   }
   visitedSymbolIds.add(symbol.id);
-  return resolveConstValue(symbol.initializer, context, visitedSymbolIds);
+  return resolveStableValue(symbol.initializer, context, visitedSymbolIds);
 };
 
 const resolveObjectExpression = (
   expression: EsTreeNode | null | undefined,
   context: RuleContext,
 ): EsTreeNodeOfType<"ObjectExpression"> | null => {
-  const resolvedExpression = resolveConstValue(expression, context);
+  const resolvedExpression = resolveStableValue(expression, context);
   return isNodeOfType(resolvedExpression, "ObjectExpression") ? resolvedExpression : null;
 };
 
@@ -505,6 +535,45 @@ const isSynchronousIteratorCallback = (functionNode: EsTreeNode): boolean => {
     SYNCHRONOUS_ITERATOR_METHOD_NAMES.has(callee.property.name) &&
     callNode.arguments?.[0] === functionNode
   );
+};
+
+const doesCleanupFunctionReleaseUsage = (
+  cleanupFunction: EsTreeNode,
+  usage: SubscribeLikeUsage,
+  context: RuleContext,
+  visitedFunctions: Set<EsTreeNode> = new Set(),
+): boolean => {
+  if (!isFunctionLike(cleanupFunction) || visitedFunctions.has(cleanupFunction)) return false;
+  visitedFunctions.add(cleanupFunction);
+  let didCleanupFunctionMatch = false;
+  walkAst(cleanupFunction.body, (cleanupChild: EsTreeNode) => {
+    if (didCleanupFunctionMatch) return false;
+    if (
+      cleanupChild !== cleanupFunction.body &&
+      isFunctionLike(cleanupChild) &&
+      !isSynchronousIteratorCallback(cleanupChild)
+    ) {
+      return false;
+    }
+    if (doesReleaseCallMatchUsage(cleanupChild, usage, context)) {
+      didCleanupFunctionMatch = true;
+      return false;
+    }
+    const helperCall = isNodeOfType(cleanupChild, "ChainExpression")
+      ? cleanupChild.expression
+      : cleanupChild;
+    if (!isNodeOfType(helperCall, "CallExpression")) return;
+    const helperFunction = resolveStableValue(helperCall.callee, context);
+    if (
+      helperFunction &&
+      isFunctionLike(helperFunction) &&
+      doesCleanupFunctionReleaseUsage(helperFunction, usage, context, visitedFunctions)
+    ) {
+      didCleanupFunctionMatch = true;
+      return false;
+    }
+  });
+  return didCleanupFunctionMatch;
 };
 
 const effectHasCleanupForUsage = (
@@ -568,24 +637,11 @@ const effectHasCleanupForUsage = (
       const returnedSymbol = context.scopes.symbolFor(returnedValue);
       if (!returnedSymbol?.initializer) return;
     }
-    const cleanupFunction = resolveConstValue(returnedValue, context);
+    const cleanupFunction = resolveStableValue(returnedValue, context);
     if (!cleanupFunction || !isFunctionLike(cleanupFunction)) return;
-    let didCleanupFunctionMatch = false;
-    walkAst(cleanupFunction.body, (cleanupChild: EsTreeNode) => {
-      if (didCleanupFunctionMatch) return false;
-      if (
-        cleanupChild !== cleanupFunction.body &&
-        isFunctionLike(cleanupChild) &&
-        !isSynchronousIteratorCallback(cleanupChild)
-      ) {
-        return false;
-      }
-      if (doesReleaseCallMatchUsage(cleanupChild, usage, context)) {
-        didCleanupFunctionMatch = true;
-        return false;
-      }
-    });
-    if (didCleanupFunctionMatch) matchingCleanupReturns.push(child);
+    if (doesCleanupFunctionReleaseUsage(cleanupFunction, usage, context)) {
+      matchingCleanupReturns.push(child);
+    }
   });
   return doMatchingNodesCoverEveryPathAfterUsage(usage.node, matchingCleanupReturns, context);
 };
@@ -902,7 +958,7 @@ const isPotentiallyReachableFunction = (
   context: RuleContext,
 ): boolean => {
   if (
-    isInlineRetainedHandlerFunction(functionNode) ||
+    isInlineRetainedHandlerFunction(functionNode, context) ||
     isReturnedEffectCleanupFunction(functionNode)
   ) {
     return true;
@@ -988,7 +1044,7 @@ const findRetainedFunctionLeak = (
   // A registration returned directly from the function escapes to the
   // caller, which owns the handle.
   let leak: SubscribeLikeUsage | null = null;
-  const allowConciseReturnEscape = !isInlineRetainedHandlerFunction(retainedFunction);
+  const allowConciseReturnEscape = !isInlineRetainedHandlerFunction(retainedFunction, context);
   walkAst(body, (child: EsTreeNode) => {
     if (leak !== null) return false;
     if (isFunctionLike(child)) return false;
@@ -1074,7 +1130,10 @@ const isRetainedComponentScopeFunction = (functionNode: EsTreeNode): boolean => 
   return enclosingComponentOrHookName(functionNode) !== null;
 };
 
-const isInlineRetainedHandlerFunction = (functionNode: EsTreeNode): boolean => {
+const isInlineRetainedHandlerFunction = (
+  functionNode: EsTreeNode,
+  context: RuleContext,
+): boolean => {
   if (!isFunctionLike(functionNode)) return false;
   const parentNode = functionNode.parent;
   if (isNodeOfType(parentNode, "JSXExpressionContainer")) {
@@ -1101,7 +1160,7 @@ const isInlineRetainedHandlerFunction = (functionNode: EsTreeNode): boolean => {
     (isNodeOfType(objectParent, "CallExpression") &&
       objectParent.arguments.some((argument) => argument === objectExpression)) ||
     isNodeOfType(objectParent, "JSXExpressionContainer");
-  return isPassedInline && findRenderPhaseComponentOrHook(parentNode) !== null;
+  return isPassedInline && findRenderPhaseComponentOrHook(parentNode, context.scopes) !== null;
 };
 
 export const effectNeedsCleanup = defineRule({
@@ -1153,12 +1212,18 @@ export const effectNeedsCleanup = defineRule({
         if (isRetainedComponentScopeFunction(node)) reportRetainedLeak(node);
       },
       ArrowFunctionExpression(node: EsTreeNodeOfType<"ArrowFunctionExpression">) {
-        if (isRetainedComponentScopeFunction(node) || isInlineRetainedHandlerFunction(node)) {
+        if (
+          isRetainedComponentScopeFunction(node) ||
+          isInlineRetainedHandlerFunction(node, context)
+        ) {
           reportRetainedLeak(node);
         }
       },
       FunctionExpression(node: EsTreeNodeOfType<"FunctionExpression">) {
-        if (isRetainedComponentScopeFunction(node) || isInlineRetainedHandlerFunction(node)) {
+        if (
+          isRetainedComponentScopeFunction(node) ||
+          isInlineRetainedHandlerFunction(node, context)
+        ) {
           reportRetainedLeak(node);
         }
       },

@@ -1177,6 +1177,47 @@ const collectValueEvidence = (
       evidence.hasUnknownSource = true;
       return evidence;
     }
+    const localHelperFunction = resolveWrappedCallable(analysis, callee);
+    if (localHelperFunction && !isModuleFunction(localHelperFunction)) {
+      if (
+        isAsyncOrGeneratorFunction(localHelperFunction) ||
+        functionInvokesItself(analysis, localHelperFunction)
+      ) {
+        evidence.hasUnknownSource = true;
+        return evidence;
+      }
+      const localHelperFrame: EffectExecutionFrame = {
+        functionNode: localHelperFunction,
+        invocation: node,
+        isDeferred: false,
+        introducedBindings: new Set(),
+        substitutions: buildSubstitutions(
+          analysis,
+          localHelperFunction,
+          (node.arguments ?? []) as ReadonlyArray<EsTreeNode>,
+          frame,
+        ),
+        currentFilename: frame.currentFilename,
+      };
+      const returnedExpressions = getReturnedExpressions(localHelperFunction);
+      if (returnedExpressions.length === 0) {
+        evidence.hasUnknownSource = true;
+        return evidence;
+      }
+      for (const returnedExpression of returnedExpressions) {
+        mergeEvidence(
+          evidence,
+          collectValueEvidence(
+            analysis,
+            returnedExpression,
+            localHelperFrame,
+            remainingCallFrames - 1,
+            new Set(visitedBindings),
+          ),
+        );
+      }
+      return evidence;
+    }
     const helperFunction = resolveValueHelperFunction(analysis, callee, frame.currentFilename);
     const helperSummary = helperFunction ? summarizeHelperReturn(helperFunction) : null;
     if (!helperSummary) {

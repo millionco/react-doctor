@@ -145,6 +145,73 @@ const Form = ({ names }) => {
   });
 });
 
+describe("no-derived-state — local helper return provenance", () => {
+  it.each([
+    [
+      "an impure function declaration",
+      `function derive(firstName, lastName) {
+        console.log("derive");
+        return firstName + " " + lastName;
+      }`,
+    ],
+    ["an arrow function", `const derive = (firstName, lastName) => firstName + " " + lastName;`],
+    ["a closure", `const derive = () => firstName + " " + lastName;`],
+    [
+      "a useCallback closure",
+      `const derive = useCallback(
+        () => firstName + " " + lastName + firstName,
+        [firstName, lastName],
+      );`,
+    ],
+  ])("flags state copied through %s", (_scenarioLabel, helperSource) => {
+    const result = runRule(
+      noDerivedState,
+      `
+function Form() {
+  const [firstName] = useState("Dwayne");
+  const [lastName] = useState("Johnson");
+  const [fullName, setFullName] = useState("");
+  ${helperSource}
+  useEffect(() => {
+    setFullName(derive(firstName, lastName));
+  }, [firstName, lastName, derive]);
+  return fullName;
+}
+`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it.each([
+    ["an effect-local arrow", `const derive = () => firstName + " " + lastName;`],
+    [
+      "an effect-local function declaration",
+      `function derive() {
+        return firstName + " " + lastName;
+      }`,
+    ],
+  ])("flags state copied through %s", (_scenarioLabel, helperSource) => {
+    const result = runRule(
+      noDerivedState,
+      `
+function Form() {
+  const [firstName] = useState("Dwayne");
+  const [lastName] = useState("Johnson");
+  const [fullName, setFullName] = useState("");
+  useEffect(() => {
+    ${helperSource}
+    setFullName(derive());
+  }, [firstName, lastName]);
+  return fullName;
+}
+`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
 describe("no-derived-state — one-hop module helper summaries", () => {
   it("flags a pure module helper and ignores an unused opaque argument", () => {
     const result = runRule(

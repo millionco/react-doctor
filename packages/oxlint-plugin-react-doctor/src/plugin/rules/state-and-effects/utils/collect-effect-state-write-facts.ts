@@ -991,6 +991,30 @@ const isLocallyConstructedObjectMember = (
     );
   }) === true;
 
+const getUseRefDeclarator = (
+  analysis: ProgramAnalysis,
+  memberExpression: EsTreeNode,
+): EsTreeNode | null => {
+  if (
+    !isNodeOfType(memberExpression, "MemberExpression") ||
+    getStaticMemberName(memberExpression) !== "current" ||
+    !isNodeOfType(memberExpression.object, "Identifier")
+  ) {
+    return null;
+  }
+  const objectReference = getRef(analysis, memberExpression.object);
+  return (
+    objectReference?.resolved?.defs
+      .map((definition) => definition.node as unknown as EsTreeNode)
+      .find(
+        (definitionNode) =>
+          isNodeOfType(definitionNode, "VariableDeclarator") &&
+          isNodeOfType(definitionNode.init, "CallExpression") &&
+          getCallCalleeName(definitionNode.init) === "useRef",
+      ) ?? null
+  );
+};
+
 const collectValueEvidence = (
   analysis: ProgramAnalysis,
   expression: EsTreeNode,
@@ -1000,8 +1024,12 @@ const collectValueEvidence = (
 ): EffectValueEvidence => {
   const node = stripParenExpression(expression);
   const evidence = emptyEvidence();
+  const useRefDeclarator = getUseRefDeclarator(analysis, node);
 
-  if (readsPostMountValue(node) || readsPostMountValueThroughLocals(node, frame.functionNode)) {
+  if (
+    !useRefDeclarator &&
+    (readsPostMountValue(node) || readsPostMountValueThroughLocals(node, frame.functionNode))
+  ) {
     evidence.readsExternalValue = true;
     return evidence;
   }
@@ -1101,6 +1129,79 @@ const collectValueEvidence = (
   }
 
   if (isNodeOfType(node, "MemberExpression")) {
+    if (getStaticMemberName(node) === "current" && isNodeOfType(node.object, "Identifier")) {
+      const objectReference = getRef(analysis, node.object);
+      const refBinding = objectReference?.resolved;
+      const refDeclarator = useRefDeclarator;
+      if (
+        refBinding &&
+        refDeclarator &&
+        isNodeOfType(refDeclarator, "VariableDeclarator") &&
+        isNodeOfType(refDeclarator.init, "CallExpression")
+      ) {
+        if (visitedBindings.has(refBinding)) {
+          evidence.hasUnknownSource = true;
+          return evidence;
+        }
+        const refVisitedBindings = new Set(visitedBindings);
+        refVisitedBindings.add(refBinding);
+        const initialValue = refDeclarator.init.arguments?.[0];
+        if (initialValue) {
+          mergeEvidence(
+            evidence,
+            collectValueEvidence(
+              analysis,
+              initialValue as EsTreeNode,
+              frame,
+              remainingCallFrames,
+              new Set(refVisitedBindings),
+            ),
+          );
+        } else {
+          evidence.hasUnknownSource = true;
+        }
+        for (const candidateReference of refBinding.references) {
+          if (candidateReference.init) continue;
+          const identifier = candidateReference.identifier as unknown as EsTreeNode;
+          const member = identifier.parent;
+          if (
+            !member ||
+            !isNodeOfType(member, "MemberExpression") ||
+            member.object !== identifier ||
+            getStaticMemberName(member) !== "current"
+          ) {
+            evidence.hasUnknownSource = true;
+            continue;
+          }
+          const memberParent = member.parent;
+          if (
+            memberParent &&
+            isNodeOfType(memberParent, "AssignmentExpression") &&
+            memberParent.left === member
+          ) {
+            mergeEvidence(
+              evidence,
+              collectValueEvidence(
+                analysis,
+                memberParent.right as EsTreeNode,
+                frame,
+                remainingCallFrames,
+                new Set(refVisitedBindings),
+              ),
+            );
+            continue;
+          }
+          if (
+            memberParent &&
+            ((isNodeOfType(memberParent, "AssignmentExpression") && memberParent.left !== member) ||
+              isNodeOfType(memberParent, "UpdateExpression"))
+          ) {
+            evidence.hasUnknownSource = true;
+          }
+        }
+        return evidence;
+      }
+    }
     if (isNodeOfType(node.object, "Identifier")) {
       const objectReference = getRef(analysis, node.object);
       if (objectReference && isLocallyConstructedObjectMember(objectReference, node)) {

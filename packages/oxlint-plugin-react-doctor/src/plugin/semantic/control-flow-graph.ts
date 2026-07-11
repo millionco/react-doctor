@@ -542,14 +542,16 @@ export const analyzeControlFlow = (program: EsTreeNode): ControlFlowAnalysis => 
 
   for (let functionIndex = 0; functionIndex < pendingFunctions.length; functionIndex += 1) {
     const functionNode = pendingFunctions[functionIndex];
-    if (!isFunctionLike(functionNode) || functionCfgs.has(functionNode)) continue;
+    if (!isFunctionLike(functionNode) || !functionNode.body || functionCfgs.has(functionNode)) {
+      continue;
+    }
     buildFor(functionNode, functionNode.body);
   }
 
   const getFunctionEntry = (functionNode: EsTreeNode): FunctionCfgEntry | null => {
     const existingEntry = functionCfgs.get(functionNode);
     if (existingEntry) return existingEntry;
-    if (!isFunctionLike(functionNode)) return null;
+    if (!isFunctionLike(functionNode) || !functionNode.body) return null;
     buildFor(functionNode, functionNode.body);
     return functionCfgs.get(functionNode) ?? null;
   };

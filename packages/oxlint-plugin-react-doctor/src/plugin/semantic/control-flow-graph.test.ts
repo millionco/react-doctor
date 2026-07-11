@@ -251,5 +251,17 @@ describe("control-flow-graph", () => {
       expect(cfg!.entry).toBeDefined();
       expect(cfg!.exit).toBeDefined();
     });
+
+    it("skips host function declarations without bodies", () => {
+      const parsed = parseFixture("function declared() {}");
+      const programBody = (parsed.program as unknown as { body: EsTreeNode[] }).body;
+      const declaration = programBody[0];
+      Reflect.set(declaration, "body", null);
+      attachParentReferences(parsed.program);
+
+      const analysis = analyzeControlFlow(parsed.program);
+
+      expect(analysis.cfgFor(declaration)).toBeNull();
+    });
   });
 });

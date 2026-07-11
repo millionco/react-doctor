@@ -9,7 +9,14 @@ import { walkAst } from "../../../utils/walk-ast.js";
 import { getRef, getUpstreamRefs, resolveToFunction } from "./effect/ast.js";
 import { isExternallyDrivenState } from "./effect/external-state.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
-import { getEffectFn, getUseStateDecl, isProp, isState, isStateSetter } from "./effect/react.js";
+import {
+  getEffectFn,
+  getUseStateDecl,
+  hasCleanup,
+  isProp,
+  isState,
+  isStateSetter,
+} from "./effect/react.js";
 import { hasUserInputSetterWriter } from "./has-user-input-setter-writer.js";
 import { readsPostMountValueThroughLocals } from "./reads-post-mount-through-locals.js";
 
@@ -802,6 +809,8 @@ export const collectEffectStateWriteFacts = (
 ): ReadonlyArray<EffectStateWriteFact> => {
   const frames = collectBoundedEffectExecutionFrames(analysis, effectNode);
   if (frames.length === 0) return [];
+  const effectHasCleanup = hasCleanup(analysis, effectNode);
+  const cleanupManagedStateDeclarators = new Set<EsTreeNode>();
   const facts: EffectStateWriteFact[] = [];
 
   for (const frame of frames) {
@@ -849,6 +858,14 @@ export const collectEffectStateWriteFacts = (
       );
       const hasIndependentWriter = hasUserInputSetterWriter(setterReference, effectNode, true);
       const doesMatchStateInitializer = matchesStateInitializer(callExpression, stateDeclarator);
+      if (
+        effectHasCleanup &&
+        (valueEvidence.hasUnknownSource ||
+          valueEvidence.hasDeferredIntroducedValue ||
+          valueEvidence.readsExternalValue)
+      ) {
+        cleanupManagedStateDeclarators.add(stateDeclarator);
+      }
       const isRenderKnownCopy =
         sourceReferences.length > 0 &&
         !valueEvidence.hasUnknownSource &&
@@ -883,6 +900,7 @@ export const collectEffectStateWriteFacts = (
       ),
       isRenderKnownCopy:
         fact.isRenderKnownCopy &&
+        !cleanupManagedStateDeclarators.has(fact.stateDeclarator) &&
         !sourceStateDeclarators.some((sourceDeclarator) =>
           synchronouslyWrittenStateDeclarators.has(sourceDeclarator),
         ),

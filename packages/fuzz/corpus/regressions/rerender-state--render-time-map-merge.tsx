@@ -1,3 +1,6 @@
+// rule: rerender-state-only-in-handlers
+// weakness: render-dataflow
+// source: ISSUES_TO_FIX_ASAP.md (state merged into a rendered Map)
 import { useState } from "react";
 
 interface ApiKeyRecord {

@@ -3,6 +3,7 @@ import type { EsTreeNode } from "../../../utils/es-tree-node.js";
 import { getImportedName } from "../../../utils/get-imported-name.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { isTypeOnlyImport } from "../../../utils/is-type-only-import.js";
+import { resolveConstIdentifierAlias } from "../../../utils/resolve-const-identifier-alias.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import type { RuleContext } from "../../../utils/rule-context.js";
 import type { Rule } from "../../../utils/rule.js";
@@ -36,25 +37,8 @@ export const createDeprecatedReactImportRule = ({
   create: (context: RuleContext) => {
     const namespaceImportSpecifiers = new Set<EsTreeNode>();
     const resolvesToNamespaceImport = (identifier: EsTreeNode): boolean => {
-      const visitedSymbolIds = new Set<number>();
-      let symbol = context.scopes.symbolFor(identifier);
-      while (symbol) {
-        if (namespaceImportSpecifiers.has(symbol.declarationNode)) return true;
-        if (
-          symbol.kind !== "const" ||
-          visitedSymbolIds.has(symbol.id) ||
-          !symbol.initializer ||
-          !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
-          symbol.declarationNode.id !== symbol.bindingIdentifier
-        ) {
-          return false;
-        }
-        visitedSymbolIds.add(symbol.id);
-        const initializer = stripParenExpression(symbol.initializer);
-        if (!isNodeOfType(initializer, "Identifier")) return false;
-        symbol = context.scopes.symbolFor(initializer);
-      }
-      return false;
+      const symbol = resolveConstIdentifierAlias(identifier, context.scopes);
+      return Boolean(symbol && namespaceImportSpecifiers.has(symbol.declarationNode));
     };
 
     return {

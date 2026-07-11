@@ -36,6 +36,22 @@ describe("no-hydration-branch-on-browser-global", () => {
       `"use client"; export const Page = () => { if (typeof window === "undefined") return <Server />; else return <Client />; };`,
     ],
     [
+      "an if statement with a browser predicate on the right of AND",
+      `"use client"; export const Page = ({ ready }) => { if (ready && typeof window !== "undefined") return <Client />; return <Server />; };`,
+    ],
+    [
+      "an if statement with a browser predicate on the right of OR",
+      `"use client"; export const Page = ({ blocked }) => { if (blocked || typeof document === "undefined") return <Server />; return <Client />; };`,
+    ],
+    [
+      "a ternary with a browser predicate on the left of AND",
+      `"use client"; export const Page = ({ ready }) => typeof window !== "undefined" && ready ? <Client /> : <Server />;`,
+    ],
+    [
+      "a ternary with a browser predicate on the left of OR",
+      `"use client"; export const Page = ({ blocked }) => typeof document === "undefined" || blocked ? <Server /> : <Client />;`,
+    ],
+    [
       "early return followed by client return",
       `"use client"; export const Page = () => { if (typeof document === "undefined") return <Server />; return <Client />; };`,
     ],
@@ -101,6 +117,30 @@ describe("no-hydration-branch-on-browser-global", () => {
     [
       "a browser probe inside an OR condition that is already true",
       `"use client"; export const Page = () => { const ready = true; return <main>{(typeof window !== "undefined" || ready) && <ClientOnly />}</main>; };`,
+    ],
+    [
+      "an if statement whose AND operand is always false",
+      `"use client"; export const Page = () => { const enabled = false; if (typeof window !== "undefined" && enabled) return <Client />; return <Server />; };`,
+    ],
+    [
+      "an if statement whose OR operand is always true",
+      `"use client"; export const Page = () => { const enabled = true; if (enabled || typeof document === "undefined") return <Server />; return <Client />; };`,
+    ],
+    [
+      "a ternary whose AND operand is always false",
+      `"use client"; export const Page = () => false && typeof document === "undefined" ? <Server /> : <Client />;`,
+    ],
+    [
+      "a ternary whose OR operand is always true",
+      `"use client"; export const Page = () => typeof window !== "undefined" || true ? <Client /> : <Server />;`,
+    ],
+    [
+      "an if statement with contradictory browser predicates",
+      `"use client"; export const Page = () => { if (typeof window !== "undefined" && !(typeof window !== "undefined")) return <Client />; return <Server />; };`,
+    ],
+    [
+      "a ternary with exhaustive browser predicates",
+      `"use client"; export const Page = () => typeof document === "undefined" || !(typeof document === "undefined") ? <Server /> : <Client />;`,
     ],
     [
       "an unreachable return after identical branches",

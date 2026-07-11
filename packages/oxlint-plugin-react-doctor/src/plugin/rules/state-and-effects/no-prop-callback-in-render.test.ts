@@ -98,6 +98,28 @@ describe("no-prop-callback-in-render", () => {
        };`,
     ],
     [
+      "mapped results from a generic call",
+      `const List = ({ items, transformItem }) => {
+         items.map<string>((item) => transformItem(item));
+         return null;
+       };`,
+    ],
+    [
+      "mapped results from Array.from",
+      `const List = ({ items, transformItem }) => {
+         Array.from(items, (item) => transformItem(item));
+         return null;
+       };`,
+    ],
+    [
+      "a discarded useMemo result",
+      `import { useMemo } from "react";
+       const Panel = ({ value, computeValue }) => {
+         useMemo(() => computeValue(value), [computeValue, value]);
+         return null;
+       };`,
+    ],
+    [
       "a returned callback result",
       `const Panel = ({ value, selectView }) => { return selectView(value); };`,
     ],

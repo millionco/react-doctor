@@ -51,13 +51,15 @@ const isPreservedThroughConciseArrow = (
     if (!isNodeOfType(invocation, "CallExpression") || !executesDuringRender(parent, scopes)) {
       return true;
     }
-    if (
-      isNodeOfType(invocation.callee, "MemberExpression") &&
-      !invocation.callee.computed &&
-      isNodeOfType(invocation.callee.property, "Identifier") &&
-      invocation.arguments?.[0] === parent
-    ) {
-      return invocation.callee.property.name !== "forEach";
+    if (invocation.arguments?.[0] === parent || invocation.arguments?.[1] === parent) {
+      const callee = stripParenExpression(invocation.callee);
+      return !(
+        isNodeOfType(callee, "MemberExpression") &&
+        !callee.computed &&
+        isNodeOfType(callee.property, "Identifier") &&
+        callee.property.name === "forEach" &&
+        invocation.arguments[0] === parent
+      );
     }
     node = invocation;
     parent = node.parent;

@@ -168,11 +168,30 @@ const areRenderedBranchesEquivalent = (
 
 const isRenderedValue = (node: EsTreeNode): boolean => {
   const unwrappedNode = stripParenExpression(node);
+  if (isNodeOfType(unwrappedNode, "Literal")) {
+    return (
+      unwrappedNode.value !== null &&
+      unwrappedNode.value !== true &&
+      unwrappedNode.value !== false &&
+      unwrappedNode.value !== ""
+    );
+  }
+  if (isNodeOfType(unwrappedNode, "TemplateLiteral")) {
+    return unwrappedNode.expressions.length > 0 || unwrappedNode.quasis[0]?.value.cooked !== "";
+  }
+  return isNodeOfType(unwrappedNode, "JSXElement") || isNodeOfType(unwrappedNode, "JSXFragment");
+};
+
+const findBrowserPredicateInLogicalOperand = (
+  node: EsTreeNode,
+  context: RuleContext,
+): EsTreeNode | null => {
+  const unwrappedNode = stripParenExpression(node);
+  if (matchBrowserPredicate(unwrappedNode, context)) return unwrappedNode;
+  if (!isNodeOfType(unwrappedNode, "LogicalExpression")) return null;
   return (
-    isNodeOfType(unwrappedNode, "JSXElement") ||
-    isNodeOfType(unwrappedNode, "JSXFragment") ||
-    isNodeOfType(unwrappedNode, "Literal") ||
-    isNodeOfType(unwrappedNode, "TemplateLiteral")
+    findBrowserPredicateInLogicalOperand(unwrappedNode.left, context) ??
+    findBrowserPredicateInLogicalOperand(unwrappedNode.right, context)
   );
 };
 
@@ -262,26 +281,27 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
     const reportHydrationBranch = (
       predicateNode: EsTreeNode,
       leftBranch: EsTreeNode,
-      rightBranch: EsTreeNode,
+      rightBranch: EsTreeNode | null,
       requiresRenderedContext: boolean,
     ): void => {
       if (reportedNodes.has(predicateNode)) return;
       const predicateMatch = matchBrowserPredicate(predicateNode, context);
       if (!predicateMatch) return;
-      if (areRenderedBranchesEquivalent(leftBranch, rightBranch)) return;
+      if (rightBranch && areRenderedBranchesEquivalent(leftBranch, rightBranch)) return;
       const componentOrHookNode = findRenderPhaseComponentOrHook(predicateNode);
       if (!componentOrHookNode) return;
       if (!hasClientRenderEvidence(componentOrHookNode, fileHasUseClientDirective)) return;
       if (requiresRenderedContext && !isInRenderedOutput(predicateNode, componentOrHookNode))
         return;
-      if (!isRenderedValue(leftBranch) && !isRenderedValue(rightBranch)) {
+      if (!isRenderedValue(leftBranch) && (!rightBranch || !isRenderedValue(rightBranch))) {
         const attribute = findEnclosingJsxAttribute(predicateNode);
         if (!attribute || isEventHandlerAttribute(attribute)) return;
       }
       if (fileIsEmailTemplate || isInsideClientOnlyGuard(predicateNode)) return;
       const openingElement = findEnclosingJsxOpeningElement(predicateNode);
       if (hasSuppressHydrationWarningAttribute(openingElement)) return;
-      if (branchHasSuppression(leftBranch) || branchHasSuppression(rightBranch)) return;
+      if (branchHasSuppression(leftBranch) || (rightBranch && branchHasSuppression(rightBranch)))
+        return;
       if (isGeneratedImageRenderContext(context, openingElement ?? leftBranch)) {
         return;
       }
@@ -302,9 +322,9 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
       },
       LogicalExpression(node: EsTreeNodeOfType<"LogicalExpression">) {
         if (node.operator !== "&&" && node.operator !== "||") return;
-        const predicateMatch = matchBrowserPredicate(node.left, context);
-        if (!predicateMatch || !isRenderedValue(node.right)) return;
-        reportHydrationBranch(node.left, node.right, node.left, true);
+        const predicateNode = findBrowserPredicateInLogicalOperand(node.left, context);
+        if (!predicateNode || !isRenderedValue(node.right)) return;
+        reportHydrationBranch(predicateNode, node.right, null, true);
       },
       IfStatement(node: EsTreeNodeOfType<"IfStatement">) {
         const consequentValue = getReturnedValue(node.consequent);

@@ -737,6 +737,23 @@ export const PingOnce = ({ url }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a subscription removed synchronously in the same effect body", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const ReadOnce = ({ store }) => {
+  useEffect(() => {
+    const subscription = store.subscribe(update);
+    readCurrentValue();
+    subscription.remove();
+  }, [store]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag an observer disconnected at statement level after a one-shot measure", () => {
     const result = runRule(
       effectNeedsCleanup,

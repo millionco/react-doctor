@@ -269,7 +269,7 @@ const removeSynchronouslyReleasedUsages = (
   if (!isNodeOfType(callback.body, "BlockStatement")) return usages;
   const releaseCalls: EsTreeNode[] = [];
   walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
-    if (!isReleaseLikeCall(child, EMPTY_NAME_SET, EMPTY_NAME_SET)) return;
+    if (!getReleaseVerbName(child)) return;
     releaseCalls.push(child);
   });
   if (releaseCalls.length === 0) return usages;
@@ -512,8 +512,6 @@ const findFirstUsageWithoutCleanup = (
 // `setTimeout` is deliberately exempt on this path: a one-shot timer
 // in a handler (debounce, toast dismiss) is idiomatic, self-clearing
 // fire-and-forget.
-
-const EMPTY_NAME_SET: ReadonlySet<string> = new Set();
 
 // `addEventListener(name, handler, { once: true })` self-releases and
 // `{ signal }` delegates release to an AbortController — neither leaks.

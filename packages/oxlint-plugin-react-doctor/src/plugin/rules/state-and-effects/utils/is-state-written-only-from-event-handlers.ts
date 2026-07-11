@@ -5,7 +5,6 @@ import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
 import { getUseStateDecl } from "./effect/react.js";
-import { isSetterWiredToJsxHandler } from "./is-controlled-prop-mirror.js";
 
 const isEventAttribute = (node: EsTreeNode): boolean =>
   isNodeOfType(node, "JSXAttribute") &&
@@ -162,20 +161,12 @@ export const isStateWrittenOnlyFromEventHandlers = (
   const componentFunction = findEnclosingFunction(stateDeclarator);
   if (!componentFunction) return false;
   let hasWriter = false;
-  const writerReferences = setterVariable.references.filter((reference) =>
-    isSetterWriterUsage(reference.identifier as unknown as EsTreeNode),
-  );
   for (const reference of setterVariable.references) {
     const identifier = reference.identifier as unknown as EsTreeNode;
     if (!isSetterWriterUsage(identifier)) continue;
     hasWriter = true;
     const inside = isInsideProvenEventHandler(analysis, identifier, componentFunction, true);
-    if (!inside) {
-      return (
-        writerReferences.length === 1 &&
-        isSetterWiredToJsxHandler(componentFunction, setterVariable.name)
-      );
-    }
+    if (!inside) return false;
   }
   return hasWriter;
 };

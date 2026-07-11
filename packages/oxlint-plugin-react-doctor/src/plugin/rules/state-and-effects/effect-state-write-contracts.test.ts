@@ -29,6 +29,21 @@ describe("derived-state effect-write contract", () => {
     );
   });
 
+  it("reports a proven copy when the effect also has unrelated cleanup", () => {
+    expectDerivedStateDiagnostics(
+      `function Example({ source, value }) {
+        const [mirror, setMirror] = useState("");
+        useEffect(() => {
+          setMirror(value);
+          const subscription = source.subscribe();
+          return () => subscription.remove();
+        }, [source, value]);
+        return <div>{mirror}</div>;
+      }`,
+      1,
+    );
+  });
+
   it("reports copies transformed by pure global namespaces", () => {
     expectDerivedStateDiagnostics(
       `function Example({ count, raw }) {

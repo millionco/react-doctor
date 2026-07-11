@@ -9,14 +9,7 @@ import { walkAst } from "../../../utils/walk-ast.js";
 import { getRef, getUpstreamRefs, resolveToFunction } from "./effect/ast.js";
 import { isExternallyDrivenState } from "./effect/external-state.js";
 import type { ProgramAnalysis } from "./effect/get-program-analysis.js";
-import {
-  getEffectFn,
-  getUseStateDecl,
-  hasCleanup,
-  isProp,
-  isState,
-  isStateSetter,
-} from "./effect/react.js";
+import { getEffectFn, getUseStateDecl, isProp, isState, isStateSetter } from "./effect/react.js";
 import { hasUserInputSetterWriter } from "./has-user-input-setter-writer.js";
 import { readsPostMountValueThroughLocals } from "./reads-post-mount-through-locals.js";
 
@@ -809,7 +802,6 @@ export const collectEffectStateWriteFacts = (
 ): ReadonlyArray<EffectStateWriteFact> => {
   const frames = collectBoundedEffectExecutionFrames(analysis, effectNode);
   if (frames.length === 0) return [];
-  const effectHasCleanup = hasCleanup(analysis, effectNode);
   const facts: EffectStateWriteFact[] = [];
 
   for (const frame of frames) {
@@ -862,8 +854,7 @@ export const collectEffectStateWriteFacts = (
         !valueEvidence.hasUnknownSource &&
         !valueEvidence.hasDeferredIntroducedValue &&
         !valueEvidence.readsExternalValue &&
-        !hasIndependentWriter &&
-        !effectHasCleanup;
+        !hasIndependentWriter;
       facts.push({
         callExpression,
         setterReference,

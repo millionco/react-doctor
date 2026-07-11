@@ -67,6 +67,25 @@ describe("no-event-handler event-source contract", () => {
     );
   });
 
+  it("does not use a shadowed JSX setter name as handler proof", () => {
+    expectEventHandlerDiagnostics(
+      `function Form() {
+        const [submitted, setSubmitted] = useState(false);
+        useEffect(() => {
+          setSubmitted(true);
+        }, []);
+        useEffect(() => {
+          if (submitted) post("/submit");
+        }, [submitted]);
+        {
+          const setSubmitted = () => post("/click");
+          return <button onClick={setSubmitted}>Submit</button>;
+        }
+      }`,
+      0,
+    );
+  });
+
   it("does not confuse a shadowed setter with handler evidence", () => {
     expectEventHandlerDiagnostics(
       `function Form() {

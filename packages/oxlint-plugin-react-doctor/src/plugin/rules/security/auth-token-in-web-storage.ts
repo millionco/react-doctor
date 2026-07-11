@@ -29,9 +29,11 @@ const NON_AUTH_TOKEN_PATTERN =
   /csrf|xsrf|device|fcm|apns|push|design|tokeniz|syntax|css|theme|color/i;
 const STRONG_AUTH_KEY_PATTERN =
   /jwt|secret|password|passwd|credential|private[-_]?key|api[-_]?key|bearer|access[-_]?token|refresh[-_]?token|auth[-_]?token|id[-_]?token|session/i;
+const PRODUCT_API_KEY_COLLECTION_PATTERN = /[._:-](?:created|generated|saved)[-_]?api[-_]?keys$/i;
 
 const isAuthCredentialKey = (key: string): boolean => {
   if (!SENSITIVE_KEY_PATTERN.test(key)) return false;
+  if (PRODUCT_API_KEY_COLLECTION_PATTERN.test(key)) return false;
   if (NON_AUTH_TOKEN_PATTERN.test(key) && !STRONG_AUTH_KEY_PATTERN.test(key)) return false;
   return true;
 };

@@ -20,6 +20,10 @@ describe("no-hydration-branch-on-browser-global", () => {
       `"use client"; export const Page = () => <div data-runtime={typeof window !== "undefined" ? "client" : "server"} />;`,
     ],
     [
+      "globalThis branches",
+      `"use client"; export const Page = () => typeof globalThis.window === "undefined" ? <Server /> : <Client />;`,
+    ],
+    [
       "if/else returns",
       `"use client"; export const Page = () => { if (typeof window === "undefined") return <Server />; else return <Client />; };`,
     ],

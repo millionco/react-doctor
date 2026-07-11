@@ -240,6 +240,7 @@ import { noReactDomDeprecatedApis } from "./rules/architecture/no-react-dom-depr
 import { noReact19DeprecatedApis } from "./rules/architecture/no-react19-deprecated-apis.js";
 import { noRedundantRoles } from "./rules/a11y/no-redundant-roles.js";
 import { noRedundantShouldComponentUpdate } from "./rules/react-builtins/no-redundant-should-component-update.js";
+import { noRefCurrentInRender } from "./rules/state-and-effects/no-ref-current-in-render.js";
 import { noRenderInRender } from "./rules/architecture/no-render-in-render.js";
 import { noRenderPropChildren } from "./rules/architecture/no-render-prop-children.js";
 import { noRenderReturnValue } from "./rules/react-builtins/no-render-return-value.js";
@@ -3148,6 +3149,18 @@ export const reactDoctorRules = [
       requires: [
         ...new Set<Capability>(["react", ...(noRedundantShouldComponentUpdate.requires ?? [])]),
       ],
+    },
+  },
+  {
+    key: "react-doctor/no-ref-current-in-render",
+    id: "no-ref-current-in-render",
+    source: "react-doctor",
+    originallyExternal: false,
+    rule: {
+      ...noRefCurrentInRender,
+      framework: "global",
+      category: "Bugs",
+      requires: [...new Set<Capability>(["react", ...(noRefCurrentInRender.requires ?? [])])],
     },
   },
   {

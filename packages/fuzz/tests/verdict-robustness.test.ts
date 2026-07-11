@@ -32,6 +32,7 @@ const AUDITED_RULE_IDS = [
   "no-nested-component-definition",
   "no-pass-data-to-parent",
   "no-react19-deprecated-apis",
+  "no-ref-current-in-render",
   "no-render-in-render",
   "no-stale-timer-ref",
   "no-usememo-simple-expression",

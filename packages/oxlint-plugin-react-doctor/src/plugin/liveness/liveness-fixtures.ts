@@ -782,6 +782,14 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
   "no-prop-callback-in-effect": {
     code: "\n      const Image = ({ thing, property, onError, onSave, maxSize }: Props) => {\n        const values = useProperty({ thing, property, type: 'url' });\n        const { value, error: thingError } = values;\n        let valueError;\n        if (!value) {\n          valueError = new Error('No value found for property.');\n        }\n        const [error, setError] = useState(thingError ?? valueError);\n\n        useEffect(() => {\n          if (error) {\n            if (onError) {\n              onError(error);\n            }\n          }\n        }, [error, onError]);\n\n        const handleDelete = async () => {\n          try {\n            await deleteImage(value);\n          } catch (deleteError) {\n            setError(deleteError);\n          }\n        };\n\n        const handleChange = async (input) => {\n          const fileSelected = input.files && input.files[0];\n          try {\n            await saveImage(fileSelected);\n            if (onSave) {\n              onSave();\n            }\n          } catch (saveError) {\n            setError(saveError);\n          }\n        };\n\n        return (\n          <div>\n            <input onChange={(event) => handleChange(event.target)} />\n            <button onClick={handleDelete}>Delete</button>\n          </div>\n        );\n      };\n      ",
   },
+  "no-ref-current-in-render": {
+    code: `import { useRef } from "react";
+      const Panel = ({ value }) => {
+        const latestValueRef = useRef(value);
+        latestValueRef.current = value;
+        return null;
+      };`,
+  },
   "no-prop-types": {
     code: 'import PropTypes from "prop-types";\nconst Foo = () => null;\nFoo.propTypes = { name: PropTypes.string };',
   },

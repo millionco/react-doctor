@@ -6,13 +6,6 @@ import { isReactApiCall } from "./is-react-api-call.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 
-const isFalsyInitialValue = (node: EsTreeNode | null | undefined): boolean => {
-  if (!node) return true;
-  const unwrappedNode = stripParenExpression(node);
-  if (isNodeOfType(unwrappedNode, "Literal")) return !unwrappedNode.value;
-  return isNodeOfType(unwrappedNode, "Identifier") && unwrappedNode.name === "undefined";
-};
-
 const readLogicalResult = (
   operator: "&&" | "||",
   leftResult: boolean | null,
@@ -32,8 +25,10 @@ const readIdentifierInitialStateBoolean = (
   identifier: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedBindings: Set<EsTreeNode>,
+  allowLazyInitializer: boolean,
 ): boolean | null => {
   if (!isNodeOfType(identifier, "Identifier")) return null;
+  if (identifier.name === "undefined" && scopes.isGlobalReference(identifier)) return false;
   const binding = findVariableInitializer(identifier, identifier.name);
   if (!binding || visitedBindings.has(binding.bindingIdentifier)) return null;
   visitedBindings.add(binding.bindingIdentifier);
@@ -48,9 +43,9 @@ const readIdentifierInitialStateBoolean = (
     isNodeOfType(initializer, "CallExpression")
   ) {
     const initialState = initializer.arguments?.[0];
-    return !initialState || initialState.type !== "SpreadElement"
-      ? !isFalsyInitialValue(initialState)
-      : null;
+    if (!initialState) return false;
+    if (initialState.type === "SpreadElement") return null;
+    return readInitialStateBooleanInternal(initialState, scopes, visitedBindings, true);
   }
   const declaration = declarator.parent;
   if (
@@ -61,20 +56,60 @@ const readIdentifierInitialStateBoolean = (
   ) {
     return null;
   }
-  return readInitialStateBooleanInternal(initializer, scopes, visitedBindings);
+  return readInitialStateBooleanInternal(
+    initializer,
+    scopes,
+    visitedBindings,
+    allowLazyInitializer,
+  );
 };
 
 const readInitialStateBooleanInternal = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
   visitedBindings: Set<EsTreeNode>,
+  allowLazyInitializer: boolean,
 ): boolean | null => {
   const unwrappedExpression = stripParenExpression(expression);
   if (isNodeOfType(unwrappedExpression, "Literal")) {
     return Boolean(unwrappedExpression.value);
   }
   if (isNodeOfType(unwrappedExpression, "Identifier")) {
-    return readIdentifierInitialStateBoolean(unwrappedExpression, scopes, visitedBindings);
+    return readIdentifierInitialStateBoolean(
+      unwrappedExpression,
+      scopes,
+      visitedBindings,
+      allowLazyInitializer,
+    );
+  }
+  if (
+    allowLazyInitializer &&
+    (isNodeOfType(unwrappedExpression, "ArrowFunctionExpression") ||
+      isNodeOfType(unwrappedExpression, "FunctionExpression"))
+  ) {
+    if (
+      unwrappedExpression.async ||
+      (isNodeOfType(unwrappedExpression, "FunctionExpression") && unwrappedExpression.generator)
+    ) {
+      return null;
+    }
+    if (!isNodeOfType(unwrappedExpression.body, "BlockStatement")) {
+      return readInitialStateBooleanInternal(
+        unwrappedExpression.body,
+        scopes,
+        visitedBindings,
+        false,
+      );
+    }
+    if (unwrappedExpression.body.body.length !== 1) return null;
+    const returnStatement = unwrappedExpression.body.body[0];
+    if (!isNodeOfType(returnStatement, "ReturnStatement") || !returnStatement.argument) return null;
+    return readInitialStateBooleanInternal(
+      returnStatement.argument,
+      scopes,
+      visitedBindings,
+      false,
+    );
   }
   if (
     isNodeOfType(unwrappedExpression, "UnaryExpression") &&
@@ -84,6 +119,7 @@ const readInitialStateBooleanInternal = (
       unwrappedExpression.argument,
       scopes,
       visitedBindings,
+      false,
     );
     return argumentResult === null ? null : !argumentResult;
   }
@@ -93,8 +129,18 @@ const readInitialStateBooleanInternal = (
   ) {
     return readLogicalResult(
       unwrappedExpression.operator,
-      readInitialStateBooleanInternal(unwrappedExpression.left, scopes, new Set(visitedBindings)),
-      readInitialStateBooleanInternal(unwrappedExpression.right, scopes, new Set(visitedBindings)),
+      readInitialStateBooleanInternal(
+        unwrappedExpression.left,
+        scopes,
+        new Set(visitedBindings),
+        false,
+      ),
+      readInitialStateBooleanInternal(
+        unwrappedExpression.right,
+        scopes,
+        new Set(visitedBindings),
+        false,
+      ),
     );
   }
   return null;
@@ -103,4 +149,4 @@ const readInitialStateBooleanInternal = (
 export const readInitialStateBoolean = (
   expression: EsTreeNode,
   scopes: ScopeAnalysis,
-): boolean | null => readInitialStateBooleanInternal(expression, scopes, new Set());
+): boolean | null => readInitialStateBooleanInternal(expression, scopes, new Set(), false);

@@ -100,6 +100,10 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       "a falsy initial visibility gate",
       `import { useState } from "react"; export const Page = () => { const [open] = useState(false); return <div>{open && window.innerWidth}</div>; };`,
     ],
+    [
+      "a mounted early-return gate",
+      `import { useEffect, useState } from "react"; export const Page = () => { const [mounted, setMounted] = useState(false); useEffect(() => setMounted(true), []); if (!mounted) return null; return <div>{window.innerWidth}</div>; };`,
+    ],
   ])("stays quiet for a browser read in %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);

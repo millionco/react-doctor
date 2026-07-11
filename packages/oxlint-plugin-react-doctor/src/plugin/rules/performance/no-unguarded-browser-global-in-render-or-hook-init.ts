@@ -4,6 +4,7 @@ import { findEnclosingJsxOpeningElement } from "../../utils/find-enclosing-jsx-o
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
 import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js";
+import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-early-return.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
@@ -268,6 +269,7 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
         return;
       }
       if (isInsideClientOnlyGuard(node) || isGatedByFalsyInitialState(node)) return;
+      if (isAfterClientOnlyEarlyReturn(node, componentOrHookNode)) return;
       if (isInsideAvailabilityGuard(node, browserGlobalName, context)) return;
       if (isAfterAvailabilityEarlyExit(node, componentOrHookNode, browserGlobalName, context))
         return;

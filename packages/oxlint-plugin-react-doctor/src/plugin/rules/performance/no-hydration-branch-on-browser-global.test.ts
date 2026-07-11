@@ -67,6 +67,10 @@ describe("no-hydration-branch-on-browser-global", () => {
       `import { useState } from "react"; export const Page = () => { const [open] = useState(false); return <div>{open && (typeof window === "undefined" ? <Server /> : <Client />)}</div>; };`,
     ],
     [
+      "a mounted early-return gate",
+      `import { useEffect, useState } from "react"; export const Page = () => { const [mounted, setMounted] = useState(false); useEffect(() => setMounted(true), []); if (!mounted) return null; return typeof window === "undefined" ? <Server /> : <Client />; };`,
+    ],
+    [
       "a non-rendered local value",
       `"use client"; export const Page = () => { const runtime = typeof window === "undefined" ? "server" : "client"; log(runtime); return <div />; };`,
     ],

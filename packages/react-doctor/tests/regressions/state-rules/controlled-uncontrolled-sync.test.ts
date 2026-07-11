@@ -101,13 +101,11 @@ export const Form = () => {
       files: {
         "src/hotkey.tsx": `import { useEffect, useState } from "react";
 
-declare const splitKeys: (keys: string) => string[];
-
 export const Hotkey = ({ keys }: { keys: string }) => {
-  const [keysGroup, setKeysGroup] = useState<string[]>(() => splitKeys(keys));
+  const [keysGroup, setKeysGroup] = useState<string[]>(() => keys.split("+"));
 
   useEffect(() => {
-    setKeysGroup(splitKeys(keys));
+    setKeysGroup(keys.split("+"));
   }, [keys]);
 
   return <span>{keysGroup.join("+")}</span>;

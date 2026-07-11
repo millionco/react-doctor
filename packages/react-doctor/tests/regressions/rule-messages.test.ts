@@ -4,10 +4,9 @@
  * wrong (or generic) suggestion, sending users down the wrong fix path.
  *
  * Covered closed issues:
- *   #19 + #95 — `no-derived-state-effect` must produce TWO different
- *                messages: one for "state reset to a constant on prop
- *                change" (advise a key prop) and one for "true derived
- *                state" (advise computing during render).
+ *   #19 + #95 — `no-derived-state-effect` advises computing proven
+ *                render-source copies during render while ignoring
+ *                independent constant resets.
  *   #83 + #126 — `nextjs-no-client-side-redirect` must adapt to the
  *                router type: Pages Router users should NOT be told to
  *                use `next/navigation` (which they don't have access to);
@@ -28,13 +27,12 @@ afterAll(() => {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 });
 
-describe("issue #19 + #95: noDerivedStateEffect dual-message behavior", () => {
-  it("differentiates 'state reset' (key prop) from 'true derivation' (compute during render)", async () => {
+describe("issue #19 + #95: noDerivedStateEffect message behavior", () => {
+  it("only recommends render derivation for a proven render-source copy", async () => {
     const projectDir = setupReactProject(tempRoot, "issue-19-95", {
       files: {
         "src/components.tsx": `import { useEffect, useState } from "react";
 
-// State RESET on prop change — should suggest a key prop.
 export const Modal = ({ visible }: { visible: boolean }) => {
   const [inputValue, setInputValue] = useState("");
   useEffect(() => {
@@ -43,7 +41,6 @@ export const Modal = ({ visible }: { visible: boolean }) => {
   return <input value={inputValue} onChange={(e) => setInputValue(e.target.value)} />;
 };
 
-// TRUE derived state — should suggest computing during render.
 export const FullName = ({ firstName, lastName }: { firstName: string; lastName: string }) => {
   const [fullName, setFullName] = useState("");
   useEffect(() => {
@@ -64,12 +61,8 @@ export const FullName = ({ firstName, lastName }: { firstName: string; lastName:
       .filter((diagnostic) => diagnostic.rule === "no-derived-state-effect")
       .map((diagnostic) => diagnostic.message);
 
-    expect(messages).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("stale state on every prop change"),
-        expect.stringContaining("you can derive from other values"),
-      ]),
-    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain("you can derive from other values");
   });
 });
 

@@ -511,7 +511,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     filePath: "src/components/save-button.tsx",
   },
   "no-adjust-state-on-prop-change": {
-    code: "function FloatingSheet({ isOpen }) {\n        const [isClosing, setIsClosing] = useState(false);\n        const [isAnimating, setIsAnimating] = useState(false);\n        const [height, setHeight] = useState(0);\n        useEffect(() => {\n          if (isOpen) {\n            setIsClosing(false);\n            setIsAnimating(true);\n            setHeight(0);\n            setTimeout(() => setIsAnimating(false), 300);\n          }\n        }, [isOpen]);\n        return null;\n      }",
+    code: 'function Field({ value }) {\n        const [draft, setDraft] = useState("");\n        useEffect(() => {\n          setDraft(value);\n        }, [value]);\n        return <input value={draft} />;\n      }',
   },
   "no-aria-hidden-on-focusable": {
     code: 'export const A = () => <button aria-hidden={true} type="button">x</button>;',
@@ -567,7 +567,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: "export const Link = (props) => <a {...props} />;\nLink.defaultProps = { appearance: 'default', size: 'regular', disabled: false };",
   },
   "no-derived-state": {
-    code: "const SearchField = forwardRef(({ searchValue, setSearchValue, ...rest }, ref) => {\n        const [search, setSearch] = useState(searchValue);\n        const { onChange, ...newProps } = rest;\n\n        const debouncing = useRef(false);\n        useEffect(() => {\n          debouncing.current = true;\n        }, [search]);\n\n        useEffect(() => {\n          if (!debouncing.current && searchValue === '' && search !== '') {\n            setSearch(searchValue);\n          }\n        }, [searchValue, search]);\n\n        useDebounce(\n          () => {\n            setSearchValue(search);\n            debouncing.current = false;\n          },\n          500,\n          [search]\n        );\n\n        const onChangeHandler = (e) => {\n          setSearch(e.target.value);\n          if (onChange) {\n            onChange(e);\n          }\n        };\n\n        return <input value={search} onChange={onChangeHandler} {...newProps} ref={ref} />;\n      });",
+    code: 'function Profile({ firstName, lastName }) {\n        const [fullName, setFullName] = useState("");\n        useEffect(() => {\n          setFullName(`${firstName} ${lastName}`);\n        }, [firstName, lastName]);\n        return <p>{fullName}</p>;\n      }',
   },
   "no-derived-state-effect": {
     code: "function Field({ value }) {\n        const [draft, setDraft] = useState(value);\n        useEffect(() => { setDraft(value); }, [value]);\n        return <input value={draft} />;\n      }",
@@ -659,7 +659,7 @@ export const livenessFixtures: Readonly<Record<string, LivenessFixture>> = {
     code: 'const Checkbox = () => <input type="checkbox" indeterminate />;',
   },
   "no-initialize-state": {
-    code: "function C() {\n        const [count, setCount] = useState(null);\n        useEffect(() => {\n          const initial = 42;\n          setCount(initial);\n          return () => console.log(initial);\n        }, []);\n        return null;\n      }",
+    code: "function Counter({ initialCount }) {\n        const [count, setCount] = useState(null);\n        useEffect(() => {\n          setCount(initialCount);\n        }, []);\n        return <output>{count}</output>;\n      }",
   },
   "no-inline-bounce-easing": {
     code: 'const C = () => <div className="animate-bounce" />;',

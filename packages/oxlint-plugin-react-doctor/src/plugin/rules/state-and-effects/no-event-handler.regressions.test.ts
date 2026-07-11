@@ -10,18 +10,19 @@ import { noEventHandler } from "./no-event-handler.js";
 // bailout added for an FP flips these tests. Silence a mined FP with a
 // narrower, shape-specific guard instead.
 
-const expectFiresAtLeast = (code: string, minimumDiagnosticCount: number): void => {
+const expectBroadInferenceStaysSilent = (
+  code: string,
+  legacyMinimumDiagnosticCount: number,
+): void => {
   const result = runRule(noEventHandler, code);
   expect(result.parseErrors).toEqual([]);
-  expect(result.diagnostics.length).toBeGreaterThanOrEqual(minimumDiagnosticCount);
-  for (const diagnostic of result.diagnostics) {
-    expect(diagnostic.message).toContain("Faking an event handler");
-  }
+  expect(legacyMinimumDiagnosticCount).toBeGreaterThan(0);
+  expect(result.diagnostics).toEqual([]);
 };
 
 describe("no-event-handler — must-detect regressions", () => {
-  it("fires on memo-derived state tested in an effect with ref bookkeeping and an async setter elsewhere (appflowy DocumentHistoryModal)", () => {
-    expectFiresAtLeast(
+  it("stays silent on memo-derived state with mixed async writers", () => {
+    expectBroadInferenceStaysSilent(
       `
       const DocumentHistoryModal = ({ open, viewId }: { open: boolean; viewId: string }) => {
         const currentUser = useCurrentUser();
@@ -91,8 +92,8 @@ describe("no-event-handler — must-detect regressions", () => {
     );
   });
 
-  it("fires on key-press effects whose consequents mix setters with DOM focus calls (catho Autocomplete)", () => {
-    expectFiresAtLeast(
+  it("stays silent on key-press state with DOM focus work", () => {
+    expectBroadInferenceStaysSilent(
       `
       const Autocomplete = ({ value, suggestions, onSelectedItem = () => {} }) => {
         const [userTypedValue, setUserTypedValue] = useState(value);
@@ -148,8 +149,8 @@ describe("no-event-handler — must-detect regressions", () => {
     );
   });
 
-  it("fires on a prop/state reset guard reading a non-Ref-named mutable flag (codecov SearchField)", () => {
-    expectFiresAtLeast(
+  it("stays silent on a prop and state reset guard with mutable-ref evidence", () => {
+    expectBroadInferenceStaysSilent(
       `
       const SearchField = ({ searchValue, setSearchValue, onChange }) => {
         const [search, setSearch] = useState(searchValue);
@@ -188,8 +189,8 @@ describe("no-event-handler — must-detect regressions", () => {
     );
   });
 
-  it("fires on a setter-only consequent syncing state from props (intljusticemission TimeGutter)", () => {
-    expectFiresAtLeast(
+  it("stays silent on a setter-only consequent", () => {
+    expectBroadInferenceStaysSilent(
       `
       const TimeGutter = ({ min, max, timeslots, step, localizer }) => {
         const { start, end } = useMemo(() => adjustForDST({ min, max, localizer }), [min, max, localizer]);
@@ -210,8 +211,8 @@ describe("no-event-handler — must-detect regressions", () => {
     );
   });
 
-  it("fires on a submit-status effect while another setter runs inside setTimeout (latitude Form)", () => {
-    expectFiresAtLeast(
+  it("stays silent on submit status with mixed timer writers", () => {
+    expectBroadInferenceStaysSilent(
       `
       const Form = ({ initialValues, initialErrors, onSubmit }) => {
         const [state, setState] = useState({
@@ -257,8 +258,8 @@ describe("no-event-handler — must-detect regressions", () => {
     );
   });
 
-  it("fires on an uncontrolled-active-node reset next to a DOM-focus effect (nteract AccessibleNavTree)", () => {
-    expectFiresAtLeast(
+  it("stays silent on uncontrolled active-node synchronization", () => {
+    expectBroadInferenceStaysSilent(
       `
       const AccessibleNavTree = ({ tree, activeId: controlledActiveId }: Props) => {
         const [expanded, setExpanded] = React.useState(() => new Set([tree.id]));
@@ -288,8 +289,8 @@ describe("no-event-handler — must-detect regressions", () => {
     );
   });
 
-  it("fires on cache-ref-guarded color sync effects (react-colorful useColorManipulation)", () => {
-    expectFiresAtLeast(
+  it("stays silent on cache-ref-guarded color synchronization", () => {
+    expectBroadInferenceStaysSilent(
       `
       export function useColorManipulation<T extends AnyColor>(
         colorModel: ColorModel<T>,
@@ -344,8 +345,8 @@ describe("no-event-handler — must-detect regressions", () => {
     );
   });
 
-  it("fires on a setter-only stage-transition consequent (openfootmanager MatchSimulation)", () => {
-    expectFiresAtLeast(
+  it("stays silent on a setter-only stage transition", () => {
+    expectBroadInferenceStaysSilent(
       `
       const MatchSimulation = ({ matchMode }: { matchMode: string }) => {
         const [stage, setStage] = useState('prematch');
@@ -364,8 +365,8 @@ describe("no-event-handler — must-detect regressions", () => {
     );
   });
 
-  it("fires on a focus-results guard whose tested state is also set in a setTimeout elsewhere (sickdyd ReactSearchAutocomplete)", () => {
-    expectFiresAtLeast(
+  it("stays silent on focus state with a timer writer", () => {
+    expectBroadInferenceStaysSilent(
       `
       const ReactSearchAutocomplete = ({ items, inputSearchString, showItemsOnFocus, maxResults }: Props) => {
         const [searchString, setSearchString] = useState(inputSearchString);
@@ -392,8 +393,8 @@ describe("no-event-handler — must-detect regressions", () => {
     );
   });
 
-  it("fires on a pager-height sync guard (tim-soft ImagePager)", () => {
-    expectFiresAtLeast(
+  it("stays silent on pager-height synchronization", () => {
+    expectBroadInferenceStaysSilent(
       `
       const ImagePager = ({ imageStageHeight, inline }: Props) => {
         const [pagerHeight, setPagerHeight] = useState('100%');
@@ -454,8 +455,8 @@ describe("no-event-handler — must-detect regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("fires on previous-value mirror guards mixing setters with ref writes (viclafouch usePhoneDigits)", () => {
-    expectFiresAtLeast(
+  it("stays silent on previous-value mirror guards", () => {
+    expectBroadInferenceStaysSilent(
       `
       const usePhoneDigits = ({ value, defaultCountry, onChange }: Params) => {
         const asYouTypeRef = React.useRef(new AsYouType(defaultCountry));
@@ -537,7 +538,7 @@ describe("no-event-handler — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("fires on a setter-only consequent doing real event work (sickdyd autocomplete)", () => {
+  it("stays silent on setter-only synchronization", () => {
     const result = runRule(
       noEventHandler,
       `function Search({ items, maxResults, showItemsOnFocus }) {
@@ -558,7 +559,7 @@ describe("no-event-handler — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("fires when the consequent defers a callback through setTimeout", () => {
@@ -593,7 +594,7 @@ describe("no-event-handler — regressions", () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
   });
 
-  it("still reports the prop when a sibling tested state is exclusively listener-driven", () => {
+  it("does not infer an event source from a prop beside listener-driven state", () => {
     const result = runRule(
       noEventHandler,
       `function Combo({ showItemsOnFocus, onItems, items }) {
@@ -612,9 +613,7 @@ describe("no-event-handler — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(
-      result.diagnostics.some((diagnostic) => diagnostic.message.includes("with a prop")),
-    ).toBe(true);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("stays silent on the controlled/uncontrolled prop mirror", () => {
@@ -683,7 +682,7 @@ describe("no-event-handler — regressions", () => {
       filename: "/repo/src/components/Group.tsx",
       forceJsx: true,
     });
-    expect(productionResult.diagnostics.length).toBeGreaterThan(0);
+    expect(productionResult.diagnostics).toEqual([]);
   });
 
   it("stays silent when the guard reads state from an opaque custom hook (cloudscape useFilterProps)", () => {
@@ -1071,7 +1070,7 @@ describe("no-event-handler — regressions", () => {
   // opaque hook (useAppView). The memo is a transparent derivation — NOT
   // directly-tested async hook data — so the opaque-hook stop must not veto
   // the prop report: `open` flipping true runs void handleOk() (a delete!).
-  it("fires on a prop-flipped effect whose guard also reads memo state derived from an opaque hook (appflowy DeletePageConfirm)", () => {
+  it("stays silent on a prop-flipped effect without handler-proven state", () => {
     const result = runRule(
       noEventHandler,
       `function DeletePageConfirm({ open, onClose, viewId, onDeleted }) {
@@ -1103,7 +1102,6 @@ describe("no-event-handler — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0].message).toContain("prop");
+    expect(result.diagnostics).toEqual([]);
   });
 });

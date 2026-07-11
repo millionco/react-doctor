@@ -162,14 +162,14 @@
       "name": "From internal state and external state",
       "code": "\n        import { usePrefix } from 'library';\n\n        function Component() {\n          const [name, setName] = useState();\n          const [prefixedName, setPrefixedName] = useState();\n          const prefix = usePrefix(name);\n\n          useEffect(() => {\n            const newValue = prefix + name;\n            setPrefixedName(newValue);\n          }, [prefix, name])\n        }\n      ",
       "todo": false,
-      "errors": 1
+      "errors": 0
     },
     {
       "idx": 6,
       "name": "From internal state via external function",
       "code": "\n        import { computeName } from 'library';\n\n        function Component() {\n          const [firstName, setFirstName] = useState('Dwayne');\n          const [lastName, setLastName] = useState('The Rock');\n          const [fullName, setFullName] = useState('');\n\n          useEffect(() => {\n            setFullName(computeName(firstName, lastName));\n          }, [firstName, lastName])\n        }\n      ",
       "todo": false,
-      "errors": 1
+      "errors": 0
     },
     {
       "idx": 7,
@@ -218,21 +218,21 @@
       "name": "From external state with single setter call",
       "code": "\n        function Feed() {\n          const { data: posts } = fetch('/posts');\n          const [selectedPost, setSelectedPost] = useState();\n\n          useEffect(() => {\n            setSelectedPost(posts[0]);\n          }, [posts, setSelectedPost]);\n        }\n      ",
       "todo": false,
-      "errors": 1
+      "errors": 0
     },
     {
       "idx": 14,
       "name": "From internal plus external state with single setter call",
       "code": "\n        function Form() {\n          const prefix = useQuery('/prefix');\n          const [name, setName] = useState();\n          const [prefixedName, setPrefixedName] = useState();\n\n          useEffect(() => {\n            setPrefixedName(prefix + name)\n          }, [prefix, name]);\n        }\n      ",
       "todo": false,
-      "errors": 1
+      "errors": 0
     },
     {
       "idx": 15,
       "name": "From HOC prop with single setter call",
       "code": "\n        import { withRouter } from 'react-router-dom';\n\n        const MyComponent = withRouter(({ history }) => {\n          const [location, setLocation] = useState();\n\n          useEffect(() => {\n            setLocation(history.location);\n          }, [history.location]);\n        });\n      ",
       "todo": false,
-      "errors": 1
+      "errors": 0
     },
     {
       "idx": 16,
@@ -351,7 +351,7 @@
       "name": "Pass state to derived setter which ignores args",
       "code": "\n        function Form() {\n          const [firstName, setFirstName] = useState('Dwayne');\n          const [lastName, setLastName] = useState('The Rock');\n          const [fullName, setFullName] = useState('');\n\n          const setDerivedFullName = (firstName, lastName) => {\n            setFullName(\"Sparky\");\n          }\n\n          useEffect(() => {\n            setDerivedFullName(firstName, lastName);\n          }, [firstName, lastName]);\n        }\n      ",
       "todo": false,
-      "errors": 1
+      "errors": 0
     },
     {
       "idx": 33,

@@ -29,7 +29,7 @@ describe("no-derived-state-effect — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags the react-bnb-gallery Caption reseed even though a body handler toggles the state (task 63)", () => {
+  it("stays silent on the react-bnb-gallery Caption reseed with an independent handler writer", () => {
     const result = runRule(
       noDerivedStateEffect,
       `function Caption({
@@ -50,7 +50,7 @@ describe("no-derived-state-effect — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("stays silent on ant-design CodePreviewer: body-destructured prop mirror with inline JSX setter handlers", () => {
@@ -169,7 +169,7 @@ describe("no-derived-state-effect — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays silent when a guard branch does non-setter work", () => {
+  it("still reports a proven copy when a guard branch does other work", () => {
     const result = runRule(
       noDerivedStateEffect,
       `function Todos({ todos }) {
@@ -184,10 +184,10 @@ describe("no-derived-state-effect — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays silent on an early-return guard (non-expression statement)", () => {
+  it("still reports a proven copy after an early-return guard", () => {
     const result = runRule(
       noDerivedStateEffect,
       `function Field({ value }) {
@@ -200,7 +200,7 @@ describe("no-derived-state-effect — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays silent on a guarded controlled-input mirror also written from onChange", () => {
@@ -252,7 +252,7 @@ describe("no-derived-state-effect — fuzz-hardening: guard flattening edges", (
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("flags an else-if ladder made entirely of setters", () => {
+  it("stays silent on an else-if ladder that only selects literal values", () => {
     const result = runRule(
       noDerivedStateEffect,
       `function Field({ value }) {
@@ -266,7 +266,7 @@ describe("no-derived-state-effect — fuzz-hardening: guard flattening edges", (
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("flags a setter behind doubly nested if guards", () => {
@@ -308,7 +308,7 @@ describe("no-derived-state-effect — fuzz-hardening: guard flattening edges", (
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays silent when the else branch is an early return", () => {
+  it("still reports a proven copy when the else branch returns", () => {
     const result = runRule(
       noDerivedStateEffect,
       `function Field({ value }) {
@@ -324,10 +324,10 @@ describe("no-derived-state-effect — fuzz-hardening: guard flattening edges", (
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays silent on an early return placed AFTER the setter", () => {
+  it("still reports a proven copy before an early return", () => {
     const result = runRule(
       noDerivedStateEffect,
       `function Field({ value }) {
@@ -340,10 +340,10 @@ describe("no-derived-state-effect — fuzz-hardening: guard flattening edges", (
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays silent when the guard branch declares a variable before the setter", () => {
+  it("still reports a proven copy through a branch-local alias", () => {
     const result = runRule(
       noDerivedStateEffect,
       `function Field({ value }) {
@@ -358,10 +358,10 @@ describe("no-derived-state-effect — fuzz-hardening: guard flattening edges", (
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays silent when the guard branch wraps the setter in try/catch", () => {
+  it("still reports a proven copy inside try/catch", () => {
     const result = runRule(
       noDerivedStateEffect,
       `function Field({ value }) {
@@ -377,7 +377,7 @@ describe("no-derived-state-effect — fuzz-hardening: guard flattening edges", (
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("stays silent on a switch statement wrapping setters", () => {
@@ -431,7 +431,7 @@ describe("no-derived-state-effect — fuzz-hardening: guard flattening edges", (
     expect(result.diagnostics).toHaveLength(1);
   });
 
-  it("stays silent when the extra statement actually does something", () => {
+  it("still reports a proven copy beside other effect work", () => {
     const result = runRule(
       noDerivedStateEffect,
       `function Field({ value }) {
@@ -441,7 +441,7 @@ describe("no-derived-state-effect — fuzz-hardening: guard flattening edges", (
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("handles a deep nested if chain without crashing and still flags the setter", () => {

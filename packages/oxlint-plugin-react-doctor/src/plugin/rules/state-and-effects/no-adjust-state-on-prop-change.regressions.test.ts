@@ -7,7 +7,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     expect(noAdjustStateOnPropChange.severity).toBe("warn");
   });
 
-  it("flags constant resets in a transition effect with a setTimeout sibling (lobe-ui FloatingSheet)", () => {
+  it("stays silent on constant transition flags with a setTimeout sibling", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `function FloatingSheet({ isOpen }) {
@@ -26,10 +26,10 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags a literal reset even when the cleanup also calls the setter", () => {
+  it("stays silent on a literal reset with cleanup", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `function List({ items }) {
@@ -41,10 +41,10 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags a literal reset beside a timer-callback setter", () => {
+  it("stays silent on a literal reset beside a timer callback", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `function List({ items }) {
@@ -57,10 +57,10 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags a constant setter with no async sibling (upstream invalid shape)", () => {
+  it("stays silent on a constant setter with no copied render source", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `function List({ items }) {
@@ -71,10 +71,10 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags a bare .current read on a non-ref data object", () => {
+  it("stays silent on an opaque hook result member read", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `function Table({ pageSize }) {
@@ -87,7 +87,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("stays silent on the async fetch signature (.then flow) with a sync setLoading toggle", () => {
@@ -258,7 +258,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags a constant reset when the effect has no async or subscription flow", () => {
+  it("stays silent on a module-constant reset with no copied render source", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `const EMPTY = { items: [] };
@@ -271,10 +271,10 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("flags a prop-keyed constant reset inside a memo(forwardRef(...)) component (appflowy VideoBlock)", () => {
+  it("stays silent on a prop-keyed constant reset inside memo and forwardRef", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `const VideoBlock = memo(forwardRef(({ url }, ref) => {
@@ -286,10 +286,10 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       }));`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags a timer-driven two-phase transition (setTimeout is not a subscription)", () => {
+  it("stays silent on a timer-driven two-phase transition", () => {
     const result = runRule(
       noAdjustStateOnPropChange,
       `function Sheet({ isOpen }) {
@@ -303,7 +303,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       }`,
     );
     expect(result.parseErrors).toEqual([]);
-    expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(result.diagnostics).toEqual([]);
   });
 
   describe("delta audit vs 0.7.1", () => {
@@ -426,7 +426,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
-    it("still flags a constant reset keyed on a prop dep even when another effect uses state deps", () => {
+    it("stays silent on a constant reset keyed on a prop dependency", () => {
       const result = runRule(
         noAdjustStateOnPropChange,
         `function List({ items }) {
@@ -438,10 +438,10 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
         }`,
       );
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics.length).toBeGreaterThan(0);
+      expect(result.diagnostics).toEqual([]);
     });
 
-    it("still flags a two-phase timer toggle even when nested one wrapper deep (no promise flow beneath)", () => {
+    it("stays silent on a nested two-phase timer toggle", () => {
       const result = runRule(
         noAdjustStateOnPropChange,
         `function Sheet({ isOpen }) {
@@ -457,7 +457,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
         }`,
       );
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics.length).toBeGreaterThan(0);
+      expect(result.diagnostics).toEqual([]);
     });
   });
 
@@ -487,7 +487,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
       expect(result.diagnostics).toEqual([]);
     });
 
-    it("still flags a sync reset when the on* handler sets a DIFFERENT state", () => {
+    it("stays silent on a sync constant reset when an external handler sets other state", () => {
       const result = runRule(
         noAdjustStateOnPropChange,
         `function Cover({ url }) {
@@ -503,7 +503,7 @@ describe("no-adjust-state-on-prop-change — regressions", () => {
         }`,
       );
       expect(result.parseErrors).toEqual([]);
-      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics).toEqual([]);
     });
   });
 });

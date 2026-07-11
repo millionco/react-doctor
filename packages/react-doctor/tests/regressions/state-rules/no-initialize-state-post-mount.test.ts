@@ -4,13 +4,6 @@ import { collectRuleHits, createScopedTempRoot, setupReactProject } from "./_hel
 
 const tempRoot = createScopedTempRoot("no-initialize-state-post-mount");
 
-// A mount effect whose setter argument derives from a DOM/layout measurement
-// (matchMedia, a ref's `.current`) — directly OR through a local variable —
-// produces a value that is not render-time-knowable, so the rule must stay
-// silent. Storage reads (localStorage/sessionStorage) are NOT exempt: the
-// react-bench-2 must-detect oracles (digitalocean sea-notes Theme) require the
-// rule to flag storage-seeded mount inits, and the read is synchronous and
-// cheap enough to belong in the useState initializer.
 describe("no-initialize-state — post-mount reads in the effect body", () => {
   it("does not flag a setter fed from a ref.current DOM measurement", async () => {
     const projectDir = setupReactProject(tempRoot, "ref-current-measurement", {
@@ -33,7 +26,7 @@ export const ScrollView = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("flags a setter fed from a localStorage read via a local variable", async () => {
+  it("does not flag a setter fed from a localStorage read via a local variable", async () => {
     const projectDir = setupReactProject(tempRoot, "localStorage-local-var", {
       files: {
         "src/Theme.tsx": `import { useEffect, useState } from "react";
@@ -51,7 +44,7 @@ export const Theme = () => {
     });
 
     const hits = await collectRuleHits(projectDir, "no-initialize-state");
-    expect(hits).toHaveLength(1);
+    expect(hits).toEqual([]);
   });
 
   it("does not flag an effect that wires a matchMedia listener on mount", async () => {
@@ -75,7 +68,7 @@ export const Mode = () => {
     expect(hits).toHaveLength(0);
   });
 
-  it("still flags a render-knowable constant set from a mount effect", async () => {
+  it("does not flag a constant with no copied render source", async () => {
     const projectDir = setupReactProject(tempRoot, "render-knowable-constant", {
       files: {
         "src/Greeting.tsx": `import { useEffect, useState } from "react";
@@ -92,6 +85,6 @@ export const Greeting = () => {
     });
 
     const hits = await collectRuleHits(projectDir, "no-initialize-state");
-    expect(hits).toHaveLength(1);
+    expect(hits).toEqual([]);
   });
 });

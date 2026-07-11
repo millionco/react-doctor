@@ -47,48 +47,43 @@
       "name": "Setter inside named async function declaration called from effect",
       "code": "\n        function MyComponent() {\n          const [data, setData] = useState(null);\n\n          useEffect(() => {\n            async function loadData() {\n              const response = await fetch('/api');\n              const result = await response.json();\n              setData(result);\n            }\n            loadData();\n          }, []);\n        }\n      ",
       "todo": false
+    },
+    {
+      "idx": 8,
+      "name": "To literal",
+      "code": "\n        function MyComponent() {\n          const [state, setState] = useState();\n\n          useEffect(() => {\n            setState(\"Hello\");\n          }, []);\n\n          return <div>{state}</div>;\n        }\n      ",
+      "todo": false
+    },
+    {
+      "idx": 9,
+      "name": "Literal in an otherwise valid effect",
+      "code": "\n        function MyComponent() {\n          const [state, setState] = useState();\n\n          useEffect(() => {\n            console.log('Meow');\n            setState('Hello World');\n          }, []);\n        }\n      ",
+      "todo": false
+    },
+    {
+      "idx": 10,
+      "name": "To undefined",
+      "code": "\n        function MyComponent() {\n          const [state, setState] = useState('Meow');\n\n          useEffect(() => {\n            setState();\n          }, []);\n        }\n      ",
+      "todo": false
+    },
+    {
+      "idx": 11,
+      "name": "To equivalent literal aliases",
+      "code": "\n        function MyComponent() {\n          const upstream = 'Meow';\n          const [state, setState] = useState(upstream);\n\n          useEffect(() => {\n            const upstreamTwo = 'Meow';\n            setState(upstreamTwo);\n          }, []);\n        }\n      ",
+      "todo": false
+    },
+    {
+      "idx": 12,
+      "name": "Literal with only setter in deps",
+      "code": "\n        function MyComponent() {\n          const [state, setState] = useState();\n\n          useEffect(() => {\n            setState(\"Hello\");\n          }, [setState]);\n        }\n      ",
+      "todo": false
     }
   ],
   "invalid": [
     {
-      "idx": 0,
-      "name": "To literal",
-      "code": "\n        function MyComponent() {\n          const [state, setState] = useState();\n\n          useEffect(() => {\n            setState(\"Hello\");\n          }, []);\n\n          return <div>{state}</div>;\n        }\n      ",
-      "todo": false,
-      "errors": 1
-    },
-    {
       "idx": 1,
       "name": "To internal data",
       "code": "\n        function MyComponent() {\n          const [state, setState] = useState();\n          const [otherState, setOtherState] = useState('Meow');\n\n          useEffect(() => {\n            setState(otherState);\n          }, []);\n        }\n      ",
-      "todo": false,
-      "errors": 1
-    },
-    {
-      "idx": 2,
-      "name": "In an otherwise valid effect",
-      "code": "\n        function MyComponent() {\n          const [state, setState] = useState();\n\n          useEffect(() => {\n            console.log('Meow');\n            setState('Hello World');\n          }, []);\n        }\n      ",
-      "todo": false,
-      "errors": 1
-    },
-    {
-      "idx": 3,
-      "name": "To undefined",
-      "code": "\n        function MyComponent() {\n          const [state, setState] = useState('Meow');\n\n          useEffect(() => {\n            setState();\n          }, []);\n        }\n      ",
-      "todo": false,
-      "errors": 1
-    },
-    {
-      "idx": 4,
-      "name": "To equivalent derived literals",
-      "code": "\n        function MyComponent() {\n          const upstream = 'Meow';\n          const [state, setState] = useState(upstream);\n\n          useEffect(() => {\n            const upstreamTwo = 'Meow';\n            setState(upstreamTwo);\n          }, []);\n        }\n      ",
-      "todo": false,
-      "errors": 1
-    },
-    {
-      "idx": 5,
-      "name": "Only setter in deps",
-      "code": "\n        function MyComponent() {\n          const [state, setState] = useState();\n\n          useEffect(() => {\n            setState(\"Hello\");\n          }, [setState]);\n        }\n      ",
       "todo": false,
       "errors": 1
     }

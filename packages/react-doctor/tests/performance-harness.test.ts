@@ -136,7 +136,7 @@ describe("performance harness", () => {
     expect(() => parseStressPerformanceArguments(["--files", "1e3"])).toThrow("--files");
   });
 
-  it("isolates cache cohorts and quotes profile paths", () => {
+  it("isolates cache cohorts and supports profile paths with spaces", () => {
     const profileDirectory = path.join(createTemporaryDirectory(), "profiles with spaces");
     fs.mkdirSync(profileDirectory);
     const sharedInput: Omit<BuildBenchmarkEnvironmentInput, "cacheCohort"> = {
@@ -161,16 +161,38 @@ describe("performance harness", () => {
 
     expect(coldEnvironment.REACT_DOCTOR_NO_CACHE).toBeUndefined();
     expect(noCacheEnvironment.REACT_DOCTOR_NO_CACHE).toBe("1");
-    expect(coldEnvironment.NODE_OPTIONS).toContain(
-      `--cpu-prof-dir=${JSON.stringify(profileDirectory)}`,
+    expect(coldEnvironment.NODE_OPTIONS).toContain("--trace-warnings");
+    expect(coldEnvironment.NODE_OPTIONS?.split(" ").includes("--cpu-prof")).toBe(
+      process.allowedNodeEnvironmentFlags.has("--cpu-prof"),
     );
-    expect(coldEnvironment.NODE_OPTIONS).toContain(
-      `--heap-prof-dir=${JSON.stringify(profileDirectory)}`,
+    if (process.allowedNodeEnvironmentFlags.has("--cpu-prof-dir")) {
+      expect(coldEnvironment.NODE_OPTIONS).toContain(
+        `--cpu-prof-dir=${JSON.stringify(profileDirectory)}`,
+      );
+    }
+    if (process.allowedNodeEnvironmentFlags.has("--heap-prof-dir")) {
+      expect(coldEnvironment.NODE_OPTIONS).toContain(
+        `--heap-prof-dir=${JSON.stringify(profileDirectory)}`,
+      );
+    }
+    const profileProbe = spawnSync(
+      process.execPath,
+      [
+        "--cpu-prof",
+        `--cpu-prof-dir=${profileDirectory}`,
+        "--heap-prof",
+        `--heap-prof-dir=${profileDirectory}`,
+        "-e",
+        "",
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...coldEnvironment,
+          NODE_OPTIONS: "--trace-warnings",
+        },
+      },
     );
-    const profileProbe = spawnSync(process.execPath, ["-e", ""], {
-      encoding: "utf8",
-      env: coldEnvironment,
-    });
     expect(profileProbe.status, profileProbe.stderr).toBe(0);
     const profileFilenames = fs.readdirSync(profileDirectory);
     expect(profileFilenames.some((filename) => filename.endsWith(".cpuprofile"))).toBe(true);
@@ -360,8 +382,14 @@ describe("performance harness", () => {
     );
     expect(cpuProcessRoles).toContain("react-doctor");
     expect(cpuProcessRoles).toContain("oxlint");
-    expect(cpuProcessRoles).toContain("dead-code");
-    expect(heapAnalysis.processes.length).toBeGreaterThanOrEqual(3);
+    if (process.allowedNodeEnvironmentFlags.has("--cpu-prof")) {
+      expect(cpuProcessRoles).toContain("dead-code");
+    } else {
+      expect(cpuProcessRoles.size).toBeGreaterThanOrEqual(2);
+    }
+    expect(heapAnalysis.processes.length).toBeGreaterThanOrEqual(
+      process.allowedNodeEnvironmentFlags.has("--heap-prof") ? 3 : 2,
+    );
   });
 
   it("summarizes distributions with a robust median and MAD", () => {

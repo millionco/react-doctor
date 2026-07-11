@@ -61,10 +61,21 @@ export const runBenchmarkSample = (input: RunBenchmarkSampleInput): BenchmarkSam
     "none",
     ...(input.mode === "lint" ? ["--no-dead-code"] : []),
   ];
+  const nodeArguments = [
+    ...(input.cpuProfile && profileDirectory !== null
+      ? ["--cpu-prof", `--cpu-prof-dir=${profileDirectory}`]
+      : []),
+    ...(input.heapProfile && profileDirectory !== null
+      ? ["--heap-prof", `--heap-prof-dir=${profileDirectory}`]
+      : []),
+    ...cliArguments,
+  ];
   const timeArguments = resolveTimeArguments();
   const executable = timeArguments.length > 0 ? "/usr/bin/time" : process.execPath;
   const executableArguments =
-    timeArguments.length > 0 ? [...timeArguments, process.execPath, ...cliArguments] : cliArguments;
+    timeArguments.length > 0
+      ? [...timeArguments, process.execPath, ...nodeArguments]
+      : nodeArguments;
   const startedAt = performance.now();
   const result = spawnSync(executable, executableArguments, {
     cwd: input.repositoryRoot,

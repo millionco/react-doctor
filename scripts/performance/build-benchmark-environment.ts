@@ -16,14 +16,26 @@ export const buildBenchmarkEnvironment = (
 ): NodeJS.ProcessEnv => {
   const nodeOptions = [
     input.baseEnvironment.NODE_OPTIONS,
-    !input.cpuProfile || input.profileDirectory === null ? null : "--cpu-prof",
-    !input.cpuProfile || input.profileDirectory === null
-      ? null
-      : `--cpu-prof-dir=${JSON.stringify(input.profileDirectory)}`,
-    !input.heapProfile || input.profileDirectory === null ? null : "--heap-prof",
-    !input.heapProfile || input.profileDirectory === null
-      ? null
-      : `--heap-prof-dir=${JSON.stringify(input.profileDirectory)}`,
+    input.cpuProfile &&
+    input.profileDirectory !== null &&
+    process.allowedNodeEnvironmentFlags.has("--cpu-prof")
+      ? "--cpu-prof"
+      : null,
+    input.cpuProfile &&
+    input.profileDirectory !== null &&
+    process.allowedNodeEnvironmentFlags.has("--cpu-prof-dir")
+      ? `--cpu-prof-dir=${JSON.stringify(input.profileDirectory)}`
+      : null,
+    input.heapProfile &&
+    input.profileDirectory !== null &&
+    process.allowedNodeEnvironmentFlags.has("--heap-prof")
+      ? "--heap-prof"
+      : null,
+    input.heapProfile &&
+    input.profileDirectory !== null &&
+    process.allowedNodeEnvironmentFlags.has("--heap-prof-dir")
+      ? `--heap-prof-dir=${JSON.stringify(input.profileDirectory)}`
+      : null,
   ]
     .filter((option) => option)
     .join(" ");

@@ -336,6 +336,28 @@ const findContainingCollectionKey = (
   return null;
 };
 
+const resolveObjectExpression = (
+  expression: EsTreeNode | null | undefined,
+  context: RuleContext,
+  visitedSymbolIds: Set<number> = new Set(),
+): EsTreeNodeOfType<"ObjectExpression"> | null => {
+  if (!expression) return null;
+  const unwrappedExpression = stripParenExpression(expression);
+  if (isNodeOfType(unwrappedExpression, "ObjectExpression")) return unwrappedExpression;
+  if (!isNodeOfType(unwrappedExpression, "Identifier")) return null;
+  const symbol = context.scopes.symbolFor(unwrappedExpression);
+  if (
+    !symbol ||
+    symbol.kind !== "const" ||
+    !symbol.initializer ||
+    visitedSymbolIds.has(symbol.id)
+  ) {
+    return null;
+  }
+  visitedSymbolIds.add(symbol.id);
+  return resolveObjectExpression(symbol.initializer, context, visitedSymbolIds);
+};
+
 const getListenerAbortControllerKey = (
   usage: SubscribeLikeUsage,
   context: RuleContext,
@@ -347,8 +369,9 @@ const getListenerAbortControllerKey = (
     return null;
   }
   const optionsArgument = usage.node.arguments?.[2];
-  if (!isNodeOfType(optionsArgument, "ObjectExpression")) return null;
-  for (const property of optionsArgument.properties ?? []) {
+  const optionsObject = resolveObjectExpression(optionsArgument, context);
+  if (!optionsObject) return null;
+  for (const property of optionsObject.properties ?? []) {
     if (!isNodeOfType(property, "Property") || getStaticPropertyKeyName(property) !== "signal") {
       continue;
     }

@@ -168,6 +168,24 @@ export const Listener = () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag an abort signal passed through a variable options bag", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const Listener = () => {
+  useEffect(() => {
+    const controller = new AbortController();
+    const options = { signal: controller.signal };
+    window.addEventListener("resize", update, options);
+    return () => controller.abort();
+  }, []);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   it("does not flag an `.off(name)` remove-all cleanup with no handler argument", () => {
     const result = runRule(
       effectNeedsCleanup,

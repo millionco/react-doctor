@@ -1,5 +1,6 @@
 import { defineRule } from "../../utils/define-rule.js";
 import { executesDuringRender } from "../../utils/executes-during-render.js";
+import { findEnclosingFunction } from "../../utils/find-enclosing-function.js";
 import { findEnclosingJsxOpeningElement } from "../../utils/find-enclosing-jsx-opening-element.js";
 import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-component-or-hook.js";
 import { findTransparentExpressionRoot } from "../../utils/find-transparent-expression-root.js";
@@ -200,34 +201,43 @@ const isAfterAvailabilityEarlyExit = (
   browserGlobalName: string,
   context: RuleContext,
 ): boolean => {
+  const enclosingFunction = findEnclosingFunction(node);
   if (
-    !isFunctionLike(componentOrHookNode) ||
-    !isNodeOfType(componentOrHookNode.body, "BlockStatement")
+    !enclosingFunction ||
+    (enclosingFunction !== componentOrHookNode &&
+      !executesDuringRender(enclosingFunction, context.scopes)) ||
+    !isFunctionLike(enclosingFunction) ||
+    !isNodeOfType(enclosingFunction.body, "BlockStatement")
   ) {
     return false;
   }
-  const ancestors = new Set<EsTreeNode>();
-  let currentNode: EsTreeNode | null | undefined = node;
-  while (currentNode) {
-    ancestors.add(currentNode);
-    currentNode = currentNode.parent;
-  }
-  for (const statement of componentOrHookNode.body.body) {
-    if (ancestors.has(statement)) return false;
-    if (!isNodeOfType(statement, "IfStatement")) continue;
-    if (
-      readAvailabilityWhenPredicate(statement.test, browserGlobalName, context, false) === true &&
-      statementAlwaysExits(statement.consequent)
-    ) {
-      return true;
+
+  let currentNode: EsTreeNode = node;
+  while (currentNode !== enclosingFunction) {
+    const parentNode = currentNode.parent;
+    if (!parentNode) return false;
+    if (isNodeOfType(parentNode, "BlockStatement")) {
+      for (const statement of parentNode.body) {
+        if (statement === currentNode) break;
+        if (!isNodeOfType(statement, "IfStatement")) continue;
+        if (
+          readAvailabilityWhenPredicate(statement.test, browserGlobalName, context, false) ===
+            true &&
+          statementAlwaysExits(statement.consequent)
+        ) {
+          return true;
+        }
+        if (
+          readAvailabilityWhenPredicate(statement.test, browserGlobalName, context, true) ===
+            true &&
+          statement.alternate &&
+          statementAlwaysExits(statement.alternate)
+        ) {
+          return true;
+        }
+      }
     }
-    if (
-      readAvailabilityWhenPredicate(statement.test, browserGlobalName, context, true) === true &&
-      statement.alternate &&
-      statementAlwaysExits(statement.alternate)
-    ) {
-      return true;
-    }
+    currentNode = parentNode;
   }
   return false;
 };

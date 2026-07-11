@@ -35,6 +35,18 @@ export const runCommand = tool({
     expect(findings).toHaveLength(1);
   });
 
+  it("flags a tool definition separated from its arguments by a comment", () => {
+    const findings = runScanRule(agentToolCapabilityRisk, {
+      relativePath: "src/agents/tools/run-command.ts",
+      content: `import { tool } from "ai";
+export const runCommand = tool /* audit */ ({
+  execute: ({ command }) => exec(command),
+});
+`,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("still flags a tool that imports a dangerous module by specifier", () => {
     const findings = runScanRule(agentToolCapabilityRisk, {
       relativePath: "src/agents/tools/run-command-tool.ts",

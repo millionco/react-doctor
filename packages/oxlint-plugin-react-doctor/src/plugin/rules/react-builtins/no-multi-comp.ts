@@ -5,10 +5,11 @@ import { isAstNode } from "../../utils/is-ast-node.js";
 import { isEs5Component } from "../../utils/is-es5-component.js";
 import { isEs6Component } from "../../utils/is-es6-component.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
+import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { isReactComponentName } from "../../utils/is-react-component-name.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
 import type { ScopeAnalysis, SymbolDescriptor } from "../../semantic/scope-analysis.js";
-import { flattenCalleeName } from "../../utils/flatten-callee-name.js";
+import { getImportedName } from "../../utils/get-imported-name.js";
 import { RUNTIME_VISITOR_KEYS } from "../../utils/runtime-visitor-keys.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { REACT_HOC_NAMES } from "../../constants/react.js";
@@ -40,14 +41,103 @@ const resolveSettings = (
 //   import { memo } from "react"; memo(Foo)
 const isHocCall = (call: EsTreeNode, scopes: ScopeAnalysis): boolean => {
   if (!isNodeOfType(call, "CallExpression")) return false;
-  const calleeName = flattenCalleeName(call.callee);
-  if (calleeName && REACT_HOC_NAMES.has(calleeName)) return true;
+  if (
+    isReactApiCall(call, REACT_HOC_NAMES, scopes, {
+      allowGlobalReactNamespace: true,
+      allowUnboundBareCalls: true,
+    })
+  ) {
+    return true;
+  }
+  if (isReactHocMemberReference(call.callee, scopes)) return true;
   // Try scope-resolved alias: if callee is an Identifier, look up its
   // binding's initializer.
   if (!isNodeOfType(call.callee, "Identifier")) return false;
   const symbol = scopes.symbolFor(call.callee);
   if (!symbol) return false;
-  return symbolMapsToHoc(symbol);
+  return symbolMapsToHoc(symbol, scopes, new Set());
+};
+
+const isImportedFromReact = (symbol: SymbolDescriptor): boolean => {
+  if (symbol.kind !== "import") return false;
+  const importDeclaration = symbol.declarationNode.parent;
+  return Boolean(
+    importDeclaration &&
+    isNodeOfType(importDeclaration, "ImportDeclaration") &&
+    importDeclaration.source.value === "react",
+  );
+};
+
+const isReactImportEquals = (symbol: SymbolDescriptor): boolean => {
+  if (
+    symbol.kind !== "ts-import-equals" ||
+    !isNodeOfType(symbol.declarationNode, "TSImportEqualsDeclaration")
+  ) {
+    return false;
+  }
+  const moduleReference = symbol.declarationNode.moduleReference;
+  return Boolean(
+    isNodeOfType(moduleReference, "TSExternalModuleReference") &&
+    isNodeOfType(moduleReference.expression, "Literal") &&
+    moduleReference.expression.value === "react",
+  );
+};
+
+const isRequireReactCall = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (
+    !isNodeOfType(node, "CallExpression") ||
+    !isNodeOfType(node.callee, "Identifier") ||
+    node.callee.name !== "require" ||
+    !scopes.isGlobalReference(node.callee)
+  ) {
+    return false;
+  }
+  const moduleSpecifier = node.arguments[0];
+  return Boolean(
+    moduleSpecifier &&
+    isNodeOfType(moduleSpecifier, "Literal") &&
+    moduleSpecifier.value === "react",
+  );
+};
+
+const isReactNamespaceExpression = (node: EsTreeNode, scopes: ScopeAnalysis): boolean => {
+  if (isRequireReactCall(node, scopes)) return true;
+  if (!isNodeOfType(node, "Identifier")) return false;
+  const symbol = scopes.symbolFor(node);
+  if (!symbol) return node.name === "React" && scopes.isGlobalReference(node);
+  if (symbol.initializer && isRequireReactCall(symbol.initializer, scopes)) return true;
+  if (isReactImportEquals(symbol)) return true;
+  return (
+    isImportedFromReact(symbol) &&
+    (isNodeOfType(symbol.declarationNode, "ImportDefaultSpecifier") ||
+      isNodeOfType(symbol.declarationNode, "ImportNamespaceSpecifier"))
+  );
+};
+
+const isReactHocMemberReference = (node: EsTreeNode, scopes: ScopeAnalysis): boolean =>
+  Boolean(
+    isNodeOfType(node, "MemberExpression") &&
+    !node.computed &&
+    isNodeOfType(node.property, "Identifier") &&
+    REACT_HOC_NAMES.has(node.property.name) &&
+    isReactNamespaceExpression(node.object, scopes),
+  );
+
+const getDestructuredPropertyName = (symbol: SymbolDescriptor): string | null => {
+  const property = symbol.bindingIdentifier.parent;
+  if (
+    !property ||
+    !isNodeOfType(property, "Property") ||
+    !property.parent ||
+    !isNodeOfType(property.parent, "ObjectPattern")
+  ) {
+    return null;
+  }
+  if (isNodeOfType(property.key, "Identifier") && !property.computed) return property.key.name;
+  if (isNodeOfType(property.key, "Literal") && typeof property.key.value === "string") {
+    return property.key.value;
+  }
+  return null;
 };
 
 // Recursively unwraps a symbol's initializer to see if it ultimately
@@ -56,30 +146,36 @@ const isHocCall = (call: EsTreeNode, scopes: ScopeAnalysis): boolean => {
 //   const { memo } = React;              (init = ObjectPattern element)
 //   const memo = require('react').memo;
 //   import { memo } from 'react';        (kind = "import")
-const symbolMapsToHoc = (symbol: SymbolDescriptor): boolean => {
-  if (REACT_HOC_NAMES.has(symbol.name)) {
-    // Direct shadowing or unchanged name. Verify it's an import or
-    // points to the React namespace via initializer.
-    if (symbol.kind === "import") return true;
+const symbolMapsToHoc = (
+  symbol: SymbolDescriptor,
+  scopes: ScopeAnalysis,
+  visitedSymbolIds: Set<number>,
+): boolean => {
+  if (visitedSymbolIds.has(symbol.id)) return false;
+  visitedSymbolIds.add(symbol.id);
+  if (symbol.kind === "import") {
+    const importedName = getImportedName(symbol.declarationNode);
+    return Boolean(
+      isImportedFromReact(symbol) && importedName && REACT_HOC_NAMES.has(importedName),
+    );
   }
   const init = symbol.initializer;
   if (!init) return false;
-  if (isNodeOfType(init, "MemberExpression")) {
-    const flat = flattenCalleeName(init);
-    if (flat && REACT_HOC_NAMES.has(flat)) return true;
-  }
-  if (isNodeOfType(init, "Identifier") && REACT_HOC_NAMES.has(init.name)) {
-    return true;
-  }
-  // Destructuring: `const { memo } = React` makes the symbol's
-  // initializer the `React` Identifier (per find-variable-initializer
-  // semantics) — accept that as long as the symbol's NAME is a HoC.
+  const destructuredPropertyName = getDestructuredPropertyName(symbol);
   if (
-    REACT_HOC_NAMES.has(symbol.name) &&
-    isNodeOfType(init, "Identifier") &&
-    init.name === "React"
+    destructuredPropertyName &&
+    REACT_HOC_NAMES.has(destructuredPropertyName) &&
+    isReactNamespaceExpression(init, scopes)
   ) {
     return true;
+  }
+  if (isReactHocMemberReference(init, scopes)) return true;
+  if (isNodeOfType(init, "Identifier")) {
+    const initializedFromSymbol = scopes.symbolFor(init);
+    if (initializedFromSymbol) {
+      return symbolMapsToHoc(initializedFromSymbol, scopes, visitedSymbolIds);
+    }
+    return REACT_HOC_NAMES.has(init.name) && scopes.isGlobalReference(init);
   }
   return false;
 };
@@ -286,7 +382,7 @@ const unwrapTsCast = (expression: EsTreeNode): EsTreeNode => {
   return current;
 };
 
-const collectReExportedNames = (program: EsTreeNode): Set<string> => {
+const collectReExportedNames = (program: EsTreeNode, scopes: ScopeAnalysis): Set<string> => {
   const names = new Set<string>();
   if (!isNodeOfType(program, "Program")) return names;
   for (const statement of program.body) {
@@ -325,8 +421,7 @@ const collectReExportedNames = (program: EsTreeNode): Set<string> => {
       // declaration IS the public surface, just re-exported through a
       // HoC wrapper under a (possibly different) name.
       if (isNodeOfType(init, "CallExpression")) {
-        const calleeName = flattenCalleeName(init.callee);
-        if (calleeName && REACT_HOC_NAMES.has(calleeName)) {
+        if (isHocCall(init, scopes)) {
           const wrappedArg = init.arguments[0] as EsTreeNode | undefined;
           if (wrappedArg && isNodeOfType(wrappedArg, "Identifier")) names.add(wrappedArg.name);
         }
@@ -677,7 +772,7 @@ export const noMultiComp = defineRule({
         //      couple internal subcomponents — and forcing the user to
         //      split each helper into its own file would only fragment
         //      tightly-coupled UI.
-        const reExportedNames = collectReExportedNames(node as EsTreeNode);
+        const reExportedNames = collectReExportedNames(node as EsTreeNode, context.scopes);
         const exportedCount = flagged.filter((component) =>
           isExportedDeclaration(component.reportNode, reExportedNames),
         ).length;

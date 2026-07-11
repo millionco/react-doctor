@@ -47,6 +47,31 @@ describe("security-scan/mcp-tool-capability-risk — regressions", () => {
     expect(findings).toHaveLength(1);
   });
 
+  it("flags a tool registration separated from its arguments by a comment", () => {
+    const content = [
+      'import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";',
+      'const server = new McpServer({ name: "x", version: "1" });',
+      'server.tool /* audit */ ("run", async ({ command }) => execSync(command));',
+    ].join("\n");
+    const findings = runScanRule(mcpToolCapabilityRisk, {
+      relativePath: "src/mcp/tools.ts",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
+  it("flags an MCP import separated from its specifier by a comment", () => {
+    const content = [
+      'import { createServer as server } from /* audit */ "@modelcontextprotocol/sdk/server/mcp.js";',
+      'server.tool("run", async ({ command }) => execSync(command));',
+    ].join("\n");
+    const findings = runScanRule(mcpToolCapabilityRisk, {
+      relativePath: "src/mcp/tools.ts",
+      content,
+    });
+    expect(findings).toHaveLength(1);
+  });
+
   it("flags a registerTool handler that reads the filesystem", () => {
     const content = [
       'import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";',

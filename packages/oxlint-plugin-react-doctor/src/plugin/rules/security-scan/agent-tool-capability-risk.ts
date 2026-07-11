@@ -6,6 +6,9 @@ import { scanByPattern } from "./utils/scan-by-pattern.js";
 const AGENT_TOOL_DEFINITION_PATTERN =
   /\b(?:tool\s*\(\s*\{|createTool\s*\(|defineTool\s*\(|new\s+(?:DynamicTool|StructuredTool)\s*\()/;
 
+const AGENT_TOOL_DEFINITION_PREFILTER_PATTERN =
+  /\b(?:tool|createTool|defineTool|DynamicTool|StructuredTool)\b/;
+
 const AGENT_TOOL_CONTEXT_PATH_PATTERN =
   /(?:^|\/)(?:agents?|tools?|mcp)(?:\/|$)|(?:agent|tool|mcp)[^/]*\.[cm]?[jt]sx?$/i;
 
@@ -19,7 +22,7 @@ export const agentToolCapabilityRisk = defineRule({
     shouldScan: (file) =>
       isProductionSourcePath(file.relativePath) &&
       AGENT_TOOL_CONTEXT_PATH_PATTERN.test(file.relativePath) &&
-      AGENT_TOOL_DEFINITION_PATTERN.test(file.content) &&
+      AGENT_TOOL_DEFINITION_PREFILTER_PATTERN.test(file.content) &&
       AGENT_TOOL_DANGEROUS_CAPABILITY_PATTERN.test(file.content),
     pattern: AGENT_TOOL_DEFINITION_PATTERN,
     requireAll: [AGENT_TOOL_DANGEROUS_CAPABILITY_PATTERN],

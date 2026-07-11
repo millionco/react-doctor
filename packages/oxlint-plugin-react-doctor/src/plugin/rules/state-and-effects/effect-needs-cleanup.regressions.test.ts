@@ -1786,3 +1786,115 @@ export const Emitter = () => {
     expect(result.diagnostics).toHaveLength(0);
   });
 });
+
+describe("effect-needs-cleanup inline useCallback reachability", () => {
+  it("flags a socket leak in a useCallback wired directly to a JSX handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const Feed = ({ url }) => (
+  <button
+    onClick={useCallback(() => {
+      const socket = new WebSocket(url);
+      socket.onmessage = update;
+    }, [url])}
+  >
+    connect
+  </button>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("WebSocket");
+  });
+
+  it("flags a discarded timer through transparent JSX handler wrappers", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const Poller = () => (
+  <button
+    onClick={(useCallback((() => setInterval(poll, 1000)) as () => number, []) satisfies () => number)}
+  >
+    poll
+  </button>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("setInterval");
+  });
+
+  it("ignores an unused inline useCallback value", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const Feed = ({ url }) => {
+  useCallback(() => {
+    const socket = new WebSocket(url);
+    socket.onmessage = update;
+  }, [url]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("ignores an inline useCallback passed to a non-handler prop", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const Feed = ({ url }) => (
+  <Panel
+    renderContent={useCallback(() => {
+      const socket = new WebSocket(url);
+      socket.onmessage = update;
+    }, [url])}
+  />
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not attribute a resource in a nested deferred callback to the JSX handler", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const Feed = ({ url }) => (
+  <button
+    onClick={useCallback(() => {
+      schedule(() => {
+        const socket = new WebSocket(url);
+        socket.onmessage = update;
+      });
+    }, [url])}
+  >
+    connect
+  </button>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("accepts an inline JSX useCallback that closes its socket", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useCallback } from "react";
+export const Feed = ({ url }) => (
+  <button
+    onClick={useCallback(() => {
+      const socket = new WebSocket(url);
+      socket.close();
+    }, [url])}
+  >
+    connect
+  </button>
+);`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+});

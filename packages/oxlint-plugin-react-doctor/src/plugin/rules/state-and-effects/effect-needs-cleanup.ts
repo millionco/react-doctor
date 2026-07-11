@@ -19,6 +19,7 @@ import { getEffectCallback } from "../../utils/get-effect-callback.js";
 import { getFunctionBindingIdentifier } from "../../utils/get-function-binding-name.js";
 import { getRangeStart } from "../../utils/get-range-start.js";
 import { getStaticPropertyKeyName } from "../../utils/get-static-property-key-name.js";
+import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
 import { isHookCall } from "../../utils/is-hook-call.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import { walkAst } from "../../utils/walk-ast.js";
@@ -1239,20 +1240,33 @@ const isRetainedComponentScopeFunction = (functionNode: EsTreeNode): boolean => 
   return enclosingComponentOrHookName(functionNode) !== null;
 };
 
+const isDirectJsxEventHandlerValue = (expression: EsTreeNode): boolean => {
+  const expressionRoot = findTransparentExpressionRoot(expression);
+  const expressionContainer = expressionRoot.parent;
+  return (
+    isNodeOfType(expressionContainer, "JSXExpressionContainer") &&
+    expressionContainer.expression === expressionRoot &&
+    isEventHandlerAttribute(expressionContainer.parent)
+  );
+};
+
 const isInlineRetainedHandlerFunction = (
   functionNode: EsTreeNode,
   context: RuleContext,
 ): boolean => {
   if (!isFunctionLike(functionNode)) return false;
-  const parentNode = functionNode.parent;
-  if (isNodeOfType(parentNode, "JSXExpressionContainer")) {
-    const attribute = parentNode.parent;
-    return (
-      isNodeOfType(attribute, "JSXAttribute") &&
-      isNodeOfType(attribute.name, "JSXIdentifier") &&
-      /^on[A-Z]/.test(attribute.name.name)
-    );
+  const functionRoot = findTransparentExpressionRoot(functionNode);
+  const callbackCall = functionRoot.parent;
+  if (
+    isNodeOfType(callbackCall, "CallExpression") &&
+    callbackCall.arguments?.[0] === functionRoot &&
+    isHookCall(callbackCall, "useCallback") &&
+    isDirectJsxEventHandlerValue(callbackCall)
+  ) {
+    return true;
   }
+  const parentNode = functionNode.parent;
+  if (isDirectJsxEventHandlerValue(functionNode)) return true;
   if (
     !isNodeOfType(parentNode, "Property") ||
     parentNode.value !== functionNode ||
@@ -1295,7 +1309,9 @@ export const effectNeedsCleanup = defineRule({
       CallExpression(node: EsTreeNodeOfType<"CallExpression">) {
         if (isHookCall(node, "useCallback")) {
           const retainedCallback = getEffectCallback(node);
-          if (retainedCallback) reportRetainedLeak(retainedCallback);
+          if (retainedCallback && !isInlineRetainedHandlerFunction(retainedCallback, context)) {
+            reportRetainedLeak(retainedCallback);
+          }
           return;
         }
         if (!isHookCall(node, CLEANUP_EFFECT_HOOK_NAMES)) return;

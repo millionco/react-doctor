@@ -1,8 +1,9 @@
 import type { MemoStatus } from "./build-same-file-memo-registry.js";
+import type { ScopeAnalysis } from "../semantic/scope-analysis.js";
 import type { EsTreeNode } from "./es-tree-node.js";
 import { getImportedName } from "./get-imported-name.js";
 import { isNodeOfType } from "./is-node-of-type.js";
-import { stripParenExpression } from "./strip-paren-expression.js";
+import { unwrapReactHocFunction } from "./unwrap-react-hoc-function.js";
 
 interface ReactSlotTypeEnvironment {
   reactSlotTypeBindings: ReadonlySet<string>;
@@ -227,27 +228,12 @@ const collectSlotPropertyNames = (
   activeDeclarations.delete(declaration);
 };
 
-const findWrappedComponentFunction = (node: EsTreeNode): EsTreeNode | null => {
-  const candidate = stripParenExpression(node);
-  if (
-    isNodeOfType(candidate, "ArrowFunctionExpression") ||
-    isNodeOfType(candidate, "FunctionExpression")
-  ) {
-    return candidate;
-  }
-  if (!isNodeOfType(candidate, "CallExpression")) return null;
-  const firstArgument = candidate.arguments[0];
-  if (!firstArgument || isNodeOfType(firstArgument, "SpreadElement")) return null;
-  return findWrappedComponentFunction(firstArgument);
-};
-
-const getMemoizedComponentPropsType = (initializer: EsTreeNode): EsTreeNode | null => {
-  const componentFunction = findWrappedComponentFunction(initializer);
-  if (
-    componentFunction &&
-    (isNodeOfType(componentFunction, "ArrowFunctionExpression") ||
-      isNodeOfType(componentFunction, "FunctionExpression"))
-  ) {
+const getMemoizedComponentPropsType = (
+  initializer: EsTreeNode,
+  scopes: ScopeAnalysis,
+): EsTreeNode | null => {
+  const componentFunction = unwrapReactHocFunction(initializer, scopes);
+  if (componentFunction) {
     const firstParameter = componentFunction.params[0];
     const annotation =
       firstParameter && "typeAnnotation" in firstParameter ? firstParameter.typeAnnotation : null;
@@ -262,8 +248,9 @@ const getMemoizedComponentPropsType = (initializer: EsTreeNode): EsTreeNode | nu
 export const buildSameFileJsxSlotPropRegistry = (
   program: EsTreeNode,
   memoRegistry: Map<string, MemoStatus>,
-): Map<string, ReadonlySet<string>> => {
-  const registry = new Map<string, ReadonlySet<string>>();
+  scopes: ScopeAnalysis,
+): Map<number, ReadonlySet<string>> => {
+  const registry = new Map<number, ReadonlySet<string>>();
   if (!isNodeOfType(program, "Program")) return registry;
   const environment = buildReactSlotTypeEnvironment(program);
   for (const statement of program.body) {
@@ -277,12 +264,14 @@ export const buildSameFileJsxSlotPropRegistry = (
       ) {
         continue;
       }
-      const propsType = getMemoizedComponentPropsType(declarator.init);
+      const componentSymbol = scopes.symbolFor(declarator.id);
+      if (!componentSymbol) continue;
+      const propsType = getMemoizedComponentPropsType(declarator.init, scopes);
       if (!propsType) continue;
       const slotPropertyNames = new Set<string>();
       collectSlotPropertyNames(propsType, environment, slotPropertyNames, new Set());
       if (slotPropertyNames.size > 0) {
-        registry.set(declarator.id.name, slotPropertyNames);
+        registry.set(componentSymbol.id, slotPropertyNames);
       }
     }
   }

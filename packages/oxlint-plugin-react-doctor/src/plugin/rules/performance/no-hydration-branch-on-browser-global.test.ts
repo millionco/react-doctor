@@ -24,6 +24,14 @@ describe("no-hydration-branch-on-browser-global", () => {
       `"use client"; export const Page = () => typeof globalThis.window === "undefined" ? <Server /> : <Client />;`,
     ],
     [
+      "a client-looking prop with unsafe polarity",
+      `"use client"; export const Page = ({ mounted }) => !mounted && (typeof window === "undefined" ? <Server /> : <Client />);`,
+    ],
+    [
+      "a client-looking prop before an unsafe early return",
+      `"use client"; export const Page = ({ mounted }) => { if (mounted) return null; return typeof window === "undefined" ? <Server /> : <Client />; };`,
+    ],
+    [
       "if/else returns",
       `"use client"; export const Page = () => { if (typeof window === "undefined") return <Server />; else return <Client />; };`,
     ],
@@ -75,8 +83,8 @@ describe("no-hydration-branch-on-browser-global", () => {
       `"use client"; export const Page = () => <button onClick={() => typeof window === "undefined" ? server() : client()}>go</button>;`,
     ],
     [
-      "a mounted guard",
-      `"use client"; export const Page = ({ isMounted }) => <div>{isMounted && (typeof window === "undefined" ? <Server /> : <Client />)}</div>;`,
+      "a mounted state guard",
+      `import { useState } from "react"; export const Page = () => { const [mounted] = useState(false); return <div>{mounted && (typeof window === "undefined" ? <Server /> : <Client />)}</div>; };`,
     ],
     [
       "a falsy state gate",
@@ -85,6 +93,10 @@ describe("no-hydration-branch-on-browser-global", () => {
     [
       "a mounted early-return gate",
       `import { useEffect, useState } from "react"; export const Page = () => { const [mounted, setMounted] = useState(false); useEffect(() => setMounted(true), []); if (!mounted) return null; return typeof window === "undefined" ? <Server /> : <Client />; };`,
+    ],
+    [
+      "a const alias of mounted state",
+      `import { useState } from "react"; export const Page = () => { const [mounted] = useState(false); const ready = mounted; return ready && (typeof window === "undefined" ? <Server /> : <Client />); };`,
     ],
     [
       "a browser probe inside an OR condition that is already true",
@@ -137,6 +149,20 @@ describe("no-hydration-branch-on-browser-global", () => {
       `"use client"; export const Page = () => <span suppressHydrationWarning>{typeof window === "undefined" ? "server" : "client"}</span>;`,
     );
     expect(result.diagnostics).toEqual([]);
+  });
+
+  it("reports structural differences below suppressHydrationWarning", () => {
+    const result = run(
+      `"use client"; export const Page = () => <main suppressHydrationWarning>{typeof window === "undefined" ? <span>server</span> : <div>client</div>}</main>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("reports structural differences when a branch has suppressHydrationWarning", () => {
+    const result = run(
+      `"use client"; export const Page = () => typeof window === "undefined" ? <span suppressHydrationWarning>server</span> : <div>client</div>;`,
+    );
+    expect(result.diagnostics).toHaveLength(1);
   });
 
   it("skips test, native, email, and generated-image contexts", () => {

@@ -29,6 +29,34 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       "synchronous callback",
       `"use client"; export const Page = ({ rows }) => <ul>{rows.map(() => <li>{sessionStorage.length}</li>)}</ul>;`,
     ],
+    [
+      "Array.from mapping callback",
+      `"use client"; export const Page = ({ rows }) => <ul>{Array.from(rows, () => <li>{window.innerWidth}</li>)}</ul>;`,
+    ],
+    [
+      "const alias of Array.from",
+      `"use client"; const mapFrom = Array.from; export const Page = ({ rows }) => <ul>{mapFrom(rows, () => <li>{window.innerWidth}</li>)}</ul>;`,
+    ],
+    [
+      "aliased React useMemo",
+      `import { useMemo as memoize } from "react"; export const Page = () => { const width = memoize(() => window.innerWidth, []); return <div>{width}</div>; };`,
+    ],
+    [
+      "a client-looking prop with unsafe polarity",
+      `"use client"; export const Page = ({ mounted }) => !mounted && <div>{window.innerWidth}</div>;`,
+    ],
+    [
+      "a client-looking prop before an unsafe early return",
+      `"use client"; export const Page = ({ mounted }) => { if (mounted) return null; return <div>{window.innerWidth}</div>; };`,
+    ],
+    [
+      "a local useState lookalike",
+      `"use client"; const useState = () => [true]; export const Page = () => { const [mounted] = useState(false); return mounted && <div>{window.innerWidth}</div>; };`,
+    ],
+    [
+      "a shadowed alias of mounted state",
+      `import { useState } from "react"; export const Page = () => { const [mounted] = useState(false); const ready = mounted; return [true].map((ready) => ready && window.innerWidth); };`,
+    ],
   ])("reports an unguarded browser read in %s", (_name, code) => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
@@ -111,6 +139,14 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
     [
       "a mounted early-return gate",
       `import { useEffect, useState } from "react"; export const Page = () => { const [mounted, setMounted] = useState(false); useEffect(() => setMounted(true), []); if (!mounted) return null; return <div>{window.innerWidth}</div>; };`,
+    ],
+    [
+      "a const alias of mounted state",
+      `import { useState } from "react"; export const Page = () => { const [mounted] = useState(false); const ready = mounted; return <div>{ready && window.innerWidth}</div>; };`,
+    ],
+    [
+      "a shadowed Array.from lookalike",
+      `"use client"; export const Page = ({ Array }) => <div>{Array.from([], () => window.innerWidth)}</div>;`,
     ],
   ])("stays quiet for a browser read in %s", (_name, code) => {
     const result = run(code);

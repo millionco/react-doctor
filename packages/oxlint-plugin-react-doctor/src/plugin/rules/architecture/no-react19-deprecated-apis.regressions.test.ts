@@ -50,6 +50,32 @@ describe("architecture/no-react19-deprecated-apis — regressions", () => {
     expect(result.diagnostics).toHaveLength(1);
   });
 
+  it("reports createFactory through immutable React namespace aliases", () => {
+    const result = run(`
+      import * as React from "react";
+      const ReactAlias = React;
+      const WrappedReactAlias = ReactAlias as typeof ReactAlias;
+      const createButton = WrappedReactAlias.createFactory("button");
+      void createButton;
+    `);
+
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]?.message).toContain("createFactory");
+  });
+
+  it("does not trust mutable React namespace aliases", () => {
+    const result = run(`
+      import * as React from "react";
+      const Compat = { createFactory: (tag) => tag };
+      let ReactAlias = React;
+      ReactAlias = Compat;
+      const createButton = ReactAlias.createFactory("button");
+      void createButton;
+    `);
+
+    expect(result.diagnostics).toEqual([]);
+  });
+
   it("does not report a shadowed React namespace binding", () => {
     const result = run(`
       import * as React from "react";

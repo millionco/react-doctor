@@ -18,6 +18,11 @@ export interface ProjectInfo {
   hasReactCompiler: boolean;
   hasTanStackQuery: boolean;
   /**
+   * `true` when the project or a workspace declares a Vite-based SSR runtime
+   * such as React Router's Node adapter, Vike, or vite-plugin-ssr.
+   */
+  hasSsrDependency: boolean;
+  /**
    * The declared `preact` version spec, or `null` when Preact isn't a
    * dependency. Parallels `reactVersion` so a React-compatible runtime is
    * modeled the same way React is. Drives the `preact` capability in

@@ -8,7 +8,6 @@ import { isAfterClientOnlyEarlyReturn } from "../../utils/is-after-client-only-e
 import { isFunctionLike } from "../../utils/is-function-like.js";
 import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
-import { isInsideClientOnlyGuard } from "../../utils/is-inside-client-only-guard.js";
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
@@ -151,7 +150,7 @@ const isInsideAvailabilityGuard = (
   let currentNode = node;
   let parentNode = currentNode.parent;
   while (parentNode) {
-    if (isFunctionLike(parentNode) && !executesDuringRender(parentNode)) break;
+    if (isFunctionLike(parentNode) && !executesDuringRender(parentNode, context.scopes)) break;
     if (
       isNodeOfType(parentNode, "LogicalExpression") &&
       (parentNode.operator === "&&" || parentNode.operator === "||") &&
@@ -259,14 +258,14 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
 
     const reportBrowserRead = (node: EsTreeNode, browserGlobalName: string): void => {
       if (reportedNodes.has(node) || isTypeofProbe(node)) return;
-      const componentOrHookNode = findRenderPhaseComponentOrHook(node);
+      const componentOrHookNode = findRenderPhaseComponentOrHook(node, context.scopes);
       if (!componentOrHookNode) return;
       if (fileIsEmailTemplate) return;
       if (isGeneratedImageRenderContext(context, findEnclosingJsxOpeningElement(node) ?? node)) {
         return;
       }
-      if (isInsideClientOnlyGuard(node) || isGatedByFalsyInitialState(node)) return;
-      if (isAfterClientOnlyEarlyReturn(node, componentOrHookNode)) return;
+      if (isGatedByFalsyInitialState(node, context.scopes)) return;
+      if (isAfterClientOnlyEarlyReturn(node, componentOrHookNode, context.scopes)) return;
       if (isInsideAvailabilityGuard(node, browserGlobalName, context)) return;
       if (isAfterAvailabilityEarlyExit(node, componentOrHookNode, browserGlobalName, context))
         return;

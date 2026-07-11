@@ -76,6 +76,7 @@ describe("discoverProject characterization — workspace fixture matrix", () => 
       hasTypeScript: false,
       hasReactCompiler: false,
       hasTanStackQuery: false,
+      hasSsrDependency: false,
       preactVersion: null,
       preactMajorVersion: null,
       hasReactNativeWorkspace: false,
@@ -132,6 +133,7 @@ describe("discoverProject characterization — workspace fixture matrix", () => 
       hasTypeScript: false,
       hasReactCompiler: false,
       hasTanStackQuery: false,
+      hasSsrDependency: false,
       preactVersion: null,
       preactMajorVersion: null,
       hasReactNativeWorkspace: true,
@@ -264,5 +266,25 @@ describe("discoverProject characterization — workspace fixture matrix", () => 
     expect(projectInfo.framework).toBe("nextjs");
     expect(projectInfo.nextjsVersion).toBe("15.1.0");
     expect(projectInfo.nextjsMajorVersion).toBe(15);
+  });
+
+  it("records concrete SSR runtime evidence in a Vite project", () => {
+    const fixtureDirectory = writeFixture("vite-react-router-ssr", [
+      {
+        filePath: "package.json",
+        contents: packageJson({
+          name: "vite-react-router-ssr",
+          dependencies: {
+            react: "^19.0.0",
+            vite: "^7.0.0",
+            "@react-router/node": "^7.0.0",
+          },
+        }),
+      },
+    ]);
+
+    const projectInfo = discoverProject(fixtureDirectory);
+    expect(projectInfo.framework).toBe("vite");
+    expect(projectInfo.hasSsrDependency).toBe(true);
   });
 });

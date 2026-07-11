@@ -23,6 +23,7 @@ const projectInfo: ProjectInfo = {
   hasTypeScript: true,
   hasReactCompiler: true,
   hasTanStackQuery: false,
+  hasSsrDependency: false,
   preactVersion: null,
   preactMajorVersion: null,
   nextjsVersion: null,

@@ -35,6 +35,27 @@ export const createDeprecatedReactImportRule = ({
 }: DeprecatedReactImportRuleOptions): Pick<Rule, "create"> => ({
   create: (context: RuleContext) => {
     const namespaceImportSpecifiers = new Set<EsTreeNode>();
+    const resolvesToNamespaceImport = (identifier: EsTreeNode): boolean => {
+      const visitedSymbolIds = new Set<number>();
+      let symbol = context.scopes.symbolFor(identifier);
+      while (symbol) {
+        if (namespaceImportSpecifiers.has(symbol.declarationNode)) return true;
+        if (
+          symbol.kind !== "const" ||
+          visitedSymbolIds.has(symbol.id) ||
+          !symbol.initializer ||
+          !isNodeOfType(symbol.declarationNode, "VariableDeclarator") ||
+          symbol.declarationNode.id !== symbol.bindingIdentifier
+        ) {
+          return false;
+        }
+        visitedSymbolIds.add(symbol.id);
+        const initializer = stripParenExpression(symbol.initializer);
+        if (!isNodeOfType(initializer, "Identifier")) return false;
+        symbol = context.scopes.symbolFor(initializer);
+      }
+      return false;
+    };
 
     return {
       ImportDeclaration(node: EsTreeNodeOfType<"ImportDeclaration">) {
@@ -70,9 +91,7 @@ export const createDeprecatedReactImportRule = ({
         // strip transparent wrappers before matching the namespace binding.
         const receiver = stripParenExpression(node.object);
         if (!isNodeOfType(receiver, "Identifier")) return;
-        const receiverSymbol = context.scopes.symbolFor(receiver);
-        if (!receiverSymbol || !namespaceImportSpecifiers.has(receiverSymbol.declarationNode))
-          return;
+        if (!resolvesToNamespaceImport(receiver)) return;
         if (!isNodeOfType(node.property, "Identifier")) return;
         const message = messages.get(node.property.name);
         if (message) context.report({ node, message });

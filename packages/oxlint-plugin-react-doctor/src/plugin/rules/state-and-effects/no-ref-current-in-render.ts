@@ -6,6 +6,7 @@ import { findRenderPhaseComponentOrHook } from "../../utils/find-render-phase-co
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { isReactApiCall } from "../../utils/is-react-api-call.js";
 import { resolveConstIdentifierAlias } from "../../utils/resolve-const-identifier-alias.js";
+import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 
 const resolveReactRefSymbol = (
   memberExpression: EsTreeNode,
@@ -21,8 +22,10 @@ const resolveReactRefSymbol = (
     return null;
   }
   const symbol = resolveConstIdentifierAlias(memberExpression.object, scopes);
-  if (!symbol?.initializer || !isNodeOfType(symbol.initializer, "CallExpression")) return null;
-  return isReactApiCall(symbol.initializer, "useRef", scopes, {
+  if (!symbol?.initializer) return null;
+  const initializer = stripParenExpression(symbol.initializer);
+  if (!isNodeOfType(initializer, "CallExpression")) return null;
+  return isReactApiCall(initializer, "useRef", scopes, {
     allowGlobalReactNamespace: true,
   })
     ? symbol

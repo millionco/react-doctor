@@ -26,6 +26,24 @@ describe("no-ref-current-in-render", () => {
        };`,
     ],
     [
+      "a generic ref behind a TypeScript cast",
+      `import { useRef } from "react";
+       const Panel = ({ value }: { value: string }) => {
+         const valueRef = useRef<string>(value) as React.MutableRefObject<string>;
+         valueRef.current = value;
+         return null;
+       };`,
+    ],
+    [
+      "a generic ref behind a non-null assertion",
+      `import { useRef } from "react";
+       const Panel = ({ value }: { value: string }) => {
+         const valueRef = useRef<string>(value)!;
+         valueRef.current = value;
+         return null;
+       };`,
+    ],
+    [
       "a ref guard used to drive state",
       `import { useRef, useState } from "react";
        const Panel = ({ value }) => {

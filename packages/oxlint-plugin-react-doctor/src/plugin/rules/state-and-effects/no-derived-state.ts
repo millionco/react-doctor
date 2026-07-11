@@ -32,7 +32,7 @@ export const noDerivedState = defineRule({
       if (!isUseEffect(node)) return;
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;
-      for (const fact of collectEffectStateWriteFacts(analysis, node)) {
+      for (const fact of collectEffectStateWriteFacts(analysis, node, context.filename)) {
         if (!fact.isRenderKnownCopy || fact.resetsSourceState) continue;
         const stateName = getStateName(fact.stateDeclarator);
         context.report({

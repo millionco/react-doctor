@@ -1,10 +1,13 @@
 import type { Reference } from "eslint-scope";
 import { collectEffectInvokedFunctions } from "../../../utils/collect-effect-invoked-functions.js";
+import { collectPatternNames } from "../../../utils/collect-pattern-names.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { resolveImportedExportName } from "../../../utils/find-exported-function-body.js";
 import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { readsPostMountValue } from "../../../utils/reads-post-mount-value.js";
+import { resolveCrossFileFunctionExport } from "../../../utils/resolve-cross-file-function-export.js";
 import { stripParenExpression } from "../../../utils/strip-paren-expression.js";
 import { walkAst } from "../../../utils/walk-ast.js";
 import { getRef, getUpstreamRefs, resolveToFunction } from "./effect/ast.js";
@@ -27,6 +30,7 @@ export interface EffectExecutionFrame {
   isDeferred: boolean;
   introducedBindings: ReadonlySet<unknown>;
   substitutions: ReadonlyMap<unknown, EffectValueSubstitution>;
+  currentFilename?: string;
 }
 
 interface EffectValueSubstitution {
@@ -39,6 +43,21 @@ interface EffectValueEvidence {
   hasUnknownSource: boolean;
   hasDeferredIntroducedValue: boolean;
   readsExternalValue: boolean;
+}
+
+interface HelperReturnSummary {
+  usedParameterIndices: ReadonlySet<number>;
+}
+
+interface HelperSummaryEnvironment {
+  parameterIndices: ReadonlyMap<string, number | null>;
+  recursiveNames: ReadonlySet<string>;
+  shadowedGlobalNames: ReadonlySet<string>;
+}
+
+interface HelperControlFlowSummary {
+  canContinue: boolean;
+  isValid: boolean;
 }
 
 interface CollectedEffectStateWriteFact extends EffectStateWriteFact {
@@ -92,6 +111,48 @@ const PURE_GLOBAL_CALLEE_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 const PURE_GLOBAL_NAMESPACE_NAMES: ReadonlySet<string> = new Set(["JSON", "Math"]);
+
+const PURE_HELPER_NAMESPACE_MEMBER_NAMES: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["JSON", new Set(["isRawJSON", "parse", "rawJSON", "stringify"])],
+  [
+    "Math",
+    new Set([
+      "abs",
+      "acos",
+      "acosh",
+      "asin",
+      "asinh",
+      "atan",
+      "atan2",
+      "atanh",
+      "cbrt",
+      "ceil",
+      "clz32",
+      "cos",
+      "cosh",
+      "exp",
+      "floor",
+      "fround",
+      "hypot",
+      "imul",
+      "log",
+      "log10",
+      "log1p",
+      "log2",
+      "max",
+      "min",
+      "pow",
+      "round",
+      "sign",
+      "sin",
+      "sinh",
+      "sqrt",
+      "tan",
+      "tanh",
+      "trunc",
+    ]),
+  ],
+]);
 
 const PURE_MEMBER_TRANSFORM_NAMES: ReadonlySet<string> = new Set([
   "concat",
@@ -165,6 +226,76 @@ const getParameterBindingIdentity = (
     if (variable) return variable;
   }
   return parameter;
+};
+
+const isAsyncOrGeneratorFunction = (functionNode: EsTreeNode): boolean =>
+  Boolean(
+    (functionNode as unknown as { async?: boolean }).async === true ||
+    (functionNode as unknown as { generator?: boolean }).generator === true,
+  );
+
+const isModuleFunction = (functionNode: EsTreeNode): boolean => {
+  let ancestor = functionNode.parent;
+  while (ancestor) {
+    if (isFunctionLike(ancestor)) return false;
+    if (isNodeOfType(ancestor, "Program")) return true;
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
+const getFunctionBindingNames = (functionNode: EsTreeNode): ReadonlySet<string> => {
+  const names = new Set<string>();
+  if (
+    (isNodeOfType(functionNode, "FunctionDeclaration") ||
+      isNodeOfType(functionNode, "FunctionExpression")) &&
+    functionNode.id
+  ) {
+    names.add(functionNode.id.name);
+  }
+  const parent = functionNode.parent;
+  if (
+    parent &&
+    isNodeOfType(parent, "VariableDeclarator") &&
+    isNodeOfType(parent.id, "Identifier")
+  ) {
+    names.add(parent.id.name);
+  }
+  return names;
+};
+
+const collectModuleBindingNames = (functionNode: EsTreeNode): ReadonlySet<string> => {
+  let program = functionNode.parent;
+  while (program && !isNodeOfType(program, "Program")) program = program.parent;
+  const bindingNames = new Set<string>();
+  if (!program || !isNodeOfType(program, "Program")) return bindingNames;
+  for (const statement of program.body ?? []) {
+    if (isNodeOfType(statement, "ImportDeclaration")) {
+      for (const specifier of statement.specifiers ?? []) {
+        if (isNodeOfType(specifier.local, "Identifier")) bindingNames.add(specifier.local.name);
+      }
+      continue;
+    }
+    const declaration =
+      isNodeOfType(statement, "ExportNamedDeclaration") ||
+      isNodeOfType(statement, "ExportDefaultDeclaration")
+        ? statement.declaration
+        : statement;
+    if (isNodeOfType(declaration, "VariableDeclaration")) {
+      for (const declarator of declaration.declarations ?? []) {
+        collectPatternNames(declarator.id, bindingNames);
+      }
+      continue;
+    }
+    if (
+      (isNodeOfType(declaration, "FunctionDeclaration") ||
+        isNodeOfType(declaration, "ClassDeclaration")) &&
+      isNodeOfType(declaration.id, "Identifier")
+    ) {
+      bindingNames.add(declaration.id.name);
+    }
+  }
+  return bindingNames;
 };
 
 const buildSubstitutions = (
@@ -384,6 +515,7 @@ const collectIntroducedBindings = (
 export const collectBoundedEffectExecutionFrames = (
   analysis: ProgramAnalysis,
   effectNode: EsTreeNode,
+  currentFilename?: string,
 ): ReadonlyArray<EffectExecutionFrame> => {
   const effectFunction = getEffectFn(analysis, effectNode);
   if (
@@ -400,6 +532,7 @@ export const collectBoundedEffectExecutionFrames = (
     isDeferred: false,
     introducedBindings: new Set(),
     substitutions: new Map(),
+    currentFilename,
   };
   const frames: EffectExecutionFrame[] = [rootFrame];
 
@@ -447,6 +580,7 @@ export const collectBoundedEffectExecutionFrames = (
         isDeferred,
         introducedBindings,
         substitutions: buildSubstitutions(analysis, callable, argumentsForCallable, rootFrame),
+        currentFilename,
       });
     };
 
@@ -520,6 +654,321 @@ const isOpaqueHookCall = (callExpression: EsTreeNode): boolean => {
     calleeName !== "useCallback" &&
     calleeName !== "useEffectEvent",
   );
+};
+
+const analyzeHelperStatements = (
+  statements: ReadonlyArray<EsTreeNode>,
+  environment: HelperSummaryEnvironment,
+  usedParameterIndices: Set<number>,
+  analyzeExpression: (
+    expression: EsTreeNode,
+    expressionEnvironment: HelperSummaryEnvironment,
+    expressionUsedParameterIndices: Set<number>,
+  ) => boolean,
+): HelperControlFlowSummary => {
+  let canContinue = true;
+  for (const statement of statements) {
+    if (!canContinue) {
+      if (!isNodeOfType(statement, "EmptyStatement")) {
+        return { canContinue: false, isValid: false };
+      }
+      continue;
+    }
+    if (isNodeOfType(statement, "EmptyStatement")) continue;
+    if (isNodeOfType(statement, "ReturnStatement")) {
+      if (
+        !statement.argument ||
+        !analyzeExpression(statement.argument as EsTreeNode, environment, usedParameterIndices)
+      ) {
+        return { canContinue: false, isValid: false };
+      }
+      canContinue = false;
+      continue;
+    }
+    if (isNodeOfType(statement, "BlockStatement")) {
+      const blockSummary = analyzeHelperStatements(
+        (statement.body ?? []) as ReadonlyArray<EsTreeNode>,
+        environment,
+        usedParameterIndices,
+        analyzeExpression,
+      );
+      if (!blockSummary.isValid) return blockSummary;
+      canContinue = blockSummary.canContinue;
+      continue;
+    }
+    if (isNodeOfType(statement, "IfStatement")) {
+      if (!analyzeExpression(statement.test as EsTreeNode, environment, usedParameterIndices)) {
+        return { canContinue: false, isValid: false };
+      }
+      const consequentSummary = analyzeHelperStatements(
+        [statement.consequent as EsTreeNode],
+        environment,
+        usedParameterIndices,
+        analyzeExpression,
+      );
+      if (!consequentSummary.isValid) return consequentSummary;
+      const alternateSummary = statement.alternate
+        ? analyzeHelperStatements(
+            [statement.alternate as EsTreeNode],
+            environment,
+            usedParameterIndices,
+            analyzeExpression,
+          )
+        : { canContinue: true, isValid: true };
+      if (!alternateSummary.isValid) return alternateSummary;
+      canContinue = consequentSummary.canContinue || alternateSummary.canContinue;
+      continue;
+    }
+    return { canContinue: false, isValid: false };
+  }
+  return { canContinue, isValid: true };
+};
+
+const analyzeHelperExpression = (
+  expression: EsTreeNode,
+  environment: HelperSummaryEnvironment,
+  usedParameterIndices: Set<number>,
+): boolean => {
+  const node = stripParenExpression(expression);
+  if (isNodeOfType(node, "Literal") || isNodeOfType(node, "TemplateElement")) {
+    return true;
+  }
+  if (isNodeOfType(node, "Identifier")) {
+    const parameterIndex = environment.parameterIndices.get(node.name);
+    if (parameterIndex !== undefined) {
+      if (parameterIndex !== null) usedParameterIndices.add(parameterIndex);
+      return true;
+    }
+    return node.name === "undefined" || node.name === "NaN" || node.name === "Infinity";
+  }
+  if (isNodeOfType(node, "ArrayExpression")) {
+    return (node.elements ?? []).every(
+      (element) =>
+        !element ||
+        analyzeHelperExpression(element as EsTreeNode, environment, usedParameterIndices),
+    );
+  }
+  if (isNodeOfType(node, "ObjectExpression")) {
+    return (node.properties ?? []).every((property) => {
+      if (isNodeOfType(property, "SpreadElement")) {
+        return analyzeHelperExpression(
+          property.argument as EsTreeNode,
+          environment,
+          usedParameterIndices,
+        );
+      }
+      if (
+        !isNodeOfType(property, "Property") ||
+        property.kind !== "init" ||
+        property.method === true
+      ) {
+        return false;
+      }
+      if (
+        property.computed &&
+        !analyzeHelperExpression(property.key as EsTreeNode, environment, usedParameterIndices)
+      ) {
+        return false;
+      }
+      return analyzeHelperExpression(
+        property.value as EsTreeNode,
+        environment,
+        usedParameterIndices,
+      );
+    });
+  }
+  if (isNodeOfType(node, "TemplateLiteral")) {
+    return (node.expressions ?? []).every((templateExpression) =>
+      analyzeHelperExpression(templateExpression as EsTreeNode, environment, usedParameterIndices),
+    );
+  }
+  if (isNodeOfType(node, "UnaryExpression")) {
+    return (
+      node.operator !== "delete" &&
+      analyzeHelperExpression(node.argument as EsTreeNode, environment, usedParameterIndices)
+    );
+  }
+  if (isNodeOfType(node, "BinaryExpression") || isNodeOfType(node, "LogicalExpression")) {
+    return (
+      analyzeHelperExpression(node.left as EsTreeNode, environment, usedParameterIndices) &&
+      analyzeHelperExpression(node.right as EsTreeNode, environment, usedParameterIndices)
+    );
+  }
+  if (isNodeOfType(node, "ConditionalExpression")) {
+    return (
+      analyzeHelperExpression(node.test as EsTreeNode, environment, usedParameterIndices) &&
+      analyzeHelperExpression(node.consequent as EsTreeNode, environment, usedParameterIndices) &&
+      analyzeHelperExpression(node.alternate as EsTreeNode, environment, usedParameterIndices)
+    );
+  }
+  if (isNodeOfType(node, "MemberExpression")) {
+    if (!analyzeHelperExpression(node.object as EsTreeNode, environment, usedParameterIndices)) {
+      return false;
+    }
+    return (
+      !node.computed ||
+      analyzeHelperExpression(node.property as EsTreeNode, environment, usedParameterIndices)
+    );
+  }
+  if (isFunctionLike(node)) {
+    if (isAsyncOrGeneratorFunction(node)) return false;
+    const callbackParameterIndices = new Map(environment.parameterIndices);
+    for (const parameter of getFunctionParameters(node)) {
+      if (!isNodeOfType(parameter, "Identifier")) return false;
+      callbackParameterIndices.set(parameter.name, null);
+    }
+    const callbackEnvironment: HelperSummaryEnvironment = {
+      parameterIndices: callbackParameterIndices,
+      recursiveNames: environment.recursiveNames,
+      shadowedGlobalNames: environment.shadowedGlobalNames,
+    };
+    if (!isNodeOfType(node.body, "BlockStatement")) {
+      return analyzeHelperExpression(
+        node.body as EsTreeNode,
+        callbackEnvironment,
+        usedParameterIndices,
+      );
+    }
+    const callbackSummary = analyzeHelperStatements(
+      (node.body.body ?? []) as ReadonlyArray<EsTreeNode>,
+      callbackEnvironment,
+      usedParameterIndices,
+      analyzeHelperExpression,
+    );
+    return callbackSummary.isValid && !callbackSummary.canContinue;
+  }
+  if (isNodeOfType(node, "CallExpression")) {
+    const callee = stripParenExpression(node.callee);
+    const calleeRoot = getMemberRoot(callee);
+    const isPureGlobalCall =
+      isNodeOfType(callee, "Identifier") &&
+      PURE_GLOBAL_CALLEE_NAMES.has(callee.name) &&
+      !environment.parameterIndices.has(callee.name) &&
+      !environment.recursiveNames.has(callee.name) &&
+      !environment.shadowedGlobalNames.has(callee.name);
+    const namespaceName =
+      isNodeOfType(calleeRoot, "Identifier") &&
+      !environment.parameterIndices.has(calleeRoot.name) &&
+      !environment.recursiveNames.has(calleeRoot.name) &&
+      !environment.shadowedGlobalNames.has(calleeRoot.name)
+        ? calleeRoot.name
+        : null;
+    const namespaceMemberName = getStaticMemberName(callee);
+    const isPureNamespaceCall =
+      isNodeOfType(callee, "MemberExpression") &&
+      namespaceName !== null &&
+      namespaceMemberName !== null &&
+      PURE_HELPER_NAMESPACE_MEMBER_NAMES.get(namespaceName)?.has(namespaceMemberName) === true;
+    const isPureMemberTransform =
+      isNodeOfType(callee, "MemberExpression") &&
+      PURE_MEMBER_TRANSFORM_NAMES.has(getStaticMemberName(callee) ?? "");
+    if (!isPureGlobalCall && !isPureNamespaceCall && !isPureMemberTransform) return false;
+    if (
+      isPureMemberTransform &&
+      isNodeOfType(callee, "MemberExpression") &&
+      !analyzeHelperExpression(callee.object as EsTreeNode, environment, usedParameterIndices)
+    ) {
+      return false;
+    }
+    return (node.arguments ?? []).every((argument) =>
+      analyzeHelperExpression(argument as EsTreeNode, environment, usedParameterIndices),
+    );
+  }
+  if (isNodeOfType(node, "SpreadElement")) {
+    return analyzeHelperExpression(node.argument as EsTreeNode, environment, usedParameterIndices);
+  }
+  return false;
+};
+
+const helperSummaryCache = new WeakMap<EsTreeNode, HelperReturnSummary | null>();
+
+const summarizeHelperReturn = (functionNode: EsTreeNode): HelperReturnSummary | null => {
+  if (!isFunctionLike(functionNode) || !isModuleFunction(functionNode)) return null;
+  if (helperSummaryCache.has(functionNode)) return helperSummaryCache.get(functionNode) ?? null;
+  if (isAsyncOrGeneratorFunction(functionNode)) {
+    helperSummaryCache.set(functionNode, null);
+    return null;
+  }
+  const parameterIndices = new Map<string, number | null>();
+  const parameters = getFunctionParameters(functionNode);
+  for (let parameterIndex = 0; parameterIndex < parameters.length; parameterIndex += 1) {
+    const parameter = parameters[parameterIndex];
+    if (
+      !parameter ||
+      !isNodeOfType(parameter, "Identifier") ||
+      parameterIndices.has(parameter.name)
+    ) {
+      helperSummaryCache.set(functionNode, null);
+      return null;
+    }
+    parameterIndices.set(parameter.name, parameterIndex);
+  }
+  const environment: HelperSummaryEnvironment = {
+    parameterIndices,
+    recursiveNames: getFunctionBindingNames(functionNode),
+    shadowedGlobalNames: collectModuleBindingNames(functionNode),
+  };
+  const usedParameterIndices = new Set<number>();
+  if (!isNodeOfType(functionNode.body, "BlockStatement")) {
+    if (
+      !analyzeHelperExpression(functionNode.body as EsTreeNode, environment, usedParameterIndices)
+    ) {
+      helperSummaryCache.set(functionNode, null);
+      return null;
+    }
+  } else {
+    const controlFlowSummary = analyzeHelperStatements(
+      (functionNode.body.body ?? []) as ReadonlyArray<EsTreeNode>,
+      environment,
+      usedParameterIndices,
+      analyzeHelperExpression,
+    );
+    if (!controlFlowSummary.isValid || controlFlowSummary.canContinue) {
+      helperSummaryCache.set(functionNode, null);
+      return null;
+    }
+  }
+  const summary: HelperReturnSummary = { usedParameterIndices };
+  helperSummaryCache.set(functionNode, summary);
+  return summary;
+};
+
+const resolveValueHelperFunction = (
+  analysis: ProgramAnalysis,
+  callee: EsTreeNode,
+  currentFilename: string | undefined,
+): EsTreeNode | null => {
+  if (!isNodeOfType(callee, "Identifier")) return null;
+  const reference = getRef(analysis, callee);
+  if (!reference?.resolved) return null;
+  const importDefinition = reference.resolved.defs.find(
+    (definition) => definition.type === "ImportBinding",
+  );
+  if (importDefinition) {
+    if (!currentFilename) return null;
+    const specifier = importDefinition.node as unknown as EsTreeNode;
+    if (
+      !isNodeOfType(specifier, "ImportSpecifier") &&
+      !isNodeOfType(specifier, "ImportDefaultSpecifier")
+    ) {
+      return null;
+    }
+    const importDeclaration = specifier.parent;
+    if (!importDeclaration || !isNodeOfType(importDeclaration, "ImportDeclaration")) return null;
+    if (
+      importDeclaration.importKind === "type" ||
+      (isNodeOfType(specifier, "ImportSpecifier") && specifier.importKind === "type")
+    ) {
+      return null;
+    }
+    const source = importDeclaration.source?.value;
+    if (typeof source !== "string") return null;
+    const exportedName = resolveImportedExportName(specifier);
+    if (!exportedName) return null;
+    return resolveCrossFileFunctionExport(currentFilename, source, exportedName);
+  }
+  const callable = resolveWrappedCallable(analysis, callee);
+  return callable && isModuleFunction(callable) ? callable : null;
 };
 
 const isLocallyConstructedObjectMember = (
@@ -696,73 +1145,57 @@ const collectValueEvidence = (
     const isPureMemberTransform =
       isNodeOfType(callee, "MemberExpression") &&
       PURE_MEMBER_TRANSFORM_NAMES.has(getStaticMemberName(callee) ?? "");
-    if (isPureMemberTransform) {
-      mergeEvidence(
-        evidence,
-        collectValueEvidence(
-          analysis,
-          callee.object as EsTreeNode,
-          frame,
-          remainingCallFrames,
-          new Set(visitedBindings),
-        ),
-      );
-    }
-    for (const argument of node.arguments ?? []) {
-      if (isFunctionLike(argument as EsTreeNode)) continue;
-      mergeEvidence(
-        evidence,
-        collectValueEvidence(
-          analysis,
-          argument as EsTreeNode,
-          frame,
-          remainingCallFrames,
-          new Set(visitedBindings),
-        ),
-      );
-    }
-    if (isPureGlobalCall || isPureMemberTransform) return evidence;
-    if (isNodeOfType(callee, "MemberExpression")) {
-      evidence.hasUnknownSource = true;
+    if (isPureGlobalCall || isPureMemberTransform) {
+      if (isPureMemberTransform && isNodeOfType(callee, "MemberExpression")) {
+        mergeEvidence(
+          evidence,
+          collectValueEvidence(
+            analysis,
+            callee.object as EsTreeNode,
+            frame,
+            remainingCallFrames,
+            new Set(visitedBindings),
+          ),
+        );
+      }
+      for (const argument of node.arguments ?? []) {
+        if (isFunctionLike(argument as EsTreeNode)) continue;
+        mergeEvidence(
+          evidence,
+          collectValueEvidence(
+            analysis,
+            argument as EsTreeNode,
+            frame,
+            remainingCallFrames,
+            new Set(visitedBindings),
+          ),
+        );
+      }
       return evidence;
     }
     if (remainingCallFrames <= 0) {
       evidence.hasUnknownSource = true;
       return evidence;
     }
-    const callable = resolveWrappedCallable(analysis, callee);
-    if (
-      !callable ||
-      (callable as unknown as { async?: boolean }).async === true ||
-      functionInvokesItself(analysis, callable)
-    ) {
+    const helperFunction = resolveValueHelperFunction(analysis, callee, frame.currentFilename);
+    const helperSummary = helperFunction ? summarizeHelperReturn(helperFunction) : null;
+    if (!helperSummary) {
       evidence.hasUnknownSource = true;
       return evidence;
     }
-    const valueFrame: EffectExecutionFrame = {
-      functionNode: callable,
-      invocation: node,
-      isDeferred: false,
-      introducedBindings: new Set(),
-      substitutions: buildSubstitutions(
-        analysis,
-        callable,
-        (node.arguments ?? []) as ReadonlyArray<EsTreeNode>,
-        frame,
-      ),
-    };
-    const returnedExpressions = getReturnedExpressions(callable);
-    if (returnedExpressions.length === 0) {
-      evidence.hasUnknownSource = true;
-      return evidence;
-    }
-    for (const returnedExpression of returnedExpressions) {
+    const argumentsForHelper = (node.arguments ?? []) as ReadonlyArray<EsTreeNode>;
+    for (const parameterIndex of helperSummary.usedParameterIndices) {
+      const argument = argumentsForHelper[parameterIndex];
+      if (!argument) {
+        evidence.hasUnknownSource = true;
+        return evidence;
+      }
       mergeEvidence(
         evidence,
         collectValueEvidence(
           analysis,
-          returnedExpression,
-          valueFrame,
+          argument,
+          frame,
           remainingCallFrames - 1,
           new Set(visitedBindings),
         ),
@@ -923,8 +1356,9 @@ const areInMutuallyExclusiveBranches = (leftNode: EsTreeNode, rightNode: EsTreeN
 export const collectEffectStateWriteFacts = (
   analysis: ProgramAnalysis,
   effectNode: EsTreeNode,
+  currentFilename?: string,
 ): ReadonlyArray<EffectStateWriteFact> => {
-  const frames = collectBoundedEffectExecutionFrames(analysis, effectNode);
+  const frames = collectBoundedEffectExecutionFrames(analysis, effectNode, currentFilename);
   if (frames.length === 0) return [];
   const effectHasCleanup = hasCleanup(analysis, effectNode);
   const cleanupManagedStateDeclarators = new Set<EsTreeNode>();
@@ -947,6 +1381,7 @@ export const collectEffectStateWriteFacts = (
           isDeferred: frame.isDeferred,
           introducedBindings: collectIntroducedBindings(analysis, writtenValue),
           substitutions: new Map(),
+          currentFilename,
         };
         valueEvidence = emptyEvidence();
         const returnedExpressions = getReturnedExpressions(writtenValue);

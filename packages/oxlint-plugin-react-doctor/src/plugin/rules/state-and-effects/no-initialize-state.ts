@@ -34,7 +34,7 @@ export const noInitializeState = defineRule({
       }
       const analysis = getProgramAnalysis(node);
       if (!analysis) return;
-      for (const fact of collectEffectStateWriteFacts(analysis, node)) {
+      for (const fact of collectEffectStateWriteFacts(analysis, node, context.filename)) {
         if (!fact.isRenderKnownCopy || fact.matchesStateInitializer || fact.resetsSourceState) {
           continue;
         }

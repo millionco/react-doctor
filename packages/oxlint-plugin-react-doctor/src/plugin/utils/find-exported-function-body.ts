@@ -3,6 +3,11 @@ import type { EsTreeNodeOfType } from "./es-tree-node-of-type.js";
 import { isNodeOfType } from "./is-node-of-type.js";
 import { stripParenExpression } from "./strip-paren-expression.js";
 
+export interface ReExportTarget {
+  importedName: string;
+  source: string;
+}
+
 const isFunctionLike = (
   node: EsTreeNode | null | undefined,
 ): node is
@@ -71,6 +76,7 @@ export const findExportedFunctionBody = (
     }
 
     if (isNodeOfType(statement, "ExportNamedDeclaration")) {
+      if (statement.exportKind === "type") continue;
       const declaration = statement.declaration;
       if (declaration && isNodeOfType(declaration, "VariableDeclaration")) {
         recordVariableDeclaration(declaration);
@@ -89,6 +95,7 @@ export const findExportedFunctionBody = (
       }
       for (const specifier of statement.specifiers ?? []) {
         if (!isNodeOfType(specifier, "ExportSpecifier")) continue;
+        if (specifier.exportKind === "type") continue;
         const local = specifier.local;
         const exported = specifier.exported;
         if (!isNodeOfType(local, "Identifier")) continue;
@@ -163,8 +170,8 @@ export const resolveImportedExportName = (importSpecifier: EsTreeNode): string |
   return null;
 };
 
-// Returns the relative `source` strings the caller should probe to
-// resolve `exportedName` through a re-export, in priority order:
+// Returns the source/name pairs the caller should probe to resolve
+// `exportedName` through a re-export, in priority order:
 //
 //   - A matching named re-export (`export { name } from "./x"`) is
 //     precise, so the single matching source is returned on its own.
@@ -174,31 +181,43 @@ export const resolveImportedExportName = (importSpecifier: EsTreeNode): string |
 //     stop the search).
 //
 // Empty when no re-export could carry the name.
-export const findReExportSourcesForName = (
+export const findReExportTargetsForName = (
   programRoot: EsTreeNode,
   exportedName: string,
-): string[] => {
+): ReadonlyArray<ReExportTarget> => {
   if (!isNodeOfType(programRoot, "Program")) return [];
-  const exportAllSources: string[] = [];
+  const exportAllTargets: ReExportTarget[] = [];
   for (const statement of programRoot.body ?? []) {
     if (isNodeOfType(statement, "ExportNamedDeclaration") && statement.source) {
+      if (statement.exportKind === "type") continue;
       const sourceValue = statement.source.value;
       if (typeof sourceValue !== "string") continue;
       for (const specifier of statement.specifiers ?? []) {
         if (!isNodeOfType(specifier, "ExportSpecifier")) continue;
+        if (specifier.exportKind === "type") continue;
         const exported = specifier.exported;
         const exportedNameSpec = isNodeOfType(exported, "Identifier")
           ? exported.name
           : isNodeOfType(exported, "Literal") && typeof exported.value === "string"
             ? exported.value
             : null;
-        if (exportedNameSpec === exportedName) return [sourceValue];
+        if (exportedNameSpec !== exportedName) continue;
+        const local = specifier.local;
+        const importedName = isNodeOfType(local, "Identifier")
+          ? local.name
+          : isNodeOfType(local, "Literal") && typeof local.value === "string"
+            ? local.value
+            : null;
+        if (importedName) return [{ importedName, source: sourceValue }];
       }
     }
     if (isNodeOfType(statement, "ExportAllDeclaration") && statement.source) {
+      if (statement.exportKind === "type" || statement.exported) continue;
       const sourceValue = statement.source.value;
-      if (typeof sourceValue === "string") exportAllSources.push(sourceValue);
+      if (typeof sourceValue === "string") {
+        exportAllTargets.push({ importedName: exportedName, source: sourceValue });
+      }
     }
   }
-  return exportAllSources;
+  return exportAllTargets;
 };

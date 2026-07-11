@@ -80,8 +80,8 @@ interface ImportEntryName {
 // helpers accept: named entries keep their pre-rename name, default entries
 // map to "default", namespace entries are dropped (every consumer rule's
 // binding lookup returns null / no export name for a namespace import, so no
-// rule follows them into another file). Type-only entries are KEPT — the
-// consuming rules' import lookups don't filter them.
+// rule follows them into another file). Type-only entries are kept as a safe
+// dependency over-approximation even when a consuming rule rejects them.
 const flattenImportEntries = (staticImports: ReadonlyArray<StaticImport>): ImportEntryName[] => {
   const flattened: ImportEntryName[] = [];
   for (const staticImport of staticImports) {
@@ -158,6 +158,15 @@ const collectNextjsSearchParamsDependencies: CrossFileDependencyCollector = ({
 }) => {
   if (!PAGE_OR_LAYOUT_FILE_PATTERN.test(absoluteFilePath)) return;
   if (hasAncestorSuspenseLayout(absoluteFilePath)) return;
+  for (const entry of flattenImportEntries(staticImports)) {
+    resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
+  }
+};
+
+const collectEffectValueHelperDependencies: CrossFileDependencyCollector = ({
+  absoluteFilePath,
+  staticImports,
+}) => {
   for (const entry of flattenImportEntries(staticImports)) {
     resolveCrossFileFunctionExport(absoluteFilePath, entry.source, entry.exportedName);
   }
@@ -339,6 +348,11 @@ export const CROSS_FILE_DEPENDENCY_COLLECTORS: ReadonlyMap<string, CrossFileDepe
     ["no-indeterminate-attribute", collectNearestManifestDependencies],
     ["no-locale-format-in-render", collectNearestManifestDependencies],
     ["no-match-media-in-state-initializer", collectNearestManifestDependencies],
+    ["no-adjust-state-on-prop-change", collectEffectValueHelperDependencies],
+    ["no-derived-state", collectEffectValueHelperDependencies],
+    ["no-derived-state-effect", collectEffectValueHelperDependencies],
+    ["no-event-handler", collectEffectValueHelperDependencies],
+    ["no-initialize-state", collectEffectValueHelperDependencies],
     ["no-mutating-reducer-state", collectMutatingReducerDependencies],
     ["no-unguarded-browser-global-in-render-or-hook-init", collectNearestManifestDependencies],
     ["prefer-dynamic-import", collectNearestManifestDependencies],

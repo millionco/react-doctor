@@ -4,7 +4,11 @@ import type { BenchmarkComparison, BenchmarkComparisonSeries, BenchmarkSeries } 
 
 const seriesKey = (series: BenchmarkComparisonSeries): string =>
   [
+    series.target.targetId,
     series.target.label ?? path.basename(series.target.directory),
+    String(series.target.sourceFileCount),
+    String(series.target.sourceByteCount),
+    series.target.sourceFingerprint,
     series.mode,
     series.cacheCohort,
     String(series.workerCount),

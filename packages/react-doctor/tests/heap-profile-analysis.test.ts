@@ -51,4 +51,45 @@ describe("analyzeHeapProfiles", () => {
       fs.rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("rejects heap profile graphs with duplicate node IDs", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "react-doctor-heap-profile-test-"));
+    try {
+      const callFrame = {
+        functionName: "(root)",
+        url: "",
+        lineNumber: 0,
+        columnNumber: 0,
+      };
+      fs.writeFileSync(
+        path.join(directory, "Heap.cyclic.heapprofile"),
+        JSON.stringify({
+          head: {
+            callFrame,
+            selfSize: 0,
+            id: 1,
+            children: [
+              {
+                callFrame,
+                selfSize: 1,
+                id: 2,
+                children: [
+                  {
+                    callFrame,
+                    selfSize: 0,
+                    id: 1,
+                    children: [],
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      );
+
+      expect(() => analyzeHeapProfiles(directory)).toThrow("duplicate node IDs");
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

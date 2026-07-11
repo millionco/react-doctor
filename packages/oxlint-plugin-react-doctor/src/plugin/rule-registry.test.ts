@@ -78,14 +78,12 @@ describe("rule registry", () => {
     }
   });
 
-  it("only wraps global rules that require semantic context", () => {
+  it("wraps global rules for host context compatibility", () => {
     for (const [ruleId, rule] of Object.entries(ruleRegistry)) {
       if (rule.framework !== "global") continue;
       const hostRule = plugin.rules[ruleId];
       expect(hostRule, `${ruleId} should be registered`).toBeDefined();
-      expect(hostRule?.create === rule.create, `${ruleId} semantic wrapper`).toBe(
-        !rule.requiresSemanticContext,
-      );
+      expect(hostRule?.create, `${ruleId} host context wrapper`).not.toBe(rule.create);
     }
   });
 });

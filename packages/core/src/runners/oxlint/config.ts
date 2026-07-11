@@ -9,7 +9,7 @@ import type { ProjectInfo, RuleSeverityControls } from "../../types/index.js";
 import { resolveRuleSeverityOverride } from "../../resolve-rule-severity-override.js";
 import { COMPILER_CLEANUP_BUCKET, COMPILER_CLEANUP_RULE_KEYS } from "../../constants.js";
 import { getCapabilities, shouldEnableRule } from "../../project-info/capabilities.js";
-import { resolveReactHooksJsPlugin } from "./plugin-resolution.js";
+import { filterRulesToAvailable, resolveReactHooksJsPlugin } from "./plugin-resolution.js";
 import type { JsPluginEntry, ResolvedUserPlugin } from "./plugin-resolution.js";
 
 export interface OxlintConfigOptions {
@@ -133,7 +133,14 @@ export const createOxlintConfig = ({
       ? null
       : resolveReactHooksJsPlugin(project.hasReactCompiler, customRulesOnly);
   const reactCompilerRules = reactHooksJsPlugin
-    ? applyRuleSeverityControls(REACT_COMPILER_RULES, severityControls)
+    ? applyRuleSeverityControls(
+        filterRulesToAvailable(
+          REACT_COMPILER_RULES,
+          "react-hooks-js",
+          reactHooksJsPlugin.availableRuleNames,
+        ),
+        severityControls,
+      )
     : {};
 
   const jsPlugins: JsPluginEntry[] = [];

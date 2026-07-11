@@ -8,6 +8,9 @@ import {
   PROFILE_TOP_FRAME_COUNT,
 } from "./constants.ts";
 import { collectProfilePaths } from "./collect-profile-paths.ts";
+import { profileFrameKey } from "./profile-frame-key.ts";
+import { resolveProfileProcessRole } from "./resolve-profile-process-role.ts";
+import { runCommanderMain } from "./run-commander-main.ts";
 import type {
   CpuProfile,
   CpuProfileAnalysis,
@@ -71,28 +74,6 @@ const isCpuProfile = (value: unknown): value is CpuProfile => {
   );
 };
 
-const frameKey = (node: CpuProfileNode): string =>
-  [
-    node.callFrame.functionName || "(anonymous)",
-    node.callFrame.url,
-    String(node.callFrame.lineNumber),
-    String(node.callFrame.columnNumber),
-  ].join("::");
-
-const resolveProcessRole = (profile: CpuProfile): string => {
-  const urls = profile.nodes.map((node) => node.callFrame.url).join("\n");
-  if (urls.includes("packages/react-doctor/dist/cli.js")) return "react-doctor";
-  if (
-    urls.includes("deslop-js") ||
-    urls.includes("entries-worker") ||
-    urls.includes("parse-worker")
-  ) {
-    return "dead-code";
-  }
-  if (urls.includes("oxlint") || urls.includes("oxlint-plugin-react-doctor")) return "oxlint";
-  return "node";
-};
-
 const toFrameSummaries = (
   timings: Map<string, MutableFrameTiming>,
   sampledMicroseconds: number,
@@ -126,7 +107,9 @@ const analyzeProfile = (profilePath: string): AnalyzedProfile => {
   if (nodesById.size !== parsedProfile.nodes.length) {
     throw new Error(`Invalid CPU profile with duplicate node IDs: ${profilePath}`);
   }
-  const frameKeysByNodeId = new Map(parsedProfile.nodes.map((node) => [node.id, frameKey(node)]));
+  const frameKeysByNodeId = new Map(
+    parsedProfile.nodes.map((node) => [node.id, profileFrameKey(node.callFrame)]),
+  );
   const parentById = new Map<number, number>();
   for (const node of parsedProfile.nodes) {
     for (const childId of node.children ?? []) {
@@ -184,7 +167,7 @@ const analyzeProfile = (profilePath: string): AnalyzedProfile => {
   return {
     processSummary: {
       file: profilePath,
-      role: resolveProcessRole(parsedProfile),
+      role: resolveProfileProcessRole(parsedProfile.nodes.map((node) => node.callFrame)),
       sampledMicroseconds,
       topFrames: toFrameSummaries(timings, sampledMicroseconds).slice(0, PROFILE_TOP_FRAME_COUNT),
     },
@@ -277,4 +260,4 @@ const main = (): void => {
   process.stdout.write(`${outputPrefix}.md\n`);
 };
 
-if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) main();
+if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) runCommanderMain(main);

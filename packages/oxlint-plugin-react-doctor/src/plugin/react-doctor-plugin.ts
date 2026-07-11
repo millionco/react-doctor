@@ -27,10 +27,7 @@ const applyFrameworkRuleWrappers = (registry: Record<string, Rule>): Record<stri
   const wrapped: Record<string, HostRule> = {};
   for (const [ruleId, rule] of Object.entries(registry)) {
     const frameworkRule = applyFrameworkGate(rule);
-    // HACK: Codegen proves unmarked rules only consume BaseRuleContext.
-    wrapped[ruleId] = frameworkRule.requiresSemanticContext
-      ? wrapWithSemanticContext(frameworkRule)
-      : (frameworkRule as HostRule);
+    wrapped[ruleId] = wrapWithSemanticContext(frameworkRule);
   }
   return wrapped;
 };

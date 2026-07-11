@@ -41,18 +41,21 @@ export interface StressPerformanceCommandOptions {
 }
 
 export interface BenchmarkTargetMetadata {
+  targetId: string;
   directory: string;
   label: string;
   gitSha: string | null;
   isGitDirty: boolean | null;
   sourceFileCount: number;
   sourceByteCount: number;
+  sourceFingerprint: string;
 }
 
 export interface HostMetadata {
   platform: NodeJS.Platform;
   architecture: string;
   nodeVersion: string;
+  v8Version: string;
   cpuModel: string;
   cpuCount: number;
   totalMemoryBytes: number;
@@ -64,6 +67,11 @@ export interface ValidatedBenchmarkReport {
   diagnosticCount: number;
   diagnosticHash: string;
   scannedFileCount: number;
+}
+
+export interface ReadBenchmarkReportInput {
+  reportPath: string;
+  targetDirectory: string;
 }
 
 export interface ProcessResourceUsage {
@@ -117,8 +125,12 @@ export interface BenchmarkComparison {
 
 export interface BenchmarkComparisonSeries {
   target: {
+    targetId: string;
     directory: string;
     label?: string;
+    sourceFileCount: number;
+    sourceByteCount: number;
+    sourceFingerprint: string;
   };
   mode: BenchmarkMode;
   cacheCohort: BenchmarkCacheCohort;
@@ -140,7 +152,7 @@ export interface PerformanceResult {
   comparisons: BenchmarkComparison[];
 }
 
-export interface CpuProfileCallFrame {
+export interface V8ProfileCallFrame {
   functionName: string;
   url: string;
   lineNumber: number;
@@ -149,7 +161,7 @@ export interface CpuProfileCallFrame {
 
 export interface CpuProfileNode {
   id: number;
-  callFrame: CpuProfileCallFrame;
+  callFrame: V8ProfileCallFrame;
   children?: number[];
 }
 
@@ -185,7 +197,7 @@ export interface CpuProfileAnalysis {
 }
 
 export interface HeapProfileNode {
-  callFrame: CpuProfileCallFrame;
+  callFrame: V8ProfileCallFrame;
   selfSize: number;
   id: number;
   children: HeapProfileNode[];

@@ -5,15 +5,18 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildBenchmarkComparisons } from "./build-benchmark-comparisons.ts";
+import { clearBenchmarkRunArtifacts } from "./clear-benchmark-run-artifacts.ts";
 import { collectTargetMetadata } from "./collect-target-metadata.ts";
 import {
   BENCHMARK_RUNS_DIRECTORY_NAME,
   BYTES_PER_MEBIBYTE,
   MILLISECONDS_PER_SECOND,
 } from "./constants.ts";
+import { isPathWithin } from "./is-path-within.ts";
 import { parsePerformanceArguments } from "./parse-performance-arguments.ts";
 import { renderPerformanceMarkdown } from "./render-performance-markdown.ts";
 import { runBenchmarkSample } from "./run-benchmark-sample.ts";
+import { runCommanderMain } from "./run-commander-main.ts";
 import { summarizeDistribution } from "./summarize-distribution.ts";
 import type {
   BenchmarkCacheCohort,
@@ -23,6 +26,7 @@ import type {
   BenchmarkSample,
   BenchmarkSeries,
   BenchmarkTargetMetadata,
+  HostMetadata,
   PerformanceResult,
 } from "./types.ts";
 
@@ -53,8 +57,19 @@ const isComparisonSeries = (value: unknown): value is BenchmarkComparisonSeries 
   if (!("target" in value) || typeof value.target !== "object" || value.target === null) {
     return false;
   }
+  if (!("targetId" in value.target) || typeof value.target.targetId !== "string") return false;
   if (!("directory" in value.target) || typeof value.target.directory !== "string") return false;
   if ("label" in value.target && typeof value.target.label !== "string") return false;
+  if (
+    !("sourceFileCount" in value.target) ||
+    typeof value.target.sourceFileCount !== "number" ||
+    !("sourceByteCount" in value.target) ||
+    typeof value.target.sourceByteCount !== "number" ||
+    !("sourceFingerprint" in value.target) ||
+    typeof value.target.sourceFingerprint !== "string"
+  ) {
+    return false;
+  }
   if (!("mode" in value) || (value.mode !== "lint" && value.mode !== "full")) return false;
   if (
     !("cacheCohort" in value) ||
@@ -85,7 +100,30 @@ const isComparisonSeries = (value: unknown): value is BenchmarkComparisonSeries 
   );
 };
 
-const readBaseline = (baselinePath: string | null): BenchmarkComparisonSeries[] | null => {
+const isHostMetadata = (value: unknown): value is HostMetadata =>
+  typeof value === "object" &&
+  value !== null &&
+  "platform" in value &&
+  typeof value.platform === "string" &&
+  "architecture" in value &&
+  typeof value.architecture === "string" &&
+  "nodeVersion" in value &&
+  typeof value.nodeVersion === "string" &&
+  "v8Version" in value &&
+  typeof value.v8Version === "string" &&
+  "cpuModel" in value &&
+  typeof value.cpuModel === "string" &&
+  "cpuCount" in value &&
+  typeof value.cpuCount === "number" &&
+  "totalMemoryBytes" in value &&
+  typeof value.totalMemoryBytes === "number" &&
+  "hostname" in value &&
+  typeof value.hostname === "string";
+
+const readBaseline = (
+  baselinePath: string | null,
+  currentHost: HostMetadata,
+): BenchmarkComparisonSeries[] | null => {
   if (baselinePath === null) return null;
   const parsedBaseline: unknown = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
   if (
@@ -93,11 +131,24 @@ const readBaseline = (baselinePath: string | null): BenchmarkComparisonSeries[] 
     parsedBaseline === null ||
     !("schemaVersion" in parsedBaseline) ||
     parsedBaseline.schemaVersion !== 1 ||
+    !("host" in parsedBaseline) ||
+    !isHostMetadata(parsedBaseline.host) ||
     !("series" in parsedBaseline) ||
     !Array.isArray(parsedBaseline.series) ||
     !parsedBaseline.series.every(isComparisonSeries)
   ) {
     throw new Error(`Invalid performance baseline: ${baselinePath}`);
+  }
+  const baselineHost = parsedBaseline.host;
+  if (
+    baselineHost.platform !== currentHost.platform ||
+    baselineHost.architecture !== currentHost.architecture ||
+    baselineHost.nodeVersion !== currentHost.nodeVersion ||
+    baselineHost.v8Version !== currentHost.v8Version ||
+    baselineHost.cpuModel !== currentHost.cpuModel ||
+    baselineHost.cpuCount !== currentHost.cpuCount
+  ) {
+    throw new Error(`Performance baseline host does not match the current host: ${baselinePath}`);
   }
   return parsedBaseline.series;
 };
@@ -141,22 +192,6 @@ const runSeries = (
       heapProfile: false,
     });
   }
-  if (options.profile || options.heapProfile) {
-    const sampleName = "profile";
-    runBenchmarkSample({
-      repositoryRoot: REPOSITORY_ROOT,
-      cliPath: options.cliPath,
-      targetDirectory: target.directory,
-      artifactDirectory: path.join(seriesDirectory, sampleName),
-      cacheDirectory: cacheDirectoryForSample(seriesDirectory, cacheCohort, sampleName),
-      mode,
-      cacheCohort,
-      workerCount,
-      sampleIndex: 0,
-      cpuProfile: options.profile,
-      heapProfile: options.heapProfile,
-    });
-  }
   const samples: BenchmarkSample[] = [];
   for (let sampleIndex = 1; sampleIndex <= options.samples; sampleIndex += 1) {
     const sampleName = `sample-${sampleIndex}`;
@@ -177,6 +212,22 @@ const runSeries = (
     process.stderr.write(
       `[${target.label}] sample ${sampleIndex}/${options.samples}: ${sample.wallMilliseconds.toFixed(1)} ms\n`,
     );
+  }
+  if (options.profile || options.heapProfile) {
+    const sampleName = "profile";
+    runBenchmarkSample({
+      repositoryRoot: REPOSITORY_ROOT,
+      cliPath: options.cliPath,
+      targetDirectory: target.directory,
+      artifactDirectory: path.join(seriesDirectory, sampleName),
+      cacheDirectory: cacheDirectoryForSample(seriesDirectory, cacheCohort, sampleName),
+      mode,
+      cacheCohort,
+      workerCount,
+      sampleIndex: 0,
+      cpuProfile: options.profile,
+      heapProfile: options.heapProfile,
+    });
   }
   const diagnosticHashes = new Set(samples.map((sample) => sample.diagnosticHash));
   if (diagnosticHashes.size !== 1) {
@@ -225,7 +276,27 @@ export const runPerformance = (options: BenchmarkCliOptions): PerformanceResult 
     throw new Error(`Build React Doctor first: missing ${options.cliPath}`);
   }
   fs.mkdirSync(options.outputDirectory, { recursive: true });
-  const targets = options.directories.map(collectTargetMetadata);
+  const runsDirectory = path.join(options.outputDirectory, BENCHMARK_RUNS_DIRECTORY_NAME);
+  const host: HostMetadata = {
+    platform: process.platform,
+    architecture: process.arch,
+    nodeVersion: process.version,
+    v8Version: process.versions.v8,
+    cpuModel: os.cpus()[0]?.model ?? "unknown",
+    cpuCount: os.availableParallelism(),
+    totalMemoryBytes: os.totalmem(),
+    hostname: os.hostname(),
+  };
+  const baseline = readBaseline(options.comparePath, host);
+  const targets = options.directories.map((directory, directoryIndex) =>
+    collectTargetMetadata(directory, String(directoryIndex)),
+  );
+  for (const target of targets) {
+    if (isPathWithin(runsDirectory, target.directory)) {
+      throw new Error(`Benchmark target cannot be inside the runs directory: ${target.directory}`);
+    }
+  }
+  clearBenchmarkRunArtifacts(options.outputDirectory);
   const series: BenchmarkSeries[] = [];
   for (const target of targets) {
     for (const mode of options.modes) {
@@ -237,22 +308,13 @@ export const runPerformance = (options: BenchmarkCliOptions): PerformanceResult 
     }
   }
   assertCrossSeriesCorrectness(series);
-  const baseline = readBaseline(options.comparePath);
   const reactDoctorStatus = runGit(["status", "--short", "--untracked-files=normal"]);
   const result: PerformanceResult = {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     reactDoctorGitSha: runGit(["rev-parse", "HEAD"]),
     reactDoctorIsDirty: reactDoctorStatus === null ? null : reactDoctorStatus.length > 0,
-    host: {
-      platform: process.platform,
-      architecture: process.arch,
-      nodeVersion: process.version,
-      cpuModel: os.cpus()[0]?.model ?? "unknown",
-      cpuCount: os.availableParallelism(),
-      totalMemoryBytes: os.totalmem(),
-      hostname: os.hostname(),
-    },
+    host,
     options: {
       samples: options.samples,
       warmups: options.warmups,
@@ -287,4 +349,4 @@ const main = (): void => {
   }
 };
 
-if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) main();
+if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) runCommanderMain(main);

@@ -8,6 +8,7 @@ import { analyzeHeapProfiles } from "../../../scripts/performance/analyze-heap-p
 import { buildBenchmarkComparisons } from "../../../scripts/performance/build-benchmark-comparisons.ts";
 import { buildBenchmarkEnvironment } from "../../../scripts/performance/build-benchmark-environment.ts";
 import type { BuildBenchmarkEnvironmentInput } from "../../../scripts/performance/build-benchmark-environment.ts";
+import { clearBenchmarkRunArtifacts } from "../../../scripts/performance/clear-benchmark-run-artifacts.ts";
 import { createStressProject } from "../../../scripts/performance/create-stress-project.ts";
 import { parsePerformanceArguments } from "../../../scripts/performance/parse-performance-arguments.ts";
 import { parseProcessResourceUsage } from "../../../scripts/performance/parse-process-resource-usage.ts";
@@ -30,12 +31,14 @@ const createTemporaryDirectory = (): string => {
 
 const createSeries = (medianMilliseconds: number): BenchmarkSeries => ({
   target: {
+    targetId: "0",
     directory: "/tmp/app",
     label: "app",
     gitSha: "abc",
     isGitDirty: false,
     sourceFileCount: 10,
     sourceByteCount: 1_024,
+    sourceFingerprint: "source-hash",
   },
   mode: "lint",
   cacheCohort: "no-cache",
@@ -68,6 +71,7 @@ const createResult = (series: BenchmarkSeries[]): PerformanceResult => ({
     platform: "darwin",
     architecture: "arm64",
     nodeVersion: "v24.0.0",
+    v8Version: "13.6",
     cpuModel: "Test CPU",
     cpuCount: 8,
     totalMemoryBytes: 16_000,
@@ -142,7 +146,10 @@ describe("performance harness", () => {
     const sharedInput: Omit<BuildBenchmarkEnvironmentInput, "cacheCohort"> = {
       baseEnvironment: {
         NODE_OPTIONS: "--trace-warnings",
+        NODE_DISABLE_COMPILE_CACHE: "1",
+        REACT_DOCTOR_LINT_BATCH_ORDERING: "arrival",
         REACT_DOCTOR_NO_CACHE: "1",
+        REACT_DOCTOR_NO_FILE_CACHE: "1",
       },
       cacheDirectory: "/tmp/cache",
       workerCount: "auto",
@@ -161,7 +168,10 @@ describe("performance harness", () => {
 
     expect(coldEnvironment.REACT_DOCTOR_NO_CACHE).toBeUndefined();
     expect(noCacheEnvironment.REACT_DOCTOR_NO_CACHE).toBe("1");
-    expect(coldEnvironment.NODE_OPTIONS).toContain("--trace-warnings");
+    expect(coldEnvironment.NODE_OPTIONS ?? "").not.toContain("--trace-warnings");
+    expect(coldEnvironment.NODE_DISABLE_COMPILE_CACHE).toBeUndefined();
+    expect(coldEnvironment.REACT_DOCTOR_LINT_BATCH_ORDERING).toBeUndefined();
+    expect(coldEnvironment.REACT_DOCTOR_NO_FILE_CACHE).toBeUndefined();
     expect(coldEnvironment.NODE_OPTIONS?.split(" ").includes("--cpu-prof")).toBe(
       process.allowedNodeEnvironmentFlags.has("--cpu-prof"),
     );
@@ -174,6 +184,16 @@ describe("performance harness", () => {
       expect(coldEnvironment.NODE_OPTIONS).toContain(
         `--heap-prof-dir=${JSON.stringify(profileDirectory)}`,
       );
+    }
+    if (
+      process.allowedNodeEnvironmentFlags.has("--cpu-prof-dir") &&
+      process.allowedNodeEnvironmentFlags.has("--heap-prof-dir")
+    ) {
+      const environmentProfileProbe = spawnSync(process.execPath, ["-e", ""], {
+        encoding: "utf8",
+        env: coldEnvironment,
+      });
+      expect(environmentProfileProbe.status, environmentProfileProbe.stderr).toBe(0);
     }
     const profileProbe = spawnSync(
       process.execPath,
@@ -189,7 +209,7 @@ describe("performance harness", () => {
         encoding: "utf8",
         env: {
           ...coldEnvironment,
-          NODE_OPTIONS: "--trace-warnings",
+          NODE_OPTIONS: undefined,
         },
       },
     );
@@ -290,6 +310,67 @@ describe("performance harness", () => {
         componentsPerFileCount: 1,
       }),
     ).toThrow("working directory");
+  });
+
+  it("refuses to replace unmarked benchmark runs directories", () => {
+    const outputDirectory = createTemporaryDirectory();
+    const runsDirectory = path.join(outputDirectory, "runs");
+    const sentinelPath = path.join(runsDirectory, "keep.txt");
+    fs.mkdirSync(runsDirectory);
+    fs.writeFileSync(sentinelPath, "keep");
+
+    expect(() => clearBenchmarkRunArtifacts(outputDirectory)).toThrow("unmarked");
+    expect(fs.readFileSync(sentinelPath, "utf8")).toBe("keep");
+  });
+
+  it("refuses to replace unmarked benchmark result files", () => {
+    const outputDirectory = createTemporaryDirectory();
+    const resultPath = path.join(outputDirectory, "results.json");
+    fs.writeFileSync(resultPath, "keep");
+
+    expect(() => clearBenchmarkRunArtifacts(outputDirectory)).toThrow("unmarked benchmark output");
+    expect(fs.readFileSync(resultPath, "utf8")).toBe("keep");
+  });
+
+  it("clears only marked benchmark run artifacts", () => {
+    const outputDirectory = createTemporaryDirectory();
+    clearBenchmarkRunArtifacts(outputDirectory);
+    const staleProfilePath = path.join(outputDirectory, "runs", "stale.cpuprofile");
+    const staleResultPath = path.join(outputDirectory, "results.json");
+    fs.writeFileSync(staleProfilePath, "{}");
+    fs.writeFileSync(staleResultPath, "{}");
+
+    clearBenchmarkRunArtifacts(outputDirectory);
+
+    expect(fs.existsSync(staleProfilePath)).toBe(false);
+    expect(fs.existsSync(staleResultPath)).toBe(false);
+  });
+
+  it("rejects overlapping stress project and benchmark runs directories before replacement", () => {
+    const directory = createTemporaryDirectory();
+    const outputDirectory = path.join(directory, "results");
+    const projectDirectory = path.join(outputDirectory, "runs", "project");
+    createStressProject({
+      directory: projectDirectory,
+      fileCount: 1,
+      componentsPerFileCount: 1,
+    });
+    const sentinelPath = path.join(projectDirectory, "keep.txt");
+    fs.writeFileSync(sentinelPath, "keep");
+
+    expect(() =>
+      runStressPerformance([
+        "--project",
+        projectDirectory,
+        "--out",
+        outputDirectory,
+        "--samples",
+        "1",
+        "--warmups",
+        "0",
+      ]),
+    ).toThrow("cannot overlap");
+    expect(fs.readFileSync(sentinelPath, "utf8")).toBe("keep");
   });
 
   it("validates stress benchmark dimensions before replacing the generated project", () => {
@@ -437,11 +518,14 @@ describe("performance harness", () => {
         error: null,
       }),
     );
-    expect(readBenchmarkReport(reportPath)).toMatchObject({
+    expect(readBenchmarkReport({ reportPath, targetDirectory: directory })).toMatchObject({
       elapsedMilliseconds: 123,
       diagnosticCount: 0,
       scannedFileCount: 7,
     });
+    expect(() =>
+      readBenchmarkReport({ reportPath, targetDirectory: path.join(directory, "other") }),
+    ).toThrow("target mismatch");
     const degradedReportPath = path.join(directory, "degraded.json");
     fs.writeFileSync(
       degradedReportPath,
@@ -475,7 +559,9 @@ describe("performance harness", () => {
         error: null,
       }),
     );
-    expect(() => readBenchmarkReport(degradedReportPath)).toThrow("degraded");
+    expect(() =>
+      readBenchmarkReport({ reportPath: degradedReportPath, targetDirectory: directory }),
+    ).toThrow("degraded");
   });
 
   it("classifies material regressions and renders the summary", () => {
@@ -497,7 +583,9 @@ describe("performance harness", () => {
     const baselineSeries = {
       ...createSeries(1_000),
       target: {
+        ...createSeries(1_000).target,
         directory: "/tmp/baseline/app",
+        label: undefined,
       },
     };
     const currentSeries = {
@@ -505,6 +593,7 @@ describe("performance harness", () => {
       target: {
         ...createSeries(900).target,
         directory: "/tmp/current/app",
+        label: undefined,
       },
     };
 
@@ -521,6 +610,20 @@ describe("performance harness", () => {
     };
 
     expect(() => buildBenchmarkComparisons([createSeries(900)], [baselineSeries])).toThrow(
+      "no matching series",
+    );
+  });
+
+  it("rejects comparisons between different source workloads", () => {
+    const currentSeries = {
+      ...createSeries(900),
+      target: {
+        ...createSeries(900).target,
+        sourceFingerprint: "changed-source",
+      },
+    };
+
+    expect(() => buildBenchmarkComparisons([currentSeries], [createSeries(1_000)])).toThrow(
       "no matching series",
     );
   });

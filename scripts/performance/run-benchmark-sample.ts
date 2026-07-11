@@ -22,10 +22,28 @@ export interface RunBenchmarkSampleInput {
   heapProfile: boolean;
 }
 
+let cachedTimeArguments: string[] | null = null;
+
 const resolveTimeArguments = (): string[] => {
-  if (process.platform === "darwin") return ["-l"];
-  if (process.platform === "linux") return ["-v"];
-  return [];
+  if (cachedTimeArguments !== null) return cachedTimeArguments;
+  if (!fs.existsSync("/usr/bin/time")) {
+    cachedTimeArguments = [];
+  } else if (process.platform === "darwin") {
+    cachedTimeArguments = ["-l"];
+  } else if (process.platform === "linux") {
+    const versionResult = spawnSync("/usr/bin/time", ["--version"], {
+      encoding: "utf8",
+      env: { ...process.env, LC_ALL: "C" },
+    });
+    cachedTimeArguments =
+      versionResult.status === 0 &&
+      `${versionResult.stdout}${versionResult.stderr}`.includes("GNU Time")
+        ? ["-v"]
+        : [];
+  } else {
+    cachedTimeArguments = [];
+  }
+  return cachedTimeArguments;
 };
 
 export const runBenchmarkSample = (input: RunBenchmarkSampleInput): BenchmarkSample => {
@@ -91,7 +109,10 @@ export const runBenchmarkSample = (input: RunBenchmarkSampleInput): BenchmarkSam
       `Benchmark scan failed with status ${result.status}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
     );
   }
-  const report = readBenchmarkReport(reportPath);
+  const report = readBenchmarkReport({
+    reportPath,
+    targetDirectory: input.targetDirectory,
+  });
   const resourceUsage = parseProcessResourceUsage(result.stderr);
   return {
     index: input.sampleIndex,

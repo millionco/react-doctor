@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import * as Schema from "effect/Schema";
 import { JsonReport } from "@react-doctor/core/schemas";
-import type { ValidatedBenchmarkReport } from "./types.ts";
+import type { ReadBenchmarkReportInput, ValidatedBenchmarkReport } from "./types.ts";
 
 const projectSourceFileCount = (project: unknown): number => {
   if (
@@ -16,10 +17,21 @@ const projectSourceFileCount = (project: unknown): number => {
   throw new Error("Benchmark report project has no sourceFileCount");
 };
 
-export const readBenchmarkReport = (reportPath: string): ValidatedBenchmarkReport => {
+export const readBenchmarkReport = (input: ReadBenchmarkReportInput): ValidatedBenchmarkReport => {
   const report = Schema.decodeUnknownSync(JsonReport)(
-    JSON.parse(fs.readFileSync(reportPath, "utf8")),
+    JSON.parse(fs.readFileSync(input.reportPath, "utf8")),
   );
+  if (!report.ok || report.error !== null) {
+    throw new Error(
+      `Benchmark scan reported an error: ${report.error?.message ?? "unknown error"}`,
+    );
+  }
+  if (report.projects.length === 0) throw new Error("Benchmark scan reported no projects");
+  if (path.resolve(report.directory) !== path.resolve(input.targetDirectory)) {
+    throw new Error(
+      `Benchmark report target mismatch: expected ${input.targetDirectory}, received ${report.directory}`,
+    );
+  }
   const skippedChecks = report.projects.flatMap((project) => project.skippedChecks);
   if (skippedChecks.length > 0) {
     throw new Error(`Benchmark scan degraded: ${skippedChecks.join(", ")}`);

@@ -8,6 +8,8 @@ import {
   STRESS_SUPPORT_SOURCE_FILE_COUNT,
   STRESS_VALUE_MODULUS,
 } from "./constants.ts";
+import { hasValidFileMarker } from "./has-valid-file-marker.ts";
+import { isPathWithin } from "./is-path-within.ts";
 import type { CreateStressProjectInput, StressProjectMetadata } from "./types.ts";
 
 export const createStressProject = (input: CreateStressProjectInput): StressProjectMetadata => {
@@ -19,12 +21,7 @@ export const createStressProject = (input: CreateStressProjectInput): StressProj
   }
 
   const projectDirectory = path.resolve(input.directory);
-  const currentWorkingDirectoryRelativeToProject = path.relative(projectDirectory, process.cwd());
-  if (
-    currentWorkingDirectoryRelativeToProject === "" ||
-    (currentWorkingDirectoryRelativeToProject !== ".." &&
-      !currentWorkingDirectoryRelativeToProject.startsWith(`..${path.sep}`))
-  ) {
+  if (isPathWithin(projectDirectory, process.cwd())) {
     throw new Error(
       `Stress project directory cannot contain the working directory: ${projectDirectory}`,
     );
@@ -37,12 +34,7 @@ export const createStressProject = (input: CreateStressProjectInput): StressProj
     }
     const projectEntries = fs.readdirSync(projectDirectory);
     if (projectEntries.length > 0) {
-      const markerStats = fs.existsSync(markerPath) ? fs.lstatSync(markerPath) : null;
-      const hasValidMarker =
-        markerStats?.isFile() === true &&
-        !markerStats.isSymbolicLink() &&
-        fs.readFileSync(markerPath, "utf8") === STRESS_PROJECT_MARKER_CONTENT;
-      if (!hasValidMarker) {
+      if (!hasValidFileMarker(markerPath, STRESS_PROJECT_MARKER_CONTENT)) {
         throw new Error(
           `Refusing to replace unmarked stress project directory: ${projectDirectory}`,
         );

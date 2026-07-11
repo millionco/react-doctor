@@ -4,6 +4,9 @@ import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { BYTES_PER_MEBIBYTE, PERCENT_MULTIPLIER, PROFILE_TOP_FRAME_COUNT } from "./constants.ts";
 import { collectProfilePaths } from "./collect-profile-paths.ts";
+import { profileFrameKey } from "./profile-frame-key.ts";
+import { resolveProfileProcessRole } from "./resolve-profile-process-role.ts";
+import { runCommanderMain } from "./run-commander-main.ts";
 import type {
   HeapProfile,
   HeapProfileAnalysis,
@@ -57,14 +60,6 @@ const isHeapProfileNode = (value: unknown): value is HeapProfileNode => {
 const isHeapProfile = (value: unknown): value is HeapProfile =>
   typeof value === "object" && value !== null && "head" in value && isHeapProfileNode(value.head);
 
-const frameKey = (node: HeapProfileNode): string =>
-  [
-    node.callFrame.functionName || "(anonymous)",
-    node.callFrame.url,
-    String(node.callFrame.lineNumber),
-    String(node.callFrame.columnNumber),
-  ].join("::");
-
 const collectNodes = (rootNode: HeapProfileNode): HeapProfileNode[] => {
   const nodes: HeapProfileNode[] = [];
   const pendingNodes = [rootNode];
@@ -75,20 +70,6 @@ const collectNodes = (rootNode: HeapProfileNode): HeapProfileNode[] => {
     pendingNodes.push(...node.children);
   }
   return nodes;
-};
-
-const resolveProcessRole = (nodes: HeapProfileNode[]): string => {
-  const urls = nodes.map((node) => node.callFrame.url).join("\n");
-  if (urls.includes("packages/react-doctor/dist/cli.js")) return "react-doctor";
-  if (
-    urls.includes("deslop-js") ||
-    urls.includes("entries-worker") ||
-    urls.includes("parse-worker")
-  ) {
-    return "dead-code";
-  }
-  if (urls.includes("oxlint") || urls.includes("oxlint-plugin-react-doctor")) return "oxlint";
-  return "node";
 };
 
 const toFrameSummaries = (
@@ -117,10 +98,21 @@ const analyzeProfile = (profilePath: string): AnalyzedHeapProfile => {
   if (!isHeapProfile(parsedProfile)) throw new Error(`Invalid heap profile: ${profilePath}`);
   const nodes = collectNodes(parsedProfile.head);
   const nodesById = new Map(nodes.map((node) => [node.id, node]));
-  const frameKeysByNodeId = new Map(nodes.map((node) => [node.id, frameKey(node)]));
+  if (nodesById.size !== nodes.length) {
+    throw new Error(`Invalid heap profile with duplicate node IDs: ${profilePath}`);
+  }
+  const frameKeysByNodeId = new Map(
+    nodes.map((node) => [node.id, profileFrameKey(node.callFrame)]),
+  );
   const parentById = new Map<number, number>();
   for (const node of nodes) {
-    for (const child of node.children) parentById.set(child.id, node.id);
+    for (const child of node.children) {
+      const existingParentId = parentById.get(child.id);
+      if (existingParentId !== undefined && existingParentId !== node.id) {
+        throw new Error(`Invalid heap profile with multiple parents: ${profilePath}`);
+      }
+      parentById.set(child.id, node.id);
+    }
   }
   const allocations = new Map<string, MutableFrameAllocation>();
   let sampledBytes = 0;
@@ -137,8 +129,13 @@ const analyzeProfile = (profilePath: string): AnalyzedHeapProfile => {
     selfAllocation.selfBytes += node.selfSize;
     allocations.set(selfKey, selfAllocation);
     const visitedFrameKeys = new Set<string>();
+    const visitedNodeIds = new Set<number>();
     let currentNode: HeapProfileNode | undefined = node;
     while (currentNode !== undefined) {
+      if (visitedNodeIds.has(currentNode.id)) {
+        throw new Error(`Invalid heap profile with cyclic nodes: ${profilePath}`);
+      }
+      visitedNodeIds.add(currentNode.id);
       const currentFrameKey = frameKeysByNodeId.get(currentNode.id);
       if (currentFrameKey !== undefined && !visitedFrameKeys.has(currentFrameKey)) {
         const allocation = allocations.get(currentFrameKey) ?? {
@@ -157,7 +154,7 @@ const analyzeProfile = (profilePath: string): AnalyzedHeapProfile => {
   return {
     processSummary: {
       file: profilePath,
-      role: resolveProcessRole(nodes),
+      role: resolveProfileProcessRole(nodes.map((node) => node.callFrame)),
       sampledBytes,
       topFrames: toFrameSummaries(allocations, sampledBytes).slice(0, PROFILE_TOP_FRAME_COUNT),
     },
@@ -250,4 +247,4 @@ const main = (): void => {
   process.stdout.write(`${outputPrefix}.md\n`);
 };
 
-if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) main();
+if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) runCommanderMain(main);

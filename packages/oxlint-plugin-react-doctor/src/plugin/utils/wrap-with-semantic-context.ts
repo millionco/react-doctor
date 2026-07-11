@@ -100,12 +100,13 @@ export const wrapWithSemanticContext = (rule: Rule): HostRule => ({
       },
     };
 
+    const visitors = rule.create(enrichedContext);
+    if (!rule.requiresSemanticContext) return visitors;
     // Program enter fires before every other visitor, so capturing the root
     // there is enough — wrapping every visitor of every rule in a
     // capture-then-forward closure added a call per (node × rule) for
     // nothing. A handler that somehow ran without a Program visit falls back
     // to the conservative stubs above, same as before capture happened.
-    const visitors = rule.create(enrichedContext);
     const innerProgramHandler = visitors.Program;
     visitors.Program = ((node: EsTreeNode) => {
       programRoot = node;

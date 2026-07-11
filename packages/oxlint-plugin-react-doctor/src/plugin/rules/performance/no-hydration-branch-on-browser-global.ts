@@ -11,6 +11,7 @@ import { hasEmailTemplateImport } from "../../utils/has-email-template-import.js
 import { hasSuppressHydrationWarningAttribute } from "../../utils/has-suppress-hydration-warning-attribute.js";
 import { isAstNode } from "../../utils/is-ast-node.js";
 import { isFunctionLike } from "../../utils/is-function-like.js";
+import { isGatedByFalsyInitialState } from "../../utils/is-gated-by-falsy-initial-state.js";
 import { isGeneratedImageRenderContext } from "../../utils/is-generated-image-render-context.js";
 import { isInsideClientOnlyGuard } from "../../utils/is-inside-client-only-guard.js";
 import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.js";
@@ -240,6 +241,9 @@ const isInRenderedOutput = (node: EsTreeNode, componentOrHookNode: EsTreeNode): 
 const getReturnedValue = (statement: EsTreeNode | null | undefined): EsTreeNode | null => {
   if (!statement) return null;
   if (isNodeOfType(statement, "ReturnStatement")) return statement.argument ?? null;
+  if (isNodeOfType(statement, "IfStatement")) {
+    return getReturnedValue(statement.consequent) ?? getReturnedValue(statement.alternate);
+  }
   if (!isNodeOfType(statement, "BlockStatement")) return null;
   const lastStatement = statement.body.at(-1);
   return isNodeOfType(lastStatement, "ReturnStatement") ? (lastStatement.argument ?? null) : null;
@@ -297,7 +301,13 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
         const attribute = findEnclosingJsxAttribute(predicateNode);
         if (!attribute || isEventHandlerAttribute(attribute)) return;
       }
-      if (fileIsEmailTemplate || isInsideClientOnlyGuard(predicateNode)) return;
+      if (
+        fileIsEmailTemplate ||
+        isInsideClientOnlyGuard(predicateNode) ||
+        isGatedByFalsyInitialState(predicateNode)
+      ) {
+        return;
+      }
       const openingElement = findEnclosingJsxOpeningElement(predicateNode);
       if (hasSuppressHydrationWarningAttribute(openingElement)) return;
       if (branchHasSuppression(leftBranch) || (rightBranch && branchHasSuppression(rightBranch)))

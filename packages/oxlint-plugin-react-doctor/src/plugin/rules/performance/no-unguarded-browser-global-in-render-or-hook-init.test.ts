@@ -61,6 +61,10 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       `"use client"; export const Page = () => <div>{typeof (window as unknown) !== "undefined" ? window.innerWidth : 0}</div>;`,
     ],
     [
+      "a document guard for another browser global",
+      `"use client"; export const Page = () => <div>{typeof document !== "undefined" ? window.innerWidth : 0}</div>;`,
+    ],
+    [
       "a compound availability guard",
       `"use client"; export const Page = ({ ready }) => <div>{typeof window !== "undefined" && ready ? window.innerWidth : 0}</div>;`,
     ],

@@ -40,14 +40,23 @@ const getTypeofBrowserGlobalName = (
     return null;
   }
   const argument = stripParenExpression(unwrappedExpression.argument);
+  if (isNodeOfType(argument, "Identifier")) {
+    return BROWSER_GLOBAL_NAMES.has(argument.name) && context.scopes.isGlobalReference(argument)
+      ? argument.name
+      : null;
+  }
   if (
-    !isNodeOfType(argument, "Identifier") ||
-    !BROWSER_GLOBAL_NAMES.has(argument.name) ||
-    !context.scopes.isGlobalReference(argument)
+    !isNodeOfType(argument, "MemberExpression") ||
+    argument.computed ||
+    !isNodeOfType(argument.object, "Identifier") ||
+    argument.object.name !== "globalThis" ||
+    !context.scopes.isGlobalReference(argument.object) ||
+    !isNodeOfType(argument.property, "Identifier") ||
+    !BROWSER_GLOBAL_NAMES.has(argument.property.name)
   ) {
     return null;
   }
-  return argument.name;
+  return argument.property.name;
 };
 
 const browserGuardCoversGlobal = (guardName: string, browserGlobalName: string): boolean =>

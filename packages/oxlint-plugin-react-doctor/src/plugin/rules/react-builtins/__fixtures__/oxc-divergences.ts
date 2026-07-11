@@ -16,6 +16,11 @@ export interface OxcDivergence {
 }
 
 export const DIVERGENCES: Record<string, OxcDivergence> = {
+  "exhaustive-deps": {
+    failSkips: [81],
+    reason:
+      "Intentional: exact props members suppress a synthetic whole-props dependency, and useMemo accepts extra reactive invalidation tokens.",
+  },
   "no-unknown-property": {
     // fp-review: 1110 unique false positives vs 28 true positives (1%
     // precision) drove three narrowings, each encoded by a fixture:

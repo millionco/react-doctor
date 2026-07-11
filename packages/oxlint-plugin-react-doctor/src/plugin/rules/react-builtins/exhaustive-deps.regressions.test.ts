@@ -946,17 +946,324 @@ describe("react-builtins/exhaustive-deps — regressions", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
-  it("still flags a dep the callback truly never reads", () => {
+  it("still flags an extra reactive dependency in useCallback", () => {
     const code = `
       function MyComponent({ value, unrelated }) {
-        const doubled = useMemo(() => value * 2, [value, unrelated]);
-        return doubled;
+        const getValue = useCallback(() => value, [value, unrelated]);
+        return getValue;
       }
     `;
     const result = runRule(exhaustiveDeps, code);
     expect(result.parseErrors).toEqual([]);
     const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
     expect(messages).toContain("unrelated");
+  });
+
+  describe("bounded identity source resolution", () => {
+    it("treats an immutable local alias of an imported function as stable", () => {
+      const code = `
+        import { setConnectionStatus } from "./connection-status";
+        function StatusPanel({ status }) {
+          const setStatus = setConnectionStatus;
+          useEffect(() => {
+            setStatus(status);
+          }, [status]);
+          return null;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("treats a transitive immutable alias of an imported function as stable", () => {
+      const code = `
+        import { setConnectionStatus } from "./connection-status";
+        function StatusPanel({ status }) {
+          const setStatus = setConnectionStatus;
+          const updateStatus = (nextStatus) => setStatus(nextStatus);
+          useEffect(() => {
+            updateStatus(status);
+          }, [status]);
+          return null;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("resolves renamed and immutable aliases of React hooks", () => {
+      const code = `
+        import { useEffect as runEffect, useRef as createRef } from "react";
+        function StatusPanel({ status }) {
+          const invokeEffect = runEffect as typeof runEffect;
+          const statusRef = createRef(status);
+          (invokeEffect as typeof invokeEffect)(() => {
+            consumeStatus(status, statusRef.current);
+          }, []);
+          return null;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("status");
+      expect(messages).not.toContain("statusRef");
+    });
+
+    it("does not resolve a shadowed React hook import alias", () => {
+      const code = `
+        import { useMemo as memoize } from "react";
+        function StatusPanel({ status }) {
+          const run = (memoize) => memoize(() => status, []);
+          return run;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("accepts every reactive identity source of a ref alias with a stable fallback", () => {
+      const code = `
+        function EditorSurface({ text, pendingMappingOperationsRef }) {
+          const noopPendingMappingOperationsRef = useRef([]);
+          const pendingOpsRef =
+            pendingMappingOperationsRef ?? noopPendingMappingOperationsRef;
+          useLayoutEffect(() => {
+            consumeOperations(pendingOpsRef.current);
+          }, [text, pendingMappingOperationsRef]);
+          return null;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("resolves wrapped optional member identity sources", () => {
+      const code = `
+        function EditorSurface(props) {
+          const fallbackOperationsRef = useRef([]);
+          const pendingOpsRef =
+            (props?.pendingMappingOperationsRef as React.RefObject<unknown[]>) ??
+            fallbackOperationsRef;
+          useLayoutEffect(() => {
+            consumeOperations(pendingOpsRef.current);
+          }, [props.pendingMappingOperationsRef]);
+          return null;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("does not synthesize whole props when declared members cover every props capture", () => {
+      const code = `
+        function Settings(props) {
+          return useMemo(
+            () =>
+              props.apiKeys.filter(
+                (apiKey) => apiKey.organizationId === props.user.organizationId,
+              ),
+            [props.apiKeys, props.user.organizationId],
+          );
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("does not synthesize whole props from a shadowed callback parameter", () => {
+      const code = `
+        function Settings(props) {
+          return useMemo(
+            () => [
+              props.firstValue,
+              props.secondValue,
+              ...props.items.map((props) => props.format()),
+            ],
+            [props.firstValue, props.items],
+          );
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("props.secondValue");
+      expect(messages).not.toMatch(/dependencies?: `props`(?:,|\.|$)/);
+    });
+
+    it("allows an extra reactive useMemo dependency as an invalidation token", () => {
+      const code = `
+        function Slice({ rows, cacheRevision }) {
+          const cacheRef = useRef(new Map());
+          return useMemo(
+            () => readRows(cacheRef.current, rows),
+            [rows, cacheRevision],
+          );
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("allows reactive invalidation parameters on a generic useMemo call", () => {
+      const code = `
+        function usePosition(chart, chartWidth, chartHeight) {
+          return useMemo<Position>(
+            () => readPosition(chart),
+            [chart, chartWidth, chartHeight],
+          );
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("still flags a fresh useMemo dependency that invalidates every render", () => {
+      const code = `
+        function Slice({ rows }) {
+          const freshInvalidationToken = {};
+          return useMemo(
+            () => readRows(rows),
+            [rows, freshInvalidationToken],
+          );
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("freshInvalidationToken");
+    });
+
+    it("still flags a stable useMemo dependency that cannot invalidate the memo", () => {
+      const code = `
+        function Slice({ rows }) {
+          const cacheRef = useRef(new Map());
+          return useMemo(
+            () => readRows(rows),
+            [rows, cacheRef],
+          );
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("cacheRef");
+    });
+
+    it("does not treat a mutable imported-function alias as stable", () => {
+      const code = `
+        import { setConnectionStatus } from "./connection-status";
+        function StatusPanel({ status, overrideStatus }) {
+          let setStatus = setConnectionStatus;
+          setStatus = overrideStatus ?? setStatus;
+          useEffect(() => {
+            setStatus(status);
+          }, [status]);
+          return null;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("setStatus");
+    });
+
+    it("does not treat a render-local closure as an imported-function alias", () => {
+      const code = `
+        import { setConnectionStatus } from "./connection-status";
+        function StatusPanel({ status }) {
+          const setStatus = (nextStatus) => setConnectionStatus(nextStatus);
+          useEffect(() => {
+            setStatus(status);
+          }, [status, setStatus]);
+          return null;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("setStatus");
+      expect(messages).toContain("rebuilt every render");
+    });
+
+    it("does not resolve an alias with a fresh fallback", () => {
+      const code = `
+        function EditorSurface({ pendingMappingOperationsRef }) {
+          const pendingOpsRef = pendingMappingOperationsRef ?? { current: [] };
+          useLayoutEffect(() => {
+            consumeOperations(pendingOpsRef.current);
+          }, [pendingMappingOperationsRef]);
+          return null;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("pendingOpsRef");
+    });
+
+    it("reports every missing reactive identity source", () => {
+      const code = `
+        function EditorSurface({ primaryOperationsRef, secondaryOperationsRef }) {
+          const fallbackOperationsRef = useRef([]);
+          const pendingOpsRef =
+            primaryOperationsRef ?? secondaryOperationsRef ?? fallbackOperationsRef;
+          useLayoutEffect(() => {
+            consumeOperations(pendingOpsRef.current);
+          }, [primaryOperationsRef]);
+          return null;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("secondaryOperationsRef");
+      expect(messages).not.toContain("`pendingOpsRef`");
+    });
+
+    it("does not resolve computed-member identity sources", () => {
+      const code = `
+        function EditorSurface({ operationRefs, operationKind }) {
+          const fallbackOperationsRef = useRef([]);
+          const pendingOpsRef =
+            operationRefs[operationKind] ?? fallbackOperationsRef;
+          useLayoutEffect(() => {
+            consumeOperations(pendingOpsRef.current);
+          }, [operationRefs, operationKind]);
+          return null;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("pendingOpsRef");
+    });
+
+    it("does not let a narrower member dependency cover an identity source", () => {
+      const code = `
+        function EditorSurface(props) {
+          const fallbackOperationsRef = useRef([]);
+          const pendingOpsRef =
+            props.pendingMappingOperationsRef ?? fallbackOperationsRef;
+          useLayoutEffect(() => {
+            consumeOperations(pendingOpsRef.current);
+          }, [props.pendingMappingOperationsRef.current]);
+          return null;
+        }
+      `;
+      const result = runRule(exhaustiveDeps, code);
+      expect(result.parseErrors).toEqual([]);
+      const messages = result.diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+      expect(messages).toContain("props.pendingMappingOperationsRef");
+    });
   });
 });
 

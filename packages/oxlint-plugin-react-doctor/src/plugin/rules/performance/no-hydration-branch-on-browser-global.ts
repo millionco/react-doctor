@@ -291,21 +291,6 @@ const isRenderedValue = (node: EsTreeNode): boolean => {
   return isNodeOfType(unwrappedNode, "JSXElement") || isNodeOfType(unwrappedNode, "JSXFragment");
 };
 
-const findBrowserPredicateInAndCondition = (
-  node: EsTreeNode,
-  context: RuleContext,
-): EsTreeNode | null => {
-  const unwrappedNode = stripParenExpression(node);
-  if (matchBrowserPredicate(unwrappedNode, context)) return unwrappedNode;
-  if (!isNodeOfType(unwrappedNode, "LogicalExpression") || unwrappedNode.operator !== "&&") {
-    return null;
-  }
-  return (
-    findBrowserPredicateInAndCondition(unwrappedNode.left, context) ??
-    findBrowserPredicateInAndCondition(unwrappedNode.right, context)
-  );
-};
-
 const findRenderedValueInAndBranch = (node: EsTreeNode): EsTreeNode | null => {
   const unwrappedNode = stripParenExpression(node);
   if (isRenderedValue(unwrappedNode)) return unwrappedNode;
@@ -555,20 +540,14 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
       },
       LogicalExpression(node: EsTreeNodeOfType<"LogicalExpression">) {
         if (node.operator !== "&&" && node.operator !== "||") return;
-        const predicateNode =
-          node.operator === "&&"
-            ? findBrowserPredicateInAndCondition(node.left, context)
-            : matchBrowserPredicate(node.left, context)
-              ? stripParenExpression(node.left)
-              : null;
         const renderedValue =
           node.operator === "&&"
             ? findRenderedValueInAndBranch(node.right)
             : isRenderedValue(node.right)
               ? node.right
               : null;
-        if (!predicateNode || !renderedValue) return;
-        reportHydrationBranch(predicateNode, renderedValue, null, true);
+        if (!renderedValue) return;
+        reportHydrationBranch(node, renderedValue, null, true);
       },
       IfStatement(node: EsTreeNodeOfType<"IfStatement">) {
         if (node.alternate && areReturnTreesEquivalent(node.consequent, node.alternate)) return;

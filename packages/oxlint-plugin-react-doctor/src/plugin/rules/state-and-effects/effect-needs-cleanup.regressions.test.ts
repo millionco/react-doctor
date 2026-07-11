@@ -107,6 +107,22 @@ export const StoreSubscriber = ({ store }) => {
     expect(result.diagnostics).toHaveLength(0);
   });
 
+  it("does not flag a `.subscribe()` disposer invoked by the returned cleanup", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const StoreSubscriber = ({ store }) => {
+  useEffect(() => {
+    const unsubscribe = store.subscribe(update);
+    return () => unsubscribe();
+  }, [store]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
   // Mined miss (gatsby loading-indicator): the cleanup calls `.off` with a
   // FRESH inline arrow — a different reference from the one `.on` registered
   // — so reference-based removal removes nothing and the listeners leak.
@@ -764,6 +780,23 @@ export const ReadOnce = ({ store }) => {
     const subscription = store.subscribe(update);
     readCurrentValue();
     subscription.remove();
+  }, [store]);
+  return null;
+};`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("does not flag a subscribe disposer invoked synchronously in the same effect body", () => {
+    const result = runRule(
+      effectNeedsCleanup,
+      `import { useEffect } from "react";
+export const ReadOnce = ({ store }) => {
+  useEffect(() => {
+    const unsubscribe = store.subscribe(update);
+    readCurrentValue();
+    unsubscribe();
   }, [store]);
   return null;
 };`,

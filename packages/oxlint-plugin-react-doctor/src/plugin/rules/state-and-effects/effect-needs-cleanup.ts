@@ -269,7 +269,8 @@ const removeSynchronouslyReleasedUsages = (
   if (!isNodeOfType(callback.body, "BlockStatement")) return usages;
   const releaseCalls: EsTreeNode[] = [];
   walkInsideStatementBlocks(callback.body, (child: EsTreeNode) => {
-    if (!getReleaseVerbName(child)) return;
+    const callNode = isNodeOfType(child, "ChainExpression") ? child.expression : child;
+    if (!isNodeOfType(callNode, "CallExpression")) return;
     releaseCalls.push(child);
   });
   if (releaseCalls.length === 0) return usages;
@@ -619,8 +620,6 @@ const doesReleaseCallMatchUsage = (
 ): boolean => {
   const callNode = isNodeOfType(node, "ChainExpression") ? node.expression : node;
   if (!isNodeOfType(callNode, "CallExpression")) return false;
-  const releaseVerbName = getReleaseVerbName(callNode);
-  if (!releaseVerbName) return false;
   const callee = isNodeOfType(callNode.callee, "ChainExpression")
     ? callNode.callee.expression
     : callNode.callee;
@@ -658,6 +657,9 @@ const doesReleaseCallMatchUsage = (
   ) {
     return true;
   }
+
+  const releaseVerbName = getReleaseVerbName(callNode);
+  if (!releaseVerbName) return false;
 
   if (
     !isNodeOfType(callee, "MemberExpression") ||

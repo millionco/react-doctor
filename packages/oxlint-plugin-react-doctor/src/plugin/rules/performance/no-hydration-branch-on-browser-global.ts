@@ -19,6 +19,7 @@ import { isEventHandlerAttribute } from "../../utils/is-event-handler-attribute.
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -250,19 +251,6 @@ const isInRenderedOutput = (node: EsTreeNode, componentOrHookNode: EsTreeNode): 
   return false;
 };
 
-const statementAlwaysReturns = (statement: EsTreeNode): boolean => {
-  if (isNodeOfType(statement, "ReturnStatement")) return true;
-  if (isNodeOfType(statement, "IfStatement")) {
-    return Boolean(
-      statement.alternate &&
-      statementAlwaysReturns(statement.consequent) &&
-      statementAlwaysReturns(statement.alternate),
-    );
-  }
-  if (!isNodeOfType(statement, "BlockStatement")) return false;
-  return statement.body.some((childStatement) => statementAlwaysReturns(childStatement));
-};
-
 const getReturnedValues = (statement: EsTreeNode | null | undefined): ReadonlyArray<EsTreeNode> => {
   if (!statement) return [];
   if (isNodeOfType(statement, "ReturnStatement")) {
@@ -275,7 +263,7 @@ const getReturnedValues = (statement: EsTreeNode | null | undefined): ReadonlyAr
   const returnedValues: Array<EsTreeNode> = [];
   for (const childStatement of statement.body) {
     returnedValues.push(...getReturnedValues(childStatement));
-    if (statementAlwaysReturns(childStatement)) break;
+    if (statementAlwaysExits(childStatement)) break;
   }
   return returnedValues;
 };
@@ -290,9 +278,47 @@ const findFollowingReturnedValues = (
   const returnedValues: Array<EsTreeNode> = [];
   for (const statement of parentNode.body.slice(statementIndex + 1)) {
     returnedValues.push(...getReturnedValues(statement));
-    if (statementAlwaysReturns(statement)) break;
+    if (statementAlwaysExits(statement)) break;
   }
   return returnedValues;
+};
+
+const areReturnTreesEquivalent = (
+  leftStatement: EsTreeNode | null | undefined,
+  rightStatement: EsTreeNode | null | undefined,
+): boolean => {
+  if (!leftStatement || !rightStatement) return leftStatement === rightStatement;
+  if (
+    isNodeOfType(leftStatement, "ReturnStatement") &&
+    isNodeOfType(rightStatement, "ReturnStatement")
+  ) {
+    return areRenderedBranchesEquivalent(leftStatement.argument, rightStatement.argument);
+  }
+  if (isNodeOfType(leftStatement, "IfStatement") && isNodeOfType(rightStatement, "IfStatement")) {
+    return (
+      areExpressionsStructurallyEqual(leftStatement.test, rightStatement.test) &&
+      areReturnTreesEquivalent(leftStatement.consequent, rightStatement.consequent) &&
+      areReturnTreesEquivalent(leftStatement.alternate, rightStatement.alternate)
+    );
+  }
+  if (
+    !isNodeOfType(leftStatement, "BlockStatement") ||
+    !isNodeOfType(rightStatement, "BlockStatement")
+  ) {
+    return false;
+  }
+  const leftReturningStatements = leftStatement.body.filter(
+    (statement) => getReturnedValues(statement).length > 0,
+  );
+  const rightReturningStatements = rightStatement.body.filter(
+    (statement) => getReturnedValues(statement).length > 0,
+  );
+  return (
+    leftReturningStatements.length === rightReturningStatements.length &&
+    leftReturningStatements.every((statement, index) =>
+      areReturnTreesEquivalent(statement, rightReturningStatements[index]),
+    )
+  );
 };
 
 const branchHasSuppression = (branch: EsTreeNode): boolean => {
@@ -385,6 +411,7 @@ export const noHydrationBranchOnBrowserGlobal = defineRule({
         reportHydrationBranch(predicateNode, renderedValue, null, true);
       },
       IfStatement(node: EsTreeNodeOfType<"IfStatement">) {
+        if (node.alternate && areReturnTreesEquivalent(node.consequent, node.alternate)) return;
         const consequentValues = getReturnedValues(node.consequent);
         const alternateValues = node.alternate
           ? getReturnedValues(node.alternate)

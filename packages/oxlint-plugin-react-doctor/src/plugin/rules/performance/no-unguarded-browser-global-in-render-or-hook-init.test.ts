@@ -89,6 +89,10 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
       `"use client"; export const Page = () => { if (typeof window === "undefined") return null; return <div>{window.innerWidth}</div>; };`,
     ],
     [
+      "an early-exit guard with exhaustive inner branches",
+      `"use client"; export const Page = ({ shouldThrow }) => { if (typeof window === "undefined") { if (shouldThrow) throw new Error("server"); else return null; } return <div>{window.innerWidth}</div>; };`,
+    ],
+    [
       "a shadowed binding",
       `"use client"; export const Page = ({ window }) => <div>{window.innerWidth}</div>;`,
     ],
@@ -108,6 +112,15 @@ describe("no-unguarded-browser-global-in-render-or-hook-init", () => {
     const result = run(code);
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(0);
+  });
+
+  it("names matchMedia in its diagnostic", () => {
+    const result = run(
+      `import { useMemo } from "react"; export const Page = () => { const mobile = useMemo(() => matchMedia("(max-width: 600px)").matches, []); return <div>{String(mobile)}</div>; };`,
+    );
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0].message).toContain("`matchMedia`");
   });
 
   it("skips test, native, email, and generated-image contexts", () => {

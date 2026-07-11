@@ -12,9 +12,11 @@ import { getProgramAnalysis, type ProgramAnalysis } from "./utils/effect/get-pro
 import {
   hasCleanup,
   isPropCallbackInvocationRef,
+  isProp,
   isState,
   isStateSetterCall,
   isUseEffect,
+  getUseStateDecl,
 } from "./utils/effect/react.js";
 import { findTriggeredSideEffectCalleeName } from "./utils/find-triggered-side-effect-callee-name.js";
 import { isStateWrittenOnlyFromEventHandlers } from "./utils/is-state-written-only-from-event-handlers.js";
@@ -84,6 +86,37 @@ const consequentHasTransferableWork = (
   return hasTransferableWork;
 };
 
+const guardHasOtherReactiveSource = (
+  analysis: ProgramAnalysis,
+  testExpression: EsTreeNode,
+  handlerStateDeclarator: EsTreeNode,
+): boolean =>
+  getDownstreamRefs(analysis, testExpression).some((directReference) =>
+    getUpstreamRefs(analysis, directReference).some((reference) => {
+      if (isProp(analysis, reference)) return true;
+      if (!isState(analysis, reference)) return false;
+      return getUseStateDecl(analysis, reference) !== handlerStateDeclarator;
+    }),
+  );
+
+const consequentHasAdditionalReactiveGuard = (
+  analysis: ProgramAnalysis,
+  consequent: EsTreeNode,
+  handlerStateDeclarator: EsTreeNode,
+): boolean => {
+  let hasAdditionalGuard = false;
+  walkAst(consequent, (child: EsTreeNode): boolean | void => {
+    if (hasAdditionalGuard) return false;
+    if (child !== consequent && isFunctionLike(child)) return false;
+    if (!isNodeOfType(child, "IfStatement")) return;
+    if (guardHasOtherReactiveSource(analysis, child.test as EsTreeNode, handlerStateDeclarator)) {
+      hasAdditionalGuard = true;
+      return false;
+    }
+  });
+  return hasAdditionalGuard;
+};
+
 export const noEventHandler = defineRule({
   id: "no-event-handler",
   title: "Event logic handled in an effect",
@@ -105,10 +138,29 @@ export const noEventHandler = defineRule({
           if (!isNodeOfType(child, "IfStatement") || child.alternate) return;
           if (!consequentHasTransferableWork(analysis, child.consequent as EsTreeNode)) return;
           const stateReferences = collectGuardStateReferences(analysis, child.test as EsTreeNode);
-          const handlerState = stateReferences.find((reference) =>
-            isStateWrittenOnlyFromEventHandlers(analysis, reference),
+          const handlerStateDeclarators = new Set(
+            stateReferences
+              .filter((reference) => isStateWrittenOnlyFromEventHandlers(analysis, reference))
+              .map((reference) => getUseStateDecl(analysis, reference))
+              .filter((declarator): declarator is EsTreeNode => Boolean(declarator)),
           );
-          if (!handlerState) return;
+          if (handlerStateDeclarators.size !== 1) return;
+          const handlerStateDeclarator = [...handlerStateDeclarators][0];
+          if (!handlerStateDeclarator) return;
+          if (
+            guardHasOtherReactiveSource(
+              analysis,
+              child.test as EsTreeNode,
+              handlerStateDeclarator,
+            ) ||
+            consequentHasAdditionalReactiveGuard(
+              analysis,
+              child.consequent as EsTreeNode,
+              handlerStateDeclarator,
+            )
+          ) {
+            return;
+          }
           context.report({
             node,
             message:

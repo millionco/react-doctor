@@ -1,6 +1,7 @@
 import type { Reference } from "eslint-scope";
 import { collectEffectInvokedFunctions } from "../../../utils/collect-effect-invoked-functions.js";
 import type { EsTreeNode } from "../../../utils/es-tree-node.js";
+import { isAstDescendant } from "../../../utils/is-ast-descendant.js";
 import { isFunctionLike } from "../../../utils/is-function-like.js";
 import { isNodeOfType } from "../../../utils/is-node-of-type.js";
 import { readsPostMountValue } from "../../../utils/reads-post-mount-value.js";
@@ -38,6 +39,10 @@ interface EffectValueEvidence {
   hasUnknownSource: boolean;
   hasDeferredIntroducedValue: boolean;
   readsExternalValue: boolean;
+}
+
+interface CollectedEffectStateWriteFact extends EffectStateWriteFact {
+  executionNode: EsTreeNode;
 }
 
 export interface EffectStateWriteFact {
@@ -133,6 +138,14 @@ const getCallCalleeName = (callExpression: EsTreeNode): string | null => {
 const getFunctionParameters = (functionNode: EsTreeNode): ReadonlyArray<EsTreeNode> =>
   isFunctionLike(functionNode) ? ((functionNode.params ?? []) as ReadonlyArray<EsTreeNode>) : [];
 
+const getIdentifierBindingIdentity = (
+  analysis: ProgramAnalysis,
+  identifier: EsTreeNode,
+): unknown | null => {
+  if (!isNodeOfType(identifier, "Identifier")) return null;
+  return getRef(analysis, identifier)?.resolved ?? null;
+};
+
 const getParameterBindingIdentity = (
   analysis: ProgramAnalysis,
   functionNode: EsTreeNode,
@@ -210,18 +223,76 @@ const localUseEventPreservesCallback = (analysis: ProgramAnalysis, callee: EsTre
   if (!calleeReference?.resolved) return false;
   const implementation = resolveToFunction(calleeReference);
   if (!implementation) return false;
-  let readsUseRef = false;
-  let returnsStableCallback = false;
+  const callbackParameter = getFunctionParameters(implementation)[0];
+  if (!callbackParameter || !isNodeOfType(callbackParameter, "Identifier")) return false;
+  const callbackBinding = getParameterBindingIdentity(analysis, implementation, callbackParameter);
+  const callbackRefDeclarators: EsTreeNode[] = [];
   walkAst(implementation, (child: EsTreeNode): boolean | void => {
     if (child !== implementation && isFunctionLike(child)) return false;
-    if (!isNodeOfType(child, "CallExpression")) return;
-    const childCalleeName = getCallCalleeName(child);
-    if (childCalleeName === "useRef") readsUseRef = true;
-    if (childCalleeName === "useCallback" || childCalleeName === "useEffectEvent") {
-      returnsStableCallback = true;
+    if (!isNodeOfType(child, "VariableDeclarator")) return;
+    if (!isNodeOfType(child.id, "Identifier")) return;
+    if (!isNodeOfType(child.init, "CallExpression")) return;
+    if (getCallCalleeName(child.init) !== "useRef") return;
+    const refInitializer = child.init.arguments?.[0];
+    if (
+      !refInitializer ||
+      getIdentifierBindingIdentity(analysis, refInitializer as EsTreeNode) !== callbackBinding
+    ) {
+      return;
     }
+    callbackRefDeclarators.push(child);
   });
-  return readsUseRef && returnsStableCallback;
+  if (callbackRefDeclarators.length === 0) return false;
+
+  return getReturnedExpressions(implementation).some((returnedExpression) => {
+    const returnedCall = stripParenExpression(returnedExpression);
+    if (!isNodeOfType(returnedCall, "CallExpression")) return false;
+    const returnedCalleeName = getCallCalleeName(returnedCall);
+    if (returnedCalleeName !== "useCallback" && returnedCalleeName !== "useEffectEvent")
+      return false;
+    const stableCallback = returnedCall.arguments?.[0] as EsTreeNode | undefined;
+    if (!stableCallback || !isFunctionLike(stableCallback)) return false;
+    let forwardsCallback = false;
+    walkAst(stableCallback, (child: EsTreeNode): boolean | void => {
+      if (forwardsCallback) return false;
+      if (child !== stableCallback && isFunctionLike(child)) return false;
+      if (!isNodeOfType(child, "CallExpression")) return;
+      const forwardedCallee = stripParenExpression(child.callee);
+      if (!isNodeOfType(forwardedCallee, "MemberExpression")) return;
+      if (getStaticMemberName(forwardedCallee) !== "current") return;
+      if (!isNodeOfType(forwardedCallee.object, "Identifier")) return;
+      const refReference = getRef(analysis, forwardedCallee.object);
+      const refDeclarator = callbackRefDeclarators.find((declarator) =>
+        refReference?.resolved?.defs.some(
+          (definition) => (definition.node as unknown as EsTreeNode) === declarator,
+        ),
+      );
+      if (!refDeclarator || !refReference?.resolved) return;
+      const hasNonForwardingAssignment = refReference.resolved.references.some(
+        (candidateReference) => {
+          const identifier = candidateReference.identifier as unknown as EsTreeNode;
+          const memberExpression = identifier.parent;
+          const assignmentExpression = memberExpression?.parent;
+          if (
+            !memberExpression ||
+            !isNodeOfType(memberExpression, "MemberExpression") ||
+            getStaticMemberName(memberExpression) !== "current" ||
+            !assignmentExpression ||
+            !isNodeOfType(assignmentExpression, "AssignmentExpression") ||
+            assignmentExpression.left !== memberExpression
+          ) {
+            return false;
+          }
+          return (
+            getIdentifierBindingIdentity(analysis, assignmentExpression.right as EsTreeNode) !==
+            callbackBinding
+          );
+        },
+      );
+      if (!hasNonForwardingAssignment) forwardsCallback = true;
+    });
+    return forwardsCallback;
+  });
 };
 
 const resolveWrappedCallable = (analysis: ProgramAnalysis, node: EsTreeNode): EsTreeNode | null => {
@@ -331,7 +402,6 @@ export const collectBoundedEffectExecutionFrames = (
     substitutions: new Map(),
   };
   const frames: EffectExecutionFrame[] = [rootFrame];
-  const seenFunctions = new Set<EsTreeNode>([effectFunction]);
 
   walkAst(effectFunction, (child: EsTreeNode): boolean | void => {
     if (child !== effectFunction && isFunctionLike(child)) return false;
@@ -358,7 +428,7 @@ export const collectBoundedEffectExecutionFrames = (
       if (
         !callable ||
         (callable as unknown as { async?: boolean }).async === true ||
-        seenFunctions.has(callable)
+        callable === effectFunction
       ) {
         return;
       }
@@ -371,7 +441,6 @@ export const collectBoundedEffectExecutionFrames = (
       ) {
         return;
       }
-      seenFunctions.add(callable);
       frames.push({
         functionNode: callable,
         invocation: child,
@@ -546,6 +615,14 @@ const collectValueEvidence = (
       evidence.hasUnknownSource = true;
       return evidence;
     }
+    if (
+      reference.resolved.references.some(
+        (candidateReference) => candidateReference.isWrite() && !candidateReference.init,
+      )
+    ) {
+      evidence.hasUnknownSource = true;
+      return evidence;
+    }
     const initializer = definitions
       .map((definition) => definition.node as unknown as EsTreeNode)
       .find(
@@ -610,8 +687,12 @@ const collectValueEvidence = (
     const callee = stripParenExpression(node.callee);
     const calleeRoot = getMemberRoot(callee);
     const isPureGlobalCall =
-      (isNodeOfType(callee, "Identifier") && PURE_GLOBAL_CALLEE_NAMES.has(callee.name)) ||
-      (isNodeOfType(calleeRoot, "Identifier") && PURE_GLOBAL_NAMESPACE_NAMES.has(calleeRoot.name));
+      (isNodeOfType(callee, "Identifier") &&
+        PURE_GLOBAL_CALLEE_NAMES.has(callee.name) &&
+        getIdentifierBindingIdentity(analysis, callee) === null) ||
+      (isNodeOfType(calleeRoot, "Identifier") &&
+        PURE_GLOBAL_NAMESPACE_NAMES.has(calleeRoot.name) &&
+        getIdentifierBindingIdentity(analysis, calleeRoot) === null);
     const isPureMemberTransform =
       isNodeOfType(callee, "MemberExpression") &&
       PURE_MEMBER_TRANSFORM_NAMES.has(getStaticMemberName(callee) ?? "");
@@ -746,11 +827,18 @@ const findStateSetterReference = (
   );
 };
 
-const isSameSimpleValue = (leftExpression: EsTreeNode, rightExpression: EsTreeNode): boolean => {
+const isSameSimpleValue = (
+  analysis: ProgramAnalysis,
+  leftExpression: EsTreeNode,
+  rightExpression: EsTreeNode,
+): boolean => {
   const left = stripParenExpression(leftExpression);
   const right = stripParenExpression(rightExpression);
   if (left.type !== right.type) return false;
   if (isNodeOfType(left, "Identifier") && isNodeOfType(right, "Identifier")) {
+    const leftBinding = getIdentifierBindingIdentity(analysis, left);
+    const rightBinding = getIdentifierBindingIdentity(analysis, right);
+    if (leftBinding || rightBinding) return leftBinding !== null && leftBinding === rightBinding;
     return left.name === right.name;
   }
   if (isNodeOfType(left, "Literal") && isNodeOfType(right, "Literal")) {
@@ -759,14 +847,15 @@ const isSameSimpleValue = (leftExpression: EsTreeNode, rightExpression: EsTreeNo
   if (isNodeOfType(left, "MemberExpression") && isNodeOfType(right, "MemberExpression")) {
     return (
       left.computed === right.computed &&
-      isSameSimpleValue(left.object as EsTreeNode, right.object as EsTreeNode) &&
-      isSameSimpleValue(left.property as EsTreeNode, right.property as EsTreeNode)
+      isSameSimpleValue(analysis, left.object as EsTreeNode, right.object as EsTreeNode) &&
+      isSameSimpleValue(analysis, left.property as EsTreeNode, right.property as EsTreeNode)
     );
   }
   return false;
 };
 
 const matchesStateInitializer = (
+  analysis: ProgramAnalysis,
   callExpression: EsTreeNode,
   stateDeclarator: EsTreeNode,
 ): boolean => {
@@ -782,11 +871,19 @@ const matchesStateInitializer = (
     (unwrappedInitializer.operator === "??" || unwrappedInitializer.operator === "||")
   ) {
     return (
-      isSameSimpleValue(writtenValue as EsTreeNode, unwrappedInitializer.left as EsTreeNode) ||
-      isSameSimpleValue(writtenValue as EsTreeNode, unwrappedInitializer.right as EsTreeNode)
+      isSameSimpleValue(
+        analysis,
+        writtenValue as EsTreeNode,
+        unwrappedInitializer.left as EsTreeNode,
+      ) ||
+      isSameSimpleValue(
+        analysis,
+        writtenValue as EsTreeNode,
+        unwrappedInitializer.right as EsTreeNode,
+      )
     );
   }
-  return isSameSimpleValue(writtenValue as EsTreeNode, unwrappedInitializer);
+  return isSameSimpleValue(analysis, writtenValue as EsTreeNode, unwrappedInitializer);
 };
 
 const collectFrameSetterCalls = (
@@ -803,6 +900,26 @@ const collectFrameSetterCalls = (
   return calls;
 };
 
+const areInMutuallyExclusiveBranches = (leftNode: EsTreeNode, rightNode: EsTreeNode): boolean => {
+  let ancestor: EsTreeNode | null | undefined = leftNode.parent;
+  while (ancestor) {
+    if (
+      (isNodeOfType(ancestor, "IfStatement") || isNodeOfType(ancestor, "ConditionalExpression")) &&
+      ancestor.alternate
+    ) {
+      const leftIsConsequent = isAstDescendant(leftNode, ancestor.consequent as EsTreeNode);
+      const leftIsAlternate = isAstDescendant(leftNode, ancestor.alternate as EsTreeNode);
+      const rightIsConsequent = isAstDescendant(rightNode, ancestor.consequent as EsTreeNode);
+      const rightIsAlternate = isAstDescendant(rightNode, ancestor.alternate as EsTreeNode);
+      if ((leftIsConsequent && rightIsAlternate) || (leftIsAlternate && rightIsConsequent)) {
+        return true;
+      }
+    }
+    ancestor = ancestor.parent;
+  }
+  return false;
+};
+
 export const collectEffectStateWriteFacts = (
   analysis: ProgramAnalysis,
   effectNode: EsTreeNode,
@@ -811,7 +928,7 @@ export const collectEffectStateWriteFacts = (
   if (frames.length === 0) return [];
   const effectHasCleanup = hasCleanup(analysis, effectNode);
   const cleanupManagedStateDeclarators = new Set<EsTreeNode>();
-  const facts: EffectStateWriteFact[] = [];
+  const facts: CollectedEffectStateWriteFact[] = [];
 
   for (const frame of frames) {
     for (const { callExpression, setterReference } of collectFrameSetterCalls(analysis, frame)) {
@@ -857,7 +974,11 @@ export const collectEffectStateWriteFacts = (
         (sourceReference) => getUseStateDecl(analysis, sourceReference) !== stateDeclarator,
       );
       const hasIndependentWriter = hasUserInputSetterWriter(setterReference, effectNode, true);
-      const doesMatchStateInitializer = matchesStateInitializer(callExpression, stateDeclarator);
+      const doesMatchStateInitializer = matchesStateInitializer(
+        analysis,
+        callExpression,
+        stateDeclarator,
+      );
       if (
         effectHasCleanup &&
         (frame.isDeferred ||
@@ -869,12 +990,14 @@ export const collectEffectStateWriteFacts = (
       }
       const isRenderKnownCopy =
         sourceReferences.length > 0 &&
+        !frame.isDeferred &&
         !valueEvidence.hasUnknownSource &&
         !valueEvidence.hasDeferredIntroducedValue &&
         !valueEvidence.readsExternalValue &&
         !hasIndependentWriter;
       facts.push({
         callExpression,
+        executionNode: frame.invocation ?? callExpression,
         setterReference,
         stateDeclarator,
         sourceReferences,
@@ -886,25 +1009,27 @@ export const collectEffectStateWriteFacts = (
     }
   }
 
-  const synchronouslyWrittenStateDeclarators = new Set(
-    facts.filter((fact) => !fact.isDeferred).map((fact) => fact.stateDeclarator),
-  );
   return facts.map((fact) => {
     const sourceStateDeclarators = fact.sourceReferences
       .filter((sourceReference) => isState(analysis, sourceReference))
       .map((sourceReference) => getUseStateDecl(analysis, sourceReference))
       .filter((declarator): declarator is EsTreeNode => Boolean(declarator));
-    return {
-      ...fact,
-      resetsSourceState: sourceStateDeclarators.some((sourceDeclarator) =>
-        synchronouslyWrittenStateDeclarators.has(sourceDeclarator),
+    const resetsSourceState = sourceStateDeclarators.some((sourceDeclarator) =>
+      facts.some(
+        (candidateFact) =>
+          !candidateFact.isDeferred &&
+          candidateFact.stateDeclarator === sourceDeclarator &&
+          !areInMutuallyExclusiveBranches(fact.executionNode, candidateFact.executionNode),
       ),
+    );
+    const { executionNode: _executionNode, ...publicFact } = fact;
+    return {
+      ...publicFact,
+      resetsSourceState,
       isRenderKnownCopy:
         fact.isRenderKnownCopy &&
         !cleanupManagedStateDeclarators.has(fact.stateDeclarator) &&
-        !sourceStateDeclarators.some((sourceDeclarator) =>
-          synchronouslyWrittenStateDeclarators.has(sourceDeclarator),
-        ),
+        !resetsSourceState,
     };
   });
 };

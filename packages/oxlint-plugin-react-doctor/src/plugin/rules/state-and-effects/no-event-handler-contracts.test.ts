@@ -67,6 +67,44 @@ describe("no-event-handler event-source contract", () => {
     );
   });
 
+  it("stays silent when a JSX handler helper is also called by an effect", () => {
+    const code = `function Form({ automatic }) {
+      const [submitted, setSubmitted] = useState(false);
+      const markSubmitted = () => setSubmitted(true);
+      useEffect(() => {
+        if (automatic) markSubmitted();
+      }, [automatic]);
+      useEffect(() => {
+        if (submitted) post("/submit");
+      }, [submitted]);
+      return <button onClick={markSubmitted}>Submit</button>;
+    }`;
+    expectEventHandlerDiagnostics(code, 0);
+    const triggerResult = runRule(noEventTriggerState, code, { forceJsx: true });
+    expect(triggerResult.parseErrors).toEqual([]);
+    expect(triggerResult.diagnostics).toEqual([]);
+  });
+
+  it("stays silent when transferable work has an external readiness guard", () => {
+    expectEventHandlerDiagnostics(
+      `function Form({ onSubmit, socket }) {
+        const [clicked, setClicked] = useState(false);
+        const [ready, setReady] = useState(false);
+        useEffect(() => {
+          socket.on("ready", () => setReady(true));
+          return () => socket.off("ready");
+        }, [socket]);
+        useEffect(() => {
+          if (clicked) {
+            if (ready) onSubmit();
+          }
+        }, [clicked, onSubmit, ready]);
+        return <button onClick={() => setClicked(true)}>Submit</button>;
+      }`,
+      0,
+    );
+  });
+
   it("does not use a shadowed JSX setter name as handler proof", () => {
     expectEventHandlerDiagnostics(
       `function Form() {

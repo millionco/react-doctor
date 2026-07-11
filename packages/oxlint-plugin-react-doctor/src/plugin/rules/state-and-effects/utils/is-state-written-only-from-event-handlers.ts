@@ -94,6 +94,28 @@ const isFunctionCalledOnlyFromHandlers = (
   return hasCall;
 };
 
+const isFunctionUsedOutsideHandlers = (
+  analysis: ProgramAnalysis,
+  functionNode: EsTreeNode,
+  componentFunction: EsTreeNode,
+): boolean => {
+  const definitionNode = findFunctionDefinitionNode(functionNode);
+  if (!definitionNode) return true;
+  const variable = findVariableForDefinition(analysis, definitionNode);
+  if (!variable) return true;
+  return variable.references.some((reference) => {
+    if (reference.init) return false;
+    const identifier = reference.identifier as unknown as EsTreeNode;
+    if (isInsideInlineEventHandler(identifier, componentFunction)) return false;
+    const parent = identifier.parent;
+    if (parent && isNodeOfType(parent, "CallExpression") && parent.callee === identifier) {
+      if (findEnclosingFunction(parent) === functionNode) return false;
+      if (isInsideProvenEventHandler(analysis, parent, componentFunction, false)) return false;
+    }
+    return true;
+  });
+};
+
 const isInsideProvenEventHandler = (
   analysis: ProgramAnalysis,
   node: EsTreeNode,
@@ -104,7 +126,12 @@ const isInsideProvenEventHandler = (
   let current: EsTreeNode | null | undefined = node.parent;
   while (current && current !== componentFunction) {
     if (isFunctionLike(current)) {
-      if (isFunctionWiredToEventAttribute(analysis, current)) return true;
+      if (
+        isFunctionWiredToEventAttribute(analysis, current) &&
+        !isFunctionUsedOutsideHandlers(analysis, current, componentFunction)
+      ) {
+        return true;
+      }
       return (
         allowOneCallFrame && isFunctionCalledOnlyFromHandlers(analysis, current, componentFunction)
       );

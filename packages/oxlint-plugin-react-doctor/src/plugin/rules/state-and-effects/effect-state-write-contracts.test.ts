@@ -29,6 +29,21 @@ describe("derived-state effect-write contract", () => {
     );
   });
 
+  it("stays silent when a copied identifier is reassigned before the state write", () => {
+    expectDerivedStateDiagnostics(
+      `function Example({ value }) {
+        const [mirror, setMirror] = useState("");
+        useEffect(() => {
+          let nextValue = value;
+          nextValue = localStorage.getItem("value");
+          setMirror(nextValue);
+        }, [value]);
+        return <div>{mirror}</div>;
+      }`,
+      0,
+    );
+  });
+
   it("reports a proven copy when the effect also has unrelated cleanup", () => {
     expectDerivedStateDiagnostics(
       `function Example({ source, value }) {
@@ -110,6 +125,21 @@ describe("derived-state effect-write contract", () => {
     );
   });
 
+  it("keeps substitutions separate for repeated helper invocations", () => {
+    expectDerivedStateDiagnostics(
+      `function Example({ value }) {
+        const [mirror, setMirror] = useState("");
+        const commit = (nextValue) => setMirror(nextValue);
+        useEffect(() => {
+          commit("constant");
+          commit(value);
+        }, [value]);
+        return <div>{mirror}</div>;
+      }`,
+      1,
+    );
+  });
+
   it("follows useCallback, React useEffectEvent, and a structural local useEvent", () => {
     expectDerivedStateDiagnostics(
       `import React, { useCallback, useEffectEvent } from "react";
@@ -136,6 +166,25 @@ describe("derived-state effect-write contract", () => {
     );
   });
 
+  it("stays silent when a local useEvent does not forward its callback", () => {
+    expectDerivedStateDiagnostics(
+      `import { useCallback, useRef } from "react";
+      const useEvent = (callback) => {
+        useRef(callback);
+        return useCallback(() => {}, []);
+      };
+      function Example({ value }) {
+        const [mirror, setMirror] = useState("");
+        const commit = useEvent(() => setMirror(value));
+        useEffect(() => {
+          commit();
+        }, [commit]);
+        return <div>{mirror}</div>;
+      }`,
+      0,
+    );
+  });
+
   it("follows synchronous IIFEs and iterator callbacks", () => {
     expectDerivedStateDiagnostics(
       `function Example({ values }) {
@@ -151,18 +200,18 @@ describe("derived-state effect-write contract", () => {
     );
   });
 
-  it("keeps a pure deferred copy but rejects a value introduced by a promise", () => {
+  it("stays silent for deferred copies and values introduced by promises", () => {
     expectDerivedStateDiagnostics(
       `function Example({ value, request }) {
         const [mirror, setMirror] = useState("");
         const [result, setResult] = useState(null);
         useEffect(() => {
-          queueMicrotask(() => setMirror(value));
+          setTimeout(() => setMirror(value), 500);
           request().then((response) => setResult(response));
         }, [request, value]);
         return <>{mirror}{result}</>;
       }`,
-      1,
+      0,
     );
   });
 
@@ -263,6 +312,38 @@ describe("derived-state effect-write contract", () => {
       0,
     );
   });
+
+  it("does not merge source resets from mutually exclusive branches", () => {
+    expectDerivedStateDiagnostics(
+      `function Example({ enabled }) {
+        const [source, setSource] = useState("fallback");
+        const [mirror, setMirror] = useState("");
+        useEffect(() => {
+          if (enabled) setMirror(source);
+          else setSource("fallback");
+        }, [enabled, source]);
+        return <div>{mirror}</div>;
+      }`,
+      1,
+    );
+  });
+
+  it("does not trust shadowed pure global names", () => {
+    expectDerivedStateDiagnostics(
+      `function Example({ Math, JSON, parseInt, value }) {
+        const [rounded, setRounded] = useState(0);
+        const [serialized, setSerialized] = useState("");
+        const [parsed, setParsed] = useState(0);
+        useEffect(() => {
+          setRounded(Math.floor(value));
+          setSerialized(JSON.stringify(value));
+          setParsed(parseInt(value));
+        }, [JSON, Math, parseInt, value]);
+        return <>{rounded}{serialized}{parsed}</>;
+      }`,
+      0,
+    );
+  });
 });
 
 describe("derived-state family contracts", () => {
@@ -282,6 +363,23 @@ describe("derived-state family contracts", () => {
 
   it("shares proven render-source writes with no-initialize-state", () => {
     const result = runRule(noInitializeState, code, { forceJsx: true });
+    expect(result.parseErrors).toEqual([]);
+    expect(result.diagnostics).toHaveLength(1);
+  });
+
+  it("matches state initializers by binding identity", () => {
+    const result = runRule(
+      noInitializeState,
+      `function Example({ config, nextConfig }) {
+        const [value, setValue] = useState(config.value);
+        useEffect(() => {
+          const config = nextConfig;
+          setValue(config.value);
+        }, []);
+        return <div>{value}</div>;
+      }`,
+      { forceJsx: true },
+    );
     expect(result.parseErrors).toEqual([]);
     expect(result.diagnostics).toHaveLength(1);
   });

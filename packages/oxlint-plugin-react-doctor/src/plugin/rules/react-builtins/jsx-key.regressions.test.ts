@@ -105,6 +105,13 @@ describe("react-builtins/jsx-key — regressions", () => {
     `);
   });
 
+  it("does not flag a named callback that spreads the iteration item", () => {
+    expectPass(`
+      const renderRow = (item) => <Item {...item} />;
+      items.map(renderRow);
+    `);
+  });
+
   it("does not flag a named callback whose mapped output is a non-children prop", () => {
     expectPass(`
       const renderRow = (item) => <Item name={item.name} />;

@@ -321,7 +321,12 @@ const resolveIterationItemName = (callExpression: EsTreeNode): string | null => 
   if (!isNodeOfType(callee, "MemberExpression")) return null;
   if (!isNodeOfType(callee.property, "Identifier")) return null;
   const targetArgIndex = callee.property.name === "from" ? 1 : 0;
-  const callback = callExpression.arguments[targetArgIndex];
+  const callbackArgument = callExpression.arguments[targetArgIndex];
+  if (!callbackArgument) return null;
+  const unwrappedCallback = stripParenExpression(callbackArgument);
+  const callback = isNodeOfType(unwrappedCallback, "Identifier")
+    ? findVariableInitializer(unwrappedCallback, unwrappedCallback.name)?.initializer
+    : unwrappedCallback;
   if (
     !callback ||
     (!isNodeOfType(callback, "ArrowFunctionExpression") &&

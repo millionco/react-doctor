@@ -321,6 +321,25 @@ describe("derived-state family contracts", () => {
     }
   });
 
+  it("stays silent for a debounced copy of render state", () => {
+    const debouncedCode = `function useDebouncedState(value, delay) {
+      const [state, setState] = useState(value);
+      const [debouncedState, setDebouncedState] = useState(value);
+      useEffect(() => {
+        const timeout = setTimeout(() => {
+          setDebouncedState(state);
+        }, delay);
+        return () => clearTimeout(timeout);
+      }, [delay, state]);
+      return [state, debouncedState, setState];
+    }`;
+    for (const rule of [noDerivedState, noAdjustStateOnPropChange]) {
+      const result = runRule(rule, debouncedCode);
+      expect(result.parseErrors).toEqual([]);
+      expect(result.diagnostics).toEqual([]);
+    }
+  });
+
   it("requires a copied render source for prop-change adjustment", () => {
     const copiedResult = runRule(
       noAdjustStateOnPropChange,

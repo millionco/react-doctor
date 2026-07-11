@@ -860,7 +860,8 @@ export const collectEffectStateWriteFacts = (
       const doesMatchStateInitializer = matchesStateInitializer(callExpression, stateDeclarator);
       if (
         effectHasCleanup &&
-        (valueEvidence.hasUnknownSource ||
+        (frame.isDeferred ||
+          valueEvidence.hasUnknownSource ||
           valueEvidence.hasDeferredIntroducedValue ||
           valueEvidence.readsExternalValue)
       ) {

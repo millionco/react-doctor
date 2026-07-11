@@ -12,6 +12,7 @@ import { isInsideClientOnlyGuard } from "../../utils/is-inside-client-only-guard
 import { isNodeOfType } from "../../utils/is-node-of-type.js";
 import { classifyReactNativeFileTarget } from "../../utils/is-react-native-file.js";
 import { isTestlikeFilename } from "../../utils/is-testlike-filename.js";
+import { statementAlwaysExits } from "../../utils/statement-always-exits.js";
 import { stripParenExpression } from "../../utils/strip-paren-expression.js";
 import type { EsTreeNode } from "../../utils/es-tree-node.js";
 import type { EsTreeNodeOfType } from "../../utils/es-tree-node-of-type.js";
@@ -133,15 +134,6 @@ const readAvailabilityWhenPredicate = (
   return predicateResult === browserResult;
 };
 
-const statementAlwaysExits = (statement: EsTreeNode): boolean => {
-  if (isNodeOfType(statement, "ReturnStatement") || isNodeOfType(statement, "ThrowStatement")) {
-    return true;
-  }
-  if (!isNodeOfType(statement, "BlockStatement")) return false;
-  const lastStatement = statement.body.at(-1);
-  return Boolean(lastStatement && statementAlwaysExits(lastStatement));
-};
-
 const isInsideAvailabilityGuard = (
   node: EsTreeNode,
   browserGlobalName: string,
@@ -256,11 +248,7 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
     let fileIsEmailTemplate = false;
     const reportedNodes = new Set<EsTreeNode>();
 
-    const reportBrowserRead = (
-      node: EsTreeNode,
-      browserGlobalName: string,
-      reportedBrowserGlobalName = browserGlobalName,
-    ): void => {
+    const reportBrowserRead = (node: EsTreeNode, browserGlobalName: string): void => {
       if (reportedNodes.has(node) || isTypeofProbe(node)) return;
       const componentOrHookNode = findRenderPhaseComponentOrHook(node);
       if (!componentOrHookNode) return;
@@ -276,7 +264,7 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
       reportedNodes.add(node);
       context.report({
         node,
-        message: `\`${reportedBrowserGlobalName}\` is read while React is rendering on the server, where browser globals are unavailable. Move the read into an effect or event, or provide a stable server snapshot.`,
+        message: `\`${browserGlobalName}\` is read while React is rendering on the server, where browser globals are unavailable. Move the read into an effect or event, or provide a stable server snapshot.`,
       });
     };
 
@@ -287,7 +275,7 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
       Identifier(node: EsTreeNodeOfType<"Identifier">) {
         if (!BROWSER_GLOBAL_NAMES.has(node.name)) return;
         if (!context.scopes.isGlobalReference(node)) return;
-        reportBrowserRead(node, node.name, node.name === "matchMedia" ? "window" : node.name);
+        reportBrowserRead(node, node.name);
       },
       MemberExpression(node: EsTreeNodeOfType<"MemberExpression">) {
         if (node.computed) return;
@@ -301,11 +289,7 @@ export const noUnguardedBrowserGlobalInRenderOrHookInit = defineRule({
         ) {
           return;
         }
-        reportBrowserRead(
-          node,
-          node.property.name,
-          node.property.name === "matchMedia" ? "window" : node.property.name,
-        );
+        reportBrowserRead(node, node.property.name);
       },
     };
   },

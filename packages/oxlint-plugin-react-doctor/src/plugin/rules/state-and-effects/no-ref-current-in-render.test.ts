@@ -44,6 +44,24 @@ describe("no-ref-current-in-render", () => {
        };`,
     ],
     [
+      "a write through a typed ref receiver",
+      `import { useRef } from "react";
+       const Panel = ({ value }: { value: string }) => {
+         const valueRef = useRef<string>(value);
+         (valueRef as React.MutableRefObject<string>).current = value;
+         return null;
+       };`,
+    ],
+    [
+      "a write through a non-null ref receiver",
+      `import { useRef } from "react";
+       const Panel = ({ value }: { value: string }) => {
+         const valueRef = useRef<string>(value);
+         valueRef!.current = value;
+         return null;
+       };`,
+    ],
+    [
       "a ref guard used to drive state",
       `import { useRef, useState } from "react";
        const Panel = ({ value }) => {
@@ -132,6 +150,17 @@ describe("no-ref-current-in-render", () => {
            if (shouldInitialize) {
              playerRef.current = new VideoPlayer();
            }
+         }
+         return <video />;
+       };`,
+    ],
+    [
+      "documented lazy initialization with wrapped receivers",
+      `import { useRef } from "react";
+       const Video = () => {
+         const playerRef = useRef<VideoPlayer | null>(null);
+         if ((playerRef as React.MutableRefObject<VideoPlayer | null>).current === null) {
+           playerRef!.current = new VideoPlayer();
          }
          return <video />;
        };`,

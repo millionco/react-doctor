@@ -12,16 +12,19 @@ const resolveReactRefSymbol = (
   memberExpression: EsTreeNode,
   scopes: ScopeAnalysis,
 ): SymbolDescriptor | null => {
+  const receiver = isNodeOfType(memberExpression, "MemberExpression")
+    ? stripParenExpression(memberExpression.object)
+    : null;
   if (
     !isNodeOfType(memberExpression, "MemberExpression") ||
     memberExpression.computed ||
     !isNodeOfType(memberExpression.property, "Identifier") ||
     memberExpression.property.name !== "current" ||
-    !isNodeOfType(memberExpression.object, "Identifier")
+    !isNodeOfType(receiver, "Identifier")
   ) {
     return null;
   }
-  const symbol = resolveConstIdentifierAlias(memberExpression.object, scopes);
+  const symbol = resolveConstIdentifierAlias(receiver, scopes);
   if (!symbol?.initializer) return null;
   const initializer = stripParenExpression(symbol.initializer);
   if (!isNodeOfType(initializer, "CallExpression")) return null;
@@ -36,13 +39,21 @@ const isSameRefCurrentMember = (
   node: EsTreeNode,
   refSymbol: SymbolDescriptor,
   scopes: ScopeAnalysis,
-): boolean =>
-  isNodeOfType(node, "MemberExpression") &&
-  !node.computed &&
-  isNodeOfType(node.property, "Identifier") &&
-  node.property.name === "current" &&
-  isNodeOfType(node.object, "Identifier") &&
-  resolveConstIdentifierAlias(node.object, scopes)?.id === refSymbol.id;
+): boolean => {
+  if (
+    !isNodeOfType(node, "MemberExpression") ||
+    node.computed ||
+    !isNodeOfType(node.property, "Identifier") ||
+    node.property.name !== "current"
+  ) {
+    return false;
+  }
+  const receiver = stripParenExpression(node.object);
+  return (
+    isNodeOfType(receiver, "Identifier") &&
+    resolveConstIdentifierAlias(receiver, scopes)?.id === refSymbol.id
+  );
+};
 
 const isDocumentedLazyInitialization = (
   assignmentExpression: EsTreeNodeOfType<"AssignmentExpression">,

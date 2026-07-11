@@ -59,9 +59,7 @@ const isDocumentedLazyInitialization = (
   if (!isNodeOfType(ifStatement, "IfStatement")) return false;
   const isDirectConsequent =
     ifStatement.consequent === parent ||
-    (ifStatement.consequent === consequent &&
-      isNodeOfType(consequent, "BlockStatement") &&
-      consequent.body?.includes(parent));
+    (ifStatement.consequent === consequent && isNodeOfType(consequent, "BlockStatement"));
   if (!isDirectConsequent || !isNodeOfType(ifStatement.test, "BinaryExpression")) return false;
   if (ifStatement.test.operator !== "===" && ifStatement.test.operator !== "==") return false;
   const { left, right } = ifStatement.test;
